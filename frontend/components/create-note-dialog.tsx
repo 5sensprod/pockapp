@@ -1,5 +1,5 @@
 // create-note-dialog.tsx
-import { usePocketBase } from '@/use-pocketbase'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { type RefObject } from 'react'

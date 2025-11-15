@@ -1,4 +1,4 @@
-import { usePocketBase } from '@/use-pocketbase'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
