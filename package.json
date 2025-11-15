@@ -10,7 +10,9 @@
     "dev:server": "go run . serve",
     "build": "run-s build:*",
     "build:client": "tsc -b && vite build",
-    "build:server": "go build -tags production -o pocket-react",
+    "build:server": "go build -tags production -ldflags \"-H=windowsgui\" -o pocket-react.exe",
+    "build:installer": "C:\\Progra~2\\NSIS\\makensis.exe installer.nsi",
+    "build:all": "run-s build:client build:server build:installer",
     "format": "pnpm biome check --write ./frontend/",
     "migrate": "pocketbase migrate collections",
     "migrate:sync": "go run ./main.go ./embed_dev.go migrate history-sync"
