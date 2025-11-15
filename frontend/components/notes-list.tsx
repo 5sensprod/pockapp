@@ -1,6 +1,7 @@
 import { usePocketBase } from '@/use-pocketbase'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { Button } from '@/components/ui/button'
 
 export function NotesList() {
 	const pb = usePocketBase()
@@ -12,21 +13,25 @@ export function NotesList() {
 	})
 
 	return (
-		<>
+		<div className='flex flex-col gap-2'>
 			{notes.data?.map((note) => {
 				return (
-					<Link
-						className='btn btn-secondary'
-						to={`/notes/$noteId`}
-						params={{
-							noteId: note.id,
-						}}
+					<Button
 						key={note.id}
+						variant='secondary'
+						asChild
 					>
-						{note.title}
-					</Link>
+						<Link
+							to={`/notes/$noteId`}
+							params={{
+								noteId: note.id,
+							}}
+						>
+							{note.title}
+						</Link>
+					</Button>
 				)
 			})}
-		</>
+		</div>
 	)
 }

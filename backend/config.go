@@ -21,7 +21,7 @@ func LoadConfig() Config {
 	}
 
 	config := Config{
-		ViteDevServerURL: "http://localhost:5173",
+		ViteDevServerURL: "",
 		Environment:      "development",
 		Port:             "8090",
 		DataDir:          filepath.Join(absCurrentDir, "pb_data"), // Use absolute path

@@ -1,14 +1,15 @@
 import { CreateNoteDialog } from '@/components/create-note-dialog'
 import { EditorView } from '@/components/editor-view'
 import { NotesList } from '@/components/notes-list'
+import { Button } from '@/components/ui/button'
 import { usePocketBase } from '@/use-pocketbase'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { createRef } from 'react'
+import { createRef, useState } from 'react'
 
 export const Route = createFileRoute('/notes/$noteId')({
 	component() {
-		const dialogRef = createRef<HTMLDialogElement>()
+		const [isDialogOpen, setIsDialogOpen] = useState(false)
 		const inputTitleRef = createRef<HTMLInputElement>()
 		const { noteId } = Route.useParams()
 		const pb = usePocketBase()
@@ -27,18 +28,15 @@ export const Route = createFileRoute('/notes/$noteId')({
 		return (
 			<div className='w-full grid grid-cols-5'>
 				<div className='col-span-1 flex flex-col gap-2 p-2'>
-					<button
-						className='btn btn-primary'
+					<Button
 						type='button'
 						onClick={() => {
-							if (dialogRef.current) {
-								dialogRef.current.showModal()
-								inputTitleRef.current?.focus()
-							}
+							setIsDialogOpen(true)
+							setTimeout(() => inputTitleRef.current?.focus(), 0)
 						}}
 					>
 						Create
-					</button>
+					</Button>
 					<NotesList />
 				</div>
 				<div className='col-span-4'>
@@ -51,7 +49,11 @@ export const Route = createFileRoute('/notes/$noteId')({
 						value={note.data?.content ?? ''}
 					/>
 				</div>
-				<CreateNoteDialog ref={dialogRef} inputTitleRef={inputTitleRef} />
+				<CreateNoteDialog
+					open={isDialogOpen}
+					onOpenChange={setIsDialogOpen}
+					inputTitleRef={inputTitleRef}
+				/>
 			</div>
 		)
 	},
