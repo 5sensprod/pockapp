@@ -12,9 +12,7 @@
 
 import { Route as rootRoute } from './routes/__root'
 import { Route as IndexImport } from './routes/index'
-import { Route as NotesIndexImport } from './routes/notes/index'
 import { Route as CashIndexImport } from './routes/cash/index'
-import { Route as NotesNoteIdImport } from './routes/notes/$noteId'
 
 // Create/Update Routes
 
@@ -24,21 +22,9 @@ const IndexRoute = IndexImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
-const NotesIndexRoute = NotesIndexImport.update({
-  id: '/notes/',
-  path: '/notes/',
-  getParentRoute: () => rootRoute,
-} as any)
-
 const CashIndexRoute = CashIndexImport.update({
   id: '/cash/',
   path: '/cash/',
-  getParentRoute: () => rootRoute,
-} as any)
-
-const NotesNoteIdRoute = NotesNoteIdImport.update({
-  id: '/notes/$noteId',
-  path: '/notes/$noteId',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -53,25 +39,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexImport
       parentRoute: typeof rootRoute
     }
-    '/notes/$noteId': {
-      id: '/notes/$noteId'
-      path: '/notes/$noteId'
-      fullPath: '/notes/$noteId'
-      preLoaderRoute: typeof NotesNoteIdImport
-      parentRoute: typeof rootRoute
-    }
     '/cash/': {
       id: '/cash/'
       path: '/cash'
       fullPath: '/cash'
       preLoaderRoute: typeof CashIndexImport
-      parentRoute: typeof rootRoute
-    }
-    '/notes/': {
-      id: '/notes/'
-      path: '/notes'
-      fullPath: '/notes'
-      preLoaderRoute: typeof NotesIndexImport
       parentRoute: typeof rootRoute
     }
   }
@@ -81,47 +53,37 @@ declare module '@tanstack/react-router' {
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/notes/$noteId': typeof NotesNoteIdRoute
   '/cash': typeof CashIndexRoute
-  '/notes': typeof NotesIndexRoute
 }
 
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/notes/$noteId': typeof NotesNoteIdRoute
   '/cash': typeof CashIndexRoute
-  '/notes': typeof NotesIndexRoute
 }
 
 export interface FileRoutesById {
   __root__: typeof rootRoute
   '/': typeof IndexRoute
-  '/notes/$noteId': typeof NotesNoteIdRoute
   '/cash/': typeof CashIndexRoute
-  '/notes/': typeof NotesIndexRoute
 }
 
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/notes/$noteId' | '/cash' | '/notes'
+  fullPaths: '/' | '/cash'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/notes/$noteId' | '/cash' | '/notes'
-  id: '__root__' | '/' | '/notes/$noteId' | '/cash/' | '/notes/'
+  to: '/' | '/cash'
+  id: '__root__' | '/' | '/cash/'
   fileRoutesById: FileRoutesById
 }
 
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  NotesNoteIdRoute: typeof NotesNoteIdRoute
   CashIndexRoute: typeof CashIndexRoute
-  NotesIndexRoute: typeof NotesIndexRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  NotesNoteIdRoute: NotesNoteIdRoute,
   CashIndexRoute: CashIndexRoute,
-  NotesIndexRoute: NotesIndexRoute,
 }
 
 export const routeTree = rootRoute
@@ -137,22 +99,14 @@ export const routeTree = rootRoute
       "filePath": "__root.tsx",
       "children": [
         "/",
-        "/notes/$noteId",
-        "/cash/",
-        "/notes/"
+        "/cash/"
       ]
     },
     "/": {
       "filePath": "index.tsx"
     },
-    "/notes/$noteId": {
-      "filePath": "notes/$noteId.tsx"
-    },
     "/cash/": {
       "filePath": "cash/index.tsx"
-    },
-    "/notes/": {
-      "filePath": "notes/index.tsx"
     }
   }
 }
