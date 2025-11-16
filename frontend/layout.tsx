@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react'
-import { useLocation } from '@tanstack/react-router'
+import React, { useMemo, useState, useEffect } from 'react'
+import { useLocation, useNavigate } from '@tanstack/react-router'
 
 import { Header, Sidebar, Footer } from '@/components/layout'
 import { poles } from '@/modules/_registry'
 import type { ModuleManifest } from '@/modules/_registry'
+import { useAuth } from '@/modules/auth/AuthProvider'
 
 type Company = {
   id: number
@@ -49,11 +50,33 @@ function findModuleByPath(pathname: string): ModuleManifest | null {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
   const [isPanelOpen, setIsPanelOpen] = useState(false)
 
   const currentModule = useMemo(() => findModuleByPath(pathname), [pathname])
   const isHomePage = pathname === '/'
   const hasSidebar = !!currentModule?.sidebarMenu?.length
+
+  // 🔐 Redirections simples
+  useEffect(() => {
+    if (!isAuthenticated && pathname !== '/login') {
+      navigate({ to: '/login' })
+    }
+    if (isAuthenticated && pathname === '/login') {
+      navigate({ to: '/' })
+    }
+  }, [isAuthenticated, pathname, navigate])
+
+  // Sur /login → pas de layout global
+  if (pathname === '/login') {
+    return <>{children}</>
+  }
+
+  // En attente de redirection, on ne rend rien
+  if (!isAuthenticated) {
+    return null
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -65,7 +88,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       />
 
       {hasSidebar && (
-        <Sidebar currentModule={currentModule} onPanelChange={setIsPanelOpen} />
+        <Sidebar
+          currentModule={currentModule}
+          onPanelChange={setIsPanelOpen}
+        />
       )}
 
       <main
@@ -73,7 +99,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           hasSidebar ? (isPanelOpen ? 'ml-[19.5rem]' : 'ml-14') : ''
         }`}
       >
-        {/* children = <Outlet /> injecté par __root.tsx */}
         {children}
       </main>
 

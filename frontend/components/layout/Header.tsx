@@ -23,6 +23,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
+import { useAuth } from '@/modules/auth/AuthProvider'
 
 type Company = {
   id: string | number
@@ -50,20 +51,23 @@ export function Header({
   notifications,
 }: HeaderProps) {
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
 
   const brand = currentModule?.name ?? 'PocketPOS'
   const moduleMenu = currentModule?.topbarMenu || []
   const activeCompany = companies.find((c) => c.active)
   const unreadCount = notifications.filter((n) => n.unread).length
 
-  // 🔹 Pour l’instant, pas d’auth réelle → user factice
-  const user = {
-    name: 'John Doe',
-    email: 'john.doe@example.com',
-    role: 'user',
-  }
+  // Avatar PocketBase si un fichier avatar est défini
+  const avatarUrl =
+    user && (user as any).avatar
+      ? `${document.location.origin}/api/files/users/${user.id}/${(user as any).avatar}?thumb=100x100`
+      : null
 
-  const avatarUrl: string | null = null
+  const handleLogout = () => {
+    logout()
+    navigate({ to: '/login' })
+  }
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -189,7 +193,7 @@ export function Header({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Menu utilisateur - sans logique auth, juste UI */}
+          {/* Menu utilisateur */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">
@@ -210,10 +214,17 @@ export function Header({
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium">{user.name}</p>
-                  <p className="text-xs text-muted-foreground">{user.email}</p>
-                  <Badge variant="secondary" className="w-fit mt-1 text-xs capitalize">
-                    {user.role}
+                  <p className="text-sm font-medium">
+                    {user?.name ?? 'Utilisateur'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {user?.email}
+                  </p>
+                  <Badge
+                    variant="secondary"
+                    className="w-fit mt-1 text-xs capitalize"
+                  >
+                    {'user'}
                   </Badge>
                 </div>
               </DropdownMenuLabel>
@@ -232,7 +243,10 @@ export function Header({
 
               <DropdownMenuSeparator />
 
-              <DropdownMenuItem className="text-red-600">
+              <DropdownMenuItem
+                className="text-red-600"
+                onClick={handleLogout}
+              >
                 <LogOut className="h-4 w-4 mr-2" />
                 Déconnexion
               </DropdownMenuItem>
