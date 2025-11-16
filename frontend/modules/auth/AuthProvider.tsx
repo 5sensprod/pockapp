@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import type { UsersResponse } from '@/lib/pocketbase-types'
+import { toast } from 'sonner'
 
 type AuthUser = UsersResponse | null
 
@@ -38,25 +39,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe
   }, [pb])
 
-  const login = useCallback(
-    async (identity: string, password: string) => {
+const login = useCallback(
+  async (identity: string, password: string) => {
+    try {
       setLoading(true)
-      try {
-        const res = await pb
-          .collection('users')
-          .authWithPassword(identity, password)
-        setUser(res.record as AuthUser)
-      } finally {
-        setLoading(false)
-      }
-    },
-    [pb],
-  )
+      const res = await pb.collection('users').authWithPassword(identity, password)
+      setUser(res.record as AuthUser)
+      toast.success("Connexion réussie")
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erreur de connexion")
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  },
+  [pb],
+)
 
-  const logout = useCallback(() => {
-    pb.authStore.clear()
-    setUser(null)
-  }, [pb])
+const logout = useCallback(async () => {
+  pb.authStore.clear()
+  setUser(null)
+  toast.info("Vous avez été déconnecté")
+}, [pb])
 
   const value = useMemo(
     () => ({
