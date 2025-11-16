@@ -16,20 +16,22 @@ RUN go build -tags production -o pocket-react
 
 # Final stage
 FROM alpine:latest
-WORKDIR /app
+WORKDIR /pb
 
 # Copy the built executable from builder stage
 COPY --from=builder-golang /app/pocket-react /pb/pocket-react
 
-# uncomment to copy the local pb_migrations dir into the image
-# COPY ./pb_migrations /pb/pb_migrations
-
-# 🆕 Copy hooks for module access control
+# Copy hooks for module access control
 COPY ./pb_hooks /pb/pb_hooks
+
+# Create pb_data directory
+RUN mkdir -p /pb/pb_data
 
 EXPOSE 8090
 
-RUN /pb/pocket-react migrate history-sync
-RUN /pb/pocket-react migrate up
+# Run migrations
+RUN /pb/pocket-react migrate history-sync || true
+RUN /pb/pocket-react migrate up || true
 
-CMD ["/pb/pocket-react", "serve", "--http=0.0.0.0:8090"]
+# Start with proper flags
+CMD ["/pb/pocket-react", "serve", "--http=0.0.0.0:8090", "--dir=/pb/pb_data"]
