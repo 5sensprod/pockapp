@@ -13,6 +13,7 @@
 import { Route as rootRoute } from './routes/__root'
 import { Route as LoginImport } from './routes/login'
 import { Route as IndexImport } from './routes/index'
+import { Route as StockIndexImport } from './routes/stock/index'
 import { Route as ConnectIndexImport } from './routes/connect/index'
 import { Route as CashIndexImport } from './routes/cash/index'
 
@@ -27,6 +28,12 @@ const LoginRoute = LoginImport.update({
 const IndexRoute = IndexImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const StockIndexRoute = StockIndexImport.update({
+  id: '/stock/',
+  path: '/stock/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -74,6 +81,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectIndexImport
       parentRoute: typeof rootRoute
     }
+    '/stock/': {
+      id: '/stock/'
+      path: '/stock'
+      fullPath: '/stock'
+      preLoaderRoute: typeof StockIndexImport
+      parentRoute: typeof rootRoute
+    }
   }
 }
 
@@ -84,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
+  '/stock': typeof StockIndexRoute
 }
 
 export interface FileRoutesByTo {
@@ -91,6 +106,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
+  '/stock': typeof StockIndexRoute
 }
 
 export interface FileRoutesById {
@@ -99,14 +115,15 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/cash/': typeof CashIndexRoute
   '/connect/': typeof ConnectIndexRoute
+  '/stock/': typeof StockIndexRoute
 }
 
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/cash' | '/connect'
+  fullPaths: '/' | '/login' | '/cash' | '/connect' | '/stock'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/cash' | '/connect'
-  id: '__root__' | '/' | '/login' | '/cash/' | '/connect/'
+  to: '/' | '/login' | '/cash' | '/connect' | '/stock'
+  id: '__root__' | '/' | '/login' | '/cash/' | '/connect/' | '/stock/'
   fileRoutesById: FileRoutesById
 }
 
@@ -115,6 +132,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   CashIndexRoute: typeof CashIndexRoute
   ConnectIndexRoute: typeof ConnectIndexRoute
+  StockIndexRoute: typeof StockIndexRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
@@ -122,6 +140,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   CashIndexRoute: CashIndexRoute,
   ConnectIndexRoute: ConnectIndexRoute,
+  StockIndexRoute: StockIndexRoute,
 }
 
 export const routeTree = rootRoute
@@ -139,7 +158,8 @@ export const routeTree = rootRoute
         "/",
         "/login",
         "/cash/",
-        "/connect/"
+        "/connect/",
+        "/stock/"
       ]
     },
     "/": {
@@ -153,6 +173,9 @@ export const routeTree = rootRoute
     },
     "/connect/": {
       "filePath": "connect/index.tsx"
+    },
+    "/stock/": {
+      "filePath": "stock/index.tsx"
     }
   }
 }
