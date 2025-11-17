@@ -14,6 +14,7 @@ import { Route as rootRoute } from './routes/__root'
 import { Route as LoginImport } from './routes/login'
 import { Route as IndexImport } from './routes/index'
 import { Route as StockIndexImport } from './routes/stock/index'
+import { Route as StickIndexImport } from './routes/stick/index'
 import { Route as StatsIndexImport } from './routes/stats/index'
 import { Route as ConnectIndexImport } from './routes/connect/index'
 import { Route as CashIndexImport } from './routes/cash/index'
@@ -35,6 +36,12 @@ const IndexRoute = IndexImport.update({
 const StockIndexRoute = StockIndexImport.update({
   id: '/stock/',
   path: '/stock/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const StickIndexRoute = StickIndexImport.update({
+  id: '/stick/',
+  path: '/stick/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -95,6 +102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatsIndexImport
       parentRoute: typeof rootRoute
     }
+    '/stick/': {
+      id: '/stick/'
+      path: '/stick'
+      fullPath: '/stick'
+      preLoaderRoute: typeof StickIndexImport
+      parentRoute: typeof rootRoute
+    }
     '/stock/': {
       id: '/stock/'
       path: '/stock'
@@ -113,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
   '/stats': typeof StatsIndexRoute
+  '/stick': typeof StickIndexRoute
   '/stock': typeof StockIndexRoute
 }
 
@@ -122,6 +137,7 @@ export interface FileRoutesByTo {
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
   '/stats': typeof StatsIndexRoute
+  '/stick': typeof StickIndexRoute
   '/stock': typeof StockIndexRoute
 }
 
@@ -132,14 +148,22 @@ export interface FileRoutesById {
   '/cash/': typeof CashIndexRoute
   '/connect/': typeof ConnectIndexRoute
   '/stats/': typeof StatsIndexRoute
+  '/stick/': typeof StickIndexRoute
   '/stock/': typeof StockIndexRoute
 }
 
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/cash' | '/connect' | '/stats' | '/stock'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/cash'
+    | '/connect'
+    | '/stats'
+    | '/stick'
+    | '/stock'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/cash' | '/connect' | '/stats' | '/stock'
+  to: '/' | '/login' | '/cash' | '/connect' | '/stats' | '/stick' | '/stock'
   id:
     | '__root__'
     | '/'
@@ -147,6 +171,7 @@ export interface FileRouteTypes {
     | '/cash/'
     | '/connect/'
     | '/stats/'
+    | '/stick/'
     | '/stock/'
   fileRoutesById: FileRoutesById
 }
@@ -157,6 +182,7 @@ export interface RootRouteChildren {
   CashIndexRoute: typeof CashIndexRoute
   ConnectIndexRoute: typeof ConnectIndexRoute
   StatsIndexRoute: typeof StatsIndexRoute
+  StickIndexRoute: typeof StickIndexRoute
   StockIndexRoute: typeof StockIndexRoute
 }
 
@@ -166,6 +192,7 @@ const rootRouteChildren: RootRouteChildren = {
   CashIndexRoute: CashIndexRoute,
   ConnectIndexRoute: ConnectIndexRoute,
   StatsIndexRoute: StatsIndexRoute,
+  StickIndexRoute: StickIndexRoute,
   StockIndexRoute: StockIndexRoute,
 }
 
@@ -186,6 +213,7 @@ export const routeTree = rootRoute
         "/cash/",
         "/connect/",
         "/stats/",
+        "/stick/",
         "/stock/"
       ]
     },
@@ -203,6 +231,9 @@ export const routeTree = rootRoute
     },
     "/stats/": {
       "filePath": "stats/index.tsx"
+    },
+    "/stick/": {
+      "filePath": "stick/index.tsx"
     },
     "/stock/": {
       "filePath": "stock/index.tsx"
