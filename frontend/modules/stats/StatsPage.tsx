@@ -1,12 +1,13 @@
-// frontend/modules/cash/CashPage.tsx
+// frontend/modules/stats/StatsPage.tsx
 import { Outlet } from '@tanstack/react-router'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
-import { manifest } from './index'
+import { manifest } from './index' 
 
-export function CashPage() {
-    const Icon = manifest.icon
+export function StatsPage() {
+  const Icon = manifest.icon
+
   return (
     <div className="container mx-auto px-6 py-8">
       {/* Header */}
@@ -21,45 +22,46 @@ export function CashPage() {
           {manifest.description}
         </p>
       </div>
+
+      {/* Contenu de stats (placeholder pour l’instant) */}
       <div className="grid md:grid-cols-3 gap-6">
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
-            <CardTitle className="text-lg">Fonctionnalité 1</CardTitle>
-            <CardDescription>Description de la fonctionnalité</CardDescription>
+            <CardTitle className="text-lg">Chiffre d’affaires</CardTitle>
+            <CardDescription>Sur la période sélectionnée</CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" className="w-full">
-              Action
+              Voir le détail
             </Button>
           </CardContent>
         </Card>
 
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
-            <CardTitle className="text-lg">Fonctionnalité 2</CardTitle>
-            <CardDescription>Description de la fonctionnalité</CardDescription>
+            <CardTitle className="text-lg">Tickets moyens</CardTitle>
+            <CardDescription>Analyse par canal</CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" className="w-full">
-              Action
+              Explorer
             </Button>
           </CardContent>
         </Card>
 
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
-            <CardTitle className="text-lg">Fonctionnalité 3</CardTitle>
-            <CardDescription>Description de la fonctionnalité</CardDescription>
+            <CardTitle className="text-lg">Performances</CardTitle>
+            <CardDescription>Meilleurs jours & équipes</CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" className="w-full">
-              Action
+              Voir les rapports
             </Button>
           </CardContent>
         </Card>
       </div>
 
-      {/* Sous-routes Cash éventuelles */}
       <Outlet />
     </div>
   )

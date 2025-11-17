@@ -1,24 +1,27 @@
-// frontend/modules/cash/StockPage.tsx
+ // frontend/modules/cash/StockPage.tsx
 import { Outlet } from '@tanstack/react-router'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ShoppingCart } from 'lucide-react'
+
+
+import { manifest } from './index'
 
 export function StockPage() {
+      const Icon = manifest.icon
   return (
     <div className="container mx-auto px-6 py-8">
+      {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-            <ShoppingCart className="h-6 w-6 text-primary" />
+            <Icon className="h-6 w-6 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold">PocketStock</h1>
+          <h1 className="text-3xl font-bold">{manifest.name}</h1>
         </div>
         <p className="text-muted-foreground">
-          Gestion de caisse et facturation
+          {manifest.description}
         </p>
       </div>
-
       <div className="grid md:grid-cols-3 gap-6">
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
