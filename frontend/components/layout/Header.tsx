@@ -53,7 +53,7 @@ export function Header({
   const navigate = useNavigate()
   const { user, logout } = useAuth()
 
-  const brand = currentModule?.name ?? 'PocketPOS'
+  const brand = currentModule?.name ?? 'PocketApp'
   const moduleMenu = currentModule?.topbarMenu || []
   const activeCompany = companies.find((c) => c.active)
   const unreadCount = notifications.filter((n) => n.unread).length
