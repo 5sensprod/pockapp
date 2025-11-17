@@ -6,7 +6,7 @@ import { StickPage } from './StickPage'
 export const manifest: ModuleManifest = {
   id: "stick",
   name: "PocketStick",
-  description: "Description de PocketStick",
+  description: "Affiches & visuels",
   pole: 'digital',
   icon: Image,
   route: "/stick",
