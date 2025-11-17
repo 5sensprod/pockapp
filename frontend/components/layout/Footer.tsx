@@ -3,7 +3,7 @@
 export function Footer() {
   return (
     <footer className="border-t py-4 text-center text-xs text-muted-foreground">
-      <span>pocket-react · Powered by TanStack Router & PocketBase</span>
+      <span>@PockApp 2025 · Propulsé par 5sensprod & PocketBase</span>
     </footer>
   )
 }
