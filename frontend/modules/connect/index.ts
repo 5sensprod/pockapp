@@ -1,3 +1,4 @@
+//frontend\modules\connect\index.ts
 import { Users } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
 import { ConnectPage } from './ConnectPage'
