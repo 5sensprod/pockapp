@@ -6,6 +6,7 @@ import type PocketBase from 'pocketbase'
 import type { RecordService } from 'pocketbase'
 
 export enum Collections {
+	Categories = "categories",
 	Customers = "customers",
 	Notes = "notes",
 	Products = "products",
@@ -36,6 +37,14 @@ export type AuthSystemFields<T = never> = {
 
 // Record types for each collection
 
+export type CategoriesRecord = {
+	color?: string
+	icon?: string
+	name: string
+	order?: number
+	parent?: RecordIdString
+}
+
 export enum CustomersTagsOptions {
 	"vip" = "vip",
 	"prospect" = "prospect",
@@ -61,7 +70,7 @@ export type NotesRecord = {
 export type ProductsRecord = {
 	active?: boolean
 	barcode?: string
-	category?: string
+	category?: RecordIdString
 	image?: string
 	name: string
 	price: number
@@ -74,6 +83,7 @@ export type UsersRecord = {
 }
 
 // Response types include system fields and match responses from the PocketBase API
+export type CategoriesResponse<Texpand = unknown> = Required<CategoriesRecord> & BaseSystemFields<Texpand>
 export type CustomersResponse<Texpand = unknown> = Required<CustomersRecord> & BaseSystemFields<Texpand>
 export type NotesResponse<Texpand = unknown> = Required<NotesRecord> & BaseSystemFields<Texpand>
 export type ProductsResponse<Texpand = unknown> = Required<ProductsRecord> & BaseSystemFields<Texpand>
@@ -82,6 +92,7 @@ export type UsersResponse<Texpand = unknown> = Required<UsersRecord> & AuthSyste
 // Types containing all Records and Responses, useful for creating typing helper functions
 
 export type CollectionRecords = {
+	categories: CategoriesRecord
 	customers: CustomersRecord
 	notes: NotesRecord
 	products: ProductsRecord
@@ -89,6 +100,7 @@ export type CollectionRecords = {
 }
 
 export type CollectionResponses = {
+	categories: CategoriesResponse
 	customers: CustomersResponse
 	notes: NotesResponse
 	products: ProductsResponse
@@ -99,6 +111,7 @@ export type CollectionResponses = {
 // https://github.com/pocketbase/js-sdk#specify-typescript-definitions
 
 export type TypedPocketBase = PocketBase & {
+	collection(idOrName: 'categories'): RecordService<CategoriesResponse>
 	collection(idOrName: 'customers'): RecordService<CustomersResponse>
 	collection(idOrName: 'notes'): RecordService<NotesResponse>
 	collection(idOrName: 'products'): RecordService<ProductsResponse>

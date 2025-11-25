@@ -1,67 +1,104 @@
- // frontend/modules/cash/StockPage.tsx
-import { Outlet } from '@tanstack/react-router'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-
-
+import { Input } from '@/components/ui/input'
+import { useProducts } from '@/lib/queries/products'
+import { ProductTable } from './components/ProductTable'
+import { ProductDialog } from './components/ProductDialog'
+import { CategoryTree } from './components/CategoryTree'
 import { manifest } from './index'
+import type { CategoriesResponse } from '@/lib/pocketbase-types'
 
 export function StockPage() {
-      const Icon = manifest.icon
+  const [searchTerm, setSearchTerm] = useState('')
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState<CategoriesResponse | null>(null)
+
+  // Filtrer par catégorie et recherche
+  const buildFilter = () => {
+    const filters: string[] = []
+
+    if (selectedCategory) {
+      filters.push(`category = "${selectedCategory.id}"`)
+    }
+
+    if (searchTerm) {
+      filters.push(`(name ~ "${searchTerm}" || barcode ~ "${searchTerm}")`)
+    }
+
+    return filters.join(' && ')
+  }
+
+  const { data: productsData, isLoading } = useProducts({
+    filter: buildFilter(),
+  })
+
+  const products = productsData?.items ?? []
+  const Icon = manifest.icon
+
   return (
-    <div className="container mx-auto px-6 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Icon className="h-6 w-6 text-primary" />
+    <div className="flex h-[calc(100vh-3.5rem)]">
+      {/* Sidebar Catégories */}
+      <div className="w-64 border-r bg-muted/30 flex-shrink-0">
+        <CategoryTree
+          selectedId={selectedCategory?.id ?? null}
+          onSelect={setSelectedCategory}
+        />
+      </div>
+
+      {/* Contenu principal */}
+      <div className="flex-1 overflow-auto">
+        <div className="container mx-auto px-6 py-8">
+          {/* Header */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Icon className={`h-6 w-6 ${manifest.iconColor ?? 'text-primary'}`} />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold">
+                  {selectedCategory ? selectedCategory.name : manifest.name}
+                </h1>
+                <p className="text-muted-foreground">
+                  {selectedCategory
+                    ? `Produits dans "${selectedCategory.name}"`
+                    : manifest.description}
+                </p>
+              </div>
+              <Button onClick={() => setIsDialogOpen(true)}>Nouveau produit</Button>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold">{manifest.name}</h1>
+
+          {/* Search */}
+          <div className="mb-6 flex gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Input
+                placeholder="Rechercher un produit..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Table */}
+          {isLoading ? (
+            <div className="text-center py-12 text-muted-foreground">Chargement...</div>
+          ) : products.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              {selectedCategory
+                ? `Aucun produit dans "${selectedCategory.name}"`
+                : 'Aucun produit pour le moment'}
+            </div>
+          ) : (
+            <ProductTable data={products} />
+          )}
+
+          <ProductDialog
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            defaultCategoryId={selectedCategory?.id}
+          />
         </div>
-        <p className="text-muted-foreground">
-          {manifest.description}
-        </p>
       </div>
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card className="hover:shadow-md transition-shadow">
-          <CardHeader>
-            <CardTitle className="text-lg">Fonctionnalité 1</CardTitle>
-            <CardDescription>Description de la fonctionnalité</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" className="w-full">
-              Action
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-md transition-shadow">
-          <CardHeader>
-            <CardTitle className="text-lg">Fonctionnalité 2</CardTitle>
-            <CardDescription>Description de la fonctionnalité</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" className="w-full">
-              Action
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-md transition-shadow">
-          <CardHeader>
-            <CardTitle className="text-lg">Fonctionnalité 3</CardTitle>
-            <CardDescription>Description de la fonctionnalité</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" className="w-full">
-              Action
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Sous-routes Cash éventuelles */}
-      <Outlet />
     </div>
   )
 }
