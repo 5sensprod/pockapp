@@ -11,7 +11,7 @@ import {
   type PaginationState,
   type ColumnDef,
 } from '@tanstack/react-table'
-import { MoreHorizontal, ArrowUpDown, Pencil, Trash2, Barcode } from 'lucide-react'
+import { MoreHorizontal, ArrowUpDown, Pencil, Trash2, Barcode, Tags, Building2, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -39,6 +39,9 @@ import {
 } from '@/components/ui/dialog'
 
 import { useDeleteProduct } from '@/lib/queries/products'
+import { useCategories } from '@/lib/queries/categories'
+import { useBrands } from '@/lib/queries/brands'
+import { useSuppliers } from '@/lib/queries/suppliers'
 import type { ProductsResponse } from '@/lib/pocketbase-types'
 import { toast } from 'sonner'
 import { ProductDialog } from './ProductDialog'
@@ -53,12 +56,33 @@ export function ProductTable({ data }: ProductTableProps) {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
 
   const deleteProduct = useDeleteProduct()
+  const { data: categories } = useCategories()
+  const { data: brands } = useBrands()
+  const { data: suppliers } = useSuppliers()
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<ProductsResponse | null>(null)
 
   const [editOpen, setEditOpen] = useState(false)
   const [productToEdit, setProductToEdit] = useState<ProductsResponse | null>(null)
+
+  // Helpers pour récupérer les noms
+  const getCategoryNames = (categoryIds: string[]): string[] => {
+    if (!categories || !categoryIds?.length) return []
+    return categoryIds
+      .map((id) => categories.find((c) => c.id === id)?.name)
+      .filter(Boolean) as string[]
+  }
+
+  const getBrandName = (brandId: string): string | null => {
+    if (!brands || !brandId) return null
+    return brands.find((b) => b.id === brandId)?.name ?? null
+  }
+
+  const getSupplierName = (supplierId: string): string | null => {
+    if (!suppliers || !supplierId) return null
+    return suppliers.find((s) => s.id === supplierId)?.name ?? null
+  }
 
   const askDelete = (product: ProductsResponse) => {
     setProductToDelete(product)
@@ -89,17 +113,49 @@ export function ProductTable({ data }: ProductTableProps) {
       accessorKey: 'name',
       header: ({ column }) => (
         <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-          Nom
+          Produit
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
       cell: ({ row }) => {
         const name = row.getValue<string>('name')
-        const category = row.original.category
+        const categoryIds = row.original.categories || []
+        const categoryNames = getCategoryNames(categoryIds)
+        const brandName = getBrandName(row.original.brand)
+        const supplierName = getSupplierName(row.original.supplier)
+
+        const hasSecondLine = brandName || supplierName
+
         return (
-          <div>
-            <div className="font-medium">{name}</div>
-            {category && <div className="text-sm text-muted-foreground">{category}</div>}
+          <div className="space-y-0.5">
+            {/* Ligne 1 : Nom + Catégories */}
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{name}</span>
+              {categoryNames.length > 0 && (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Tags className="h-3 w-3" />
+                  <span>{categoryNames.join(', ')}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Ligne 2 : Marque + Fournisseur */}
+            {hasSecondLine && (
+              <div className="flex items-center gap-3 text-xs">
+                {brandName && (
+                  <div className="flex items-center gap-1 text-blue-600">
+                    <Building2 className="h-3 w-3" />
+                    <span>{brandName}</span>
+                  </div>
+                )}
+                {supplierName && (
+                  <div className="flex items-center gap-1 text-orange-600">
+                    <Truck className="h-3 w-3" />
+                    <span>{supplierName}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )
       },
@@ -129,7 +185,18 @@ export function ProductTable({ data }: ProductTableProps) {
       ),
       cell: ({ row }) => {
         const price = row.getValue<number>('price')
-        return <span className="font-medium">{price.toFixed(2)} €</span>
+        const cost = row.original.cost
+
+        return (
+          <div>
+            <div className="font-medium">{price.toFixed(2)} €</div>
+            {cost !== undefined && cost > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Achat: {cost.toFixed(2)} €
+              </div>
+            )}
+          </div>
+        )
       },
     },
     {
@@ -257,7 +324,13 @@ export function ProductTable({ data }: ProductTableProps) {
 
       <ProductDialog open={editOpen} onOpenChange={setEditOpen} product={productToEdit} />
 
-      <Dialog open={confirmOpen} onOpenChange={(open) => { setConfirmOpen(open); if (!open) setProductToDelete(null) }}>
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open)
+          if (!open) setProductToDelete(null)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Supprimer ce produit ?</DialogTitle>

@@ -30,7 +30,9 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 
 import { useCreateProduct, useUpdateProduct } from '@/lib/queries/products'
-import { useCategories } from '@/lib/queries/categories'
+import { useBrands } from '@/lib/queries/brands'
+import { useSuppliers } from '@/lib/queries/suppliers'
+import { CategoryPicker } from './CategoryPicker'
 import type { ProductsResponse } from '@/lib/pocketbase-types'
 import { toast } from 'sonner'
 
@@ -38,8 +40,11 @@ const productSchema = z.object({
   name: z.string().min(1, 'Le nom est requis').max(200),
   barcode: z.string().max(50).optional(),
   price: z.coerce.number().min(0, 'Le prix doit être positif'),
+  cost: z.coerce.number().min(0).optional(),
   stock: z.coerce.number().int().optional(),
-  category: z.string().optional(),
+  categories: z.array(z.string()).optional(),
+  brand: z.string().optional(),
+  supplier: z.string().optional(),
   active: z.boolean().optional(),
 })
 
@@ -61,7 +66,8 @@ export function ProductDialog({
   const isEdit = !!product
   const createProduct = useCreateProduct()
   const updateProduct = useUpdateProduct()
-  const { data: categories } = useCategories()
+  const { data: brands } = useBrands()
+  const { data: suppliers } = useSuppliers()
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
@@ -69,20 +75,32 @@ export function ProductDialog({
       name: '',
       barcode: '',
       price: 0,
+      cost: 0,
       stock: 0,
-      category: '',
+      categories: [],
+      brand: '',
+      supplier: '',
       active: true,
     },
   })
 
   useEffect(() => {
     if (open) {
+      const defaultCategories = product?.categories?.length
+        ? product.categories
+        : defaultCategoryId
+          ? [defaultCategoryId]
+          : []
+
       form.reset({
         name: product?.name ?? '',
         barcode: product?.barcode ?? '',
         price: product?.price ?? 0,
+        cost: product?.cost ?? 0,
         stock: product?.stock ?? 0,
-        category: product?.category || defaultCategoryId || '',
+        categories: defaultCategories,
+        brand: product?.brand ?? '',
+        supplier: product?.supplier ?? '',
         active: product?.active ?? true,
       })
     }
@@ -94,8 +112,11 @@ export function ProductDialog({
         name: data.name,
         price: data.price,
         barcode: data.barcode || undefined,
+        cost: data.cost || undefined,
         stock: data.stock,
-        category: data.category || undefined,
+        categories: data.categories?.length ? data.categories : undefined,
+        brand: data.brand || undefined,
+        supplier: data.supplier || undefined,
         active: data.active,
       }
 
@@ -115,7 +136,7 @@ export function ProductDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Modifier le produit' : 'Nouveau produit'}</DialogTitle>
           <DialogDescription>
@@ -147,7 +168,7 @@ export function ProductDialog({
                 name="price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Prix (€) *</FormLabel>
+                    <FormLabel>Prix de vente (€) *</FormLabel>
                     <FormControl>
                       <Input type="number" step="0.01" min="0" placeholder="1.50" {...field} />
                     </FormControl>
@@ -156,6 +177,22 @@ export function ProductDialog({
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name="cost"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Prix d'achat (€)</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" min="0" placeholder="0.80" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="stock"
@@ -169,42 +206,93 @@ export function ProductDialog({
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={form.control}
+                name="barcode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Code-barres</FormLabel>
+                    <FormControl>
+                      <Input placeholder="3760001234567" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
+            {/* Catégories avec le nouveau picker */}
             <FormField
               control={form.control}
-              name="barcode"
+              name="categories"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Code-barres</FormLabel>
-                  <FormControl>
-                    <Input placeholder="3760001234567" {...field} />
-                  </FormControl>
+                  <FormLabel>Catégories</FormLabel>
+                  <CategoryPicker
+                    value={field.value ?? []}
+                    onChange={(val) => field.onChange(val)}
+                    multiple={true}
+                    showNone={false}
+                    searchPlaceholder="Rechercher une catégorie..."
+                    maxHeight="180px"
+                  />
                   <FormMessage />
                 </FormItem>
               )}
             />
 
+            {/* Marque */}
             <FormField
               control={form.control}
-              name="category"
+              name="brand"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Catégorie</FormLabel>
+                  <FormLabel>Marque</FormLabel>
                   <Select
                     onValueChange={(value) => field.onChange(value === '_none_' ? '' : value)}
                     value={field.value || '_none_'}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Sélectionner une catégorie" />
+                        <SelectValue placeholder="Sélectionner une marque" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="_none_">Aucune</SelectItem>
-                      {categories?.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.name}
+                      {brands?.map((brand) => (
+                        <SelectItem key={brand.id} value={brand.id}>
+                          {brand.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Fournisseur */}
+            <FormField
+              control={form.control}
+              name="supplier"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Fournisseur</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(value === '_none_' ? '' : value)}
+                    value={field.value || '_none_'}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner un fournisseur" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="_none_">Aucun</SelectItem>
+                      {suppliers?.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          {supplier.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

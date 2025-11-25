@@ -20,15 +20,9 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
-import { useCreateCategory, useUpdateCategory, useCategories } from '@/lib/queries/categories'
+import { useCreateCategory, useUpdateCategory } from '@/lib/queries/categories'
+import { CategoryPicker } from './CategoryPicker'
 import type { CategoriesResponse } from '@/lib/pocketbase-types'
 import { toast } from 'sonner'
 
@@ -58,9 +52,6 @@ export function CategoryDialog({
   const isEdit = !!category
   const createCategory = useCreateCategory()
   const updateCategory = useUpdateCategory()
-  const { data: allCategories } = useCategories()
-
-  const availableParents = allCategories?.filter((c) => c.id !== category?.id) ?? []
 
   const form = useForm<CategoryFormValues>({
     resolver: zodResolver(categorySchema),
@@ -109,9 +100,12 @@ export function CategoryDialog({
     }
   }
 
+  // IDs à exclure : la catégorie en cours d'édition (pour éviter les boucles)
+  const excludeIds = category ? [category.id] : []
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Modifier la catégorie' : 'Nouvelle catégorie'}</DialogTitle>
           <DialogDescription>
@@ -141,24 +135,16 @@ export function CategoryDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Catégorie parente</FormLabel>
-                  <Select
-                    onValueChange={(value) => field.onChange(value === '_none_' ? undefined : value)}
-                    value={field.value || '_none_'}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Aucune (racine)" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="_none_">Aucune (racine)</SelectItem>
-                      {availableParents.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <CategoryPicker
+                    value={field.value ?? ''}
+                    onChange={(val) => field.onChange(val || undefined)}
+                    multiple={false}
+                    showNone={true}
+                    noneLabel="Aucune (racine)"
+                    excludeIds={excludeIds}
+                    searchPlaceholder="Rechercher une catégorie..."
+                    maxHeight="180px"
+                  />
                   <FormMessage />
                 </FormItem>
               )}

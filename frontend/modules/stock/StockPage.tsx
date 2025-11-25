@@ -1,10 +1,15 @@
 import { useState } from 'react'
+import { Package, Tags, Building2, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
 import { useProducts } from '@/lib/queries/products'
 import { ProductTable } from './components/ProductTable'
 import { ProductDialog } from './components/ProductDialog'
 import { CategoryTree } from './components/CategoryTree'
+import { BrandList } from './components/BrandList'
+import { SupplierList } from './components/SupplierList'
 import { manifest } from './index'
 import type { CategoriesResponse } from '@/lib/pocketbase-types'
 
@@ -12,13 +17,13 @@ export function StockPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<CategoriesResponse | null>(null)
+  const [activeTab, setActiveTab] = useState('products')
 
-  // Filtrer par catégorie et recherche
   const buildFilter = () => {
     const filters: string[] = []
 
     if (selectedCategory) {
-      filters.push(`category = "${selectedCategory.id}"`)
+      filters.push(`categories ~ "${selectedCategory.id}"`)
     }
 
     if (searchTerm) {
@@ -30,6 +35,7 @@ export function StockPage() {
 
   const { data: productsData, isLoading } = useProducts({
     filter: buildFilter(),
+    expand: 'categories,brand,supplier',
   })
 
   const products = productsData?.items ?? []
@@ -37,66 +43,109 @@ export function StockPage() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
-      {/* Sidebar Catégories */}
-      <div className="w-64 border-r bg-muted/30 flex-shrink-0">
-        <CategoryTree
-          selectedId={selectedCategory?.id ?? null}
-          onSelect={setSelectedCategory}
-        />
-      </div>
+      {/* Sidebar Catégories (visible uniquement sur l'onglet produits) */}
+      {activeTab === 'products' && (
+        <div className="w-64 border-r bg-muted/30 flex-shrink-0">
+          <CategoryTree
+            selectedId={selectedCategory?.id ?? null}
+            onSelect={setSelectedCategory}
+          />
+        </div>
+      )}
 
       {/* Contenu principal */}
       <div className="flex-1 overflow-auto">
         <div className="container mx-auto px-6 py-8">
           {/* Header */}
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-2">
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
                 <Icon className={`h-6 w-6 ${manifest.iconColor ?? 'text-primary'}`} />
               </div>
               <div className="flex-1">
-                <h1 className="text-3xl font-bold">
-                  {selectedCategory ? selectedCategory.name : manifest.name}
-                </h1>
-                <p className="text-muted-foreground">
-                  {selectedCategory
-                    ? `Produits dans "${selectedCategory.name}"`
-                    : manifest.description}
-                </p>
+                <h1 className="text-3xl font-bold">{manifest.name}</h1>
+                <p className="text-muted-foreground">{manifest.description}</p>
               </div>
-              <Button onClick={() => setIsDialogOpen(true)}>Nouveau produit</Button>
             </div>
           </div>
 
-          {/* Search */}
-          <div className="mb-6 flex gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Input
-                placeholder="Rechercher un produit..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+          {/* Onglets */}
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="mb-6">
+              <TabsTrigger value="products" className="gap-2">
+                <Package className="h-4 w-4" />
+                Produits
+              </TabsTrigger>
+              <TabsTrigger value="brands" className="gap-2">
+                <Building2 className="h-4 w-4" />
+                Marques
+              </TabsTrigger>
+              <TabsTrigger value="suppliers" className="gap-2">
+                <Truck className="h-4 w-4" />
+                Fournisseurs
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Onglet Produits */}
+            <TabsContent value="products" className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="flex-1 max-w-md">
+                  <Input
+                    placeholder="Rechercher un produit..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <Button onClick={() => setIsDialogOpen(true)}>Nouveau produit</Button>
+              </div>
+
+              {selectedCategory && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Tags className="h-4 w-4" />
+                  <span>Catégorie :</span>
+                  <span className="font-medium">{selectedCategory.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2"
+                    onClick={() => setSelectedCategory(null)}
+                  >
+                    ✕
+                  </Button>
+                </div>
+              )}
+
+              {isLoading ? (
+                <div className="text-center py-12 text-muted-foreground">Chargement...</div>
+              ) : products.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  {selectedCategory
+                    ? `Aucun produit dans "${selectedCategory.name}"`
+                    : searchTerm
+                      ? 'Aucun produit trouvé'
+                      : 'Aucun produit pour le moment'}
+                </div>
+              ) : (
+                <ProductTable data={products} />
+              )}
+
+              <ProductDialog
+                open={isDialogOpen}
+                onOpenChange={setIsDialogOpen}
+                defaultCategoryId={selectedCategory?.id}
               />
-            </div>
-          </div>
+            </TabsContent>
 
-          {/* Table */}
-          {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Chargement...</div>
-          ) : products.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {selectedCategory
-                ? `Aucun produit dans "${selectedCategory.name}"`
-                : 'Aucun produit pour le moment'}
-            </div>
-          ) : (
-            <ProductTable data={products} />
-          )}
+            {/* Onglet Marques */}
+            <TabsContent value="brands">
+              <BrandList />
+            </TabsContent>
 
-          <ProductDialog
-            open={isDialogOpen}
-            onOpenChange={setIsDialogOpen}
-            defaultCategoryId={selectedCategory?.id}
-          />
+            {/* Onglet Fournisseurs */}
+            <TabsContent value="suppliers">
+              <SupplierList />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>
