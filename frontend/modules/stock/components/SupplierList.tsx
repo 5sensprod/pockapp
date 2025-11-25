@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Trash2, Plus, Mail, Phone } from 'lucide-react'
+import { Pencil, Trash2, Plus, Mail, Phone, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -19,12 +19,14 @@ import {
 } from '@/components/ui/dialog'
 
 import { useSuppliers, useDeleteSupplier } from '@/lib/queries/suppliers'
+import { useBrands } from '@/lib/queries/brands'
 import type { SuppliersResponse } from '@/lib/pocketbase-types'
 import { toast } from 'sonner'
 import { SupplierDialog } from './SupplierDialog'
 
 export function SupplierList() {
   const { data: suppliers, isLoading } = useSuppliers()
+  const { data: brands } = useBrands()
   const deleteSupplier = useDeleteSupplier()
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -32,6 +34,14 @@ export function SupplierList() {
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [supplierToDelete, setSupplierToDelete] = useState<SuppliersResponse | null>(null)
+
+  // Helper pour récupérer les noms des marques
+  const getBrandNames = (brandIds: string[]): string[] => {
+    if (!brands || !brandIds?.length) return []
+    return brandIds
+      .map((id) => brands.find((b) => b.id === id)?.name)
+      .filter(Boolean) as string[]
+  }
 
   const handleAdd = () => {
     setEditSupplier(null)
@@ -82,7 +92,7 @@ export function SupplierList() {
           <UiTable>
             <UiTableHeader>
               <UiTableRow>
-                <UiTableHead>Nom</UiTableHead>
+                <UiTableHead>Fournisseur</UiTableHead>
                 <UiTableHead>Contact</UiTableHead>
                 <UiTableHead>Email</UiTableHead>
                 <UiTableHead>Téléphone</UiTableHead>
@@ -91,60 +101,78 @@ export function SupplierList() {
               </UiTableRow>
             </UiTableHeader>
             <UiTableBody>
-              {suppliers.map((supplier) => (
-                <UiTableRow key={supplier.id}>
-                  <UiTableCell className="font-medium">{supplier.name}</UiTableCell>
-                  <UiTableCell>
-                    {supplier.contact || <span className="text-muted-foreground">-</span>}
-                  </UiTableCell>
-                  <UiTableCell>
-                    {supplier.email ? (
-                      <a
-                        href={`mailto:${supplier.email}`}
-                        className="flex items-center gap-1 text-blue-600 hover:underline"
-                      >
-                        <Mail className="h-3 w-3" />
-                        {supplier.email}
-                      </a>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </UiTableCell>
-                  <UiTableCell>
-                    {supplier.phone ? (
-                      <a
-                        href={`tel:${supplier.phone}`}
-                        className="flex items-center gap-1 hover:underline"
-                      >
-                        <Phone className="h-3 w-3" />
-                        {supplier.phone}
-                      </a>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </UiTableCell>
-                  <UiTableCell>
-                    <Badge variant={supplier.active !== false ? 'default' : 'secondary'}>
-                      {supplier.active !== false ? 'Actif' : 'Inactif'}
-                    </Badge>
-                  </UiTableCell>
-                  <UiTableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(supplier)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-red-600"
-                        onClick={() => askDelete(supplier)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </UiTableCell>
-                </UiTableRow>
-              ))}
+              {suppliers.map((supplier) => {
+                const brandNames = getBrandNames(supplier.brands || [])
+                const brandCount = brandNames.length
+
+                return (
+                  <UiTableRow key={supplier.id}>
+                    <UiTableCell>
+                      <div className="space-y-0.5">
+                        <div className="font-medium">{supplier.name}</div>
+                        {brandCount > 0 && (
+                          <div className="flex items-center gap-1 text-xs text-blue-600">
+                            <Building2 className="h-3 w-3" />
+                            <span>
+                              {brandCount} {brandCount > 1 ? 'marques' : 'marque'} :{' '}
+                              {brandNames.join(', ')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </UiTableCell>
+                    <UiTableCell>
+                      {supplier.contact || <span className="text-muted-foreground">-</span>}
+                    </UiTableCell>
+                    <UiTableCell>
+                      {supplier.email ? (
+                        <a
+                          href={`mailto:${supplier.email}`}
+                          className="flex items-center gap-1 text-blue-600 hover:underline"
+                        >
+                          <Mail className="h-3 w-3" />
+                          {supplier.email}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </UiTableCell>
+                    <UiTableCell>
+                      {supplier.phone ? (
+                        <a
+                          href={`tel:${supplier.phone}`}
+                          className="flex items-center gap-1 hover:underline"
+                        >
+                          <Phone className="h-3 w-3" />
+                          {supplier.phone}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </UiTableCell>
+                    <UiTableCell>
+                      <Badge variant={supplier.active !== false ? 'default' : 'secondary'}>
+                        {supplier.active !== false ? 'Actif' : 'Inactif'}
+                      </Badge>
+                    </UiTableCell>
+                    <UiTableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(supplier)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-600"
+                          onClick={() => askDelete(supplier)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </UiTableCell>
+                  </UiTableRow>
+                )
+              })}
             </UiTableBody>
           </UiTable>
         </div>

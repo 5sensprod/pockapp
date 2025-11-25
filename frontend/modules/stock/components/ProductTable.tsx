@@ -42,7 +42,7 @@ import { useDeleteProduct } from '@/lib/queries/products'
 import { useCategories } from '@/lib/queries/categories'
 import { useBrands } from '@/lib/queries/brands'
 import { useSuppliers } from '@/lib/queries/suppliers'
-import type { ProductsResponse } from '@/lib/pocketbase-types'
+import type { ProductsResponse, CategoriesResponse } from '@/lib/pocketbase-types'
 import { toast } from 'sonner'
 import { ProductDialog } from './ProductDialog'
 
@@ -66,11 +66,34 @@ export function ProductTable({ data }: ProductTableProps) {
   const [editOpen, setEditOpen] = useState(false)
   const [productToEdit, setProductToEdit] = useState<ProductsResponse | null>(null)
 
-  // Helpers pour récupérer les noms
-  const getCategoryNames = (categoryIds: string[]): string[] => {
+  // Helper pour construire le chemin complet d'une catégorie
+  const getCategoryPath = (category: CategoriesResponse): string => {
+    if (!categories) return category.name
+    
+    const path: string[] = [category.name]
+    let current = category
+
+    while (current.parent) {
+      const parent = categories.find((c) => c.id === current.parent)
+      if (parent) {
+        path.unshift(parent.name)
+        current = parent
+      } else {
+        break
+      }
+    }
+
+    return path.join(' › ')
+  }
+
+  // Récupérer les chemins complets des catégories
+  const getCategoryPaths = (categoryIds: string[]): string[] => {
     if (!categories || !categoryIds?.length) return []
     return categoryIds
-      .map((id) => categories.find((c) => c.id === id)?.name)
+      .map((id) => {
+        const cat = categories.find((c) => c.id === id)
+        return cat ? getCategoryPath(cat) : null
+      })
       .filter(Boolean) as string[]
   }
 
@@ -120,27 +143,28 @@ export function ProductTable({ data }: ProductTableProps) {
       cell: ({ row }) => {
         const name = row.getValue<string>('name')
         const categoryIds = row.original.categories || []
-        const categoryNames = getCategoryNames(categoryIds)
+        const categoryPaths = getCategoryPaths(categoryIds)
         const brandName = getBrandName(row.original.brand)
         const supplierName = getSupplierName(row.original.supplier)
 
-        const hasSecondLine = brandName || supplierName
+        const hasCategories = categoryPaths.length > 0
+        const hasBrandOrSupplier = brandName || supplierName
 
         return (
           <div className="space-y-0.5">
-            {/* Ligne 1 : Nom + Catégories */}
-            <div className="flex items-center gap-2">
-              <span className="font-medium">{name}</span>
-              {categoryNames.length > 0 && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Tags className="h-3 w-3" />
-                  <span>{categoryNames.join(', ')}</span>
-                </div>
-              )}
-            </div>
+            {/* Ligne 1 : Nom */}
+            <div className="font-medium">{name}</div>
 
-            {/* Ligne 2 : Marque + Fournisseur */}
-            {hasSecondLine && (
+            {/* Ligne 2 : Catégories avec filiation */}
+            {hasCategories && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Tags className="h-3 w-3 flex-shrink-0" />
+                <span>{categoryPaths.join(' • ')}</span>
+              </div>
+            )}
+
+            {/* Ligne 3 : Marque + Fournisseur */}
+            {hasBrandOrSupplier && (
               <div className="flex items-center gap-3 text-xs">
                 {brandName && (
                   <div className="flex items-center gap-1 text-blue-600">
