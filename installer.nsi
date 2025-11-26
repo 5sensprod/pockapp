@@ -45,7 +45,7 @@ Section "Install"
     FileWrite $0 "objShell.CurrentDirectory = $\"$INSTDIR$\"$\r$\n"
     FileWrite $0 "objShell.Run $\"pocket-react.exe serve$\", 0, False$\r$\n"
     FileWrite $0 "WScript.Sleep 2000$\r$\n"
-    FileWrite $0 "objShell.Run $\"chrome.exe --app=http://localhost:8090$\", 1, False$\r$\n"
+    FileWrite $0 "objShell.Run $\"chrome.exe --app=http://localhost:8090 --disable-features=PasswordManager --disable-save-password-bubble --password-store=basic$\", 1, False$\r$\n"
     FileClose $0
     
     ; Crée les raccourcis
