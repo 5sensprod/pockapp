@@ -34,7 +34,7 @@ function findModuleByPath(pathname: string): ModuleManifest | null {
 		for (const m of pole.modules || []) {
 			if (!m?.route) continue
 			const route = norm(m.route)
-			if (path === route || path.startsWith(route + '/')) {
+			if (path === route || path.startsWith(`${route}/`)) {
 				if (!best || route.length > best.route.length) best = m
 			}
 		}
