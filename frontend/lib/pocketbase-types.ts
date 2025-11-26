@@ -41,6 +41,7 @@ export type AuthSystemFields<T = never> = {
 // Record types for each collection
 
 export type BrandsRecord = {
+	company: RecordIdString
 	description?: string
 	logo?: string
 	name: string
@@ -49,6 +50,7 @@ export type BrandsRecord = {
 
 export type CategoriesRecord = {
 	color?: string
+	company: RecordIdString
 	icon?: string
 	name: string
 	order?: number
@@ -106,6 +108,7 @@ export type CustomersRecord = {
 	email?: string
 	name: string
 	notes?: string
+	owner_company: RecordIdString
 	phone?: string
 	tags?: CustomersTagsOptions[]
 }
@@ -120,6 +123,7 @@ export type ProductsRecord = {
 	barcode?: string
 	brand?: RecordIdString
 	categories?: RecordIdString[]
+	company: RecordIdString
 	cost?: number
 	image?: string
 	name: string
@@ -132,6 +136,7 @@ export type SuppliersRecord = {
 	active?: boolean
 	address?: string
 	brands?: RecordIdString[]
+	company: RecordIdString
 	contact?: string
 	email?: string
 	name: string

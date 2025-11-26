@@ -2,8 +2,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Building2, Package, Tags, Truck } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CategoriesResponse } from '@/lib/pocketbase-types'
 import { useProducts } from '@/lib/queries/products'
 import { BrandList } from './components/BrandList'
@@ -20,6 +21,8 @@ export function StockPage() {
 		useState<CategoriesResponse | null>(null)
 	const [activeTab, setActiveTab] = useState('products')
 
+	const { activeCompanyId } = useActiveCompany()
+
 	const buildFilter = () => {
 		const filters: string[] = []
 
@@ -34,10 +37,22 @@ export function StockPage() {
 		return filters.join(' && ')
 	}
 
-	const { data: productsData, isLoading } = useProducts({
+	const {
+		data: productsData,
+		isLoading,
+		refetch,
+	} = useProducts({
+		companyId: activeCompanyId ?? undefined,
 		filter: buildFilter(),
 		expand: 'categories,brand,supplier',
 	})
+
+	// ✅ AJOUT : Force refetch quand activeCompanyId change
+	useEffect(() => {
+		if (activeCompanyId) {
+			refetch()
+		}
+	}, [activeCompanyId, refetch])
 
 	const products = productsData?.items ?? []
 	const Icon = manifest.icon
