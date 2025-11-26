@@ -8,6 +8,7 @@ import type { RecordService } from 'pocketbase'
 export enum Collections {
 	Brands = "brands",
 	Categories = "categories",
+	Companies = "companies",
 	Customers = "customers",
 	Notes = "notes",
 	Products = "products",
@@ -52,6 +53,44 @@ export type CategoriesRecord = {
 	name: string
 	order?: number
 	parent?: RecordIdString
+}
+
+export enum CompaniesDefaultPaymentMethodOptions {
+	"virement" = "virement",
+	"cb" = "cb",
+	"especes" = "especes",
+	"cheque" = "cheque",
+	"autre" = "autre",
+}
+export type CompaniesRecord = {
+	account_holder?: string
+	active?: boolean
+	address_line1?: string
+	address_line2?: string
+	ape_naf?: string
+	bank_name?: string
+	bic?: string
+	city?: string
+	country?: string
+	default_payment_method?: CompaniesDefaultPaymentMethodOptions
+	default_payment_terms_days?: number
+	email?: string
+	iban?: string
+	invoice_footer?: string
+	invoice_prefix?: string
+	is_default?: boolean
+	legal_form?: string
+	logo?: string
+	name: string
+	phone?: string
+	rcs?: string
+	share_capital?: number
+	siren?: string
+	siret?: string
+	trade_name?: string
+	vat_number?: string
+	website?: string
+	zip_code?: string
 }
 
 export enum CustomersTagsOptions {
@@ -108,6 +147,7 @@ export type UsersRecord = {
 // Response types include system fields and match responses from the PocketBase API
 export type BrandsResponse<Texpand = unknown> = Required<BrandsRecord> & BaseSystemFields<Texpand>
 export type CategoriesResponse<Texpand = unknown> = Required<CategoriesRecord> & BaseSystemFields<Texpand>
+export type CompaniesResponse<Texpand = unknown> = Required<CompaniesRecord> & BaseSystemFields<Texpand>
 export type CustomersResponse<Texpand = unknown> = Required<CustomersRecord> & BaseSystemFields<Texpand>
 export type NotesResponse<Texpand = unknown> = Required<NotesRecord> & BaseSystemFields<Texpand>
 export type ProductsResponse<Texpand = unknown> = Required<ProductsRecord> & BaseSystemFields<Texpand>
@@ -119,6 +159,7 @@ export type UsersResponse<Texpand = unknown> = Required<UsersRecord> & AuthSyste
 export type CollectionRecords = {
 	brands: BrandsRecord
 	categories: CategoriesRecord
+	companies: CompaniesRecord
 	customers: CustomersRecord
 	notes: NotesRecord
 	products: ProductsRecord
@@ -129,6 +170,7 @@ export type CollectionRecords = {
 export type CollectionResponses = {
 	brands: BrandsResponse
 	categories: CategoriesResponse
+	companies: CompaniesResponse
 	customers: CustomersResponse
 	notes: NotesResponse
 	products: ProductsResponse
@@ -142,6 +184,7 @@ export type CollectionResponses = {
 export type TypedPocketBase = PocketBase & {
 	collection(idOrName: 'brands'): RecordService<BrandsResponse>
 	collection(idOrName: 'categories'): RecordService<CategoriesResponse>
+	collection(idOrName: 'companies'): RecordService<CompaniesResponse>
 	collection(idOrName: 'customers'): RecordService<CustomersResponse>
 	collection(idOrName: 'notes'): RecordService<NotesResponse>
 	collection(idOrName: 'products'): RecordService<ProductsResponse>
