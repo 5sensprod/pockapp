@@ -43,6 +43,8 @@ func main() {
 			})
 		})
 
+		backend.RegisterSetupRoutes(app, e.Router)
+
 		ServeViteAssets(e.Router)
 
 		return nil

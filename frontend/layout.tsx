@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Footer, Header, Sidebar } from '@/components/layout'
+import { useSetupCheck } from '@/lib/hooks/useSetupCheck'
 import { useCompanies } from '@/lib/queries/companies'
 import { poles } from '@/modules/_registry'
 import type { ModuleManifest } from '@/modules/_registry'
@@ -48,6 +49,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const { isAuthenticated } = useAuth()
 	const [isPanelOpen, setIsPanelOpen] = useState(false)
 
+	// 🆕 Vérifie si le setup initial est nécessaire
+	const { needsSetup, loading: setupLoading } = useSetupCheck()
+
 	const { data: companiesData } = useCompanies()
 
 	const companies: Company[] = useMemo(
@@ -65,15 +69,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const isHomePage = pathname === '/'
 	const hasSidebar = !!currentModule?.sidebarMenu?.length
 
-	// 🔐 Redirections simples
+	// 🔒 Redirections avec gestion du setup
 	useEffect(() => {
-		if (!isAuthenticated && pathname !== '/login') {
+		// Si chargement du setup en cours, on attend
+		if (setupLoading) return
+
+		// Si setup nécessaire et pas sur la page setup, on redirige
+		if (needsSetup && pathname !== '/setup') {
+			navigate({ to: '/setup' })
+			return
+		}
+
+		// Si setup terminé mais sur la page setup, on redirige vers login
+		if (!needsSetup && pathname === '/setup') {
 			navigate({ to: '/login' })
+			return
 		}
-		if (isAuthenticated && pathname === '/login') {
-			navigate({ to: '/' })
+
+		// Gestion normale de l'authentification (sauf pour /setup)
+		if (pathname !== '/setup') {
+			if (!isAuthenticated && pathname !== '/login') {
+				navigate({ to: '/login' })
+			}
+			if (isAuthenticated && pathname === '/login') {
+				navigate({ to: '/' })
+			}
 		}
-	}, [isAuthenticated, pathname, navigate])
+	}, [isAuthenticated, pathname, navigate, needsSetup, setupLoading])
+
+	// Sur /setup → pas de layout global
+	if (pathname === '/setup') {
+		return <>{children}</>
+	}
 
 	// Sur /login → pas de layout global
 	if (pathname === '/login') {
@@ -81,7 +108,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	}
 
 	// En attente de redirection, on ne rend rien
-	if (!isAuthenticated) {
+	if (!isAuthenticated || setupLoading) {
 		return null
 	}
 

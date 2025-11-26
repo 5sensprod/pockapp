@@ -11,6 +11,7 @@
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
+import { Route as SetupImport } from './routes/setup'
 import { Route as LoginImport } from './routes/login'
 import { Route as IndexImport } from './routes/index'
 import { Route as StockIndexImport } from './routes/stock/index'
@@ -20,6 +21,12 @@ import { Route as ConnectIndexImport } from './routes/connect/index'
 import { Route as CashIndexImport } from './routes/cash/index'
 
 // Create/Update Routes
+
+const SetupRoute = SetupImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => rootRoute,
+} as any)
 
 const LoginRoute = LoginImport.update({
   id: '/login',
@@ -81,6 +88,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginImport
       parentRoute: typeof rootRoute
     }
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupImport
+      parentRoute: typeof rootRoute
+    }
     '/cash/': {
       id: '/cash/'
       path: '/cash'
@@ -124,6 +138,7 @@ declare module '@tanstack/react-router' {
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
   '/stats': typeof StatsIndexRoute
@@ -134,6 +149,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
   '/stats': typeof StatsIndexRoute
@@ -145,6 +161,7 @@ export interface FileRoutesById {
   __root__: typeof rootRoute
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
   '/cash/': typeof CashIndexRoute
   '/connect/': typeof ConnectIndexRoute
   '/stats/': typeof StatsIndexRoute
@@ -157,17 +174,27 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/setup'
     | '/cash'
     | '/connect'
     | '/stats'
     | '/stick'
     | '/stock'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/cash' | '/connect' | '/stats' | '/stick' | '/stock'
+  to:
+    | '/'
+    | '/login'
+    | '/setup'
+    | '/cash'
+    | '/connect'
+    | '/stats'
+    | '/stick'
+    | '/stock'
   id:
     | '__root__'
     | '/'
     | '/login'
+    | '/setup'
     | '/cash/'
     | '/connect/'
     | '/stats/'
@@ -179,6 +206,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  SetupRoute: typeof SetupRoute
   CashIndexRoute: typeof CashIndexRoute
   ConnectIndexRoute: typeof ConnectIndexRoute
   StatsIndexRoute: typeof StatsIndexRoute
@@ -189,6 +217,7 @@ export interface RootRouteChildren {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  SetupRoute: SetupRoute,
   CashIndexRoute: CashIndexRoute,
   ConnectIndexRoute: ConnectIndexRoute,
   StatsIndexRoute: StatsIndexRoute,
@@ -210,6 +239,7 @@ export const routeTree = rootRoute
       "children": [
         "/",
         "/login",
+        "/setup",
         "/cash/",
         "/connect/",
         "/stats/",
@@ -222,6 +252,9 @@ export const routeTree = rootRoute
     },
     "/login": {
       "filePath": "login.tsx"
+    },
+    "/setup": {
+      "filePath": "setup.tsx"
     },
     "/cash/": {
       "filePath": "cash/index.tsx"

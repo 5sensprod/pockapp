@@ -10,9 +10,9 @@ import { Toaster } from 'sonner'
 import { routeTree } from './routeTree.gen'
 
 // Désactive le clic droit (menu contextuel) dans toute l'application
-document.addEventListener('contextmenu', (event) => {
-	event.preventDefault()
-})
+// document.addEventListener('contextmenu', (event) => {
+// 	event.preventDefault()
+// })
 
 const rootElement = document.getElementById('root')
 const queryClient = new QueryClient()
