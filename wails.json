@@ -1,0 +1,23 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "pocket-react",
+  "outputfilename": "PocketReact",
+  "frontend:install": "pnpm install",
+  "frontend:build": "pnpm build:client",
+  "frontend:dev:watcher": "pnpm dev:client",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Your Name",
+    "email": "your@email.com"
+  },
+  "info": {
+    "companyName": "Your Company",
+    "productName": "Pocket React",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright 2025",
+    "comments": "Application de gestion"
+  },
+  "nsisType": "multiple",
+  "obfuscated": false,
+  "garbleargs": ""
+}

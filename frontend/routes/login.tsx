@@ -6,6 +6,8 @@ import { useAuth } from '@/modules/auth/AuthProvider'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { useEffect } from 'react'
+import { toast } from 'sonner'
 
 export const Route = createFileRoute('/login')({
 	component: LoginPage,
@@ -29,6 +31,13 @@ function LoginPage() {
 			setError(err?.message ?? 'Impossible de se connecter')
 		}
 	}
+
+	useEffect(() => {
+		if (sessionStorage.getItem('setupComplete')) {
+			sessionStorage.removeItem('setupComplete')
+			toast.success('Compte administrateur créé avec succès !')
+		}
+	}, [])
 
 	return (
 		<div className='min-h-screen flex items-center justify-center bg-background'>

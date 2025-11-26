@@ -1,21 +1,19 @@
 {
-  "name": "frontend",
+  "name": "pocket-react",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "run-p dev:*",
-    "dev:types": "pocketbase-typegen --db ./pb_data/data.db --url http://localhost:8090 --out frontend/lib/pocketbase-types.ts",
+    "dev": "wails dev",
     "dev:client": "vite dev",
-    "dev:server": "go run . serve",
-    "build": "run-s build:*",
+    "build": "wails build",
     "build:client": "tsc -b && vite build",
-    "build:server": "go build -tags production -ldflags \"-H=windowsgui\" -o pocket-react.exe",
-    "build:installer": "C:\\Progra~2\\NSIS\\makensis.exe installer.nsi",
-    "build:all": "run-s build:client build:server build:installer",
+    "build:windows": "wails build -platform windows/amd64",
+    "build:windows-installer": "wails build -platform windows/amd64 -nsis",
+    "build:mac": "wails build -platform darwin/universal",
+    "build:linux": "wails build -platform linux/amd64",
     "format": "pnpm biome check --write ./frontend/",
-    "migrate": "pocketbase migrate collections",
-    "migrate:sync": "go run ./main.go ./embed_dev.go migrate history-sync"
+    "generate": "wails generate module"
   },
   "dependencies": {
     "@heroicons/react": "^2.1.5",
@@ -55,8 +53,6 @@
     "@vitejs/plugin-react-swc": "^3.5.0",
     "autoprefixer": "^10.4.20",
     "monaco-editor": "^0.52.0",
-    "npm-run-all": "^4.1.5",
-    "pocketbase-typegen": "^1.2.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "tailwindcss-animate": "^1.0.7",
@@ -64,7 +60,6 @@
     "vite": "^5.4.9",
     "vite-plugin-top-level-await": "^1.4.4",
     "vite-plugin-wasm": "^3.3.0",
-    "vite-tsconfig-paths": "^5.0.1",
-    "wait-on": "^9.0.3"
+    "vite-tsconfig-paths": "^5.0.1"
   }
 }

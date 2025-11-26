@@ -1,3 +1,4 @@
+// frontend/routes/setup.tsx
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -7,8 +8,7 @@ import {
 	CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-// frontend/routes/setup.tsx
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { type FormEvent, useState } from 'react'
 
 export const Route = createFileRoute('/setup')({
@@ -16,25 +16,23 @@ export const Route = createFileRoute('/setup')({
 })
 
 function SetupPage() {
-	const navigate = useNavigate()
 	const [email, setEmail] = useState('')
 	const [password, setPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
 	const [error, setError] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
 
-	const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 		setError(null)
 
-		// Validation simple
 		if (password !== confirmPassword) {
-			setError('Les mots de passe ne correspondent pas.')
+			setError('Les mots de passe ne correspondent pas')
 			return
 		}
 
 		if (password.length < 8) {
-			setError('Le mot de passe doit contenir au moins 8 caractères.')
+			setError('Le mot de passe doit contenir au moins 8 caractères')
 			return
 		}
 
@@ -50,14 +48,17 @@ function SetupPage() {
 			const data = await response.json()
 
 			if (!response.ok) {
-				throw new Error(data.error || 'Erreur lors de la création du compte.')
+				throw new Error(data.error || 'Erreur lors de la création')
 			}
 
-			// Redirection propre vers la page de login
-			navigate({ to: '/login' })
+			// Clear toute session PocketBase existante
+			localStorage.removeItem('pocketbase_auth')
+
+			sessionStorage.setItem('setupComplete', 'true')
+			window.location.replace('/')
 		} catch (err: any) {
 			console.error(err)
-			setError(err?.message ?? "Impossible de créer l'administrateur.")
+			setError(err?.message ?? "Impossible de créer l'administrateur")
 		} finally {
 			setLoading(false)
 		}

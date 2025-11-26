@@ -9,10 +9,8 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { Toaster } from 'sonner'
 import { routeTree } from './routeTree.gen'
 
-// Désactive le clic droit (menu contextuel) dans toute l'application
-// document.addEventListener('contextmenu', (event) => {
-// 	event.preventDefault()
-// })
+// Clear la session au démarrage (force login à chaque lancement)
+localStorage.removeItem('pocketbase_auth')
 
 const rootElement = document.getElementById('root')
 const queryClient = new QueryClient()
