@@ -1,210 +1,235 @@
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 
+import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
+	Form,
+	FormControl,
+	FormField,
+	FormItem,
+	FormLabel,
+	FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
 
-import { useCreateCategory, useUpdateCategory } from '@/lib/queries/categories'
-import { CategoryPicker } from './CategoryPicker'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CategoriesResponse } from '@/lib/pocketbase-types'
+import { useCreateCategory, useUpdateCategory } from '@/lib/queries/categories'
 import { toast } from 'sonner'
+import { CategoryPicker } from './CategoryPicker'
 
 const categorySchema = z.object({
-  name: z.string().min(1, 'Le nom est requis').max(100),
-  parent: z.string().optional(),
-  order: z.coerce.number().int().min(0).optional(),
-  icon: z.string().max(50).optional(),
-  color: z.string().max(20).optional(),
+	name: z.string().min(1, 'Le nom est requis').max(100),
+	parent: z.string().optional(),
+	order: z.coerce.number().int().min(0).optional(),
+	icon: z.string().max(50).optional(),
+	color: z.string().max(20).optional(),
 })
 
 type CategoryFormValues = z.infer<typeof categorySchema>
 
 interface CategoryDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  category?: CategoriesResponse | null
-  defaultParentId?: string
+	open: boolean
+	onOpenChange: (open: boolean) => void
+	category?: CategoriesResponse | null
+	defaultParentId?: string
 }
 
 export function CategoryDialog({
-  open,
-  onOpenChange,
-  category = null,
-  defaultParentId,
+	open,
+	onOpenChange,
+	category = null,
+	defaultParentId,
 }: CategoryDialogProps) {
-  const isEdit = !!category
-  const createCategory = useCreateCategory()
-  const updateCategory = useUpdateCategory()
+	const isEdit = !!category
+	const { activeCompanyId } = useActiveCompany()
+	const createCategory = useCreateCategory()
+	const updateCategory = useUpdateCategory()
 
-  const form = useForm<CategoryFormValues>({
-    resolver: zodResolver(categorySchema),
-    defaultValues: {
-      name: '',
-      parent: undefined,
-      order: 0,
-      icon: '',
-      color: '',
-    },
-  })
+	const form = useForm<CategoryFormValues>({
+		resolver: zodResolver(categorySchema),
+		defaultValues: {
+			name: '',
+			parent: undefined,
+			order: 0,
+			icon: '',
+			color: '',
+		},
+	})
 
-  useEffect(() => {
-    if (open) {
-      form.reset({
-        name: category?.name ?? '',
-        parent: category?.parent || defaultParentId || undefined,
-        order: category?.order ?? 0,
-        icon: category?.icon ?? '',
-        color: category?.color ?? '',
-      })
-    }
-  }, [open, category, defaultParentId, form])
+	useEffect(() => {
+		if (open) {
+			form.reset({
+				name: category?.name ?? '',
+				parent: category?.parent || defaultParentId || undefined,
+				order: category?.order ?? 0,
+				icon: category?.icon ?? '',
+				color: category?.color ?? '',
+			})
+		}
+	}, [open, category, defaultParentId, form])
 
-  const onSubmit = async (data: CategoryFormValues) => {
-    try {
-      const payload = {
-        name: data.name,
-        parent: data.parent || undefined,
-        order: data.order,
-        icon: data.icon || undefined,
-        color: data.color || undefined,
-      }
+	const onSubmit = async (data: CategoryFormValues) => {
+		try {
+			if (isEdit && category) {
+				const payload = {
+					name: data.name,
+					parent: data.parent || undefined,
+					order: data.order,
+					icon: data.icon || undefined,
+					color: data.color || undefined,
+				}
+				await updateCategory.mutateAsync({ id: category.id, data: payload })
+				toast.success('Catégorie modifiée')
+			} else {
+				if (!activeCompanyId) {
+					toast.error('Aucune entreprise active')
+					return
+				}
+				const payload = {
+					name: data.name,
+					parent: data.parent || undefined,
+					order: data.order,
+					icon: data.icon || undefined,
+					color: data.color || undefined,
+					company: activeCompanyId,
+				}
+				await createCategory.mutateAsync(payload)
+				toast.success('Catégorie créée')
+			}
+			onOpenChange(false)
+		} catch (error) {
+			toast.error('Une erreur est survenue')
+			console.error(error)
+		}
+	}
 
-      if (isEdit && category) {
-        await updateCategory.mutateAsync({ id: category.id, data: payload })
-        toast.success('Catégorie modifiée')
-      } else {
-        await createCategory.mutateAsync(payload)
-        toast.success('Catégorie créée')
-      }
-      onOpenChange(false)
-    } catch (error) {
-      toast.error('Une erreur est survenue')
-      console.error(error)
-    }
-  }
+	// IDs à exclure : la catégorie en cours d'édition (pour éviter les boucles)
+	const excludeIds = category ? [category.id] : []
 
-  // IDs à exclure : la catégorie en cours d'édition (pour éviter les boucles)
-  const excludeIds = category ? [category.id] : []
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className='max-w-md max-h-[90vh] overflow-y-auto'>
+				<DialogHeader>
+					<DialogTitle>
+						{isEdit ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
+					</DialogTitle>
+					<DialogDescription>
+						{isEdit
+							? 'Modifiez les informations'
+							: 'Ajoutez une nouvelle catégorie'}
+					</DialogDescription>
+				</DialogHeader>
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? 'Modifier la catégorie' : 'Nouvelle catégorie'}</DialogTitle>
-          <DialogDescription>
-            {isEdit ? 'Modifiez les informations' : 'Ajoutez une nouvelle catégorie'}
-          </DialogDescription>
-        </DialogHeader>
+				<Form {...form}>
+					<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+						<FormField
+							control={form.control}
+							name='name'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Nom *</FormLabel>
+									<FormControl>
+										<Input placeholder='Boissons' {...field} />
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nom *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Boissons" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+						<FormField
+							control={form.control}
+							name='parent'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Catégorie parente</FormLabel>
+									<CategoryPicker
+										value={field.value ?? ''}
+										onChange={(val) => field.onChange(val || undefined)}
+										multiple={false}
+										showNone={true}
+										noneLabel='Aucune (racine)'
+										excludeIds={excludeIds}
+										searchPlaceholder='Rechercher une catégorie...'
+										maxHeight='180px'
+										companyId={activeCompanyId ?? undefined}
+									/>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
 
-            <FormField
-              control={form.control}
-              name="parent"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Catégorie parente</FormLabel>
-                  <CategoryPicker
-                    value={field.value ?? ''}
-                    onChange={(val) => field.onChange(val || undefined)}
-                    multiple={false}
-                    showNone={true}
-                    noneLabel="Aucune (racine)"
-                    excludeIds={excludeIds}
-                    searchPlaceholder="Rechercher une catégorie..."
-                    maxHeight="180px"
-                  />
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+						<div className='grid grid-cols-2 gap-4'>
+							<FormField
+								control={form.control}
+								name='order'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Ordre</FormLabel>
+										<FormControl>
+											<Input type='number' min='0' placeholder='0' {...field} />
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="order"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Ordre</FormLabel>
-                    <FormControl>
-                      <Input type="number" min="0" placeholder="0" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+							<FormField
+								control={form.control}
+								name='color'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Couleur</FormLabel>
+										<FormControl>
+											<Input placeholder='blue' {...field} />
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+						</div>
 
-              <FormField
-                control={form.control}
-                name="color"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Couleur</FormLabel>
-                    <FormControl>
-                      <Input placeholder="blue" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+						<FormField
+							control={form.control}
+							name='icon'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Icône (lucide)</FormLabel>
+									<FormControl>
+										<Input placeholder='coffee' {...field} />
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
 
-            <FormField
-              control={form.control}
-              name="icon"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Icône (lucide)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="coffee" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="flex justify-end gap-3 pt-4">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Annuler
-              </Button>
-              <Button type="submit" disabled={createCategory.isPending || updateCategory.isPending}>
-                {isEdit ? 'Modifier' : 'Créer'}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  )
+						<div className='flex justify-end gap-3 pt-4'>
+							<Button
+								type='button'
+								variant='outline'
+								onClick={() => onOpenChange(false)}
+							>
+								Annuler
+							</Button>
+							<Button
+								type='submit'
+								disabled={createCategory.isPending || updateCategory.isPending}
+							>
+								{isEdit ? 'Modifier' : 'Créer'}
+							</Button>
+						</div>
+					</form>
+				</Form>
+			</DialogContent>
+		</Dialog>
+	)
 }

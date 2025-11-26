@@ -98,6 +98,8 @@ interface CategoryPickerProps {
 	searchPlaceholder?: string
 	/** Hauteur max de la liste */
 	maxHeight?: string
+	/** ID de l'entreprise pour filtrer les catégories */
+	companyId?: string
 }
 
 export function CategoryPicker({
@@ -109,8 +111,11 @@ export function CategoryPicker({
 	excludeIds = [],
 	searchPlaceholder = 'Rechercher...',
 	maxHeight = '200px',
+	companyId,
 }: CategoryPickerProps) {
-	const { data: categories } = useCategories()
+	const { data: categories } = useCategories({
+		companyId: companyId ?? undefined,
+	})
 	const [search, setSearch] = useState('')
 	const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 

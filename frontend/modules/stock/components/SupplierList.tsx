@@ -16,8 +16,9 @@ import {
 	TableRow as UiTableRow,
 } from '@/components/ui/table'
 import { Building2, Mail, Pencil, Phone, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { SuppliersResponse } from '@/lib/pocketbase-types'
 import { useBrands } from '@/lib/queries/brands'
 import { useDeleteSupplier, useSuppliers } from '@/lib/queries/suppliers'
@@ -25,8 +26,15 @@ import { toast } from 'sonner'
 import { SupplierDialog } from './SupplierDialog'
 
 export function SupplierList() {
-	const { data: suppliers, isLoading } = useSuppliers()
-	const { data: brands } = useBrands()
+	const { activeCompanyId } = useActiveCompany()
+	const {
+		data: suppliers,
+		isLoading,
+		refetch,
+	} = useSuppliers({ companyId: activeCompanyId ?? undefined })
+	const { data: brands } = useBrands({
+		companyId: activeCompanyId ?? undefined,
+	})
 	const deleteSupplier = useDeleteSupplier()
 
 	const [dialogOpen, setDialogOpen] = useState(false)
@@ -37,6 +45,13 @@ export function SupplierList() {
 	const [confirmOpen, setConfirmOpen] = useState(false)
 	const [supplierToDelete, setSupplierToDelete] =
 		useState<SuppliersResponse | null>(null)
+
+	// Refetch quand l'entreprise change
+	useEffect(() => {
+		if (activeCompanyId) {
+			refetch()
+		}
+	}, [activeCompanyId, refetch])
 
 	// Helper pour récupérer les noms des marques
 	const getBrandNames = (brandIds: string[]): string[] => {
