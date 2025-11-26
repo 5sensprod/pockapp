@@ -67,11 +67,18 @@ export function ProductDialog({
 	const isEdit = !!product
 	const createProduct = useCreateProduct()
 	const updateProduct = useUpdateProduct()
-	const { data: brands } = useBrands()
-	const { data: suppliers } = useSuppliers()
 
 	// ⭐ Récupérer l'entreprise active
 	const { activeCompanyId } = useActiveCompany()
+
+	// ⭐ Filtrer marques et fournisseurs par entreprise
+	const { data: brands } = useBrands({
+		companyId: activeCompanyId ?? undefined,
+	})
+
+	const { data: suppliers } = useSuppliers({
+		companyId: activeCompanyId ?? undefined,
+	})
 
 	const form = useForm<ProductFormValues>({
 		resolver: zodResolver(productSchema),
@@ -285,6 +292,7 @@ export function ProductDialog({
 										showNone={false}
 										searchPlaceholder='Rechercher une catégorie...'
 										maxHeight='180px'
+										companyId={activeCompanyId ?? undefined}
 									/>
 									<FormMessage />
 								</FormItem>

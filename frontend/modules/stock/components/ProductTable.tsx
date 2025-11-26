@@ -1,379 +1,458 @@
-import { useState } from 'react'
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type SortingState,
-  type ColumnFiltersState,
-  type PaginationState,
-  type ColumnDef,
-} from '@tanstack/react-table'
-import { MoreHorizontal, ArrowUpDown, Pencil, Trash2, Barcode, Tags, Building2, Truck } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+	type ColumnDef,
+	type ColumnFiltersState,
+	type PaginationState,
+	type SortingState,
+	flexRender,
+	getCoreRowModel,
+	getFilteredRowModel,
+	getPaginationRowModel,
+	getSortedRowModel,
+	useReactTable,
+} from '@tanstack/react-table'
+import {
+	ArrowUpDown,
+	Barcode,
+	Building2,
+	MoreHorizontal,
+	Pencil,
+	Tags,
+	Trash2,
+	Truck,
+} from 'lucide-react'
+import { useState } from 'react'
 
-import { useDeleteProduct } from '@/lib/queries/products'
-import { useCategories } from '@/lib/queries/categories'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import type {
+	CategoriesResponse,
+	ProductsResponse,
+} from '@/lib/pocketbase-types'
 import { useBrands } from '@/lib/queries/brands'
+import { useCategories } from '@/lib/queries/categories'
+import { useDeleteProduct } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
-import type { ProductsResponse, CategoriesResponse } from '@/lib/pocketbase-types'
 import { toast } from 'sonner'
 import { ProductDialog } from './ProductDialog'
 
 interface ProductTableProps {
-  data: ProductsResponse[]
+	data: ProductsResponse[]
 }
 
 export function ProductTable({ data }: ProductTableProps) {
-  const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+	const [sorting, setSorting] = useState<SortingState>([])
+	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+	const [pagination, setPagination] = useState<PaginationState>({
+		pageIndex: 0,
+		pageSize: 10,
+	})
 
-  const deleteProduct = useDeleteProduct()
-  const { data: categories } = useCategories()
-  const { data: brands } = useBrands()
-  const { data: suppliers } = useSuppliers()
+	const deleteProduct = useDeleteProduct()
+	// 👇 récupérer l’entreprise active
+	const { activeCompanyId } = useActiveCompany()
 
-  const [confirmOpen, setConfirmOpen] = useState(false)
-  const [productToDelete, setProductToDelete] = useState<ProductsResponse | null>(null)
+	// 👇 filtrer toutes les données par companyId
+	const { data: categories } = useCategories({
+		companyId: activeCompanyId ?? undefined,
+	})
 
-  const [editOpen, setEditOpen] = useState(false)
-  const [productToEdit, setProductToEdit] = useState<ProductsResponse | null>(null)
+	const { data: brands } = useBrands({
+		companyId: activeCompanyId ?? undefined,
+	})
 
-  // Helper pour construire le chemin complet d'une catégorie
-  const getCategoryPath = (category: CategoriesResponse): string => {
-    if (!categories) return category.name
-    
-    const path: string[] = [category.name]
-    let current = category
+	const { data: suppliers } = useSuppliers({
+		companyId: activeCompanyId ?? undefined,
+	})
 
-    while (current.parent) {
-      const parent = categories.find((c) => c.id === current.parent)
-      if (parent) {
-        path.unshift(parent.name)
-        current = parent
-      } else {
-        break
-      }
-    }
+	const [confirmOpen, setConfirmOpen] = useState(false)
+	const [productToDelete, setProductToDelete] =
+		useState<ProductsResponse | null>(null)
 
-    return path.join(' › ')
-  }
+	const [editOpen, setEditOpen] = useState(false)
+	const [productToEdit, setProductToEdit] = useState<ProductsResponse | null>(
+		null,
+	)
 
-  // Récupérer les chemins complets des catégories
-  const getCategoryPaths = (categoryIds: string[]): string[] => {
-    if (!categories || !categoryIds?.length) return []
-    return categoryIds
-      .map((id) => {
-        const cat = categories.find((c) => c.id === id)
-        return cat ? getCategoryPath(cat) : null
-      })
-      .filter(Boolean) as string[]
-  }
+	// Helper pour construire le chemin complet d'une catégorie
+	const getCategoryPath = (category: CategoriesResponse): string => {
+		if (!categories) return category.name
 
-  const getBrandName = (brandId: string): string | null => {
-    if (!brands || !brandId) return null
-    return brands.find((b) => b.id === brandId)?.name ?? null
-  }
+		const path: string[] = [category.name]
+		let current = category
 
-  const getSupplierName = (supplierId: string): string | null => {
-    if (!suppliers || !supplierId) return null
-    return suppliers.find((s) => s.id === supplierId)?.name ?? null
-  }
+		while (current.parent) {
+			const parent = categories.find((c) => c.id === current.parent)
+			if (parent) {
+				path.unshift(parent.name)
+				current = parent
+			} else {
+				break
+			}
+		}
 
-  const askDelete = (product: ProductsResponse) => {
-    setProductToDelete(product)
-    setConfirmOpen(true)
-  }
+		return path.join(' › ')
+	}
 
-  const confirmDelete = async () => {
-    if (!productToDelete) return
-    try {
-      await deleteProduct.mutateAsync(productToDelete.id)
-      toast.success(`Produit "${productToDelete.name}" supprimé`)
-    } catch (error) {
-      toast.error('Erreur lors de la suppression')
-      console.error(error)
-    } finally {
-      setConfirmOpen(false)
-      setProductToDelete(null)
-    }
-  }
+	// Récupérer les chemins complets des catégories
+	const getCategoryPaths = (categoryIds: string[]): string[] => {
+		if (!categories || !categoryIds?.length) return []
+		return categoryIds
+			.map((id) => {
+				const cat = categories.find((c) => c.id === id)
+				return cat ? getCategoryPath(cat) : null
+			})
+			.filter(Boolean) as string[]
+	}
 
-  const openEdit = (product: ProductsResponse) => {
-    setProductToEdit(product)
-    setEditOpen(true)
-  }
+	const getBrandName = (brandId: string): string | null => {
+		if (!brands || !brandId) return null
+		return brands.find((b) => b.id === brandId)?.name ?? null
+	}
 
-  const columns: ColumnDef<ProductsResponse>[] = [
-    {
-      accessorKey: 'name',
-      header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-          Produit
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
-      cell: ({ row }) => {
-        const name = row.getValue<string>('name')
-        const categoryIds = row.original.categories || []
-        const categoryPaths = getCategoryPaths(categoryIds)
-        const brandName = getBrandName(row.original.brand)
-        const supplierName = getSupplierName(row.original.supplier)
+	const getSupplierName = (supplierId: string): string | null => {
+		if (!suppliers || !supplierId) return null
+		return suppliers.find((s) => s.id === supplierId)?.name ?? null
+	}
 
-        const hasCategories = categoryPaths.length > 0
-        const hasBrandOrSupplier = brandName || supplierName
+	const askDelete = (product: ProductsResponse) => {
+		setProductToDelete(product)
+		setConfirmOpen(true)
+	}
 
-        return (
-          <div className="space-y-0.5">
-            {/* Ligne 1 : Nom */}
-            <div className="font-medium">{name}</div>
+	const confirmDelete = async () => {
+		if (!productToDelete) return
+		try {
+			await deleteProduct.mutateAsync(productToDelete.id)
+			toast.success(`Produit "${productToDelete.name}" supprimé`)
+		} catch (error) {
+			toast.error('Erreur lors de la suppression')
+			console.error(error)
+		} finally {
+			setConfirmOpen(false)
+			setProductToDelete(null)
+		}
+	}
 
-            {/* Ligne 2 : Catégories avec filiation */}
-            {hasCategories && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Tags className="h-3 w-3 flex-shrink-0" />
-                <span>{categoryPaths.join(' • ')}</span>
-              </div>
-            )}
+	const openEdit = (product: ProductsResponse) => {
+		setProductToEdit(product)
+		setEditOpen(true)
+	}
 
-            {/* Ligne 3 : Marque + Fournisseur */}
-            {hasBrandOrSupplier && (
-              <div className="flex items-center gap-3 text-xs">
-                {brandName && (
-                  <div className="flex items-center gap-1 text-blue-600">
-                    <Building2 className="h-3 w-3" />
-                    <span>{brandName}</span>
-                  </div>
-                )}
-                {supplierName && (
-                  <div className="flex items-center gap-1 text-orange-600">
-                    <Truck className="h-3 w-3" />
-                    <span>{supplierName}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )
-      },
-    },
-    {
-      accessorKey: 'barcode',
-      header: 'Code-barres',
-      cell: ({ row }) => {
-        const barcode = row.getValue<string>('barcode')
-        return barcode ? (
-          <span className="flex items-center gap-1 font-mono text-sm">
-            <Barcode className="h-3 w-3" />
-            {barcode}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        )
-      },
-    },
-    {
-      accessorKey: 'price',
-      header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-          Prix
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
-      cell: ({ row }) => {
-        const price = row.getValue<number>('price')
-        const cost = row.original.cost
+	const columns: ColumnDef<ProductsResponse>[] = [
+		{
+			accessorKey: 'name',
+			header: ({ column }) => (
+				<Button
+					variant='ghost'
+					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+				>
+					Produit
+					<ArrowUpDown className='ml-2 h-4 w-4' />
+				</Button>
+			),
+			cell: ({ row }) => {
+				const name = row.getValue<string>('name')
+				const categoryIds = row.original.categories || []
+				const categoryPaths = getCategoryPaths(categoryIds)
+				const brandName = getBrandName(row.original.brand)
+				const supplierName = getSupplierName(row.original.supplier)
 
-        return (
-          <div>
-            <div className="font-medium">{price.toFixed(2)} €</div>
-            {cost !== undefined && cost > 0 && (
-              <div className="text-xs text-muted-foreground">
-                Achat: {cost.toFixed(2)} €
-              </div>
-            )}
-          </div>
-        )
-      },
-    },
-    {
-      accessorKey: 'stock',
-      header: 'Stock',
-      cell: ({ row }) => {
-        const stock = row.getValue<number>('stock')
-        if (stock === undefined || stock === null) {
-          return <span className="text-muted-foreground">-</span>
-        }
-        return (
-          <Badge variant={stock > 10 ? 'default' : stock > 0 ? 'secondary' : 'destructive'}>
-            {stock}
-          </Badge>
-        )
-      },
-    },
-    {
-      accessorKey: 'active',
-      header: 'Statut',
-      cell: ({ row }) => {
-        const active = row.getValue<boolean>('active')
-        return (
-          <Badge variant={active !== false ? 'default' : 'secondary'}>
-            {active !== false ? 'Actif' : 'Inactif'}
-          </Badge>
-        )
-      },
-    },
-    {
-      id: 'actions',
-      cell: ({ row }) => {
-        const product = row.original
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => navigator.clipboard.writeText(product.barcode || '')}>
-                Copier le code-barres
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => openEdit(product)}>
-                <Pencil className="h-4 w-4 mr-2" />
-                Modifier
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-red-600" onClick={() => askDelete(product)}>
-                <Trash2 className="h-4 w-4 mr-2" />
-                Supprimer
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )
-      },
-    },
-  ]
+				const hasCategories = categoryPaths.length > 0
+				const hasBrandOrSupplier = brandName || supplierName
 
-  const table = useReactTable({
-    data,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onPaginationChange: setPagination,
-    state: { sorting, columnFilters, pagination },
-  })
+				return (
+					<div className='space-y-0.5'>
+						{/* Ligne 1 : Nom */}
+						<div className='font-medium'>{name}</div>
 
-  return (
-    <div className="space-y-4">
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  Aucun produit.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+						{/* Ligne 2 : Catégories avec filiation */}
+						{hasCategories && (
+							<div className='flex items-center gap-1 text-xs text-muted-foreground'>
+								<Tags className='h-3 w-3 flex-shrink-0' />
+								<span>{categoryPaths.join(' • ')}</span>
+							</div>
+						)}
 
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          {table.getFilteredRowModel().rows.length} produit(s)
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-            Précédent
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-            Suivant
-          </Button>
-        </div>
-      </div>
+						{/* Ligne 3 : Marque + Fournisseur */}
+						{hasBrandOrSupplier && (
+							<div className='flex items-center gap-3 text-xs'>
+								{brandName && (
+									<div className='flex items-center gap-1 text-blue-600'>
+										<Building2 className='h-3 w-3' />
+										<span>{brandName}</span>
+									</div>
+								)}
+								{supplierName && (
+									<div className='flex items-center gap-1 text-orange-600'>
+										<Truck className='h-3 w-3' />
+										<span>{supplierName}</span>
+									</div>
+								)}
+							</div>
+						)}
+					</div>
+				)
+			},
+		},
+		{
+			accessorKey: 'barcode',
+			header: 'Code-barres',
+			cell: ({ row }) => {
+				const barcode = row.getValue<string>('barcode')
+				return barcode ? (
+					<span className='flex items-center gap-1 font-mono text-sm'>
+						<Barcode className='h-3 w-3' />
+						{barcode}
+					</span>
+				) : (
+					<span className='text-muted-foreground'>-</span>
+				)
+			},
+		},
+		{
+			accessorKey: 'price',
+			header: ({ column }) => (
+				<Button
+					variant='ghost'
+					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+				>
+					Prix
+					<ArrowUpDown className='ml-2 h-4 w-4' />
+				</Button>
+			),
+			cell: ({ row }) => {
+				const price = row.getValue<number>('price')
+				const cost = row.original.cost
 
-      <ProductDialog open={editOpen} onOpenChange={setEditOpen} product={productToEdit} />
+				return (
+					<div>
+						<div className='font-medium'>{price.toFixed(2)} €</div>
+						{cost !== undefined && cost > 0 && (
+							<div className='text-xs text-muted-foreground'>
+								Achat: {cost.toFixed(2)} €
+							</div>
+						)}
+					</div>
+				)
+			},
+		},
+		{
+			accessorKey: 'stock',
+			header: 'Stock',
+			cell: ({ row }) => {
+				const stock = row.getValue<number>('stock')
+				if (stock === undefined || stock === null) {
+					return <span className='text-muted-foreground'>-</span>
+				}
+				return (
+					<Badge
+						variant={
+							stock > 10 ? 'default' : stock > 0 ? 'secondary' : 'destructive'
+						}
+					>
+						{stock}
+					</Badge>
+				)
+			},
+		},
+		{
+			accessorKey: 'active',
+			header: 'Statut',
+			cell: ({ row }) => {
+				const active = row.getValue<boolean>('active')
+				return (
+					<Badge variant={active !== false ? 'default' : 'secondary'}>
+						{active !== false ? 'Actif' : 'Inactif'}
+					</Badge>
+				)
+			},
+		},
+		{
+			id: 'actions',
+			cell: ({ row }) => {
+				const product = row.original
+				return (
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button variant='ghost' className='h-8 w-8 p-0'>
+								<MoreHorizontal className='h-4 w-4' />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align='end'>
+							<DropdownMenuLabel>Actions</DropdownMenuLabel>
+							<DropdownMenuItem
+								onClick={() =>
+									navigator.clipboard.writeText(product.barcode || '')
+								}
+							>
+								Copier le code-barres
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onClick={() => openEdit(product)}>
+								<Pencil className='h-4 w-4 mr-2' />
+								Modifier
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								className='text-red-600'
+								onClick={() => askDelete(product)}
+							>
+								<Trash2 className='h-4 w-4 mr-2' />
+								Supprimer
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				)
+			},
+		},
+	]
 
-      <Dialog
-        open={confirmOpen}
-        onOpenChange={(open) => {
-          setConfirmOpen(open)
-          if (!open) setProductToDelete(null)
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Supprimer ce produit ?</DialogTitle>
-            <DialogDescription>
-              {productToDelete
-                ? `Vous êtes sur le point de supprimer "${productToDelete.name}". Cette action est définitive.`
-                : 'Vous êtes sur le point de supprimer ce produit.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => { setConfirmOpen(false); setProductToDelete(null) }}>
-              Annuler
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Supprimer
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
+	const table = useReactTable({
+		data,
+		columns,
+		getCoreRowModel: getCoreRowModel(),
+		getPaginationRowModel: getPaginationRowModel(),
+		getSortedRowModel: getSortedRowModel(),
+		getFilteredRowModel: getFilteredRowModel(),
+		onSortingChange: setSorting,
+		onColumnFiltersChange: setColumnFilters,
+		onPaginationChange: setPagination,
+		state: { sorting, columnFilters, pagination },
+	})
+
+	return (
+		<div className='space-y-4'>
+			<div className='rounded-md border'>
+				<Table>
+					<TableHeader>
+						{table.getHeaderGroups().map((headerGroup) => (
+							<TableRow key={headerGroup.id}>
+								{headerGroup.headers.map((header) => (
+									<TableHead key={header.id}>
+										{header.isPlaceholder
+											? null
+											: flexRender(
+													header.column.columnDef.header,
+													header.getContext(),
+												)}
+									</TableHead>
+								))}
+							</TableRow>
+						))}
+					</TableHeader>
+					<TableBody>
+						{table.getRowModel().rows?.length ? (
+							table.getRowModel().rows.map((row) => (
+								<TableRow key={row.id}>
+									{row.getVisibleCells().map((cell) => (
+										<TableCell key={cell.id}>
+											{flexRender(
+												cell.column.columnDef.cell,
+												cell.getContext(),
+											)}
+										</TableCell>
+									))}
+								</TableRow>
+							))
+						) : (
+							<TableRow>
+								<TableCell
+									colSpan={columns.length}
+									className='h-24 text-center'
+								>
+									Aucun produit.
+								</TableCell>
+							</TableRow>
+						)}
+					</TableBody>
+				</Table>
+			</div>
+
+			<div className='flex items-center justify-between'>
+				<div className='text-sm text-muted-foreground'>
+					{table.getFilteredRowModel().rows.length} produit(s)
+				</div>
+				<div className='flex items-center space-x-2'>
+					<Button
+						variant='outline'
+						size='sm'
+						onClick={() => table.previousPage()}
+						disabled={!table.getCanPreviousPage()}
+					>
+						Précédent
+					</Button>
+					<Button
+						variant='outline'
+						size='sm'
+						onClick={() => table.nextPage()}
+						disabled={!table.getCanNextPage()}
+					>
+						Suivant
+					</Button>
+				</div>
+			</div>
+
+			<ProductDialog
+				open={editOpen}
+				onOpenChange={setEditOpen}
+				product={productToEdit}
+			/>
+
+			<Dialog
+				open={confirmOpen}
+				onOpenChange={(open) => {
+					setConfirmOpen(open)
+					if (!open) setProductToDelete(null)
+				}}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Supprimer ce produit ?</DialogTitle>
+						<DialogDescription>
+							{productToDelete
+								? `Vous êtes sur le point de supprimer "${productToDelete.name}". Cette action est définitive.`
+								: 'Vous êtes sur le point de supprimer ce produit.'}
+						</DialogDescription>
+					</DialogHeader>
+					<div className='flex justify-end gap-2 pt-4'>
+						<Button
+							variant='outline'
+							onClick={() => {
+								setConfirmOpen(false)
+								setProductToDelete(null)
+							}}
+						>
+							Annuler
+						</Button>
+						<Button variant='destructive' onClick={confirmDelete}>
+							Supprimer
+						</Button>
+					</div>
+				</DialogContent>
+			</Dialog>
+		</div>
+	)
 }
