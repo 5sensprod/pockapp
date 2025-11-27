@@ -7,6 +7,7 @@ import (
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"pocket-react/backend"
 )
 
 // App struct - exposée au frontend via bindings
@@ -110,4 +111,14 @@ func (a *App) CheckSetupStatus() (bool, error) {
 	}
 
 	return false, nil
+}
+
+func (a *App) GetNetworkInfo() map[string]interface{} {
+	ip := backend.GetLocalIP()
+
+	return map[string]interface{}{
+		"ip":   ip,
+		"port": 8090,
+		"url":  "http://" + ip + ":8090",
+	}
 }
