@@ -3,16 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { Footer, Header, Sidebar } from '@/components/layout'
 import { useSetupCheck } from '@/lib/hooks/useSetupCheck'
-import { useCompanies } from '@/lib/queries/companies'
 import { poles } from '@/modules/_registry'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
-
-type Company = {
-	id: string
-	name: string
-	active: boolean
-}
 
 type Notification = {
 	id: number
@@ -49,44 +42,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const { isAuthenticated } = useAuth()
 	const [isPanelOpen, setIsPanelOpen] = useState(false)
 
-	// 🆕 Vérifie si le setup initial est nécessaire
+	// Vérifie si le setup initial est nécessaire
 	const { needsSetup, loading: setupLoading } = useSetupCheck()
-
-	const { data: companiesData } = useCompanies()
-
-	const companies: Company[] = useMemo(
-		() =>
-			(companiesData?.items ?? []).map((c: any) => ({
-				id: c.id as string,
-				// On privilégie le nom commercial si présent
-				name: (c.trade_name || c.name) as string,
-				active: Boolean(c.active),
-			})),
-		[companiesData],
-	)
 
 	const currentModule = useMemo(() => findModuleByPath(pathname), [pathname])
 	const isHomePage = pathname === '/'
 	const hasSidebar = !!currentModule?.sidebarMenu?.length
 
-	// 🔒 Redirections avec gestion du setup
+	// Redirections avec gestion du setup
 	useEffect(() => {
-		// Si chargement du setup en cours, on attend
 		if (setupLoading) return
 
-		// Si setup nécessaire et pas sur la page setup, on redirige
 		if (needsSetup && pathname !== '/setup') {
 			navigate({ to: '/setup' })
 			return
 		}
 
-		// Si setup terminé mais sur la page setup, on redirige vers login
 		if (!needsSetup && pathname === '/setup') {
 			navigate({ to: '/login' })
 			return
 		}
 
-		// Gestion normale de l'authentification (sauf pour /setup)
 		if (pathname !== '/setup') {
 			if (!isAuthenticated && pathname !== '/login') {
 				navigate({ to: '/login' })
@@ -107,7 +83,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		return <>{children}</>
 	}
 
-	// En attente de redirection, on ne rend rien
+	// En attente de redirection ou de chargement → rien
 	if (!isAuthenticated || setupLoading) {
 		return null
 	}
@@ -117,7 +93,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 			<Header
 				currentModule={currentModule}
 				isHomePage={isHomePage}
-				companies={companies}
 				notifications={notifications}
 			/>
 

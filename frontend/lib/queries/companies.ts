@@ -41,22 +41,28 @@ export interface CompaniesListOptions {
 	filter?: string
 	sort?: string
 	expand?: string
+	enabled?: boolean
 	[key: string]: unknown
 }
 
 // 📋 Liste des entreprises
 export function useCompanies(options: CompaniesListOptions = {}) {
 	const pb = usePocketBase() as any
+	const {
+		enabled = true, // 👈 valeur par défaut
+		...queryOptions
+	} = options
 
 	return useQuery({
-		queryKey: ['companies', options],
+		queryKey: ['companies', queryOptions],
 		queryFn: async () => {
 			return await pb.collection('companies').getList(1, 50, {
 				sort: 'name',
 				expand: '',
-				...options,
+				...queryOptions,
 			})
 		},
+		enabled, // 👈 c’est ça qui évite le fetch trop tôt
 	})
 }
 

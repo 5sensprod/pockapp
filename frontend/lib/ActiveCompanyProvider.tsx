@@ -1,9 +1,19 @@
+import type { CompaniesResponse } from '@/lib/pocketbase-types'
+// frontend/lib/ActiveCompanyProvider.tsx
 import { useCompanies } from '@/lib/queries/companies'
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useAuth } from '@/modules/auth/AuthProvider'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+
+type CompanyForContext = {
+	id: string
+	name: string
+	active?: boolean
+}
 
 interface ActiveCompanyContextType {
 	activeCompanyId: string | null
 	isLoading: boolean
+	companies: CompanyForContext[]
 }
 
 const ActiveCompanyContext = createContext<
@@ -15,23 +25,39 @@ export function ActiveCompanyProvider({
 }: {
 	children: React.ReactNode
 }) {
-	const { data: companiesData, isLoading } = useCompanies()
+	const { isAuthenticated } = useAuth()
+
+	const { data: companiesData, isLoading } = useCompanies({
+		enabled: isAuthenticated, // 👈 NE FETCH QUE UNE FOIS AUTH OK
+	})
+
 	const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null)
 
+	const companies: CompanyForContext[] = useMemo(
+		() =>
+			companiesData?.items?.map((c: CompaniesResponse) => ({
+				id: c.id,
+				name: c.trade_name || c.name,
+				active: c.active,
+			})) ?? [],
+		[companiesData?.items],
+	)
+
 	useEffect(() => {
-		if (companiesData?.items) {
-			const activeCompany = companiesData.items.find((c: any) => c.active)
-			if (activeCompany) {
-				setActiveCompanyId(activeCompany.id)
-			} else if (companiesData.items.length > 0) {
-				// Si aucune entreprise n'est active, prendre la première
-				setActiveCompanyId(companiesData.items[0].id)
-			}
+		if (!companies.length) return
+
+		const activeCompany = companies.find((c) => c.active)
+		if (activeCompany) {
+			setActiveCompanyId(activeCompany.id)
+		} else {
+			setActiveCompanyId(companies[0].id)
 		}
-	}, [companiesData?.items]) // ✅ CHANGEMENT ICI : dépendre de .items plutôt que de companiesData
+	}, [companies])
 
 	return (
-		<ActiveCompanyContext.Provider value={{ activeCompanyId, isLoading }}>
+		<ActiveCompanyContext.Provider
+			value={{ activeCompanyId, isLoading, companies }}
+		>
 			{children}
 		</ActiveCompanyContext.Provider>
 	)

@@ -10,7 +10,8 @@ export interface CustomerDto {
 	company?: string
 	address?: string
 	notes?: string
-	tags?: string[]
+	tags?: string
+	owner_company: string | string[]
 }
 
 export interface CustomersListOptions {
