@@ -100,6 +100,12 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 	}
 	log.Println("Bootstrap OK, DataDir:", pb.DataDir())
 
+	// 🆕 Exécuter les migrations pour créer les collections
+	if err := backend.RunMigrations(pb); err != nil {
+		log.Println("Migrations ERROR:", err)
+		// On continue quand même, l'erreur n'est pas fatale
+	}
+
 	// Extrais le sous-dossier "dist" de l'embed
 	distFS, err := fs.Sub(embeddedAssets, "dist")
 	if err != nil {

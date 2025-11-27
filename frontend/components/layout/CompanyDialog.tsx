@@ -186,6 +186,8 @@ export function CompanyDialog({
 				undefined,
 		}
 
+		console.log('📤 Payload envoyé:', payload)
+
 		try {
 			if (isEditMode && companyId) {
 				await updateCompany.mutateAsync({ id: companyId, data: payload })
@@ -195,8 +197,43 @@ export function CompanyDialog({
 				toast.success('Entreprise créée')
 			}
 			onOpenChange(false)
-		} catch {
-			toast.error("Une erreur est survenue lors de l'enregistrement")
+		} catch (error: unknown) {
+			// 🔍 Afficher l'erreur détaillée
+			console.error('❌ Erreur complète:', error)
+
+			let errorMessage = "Une erreur est survenue lors de l'enregistrement"
+
+			// Extraire le message d'erreur de PocketBase
+			if (error && typeof error === 'object') {
+				const err = error as Record<string, unknown>
+
+				// PocketBase error structure
+				if (err.response && typeof err.response === 'object') {
+					const response = err.response as Record<string, unknown>
+					if (response.message) {
+						errorMessage = String(response.message)
+					}
+					if (response.data && typeof response.data === 'object') {
+						// Erreurs de validation par champ
+						const fieldErrors = Object.entries(
+							response.data as Record<string, { message?: string }>,
+						)
+							.map(
+								([field, detail]) =>
+									`${field}: ${detail?.message || 'invalide'}`,
+							)
+							.join(', ')
+						if (fieldErrors) {
+							errorMessage = fieldErrors
+						}
+					}
+				} else if (err.message) {
+					errorMessage = String(err.message)
+				}
+			}
+
+			console.error('📋 Message affiché:', errorMessage)
+			toast.error(errorMessage)
 		}
 	}
 

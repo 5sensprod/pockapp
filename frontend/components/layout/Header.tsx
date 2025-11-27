@@ -138,8 +138,18 @@ export function Header({
 					</div>
 
 					<div className='flex items-center gap-2'>
-						{/* Sélecteur entreprise - affiché si au moins 1 company */}
-						{companies.length > 0 && (
+						{/* Bouton ajout si aucune entreprise, sinon sélecteur */}
+						{companies.length === 0 ? (
+							<Button
+								variant='outline'
+								size='sm'
+								className='gap-2'
+								onClick={() => openCreateCompanyDialog()}
+							>
+								<Plus className='h-4 w-4' />
+								<span className='hidden md:inline'>Ajouter une entreprise</span>
+							</Button>
+						) : (
 							<DropdownMenu
 								open={isCompanyMenuOpen}
 								onOpenChange={setIsCompanyMenuOpen}
@@ -225,9 +235,7 @@ export function Header({
 										className='flex items-center gap-2'
 									>
 										<Plus className='h-4 w-4' />
-										{companies.length > 0
-											? 'Ajouter une entreprise'
-											: 'Créer une entreprise'}
+										Ajouter une entreprise
 									</DropdownMenuItem>
 								</DropdownMenuContent>
 							</DropdownMenu>
@@ -332,7 +340,7 @@ export function Header({
 				</div>
 			</header>
 
-			{/* Dialog de création / édition d’entreprise */}
+			{/* Dialog de création / édition d'entreprise */}
 			<CompanyDialog
 				isOpen={isCompanyDialogOpen}
 				onOpenChange={setIsCompanyDialogOpen}
