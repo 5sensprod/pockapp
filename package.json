@@ -13,7 +13,9 @@
     "build:mac": "wails build -platform darwin/universal",
     "build:linux": "wails build -platform linux/amd64",
     "format": "pnpm biome check --write ./frontend/",
-    "generate": "wails generate module"
+    "generate": "wails generate module",
+    "typegen": "pocketbase-typegen --db ./pb_data/data.db --out ./frontend/lib/pocketbase-types.ts",
+    "dev:types": "pocketbase-typegen --db ./pb_data/data.db --url http://127.0.0.1:8090 --out frontend/lib/pocketbase-types.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.1.5",

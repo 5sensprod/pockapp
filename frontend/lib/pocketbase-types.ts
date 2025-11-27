@@ -1,19 +1,19 @@
 /**
-* This file was @generated using pocketbase-typegen
-*/
+ * This file was @generated using pocketbase-typegen
+ */
 
 import type PocketBase from 'pocketbase'
 import type { RecordService } from 'pocketbase'
 
 export enum Collections {
-	Brands = "brands",
-	Categories = "categories",
-	Companies = "companies",
-	Customers = "customers",
-	Notes = "notes",
-	Products = "products",
-	Suppliers = "suppliers",
-	Users = "users",
+	Brands = 'brands',
+	Categories = 'categories',
+	Companies = 'companies',
+	Customers = 'customers',
+	Notes = 'notes',
+	Products = 'products',
+	Suppliers = 'suppliers',
+	Users = 'users',
 }
 
 // Alias types for improved usability
@@ -58,11 +58,11 @@ export type CategoriesRecord = {
 }
 
 export enum CompaniesDefaultPaymentMethodOptions {
-	"virement" = "virement",
-	"cb" = "cb",
-	"especes" = "especes",
-	"cheque" = "cheque",
-	"autre" = "autre",
+	virement = 'virement',
+	cb = 'cb',
+	especes = 'especes',
+	cheque = 'cheque',
+	autre = 'autre',
 }
 export type CompaniesRecord = {
 	account_holder?: string
@@ -96,10 +96,10 @@ export type CompaniesRecord = {
 }
 
 export enum CustomersTagsOptions {
-	"vip" = "vip",
-	"prospect" = "prospect",
-	"actif" = "actif",
-	"inactif" = "inactif",
+	vip = 'vip',
+	prospect = 'prospect',
+	actif = 'actif',
+	inactif = 'inactif',
 }
 export type CustomersRecord = {
 	address?: string
@@ -118,18 +118,27 @@ export type NotesRecord = {
 	title?: string
 }
 
+// ✅ Mis à jour pour correspondre au schéma PocketBase réel
 export type ProductsRecord = {
 	active?: boolean
 	barcode?: string
 	brand?: RecordIdString
 	categories?: RecordIdString[]
 	company: RecordIdString
-	cost?: number
-	image?: string
+	cost_price?: number // ✅ Renommé depuis "cost"
+	description?: string // ✅ Ajouté
+	images?: string // ✅ Renommé depuis "image"
 	name: string
-	price: number
-	stock?: number
+	price_ht?: number // ✅ Ajouté
+	price_ttc?: number // ✅ Renommé depuis "price"
+	sku?: string // ✅ Ajouté
+	stock_quantity?: number // ✅ Renommé depuis "stock"
+	stock_min?: number // ✅ Ajouté
+	stock_max?: number // ✅ Ajouté
 	supplier?: RecordIdString
+	tva_rate?: number // ✅ Ajouté
+	unit?: string // ✅ Ajouté
+	weight?: number // ✅ Ajouté
 }
 
 export type SuppliersRecord = {
@@ -150,14 +159,22 @@ export type UsersRecord = {
 }
 
 // Response types include system fields and match responses from the PocketBase API
-export type BrandsResponse<Texpand = unknown> = Required<BrandsRecord> & BaseSystemFields<Texpand>
-export type CategoriesResponse<Texpand = unknown> = Required<CategoriesRecord> & BaseSystemFields<Texpand>
-export type CompaniesResponse<Texpand = unknown> = Required<CompaniesRecord> & BaseSystemFields<Texpand>
-export type CustomersResponse<Texpand = unknown> = Required<CustomersRecord> & BaseSystemFields<Texpand>
-export type NotesResponse<Texpand = unknown> = Required<NotesRecord> & BaseSystemFields<Texpand>
-export type ProductsResponse<Texpand = unknown> = Required<ProductsRecord> & BaseSystemFields<Texpand>
-export type SuppliersResponse<Texpand = unknown> = Required<SuppliersRecord> & BaseSystemFields<Texpand>
-export type UsersResponse<Texpand = unknown> = Required<UsersRecord> & AuthSystemFields<Texpand>
+export type BrandsResponse<Texpand = unknown> = Required<BrandsRecord> &
+	BaseSystemFields<Texpand>
+export type CategoriesResponse<Texpand = unknown> = Required<CategoriesRecord> &
+	BaseSystemFields<Texpand>
+export type CompaniesResponse<Texpand = unknown> = Required<CompaniesRecord> &
+	BaseSystemFields<Texpand>
+export type CustomersResponse<Texpand = unknown> = Required<CustomersRecord> &
+	BaseSystemFields<Texpand>
+export type NotesResponse<Texpand = unknown> = Required<NotesRecord> &
+	BaseSystemFields<Texpand>
+export type ProductsResponse<Texpand = unknown> = Required<ProductsRecord> &
+	BaseSystemFields<Texpand>
+export type SuppliersResponse<Texpand = unknown> = Required<SuppliersRecord> &
+	BaseSystemFields<Texpand>
+export type UsersResponse<Texpand = unknown> = Required<UsersRecord> &
+	AuthSystemFields<Texpand>
 
 // Types containing all Records and Responses, useful for creating typing helper functions
 

@@ -72,10 +72,8 @@ export function ProductTable({ data }: ProductTableProps) {
 	})
 
 	const deleteProduct = useDeleteProduct()
-	// 👇 récupérer l’entreprise active
 	const { activeCompanyId } = useActiveCompany()
 
-	// 👇 filtrer toutes les données par companyId
 	const { data: categories } = useCategories({
 		companyId: activeCompanyId ?? undefined,
 	})
@@ -97,7 +95,6 @@ export function ProductTable({ data }: ProductTableProps) {
 		null,
 	)
 
-	// Helper pour construire le chemin complet d'une catégorie
 	const getCategoryPath = (category: CategoriesResponse): string => {
 		if (!categories) return category.name
 
@@ -117,7 +114,6 @@ export function ProductTable({ data }: ProductTableProps) {
 		return path.join(' › ')
 	}
 
-	// Récupérer les chemins complets des catégories
 	const getCategoryPaths = (categoryIds: string[]): string[] => {
 		if (!categories || !categoryIds?.length) return []
 		return categoryIds
@@ -178,18 +174,16 @@ export function ProductTable({ data }: ProductTableProps) {
 				const name = row.getValue<string>('name')
 				const categoryIds = row.original.categories || []
 				const categoryPaths = getCategoryPaths(categoryIds)
-				const brandName = getBrandName(row.original.brand)
-				const supplierName = getSupplierName(row.original.supplier)
+				const brandName = getBrandName(row.original.brand as any)
+				const supplierName = getSupplierName(row.original.supplier as any)
 
 				const hasCategories = categoryPaths.length > 0
 				const hasBrandOrSupplier = brandName || supplierName
 
 				return (
 					<div className='space-y-0.5'>
-						{/* Ligne 1 : Nom */}
 						<div className='font-medium'>{name}</div>
 
-						{/* Ligne 2 : Catégories avec filiation */}
 						{hasCategories && (
 							<div className='flex items-center gap-1 text-xs text-muted-foreground'>
 								<Tags className='h-3 w-3 flex-shrink-0' />
@@ -197,7 +191,6 @@ export function ProductTable({ data }: ProductTableProps) {
 							</div>
 						)}
 
-						{/* Ligne 3 : Marque + Fournisseur */}
 						{hasBrandOrSupplier && (
 							<div className='flex items-center gap-3 text-xs'>
 								{brandName && (
@@ -234,7 +227,7 @@ export function ProductTable({ data }: ProductTableProps) {
 			},
 		},
 		{
-			accessorKey: 'price',
+			accessorKey: 'price_ttc', // ✅ Renommé depuis 'price'
 			header: ({ column }) => (
 				<Button
 					variant='ghost'
@@ -245,13 +238,39 @@ export function ProductTable({ data }: ProductTableProps) {
 				</Button>
 			),
 			cell: ({ row }) => {
-				const price = row.getValue<number>('price')
-				const cost = row.original.cost
+				const rawPrice = row.getValue<any>('price_ttc') // ✅ Renommé
+				const price =
+					rawPrice == null || rawPrice === ''
+						? undefined
+						: typeof rawPrice === 'number'
+							? rawPrice
+							: Number(rawPrice)
+
+				const rawCost = row.original.cost_price as any // ✅ Renommé depuis 'cost'
+				const cost =
+					rawCost == null || rawCost === ''
+						? undefined
+						: typeof rawCost === 'number'
+							? rawCost
+							: Number(rawCost)
+
+				if (price == null || Number.isNaN(price)) {
+					return (
+						<div>
+							<div className='text-muted-foreground'>-</div>
+							{cost != null && !Number.isNaN(cost) && cost > 0 && (
+								<div className='text-xs text-muted-foreground'>
+									Achat: {cost.toFixed(2)} €
+								</div>
+							)}
+						</div>
+					)
+				}
 
 				return (
 					<div>
 						<div className='font-medium'>{price.toFixed(2)} €</div>
-						{cost !== undefined && cost > 0 && (
+						{cost != null && !Number.isNaN(cost) && cost > 0 && (
 							<div className='text-xs text-muted-foreground'>
 								Achat: {cost.toFixed(2)} €
 							</div>
@@ -261,13 +280,21 @@ export function ProductTable({ data }: ProductTableProps) {
 			},
 		},
 		{
-			accessorKey: 'stock',
+			accessorKey: 'stock_quantity', // ✅ Renommé depuis 'stock'
 			header: 'Stock',
 			cell: ({ row }) => {
-				const stock = row.getValue<number>('stock')
-				if (stock === undefined || stock === null) {
+				const rawStock = row.getValue<any>('stock_quantity') // ✅ Renommé
+				const stock =
+					rawStock == null || rawStock === ''
+						? undefined
+						: typeof rawStock === 'number'
+							? rawStock
+							: Number(rawStock)
+
+				if (stock == null || Number.isNaN(stock)) {
 					return <span className='text-muted-foreground'>-</span>
 				}
+
 				return (
 					<Badge
 						variant={

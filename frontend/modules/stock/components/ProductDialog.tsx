@@ -106,9 +106,9 @@ export function ProductDialog({
 			form.reset({
 				name: product?.name ?? '',
 				barcode: product?.barcode ?? '',
-				price: product?.price ?? 0,
-				cost: product?.cost ?? 0,
-				stock: product?.stock ?? 0,
+				price: product?.price_ttc ?? 0,
+				cost: product?.cost_price ?? 0,
+				stock: product?.stock_quantity ?? 0,
 				categories: defaultCategories,
 				brand: product?.brand ?? '',
 				supplier: product?.supplier ?? '',
@@ -127,11 +127,11 @@ export function ProductDialog({
 		try {
 			const payload = {
 				name: data.name,
-				price: data.price,
+				price_ttc: data.price,
 				company: activeCompanyId, // ⭐ Ajouter l'ID de l'entreprise active
 				barcode: data.barcode || undefined,
-				cost: data.cost || undefined,
-				stock: data.stock,
+				cost_price: data.cost ?? undefined,
+				stock_quantity: data.stock ?? undefined,
 				categories: data.categories?.length ? data.categories : undefined,
 				brand: data.brand || undefined,
 				supplier: data.supplier || undefined,
