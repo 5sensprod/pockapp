@@ -1,19 +1,18 @@
 /**
- * This file was @generated using pocketbase-typegen
- */
+* This file was @generated using pocketbase-typegen
+*/
 
 import type PocketBase from 'pocketbase'
 import type { RecordService } from 'pocketbase'
 
 export enum Collections {
-	Brands = 'brands',
-	Categories = 'categories',
-	Companies = 'companies',
-	Customers = 'customers',
-	Notes = 'notes',
-	Products = 'products',
-	Suppliers = 'suppliers',
-	Users = 'users',
+	Brands = "brands",
+	Categories = "categories",
+	Companies = "companies",
+	Customers = "customers",
+	Products = "products",
+	Suppliers = "suppliers",
+	Users = "users",
 }
 
 // Alias types for improved usability
@@ -51,6 +50,7 @@ export type BrandsRecord = {
 export type CategoriesRecord = {
 	color?: string
 	company: RecordIdString
+	description?: string
 	icon?: string
 	name: string
 	order?: number
@@ -58,11 +58,11 @@ export type CategoriesRecord = {
 }
 
 export enum CompaniesDefaultPaymentMethodOptions {
-	virement = 'virement',
-	cb = 'cb',
-	especes = 'especes',
-	cheque = 'cheque',
-	autre = 'autre',
+	"virement" = "virement",
+	"cb" = "cb",
+	"especes" = "especes",
+	"cheque" = "cheque",
+	"autre" = "autre",
 }
 export type CompaniesRecord = {
 	account_holder?: string
@@ -95,62 +95,56 @@ export type CompaniesRecord = {
 	zip_code?: string
 }
 
-export enum CustomersTagsOptions {
-	vip = 'vip',
-	prospect = 'prospect',
-	actif = 'actif',
-	inactif = 'inactif',
-}
-export type CustomersRecord = {
+export type CustomersRecord<Ttags = unknown> = {
 	address?: string
-	avatar?: string
+	city?: string
 	company?: string
+	country?: string
 	email?: string
 	name: string
 	notes?: string
 	owner_company: RecordIdString
 	phone?: string
-	tags?: CustomersTagsOptions[]
+	tags?: null | Ttags
+	zip_code?: string
 }
 
-export type NotesRecord = {
-	content?: string
-	title?: string
-}
-
-// ✅ Mis à jour pour correspondre au schéma PocketBase réel
 export type ProductsRecord = {
 	active?: boolean
 	barcode?: string
 	brand?: RecordIdString
 	categories?: RecordIdString[]
 	company: RecordIdString
-	cost_price?: number // ✅ Renommé depuis "cost"
-	description?: string // ✅ Ajouté
-	images?: string // ✅ Renommé depuis "image"
+	cost_price?: number
+	description?: string
+	images?: string[]
 	name: string
-	price_ht?: number // ✅ Ajouté
-	price_ttc?: number // ✅ Renommé depuis "price"
-	sku?: string // ✅ Ajouté
-	stock_quantity?: number // ✅ Renommé depuis "stock"
-	stock_min?: number // ✅ Ajouté
-	stock_max?: number // ✅ Ajouté
+	price_ht?: number
+	price_ttc?: number
+	sku?: string
+	stock_max?: number
+	stock_min?: number
+	stock_quantity?: number
 	supplier?: RecordIdString
-	tva_rate?: number // ✅ Ajouté
-	unit?: string // ✅ Ajouté
-	weight?: number // ✅ Ajouté
+	tva_rate?: number
+	unit?: string
+	weight?: number
 }
 
 export type SuppliersRecord = {
-	active?: boolean
 	address?: string
 	brands?: RecordIdString[]
+	city?: string
+	code?: string
 	company: RecordIdString
-	contact?: string
+	contact_name?: string
+	country?: string
 	email?: string
 	name: string
 	notes?: string
 	phone?: string
+	website?: string
+	zip_code?: string
 }
 
 export type UsersRecord = {
@@ -159,22 +153,13 @@ export type UsersRecord = {
 }
 
 // Response types include system fields and match responses from the PocketBase API
-export type BrandsResponse<Texpand = unknown> = Required<BrandsRecord> &
-	BaseSystemFields<Texpand>
-export type CategoriesResponse<Texpand = unknown> = Required<CategoriesRecord> &
-	BaseSystemFields<Texpand>
-export type CompaniesResponse<Texpand = unknown> = Required<CompaniesRecord> &
-	BaseSystemFields<Texpand>
-export type CustomersResponse<Texpand = unknown> = Required<CustomersRecord> &
-	BaseSystemFields<Texpand>
-export type NotesResponse<Texpand = unknown> = Required<NotesRecord> &
-	BaseSystemFields<Texpand>
-export type ProductsResponse<Texpand = unknown> = Required<ProductsRecord> &
-	BaseSystemFields<Texpand>
-export type SuppliersResponse<Texpand = unknown> = Required<SuppliersRecord> &
-	BaseSystemFields<Texpand>
-export type UsersResponse<Texpand = unknown> = Required<UsersRecord> &
-	AuthSystemFields<Texpand>
+export type BrandsResponse<Texpand = unknown> = Required<BrandsRecord> & BaseSystemFields<Texpand>
+export type CategoriesResponse<Texpand = unknown> = Required<CategoriesRecord> & BaseSystemFields<Texpand>
+export type CompaniesResponse<Texpand = unknown> = Required<CompaniesRecord> & BaseSystemFields<Texpand>
+export type CustomersResponse<Ttags = unknown, Texpand = unknown> = Required<CustomersRecord<Ttags>> & BaseSystemFields<Texpand>
+export type ProductsResponse<Texpand = unknown> = Required<ProductsRecord> & BaseSystemFields<Texpand>
+export type SuppliersResponse<Texpand = unknown> = Required<SuppliersRecord> & BaseSystemFields<Texpand>
+export type UsersResponse<Texpand = unknown> = Required<UsersRecord> & AuthSystemFields<Texpand>
 
 // Types containing all Records and Responses, useful for creating typing helper functions
 
@@ -183,7 +168,6 @@ export type CollectionRecords = {
 	categories: CategoriesRecord
 	companies: CompaniesRecord
 	customers: CustomersRecord
-	notes: NotesRecord
 	products: ProductsRecord
 	suppliers: SuppliersRecord
 	users: UsersRecord
@@ -194,7 +178,6 @@ export type CollectionResponses = {
 	categories: CategoriesResponse
 	companies: CompaniesResponse
 	customers: CustomersResponse
-	notes: NotesResponse
 	products: ProductsResponse
 	suppliers: SuppliersResponse
 	users: UsersResponse
@@ -208,7 +191,6 @@ export type TypedPocketBase = PocketBase & {
 	collection(idOrName: 'categories'): RecordService<CategoriesResponse>
 	collection(idOrName: 'companies'): RecordService<CompaniesResponse>
 	collection(idOrName: 'customers'): RecordService<CustomersResponse>
-	collection(idOrName: 'notes'): RecordService<NotesResponse>
 	collection(idOrName: 'products'): RecordService<ProductsResponse>
 	collection(idOrName: 'suppliers'): RecordService<SuppliersResponse>
 	collection(idOrName: 'users'): RecordService<UsersResponse>
