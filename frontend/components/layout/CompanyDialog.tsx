@@ -166,8 +166,35 @@ export function CompanyDialog({
 			})
 		}
 
+		// 👇 en création : on force TOUT à vide
 		if (!isEditMode && isOpen) {
-			form.reset()
+			form.reset({
+				name: '',
+				trade_name: '',
+				email: '',
+				phone: '',
+				website: '',
+				address_line1: '',
+				address_line2: '',
+				zip_code: '',
+				city: '',
+				country: '', // plus de 'France' par défaut
+				siren: '',
+				siret: '',
+				vat_number: '',
+				legal_form: '',
+				rcs: '',
+				ape_naf: '',
+				share_capital: undefined,
+				bank_name: '',
+				iban: '',
+				bic: '',
+				account_holder: '',
+				default_payment_terms_days: undefined,
+				default_payment_method: undefined,
+				invoice_footer: '',
+				invoice_prefix: '',
+			})
 		}
 	}, [isEditMode, companyData, form, isOpen])
 
@@ -249,7 +276,7 @@ export function CompanyDialog({
 					</DialogDescription>
 				</DialogHeader>
 				<form
-					className='space-y-6 max-h-[70vh] overflow-y-auto pr-1'
+					className='space-y-6 max-h-[70vh] overflow-y-auto pr-1 pl-1'
 					onSubmit={form.handleSubmit(onSubmit)}
 				>
 					{/* Identité */}

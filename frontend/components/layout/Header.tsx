@@ -26,7 +26,6 @@ import { useSetActiveCompany } from '@/lib/queries/companies'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
-// ⬇️ adapte le chemin selon où est ton dialog
 import { CompanyDialog } from './CompanyDialog'
 
 type Notification = {
@@ -48,24 +47,51 @@ export function Header({
 }: HeaderProps) {
 	const navigate = useNavigate()
 	const { user, logout } = useAuth()
-	const { companies } = useActiveCompany()
+
+	// ⬇️ on récupère aussi activeCompanyId
+	const { companies, activeCompanyId } = useActiveCompany()
 	const setActiveCompany = useSetActiveCompany()
 
 	const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false)
+	const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null)
 
 	const brand = currentModule?.name ?? 'PocketApp'
 	const moduleMenu = currentModule?.topbarMenu || []
-	const activeCompany = companies.find((c) => c.active)
+
+	const activeCompany =
+		companies.find((c) => c.id === activeCompanyId) ?? companies[0]
+
 	const unreadCount = notifications.filter((n) => n.unread).length
 
 	const avatarUrl =
 		user && (user as any).avatar
-			? `${document.location.origin}/api/files/users/${user.id}/${(user as any).avatar}?thumb=100x100`
+			? `${document.location.origin}/api/files/users/${user.id}/${
+					(user as any).avatar
+				}?thumb=100x100`
 			: null
 
 	const handleLogout = () => {
 		logout()
 		navigate({ to: '/login' })
+	}
+
+	// 👉 création = companyId null
+	const openCreateCompany = () => {
+		setEditingCompanyId(null)
+		setIsCompanyDialogOpen(true)
+	}
+
+	// 👉 édition = companyId = id
+	const openEditCompany = (id: string) => {
+		setEditingCompanyId(id)
+		setIsCompanyDialogOpen(true)
+	}
+
+	const handleDialogOpenChange = (open: boolean) => {
+		setIsCompanyDialogOpen(open)
+		if (!open) {
+			setEditingCompanyId(null)
+		}
 	}
 
 	return (
@@ -119,7 +145,7 @@ export function Header({
 					</div>
 
 					<div className='flex items-center gap-2'>
-						{/* 🏢 Cas 1 : au moins une entreprise → dropdown */}
+						{/* 🏢 Dropdown entreprises compact */}
 						{companies.length > 0 && (
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>
@@ -136,36 +162,55 @@ export function Header({
 									</Button>
 								</DropdownMenuTrigger>
 
-								<DropdownMenuContent align='end' className='w-56'>
-									<DropdownMenuLabel>Entreprises</DropdownMenuLabel>
+								<DropdownMenuContent align='end' className='w-48 p-0'>
+									<DropdownMenuLabel className='px-3 py-2'>
+										Entreprises
+									</DropdownMenuLabel>
 									<DropdownMenuSeparator />
 
 									{companies.map((company) => (
 										<DropdownMenuItem
 											key={company.id}
-											className={cn(company.active && 'bg-accent')}
+											className='px-3 py-2 cursor-pointer'
 											onClick={() => {
-												if (!company.active) {
+												if (company.id !== activeCompanyId) {
 													setActiveCompany.mutate(String(company.id))
 												}
 											}}
 										>
-											<Building2 className='h-4 w-4 mr-2' />
-											{company.name}
-											{company.active && (
-												<Badge variant='secondary' className='ml-auto'>
-													Active
-												</Badge>
-											)}
+											<div className='flex items-center w-full gap-2'>
+												<Building2 className='h-4 w-4 text-muted-foreground' />
+												<span className='flex-1 truncate'>{company.name}</span>
+
+												{/* Engrenage pour modifier */}
+												<button
+													type='button'
+													className='p-1 rounded hover:bg-accent'
+													onClick={(e) => {
+														e.preventDefault()
+														e.stopPropagation()
+														openEditCompany(String(company.id))
+													}}
+												>
+													<Settings className='h-4 w-4 text-muted-foreground' />
+												</button>
+											</div>
 										</DropdownMenuItem>
 									))}
 
 									<DropdownMenuSeparator />
+
 									<DropdownMenuItem
-										onClick={() => setIsCompanyDialogOpen(true)}
+										className='px-3 py-2 cursor-pointer'
+										onClick={(e) => {
+											e.preventDefault()
+											openCreateCompany()
+										}}
 									>
-										<Settings className='h-4 w-4 mr-2' />
-										Gérer les entreprises
+										<div className='flex items-center gap-2'>
+											<span className='text-lg leading-none'>+</span>
+											<span>Ajouter</span>
+										</div>
 									</DropdownMenuItem>
 								</DropdownMenuContent>
 							</DropdownMenu>
@@ -177,7 +222,7 @@ export function Header({
 								variant='outline'
 								size='sm'
 								className='gap-2'
-								onClick={() => setIsCompanyDialogOpen(true)}
+								onClick={openCreateCompany}
 							>
 								<Building2 className='h-4 w-4' />
 								<span className='hidden md:inline'>Créer mon entreprise</span>
@@ -286,8 +331,8 @@ export function Header({
 			{/* 💼 Dialog entreprise (création / édition) */}
 			<CompanyDialog
 				isOpen={isCompanyDialogOpen}
-				onOpenChange={setIsCompanyDialogOpen}
-				companyId={null} // ici on est en mode "créer une entreprise"
+				onOpenChange={handleDialogOpenChange}
+				companyId={editingCompanyId} // null = création, id = édition
 			/>
 		</>
 	)
