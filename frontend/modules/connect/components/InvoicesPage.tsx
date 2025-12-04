@@ -1,4 +1,5 @@
 // frontend/modules/connect/components/InvoicesPage.tsx
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -33,12 +34,15 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import {
 	type InvoiceResponse,
 	useDeleteInvoice,
 	useInvoices,
 	useMarkInvoiceAsPaid,
 } from '@/lib/queries/invoices'
+import { usePocketBase } from '@/lib/use-pocketbase'
+import { pdf } from '@react-pdf/renderer'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	CheckCircle,
@@ -50,8 +54,9 @@ import {
 	Send,
 	Trash2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { InvoicePdfDocument } from './InvoicePdf'
 
 // ============================================================================
 // HELPERS
@@ -93,12 +98,15 @@ function formatCurrency(amount: number) {
 export function InvoicesPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
+	const pb = usePocketBase() as any
 
 	const [searchTerm, setSearchTerm] = useState('')
 	const [statusFilter, setStatusFilter] = useState<string>('all')
 	const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 	const [invoiceToDelete, setInvoiceToDelete] =
 		useState<InvoiceResponse | null>(null)
+
+	const [company, setCompany] = useState<CompaniesResponse | null>(null)
 
 	const { data: invoicesData, isLoading } = useInvoices({
 		companyId: activeCompanyId ?? undefined,
@@ -110,6 +118,21 @@ export function InvoicesPage() {
 	const markAsPaid = useMarkInvoiceAsPaid()
 
 	const invoices = (invoicesData?.items ?? []) as InvoiceResponse[]
+
+	// Charger la société active pour afficher ses infos dans le PDF
+	useEffect(() => {
+		const loadCompany = async () => {
+			if (!activeCompanyId) return
+			try {
+				const result = await pb.collection('companies').getOne(activeCompanyId)
+				setCompany(result as CompaniesResponse)
+			} catch (err) {
+				console.error('Erreur chargement company', err)
+			}
+		}
+
+		void loadCompany()
+	}, [activeCompanyId, pb])
 
 	// Stats
 	const stats = invoices.reduce(
@@ -142,6 +165,34 @@ export function InvoicesPage() {
 			toast.success(`Facture ${invoice.number} marquée comme payée`)
 		} catch (error) {
 			toast.error('Erreur lors de la mise à jour')
+		}
+	}
+
+	const handleDownloadPdf = async (invoice: InvoiceResponse) => {
+		try {
+			const customer = invoice.expand?.customer
+
+			const doc = (
+				<InvoicePdfDocument
+					invoice={invoice}
+					customer={customer as any}
+					company={company || undefined}
+				/>
+			)
+
+			const blob = await pdf(doc).toBlob()
+			const url = URL.createObjectURL(blob)
+
+			const link = document.createElement('a')
+			link.href = url
+			link.download = `${invoice.number}.pdf`
+			document.body.appendChild(link)
+			link.click()
+			document.body.removeChild(link)
+			URL.revokeObjectURL(url)
+		} catch (error) {
+			console.error('Erreur génération PDF', error)
+			toast.error('Erreur lors de la génération du PDF')
 		}
 	}
 
@@ -288,7 +339,9 @@ export function InvoicesPage() {
 														<Eye className='h-4 w-4 mr-2' />
 														Voir
 													</DropdownMenuItem>
-													<DropdownMenuItem>
+													<DropdownMenuItem
+														onClick={() => handleDownloadPdf(invoice)}
+													>
 														<Download className='h-4 w-4 mr-2' />
 														Télécharger PDF
 													</DropdownMenuItem>

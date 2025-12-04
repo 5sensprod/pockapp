@@ -1,4 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+// frontend/modules/connect/components/CustomerDialog.tsx
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 
@@ -47,14 +49,13 @@ const customerSchema = z.object({
 	company: z.string().optional(),
 	address: z.string().max(500, "L'adresse est trop longue").optional(),
 	notes: z.string().optional(),
-	// On garde un array dans le formulaire pour simplifier le Select,
-	// on le convertira en string pour l'API PocketBase
+	// On garde un array dans le formulaire pour simplifier le Select
 	tags: z.array(z.string()).optional(),
 })
 
 export type CustomerFormValues = z.infer<typeof customerSchema>
 
-// Correspond mieux au schéma PocketBase (tags: string)
+// ✅ Customer.tags = string[]
 export interface Customer {
 	id: string
 	name: string
@@ -63,7 +64,7 @@ export interface Customer {
 	company?: string
 	address?: string
 	notes?: string
-	tags?: string // string côté API, qu'on adapte à un array dans le form
+	tags?: string[] // on stocke un array ici
 }
 
 interface CustomerDialogProps {
@@ -91,18 +92,36 @@ export function CustomerDialog({
 			company: customer?.company ?? '',
 			address: customer?.address ?? '',
 			notes: customer?.notes ?? '',
-			// PB stocke un string, on le met dans un array pour le Select
-			tags: customer?.tags ? [customer.tags] : [],
+			tags: customer?.tags ?? [],
 		},
 	})
 
+	const { reset } = form
+
+	// 🔁 Quand on ouvre le dialog ou qu'on change de client, on recharge les valeurs
+	useEffect(() => {
+		if (open) {
+			reset({
+				name: customer?.name ?? '',
+				email: customer?.email ?? '',
+				phone: customer?.phone ?? '',
+				company: customer?.company ?? '',
+				address: customer?.address ?? '',
+				notes: customer?.notes ?? '',
+				tags: customer?.tags ?? [],
+			})
+		}
+	}, [customer, open, reset])
+
 	const onSubmit = async (data: CustomerFormValues) => {
 		try {
+			// On convertit le tableau de tags en string simple (premier élément)
+			const singleTag = data.tags?.[0]
+
 			if (isEdit && customer) {
-				// Pour l’update : on convertit tags[] -> string
 				const payload: Partial<CustomerDto> = {
 					...data,
-					tags: data.tags?.[0], // string | undefined
+					tags: singleTag,
 				}
 
 				await updateCustomer.mutateAsync({ id: customer.id, data: payload })
@@ -113,11 +132,10 @@ export function CustomerDialog({
 					return
 				}
 
-				// Pour la création : on ajoute owner_company + conversion des tags
 				const payload: CustomerDto = {
 					...data,
-					tags: data.tags?.[0], // string | undefined
-					owner_company: activeCompanyId, // id de l’entreprise courante
+					tags: singleTag,
+					owner_company: activeCompanyId,
 				}
 
 				await createCustomer.mutateAsync(payload)
@@ -198,7 +216,7 @@ export function CustomerDialog({
 							/>
 						</div>
 
-						{/* Entreprise (nom libre, rien à voir avec owner_company) */}
+						{/* Entreprise */}
 						<FormField
 							control={form.control}
 							name='company'
@@ -240,7 +258,7 @@ export function CustomerDialog({
 									<FormLabel>Statut</FormLabel>
 									<Select
 										onValueChange={(value) => field.onChange([value])}
-										defaultValue={field.value?.[0]}
+										value={field.value?.[0]}
 									>
 										<FormControl>
 											<SelectTrigger>

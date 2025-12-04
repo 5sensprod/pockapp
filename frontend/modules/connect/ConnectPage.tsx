@@ -1,17 +1,19 @@
+// frontend/modules/connect/ConnectPage.tsx
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useCustomers } from '@/lib/queries/customers'
 import { useEffect, useState } from 'react'
-import { CustomerDialog } from './components/CustomerDialog'
+import { type Customer, CustomerDialog } from './components/CustomerDialog'
 import { CustomerTable } from './components/CustomerTable'
 
-import { manifest } from './index' // ⭐ utilisation du manifest
+import { manifest } from './index'
 
 export function ConnectPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const [searchTerm, setSearchTerm] = useState('')
 	const [isDialogOpen, setIsDialogOpen] = useState(false)
+	const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
 
 	const {
 		data: customersData,
@@ -31,8 +33,30 @@ export function ConnectPage() {
 		}
 	}, [activeCompanyId, refetch])
 
-	const customers = customersData?.items ?? []
+	// Adaptation PocketBase -> Customer (tags: string[])
+	const customers: Customer[] =
+		customersData?.items.map((c: any) => ({
+			id: c.id,
+			name: c.name,
+			email: c.email,
+			phone: c.phone,
+			company: c.company,
+			address: c.address,
+			notes: c.notes,
+			tags: Array.isArray(c.tags) ? c.tags : c.tags ? [c.tags] : [],
+		})) ?? []
+
 	const Icon = manifest.icon
+
+	const handleNewCustomer = () => {
+		setEditingCustomer(null)
+		setIsDialogOpen(true)
+	}
+
+	const handleEditCustomer = (customer: Customer) => {
+		setEditingCustomer(customer)
+		setIsDialogOpen(true)
+	}
 
 	return (
 		<div className='container mx-auto px-6 py-8'>
@@ -50,7 +74,7 @@ export function ConnectPage() {
 						<p className='text-muted-foreground'>{manifest.description}</p>
 					</div>
 
-					<Button onClick={() => setIsDialogOpen(true)}>Nouveau client</Button>
+					<Button onClick={handleNewCustomer}>Nouveau client</Button>
 				</div>
 			</div>
 
@@ -76,11 +100,20 @@ export function ConnectPage() {
 					Aucun client pour le moment
 				</div>
 			) : (
-				<CustomerTable data={customers as any} />
+				<CustomerTable data={customers} onEditCustomer={handleEditCustomer} />
 			)}
 
-			{/* Dialog */}
-			<CustomerDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} />
+			{/* Dialog création / édition */}
+			<CustomerDialog
+				open={isDialogOpen}
+				onOpenChange={(open) => {
+					setIsDialogOpen(open)
+					if (!open) {
+						setEditingCustomer(null)
+					}
+				}}
+				customer={editingCustomer}
+			/>
 		</div>
 	)
 }
