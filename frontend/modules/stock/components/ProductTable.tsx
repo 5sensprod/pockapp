@@ -65,8 +65,17 @@ import { ProductDialog } from './ProductDialog'
 // ============================================================================
 const APPPOS_BASE_URL = 'http://localhost:3000'
 
+// Type étendu pour les produits avec expand AppPOS
+export interface ProductWithExpand extends ProductsResponse {
+	expand?: {
+		brand?: { id: string; name: string }
+		supplier?: { id: string; name: string }
+		categories?: Array<{ id: string; name: string; parent?: string }>
+	}
+}
+
 interface ProductTableProps {
-	data: ProductsResponse[]
+	data: ProductWithExpand[]
 }
 
 export function ProductTable({ data }: ProductTableProps) {
@@ -80,6 +89,7 @@ export function ProductTable({ data }: ProductTableProps) {
 	const deleteProduct = useDeleteProduct()
 	const { activeCompanyId } = useActiveCompany()
 
+	// Hooks PocketBase (utilisés si les données ne viennent pas d'AppPOS)
 	const { data: categories } = useCategories({
 		companyId: activeCompanyId ?? undefined,
 	})
@@ -94,10 +104,10 @@ export function ProductTable({ data }: ProductTableProps) {
 
 	const [confirmOpen, setConfirmOpen] = useState(false)
 	const [productToDelete, setProductToDelete] =
-		useState<ProductsResponse | null>(null)
+		useState<ProductWithExpand | null>(null)
 
 	const [editOpen, setEditOpen] = useState(false)
-	const [productToEdit, setProductToEdit] = useState<ProductsResponse | null>(
+	const [productToEdit, setProductToEdit] = useState<ProductWithExpand | null>(
 		null,
 	)
 
@@ -130,17 +140,42 @@ export function ProductTable({ data }: ProductTableProps) {
 			.filter(Boolean) as string[]
 	}
 
-	const getBrandName = (brandId: string): string | null => {
+	// ✅ Récupère le nom de la marque (depuis expand AppPOS ou PocketBase)
+	const getBrandName = (product: ProductWithExpand): string | null => {
+		// D'abord essayer depuis expand (données AppPOS)
+		if (product.expand?.brand?.name) {
+			return product.expand.brand.name
+		}
+		// Sinon essayer depuis les données PocketBase
+		const brandId = product.brand as string
 		if (!brands || !brandId) return null
 		return brands.find((b) => b.id === brandId)?.name ?? null
 	}
 
-	const getSupplierName = (supplierId: string): string | null => {
+	// ✅ Récupère le nom du fournisseur (depuis expand AppPOS ou PocketBase)
+	const getSupplierName = (product: ProductWithExpand): string | null => {
+		// D'abord essayer depuis expand (données AppPOS)
+		if (product.expand?.supplier?.name) {
+			return product.expand.supplier.name
+		}
+		// Sinon essayer depuis les données PocketBase
+		const supplierId = product.supplier as string
 		if (!suppliers || !supplierId) return null
 		return suppliers.find((s) => s.id === supplierId)?.name ?? null
 	}
 
-	const askDelete = (product: ProductsResponse) => {
+	// ✅ Récupère les catégories (depuis expand AppPOS ou PocketBase)
+	const getProductCategoryPaths = (product: ProductWithExpand): string[] => {
+		// D'abord essayer depuis expand (données AppPOS)
+		if (product.expand?.categories?.length) {
+			return product.expand.categories.map((cat) => cat.name)
+		}
+		// Sinon essayer depuis les données PocketBase
+		const categoryIds = product.categories || []
+		return getCategoryPaths(categoryIds)
+	}
+
+	const askDelete = (product: ProductWithExpand) => {
 		setProductToDelete(product)
 		setConfirmOpen(true)
 	}
@@ -159,7 +194,7 @@ export function ProductTable({ data }: ProductTableProps) {
 		}
 	}
 
-	const openEdit = (product: ProductsResponse) => {
+	const openEdit = (product: ProductWithExpand) => {
 		setProductToEdit(product)
 		setEditOpen(true)
 	}
@@ -173,8 +208,8 @@ export function ProductTable({ data }: ProductTableProps) {
 		return `${APPPOS_BASE_URL}${imagePath}`
 	}
 
-	const columns: ColumnDef<ProductsResponse>[] = [
-		// ✅ NOUVELLE COLONNE IMAGE
+	const columns: ColumnDef<ProductWithExpand>[] = [
+		// ✅ COLONNE IMAGE
 		{
 			id: 'image',
 			header: '',
@@ -191,9 +226,12 @@ export function ProductTable({ data }: ProductTableProps) {
 								alt={row.original.name}
 								className='w-full h-full object-cover'
 								onError={(e) => {
-									// Fallback si l'image ne charge pas
 									e.currentTarget.style.display = 'none'
-									e.currentTarget.parentElement?.classList.add('fallback-icon')
+									const parent = e.currentTarget.parentElement
+									if (parent) {
+										parent.innerHTML =
+											'<svg class="h-5 w-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'
+									}
 								}}
 							/>
 						) : (
@@ -216,10 +254,12 @@ export function ProductTable({ data }: ProductTableProps) {
 			),
 			cell: ({ row }) => {
 				const name = row.getValue<string>('name')
-				const categoryIds = row.original.categories || []
-				const categoryPaths = getCategoryPaths(categoryIds)
-				const brandName = getBrandName(row.original.brand as any)
-				const supplierName = getSupplierName(row.original.supplier as any)
+				const product = row.original
+
+				// ✅ Utilise les nouvelles fonctions qui gèrent AppPOS et PocketBase
+				const categoryPaths = getProductCategoryPaths(product)
+				const brandName = getBrandName(product)
+				const supplierName = getSupplierName(product)
 
 				const hasCategories = categoryPaths.length > 0
 				const hasBrandOrSupplier = brandName || supplierName

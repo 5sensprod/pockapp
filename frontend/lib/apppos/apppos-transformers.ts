@@ -50,9 +50,18 @@ function generateIsoDate(): string {
 // PRODUCT TRANSFORMER
 // ============================================================================
 
+// Type étendu pour inclure les refs AppPOS
+export interface ProductWithRefs extends ProductsResponse {
+	expand?: {
+		brand?: { id: string; name: string }
+		supplier?: { id: string; name: string }
+		categories?: Array<{ id: string; name: string; parent?: string }>
+	}
+}
+
 export function transformAppPosProduct(
 	product: AppPosProduct,
-): ProductsResponse {
+): ProductWithRefs {
 	return {
 		// System fields (simulés)
 		id: product._id,
@@ -80,7 +89,7 @@ export function transformAppPosProduct(
 		stock_min: product.min_stock ?? 0,
 		stock_max: 0,
 
-		// Relations
+		// Relations (IDs)
 		categories: product.categories || [],
 		brand: product.brand_id || '',
 		supplier: product.supplier_id || '',
@@ -93,12 +102,27 @@ export function transformAppPosProduct(
 		images: product.image?.src || '',
 		unit: '',
 		weight: 0,
+
+		// ✅ EXPAND avec les refs AppPOS
+		expand: {
+			brand: product.brand_ref
+				? { id: product.brand_ref.id, name: product.brand_ref.name }
+				: undefined,
+			supplier: product.supplier_ref
+				? { id: product.supplier_ref.id, name: product.supplier_ref.name }
+				: undefined,
+			categories: product.category_info?.refs?.map((ref) => ({
+				id: ref.id,
+				name: ref.name,
+				parent: ref.path_ids?.[ref.path_ids.length - 2] || undefined,
+			})),
+		},
 	}
 }
 
 export function transformAppPosProducts(
 	products: AppPosProduct[],
-): ProductsResponse[] {
+): ProductWithRefs[] {
 	return products.map(transformAppPosProduct)
 }
 

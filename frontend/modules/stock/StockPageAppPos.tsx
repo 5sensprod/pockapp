@@ -30,7 +30,7 @@ import type { CategoriesResponse } from '@/lib/pocketbase-types'
 import { BrandListAppPos } from './components/BrandListAppPos'
 import { CategoryTreeAppPos } from './components/CategoryTreeAppPos'
 // Import des composants
-import { ProductTable } from './components/ProductTable'
+import { ProductTable, type ProductWithExpand } from './components/ProductTable'
 import { SupplierListAppPos } from './components/SupplierListAppPos'
 
 // ============================================================================
@@ -349,7 +349,7 @@ export function StockPageAppPos() {
 											: 'Aucun produit dans AppPOS'}
 								</div>
 							) : (
-								<ProductTable data={products} />
+								<ProductTable data={products as ProductWithExpand[]} />
 							)}
 						</TabsContent>
 

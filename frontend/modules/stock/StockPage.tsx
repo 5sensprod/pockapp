@@ -10,7 +10,7 @@ import { useProducts } from '@/lib/queries/products'
 import { BrandList } from './components/BrandList'
 import { CategoryTree } from './components/CategoryTree'
 import { ProductDialog } from './components/ProductDialog'
-import { ProductTable } from './components/ProductTable'
+import { ProductTable, type ProductWithExpand } from './components/ProductTable'
 import { SupplierList } from './components/SupplierList'
 import { manifest } from './index'
 
@@ -148,7 +148,7 @@ export function StockPage() {
 											: 'Aucun produit pour le moment'}
 								</div>
 							) : (
-								<ProductTable data={products} />
+								<ProductTable data={products as ProductWithExpand[]} />
 							)}
 
 							<ProductDialog

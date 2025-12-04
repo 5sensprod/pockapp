@@ -71,7 +71,7 @@ func main() {
 	}
 
 	wails.Run(&options.App{
-		Title:  "Pocket React",
+		Title:  "Pocket App",
 		Width:  1280,
 		Height: 800,
 		AssetServer: &assetserver.Options{
