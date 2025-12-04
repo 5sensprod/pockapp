@@ -5,7 +5,14 @@ import type {
 	CustomersResponse,
 } from '@/lib/pocketbase-types'
 import type { InvoiceResponse } from '@/lib/queries/invoices'
-import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import {
+	Document,
+	Image,
+	Page,
+	StyleSheet,
+	Text,
+	View,
+} from '@react-pdf/renderer'
 
 // Styles PDF
 const styles = StyleSheet.create({
@@ -21,6 +28,12 @@ const styles = StyleSheet.create({
 	},
 	companyBlock: {
 		maxWidth: '60%',
+	},
+	logo: {
+		width: 80,
+		height: 80,
+		marginBottom: 8,
+		objectFit: 'contain',
 	},
 	companyName: {
 		fontSize: 18,
@@ -137,12 +150,14 @@ export interface InvoicePdfProps {
 	invoice: InvoiceResponse
 	customer?: CustomersResponse
 	company?: CompaniesResponse
+	companyLogoUrl?: string | null
 }
 
 export function InvoicePdfDocument({
 	invoice,
 	customer,
 	company,
+	companyLogoUrl,
 }: InvoicePdfProps) {
 	const formatCurrency = (amount: number) =>
 		new Intl.NumberFormat('fr-FR', {
@@ -168,6 +183,11 @@ export function InvoicePdfDocument({
 				<View style={styles.header}>
 					{/* Bloc entreprise / infos légales */}
 					<View style={styles.companyBlock}>
+						{/* Logo si dispo */}
+						{companyLogoUrl && (
+							<Image src={companyLogoUrl} style={styles.logo} />
+						)}
+
 						<Text style={styles.companyName}>{companyName}</Text>
 
 						{/* Adresse */}
@@ -238,7 +258,6 @@ export function InvoicePdfDocument({
 						{invoice.due_date && (
 							<Text>Échéance : {formatDate(invoice.due_date)}</Text>
 						)}
-						{/* ✅ On NE met plus le statut ici */}
 					</View>
 				</View>
 
@@ -279,15 +298,21 @@ export function InvoicePdfDocument({
 					<Text style={styles.colTotal}>Total TTC</Text>
 				</View>
 
-				{invoice.items.map((item, idx) => (
-					<View style={styles.tableRow} key={idx}>
-						<Text style={styles.colDescription}>{item.name}</Text>
-						<Text style={styles.colQty}>{item.quantity}</Text>
-						<Text style={styles.colUnit}>{item.unit_price_ht.toFixed(2)}</Text>
-						<Text style={styles.colTva}>{item.tva_rate}%</Text>
-						<Text style={styles.colTotal}>{item.total_ttc.toFixed(2)}</Text>
-					</View>
-				))}
+				{invoice.items.map((item) => {
+					const key = `${item.name}-${item.quantity}-${item.unit_price_ht}-${item.tva_rate}-${item.total_ttc}`
+
+					return (
+						<View style={styles.tableRow} key={key}>
+							<Text style={styles.colDescription}>{item.name}</Text>
+							<Text style={styles.colQty}>{item.quantity}</Text>
+							<Text style={styles.colUnit}>
+								{item.unit_price_ht.toFixed(2)}
+							</Text>
+							<Text style={styles.colTva}>{item.tva_rate}%</Text>
+							<Text style={styles.colTotal}>{item.total_ttc.toFixed(2)}</Text>
+						</View>
+					)
+				})}
 
 				{/* TOTAUX */}
 				<View style={styles.totalsBlock}>

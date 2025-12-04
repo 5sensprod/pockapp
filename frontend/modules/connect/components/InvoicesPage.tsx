@@ -91,6 +91,33 @@ function formatCurrency(amount: number) {
 	}).format(amount)
 }
 
+// ⚙️ Conversion image -> dataURL PNG pour react-pdf (supporte pas webp)
+async function toPngDataUrl(url: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const img = new Image()
+		img.crossOrigin = 'anonymous'
+		img.onload = () => {
+			try {
+				const canvas = document.createElement('canvas')
+				canvas.width = img.naturalWidth || img.width
+				canvas.height = img.naturalHeight || img.height
+				const ctx = canvas.getContext('2d')
+				if (!ctx) {
+					reject(new Error('Impossible de créer un contexte 2D'))
+					return
+				}
+				ctx.drawImage(img, 0, 0)
+				const dataUrl = canvas.toDataURL('image/png')
+				resolve(dataUrl)
+			} catch (err) {
+				reject(err)
+			}
+		}
+		img.onerror = (err) => reject(err)
+		img.src = url
+	})
+}
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -119,7 +146,7 @@ export function InvoicesPage() {
 
 	const invoices = (invoicesData?.items ?? []) as InvoiceResponse[]
 
-	// Charger la société active pour afficher ses infos dans le PDF
+	// Charger la société active pour afficher ses infos (et logo) dans le PDF
 	useEffect(() => {
 		const loadCompany = async () => {
 			if (!activeCompanyId) return
@@ -172,11 +199,30 @@ export function InvoicesPage() {
 		try {
 			const customer = invoice.expand?.customer
 
+			let logoDataUrl: string | null = null
+
+			// Si la société a un logo, on le convertit en PNG dataURL pour react-pdf
+			if (company && (company as any).logo) {
+				const fileUrl = pb.files.getUrl(company, (company as any).logo)
+
+				try {
+					logoDataUrl = await toPngDataUrl(fileUrl)
+				} catch (err) {
+					console.warn(
+						'Erreur lors de la conversion du logo en PNG pour le PDF',
+						err,
+					)
+					// On continue sans logo si ça échoue
+					logoDataUrl = null
+				}
+			}
+
 			const doc = (
 				<InvoicePdfDocument
 					invoice={invoice}
 					customer={customer as any}
 					company={company || undefined}
+					companyLogoUrl={logoDataUrl}
 				/>
 			)
 
