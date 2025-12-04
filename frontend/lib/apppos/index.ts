@@ -24,7 +24,10 @@ export type {
 } from './apppos-types'
 
 // Transformers
-export { appPosTransformers, default as transformers } from './apppos-transformers'
+export {
+	appPosTransformers,
+	default as transformers,
+} from './apppos-transformers'
 export {
 	transformAppPosBrand,
 	transformAppPosBrands,

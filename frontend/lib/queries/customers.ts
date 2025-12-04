@@ -1,5 +1,6 @@
-import { usePocketBase } from '@/lib/use-pocketbase'
+import type { CustomersResponse } from '@/lib/pocketbase-types'
 // frontend/lib/queries/customers.ts
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 // DTO envoyé à PocketBase
@@ -22,12 +23,21 @@ export interface CustomersListOptions {
 	[key: string]: unknown
 }
 
+// Type du résultat de getList() pour les clients
+export interface CustomersListResult {
+	page: number
+	perPage: number
+	totalItems: number
+	totalPages: number
+	items: CustomersResponse[]
+}
+
 // 📋 Liste tous les clients
 export function useCustomers(options: CustomersListOptions = {}) {
 	const pb = usePocketBase() as any
 	const { companyId, filter, sort, ...otherOptions } = options
 
-	return useQuery({
+	return useQuery<CustomersListResult>({
 		queryKey: ['customers', companyId, filter, sort],
 		queryFn: async () => {
 			const filters: string[] = []
@@ -44,12 +54,14 @@ export function useCustomers(options: CustomersListOptions = {}) {
 
 			const finalFilter = filters.length > 0 ? filters.join(' && ') : undefined
 
-			return await pb.collection('customers').getList(1, 50, {
+			const result = await pb.collection('customers').getList(1, 50, {
 				sort: sort || '-created',
 				expand: '',
 				filter: finalFilter,
 				...otherOptions,
 			})
+
+			return result as CustomersListResult
 		},
 		enabled: !!companyId,
 		refetchOnMount: 'always',
@@ -61,13 +73,14 @@ export function useCustomers(options: CustomersListOptions = {}) {
 export function useCustomer(customerId?: string) {
 	const pb = usePocketBase() as any
 
-	return useQuery({
+	return useQuery<CustomersResponse>({
 		queryKey: ['customers', customerId],
 		queryFn: async () => {
 			if (!customerId) throw new Error('customerId is required')
-			return await pb.collection('customers').getOne(customerId, {
+			const result = await pb.collection('customers').getOne(customerId, {
 				expand: '',
 			})
+			return result as CustomersResponse
 		},
 		enabled: !!customerId,
 	})
@@ -80,7 +93,8 @@ export function useCreateCustomer() {
 
 	return useMutation({
 		mutationFn: async (data: CustomerDto) => {
-			return await pb.collection('customers').create(data)
+			const result = await pb.collection('customers').create(data)
+			return result as CustomersResponse
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['customers'] })
@@ -98,7 +112,8 @@ export function useUpdateCustomer() {
 			id,
 			data,
 		}: { id: string; data: Partial<CustomerDto> }) => {
-			return await pb.collection('customers').update(id, data)
+			const result = await pb.collection('customers').update(id, data)
+			return result as CustomersResponse
 		},
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: ['customers'] })
@@ -126,10 +141,10 @@ export function useDeleteCustomer() {
 export function useSearchCustomers(searchTerm: string, companyId?: string) {
 	const pb = usePocketBase() as any
 
-	return useQuery({
+	return useQuery<CustomersListResult | { items: CustomersResponse[] }>({
 		queryKey: ['customers', 'search', searchTerm, companyId],
 		queryFn: async () => {
-			if (!searchTerm) return { items: [] }
+			if (!searchTerm) return { items: [] as CustomersResponse[] }
 
 			const filters: string[] = [
 				`name ~ "${searchTerm}" || email ~ "${searchTerm}" || phone ~ "${searchTerm}"`,
@@ -139,10 +154,12 @@ export function useSearchCustomers(searchTerm: string, companyId?: string) {
 				filters.push(`owner_company = "${companyId}"`)
 			}
 
-			return await pb.collection('customers').getList(1, 20, {
+			const result = await pb.collection('customers').getList(1, 20, {
 				filter: filters.join(' && '),
 				sort: '-created',
 			})
+
+			return result as CustomersListResult
 		},
 		enabled: searchTerm.length > 2 && !!companyId,
 	})

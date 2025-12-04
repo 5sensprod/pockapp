@@ -18,6 +18,8 @@ import { Route as StickIndexRouteImport } from './routes/stick/index'
 import { Route as StatsIndexRouteImport } from './routes/stats/index'
 import { Route as ConnectIndexRouteImport } from './routes/connect/index'
 import { Route as CashIndexRouteImport } from './routes/cash/index'
+import { Route as ConnectInvoicesIndexRouteImport } from './routes/connect/invoices/index'
+import { Route as ConnectInvoicesNewRouteImport } from './routes/connect/invoices/new'
 
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
@@ -64,6 +66,16 @@ const CashIndexRoute = CashIndexRouteImport.update({
   path: '/cash/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectInvoicesIndexRoute = ConnectInvoicesIndexRouteImport.update({
+  id: '/connect/invoices/',
+  path: '/connect/invoices/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectInvoicesNewRoute = ConnectInvoicesNewRouteImport.update({
+  id: '/connect/invoices/new',
+  path: '/connect/invoices/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -75,6 +87,8 @@ export interface FileRoutesByFullPath {
   '/stick': typeof StickIndexRoute
   '/stock-apppos': typeof StockAppposIndexRoute
   '/stock': typeof StockIndexRoute
+  '/connect/invoices/new': typeof ConnectInvoicesNewRoute
+  '/connect/invoices': typeof ConnectInvoicesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -86,6 +100,8 @@ export interface FileRoutesByTo {
   '/stick': typeof StickIndexRoute
   '/stock-apppos': typeof StockAppposIndexRoute
   '/stock': typeof StockIndexRoute
+  '/connect/invoices/new': typeof ConnectInvoicesNewRoute
+  '/connect/invoices': typeof ConnectInvoicesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,6 +114,8 @@ export interface FileRoutesById {
   '/stick/': typeof StickIndexRoute
   '/stock-apppos/': typeof StockAppposIndexRoute
   '/stock/': typeof StockIndexRoute
+  '/connect/invoices/new': typeof ConnectInvoicesNewRoute
+  '/connect/invoices/': typeof ConnectInvoicesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -111,6 +129,8 @@ export interface FileRouteTypes {
     | '/stick'
     | '/stock-apppos'
     | '/stock'
+    | '/connect/invoices/new'
+    | '/connect/invoices'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -122,6 +142,8 @@ export interface FileRouteTypes {
     | '/stick'
     | '/stock-apppos'
     | '/stock'
+    | '/connect/invoices/new'
+    | '/connect/invoices'
   id:
     | '__root__'
     | '/'
@@ -133,6 +155,8 @@ export interface FileRouteTypes {
     | '/stick/'
     | '/stock-apppos/'
     | '/stock/'
+    | '/connect/invoices/new'
+    | '/connect/invoices/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -145,6 +169,8 @@ export interface RootRouteChildren {
   StickIndexRoute: typeof StickIndexRoute
   StockAppposIndexRoute: typeof StockAppposIndexRoute
   StockIndexRoute: typeof StockIndexRoute
+  ConnectInvoicesNewRoute: typeof ConnectInvoicesNewRoute
+  ConnectInvoicesIndexRoute: typeof ConnectInvoicesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -212,6 +238,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CashIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connect/invoices/': {
+      id: '/connect/invoices/'
+      path: '/connect/invoices'
+      fullPath: '/connect/invoices'
+      preLoaderRoute: typeof ConnectInvoicesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect/invoices/new': {
+      id: '/connect/invoices/new'
+      path: '/connect/invoices/new'
+      fullPath: '/connect/invoices/new'
+      preLoaderRoute: typeof ConnectInvoicesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -225,6 +265,8 @@ const rootRouteChildren: RootRouteChildren = {
   StickIndexRoute: StickIndexRoute,
   StockAppposIndexRoute: StockAppposIndexRoute,
   StockIndexRoute: StockIndexRoute,
+  ConnectInvoicesNewRoute: ConnectInvoicesNewRoute,
+  ConnectInvoicesIndexRoute: ConnectInvoicesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

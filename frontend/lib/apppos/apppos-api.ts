@@ -34,7 +34,7 @@ async function fetchAppPos<T>(
 
 	// Ajouter le token si disponible
 	if (authToken) {
-		;(headers as Record<string, string>)['Authorization'] = `Bearer ${authToken}`
+		;(headers as Record<string, string>).Authorization = `Bearer ${authToken}`
 	}
 
 	const response = await fetch(url, {
@@ -44,9 +44,7 @@ async function fetchAppPos<T>(
 
 	if (!response.ok) {
 		const errorData = await response.json().catch(() => ({}))
-		throw new Error(
-			errorData.message || `AppPOS API Error: ${response.status}`,
-		)
+		throw new Error(errorData.message || `AppPOS API Error: ${response.status}`)
 	}
 
 	return response.json()
@@ -87,9 +85,8 @@ export function clearAppPosToken() {
 // PRODUCTS
 // ============================================================================
 export async function getAppPosProducts(): Promise<AppPosProduct[]> {
-	const response = await fetchAppPos<AppPosApiResponse<AppPosProduct[]>>(
-		'/products',
-	)
+	const response =
+		await fetchAppPos<AppPosApiResponse<AppPosProduct[]>>('/products')
 	return response.data || []
 }
 
@@ -130,9 +127,8 @@ export async function searchAppPosProductBySku(
 // CATEGORIES
 // ============================================================================
 export async function getAppPosCategories(): Promise<AppPosCategory[]> {
-	const response = await fetchAppPos<AppPosApiResponse<AppPosCategory[]>>(
-		'/categories',
-	)
+	const response =
+		await fetchAppPos<AppPosApiResponse<AppPosCategory[]>>('/categories')
 	return response.data || []
 }
 
@@ -147,9 +143,8 @@ export async function getAppPosCategory(id: string): Promise<AppPosCategory> {
 // BRANDS
 // ============================================================================
 export async function getAppPosBrands(): Promise<AppPosBrand[]> {
-	const response = await fetchAppPos<AppPosApiResponse<AppPosBrand[]>>(
-		'/brands',
-	)
+	const response =
+		await fetchAppPos<AppPosApiResponse<AppPosBrand[]>>('/brands')
 	return response.data || []
 }
 
@@ -164,9 +159,8 @@ export async function getAppPosBrand(id: string): Promise<AppPosBrand> {
 // SUPPLIERS
 // ============================================================================
 export async function getAppPosSuppliers(): Promise<AppPosSupplier[]> {
-	const response = await fetchAppPos<AppPosApiResponse<AppPosSupplier[]>>(
-		'/suppliers',
-	)
+	const response =
+		await fetchAppPos<AppPosApiResponse<AppPosSupplier[]>>('/suppliers')
 	return response.data || []
 }
 

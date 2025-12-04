@@ -76,7 +76,7 @@ export function ConnectPage() {
 					Aucun client pour le moment
 				</div>
 			) : (
-				<CustomerTable data={customers} />
+				<CustomerTable data={customers as any} />
 			)}
 
 			{/* Dialog */}

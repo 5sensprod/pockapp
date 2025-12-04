@@ -1,5 +1,6 @@
 /**
  * This file was @generated using pocketbase-typegen
+ * Updated manually to add invoices collection
  */
 
 import type PocketBase from 'pocketbase'
@@ -10,6 +11,7 @@ export enum Collections {
 	Categories = 'categories',
 	Companies = 'companies',
 	Customers = 'customers',
+	Invoices = 'invoices', // ✅ Ajouté
 	Notes = 'notes',
 	Products = 'products',
 	Suppliers = 'suppliers',
@@ -113,6 +115,49 @@ export type CustomersRecord = {
 	tags?: CustomersTagsOptions[]
 }
 
+// ✅ NOUVEAU - Types pour les factures
+export enum InvoicesStatusOptions {
+	draft = 'draft',
+	sent = 'sent',
+	paid = 'paid',
+	cancelled = 'cancelled',
+}
+
+export enum InvoicesPaymentMethodOptions {
+	virement = 'virement',
+	cb = 'cb',
+	especes = 'especes',
+	cheque = 'cheque',
+	autre = 'autre',
+}
+
+export type InvoiceItem = {
+	product_id?: string
+	name: string
+	quantity: number
+	unit_price_ht: number
+	tva_rate: number
+	total_ht: number
+	total_ttc: number
+}
+
+export type InvoicesRecord = {
+	number: string
+	date: IsoDateString
+	due_date?: IsoDateString
+	customer: RecordIdString
+	owner_company: RecordIdString
+	status: InvoicesStatusOptions
+	items: InvoiceItem[]
+	total_ht: number
+	total_tva: number
+	total_ttc: number
+	currency: string
+	notes?: string
+	payment_method?: InvoicesPaymentMethodOptions
+	paid_at?: IsoDateString
+}
+
 export type NotesRecord = {
 	content?: string
 	title?: string
@@ -125,20 +170,20 @@ export type ProductsRecord = {
 	brand?: RecordIdString
 	categories?: RecordIdString[]
 	company: RecordIdString
-	cost_price?: number // ✅ Renommé depuis "cost"
-	description?: string // ✅ Ajouté
-	images?: string // ✅ Renommé depuis "image"
+	cost_price?: number
+	description?: string
+	images?: string
 	name: string
-	price_ht?: number // ✅ Ajouté
-	price_ttc?: number // ✅ Renommé depuis "price"
-	sku?: string // ✅ Ajouté
-	stock_quantity?: number // ✅ Renommé depuis "stock"
-	stock_min?: number // ✅ Ajouté
-	stock_max?: number // ✅ Ajouté
+	price_ht?: number
+	price_ttc?: number
+	sku?: string
+	stock_quantity?: number
+	stock_min?: number
+	stock_max?: number
 	supplier?: RecordIdString
-	tva_rate?: number // ✅ Ajouté
-	unit?: string // ✅ Ajouté
-	weight?: number // ✅ Ajouté
+	tva_rate?: number
+	unit?: string
+	weight?: number
 }
 
 export type SuppliersRecord = {
@@ -167,6 +212,11 @@ export type CompaniesResponse<Texpand = unknown> = Required<CompaniesRecord> &
 	BaseSystemFields<Texpand>
 export type CustomersResponse<Texpand = unknown> = Required<CustomersRecord> &
 	BaseSystemFields<Texpand>
+
+// ✅ NOUVEAU - Response type pour les factures
+export type InvoicesResponse<Texpand = unknown> = Required<InvoicesRecord> &
+	BaseSystemFields<Texpand>
+
 export type NotesResponse<Texpand = unknown> = Required<NotesRecord> &
 	BaseSystemFields<Texpand>
 export type ProductsResponse<Texpand = unknown> = Required<ProductsRecord> &
@@ -183,6 +233,7 @@ export type CollectionRecords = {
 	categories: CategoriesRecord
 	companies: CompaniesRecord
 	customers: CustomersRecord
+	invoices: InvoicesRecord // ✅ Ajouté
 	notes: NotesRecord
 	products: ProductsRecord
 	suppliers: SuppliersRecord
@@ -194,6 +245,7 @@ export type CollectionResponses = {
 	categories: CategoriesResponse
 	companies: CompaniesResponse
 	customers: CustomersResponse
+	invoices: InvoicesResponse // ✅ Ajouté
 	notes: NotesResponse
 	products: ProductsResponse
 	suppliers: SuppliersResponse
@@ -208,6 +260,7 @@ export type TypedPocketBase = PocketBase & {
 	collection(idOrName: 'categories'): RecordService<CategoriesResponse>
 	collection(idOrName: 'companies'): RecordService<CompaniesResponse>
 	collection(idOrName: 'customers'): RecordService<CustomersResponse>
+	collection(idOrName: 'invoices'): RecordService<InvoicesResponse> // ✅ Ajouté
 	collection(idOrName: 'notes'): RecordService<NotesResponse>
 	collection(idOrName: 'products'): RecordService<ProductsResponse>
 	collection(idOrName: 'suppliers'): RecordService<SuppliersResponse>
