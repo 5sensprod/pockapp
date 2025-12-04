@@ -13,6 +13,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as StockIndexRouteImport } from './routes/stock/index'
+import { Route as StockAppposIndexRouteImport } from './routes/stock-apppos/index'
 import { Route as StickIndexRouteImport } from './routes/stick/index'
 import { Route as StatsIndexRouteImport } from './routes/stats/index'
 import { Route as ConnectIndexRouteImport } from './routes/connect/index'
@@ -36,6 +37,11 @@ const IndexRoute = IndexRouteImport.update({
 const StockIndexRoute = StockIndexRouteImport.update({
   id: '/stock/',
   path: '/stock/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StockAppposIndexRoute = StockAppposIndexRouteImport.update({
+  id: '/stock-apppos/',
+  path: '/stock-apppos/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StickIndexRoute = StickIndexRouteImport.update({
@@ -67,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/connect': typeof ConnectIndexRoute
   '/stats': typeof StatsIndexRoute
   '/stick': typeof StickIndexRoute
+  '/stock-apppos': typeof StockAppposIndexRoute
   '/stock': typeof StockIndexRoute
 }
 export interface FileRoutesByTo {
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/connect': typeof ConnectIndexRoute
   '/stats': typeof StatsIndexRoute
   '/stick': typeof StickIndexRoute
+  '/stock-apppos': typeof StockAppposIndexRoute
   '/stock': typeof StockIndexRoute
 }
 export interface FileRoutesById {
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   '/connect/': typeof ConnectIndexRoute
   '/stats/': typeof StatsIndexRoute
   '/stick/': typeof StickIndexRoute
+  '/stock-apppos/': typeof StockAppposIndexRoute
   '/stock/': typeof StockIndexRoute
 }
 export interface FileRouteTypes {
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/stats'
     | '/stick'
+    | '/stock-apppos'
     | '/stock'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/stats'
     | '/stick'
+    | '/stock-apppos'
     | '/stock'
   id:
     | '__root__'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/connect/'
     | '/stats/'
     | '/stick/'
+    | '/stock-apppos/'
     | '/stock/'
   fileRoutesById: FileRoutesById
 }
@@ -131,6 +143,7 @@ export interface RootRouteChildren {
   ConnectIndexRoute: typeof ConnectIndexRoute
   StatsIndexRoute: typeof StatsIndexRoute
   StickIndexRoute: typeof StickIndexRoute
+  StockAppposIndexRoute: typeof StockAppposIndexRoute
   StockIndexRoute: typeof StockIndexRoute
 }
 
@@ -162,6 +175,13 @@ declare module '@tanstack/react-router' {
       path: '/stock'
       fullPath: '/stock'
       preLoaderRoute: typeof StockIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stock-apppos/': {
+      id: '/stock-apppos/'
+      path: '/stock-apppos'
+      fullPath: '/stock-apppos'
+      preLoaderRoute: typeof StockAppposIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/stick/': {
@@ -203,6 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectIndexRoute: ConnectIndexRoute,
   StatsIndexRoute: StatsIndexRoute,
   StickIndexRoute: StickIndexRoute,
+  StockAppposIndexRoute: StockAppposIndexRoute,
   StockIndexRoute: StockIndexRoute,
 }
 export const routeTree = rootRouteImport

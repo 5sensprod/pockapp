@@ -39,6 +39,7 @@ import {
 	ArrowUpDown,
 	Barcode,
 	Building2,
+	ImageIcon,
 	MoreHorizontal,
 	Pencil,
 	Tags,
@@ -58,6 +59,11 @@ import { useDeleteProduct } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { toast } from 'sonner'
 import { ProductDialog } from './ProductDialog'
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+const APPPOS_BASE_URL = 'http://localhost:3000'
 
 interface ProductTableProps {
 	data: ProductsResponse[]
@@ -158,7 +164,45 @@ export function ProductTable({ data }: ProductTableProps) {
 		setEditOpen(true)
 	}
 
+	// Helper pour construire l'URL de l'image
+	const getImageUrl = (imagePath: string | undefined): string | null => {
+		if (!imagePath) return null
+		// Si c'est déjà une URL complète
+		if (imagePath.startsWith('http')) return imagePath
+		// Sinon, préfixer avec l'URL AppPOS
+		return `${APPPOS_BASE_URL}${imagePath}`
+	}
+
 	const columns: ColumnDef<ProductsResponse>[] = [
+		// ✅ NOUVELLE COLONNE IMAGE
+		{
+			id: 'image',
+			header: '',
+			size: 60,
+			cell: ({ row }) => {
+				const imagePath = row.original.images
+				const imageUrl = getImageUrl(imagePath)
+
+				return (
+					<div className='w-12 h-12 rounded-md overflow-hidden bg-muted flex items-center justify-center flex-shrink-0'>
+						{imageUrl ? (
+							<img
+								src={imageUrl}
+								alt={row.original.name}
+								className='w-full h-full object-cover'
+								onError={(e) => {
+									// Fallback si l'image ne charge pas
+									e.currentTarget.style.display = 'none'
+									e.currentTarget.parentElement?.classList.add('fallback-icon')
+								}}
+							/>
+						) : (
+							<ImageIcon className='h-5 w-5 text-muted-foreground' />
+						)}
+					</div>
+				)
+			},
+		},
 		{
 			accessorKey: 'name',
 			header: ({ column }) => (
@@ -227,7 +271,7 @@ export function ProductTable({ data }: ProductTableProps) {
 			},
 		},
 		{
-			accessorKey: 'price_ttc', // ✅ Renommé depuis 'price'
+			accessorKey: 'price_ttc',
 			header: ({ column }) => (
 				<Button
 					variant='ghost'
@@ -238,7 +282,7 @@ export function ProductTable({ data }: ProductTableProps) {
 				</Button>
 			),
 			cell: ({ row }) => {
-				const rawPrice = row.getValue<any>('price_ttc') // ✅ Renommé
+				const rawPrice = row.getValue<any>('price_ttc')
 				const price =
 					rawPrice == null || rawPrice === ''
 						? undefined
@@ -246,7 +290,7 @@ export function ProductTable({ data }: ProductTableProps) {
 							? rawPrice
 							: Number(rawPrice)
 
-				const rawCost = row.original.cost_price as any // ✅ Renommé depuis 'cost'
+				const rawCost = row.original.cost_price as any
 				const cost =
 					rawCost == null || rawCost === ''
 						? undefined
@@ -280,10 +324,10 @@ export function ProductTable({ data }: ProductTableProps) {
 			},
 		},
 		{
-			accessorKey: 'stock_quantity', // ✅ Renommé depuis 'stock'
+			accessorKey: 'stock_quantity',
 			header: 'Stock',
 			cell: ({ row }) => {
-				const rawStock = row.getValue<any>('stock_quantity') // ✅ Renommé
+				const rawStock = row.getValue<any>('stock_quantity')
 				const stock =
 					rawStock == null || rawStock === ''
 						? undefined
