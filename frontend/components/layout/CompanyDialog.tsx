@@ -1,5 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useMemo } from 'react'
+import { ImagePlus, Trash2, Upload } from 'lucide-react'
+import type { ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -15,8 +17,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
-
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import {
 	type CompanyDto,
@@ -24,6 +24,8 @@ import {
 	useCreateCompany,
 	useUpdateCompany,
 } from '@/lib/queries/companies'
+import { usePocketBase } from '@/lib/use-pocketbase'
+import { cn } from '@/lib/utils'
 
 const companySchema = z.object({
 	name: z.string().min(1, 'Le nom est obligatoire'),
@@ -93,7 +95,14 @@ export function CompanyDialog({
 	onOpenChange,
 	companyId,
 }: CompanyDialogProps) {
+	const pb = usePocketBase()
 	const isEditMode = useMemo(() => !!companyId, [companyId])
+	const fileInputRef = useRef<HTMLInputElement>(null)
+
+	// État pour le logo
+	const [logoFile, setLogoFile] = useState<File | null>(null)
+	const [logoPreview, setLogoPreview] = useState<string | null>(null)
+	const [removeLogo, setRemoveLogo] = useState(false)
 
 	const { data: companyData, isLoading: isCompanyLoading } = useCompany(
 		companyId ?? undefined,
@@ -114,7 +123,7 @@ export function CompanyDialog({
 			address_line2: '',
 			zip_code: '',
 			city: '',
-			country: 'France',
+			country: '',
 			siren: '',
 			siret: '',
 			vat_number: '',
@@ -147,7 +156,7 @@ export function CompanyDialog({
 				address_line2: c.address_line2 ?? '',
 				zip_code: c.zip_code ?? '',
 				city: c.city ?? '',
-				country: c.country ?? 'France',
+				country: c.country ?? '',
 				siren: c.siren ?? '',
 				siret: c.siret ?? '',
 				vat_number: c.vat_number ?? '',
@@ -164,9 +173,19 @@ export function CompanyDialog({
 				invoice_footer: c.invoice_footer ?? '',
 				invoice_prefix: c.invoice_prefix ?? '',
 			})
+
+			// Charger le logo existant
+			if (c.logo) {
+				const logoUrl = pb.files.getUrl(c, c.logo)
+				setLogoPreview(logoUrl)
+			} else {
+				setLogoPreview(null)
+			}
+			setLogoFile(null)
+			setRemoveLogo(false)
 		}
 
-		// 👇 en création : on force TOUT à vide
+		// En création : tout à vide
 		if (!isEditMode && isOpen) {
 			form.reset({
 				name: '',
@@ -178,7 +197,7 @@ export function CompanyDialog({
 				address_line2: '',
 				zip_code: '',
 				city: '',
-				country: '', // plus de 'France' par défaut
+				country: '',
 				siren: '',
 				siret: '',
 				vat_number: '',
@@ -195,13 +214,64 @@ export function CompanyDialog({
 				invoice_footer: '',
 				invoice_prefix: '',
 			})
+			setLogoFile(null)
+			setLogoPreview(null)
+			setRemoveLogo(false)
 		}
-	}, [isEditMode, companyData, form, isOpen])
+	}, [isEditMode, companyData, form, isOpen, pb])
+
+	// Gestion de l'upload de fichier
+	const handleFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0]
+		if (!file) return
+
+		// Vérifier le type
+		const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+		if (!allowedTypes.includes(file.type)) {
+			toast.error('Format non supporté. Utilisez JPG, PNG ou WebP.')
+			return
+		}
+
+		// Vérifier la taille (5 Mo max)
+		if (file.size > 5 * 1024 * 1024) {
+			toast.error('Le fichier est trop volumineux (max 5 Mo)')
+			return
+		}
+
+		setLogoFile(file)
+		setRemoveLogo(false)
+
+		// Créer un aperçu
+		const reader = new FileReader()
+		reader.onloadend = () => {
+			setLogoPreview(reader.result as string)
+		}
+		reader.readAsDataURL(file)
+	}, [])
+
+	const handleRemoveLogo = useCallback(() => {
+		setLogoFile(null)
+		setLogoPreview(null)
+		setRemoveLogo(true)
+		if (fileInputRef.current) {
+			fileInputRef.current.value = ''
+		}
+	}, [])
+
+	const handleLogoClick = () => {
+		fileInputRef.current?.click()
+	}
+
+	// const handleLogoKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+	// 	if (e.key === 'Enter' || e.key === ' ') {
+	// 		fileInputRef.current?.click()
+	// 	}
+	// }
 
 	const isSubmitting = createCompany.isPending || updateCompany.isPending
 
 	const onSubmit = async (values: CompanyFormValues) => {
-		const payload: CompanyDto = {
+		const payload: CompanyDto & { logo?: File | null; removeLogo?: boolean } = {
 			...values,
 			email: values.email || undefined,
 			website: values.website || undefined,
@@ -211,9 +281,9 @@ export function CompanyDialog({
 			default_payment_method:
 				(values.default_payment_method as CompanyDto['default_payment_method']) ||
 				undefined,
+			logo: logoFile,
+			removeLogo,
 		}
-
-		console.log('📤 Payload envoyé:', payload)
 
 		try {
 			if (isEditMode && companyId) {
@@ -225,23 +295,19 @@ export function CompanyDialog({
 			}
 			onOpenChange(false)
 		} catch (error: unknown) {
-			// 🔍 Afficher l'erreur détaillée
-			console.error('❌ Erreur complète:', error)
+			console.error('Erreur:', error)
 
 			let errorMessage = "Une erreur est survenue lors de l'enregistrement"
 
-			// Extraire le message d'erreur de PocketBase
 			if (error && typeof error === 'object') {
 				const err = error as Record<string, unknown>
 
-				// PocketBase error structure
 				if (err.response && typeof err.response === 'object') {
 					const response = err.response as Record<string, unknown>
 					if (response.message) {
 						errorMessage = String(response.message)
 					}
 					if (response.data && typeof response.data === 'object') {
-						// Erreurs de validation par champ
 						const fieldErrors = Object.entries(
 							response.data as Record<string, { message?: string }>,
 						)
@@ -259,7 +325,6 @@ export function CompanyDialog({
 				}
 			}
 
-			console.error('📋 Message affiché:', errorMessage)
 			toast.error(errorMessage)
 		}
 	}
@@ -279,6 +344,75 @@ export function CompanyDialog({
 					className='space-y-6 max-h-[70vh] overflow-y-auto pr-1 pl-1'
 					onSubmit={form.handleSubmit(onSubmit)}
 				>
+					{/* Logo */}
+					<section className='space-y-3'>
+						<h3 className='text-sm font-semibold text-muted-foreground'>
+							Logo
+						</h3>
+						<div className='flex items-center gap-4'>
+							{/* Aperçu */}
+							<button
+								type='button'
+								className={cn(
+									'relative w-24 h-24 border-2 border-dashed rounded-lg flex items-center justify-center overflow-hidden',
+									'bg-muted/50 hover:bg-muted/80 transition-colors cursor-pointer',
+									logoPreview && 'border-solid border-primary/30',
+								)}
+								onClick={handleLogoClick}
+								disabled={isSubmitting || isCompanyLoading}
+							>
+								{logoPreview ? (
+									<img
+										src={logoPreview}
+										alt='Logo'
+										className='w-full h-full object-contain'
+									/>
+								) : (
+									<ImagePlus className='w-8 h-8 text-muted-foreground' />
+								)}
+							</button>
+
+							{/* Actions */}
+							<div className='flex flex-col gap-2'>
+								<input
+									ref={fileInputRef}
+									type='file'
+									accept='image/jpeg,image/png,image/webp'
+									onChange={handleFileChange}
+									className='hidden'
+									disabled={isSubmitting || isCompanyLoading}
+								/>
+								<Button
+									type='button'
+									variant='outline'
+									size='sm'
+									onClick={handleLogoClick}
+									disabled={isSubmitting || isCompanyLoading}
+								>
+									<Upload className='w-4 h-4 mr-2' />
+									{logoPreview ? 'Changer' : 'Importer'}
+								</Button>
+								{logoPreview && (
+									<Button
+										type='button'
+										variant='ghost'
+										size='sm'
+										onClick={handleRemoveLogo}
+										disabled={isSubmitting || isCompanyLoading}
+										className='text-destructive hover:text-destructive'
+									>
+										<Trash2 className='w-4 h-4 mr-2' />
+										Supprimer
+									</Button>
+								)}
+							</div>
+
+							<p className='text-xs text-muted-foreground'>
+								JPG, PNG ou WebP. Max 5 Mo.
+							</p>
+						</div>
+					</section>
+
 					{/* Identité */}
 					<section className='space-y-3'>
 						<h3 className='text-sm font-semibold text-muted-foreground'>

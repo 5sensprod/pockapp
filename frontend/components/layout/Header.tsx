@@ -8,7 +8,7 @@ import {
 	Settings,
 	User,
 } from 'lucide-react'
-import type React from 'react'
+import type { ComponentType } from 'react'
 import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +22,6 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { useSetActiveCompany } from '@/lib/queries/companies'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
@@ -32,6 +31,12 @@ type Notification = {
 	id: string | number
 	text: string
 	unread?: boolean
+}
+
+type CompanyItem = {
+	id: string
+	name: string
+	active?: boolean
 }
 
 interface HeaderProps {
@@ -48,9 +53,7 @@ export function Header({
 	const navigate = useNavigate()
 	const { user, logout } = useAuth()
 
-	// ⬇️ on récupère aussi activeCompanyId
-	const { companies, activeCompanyId } = useActiveCompany()
-	const setActiveCompany = useSetActiveCompany()
+	const { companies, activeCompanyId, setActiveCompanyId } = useActiveCompany()
 
 	const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false)
 	const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null)
@@ -59,29 +62,30 @@ export function Header({
 	const moduleMenu = currentModule?.topbarMenu || []
 
 	const activeCompany =
-		companies.find((c) => c.id === activeCompanyId) ?? companies[0]
+		companies.find((c: CompanyItem) => c.id === activeCompanyId) ?? companies[0]
 
-	const unreadCount = notifications.filter((n) => n.unread).length
+	const unreadCount = notifications.filter((n: Notification) => n.unread).length
 
-	const avatarUrl =
-		user && (user as any).avatar
-			? `${document.location.origin}/api/files/users/${user.id}/${
-					(user as any).avatar
-				}?thumb=100x100`
-			: null
+	const userWithAvatar = user as {
+		id: string
+		name?: string
+		email?: string
+		avatar?: string
+	} | null
+	const avatarUrl = userWithAvatar?.avatar
+		? `${document.location.origin}/api/files/users/${userWithAvatar.id}/${userWithAvatar.avatar}?thumb=100x100`
+		: null
 
 	const handleLogout = () => {
 		logout()
 		navigate({ to: '/login' })
 	}
 
-	// 👉 création = companyId null
 	const openCreateCompany = () => {
 		setEditingCompanyId(null)
 		setIsCompanyDialogOpen(true)
 	}
 
-	// 👉 édition = companyId = id
 	const openEditCompany = (id: string) => {
 		setEditingCompanyId(id)
 		setIsCompanyDialogOpen(true)
@@ -168,13 +172,13 @@ export function Header({
 									</DropdownMenuLabel>
 									<DropdownMenuSeparator />
 
-									{companies.map((company) => (
+									{companies.map((company: CompanyItem) => (
 										<DropdownMenuItem
 											key={company.id}
 											className='px-3 py-2 cursor-pointer'
 											onClick={() => {
 												if (company.id !== activeCompanyId) {
-													setActiveCompany.mutate(String(company.id))
+													setActiveCompanyId(company.id)
 												}
 											}}
 										>
@@ -189,7 +193,7 @@ export function Header({
 													onClick={(e) => {
 														e.preventDefault()
 														e.stopPropagation()
-														openEditCompany(String(company.id))
+														openEditCompany(company.id)
 													}}
 												>
 													<Settings className='h-4 w-4 text-muted-foreground' />
@@ -244,7 +248,7 @@ export function Header({
 								<DropdownMenuLabel>Notifications</DropdownMenuLabel>
 								<DropdownMenuSeparator />
 
-								{notifications.map((notif) => (
+								{notifications.map((notif: Notification) => (
 									<DropdownMenuItem key={notif.id} className='py-3'>
 										<div className='flex items-start gap-3 w-full'>
 											<div
@@ -332,7 +336,7 @@ export function Header({
 			<CompanyDialog
 				isOpen={isCompanyDialogOpen}
 				onOpenChange={handleDialogOpenChange}
-				companyId={editingCompanyId} // null = création, id = édition
+				companyId={editingCompanyId}
 			/>
 		</>
 	)
@@ -340,7 +344,7 @@ export function Header({
 
 interface NavLinkProps {
 	to: string
-	icon?: React.ComponentType<{ className?: string }>
+	icon?: ComponentType<{ className?: string }>
 	children: React.ReactNode
 }
 
