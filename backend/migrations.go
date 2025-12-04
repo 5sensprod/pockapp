@@ -21,6 +21,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		ensureSuppliersCollection,
 		ensureCustomersCollection,
 		ensureProductsCollection,
+		ensureInvoicesCollection, // ✅ NOUVEAU
 	}
 
 	for _, migrate := range migrations {
@@ -299,7 +300,6 @@ func ensureCategoriesCollection(app *pocketbase.PocketBase) error {
 
 	log.Println("📦 Création de la collection 'categories'...")
 
-	// Créer d'abord sans la relation parent (self-reference)
 	collection := &models.Collection{
 		Name:       "categories",
 		Type:       models.CollectionTypeBase,
@@ -316,11 +316,6 @@ func ensureCategoriesCollection(app *pocketbase.PocketBase) error {
 				Options:  &schema.TextOptions{Max: types.Pointer(255)},
 			},
 			&schema.SchemaField{
-				Name:    "description",
-				Type:    schema.FieldTypeText,
-				Options: &schema.TextOptions{Max: types.Pointer(1000)},
-			},
-			&schema.SchemaField{
 				Name:    "icon",
 				Type:    schema.FieldTypeText,
 				Options: &schema.TextOptions{Max: types.Pointer(50)},
@@ -331,11 +326,9 @@ func ensureCategoriesCollection(app *pocketbase.PocketBase) error {
 				Options: &schema.TextOptions{Max: types.Pointer(20)},
 			},
 			&schema.SchemaField{
-				Name: "order",
-				Type: schema.FieldTypeNumber,
-				Options: &schema.NumberOptions{
-					Min: types.Pointer(0.0),
-				},
+				Name:    "order",
+				Type:    schema.FieldTypeNumber,
+				Options: &schema.NumberOptions{Min: types.Pointer(0.0)},
 			},
 			&schema.SchemaField{
 				Name:     "company",
@@ -354,21 +347,18 @@ func ensureCategoriesCollection(app *pocketbase.PocketBase) error {
 		return err
 	}
 
-	// Maintenant ajouter la relation parent (self-reference)
-	categoriesCol, _ := app.Dao().FindCollectionByNameOrId("categories")
-	categoriesCol.Schema.AddField(&schema.SchemaField{
+	// Ajouter la relation parent après création (auto-référence)
+	collection, _ = app.Dao().FindCollectionByNameOrId("categories")
+	collection.Schema.AddField(&schema.SchemaField{
 		Name: "parent",
 		Type: schema.FieldTypeRelation,
 		Options: &schema.RelationOptions{
-			CollectionId:  categoriesCol.Id,
+			CollectionId:  collection.Id,
 			MaxSelect:     types.Pointer(1),
 			CascadeDelete: false,
 		},
 	})
-
-	if err := app.Dao().SaveCollection(categoriesCol); err != nil {
-		log.Printf("⚠️ Erreur ajout champ parent: %v", err)
-	}
+	app.Dao().SaveCollection(collection)
 
 	log.Println("✅ Collection 'categories' créée")
 	return nil
@@ -388,10 +378,7 @@ func ensureSuppliersCollection(app *pocketbase.PocketBase) error {
 		return err
 	}
 
-	brandsCol, err := app.Dao().FindCollectionByNameOrId("brands")
-	if err != nil {
-		log.Println("⚠️ Collection 'brands' non trouvée, skip relation brands")
-	}
+	brandsCol, _ := app.Dao().FindCollectionByNameOrId("brands")
 
 	log.Println("📦 Création de la collection 'suppliers'...")
 
@@ -403,9 +390,9 @@ func ensureSuppliersCollection(app *pocketbase.PocketBase) error {
 			Options:  &schema.TextOptions{Max: types.Pointer(255)},
 		},
 		{
-			Name:    "code",
+			Name:    "contact",
 			Type:    schema.FieldTypeText,
-			Options: &schema.TextOptions{Max: types.Pointer(50)},
+			Options: &schema.TextOptions{Max: types.Pointer(255)},
 		},
 		{
 			Name: "email",
@@ -417,38 +404,18 @@ func ensureSuppliersCollection(app *pocketbase.PocketBase) error {
 			Options: &schema.TextOptions{Max: types.Pointer(30)},
 		},
 		{
-			Name: "website",
-			Type: schema.FieldTypeUrl,
-		},
-		{
 			Name:    "address",
 			Type:    schema.FieldTypeText,
 			Options: &schema.TextOptions{Max: types.Pointer(500)},
 		},
 		{
-			Name:    "city",
-			Type:    schema.FieldTypeText,
-			Options: &schema.TextOptions{Max: types.Pointer(100)},
-		},
-		{
-			Name:    "zip_code",
-			Type:    schema.FieldTypeText,
-			Options: &schema.TextOptions{Max: types.Pointer(20)},
-		},
-		{
-			Name:    "country",
-			Type:    schema.FieldTypeText,
-			Options: &schema.TextOptions{Max: types.Pointer(100)},
-		},
-		{
-			Name:    "contact_name",
-			Type:    schema.FieldTypeText,
-			Options: &schema.TextOptions{Max: types.Pointer(255)},
-		},
-		{
 			Name:    "notes",
 			Type:    schema.FieldTypeText,
 			Options: &schema.TextOptions{Max: types.Pointer(2000)},
+		},
+		{
+			Name: "active",
+			Type: schema.FieldTypeBool,
 		},
 		{
 			Name:     "company",
@@ -462,7 +429,6 @@ func ensureSuppliersCollection(app *pocketbase.PocketBase) error {
 		},
 	}
 
-	// Ajouter la relation brands si la collection existe
 	if brandsCol != nil {
 		schemaFields = append(schemaFields, &schema.SchemaField{
 			Name: "brands",
@@ -752,5 +718,152 @@ func ensureProductsCollection(app *pocketbase.PocketBase) error {
 		return err
 	}
 	log.Println("✅ Collection 'products' créée")
+	return nil
+}
+
+// ============================================
+// INVOICES (NOUVEAU)
+// ============================================
+func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
+	if _, err := app.Dao().FindCollectionByNameOrId("invoices"); err == nil {
+		log.Println("📦 Collection 'invoices' existe déjà")
+		return nil
+	}
+
+	// Récupérer les collections référencées
+	companiesCol, err := app.Dao().FindCollectionByNameOrId("companies")
+	if err != nil {
+		log.Println("⚠️ Collection 'companies' non trouvée, skip 'invoices'")
+		return err
+	}
+
+	customersCol, err := app.Dao().FindCollectionByNameOrId("customers")
+	if err != nil {
+		log.Println("⚠️ Collection 'customers' non trouvée, skip 'invoices'")
+		return err
+	}
+
+	log.Println("📦 Création de la collection 'invoices'...")
+
+	collection := &models.Collection{
+		Name:       "invoices",
+		Type:       models.CollectionTypeBase,
+		ListRule:   types.Pointer("@request.auth.id != ''"),
+		ViewRule:   types.Pointer("@request.auth.id != ''"),
+		CreateRule: types.Pointer("@request.auth.id != ''"),
+		UpdateRule: types.Pointer("@request.auth.id != ''"),
+		DeleteRule: types.Pointer("@request.auth.id != ''"),
+		Schema: schema.NewSchema(
+			// Numéro de facture (unique)
+			&schema.SchemaField{
+				Name:     "number",
+				Type:     schema.FieldTypeText,
+				Required: true,
+				Unique:   true,
+				Options:  &schema.TextOptions{Max: types.Pointer(50)},
+			},
+			// Date de facture
+			&schema.SchemaField{
+				Name:     "date",
+				Type:     schema.FieldTypeDate,
+				Required: true,
+			},
+			// Date d'échéance
+			&schema.SchemaField{
+				Name: "due_date",
+				Type: schema.FieldTypeDate,
+			},
+			// Relation client
+			&schema.SchemaField{
+				Name:     "customer",
+				Type:     schema.FieldTypeRelation,
+				Required: true,
+				Options: &schema.RelationOptions{
+					CollectionId:  customersCol.Id,
+					MaxSelect:     types.Pointer(1),
+					CascadeDelete: false,
+				},
+			},
+			// Relation entreprise propriétaire
+			&schema.SchemaField{
+				Name:     "owner_company",
+				Type:     schema.FieldTypeRelation,
+				Required: true,
+				Options: &schema.RelationOptions{
+					CollectionId:  companiesCol.Id,
+					MaxSelect:     types.Pointer(1),
+					CascadeDelete: false,
+				},
+			},
+			// Statut
+			&schema.SchemaField{
+				Name:     "status",
+				Type:     schema.FieldTypeSelect,
+				Required: true,
+				Options: &schema.SelectOptions{
+					MaxSelect: 1,
+					Values:    []string{"draft", "sent", "paid", "cancelled"},
+				},
+			},
+			// Items (JSON array)
+			&schema.SchemaField{
+				Name:     "items",
+				Type:     schema.FieldTypeJson,
+				Required: true,
+				Options:  &schema.JsonOptions{MaxSize: 1048576}, // 1MB
+			},
+			// Totaux
+			&schema.SchemaField{
+				Name:     "total_ht",
+				Type:     schema.FieldTypeNumber,
+				Required: true,
+				Options:  &schema.NumberOptions{Min: types.Pointer(0.0)},
+			},
+			&schema.SchemaField{
+				Name:     "total_tva",
+				Type:     schema.FieldTypeNumber,
+				Required: true,
+				Options:  &schema.NumberOptions{Min: types.Pointer(0.0)},
+			},
+			&schema.SchemaField{
+				Name:     "total_ttc",
+				Type:     schema.FieldTypeNumber,
+				Required: true,
+				Options:  &schema.NumberOptions{Min: types.Pointer(0.0)},
+			},
+			// Devise
+			&schema.SchemaField{
+				Name:     "currency",
+				Type:     schema.FieldTypeText,
+				Required: true,
+				Options:  &schema.TextOptions{Max: types.Pointer(10)},
+			},
+			// Notes
+			&schema.SchemaField{
+				Name:    "notes",
+				Type:    schema.FieldTypeText,
+				Options: &schema.TextOptions{Max: types.Pointer(2000)},
+			},
+			// Méthode de paiement
+			&schema.SchemaField{
+				Name: "payment_method",
+				Type: schema.FieldTypeSelect,
+				Options: &schema.SelectOptions{
+					MaxSelect: 1,
+					Values:    []string{"virement", "cb", "especes", "cheque", "autre"},
+				},
+			},
+			// Date de paiement
+			&schema.SchemaField{
+				Name: "paid_at",
+				Type: schema.FieldTypeDate,
+			},
+		),
+	}
+
+	if err := app.Dao().SaveCollection(collection); err != nil {
+		return err
+	}
+	log.Println("✅ Collection 'invoices' créée")
 	return nil
 }
