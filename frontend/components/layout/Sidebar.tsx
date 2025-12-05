@@ -1,15 +1,22 @@
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { Link, useLocation } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface SidebarProps {
 	currentModule: ModuleManifest | null
 	onPanelChange?: (open: boolean) => void
+	defaultOpenGroup?: string
 }
 
-export function Sidebar({ currentModule, onPanelChange }: SidebarProps) {
-	const [activeGroup, setActiveGroup] = useState<string | null>(null)
+export function Sidebar({
+	currentModule,
+	onPanelChange,
+	defaultOpenGroup,
+}: SidebarProps) {
+	const [activeGroup, setActiveGroup] = useState<string | null>(
+		defaultOpenGroup || null,
+	)
 	const { pathname } = useLocation()
 
 	const sidebarMenu = currentModule?.sidebarMenu || []
@@ -19,10 +26,14 @@ export function Sidebar({ currentModule, onPanelChange }: SidebarProps) {
 	const toggleGroup = (groupId: string) => {
 		const newGroup = activeGroup === groupId ? null : groupId
 		setActiveGroup(newGroup)
-		onPanelChange?.(newGroup !== null)
+		// plus besoin d'appeler onPanelChange ici, le useEffect s'en charge
 	}
 
 	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
+
+	useEffect(() => {
+		onPanelChange?.(activeGroup !== null)
+	}, [activeGroup, onPanelChange])
 
 	return (
 		<div className='fixed left-0 top-14 bottom-0 flex z-40'>
