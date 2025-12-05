@@ -1,4 +1,4 @@
-// frontend/modules/connect/components/InvoiceCreatePage.tsx
+// frontend/modules/connect/components/QuoteCreatePage.tsx
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,8 +28,8 @@ import type {
 	ProductsResponse,
 } from '@/lib/pocketbase-types'
 import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
-import { useCreateInvoice } from '@/lib/queries/invoices'
-import type { InvoiceItem } from '@/lib/types/invoice.types'
+import { useCreateQuote } from '@/lib/queries/quotes'
+import type { InvoiceItem, QuoteStatus } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -50,8 +50,7 @@ import { CustomerDialog } from './CustomerDialog'
 // TYPES
 // ============================================================================
 
-// Item utilisé dans l'UI (on ajoute juste un id temporaire)
-interface UiInvoiceItem extends InvoiceItem {
+interface UiQuoteItem extends InvoiceItem {
 	id: string
 }
 
@@ -64,28 +63,32 @@ interface SelectedCustomer {
 	company?: string
 }
 
-// On se base sur les types PocketBase
-type InvoiceCustomer = CustomersResponse
-type InvoiceProduct = ProductsResponse
+type QuoteCustomer = CustomersResponse
+type QuoteProduct = ProductsResponse
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
-export function InvoiceCreatePage() {
+export function QuoteCreatePage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
 
 	// États
-	const [invoiceNumber, setInvoiceNumber] = useState('')
-	const [invoiceDate, setInvoiceDate] = useState(
+	const [quoteNumber, setQuoteNumber] = useState('')
+	const [quoteDate, setQuoteDate] = useState(
 		new Date().toISOString().split('T')[0],
 	)
-	const [dueDate, setDueDate] = useState('')
+	const [validUntil, setValidUntil] = useState(() => {
+		// Par défaut : validité de 30 jours
+		const date = new Date()
+		date.setDate(date.getDate() + 30)
+		return date.toISOString().split('T')[0]
+	})
 	const [selectedCustomer, setSelectedCustomer] =
 		useState<SelectedCustomer | null>(null)
-	const [items, setItems] = useState<UiInvoiceItem[]>([])
+	const [items, setItems] = useState<UiQuoteItem[]>([])
 	const [notes, setNotes] = useState('')
 	const [currency] = useState('EUR')
 
@@ -104,20 +107,19 @@ export function InvoiceCreatePage() {
 		companyId: activeCompanyId ?? undefined,
 	})
 
-	// Produits depuis AppPOS (transformés en format PocketBase-like)
+	// Produits depuis AppPOS
 	const { data: productsData } = useAppPosProducts({
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
 	})
 
 	// Mutations
-	const createInvoice = useCreateInvoice()
+	const createQuote = useCreateQuote()
 	const createCustomer = useCreateCustomer()
 
-	const customers: InvoiceCustomer[] = (customersData?.items ??
-		[]) as InvoiceCustomer[]
-	const products: InvoiceProduct[] = (productsData?.items ??
-		[]) as InvoiceProduct[]
+	const customers: QuoteCustomer[] = (customersData?.items ??
+		[]) as QuoteCustomer[]
+	const products: QuoteProduct[] = (productsData?.items ?? []) as QuoteProduct[]
 
 	// Filtrer les clients selon la recherche
 	const filteredCustomers = customers.filter((c) => {
@@ -129,7 +131,7 @@ export function InvoiceCreatePage() {
 		)
 	})
 
-	// 🔐 Connexion automatique à AppPOS (pour ne plus avoir à passer par la page Stock)
+	// 🔐 Connexion automatique à AppPOS
 	useEffect(() => {
 		const connect = async () => {
 			if (isAppPosConnected) return
@@ -141,7 +143,6 @@ export function InvoiceCreatePage() {
 			}
 
 			try {
-				// TODO: adapter ces identifiants si besoin
 				const res = await loginToAppPos('admin', 'admin123')
 				if (res.success && res.token) {
 					setIsAppPosConnected(true)
@@ -156,37 +157,34 @@ export function InvoiceCreatePage() {
 		void connect()
 	}, [isAppPosConnected])
 
-	// 🔢 Générer le numéro de facture au chargement (direct PocketBase)
+	// 🔢 Générer le numéro de devis au chargement
 	useEffect(() => {
 		if (!activeCompanyId) return
 		;(async () => {
 			const year = new Date().getFullYear()
-			const prefix = `FAC-${year}-`
+			const prefix = `DEV-${year}-`
 
 			try {
-				const lastInvoice = await pb.collection('invoices').getList(1, 1, {
+				const lastQuote = await pb.collection('quotes').getList(1, 1, {
 					filter: `owner_company = "${activeCompanyId}" && number ~ "${prefix}"`,
 					sort: '-number',
 				})
 
 				let nextNumber = 1
-				if (lastInvoice.items.length > 0) {
-					const lastNumber = (lastInvoice.items[0] as any).number as string
-					const match = lastNumber?.match(/FAC-\d{4}-(\d+)/)
+				if (lastQuote.items.length > 0) {
+					const lastNumber = (lastQuote.items[0] as any).number as string
+					const match = lastNumber?.match(/DEV-\d{4}-(\d+)/)
 					if (match) {
 						nextNumber = Number.parseInt(match[1], 10) + 1
 					}
 				}
 
-				setInvoiceNumber(`${prefix}${String(nextNumber).padStart(4, '0')}`)
+				setQuoteNumber(`${prefix}${String(nextNumber).padStart(4, '0')}`)
 			} catch (error) {
-				console.error(
-					'Erreur lors de la génération du numéro de facture',
-					error,
-				)
+				console.error('Erreur lors de la génération du numéro de devis', error)
 				const fallbackYear = new Date().getFullYear()
-				const fallbackPrefix = `FAC-${fallbackYear}-`
-				setInvoiceNumber(`${fallbackPrefix}0001`)
+				const fallbackPrefix = `DEV-${fallbackYear}-`
+				setQuoteNumber(`${fallbackPrefix}0001`)
 			}
 		})()
 	}, [activeCompanyId, pb])
@@ -202,7 +200,7 @@ export function InvoiceCreatePage() {
 	)
 
 	// Ajouter un produit
-	const addProduct = (product: InvoiceProduct) => {
+	const addProduct = (product: QuoteProduct) => {
 		const tvaRate = product.tva_rate ?? 20
 
 		let priceHt = 0
@@ -215,7 +213,7 @@ export function InvoiceCreatePage() {
 		const totalHt = priceHt
 		const totalTtc = totalHt * (1 + tvaRate / 100)
 
-		const newItem: UiInvoiceItem = {
+		const newItem: UiQuoteItem = {
 			id: `item-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 			product_id: product.id,
 			name: product.name,
@@ -234,7 +232,7 @@ export function InvoiceCreatePage() {
 	// Modifier la quantité
 	const updateQuantity = (itemId: string, delta: number) => {
 		setItems((prevItems) => {
-			const updated: UiInvoiceItem[] = []
+			const updated: UiQuoteItem[] = []
 
 			for (const item of prevItems) {
 				if (item.id === itemId) {
@@ -286,8 +284,8 @@ export function InvoiceCreatePage() {
 		}
 	}
 
-	// Soumettre la facture
-	const handleSubmit = async () => {
+	// Soumettre le devis
+	const handleSubmit = async (status: QuoteStatus = 'draft') => {
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
 			return
@@ -302,18 +300,17 @@ export function InvoiceCreatePage() {
 		}
 
 		try {
-			// On enlève juste l'id temporaire
-			const invoiceItems: InvoiceItem[] = items.map(({ id, ...item }) => item)
+			// On enlève l'id temporaire
+			const quoteItems: InvoiceItem[] = items.map(({ id, ...item }) => item)
 
-			await createInvoice.mutateAsync({
-				number: invoiceNumber,
-				invoice_type: 'invoice',
-				date: invoiceDate,
-				due_date: dueDate || undefined,
+			await createQuote.mutateAsync({
+				number: quoteNumber,
+				date: quoteDate,
+				valid_until: validUntil || undefined,
 				customer: selectedCustomer.id,
 				owner_company: activeCompanyId,
-				status: 'validated',
-				items: invoiceItems,
+				status,
+				items: quoteItems,
 				total_ht: totals.ht,
 				total_tva: totals.tva,
 				total_ttc: totals.ttc,
@@ -321,11 +318,13 @@ export function InvoiceCreatePage() {
 				notes: notes || undefined,
 			})
 
-			toast.success('Facture créée avec succès')
-			navigate({ to: '/connect/invoices' })
+			toast.success(
+				status === 'draft' ? 'Brouillon enregistré' : 'Devis créé avec succès',
+			)
+			navigate({ to: '/connect/quotes' })
 		} catch (error) {
-			console.error('Erreur lors de la création de la facture', error)
-			toast.error('Erreur lors de la création de la facture')
+			console.error('Erreur lors de la création du devis', error)
+			toast.error('Erreur lors de la création du devis')
 		}
 	}
 
@@ -336,25 +335,23 @@ export function InvoiceCreatePage() {
 				<Button
 					variant='ghost'
 					size='icon'
-					onClick={() => navigate({ to: '/connect/invoices' })}
+					onClick={() => navigate({ to: '/connect/quotes' })}
 				>
 					<ArrowLeft className='h-5 w-5' />
 				</Button>
 				<div className='flex-1'>
 					<h1 className='text-2xl font-bold flex items-center gap-2'>
 						<FileText className='h-6 w-6' />
-						Nouvelle facture
+						Nouveau devis
 					</h1>
-					<p className='text-muted-foreground'>
-						Créez une facture pour un client
-					</p>
+					<p className='text-muted-foreground'>Créez un devis pour un client</p>
 				</div>
 			</div>
 
 			<div className='grid lg:grid-cols-3 gap-6'>
 				{/* Colonne principale */}
 				<div className='lg:col-span-2 space-y-6'>
-					{/* Infos facture */}
+					{/* Infos devis */}
 					<Card>
 						<CardHeader>
 							<CardTitle className='text-lg'>Informations</CardTitle>
@@ -363,26 +360,26 @@ export function InvoiceCreatePage() {
 							<div>
 								<Label>Numéro</Label>
 								<Input
-									value={invoiceNumber}
+									value={quoteNumber}
 									readOnly
-									onChange={(e) => setInvoiceNumber(e.target.value)}
-									placeholder='FAC-2025-0001'
+									onChange={(e) => setQuoteNumber(e.target.value)}
+									placeholder='DEV-2025-0001'
 								/>
 							</div>
 							<div>
 								<Label>Date</Label>
 								<Input
 									type='date'
-									value={invoiceDate}
-									onChange={(e) => setInvoiceDate(e.target.value)}
+									value={quoteDate}
+									onChange={(e) => setQuoteDate(e.target.value)}
 								/>
 							</div>
 							<div>
-								<Label>Échéance</Label>
+								<Label>Valide jusqu&apos;au</Label>
 								<Input
 									type='date'
-									value={dueDate}
-									onChange={(e) => setDueDate(e.target.value)}
+									value={validUntil}
+									onChange={(e) => setValidUntil(e.target.value)}
 								/>
 							</div>
 						</CardContent>
@@ -462,7 +459,7 @@ export function InvoiceCreatePage() {
 														</div>
 													) : (
 														<ul className='divide-y'>
-															{(filteredCustomers as InvoiceCustomer[]).map(
+															{(filteredCustomers as QuoteCustomer[]).map(
 																(customer) => (
 																	<li key={customer.id}>
 																		<button
@@ -686,13 +683,21 @@ export function InvoiceCreatePage() {
 								</div>
 							</div>
 
-							<div className='pt-4'>
+							<div className='space-y-2 pt-4'>
 								<Button
 									className='w-full'
-									onClick={handleSubmit}
-									disabled={createInvoice.isPending}
+									onClick={() => handleSubmit('sent')}
+									disabled={createQuote.isPending}
 								>
-									Créer la facture
+									Créer et envoyer
+								</Button>
+								<Button
+									variant='outline'
+									className='w-full'
+									onClick={() => handleSubmit('draft')}
+									disabled={createQuote.isPending}
+								>
+									Enregistrer en brouillon
 								</Button>
 							</div>
 						</CardContent>

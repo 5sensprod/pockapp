@@ -120,6 +120,50 @@ export interface CreditNoteCreateDto {
 }
 
 // ============================================================================
+// QUOTES (Devis)
+// ============================================================================
+
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected'
+
+export interface QuoteBase {
+	number: string
+	date: string
+	valid_until?: string
+	customer: string
+	owner_company: string
+	status: QuoteStatus
+	items: InvoiceItem[]
+	total_ht: number
+	total_tva: number
+	total_ttc: number
+	currency: string
+	notes?: string
+}
+
+export interface QuoteCreateDto extends QuoteBase {}
+
+export interface QuoteResponse extends QuoteBase {
+	id: string
+	created: string
+	updated: string
+	generated_invoice_id?: string
+	expand?: {
+		customer?: CustomerExpand
+		generated_invoice_id?: InvoiceResponse
+	}
+}
+
+export interface QuotesListOptions {
+	companyId?: string
+	customerId?: string
+	status?: QuoteStatus
+	filter?: string
+	sort?: string
+	page?: number
+	perPage?: number
+}
+
+// ============================================================================
 // CLOSURE (Clôture)
 // ============================================================================
 

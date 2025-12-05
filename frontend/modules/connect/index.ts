@@ -26,6 +26,16 @@ export const manifest: ModuleManifest = {
 					icon: Users,
 				},
 				{
+					label: 'Nouveau devis',
+					to: '/connect/quotes/new',
+					icon: FilePlus2,
+				},
+				{
+					label: 'Devis',
+					to: '/connect/quotes',
+					icon: FileText,
+				},
+				{
 					label: 'Nouvelle facture',
 					to: '/connect/invoices/new',
 					icon: FilePlus2,
@@ -43,3 +53,4 @@ export const manifest: ModuleManifest = {
 export { ConnectPage }
 export { InvoicesPage } from './components/InvoicesPage'
 export { InvoiceCreatePage } from './components/InvoiceCreatePage'
+export { QuotesPage } from './components/QuotesPage' // 👈 ajout
