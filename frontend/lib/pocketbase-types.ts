@@ -1,6 +1,6 @@
 /**
  * This file was @generated using pocketbase-typegen
- * Updated manually to add invoices collection
+ * Updated manually to add invoices collection and ISCA-compliant invoice fields
  */
 
 import type PocketBase from 'pocketbase'
@@ -11,7 +11,7 @@ export enum Collections {
 	Categories = 'categories',
 	Companies = 'companies',
 	Customers = 'customers',
-	Invoices = 'invoices', // ✅ Ajouté
+	Invoices = 'invoices',
 	Notes = 'notes',
 	Products = 'products',
 	Suppliers = 'suppliers',
@@ -23,7 +23,10 @@ export type IsoDateString = string
 export type RecordIdString = string
 export type HTMLString = string
 
-// System fields
+// ============================================================================
+// SYSTEM FIELDS
+// ============================================================================
+
 export type BaseSystemFields<T = never> = {
 	id: RecordIdString
 	created: IsoDateString
@@ -40,8 +43,11 @@ export type AuthSystemFields<T = never> = {
 	verified: boolean
 } & BaseSystemFields<T>
 
-// Record types for each collection
+// ============================================================================
+// RECORD TYPES
+// ============================================================================
 
+// BRANDS
 export type BrandsRecord = {
 	company: RecordIdString
 	description?: string
@@ -50,6 +56,7 @@ export type BrandsRecord = {
 	website?: string
 }
 
+// CATEGORIES
 export type CategoriesRecord = {
 	color?: string
 	company: RecordIdString
@@ -59,6 +66,7 @@ export type CategoriesRecord = {
 	parent?: RecordIdString
 }
 
+// COMPANIES
 export enum CompaniesDefaultPaymentMethodOptions {
 	virement = 'virement',
 	cb = 'cb',
@@ -66,6 +74,7 @@ export enum CompaniesDefaultPaymentMethodOptions {
 	cheque = 'cheque',
 	autre = 'autre',
 }
+
 export type CompaniesRecord = {
 	account_holder?: string
 	active?: boolean
@@ -97,12 +106,14 @@ export type CompaniesRecord = {
 	zip_code?: string
 }
 
+// CUSTOMERS
 export enum CustomersTagsOptions {
 	vip = 'vip',
 	prospect = 'prospect',
 	actif = 'actif',
 	inactif = 'inactif',
 }
+
 export type CustomersRecord = {
 	address?: string
 	avatar?: string
@@ -115,14 +126,25 @@ export type CustomersRecord = {
 	tags?: CustomersTagsOptions[]
 }
 
-// ✅ NOUVEAU - Types pour les factures
+// ============================================================================
+// INVOICES – FACTURES SÉCURISÉES (ISCA)
+// ============================================================================
+
+// Statuts ISCA (plus de "cancelled", on passe par des avoirs)
 export enum InvoicesStatusOptions {
 	draft = 'draft',
+	validated = 'validated',
 	sent = 'sent',
 	paid = 'paid',
-	cancelled = 'cancelled',
 }
 
+// Type de facture : facture normale ou avoir
+export enum InvoicesInvoiceTypeOptions {
+	invoice = 'invoice',
+	credit_note = 'credit_note',
+}
+
+// Méthodes de paiement
 export enum InvoicesPaymentMethodOptions {
 	virement = 'virement',
 	cb = 'cb',
@@ -131,6 +153,7 @@ export enum InvoicesPaymentMethodOptions {
 	autre = 'autre',
 }
 
+// Items de facture (stockés en JSON dans le champ items)
 export type InvoiceItem = {
 	product_id?: string
 	name: string
@@ -141,8 +164,11 @@ export type InvoiceItem = {
 	total_ttc: number
 }
 
+// Record côté PocketBase (doit refléter EXACTEMENT le schéma PB)
 export type InvoicesRecord = {
+	// Base facture
 	number: string
+	invoice_type: InvoicesInvoiceTypeOptions
 	date: IsoDateString
 	due_date?: IsoDateString
 	customer: RecordIdString
@@ -156,13 +182,27 @@ export type InvoicesRecord = {
 	notes?: string
 	payment_method?: InvoicesPaymentMethodOptions
 	paid_at?: IsoDateString
+
+	// Intégrité / ISCA
+	sequence_number: number
+	fiscal_year: number
+	hash: string
+	previous_hash: string
+	is_locked?: boolean
+
+	// Liens éventuels
+	original_invoice_id?: RecordIdString // pour les avoirs
+	closure_id?: RecordIdString // quand la facture est incluse dans une clôture
+	cancellation_reason?: string // si tu l'utilises côté métier
 }
 
+// NOTES
 export type NotesRecord = {
 	content?: string
 	title?: string
 }
 
+// PRODUCTS
 // ✅ Mis à jour pour correspondre au schéma PocketBase réel
 export type ProductsRecord = {
 	active?: boolean
@@ -186,6 +226,7 @@ export type ProductsRecord = {
 	weight?: number
 }
 
+// SUPPLIERS
 export type SuppliersRecord = {
 	active?: boolean
 	address?: string
@@ -198,42 +239,54 @@ export type SuppliersRecord = {
 	phone?: string
 }
 
+// USERS
 export type UsersRecord = {
 	avatar?: string
 	name?: string
 }
 
-// Response types include system fields and match responses from the PocketBase API
+// ============================================================================
+// RESPONSE TYPES (incluent les champs système PocketBase)
+// ============================================================================
+
 export type BrandsResponse<Texpand = unknown> = Required<BrandsRecord> &
 	BaseSystemFields<Texpand>
+
 export type CategoriesResponse<Texpand = unknown> = Required<CategoriesRecord> &
 	BaseSystemFields<Texpand>
+
 export type CompaniesResponse<Texpand = unknown> = Required<CompaniesRecord> &
 	BaseSystemFields<Texpand>
+
 export type CustomersResponse<Texpand = unknown> = Required<CustomersRecord> &
 	BaseSystemFields<Texpand>
 
-// ✅ NOUVEAU - Response type pour les factures
+// Factures complètes (avec hash, séquence, etc.)
 export type InvoicesResponse<Texpand = unknown> = Required<InvoicesRecord> &
 	BaseSystemFields<Texpand>
 
 export type NotesResponse<Texpand = unknown> = Required<NotesRecord> &
 	BaseSystemFields<Texpand>
+
 export type ProductsResponse<Texpand = unknown> = Required<ProductsRecord> &
 	BaseSystemFields<Texpand>
+
 export type SuppliersResponse<Texpand = unknown> = Required<SuppliersRecord> &
 	BaseSystemFields<Texpand>
+
 export type UsersResponse<Texpand = unknown> = Required<UsersRecord> &
 	AuthSystemFields<Texpand>
 
-// Types containing all Records and Responses, useful for creating typing helper functions
+// ============================================================================
+// COLLECTION RECORD/RESPONSE MAPS
+// ============================================================================
 
 export type CollectionRecords = {
 	brands: BrandsRecord
 	categories: CategoriesRecord
 	companies: CompaniesRecord
 	customers: CustomersRecord
-	invoices: InvoicesRecord // ✅ Ajouté
+	invoices: InvoicesRecord
 	notes: NotesRecord
 	products: ProductsRecord
 	suppliers: SuppliersRecord
@@ -245,12 +298,16 @@ export type CollectionResponses = {
 	categories: CategoriesResponse
 	companies: CompaniesResponse
 	customers: CustomersResponse
-	invoices: InvoicesResponse // ✅ Ajouté
+	invoices: InvoicesResponse
 	notes: NotesResponse
 	products: ProductsResponse
 	suppliers: SuppliersResponse
 	users: UsersResponse
 }
+
+// ============================================================================
+// TYPED POCKETBASE CLIENT
+// ============================================================================
 
 // Type for usage with type asserted PocketBase instance
 // https://github.com/pocketbase/js-sdk#specify-typescript-definitions
@@ -260,9 +317,42 @@ export type TypedPocketBase = PocketBase & {
 	collection(idOrName: 'categories'): RecordService<CategoriesResponse>
 	collection(idOrName: 'companies'): RecordService<CompaniesResponse>
 	collection(idOrName: 'customers'): RecordService<CustomersResponse>
-	collection(idOrName: 'invoices'): RecordService<InvoicesResponse> // ✅ Ajouté
+	collection(idOrName: 'invoices'): RecordService<InvoicesResponse>
 	collection(idOrName: 'notes'): RecordService<NotesResponse>
 	collection(idOrName: 'products'): RecordService<ProductsResponse>
 	collection(idOrName: 'suppliers'): RecordService<SuppliersResponse>
 	collection(idOrName: 'users'): RecordService<UsersResponse>
+}
+
+// ============================================================================
+// ALIAS "MÉTIER" PRATIQUES POUR LE RESTE DU FRONT
+// ============================================================================
+
+export type InvoiceType = InvoicesInvoiceTypeOptions // 'invoice' | 'credit_note'
+export type InvoiceStatus = InvoicesStatusOptions // 'draft' | 'validated' | 'sent' | 'paid'
+export type PaymentMethod = InvoicesPaymentMethodOptions
+
+// Transitions de statut autorisées côté métier
+export const ALLOWED_STATUS_TRANSITIONS: Record<
+	InvoiceStatus,
+	InvoiceStatus[]
+> = {
+	draft: [InvoicesStatusOptions.validated],
+	validated: [InvoicesStatusOptions.sent, InvoicesStatusOptions.paid],
+	sent: [InvoicesStatusOptions.paid],
+	paid: [],
+}
+
+export function canTransitionTo(
+	currentStatus: InvoiceStatus,
+	targetStatus: InvoiceStatus,
+): boolean {
+	return (
+		ALLOWED_STATUS_TRANSITIONS[currentStatus]?.includes(targetStatus) ?? false
+	)
+}
+
+// Helpers simples utilisables partout dans le front
+export function isInvoiceLocked(invoice: InvoicesResponse): boolean {
+	return invoice.is_locked || invoice.status !== InvoicesStatusOptions.draft
 }

@@ -35,12 +35,8 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
-import {
-	type InvoiceResponse,
-	useDeleteInvoice,
-	useInvoices,
-	useMarkInvoiceAsPaid,
-} from '@/lib/queries/invoices'
+import { useInvoices } from '@/lib/queries/invoices'
+import type { InvoiceResponse, InvoiceStatus } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { pdf } from '@react-pdf/renderer'
 import { useNavigate } from '@tanstack/react-router'
@@ -52,7 +48,6 @@ import {
 	MoreHorizontal,
 	Plus,
 	Send,
-	Trash2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -63,16 +58,16 @@ import { InvoicePdfDocument } from './InvoicePdf'
 // ============================================================================
 
 const statusConfig: Record<
-	string,
+	InvoiceStatus,
 	{
 		label: string
 		variant: 'default' | 'secondary' | 'destructive' | 'outline'
 	}
 > = {
 	draft: { label: 'Brouillon', variant: 'secondary' },
+	validated: { label: 'Validée', variant: 'outline' },
 	sent: { label: 'Envoyée', variant: 'outline' },
 	paid: { label: 'Payée', variant: 'default' },
-	cancelled: { label: 'Annulée', variant: 'destructive' },
 }
 
 function formatDate(dateStr: string) {
@@ -128,21 +123,20 @@ export function InvoicesPage() {
 	const pb = usePocketBase() as any
 
 	const [searchTerm, setSearchTerm] = useState('')
-	const [statusFilter, setStatusFilter] = useState<string>('all')
-	const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-	const [invoiceToDelete, setInvoiceToDelete] =
-		useState<InvoiceResponse | null>(null)
+	const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all')
+	const [infoDialogOpen, setInfoDialogOpen] = useState(false)
 
 	const [company, setCompany] = useState<CompaniesResponse | null>(null)
 
-	const { data: invoicesData, isLoading } = useInvoices({
+	const {
+		data: invoicesData,
+		isLoading,
+		refetch: refetchInvoices,
+	} = useInvoices({
 		companyId: activeCompanyId ?? undefined,
 		status: statusFilter !== 'all' ? statusFilter : undefined,
 		filter: searchTerm ? `number ~ "${searchTerm}"` : undefined,
 	})
-
-	const deleteInvoice = useDeleteInvoice()
-	const markAsPaid = useMarkInvoiceAsPaid()
 
 	const invoices = (invoicesData?.items ?? []) as InvoiceResponse[]
 
@@ -167,30 +161,24 @@ export function InvoicesPage() {
 			acc.total++
 			acc.totalTTC += inv.total_ttc
 			if (inv.status === 'paid') acc.paid += inv.total_ttc
-			if (inv.status === 'sent') acc.pending += inv.total_ttc
+			if (inv.status === 'validated' || inv.status === 'sent') {
+				acc.pending += inv.total_ttc
+			}
 			return acc
 		},
 		{ total: 0, totalTTC: 0, paid: 0, pending: 0 },
 	)
 
-	const handleDelete = async () => {
-		if (!invoiceToDelete) return
-		try {
-			await deleteInvoice.mutateAsync(invoiceToDelete.id)
-			toast.success(`Facture ${invoiceToDelete.number} supprimée`)
-		} catch (error) {
-			toast.error('Erreur lors de la suppression')
-		} finally {
-			setConfirmDeleteOpen(false)
-			setInvoiceToDelete(null)
-		}
-	}
-
 	const handleMarkAsPaid = async (invoice: InvoiceResponse) => {
 		try {
-			await markAsPaid.mutateAsync({ id: invoice.id })
+			await pb.collection('invoices').update(invoice.id, {
+				status: 'paid',
+				paid_at: new Date().toISOString(),
+			})
 			toast.success(`Facture ${invoice.number} marquée comme payée`)
+			await refetchInvoices()
 		} catch (error) {
+			console.error(error)
 			toast.error('Erreur lors de la mise à jour')
 		}
 	}
@@ -206,13 +194,13 @@ export function InvoicesPage() {
 				const fileUrl = pb.files.getUrl(company, (company as any).logo)
 
 				try {
+					// react-pdf ne supporte pas webp, donc conversion en PNG
 					logoDataUrl = await toPngDataUrl(fileUrl)
 				} catch (err) {
 					console.warn(
 						'Erreur lors de la conversion du logo en PNG pour le PDF',
 						err,
 					)
-					// On continue sans logo si ça échoue
 					logoDataUrl = null
 				}
 			}
@@ -295,16 +283,21 @@ export function InvoicesPage() {
 						onChange={(e) => setSearchTerm(e.target.value)}
 					/>
 				</div>
-				<Select value={statusFilter} onValueChange={setStatusFilter}>
-					<SelectTrigger className='w-[180px]'>
+				<Select
+					value={statusFilter}
+					onValueChange={(value) =>
+						setStatusFilter(value as InvoiceStatus | 'all')
+					}
+				>
+					<SelectTrigger className='w-[220px]'>
 						<SelectValue placeholder='Statut' />
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value='all'>Tous les statuts</SelectItem>
 						<SelectItem value='draft'>Brouillon</SelectItem>
+						<SelectItem value='validated'>Validée</SelectItem>
 						<SelectItem value='sent'>Envoyée</SelectItem>
 						<SelectItem value='paid'>Payée</SelectItem>
-						<SelectItem value='cancelled'>Annulée</SelectItem>
 					</SelectContent>
 				</Select>
 			</div>
@@ -342,7 +335,8 @@ export function InvoicesPage() {
 						<TableBody>
 							{invoices.map((invoice) => {
 								const status =
-									statusConfig[invoice.status] || statusConfig.draft
+									statusConfig[invoice.status as InvoiceStatus] ||
+									statusConfig.draft
 								const customer = invoice.expand?.customer
 
 								return (
@@ -392,7 +386,9 @@ export function InvoicesPage() {
 														Télécharger PDF
 													</DropdownMenuItem>
 													{invoice.status === 'draft' && (
-														<DropdownMenuItem>
+														<DropdownMenuItem
+															onClick={() => setInfoDialogOpen(true)}
+														>
 															<Send className='h-4 w-4 mr-2' />
 															Envoyer
 														</DropdownMenuItem>
@@ -407,14 +403,9 @@ export function InvoicesPage() {
 													)}
 													<DropdownMenuSeparator />
 													<DropdownMenuItem
-														className='text-red-600'
-														onClick={() => {
-															setInvoiceToDelete(invoice)
-															setConfirmDeleteOpen(true)
-														}}
+														onClick={() => setInfoDialogOpen(true)}
 													>
-														<Trash2 className='h-4 w-4 mr-2' />
-														Supprimer
+														Limiter les modifications
 													</DropdownMenuItem>
 												</DropdownMenuContent>
 											</DropdownMenu>
@@ -427,28 +418,17 @@ export function InvoicesPage() {
 				</div>
 			)}
 
-			{/* Dialog de confirmation */}
-			<Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+			{/* Dialog d'info (ex-clôture/suppression) */}
+			<Dialog open={infoDialogOpen} onOpenChange={setInfoDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Supprimer cette facture ?</DialogTitle>
+						<DialogTitle>Action restreinte</DialogTitle>
 						<DialogDescription>
-							{invoiceToDelete
-								? `La facture ${invoiceToDelete.number} sera définitivement supprimée.`
-								: 'Cette action est irréversible.'}
+							Les suppressions directes ou certaines modifications sont
+							désactivées pour respecter la législation. Utilisez les avoirs et
+							les clôtures pour corriger ou annuler des factures.
 						</DialogDescription>
 					</DialogHeader>
-					<div className='flex justify-end gap-2 pt-4'>
-						<Button
-							variant='outline'
-							onClick={() => setConfirmDeleteOpen(false)}
-						>
-							Annuler
-						</Button>
-						<Button variant='destructive' onClick={handleDelete}>
-							Supprimer
-						</Button>
-					</div>
 				</DialogContent>
 			</Dialog>
 		</div>

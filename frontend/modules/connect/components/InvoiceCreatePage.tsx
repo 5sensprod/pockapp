@@ -28,12 +28,12 @@ import type {
 	ProductsResponse,
 } from '@/lib/pocketbase-types'
 import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
-import { type InvoiceItemDto, useCreateInvoice } from '@/lib/queries/invoices'
+import { useCreateInvoice } from '@/lib/queries/invoices'
+import type { InvoiceItem, InvoiceStatus } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	ArrowLeft,
-	Check,
 	ChevronsUpDown,
 	FileText,
 	Minus,
@@ -50,8 +50,9 @@ import { CustomerDialog } from './CustomerDialog'
 // TYPES
 // ============================================================================
 
-interface InvoiceItem extends InvoiceItemDto {
-	id: string // ID temporaire pour la gestion de la liste
+// Item utilisé dans l'UI (on ajoute juste un id temporaire)
+interface UiInvoiceItem extends InvoiceItem {
+	id: string
 }
 
 interface SelectedCustomer {
@@ -84,7 +85,7 @@ export function InvoiceCreatePage() {
 	const [dueDate, setDueDate] = useState('')
 	const [selectedCustomer, setSelectedCustomer] =
 		useState<SelectedCustomer | null>(null)
-	const [items, setItems] = useState<InvoiceItem[]>([])
+	const [items, setItems] = useState<UiInvoiceItem[]>([])
 	const [notes, setNotes] = useState('')
 	const [currency] = useState('EUR')
 
@@ -119,7 +120,7 @@ export function InvoiceCreatePage() {
 		[]) as InvoiceProduct[]
 
 	// Filtrer les clients selon la recherche
-	const filteredCustomers: InvoiceCustomer[] = customers.filter((c) => {
+	const filteredCustomers = customers.filter((c) => {
 		const term = customerSearch.toLowerCase()
 		return (
 			c.name.toLowerCase().includes(term) ||
@@ -133,7 +134,6 @@ export function InvoiceCreatePage() {
 		const connect = async () => {
 			if (isAppPosConnected) return
 
-			// Si on a déjà un token (peut-être obtenu ailleurs)
 			const existingToken = getAppPosToken()
 			if (existingToken) {
 				setIsAppPosConnected(true)
@@ -215,7 +215,7 @@ export function InvoiceCreatePage() {
 		const totalHt = priceHt
 		const totalTtc = totalHt * (1 + tvaRate / 100)
 
-		const newItem: InvoiceItem = {
+		const newItem: UiInvoiceItem = {
 			id: `item-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 			product_id: product.id,
 			name: product.name,
@@ -234,7 +234,7 @@ export function InvoiceCreatePage() {
 	// Modifier la quantité
 	const updateQuantity = (itemId: string, delta: number) => {
 		setItems((prevItems) => {
-			const updated: InvoiceItem[] = []
+			const updated: UiInvoiceItem[] = []
 
 			for (const item of prevItems) {
 				if (item.id === itemId) {
@@ -287,7 +287,7 @@ export function InvoiceCreatePage() {
 	}
 
 	// Soumettre la facture
-	const handleSubmit = async (status: 'draft' | 'sent' = 'draft') => {
+	const handleSubmit = async (status: InvoiceStatus = 'draft') => {
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
 			return
@@ -302,10 +302,12 @@ export function InvoiceCreatePage() {
 		}
 
 		try {
-			const invoiceItems = items.map(({ id, ...item }) => item)
+			// On enlève juste l'id temporaire
+			const invoiceItems: InvoiceItem[] = items.map(({ id, ...item }) => item)
 
 			await createInvoice.mutateAsync({
 				number: invoiceNumber,
+				invoice_type: 'invoice', // ✅ important pour le backend
 				date: invoiceDate,
 				due_date: dueDate || undefined,
 				customer: selectedCustomer.id,
@@ -464,40 +466,43 @@ export function InvoiceCreatePage() {
 														</div>
 													) : (
 														<ul className='divide-y'>
-															{filteredCustomers.map((customer) => (
-																<li key={customer.id}>
-																	<button
-																		type='button'
-																		className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
-																		onClick={() => {
-																			setSelectedCustomer({
-																				id: customer.id,
-																				name: customer.name,
-																				email: customer.email,
-																				phone: customer.phone,
-																				address: customer.address,
-																				company: customer.company,
-																			})
-																			setCustomerPickerOpen(false)
-																		}}
-																	>
-																		<div>
-																			<p className='font-medium'>
-																				{customer.name}
-																			</p>
-																			{customer.email && (
-																				<p className='text-xs text-muted-foreground'>
-																					{customer.email}
+															{(filteredCustomers as InvoiceCustomer[]).map(
+																(customer) => (
+																	<li key={customer.id}>
+																		<button
+																			type='button'
+																			className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
+																			onClick={() => {
+																				setSelectedCustomer({
+																					id: customer.id,
+																					name: customer.name,
+																					email: customer.email,
+																					phone: customer.phone,
+																					address: customer.address,
+																					company: customer.company,
+																				})
+																				setCustomerPickerOpen(false)
+																			}}
+																		>
+																			<div>
+																				<p className='font-medium'>
+																					{customer.name}
 																				</p>
-																			)}
-																		</div>
-																		{(selectedCustomer as any)?.id ===
-																			(customer as any).id && (
-																			<Check className='h-4 w-4' />
-																		)}
-																	</button>
-																</li>
-															))}
+																				{customer.email && (
+																					<p className='text-xs text-muted-foreground'>
+																						{customer.email}
+																					</p>
+																				)}
+																			</div>
+																			{/* Optionnel : coche si sélectionné */}
+																			{/* {selectedCustomer &&
+																				selectedCustomer.id === customer.id && (
+																					<Check className='h-4 w-4' />
+																				)} */}
+																		</button>
+																	</li>
+																),
+															)}
 														</ul>
 													)}
 												</div>
@@ -693,7 +698,7 @@ export function InvoiceCreatePage() {
 							<div className='space-y-2 pt-4'>
 								<Button
 									className='w-full'
-									onClick={() => handleSubmit('sent')}
+									onClick={() => handleSubmit('validated')}
 									disabled={createInvoice.isPending}
 								>
 									Créer la facture

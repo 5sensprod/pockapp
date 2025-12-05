@@ -4,7 +4,7 @@ import type {
 	CompaniesResponse,
 	CustomersResponse,
 } from '@/lib/pocketbase-types'
-import type { InvoiceResponse } from '@/lib/queries/invoices'
+import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import {
 	Document,
 	Image,

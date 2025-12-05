@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"pocket-react/backend"
+	"pocket-react/backend/hooks"
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
@@ -42,13 +43,19 @@ func initLogging(baseDir string) {
 }
 
 func main() {
+	// On se place dans le dossier de l'exécutable
 	exe, _ := os.Executable()
 	baseDir := filepath.Dir(exe)
-	os.Chdir(baseDir)
+	_ = os.Chdir(baseDir)
 
 	initLogging(baseDir)
 
+	// Répertoire de données PocketBase (dans %LOCALAPPDATA%/PocketReact/pb_data)
 	appDataDir := os.Getenv("LOCALAPPDATA")
+	if appDataDir == "" {
+		// fallback simple pour éviter un chemin vide sur d'autres OS
+		appDataDir = "."
+	}
 	dataDir := filepath.Join(appDataDir, "PocketReact", "pb_data")
 	log.Println("Data dir:", dataDir)
 
@@ -56,20 +63,29 @@ func main() {
 		log.Println("MkdirAll error:", err)
 	}
 
+	// Instance PocketBase
 	pb := pocketbase.NewWithConfig(pocketbase.Config{
 		DefaultDataDir: dataDir,
 	})
 
+	// Enregistre les hooks personnalisés sur PocketBase
+	hooks.RegisterAllHooks(pb)
+
+	// Wrapper Wails qui utilise pb
 	app := NewApp(pb)
 
-	// Passe les assets embarqués
+	// Lance PocketBase (bootstrap + migrations + routes + HTTP) dans une goroutine
 	go startPocketBaseNoCobra(pb, assets)
+
+	// Attend que l'API PocketBase réponde sur /api/health
 	waitForPocketBase()
 
+	// mDNS pour découvrir l'app sur le réseau local (optionnel)
 	if err := backend.StartMDNS(appPort, serviceName); err != nil {
 		log.Println("mDNS error:", err)
 	}
 
+	// Lancement de l'UI Wails
 	wails.Run(&options.App{
 		Title:  "Pocket App",
 		Width:  1280,
@@ -100,13 +116,13 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 	}
 	log.Println("Bootstrap OK, DataDir:", pb.DataDir())
 
-	// 🆕 Exécuter les migrations pour créer les collections
+	// Exécuter les migrations pour créer les collections
 	if err := backend.RunMigrations(pb); err != nil {
 		log.Println("Migrations ERROR:", err)
 		// On continue quand même, l'erreur n'est pas fatale
 	}
 
-	// Extrais le sous-dossier "dist" de l'embed
+	// Extraire le sous-dossier "dist" de l'embed
 	distFS, err := fs.Sub(embeddedAssets, "dist")
 	if err != nil {
 		log.Println("fs.Sub error:", err)
@@ -179,7 +195,8 @@ func StaticSPAHandler(fsys fs.FS) echo.HandlerFunc {
 
 func waitForPocketBase() {
 	for i := 0; i < 50; i++ {
-		if resp, err := http.Get("http://127.0.0.1:8090/api/health"); err == nil {
+		resp, err := http.Get("http://127.0.0.1:8090/api/health")
+		if err == nil {
 			resp.Body.Close()
 			log.Println("PocketBase ready!")
 			return
