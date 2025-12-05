@@ -1,5 +1,6 @@
 // frontend/lib/types/invoice.types.ts
-// Types pour le système de facturation conforme ISCA
+// Types pour le système de facturation conforme ISCA v2
+// NOUVEAU: is_paid est séparé du statut
 
 // ============================================================================
 // ENUMS
@@ -7,8 +8,8 @@
 
 export type InvoiceType = 'invoice' | 'credit_note'
 
-// IMPORTANT: 'cancelled' a été supprimé - on utilise les avoirs maintenant
-export type InvoiceStatus = 'draft' | 'validated' | 'sent' | 'paid'
+// NOUVEAU: Le statut ne contient plus "paid" - c'est un champ séparé
+export type InvoiceStatus = 'draft' | 'validated' | 'sent'
 
 export type PaymentMethod = 'virement' | 'cb' | 'especes' | 'cheque' | 'autre'
 
@@ -57,19 +58,24 @@ export interface InvoiceBase {
 	customer: string
 	owner_company: string
 	status: InvoiceStatus
+	// NOUVEAU: Paiement séparé
+	is_paid: boolean
+	paid_at?: string
+	payment_method?: PaymentMethod
+	// Contenu
 	items: InvoiceItem[]
 	total_ht: number
 	total_tva: number
 	total_ttc: number
 	currency: string
 	notes?: string
-	payment_method?: PaymentMethod
-	paid_at?: string
 }
 
-// Pour la création (les champs hash/sequence sont générés par le backend)
-export interface InvoiceCreateDto extends Omit<InvoiceBase, 'invoice_type'> {
-	invoice_type?: 'invoice' // Par défaut
+// Pour la création (hash/sequence générés par le backend)
+export interface InvoiceCreateDto
+	extends Omit<InvoiceBase, 'invoice_type' | 'is_paid'> {
+	invoice_type?: 'invoice'
+	is_paid?: boolean
 }
 
 // Réponse complète avec champs système et intégrité
@@ -110,9 +116,7 @@ export interface CreditNoteCreateDto {
 	original_invoice_id: string
 	reason: CreditNoteReason
 	reason_details: string
-	// Si correction partielle, on peut spécifier les items
 	items?: InvoiceItem[]
-	// Sinon, on reprend automatiquement les items de la facture d'origine (inversés)
 }
 
 // ============================================================================
@@ -189,6 +193,7 @@ export interface InvoicesListOptions {
 	status?: InvoiceStatus
 	invoiceType?: InvoiceType
 	fiscalYear?: number
+	isPaid?: boolean // NOUVEAU
 	filter?: string
 	sort?: string
 	page?: number
@@ -215,7 +220,7 @@ export interface AuditLogsListOptions {
 }
 
 // ============================================================================
-// TRANSITIONS DE STATUT AUTORISÉES
+// TRANSITIONS DE STATUT AUTORISÉES (workflow d'envoi uniquement)
 // ============================================================================
 
 export const ALLOWED_STATUS_TRANSITIONS: Record<
@@ -223,9 +228,8 @@ export const ALLOWED_STATUS_TRANSITIONS: Record<
 	InvoiceStatus[]
 > = {
 	draft: ['validated'],
-	validated: ['sent', 'paid'],
-	sent: ['paid'],
-	paid: [], // Terminal
+	validated: ['sent'],
+	sent: [], // Terminal pour le workflow
 }
 
 export function canTransitionTo(
@@ -250,9 +254,21 @@ export function canEditInvoice(invoice: InvoiceResponse): boolean {
 }
 
 export function canCancelInvoice(invoice: InvoiceResponse): boolean {
-	// On peut créer un avoir pour annuler une facture validée/envoyée/payée
+	// On peut créer un avoir pour annuler une facture validée/envoyée
 	// mais pas pour un brouillon (on peut juste le modifier)
 	return invoice.invoice_type === 'invoice' && invoice.status !== 'draft'
+}
+
+export function canMarkAsPaid(invoice: InvoiceResponse): boolean {
+	// On peut marquer comme payée si:
+	// - C'est une facture (pas un avoir)
+	// - Elle n'est pas déjà payée
+	// - Elle n'est pas en brouillon
+	return (
+		invoice.invoice_type === 'invoice' &&
+		!invoice.is_paid &&
+		invoice.status !== 'draft'
+	)
 }
 
 export function getInvoiceTypeLabel(type: InvoiceType): string {
@@ -264,7 +280,6 @@ export function getStatusLabel(status: InvoiceStatus): string {
 		draft: 'Brouillon',
 		validated: 'Validée',
 		sent: 'Envoyée',
-		paid: 'Payée',
 	}
 	return labels[status]
 }
@@ -274,7 +289,52 @@ export function getStatusColor(status: InvoiceStatus): string {
 		draft: 'bg-gray-100 text-gray-800',
 		validated: 'bg-blue-100 text-blue-800',
 		sent: 'bg-amber-100 text-amber-800',
-		paid: 'bg-green-100 text-green-800',
 	}
 	return colors[status]
+}
+
+// NOUVEAU: Helper pour afficher le statut combiné (workflow + paiement)
+export function getDisplayStatus(invoice: InvoiceResponse): {
+	label: string
+	variant: 'default' | 'secondary' | 'destructive' | 'outline'
+	isPaid: boolean
+} {
+	if (invoice.invoice_type === 'credit_note') {
+		return { label: 'Avoir', variant: 'destructive', isPaid: false }
+	}
+
+	if (invoice.is_paid) {
+		return { label: 'Payée', variant: 'default', isPaid: true }
+	}
+
+	const statusConfig: Record<
+		InvoiceStatus,
+		{
+			label: string
+			variant: 'default' | 'secondary' | 'destructive' | 'outline'
+		}
+	> = {
+		draft: { label: 'Brouillon', variant: 'secondary' },
+		validated: { label: 'Validée', variant: 'outline' },
+		sent: { label: 'Envoyée', variant: 'outline' },
+	}
+
+	return { ...statusConfig[invoice.status], isPaid: false }
+}
+
+// NOUVEAU: Vérifier si une facture est en retard de paiement
+export function isOverdue(invoice: InvoiceResponse): boolean {
+	if (invoice.is_paid || invoice.status === 'draft') {
+		return false
+	}
+
+	if (!invoice.due_date) {
+		return false
+	}
+
+	const dueDate = new Date(invoice.due_date)
+	const today = new Date()
+	today.setHours(0, 0, 0, 0)
+
+	return dueDate < today
 }

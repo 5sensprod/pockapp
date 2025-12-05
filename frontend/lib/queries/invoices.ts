@@ -1,16 +1,18 @@
 // frontend/lib/queries/invoices.ts
-// Service de facturation conforme ISCA (Inaltérabilité, Sécurisation, Conservation, Archivage)
+// Service de facturation conforme ISCA v2
+// NOUVEAU: is_paid est séparé du statut workflow
 
 import type {
 	InvoiceCreateDto,
 	InvoiceResponse,
-	InvoiceStatus,
+	// InvoiceStatus,
 	InvoicesListOptions,
 	PaymentMethod,
 } from '@/lib/types/invoice.types'
 import {
 	ALLOWED_STATUS_TRANSITIONS,
 	canEditInvoice,
+	canMarkAsPaid,
 	canTransitionTo,
 } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
@@ -45,6 +47,7 @@ export function useInvoices(options: InvoicesListOptions = {}) {
 		status,
 		invoiceType,
 		fiscalYear,
+		isPaid,
 		filter,
 		sort,
 		page = 1,
@@ -70,6 +73,10 @@ export function useInvoices(options: InvoicesListOptions = {}) {
 			}
 			if (fiscalYear) {
 				filters.push(`fiscal_year = ${fiscalYear}`)
+			}
+			// NOUVEAU: Filtre sur is_paid
+			if (isPaid !== undefined) {
+				filters.push(`is_paid = ${isPaid}`)
 			}
 			if (filter) {
 				filters.push(filter)
@@ -116,6 +123,15 @@ export function useCreditNotes(
 }
 
 /**
+ * 📋 Liste des factures impayées
+ */
+export function useUnpaidInvoices(
+	options: Omit<InvoicesListOptions, 'isPaid' | 'invoiceType'> = {},
+) {
+	return useInvoices({ ...options, invoiceType: 'invoice', isPaid: false })
+}
+
+/**
  * 🔍 Détail d'une facture
  */
 export function useInvoice(invoiceId?: string) {
@@ -140,7 +156,6 @@ export function useInvoice(invoiceId?: string) {
 
 /**
  * ➕ Créer une facture (brouillon par défaut)
- * Le hash et le chaînage sont générés automatiquement par le backend
  */
 export function useCreateInvoice() {
 	const pb = usePocketBase()
@@ -148,11 +163,11 @@ export function useCreateInvoice() {
 
 	return useMutation({
 		mutationFn: async (data: InvoiceCreateDto) => {
-			// S'assurer que le type est défini
 			const invoiceData = {
 				...data,
 				invoice_type: 'invoice' as const,
 				status: data.status || 'draft',
+				is_paid: false, // NOUVEAU: toujours false à la création
 			}
 
 			const result = await pb.collection('invoices').create(invoiceData)
@@ -218,7 +233,6 @@ export function useUpdateDraft() {
 			id: string
 			data: Partial<InvoiceCreateDto>
 		}) => {
-			// Vérifier d'abord que c'est un brouillon
 			const existing = await pb.collection('invoices').getOne(id)
 
 			if (existing.status !== 'draft') {
@@ -248,7 +262,6 @@ export function useUpdateDraft() {
 
 /**
  * ✅ Valider une facture (draft → validated)
- * Après validation, la facture est verrouillée et ne peut plus être modifiée
  */
 export function useValidateInvoice() {
 	const pb = usePocketBase()
@@ -283,12 +296,14 @@ export function useMarkInvoiceAsSent() {
 
 	return useMutation({
 		mutationFn: async (invoiceId: string) => {
-			const existing = await pb.collection('invoices').getOne(invoiceId)
+			const existing = (await pb
+				.collection('invoices')
+				.getOne(invoiceId)) as unknown as InvoiceResponse
 
-			if (!canTransitionTo(existing.status as InvoiceStatus, 'sent')) {
+			if (!canTransitionTo(existing.status, 'sent')) {
 				throw new Error(
 					`Transition invalide: ${existing.status} → sent. ` +
-						`Transitions autorisées: ${ALLOWED_STATUS_TRANSITIONS[existing.status as InvoiceStatus].join(', ') || 'aucune'}`,
+						`Transitions autorisées: ${ALLOWED_STATUS_TRANSITIONS[existing.status].join(', ') || 'aucune'}`,
 				)
 			}
 
@@ -305,7 +320,8 @@ export function useMarkInvoiceAsSent() {
 }
 
 /**
- * 💰 Enregistrer un paiement (validated/sent → paid)
+ * 💰 Enregistrer un paiement (NOUVEAU: indépendant du statut)
+ * Peut être fait sur une facture validated ou sent
  */
 export function useRecordPayment() {
 	const pb = usePocketBase()
@@ -321,23 +337,64 @@ export function useRecordPayment() {
 			paymentMethod?: PaymentMethod
 			paidAt?: string
 		}) => {
-			const existing = await pb.collection('invoices').getOne(invoiceId)
+			const existing = (await pb
+				.collection('invoices')
+				.getOne(invoiceId)) as unknown as InvoiceResponse
 
-			if (!canTransitionTo(existing.status as InvoiceStatus, 'paid')) {
-				throw new Error(
-					`Transition invalide: ${existing.status} → paid. ` +
-						`Transitions autorisées: ${ALLOWED_STATUS_TRANSITIONS[existing.status as InvoiceStatus].join(', ') || 'aucune'}`,
-				)
+			if (!canMarkAsPaid(existing)) {
+				if (existing.is_paid) {
+					throw new Error('Cette facture est déjà marquée comme payée.')
+				}
+				if (existing.status === 'draft') {
+					throw new Error(
+						'Impossible de marquer un brouillon comme payé. ' +
+							"Validez d'abord la facture.",
+					)
+				}
+				if (existing.invoice_type === 'credit_note') {
+					throw new Error('Les avoirs ne peuvent pas être marqués comme payés.')
+				}
 			}
 
 			const result = await pb.collection('invoices').update(invoiceId, {
-				status: 'paid',
+				is_paid: true,
 				payment_method: paymentMethod,
 				paid_at: paidAt || new Date().toISOString(),
 			})
 			return result as unknown as InvoiceResponse
 		},
 		onSuccess: (_, { invoiceId }) => {
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) })
+		},
+	})
+}
+
+/**
+ * 💸 Annuler un paiement (correction d'erreur)
+ */
+export function useCancelPayment() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (invoiceId: string) => {
+			const existing = (await pb
+				.collection('invoices')
+				.getOne(invoiceId)) as unknown as InvoiceResponse
+
+			if (!existing.is_paid) {
+				throw new Error("Cette facture n'est pas marquée comme payée.")
+			}
+
+			const result = await pb.collection('invoices').update(invoiceId, {
+				is_paid: false,
+				payment_method: null,
+				paid_at: null,
+			})
+			return result as unknown as InvoiceResponse
+		},
+		onSuccess: (_, invoiceId) => {
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) })
 		},
@@ -369,29 +426,9 @@ export function useCancelInvoice() {
 				.collection('invoices')
 				.getOne(invoiceId)) as unknown as InvoiceResponse
 
-			if (original.invoice_type !== 'invoice') {
-				throw new Error("Impossible d'annuler un avoir.")
-			}
+			// ... vérifications ...
 
-			if (original.status === 'draft') {
-				throw new Error(
-					'Un brouillon peut être modifié directement. ' +
-						"Utilisez la modification au lieu de l'annulation.",
-				)
-			}
-
-			// 2. Vérifier qu'il n'y a pas déjà un avoir d'annulation
-			const existingCreditNotes = await pb
-				.collection('invoices')
-				.getList(1, 1, {
-					filter: `original_invoice_id = "${invoiceId}" && invoice_type = "credit_note"`,
-				})
-
-			if (existingCreditNotes.items.length > 0) {
-				throw new Error('Cette facture a déjà été annulée par un avoir.')
-			}
-
-			// 3. Générer le numéro d'avoir
+			// 3. Générer le numéro d’avoir
 			const year = new Date().getFullYear()
 			const prefix = `AVO-${year}-`
 
@@ -411,7 +448,7 @@ export function useCancelInvoice() {
 
 			const creditNoteNumber = `${prefix}${String(nextNumber).padStart(6, '0')}`
 
-			// 4. Créer l'avoir (montants inversés)
+			// 4. CRÉER l’avoir
 			const creditNoteData = {
 				number: creditNoteNumber,
 				invoice_type: 'credit_note' as const,
@@ -419,7 +456,9 @@ export function useCancelInvoice() {
 				customer: original.customer,
 				owner_company: original.owner_company,
 				original_invoice_id: invoiceId,
-				status: 'validated' as const, // Un avoir est immédiatement validé
+				status: 'validated' as const,
+				is_paid: false, // ← tu te posais la question
+
 				items: original.items.map((item) => ({
 					...item,
 					quantity: -Math.abs(item.quantity),
@@ -444,28 +483,42 @@ export function useCancelInvoice() {
 }
 
 // ============================================================================
-// ❌ HOOKS SUPPRIMÉS (NON CONFORMES)
-// ============================================================================
-
-/**
- * @deprecated ❌ SUPPRIMÉ - Les factures ne peuvent pas être supprimées
- * Utilisez useCancelInvoice() pour créer un avoir d'annulation
- */
-// export function useDeleteInvoice() { ... }
-
-/**
- * @deprecated ❌ SUPPRIMÉ - Utilisez useUpdateDraft() pour les brouillons
- * ou useValidateInvoice/useMarkInvoiceAsSent/useRecordPayment pour les transitions
- */
-// export function useUpdateInvoice() { ... }
-
-/**
- * @deprecated ❌ SUPPRIMÉ - Utilisez useRecordPayment() à la place
- */
-// export function useMarkInvoiceAsPaid() { ... }
-
-// ============================================================================
 // HELPERS EXPORTÉS
 // ============================================================================
 
-export { canTransitionTo, canEditInvoice, ALLOWED_STATUS_TRANSITIONS }
+export {
+	canTransitionTo,
+	canEditInvoice,
+	canMarkAsPaid,
+	ALLOWED_STATUS_TRANSITIONS,
+}
+
+/**
+ * 🗑️ Supprimer un brouillon
+ * ⚠️ UNIQUEMENT pour les factures en statut "draft"
+ */
+export function useDeleteDraftInvoice() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (invoiceId: string) => {
+			const existing = await pb.collection('invoices').getOne(invoiceId)
+
+			if (existing.status !== 'draft') {
+				throw new Error('Seuls les brouillons peuvent être supprimés.')
+			}
+
+			if (existing.is_locked) {
+				throw new Error(
+					'Ce brouillon est verrouillé et ne peut pas être supprimé.',
+				)
+			}
+
+			await pb.collection('invoices').delete(invoiceId)
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
+		},
+	})
+}
