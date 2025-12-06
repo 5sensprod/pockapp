@@ -330,14 +330,18 @@ export function Header({
 
 								<DropdownMenuSeparator />
 
-								<DropdownMenuItem>
-									<User className='h-4 w-4 mr-2' />
-									Mon compte
+								<DropdownMenuItem asChild>
+									<Link to='/settings'>
+										<User className='h-4 w-4 mr-2' />
+										Mon compte
+									</Link>
 								</DropdownMenuItem>
 
-								<DropdownMenuItem>
-									<Settings className='h-4 w-4 mr-2' />
-									Paramètres
+								<DropdownMenuItem asChild>
+									<Link to='/settings'>
+										<Settings className='h-4 w-4 mr-2' />
+										Paramètres
+									</Link>
 								</DropdownMenuItem>
 
 								<DropdownMenuSeparator />

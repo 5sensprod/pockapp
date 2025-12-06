@@ -16,8 +16,10 @@ import { Route as StockIndexRouteImport } from './routes/stock/index'
 import { Route as StockAppposIndexRouteImport } from './routes/stock-apppos/index'
 import { Route as StickIndexRouteImport } from './routes/stick/index'
 import { Route as StatsIndexRouteImport } from './routes/stats/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as ConnectIndexRouteImport } from './routes/connect/index'
 import { Route as CashIndexRouteImport } from './routes/cash/index'
+import { Route as SettingsSmtpRouteImport } from './routes/settings/smtp'
 import { Route as ConnectQuotesIndexRouteImport } from './routes/connect/quotes/index'
 import { Route as ConnectInvoicesIndexRouteImport } from './routes/connect/invoices/index'
 import { Route as ConnectCustomersIndexRouteImport } from './routes/connect/customers/index'
@@ -65,6 +67,11 @@ const StatsIndexRoute = StatsIndexRouteImport.update({
   path: '/stats/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConnectIndexRoute = ConnectIndexRouteImport.update({
   id: '/connect/',
   path: '/connect/',
@@ -73,6 +80,11 @@ const ConnectIndexRoute = ConnectIndexRouteImport.update({
 const CashIndexRoute = CashIndexRouteImport.update({
   id: '/cash/',
   path: '/cash/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsSmtpRoute = SettingsSmtpRouteImport.update({
+  id: '/settings/smtp',
+  path: '/settings/smtp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectQuotesIndexRoute = ConnectQuotesIndexRouteImport.update({
@@ -140,8 +152,10 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/settings/smtp': typeof SettingsSmtpRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
+  '/settings': typeof SettingsIndexRoute
   '/stats': typeof StatsIndexRoute
   '/stick': typeof StickIndexRoute
   '/stock-apppos': typeof StockAppposIndexRoute
@@ -162,8 +176,10 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/settings/smtp': typeof SettingsSmtpRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
+  '/settings': typeof SettingsIndexRoute
   '/stats': typeof StatsIndexRoute
   '/stick': typeof StickIndexRoute
   '/stock-apppos': typeof StockAppposIndexRoute
@@ -185,8 +201,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/settings/smtp': typeof SettingsSmtpRoute
   '/cash/': typeof CashIndexRoute
   '/connect/': typeof ConnectIndexRoute
+  '/settings/': typeof SettingsIndexRoute
   '/stats/': typeof StatsIndexRoute
   '/stick/': typeof StickIndexRoute
   '/stock-apppos/': typeof StockAppposIndexRoute
@@ -209,8 +227,10 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/settings/smtp'
     | '/cash'
     | '/connect'
+    | '/settings'
     | '/stats'
     | '/stick'
     | '/stock-apppos'
@@ -231,8 +251,10 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/settings/smtp'
     | '/cash'
     | '/connect'
+    | '/settings'
     | '/stats'
     | '/stick'
     | '/stock-apppos'
@@ -253,8 +275,10 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/settings/smtp'
     | '/cash/'
     | '/connect/'
+    | '/settings/'
     | '/stats/'
     | '/stick/'
     | '/stock-apppos/'
@@ -276,8 +300,10 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRoute
+  SettingsSmtpRoute: typeof SettingsSmtpRoute
   CashIndexRoute: typeof CashIndexRoute
   ConnectIndexRoute: typeof ConnectIndexRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
   StatsIndexRoute: typeof StatsIndexRoute
   StickIndexRoute: typeof StickIndexRoute
   StockAppposIndexRoute: typeof StockAppposIndexRoute
@@ -346,6 +372,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/connect/': {
       id: '/connect/'
       path: '/connect'
@@ -358,6 +391,13 @@ declare module '@tanstack/react-router' {
       path: '/cash'
       fullPath: '/cash'
       preLoaderRoute: typeof CashIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/smtp': {
+      id: '/settings/smtp'
+      path: '/settings/smtp'
+      fullPath: '/settings/smtp'
+      preLoaderRoute: typeof SettingsSmtpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connect/quotes/': {
@@ -444,8 +484,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   SetupRoute: SetupRoute,
+  SettingsSmtpRoute: SettingsSmtpRoute,
   CashIndexRoute: CashIndexRoute,
   ConnectIndexRoute: ConnectIndexRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
   StatsIndexRoute: StatsIndexRoute,
   StickIndexRoute: StickIndexRoute,
   StockAppposIndexRoute: StockAppposIndexRoute,
