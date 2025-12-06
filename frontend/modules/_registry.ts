@@ -39,6 +39,8 @@ export interface ModuleManifest {
 	// pour la monétisation plus tard
 	paid?: boolean
 	plan?: 'free' | 'pro' | 'enterprise'
+	// 🆕 module utilisable uniquement si une entreprise est sélectionnée
+	requiresCompany?: boolean
 }
 
 // Import auto de tous les manifests des modules

@@ -16,6 +16,7 @@ export const manifest: ModuleManifest = {
 	iconColor: 'text-blue-600',
 	enabled: true,
 	minVersion: '1.0.0',
+	requiresCompany: true,
 	paid: true,
 	plan: 'pro',
 }

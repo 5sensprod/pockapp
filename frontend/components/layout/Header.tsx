@@ -9,7 +9,7 @@ import {
 	User,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,6 +25,7 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
+import { toast } from 'sonner'
 import { CompanyDialog } from './CompanyDialog'
 
 type Notification = {
@@ -97,6 +98,28 @@ export function Header({
 			setEditingCompanyId(null)
 		}
 	}
+
+	// 🆕 Première visite sur l'accueil sans entreprise :
+	// on ouvre automatiquement la création d'entreprise + toast explicatif.
+	useEffect(() => {
+		if (!isHomePage) return
+
+		// Pas encore de données entreprises → on attend
+		if (!companies) return
+
+		// Si au moins une entreprise existe, on ne force rien
+		if (companies.length > 0) return
+
+		// Ne pas harceler l'utilisateur à chaque refresh : une seule fois par navigateur
+		const alreadyShown = localStorage.getItem('company_setup_prompt_shown')
+		if (alreadyShown === '1') return
+
+		setIsCompanyDialogOpen(true)
+		toast.info(
+			'Commence par créer ton entreprise pour pouvoir utiliser les modules (clients, produits, etc.).',
+		)
+		localStorage.setItem('company_setup_prompt_shown', '1')
+	}, [isHomePage, companies])
 
 	return (
 		<>

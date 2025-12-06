@@ -2,10 +2,12 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Footer, Header, Sidebar } from '@/components/layout'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useSetupCheck } from '@/lib/hooks/useSetupCheck'
 import { poles } from '@/modules/_registry'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
+import { toast } from 'sonner'
 
 type Notification = {
 	id: number
@@ -49,7 +51,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const isHomePage = pathname === '/'
 	const hasSidebar = !!currentModule?.sidebarMenu?.length
 
-	// Redirections avec gestion du setup
+	// Contexte entreprise active
+	const { activeCompanyId, companies } = useActiveCompany()
+
+	// Redirections avec gestion du setup + auth
 	useEffect(() => {
 		if (setupLoading) return
 
@@ -72,6 +77,37 @@ export function Layout({ children }: { children: React.ReactNode }) {
 			}
 		}
 	}, [isAuthenticated, pathname, navigate, needsSetup, setupLoading])
+
+	// 🚫 Bloque l'accès aux modules qui nécessitent une entreprise
+	useEffect(() => {
+		// Si on est en setup ou non connecté → on ne fait rien ici
+		if (setupLoading || needsSetup || !isAuthenticated) return
+
+		// Pas de module correspondant au path actuel → rien à faire
+		if (!currentModule) return
+
+		// Le module courant ne nécessite pas d'entreprise
+		if (!currentModule.requiresCompany) return
+
+		// On considère qu'il n'y a pas d'entreprise sélectionnable
+		const noCompany = !companies || companies.length === 0 || !activeCompanyId
+
+		if (noCompany && pathname !== '/') {
+			toast.error(
+				'Tu dois d’abord créer une entreprise avant d’accéder à ce module (clients, produits, etc.).',
+			)
+			navigate({ to: '/' })
+		}
+	}, [
+		activeCompanyId,
+		companies,
+		currentModule,
+		isAuthenticated,
+		navigate,
+		pathname,
+		needsSetup,
+		setupLoading,
+	])
 
 	// Sur /setup → pas de layout global
 	if (pathname === '/setup') {

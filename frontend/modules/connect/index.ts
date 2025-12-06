@@ -14,6 +14,7 @@ export const manifest: ModuleManifest = {
 	color: 'text-blue-600',
 	enabled: true,
 	minVersion: '1.0.0',
+	requiresCompany: true,
 
 	// 👉 chaque entrée du tableau = item de la première bande de menu
 	sidebarMenu: [
