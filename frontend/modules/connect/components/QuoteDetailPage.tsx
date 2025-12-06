@@ -332,6 +332,7 @@ export function QuoteDetailPage() {
 							</TableHeader>
 							<TableBody>
 								{quote.items.map((item, index) => (
+									// biome-ignore lint/suspicious/noArrayIndexKey: la liste est statique dans le détail du devis
 									<TableRow key={index}>
 										<TableCell className='font-medium'>{item.name}</TableCell>
 										<TableCell className='text-right'>
