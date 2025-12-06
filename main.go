@@ -177,6 +177,8 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		// 📧 Route envoi email devis
 		backend.RegisterQuoteEmailRoutes(pb, e.Router)
 
+		backend.RegisterInvoiceEmailRoutes(pb, e.Router)
+
 		// SPA handler avec assets embarqués (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 

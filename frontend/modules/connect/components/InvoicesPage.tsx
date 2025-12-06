@@ -68,6 +68,7 @@ import {
 	Download,
 	Eye,
 	FileText,
+	Mail,
 	MoreHorizontal,
 	Plus,
 	Send,
@@ -76,6 +77,7 @@ import {
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { InvoicePdfDocument } from './InvoicePdf'
+import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
 
 // ============================================================================
 // HELPERS
@@ -150,6 +152,11 @@ export function InvoicesPage() {
 	const [invoiceToCancel, setInvoiceToCancel] =
 		useState<InvoiceResponse | null>(null)
 	const [cancelReason, setCancelReason] = useState('')
+
+	const [sendEmailDialogOpen, setSendEmailDialogOpen] = useState(false)
+	const [invoiceToEmail, setInvoiceToEmail] = useState<InvoiceResponse | null>(
+		null,
+	)
 
 	const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
 	const [invoiceToPay, setInvoiceToPay] = useState<InvoiceResponse | null>(null)
@@ -270,6 +277,11 @@ export function InvoicesPage() {
 		}) ?? false
 
 	// === HANDLERS ===
+
+	const handleOpenSendEmailDialog = (invoice: InvoiceResponse) => {
+		setInvoiceToEmail(invoice)
+		setSendEmailDialogOpen(true)
+	}
 
 	const handleOpenViewDialog = (invoice: InvoiceResponse) => {
 		setInvoiceToView(invoice)
@@ -723,6 +735,14 @@ export function InvoicesPage() {
 														Télécharger PDF
 													</DropdownMenuItem>
 
+													<DropdownMenuItem
+														onClick={() => handleOpenSendEmailDialog(invoice)}
+														disabled={invoice.status === 'draft'}
+													>
+														<Mail className='h-4 w-4 mr-2' />
+														Envoyer par email
+													</DropdownMenuItem>
+
 													<DropdownMenuSeparator />
 
 													{/* Actions spécifiques aux brouillons */}
@@ -1157,6 +1177,16 @@ export function InvoicesPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			{/* Dialog: Envoyer la facture par email */}
+			<SendInvoiceEmailDialog
+				open={sendEmailDialogOpen}
+				onOpenChange={setSendEmailDialogOpen}
+				invoice={invoiceToEmail}
+				onSuccess={async () => {
+					await refetchInvoices()
+				}}
+			/>
 		</div>
 	)
 }

@@ -483,6 +483,55 @@ export function useCancelInvoice() {
 }
 
 // ============================================================================
+// ENVOI EMAIL (à ajouter après les autres hooks)
+// ============================================================================
+
+// 📧 Envoyer une facture par email
+export interface SendInvoiceEmailParams {
+	invoiceId: string
+	recipientEmail: string
+	recipientName?: string
+	subject?: string
+	message?: string
+	pdfBase64?: string
+	pdfFilename?: string
+}
+
+export function useSendInvoiceEmail() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (params: SendInvoiceEmailParams) => {
+			const response = await fetch('/api/invoices/send-email', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: pb.authStore.token
+						? `Bearer ${pb.authStore.token}`
+						: '',
+				},
+				body: JSON.stringify(params),
+			})
+
+			if (!response.ok) {
+				const error = await response.json().catch(() => ({}))
+				throw new Error(error.message || "Erreur lors de l'envoi de l'email")
+			}
+
+			return response.json()
+		},
+		onSuccess: (_, variables) => {
+			// Met à jour le statut de la facture à "sent" si elle était "validated"
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
+			queryClient.invalidateQueries({
+				queryKey: invoiceKeys.detail(variables.invoiceId),
+			})
+		},
+	})
+}
+
+// ============================================================================
 // HELPERS EXPORTÉS
 // ============================================================================
 
