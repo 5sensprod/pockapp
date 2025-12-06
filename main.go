@@ -12,6 +12,7 @@ import (
 
 	"pocket-react/backend"
 	"pocket-react/backend/hooks"
+	"pocket-react/backend/migrations"
 
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v5"
@@ -142,7 +143,7 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 	configureMailSettings(pb)
 
 	// Exécuter les migrations pour créer les collections
-	if err := backend.RunMigrations(pb); err != nil {
+	if err := migrations.RunMigrations(pb); err != nil {
 		log.Println("Migrations ERROR:", err)
 		// On continue quand même, l'erreur n'est pas fatale
 	}
@@ -174,9 +175,10 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		// Routes de setup
 		backend.RegisterSetupRoutes(pb, e.Router)
 
-		// 📧 Route envoi email devis
+		// Route envoi email devis
 		backend.RegisterQuoteEmailRoutes(pb, e.Router)
 
+		// Route envoi email factures
 		backend.RegisterInvoiceEmailRoutes(pb, e.Router)
 
 		// SPA handler avec assets embarqués (doit rester en dernier)
