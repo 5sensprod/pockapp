@@ -1,5 +1,5 @@
 // frontend/modules/connect/index.ts
-import { FilePlus2, FileText, Users } from 'lucide-react'
+import { FilePen, FilePlus2, Receipt, Users } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
 import { ConnectPage } from './ConnectPage'
 
@@ -14,36 +14,41 @@ export const manifest: ModuleManifest = {
 	color: 'text-blue-600',
 	enabled: true,
 	minVersion: '1.0.0',
+
+	// 👉 chaque entrée du tableau = item de la première bande de menu
 	sidebarMenu: [
 		{
-			id: 'crm',
-			label: 'Relation client',
+			id: 'customers',
+			label: 'Clients',
 			icon: Users,
 			items: [
+				{ label: 'Clients', to: '/connect/customers/', icon: Users }, // 1er item = liste
 				{
-					label: 'Clients',
-					to: '/connect',
-					icon: Users,
-				},
-				{
-					label: 'Nouveau devis',
-					to: '/connect/quotes/new',
+					label: 'Nouveau client',
+					to: '/connect/customers/new',
 					icon: FilePlus2,
 				},
-				{
-					label: 'Devis',
-					to: '/connect/quotes',
-					icon: FileText,
-				},
+			],
+		},
+		{
+			id: 'quotes',
+			label: 'Devis',
+			icon: FilePen,
+			items: [
+				{ label: 'Devis', to: '/connect/quotes/', icon: FilePen }, // 1er item = liste
+				{ label: 'Nouveau devis', to: '/connect/quotes/new', icon: FilePlus2 },
+			],
+		},
+		{
+			id: 'invoices',
+			label: 'Factures',
+			icon: Receipt,
+			items: [
+				{ label: 'Factures', to: '/connect/invoices/', icon: Receipt }, // 1er item = liste
 				{
 					label: 'Nouvelle facture',
 					to: '/connect/invoices/new',
 					icon: FilePlus2,
-				},
-				{
-					label: 'Factures',
-					to: '/connect/invoices',
-					icon: FileText,
 				},
 			],
 		},
@@ -53,4 +58,5 @@ export const manifest: ModuleManifest = {
 export { ConnectPage }
 export { InvoicesPage } from './components/InvoicesPage'
 export { InvoiceCreatePage } from './components/InvoiceCreatePage'
-export { QuotesPage } from './components/QuotesPage' // 👈 ajout
+export { QuotesPage } from './components/QuotesPage'
+export { CustomerCreatePage } from './components/CustomerCreatePage' // 👈 important pour la route

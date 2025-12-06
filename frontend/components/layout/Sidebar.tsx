@@ -1,7 +1,11 @@
+// frontend/components/layout/Sidebar.tsx
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
-import { Link, useLocation } from '@tanstack/react-router'
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+
+// ✅ helper pure, définie en dehors du composant
+const normalizePath = (path: string) => (path || '/').replace(/\/+$/, '') || '/'
 
 interface SidebarProps {
 	currentModule: ModuleManifest | null
@@ -17,6 +21,8 @@ export function Sidebar({
 	const [activeGroup, setActiveGroup] = useState<string | null>(
 		defaultOpenGroup || null,
 	)
+
+	const navigate = useNavigate()
 	const { pathname } = useLocation()
 
 	const sidebarMenu = currentModule?.sidebarMenu || []
@@ -24,12 +30,37 @@ export function Sidebar({
 	if (!sidebarMenu.length) return null
 
 	const toggleGroup = (groupId: string) => {
-		const newGroup = activeGroup === groupId ? null : groupId
-		setActiveGroup(newGroup)
-		// plus besoin d'appeler onPanelChange ici, le useEffect s'en charge
+		if (activeGroup === groupId) {
+			setActiveGroup(null)
+			return
+		}
+
+		setActiveGroup(groupId)
+
+		const group = sidebarMenu.find((g) => g.id === groupId)
+		const firstItem = group?.items?.[0]
+
+		if (firstItem?.to) {
+			navigate({ to: firstItem.to as any })
+		}
 	}
 
 	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
+
+	// 🔁 Sync groupe ouvert <-> URL
+	useEffect(() => {
+		if (!sidebarMenu.length) return
+
+		const current = normalizePath(pathname)
+
+		const matchingGroup = sidebarMenu.find((group) =>
+			group.items?.some((item) => normalizePath(item.to) === current),
+		)
+
+		if (matchingGroup && matchingGroup.id !== activeGroup) {
+			setActiveGroup(matchingGroup.id)
+		}
+	}, [pathname, sidebarMenu, activeGroup]) // ✅ deps complètes, plus de warning
 
 	useEffect(() => {
 		onPanelChange?.(activeGroup !== null)
@@ -46,7 +77,7 @@ export function Sidebar({
 					return (
 						<button
 							key={group.id}
-							type='button' // ⬅️ important
+							type='button'
 							onClick={() => toggleGroup(group.id)}
 							className={cn(
 								'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
@@ -71,7 +102,8 @@ export function Sidebar({
 					<nav className='flex-1 overflow-y-auto p-2'>
 						{activeGroupData.items?.map((item) => {
 							const ItemIcon = item.icon
-							const isActive = pathname === item.to
+							const isActive =
+								normalizePath(pathname) === normalizePath(item.to)
 
 							return (
 								<Link

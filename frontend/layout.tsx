@@ -97,11 +97,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 			/>
 
 			{hasSidebar && (
-				<Sidebar
-					currentModule={currentModule}
-					onPanelChange={setIsPanelOpen}
-					defaultOpenGroup='crm'
-				/>
+				<Sidebar currentModule={currentModule} onPanelChange={setIsPanelOpen} />
 			)}
 
 			<main
