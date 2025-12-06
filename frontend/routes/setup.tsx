@@ -16,6 +16,7 @@ export const Route = createFileRoute('/setup')({
 })
 
 function SetupPage() {
+	const [name, setName] = useState('')
 	const [email, setEmail] = useState('')
 	const [password, setPassword] = useState('')
 	const [confirmPassword, setConfirmPassword] = useState('')
@@ -25,6 +26,11 @@ function SetupPage() {
 	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 		setError(null)
+
+		if (!name.trim()) {
+			setError('Le nom est obligatoire')
+			return
+		}
 
 		if (password !== confirmPassword) {
 			setError('Les mots de passe ne correspondent pas')
@@ -42,7 +48,7 @@ function SetupPage() {
 			const response = await fetch('/api/setup/create-admin', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ email, password }),
+				body: JSON.stringify({ name, email, password }),
 			})
 
 			const data = await response.json()
@@ -78,6 +84,21 @@ function SetupPage() {
 
 				<CardContent>
 					<form className='space-y-4' onSubmit={handleSubmit}>
+						<div className='space-y-1.5'>
+							<label htmlFor='admin-name' className='text-sm font-medium'>
+								Nom
+							</label>
+							<Input
+								id='admin-name'
+								type='text'
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								required
+								autoComplete='off'
+								placeholder='Jean Dupont'
+							/>
+						</div>
+
 						<div className='space-y-1.5'>
 							<label htmlFor='admin-email' className='text-sm font-medium'>
 								Email

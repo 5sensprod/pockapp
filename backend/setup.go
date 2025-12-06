@@ -15,6 +15,7 @@ import (
 type SetupRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	Name     string `json:"name"`
 }
 
 type SetupResponse struct {
@@ -89,9 +90,11 @@ func RegisterSetupRoutes(app *pocketbase.PocketBase, e *echo.Echo) {
 		}
 
 		req.Email = strings.TrimSpace(req.Email)
-		if req.Email == "" || req.Password == "" {
+		req.Name = strings.TrimSpace(req.Name)
+
+		if req.Email == "" || req.Password == "" || req.Name == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "Email et mot de passe sont obligatoires.",
+				"error": "Email, mot de passe et nom sont obligatoires.",
 			})
 		}
 
@@ -116,21 +119,23 @@ func RegisterSetupRoutes(app *pocketbase.PocketBase, e *echo.Echo) {
 		// Création du record utilisateur
 		record := models.NewRecord(usersCollection)
 
-		// Définir l'email
+		// Email
 		record.SetEmail(email)
 
-		// 🔑 Générer automatiquement un username à partir de l'email
-		// ex: "5sensprod@gmail.com" -> "5sensprod"
+		// Username auto-généré à partir de l'email
 		username := email
 		if parts := strings.Split(email, "@"); len(parts) > 1 && parts[0] != "" {
 			username = parts[0]
 		}
 		record.Set("username", username)
 
-		// Marquer l'email comme vérifié pour le premier admin
+		// 🆕 Nom de l'utilisateur (affiché dans le header)
+		record.Set("name", req.Name)
+
+		// On peut marquer l'email comme vérifié pour le premier admin
 		record.Set("verified", true)
 
-		// Définir le password après les autres champs
+		// Mot de passe
 		record.SetPassword(req.Password)
 
 		if err := app.Dao().SaveRecord(record); err != nil {
@@ -140,10 +145,9 @@ func RegisterSetupRoutes(app *pocketbase.PocketBase, e *echo.Echo) {
 		}
 
 		// 🔁 Relancer les migrations après la création du premier user
-		// pour être sûr que "companies" et autres collections existent
 		if err := migrations.RunMigrations(app); err != nil {
 			log.Println("Erreur lors des migrations après setup:", err)
-			// on ne bloque pas la réponse au client
+			// On ne bloque pas la réponse au client
 		}
 
 		return c.JSON(http.StatusCreated, SetupResponse{
