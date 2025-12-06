@@ -20,11 +20,15 @@ import { Route as ConnectIndexRouteImport } from './routes/connect/index'
 import { Route as CashIndexRouteImport } from './routes/cash/index'
 import { Route as ConnectQuotesIndexRouteImport } from './routes/connect/quotes/index'
 import { Route as ConnectInvoicesIndexRouteImport } from './routes/connect/invoices/index'
+import { Route as ConnectCustomersIndexRouteImport } from './routes/connect/customers/index'
 import { Route as ConnectQuotesNewRouteImport } from './routes/connect/quotes/new'
 import { Route as ConnectInvoicesNewRouteImport } from './routes/connect/invoices/new'
+import { Route as ConnectCustomersNewRouteImport } from './routes/connect/customers/new'
 import { Route as ConnectQuotesQuoteIdIndexRouteImport } from './routes/connect/quotes/$quoteId/index'
 import { Route as ConnectInvoicesInvoiceIdIndexRouteImport } from './routes/connect/invoices/$invoiceId/index'
+import { Route as ConnectCustomersCustomerIdIndexRouteImport } from './routes/connect/customers/$customerId/index'
 import { Route as ConnectQuotesQuoteIdEditRouteImport } from './routes/connect/quotes/$quoteId/edit'
+import { Route as ConnectCustomersCustomerIdEditRouteImport } from './routes/connect/customers/$customerId/edit'
 
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
@@ -81,6 +85,11 @@ const ConnectInvoicesIndexRoute = ConnectInvoicesIndexRouteImport.update({
   path: '/connect/invoices/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectCustomersIndexRoute = ConnectCustomersIndexRouteImport.update({
+  id: '/connect/customers/',
+  path: '/connect/customers/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConnectQuotesNewRoute = ConnectQuotesNewRouteImport.update({
   id: '/connect/quotes/new',
   path: '/connect/quotes/new',
@@ -89,6 +98,11 @@ const ConnectQuotesNewRoute = ConnectQuotesNewRouteImport.update({
 const ConnectInvoicesNewRoute = ConnectInvoicesNewRouteImport.update({
   id: '/connect/invoices/new',
   path: '/connect/invoices/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectCustomersNewRoute = ConnectCustomersNewRouteImport.update({
+  id: '/connect/customers/new',
+  path: '/connect/customers/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectQuotesQuoteIdIndexRoute =
@@ -103,10 +117,22 @@ const ConnectInvoicesInvoiceIdIndexRoute =
     path: '/connect/invoices/$invoiceId/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ConnectCustomersCustomerIdIndexRoute =
+  ConnectCustomersCustomerIdIndexRouteImport.update({
+    id: '/connect/customers/$customerId/',
+    path: '/connect/customers/$customerId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ConnectQuotesQuoteIdEditRoute =
   ConnectQuotesQuoteIdEditRouteImport.update({
     id: '/connect/quotes/$quoteId/edit',
     path: '/connect/quotes/$quoteId/edit',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ConnectCustomersCustomerIdEditRoute =
+  ConnectCustomersCustomerIdEditRouteImport.update({
+    id: '/connect/customers/$customerId/edit',
+    path: '/connect/customers/$customerId/edit',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -120,11 +146,15 @@ export interface FileRoutesByFullPath {
   '/stick': typeof StickIndexRoute
   '/stock-apppos': typeof StockAppposIndexRoute
   '/stock': typeof StockIndexRoute
+  '/connect/customers/new': typeof ConnectCustomersNewRoute
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
+  '/connect/customers': typeof ConnectCustomersIndexRoute
   '/connect/invoices': typeof ConnectInvoicesIndexRoute
   '/connect/quotes': typeof ConnectQuotesIndexRoute
+  '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
   '/connect/quotes/$quoteId/edit': typeof ConnectQuotesQuoteIdEditRoute
+  '/connect/customers/$customerId': typeof ConnectCustomersCustomerIdIndexRoute
   '/connect/invoices/$invoiceId': typeof ConnectInvoicesInvoiceIdIndexRoute
   '/connect/quotes/$quoteId': typeof ConnectQuotesQuoteIdIndexRoute
 }
@@ -138,11 +168,15 @@ export interface FileRoutesByTo {
   '/stick': typeof StickIndexRoute
   '/stock-apppos': typeof StockAppposIndexRoute
   '/stock': typeof StockIndexRoute
+  '/connect/customers/new': typeof ConnectCustomersNewRoute
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
+  '/connect/customers': typeof ConnectCustomersIndexRoute
   '/connect/invoices': typeof ConnectInvoicesIndexRoute
   '/connect/quotes': typeof ConnectQuotesIndexRoute
+  '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
   '/connect/quotes/$quoteId/edit': typeof ConnectQuotesQuoteIdEditRoute
+  '/connect/customers/$customerId': typeof ConnectCustomersCustomerIdIndexRoute
   '/connect/invoices/$invoiceId': typeof ConnectInvoicesInvoiceIdIndexRoute
   '/connect/quotes/$quoteId': typeof ConnectQuotesQuoteIdIndexRoute
 }
@@ -157,11 +191,15 @@ export interface FileRoutesById {
   '/stick/': typeof StickIndexRoute
   '/stock-apppos/': typeof StockAppposIndexRoute
   '/stock/': typeof StockIndexRoute
+  '/connect/customers/new': typeof ConnectCustomersNewRoute
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
+  '/connect/customers/': typeof ConnectCustomersIndexRoute
   '/connect/invoices/': typeof ConnectInvoicesIndexRoute
   '/connect/quotes/': typeof ConnectQuotesIndexRoute
+  '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
   '/connect/quotes/$quoteId/edit': typeof ConnectQuotesQuoteIdEditRoute
+  '/connect/customers/$customerId/': typeof ConnectCustomersCustomerIdIndexRoute
   '/connect/invoices/$invoiceId/': typeof ConnectInvoicesInvoiceIdIndexRoute
   '/connect/quotes/$quoteId/': typeof ConnectQuotesQuoteIdIndexRoute
 }
@@ -177,11 +215,15 @@ export interface FileRouteTypes {
     | '/stick'
     | '/stock-apppos'
     | '/stock'
+    | '/connect/customers/new'
     | '/connect/invoices/new'
     | '/connect/quotes/new'
+    | '/connect/customers'
     | '/connect/invoices'
     | '/connect/quotes'
+    | '/connect/customers/$customerId/edit'
     | '/connect/quotes/$quoteId/edit'
+    | '/connect/customers/$customerId'
     | '/connect/invoices/$invoiceId'
     | '/connect/quotes/$quoteId'
   fileRoutesByTo: FileRoutesByTo
@@ -195,11 +237,15 @@ export interface FileRouteTypes {
     | '/stick'
     | '/stock-apppos'
     | '/stock'
+    | '/connect/customers/new'
     | '/connect/invoices/new'
     | '/connect/quotes/new'
+    | '/connect/customers'
     | '/connect/invoices'
     | '/connect/quotes'
+    | '/connect/customers/$customerId/edit'
     | '/connect/quotes/$quoteId/edit'
+    | '/connect/customers/$customerId'
     | '/connect/invoices/$invoiceId'
     | '/connect/quotes/$quoteId'
   id:
@@ -213,11 +259,15 @@ export interface FileRouteTypes {
     | '/stick/'
     | '/stock-apppos/'
     | '/stock/'
+    | '/connect/customers/new'
     | '/connect/invoices/new'
     | '/connect/quotes/new'
+    | '/connect/customers/'
     | '/connect/invoices/'
     | '/connect/quotes/'
+    | '/connect/customers/$customerId/edit'
     | '/connect/quotes/$quoteId/edit'
+    | '/connect/customers/$customerId/'
     | '/connect/invoices/$invoiceId/'
     | '/connect/quotes/$quoteId/'
   fileRoutesById: FileRoutesById
@@ -232,11 +282,15 @@ export interface RootRouteChildren {
   StickIndexRoute: typeof StickIndexRoute
   StockAppposIndexRoute: typeof StockAppposIndexRoute
   StockIndexRoute: typeof StockIndexRoute
+  ConnectCustomersNewRoute: typeof ConnectCustomersNewRoute
   ConnectInvoicesNewRoute: typeof ConnectInvoicesNewRoute
   ConnectQuotesNewRoute: typeof ConnectQuotesNewRoute
+  ConnectCustomersIndexRoute: typeof ConnectCustomersIndexRoute
   ConnectInvoicesIndexRoute: typeof ConnectInvoicesIndexRoute
   ConnectQuotesIndexRoute: typeof ConnectQuotesIndexRoute
+  ConnectCustomersCustomerIdEditRoute: typeof ConnectCustomersCustomerIdEditRoute
   ConnectQuotesQuoteIdEditRoute: typeof ConnectQuotesQuoteIdEditRoute
+  ConnectCustomersCustomerIdIndexRoute: typeof ConnectCustomersCustomerIdIndexRoute
   ConnectInvoicesInvoiceIdIndexRoute: typeof ConnectInvoicesInvoiceIdIndexRoute
   ConnectQuotesQuoteIdIndexRoute: typeof ConnectQuotesQuoteIdIndexRoute
 }
@@ -320,6 +374,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectInvoicesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connect/customers/': {
+      id: '/connect/customers/'
+      path: '/connect/customers'
+      fullPath: '/connect/customers'
+      preLoaderRoute: typeof ConnectCustomersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/connect/quotes/new': {
       id: '/connect/quotes/new'
       path: '/connect/quotes/new'
@@ -332,6 +393,13 @@ declare module '@tanstack/react-router' {
       path: '/connect/invoices/new'
       fullPath: '/connect/invoices/new'
       preLoaderRoute: typeof ConnectInvoicesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect/customers/new': {
+      id: '/connect/customers/new'
+      path: '/connect/customers/new'
+      fullPath: '/connect/customers/new'
+      preLoaderRoute: typeof ConnectCustomersNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connect/quotes/$quoteId/': {
@@ -348,11 +416,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectInvoicesInvoiceIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connect/customers/$customerId/': {
+      id: '/connect/customers/$customerId/'
+      path: '/connect/customers/$customerId'
+      fullPath: '/connect/customers/$customerId'
+      preLoaderRoute: typeof ConnectCustomersCustomerIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/connect/quotes/$quoteId/edit': {
       id: '/connect/quotes/$quoteId/edit'
       path: '/connect/quotes/$quoteId/edit'
       fullPath: '/connect/quotes/$quoteId/edit'
       preLoaderRoute: typeof ConnectQuotesQuoteIdEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect/customers/$customerId/edit': {
+      id: '/connect/customers/$customerId/edit'
+      path: '/connect/customers/$customerId/edit'
+      fullPath: '/connect/customers/$customerId/edit'
+      preLoaderRoute: typeof ConnectCustomersCustomerIdEditRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -368,11 +450,15 @@ const rootRouteChildren: RootRouteChildren = {
   StickIndexRoute: StickIndexRoute,
   StockAppposIndexRoute: StockAppposIndexRoute,
   StockIndexRoute: StockIndexRoute,
+  ConnectCustomersNewRoute: ConnectCustomersNewRoute,
   ConnectInvoicesNewRoute: ConnectInvoicesNewRoute,
   ConnectQuotesNewRoute: ConnectQuotesNewRoute,
+  ConnectCustomersIndexRoute: ConnectCustomersIndexRoute,
   ConnectInvoicesIndexRoute: ConnectInvoicesIndexRoute,
   ConnectQuotesIndexRoute: ConnectQuotesIndexRoute,
+  ConnectCustomersCustomerIdEditRoute: ConnectCustomersCustomerIdEditRoute,
   ConnectQuotesQuoteIdEditRoute: ConnectQuotesQuoteIdEditRoute,
+  ConnectCustomersCustomerIdIndexRoute: ConnectCustomersCustomerIdIndexRoute,
   ConnectInvoicesInvoiceIdIndexRoute: ConnectInvoicesInvoiceIdIndexRoute,
   ConnectQuotesQuoteIdIndexRoute: ConnectQuotesQuoteIdIndexRoute,
 }

@@ -3,17 +3,18 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useCustomers } from '@/lib/queries/customers'
-import { useEffect, useState } from 'react'
-import { type Customer, CustomerDialog } from './components/CustomerDialog'
+import { useNavigate } from '@tanstack/react-router'
+import { useEffect, useMemo, useState } from 'react'
+import type { Customer } from './components/CustomerDialog'
 import { CustomerTable } from './components/CustomerTable'
 
 import { manifest } from './index'
 
 export function ConnectPage() {
 	const { activeCompanyId } = useActiveCompany()
+	const navigate = useNavigate()
+
 	const [searchTerm, setSearchTerm] = useState('')
-	const [isDialogOpen, setIsDialogOpen] = useState(false)
-	const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
 
 	const {
 		data: customersData,
@@ -34,28 +35,36 @@ export function ConnectPage() {
 	}, [activeCompanyId, refetch])
 
 	// Adaptation PocketBase -> Customer (tags: string[])
-	const customers: Customer[] =
-		customersData?.items.map((c: any) => ({
-			id: c.id,
-			name: c.name,
-			email: c.email,
-			phone: c.phone,
-			company: c.company,
-			address: c.address,
-			notes: c.notes,
-			tags: Array.isArray(c.tags) ? c.tags : c.tags ? [c.tags] : [],
-		})) ?? []
+	const customers: Customer[] = useMemo(
+		() =>
+			customersData?.items.map((c: any) => ({
+				id: c.id,
+				name: c.name,
+				email: c.email,
+				phone: c.phone,
+				company: c.company,
+				address: c.address,
+				notes: c.notes,
+				tags: Array.isArray(c.tags)
+					? (c.tags as string[])
+					: c.tags
+						? [String(c.tags)]
+						: [],
+			})) ?? [],
+		[customersData],
+	)
 
 	const Icon = manifest.icon
 
 	const handleNewCustomer = () => {
-		setEditingCustomer(null)
-		setIsDialogOpen(true)
+		navigate({ to: '/connect/customers/new' })
 	}
 
 	const handleEditCustomer = (customer: Customer) => {
-		setEditingCustomer(customer)
-		setIsDialogOpen(true)
+		navigate({
+			to: '/connect/customers/$customerId/edit',
+			params: () => ({ customerId: customer.id }),
+		})
 	}
 
 	return (
@@ -102,18 +111,6 @@ export function ConnectPage() {
 			) : (
 				<CustomerTable data={customers} onEditCustomer={handleEditCustomer} />
 			)}
-
-			{/* Dialog création / édition */}
-			<CustomerDialog
-				open={isDialogOpen}
-				onOpenChange={(open) => {
-					setIsDialogOpen(open)
-					if (!open) {
-						setEditingCustomer(null)
-					}
-				}}
-				customer={editingCustomer}
-			/>
 		</div>
 	)
 }

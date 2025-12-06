@@ -1,5 +1,18 @@
+// frontend/modules/connect/components/CustomerTable.tsx
+
+import { useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
+import { toast } from 'sonner'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -31,23 +44,13 @@ import {
 } from '@tanstack/react-table'
 import {
 	ArrowUpDown,
+	Eye,
 	Mail,
 	MoreHorizontal,
 	Pencil,
 	Phone,
 	Trash2,
 } from 'lucide-react'
-// frontend/modules/connect/components/CustomerTable.tsx
-import { useState } from 'react'
-import { toast } from 'sonner'
-
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogHeader,
-	DialogTitle,
-} from '@/components/ui/dialog'
 import type { Customer } from './CustomerDialog'
 
 interface CustomerTableProps {
@@ -56,6 +59,7 @@ interface CustomerTableProps {
 }
 
 export function CustomerTable({ data, onEditCustomer }: CustomerTableProps) {
+	const navigate = useNavigate() // ← obligatoire
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 	const [pagination, setPagination] = useState<PaginationState>({
@@ -197,18 +201,29 @@ export function CustomerTable({ data, onEditCustomer }: CustomerTableProps) {
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align='end'>
 							<DropdownMenuLabel>Actions</DropdownMenuLabel>
+
+							{/* 🔵 Voir */}
 							<DropdownMenuItem
 								onClick={() =>
-									navigator.clipboard.writeText(customer.email || '')
+									navigate({
+										to: '/connect/customers/$customerId',
+										params: () => ({ customerId: customer.id }),
+									})
 								}
 							>
-								Copier l&apos;email
+								<Eye className='h-4 w-4 mr-2' />
+								Voir
 							</DropdownMenuItem>
+
 							<DropdownMenuSeparator />
+
+							{/* ✏️ Modifier */}
 							<DropdownMenuItem onClick={() => onEditCustomer(customer)}>
 								<Pencil className='h-4 w-4 mr-2' />
 								Modifier
 							</DropdownMenuItem>
+
+							{/* 🗑️ Supprimer */}
 							<DropdownMenuItem
 								className='text-red-600'
 								onClick={() => askDelete(customer)}
@@ -316,7 +331,7 @@ export function CustomerTable({ data, onEditCustomer }: CustomerTableProps) {
 				</div>
 			</div>
 
-			{/* Boîte de dialogue de confirmation */}
+			{/* Boîte de dialogue de confirmation de suppression */}
 			<Dialog
 				open={confirmOpen}
 				onOpenChange={(open) => {
