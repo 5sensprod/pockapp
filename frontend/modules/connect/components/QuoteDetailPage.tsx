@@ -16,10 +16,24 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useQuote } from '@/lib/queries/quotes'
 import type { QuoteStatus } from '@/lib/types/invoice.types'
+import { usePocketBase } from '@/lib/use-pocketbase'
+import { pdf } from '@react-pdf/renderer'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { ArrowLeft, Edit, FileText } from 'lucide-react'
+import {
+	ArrowLeft,
+	Download,
+	Edit,
+	FileText,
+	Loader2,
+	Mail,
+} from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { QuotePdfDocument } from './QuotePdf'
+import { SendQuoteEmailDialog } from './SendQuoteEmailDialog'
 
 function formatDate(dateStr?: string) {
 	if (!dateStr) return '-'
@@ -66,6 +80,75 @@ export function QuoteDetailPage() {
 	const navigate = useNavigate()
 	const { quoteId } = useParams({ from: '/connect/quotes/$quoteId/' })
 	const { data: quote, isLoading } = useQuote(quoteId)
+	const { activeCompanyId } = useActiveCompany()
+	const pb = usePocketBase() as any
+
+	// États
+	const [isDownloading, setIsDownloading] = useState(false)
+	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
+
+	// 📥 Télécharger le PDF
+	const handleDownloadPdf = async () => {
+		if (!quote || !activeCompanyId) {
+			toast.error('Données manquantes')
+			return
+		}
+
+		setIsDownloading(true)
+
+		try {
+			// Récupérer les infos de l'entreprise
+			let company: any
+			try {
+				company = await pb.collection('companies').getOne(activeCompanyId)
+			} catch (err) {
+				console.warn('Entreprise non trouvée:', err)
+			}
+
+			// Récupérer le client (si pas déjà dans expand)
+			let customer = quote.expand?.customer
+			if (!customer && quote.customer) {
+				try {
+					customer = await pb.collection('customers').getOne(quote.customer)
+				} catch (err) {
+					console.warn('Client non trouvé:', err)
+				}
+			}
+
+			// Récupérer le logo de l'entreprise (si disponible)
+			let companyLogoUrl: string | null = null
+			if (company?.logo) {
+				companyLogoUrl = pb.files.getUrl(company, company.logo)
+			}
+
+			// Générer le PDF
+			const blob = await pdf(
+				<QuotePdfDocument
+					quote={quote}
+					customer={customer}
+					company={company}
+					companyLogoUrl={companyLogoUrl}
+				/>,
+			).toBlob()
+
+			// Télécharger le fichier
+			const url = URL.createObjectURL(blob)
+			const link = document.createElement('a')
+			link.href = url
+			link.download = `Devis_${quote.number.replace(/\//g, '-')}.pdf`
+			document.body.appendChild(link)
+			link.click()
+			document.body.removeChild(link)
+			URL.revokeObjectURL(url)
+
+			toast.success('Devis téléchargé')
+		} catch (error) {
+			console.error('Erreur génération PDF:', error)
+			toast.error('Erreur lors de la génération du PDF')
+		} finally {
+			setIsDownloading(false)
+		}
+	}
 
 	if (isLoading) {
 		return (
@@ -119,6 +202,33 @@ export function QuoteDetailPage() {
 					<Badge variant={getQuoteStatusVariant(quote.status)}>
 						{getQuoteStatusLabel(quote.status)}
 					</Badge>
+
+					{/* Bouton télécharger PDF */}
+					<Button
+						variant='outline'
+						size='sm'
+						onClick={handleDownloadPdf}
+						disabled={isDownloading}
+					>
+						{isDownloading ? (
+							<Loader2 className='h-4 w-4 animate-spin mr-2' />
+						) : (
+							<Download className='h-4 w-4 mr-2' />
+						)}
+						PDF
+					</Button>
+
+					{/* Bouton envoyer par email */}
+					<Button
+						variant='outline'
+						size='sm'
+						onClick={() => setEmailDialogOpen(true)}
+					>
+						<Mail className='h-4 w-4 mr-2' />
+						Envoyer
+					</Button>
+
+					{/* Bouton modifier (seulement si brouillon) */}
 					{quote.status === 'draft' && (
 						<Button
 							onClick={() =>
@@ -221,8 +331,8 @@ export function QuoteDetailPage() {
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{quote.items.map((item) => (
-									<TableRow key={`${item.name}-${item.quantity}`}>
+								{quote.items.map((item, index) => (
+									<TableRow key={index}>
 										<TableCell className='font-medium'>{item.name}</TableCell>
 										<TableCell className='text-right'>
 											{item.quantity}
@@ -264,6 +374,14 @@ export function QuoteDetailPage() {
 					</CardContent>
 				</Card>
 			</div>
+
+			{/* Dialog envoi email */}
+			<SendQuoteEmailDialog
+				open={emailDialogOpen}
+				onOpenChange={setEmailDialogOpen}
+				quote={quote}
+				onSuccess={() => setEmailDialogOpen(false)}
+			/>
 		</div>
 	)
 }

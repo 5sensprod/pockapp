@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"pocket-react/backend"
 	"pocket-react/backend/hooks"
 
+	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
@@ -42,11 +44,31 @@ func initLogging(baseDir string) {
 	log.Println("=== App started ===")
 }
 
+func loadEnvFile(baseDir string) {
+	// Essaie de charger .env depuis plusieurs emplacements
+	envPaths := []string{
+		filepath.Join(baseDir, ".env"),
+		".env",
+		"I:/pockapp/.env",
+	}
+
+	for _, path := range envPaths {
+		if err := godotenv.Load(path); err == nil {
+			log.Println("Loaded .env from:", path)
+			return
+		}
+	}
+	log.Println("No .env file found, using environment variables")
+}
+
 func main() {
 	// On se place dans le dossier de l'exécutable
 	exe, _ := os.Executable()
 	baseDir := filepath.Dir(exe)
 	_ = os.Chdir(baseDir)
+
+	// Charge le fichier .env
+	loadEnvFile(baseDir)
 
 	initLogging(baseDir)
 
@@ -116,6 +138,9 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 	}
 	log.Println("Bootstrap OK, DataDir:", pb.DataDir())
 
+	// Configure SMTP après le bootstrap
+	configureMailSettings(pb)
+
 	// Exécuter les migrations pour créer les collections
 	if err := backend.RunMigrations(pb); err != nil {
 		log.Println("Migrations ERROR:", err)
@@ -146,9 +171,13 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 			})
 		})
 
+		// Routes de setup
 		backend.RegisterSetupRoutes(pb, e.Router)
 
-		// SPA handler avec assets embarqués
+		// 📧 Route envoi email devis
+		backend.RegisterQuoteEmailRoutes(pb, e.Router)
+
+		// SPA handler avec assets embarqués (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 
 		return nil
@@ -161,6 +190,51 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 	})
 	if err != nil {
 		log.Println("Serve ERROR:", err)
+	}
+}
+
+// configureMailSettings configure le SMTP depuis les variables d'environnement
+func configureMailSettings(pb *pocketbase.PocketBase) {
+	smtpHost := os.Getenv("SMTP_HOST")
+	if smtpHost == "" {
+		log.Println("SMTP not configured (SMTP_HOST empty)")
+		return
+	}
+
+	settings := pb.Settings()
+
+	port, _ := strconv.Atoi(os.Getenv("SMTP_PORT"))
+	if port == 0 {
+		port = 587 // Default STARTTLS port
+	}
+
+	settings.Smtp.Enabled = true
+	settings.Smtp.Host = smtpHost
+	settings.Smtp.Port = port
+	settings.Smtp.Username = os.Getenv("SMTP_USERNAME")
+	settings.Smtp.Password = os.Getenv("SMTP_PASSWORD")
+
+	// TLS settings selon le port
+	// Port 465 = SSL direct, Port 587 = STARTTLS
+	if port == 465 {
+		settings.Smtp.Tls = true
+	} else {
+		settings.Smtp.Tls = true // STARTTLS pour 587
+	}
+
+	// Sender info
+	senderName := os.Getenv("SMTP_FROM_NAME")
+	if senderName == "" {
+		senderName = "PocketReact"
+	}
+	settings.Meta.SenderName = senderName
+	settings.Meta.SenderAddress = os.Getenv("SMTP_FROM_EMAIL")
+
+	// Sauvegarde les settings
+	if err := pb.Dao().SaveSettings(settings); err != nil {
+		log.Println("SMTP config save error:", err)
+	} else {
+		log.Printf("SMTP configured: %s:%d (user: %s)", smtpHost, port, settings.Smtp.Username)
 	}
 }
 

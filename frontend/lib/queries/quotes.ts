@@ -133,3 +133,48 @@ export function useDeleteQuote() {
 		},
 	})
 }
+
+// 📧 Envoyer un devis par email
+export interface SendQuoteEmailParams {
+	quoteId: string
+	recipientEmail: string
+	recipientName?: string
+	subject?: string
+	message?: string
+	pdfBase64?: string
+	pdfFilename?: string
+}
+
+export function useSendQuoteEmail() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (params: SendQuoteEmailParams) => {
+			const response = await fetch('/api/quotes/send-email', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: pb.authStore.token
+						? `Bearer ${pb.authStore.token}`
+						: '',
+				},
+				body: JSON.stringify(params),
+			})
+
+			if (!response.ok) {
+				const error = await response.json().catch(() => ({}))
+				throw new Error(error.message || "Erreur lors de l'envoi de l'email")
+			}
+
+			return response.json()
+		},
+		onSuccess: (_, variables) => {
+			// Met à jour le statut du devis à "sent" si c'était un brouillon
+			queryClient.invalidateQueries({ queryKey: quoteKeys.all })
+			queryClient.invalidateQueries({
+				queryKey: quoteKeys.detail(variables.quoteId),
+			})
+		},
+	})
+}

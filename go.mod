@@ -10,6 +10,7 @@ require (
 
 require (
 	github.com/grandcat/zeroconf v1.0.0
+	github.com/joho/godotenv v1.5.1
 	github.com/pocketbase/dbx v1.10.1
 )
 

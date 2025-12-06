@@ -54,15 +54,23 @@ import { useDeleteQuote, useQuotes } from '@/lib/queries/quotes'
 import type { QuoteResponse, QuoteStatus } from '@/lib/types/invoice.types'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
+import { pdf } from '@react-pdf/renderer'
 import {
 	ArrowRight,
 	CheckCircle,
+	Download,
+	Edit,
+	Eye,
 	FileText,
+	Loader2,
+	Mail,
 	MoreHorizontal,
 	Plus,
 	Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { QuotePdfDocument } from './QuotePdf'
+import { SendQuoteEmailDialog } from './SendQuoteEmailDialog'
 
 function formatDate(dateStr?: string) {
 	if (!dateStr) return '-'
@@ -125,6 +133,15 @@ export function QuotesPage() {
 		null,
 	)
 
+	// Dialog envoi email
+	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
+	const [quoteToEmail, setQuoteToEmail] = useState<QuoteResponse | null>(null)
+
+	// État téléchargement PDF
+	const [downloadingQuoteId, setDownloadingQuoteId] = useState<string | null>(
+		null,
+	)
+
 	// Queries
 	const { data: quotesData, isLoading } = useQuotes({
 		companyId: activeCompanyId ?? undefined,
@@ -143,7 +160,7 @@ export function QuotesPage() {
 				throw new Error('Aucune entreprise active')
 			}
 
-			// 1️⃣ Générer un numéro de facture (logique proche de InvoiceCreatePage / useGenerateInvoiceNumber)
+			// 1️⃣ Générer un numéro de facture
 			const year = new Date().getFullYear()
 			const prefix = `FAC-${year}-`
 
@@ -171,7 +188,7 @@ export function QuotesPage() {
 			const invoicePayload = {
 				number: invoiceNumber,
 				invoice_type: 'invoice' as const,
-				date: new Date().toISOString(), // ou quote.date si tu préfères
+				date: new Date().toISOString(),
 				due_date: undefined,
 				customer: quote.customer,
 				owner_company: quote.owner_company,
@@ -244,6 +261,79 @@ export function QuotesPage() {
 			setQuoteToConvert(null)
 		} catch {
 			// OnError géré dans la mutation
+		}
+	}
+
+	const handleOpenEmail = (quote: QuoteResponse) => {
+		setQuoteToEmail(quote)
+		setEmailDialogOpen(true)
+	}
+
+	const handleEmailSent = () => {
+		setEmailDialogOpen(false)
+		setQuoteToEmail(null)
+	}
+
+	// 📥 Télécharger le PDF
+	const handleDownloadPdf = async (quote: QuoteResponse) => {
+		if (!activeCompanyId) {
+			toast.error('Aucune entreprise sélectionnée')
+			return
+		}
+
+		setDownloadingQuoteId(quote.id)
+
+		try {
+			// Récupérer les infos de l'entreprise
+			let company: any
+			try {
+				company = await pb.collection('companies').getOne(activeCompanyId)
+			} catch (err) {
+				console.warn('Entreprise non trouvée:', err)
+			}
+
+			// Récupérer le client (si pas déjà dans expand)
+			let customer = quote.expand?.customer
+			if (!customer && quote.customer) {
+				try {
+					customer = await pb.collection('customers').getOne(quote.customer)
+				} catch (err) {
+					console.warn('Client non trouvé:', err)
+				}
+			}
+
+			// Récupérer le logo de l'entreprise (si disponible)
+			let companyLogoUrl: string | null = null
+			if (company?.logo) {
+				companyLogoUrl = pb.files.getUrl(company, company.logo)
+			}
+
+			// Générer le PDF
+			const blob = await pdf(
+				<QuotePdfDocument
+					quote={quote}
+					customer={customer}
+					company={company}
+					companyLogoUrl={companyLogoUrl}
+				/>,
+			).toBlob()
+
+			// Télécharger le fichier
+			const url = URL.createObjectURL(blob)
+			const link = document.createElement('a')
+			link.href = url
+			link.download = `Devis_${quote.number.replace(/\//g, '-')}.pdf`
+			document.body.appendChild(link)
+			link.click()
+			document.body.removeChild(link)
+			URL.revokeObjectURL(url)
+
+			toast.success('Devis téléchargé')
+		} catch (error) {
+			console.error('Erreur génération PDF:', error)
+			toast.error('Erreur lors de la génération du PDF')
+		} finally {
+			setDownloadingQuoteId(null)
 		}
 	}
 
@@ -334,6 +424,7 @@ export function QuotesPage() {
 								const linkedInvoice = quote.expand?.generated_invoice_id as
 									| InvoiceResponse
 									| undefined
+								const isDownloading = downloadingQuoteId === quote.id
 
 								return (
 									<TableRow key={quote.id}>
@@ -391,7 +482,7 @@ export function QuotesPage() {
 															})
 														}
 													>
-														<FileText className='h-4 w-4 mr-2' />
+														<Eye className='h-4 w-4 mr-2' />
 														Voir
 													</DropdownMenuItem>
 
@@ -403,11 +494,30 @@ export function QuotesPage() {
 															})
 														}
 													>
-														<FileText className='h-4 w-4 mr-2' />
+														<Edit className='h-4 w-4 mr-2' />
 														Modifier
 													</DropdownMenuItem>
 
 													<DropdownMenuSeparator />
+
+													<DropdownMenuItem
+														onClick={() => handleDownloadPdf(quote)}
+														disabled={isDownloading}
+													>
+														{isDownloading ? (
+															<Loader2 className='h-4 w-4 mr-2 animate-spin' />
+														) : (
+															<Download className='h-4 w-4 mr-2' />
+														)}
+														Télécharger PDF
+													</DropdownMenuItem>
+
+													<DropdownMenuItem
+														onClick={() => handleOpenEmail(quote)}
+													>
+														<Mail className='h-4 w-4 mr-2' />
+														Envoyer par email
+													</DropdownMenuItem>
 
 													<DropdownMenuItem
 														disabled={
@@ -513,6 +623,14 @@ export function QuotesPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			{/* Dialog envoi email */}
+			<SendQuoteEmailDialog
+				open={emailDialogOpen}
+				onOpenChange={setEmailDialogOpen}
+				quote={quoteToEmail}
+				onSuccess={handleEmailSent}
+			/>
 		</div>
 	)
 }

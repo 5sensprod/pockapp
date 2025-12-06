@@ -29,13 +29,18 @@ import type {
 } from '@/lib/pocketbase-types'
 import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
 import { useCreateQuote } from '@/lib/queries/quotes'
-import type { InvoiceItem, QuoteStatus } from '@/lib/types/invoice.types'
+import type {
+	InvoiceItem,
+	QuoteResponse,
+	QuoteStatus,
+} from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	ArrowLeft,
 	ChevronsUpDown,
 	FileText,
+	Mail,
 	Minus,
 	Plus,
 	Search,
@@ -45,6 +50,7 @@ import {
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { CustomerDialog } from './CustomerDialog'
+import { SendQuoteEmailDialog } from './SendQuoteEmailDialog'
 
 // ============================================================================
 // TYPES
@@ -98,6 +104,10 @@ export function QuoteCreatePage() {
 	const [productPickerOpen, setProductPickerOpen] = useState(false)
 	const [productSearch, setProductSearch] = useState('')
 	const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
+
+	// Email dialog state
+	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
+	const [createdQuote, setCreatedQuote] = useState<QuoteResponse | null>(null)
 
 	// Connexion AppPOS (pour la recherche de produits)
 	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
@@ -285,7 +295,10 @@ export function QuoteCreatePage() {
 	}
 
 	// Soumettre le devis
-	const handleSubmit = async (status: QuoteStatus = 'draft') => {
+	const handleSubmit = async (
+		status: QuoteStatus = 'draft',
+		openEmailDialog = false,
+	) => {
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
 			return
@@ -303,7 +316,7 @@ export function QuoteCreatePage() {
 			// On enlève l'id temporaire
 			const quoteItems: InvoiceItem[] = items.map(({ id, ...item }) => item)
 
-			await createQuote.mutateAsync({
+			const newQuote = await createQuote.mutateAsync({
 				number: quoteNumber,
 				date: quoteDate,
 				valid_until: validUntil || undefined,
@@ -318,13 +331,42 @@ export function QuoteCreatePage() {
 				notes: notes || undefined,
 			})
 
-			toast.success(
-				status === 'draft' ? 'Brouillon enregistré' : 'Devis créé avec succès',
-			)
-			navigate({ to: '/connect/quotes' })
+			if (openEmailDialog) {
+				// Enrichir le devis créé avec les infos client pour le dialog
+				const enrichedQuote: QuoteResponse = {
+					...newQuote,
+					expand: {
+						customer: selectedCustomer as any,
+					},
+				}
+				setCreatedQuote(enrichedQuote)
+				setEmailDialogOpen(true)
+				toast.success('Devis créé')
+			} else {
+				toast.success(
+					status === 'draft'
+						? 'Brouillon enregistré'
+						: 'Devis créé avec succès',
+				)
+				navigate({ to: '/connect/quotes' })
+			}
 		} catch (error) {
 			console.error('Erreur lors de la création du devis', error)
 			toast.error('Erreur lors de la création du devis')
+		}
+	}
+
+	// Après envoi email réussi
+	const handleEmailSent = () => {
+		navigate({ to: '/connect/quotes' })
+	}
+
+	// Fermer le dialog sans envoyer
+	const handleEmailDialogClose = (open: boolean) => {
+		setEmailDialogOpen(open)
+		if (!open) {
+			// Si on ferme sans envoyer, on redirige quand même
+			navigate({ to: '/connect/quotes' })
 		}
 	}
 
@@ -685,16 +727,17 @@ export function QuoteCreatePage() {
 
 							<div className='space-y-2 pt-4'>
 								<Button
-									className='w-full'
-									onClick={() => handleSubmit('sent')}
+									className='w-full gap-2'
+									onClick={() => handleSubmit('sent', true)}
 									disabled={createQuote.isPending}
 								>
+									<Mail className='h-4 w-4' />
 									Créer et envoyer
 								</Button>
 								<Button
 									variant='outline'
 									className='w-full'
-									onClick={() => handleSubmit('draft')}
+									onClick={() => handleSubmit('draft', false)}
 									disabled={createQuote.isPending}
 								>
 									Enregistrer en brouillon
@@ -759,6 +802,14 @@ export function QuoteCreatePage() {
 					</div>
 				</DialogContent>
 			</Dialog>
+
+			{/* Dialog envoi email */}
+			<SendQuoteEmailDialog
+				open={emailDialogOpen}
+				onOpenChange={handleEmailDialogClose}
+				quote={createdQuote}
+				onSuccess={handleEmailSent}
+			/>
 		</div>
 	)
 }
