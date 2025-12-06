@@ -1,4 +1,5 @@
 // frontend/modules/connect/components/QuoteCreatePage.tsx
+// 🔢 Le numéro de devis est maintenant généré automatiquement par le backend
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -34,7 +35,6 @@ import type {
 	QuoteResponse,
 	QuoteStatus,
 } from '@/lib/types/invoice.types'
-import { usePocketBase } from '@/lib/use-pocketbase'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	ArrowLeft,
@@ -79,10 +79,9 @@ type QuoteProduct = ProductsResponse
 export function QuoteCreatePage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
-	const pb = usePocketBase() as any
 
 	// États
-	const [quoteNumber, setQuoteNumber] = useState('')
+	// 🔢 Plus besoin de quoteNumber - généré par le backend
 	const [quoteDate, setQuoteDate] = useState(
 		new Date().toISOString().split('T')[0],
 	)
@@ -167,37 +166,8 @@ export function QuoteCreatePage() {
 		void connect()
 	}, [isAppPosConnected])
 
-	// 🔢 Générer le numéro de devis au chargement
-	useEffect(() => {
-		if (!activeCompanyId) return
-		;(async () => {
-			const year = new Date().getFullYear()
-			const prefix = `DEV-${year}-`
-
-			try {
-				const lastQuote = await pb.collection('quotes').getList(1, 1, {
-					filter: `owner_company = "${activeCompanyId}" && number ~ "${prefix}"`,
-					sort: '-number',
-				})
-
-				let nextNumber = 1
-				if (lastQuote.items.length > 0) {
-					const lastNumber = (lastQuote.items[0] as any).number as string
-					const match = lastNumber?.match(/DEV-\d{4}-(\d+)/)
-					if (match) {
-						nextNumber = Number.parseInt(match[1], 10) + 1
-					}
-				}
-
-				setQuoteNumber(`${prefix}${String(nextNumber).padStart(4, '0')}`)
-			} catch (error) {
-				console.error('Erreur lors de la génération du numéro de devis', error)
-				const fallbackYear = new Date().getFullYear()
-				const fallbackPrefix = `DEV-${fallbackYear}-`
-				setQuoteNumber(`${fallbackPrefix}0001`)
-			}
-		})()
-	}, [activeCompanyId, pb])
+	// 🔢 SUPPRIMÉ: Le useEffect qui générait le numéro côté client
+	// Le numéro est maintenant généré automatiquement par le backend
 
 	// Calculer les totaux
 	const totals = items.reduce(
@@ -316,8 +286,9 @@ export function QuoteCreatePage() {
 			// On enlève l'id temporaire
 			const quoteItems: InvoiceItem[] = items.map(({ id, ...item }) => item)
 
+			// 🔢 Le numéro sera généré automatiquement par le backend
 			const newQuote = await createQuote.mutateAsync({
-				number: quoteNumber,
+				// ⚠️ Pas de 'number' - généré par le backend
 				date: quoteDate,
 				valid_until: validUntil || undefined,
 				customer: selectedCustomer.id,
@@ -341,12 +312,12 @@ export function QuoteCreatePage() {
 				}
 				setCreatedQuote(enrichedQuote)
 				setEmailDialogOpen(true)
-				toast.success('Devis créé')
+				toast.success(`Devis ${newQuote.number} créé`)
 			} else {
 				toast.success(
 					status === 'draft'
-						? 'Brouillon enregistré'
-						: 'Devis créé avec succès',
+						? `Brouillon ${newQuote.number} enregistré`
+						: `Devis ${newQuote.number} créé avec succès`,
 				)
 				navigate({ to: '/connect/quotes' })
 			}
@@ -386,7 +357,9 @@ export function QuoteCreatePage() {
 						<FileText className='h-6 w-6' />
 						Nouveau devis
 					</h1>
-					<p className='text-muted-foreground'>Créez un devis pour un client</p>
+					<p className='text-muted-foreground'>
+						Le numéro sera attribué automatiquement
+					</p>
 				</div>
 			</div>
 
@@ -402,10 +375,9 @@ export function QuoteCreatePage() {
 							<div>
 								<Label>Numéro</Label>
 								<Input
-									value={quoteNumber}
-									readOnly
-									onChange={(e) => setQuoteNumber(e.target.value)}
-									placeholder='DEV-2025-0001'
+									value='Auto-généré'
+									disabled
+									className='bg-muted text-muted-foreground'
 								/>
 							</div>
 							<div>

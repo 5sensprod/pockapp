@@ -1,9 +1,11 @@
+// frontend/lib/queries/quotes.ts
+// 🔢 Le numéro de devis est maintenant généré automatiquement par le backend
+
 import type {
 	QuoteCreateDto,
 	QuoteResponse,
 	QuotesListOptions,
 } from '@/lib/types/invoice.types'
-// frontend/lib/queries/quotes.ts
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -79,12 +81,13 @@ export function useQuote(quoteId?: string) {
 }
 
 // ➕ Créer un devis
+// 🔢 Le numéro est généré automatiquement par le backend
 export function useCreateQuote() {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async (data: QuoteCreateDto) => {
+		mutationFn: async (data: Omit<QuoteCreateDto, 'number'>) => {
 			const result = await pb.collection('quotes').create(data)
 			return result as unknown as QuoteResponse
 		},
@@ -170,11 +173,68 @@ export function useSendQuoteEmail() {
 			return response.json()
 		},
 		onSuccess: (_, variables) => {
-			// Met à jour le statut du devis à "sent" si c'était un brouillon
 			queryClient.invalidateQueries({ queryKey: quoteKeys.all })
 			queryClient.invalidateQueries({
 				queryKey: quoteKeys.detail(variables.quoteId),
 			})
+		},
+	})
+}
+
+// 🔄 Convertir un devis en facture
+// 🔢 Le numéro de facture est généré automatiquement par le backend
+export function useConvertQuoteToInvoice() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (quoteId: string) => {
+			// 1. Récupérer le devis
+			const quote = (await pb
+				.collection('quotes')
+				.getOne(quoteId)) as unknown as QuoteResponse
+
+			if (quote.status !== 'accepted') {
+				throw new Error(
+					'Seuls les devis acceptés peuvent être convertis en facture.',
+				)
+			}
+
+			if (quote.generated_invoice_id) {
+				throw new Error('Ce devis a déjà été converti en facture.')
+			}
+
+			// 2. Créer la facture (numéro généré par le backend)
+			const invoiceData = {
+				// ⚠️ Pas de 'number' - généré par le backend
+				invoice_type: 'invoice' as const,
+				date: new Date().toISOString(),
+				customer: quote.customer,
+				owner_company: quote.owner_company,
+				status: 'draft' as const,
+				is_paid: false,
+				items: quote.items,
+				total_ht: quote.total_ht,
+				total_tva: quote.total_tva,
+				total_ttc: quote.total_ttc,
+				currency: quote.currency,
+				notes: quote.notes
+					? `${quote.notes}\n\nConverti depuis le devis ${quote.number}`
+					: `Converti depuis le devis ${quote.number}`,
+			}
+
+			const invoice = await pb.collection('invoices').create(invoiceData)
+
+			// 3. Mettre à jour le devis avec la référence à la facture
+			await pb.collection('quotes').update(quoteId, {
+				generated_invoice_id: invoice.id,
+			})
+
+			return invoice
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: quoteKeys.all })
+			queryClient.invalidateQueries({ queryKey: ['invoices'] })
 		},
 	})
 }

@@ -11,6 +11,7 @@ import (
 
 // ensureInvoicesCollection crée ou met à jour la collection invoices (ISCA-compliant v2)
 // Avec is_paid séparé du statut
+// 🔢 MODIFIÉ: number n'est plus Required (généré par le hook backend)
 func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 	// On essaie d'abord de trouver la collection existante
 	collection, err := app.Dao().FindCollectionByNameOrId("invoices")
@@ -41,7 +42,7 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 				&schema.SchemaField{
 					Name:     "number",
 					Type:     schema.FieldTypeText,
-					Required: true,
+					Required: false, // 🔢 MODIFIÉ: généré par le hook backend
 					Unique:   true,
 					Options:  &schema.TextOptions{Max: types.Pointer(50)},
 				},
@@ -218,6 +219,15 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 	// À partir de là, collection existe forcément.
 	changed := false
 
+	// 🔢 NOUVEAU: S'assurer que le champ number n'est pas Required
+	if f := collection.Schema.GetFieldByName("number"); f != nil {
+		if f.Required {
+			f.Required = false
+			changed = true
+			log.Println("🛠 Fix number.Required -> false (généré par hook)")
+		}
+	}
+
 	// 1) Fixer la self-relation original_invoice_id → invoices
 	if f := collection.Schema.GetFieldByName("original_invoice_id"); f != nil {
 		if opts, ok := f.Options.(*schema.RelationOptions); ok {
@@ -246,7 +256,7 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		if err := app.Dao().SaveCollection(collection); err != nil {
 			return err
 		}
-		log.Println("✅ Collection 'invoices' mise à jour (relations corrigées)")
+		log.Println("✅ Collection 'invoices' mise à jour (schéma corrigé)")
 	} else {
 		log.Println("✅ Collection 'invoices' OK (aucune modification nécessaire)")
 	}

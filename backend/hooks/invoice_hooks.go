@@ -22,6 +22,9 @@ import (
 
 const (
 	GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
+
+	// 🔢 Format de numérotation uniforme (6 chiffres = jusqu'à 999 999 factures/an)
+	NumberPadding = 6
 )
 
 // Champs autorisés à être modifiés sur une facture verrouillée
@@ -57,8 +60,11 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		fiscalYear := time.Now().Year()
 		record.Set("fiscal_year", fiscalYear)
 
+		ownerCompany := record.GetString("owner_company")
+		invoiceType := record.GetString("invoice_type")
+
 		// Récupérer la dernière facture pour le chaînage
-		lastInvoice, err := getLastInvoice(app, record.GetString("owner_company"))
+		lastInvoice, err := getLastInvoice(app, ownerCompany)
 
 		var previousHash string
 		var sequenceNumber int
@@ -73,6 +79,19 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 
 		record.Set("previous_hash", previousHash)
 		record.Set("sequence_number", sequenceNumber)
+
+		// =====================================================================
+		// 🔢 GÉNÉRATION AUTOMATIQUE DU NUMÉRO DE FACTURE/AVOIR
+		// =====================================================================
+		existingNumber := record.GetString("number")
+		if existingNumber == "" || !isValidDocumentNumber(existingNumber, fiscalYear) {
+			// Générer le numéro basé sur le type et le sequence_number spécifique au type
+			newNumber, err := generateDocumentNumber(app, ownerCompany, invoiceType, fiscalYear)
+			if err != nil {
+				return fmt.Errorf("erreur génération numéro: %w", err)
+			}
+			record.Set("number", newNumber)
+		}
 
 		// Calculer le hash de la facture
 		hash, err := computeInvoiceHash(record)
@@ -181,9 +200,7 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		newIsPaid := updated.GetBool("is_paid")
 
 		if oldIsPaid && !newIsPaid {
-			// On ne peut pas "dé-payer" une facture (annuler un paiement)
-			// Sauf si on veut permettre les erreurs de saisie - à discuter
-			// Pour l'instant, on autorise (cas de correction d'erreur)
+			// On autorise la correction d'erreur de saisie
 		}
 
 		// Si on marque comme payée, s'assurer que paid_at est défini
@@ -244,23 +261,101 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 
 	// -------------------------------------------------------------------------
 	// HOOK: Avant suppression d'une facture
-	// → BLOQUE TOUJOURS (législation française)
+	// → BLOQUE TOUJOURS (sauf brouillons)
 	// -------------------------------------------------------------------------
-app.OnRecordBeforeDeleteRequest("invoices").Add(func(e *core.RecordDeleteEvent) error {
-    record := e.Record
-    status := record.GetString("status")
+	app.OnRecordBeforeDeleteRequest("invoices").Add(func(e *core.RecordDeleteEvent) error {
+		record := e.Record
+		status := record.GetString("status")
 
-    // ✅ Autoriser la suppression des brouillons non verrouillés
-    if status == "draft" && !record.GetBool("is_locked") {
-        return nil
-    }
+		// ✅ Autoriser la suppression des brouillons non verrouillés
+		if status == "draft" && !record.GetBool("is_locked") {
+			return nil
+		}
 
-    // ❌ Tout le reste reste interdit
-    return errors.New(
-        "suppression interdite: les factures validées ou envoyées ne " +
-            "peuvent pas être supprimées. Utilisez un avoir pour annuler une facture.",
-    )
-})
+		// ❌ Tout le reste reste interdit
+		return errors.New(
+			"suppression interdite: les factures validées ou envoyées ne " +
+				"peuvent pas être supprimées. Créez un avoir pour annuler.",
+		)
+	})
+}
+
+// ============================================================================
+// 🔢 GÉNÉRATION DE NUMÉRO DE DOCUMENT
+// ============================================================================
+
+// generateDocumentNumber génère un numéro unique pour facture ou avoir
+// Format: FAC-2025-000001 ou AVO-2025-000001
+func generateDocumentNumber(app *pocketbase.PocketBase, ownerCompany, invoiceType string, fiscalYear int) (string, error) {
+	var prefix string
+	switch invoiceType {
+	case "credit_note":
+		prefix = fmt.Sprintf("AVO-%d-", fiscalYear)
+	default:
+		prefix = fmt.Sprintf("FAC-%d-", fiscalYear)
+	}
+
+	// Trouver le dernier numéro pour ce type et cette année
+	filter := fmt.Sprintf(
+		"owner_company = '%s' && invoice_type = '%s' && fiscal_year = %d",
+		ownerCompany, invoiceType, fiscalYear,
+	)
+
+	records, err := app.Dao().FindRecordsByFilter(
+		"invoices",
+		filter,
+		"-sequence_number", // Tri par sequence_number décroissant
+		1,
+		0,
+	)
+
+	var nextSeq int
+	if err != nil || len(records) == 0 {
+		nextSeq = 1
+	} else {
+		// Extraire le numéro du dernier document
+		lastNumber := records[0].GetString("number")
+		nextSeq = extractSequenceFromNumber(lastNumber, prefix) + 1
+	}
+
+	// Générer le numéro avec padding
+	return fmt.Sprintf("%s%0*d", prefix, NumberPadding, nextSeq), nil
+}
+
+// extractSequenceFromNumber extrait le numéro de séquence d'un numéro de document
+// Ex: "FAC-2025-000042" -> 42
+func extractSequenceFromNumber(number, prefix string) int {
+	if !strings.HasPrefix(number, prefix) {
+		return 0
+	}
+	seqStr := strings.TrimPrefix(number, prefix)
+	var seq int
+	fmt.Sscanf(seqStr, "%d", &seq)
+	return seq
+}
+
+// isValidDocumentNumber vérifie si un numéro est au bon format
+func isValidDocumentNumber(number string, fiscalYear int) bool {
+	// Formats valides: FAC-YYYY-NNNNNN ou AVO-YYYY-NNNNNN ou DEV-YYYY-NNNNNN
+	prefixes := []string{
+		fmt.Sprintf("FAC-%d-", fiscalYear),
+		fmt.Sprintf("AVO-%d-", fiscalYear),
+		fmt.Sprintf("DEV-%d-", fiscalYear),
+	}
+
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(number, prefix) {
+			seqPart := strings.TrimPrefix(number, prefix)
+			// Vérifier que c'est un nombre avec le bon padding
+			if len(seqPart) == NumberPadding {
+				var seq int
+				if _, err := fmt.Sscanf(seqPart, "%d", &seq); err == nil && seq > 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // ============================================================================
@@ -268,31 +363,13 @@ app.OnRecordBeforeDeleteRequest("invoices").Add(func(e *core.RecordDeleteEvent) 
 // ============================================================================
 
 func RegisterClosureHooks(app *pocketbase.PocketBase) {
-	// 🔒 Empêcher plusieurs clôtures daily pour le même jour et la même société
 	app.OnRecordBeforeCreateRequest("closures").Add(func(e *core.RecordCreateEvent) error {
 		record := e.Record
-
 		ownerCompany := record.GetString("owner_company")
-		closureType := record.GetString("closure_type")
-		periodStartStr := record.GetString("period_start")
 
-		if ownerCompany == "" || closureType != "daily" || periodStartStr == "" {
-			// Rien de spécial à vérifier
-			return nil
-		}
-
-		// On parse la date de début de période
-		periodStart, err := time.Parse(time.RFC3339, periodStartStr)
-		if err != nil {
-			return nil // on ne bloque pas, mais on loguerait en prod
-		}
-
-		// Début et fin de journée basée sur periodStart
-		startOfDay := time.Date(
-			periodStart.Year(), periodStart.Month(), periodStart.Day(),
-			0, 0, 0, 0, periodStart.Location(),
-		)
-		endOfDay := startOfDay.Add(24*time.Hour - time.Nanosecond)
+		now := time.Now()
+		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		endOfDay := startOfDay.Add(24 * time.Hour)
 
 		filter := fmt.Sprintf(
 			"owner_company = '%s' && closure_type = 'daily' && period_start >= '%s' && period_start <= '%s'",
@@ -319,7 +396,6 @@ func RegisterClosureHooks(app *pocketbase.PocketBase) {
 		return nil
 	})
 
-	// Déjà présent :
 	app.OnRecordBeforeUpdateRequest("closures").Add(func(e *core.RecordUpdateEvent) error {
 		return errors.New("modification interdite: les clôtures sont inaltérables")
 	})
@@ -329,13 +405,11 @@ func RegisterClosureHooks(app *pocketbase.PocketBase) {
 	})
 }
 
-
 // ============================================================================
 // HOOKS AUDIT_LOGS
 // ============================================================================
 
 func RegisterAuditLogHooks(app *pocketbase.PocketBase) {
-	// Chaînage des logs d'audit
 	app.OnRecordBeforeCreateRequest("audit_logs").Add(func(e *core.RecordCreateEvent) error {
 		record := e.Record
 
@@ -366,6 +440,59 @@ func RegisterAuditLogHooks(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeDeleteRequest("audit_logs").Add(func(e *core.RecordDeleteEvent) error {
 		return errors.New("suppression interdite: les logs d'audit doivent être conservés")
 	})
+}
+
+// ============================================================================
+// HOOKS QUOTES (DEVIS)
+// ============================================================================
+
+func RegisterQuoteHooks(app *pocketbase.PocketBase) {
+	app.OnRecordBeforeCreateRequest("quotes").Add(func(e *core.RecordCreateEvent) error {
+		record := e.Record
+		ownerCompany := record.GetString("owner_company")
+		fiscalYear := time.Now().Year()
+
+		// Générer le numéro de devis si non fourni
+		existingNumber := record.GetString("number")
+		if existingNumber == "" || !isValidDocumentNumber(existingNumber, fiscalYear) {
+			newNumber, err := generateQuoteNumber(app, ownerCompany, fiscalYear)
+			if err != nil {
+				return fmt.Errorf("erreur génération numéro devis: %w", err)
+			}
+			record.Set("number", newNumber)
+		}
+
+		return nil
+	})
+}
+
+// generateQuoteNumber génère un numéro unique pour les devis
+// Format: DEV-2025-000001
+func generateQuoteNumber(app *pocketbase.PocketBase, ownerCompany string, fiscalYear int) (string, error) {
+	prefix := fmt.Sprintf("DEV-%d-", fiscalYear)
+
+	filter := fmt.Sprintf(
+		"owner_company = '%s' && number ~ '%s'",
+		ownerCompany, prefix,
+	)
+
+	records, err := app.Dao().FindRecordsByFilter(
+		"quotes",
+		filter,
+		"-created",
+		1,
+		0,
+	)
+
+	var nextSeq int
+	if err != nil || len(records) == 0 {
+		nextSeq = 1
+	} else {
+		lastNumber := records[0].GetString("number")
+		nextSeq = extractSequenceFromNumber(lastNumber, prefix) + 1
+	}
+
+	return fmt.Sprintf("%s%0*d", prefix, NumberPadding, nextSeq), nil
 }
 
 // ============================================================================
@@ -509,7 +636,6 @@ type AuditLogParams struct {
 func createAuditLog(app *pocketbase.PocketBase, ctx echo.Context, params AuditLogParams) error {
 	collection, err := app.Dao().FindCollectionByNameOrId("audit_logs")
 	if err != nil {
-		// Collection audit_logs n'existe pas encore, on skip
 		return nil
 	}
 
@@ -550,6 +676,7 @@ func createAuditLog(app *pocketbase.PocketBase, ctx echo.Context, params AuditLo
 
 func RegisterAllHooks(app *pocketbase.PocketBase) {
 	RegisterInvoiceHooks(app)
+	RegisterQuoteHooks(app) // ← NOUVEAU: hooks pour les devis
 	RegisterClosureHooks(app)
 	RegisterAuditLogHooks(app)
 }

@@ -1,4 +1,5 @@
 // frontend/modules/connect/components/InvoiceCreatePage.tsx
+// 🔢 Le numéro de facture est maintenant généré automatiquement par le backend
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,7 +31,6 @@ import type {
 import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
 import { useCreateInvoice } from '@/lib/queries/invoices'
 import type { InvoiceItem } from '@/lib/types/invoice.types'
-import { usePocketBase } from '@/lib/use-pocketbase'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	ArrowLeft,
@@ -75,10 +75,9 @@ type InvoiceProduct = ProductsResponse
 export function InvoiceCreatePage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
-	const pb = usePocketBase() as any
 
 	// États
-	const [invoiceNumber, setInvoiceNumber] = useState('')
+	// 🔢 Plus besoin de générer le numéro côté client
 	const [invoiceDate, setInvoiceDate] = useState(
 		new Date().toISOString().split('T')[0],
 	)
@@ -156,40 +155,8 @@ export function InvoiceCreatePage() {
 		void connect()
 	}, [isAppPosConnected])
 
-	// 🔢 Générer le numéro de facture au chargement (direct PocketBase)
-	useEffect(() => {
-		if (!activeCompanyId) return
-		;(async () => {
-			const year = new Date().getFullYear()
-			const prefix = `FAC-${year}-`
-
-			try {
-				const lastInvoice = await pb.collection('invoices').getList(1, 1, {
-					filter: `owner_company = "${activeCompanyId}" && number ~ "${prefix}"`,
-					sort: '-number',
-				})
-
-				let nextNumber = 1
-				if (lastInvoice.items.length > 0) {
-					const lastNumber = (lastInvoice.items[0] as any).number as string
-					const match = lastNumber?.match(/FAC-\d{4}-(\d+)/)
-					if (match) {
-						nextNumber = Number.parseInt(match[1], 10) + 1
-					}
-				}
-
-				setInvoiceNumber(`${prefix}${String(nextNumber).padStart(4, '0')}`)
-			} catch (error) {
-				console.error(
-					'Erreur lors de la génération du numéro de facture',
-					error,
-				)
-				const fallbackYear = new Date().getFullYear()
-				const fallbackPrefix = `FAC-${fallbackYear}-`
-				setInvoiceNumber(`${fallbackPrefix}0001`)
-			}
-		})()
-	}, [activeCompanyId, pb])
+	// 🔢 SUPPRIMÉ: Le useEffect qui générait le numéro côté client
+	// Le numéro est maintenant généré automatiquement par le backend
 
 	// Calculer les totaux
 	const totals = items.reduce(
@@ -305,14 +272,15 @@ export function InvoiceCreatePage() {
 			// On enlève juste l'id temporaire
 			const invoiceItems: InvoiceItem[] = items.map(({ id, ...item }) => item)
 
-			await createInvoice.mutateAsync({
-				number: invoiceNumber,
+			// 🔢 Le numéro sera généré automatiquement par le backend
+			const result = await createInvoice.mutateAsync({
+				// ⚠️ Pas de 'number' - généré par le backend
 				invoice_type: 'invoice',
 				date: invoiceDate,
 				due_date: dueDate || undefined,
 				customer: selectedCustomer.id,
 				owner_company: activeCompanyId,
-				status: 'validated',
+				status: 'draft',
 				items: invoiceItems,
 				total_ht: totals.ht,
 				total_tva: totals.tva,
@@ -321,7 +289,7 @@ export function InvoiceCreatePage() {
 				notes: notes || undefined,
 			})
 
-			toast.success('Facture créée avec succès')
+			toast.success(`Facture ${result.number} créée avec succès`)
 			navigate({ to: '/connect/invoices' })
 		} catch (error) {
 			console.error('Erreur lors de la création de la facture', error)
@@ -346,7 +314,7 @@ export function InvoiceCreatePage() {
 						Nouvelle facture
 					</h1>
 					<p className='text-muted-foreground'>
-						Créez une facture pour un client
+						Le numéro sera attribué automatiquement
 					</p>
 				</div>
 			</div>
@@ -363,10 +331,9 @@ export function InvoiceCreatePage() {
 							<div>
 								<Label>Numéro</Label>
 								<Input
-									value={invoiceNumber}
-									readOnly
-									onChange={(e) => setInvoiceNumber(e.target.value)}
-									placeholder='FAC-2025-0001'
+									value='Auto-généré'
+									disabled
+									className='bg-muted text-muted-foreground'
 								/>
 							</div>
 							<div>

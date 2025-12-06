@@ -1,11 +1,10 @@
 // frontend/lib/queries/invoices.ts
 // Service de facturation conforme ISCA v2
-// NOUVEAU: is_paid est séparé du statut workflow
+// 🔢 Le numéro est maintenant généré automatiquement par le backend
 
 import type {
 	InvoiceCreateDto,
 	InvoiceResponse,
-	// InvoiceStatus,
 	InvoicesListOptions,
 	PaymentMethod,
 } from '@/lib/types/invoice.types'
@@ -74,7 +73,6 @@ export function useInvoices(options: InvoicesListOptions = {}) {
 			if (fiscalYear) {
 				filters.push(`fiscal_year = ${fiscalYear}`)
 			}
-			// NOUVEAU: Filtre sur is_paid
 			if (isPaid !== undefined) {
 				filters.push(`is_paid = ${isPaid}`)
 			}
@@ -156,18 +154,19 @@ export function useInvoice(invoiceId?: string) {
 
 /**
  * ➕ Créer une facture (brouillon par défaut)
+ * 🔢 Le numéro est généré automatiquement par le backend
  */
 export function useCreateInvoice() {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async (data: InvoiceCreateDto) => {
+		mutationFn: async (data: Omit<InvoiceCreateDto, 'number'>) => {
 			const invoiceData = {
 				...data,
-				invoice_type: 'invoice' as const,
 				status: data.status || 'draft',
-				is_paid: false, // NOUVEAU: toujours false à la création
+				is_paid: false,
+				// ⚠️ Ne pas envoyer 'number' - le backend le génère automatiquement
 			}
 
 			const result = await pb.collection('invoices').create(invoiceData)
@@ -175,40 +174,6 @@ export function useCreateInvoice() {
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
-		},
-	})
-}
-
-/**
- * 🔢 Générer un numéro de facture séquentiel
- */
-export function useGenerateInvoiceNumber() {
-	const pb = usePocketBase()
-
-	return useMutation({
-		mutationFn: async (companyId: string) => {
-			const year = new Date().getFullYear()
-			const prefix = `FAC-${year}-`
-
-			try {
-				const lastInvoice = await pb.collection('invoices').getList(1, 1, {
-					filter: `owner_company = "${companyId}" && invoice_type = "invoice" && number ~ "${prefix}"`,
-					sort: '-sequence_number',
-				})
-
-				let nextNumber = 1
-				if (lastInvoice.items.length > 0) {
-					const lastNumber = (lastInvoice.items[0] as InvoiceResponse).number
-					const match = lastNumber.match(/FAC-\d{4}-(\d+)/)
-					if (match) {
-						nextNumber = Number.parseInt(match[1], 10) + 1
-					}
-				}
-
-				return `${prefix}${String(nextNumber).padStart(6, '0')}`
-			} catch {
-				return `${prefix}000001`
-			}
 		},
 	})
 }
@@ -320,8 +285,7 @@ export function useMarkInvoiceAsSent() {
 }
 
 /**
- * 💰 Enregistrer un paiement (NOUVEAU: indépendant du statut)
- * Peut être fait sur une facture validated ou sent
+ * 💰 Enregistrer un paiement (indépendant du statut)
  */
 export function useRecordPayment() {
 	const pb = usePocketBase()
@@ -407,7 +371,7 @@ export function useCancelPayment() {
 
 /**
  * 🔄 Annuler une facture par création d'avoir
- * C'est la SEULE façon d'annuler une facture validée
+ * 🔢 Le numéro d'avoir est généré automatiquement par le backend
  */
 export function useCancelInvoice() {
 	const pb = usePocketBase()
@@ -426,38 +390,23 @@ export function useCancelInvoice() {
 				.collection('invoices')
 				.getOne(invoiceId)) as unknown as InvoiceResponse
 
-			// ... vérifications ...
-
-			// 3. Générer le numéro d’avoir
-			const year = new Date().getFullYear()
-			const prefix = `AVO-${year}-`
-
-			const lastCreditNote = await pb.collection('invoices').getList(1, 1, {
-				filter: `owner_company = "${original.owner_company}" && invoice_type = "credit_note" && number ~ "${prefix}"`,
-				sort: '-sequence_number',
-			})
-
-			let nextNumber = 1
-			if (lastCreditNote.items.length > 0) {
-				const lastNum = (lastCreditNote.items[0] as InvoiceResponse).number
-				const match = lastNum.match(/AVO-\d{4}-(\d+)/)
-				if (match) {
-					nextNumber = Number.parseInt(match[1], 10) + 1
-				}
+			// 2. Vérifications
+			if (original.status === 'draft') {
+				throw new Error(
+					'Impossible de créer un avoir pour un brouillon. Supprimez-le directement.',
+				)
 			}
 
-			const creditNoteNumber = `${prefix}${String(nextNumber).padStart(6, '0')}`
-
-			// 4. CRÉER l’avoir
+			// 3. CRÉER l'avoir (numéro généré automatiquement par le backend)
 			const creditNoteData = {
-				number: creditNoteNumber,
+				// ⚠️ Pas de 'number' - généré par le backend
 				invoice_type: 'credit_note' as const,
 				date: new Date().toISOString(),
 				customer: original.customer,
 				owner_company: original.owner_company,
 				original_invoice_id: invoiceId,
 				status: 'validated' as const,
-				is_paid: false, // ← tu te posais la question
+				is_paid: false,
 
 				items: original.items.map((item) => ({
 					...item,
@@ -483,10 +432,9 @@ export function useCancelInvoice() {
 }
 
 // ============================================================================
-// ENVOI EMAIL (à ajouter après les autres hooks)
+// ENVOI EMAIL
 // ============================================================================
 
-// 📧 Envoyer une facture par email
 export interface SendInvoiceEmailParams {
 	invoiceId: string
 	recipientEmail: string
@@ -522,7 +470,6 @@ export function useSendInvoiceEmail() {
 			return response.json()
 		},
 		onSuccess: (_, variables) => {
-			// Met à jour le statut de la facture à "sent" si elle était "validated"
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
 			queryClient.invalidateQueries({
 				queryKey: invoiceKeys.detail(variables.invoiceId),
