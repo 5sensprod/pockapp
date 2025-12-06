@@ -169,11 +169,6 @@ export function InvoicesPage() {
 		null,
 	)
 
-	const [viewDialogOpen, setViewDialogOpen] = useState(false)
-	const [invoiceToView, setInvoiceToView] = useState<InvoiceResponse | null>(
-		null,
-	)
-
 	const [company, setCompany] = useState<CompaniesResponse | null>(null)
 
 	// Mutations / hooks factures
@@ -281,11 +276,6 @@ export function InvoicesPage() {
 	const handleOpenSendEmailDialog = (invoice: InvoiceResponse) => {
 		setInvoiceToEmail(invoice)
 		setSendEmailDialogOpen(true)
-	}
-
-	const handleOpenViewDialog = (invoice: InvoiceResponse) => {
-		setInvoiceToView(invoice)
-		setViewDialogOpen(true)
 	}
 
 	const handleOpenDeleteDraftDialog = (invoice: InvoiceResponse) => {
@@ -485,154 +475,128 @@ export function InvoicesPage() {
 				<div>
 					<h1 className='text-2xl font-bold flex items-center gap-2'>
 						<FileText className='h-6 w-6' />
-						Factures
+						Factures & avoirs
 					</h1>
-					<p className='text-muted-foreground'>Gérez vos factures clients</p>
+					<p className='text-muted-foreground'>
+						Gérez vos factures, avoirs et la conformité ISCA.
+					</p>
 				</div>
-				<Button
-					onClick={() => navigate({ to: '/connect/invoices/new' })}
-					className='gap-2'
-				>
-					<Plus className='h-4 w-4' />
-					Nouvelle facture
-				</Button>
+				<div className='flex items-center gap-2'>
+					<Button
+						variant='outline'
+						onClick={handleVerifyChain}
+						disabled={verifyChain.isPending}
+					>
+						{verifyChain.isPending ? 'Vérification...' : 'Vérifier intégrité'}
+					</Button>
+					<Button
+						variant={hasTodayClosure ? 'outline' : 'destructive'}
+						onClick={handleDailyClosureClick}
+						disabled={performDailyClosure.isPending || hasTodayClosure}
+					>
+						{hasTodayClosure ? 'Journée déjà clôturée' : 'Clôture journalière'}
+					</Button>
+					<Button
+						onClick={() =>
+							navigate({
+								to: '/connect/invoices/new',
+							})
+						}
+					>
+						<Plus className='h-4 w-4 mr-2' />
+						Nouvelle facture
+					</Button>
+				</div>
 			</div>
 
 			{/* Stats */}
-			<div className='grid sm:grid-cols-5 gap-4 mb-6'>
-				<div className='bg-muted/30 rounded-lg p-4'>
-					<p className='text-sm text-muted-foreground'>Total factures</p>
-					<p className='text-2xl font-bold'>{stats.invoiceCount}</p>
-				</div>
-
-				<div className='bg-muted/30 rounded-lg p-4'>
-					<p className='text-sm text-muted-foreground'>Montant total (net)</p>
-					<p className='text-2xl font-bold'>{formatCurrency(stats.totalTTC)}</p>
-					{stats.creditNotesTTC !== 0 && (
-						<p className='text-xs text-muted-foreground mt-1'>
-							Dont avoirs : {formatCurrency(stats.creditNotesTTC)}
-						</p>
-					)}
-				</div>
-
-				<div className='bg-green-50 rounded-lg p-4'>
-					<p className='text-sm text-green-600'>Encaissé</p>
-					<p className='text-2xl font-bold text-green-700'>
-						{formatCurrency(stats.paid)}
+			<div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
+				<div className='border rounded-lg p-4'>
+					<p className='text-xs text-muted-foreground uppercase'>
+						Factures (net)
+					</p>
+					<p className='text-xl font-bold'>
+						{formatCurrency(stats.totalTTC || 0)}
+					</p>
+					<p className='text-xs text-muted-foreground'>
+						{stats.invoiceCount} facture(s), {stats.creditNoteCount} avoir(s)
 					</p>
 				</div>
-
-				<div className='bg-orange-50 rounded-lg p-4'>
-					<p className='text-sm text-orange-600'>En attente</p>
-					<p className='text-2xl font-bold text-orange-700'>
-						{formatCurrency(stats.pending)}
+				<div className='border rounded-lg p-4'>
+					<p className='text-xs text-muted-foreground uppercase'>Payé</p>
+					<p className='text-xl font-bold'>{formatCurrency(stats.paid || 0)}</p>
+				</div>
+				<div className='border rounded-lg p-4'>
+					<p className='text-xs text-muted-foreground uppercase'>En attente</p>
+					<p className='text-xl font-bold'>
+						{formatCurrency(stats.pending || 0)}
 					</p>
 				</div>
-
-				{stats.overdue > 0 && (
-					<div className='bg-red-50 rounded-lg p-4'>
-						<p className='text-sm text-red-600 flex items-center gap-1'>
-							<AlertTriangle className='h-3 w-3' />
-							En retard
-						</p>
-						<p className='text-2xl font-bold text-red-700'>
-							{formatCurrency(stats.overdue)}
-						</p>
-					</div>
-				)}
+				<div className='border rounded-lg p-4'>
+					<p className='text-xs text-muted-foreground uppercase text-red-600'>
+						En retard
+					</p>
+					<p className='text-xl font-bold text-red-600'>
+						{formatCurrency(stats.overdue || 0)}
+					</p>
+				</div>
 			</div>
 
 			{/* Filtres */}
-			<div className='flex gap-4 mb-6 flex-wrap'>
-				<div className='flex-1 max-w-sm'>
+			<div className='flex flex-col md:flex-row gap-4 mb-6'>
+				<div className='flex-1'>
 					<Input
-						placeholder='Rechercher par numéro...'
+						placeholder='Rechercher par numéro de facture...'
 						value={searchTerm}
 						onChange={(e) => setSearchTerm(e.target.value)}
 					/>
 				</div>
-				<Select
-					value={statusFilter}
-					onValueChange={(value) => setStatusFilter(value as StatusFilter)}
-				>
-					<SelectTrigger className='w-[180px]'>
-						<SelectValue placeholder='Statut' />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value='all'>Tous les statuts</SelectItem>
-						<SelectItem value='draft'>Brouillons</SelectItem>
-						<SelectItem value='validated'>Validées</SelectItem>
-						<SelectItem value='sent'>Envoyées</SelectItem>
-						<SelectItem value='unpaid'>Non payées</SelectItem>
-						<SelectItem value='overdue'>En retard</SelectItem>
-					</SelectContent>
-				</Select>
-				<Select
-					value={typeFilter}
-					onValueChange={(value) => setTypeFilter(value as any)}
-				>
-					<SelectTrigger className='w-[150px]'>
-						<SelectValue placeholder='Type' />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value='all'>Tous types</SelectItem>
-						<SelectItem value='invoice'>Factures</SelectItem>
-						<SelectItem value='credit_note'>Avoirs</SelectItem>
-					</SelectContent>
-				</Select>
-			</div>
-
-			{/* Actions de contrôle (clôture & intégrité) */}
-			<div className='flex flex-wrap gap-3 mb-6 justify-between items-center'>
-				<p className='text-sm text-muted-foreground'>
-					Contrôles fiscaux &amp; intégrité (ISCA)
-				</p>
-				<div className='flex gap-3'>
-					<Button
-						variant='outline'
-						size='sm'
-						onClick={handleVerifyChain}
-						disabled={verifyChain.isPending || !activeCompanyId}
+				<div className='flex gap-2'>
+					<Select
+						value={statusFilter}
+						onValueChange={(value: StatusFilter) => setStatusFilter(value)}
 					>
-						{verifyChain.isPending ? 'Vérification...' : 'Vérifier la chaîne'}
-					</Button>
-					<Button
-						variant='outline'
-						size='sm'
-						onClick={handleDailyClosureClick}
-						disabled={
-							performDailyClosure.isPending ||
-							!activeCompanyId ||
-							hasTodayClosure
+						<SelectTrigger className='w-[160px]'>
+							<SelectValue placeholder='Statut' />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value='all'>Tous les statuts</SelectItem>
+							<SelectItem value='draft'>Brouillon</SelectItem>
+							<SelectItem value='validated'>Validée</SelectItem>
+							<SelectItem value='sent'>Envoyée</SelectItem>
+							<SelectItem value='cancelled'>Annulée</SelectItem>
+							<SelectItem value='unpaid'>Impayée</SelectItem>
+							<SelectItem value='overdue'>En retard</SelectItem>
+						</SelectContent>
+					</Select>
+
+					<Select
+						value={typeFilter}
+						onValueChange={(value: 'all' | 'invoice' | 'credit_note') =>
+							setTypeFilter(value)
 						}
 					>
-						{hasTodayClosure
-							? 'Clôture déjà effectuée'
-							: performDailyClosure.isPending
-								? 'Clôture en cours...'
-								: 'Clôture journalière'}
-					</Button>
+						<SelectTrigger className='w-[160px]'>
+							<SelectValue placeholder='Type' />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value='all'>Factures + avoirs</SelectItem>
+							<SelectItem value='invoice'>Factures uniquement</SelectItem>
+							<SelectItem value='credit_note'>Avoirs uniquement</SelectItem>
+						</SelectContent>
+					</Select>
 				</div>
 			</div>
 
 			{/* Table */}
 			{isLoading ? (
-				<div className='text-center py-12 text-muted-foreground'>
-					Chargement...
-				</div>
+				<p className='text-muted-foreground'>Chargement des factures...</p>
 			) : invoices.length === 0 ? (
-				<div className='text-center py-12'>
-					<FileText className='h-12 w-12 mx-auto text-muted-foreground/50 mb-4' />
-					<p className='text-muted-foreground'>Aucune facture</p>
-					<Button
-						className='mt-4'
-						onClick={() => navigate({ to: '/connect/invoices/new' })}
-					>
-						Créer ma première facture
-					</Button>
+				<div className='border rounded-lg p-6 text-center text-muted-foreground'>
+					Aucune facture trouvée pour ces filtres.
 				</div>
 			) : (
-				<div className='rounded-md border'>
+				<div className='border rounded-lg overflow-hidden'>
 					<Table>
 						<TableHeader>
 							<TableRow>
@@ -721,8 +685,14 @@ export function InvoicesPage() {
 												<DropdownMenuContent align='end'>
 													<DropdownMenuLabel>Actions</DropdownMenuLabel>
 
+													{/* 👉 Voir = navigation vers la page détail */}
 													<DropdownMenuItem
-														onClick={() => handleOpenViewDialog(invoice)}
+														onClick={() =>
+															navigate({
+																to: '/connect/invoices/$invoiceId',
+																params: () => ({ invoiceId: invoice.id }),
+															})
+														}
 													>
 														<Eye className='h-4 w-4 mr-2' />
 														Voir
@@ -883,7 +853,7 @@ export function InvoicesPage() {
 							<Label htmlFor='cancel-reason'>Motif d&apos;annulation *</Label>
 							<Textarea
 								id='cancel-reason'
-								placeholder='Ex: Erreur de facturation, annulation commande client...'
+								placeholder='Ex: Erreur de facturation, annulation commande client.'
 								value={cancelReason}
 								onChange={(e) => setCancelReason(e.target.value)}
 								rows={3}
@@ -938,7 +908,7 @@ export function InvoicesPage() {
 							<Label htmlFor='payment-method'>Méthode de paiement</Label>
 							<Select value={paymentMethod} onValueChange={setPaymentMethod}>
 								<SelectTrigger>
-									<SelectValue placeholder='Sélectionner...' />
+									<SelectValue placeholder='Sélectionner.' />
 								</SelectTrigger>
 								<SelectContent>
 									<SelectItem value='virement'>Virement</SelectItem>
@@ -1028,152 +998,6 @@ export function InvoicesPage() {
 								? 'Suppression...'
 								: 'Supprimer le brouillon'}
 						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			{/* Dialog: Voir la facture */}
-			<Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-				<DialogContent className='max-w-3xl'>
-					<DialogHeader>
-						<DialogTitle>
-							{invoiceToView?.invoice_type === 'credit_note'
-								? `Avoir ${invoiceToView?.number}`
-								: `Facture ${invoiceToView?.number}`}
-						</DialogTitle>
-						<DialogDescription>
-							Visualisation détaillée de la facture.
-							<br />
-							Pour générer un PDF officiel, utilisez l&apos;action
-							&quot;Télécharger PDF&quot;.
-						</DialogDescription>
-					</DialogHeader>
-
-					{invoiceToView && (
-						<div className='space-y-4'>
-							{/* Infos principales */}
-							<div className='grid sm:grid-cols-2 gap-4 text-sm'>
-								<div className='space-y-1'>
-									<p>
-										<span className='text-muted-foreground'>Date :</span>{' '}
-										<strong>{formatDate(invoiceToView.date)}</strong>
-									</p>
-									<p>
-										<span className='text-muted-foreground'>Échéance :</span>{' '}
-										<strong>
-											{invoiceToView.due_date
-												? formatDate(invoiceToView.due_date)
-												: '-'}
-										</strong>
-									</p>
-									<p>
-										<span className='text-muted-foreground'>Statut :</span>{' '}
-										<strong>{getDisplayStatus(invoiceToView).label}</strong>
-									</p>
-									<p>
-										<span className='text-muted-foreground'>Type :</span>{' '}
-										<strong>
-											{invoiceToView.invoice_type === 'credit_note'
-												? 'Avoir'
-												: 'Facture'}
-										</strong>
-									</p>
-								</div>
-								<div className='space-y-1'>
-									<p>
-										<span className='text-muted-foreground'>Client :</span>{' '}
-										<strong>
-											{invoiceToView.expand?.customer?.name || 'Client inconnu'}
-										</strong>
-									</p>
-									{invoiceToView.expand?.customer?.email && (
-										<p>
-											<span className='text-muted-foreground'>Email :</span>{' '}
-											{invoiceToView.expand.customer.email}
-										</p>
-									)}
-									{invoiceToView.expand?.customer?.address && (
-										<p>
-											<span className='text-muted-foreground'>Adresse :</span>{' '}
-											{invoiceToView.expand.customer.address}
-										</p>
-									)}
-								</div>
-							</div>
-
-							{/* Tableau des lignes */}
-							<div className='border rounded-md overflow-hidden'>
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Article</TableHead>
-											<TableHead className='text-center w-20'>Qté</TableHead>
-											<TableHead className='text-right'>P.U. HT</TableHead>
-											<TableHead className='text-right'>TVA</TableHead>
-											<TableHead className='text-right'>Total TTC</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{invoiceToView.items.map((item, idx) => (
-											<TableRow key={`${item.name}-${idx}`}>
-												<TableCell>{item.name}</TableCell>
-												<TableCell className='text-center'>
-													{item.quantity}
-												</TableCell>
-												<TableCell className='text-right'>
-													{item.unit_price_ht.toFixed(2)} €
-												</TableCell>
-												<TableCell className='text-right'>
-													{item.tva_rate}%
-												</TableCell>
-												<TableCell className='text-right'>
-													{item.total_ttc.toFixed(2)} €
-												</TableCell>
-											</TableRow>
-										))}
-									</TableBody>
-								</Table>
-							</div>
-
-							{/* Totaux */}
-							<div className='flex flex-col items-end space-y-1 text-sm'>
-								<p>
-									<span className='text-muted-foreground mr-2'>Total HT :</span>
-									<strong>{formatCurrency(invoiceToView.total_ht)}</strong>
-								</p>
-								<p>
-									<span className='text-muted-foreground mr-2'>TVA :</span>
-									<strong>{formatCurrency(invoiceToView.total_tva)}</strong>
-								</p>
-								<p className='text-base'>
-									<span className='text-muted-foreground mr-2'>
-										Total TTC :
-									</span>
-									<strong>{formatCurrency(invoiceToView.total_ttc)}</strong>
-								</p>
-								{invoiceToView.is_paid && (
-									<p className='text-xs text-green-700 mt-1'>
-										Payée le{' '}
-										{invoiceToView.paid_at
-											? formatDate(invoiceToView.paid_at)
-											: '(date non renseignée)'}{' '}
-										par {invoiceToView.payment_method || 'méthode inconnue'}.
-									</p>
-								)}
-							</div>
-
-							{/* Notes */}
-							{invoiceToView.notes && (
-								<div className='mt-2 border-t pt-2 text-sm'>
-									<p className='text-muted-foreground mb-1'>Notes</p>
-									<p>{invoiceToView.notes}</p>
-								</div>
-							)}
-						</div>
-					)}
-
-					<DialogFooter>
-						<Button onClick={() => setViewDialogOpen(false)}>Fermer</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

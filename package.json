@@ -14,6 +14,7 @@
     "build:linux": "wails build -platform linux/amd64",
     "format": "pnpm biome check --write ./frontend/",
     "generate": "wails generate module",
+    "router:generate": "tsr generate --routesDir=frontend/routes",
     "typegen": "pocketbase-typegen --url http://127.0.0.1:8090 --email 5sensprod@gmail.com --password 5sensprod1234 --out ./frontend/lib/pocketbase-types.ts"
   },
   "dependencies": {
