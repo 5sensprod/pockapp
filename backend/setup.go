@@ -1,12 +1,15 @@
 package backend
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/models"
+
+	"pocket-react/backend/migrations"
 )
 
 type SetupRequest struct {
@@ -19,99 +22,114 @@ type SetupResponse struct {
 	Message    string `json:"message,omitempty"`
 }
 
-// RegisterSetupRoutes enregistre les routes pour le setup initial
-func RegisterSetupRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
-	// Route pour vérifier si le setup est nécessaire
-	router.GET("/api/setup/status", func(c echo.Context) error {
-		// Vérifie s'il existe déjà un user dans la collection users
-		collection, err := app.Dao().FindCollectionByNameOrId("users")
+// hasAnyUser retourne true si au moins un utilisateur existe dans _pb_users_auth_
+func hasAnyUser(app *pocketbase.PocketBase) (bool, error) {
+	usersCollection, err := app.Dao().FindCollectionByNameOrId("_pb_users_auth_")
+	if err != nil {
+		return false, err
+	}
+
+	var total int
+	err = app.Dao().DB().
+		Select("COUNT(*)").
+		From(usersCollection.Name).
+		Row(&total)
+	if err != nil {
+		return false, err
+	}
+
+	return total > 0, nil
+}
+
+// RegisterSetupRoutes enregistre les routes de setup initial (création du premier admin)
+func RegisterSetupRoutes(app *pocketbase.PocketBase, e *echo.Echo) {
+	// Vérifie si le setup est nécessaire
+	e.GET("/api/setup/status", func(c echo.Context) error {
+		hasUser, err := hasAnyUser(app)
 		if err != nil {
-			return c.JSON(http.StatusOK, SetupResponse{
-				NeedsSetup: true,
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "Impossible de vérifier l'état du setup",
 			})
 		}
 
-		// Compte le nombre de users avec une requête SQL directe
-		var count int
-		err = app.Dao().DB().
-			Select("COUNT(*)").
-			From(collection.Name).
-			Row(&count)
-
-		if err != nil || count == 0 {
+		if !hasUser {
 			return c.JSON(http.StatusOK, SetupResponse{
 				NeedsSetup: true,
+				Message:    "Aucun utilisateur trouvé, le setup est requis.",
 			})
 		}
 
 		return c.JSON(http.StatusOK, SetupResponse{
 			NeedsSetup: false,
+			Message:    "Un utilisateur existe déjà, le setup n'est pas nécessaire.",
 		})
 	})
 
-	// Route pour créer le premier user
-	router.POST("/api/setup/create-admin", func(c echo.Context) error {
-		// Vérifie d'abord si un user existe déjà
-		collection, err := app.Dao().FindCollectionByNameOrId("users")
+	// Crée le premier utilisateur (admin)
+	e.POST("/api/setup/create-admin", func(c echo.Context) error {
+		// Sécurité : empêcher de rejouer le setup si un user existe déjà
+		hasUser, err := hasAnyUser(app)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "Collection users introuvable",
+				"error": "Impossible de vérifier les utilisateurs existants",
 			})
 		}
 
-		// Compte le nombre de users avec une requête SQL directe
-		var count int
-		err = app.Dao().DB().
-			Select("COUNT(*)").
-			From(collection.Name).
-			Row(&count)
-
-		if err == nil && count > 0 {
-			return c.JSON(http.StatusForbidden, map[string]string{
-				"error": "Un utilisateur existe déjà",
+		if hasUser {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "Le setup a déjà été effectué.",
 			})
 		}
 
 		var req SetupRequest
 		if err := c.Bind(&req); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "Données invalides",
+				"error": "Requête invalide.",
 			})
 		}
 
-		// Validation basique
+		req.Email = strings.TrimSpace(req.Email)
 		if req.Email == "" || req.Password == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "Email et mot de passe requis",
+				"error": "Email et mot de passe sont obligatoires.",
 			})
 		}
 
-		if len(req.Password) < 8 {
+		email := strings.ToLower(req.Email)
+
+		// Vérifier que l'email n'existe pas déjà
+		existingByEmail, _ := app.Dao().FindAuthRecordByEmail("_pb_users_auth_", email)
+		if existingByEmail != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "Le mot de passe doit contenir au moins 8 caractères",
+				"error": "Un utilisateur avec cet email existe déjà.",
 			})
 		}
 
-		// Crée le premier user
-		record := models.NewRecord(collection)
-		
-		// Génère un username depuis l'email (prend la partie avant @)
-		username := strings.Split(req.Email, "@")[0]
-		
-		// Important : définir les champs AVANT de définir le password
+		// Récupération de la collection users auth
+		usersCollection, err := app.Dao().FindCollectionByNameOrId("_pb_users_auth_")
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "Impossible de récupérer la collection des utilisateurs",
+			})
+		}
+
+		// Création du record utilisateur
+		record := models.NewRecord(usersCollection)
+
+		// Définir l'email
+		record.SetEmail(email)
+
+		// 🔑 Générer automatiquement un username à partir de l'email
+		// ex: "5sensprod@gmail.com" -> "5sensprod"
+		username := email
+		if parts := strings.Split(email, "@"); len(parts) > 1 && parts[0] != "" {
+			username = parts[0]
+		}
 		record.Set("username", username)
-		record.Set("email", req.Email)
-		record.Set("emailVisibility", true)
-		record.Set("verified", true) // Vérifié automatiquement pour le premier user
-		
-		// Si la collection a un champ role ou is_admin, définissez-le
-		if collection.Schema.GetFieldByName("role") != nil {
-			record.Set("role", "admin")
-		}
-		if collection.Schema.GetFieldByName("is_admin") != nil {
-			record.Set("is_admin", true)
-		}
-		
+
+		// Marquer l'email comme vérifié pour le premier admin
+		record.Set("verified", true)
+
 		// Définir le password après les autres champs
 		record.SetPassword(req.Password)
 
@@ -119,6 +137,13 @@ func RegisterSetupRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "Impossible de créer l'utilisateur: " + err.Error(),
 			})
+		}
+
+		// 🔁 Relancer les migrations après la création du premier user
+		// pour être sûr que "companies" et autres collections existent
+		if err := migrations.RunMigrations(app); err != nil {
+			log.Println("Erreur lors des migrations après setup:", err)
+			// on ne bloque pas la réponse au client
 		}
 
 		return c.JSON(http.StatusCreated, SetupResponse{
