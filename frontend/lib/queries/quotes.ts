@@ -194,14 +194,21 @@ export function useConvertQuoteToInvoice() {
 				.collection('quotes')
 				.getOne(quoteId)) as unknown as QuoteResponse
 
-			if (quote.status !== 'accepted') {
-				throw new Error(
-					'Seuls les devis acceptés peuvent être convertis en facture.',
-				)
-			}
-
+			// Si déjà converti → erreur
 			if (quote.generated_invoice_id) {
 				throw new Error('Ce devis a déjà été converti en facture.')
+			}
+
+			// Si rejeté → interdit
+			if (quote.status === 'rejected') {
+				throw new Error('Un devis rejeté ne peut pas être converti en facture.')
+			}
+
+			// On accepte les statuts "draft" ou "accepted"
+			if (quote.status !== 'draft' && quote.status !== 'accepted') {
+				throw new Error(
+					`Ce devis ne peut pas être converti depuis le statut ${quote.status}.`,
+				)
 			}
 
 			// 2. Créer la facture (numéro généré par le backend)
@@ -211,7 +218,7 @@ export function useConvertQuoteToInvoice() {
 				date: new Date().toISOString(),
 				customer: quote.customer,
 				owner_company: quote.owner_company,
-				status: 'draft' as const,
+				status: 'validated' as const, // 👈 facture directement validée
 				is_paid: false,
 				items: quote.items,
 				total_ht: quote.total_ht,
@@ -225,8 +232,11 @@ export function useConvertQuoteToInvoice() {
 
 			const invoice = await pb.collection('invoices').create(invoiceData)
 
-			// 3. Mettre à jour le devis avec la référence à la facture
+			// 3. Mettre à jour le devis :
+			//    - le lier à la facture
+			//    - s'il était en brouillon, le passer en "accepted"
 			await pb.collection('quotes').update(quoteId, {
+				status: 'accepted',
 				generated_invoice_id: invoice.id,
 			})
 
