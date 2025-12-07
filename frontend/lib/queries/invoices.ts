@@ -301,10 +301,12 @@ export function useRecordPayment() {
 			paymentMethod?: PaymentMethod
 			paidAt?: string
 		}) => {
+			// 1) Charger la facture
 			const existing = (await pb
 				.collection('invoices')
 				.getOne(invoiceId)) as unknown as InvoiceResponse
 
+			// 2) Règles métier "classiques"
 			if (!canMarkAsPaid(existing)) {
 				if (existing.is_paid) {
 					throw new Error('Cette facture est déjà marquée comme payée.')
@@ -320,11 +322,24 @@ export function useRecordPayment() {
 				}
 			}
 
+			// 3) 🔒 Nouveau : interdire le paiement si un avoir d'annulation existe
+			const creditNotes = await pb.collection('invoices').getList(1, 1, {
+				filter: `invoice_type = "credit_note" && original_invoice_id = "${invoiceId}"`,
+			})
+
+			if (creditNotes.items.length > 0) {
+				throw new Error(
+					"Impossible d'enregistrer un paiement: la facture a été annulée par un avoir.",
+				)
+			}
+
+			// 4) Enregistrer le paiement
 			const result = await pb.collection('invoices').update(invoiceId, {
 				is_paid: true,
 				payment_method: paymentMethod,
 				paid_at: paidAt || new Date().toISOString(),
 			})
+
 			return result as unknown as InvoiceResponse
 		},
 		onSuccess: (_, { invoiceId }) => {

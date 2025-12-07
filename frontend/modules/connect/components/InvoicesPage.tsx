@@ -224,27 +224,45 @@ export function InvoicesPage() {
 		void loadCompany()
 	}, [activeCompanyId, pb])
 
+	// Somme des montants d'avoirs par facture d'origine
+	const creditNotesByOriginal: Record<string, number> = {}
+
+	for (const inv of invoices) {
+		if (inv.invoice_type === 'credit_note' && inv.original_invoice_id) {
+			creditNotesByOriginal[inv.original_invoice_id] =
+				(creditNotesByOriginal[inv.original_invoice_id] ?? 0) + inv.total_ttc
+		}
+	}
+
 	// Stats (NOUVEAU: utilise is_paid au lieu du statut)
 	const stats = invoices.reduce(
 		(acc, inv) => {
 			if (inv.invoice_type === 'invoice') {
-				// ✅ Factures classiques
 				acc.invoiceCount++
+
+				// Montant net = facture + avoirs liés (montants d'avoirs sont négatifs)
+				const creditTotal = creditNotesByOriginal[inv.id] ?? 0
+				const netAmount = inv.total_ttc + creditTotal
+
+				// totalTTC reste la somme "net factures - avoirs"
 				acc.totalTTC += inv.total_ttc
 
 				if (inv.is_paid) {
+					// Pour l'instant on laisse "payé" = montant de la facture payée
 					acc.paid += inv.total_ttc
 				} else if (inv.status !== 'draft') {
-					acc.pending += inv.total_ttc
-					if (isOverdue(inv)) {
-						acc.overdue += inv.total_ttc
+					// 👉 Ne compter en attente que si le net est encore > 0
+					if (netAmount > 0) {
+						acc.pending += netAmount
+						if (isOverdue(inv)) {
+							acc.overdue += netAmount
+						}
 					}
 				}
 			} else if (inv.invoice_type === 'credit_note') {
-				// ✅ Avoirs : montants négatifs qui viennent diminuer le total
 				acc.creditNoteCount++
-				acc.totalTTC += inv.total_ttc // net factures - avoirs
-				acc.creditNotesTTC += inv.total_ttc // suivi séparé
+				acc.totalTTC += inv.total_ttc // montants négatifs
+				acc.creditNotesTTC += inv.total_ttc
 			}
 
 			return acc
@@ -616,6 +634,13 @@ export function InvoicesPage() {
 								const customer = invoice.expand?.customer
 								const overdue = isOverdue(invoice)
 
+								// Détecter si cette facture a déjà un avoir d'annulation lié
+								const hasCancellationCreditNote = invoices.some(
+									(other) =>
+										other.invoice_type === 'credit_note' &&
+										other.original_invoice_id === invoice.id,
+								)
+
 								return (
 									<TableRow
 										key={invoice.id}
@@ -751,18 +776,20 @@ export function InvoicesPage() {
 													)}
 
 													{/* Paiement (NOUVEAU: indépendant du statut) */}
-													{canMarkAsPaid(invoice) && (
-														<DropdownMenuItem
-															onClick={() => handleOpenPaymentDialog(invoice)}
-														>
-															<CheckCircle className='h-4 w-4 mr-2 text-green-600' />
-															Enregistrer paiement
-														</DropdownMenuItem>
-													)}
+													{canMarkAsPaid(invoice) &&
+														!hasCancellationCreditNote && (
+															<DropdownMenuItem
+																onClick={() => handleOpenPaymentDialog(invoice)}
+															>
+																<CheckCircle className='h-4 w-4 mr-2 text-green-600' />
+																Enregistrer paiement
+															</DropdownMenuItem>
+														)}
 
 													{/* Annulation par avoir */}
 													{invoice.invoice_type === 'invoice' &&
-														invoice.status !== 'draft' && (
+														invoice.status !== 'draft' &&
+														!hasCancellationCreditNote && (
 															<>
 																<DropdownMenuSeparator />
 																<DropdownMenuItem
