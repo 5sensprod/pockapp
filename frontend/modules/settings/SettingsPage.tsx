@@ -1,8 +1,9 @@
 import SmtpSettings from '@/components/settings/SmtpSettings'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 // frontend/modules/settings/SettingsPage.tsx
-import { Link, useLocation } from '@tanstack/react-router'
-import { Mail, User } from 'lucide-react'
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
+import { ChevronLeft, Mail, User } from 'lucide-react'
 
 const settingsTabs = [
 	{
@@ -17,36 +18,34 @@ const settingsTabs = [
 		icon: Mail,
 		path: '/settings/smtp',
 	},
-	// Tu pourras ajouter d'autres onglets ici
-	// {
-	// 	id: 'company',
-	// 	label: 'Entreprise',
-	// 	icon: Building2,
-	// 	path: '/settings/company',
-	// },
-	// {
-	// 	id: 'security',
-	// 	label: 'Sécurité',
-	// 	icon: Shield,
-	// 	path: '/settings/security',
-	// },
 ]
 
 interface SettingsPageProps {
-	tab?: 'account' | 'smtp' | 'company' | 'security'
+	tab?: 'account' | 'smtp'
 }
 
 export function SettingsPage({ tab = 'account' }: SettingsPageProps) {
 	const { pathname } = useLocation()
+	const navigate = useNavigate()
 
-	// Détermine l'onglet actif basé sur le path
 	const activeTab = settingsTabs.find((t) => t.path === pathname)?.id ?? tab
 
 	return (
 		<div className='container py-8'>
+			{/* Header avec bouton retour */}
 			<div className='mb-8'>
-				<h1 className='text-3xl font-bold'>Paramètres</h1>
-				<p className='text-muted-foreground mt-1'>
+				<div className='flex items-center gap-4 mb-2'>
+					<Button
+						variant='ghost'
+						size='icon'
+						className='h-8 w-8'
+						onClick={() => navigate({ to: '/' })}
+					>
+						<ChevronLeft className='h-5 w-5' />
+					</Button>
+					<h1 className='text-3xl font-bold'>Paramètres</h1>
+				</div>
+				<p className='text-muted-foreground ml-12'>
 					Gérez les paramètres de votre compte et de l'application.
 				</p>
 			</div>
@@ -80,15 +79,12 @@ export function SettingsPage({ tab = 'account' }: SettingsPageProps) {
 				<div className='flex-1 min-w-0'>
 					{activeTab === 'account' && <AccountSettings />}
 					{activeTab === 'smtp' && <SmtpSettings />}
-					{/* {activeTab === 'company' && <CompanySettings />} */}
-					{/* {activeTab === 'security' && <SecuritySettings />} */}
 				</div>
 			</div>
 		</div>
 	)
 }
 
-// Placeholder pour les paramètres du compte
 function AccountSettings() {
 	return (
 		<div className='max-w-2xl'>

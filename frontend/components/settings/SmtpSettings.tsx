@@ -1,3 +1,4 @@
+// frontend/components/settings/SmtpSettings.tsx
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -11,7 +12,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
-// frontend/components/settings/SmtpSettings.tsx
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -55,6 +55,22 @@ export default function SmtpSettings() {
 	const [testing, setTesting] = useState(false)
 	const [testEmail, setTestEmail] = useState('')
 
+	// Pour détecter les changements non sauvegardés
+	const [savedConfig, setSavedConfig] = useState<SmtpConfig | null>(null)
+
+	const hasUnsavedChanges = useCallback(() => {
+		if (!savedConfig) return false
+		return (
+			config.enabled !== savedConfig.enabled ||
+			config.host !== savedConfig.host ||
+			config.port !== savedConfig.port ||
+			config.username !== savedConfig.username ||
+			config.password !== '' || // nouveau password saisi
+			config.senderName !== savedConfig.senderName ||
+			config.senderEmail !== savedConfig.senderEmail
+		)
+	}, [config, savedConfig])
+
 	const loadConfig = useCallback(async () => {
 		try {
 			const response = await fetch('/api/settings/smtp', {
@@ -65,7 +81,7 @@ export default function SmtpSettings() {
 
 			if (response.ok) {
 				const data = (await response.json()) as SmtpResponse
-				setConfig({
+				const loadedConfig = {
 					enabled: data.enabled,
 					host: data.host || '',
 					port: data.port || 587,
@@ -73,7 +89,9 @@ export default function SmtpSettings() {
 					password: '',
 					senderName: data.senderName || '',
 					senderEmail: data.senderEmail || '',
-				})
+				}
+				setConfig(loadedConfig)
+				setSavedConfig(loadedConfig)
 				setHasExistingPassword(data.hasPassword)
 			} else {
 				toast.error('Erreur lors du chargement de la configuration')
@@ -90,7 +108,7 @@ export default function SmtpSettings() {
 		void loadConfig()
 	}, [loadConfig])
 
-	const handleSave = async () => {
+	const handleSave = async (): Promise<boolean> => {
 		setSaving(true)
 
 		try {
@@ -109,13 +127,17 @@ export default function SmtpSettings() {
 				toast.success('Configuration SMTP sauvegardée')
 				if (config.password) {
 					setHasExistingPassword(true)
-					setConfig((prev) => ({ ...prev, password: '' }))
 				}
-			} else {
-				toast.error(data.message ?? 'Erreur lors de la sauvegarde')
+				setSavedConfig({ ...config, password: '' })
+				setConfig((prev) => ({ ...prev, password: '' }))
+				return true
 			}
+
+			toast.error(data.message ?? 'Erreur lors de la sauvegarde')
+			return false
 		} catch {
 			toast.error('Erreur de connexion')
+			return false
 		} finally {
 			setSaving(false)
 		}
@@ -125,6 +147,22 @@ export default function SmtpSettings() {
 		if (!testEmail) {
 			toast.error('Veuillez entrer une adresse email pour le test')
 			return
+		}
+
+		// Vérifier si la config est complète
+		if (!config.host || !config.username) {
+			toast.error('Veuillez configurer le serveur SMTP avant de tester')
+			return
+		}
+
+		// Si des changements non sauvegardés, on sauvegarde d'abord
+		if (hasUnsavedChanges()) {
+			toast.info('Sauvegarde de la configuration en cours...')
+			const saved = await handleSave()
+			if (!saved) {
+				toast.error('Impossible de tester : la sauvegarde a échoué')
+				return
+			}
 		}
 
 		setTesting(true)
@@ -165,7 +203,7 @@ export default function SmtpSettings() {
 	}
 
 	return (
-		<div className='max-w-2xl mx-auto p-6'>
+		<div className='max-w-2xl'>
 			<Card>
 				<CardHeader>
 					<CardTitle>Configuration SMTP</CardTitle>
@@ -336,6 +374,10 @@ export default function SmtpSettings() {
 							{/* Test */}
 							<div className='space-y-2'>
 								<Label htmlFor='smtp-test-email'>Tester la configuration</Label>
+								<p className='text-xs text-muted-foreground mb-2'>
+									La configuration sera automatiquement sauvegardée avant
+									l&apos;envoi du test.
+								</p>
 								<div className='flex flex-col gap-2 sm:flex-row'>
 									<Input
 										id='smtp-test-email'
@@ -348,10 +390,17 @@ export default function SmtpSettings() {
 									<Button
 										type='button'
 										onClick={handleTest}
-										disabled={testing || !config.host}
+										disabled={testing || !config.host || !config.username}
 										variant='secondary'
 									>
-										{testing ? 'Envoi...' : 'Envoyer un test'}
+										{testing ? (
+											<>
+												<Loader2 className='h-4 w-4 mr-2 animate-spin' />
+												Envoi...
+											</>
+										) : (
+											'Envoyer un test'
+										)}
 									</Button>
 								</div>
 							</div>
@@ -359,9 +408,22 @@ export default function SmtpSettings() {
 					)}
 				</CardContent>
 
-				<CardFooter className='flex justify-end'>
+				<CardFooter className='flex justify-between items-center'>
+					{hasUnsavedChanges() && (
+						<span className='text-sm text-amber-600'>
+							Modifications non sauvegardées
+						</span>
+					)}
+					<div className='flex-1' />
 					<Button type='button' onClick={handleSave} disabled={saving}>
-						{saving ? 'Sauvegarde...' : 'Sauvegarder'}
+						{saving ? (
+							<>
+								<Loader2 className='h-4 w-4 mr-2 animate-spin' />
+								Sauvegarde...
+							</>
+						) : (
+							'Sauvegarder'
+						)}
 					</Button>
 				</CardFooter>
 			</Card>
