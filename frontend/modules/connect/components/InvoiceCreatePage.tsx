@@ -254,7 +254,7 @@ export function InvoiceCreatePage() {
 	}
 
 	// Soumettre la facture
-	const handleSubmit = async () => {
+	const handleSubmit = async (status: 'draft' | 'validated') => {
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
 			return
@@ -272,15 +272,13 @@ export function InvoiceCreatePage() {
 			// On enlève juste l'id temporaire
 			const invoiceItems: InvoiceItem[] = items.map(({ id, ...item }) => item)
 
-			// 🔢 Le numéro sera généré automatiquement par le backend
 			const result = await createInvoice.mutateAsync({
-				// ⚠️ Pas de 'number' - généré par le backend
 				invoice_type: 'invoice',
 				date: invoiceDate,
 				due_date: dueDate || undefined,
 				customer: selectedCustomer.id,
 				owner_company: activeCompanyId,
-				status: 'draft',
+				status, // 👈 soit 'validated', soit 'draft'
 				items: invoiceItems,
 				total_ht: totals.ht,
 				total_tva: totals.tva,
@@ -653,13 +651,22 @@ export function InvoiceCreatePage() {
 								</div>
 							</div>
 
-							<div className='pt-4'>
+							<div className='space-y-2 pt-4'>
 								<Button
 									className='w-full'
-									onClick={handleSubmit}
+									onClick={() => handleSubmit('validated')}
 									disabled={createInvoice.isPending}
 								>
 									Créer la facture
+								</Button>
+
+								<Button
+									variant='outline'
+									className='w-full'
+									onClick={() => handleSubmit('draft')}
+									disabled={createInvoice.isPending}
+								>
+									Enregistrer en brouillon
 								</Button>
 							</div>
 						</CardContent>

@@ -56,14 +56,66 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeCreateRequest("invoices").Add(func(e *core.RecordCreateEvent) error {
 		record := e.Record
 
-		// Déterminer l'année fiscale
-		fiscalYear := time.Now().Year()
-		record.Set("fiscal_year", fiscalYear)
-
 		ownerCompany := record.GetString("owner_company")
 		invoiceType := record.GetString("invoice_type")
+		status := record.GetString("status")
 
-		// Récupérer la dernière facture pour le chaînage
+		// Valeur par défaut de statut si non fourni
+		if status == "" {
+			status = "draft"
+			record.Set("status", status)
+		}
+
+		// Initialiser is_paid si non défini
+		if record.Get("is_paid") == nil {
+			record.Set("is_paid", false)
+		}
+
+		// 🔹 CAS 1 : Brouillon → pas de numéro, pas de hash, pas de chaînage
+		if status == "draft" {
+			record.Set("is_locked", false)
+
+			// On peut initialiser fiscal_year à partir de maintenant ou de la date
+			// (optionnel, de toute façon il sera recalculé à la validation).
+			fiscalYear := time.Now().Year()
+			dateStr := record.GetString("date")
+			if dateStr != "" {
+				if strings.Contains(dateStr, "T") {
+					if t, err := time.Parse(time.RFC3339, dateStr); err == nil {
+						fiscalYear = t.Year()
+					}
+				} else {
+					if t, err := time.Parse("2006-01-02", dateStr); err == nil {
+						fiscalYear = t.Year()
+					}
+				}
+			}
+			record.Set("fiscal_year", fiscalYear)
+
+			// Pas de number, pas de hash, pas de previous_hash / sequence_number ici
+			return nil
+		}
+
+		// 🔹 CAS 2 : Facture non brouillon créée directement (ex: avoir)
+		// → numérotation + hash dès la création
+
+		// Déterminer l'année fiscale à partir de la date de facture si possible
+		fiscalYear := time.Now().Year()
+		dateStr := record.GetString("date")
+		if dateStr != "" {
+			if strings.Contains(dateStr, "T") {
+				if t, err := time.Parse(time.RFC3339, dateStr); err == nil {
+					fiscalYear = t.Year()
+				}
+			} else {
+				if t, err := time.Parse("2006-01-02", dateStr); err == nil {
+					fiscalYear = t.Year()
+				}
+			}
+		}
+		record.Set("fiscal_year", fiscalYear)
+
+		// Récupérer la dernière facture (pour chaînage)
 		lastInvoice, err := getLastInvoice(app, ownerCompany)
 
 		var previousHash string
@@ -80,12 +132,9 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		record.Set("previous_hash", previousHash)
 		record.Set("sequence_number", sequenceNumber)
 
-		// =====================================================================
-		// 🔢 GÉNÉRATION AUTOMATIQUE DU NUMÉRO DE FACTURE/AVOIR
-		// =====================================================================
+		// Génération automatique du numéro si absent / invalide
 		existingNumber := record.GetString("number")
 		if existingNumber == "" || !isValidDocumentNumber(existingNumber, fiscalYear) {
-			// Générer le numéro basé sur le type et le sequence_number spécifique au type
 			newNumber, err := generateDocumentNumber(app, ownerCompany, invoiceType, fiscalYear)
 			if err != nil {
 				return fmt.Errorf("erreur génération numéro: %w", err)
@@ -93,24 +142,15 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			record.Set("number", newNumber)
 		}
 
-		// Calculer le hash de la facture
+		// Calcul du hash
 		hash, err := computeInvoiceHash(record)
 		if err != nil {
 			return fmt.Errorf("erreur calcul hash: %w", err)
 		}
 		record.Set("hash", hash)
 
-		// Initialiser is_paid à false si non défini
-		if record.Get("is_paid") == nil {
-			record.Set("is_paid", false)
-		}
-
-		// Verrouillage selon le statut
-		if record.GetString("status") == "draft" {
-			record.Set("is_locked", false)
-		} else {
-			record.Set("is_locked", true)
-		}
+		// Verrouillage si ce n'est pas un brouillon
+		record.Set("is_locked", true)
 
 		return nil
 	})
@@ -189,8 +229,61 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 				)
 			}
 
-			// Verrouiller si on passe de draft à validated
+			// 🔹 Transition spéciale: draft → validated
 			if oldStatus == "draft" && newStatus == "validated" {
+				ownerCompany := updated.GetString("owner_company")
+				invoiceType := updated.GetString("invoice_type")
+
+				// Année fiscale basée sur la date de facture
+				dateStr := updated.GetString("date")
+				fiscalYear := time.Now().Year()
+				if dateStr != "" {
+					if strings.Contains(dateStr, "T") {
+						if t, err := time.Parse(time.RFC3339, dateStr); err == nil {
+							fiscalYear = t.Year()
+						}
+					} else {
+						if t, err := time.Parse("2006-01-02", dateStr); err == nil {
+							fiscalYear = t.Year()
+						}
+					}
+				}
+				updated.Set("fiscal_year", fiscalYear)
+
+				// Récupérer la dernière facture pour chaînage
+				lastInvoice, err := getLastInvoice(app, ownerCompany)
+				var previousHash string
+				var sequenceNumber int
+
+				if err != nil || lastInvoice == nil {
+					previousHash = GENESIS_HASH
+					sequenceNumber = 1
+				} else {
+					previousHash = lastInvoice.GetString("hash")
+					sequenceNumber = lastInvoice.GetInt("sequence_number") + 1
+				}
+
+				updated.Set("previous_hash", previousHash)
+				updated.Set("sequence_number", sequenceNumber)
+
+				// Génération du numéro si inexistant / invalide
+				existingNumber := updated.GetString("number")
+				if existingNumber == "" || !isValidDocumentNumber(existingNumber, fiscalYear) {
+					newNumber, err := generateDocumentNumber(app, ownerCompany, invoiceType, fiscalYear)
+					if err != nil {
+						return fmt.Errorf("erreur génération numéro (validation): %w", err)
+					}
+					updated.Set("number", newNumber)
+				}
+
+				// Recalcul du hash
+				hash, err := computeInvoiceHash(updated)
+				if err != nil {
+					return fmt.Errorf("erreur calcul hash (validation): %w", err)
+				}
+				updated.Set("hash", hash)
+
+				// Verrouiller à la validation
 				updated.Set("is_locked", true)
 			}
 		}
