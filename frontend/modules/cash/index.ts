@@ -19,3 +19,4 @@ export const manifest: ModuleManifest = {
 }
 
 export { CashPage }
+export * from './CashTerminalPage'
