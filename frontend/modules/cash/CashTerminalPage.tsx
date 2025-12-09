@@ -1,145 +1,92 @@
-import {
-	Coffee,
-	Grid,
-	Plus,
-	Search,
-	ShoppingBag,
-	Utensils,
-	Zap,
-} from 'lucide-react'
+import { Search } from 'lucide-react'
 // frontend/modules/cash/CashTerminalPage.tsx
 import * as React from 'react'
 
+import { Button } from '@/components/ui/button'
 import {
-	type CashCartItem,
-	CashCheckoutPanel,
-} from './components/CashCheckoutPanel'
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 import { manifest } from './index'
 
-type CategoryId = 'all' | 'coffee' | 'bakery' | 'cold' | 'merch'
+type CategoryId = 'all' | 'audio' | 'cable' | 'accessory'
 
 interface Product {
 	id: number
 	name: string
+	reference: string
 	price: number
+	stock: number
 	category: CategoryId
-	color: string
 }
 
-const CATEGORIES: {
-	id: CategoryId
+interface CartItem {
+	id: number
 	name: string
-	icon: React.ComponentType<any>
-}[] = [
-	{ id: 'all', name: 'Tout', icon: Grid },
-	{ id: 'coffee', name: 'Cafés', icon: Coffee },
-	{ id: 'bakery', name: 'Boulangerie', icon: Utensils },
-	{ id: 'cold', name: 'Boissons fraîches', icon: Zap },
-	{ id: 'merch', name: 'Merch', icon: ShoppingBag },
-]
+	unitPrice: number
+	quantity: number
+}
 
-// Mock produits (à remplacer par API)
 const PRODUCTS: Product[] = [
 	{
 		id: 1,
-		name: 'Espresso',
-		price: 2.5,
-		category: 'coffee',
-		color: 'bg-amber-100',
+		name: 'Câble XLR 3m',
+		reference: 'REF-XLR-3M',
+		price: 12.9,
+		stock: 42,
+		category: 'audio',
 	},
 	{
 		id: 2,
-		name: 'Double Espresso',
-		price: 3.5,
-		category: 'coffee',
-		color: 'bg-amber-100',
-	},
-	{
-		id: 3,
-		name: 'Cappuccino',
-		price: 4.2,
-		category: 'coffee',
-		color: 'bg-orange-100',
-	},
-	{
-		id: 4,
-		name: 'Latte Macchiato',
-		price: 4.5,
-		category: 'coffee',
-		color: 'bg-orange-100',
-	},
-	{
-		id: 5,
-		name: 'Croissant beurre',
-		price: 1.8,
-		category: 'bakery',
-		color: 'bg-yellow-100',
-	},
-	{
-		id: 6,
-		name: 'Pain au chocolat',
-		price: 2.0,
-		category: 'bakery',
-		color: 'bg-yellow-100',
-	},
-	{
-		id: 7,
-		name: 'Muffin myrtille',
-		price: 3.5,
-		category: 'bakery',
-		color: 'bg-purple-100',
-	},
-	{
-		id: 8,
-		name: 'Cookie choco',
-		price: 2.9,
-		category: 'bakery',
-		color: 'bg-stone-100',
-	},
-	{
-		id: 9,
-		name: 'Cola bio',
-		price: 3.0,
-		category: 'cold',
-		color: 'bg-red-100',
-	},
-	{
-		id: 10,
-		name: 'Limonade maison',
-		price: 3.5,
-		category: 'cold',
-		color: 'bg-lime-100',
+		name: 'Jeu de cordes guitare',
+		reference: 'CORD-GTR-10',
+		price: 8.5,
+		stock: 15,
+		category: 'accessory',
 	},
 ]
 
 export function CashTerminalPage() {
 	const Icon = manifest.icon
 
-	const [activeCategory, setActiveCategory] = React.useState<CategoryId>('all')
-	const [searchQuery, setSearchQuery] = React.useState('')
-	const [cart, setCart] = React.useState<CashCartItem[]>([])
+	const [search, setSearch] = React.useState('')
+	const [category, setCategory] = React.useState<CategoryId>('all')
+	const [sort, setSort] = React.useState<'name' | 'price'>('name')
 
-	const filteredProducts = React.useMemo(
-		() =>
-			PRODUCTS.filter((p) => {
-				const matchesCategory =
-					activeCategory === 'all' || p.category === activeCategory
-				const matchesSearch = p.name
-					.toLowerCase()
-					.includes(searchQuery.toLowerCase())
-				return matchesCategory && matchesSearch
-			}),
-		[activeCategory, searchQuery],
-	)
+	const [cart, setCart] = React.useState<CartItem[]>([])
+	const [discountPercent, setDiscountPercent] = React.useState<number>(0)
+
+	const filteredProducts = React.useMemo(() => {
+		let list = PRODUCTS.filter((p) => {
+			const query = search.trim().toLowerCase()
+			const bySearch =
+				!query ||
+				p.name.toLowerCase().includes(query) ||
+				p.reference.toLowerCase().includes(query)
+			const byCategory = category === 'all' || p.category === category
+			return bySearch && byCategory
+		})
+
+		if (sort === 'name') {
+			list = [...list].sort((a, b) => a.name.localeCompare(b.name))
+		} else if (sort === 'price') {
+			list = [...list].sort((a, b) => a.price - b.price)
+		}
+
+		return list
+	}, [search, category, sort])
 
 	const addToCart = (product: Product) => {
 		setCart((prev) => {
-			const existing = prev.find((item) => item.id === product.id)
+			const existing = prev.find((i) => i.id === product.id)
 			if (existing) {
-				return prev.map((item) =>
-					item.id === product.id
-						? { ...item, quantity: item.quantity + 1 }
-						: item,
+				return prev.map((i) =>
+					i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i,
 				)
 			}
 			return [
@@ -154,149 +101,353 @@ export function CashTerminalPage() {
 		})
 	}
 
-	const handleIncrement = (id: CashCartItem['id']) => {
-		setCart((prev) =>
-			prev.map((item) =>
-				item.id === id ? { ...item, quantity: item.quantity + 1 } : item,
-			),
-		)
-	}
-
-	const handleDecrement = (id: CashCartItem['id']) => {
-		setCart((prev) =>
-			prev
-				.map((item) =>
-					item.id === id ? { ...item, quantity: item.quantity - 1 } : item,
-				)
-				.filter((item) => item.quantity > 0),
-		)
-	}
-
-	const handleRemove = (id: CashCartItem['id']) => {
-		setCart((prev) => prev.filter((item) => item.id !== id))
-	}
-
-	const handlePayCash = (total: number) => {
-		console.log('Encaissement espèces', total)
-		// TODO: appel API / Go
+	const clearCart = () => {
 		setCart([])
+		setDiscountPercent(0)
 	}
 
-	const handlePayCard = (total: number) => {
-		console.log('Encaissement CB', total)
-		// TODO: appel API / Go
-		setCart([])
+	const subtotal = cart.reduce(
+		(sum, item) => sum + item.unitPrice * item.quantity,
+		0,
+	)
+
+	const discountAmount = subtotal * (Math.max(0, discountPercent) / 100)
+
+	const totalAfterDiscount = Math.max(subtotal - discountAmount, 0)
+
+	const tax = totalAfterDiscount * 0.2
+	const totalTtc = totalAfterDiscount + 0
+
+	const handleChangeDiscount = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const raw = e.target.value
+		const value = Number(raw)
+		if (Number.isNaN(value)) {
+			setDiscountPercent(0)
+		} else {
+			setDiscountPercent(Math.max(0, value))
+		}
 	}
+
+	const handlePay = (mode: 'card' | 'cash' | 'other') => {
+		console.log('Encaissement', mode, totalTtc)
+		// TODO: plus tard => encaissement réel via Go/PocketBase
+	}
+
+	const today = new Date().toLocaleDateString('fr-FR')
 
 	return (
-		<div className='flex h-[calc(100vh-56px)] bg-slate-50 text-slate-900'>
-			{/* Colonne produits */}
-			<div className='flex flex-1 flex-col'>
-				{/* Top bar */}
-				<div className='flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6'>
-					<div className='flex items-center gap-4'>
-						<div className='flex items-center gap-2'>
-							<div className='flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white'>
-								<Icon className='h-4 w-4' />
-							</div>
-							<div className='flex flex-col'>
-								<span className='text-sm font-semibold'>{manifest.name}</span>
-								<span className='text-xs text-slate-500'>
-									Interface de caisse
-								</span>
-							</div>
-						</div>
-
-						<div className='relative'>
-							<Search
-								className='absolute left-3 top-2.5 text-slate-400'
-								size={18}
-							/>
-							<input
-								type='text'
-								placeholder='Rechercher un produit…'
-								value={searchQuery}
-								onChange={(e) => setSearchQuery(e.target.value)}
-								className='w-64 rounded-lg bg-slate-100 py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900'
-							/>
-						</div>
+		<div className='container mx-auto flex flex-col gap-6 px-6 py-8'>
+			{/* Header */}
+			<header className='flex items-center justify-between gap-4'>
+				<div className='flex items-center gap-3'>
+					<div className='flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100'>
+						<Icon className='h-5 w-5 text-blue-600' />
 					</div>
-
-					<div className='text-right text-xs text-slate-500'>
-						<div className='font-semibold text-slate-800'>
-							Caisse principale
-						</div>
-						<div className='flex items-center justify-end gap-1 text-emerald-600'>
-							<span className='h-2 w-2 rounded-full bg-emerald-500' />
-							En ligne
-						</div>
+					<div>
+						<h1 className='text-2xl font-semibold tracking-tight'>Caisse</h1>
+						<p className='text-sm text-muted-foreground'>
+							Enregistrez les ventes et encaissez vos clients.
+						</p>
 					</div>
 				</div>
 
-				{/* Catégories */}
-				<div className='flex gap-3 overflow-x-auto border-b border-slate-200 bg-white px-6 py-3 scrollbar-hide'>
-					{CATEGORIES.map((cat) => {
-						const CatIcon = cat.icon
-						const isActive = activeCategory === cat.id
-						return (
-							<button
-								key={cat.id}
-								type='button'
-								onClick={() => setActiveCategory(cat.id)}
-								className={`flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-medium transition-all ${
-									isActive
-										? 'scale-105 bg-slate-900 text-white shadow-md'
-										: 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-								}`}
-							>
-								<CatIcon size={16} />
-								{cat.name}
-							</button>
-						)
-					})}
+				<div className='flex items-center gap-4 text-xs text-muted-foreground'>
+					<div className='flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1'>
+						<span className='h-2 w-2 rounded-full bg-emerald-500' />
+						<span className='font-medium text-emerald-700'>Caisse ouverte</span>
+					</div>
+					<span>Axe Musique — {today}</span>
 				</div>
+			</header>
 
-				{/* Grid produits */}
-				<div className='flex-1 overflow-y-auto bg-slate-50 p-6'>
-					<div className='grid gap-4 pb-10 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'>
-						{filteredProducts.map((product) => (
-							<button
-								key={product.id}
-								type='button'
-								onClick={() => addToCart(product)}
-								className='group relative flex h-40 flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:border-slate-400 hover:shadow-md'
-							>
-								<div
-									className={`pointer-events-none absolute -right-4 -top-4 h-20 w-20 rounded-full opacity-20 ${product.color}`}
+			{/* Layout 50/50 */}
+			<main className='flex min-h-[520px] flex-1 flex-col gap-4 lg:flex-row'>
+				{/* PRODUITS – moitié gauche */}
+				<section className='flex flex-1 flex-col gap-3'>
+					<Card className='flex flex-1 flex-col'>
+						{/* Recherche & filtres */}
+						<div className='flex flex-wrap items-center gap-3 border-b px-4 py-3'>
+							<div className='relative min-w-[220px] flex-1'>
+								<Search
+									className='absolute left-3 top-1/2 -translate-y-1/2 text-slate-400'
+									size={16}
 								/>
-								<div className='z-10 w-3/4 text-lg font-semibold leading-tight text-slate-800'>
-									{product.name}
-								</div>
-								<div className='z-10 mt-auto flex w-full items-end justify-between'>
-									<span className='text-lg font-medium text-slate-500'>
-										{product.price.toFixed(2)} €
-									</span>
-									<div className='flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-900 transition-colors group-hover:bg-slate-900 group-hover:text-white'>
-										<Plus size={16} />
-									</div>
-								</div>
-							</button>
-						))}
-					</div>
-				</div>
-			</div>
+								<Input
+									type='text'
+									placeholder='Rechercher un produit…'
+									value={search}
+									onChange={(e) => setSearch(e.target.value)}
+									className='h-9 w-full bg-slate-50 pl-8 text-sm'
+								/>
+							</div>
 
-			{/* Colonne caisse (panier) */}
-			<div className='w-[380px] border-l border-slate-200 bg-white'>
-				<CashCheckoutPanel
-					cart={cart}
-					onIncrement={handleIncrement}
-					onDecrement={handleDecrement}
-					onRemove={handleRemove}
-					onPayCash={handlePayCash}
-					onPayCard={handlePayCard}
-				/>
-			</div>
+							<div className='flex items-center gap-2 text-xs'>
+								<select
+									className='h-9 rounded-md border bg-slate-50 px-2 text-xs'
+									value={category}
+									onChange={(e) => setCategory(e.target.value as CategoryId)}
+								>
+									<option value='all'>Catégorie : toutes</option>
+									<option value='audio'>Audio</option>
+									<option value='cable'>Câbles</option>
+									<option value='accessory'>Accessoires</option>
+								</select>
+
+								<select
+									className='h-9 rounded-md border bg-slate-50 px-2 text-xs'
+									value={sort}
+									onChange={(e) => setSort(e.target.value as 'name' | 'price')}
+								>
+									<option value='name'>Trier par : nom</option>
+									<option value='price'>Prix croissant</option>
+								</select>
+							</div>
+						</div>
+
+						{/* Liste produits */}
+						<div className='flex flex-1 flex-col'>
+							<div className='flex items-center border-b px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-500'>
+								<div className='flex-1'>Produit</div>
+								<div className='w-24 text-right'>Prix TTC</div>
+								<div className='w-24 text-right'>Stock</div>
+							</div>
+
+							<div className='h-[340px] overflow-auto text-sm'>
+								{filteredProducts.map((p) => (
+									<button
+										key={p.id}
+										type='button'
+										onClick={() => addToCart(p)}
+										className='flex w-full cursor-pointer items-center border-b px-4 py-2 text-left hover:bg-slate-50'
+									>
+										<div className='flex-1'>
+											<div className='font-medium'>{p.name}</div>
+											<div className='text-xs text-slate-500'>
+												{p.reference} •{' '}
+												{p.category === 'audio'
+													? 'Audio'
+													: p.category === 'cable'
+														? 'Câbles'
+														: 'Accessoires'}
+											</div>
+										</div>
+										<div className='w-24 text-right text-sm font-semibold'>
+											{p.price.toFixed(2)} €
+										</div>
+										<div className='w-24 text-right text-xs text-slate-500'>
+											{p.stock} en stock
+										</div>
+									</button>
+								))}
+
+								{!filteredProducts.length && (
+									<div className='px-4 py-6 text-center text-xs text-slate-400'>
+										Aucun produit ne correspond à la recherche.
+									</div>
+								)}
+
+								<div className='px-4 py-6 text-center text-xs text-slate-400'>
+									Résultats paginés — 25 produits par page sur ~2000.
+								</div>
+							</div>
+
+							{/* Pagination */}
+							<div className='flex items-center justify-between border-t px-4 py-2 text-xs text-slate-500'>
+								<span>Page 1 sur 80</span>
+								<div className='flex items-center gap-1'>
+									<Button
+										type='button'
+										variant='outline'
+										size='sm'
+										className='h-7 px-2 text-xs'
+									>
+										Précédent
+									</Button>
+									<Button
+										type='button'
+										variant='outline'
+										size='sm'
+										className='h-7 px-2 text-xs'
+									>
+										Suivant
+									</Button>
+								</div>
+							</div>
+						</div>
+					</Card>
+				</section>
+
+				{/* PANEL CAISSE – moitié droite */}
+				<aside className='flex flex-1 flex-col gap-3'>
+					{/* Ticket + totaux + paiement */}
+					<Card className='flex h-full flex-col'>
+						<CardHeader className='flex flex-row items-center justify-between border-b px-4 py-3'>
+							<div>
+								<CardTitle className='text-base'>Ticket</CardTitle>
+								<CardDescription className='text-xs'>
+									Lignes en cours d&apos;encaissement.
+								</CardDescription>
+							</div>
+							<Button
+								type='button'
+								variant='ghost'
+								size='sm'
+								className='h-7 px-2 text-xs text-red-500 hover:text-red-600'
+								onClick={clearCart}
+							>
+								Vider
+							</Button>
+						</CardHeader>
+
+						{/* Lignes ticket */}
+						<CardContent className='flex-1 overflow-auto px-4 py-2 text-sm'>
+							{cart.length === 0 ? (
+								<div className='flex h-full items-center justify-center text-xs text-slate-400'>
+									Aucun article pour le moment.
+								</div>
+							) : (
+								<div className='divide-y'>
+									{cart.map((item) => (
+										<div
+											key={item.id}
+											className='flex items-center justify-between py-2'
+										>
+											<div>
+												<div className='font-medium'>{item.name}</div>
+												<div className='text-xs text-slate-500'>
+													{item.quantity} × {item.unitPrice.toFixed(2)} €
+												</div>
+											</div>
+											<span className='font-semibold'>
+												{(item.unitPrice * item.quantity).toFixed(2)} €
+											</span>
+										</div>
+									))}
+								</div>
+							)}
+						</CardContent>
+
+						{/* Totaux */}
+						<div className='border-t px-4 py-4 text-sm'>
+							<div className='flex items-center justify-between'>
+								<span>Sous-total</span>
+								<span>{subtotal.toFixed(2)} €</span>
+							</div>
+
+							<div className='mt-2 flex items-center justify-between'>
+								<span>Remise</span>
+								<div className='flex items-center gap-1'>
+									<Input
+										type='number'
+										className='h-8 w-20 bg-slate-50 text-right text-sm'
+										value={discountPercent.toString()}
+										onChange={handleChangeDiscount}
+										placeholder='0'
+									/>
+									<span className='text-xs text-slate-500'>%</span>
+								</div>
+							</div>
+
+							<div className='mt-2 flex items-center justify-between text-xs text-slate-500'>
+								<span>TVA (20 %)</span>
+								<span>{tax.toFixed(2)} €</span>
+							</div>
+
+							<Separator className='my-2' />
+
+							<div className='flex items-center justify-between pt-1 text-base font-semibold'>
+								<span>Total TTC</span>
+								<span>{totalTtc.toFixed(2)} €</span>
+							</div>
+						</div>
+
+						{/* Paiement */}
+						<div className='border-t px-4 py-4'>
+							<div className='mb-3 grid grid-cols-3 gap-2 text-xs'>
+								<Button
+									type='button'
+									variant='outline'
+									className='h-10'
+									onClick={() => handlePay('card')}
+								>
+									CB
+								</Button>
+								<Button
+									type='button'
+									variant='outline'
+									className='h-10'
+									onClick={() => handlePay('cash')}
+								>
+									Espèces
+								</Button>
+								<Button
+									type='button'
+									variant='outline'
+									className='h-10'
+									onClick={() => handlePay('other')}
+								>
+									Autre
+								</Button>
+							</div>
+
+							<Button
+								type='button'
+								className='h-11 w-full text-sm font-semibold'
+								disabled={totalTtc <= 0}
+								onClick={() => handlePay('card')}
+							>
+								Encaisser {totalTtc > 0 ? `${totalTtc.toFixed(2)} €` : ''}
+							</Button>
+						</div>
+					</Card>
+
+					{/* Pad numérique */}
+					<Card>
+						<CardContent className='grid grid-cols-3 gap-3 p-4 text-xl font-semibold select-none'>
+							<Button type='button' variant='outline' className='h-12'>
+								7
+							</Button>
+							<Button type='button' variant='outline' className='h-12'>
+								8
+							</Button>
+							<Button type='button' variant='outline' className='h-12'>
+								9
+							</Button>
+
+							<Button type='button' variant='outline' className='h-12'>
+								4
+							</Button>
+							<Button type='button' variant='outline' className='h-12'>
+								5
+							</Button>
+							<Button type='button' variant='outline' className='h-12'>
+								6
+							</Button>
+
+							<Button type='button' variant='outline' className='h-12'>
+								1
+							</Button>
+							<Button type='button' variant='outline' className='h-12'>
+								2
+							</Button>
+							<Button type='button' variant='outline' className='h-12'>
+								3
+							</Button>
+
+							<Button
+								type='button'
+								variant='outline'
+								className='col-span-2 h-12'
+							>
+								0
+							</Button>
+							<Button type='button' variant='outline' className='h-12'>
+								⌫
+							</Button>
+						</CardContent>
+					</Card>
+				</aside>
+			</main>
 		</div>
 	)
 }
