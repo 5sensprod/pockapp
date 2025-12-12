@@ -30,6 +30,11 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// 5. Clôtures et audit (dépend de companies + invoices)
 		ensureClosuresCollection,
 		ensureAuditLogsCollection,
+
+		// 6. Caisse (dépend de companies)
+		ensureCashRegistersCollection,
+		ensureCashSessionsCollection,
+		ensureCashMovementsCollection,
 	}
 
 	for _, migrate := range migrations {

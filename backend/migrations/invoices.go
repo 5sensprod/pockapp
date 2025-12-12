@@ -205,6 +205,26 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 						CascadeDelete: false,
 					},
 				},
+
+				// === Caisse ===
+				&schema.SchemaField{
+					Name: "session",
+					Type: schema.FieldTypeRelation,
+					Options: &schema.RelationOptions{
+						CollectionId:  "cash_sessions", // on utilise le nom, PB résout le bon id
+						MaxSelect:     types.Pointer(1),
+						CascadeDelete: false,
+					},
+				},
+				&schema.SchemaField{
+					Name: "cash_register",
+					Type: schema.FieldTypeRelation,
+					Options: &schema.RelationOptions{
+						CollectionId:  "cash_registers",
+						MaxSelect:     types.Pointer(1),
+						CascadeDelete: false,
+					},
+				},
 			),
 		}
 
@@ -252,6 +272,40 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		}
 	}
 
+	// 3) Champs de caisse (relations vers cash_sessions / cash_registers)
+	if cashSessionsCol, err := app.Dao().FindCollectionByNameOrId("cash_sessions"); err == nil {
+		if f := collection.Schema.GetFieldByName("session"); f == nil {
+			collection.Schema.AddField(&schema.SchemaField{
+				Name: "session",
+				Type: schema.FieldTypeRelation,
+				Options: &schema.RelationOptions{
+					CollectionId:  cashSessionsCol.Id,
+					MaxSelect:     types.Pointer(1),
+					CascadeDelete: false,
+				},
+			})
+			changed = true
+			log.Println("🛠 Ajout du champ session -> cash_sessions")
+		}
+	}
+
+	if cashRegistersCol, err := app.Dao().FindCollectionByNameOrId("cash_registers"); err == nil {
+		if f := collection.Schema.GetFieldByName("cash_register"); f == nil {
+			collection.Schema.AddField(&schema.SchemaField{
+				Name: "cash_register",
+				Type: schema.FieldTypeRelation,
+				Options: &schema.RelationOptions{
+					CollectionId:  cashRegistersCol.Id,
+					MaxSelect:     types.Pointer(1),
+					CascadeDelete: false,
+				},
+			})
+			changed = true
+			log.Println("🛠 Ajout du champ cash_register -> cash_registers")
+		}
+	}
+
+	// Sauvegarde si nécessaire
 	if changed {
 		if err := app.Dao().SaveCollection(collection); err != nil {
 			return err

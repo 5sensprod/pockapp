@@ -184,6 +184,9 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		// Route envoi email factures
 		backend.RegisterInvoiceEmailRoutes(pb, e.Router)
 
+		// 🔹 NOUVEAU : routes caisse
+		backend.RegisterCashRoutes(pb, e.Router)
+
 		// SPA handler avec assets embarqués (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 
@@ -204,9 +207,9 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 func logSmtpStatus(pb *pocketbase.PocketBase) {
 	settings := pb.Settings()
 	if settings.Smtp.Enabled && settings.Smtp.Host != "" {
-		log.Printf("SMTP configured: %s:%d (user: %s)", 
-			settings.Smtp.Host, 
-			settings.Smtp.Port, 
+		log.Printf("SMTP configured: %s:%d (user: %s)",
+			settings.Smtp.Host,
+			settings.Smtp.Port,
 			settings.Smtp.Username)
 	} else {
 		log.Println("SMTP not configured - configure via Settings in the app")
