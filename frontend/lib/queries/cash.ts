@@ -98,6 +98,9 @@ export function useActiveCashSession(cashRegisterId?: string) {
 // MUTATIONS : OUVERTURE / FERMETURE SESSION
 // ============================================================================
 
+// 2) OU si tu veux vraiment envoyer openedBy : ajoute-le au type + au body dans useOpenCashSession
+
+// frontend/lib/queries/cash.ts
 export function useOpenCashSession() {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
@@ -107,6 +110,7 @@ export function useOpenCashSession() {
 			ownerCompanyId: string
 			cashRegisterId: string
 			openingFloat?: number
+			openedBy?: string
 		}) => {
 			const token = pb.authStore.token
 
@@ -120,6 +124,7 @@ export function useOpenCashSession() {
 					owner_company: params.ownerCompanyId,
 					cash_register: params.cashRegisterId,
 					opening_float: params.openingFloat ?? 0,
+					opened_by: params.openedBy ?? null,
 				}),
 			})
 
@@ -181,6 +186,35 @@ export function useCloseCashSession() {
 			queryClient.invalidateQueries({
 				queryKey: cashKeys.activeSession(params.cashRegisterId),
 			})
+		},
+	})
+}
+
+// ============================================================================
+// MUTATION : CRÉATION CAISSE
+// ============================================================================
+
+export function useCreateCashRegister() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (params: {
+			name: string
+			code?: string
+			ownerCompanyId: string
+		}) => {
+			const res = await pb.collection('cash_registers').create({
+				name: params.name,
+				code: params.code,
+				owner_company: params.ownerCompanyId,
+				is_active: true,
+			})
+
+			return res as CashRegister
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: cashKeys.registers() })
 		},
 	})
 }

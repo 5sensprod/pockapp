@@ -4,6 +4,7 @@
 
 import type {
 	InvoiceCreateDto,
+	InvoiceItem as InvoiceItemType,
 	InvoiceResponse,
 	InvoicesListOptions,
 	PaymentMethod,
@@ -17,6 +18,8 @@ import {
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+export type InvoiceItem = InvoiceItemType
+export type CreateInvoiceParams = Omit<InvoiceCreateDto, 'number'>
 // ============================================================================
 // QUERY KEYS
 // ============================================================================
@@ -161,7 +164,7 @@ export function useCreateInvoice() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async (data: Omit<InvoiceCreateDto, 'number'>) => {
+		mutationFn: async (data: CreateInvoiceParams) => {
 			const invoiceData = {
 				...data,
 				status: data.status || 'draft',

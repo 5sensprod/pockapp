@@ -772,4 +772,5 @@ func RegisterAllHooks(app *pocketbase.PocketBase) {
 	RegisterQuoteHooks(app) // ← NOUVEAU: hooks pour les devis
 	RegisterClosureHooks(app)
 	RegisterAuditLogHooks(app)
+	RegisterCashSessionHooks(app)
 }

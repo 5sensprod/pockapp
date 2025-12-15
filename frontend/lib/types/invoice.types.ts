@@ -69,6 +69,11 @@ export interface InvoiceBase {
 	total_ttc: number
 	currency: string
 	notes?: string
+
+	// 🔹 LIAISON CAISSE / POS
+	session?: string
+	cash_register?: string
+	sold_by?: string
 }
 
 // Pour la création (hash/sequence générés par le backend)
