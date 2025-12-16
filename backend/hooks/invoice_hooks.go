@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -135,7 +136,7 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		// Génération automatique du numéro si absent / invalide
 		existingNumber := record.GetString("number")
 		if existingNumber == "" || !isValidDocumentNumber(existingNumber, fiscalYear) {
-			newNumber, err := generateDocumentNumber(app, ownerCompany, invoiceType, fiscalYear)
+			newNumber, err := generateDocumentNumber(app, ownerCompany, invoiceType, fiscalYear, record)
 			if err != nil {
 				return fmt.Errorf("erreur génération numéro: %w", err)
 			}
@@ -266,10 +267,10 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 				updated.Set("previous_hash", previousHash)
 				updated.Set("sequence_number", sequenceNumber)
 
-				// Génération du numéro si inexistant / invalide
+				// 🆕 MODIFIÉ : Appel avec le record pour détecter POS
 				existingNumber := updated.GetString("number")
 				if existingNumber == "" || !isValidDocumentNumber(existingNumber, fiscalYear) {
-					newNumber, err := generateDocumentNumber(app, ownerCompany, invoiceType, fiscalYear)
+					newNumber, err := generateDocumentNumber(app, ownerCompany, invoiceType, fiscalYear, updated)
 					if err != nil {
 						return fmt.Errorf("erreur génération numéro (validation): %w", err)
 					}
@@ -379,20 +380,32 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 
 // generateDocumentNumber génère un numéro unique pour facture ou avoir
 // Format: FAC-2025-000001 ou AVO-2025-000001
-func generateDocumentNumber(app *pocketbase.PocketBase, ownerCompany, invoiceType string, fiscalYear int) (string, error) {
+func generateDocumentNumber(app *pocketbase.PocketBase, ownerCompany, invoiceType string, fiscalYear int, record *models.Record) (string, error) {
 	var prefix string
-	switch invoiceType {
-	case "credit_note":
+
+	// 🆕 NOUVEAU : Détecter si c'est un ticket POS via le champ cash_register
+	isPOS := record.GetString("cash_register") != ""
+
+	switch {
+	case invoiceType == "credit_note":
 		prefix = fmt.Sprintf("AVO-%d-", fiscalYear)
+	case isPOS:
+		// 🎯 TICKETS DE CAISSE
+		prefix = fmt.Sprintf("TIK-%d-", fiscalYear)
 	default:
+		// Factures classiques
 		prefix = fmt.Sprintf("FAC-%d-", fiscalYear)
 	}
 
-	// Trouver le dernier numéro pour ce type et cette année
-	filter := fmt.Sprintf(
-		"owner_company = '%s' && invoice_type = '%s' && fiscal_year = %d",
-		ownerCompany, invoiceType, fiscalYear,
-	)
+	// 🆕 MODIFIÉ : Filtrer par préfixe pour permettre plusieurs types de numérotation
+	// On ne filtre plus par invoice_type, mais par le préfixe du numéro
+	filterParts := []string{
+		fmt.Sprintf("owner_company = '%s'", ownerCompany),
+		fmt.Sprintf("fiscal_year = %d", fiscalYear),
+		fmt.Sprintf("number ~ '%s'", prefix), // Filtre par préfixe (~ = contains)
+	}
+
+	filter := strings.Join(filterParts, " && ")
 
 	records, err := app.Dao().FindRecordsByFilter(
 		"invoices",
@@ -406,12 +419,12 @@ func generateDocumentNumber(app *pocketbase.PocketBase, ownerCompany, invoiceTyp
 	if err != nil || len(records) == 0 {
 		nextSeq = 1
 	} else {
-		// Extraire le numéro du dernier document
+		// Extraire le numéro du dernier document avec ce préfixe
 		lastNumber := records[0].GetString("number")
 		nextSeq = extractSequenceFromNumber(lastNumber, prefix) + 1
 	}
 
-	// Générer le numéro avec padding
+	// Générer le numéro avec padding (6 chiffres)
 	return fmt.Sprintf("%s%0*d", prefix, NumberPadding, nextSeq), nil
 }
 
@@ -434,6 +447,7 @@ func isValidDocumentNumber(number string, fiscalYear int) bool {
 		fmt.Sprintf("FAC-%d-", fiscalYear),
 		fmt.Sprintf("AVO-%d-", fiscalYear),
 		fmt.Sprintf("DEV-%d-", fiscalYear),
+		fmt.Sprintf("TIK-%d-", fiscalYear),
 	}
 
 	for _, prefix := range prefixes {
@@ -456,35 +470,121 @@ func isValidDocumentNumber(number string, fiscalYear int) bool {
 // ============================================================================
 
 func RegisterClosureHooks(app *pocketbase.PocketBase) {
-	app.OnRecordBeforeCreateRequest("closures").Add(func(e *core.RecordCreateEvent) error {
+	app.OnRecordBeforeCreateRequest("invoices").Add(func(e *core.RecordCreateEvent) error {
 		record := e.Record
+
 		ownerCompany := record.GetString("owner_company")
+		invoiceType := record.GetString("invoice_type")
+		status := record.GetString("status")
+		cashRegister := record.GetString("cash_register")
 
-		now := time.Now()
-		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		endOfDay := startOfDay.Add(24 * time.Hour)
+		// Valeur par défaut de statut si non fourni
+		if status == "" {
+			status = "draft"
+			record.Set("status", status)
+		}
 
-		filter := fmt.Sprintf(
-			"owner_company = '%s' && closure_type = 'daily' && period_start >= '%s' && period_start <= '%s'",
-			ownerCompany,
-			startOfDay.Format(time.RFC3339),
-			endOfDay.Format(time.RFC3339),
-		)
+		// Initialiser is_paid si non défini
+		if record.Get("is_paid") == nil {
+			record.Set("is_paid", false)
+		}
 
-		existing, err := app.Dao().FindRecordsByFilter(
-			"closures",
-			filter,
-			"-created",
-			1,
-			0,
-		)
+		// 🆕 NOUVEAU : LIAISON AUTOMATIQUE SESSION ACTIVE
+		// Si une caisse est spécifiée mais pas de session
+		if cashRegister != "" && record.GetString("session") == "" {
+			// Chercher la session active pour cette caisse
+			activeSession, err := app.Dao().FindFirstRecordByFilter(
+				"cash_sessions",
+				fmt.Sprintf("cash_register = '%s' && status = 'open'", cashRegister),
+			)
+
+			if err == nil && activeSession != nil {
+				record.Set("session", activeSession.Id)
+				log.Printf("✅ Facture liée automatiquement à la session %s", activeSession.Id)
+			} else {
+				log.Printf("⚠️ Aucune session ouverte pour la caisse %s", cashRegister)
+			}
+		}
+
+		// 🔹 CAS 1 : Brouillon → pas de numéro, pas de hash, pas de chaînage
+		if status == "draft" {
+			record.Set("is_locked", false)
+
+			// On peut initialiser fiscal_year à partir de maintenant ou de la date
+			fiscalYear := time.Now().Year()
+			dateStr := record.GetString("date")
+			if dateStr != "" {
+				if strings.Contains(dateStr, "T") {
+					if t, err := time.Parse(time.RFC3339, dateStr); err == nil {
+						fiscalYear = t.Year()
+					}
+				} else {
+					if t, err := time.Parse("2006-01-02", dateStr); err == nil {
+						fiscalYear = t.Year()
+					}
+				}
+			}
+			record.Set("fiscal_year", fiscalYear)
+
+			// Pas de number, pas de hash, pas de previous_hash / sequence_number ici
+			return nil
+		}
+
+		// 🔹 CAS 2 : Facture non brouillon créée directement (ex: avoir, ticket POS)
+		// → numérotation + hash dès la création
+
+		// Déterminer l'année fiscale à partir de la date de facture si possible
+		fiscalYear := time.Now().Year()
+		dateStr := record.GetString("date")
+		if dateStr != "" {
+			if strings.Contains(dateStr, "T") {
+				if t, err := time.Parse(time.RFC3339, dateStr); err == nil {
+					fiscalYear = t.Year()
+				}
+			} else {
+				if t, err := time.Parse("2006-01-02", dateStr); err == nil {
+					fiscalYear = t.Year()
+				}
+			}
+		}
+		record.Set("fiscal_year", fiscalYear)
+
+		// Récupérer la dernière facture (pour chaînage)
+		lastInvoice, err := getLastInvoice(app, ownerCompany)
+
+		var previousHash string
+		var sequenceNumber int
+
+		if err != nil || lastInvoice == nil {
+			previousHash = GENESIS_HASH
+			sequenceNumber = 1
+		} else {
+			previousHash = lastInvoice.GetString("hash")
+			sequenceNumber = lastInvoice.GetInt("sequence_number") + 1
+		}
+
+		record.Set("previous_hash", previousHash)
+		record.Set("sequence_number", sequenceNumber)
+
+		// 🆕 MODIFIÉ : Génération automatique du numéro avec détection POS
+		existingNumber := record.GetString("number")
+		if existingNumber == "" || !isValidDocumentNumber(existingNumber, fiscalYear) {
+			newNumber, err := generateDocumentNumber(app, ownerCompany, invoiceType, fiscalYear, record)
+			if err != nil {
+				return fmt.Errorf("erreur génération numéro: %w", err)
+			}
+			record.Set("number", newNumber)
+		}
+
+		// Calcul du hash
+		hash, err := computeInvoiceHash(record)
 		if err != nil {
-			return err
+			return fmt.Errorf("erreur calcul hash: %w", err)
 		}
+		record.Set("hash", hash)
 
-		if len(existing) > 0 {
-			return errors.New("une clôture journalière existe déjà pour cette date")
-		}
+		// Verrouillage si ce n'est pas un brouillon
+		record.Set("is_locked", true)
 
 		return nil
 	})
@@ -769,8 +869,9 @@ func createAuditLog(app *pocketbase.PocketBase, ctx echo.Context, params AuditLo
 
 func RegisterAllHooks(app *pocketbase.PocketBase) {
 	RegisterInvoiceHooks(app)
-	RegisterQuoteHooks(app) // ← NOUVEAU: hooks pour les devis
+	RegisterQuoteHooks(app) //
 	RegisterClosureHooks(app)
 	RegisterAuditLogHooks(app)
 	RegisterCashSessionHooks(app)
+	RegisterInventoryHooks(app)
 }

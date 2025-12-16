@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"time"
 
+	"pocket-react/backend"
+	"pocket-react/backend/pos"
+
 	"github.com/pocketbase/pocketbase"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"pocket-react/backend"
 )
 
 // App struct - exposée au frontend via bindings
@@ -121,4 +123,39 @@ func (a *App) GetNetworkInfo() map[string]interface{} {
 		"port": 8090,
 		"url":  "http://" + ip + ":8090",
 	}
+}
+
+// ============================================
+// BINDINGS POS - Impression et tiroir caisse
+// ============================================
+
+type PrintPosReceiptInput struct {
+	PrinterName string          `json:"printerName"`
+	Width       int             `json:"width"`
+	Receipt     pos.ReceiptData `json:"receipt"`
+}
+
+type OpenCashDrawerInput struct {
+	PrinterName string `json:"printerName"`
+	Width       int    `json:"width"`
+}
+
+// ListPrinters retourne la liste des imprimantes Windows disponibles
+func (a *App) ListPrinters() ([]string, error) {
+	return pos.ListPrinters()
+}
+
+// PrintPosReceipt imprime un ticket de caisse
+func (a *App) PrintPosReceipt(input PrintPosReceiptInput) error {
+	receipt := input.Receipt
+	receipt.Width = input.Width
+
+	raw := pos.BuildReceipt(receipt)
+	return pos.RawPrint(input.PrinterName, raw)
+}
+
+// OpenCashDrawer ouvre le tiroir caisse via commande ESC/POS
+func (a *App) OpenCashDrawer(input OpenCashDrawerInput) error {
+	cmd := pos.OpenDrawerCmd()
+	return pos.RawPrint(input.PrinterName, cmd)
 }

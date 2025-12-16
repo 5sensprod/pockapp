@@ -6,6 +6,7 @@
   "frontend:build": "pnpm build:client",
   "frontend:dev:watcher": "pnpm dev:client",
   "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "./frontend",
   "author": {
     "name": "5sensprod",
     "email": "5sensprod@gmail.com"

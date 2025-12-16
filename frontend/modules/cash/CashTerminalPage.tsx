@@ -1,6 +1,5 @@
-import { Navigate } from '@tanstack/react-router'
-import { Search } from 'lucide-react'
-import * as React from 'react'
+// frontend/modules/cash/CashTerminalPage.tsx
+// ✨ Version FINALE - Adaptée au flux AppPOS existant (comme InvoiceCreatePage)
 
 import { Button } from '@/components/ui/button'
 import {
@@ -21,312 +20,410 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-
-import { manifest } from './index'
-
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
+import { openCashDrawer, printReceipt } from '@/lib/pos/posPrint'
 import {
+	getOrCreateDefaultCustomer,
 	useActiveCashSession,
 	useCashRegisters,
-	useOpenCashSession,
+	useCreateCashMovement,
 } from '@/lib/queries/cash'
-import { type InvoiceItem, useCreateInvoice } from '@/lib/queries/invoices'
+import { useCreateInvoice } from '@/lib/queries/invoices'
+import type { InvoiceItem, PaymentMethod } from '@/lib/types/invoice.types'
+import { usePocketBase } from '@/lib/use-pocketbase'
+import { useAuth } from '@/modules/auth/AuthProvider'
+import { useNavigate, useParams } from '@tanstack/react-router'
+import {
+	ArrowLeft,
+	Banknote,
+	CheckCircle2,
+	CreditCard,
+	DollarSign,
+	Loader2,
+	Receipt,
+	Search,
+} from 'lucide-react'
+import * as React from 'react'
 import { toast } from 'sonner'
-import { useAuth } from '../auth/AuthProvider'
 
-type CategoryId = 'all' | 'audio' | 'cable' | 'accessory'
-
-interface Product {
-	id: number
-	name: string
-	reference: string
-	price: number // TTC
-	stock: number
-	category: CategoryId
-}
+import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
+// ============================================================================
+// TYPES
+// ============================================================================
 
 interface CartItem {
-	id: number
+	id: string
+	productId: string
 	name: string
-	unitPrice: number // TTC
+	unitPrice: number
 	quantity: number
 }
 
-const PRODUCTS: Product[] = [
-	{
-		id: 1,
-		name: 'Câble XLR 3m',
-		reference: 'REF-XLR-3M',
-		price: 12.9,
-		stock: 42,
-		category: 'audio',
-	},
-	{
-		id: 2,
-		name: 'Jeu de cordes guitare',
-		reference: 'CORD-GTR-10',
-		price: 8.5,
-		stock: 15,
-		category: 'accessory',
-	},
-]
+type PaymentStep = 'cart' | 'payment' | 'success'
 
-const TVA_RATE = 20
-const TVA_FACTOR = 1 + TVA_RATE / 100
+// ============================================================================
+// COMPOSANT PRINCIPAL
+// ============================================================================
 
 export function CashTerminalPage() {
-	const Icon = manifest.icon
+	const navigate = useNavigate()
+	const { cashRegisterId } = useParams({
+		from: '/cash/terminal/$cashRegisterId/',
+	})
 	const { activeCompanyId } = useActiveCompany()
 	const { user } = useAuth()
+	const pb = usePocketBase()
 
-	const ownerCompanyId = activeCompanyId ?? undefined
-
-	const { data: registers, isLoading: isRegistersLoading } =
-		useCashRegisters(ownerCompanyId)
-
-	const selectedRegisterId = registers?.[0]?.id
-
-	const { data: activeSession, isLoading: isSessionLoading } =
-		useActiveCashSession(selectedRegisterId)
-
-	const openSession = useOpenCashSession()
-	const createInvoice = useCreateInvoice()
-
-	// Redirection si pas de caisse configurée
-	if (!isRegistersLoading && (!registers || registers.length === 0)) {
-		return <Navigate to='/cash' />
-	}
-
-	// UI d'ouverture session (fond de caisse)
-	const [openingFloat, setOpeningFloat] = React.useState<string>('0')
-	const [openDialog, setOpenDialog] = React.useState(false)
-
-	React.useEffect(() => {
-		// Ouvre la modale uniquement quand on sait qu'il n'y a pas de session
-		if (!isSessionLoading && !!selectedRegisterId && !activeSession) {
-			setOpenDialog(true)
-		} else {
-			setOpenDialog(false)
-		}
-	}, [isSessionLoading, selectedRegisterId, activeSession])
-
-	const handleOpenSession = async () => {
-		if (!ownerCompanyId || !selectedRegisterId) return
-
-		const value = Number(openingFloat)
-		const opening = Number.isFinite(value) ? Math.max(0, value) : 0
-
-		try {
-			await openSession.mutateAsync({
-				ownerCompanyId,
-				cashRegisterId: selectedRegisterId,
-				openingFloat: opening,
-			})
-			toast.success('Session de caisse ouverte')
-			setOpenDialog(false)
-		} catch (err: unknown) {
-			const error = err as { message?: string }
-			toast.error(error?.message || "Erreur lors de l'ouverture de caisse")
-		}
-	}
-
-	const [search, setSearch] = React.useState('')
-	const [category, setCategory] = React.useState<CategoryId>('all')
-	const [sort, setSort] = React.useState<'name' | 'price'>('name')
-
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// ÉTAT
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	const [cart, setCart] = React.useState<CartItem[]>([])
-	const [discountPercent, setDiscountPercent] = React.useState<number>(0)
+	const [productSearch, setProductSearch] = React.useState('')
+	const [discountPercent, setDiscountPercent] = React.useState(0)
 
-	const filteredProducts = React.useMemo(() => {
-		let list = PRODUCTS.filter((p) => {
-			const query = search.trim().toLowerCase()
-			const bySearch =
-				!query ||
-				p.name.toLowerCase().includes(query) ||
-				p.reference.toLowerCase().includes(query)
-			const byCategory = category === 'all' || p.category === category
-			return bySearch && byCategory
-		})
+	// États paiement
+	const [paymentStep, setPaymentStep] = React.useState<PaymentStep>('cart')
+	const [selectedPaymentMethod, setSelectedPaymentMethod] =
+		React.useState<PaymentMethod>('especes')
+	const [amountReceived, setAmountReceived] = React.useState<string>('')
+	const [isProcessing, setIsProcessing] = React.useState(false)
 
-		if (sort === 'name') {
-			list = [...list].sort((a, b) => a.name.localeCompare(b.name))
-		} else if (sort === 'price') {
-			list = [...list].sort((a, b) => a.price - b.price)
+	// Connexion AppPOS (comme InvoiceCreatePage)
+	const [isAppPosConnected, setIsAppPosConnected] = React.useState(false)
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// QUERIES
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	const { data: registers } = useCashRegisters(activeCompanyId ?? undefined)
+	const { data: activeSession, isLoading: isSessionLoading } =
+		useActiveCashSession(cashRegisterId)
+
+	// 🎯 EXACTEMENT comme InvoiceCreatePage
+	const { data: productsData } = useAppPosProducts({
+		enabled: isAppPosConnected,
+		searchTerm: productSearch || undefined,
+	})
+
+	const products = productsData?.items ?? []
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// MUTATIONS
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	const createInvoice = useCreateInvoice()
+	const createCashMovement = useCreateCashMovement()
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// COMPUTED
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	const currentRegister = registers?.find((r) => r.id === cashRegisterId)
+	const isSessionOpen = activeSession?.status === 'open'
+
+	const today = new Date().toLocaleDateString('fr-FR', {
+		weekday: 'long',
+		day: '2-digit',
+		month: 'long',
+	})
+
+	// Calcul totaux
+	const { subtotalTtc, totalTtc, tax } = React.useMemo(() => {
+		const subtotal = cart.reduce(
+			(sum, item) => sum + item.unitPrice * item.quantity,
+			0,
+		)
+		const discount = (subtotal * discountPercent) / 100
+		const total = subtotal - discount
+		const taxAmount = total * 0.2 // TVA 20%
+
+		return {
+			subtotalTtc: subtotal,
+			discountAmount: discount,
+			totalTtc: total,
+			tax: taxAmount,
+		}
+	}, [cart, discountPercent])
+
+	// Calcul monnaie
+	const change = React.useMemo(() => {
+		const received = Number.parseFloat(amountReceived) || 0
+		return received - totalTtc
+	}, [amountReceived, totalTtc])
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// EFFETS
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// Connexion automatique AppPOS (comme InvoiceCreatePage)
+	React.useEffect(() => {
+		const connect = async () => {
+			if (isAppPosConnected) return
+
+			const existingToken = getAppPosToken()
+			if (existingToken) {
+				setIsAppPosConnected(true)
+				return
+			}
+
+			try {
+				const res = await loginToAppPos('admin', 'admin123')
+				if (res.success && res.token) {
+					setIsAppPosConnected(true)
+				}
+			} catch (err) {
+				console.error('AppPOS: erreur de connexion', err)
+			}
 		}
 
-		return list
-	}, [search, category, sort])
+		void connect()
+	}, [isAppPosConnected])
 
-	const addToCart = (product: Product) => {
-		setCart((prev) => {
-			const existing = prev.find((i) => i.id === product.id)
-			if (existing) {
-				return prev.map((i) =>
-					i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i,
-				)
+	// Redirection si pas de session
+	React.useEffect(() => {
+		if (!isSessionLoading && !isSessionOpen) {
+			toast.error('Aucune session ouverte pour cette caisse')
+			navigate({ to: '/cash' })
+		}
+	}, [isSessionLoading, isSessionOpen, navigate])
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// HANDLERS : PANIER
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	const addToCart = (product: (typeof products)[0]) => {
+		const existingIndex = cart.findIndex(
+			(item) => item.productId === product.id,
+		)
+
+		if (existingIndex >= 0) {
+			// Incrémenter quantité
+			const newCart = [...cart]
+			newCart[existingIndex].quantity += 1
+			setCart(newCart)
+		} else {
+			// Nouveau produit
+			const price = product.price_ttc || product.price_ht || 0
+			const newItem: CartItem = {
+				id: `cart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+				productId: product.id,
+				name: product.name,
+				unitPrice: price,
+				quantity: 1,
 			}
-			return [
-				...prev,
-				{
-					id: product.id,
-					name: product.name,
-					unitPrice: product.price,
-					quantity: 1,
-				},
-			]
-		})
+			setCart([...cart, newItem])
+		}
+	}
+
+	const updateQuantity = (itemId: string, newQuantity: number) => {
+		if (newQuantity <= 0) {
+			setCart(cart.filter((item) => item.id !== itemId))
+		} else {
+			setCart(
+				cart.map((item) =>
+					item.id === itemId ? { ...item, quantity: newQuantity } : item,
+				),
+			)
+		}
 	}
 
 	const clearCart = () => {
 		setCart([])
 		setDiscountPercent(0)
+		setPaymentStep('cart')
+		setAmountReceived('')
 	}
-
-	const subtotalTtc = cart.reduce(
-		(sum, item) => sum + item.unitPrice * item.quantity,
-		0,
-	)
-
-	const safeDiscountPercent = Math.max(0, discountPercent)
-	const discountAmountTtc = subtotalTtc * (safeDiscountPercent / 100)
-	const totalTtc = Math.max(subtotalTtc - discountAmountTtc, 0)
-
-	const totalHt = totalTtc / TVA_FACTOR
-	const tax = totalTtc - totalHt
 
 	const handleChangeDiscount = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const raw = e.target.value
-		const value = Number(raw)
-		if (Number.isNaN(value)) setDiscountPercent(0)
-		else setDiscountPercent(Math.max(0, value))
+		const val = Number.parseFloat(e.target.value) || 0
+		setDiscountPercent(Math.max(0, Math.min(100, val)))
 	}
 
-	const handlePay = async (mode: 'card' | 'cash' | 'other') => {
-		if (!activeSession) {
-			toast.error('Aucune session ouverte')
-			setOpenDialog(true)
-			return
-		}
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// HANDLERS : PAIEMENT
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-		if (!ownerCompanyId) {
-			toast.error("Impossible de déterminer l'entreprise")
-			return
-		}
-
+	const handlePaymentClick = (method: PaymentMethod) => {
 		if (cart.length === 0) {
-			toast.error('Panier vide')
+			toast.error('Le panier est vide')
 			return
 		}
+
+		setSelectedPaymentMethod(method)
+		setPaymentStep('payment')
+
+		// Pré-remplir montant pour espèces
+		if (method === 'especes') {
+			setAmountReceived(totalTtc.toFixed(2))
+		}
+	}
+
+	const handleConfirmPayment = async () => {
+		if (!activeCompanyId || !activeSession) {
+			toast.error('Session ou entreprise manquante')
+			return
+		}
+
+		// Validation montant pour espèces
+		if (selectedPaymentMethod === 'especes') {
+			const received = Number.parseFloat(amountReceived) || 0
+			if (received < totalTtc) {
+				toast.error('Montant insuffisant')
+				return
+			}
+		}
+
+		// Charger les paramètres d'impression
+		const printerSettings = loadPosPrinterSettings()
+
+		setIsProcessing(true)
 
 		try {
-			// Remise répartie proportionnellement sur les lignes
-			const discountFactor =
-				subtotalTtc > 0 ? Math.max(totalTtc / subtotalTtc, 0) : 1
+			// 🔑 Récupérer ou créer le client par défaut
+			const defaultCustomerId = await getOrCreateDefaultCustomer(
+				pb,
+				activeCompanyId,
+			)
 
-			const items: InvoiceItem[] = cart.map((item) => {
-				const lineTtcBefore = item.unitPrice * item.quantity
-				const lineTtc = lineTtcBefore * discountFactor
-				const lineHt = lineTtc / TVA_FACTOR
-				const unitHt = item.quantity > 0 ? lineHt / item.quantity : 0
+			// Préparer les items
+			const invoiceItems: InvoiceItem[] = cart.map((item) => ({
+				product_id: item.productId,
+				name: item.name,
+				quantity: item.quantity,
+				unit_price_ht: item.unitPrice / 1.2, // Prix HT approximatif
+				tva_rate: 20,
+				total_ht: (item.unitPrice * item.quantity) / 1.2,
+				total_ttc: item.unitPrice * item.quantity,
+			}))
 
-				return {
-					product_id: String(item.id),
-					name: item.name,
-					quantity: item.quantity,
-					unit_price_ht: unitHt,
-					tva_rate: TVA_RATE,
-					total_ht: lineHt,
-					total_ttc: lineTtc,
-				}
-			})
-
-			const finalTotalTTC = totalTtc
-			const finalTotalHT = finalTotalTTC / TVA_FACTOR
-			const finalTotalTVA = finalTotalTTC - finalTotalHT
-
-			const paymentMethod =
-				mode === 'card' ? 'cb' : mode === 'cash' ? 'especes' : 'autre'
-
+			// Créer le ticket
 			const invoice = await createInvoice.mutateAsync({
-				customer: user?.id || '',
-				owner_company: ownerCompanyId,
-				date: new Date().toISOString(),
-				items,
-				total_ht: finalTotalHT,
-				total_tva: finalTotalTVA,
-				total_ttc: finalTotalTTC,
-				currency: 'EUR',
+				invoice_type: 'invoice',
+				date: new Date().toISOString().split('T')[0],
+				customer: defaultCustomerId,
+				owner_company: activeCompanyId,
 				status: 'validated',
 				is_paid: true,
 				paid_at: new Date().toISOString(),
-				payment_method: paymentMethod,
+				payment_method: selectedPaymentMethod,
+				items: invoiceItems,
+				total_ht: totalTtc / 1.2,
+				total_tva: totalTtc - totalTtc / 1.2,
+				total_ttc: totalTtc,
+				currency: 'EUR',
+				// 🔑 Liaison caisse + session
+				cash_register: cashRegisterId,
 				session: activeSession.id,
-				cash_register: selectedRegisterId,
 				sold_by: user?.id,
-				notes:
-					safeDiscountPercent > 0
-						? `Remise appliquée: ${safeDiscountPercent}%`
-						: undefined,
 			})
 
-			toast.success(`Vente enregistrée - ${invoice.number}`)
-			clearCart()
-		} catch (err: unknown) {
-			const error = err as { message?: string }
-			toast.error(error?.message || 'Erreur lors de la vente')
+			// Si paiement espèces, créer mouvement de caisse
+			if (selectedPaymentMethod === 'especes') {
+				await createCashMovement.mutateAsync({
+					sessionId: activeSession.id,
+					movementType: 'cash_in',
+					amount: totalTtc,
+					reason: `Vente ticket ${invoice.number}`,
+					meta: {
+						invoice_id: invoice.id,
+						invoice_number: invoice.number,
+					},
+					cashRegisterId,
+				})
+			}
+
+			// =========================
+			// PRINT + TIROIR
+			// =========================
+
+			if (printerSettings.enabled && printerSettings.printerName) {
+				if (printerSettings.autoPrint) {
+					await printReceipt({
+						printerName: printerSettings.printerName,
+						width: printerSettings.width,
+						receipt: {
+							invoiceNumber: invoice.number,
+							dateLabel: new Date().toLocaleString('fr-FR'),
+							items: cart.map((it) => ({
+								name: it.name,
+								qty: it.quantity,
+								unitTtc: it.unitPrice,
+								totalTtc: it.unitPrice * it.quantity,
+							})),
+							subtotalTtc,
+							discountAmount: (subtotalTtc * discountPercent) / 100,
+							totalTtc,
+							taxAmount: tax,
+							paymentMethod: selectedPaymentMethod,
+						},
+					})
+				}
+				if (
+					printerSettings.autoOpenDrawer &&
+					selectedPaymentMethod === 'especes'
+				) {
+					await openCashDrawer({
+						printerName: printerSettings.printerName,
+						width: printerSettings.width,
+					})
+				}
+			} else {
+				// optionnel: feedback si pas configuré
+				// toast.message("Imprimante POS non configurée")
+			}
+
+			toast.success(`Ticket ${invoice.number} créé`)
+			setPaymentStep('success')
+
+			// Auto-reset après 3 secondes
+			setTimeout(() => {
+				clearCart()
+			}, 3000)
+		} catch (error: any) {
+			console.error('Erreur création ticket:', error)
+			toast.error(error.message || 'Erreur lors de la création du ticket')
+		} finally {
+			setIsProcessing(false)
 		}
 	}
 
-	const today = new Date().toLocaleDateString('fr-FR')
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// RENDER : LOADING
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	return (
-		<>
-			<Dialog open={openDialog} onOpenChange={setOpenDialog}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Ouvrir la caisse</DialogTitle>
-						<DialogDescription>
-							Saisissez le fond de caisse (float) pour démarrer la session.
-						</DialogDescription>
-					</DialogHeader>
+	if (isSessionLoading) {
+		return (
+			<div className='flex h-screen items-center justify-center'>
+				<Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+			</div>
+		)
+	}
 
-					<div className='grid gap-2'>
-						<Label htmlFor='openingFloat'>Fond de caisse (€)</Label>
-						<Input
-							id='openingFloat'
-							type='number'
-							inputMode='decimal'
-							min={0}
-							step='0.01'
-							value={openingFloat}
-							onChange={(e) => setOpeningFloat(e.target.value)}
-						/>
-					</div>
+	if (!isSessionOpen) {
+		return null // La redirection se fait dans l'useEffect
+	}
 
-					<DialogFooter>
-						<Button
-							type='button'
-							onClick={handleOpenSession}
-							disabled={
-								openSession.isPending || !ownerCompanyId || !selectedRegisterId
-							}
-						>
-							{openSession.isPending ? 'Ouverture...' : 'Ouvrir la caisse'}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// RENDER : PANIER (cart)
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+	if (paymentStep === 'cart') {
+		return (
 			<div className='container mx-auto flex flex-col gap-6 px-6 py-8'>
 				<header className='flex items-center justify-between gap-4'>
 					<div className='flex items-center gap-3'>
-						<div className='flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100'>
-							<Icon className='h-5 w-5 text-blue-600' />
-						</div>
+						<Button
+							variant='ghost'
+							size='sm'
+							onClick={() => navigate({ to: '/cash' })}
+						>
+							<ArrowLeft className='h-4 w-4 mr-2' />
+							Retour
+						</Button>
 						<div>
-							<h1 className='text-2xl font-semibold tracking-tight'>Caisse</h1>
+							<h1 className='text-2xl font-semibold tracking-tight'>
+								{currentRegister?.name || 'Caisse'}
+							</h1>
 							<p className='text-sm text-muted-foreground'>
-								Enregistrez les ventes et encaissez vos clients.
+								Session {activeSession?.id.slice(0, 8)} — {today}
 							</p>
 						</div>
 					</div>
@@ -335,18 +432,17 @@ export function CashTerminalPage() {
 						<div className='flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1'>
 							<span className='h-2 w-2 rounded-full bg-emerald-500' />
 							<span className='font-medium text-emerald-700'>
-								{activeSession ? 'Caisse ouverte' : 'Caisse fermée'}
+								Session ouverte
 							</span>
 						</div>
-						<span>
-							{registers?.[0]?.name || 'Caisse'} — {today}
-						</span>
 					</div>
 				</header>
 
 				<main className='flex min-h-[520px] flex-1 flex-col gap-4 lg:flex-row'>
+					{/* GAUCHE : PRODUITS */}
 					<section className='flex flex-1 flex-col gap-3'>
 						<Card className='flex flex-1 flex-col'>
+							{/* Recherche */}
 							<div className='flex flex-wrap items-center gap-3 border-b px-4 py-3'>
 								<div className='relative min-w-[220px] flex-1'>
 									<Search
@@ -356,108 +452,58 @@ export function CashTerminalPage() {
 									<Input
 										type='text'
 										placeholder='Rechercher un produit…'
-										value={search}
-										onChange={(e) => setSearch(e.target.value)}
+										value={productSearch}
+										onChange={(e) => setProductSearch(e.target.value)}
 										className='h-9 w-full bg-slate-50 pl-8 text-sm'
 									/>
 								</div>
-
-								<div className='flex items-center gap-2 text-xs'>
-									<select
-										className='h-9 rounded-md border bg-slate-50 px-2 text-xs'
-										value={category}
-										onChange={(e) => setCategory(e.target.value as CategoryId)}
-									>
-										<option value='all'>Catégorie : toutes</option>
-										<option value='audio'>Audio</option>
-										<option value='cable'>Câbles</option>
-										<option value='accessory'>Accessoires</option>
-									</select>
-
-									<select
-										className='h-9 rounded-md border bg-slate-50 px-2 text-xs'
-										value={sort}
-										onChange={(e) =>
-											setSort(e.target.value as 'name' | 'price')
-										}
-									>
-										<option value='name'>Trier par : nom</option>
-										<option value='price'>Prix croissant</option>
-									</select>
-								</div>
 							</div>
 
-							<div className='flex flex-1 flex-col'>
-								<div className='flex items-center border-b px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-500'>
-									<div className='flex-1'>Produit</div>
-									<div className='w-24 text-right'>Prix TTC</div>
-									<div className='w-24 text-right'>Stock</div>
-								</div>
+							{/* Header liste */}
+							<div className='flex items-center border-b px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-500'>
+								<div className='flex-1'>Produit</div>
+								<div className='w-24 text-right'>Prix TTC</div>
+								<div className='w-24 text-right'>Stock</div>
+							</div>
 
-								<div className='h-[340px] overflow-auto text-sm'>
-									{filteredProducts.map((p) => (
-										<button
-											key={p.id}
-											type='button'
-											onClick={() => addToCart(p)}
-											className='flex w-full cursor-pointer items-center border-b px-4 py-2 text-left hover:bg-slate-50'
-										>
-											<div className='flex-1'>
-												<div className='font-medium'>{p.name}</div>
-												<div className='text-xs text-slate-500'>
-													{p.reference} •{' '}
-													{p.category === 'audio'
-														? 'Audio'
-														: p.category === 'cable'
-															? 'Câbles'
-															: 'Accessoires'}
-												</div>
-											</div>
-											<div className='w-24 text-right text-sm font-semibold'>
-												{p.price.toFixed(2)} €
-											</div>
-											<div className='w-24 text-right text-xs text-slate-500'>
-												{p.stock} en stock
-											</div>
-										</button>
-									))}
-
-									{!filteredProducts.length && (
-										<div className='px-4 py-6 text-center text-xs text-slate-400'>
-											Aucun produit ne correspond à la recherche.
-										</div>
-									)}
-
+							{/* Liste produits */}
+							<div className='h-[340px] overflow-auto text-sm'>
+								{products.length === 0 ? (
 									<div className='px-4 py-6 text-center text-xs text-slate-400'>
-										Résultats paginés — 25 produits par page sur ~2000.
+										{isAppPosConnected
+											? 'Aucun produit ne correspond à la recherche'
+											: 'Connexion à AppPOS en cours ou échouée'}
 									</div>
-								</div>
-
-								<div className='flex items-center justify-between border-t px-4 py-2 text-xs text-slate-500'>
-									<span>Page 1 sur 80</span>
-									<div className='flex items-center gap-1'>
-										<Button
-											type='button'
-											variant='outline'
-											size='sm'
-											className='h-7 px-2 text-xs'
-										>
-											Précédent
-										</Button>
-										<Button
-											type='button'
-											variant='outline'
-											size='sm'
-											className='h-7 px-2 text-xs'
-										>
-											Suivant
-										</Button>
-									</div>
-								</div>
+								) : (
+									<>
+										{products.slice(0, 50).map((p) => (
+											<button
+												key={p.id}
+												type='button'
+												onClick={() => addToCart(p)}
+												className='flex w-full cursor-pointer items-center border-b px-4 py-2 text-left hover:bg-slate-50'
+											>
+												<div className='flex-1'>
+													<div className='font-medium'>{p.name}</div>
+													<div className='text-xs text-slate-500'>
+														{p.sku || p.barcode || 'N/A'}
+													</div>
+												</div>
+												<div className='w-24 text-right text-sm font-semibold'>
+													{(p.price_ttc ?? 0).toFixed(2)} €
+												</div>
+												<div className='w-24 text-right text-xs text-slate-500'>
+													{p.stock_quantity ?? '?'} en stock
+												</div>
+											</button>
+										))}
+									</>
+								)}
 							</div>
 						</Card>
 					</section>
 
+					{/* DROITE : PANIER */}
 					<aside className='flex flex-1 flex-col gap-3'>
 						<Card className='flex h-full flex-col'>
 							<CardHeader className='flex flex-row items-center justify-between border-b px-4 py-3'>
@@ -490,10 +536,34 @@ export function CashTerminalPage() {
 												key={item.id}
 												className='flex items-center justify-between py-2'
 											>
-												<div>
+												<div className='flex-1'>
 													<div className='font-medium'>{item.name}</div>
-													<div className='text-xs text-slate-500'>
-														{item.quantity} × {item.unitPrice.toFixed(2)} €
+													<div className='flex items-center gap-2 text-xs text-slate-500'>
+														<Button
+															type='button'
+															variant='ghost'
+															size='sm'
+															className='h-5 w-5 p-0'
+															onClick={() =>
+																updateQuantity(item.id, item.quantity - 1)
+															}
+														>
+															−
+														</Button>
+														<span>
+															{item.quantity} × {item.unitPrice.toFixed(2)} €
+														</span>
+														<Button
+															type='button'
+															variant='ghost'
+															size='sm'
+															className='h-5 w-5 p-0'
+															onClick={() =>
+																updateQuantity(item.id, item.quantity + 1)
+															}
+														>
+															+
+														</Button>
 													</div>
 												</div>
 												<span className='font-semibold'>
@@ -544,39 +614,30 @@ export function CashTerminalPage() {
 										type='button'
 										variant='outline'
 										className='h-10'
-										onClick={() => handlePay('card')}
-										disabled={
-											createInvoice.isPending ||
-											cart.length === 0 ||
-											!activeSession
-										}
+										onClick={() => handlePaymentClick('cb')}
+										disabled={cart.length === 0}
 									>
+										<CreditCard className='h-4 w-4 mr-1' />
 										CB
 									</Button>
 									<Button
 										type='button'
 										variant='outline'
 										className='h-10'
-										onClick={() => handlePay('cash')}
-										disabled={
-											createInvoice.isPending ||
-											cart.length === 0 ||
-											!activeSession
-										}
+										onClick={() => handlePaymentClick('especes')}
+										disabled={cart.length === 0}
 									>
+										<Banknote className='h-4 w-4 mr-1' />
 										Espèces
 									</Button>
 									<Button
 										type='button'
 										variant='outline'
 										className='h-10'
-										onClick={() => handlePay('other')}
-										disabled={
-											createInvoice.isPending ||
-											cart.length === 0 ||
-											!activeSession
-										}
+										onClick={() => handlePaymentClick('virement')}
+										disabled={cart.length === 0}
 									>
+										<DollarSign className='h-4 w-4 mr-1' />
 										Autre
 									</Button>
 								</div>
@@ -584,65 +645,166 @@ export function CashTerminalPage() {
 								<Button
 									type='button'
 									className='h-11 w-full text-sm font-semibold'
-									disabled={
-										totalTtc <= 0 || createInvoice.isPending || !activeSession
-									}
-									onClick={() => handlePay('card')}
+									disabled={totalTtc <= 0 || cart.length === 0}
+									onClick={() => handlePaymentClick('cb')}
 								>
-									{createInvoice.isPending
-										? 'Enregistrement...'
-										: `Encaisser ${totalTtc > 0 ? `${totalTtc.toFixed(2)} €` : ''}`}
+									Encaisser {totalTtc > 0 ? `${totalTtc.toFixed(2)} €` : ''}
 								</Button>
 							</div>
-						</Card>
-
-						<Card>
-							<CardContent className='grid grid-cols-3 gap-3 p-4 text-xl font-semibold select-none'>
-								<Button type='button' variant='outline' className='h-12'>
-									7
-								</Button>
-								<Button type='button' variant='outline' className='h-12'>
-									8
-								</Button>
-								<Button type='button' variant='outline' className='h-12'>
-									9
-								</Button>
-
-								<Button type='button' variant='outline' className='h-12'>
-									4
-								</Button>
-								<Button type='button' variant='outline' className='h-12'>
-									5
-								</Button>
-								<Button type='button' variant='outline' className='h-12'>
-									6
-								</Button>
-
-								<Button type='button' variant='outline' className='h-12'>
-									1
-								</Button>
-								<Button type='button' variant='outline' className='h-12'>
-									2
-								</Button>
-								<Button type='button' variant='outline' className='h-12'>
-									3
-								</Button>
-
-								<Button
-									type='button'
-									variant='outline'
-									className='col-span-2 h-12'
-								>
-									0
-								</Button>
-								<Button type='button' variant='outline' className='h-12'>
-									⌫
-								</Button>
-							</CardContent>
 						</Card>
 					</aside>
 				</main>
 			</div>
-		</>
+		)
+	}
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// RENDER : PAIEMENT (payment)
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	if (paymentStep === 'payment') {
+		return (
+			<Dialog open={true} onOpenChange={() => setPaymentStep('cart')}>
+				<DialogContent className='sm:max-w-md'>
+					<DialogHeader>
+						<DialogTitle>Paiement</DialogTitle>
+						<DialogDescription>
+							Montant à encaisser : {totalTtc.toFixed(2)} €
+						</DialogDescription>
+					</DialogHeader>
+
+					<div className='space-y-4'>
+						{/* Sélection méthode */}
+						<div>
+							<Label>Méthode de paiement</Label>
+							<div className='grid grid-cols-3 gap-2 mt-2'>
+								<Button
+									type='button'
+									variant={
+										selectedPaymentMethod === 'especes' ? 'default' : 'outline'
+									}
+									className='h-20'
+									onClick={() => setSelectedPaymentMethod('especes')}
+								>
+									<div className='flex flex-col items-center gap-1'>
+										<Banknote className='h-5 w-5' />
+										<span className='text-xs'>Espèces</span>
+									</div>
+								</Button>
+								<Button
+									type='button'
+									variant={
+										selectedPaymentMethod === 'cb' ? 'default' : 'outline'
+									}
+									className='h-20'
+									onClick={() => setSelectedPaymentMethod('cb')}
+								>
+									<div className='flex flex-col items-center gap-1'>
+										<CreditCard className='h-5 w-5' />
+										<span className='text-xs'>CB</span>
+									</div>
+								</Button>
+								<Button
+									type='button'
+									variant={
+										selectedPaymentMethod === 'virement' ? 'default' : 'outline'
+									}
+									className='h-20'
+									onClick={() => setSelectedPaymentMethod('virement')}
+								>
+									<div className='flex flex-col items-center gap-1'>
+										<DollarSign className='h-5 w-5' />
+										<span className='text-xs'>Virement</span>
+									</div>
+								</Button>
+							</div>
+						</div>
+
+						{/* Montant reçu (espèces uniquement) */}
+						{selectedPaymentMethod === 'especes' && (
+							<div>
+								<Label htmlFor='amountReceived'>Montant reçu (€)</Label>
+								<Input
+									id='amountReceived'
+									type='number'
+									step='0.01'
+									value={amountReceived}
+									onChange={(e) => setAmountReceived(e.target.value)}
+									className='text-xl h-14 text-right mt-2'
+									placeholder='0.00'
+									autoFocus
+								/>
+
+								{change >= 0 && amountReceived !== '' && (
+									<div className='mt-3 p-3 bg-slate-100 rounded-lg'>
+										<p className='text-sm text-muted-foreground'>
+											Monnaie à rendre
+										</p>
+										<p className='text-2xl font-bold text-primary'>
+											{change.toFixed(2)} €
+										</p>
+									</div>
+								)}
+							</div>
+						)}
+					</div>
+
+					<DialogFooter>
+						<Button
+							variant='outline'
+							onClick={() => setPaymentStep('cart')}
+							disabled={isProcessing}
+						>
+							Annuler
+						</Button>
+						<Button
+							onClick={handleConfirmPayment}
+							disabled={
+								isProcessing ||
+								(selectedPaymentMethod === 'especes' &&
+									(Number.parseFloat(amountReceived) || 0) < totalTtc)
+							}
+						>
+							{isProcessing ? (
+								<>
+									<Loader2 className='h-4 w-4 mr-2 animate-spin' />
+									Traitement...
+								</>
+							) : (
+								<>
+									<Receipt className='h-4 w-4 mr-2' />
+									Confirmer
+								</>
+							)}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		)
+	}
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// RENDER : SUCCÈS (success)
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	return (
+		<div className='flex h-screen items-center justify-center'>
+			<Card className='w-96'>
+				<CardContent className='flex flex-col items-center justify-center p-8 space-y-4'>
+					<div className='h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center'>
+						<CheckCircle2 className='h-8 w-8 text-emerald-600' />
+					</div>
+					<div className='text-center space-y-2'>
+						<h3 className='text-xl font-bold'>Paiement effectué !</h3>
+						<p className='text-muted-foreground'>
+							Le ticket a été créé avec succès
+						</p>
+					</div>
+					<Button onClick={clearCart} className='w-full'>
+						Nouvelle vente
+					</Button>
+				</CardContent>
+			</Card>
+		</div>
 	)
 }

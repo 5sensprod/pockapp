@@ -5,6 +5,7 @@ import {
 	CalendarDays,
 	Clock3,
 	CreditCard,
+	Printer,
 	Receipt,
 	Settings,
 	Store,
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { PosPrinterConfigCard } from './components/PosPrinterConfigCard'
 import { manifest } from './index'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
@@ -39,15 +41,17 @@ import {
 	useOpenCashSession,
 } from '@/lib/queries/cash'
 import { useAuth } from '@/modules/auth/AuthProvider'
+import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
 export function CashPage() {
+	const navigate = useNavigate()
 	const Icon = manifest.icon
 	const { isAuthenticated, user } = useAuth()
 	const { activeCompanyId } = useActiveCompany()
 
 	const ownerCompanyId = activeCompanyId ?? undefined
-
+	const [isPrinterDialogOpen, setIsPrinterDialogOpen] = React.useState(false)
 	// =========================
 	// CAISSES DISPONIBLES
 	// =========================
@@ -509,6 +513,23 @@ export function CashPage() {
 							>
 								{isSessionOpen ? 'Clôturer la session' : 'Ouvrir une session'}
 							</Button>
+
+							{isSessionOpen && selectedRegisterId && (
+								<Button
+									onClick={() =>
+										navigate({
+											to: '/cash/terminal/$cashRegisterId',
+											params: { cashRegisterId: selectedRegisterId },
+										})
+									}
+									size='sm'
+									className='mt-2 w-full'
+									variant='default'
+								>
+									<Receipt className='h-4 w-4 mr-2' />
+									Ouvrir le terminal
+								</Button>
+							)}
 						</CardContent>
 					</Card>
 
@@ -563,6 +584,48 @@ export function CashPage() {
 							</div>
 						</CardContent>
 					</Card>
+					{/* Imprimantes */}
+					<Card className='border-slate-200'>
+						<CardHeader className='pb-3'>
+							<CardTitle className='flex items-center gap-2 text-sm'>
+								<Printer className='h-4 w-4 text-slate-500' />
+								Imprimante POS
+							</CardTitle>
+							<CardDescription>
+								Sélectionnez l’imprimante ticket et la largeur.
+							</CardDescription>
+						</CardHeader>
+
+						<CardContent className='space-y-3'>
+							<Button
+								variant='outline'
+								size='sm'
+								className='w-full'
+								onClick={() => setIsPrinterDialogOpen(true)}
+							>
+								Configurer l’imprimante
+							</Button>
+						</CardContent>
+					</Card>
+
+					<Dialog
+						open={isPrinterDialogOpen}
+						onOpenChange={setIsPrinterDialogOpen}
+					>
+						<DialogContent className='sm:max-w-lg'>
+							<DialogHeader>
+								<DialogTitle>Configuration imprimante POS</DialogTitle>
+							</DialogHeader>
+
+							<PosPrinterConfigCard />
+
+							<div className='flex justify-end pt-2'>
+								<Button onClick={() => setIsPrinterDialogOpen(false)}>
+									Fermer
+								</Button>
+							</div>
+						</DialogContent>
+					</Dialog>
 
 					{/* Moyens de paiement */}
 					<Card className='border-slate-200 md:col-span-2 xl:col-span-1'>
