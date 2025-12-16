@@ -274,7 +274,7 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 					if !allowedInvoiceUpdates[key] {
 						return fmt.Errorf(
 							"modification interdite: le champ '%s' ne peut pas être modifié sur une facture validée. "+
-								"Créez un avoir pour annuler cette facture.",
+								"Créez un avoir pour annuler cette facture",
 							key,
 						)
 					}
@@ -442,7 +442,7 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		// ❌ Tout le reste reste interdit
 		return errors.New(
 			"suppression interdite: les factures validées ou envoyées ne " +
-				"peuvent pas être supprimées. Créez un avoir pour annuler.",
+				"peuvent pas être supprimées. Créez un avoir pour annuler cette facture",
 		)
 	})
 }
