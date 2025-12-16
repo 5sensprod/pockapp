@@ -66,15 +66,17 @@ import {
 	AlertTriangle,
 	CheckCircle,
 	Download,
+	Edit,
 	Eye,
 	FileText,
 	Mail,
 	MoreHorizontal,
 	Plus,
+	Receipt,
 	Send,
 	XCircle,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { InvoicePdfDocument } from './InvoicePdf'
 import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
@@ -130,6 +132,7 @@ async function toPngDataUrl(url: string): Promise<string> {
 // ============================================================================
 
 type StatusFilter = InvoiceStatus | 'all' | 'unpaid' | 'overdue'
+type DocumentTypeFilter = 'all' | 'tik' | 'fac'
 
 // ============================================================================
 // COMPONENT
@@ -146,6 +149,8 @@ export function InvoicesPage() {
 	const [typeFilter, setTypeFilter] = useState<
 		'all' | 'invoice' | 'credit_note'
 	>('all')
+	const [documentTypeFilter, setDocumentTypeFilter] =
+		useState<DocumentTypeFilter>('all')
 
 	// États dialogs
 	const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
@@ -204,10 +209,19 @@ export function InvoicesPage() {
 		filter: searchTerm ? `number ~ "${searchTerm}"` : undefined,
 	})
 
-	// Filtrer côté client pour "overdue"
+	// Base list
 	let invoices = (invoicesData?.items ?? []) as InvoiceResponse[]
+
+	// Filtrer côté client pour "overdue"
 	if (statusFilter === 'overdue') {
 		invoices = invoices.filter((inv) => isOverdue(inv))
+	}
+
+	// Filtrer côté client pour document type (TIK / FAC)
+	if (documentTypeFilter === 'tik') {
+		invoices = invoices.filter((inv) => inv.number?.startsWith('TIK-'))
+	} else if (documentTypeFilter === 'fac') {
+		invoices = invoices.filter((inv) => inv.number?.startsWith('FAC-'))
 	}
 
 	// Charger la société active
@@ -235,49 +249,46 @@ export function InvoicesPage() {
 	}
 
 	// Stats (NOUVEAU: utilise is_paid au lieu du statut)
-	const stats = invoices.reduce(
-		(acc, inv) => {
-			if (inv.invoice_type === 'invoice') {
-				acc.invoiceCount++
+	const stats = useMemo(
+		() =>
+			invoices.reduce(
+				(acc, inv) => {
+					if (inv.invoice_type === 'invoice') {
+						acc.invoiceCount++
 
-				// Montant net = facture + avoirs liés (montants d'avoirs sont négatifs)
-				const creditTotal = creditNotesByOriginal[inv.id] ?? 0
-				const netAmount = inv.total_ttc + creditTotal
+						const creditTotal = creditNotesByOriginal[inv.id] ?? 0
+						const netAmount = inv.total_ttc + creditTotal
 
-				// totalTTC reste la somme "net factures - avoirs"
-				acc.totalTTC += inv.total_ttc
+						acc.totalTTC += inv.total_ttc
 
-				if (inv.is_paid) {
-					// Pour l'instant on laisse "payé" = montant de la facture payée
-					acc.paid += inv.total_ttc
-				} else if (inv.status !== 'draft') {
-					// 👉 Ne compter en attente que si le net est encore > 0
-					if (netAmount > 0) {
-						acc.pending += netAmount
-						if (isOverdue(inv)) {
-							acc.overdue += netAmount
+						if (inv.is_paid) {
+							acc.paid += inv.total_ttc
+						} else if (inv.status !== 'draft') {
+							if (netAmount > 0) {
+								acc.pending += netAmount
+								if (isOverdue(inv)) acc.overdue += netAmount
+							}
 						}
+					} else if (inv.invoice_type === 'credit_note') {
+						acc.creditNoteCount++
+						acc.totalTTC += inv.total_ttc
+						acc.creditNotesTTC += inv.total_ttc
 					}
-				}
-			} else if (inv.invoice_type === 'credit_note') {
-				acc.creditNoteCount++
-				acc.totalTTC += inv.total_ttc // montants négatifs
-				acc.creditNotesTTC += inv.total_ttc
-			}
-
-			return acc
-		},
-		{
-			invoiceCount: 0,
-			creditNoteCount: 0,
-			totalTTC: 0,
-			creditNotesTTC: 0,
-			paid: 0,
-			pending: 0,
-			overdue: 0,
-		},
+					return acc
+				},
+				{
+					invoiceCount: 0,
+					creditNoteCount: 0,
+					totalTTC: 0,
+					creditNotesTTC: 0,
+					paid: 0,
+					pending: 0,
+					overdue: 0,
+				},
+			),
+		// deps: surtout pas creditNotesByOriginal (c'est un nouvel objet à chaque render)
+		[invoices],
 	)
-
 	// Clôture du jour déjà existante ?
 	const today = new Date()
 	today.setHours(0, 0, 0, 0)
@@ -569,6 +580,7 @@ export function InvoicesPage() {
 						onChange={(e) => setSearchTerm(e.target.value)}
 					/>
 				</div>
+
 				<div className='flex gap-2'>
 					<Select
 						value={statusFilter}
@@ -603,6 +615,23 @@ export function InvoicesPage() {
 							<SelectItem value='credit_note'>Avoirs uniquement</SelectItem>
 						</SelectContent>
 					</Select>
+
+					{/* Filtre TIK/FAC */}
+					<Select
+						value={documentTypeFilter}
+						onValueChange={(value: DocumentTypeFilter) =>
+							setDocumentTypeFilter(value)
+						}
+					>
+						<SelectTrigger className='w-[180px]'>
+							<SelectValue placeholder='Document' />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value='all'>Tous documents</SelectItem>
+							<SelectItem value='tik'>Tickets POS</SelectItem>
+							<SelectItem value='fac'>Factures</SelectItem>
+						</SelectContent>
+					</Select>
 				</div>
 			</div>
 
@@ -634,7 +663,6 @@ export function InvoicesPage() {
 								const customer = invoice.expand?.customer
 								const overdue = isOverdue(invoice)
 
-								// Détecter si cette facture a déjà un avoir d'annulation lié
 								const hasCancellationCreditNote = invoices.some(
 									(other) =>
 										other.invoice_type === 'credit_note' &&
@@ -646,9 +674,14 @@ export function InvoicesPage() {
 										key={invoice.id}
 										className={overdue ? 'bg-red-50/50' : ''}
 									>
-										<TableCell className='font-mono font-medium'>
-											{invoice.number}
+										<TableCell className='font-medium'>
+											<div className='flex items-center gap-2'>
+												<span className='font-mono'>{invoice.number}</span>
+												{invoice.converted_to_invoice && <Badge>→ FAC</Badge>}
+												{invoice.original_invoice_id && <Badge>← TIK</Badge>}
+											</div>
 										</TableCell>
+
 										<TableCell>
 											<Badge
 												variant={
@@ -657,11 +690,14 @@ export function InvoicesPage() {
 														: 'outline'
 												}
 											>
-												{invoice.invoice_type === 'credit_note'
-													? 'Avoir'
-													: 'Facture'}
+												{invoice.is_pos_ticket
+													? 'Ticket'
+													: invoice.invoice_type === 'credit_note'
+														? 'Avoir'
+														: 'Facture'}
 											</Badge>
 										</TableCell>
+
 										<TableCell>
 											<div>
 												<p className='font-medium'>
@@ -674,7 +710,9 @@ export function InvoicesPage() {
 												)}
 											</div>
 										</TableCell>
+
 										<TableCell>{formatDate(invoice.date)}</TableCell>
+
 										<TableCell>
 											<span
 												className={overdue ? 'text-red-600 font-medium' : ''}
@@ -685,6 +723,7 @@ export function InvoicesPage() {
 												<AlertTriangle className='h-3 w-3 inline ml-1 text-red-500' />
 											)}
 										</TableCell>
+
 										<TableCell>
 											<div className='flex items-center gap-2'>
 												<Badge variant={displayStatus.variant}>
@@ -695,11 +734,13 @@ export function InvoicesPage() {
 												)}
 											</div>
 										</TableCell>
+
 										<TableCell
 											className={`text-right font-medium ${invoice.total_ttc < 0 ? 'text-red-600' : ''}`}
 										>
 											{formatCurrency(invoice.total_ttc)}
 										</TableCell>
+
 										<TableCell>
 											<DropdownMenu>
 												<DropdownMenuTrigger asChild>
@@ -710,7 +751,6 @@ export function InvoicesPage() {
 												<DropdownMenuContent align='end'>
 													<DropdownMenuLabel>Actions</DropdownMenuLabel>
 
-													{/* 👉 Voir = navigation vers la page détail */}
 													<DropdownMenuItem
 														onClick={() =>
 															navigate({
@@ -738,12 +778,42 @@ export function InvoicesPage() {
 														Envoyer par email
 													</DropdownMenuItem>
 
+													{/* Convertir ticket -> facture */}
+													{invoice.number?.startsWith('TIK-') &&
+														!invoice.converted_to_invoice && (
+															<>
+																<DropdownMenuSeparator />
+																<DropdownMenuItem
+																	onClick={() =>
+																		navigate({
+																			to: '/cash/convert-to-invoice/$ticketId',
+																			params: { ticketId: invoice.id },
+																		})
+																	}
+																>
+																	<Receipt className='h-4 w-4 mr-2' />
+																	Convertir en facture
+																</DropdownMenuItem>
+															</>
+														)}
+
 													<DropdownMenuSeparator />
 
 													{/* Actions spécifiques aux brouillons */}
 													{invoice.status === 'draft' &&
 														invoice.invoice_type === 'invoice' && (
 															<>
+																<DropdownMenuItem
+																	onClick={() =>
+																		navigate({
+																			to: '/connect/invoices/$invoiceId/edit',
+																			params: { invoiceId: invoice.id },
+																		})
+																	}
+																>
+																	<Edit className='h-4 w-4 mr-2' />
+																	Modifier
+																</DropdownMenuItem>
 																<DropdownMenuItem
 																	onClick={() => handleValidate(invoice)}
 																>
@@ -775,7 +845,7 @@ export function InvoicesPage() {
 														</DropdownMenuItem>
 													)}
 
-													{/* Paiement (NOUVEAU: indépendant du statut) */}
+													{/* Paiement */}
 													{canMarkAsPaid(invoice) &&
 														!hasCancellationCreditNote && (
 															<DropdownMenuItem

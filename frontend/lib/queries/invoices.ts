@@ -256,6 +256,41 @@ export function useValidateInvoice() {
 }
 
 /**
+ * ✏️ Mettre à jour une facture brouillon
+ */
+export function useUpdateInvoice() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async ({
+			id,
+			data,
+		}: {
+			id: string
+			data: Partial<InvoiceCreateDto>
+		}) => {
+			// Vérifier que c'est un brouillon
+			const existing = (await pb
+				.collection('invoices')
+				.getOne(id)) as unknown as InvoiceResponse
+
+			if (!canEditInvoice(existing)) {
+				throw new Error('Seules les factures brouillon peuvent être modifiées')
+			}
+
+			// Mettre à jour
+			const result = await pb.collection('invoices').update(id, data)
+			return result as unknown as InvoiceResponse
+		},
+		onSuccess: (_, { id }) => {
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(id) })
+		},
+	})
+}
+
+/**
  * 📤 Marquer comme envoyée (validated → sent)
  */
 export function useMarkInvoiceAsSent() {

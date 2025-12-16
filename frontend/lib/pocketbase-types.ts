@@ -179,10 +179,10 @@ export type InvoicesRecord = {
 	customer: RecordIdString
 	owner_company: RecordIdString
 
-	// Workflow (SANS "paid")
+	// Workflow
 	status: InvoicesStatusOptions
 
-	// Paiement (NOUVEAU - séparé du statut)
+	// Paiement
 	is_paid?: boolean
 	paid_at?: IsoDateString
 	payment_method?: InvoicesPaymentMethodOptions
@@ -208,6 +208,11 @@ export type InvoicesRecord = {
 
 	// Clôture
 	closure_id?: RecordIdString
+
+	// ✅ POS / conversion
+	converted_to_invoice?: boolean
+	converted_invoice_id?: RecordIdString
+	is_pos_ticket?: boolean
 }
 
 // ============================================================================

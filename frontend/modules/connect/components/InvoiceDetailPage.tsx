@@ -235,7 +235,12 @@ export function InvoiceDetailPage() {
 					<div>
 						<h1 className='text-2xl font-bold flex items-center gap-2'>
 							<FileText className='h-6 w-6' />
-							Facture {invoice.number}
+							{invoice.is_pos_ticket
+								? 'Ticket'
+								: invoice.invoice_type === 'credit_note'
+									? 'Avoir'
+									: 'Facture'}{' '}
+							{invoice.number}
 						</h1>
 						<p className='text-muted-foreground'>
 							Émise le {formatDate(invoice.date)}
@@ -287,11 +292,18 @@ export function InvoiceDetailPage() {
 				{/* Informations principales */}
 				<Card className='lg:col-span-2'>
 					<CardHeader>
-						<CardTitle>Détails de la facture</CardTitle>
+						<CardTitle>
+							{invoice.is_pos_ticket
+								? 'Détails du ticket'
+								: 'Détails de la facture'}
+						</CardTitle>
 						<CardDescription>
-							Facture{' '}
-							{invoice.invoice_type === 'credit_note' ? 'avoir' : 'classique'} –
-							statut&nbsp;: {displayStatus.label}
+							{invoice.is_pos_ticket
+								? 'Ticket de caisse'
+								: invoice.invoice_type === 'credit_note'
+									? 'Avoir'
+									: 'Facture classique'}{' '}
+							— statut&nbsp;: {displayStatus.label}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className='space-y-4'>
@@ -300,20 +312,42 @@ export function InvoiceDetailPage() {
 								<p className='text-sm text-muted-foreground'>Date</p>
 								<p className='font-medium'>{formatDate(invoice.date)}</p>
 							</div>
-							<div>
-								<p className='text-sm text-muted-foreground'>Échéance</p>
-								<p
-									className={`font-medium ${overdue && !invoice.is_paid ? 'text-red-600' : ''}`}
-								>
-									{invoice.due_date ? formatDate(invoice.due_date) : '-'}
-								</p>
-							</div>
+
+							{/* Échéance pour factures | Heure pour tickets */}
+							{invoice.is_pos_ticket ? (
+								<div>
+									<p className='text-sm text-muted-foreground'>
+										Heure de vente
+									</p>
+									<p className='font-medium'>
+										{new Date(invoice.created).toLocaleTimeString('fr-FR', {
+											hour: '2-digit',
+											minute: '2-digit',
+										})}
+									</p>
+								</div>
+							) : (
+								<div>
+									<p className='text-sm text-muted-foreground'>Échéance</p>
+									<p
+										className={`font-medium ${overdue && !invoice.is_paid ? 'text-red-600' : ''}`}
+									>
+										{invoice.due_date ? formatDate(invoice.due_date) : '-'}
+									</p>
+								</div>
+							)}
+
 							<div>
 								<p className='text-sm text-muted-foreground'>Type</p>
 								<p className='font-medium'>
-									{invoice.invoice_type === 'credit_note' ? 'Avoir' : 'Facture'}
+									{invoice.is_pos_ticket
+										? 'Ticket'
+										: invoice.invoice_type === 'credit_note'
+											? 'Avoir'
+											: 'Facture'}
 								</p>
 							</div>
+
 							<div>
 								<p className='text-sm text-muted-foreground'>
 									Paiement / statut
@@ -336,6 +370,37 @@ export function InvoiceDetailPage() {
 								)}
 							</div>
 						</div>
+
+						{invoice.is_pos_ticket &&
+							invoice.converted_to_invoice &&
+							invoice.converted_invoice_id && (
+								<div className='border-t pt-4'>
+									<p className='text-sm text-muted-foreground mb-2'>
+										Facture associée
+									</p>
+									<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
+										<div className='flex items-center gap-2'>
+											<FileText className='h-4 w-4 text-muted-foreground' />
+											<span className='font-medium'>Converti en facture</span>
+										</div>
+										<Button
+											variant='outline'
+											size='sm'
+											onClick={() => {
+												const facId = invoice.converted_invoice_id
+												if (facId) {
+													navigate({
+														to: '/connect/invoices/$invoiceId',
+														params: { invoiceId: facId },
+													})
+												}
+											}}
+										>
+											Voir la facture
+										</Button>
+									</div>
+								</div>
+							)}
 
 						{invoice.notes && (
 							<div>

@@ -12,6 +12,7 @@ import (
 // ensureInvoicesCollection crée ou met à jour la collection invoices (ISCA-compliant v2)
 // Avec is_paid séparé du statut
 // 🔢 MODIFIÉ: number n'est plus Required (généré par le hook backend)
+// 🆕 AJOUT: Champs conversion TIK → Facture
 func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 	// On essaie d'abord de trouver la collection existante
 	collection, err := app.Dao().FindCollectionByNameOrId("invoices")
@@ -225,13 +226,32 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 						CascadeDelete: false,
 					},
 				},
+
+				// === 🆕 Conversion TIK → Facture ===
+				&schema.SchemaField{
+					Name: "converted_to_invoice",
+					Type: schema.FieldTypeBool,
+				},
+				&schema.SchemaField{
+					Name: "converted_invoice_id",
+					Type: schema.FieldTypeRelation,
+					Options: &schema.RelationOptions{
+						// Self-relation (fixé après création)
+						MaxSelect:     types.Pointer(1),
+						CascadeDelete: false,
+					},
+				},
+				&schema.SchemaField{
+					Name: "is_pos_ticket",
+					Type: schema.FieldTypeBool,
+				},
 			),
 		}
 
 		if err := app.Dao().SaveCollection(collection); err != nil {
 			return err
 		}
-		log.Println("✅ Collection 'invoices' créée (ISCA v2)")
+		log.Println("✅ Collection 'invoices' créée (ISCA v2 + TIK→FAC)")
 	} else {
 		log.Println("📦 Collection 'invoices' existe déjà, vérification du schéma...")
 	}
@@ -305,14 +325,75 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		}
 	}
 
+	// ═══════════════════════════════════════════════════════════════════════
+	// 🆕 4) Champs conversion TIK → Facture
+	// ═══════════════════════════════════════════════════════════════════════
+
+	// converted_to_invoice (bool) - Ticket converti en facture ?
+	if f := collection.Schema.GetFieldByName("converted_to_invoice"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "converted_to_invoice",
+			Type: schema.FieldTypeBool,
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ converted_to_invoice (bool)")
+	}
+
+	// converted_invoice_id (relation self) - ID de la facture générée
+	if f := collection.Schema.GetFieldByName("converted_invoice_id"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "converted_invoice_id",
+			Type: schema.FieldTypeRelation,
+			Options: &schema.RelationOptions{
+				CollectionId:  collection.Id, // Self-relation
+				MaxSelect:     types.Pointer(1),
+				CascadeDelete: false,
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ converted_invoice_id -> invoices (self)")
+	}
+
+	// is_pos_ticket (bool) - Ticket POS (TIK-) ou facture standard (FAC-) ?
+	if f := collection.Schema.GetFieldByName("is_pos_ticket"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "is_pos_ticket",
+			Type: schema.FieldTypeBool,
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ is_pos_ticket (bool)")
+	}
+
 	// Sauvegarde si nécessaire
 	if changed {
 		if err := app.Dao().SaveCollection(collection); err != nil {
 			return err
 		}
-		log.Println("✅ Collection 'invoices' mise à jour (schéma corrigé)")
+		log.Println("✅ Collection 'invoices' mise à jour (schéma corrigé + TIK→FAC)")
 	} else {
 		log.Println("✅ Collection 'invoices' OK (aucune modification nécessaire)")
+	}
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// 🆕 5) Mettre à jour les données existantes (une seule fois)
+	// ═══════════════════════════════════════════════════════════════════════
+
+	// Marquer les tickets existants (TIK-*) comme tickets POS
+	if _, err := app.Dao().DB().NewQuery(`
+	UPDATE invoices 
+	SET is_pos_ticket = TRUE 
+	WHERE number LIKE 'TIK-%'
+`).Execute(); err == nil {
+		log.Println("🛠 Tickets TIK-* marqués comme is_pos_ticket=true")
+	}
+
+	// Marquer TOUTES les factures
+	if _, err := app.Dao().DB().NewQuery(`
+	UPDATE invoices 
+	SET is_pos_ticket = FALSE 
+	WHERE (number LIKE 'FAC-%' OR number LIKE 'DEV-%' OR number LIKE 'AVO-%')
+`).Execute(); err == nil {
+		log.Println("🛠 Factures FAC-* marquées comme is_pos_ticket=false")
 	}
 
 	return nil

@@ -314,6 +314,13 @@ export function CashTerminalPage() {
 				session: activeSession.id,
 				sold_by: user?.id,
 			})
+			// 🆕 DEBUG
+			console.log('Ticket créé:', {
+				number: invoice.number,
+				is_paid: invoice.is_paid,
+				paid_at: invoice.paid_at,
+				payment_method: invoice.payment_method,
+			})
 
 			// Si paiement espèces, créer mouvement de caisse
 			if (selectedPaymentMethod === 'especes') {

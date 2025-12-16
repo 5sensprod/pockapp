@@ -35,7 +35,9 @@ import { Route as ConnectQuotesQuoteIdIndexImport } from './routes/connect/quote
 import { Route as ConnectInvoicesInvoiceIdIndexImport } from './routes/connect/invoices/$invoiceId/index'
 import { Route as ConnectCustomersCustomerIdIndexImport } from './routes/connect/customers/$customerId/index'
 import { Route as CashTerminalCashRegisterIdIndexImport } from './routes/cash/terminal/$cashRegisterId/index'
+import { Route as CashConvertToInvoiceTicketIdIndexImport } from './routes/cash/convert-to-invoice/$ticketId/index'
 import { Route as ConnectQuotesQuoteIdEditImport } from './routes/connect/quotes/$quoteId/edit'
+import { Route as ConnectInvoicesInvoiceIdEditImport } from './routes/connect/invoices/$invoiceId/edit'
 import { Route as ConnectCustomersCustomerIdEditImport } from './routes/connect/customers/$customerId/edit'
 
 // Create/Update Routes
@@ -187,11 +189,25 @@ const CashTerminalCashRegisterIdIndexRoute =
     getParentRoute: () => rootRoute,
   } as any)
 
+const CashConvertToInvoiceTicketIdIndexRoute =
+  CashConvertToInvoiceTicketIdIndexImport.update({
+    id: '/cash/convert-to-invoice/$ticketId/',
+    path: '/cash/convert-to-invoice/$ticketId/',
+    getParentRoute: () => rootRoute,
+  } as any)
+
 const ConnectQuotesQuoteIdEditRoute = ConnectQuotesQuoteIdEditImport.update({
   id: '/connect/quotes/$quoteId/edit',
   path: '/connect/quotes/$quoteId/edit',
   getParentRoute: () => rootRoute,
 } as any)
+
+const ConnectInvoicesInvoiceIdEditRoute =
+  ConnectInvoicesInvoiceIdEditImport.update({
+    id: '/connect/invoices/$invoiceId/edit',
+    path: '/connect/invoices/$invoiceId/edit',
+    getParentRoute: () => rootRoute,
+  } as any)
 
 const ConnectCustomersCustomerIdEditRoute =
   ConnectCustomersCustomerIdEditImport.update({
@@ -351,11 +367,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectCustomersCustomerIdEditImport
       parentRoute: typeof rootRoute
     }
+    '/connect/invoices/$invoiceId/edit': {
+      id: '/connect/invoices/$invoiceId/edit'
+      path: '/connect/invoices/$invoiceId/edit'
+      fullPath: '/connect/invoices/$invoiceId/edit'
+      preLoaderRoute: typeof ConnectInvoicesInvoiceIdEditImport
+      parentRoute: typeof rootRoute
+    }
     '/connect/quotes/$quoteId/edit': {
       id: '/connect/quotes/$quoteId/edit'
       path: '/connect/quotes/$quoteId/edit'
       fullPath: '/connect/quotes/$quoteId/edit'
       preLoaderRoute: typeof ConnectQuotesQuoteIdEditImport
+      parentRoute: typeof rootRoute
+    }
+    '/cash/convert-to-invoice/$ticketId/': {
+      id: '/cash/convert-to-invoice/$ticketId/'
+      path: '/cash/convert-to-invoice/$ticketId'
+      fullPath: '/cash/convert-to-invoice/$ticketId'
+      preLoaderRoute: typeof CashConvertToInvoiceTicketIdIndexImport
       parentRoute: typeof rootRoute
     }
     '/cash/terminal/$cashRegisterId/': {
@@ -413,7 +443,9 @@ export interface FileRoutesByFullPath {
   '/connect/invoices': typeof ConnectInvoicesIndexRoute
   '/connect/quotes': typeof ConnectQuotesIndexRoute
   '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
+  '/connect/invoices/$invoiceId/edit': typeof ConnectInvoicesInvoiceIdEditRoute
   '/connect/quotes/$quoteId/edit': typeof ConnectQuotesQuoteIdEditRoute
+  '/cash/convert-to-invoice/$ticketId': typeof CashConvertToInvoiceTicketIdIndexRoute
   '/cash/terminal/$cashRegisterId': typeof CashTerminalCashRegisterIdIndexRoute
   '/connect/customers/$customerId': typeof ConnectCustomersCustomerIdIndexRoute
   '/connect/invoices/$invoiceId': typeof ConnectInvoicesInvoiceIdIndexRoute
@@ -442,7 +474,9 @@ export interface FileRoutesByTo {
   '/connect/invoices': typeof ConnectInvoicesIndexRoute
   '/connect/quotes': typeof ConnectQuotesIndexRoute
   '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
+  '/connect/invoices/$invoiceId/edit': typeof ConnectInvoicesInvoiceIdEditRoute
   '/connect/quotes/$quoteId/edit': typeof ConnectQuotesQuoteIdEditRoute
+  '/cash/convert-to-invoice/$ticketId': typeof CashConvertToInvoiceTicketIdIndexRoute
   '/cash/terminal/$cashRegisterId': typeof CashTerminalCashRegisterIdIndexRoute
   '/connect/customers/$customerId': typeof ConnectCustomersCustomerIdIndexRoute
   '/connect/invoices/$invoiceId': typeof ConnectInvoicesInvoiceIdIndexRoute
@@ -472,7 +506,9 @@ export interface FileRoutesById {
   '/connect/invoices/': typeof ConnectInvoicesIndexRoute
   '/connect/quotes/': typeof ConnectQuotesIndexRoute
   '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
+  '/connect/invoices/$invoiceId/edit': typeof ConnectInvoicesInvoiceIdEditRoute
   '/connect/quotes/$quoteId/edit': typeof ConnectQuotesQuoteIdEditRoute
+  '/cash/convert-to-invoice/$ticketId/': typeof CashConvertToInvoiceTicketIdIndexRoute
   '/cash/terminal/$cashRegisterId/': typeof CashTerminalCashRegisterIdIndexRoute
   '/connect/customers/$customerId/': typeof ConnectCustomersCustomerIdIndexRoute
   '/connect/invoices/$invoiceId/': typeof ConnectInvoicesInvoiceIdIndexRoute
@@ -503,7 +539,9 @@ export interface FileRouteTypes {
     | '/connect/invoices'
     | '/connect/quotes'
     | '/connect/customers/$customerId/edit'
+    | '/connect/invoices/$invoiceId/edit'
     | '/connect/quotes/$quoteId/edit'
+    | '/cash/convert-to-invoice/$ticketId'
     | '/cash/terminal/$cashRegisterId'
     | '/connect/customers/$customerId'
     | '/connect/invoices/$invoiceId'
@@ -531,7 +569,9 @@ export interface FileRouteTypes {
     | '/connect/invoices'
     | '/connect/quotes'
     | '/connect/customers/$customerId/edit'
+    | '/connect/invoices/$invoiceId/edit'
     | '/connect/quotes/$quoteId/edit'
+    | '/cash/convert-to-invoice/$ticketId'
     | '/cash/terminal/$cashRegisterId'
     | '/connect/customers/$customerId'
     | '/connect/invoices/$invoiceId'
@@ -559,7 +599,9 @@ export interface FileRouteTypes {
     | '/connect/invoices/'
     | '/connect/quotes/'
     | '/connect/customers/$customerId/edit'
+    | '/connect/invoices/$invoiceId/edit'
     | '/connect/quotes/$quoteId/edit'
+    | '/cash/convert-to-invoice/$ticketId/'
     | '/cash/terminal/$cashRegisterId/'
     | '/connect/customers/$customerId/'
     | '/connect/invoices/$invoiceId/'
@@ -589,7 +631,9 @@ export interface RootRouteChildren {
   ConnectInvoicesIndexRoute: typeof ConnectInvoicesIndexRoute
   ConnectQuotesIndexRoute: typeof ConnectQuotesIndexRoute
   ConnectCustomersCustomerIdEditRoute: typeof ConnectCustomersCustomerIdEditRoute
+  ConnectInvoicesInvoiceIdEditRoute: typeof ConnectInvoicesInvoiceIdEditRoute
   ConnectQuotesQuoteIdEditRoute: typeof ConnectQuotesQuoteIdEditRoute
+  CashConvertToInvoiceTicketIdIndexRoute: typeof CashConvertToInvoiceTicketIdIndexRoute
   CashTerminalCashRegisterIdIndexRoute: typeof CashTerminalCashRegisterIdIndexRoute
   ConnectCustomersCustomerIdIndexRoute: typeof ConnectCustomersCustomerIdIndexRoute
   ConnectInvoicesInvoiceIdIndexRoute: typeof ConnectInvoicesInvoiceIdIndexRoute
@@ -618,7 +662,10 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectInvoicesIndexRoute: ConnectInvoicesIndexRoute,
   ConnectQuotesIndexRoute: ConnectQuotesIndexRoute,
   ConnectCustomersCustomerIdEditRoute: ConnectCustomersCustomerIdEditRoute,
+  ConnectInvoicesInvoiceIdEditRoute: ConnectInvoicesInvoiceIdEditRoute,
   ConnectQuotesQuoteIdEditRoute: ConnectQuotesQuoteIdEditRoute,
+  CashConvertToInvoiceTicketIdIndexRoute:
+    CashConvertToInvoiceTicketIdIndexRoute,
   CashTerminalCashRegisterIdIndexRoute: CashTerminalCashRegisterIdIndexRoute,
   ConnectCustomersCustomerIdIndexRoute: ConnectCustomersCustomerIdIndexRoute,
   ConnectInvoicesInvoiceIdIndexRoute: ConnectInvoicesInvoiceIdIndexRoute,
@@ -658,7 +705,9 @@ export const routeTree = rootRoute
         "/connect/invoices/",
         "/connect/quotes/",
         "/connect/customers/$customerId/edit",
+        "/connect/invoices/$invoiceId/edit",
         "/connect/quotes/$quoteId/edit",
+        "/cash/convert-to-invoice/$ticketId/",
         "/cash/terminal/$cashRegisterId/",
         "/connect/customers/$customerId/",
         "/connect/invoices/$invoiceId/",
@@ -728,8 +777,14 @@ export const routeTree = rootRoute
     "/connect/customers/$customerId/edit": {
       "filePath": "connect/customers/$customerId/edit.tsx"
     },
+    "/connect/invoices/$invoiceId/edit": {
+      "filePath": "connect/invoices/$invoiceId/edit.tsx"
+    },
     "/connect/quotes/$quoteId/edit": {
       "filePath": "connect/quotes/$quoteId/edit.tsx"
+    },
+    "/cash/convert-to-invoice/$ticketId/": {
+      "filePath": "cash/convert-to-invoice/$ticketId/index.tsx"
     },
     "/cash/terminal/$cashRegisterId/": {
       "filePath": "cash/terminal/$cashRegisterId/index.tsx"

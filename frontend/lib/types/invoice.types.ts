@@ -102,6 +102,9 @@ export interface InvoiceResponse extends InvoiceBase {
 		customer?: CustomerExpand
 		original_invoice_id?: InvoiceResponse
 	}
+	converted_to_invoice: boolean
+	converted_invoice_id?: string
+	is_pos_ticket: boolean
 }
 
 export interface CustomerExpand {
