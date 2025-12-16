@@ -67,6 +67,13 @@ function formatCurrency(amount: number) {
 	}).format(amount)
 }
 
+function toYMD(value?: string) {
+	if (!value) return ''
+	// match "YYYY-MM-DD" au début, que ce soit "YYYY-MM-DD" ou "YYYY-MM-DD 00:00:00"
+	const m = value.match(/^(\d{4}-\d{2}-\d{2})/)
+	return m?.[1] ?? ''
+}
+
 export function TicketsPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
@@ -110,10 +117,9 @@ export function TicketsPage() {
 
 			// Filtre date
 			if (dateFilter) {
-				const ticketDate = ticket.date?.split('T')[0]
+				const ticketDate = toYMD(ticket.date)
 				if (ticketDate !== dateFilter) return false
 			}
-
 			return true
 		})
 	}, [tickets, searchTerm, conversionFilter, dateFilter])
