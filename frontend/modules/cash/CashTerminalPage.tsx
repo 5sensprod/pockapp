@@ -17,7 +17,6 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
 	Select,
 	SelectContent,
@@ -67,9 +66,8 @@ interface CartItem {
 	unitPrice: number // prix catalogue TTC
 	quantity: number
 
-	// NEW: remise par ligne
-	lineDiscountMode?: LineDiscountMode // 'percent' ou 'unit'
-	lineDiscountValue?: number // percent (0-100) ou prix unitaire TTC
+	lineDiscountMode?: LineDiscountMode // 'percent' | 'unit'
+	lineDiscountValue?: number // percent (0-100) OU prix unitaire TTC
 }
 
 type PaymentStep = 'cart' | 'payment' | 'success'
@@ -97,26 +95,21 @@ export function CashTerminalPage() {
 	const { user } = useAuth()
 	const pb = usePocketBase()
 
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// ÉTAT
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	const [cart, setCart] = React.useState<CartItem[]>([])
 	const [productSearch, setProductSearch] = React.useState('')
 	const [discountPercent, setDiscountPercent] = React.useState(0)
 
-	// États paiement
 	const [paymentStep, setPaymentStep] = React.useState<PaymentStep>('cart')
 	const [selectedPaymentMethod, setSelectedPaymentMethod] =
 		React.useState<PaymentMethod>('especes')
 	const [amountReceived, setAmountReceived] = React.useState<string>('')
 	const [isProcessing, setIsProcessing] = React.useState(false)
 
-	// Connexion AppPOS
 	const [isAppPosConnected, setIsAppPosConnected] = React.useState(false)
 
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// QUERIES
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// NEW: ligne en édition (pour la remise)
+	const [editingLineId, setEditingLineId] = React.useState<string | null>(null)
+
 	const { data: registers } = useCashRegisters(activeCompanyId ?? undefined)
 	const { data: activeSession, isLoading: isSessionLoading } =
 		useActiveCashSession(cashRegisterId)
@@ -125,18 +118,11 @@ export function CashTerminalPage() {
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
 	})
-
 	const products = (productsData?.items ?? []) as AppPosProduct[]
 
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// MUTATIONS
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	const createInvoice = useCreateInvoice()
 	const createCashMovement = useCreateCashMovement()
 
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// COMPUTED
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	const currentRegister = registers?.find((r) => r.id === cashRegisterId)
 	const isSessionOpen = activeSession?.status === 'open'
 
@@ -174,13 +160,11 @@ export function CashTerminalPage() {
 		[getEffectiveUnitTtc],
 	)
 
-	// Calcul totaux (panier)
 	const { subtotalTtc, totalTtc, tax } = React.useMemo(() => {
 		const subtotal = cart.reduce((sum, item) => sum + getLineTotalTtc(item), 0)
 		const discount = (subtotal * discountPercent) / 100
 		const total = subtotal - discount
-		const taxAmount = total * 0.2 // TVA 20%
-
+		const taxAmount = total * 0.2
 		return {
 			subtotalTtc: subtotal,
 			discountAmount: discount,
@@ -189,15 +173,10 @@ export function CashTerminalPage() {
 		}
 	}, [cart, discountPercent, getLineTotalTtc])
 
-	// Calcul monnaie
 	const change = React.useMemo(() => {
 		const received = Number.parseFloat(amountReceived) || 0
 		return received - totalTtc
 	}, [amountReceived, totalTtc])
-
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// EFFETS
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 	React.useEffect(() => {
 		const connect = async () => {
@@ -227,10 +206,6 @@ export function CashTerminalPage() {
 		}
 	}, [isSessionLoading, isSessionOpen, navigate])
 
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// HANDLERS : PANIER
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 	const addToCart = React.useCallback((product: AppPosProduct) => {
 		setCart((prev) => {
 			const existingIndex = prev.findIndex(
@@ -252,7 +227,6 @@ export function CashTerminalPage() {
 				name: product.name,
 				unitPrice: price,
 				quantity: 1,
-				// pas de remise par défaut
 			}
 			return [...prev, newItem]
 		})
@@ -275,6 +249,7 @@ export function CashTerminalPage() {
 		setDiscountPercent(0)
 		setPaymentStep('cart')
 		setAmountReceived('')
+		setEditingLineId(null)
 	}, [])
 
 	const handleChangeDiscount = React.useCallback(
@@ -285,10 +260,7 @@ export function CashTerminalPage() {
 		[],
 	)
 
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// HANDLERS : REMISE PAR LIGNE
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+	// Remise par ligne (logic)
 	const setLineDiscountMode = React.useCallback(
 		(itemId: string, mode: LineDiscountMode) => {
 			setCart((prev) =>
@@ -296,7 +268,6 @@ export function CashTerminalPage() {
 					if (it.id !== itemId) return it
 
 					const currentVal = it.lineDiscountValue
-
 					const nextValue =
 						mode === 'percent'
 							? clamp(currentVal ?? 0, 0, 100)
@@ -345,20 +316,14 @@ export function CashTerminalPage() {
 		)
 	}, [])
 
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// HANDLERS : PAIEMENT
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 	const handlePaymentClick = React.useCallback(
 		(method: PaymentMethod) => {
 			if (cart.length === 0) {
 				toast.error('Le panier est vide')
 				return
 			}
-
 			setSelectedPaymentMethod(method)
 			setPaymentStep('payment')
-
 			if (method === 'especes') setAmountReceived(totalTtc.toFixed(2))
 		},
 		[cart.length, totalTtc],
@@ -470,10 +435,7 @@ export function CashTerminalPage() {
 
 			toast.success(`Ticket ${invoice.number} créé`)
 			setPaymentStep('success')
-
-			setTimeout(() => {
-				clearCart()
-			}, 3000)
+			setTimeout(() => clearCart(), 3000)
 		} catch (error: any) {
 			console.error('Erreur création ticket:', error)
 			toast.error(error.message || 'Erreur lors de la création du ticket')
@@ -499,10 +461,6 @@ export function CashTerminalPage() {
 		totalTtc,
 		user?.id,
 	])
-
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// RENDER
-	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 	if (isSessionLoading) return <LoadingView />
 	if (!isSessionOpen) return null
@@ -533,6 +491,8 @@ export function CashTerminalPage() {
 				setLineDiscountMode={setLineDiscountMode}
 				setLineDiscountValue={setLineDiscountValue}
 				clearLineDiscount={clearLineDiscount}
+				editingLineId={editingLineId}
+				setEditingLineId={setEditingLineId}
 			/>
 		)
 	}
@@ -592,12 +552,14 @@ function CartStepView(props: {
 
 	onPaymentClick: (method: PaymentMethod) => void
 
-	// NEW
 	getEffectiveUnitTtc: (item: CartItem) => number
 	getLineTotalTtc: (item: CartItem) => number
 	setLineDiscountMode: (itemId: string, mode: LineDiscountMode) => void
 	setLineDiscountValue: (itemId: string, raw: string) => void
 	clearLineDiscount: (itemId: string) => void
+
+	editingLineId: string | null
+	setEditingLineId: (id: string | null) => void
 }) {
 	const {
 		currentRegisterName,
@@ -623,6 +585,8 @@ function CartStepView(props: {
 		setLineDiscountMode,
 		setLineDiscountValue,
 		clearLineDiscount,
+		editingLineId,
+		setEditingLineId,
 	} = props
 
 	return (
@@ -661,6 +625,8 @@ function CartStepView(props: {
 						setLineDiscountMode={setLineDiscountMode}
 						setLineDiscountValue={setLineDiscountValue}
 						clearLineDiscount={clearLineDiscount}
+						editingLineId={editingLineId}
+						setEditingLineId={setEditingLineId}
 					/>
 				</aside>
 			</main>
@@ -790,12 +756,14 @@ function CartPanel(props: {
 	onDiscountChange: (e: React.ChangeEvent<HTMLInputElement>) => void
 	onPaymentClick: (method: PaymentMethod) => void
 
-	// NEW
 	getEffectiveUnitTtc: (item: CartItem) => number
 	getLineTotalTtc: (item: CartItem) => number
 	setLineDiscountMode: (itemId: string, mode: LineDiscountMode) => void
 	setLineDiscountValue: (itemId: string, raw: string) => void
 	clearLineDiscount: (itemId: string) => void
+
+	editingLineId: string | null
+	setEditingLineId: (id: string | null) => void
 }) {
 	const {
 		cart,
@@ -812,7 +780,15 @@ function CartPanel(props: {
 		setLineDiscountMode,
 		setLineDiscountValue,
 		clearLineDiscount,
+		editingLineId,
+		setEditingLineId,
 	} = props
+
+	const hasActiveLineDiscount = React.useCallback((item: CartItem) => {
+		if (!item.lineDiscountMode || item.lineDiscountValue == null) return false
+		if (item.lineDiscountMode === 'percent') return item.lineDiscountValue > 0
+		return item.lineDiscountValue < item.unitPrice
+	}, [])
 
 	return (
 		<Card className='flex h-full flex-col'>
@@ -842,6 +818,7 @@ function CartPanel(props: {
 				) : (
 					<div className='divide-y'>
 						{cart.map((item) => {
+							const open = editingLineId === item.id
 							const mode: LineDiscountMode = item.lineDiscountMode ?? 'percent'
 							const value =
 								item.lineDiscountValue ?? (mode === 'unit' ? item.unitPrice : 0)
@@ -878,72 +855,78 @@ function CartPanel(props: {
 												>
 													+
 												</Button>
-											</div>
-
-											{/* NEW: remise par ligne */}
-											<div className='mt-2 flex items-end gap-2'>
-												<div className='w-28'>
-													<Label className='text-[11px] text-slate-500'>
-														Remise
-													</Label>
-													<Select
-														value={mode}
-														onValueChange={(v) =>
-															setLineDiscountMode(
-																item.id,
-																v as LineDiscountMode,
-															)
-														}
-													>
-														<SelectTrigger className='h-8'>
-															<SelectValue />
-														</SelectTrigger>
-														<SelectContent>
-															<SelectItem value='percent'>%</SelectItem>
-															<SelectItem value='unit'>Prix unit.</SelectItem>
-														</SelectContent>
-													</Select>
-												</div>
-
-												<div className='flex-1'>
-													<Label className='text-[11px] text-slate-500'>
-														{mode === 'unit' ? 'Prix unit. TTC' : 'Pourcentage'}
-													</Label>
-													<div className='flex items-center gap-2'>
-														<Input
-															type='number'
-															step='0.01'
-															className='h-8'
-															value={String(value)}
-															onChange={(e) =>
-																setLineDiscountValue(item.id, e.target.value)
-															}
-														/>
-														<span className='text-xs text-slate-500'>
-															{mode === 'unit' ? '€' : '%'}
-														</span>
-													</div>
-												</div>
-
-												<div className='text-right'>
-													<Label className='text-[11px] text-slate-500'>
-														Unit. après
-													</Label>
-													<div className='text-xs font-medium'>
-														{getEffectiveUnitTtc(item).toFixed(2)} €
-													</div>
-												</div>
 
 												<Button
 													type='button'
 													variant='ghost'
 													size='sm'
-													className='h-8 px-2 text-xs text-slate-500'
-													onClick={() => clearLineDiscount(item.id)}
+													className='h-6 px-2 text-[11px]'
+													onClick={() =>
+														setEditingLineId(open ? null : item.id)
+													}
 												>
-													Reset
+													Remise
 												</Button>
+
+												{hasActiveLineDiscount(item) && (
+													<span className='inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700'>
+														<span className='h-1.5 w-1.5 rounded-full bg-emerald-500' />
+														{item.lineDiscountMode === 'percent'
+															? `-${item.lineDiscountValue}%`
+															: `${getEffectiveUnitTtc(item).toFixed(2)}€`}
+													</span>
+												)}
 											</div>
+
+											{/* NEW: panel ultra-compact (une seule ligne) */}
+											{open && (
+												<div className='mt-2 flex items-center gap-2 rounded-lg bg-slate-50 p-2'>
+													<div className='w-28'>
+														<Select
+															value={mode}
+															onValueChange={(v) =>
+																setLineDiscountMode(
+																	item.id,
+																	v as LineDiscountMode,
+																)
+															}
+														>
+															<SelectTrigger className='h-8'>
+																<SelectValue />
+															</SelectTrigger>
+															<SelectContent>
+																<SelectItem value='percent'>%</SelectItem>
+																<SelectItem value='unit'>Prix unit.</SelectItem>
+															</SelectContent>
+														</Select>
+													</div>
+
+													<Input
+														type='number'
+														step='0.01'
+														className='h-8 flex-1'
+														placeholder={mode === 'unit' ? 'Prix TTC' : '%'}
+														value={String(value)}
+														onChange={(e) =>
+															setLineDiscountValue(item.id, e.target.value)
+														}
+													/>
+
+													<div className='text-xs text-slate-600 w-28 text-right'>
+														{getEffectiveUnitTtc(item).toFixed(2)} €
+													</div>
+
+													<Button
+														type='button'
+														variant='ghost'
+														size='sm'
+														className='h-8 px-2 text-[11px]'
+														onClick={() => clearLineDiscount(item.id)}
+													>
+														Reset
+													</Button>
+												</div>
+											)}
 										</div>
 
 										<span className='font-semibold'>
@@ -1072,7 +1055,6 @@ function PaymentDialog(props: {
 
 				<div className='space-y-4'>
 					<div>
-						<Label>Méthode de paiement</Label>
 						<div className='grid grid-cols-3 gap-2 mt-2'>
 							<Button
 								type='button'
@@ -1116,15 +1098,13 @@ function PaymentDialog(props: {
 
 					{selectedPaymentMethod === 'especes' && (
 						<div>
-							<Label htmlFor='amountReceived'>Montant reçu (€)</Label>
 							<Input
-								id='amountReceived'
 								type='number'
 								step='0.01'
 								value={amountReceived}
 								onChange={(e) => onAmountReceivedChange(e.target.value)}
-								className='text-xl h-14 text-right mt-2'
-								placeholder='0.00'
+								className='text-xl h-14 text-right'
+								placeholder='Montant reçu'
 								autoFocus
 							/>
 
@@ -1174,7 +1154,6 @@ function PaymentDialog(props: {
 
 function SuccessView(props: { onNewSale: () => void }) {
 	const { onNewSale } = props
-
 	return (
 		<div className='flex h-screen items-center justify-center'>
 			<Card className='w-96'>
