@@ -1,4 +1,5 @@
 // frontend/lib/types/cash.types.ts
+// ✅ Version complète avec RapportX et RapportZ
 
 export type CashSessionStatus = 'open' | 'closed' | 'canceled'
 
@@ -63,4 +64,71 @@ export interface CashRegister {
 	settings?: Record<string, any> | null
 	created: string
 	updated: string
+}
+
+// ============================================================================
+// ✅ TYPES RAPPORT X (AJOUTÉS)
+// ============================================================================
+
+export interface RapportX {
+	report_type: 'x'
+	generated_at: string
+	session: {
+		id: string
+		cash_register: string
+		opened_at: string
+		status: 'open'
+	}
+	opening_float: number
+	sales: {
+		invoice_count: number
+		total_ttc: number
+		by_method: Record<string, number>
+	}
+	movements: {
+		cash_in: number
+		cash_out: number
+		safe_drop: number
+		total: number
+	}
+	expected_cash: {
+		opening_float: number
+		sales_cash: number
+		movements: number
+		total: number
+	}
+	note: string
+}
+
+// ============================================================================
+// ✅ TYPES RAPPORT Z (AJOUTÉS)
+// ============================================================================
+
+export interface RapportZ {
+	report_type: 'z'
+	generated_at: string
+	cash_register: {
+		id: string
+		code: string
+		name: string
+	}
+	date: string
+	sessions: Array<{
+		id: string
+		opened_at: string
+		closed_at: string
+		opened_by: string
+		invoice_count: number
+		total_ttc: number
+		cash_difference: number
+	}>
+	daily_totals: {
+		sessions_count: number
+		invoice_count: number
+		total_ttc: number
+		by_method: Record<string, number>
+		total_cash_difference: number
+	}
+	note: string
+	is_locked: boolean
 }

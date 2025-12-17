@@ -1,14 +1,23 @@
+// backend/routes/cash_routes.go
+// Version corrigée avec les 3 fixes
+
 package backend
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v5"
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/models"
+
+	// ✅ FIX 1 : Import du package reports
+	// IMPORTANT : Remplacer "votre-projet" par le nom de votre module (voir go.mod)
+	"pocket-react/backend/reports"
 )
 
 // DTOs ---------------------------------------------------------
@@ -52,11 +61,8 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		}
 
 		// Vérifier s'il existe déjà une session ouverte
-		existing, _ := dao.FindFirstRecordByFilter(
-			"cash_sessions",
-			"cash_register = {:reg} && status = 'open'",
-			dbx.Params{"reg": payload.CashRegister},
-		)
+		filter := fmt.Sprintf("cash_register = '%s' && status = 'open'", payload.CashRegister)
+		existing, _ := dao.FindFirstRecordByFilter("cash_sessions", filter)
 
 		if existing != nil {
 			return apis.NewBadRequestError(
@@ -76,7 +82,7 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		}
 
 		if err := dao.SaveRecord(rec); err != nil {
-			return apis.NewApiError(500, "Impossible d’ouvrir la session", err)
+			return apis.NewApiError(500, "Impossible d'ouvrir la session", err)
 		}
 
 		return c.JSON(http.StatusCreated, rec)
@@ -92,14 +98,12 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		registerId := c.QueryParam("cash_register")
 
 		filter := "status = 'open'"
-		params := dbx.Params{}
 
 		if registerId != "" {
-			filter = "cash_register = {:reg} && status = 'open'"
-			params["reg"] = registerId
+			filter = fmt.Sprintf("cash_register = '%s' && status = 'open'", registerId)
 		}
 
-		rec, _ := dao.FindFirstRecordByFilter("cash_sessions", filter, params)
+		rec, _ := dao.FindFirstRecordByFilter("cash_sessions", filter)
 
 		return c.JSON(http.StatusOK, echo.Map{
 			"session": rec,
@@ -188,6 +192,167 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		}
 
 		return c.JSON(http.StatusCreated, rec)
+	},
+		apis.RequireRecordAuth(),
+	)
+
+	// ======================================================================
+	// ✅ NOUVELLES ROUTES (AJOUTÉES)
+	// ======================================================================
+
+	// ----------------------------------------------------------------------
+	// RAPPORT X (Lecture intermédiaire)
+	// ----------------------------------------------------------------------
+	router.GET("/api/cash/reports/x", func(c echo.Context) error {
+		sessionId := c.QueryParam("session")
+		if sessionId == "" {
+			return apis.NewBadRequestError("Paramètre 'session' requis", nil)
+		}
+
+		rapport, err := reports.GenerateRapportX(app, sessionId)
+		if err != nil {
+			return apis.NewApiError(500, err.Error(), err)
+		}
+
+		return c.JSON(http.StatusOK, rapport)
+	},
+		apis.RequireRecordAuth(),
+	)
+
+	// ----------------------------------------------------------------------
+	// RAPPORT Z (Clôture journalière)
+	// ----------------------------------------------------------------------
+	router.GET("/api/cash/reports/z", func(c echo.Context) error {
+		cashRegisterId := c.QueryParam("cash_register")
+		date := c.QueryParam("date")
+
+		if cashRegisterId == "" || date == "" {
+			return apis.NewBadRequestError("Paramètres 'cash_register' et 'date' requis", nil)
+		}
+
+		rapport, err := reports.GenerateRapportZ(app, cashRegisterId, date)
+		if err != nil {
+			return apis.NewApiError(500, err.Error(), err)
+		}
+
+		return c.JSON(http.StatusOK, rapport)
+	},
+		apis.RequireRecordAuth(),
+	)
+
+	// ----------------------------------------------------------------------
+	// DÉTAIL SESSION
+	// ----------------------------------------------------------------------
+	router.GET("/api/cash/session/:id/report", func(c echo.Context) error {
+		dao := app.Dao()
+		sessionId := c.PathParam("id")
+
+		// 1. Charger la session
+		session, err := dao.FindRecordById("cash_sessions", sessionId)
+		if err != nil {
+			return apis.NewNotFoundError("Session introuvable", err)
+		}
+
+		// 2. Charger les mouvements de caisse
+		movementsFilter := fmt.Sprintf("session = '%s'", sessionId)
+		movements, err := dao.FindRecordsByFilter(
+			"cash_movements",
+			movementsFilter,
+			"created",
+			0,
+			0,
+		)
+
+		if err != nil {
+			return apis.NewApiError(500, "Erreur chargement mouvements", err)
+		}
+
+		return c.JSON(http.StatusOK, echo.Map{
+			"session":   session,
+			"movements": movements,
+		})
+	},
+		apis.RequireRecordAuth(),
+	)
+
+	// ----------------------------------------------------------------------
+	// HISTORIQUE SESSIONS
+	// ----------------------------------------------------------------------
+	router.GET("/api/cash/sessions", func(c echo.Context) error {
+		dao := app.Dao()
+
+		// Paramètres de filtrage
+		cashRegister := c.QueryParam("cash_register")
+		status := c.QueryParam("status")
+		dateFrom := c.QueryParam("date_from")
+		dateTo := c.QueryParam("date_to")
+
+		// Pagination
+		page := 1
+		if p := c.QueryParam("page"); p != "" {
+			if parsed, err := strconv.Atoi(p); err == nil {
+				page = parsed
+			}
+		}
+
+		perPage := 50
+		if pp := c.QueryParam("perPage"); pp != "" {
+			if parsed, err := strconv.Atoi(pp); err == nil {
+				perPage = parsed
+			}
+		}
+
+		// Construire le filtre
+		var filters []string
+
+		if cashRegister != "" {
+			filters = append(filters, fmt.Sprintf("cash_register = '%s'", cashRegister))
+		}
+
+		if status != "" {
+			filters = append(filters, fmt.Sprintf("status = '%s'", status))
+		}
+
+		if dateFrom != "" {
+			dateStart, err := time.Parse("2006-01-02", dateFrom)
+			if err == nil {
+				filters = append(filters, fmt.Sprintf("opened_at >= '%s'", dateStart.Format(time.RFC3339)))
+			}
+		}
+
+		if dateTo != "" {
+			dateEnd, err := time.Parse("2006-01-02", dateTo)
+			if err == nil {
+				dateEnd = dateEnd.Add(24 * time.Hour)
+				filters = append(filters, fmt.Sprintf("opened_at < '%s'", dateEnd.Format(time.RFC3339)))
+			}
+		}
+
+		var finalFilter string
+		if len(filters) > 0 {
+			finalFilter = strings.Join(filters, " && ")
+		}
+
+		// ✅ FIX 3 : Utiliser FindRecordsByFilter (pas FindRecordsByExpr)
+		result, err := dao.FindRecordsByFilter(
+			"cash_sessions",
+			finalFilter,
+			"-opened_at",
+			perPage,
+			(page-1)*perPage,
+		)
+
+		if err != nil {
+			return apis.NewApiError(500, "Erreur chargement sessions", err)
+		}
+
+		// ✅ FIX 2 : Utiliser len(result) au lieu de dao.CountRecords
+		return c.JSON(http.StatusOK, echo.Map{
+			"sessions":   result,
+			"page":       page,
+			"perPage":    perPage,
+			"totalItems": len(result),
+		})
 	},
 		apis.RequireRecordAuth(),
 	)

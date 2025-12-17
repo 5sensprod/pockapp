@@ -436,18 +436,65 @@ export function useCreateCashMovement() {
 				)
 			}
 
-			const movement = (await res.json()) as CashMovement
-			return movement
+			return (await res.json()) as CashMovement
 		},
+
 		onSuccess: (_, params) => {
+			// mouvements listés
+			queryClient.invalidateQueries({
+				queryKey: cashKeys.movementsBySession(params.sessionId),
+			})
+
+			// ✅ Rapport X (source pour "espèces attendues")
+			queryClient.invalidateQueries({
+				queryKey: cashKeys.xReport(params.sessionId),
+			})
+
+			// session active (si affichage fond, statut, etc.)
 			if (params.cashRegisterId) {
 				queryClient.invalidateQueries({
 					queryKey: cashKeys.activeSession(params.cashRegisterId),
 				})
+
+				// si tu as un écran historique basé sur ce key
+				queryClient.invalidateQueries({
+					queryKey: cashKeys.sessionHistory(params.cashRegisterId),
+				})
 			}
-			queryClient.invalidateQueries({
-				queryKey: cashKeys.movementsBySession(params.sessionId),
+		},
+	})
+}
+
+export function useLastClosedCashSession(cashRegisterId?: string) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: cashKeys.sessionHistory(cashRegisterId, {
+			status: 'closed',
+			perPage: 1,
+			page: 1,
+			last: true,
+		}),
+		enabled: typeof cashRegisterId === 'string' && cashRegisterId.length > 0,
+		queryFn: async () => {
+			if (!cashRegisterId) return null
+
+			const token = pb.authStore.token
+			const url = `/api/cash/sessions?cash_register=${encodeURIComponent(cashRegisterId)}&status=closed&perPage=1&page=1`
+
+			const res = await fetch(url, {
+				headers: { Authorization: token ? `Bearer ${token}` : '' },
 			})
+
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}))
+				throw new Error(err.message || 'Erreur chargement sessions')
+			}
+
+			const data = await res.json()
+			const sessions = (data.sessions ?? []) as CashSession[]
+
+			return sessions.length > 0 ? sessions[0] : null
 		},
 	})
 }

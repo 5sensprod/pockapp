@@ -1,5 +1,5 @@
 // frontend/modules/cash/CashPage.tsx
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
 	Banknote,
 	CalendarDays,
@@ -38,11 +38,63 @@ import {
 	useCashRegisters,
 	useCloseCashSession,
 	useCreateCashRegister,
+	useLastClosedCashSession,
 	useOpenCashSession,
+	useXReport,
 } from '@/lib/queries/cash'
 import { useAuth } from '@/modules/auth/AuthProvider'
-import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
+
+import { CashMovementDialog } from './components/movements/CashMovementDialog'
+import { RapportXDialog } from './components/reports/RapportXDialog'
+import { CloseSessionDialog } from './components/sessions/CloseSessionDialog'
+
+import {
+	Form,
+	FormControl,
+	FormField,
+	FormItem,
+	FormLabel,
+} from '@/components/ui/form'
+import { formatCurrency } from '@/lib/utils'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+
+const denominationsSchema = z.object({
+	coins_010: z.number().min(0),
+	coins_020: z.number().min(0),
+	coins_050: z.number().min(0),
+	coins_100: z.number().min(0),
+	coins_200: z.number().min(0),
+	bills_005: z.number().min(0),
+	bills_010: z.number().min(0),
+	bills_020: z.number().min(0),
+	bills_050: z.number().min(0),
+	bills_100: z.number().min(0),
+})
+
+type DenominationsForm = z.infer<typeof denominationsSchema>
+
+const DENOMINATIONS = [
+	{ key: 'coins_010', label: '0,10 €', value: 0.1, type: 'coin' },
+	{ key: 'coins_020', label: '0,20 €', value: 0.2, type: 'coin' },
+	{ key: 'coins_050', label: '0,50 €', value: 0.5, type: 'coin' },
+	{ key: 'coins_100', label: '1,00 €', value: 1, type: 'coin' },
+	{ key: 'coins_200', label: '2,00 €', value: 2, type: 'coin' },
+	{ key: 'bills_005', label: '5 €', value: 5, type: 'bill' },
+	{ key: 'bills_010', label: '10 €', value: 10, type: 'bill' },
+	{ key: 'bills_020', label: '20 €', value: 20, type: 'bill' },
+	{ key: 'bills_050', label: '50 €', value: 50, type: 'bill' },
+	{ key: 'bills_100', label: '100 €', value: 100, type: 'bill' },
+] as const
+
+const toFiniteNumber = (v: unknown): number | null => {
+	const n =
+		typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : Number.NaN
+
+	return Number.isFinite(n) ? n : null
+}
 
 export function CashPage() {
 	const navigate = useNavigate()
@@ -52,6 +104,7 @@ export function CashPage() {
 
 	const ownerCompanyId = activeCompanyId ?? undefined
 	const [isPrinterDialogOpen, setIsPrinterDialogOpen] = React.useState(false)
+
 	// =========================
 	// CAISSES DISPONIBLES
 	// =========================
@@ -85,6 +138,44 @@ export function CashPage() {
 		isFetching: isSessionFetching,
 	} = useActiveCashSession(selectedRegisterId)
 
+	// ✅ Dernière session fermée (indicatif ouverture)
+	const { data: lastClosedSession } =
+		useLastClosedCashSession(selectedRegisterId)
+
+	const lastKnownFloat = React.useMemo(() => {
+		if (!lastClosedSession) return null
+
+		return (
+			toFiniteNumber((lastClosedSession as any).counted_cash_total) ??
+			toFiniteNumber((lastClosedSession as any).expected_cash_total) ??
+			toFiniteNumber((lastClosedSession as any).opening_float) ??
+			null
+		)
+	}, [lastClosedSession])
+
+	const lastClosedAtLabel = React.useMemo(() => {
+		if (!lastClosedSession) return null
+
+		const raw =
+			(lastClosedSession as any).closed_at ??
+			(lastClosedSession as any).closedAt ??
+			(lastClosedSession as any).updated ??
+			null
+
+		if (!raw) return null
+
+		const d = new Date(raw)
+		if (Number.isNaN(d.getTime())) return null
+
+		return d.toLocaleString('fr-FR', {
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+		})
+	}, [lastClosedSession])
+
 	const openSessionMutation = useOpenCashSession()
 	const closeSessionMutation = useCloseCashSession()
 
@@ -92,6 +183,20 @@ export function CashPage() {
 		openSessionMutation.isPending || closeSessionMutation.isPending
 
 	const isSessionOpen = !!activeSession && activeSession.status === 'open'
+
+	// =========================
+	// ✅ DIALOGS (Close / X / Movement)
+	// =========================
+	const [showCloseDialog, setShowCloseDialog] = React.useState(false)
+	const [showRapportX, setShowRapportX] = React.useState(false)
+	const [showMovement, setShowMovement] = React.useState(false)
+
+	const sessionId = activeSession?.id
+	const canFetchXReport = typeof sessionId === 'string' && sessionId.length > 0
+
+	const { data: rapportX, refetch: refetchRapportX } = useXReport(
+		sessionId ?? '',
+	)
 
 	// =========================
 	// CRÉATION DE CAISSE
@@ -111,14 +216,38 @@ export function CashPage() {
 	})
 
 	// =========================
-	// DIALOG OUVERTURE (FOND DE CAISSE)
+	// DIALOG OUVERTURE (FOND DE CAISSE) ✅ grille billets/pièces
 	// =========================
 	const [isOpenSessionDialogOpen, setIsOpenSessionDialogOpen] =
 		React.useState(false)
-	const [openingFloatInput, setOpeningFloatInput] = React.useState('')
+
+	const openingForm = useForm<DenominationsForm>({
+		resolver: zodResolver(denominationsSchema),
+		defaultValues: {
+			coins_010: 0,
+			coins_020: 0,
+			coins_050: 0,
+			coins_100: 0,
+			coins_200: 0,
+			bills_005: 0,
+			bills_010: 0,
+			bills_020: 0,
+			bills_050: 0,
+			bills_100: 0,
+		},
+	})
+
+	const openingWatched = openingForm.watch()
+
+	const openingFloatTotal = React.useMemo(() => {
+		return DENOMINATIONS.reduce((sum, denom) => {
+			const count = openingWatched[denom.key as keyof DenominationsForm] || 0
+			return sum + count * denom.value
+		}, 0)
+	}, [openingWatched])
 
 	const openSessionDialog = () => {
-		setOpeningFloatInput('')
+		openingForm.reset()
 		setIsOpenSessionDialogOpen(true)
 	}
 
@@ -136,8 +265,7 @@ export function CashPage() {
 			return
 		}
 
-		const v = Number(openingFloatInput)
-		if (!Number.isFinite(v) || v < 0) {
+		if (!Number.isFinite(openingFloatToSend) || openingFloatToSend < 0) {
 			toast.error('Fond de caisse invalide.')
 			return
 		}
@@ -146,12 +274,13 @@ export function CashPage() {
 			{
 				ownerCompanyId,
 				cashRegisterId: selectedRegisterId,
-				openingFloat: v,
+				openingFloat: openingFloatToSend,
 				openedBy: user?.id,
 			},
 			{
 				onSuccess: () => {
 					setIsOpenSessionDialogOpen(false)
+					openingForm.reset()
 					toast.success('Session ouverte.')
 				},
 				onError: (err: any) => {
@@ -162,6 +291,18 @@ export function CashPage() {
 			},
 		)
 	}
+
+	const [openingOverride, setOpeningOverride] = React.useState<number | null>(
+		null,
+	)
+
+	React.useEffect(() => {
+		if (!isOpenSessionDialogOpen) {
+			setOpeningOverride(null)
+		}
+	}, [isOpenSessionDialogOpen])
+
+	const openingFloatToSend = openingOverride ?? openingFloatTotal
 
 	// =========================
 	// OUVERTURE / FERMETURE
@@ -183,14 +324,8 @@ export function CashPage() {
 		}
 
 		if (isSessionOpen && activeSession) {
-			// fermeture
-			closeSessionMutation.mutate({
-				sessionId: activeSession.id,
-				cashRegisterId: selectedRegisterId,
-				// TODO : countedCashTotal à saisir plus tard
-			})
+			setShowCloseDialog(true)
 		} else {
-			// ✅ ouverture -> demander fond de caisse
 			openSessionDialog()
 		}
 	}
@@ -286,7 +421,6 @@ export function CashPage() {
 					</Card>
 				</div>
 
-				{/* Dialog création caisse */}
 				<Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
 					<DialogContent>
 						<DialogHeader>
@@ -341,54 +475,163 @@ export function CashPage() {
 
 	return (
 		<>
-			{/* Dialog ouverture session (fond de caisse) */}
 			<Dialog
 				open={isOpenSessionDialogOpen}
 				onOpenChange={(v) => {
 					if (!openSessionMutation.isPending) setIsOpenSessionDialogOpen(v)
 				}}
 			>
-				<DialogContent>
+				<DialogContent className='max-w-3xl max-h-[90vh] overflow-y-auto'>
 					<DialogHeader>
 						<DialogTitle>Ouvrir une session de caisse</DialogTitle>
 					</DialogHeader>
 
-					<div className='space-y-2'>
-						<label htmlFor='opening-float' className='text-xs'>
-							Fond de caisse (espèces)
-						</label>
-						<Input
-							id='opening-float'
-							type='number'
-							inputMode='decimal'
-							min={0}
-							step='0.01'
-							placeholder='Ex: 150.00'
-							value={openingFloatInput}
-							onChange={(e) => setOpeningFloatInput(e.target.value)}
-						/>
-					</div>
+					{lastKnownFloat !== null && (
+						<div className='flex items-center justify-between rounded-md border bg-slate-50 px-3 py-2'>
+							<div className='text-xs text-muted-foreground leading-tight'>
+								<div>
+									Dernier fond connu :{' '}
+									<span className='font-medium text-slate-900'>
+										{lastKnownFloat.toFixed(2)} €
+									</span>
+								</div>
 
-					<div className='flex justify-end gap-2 pt-4'>
-						<Button
-							variant='outline'
-							onClick={() => setIsOpenSessionDialogOpen(false)}
-							disabled={openSessionMutation.isPending}
+								{lastClosedAtLabel && (
+									<div className='text-[11px] text-slate-500'>
+										Session clôturée le {lastClosedAtLabel}
+									</div>
+								)}
+							</div>
+
+							<Button
+								type='button'
+								variant='outline'
+								size='sm'
+								className='h-7 text-xs'
+								onClick={() => setOpeningOverride(lastKnownFloat)}
+							>
+								Utiliser
+							</Button>
+						</div>
+					)}
+
+					<Form {...openingForm}>
+						<form
+							onSubmit={openingForm.handleSubmit(submitOpenSession)}
+							className='space-y-6'
 						>
-							Annuler
-						</Button>
-						<Button
-							onClick={submitOpenSession}
-							disabled={openSessionMutation.isPending}
-						>
-							{openSessionMutation.isPending ? 'Ouverture...' : 'Ouvrir'}
-						</Button>
-					</div>
+							<div>
+								<h4 className='font-semibold mb-3 text-sm'>Pièces</h4>
+								<div className='grid grid-cols-5 gap-3'>
+									{DENOMINATIONS.filter((d) => d.type === 'coin').map(
+										(denom) => (
+											<FormField
+												key={denom.key}
+												control={openingForm.control}
+												name={denom.key as keyof DenominationsForm}
+												render={({ field }) => (
+													<FormItem>
+														<FormLabel className='text-xs'>
+															{denom.label}
+														</FormLabel>
+														<FormControl>
+															<Input
+																type='number'
+																min='0'
+																{...field}
+																onChange={(e) =>
+																	field.onChange(
+																		Number.parseInt(e.target.value) || 0,
+																	)
+																}
+																className='text-center'
+															/>
+														</FormControl>
+													</FormItem>
+												)}
+											/>
+										),
+									)}
+								</div>
+							</div>
+
+							<div>
+								<h4 className='font-semibold mb-3 text-sm'>Billets</h4>
+								<div className='grid grid-cols-5 gap-3'>
+									{DENOMINATIONS.filter((d) => d.type === 'bill').map(
+										(denom) => (
+											<FormField
+												key={denom.key}
+												control={openingForm.control}
+												name={denom.key as keyof DenominationsForm}
+												render={({ field }) => (
+													<FormItem>
+														<FormLabel className='text-xs'>
+															{denom.label}
+														</FormLabel>
+														<FormControl>
+															<Input
+																type='number'
+																min='0'
+																{...field}
+																onChange={(e) =>
+																	field.onChange(
+																		Number.parseInt(e.target.value) || 0,
+																	)
+																}
+																className='text-center'
+															/>
+														</FormControl>
+													</FormItem>
+												)}
+											/>
+										),
+									)}
+								</div>
+							</div>
+
+							<Card>
+								<CardContent className='pt-6 space-y-3 text-sm'>
+									<div className='flex justify-between items-center'>
+										<span className='font-medium'>Total compté (saisie)</span>
+										<span>{formatCurrency(openingFloatTotal)}</span>
+									</div>
+
+									<div className='flex justify-between items-center'>
+										<span className='font-medium'>
+											Total repris (session précédente)
+										</span>
+										<span>{formatCurrency(openingOverride ?? 0)}</span>
+									</div>
+
+									<Separator />
+
+									<div className='flex justify-between font-semibold text-lg'>
+										<span>Montant retenu pour l’ouverture</span>
+										<span>{formatCurrency(openingFloatToSend)}</span>
+									</div>
+								</CardContent>
+							</Card>
+
+							<div className='flex justify-end gap-2 pt-2'>
+								<Button
+									type='button'
+									variant='outline'
+									onClick={() => setIsOpenSessionDialogOpen(false)}
+									disabled={openSessionMutation.isPending}
+								>
+									Annuler
+								</Button>
+								<Button type='submit' disabled={openSessionMutation.isPending}>
+									{openSessionMutation.isPending ? 'Ouverture...' : 'Ouvrir'}
+								</Button>
+							</div>
+						</form>
+					</Form>
 				</DialogContent>
 			</Dialog>
 
 			<div className='container mx-auto flex flex-col gap-6 px-6 py-8'>
-				{/* Header module */}
 				<header className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
 					<div className='flex items-center gap-3'>
 						<div className='flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white'>
@@ -419,9 +662,7 @@ export function CashPage() {
 					</div>
 				</header>
 
-				{/* Ligne de cartes principales */}
 				<section className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
-					{/* Session de caisse */}
 					<Card className='border-slate-200'>
 						<CardHeader className='pb-3'>
 							<CardTitle className='flex items-center justify-between gap-2 text-sm'>
@@ -475,7 +716,8 @@ export function CashPage() {
 									<div className='text-xs text-muted-foreground'>
 										{isSessionOpen
 											? `Ouverte • fond ${
-													activeSession?.opening_float?.toFixed(2) ?? '0.00'
+													(activeSession as any)?.opening_float?.toFixed?.(2) ??
+													'0.00'
 												} €`
 											: 'Aucune session ouverte'}
 									</div>
@@ -493,12 +735,13 @@ export function CashPage() {
 							<div className='flex items-center justify-between text-xs text-muted-foreground'>
 								<span>Fond de caisse (espèces)</span>
 								<span className='font-medium text-slate-900'>
-									{activeSession?.opening_float !== undefined &&
-									activeSession?.opening_float !== null
-										? `${activeSession.opening_float.toFixed(2)} €`
+									{(activeSession as any)?.opening_float !== undefined &&
+									(activeSession as any)?.opening_float !== null
+										? `${(activeSession as any).opening_float.toFixed(2)} €`
 										: '—'}
 								</span>
 							</div>
+
 							<div className='flex items-center justify-between text-xs text-muted-foreground'>
 								<span>Espèces théoriques en caisse</span>
 								<span className='font-medium text-slate-900'>—</span>
@@ -515,25 +758,49 @@ export function CashPage() {
 							</Button>
 
 							{isSessionOpen && selectedRegisterId && (
-								<Button
-									onClick={() =>
-										navigate({
-											to: '/cash/terminal/$cashRegisterId',
-											params: { cashRegisterId: selectedRegisterId },
-										})
-									}
-									size='sm'
-									className='mt-2 w-full'
-									variant='default'
-								>
-									<Receipt className='h-4 w-4 mr-2' />
-									Ouvrir le terminal
-								</Button>
+								<>
+									<Button
+										onClick={() =>
+											navigate({
+												to: '/cash/terminal/$cashRegisterId',
+												params: { cashRegisterId: selectedRegisterId },
+											})
+										}
+										size='sm'
+										className='mt-2 w-full'
+										variant='default'
+									>
+										<Receipt className='h-4 w-4 mr-2' />
+										Ouvrir le terminal
+									</Button>
+
+									<div className='mt-2 space-y-2'>
+										<Button
+											variant='outline'
+											size='sm'
+											className='w-full'
+											onClick={() => {
+												if (canFetchXReport) refetchRapportX()
+												setShowRapportX(true)
+											}}
+										>
+											📊 Rapport X (Lecture intermédiaire)
+										</Button>
+
+										<Button
+											variant='outline'
+											size='sm'
+											className='w-full'
+											onClick={() => setShowMovement(true)}
+										>
+											💰 Enregistrer un mouvement de caisse
+										</Button>
+									</div>
+								</>
 							)}
 						</CardContent>
 					</Card>
 
-					{/* Point de vente */}
 					<Card className='border-slate-200'>
 						<CardHeader className='pb-3'>
 							<CardTitle className='flex items-center gap-2 text-sm'>
@@ -584,7 +851,7 @@ export function CashPage() {
 							</div>
 						</CardContent>
 					</Card>
-					{/* Imprimantes */}
+
 					<Card className='border-slate-200'>
 						<CardHeader className='pb-3'>
 							<CardTitle className='flex items-center gap-2 text-sm'>
@@ -627,7 +894,6 @@ export function CashPage() {
 						</DialogContent>
 					</Dialog>
 
-					{/* Moyens de paiement */}
 					<Card className='border-slate-200 md:col-span-2 xl:col-span-1'>
 						<CardHeader className='pb-3'>
 							<CardTitle className='flex items-center gap-2 text-sm'>
@@ -788,6 +1054,29 @@ export function CashPage() {
 					</Card>
 				</section>
 			</div>
+
+			{activeSession && selectedRegisterId && (
+				<>
+					<CloseSessionDialog
+						open={showCloseDialog}
+						onOpenChange={setShowCloseDialog}
+						session={activeSession}
+					/>
+
+					<RapportXDialog
+						open={showRapportX}
+						onOpenChange={setShowRapportX}
+						rapport={rapportX}
+					/>
+
+					<CashMovementDialog
+						open={showMovement}
+						onOpenChange={setShowMovement}
+						sessionId={activeSession.id ?? ''}
+						cashRegisterId={selectedRegisterId}
+					/>
+				</>
+			)}
 		</>
 	)
 }
