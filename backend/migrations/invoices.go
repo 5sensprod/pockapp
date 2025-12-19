@@ -13,6 +13,7 @@ import (
 // Avec is_paid séparé du statut
 // 🔢 MODIFIÉ: number n'est plus Required (généré par le hook backend)
 // 🆕 AJOUT: Champs conversion TIK → Facture
+// 🔧 FIX: Relations session/cash_register avec IDs corrects
 func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 	// On essaie d'abord de trouver la collection existante
 	collection, err := app.Dao().FindCollectionByNameOrId("invoices")
@@ -28,6 +29,17 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		customersCol, err := app.Dao().FindCollectionByNameOrId("customers")
 		if err != nil {
 			return err
+		}
+
+		// 🔧 FIX: Récupérer les IDs des collections de caisse AVANT la création
+		var cashSessionsColId string
+		var cashRegistersColId string
+
+		if cashSessionsCol, err := app.Dao().FindCollectionByNameOrId("cash_sessions"); err == nil {
+			cashSessionsColId = cashSessionsCol.Id
+		}
+		if cashRegistersCol, err := app.Dao().FindCollectionByNameOrId("cash_registers"); err == nil {
+			cashRegistersColId = cashRegistersCol.Id
 		}
 
 		collection = &models.Collection{
@@ -207,12 +219,12 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 					},
 				},
 
-				// === Caisse ===
+				// === Caisse === 🔧 FIX: Utiliser les IDs, pas les noms !
 				&schema.SchemaField{
 					Name: "session",
 					Type: schema.FieldTypeRelation,
 					Options: &schema.RelationOptions{
-						CollectionId:  "cash_sessions", // on utilise le nom, PB résout le bon id
+						CollectionId:  cashSessionsColId, // 🔧 FIX: Utiliser l'ID
 						MaxSelect:     types.Pointer(1),
 						CascadeDelete: false,
 					},
@@ -221,7 +233,7 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 					Name: "cash_register",
 					Type: schema.FieldTypeRelation,
 					Options: &schema.RelationOptions{
-						CollectionId:  "cash_registers",
+						CollectionId:  cashRegistersColId, // 🔧 FIX: Utiliser l'ID
 						MaxSelect:     types.Pointer(1),
 						CascadeDelete: false,
 					},
@@ -292,9 +304,24 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		}
 	}
 
-	// 3) Champs de caisse (relations vers cash_sessions / cash_registers)
+	// ═══════════════════════════════════════════════════════════════════════════
+	// 🔧 FIX CRITIQUE: Corriger/Ajouter les relations session et cash_register
+	// ═══════════════════════════════════════════════════════════════════════════
+
+	// 3) Champ session → cash_sessions
 	if cashSessionsCol, err := app.Dao().FindCollectionByNameOrId("cash_sessions"); err == nil {
-		if f := collection.Schema.GetFieldByName("session"); f == nil {
+		if f := collection.Schema.GetFieldByName("session"); f != nil {
+			// Le champ existe → vérifier/corriger le CollectionId
+			if opts, ok := f.Options.(*schema.RelationOptions); ok {
+				if opts.CollectionId != cashSessionsCol.Id {
+					log.Printf("🔧 FIX: session.CollectionId invalide (%s), correction vers %s",
+						opts.CollectionId, cashSessionsCol.Id)
+					opts.CollectionId = cashSessionsCol.Id
+					changed = true
+				}
+			}
+		} else {
+			// Le champ n'existe pas → l'ajouter
 			collection.Schema.AddField(&schema.SchemaField{
 				Name: "session",
 				Type: schema.FieldTypeRelation,
@@ -309,8 +336,20 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		}
 	}
 
+	// 4) Champ cash_register → cash_registers
 	if cashRegistersCol, err := app.Dao().FindCollectionByNameOrId("cash_registers"); err == nil {
-		if f := collection.Schema.GetFieldByName("cash_register"); f == nil {
+		if f := collection.Schema.GetFieldByName("cash_register"); f != nil {
+			// Le champ existe → vérifier/corriger le CollectionId
+			if opts, ok := f.Options.(*schema.RelationOptions); ok {
+				if opts.CollectionId != cashRegistersCol.Id {
+					log.Printf("🔧 FIX: cash_register.CollectionId invalide (%s), correction vers %s",
+						opts.CollectionId, cashRegistersCol.Id)
+					opts.CollectionId = cashRegistersCol.Id
+					changed = true
+				}
+			}
+		} else {
+			// Le champ n'existe pas → l'ajouter
 			collection.Schema.AddField(&schema.SchemaField{
 				Name: "cash_register",
 				Type: schema.FieldTypeRelation,
@@ -325,9 +364,9 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
-	// 🆕 4) Champs conversion TIK → Facture
-	// ═══════════════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════════════════════════════
+	// 🆕 5) Champs conversion TIK → Facture
+	// ═══════════════════════════════════════════════════════════════════════════
 
 	// converted_to_invoice (bool) - Ticket converti en facture ?
 	if f := collection.Schema.GetFieldByName("converted_to_invoice"); f == nil {
@@ -374,9 +413,9 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		log.Println("✅ Collection 'invoices' OK (aucune modification nécessaire)")
 	}
 
-	// ═══════════════════════════════════════════════════════════════════════
-	// 🆕 5) Mettre à jour les données existantes (une seule fois)
-	// ═══════════════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════════════════════════════
+	// 🆕 6) Mettre à jour les données existantes (une seule fois)
+	// ═══════════════════════════════════════════════════════════════════════════
 
 	// Marquer les tickets existants (TIK-*) comme tickets POS
 	if _, err := app.Dao().DB().NewQuery(`
