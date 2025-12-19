@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"pocket-react/backend"
@@ -132,6 +133,7 @@ func (a *App) GetNetworkInfo() map[string]interface{} {
 type PrintPosReceiptInput struct {
 	PrinterName string          `json:"printerName"`
 	Width       int             `json:"width"`
+	CompanyId   string          `json:"companyId"`
 	Receipt     pos.ReceiptData `json:"receipt"`
 }
 
@@ -149,6 +151,55 @@ func (a *App) ListPrinters() ([]string, error) {
 func (a *App) PrintPosReceipt(input PrintPosReceiptInput) error {
 	receipt := input.Receipt
 	receipt.Width = input.Width
+
+	// Enrichissement header depuis PocketBase
+	if input.CompanyId != "" {
+		rec, err := a.pb.Dao().FindRecordById("companies", input.CompanyId)
+		if err == nil && rec != nil {
+			// Adapte les champs exacts à ton schéma "companies"
+			tradeName := rec.GetString("trade_name") // ou "commercial_name" selon ton schéma
+			legalName := rec.GetString("name")
+
+			if receipt.CompanyName == "" {
+				if strings.TrimSpace(tradeName) != "" {
+					receipt.CompanyName = tradeName
+				} else {
+					receipt.CompanyName = legalName
+				}
+			}
+
+			// Exemple d’assemblage adresse sur 1-3 lignes
+			line1 := rec.GetString("address_line1")
+			line2 := rec.GetString("address_line2")
+			zip := rec.GetString("zip_code")
+			city := rec.GetString("city")
+
+			if receipt.CompanyLine1 == "" {
+				receipt.CompanyLine1 = line1
+			}
+			if receipt.CompanyLine2 == "" {
+				receipt.CompanyLine2 = line2
+			}
+			if receipt.CompanyLine3 == "" {
+				if zip != "" || city != "" {
+					receipt.CompanyLine3 = strings.TrimSpace(zip + " " + city)
+				}
+			}
+
+			if receipt.CompanyPhone == "" {
+				receipt.CompanyPhone = rec.GetString("phone")
+			}
+			if receipt.CompanyEmail == "" {
+				receipt.CompanyEmail = rec.GetString("email")
+			}
+			if receipt.CompanySiret == "" {
+				receipt.CompanySiret = rec.GetString("siret")
+			}
+			if receipt.CompanyVat == "" {
+				receipt.CompanyVat = rec.GetString("vat_number")
+			}
+		}
+	}
 
 	raw := pos.BuildReceipt(receipt)
 	return pos.RawPrint(input.PrinterName, raw)

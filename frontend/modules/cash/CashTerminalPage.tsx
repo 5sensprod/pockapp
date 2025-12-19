@@ -616,21 +616,19 @@ export function CashTerminalPage() {
 					await printReceipt({
 						printerName: printerSettings.printerName,
 						width: printerSettings.width,
+						companyId: activeCompanyId!, // <-- AJOUT
 						receipt: {
 							invoiceNumber: invoice.number,
 							dateLabel: new Date().toLocaleString('fr-FR'),
 							items: cart.map((it) => {
-								// 🆕 Utiliser le texte d'affichage sélectionné
 								const displayMode = it.displayMode || 'name'
 								let displayName = it.name
-								if (displayMode === 'designation') {
+								if (displayMode === 'designation')
 									displayName = it.designation || it.name
-								} else if (displayMode === 'sku') {
-									displayName = it.sku || it.name
-								}
+								else if (displayMode === 'sku') displayName = it.sku || it.name
 
 								return {
-									name: displayName, // 🆕 Utiliser le nom d'affichage
+									name: displayName,
 									qty: it.quantity,
 									unitTtc: getEffectiveUnitTtc(it),
 									totalTtc: getLineTotalTtc(it),

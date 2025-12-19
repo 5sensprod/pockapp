@@ -25,6 +25,7 @@ export type PrintReceiptPayload = {
 type PrintPosReceiptInput = {
 	printerName: string
 	width: 58 | 80
+	companyId?: string
 	receipt: any
 }
 
@@ -67,6 +68,7 @@ export async function printReceipt(payload: PrintPosReceiptInput) {
 	await callGo('PrintPosReceipt', {
 		printerName: payload.printerName,
 		width: payload.width,
+		companyId: payload.companyId,
 		receipt: payload.receipt,
 	})
 }

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+
+	"golang.org/x/text/encoding/charmap"
 )
 
 func OpenDrawerCmd() []byte {
@@ -28,9 +30,14 @@ func BoldOn() []byte  { return []byte{0x1B, 0x45, 0x01} }
 func BoldOff() []byte { return []byte{0x1B, 0x45, 0x00} }
 
 func Text(s string) []byte {
-	// ESC/POS est souvent CP437/CP850; ici on envoie UTF-8 tel quel.
-	// Si ton imprimante n'aime pas l'UTF-8, on ajustera l'encodage ensuite.
-	return []byte(s)
+	// Encode UTF-8 → CP850 (compatible accents FR)
+	enc := charmap.CodePage850.NewEncoder()
+	out, err := enc.String(s)
+	if err != nil {
+		// fallback sécurisé (ne casse jamais l'impression)
+		return []byte(s)
+	}
+	return []byte(out)
 }
 
 func NL() []byte { return []byte("\n") }
@@ -43,7 +50,15 @@ type ReceiptItem struct {
 }
 
 type ReceiptData struct {
-	CompanyName    string        `json:"companyName"`
+	CompanyName  string `json:"companyName"`
+	CompanyLine1 string `json:"companyLine1"`
+	CompanyLine2 string `json:"companyLine2"`
+	CompanyLine3 string `json:"companyLine3"`
+	CompanyPhone string `json:"companyPhone"`
+	CompanyEmail string `json:"companyEmail"`
+	CompanySiret string `json:"companySiret"`
+	CompanyVat   string `json:"companyVat"`
+
 	InvoiceNumber  string        `json:"invoiceNumber"`
 	DateLabel      string        `json:"dateLabel"`
 	Items          []ReceiptItem `json:"items"`
@@ -67,10 +82,45 @@ func BuildReceipt(r ReceiptData) []byte {
 
 	var b bytes.Buffer
 	b.Write(InitCmd())
+	b.Write([]byte{0x1B, 0x74, 0x02})
 	b.Write(AlignCenter())
 	b.Write(BoldOn())
 	b.Write(Text(strings.TrimSpace(r.CompanyName)))
 	b.Write(BoldOff())
+	b.Write(NL())
+
+	if strings.TrimSpace(r.CompanyLine1) != "" {
+		b.Write(Text(strings.TrimSpace(r.CompanyLine1)))
+		b.Write(NL())
+	}
+	if strings.TrimSpace(r.CompanyLine2) != "" {
+		b.Write(Text(strings.TrimSpace(r.CompanyLine2)))
+		b.Write(NL())
+	}
+	if strings.TrimSpace(r.CompanyLine3) != "" {
+		b.Write(Text(strings.TrimSpace(r.CompanyLine3)))
+		b.Write(NL())
+	}
+	if strings.TrimSpace(r.CompanyPhone) != "" {
+		b.Write(Text("Tel: " + strings.TrimSpace(r.CompanyPhone)))
+		b.Write(NL())
+	}
+	if strings.TrimSpace(r.CompanyEmail) != "" {
+		b.Write(Text(strings.TrimSpace(r.CompanyEmail)))
+		b.Write(NL())
+	}
+	if strings.TrimSpace(r.CompanySiret) != "" || strings.TrimSpace(r.CompanyVat) != "" {
+		var parts []string
+		if strings.TrimSpace(r.CompanySiret) != "" {
+			parts = append(parts, "SIRET "+strings.TrimSpace(r.CompanySiret))
+		}
+		if strings.TrimSpace(r.CompanyVat) != "" {
+			parts = append(parts, "TVA "+strings.TrimSpace(r.CompanyVat))
+		}
+		b.Write(Text(strings.Join(parts, " - ")))
+		b.Write(NL())
+	}
+
 	b.Write(NL())
 	b.Write(Text(fmt.Sprintf("Ticket %s", r.InvoiceNumber)))
 	b.Write(NL())

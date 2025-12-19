@@ -12,6 +12,7 @@ require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/pocketbase/dbx v1.10.1
+	golang.org/x/text v0.22.0
 )
 
 require (
@@ -91,7 +92,6 @@ require (
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
 	google.golang.org/api v0.194.0 // indirect
