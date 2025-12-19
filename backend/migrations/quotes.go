@@ -1,3 +1,6 @@
+// backend/migrations/quotes.go
+// ✅ PROPRE: ajouter issued_by (Relation -> users) + update si collection existe déjà
+
 package migrations
 
 import (
@@ -9,17 +12,13 @@ import (
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
-// ensureQuotesCollection crée la collection quotes (devis) si elle n'existe pas
-// 🔢 MODIFIÉ: number n'est plus Required (généré par le hook backend)
 func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 	collection, err := app.Dao().FindCollectionByNameOrId("quotes")
 	if err != nil {
-		// Collection n'existe pas, on la crée
 		companiesCol, err := app.Dao().FindCollectionByNameOrId("companies")
 		if err != nil {
 			return err
 		}
-
 		customersCol, err := app.Dao().FindCollectionByNameOrId("customers")
 		if err != nil {
 			return err
@@ -34,13 +33,12 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 			ViewRule:   types.Pointer("@request.auth.id != ''"),
 			CreateRule: types.Pointer("@request.auth.id != ''"),
 			UpdateRule: types.Pointer("@request.auth.id != ''"),
-			DeleteRule: types.Pointer("@request.auth.id != ''"), // Devis supprimables
+			DeleteRule: types.Pointer("@request.auth.id != ''"),
 			Schema: schema.NewSchema(
-				// === Identification ===
 				&schema.SchemaField{
 					Name:     "number",
 					Type:     schema.FieldTypeText,
-					Required: false, // 🔢 MODIFIÉ: généré par le hook backend
+					Required: false,
 					Unique:   true,
 					Options:  &schema.TextOptions{Max: types.Pointer(50)},
 				},
@@ -52,7 +50,6 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 						Values:    []string{"standard", "refund", "other"},
 					},
 				},
-				// === Dates ===
 				&schema.SchemaField{
 					Name:     "date",
 					Type:     schema.FieldTypeDate,
@@ -62,7 +59,7 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 					Name: "valid_until",
 					Type: schema.FieldTypeDate,
 				},
-				// === Relations ===
+
 				&schema.SchemaField{
 					Name:     "customer",
 					Type:     schema.FieldTypeRelation,
@@ -83,7 +80,18 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 						CascadeDelete: false,
 					},
 				},
-				// === Statut devis ===
+
+				// ✅ NOUVEAU: émis par (vendeur / commercial)
+				&schema.SchemaField{
+					Name: "issued_by",
+					Type: schema.FieldTypeRelation,
+					Options: &schema.RelationOptions{
+						CollectionId:  "_pb_users_auth_",
+						MaxSelect:     types.Pointer(1),
+						CascadeDelete: false,
+					},
+				},
+
 				&schema.SchemaField{
 					Name:     "status",
 					Type:     schema.FieldTypeSelect,
@@ -93,7 +101,7 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 						Values:    []string{"draft", "sent", "accepted", "rejected"},
 					},
 				},
-				// === Contenu ===
+
 				&schema.SchemaField{
 					Name:     "items",
 					Type:     schema.FieldTypeJson,
@@ -129,7 +137,6 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 					Type:    schema.FieldTypeText,
 					Options: &schema.TextOptions{Max: types.Pointer(2000)},
 				},
-				// === Lien vers la facture générée (optionnel) ===
 				&schema.SchemaField{
 					Name: "generated_invoice_id",
 					Type: schema.FieldTypeRelation,
@@ -146,27 +153,42 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 			return err
 		}
 		log.Println("✅ Collection 'quotes' créée")
+		return nil
+	}
+
+	log.Println("📦 Collection 'quotes' existe déjà, vérification du schéma...")
+
+	changed := false
+
+	// number.Required -> false
+	if f := collection.Schema.GetFieldByName("number"); f != nil && f.Required {
+		f.Required = false
+		changed = true
+		log.Println("🛠 Fix quotes.number.Required -> false (généré par hook)")
+	}
+
+	// ✅ ajouter issued_by si absent
+	if f := collection.Schema.GetFieldByName("issued_by"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "issued_by",
+			Type: schema.FieldTypeRelation,
+			Options: &schema.RelationOptions{
+				CollectionId:  "_pb_users_auth_",
+				MaxSelect:     types.Pointer(1),
+				CascadeDelete: false,
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout quotes.issued_by -> users")
+	}
+
+	if changed {
+		if err := app.Dao().SaveCollection(collection); err != nil {
+			return err
+		}
+		log.Println("✅ Collection 'quotes' mise à jour (schéma corrigé)")
 	} else {
-		log.Println("📦 Collection 'quotes' existe déjà, vérification du schéma...")
-
-		// 🔢 NOUVEAU: S'assurer que le champ number n'est pas Required
-		changed := false
-		if f := collection.Schema.GetFieldByName("number"); f != nil {
-			if f.Required {
-				f.Required = false
-				changed = true
-				log.Println("🛠 Fix quotes.number.Required -> false (généré par hook)")
-			}
-		}
-
-		if changed {
-			if err := app.Dao().SaveCollection(collection); err != nil {
-				return err
-			}
-			log.Println("✅ Collection 'quotes' mise à jour (schéma corrigé)")
-		} else {
-			log.Println("✅ Collection 'quotes' OK")
-		}
+		log.Println("✅ Collection 'quotes' OK")
 	}
 
 	return nil

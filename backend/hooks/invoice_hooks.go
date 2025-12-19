@@ -784,10 +784,20 @@ func RegisterAuditLogHooks(app *pocketbase.PocketBase) {
 func RegisterQuoteHooks(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeCreateRequest("quotes").Add(func(e *core.RecordCreateEvent) error {
 		record := e.Record
+
+		// ✅ issued_by
+		if record.GetString("issued_by") == "" && e.HttpContext != nil {
+			if authRecord := e.HttpContext.Get("authRecord"); authRecord != nil {
+				if user, ok := authRecord.(*models.Record); ok {
+					record.Set("issued_by", user.Id)
+				}
+			}
+		}
+
+		// 🔢 ton code existant de génération number (si présent chez toi)
 		ownerCompany := record.GetString("owner_company")
 		fiscalYear := time.Now().Year()
 
-		// Générer le numéro de devis si non fourni
 		existingNumber := record.GetString("number")
 		if existingNumber == "" || !isValidDocumentNumber(existingNumber, fiscalYear) {
 			newNumber, err := generateQuoteNumber(app, ownerCompany, fiscalYear)

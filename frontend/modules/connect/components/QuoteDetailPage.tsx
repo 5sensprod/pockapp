@@ -175,6 +175,13 @@ export function QuoteDetailPage() {
 	}
 
 	const customer = quote.expand?.customer
+	const issuedBy = (quote as any).expand?.issued_by
+	const sellerName =
+		issuedBy?.name ||
+		issuedBy?.username ||
+		issuedBy?.email ||
+		(quote as any).issued_by ||
+		'—'
 
 	return (
 		<div className='container mx-auto px-6 py-8'>
@@ -262,6 +269,11 @@ export function QuoteDetailPage() {
 								<p className='font-medium'>
 									{quote.valid_until ? formatDate(quote.valid_until) : '-'}
 								</p>
+							</div>
+							{/* ✅ Nouveau: vendeur */}
+							<div>
+								<p className='text-sm text-muted-foreground'>Vendeur</p>
+								<p className='font-medium'>{sellerName}</p>
 							</div>
 						</div>
 

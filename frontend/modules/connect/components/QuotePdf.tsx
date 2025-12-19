@@ -305,6 +305,14 @@ export function QuotePdfDocument({
 
 	const companyName = company?.trade_name || company?.name || 'Votre entreprise'
 
+	// ✅ NOUVEAU: vendeur / commercial (issued_by)
+	const issuedBy = quote.expand?.issued_by
+	const sellerName =
+		issuedBy?.name ||
+		issuedBy?.username ||
+		issuedBy?.email ||
+		(quote.issued_by ? String(quote.issued_by) : '')
+
 	// Lignes calculées
 	const addressLine1 = company?.address_line1 || ''
 	const addressLine2 = company?.address_line2 || ''
@@ -399,6 +407,9 @@ export function QuotePdfDocument({
 						<Text style={styles.quoteInfoLine}>
 							Date : {formatDate(quote.date)}
 						</Text>
+						{sellerName && (
+							<Text style={styles.quoteInfoLine}>Vendeur : {sellerName}</Text>
+						)}
 						{quote.valid_until && (
 							<View style={styles.validityBadge}>
 								<Text style={styles.validityText}>

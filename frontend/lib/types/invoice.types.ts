@@ -146,6 +146,9 @@ export interface QuoteBase {
 	total_ttc: number
 	currency: string
 	notes?: string
+
+	// ✅ NOUVEAU
+	issued_by?: string
 }
 
 export interface QuoteCreateDto extends QuoteBase {}
@@ -158,9 +161,16 @@ export interface QuoteResponse extends QuoteBase {
 	expand?: {
 		customer?: CustomerExpand
 		generated_invoice_id?: InvoiceResponse
+
+		// ✅ NOUVEAU
+		issued_by?: {
+			id: string
+			email?: string
+			name?: string
+			username?: string
+		}
 	}
 }
-
 export interface QuotesListOptions {
 	companyId?: string
 	customerId?: string

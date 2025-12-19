@@ -46,7 +46,7 @@ export function useQuotes(options: QuotesListOptions = {}) {
 			const result = await pb.collection('quotes').getList(page, perPage, {
 				sort: sort || '-created',
 				filter: finalFilter,
-				expand: 'customer,generated_invoice_id',
+				expand: 'customer,generated_invoice_id,issued_by',
 			})
 
 			return result as unknown as {
@@ -72,7 +72,7 @@ export function useQuote(quoteId?: string) {
 		queryFn: async () => {
 			if (!quoteId) throw new Error('quoteId is required')
 			const result = await pb.collection('quotes').getOne(quoteId, {
-				expand: 'customer,generated_invoice_id',
+				expand: 'customer,generated_invoice_id,issued_by',
 			})
 			return result as unknown as QuoteResponse
 		},

@@ -410,6 +410,7 @@ export function QuotesPage() {
 						<TableHeader>
 							<TableRow>
 								<TableHead>Numéro</TableHead>
+								<TableHead>Vendeur</TableHead>
 								<TableHead>Client</TableHead>
 								<TableHead>Date</TableHead>
 								<TableHead>Montant TTC</TableHead>
@@ -426,10 +427,21 @@ export function QuotesPage() {
 									| undefined
 								const isDownloading = downloadingQuoteId === quote.id
 
+								const issuedBy = (quote as any).expand?.issued_by
+								const sellerName =
+									issuedBy?.name ||
+									issuedBy?.username ||
+									issuedBy?.email ||
+									(quote as any).issued_by ||
+									'—'
+
 								return (
 									<TableRow key={quote.id}>
 										<TableCell className='font-mono font-medium'>
 											{quote.number}
+										</TableCell>
+										<TableCell className='text-sm text-muted-foreground'>
+											{sellerName}
 										</TableCell>
 										<TableCell>
 											<div>
