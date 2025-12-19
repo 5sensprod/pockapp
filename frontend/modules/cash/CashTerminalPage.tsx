@@ -110,6 +110,9 @@ export function CashTerminalPage() {
 	// NEW: ligne en édition (pour la remise)
 	const [editingLineId, setEditingLineId] = React.useState<string | null>(null)
 
+	// NEW: Ref pour l'input de recherche
+	const searchInputRef = React.useRef<HTMLInputElement>(null)
+
 	const { data: registers } = useCashRegisters(activeCompanyId ?? undefined)
 	const { data: activeSession, isLoading: isSessionLoading } =
 		useActiveCashSession(cashRegisterId)
@@ -177,6 +180,108 @@ export function CashTerminalPage() {
 		const received = Number.parseFloat(amountReceived) || 0
 		return received - totalTtc
 	}, [amountReceived, totalTtc])
+
+	// ============================================================================
+	// NEW: GESTION DU FOCUS AUTOMATIQUE
+	// ============================================================================
+	React.useEffect(() => {
+		// Focus sur l'input de recherche au chargement et après chaque vente
+		if (paymentStep === 'cart' && searchInputRef.current) {
+			searchInputRef.current.focus()
+		}
+	}, [paymentStep])
+
+	// ============================================================================
+	// NEW: AJOUT AUTOMATIQUE AU PANIER SI UN SEUL RÉSULTAT
+	// ============================================================================
+	React.useEffect(() => {
+		// Si un seul produit correspond ET qu'il y a une recherche active
+		if (products.length === 1 && productSearch.length > 2) {
+			const product = products[0]
+
+			// Vérifier si c'est probablement un scan (code-barres ou SKU exact)
+			const isExactMatch =
+				product.barcode === productSearch || product.sku === productSearch
+
+			if (isExactMatch) {
+				// Ajouter au panier
+				addToCart(product)
+
+				// Vider la recherche
+				setProductSearch('')
+
+				// Refocus sur l'input
+				setTimeout(() => {
+					searchInputRef.current?.focus()
+				}, 0)
+			}
+		}
+	}, [products, productSearch])
+
+	// ============================================================================
+	// NEW: CAPTURE GLOBALE DES SCANS DE CODE-BARRES
+	// ============================================================================
+	React.useEffect(() => {
+		// Ne fonctionner que si on est sur l'écran du panier
+		if (paymentStep !== 'cart') return
+
+		let scanBuffer = ''
+		let scanTimeout: NodeJS.Timeout | null = null
+
+		const handleKeyDown = (e: KeyboardEvent) => {
+			// Ne pas intercepter si on est déjà dans un input/textarea
+			const target = e.target as HTMLElement
+			if (
+				target instanceof HTMLInputElement ||
+				target instanceof HTMLTextAreaElement ||
+				target.getAttribute('contenteditable') === 'true'
+			) {
+				return
+			}
+
+			// Accumuler les caractères alphanumériques
+			if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+				e.preventDefault()
+				scanBuffer += e.key
+
+				// Clear le timeout précédent
+				if (scanTimeout) clearTimeout(scanTimeout)
+
+				// Reset le buffer après 100ms d'inactivité
+				scanTimeout = setTimeout(() => {
+					scanBuffer = ''
+				}, 100)
+			}
+
+			// Si Enter et qu'on a un buffer, c'est un scan
+			if (e.key === 'Enter' && scanBuffer.length > 0) {
+				e.preventDefault()
+
+				// Mettre à jour la recherche
+				setProductSearch(scanBuffer)
+
+				// Focus sur l'input
+				searchInputRef.current?.focus()
+
+				// Reset le buffer
+				scanBuffer = ''
+			}
+
+			// Échap pour clear la recherche
+			if (e.key === 'Escape') {
+				e.preventDefault()
+				setProductSearch('')
+				searchInputRef.current?.focus()
+			}
+		}
+
+		document.addEventListener('keydown', handleKeyDown)
+
+		return () => {
+			document.removeEventListener('keydown', handleKeyDown)
+			if (scanTimeout) clearTimeout(scanTimeout)
+		}
+	}, [paymentStep])
 
 	React.useEffect(() => {
 		const connect = async () => {
@@ -480,6 +585,7 @@ export function CashTerminalPage() {
 				onBack={() => navigate({ to: '/cash' })}
 				productSearch={productSearch}
 				onProductSearchChange={setProductSearch}
+				searchInputRef={searchInputRef}
 				isAppPosConnected={isAppPosConnected}
 				products={products}
 				onAddToCart={addToCart}
@@ -542,6 +648,7 @@ function CartStepView(props: {
 
 	productSearch: string
 	onProductSearchChange: (v: string) => void
+	searchInputRef: React.RefObject<HTMLInputElement>
 	isAppPosConnected: boolean
 	products: AppPosProduct[]
 	onAddToCart: (p: AppPosProduct) => void
@@ -574,6 +681,7 @@ function CartStepView(props: {
 		onBack,
 		productSearch,
 		onProductSearchChange,
+		searchInputRef,
 		isAppPosConnected,
 		products,
 		onAddToCart,
@@ -609,6 +717,7 @@ function CartStepView(props: {
 					<ProductsPanel
 						productSearch={productSearch}
 						onProductSearchChange={onProductSearchChange}
+						searchInputRef={searchInputRef}
 						isAppPosConnected={isAppPosConnected}
 						products={products}
 						onAddToCart={onAddToCart}
@@ -678,6 +787,7 @@ function TerminalHeader(props: {
 function ProductsPanel(props: {
 	productSearch: string
 	onProductSearchChange: (v: string) => void
+	searchInputRef: React.RefObject<HTMLInputElement>
 	isAppPosConnected: boolean
 	products: AppPosProduct[]
 	onAddToCart: (p: AppPosProduct) => void
@@ -685,6 +795,7 @@ function ProductsPanel(props: {
 	const {
 		productSearch,
 		onProductSearchChange,
+		searchInputRef,
 		isAppPosConnected,
 		products,
 		onAddToCart,
@@ -699,12 +810,18 @@ function ProductsPanel(props: {
 						size={16}
 					/>
 					<Input
+						ref={searchInputRef}
 						type='text'
-						placeholder='Rechercher un produit…'
+						placeholder='Rechercher un produit ou scanner un code-barres…'
 						value={productSearch}
 						onChange={(e) => onProductSearchChange(e.target.value)}
 						className='h-9 w-full bg-slate-50 pl-8 text-sm'
+						autoFocus
 					/>
+				</div>
+				<div className='flex items-center gap-2 text-xs text-muted-foreground'>
+					<div className='h-2 w-2 rounded-full bg-emerald-500' />
+					<span>Scanette active</span>
 				</div>
 			</div>
 
@@ -718,7 +835,9 @@ function ProductsPanel(props: {
 				{products.length === 0 ? (
 					<div className='px-4 py-6 text-center text-xs text-slate-400'>
 						{isAppPosConnected
-							? 'Aucun produit ne correspond à la recherche'
+							? productSearch.length > 0
+								? 'Aucun produit ne correspond à la recherche'
+								: 'Scannez un code-barres ou recherchez un produit'
 							: 'Connexion à AppPOS en cours ou échouée'}
 					</div>
 				) : (
