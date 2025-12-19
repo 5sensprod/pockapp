@@ -52,6 +52,7 @@ function generateIsoDate(): string {
 
 // Type étendu pour inclure les refs AppPOS
 export interface ProductWithRefs extends ProductsResponse {
+	designation?: string // 🆕 Ajout du champ designation
 	expand?: {
 		brand?: { id: string; name: string }
 		supplier?: { id: string; name: string }
@@ -71,7 +72,8 @@ export function transformAppPosProduct(
 		collectionName: 'products' as any,
 
 		// Product fields
-		name: product.name || product.designation || '',
+		name: product.name || '',
+		designation: product.designation || '', // 🆕 Garder la désignation séparée
 		barcode: extractBarcode(product),
 		sku: product.sku || '',
 		description: product.description || '',

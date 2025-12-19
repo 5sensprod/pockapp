@@ -45,14 +45,11 @@ async function fetchAppPos<T>(
 
 	if (!response.ok) {
 		let errorMessage = `AppPOS API Error: ${response.status}`
-		let errorDetails = null
 
 		try {
 			const errorData = await response.json()
-			errorDetails = errorData
 			errorMessage = errorData.message || errorData.error || errorMessage
 
-			// Afficher plus de détails si c'est une erreur de validation
 			if (errorData.details || errorData.errors) {
 				console.error(
 					'❌ Détails erreur validation:',

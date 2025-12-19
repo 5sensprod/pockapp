@@ -59,16 +59,21 @@ import { toast } from 'sonner'
 // ============================================================================
 
 type LineDiscountMode = 'percent' | 'unit'
+type DisplayMode = 'name' | 'designation' | 'sku' // 🆕 Type pour le mode d'affichage
 
 interface CartItem {
 	id: string
 	productId: string
 	name: string
+	designation?: string // 🆕 Ajout de la désignation
+	sku?: string // 🆕 Ajout du SKU
 	unitPrice: number // prix catalogue TTC
 	quantity: number
 
 	lineDiscountMode?: LineDiscountMode // 'percent' | 'unit'
 	lineDiscountValue?: number // percent (0-100) OU prix unitaire TTC
+
+	displayMode?: DisplayMode // 🆕 Mode d'affichage (name par défaut)
 }
 
 type PaymentStep = 'cart' | 'payment' | 'success'
@@ -76,6 +81,7 @@ type PaymentStep = 'cart' | 'payment' | 'success'
 type AppPosProduct = {
 	id: string
 	name: string
+	designation?: string | null // 🆕 Ajout de la désignation
 	sku?: string | null
 	barcode?: string | null
 	price_ttc?: number | null
@@ -338,8 +344,11 @@ export function CashTerminalPage() {
 				id: `cart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 				productId: product.id,
 				name: product.name,
+				designation: product.designation || product.name, // 🆕
+				sku: product.sku || '', // 🆕
 				unitPrice: price,
 				quantity: 1,
+				displayMode: 'name', // 🆕 Par défaut afficher le nom
 			}
 			return [...prev, newItem]
 		})
@@ -469,6 +478,24 @@ export function CashTerminalPage() {
 		)
 	}, [])
 
+	// 🆕 Changer le mode d'affichage d'une ligne
+	const setLineDisplayMode = React.useCallback(
+		(itemId: string, mode: DisplayMode) => {
+			console.log('🔄 setLineDisplayMode called:', { itemId, mode })
+			setCart((prev) => {
+				const updated = prev.map((it) =>
+					it.id === itemId ? { ...it, displayMode: mode } : it,
+				)
+				console.log(
+					'🔄 Cart updated:',
+					updated.find((it) => it.id === itemId),
+				)
+				return updated
+			})
+		},
+		[],
+	)
+
 	const handlePaymentClick = React.useCallback(
 		(method: PaymentMethod) => {
 			if (cart.length === 0) {
@@ -511,9 +538,18 @@ export function CashTerminalPage() {
 				const unitHt = unitTtc / 1.2
 				const totalHt = totalLineTtc / 1.2
 
+				// 🆕 Utiliser le texte d'affichage sélectionné
+				const displayMode = item.displayMode || 'name'
+				let displayName = item.name
+				if (displayMode === 'designation') {
+					displayName = item.designation || item.name
+				} else if (displayMode === 'sku') {
+					displayName = item.sku || item.name
+				}
+
 				return {
 					product_id: item.productId,
-					name: item.name,
+					name: displayName, // 🆕 Utiliser le nom d'affichage
 					quantity: item.quantity,
 					unit_price_ht: unitHt,
 					tva_rate: 20,
@@ -566,12 +602,23 @@ export function CashTerminalPage() {
 						receipt: {
 							invoiceNumber: invoice.number,
 							dateLabel: new Date().toLocaleString('fr-FR'),
-							items: cart.map((it) => ({
-								name: it.name,
-								qty: it.quantity,
-								unitTtc: getEffectiveUnitTtc(it),
-								totalTtc: getLineTotalTtc(it),
-							})),
+							items: cart.map((it) => {
+								// 🆕 Utiliser le texte d'affichage sélectionné
+								const displayMode = it.displayMode || 'name'
+								let displayName = it.name
+								if (displayMode === 'designation') {
+									displayName = it.designation || it.name
+								} else if (displayMode === 'sku') {
+									displayName = it.sku || it.name
+								}
+
+								return {
+									name: displayName, // 🆕 Utiliser le nom d'affichage
+									qty: it.quantity,
+									unitTtc: getEffectiveUnitTtc(it),
+									totalTtc: getLineTotalTtc(it),
+								}
+							}),
 							subtotalTtc,
 							discountAmount: (subtotalTtc * discountPercent) / 100,
 							totalTtc,
@@ -653,6 +700,7 @@ export function CashTerminalPage() {
 					setLineDiscountMode={setLineDiscountMode}
 					setLineDiscountValue={setLineDiscountValue}
 					clearLineDiscount={clearLineDiscount}
+					setLineDisplayMode={setLineDisplayMode}
 					editingLineId={editingLineId}
 					setEditingLineId={setEditingLineId}
 				/>
@@ -731,6 +779,7 @@ function CartStepView(props: {
 	setLineDiscountMode: (itemId: string, mode: LineDiscountMode) => void
 	setLineDiscountValue: (itemId: string, raw: string) => void
 	clearLineDiscount: (itemId: string) => void
+	setLineDisplayMode: (itemId: string, mode: DisplayMode) => void // 🆕
 
 	editingLineId: string | null
 	setEditingLineId: (id: string | null) => void
@@ -761,6 +810,7 @@ function CartStepView(props: {
 		setLineDiscountMode,
 		setLineDiscountValue,
 		clearLineDiscount,
+		setLineDisplayMode,
 		editingLineId,
 		setEditingLineId,
 	} = props
@@ -803,6 +853,7 @@ function CartStepView(props: {
 						setLineDiscountMode={setLineDiscountMode}
 						setLineDiscountValue={setLineDiscountValue}
 						clearLineDiscount={clearLineDiscount}
+						setLineDisplayMode={setLineDisplayMode}
 						editingLineId={editingLineId}
 						setEditingLineId={setEditingLineId}
 					/>
@@ -981,6 +1032,7 @@ function CartPanel(props: {
 	setLineDiscountMode: (itemId: string, mode: LineDiscountMode) => void
 	setLineDiscountValue: (itemId: string, raw: string) => void
 	clearLineDiscount: (itemId: string) => void
+	setLineDisplayMode: (itemId: string, mode: DisplayMode) => void // 🆕
 
 	editingLineId: string | null
 	setEditingLineId: (id: string | null) => void
@@ -1000,6 +1052,7 @@ function CartPanel(props: {
 		setLineDiscountMode,
 		setLineDiscountValue,
 		clearLineDiscount,
+		setLineDisplayMode,
 		editingLineId,
 		setEditingLineId,
 	} = props
@@ -1009,6 +1062,39 @@ function CartPanel(props: {
 		if (item.lineDiscountMode === 'percent') return item.lineDiscountValue > 0
 		return item.lineDiscountValue < item.unitPrice
 	}, [])
+
+	// 🆕 Obtenir le texte à afficher selon le mode
+	const getDisplayText = React.useCallback((item: CartItem) => {
+		const mode = item.displayMode
+
+		if (mode === 'designation') {
+			return item.designation || item.name
+		}
+
+		if (mode === 'sku') {
+			return item.sku || item.name
+		}
+
+		return item.name
+	}, [])
+	// 🆕 Vérifier si une option de display est disponible (valeur différente du nom)
+	const isDisplayModeAvailable = React.useCallback(
+		(item: CartItem, mode: DisplayMode) => {
+			switch (mode) {
+				case 'name':
+					return true // Toujours disponible
+				case 'designation':
+					// Disponible si designation existe ET est différente du nom
+					return !!(item.designation && item.designation !== item.name)
+				case 'sku':
+					// Disponible si SKU existe ET est différent du nom
+					return !!(item.sku && item.sku !== item.name && item.sku !== '')
+				default:
+					return false
+			}
+		},
+		[],
+	)
 
 	return (
 		<Card className='flex h-full flex-col'>
@@ -1042,12 +1128,49 @@ function CartPanel(props: {
 							const mode: LineDiscountMode = item.lineDiscountMode ?? 'percent'
 							const value =
 								item.lineDiscountValue ?? (mode === 'unit' ? item.unitPrice : 0)
+							const currentDisplayMode = item.displayMode || 'name'
 
 							return (
 								<div key={item.id} className='py-2'>
 									<div className='flex items-start justify-between gap-3'>
 										<div className='flex-1'>
-											<div className='font-medium'>{item.name}</div>
+											{/* Nom du produit avec sélecteur de mode */}
+											<div className='flex items-center gap-2'>
+												<div className='flex-1 font-medium'>
+													{getDisplayText(item)}
+												</div>
+
+												{/* Afficher le sélecteur seulement s'il y a plusieurs options */}
+												{(isDisplayModeAvailable(item, 'designation') ||
+													isDisplayModeAvailable(item, 'sku')) && (
+													<Select
+														value={currentDisplayMode}
+														onValueChange={(v) =>
+															setLineDisplayMode(item.id, v as DisplayMode)
+														}
+													>
+														<SelectTrigger className='h-6 w-[120px] text-xs'>
+															<SelectValue />
+														</SelectTrigger>
+														<SelectContent>
+															{/* Nom : toujours disponible */}
+															<SelectItem value='name'>Nom</SelectItem>
+
+															{/* Désignation : si différente du nom */}
+															{isDisplayModeAvailable(item, 'designation') && (
+																<SelectItem value='designation'>
+																	Désignation
+																</SelectItem>
+															)}
+
+															{/* SKU : si existe et différent du nom */}
+															{isDisplayModeAvailable(item, 'sku') && (
+																<SelectItem value='sku'>SKU</SelectItem>
+															)}
+														</SelectContent>
+													</Select>
+												)}
+											</div>
 
 											<div className='mt-1 flex items-center gap-2 text-xs text-slate-500'>
 												<Button

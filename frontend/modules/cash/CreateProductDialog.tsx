@@ -43,6 +43,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 		tva_rate: 20,
 		barcode: initialBarcode || '',
 		sku: '',
+		designation: '', // 🆕 Ajout de la désignation
 		description: '',
 		stock_quantity: 0,
 		stock_min: 0,
@@ -78,6 +79,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 			tva_rate: 20,
 			barcode: initialBarcode || '',
 			sku: '',
+			designation: '', // 🆕
 			description: '',
 			stock_quantity: 0,
 			stock_min: 0,
@@ -164,6 +166,26 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 							autoFocus
 							className='h-11 text-base'
 						/>
+					</div>
+
+					{/* Désignation (optionnel mais recommandé) */}
+					<div className='space-y-2'>
+						<Label
+							htmlFor='designation'
+							className='flex items-center gap-1 text-sm font-semibold'
+						>
+							Désignation (ticket)
+						</Label>
+						<Input
+							id='designation'
+							placeholder='Ex: Coca-Cola 33cl (pour le ticket)'
+							value={formData.designation}
+							onChange={(e) => handleFieldChange('designation', e.target.value)}
+							className='h-11 text-base'
+						/>
+						<p className='text-xs text-slate-500'>
+							Sera affiché sur le ticket si différent du nom
+						</p>
 					</div>
 
 					{/* Prix TTC et TVA sur la même ligne */}
