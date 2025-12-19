@@ -207,6 +207,11 @@ export function ConvertTicketToInvoicePage() {
 				original_invoice_id: ticketId,
 				is_pos_ticket: false,
 
+				// ✅ FIX: FORCER EXPLICITEMENT À NULL
+				// CRITIQUE pour éviter la double comptabilisation
+				session: null,
+				cash_register: null,
+
 				notes: [
 					`Facture issue du ticket ${ticket.number}`,
 					ticket.notes || '',
@@ -216,10 +221,11 @@ export function ConvertTicketToInvoicePage() {
 					.join('\n\n'),
 			})
 
-			await pb.collection('invoices').update(ticketId, {
-				converted_to_invoice: true,
-				converted_invoice_id: invoice.id,
-			})
+			// 2. Marquer le ticket comme converti (optionnel, car détectable via original_invoice_id)
+			// await pb.collection('invoices').update(ticketId, {
+			// 	converted_to_invoice: true,
+			// 	converted_invoice_id: invoice.id,
+			// })
 
 			return invoice
 		},

@@ -31,12 +31,14 @@ const (
 // Champs autorisés à être modifiés sur une facture verrouillée
 // NOUVEAU: is_paid, paid_at, payment_method sont autorisés (indépendants du statut)
 var allowedInvoiceUpdates = map[string]bool{
-	"status":         true, // draft -> validated -> sent
-	"is_paid":        true, // Peut être modifié indépendamment
-	"paid_at":        true,
-	"payment_method": true,
-	"is_locked":      true,
-	"closure_id":     true,
+	"status":               true, // draft -> validated -> sent
+	"is_paid":              true, // Peut être modifié indépendamment
+	"paid_at":              true,
+	"payment_method":       true,
+	"is_locked":            true,
+	"closure_id":           true,
+	"converted_to_invoice": true,
+	"converted_invoice_id": true,
 }
 
 // Transitions de statut autorisées (SANS "paid")
@@ -67,56 +69,97 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		invoiceType := record.GetString("invoice_type")
 		status := record.GetString("status")
 
-		// Valeur par défaut de statut si non fourni
 		if status == "" {
 			status = "draft"
 			record.Set("status", status)
 		}
 
-		// Initialiser is_paid si non défini
 		if record.Get("is_paid") == nil {
 			record.Set("is_paid", false)
 		}
 
-		// ---------------------------------------------------------------------
-		// ✅ PROTECTION: empêcher qu’un ticket POS soit converti plusieurs fois
-		// Règle: une facture (invoice_type="invoice") qui a original_invoice_id
-		// doit être unique pour ce ticket.
-		// ---------------------------------------------------------------------
-		originalID := record.GetString("original_invoice_id")
-		if invoiceType == "invoice" && originalID != "" {
-			// 1) Le ticket original doit exister
-			orig, err := app.Dao().FindRecordById("invoices", originalID)
+		// ═════════════════════════════════════════════════════════════════════
+		// ✅ NOUVELLES VALIDATIONS MÉTIER
+		// ═════════════════════════════════════════════════════════════════════
+
+		sessionID := record.GetString("session")
+		cashRegisterID := record.GetString("cash_register")
+		isPosTicket := record.GetBool("is_pos_ticket")
+		originalInvoiceID := record.GetString("original_invoice_id")
+
+		// ─────────────────────────────────────────────────────────────────────
+		// RÈGLE 1: Si session présente → FORCER is_pos_ticket = true
+		// ─────────────────────────────────────────────────────────────────────
+		if sessionID != "" {
+			if !isPosTicket {
+				record.Set("is_pos_ticket", true)
+				log.Printf("🔧 Force is_pos_ticket=true (session présente: %s)", sessionID)
+			}
+		}
+
+		// ─────────────────────────────────────────────────────────────────────
+		// RÈGLE 2: Si original_invoice_id présent → FORCER session = null
+		// (Protection contre double comptabilisation)
+		// ─────────────────────────────────────────────────────────────────────
+		if originalInvoiceID != "" {
+			// 2.1) Vérifier que le ticket original existe
+			orig, err := app.Dao().FindRecordById("invoices", originalInvoiceID)
 			if err != nil || orig == nil {
-				return fmt.Errorf("ticket original introuvable (original_invoice_id=%s)", originalID)
+				return fmt.Errorf("ticket original introuvable (original_invoice_id=%s)", originalInvoiceID)
 			}
 
-			// 2) Le record original doit être un ticket POS
+			// 2.2) Le record original doit être un ticket POS
 			if !orig.GetBool("is_pos_ticket") {
 				return fmt.Errorf("original_invoice_id doit référencer un ticket POS (is_pos_ticket=true)")
 			}
 
-			// 3) Si le ticket est déjà marqué converti, on bloque
+			// 2.3) Si le ticket est déjà marqué converti, bloquer
 			if orig.GetBool("converted_to_invoice") || orig.GetString("converted_invoice_id") != "" {
 				return fmt.Errorf("ce ticket a déjà été converti en facture")
 			}
 
-			// 4) Vérifier qu'aucune facture n'existe déjà avec ce original_invoice_id
+			// 2.4) Vérifier qu'aucune facture n'existe déjà avec ce original_invoice_id
 			existing, err := app.Dao().FindFirstRecordByFilter(
 				"invoices",
-				fmt.Sprintf("invoice_type='invoice' && original_invoice_id='%s'", originalID),
+				fmt.Sprintf("invoice_type='invoice' && original_invoice_id='%s'", originalInvoiceID),
 			)
 			if err == nil && existing != nil {
 				return fmt.Errorf("ce ticket a déjà une facture associée (invoiceId=%s)", existing.Id)
 			}
+
+			// 2.5) FORCER session et cash_register à null
+			if sessionID != "" || cashRegisterID != "" {
+				log.Printf("⚠️ CORRECTION: Facture issue d'un ticket ne peut avoir de session/cash_register")
+				record.Set("session", "")
+				record.Set("cash_register", "")
+			}
+
+			// 2.6) FORCER is_pos_ticket = false pour la facture
+			record.Set("is_pos_ticket", false)
 		}
 
-		// 🔹 CAS 1 : Brouillon → pas de numéro, pas de hash, pas de chaînage
+		// ─────────────────────────────────────────────────────────────────────
+		// RÈGLE 3: Si is_pos_ticket = false ET session présente → ERREUR
+		// ─────────────────────────────────────────────────────────────────────
+		if !record.GetBool("is_pos_ticket") && record.GetString("session") != "" {
+			return errors.New("une facture B2B (is_pos_ticket=false) ne peut pas avoir de session de caisse")
+		}
+
+		// ─────────────────────────────────────────────────────────────────────
+		// RÈGLE 4: Si cash_register présent SANS session → ERREUR
+		// ─────────────────────────────────────────────────────────────────────
+		if cashRegisterID != "" && sessionID == "" {
+			return errors.New("cash_register nécessite une session active")
+		}
+
+		// ═════════════════════════════════════════════════════════════════════
+		// FIN DES VALIDATIONS
+		// ═════════════════════════════════════════════════════════════════════
+
+		// CAS 1 : Brouillon → pas de numéro, pas de hash
 		if status == "draft" {
 			record.Set("is_locked", false)
 
-			// On peut initialiser fiscal_year à partir de maintenant ou de la date
-			// (optionnel, de toute façon il sera recalculé à la validation).
 			fiscalYear := time.Now().Year()
 			dateStr := record.GetString("date")
 			if dateStr != "" {
@@ -132,14 +175,10 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			}
 			record.Set("fiscal_year", fiscalYear)
 
-			// Pas de number, pas de hash, pas de previous_hash / sequence_number ici
 			return nil
 		}
 
-		// 🔹 CAS 2 : Facture non brouillon créée directement (ex: avoir)
-		// → numérotation + hash dès la création
-
-		// Déterminer l'année fiscale à partir de la date de facture si possible
+		// CAS 2 : Facture non brouillon créée directement
 		fiscalYear := time.Now().Year()
 		dateStr := record.GetString("date")
 		if dateStr != "" {
@@ -189,7 +228,7 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		}
 		record.Set("hash", hash)
 
-		// Verrouillage si ce n'est pas un brouillon
+		// Verrouillage
 		record.Set("is_locked", true)
 
 		return nil
@@ -199,10 +238,8 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 	// HOOK: Après création d'une facture
 	// -------------------------------------------------------------------------
 	app.OnRecordAfterCreateRequest("invoices").Add(func(e *core.RecordCreateEvent) error {
-		// ---------------------------------------------------------------------
-		// ✅ Si une facture (invoice) est issue d’un ticket (original_invoice_id),
+		// Si une facture (invoice) est issue d'un ticket (original_invoice_id),
 		// marquer le ticket comme converti côté backend.
-		// ---------------------------------------------------------------------
 		if e.Record.GetString("invoice_type") == "invoice" {
 			originalID := e.Record.GetString("original_invoice_id")
 			if originalID != "" {
@@ -211,12 +248,10 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 					return fmt.Errorf("ticket original introuvable (original_invoice_id=%s)", originalID)
 				}
 
-				// Le ticket doit être un POS ticket
 				if !orig.GetBool("is_pos_ticket") {
 					return fmt.Errorf("original_invoice_id doit référencer un ticket POS (is_pos_ticket=true)")
 				}
 
-				// Si déjà converti vers autre chose, cohérence -> erreur
 				if (orig.GetBool("converted_to_invoice") || orig.GetString("converted_invoice_id") != "") &&
 					orig.GetString("converted_invoice_id") != e.Record.Id {
 					return fmt.Errorf("ticket déjà converti (converted_invoice_id=%s)", orig.GetString("converted_invoice_id"))
@@ -225,14 +260,13 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 				orig.Set("converted_to_invoice", true)
 				orig.Set("converted_invoice_id", e.Record.Id)
 
-				// SaveRecord déclenche les hooks update, mais on a autorisé ces champs ci-dessus.
 				if err := app.Dao().SaveRecord(orig); err != nil {
 					return fmt.Errorf("impossible de marquer le ticket comme converti: %w", err)
 				}
 			}
 		}
 
-		// Audit log (logique existante)
+		// Audit log
 		action := "invoice_created"
 		if e.Record.GetString("invoice_type") == "credit_note" {
 			action = "credit_note_created"
@@ -245,10 +279,11 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			EntityNumber: e.Record.GetString("number"),
 			OwnerCompany: e.Record.GetString("owner_company"),
 			Details: map[string]interface{}{
-				"invoice_type": e.Record.GetString("invoice_type"),
-				"total_ttc":    e.Record.GetFloat("total_ttc"),
-				"customer":     e.Record.GetString("customer"),
-				"status":       e.Record.GetString("status"),
+				"customer":      e.Record.GetString("customer"),
+				"total_ttc":     e.Record.GetFloat("total_ttc"),
+				"status":        e.Record.GetString("status"),
+				"is_pos_ticket": e.Record.GetBool("is_pos_ticket"),
+				"session":       e.Record.GetString("session"),
 			},
 		})
 	})

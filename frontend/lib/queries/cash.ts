@@ -212,7 +212,11 @@ export function useSessionReport(sessionId: string) {
 	})
 }
 
-export function useZReport(cashRegisterId: string, date: string) {
+export function useZReport(
+	cashRegisterId: string,
+	date: string,
+	options?: { enabled?: boolean },
+) {
 	const pb = usePocketBase()
 
 	return useQuery({
@@ -236,7 +240,9 @@ export function useZReport(cashRegisterId: string, date: string) {
 
 			return await res.json()
 		},
-		enabled: !!cashRegisterId && !!date,
+		enabled: options?.enabled ?? (!!cashRegisterId && !!date),
+		staleTime: 1000 * 60 * 5, // 5 minutes
+		retry: 1,
 	})
 }
 

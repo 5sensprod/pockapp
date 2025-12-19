@@ -226,15 +226,23 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		cashRegisterId := c.QueryParam("cash_register")
 		date := c.QueryParam("date")
 
+		// ✅ AJOUTER CES LOGS
+		fmt.Printf("\n🔍 === RAPPORT Z DEMANDÉ ===\n")
+		fmt.Printf("Caisse ID: %s\n", cashRegisterId)
+		fmt.Printf("Date: %s\n", date)
+
 		if cashRegisterId == "" || date == "" {
 			return apis.NewBadRequestError("Paramètres 'cash_register' et 'date' requis", nil)
 		}
 
 		rapport, err := reports.GenerateRapportZ(app, cashRegisterId, date)
 		if err != nil {
+			// ✅ LOGGER L'ERREUR COMPLÈTE
+			fmt.Printf("❌ ERREUR: %v\n", err)
 			return apis.NewApiError(500, err.Error(), err)
 		}
 
+		fmt.Printf("✅ Rapport généré avec succès\n")
 		return c.JSON(http.StatusOK, rapport)
 	},
 		apis.RequireRecordAuth(),

@@ -96,17 +96,22 @@ func RegisterCashSessionHooks(app *pocketbase.PocketBase) {
 			log.Printf("🔐 Fermeture session %s...", sessionId)
 
 			// ─────────────────────────────────────────────────────────────────
-			// ÉTAPE 1 : Récupérer toutes les factures de cette session
+			// ÉTAPE 1 : Récupérer tous les TICKETS POS de cette session
 			// ─────────────────────────────────────────────────────────────────
+			log.Printf("🔍 Recherche des tickets POS pour session: %s", sessionId)
+
 			invoices, err := app.Dao().FindRecordsByFilter(
 				"invoices",
-				fmt.Sprintf("session = '%s'", sessionId),
+				fmt.Sprintf("session = '%s' && is_pos_ticket = true", sessionId), // ✅ FILTRE CORRIGÉ
 				"",
 				0,
 				0,
 			)
+
+			log.Printf("🔍 Nombre de tickets POS trouvés: %d", len(invoices))
+
 			if err != nil {
-				log.Printf("⚠️ Erreur récupération factures session %s: %v", sessionId, err)
+				log.Printf("⚠️ Erreur récupération tickets session %s: %v", sessionId, err)
 				// On continue quand même pour permettre la fermeture
 			}
 
@@ -141,11 +146,11 @@ func RegisterCashSessionHooks(app *pocketbase.PocketBase) {
 					}
 				}
 
-				log.Printf("  ✅ Facture %s : %.2f € (%s)",
+				log.Printf("  ✅ Ticket %s : %.2f € (%s)",
 					inv.GetString("number"), ttc, method)
 			}
 
-			log.Printf("📊 Total factures : %d tickets, %.2f € TTC", invoiceCount, totalTTC)
+			log.Printf("📊 Total tickets POS : %d tickets, %.2f € TTC", invoiceCount, totalTTC)
 
 			// ─────────────────────────────────────────────────────────────────
 			// ÉTAPE 3 : Récupérer les mouvements de caisse

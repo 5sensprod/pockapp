@@ -120,7 +120,11 @@ export interface RapportZ {
 		opened_by: string
 		invoice_count: number
 		total_ttc: number
+		opening_float: number // ✅ AJOUTER
+		expected_cash_total: number // ✅ AJOUTER
+		counted_cash_total: number // ✅ AJOUTER
 		cash_difference: number
+		totals_by_method: Record<string, number> // ✅ AJOUTER
 	}>
 	daily_totals: {
 		sessions_count: number

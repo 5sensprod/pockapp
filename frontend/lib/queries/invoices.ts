@@ -1,6 +1,7 @@
 // frontend/lib/queries/invoices.ts
 // Service de facturation conforme ISCA v2
 // 🔢 Le numéro est maintenant généré automatiquement par le backend
+// ✅ FIX: Ajout des champs optionnels pour les tickets POS
 
 import type {
 	InvoiceCreateDto,
@@ -19,7 +20,21 @@ import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 export type InvoiceItem = InvoiceItemType
-export type CreateInvoiceParams = Omit<InvoiceCreateDto, 'number'>
+
+// ✅ FIX: Extension du type pour inclure les champs optionnels de caisse
+export type CreateInvoiceParams = Omit<InvoiceCreateDto, 'number'> & {
+	// Champs spécifiques aux tickets POS (optionnels)
+	is_pos_ticket?: boolean
+	session?: string | null
+	cash_register?: string | null
+	sold_by?: string | null
+
+	// Champs spécifiques à la conversion ticket → facture (optionnels)
+	original_invoice_id?: string | null
+	converted_to_invoice?: boolean
+	converted_invoice_id?: string | null
+}
+
 // ============================================================================
 // QUERY KEYS
 // ============================================================================
@@ -158,6 +173,7 @@ export function useInvoice(invoiceId?: string) {
 /**
  * ➕ Créer une facture (brouillon par défaut)
  * 🔢 Le numéro est généré automatiquement par le backend
+ * ✅ FIX: Support des champs de caisse (is_pos_ticket, session, cash_register)
  */
 export function useCreateInvoice() {
 	const pb = usePocketBase()
@@ -484,6 +500,36 @@ export function useCancelInvoice() {
 	})
 }
 
+/**
+ * 🗑️ Supprimer un brouillon
+ * ⚠️ UNIQUEMENT pour les factures en statut "draft"
+ */
+export function useDeleteDraftInvoice() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (invoiceId: string) => {
+			const existing = await pb.collection('invoices').getOne(invoiceId)
+
+			if (existing.status !== 'draft') {
+				throw new Error('Seuls les brouillons peuvent être supprimés.')
+			}
+
+			if (existing.is_locked) {
+				throw new Error(
+					'Ce brouillon est verrouillé et ne peut pas être supprimé.',
+				)
+			}
+
+			await pb.collection('invoices').delete(invoiceId)
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
+		},
+	})
+}
+
 // ============================================================================
 // ENVOI EMAIL
 // ============================================================================
@@ -540,34 +586,4 @@ export {
 	canEditInvoice,
 	canMarkAsPaid,
 	ALLOWED_STATUS_TRANSITIONS,
-}
-
-/**
- * 🗑️ Supprimer un brouillon
- * ⚠️ UNIQUEMENT pour les factures en statut "draft"
- */
-export function useDeleteDraftInvoice() {
-	const pb = usePocketBase()
-	const queryClient = useQueryClient()
-
-	return useMutation({
-		mutationFn: async (invoiceId: string) => {
-			const existing = await pb.collection('invoices').getOne(invoiceId)
-
-			if (existing.status !== 'draft') {
-				throw new Error('Seuls les brouillons peuvent être supprimés.')
-			}
-
-			if (existing.is_locked) {
-				throw new Error(
-					'Ce brouillon est verrouillé et ne peut pas être supprimé.',
-				)
-			}
-
-			await pb.collection('invoices').delete(invoiceId)
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
-		},
-	})
 }

@@ -183,13 +183,17 @@ type CashRegisterInfo struct {
 }
 
 type SessionSummary struct {
-	ID             string    `json:"id"`
-	OpenedAt       time.Time `json:"opened_at"`
-	ClosedAt       time.Time `json:"closed_at"`
-	OpenedBy       string    `json:"opened_by"`
-	InvoiceCount   int       `json:"invoice_count"`
-	TotalTTC       float64   `json:"total_ttc"`
-	CashDifference float64   `json:"cash_difference"`
+	ID                string             `json:"id"`
+	OpenedAt          time.Time          `json:"opened_at"`
+	ClosedAt          time.Time          `json:"closed_at"`
+	OpenedBy          string             `json:"opened_by"`
+	InvoiceCount      int                `json:"invoice_count"`
+	TotalTTC          float64            `json:"total_ttc"`
+	OpeningFloat      float64            `json:"opening_float"`       // ✅ AJOUTER
+	ExpectedCashTotal float64            `json:"expected_cash_total"` // ✅ AJOUTER
+	CountedCashTotal  float64            `json:"counted_cash_total"`  // ✅ AJOUTER
+	CashDifference    float64            `json:"cash_difference"`
+	TotalsByMethod    map[string]float64 `json:"totals_by_method"` // ✅ AJOUTER
 }
 
 type DailyTotalsSummary struct {
@@ -216,24 +220,34 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 	}
 	dateEnd := dateStart.Add(24 * time.Hour)
 
+	// ✅ Formater les dates au format PocketBase : "YYYY-MM-DD HH:MM:SS"
+	dateStartStr := dateStart.Format("2006-01-02") + " 00:00:00"
+	dateEndStr := dateEnd.Format("2006-01-02") + " 00:00:00"
+
 	// 3. Récupérer toutes les sessions fermées de cette journée
 	filter := fmt.Sprintf(
-		"cash_register = '%s' && status = 'closed' && opened_at >= '%s' && opened_at < '%s'",
+		"cash_register = '%s' && status = 'closed' && closed_at >= '%s' && closed_at < '%s'",
 		cashRegisterID,
-		dateStart.Format(time.RFC3339),
-		dateEnd.Format(time.RFC3339),
+		dateStartStr,
+		dateEndStr,
 	)
+
+	fmt.Printf("\n🔍 Filtre utilisé: %s\n", filter)
 
 	sessions, err := dao.FindRecordsByFilter(
 		"cash_sessions",
 		filter,
-		"opened_at",
+		"closed_at",
 		0,
 		0,
 	)
+
 	if err != nil {
+		fmt.Printf("❌ Erreur requête: %v\n", err)
 		return nil, fmt.Errorf("erreur chargement sessions: %w", err)
 	}
+
+	fmt.Printf("✅ Sessions trouvées: %d\n", len(sessions))
 
 	if len(sessions) == 0 {
 		return nil, fmt.Errorf("aucune session fermée pour cette date")
@@ -250,17 +264,22 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		invoiceCount := session.GetInt("invoice_count")
 		ttc := session.GetFloat("total_ttc")
 		cashDiff := session.GetFloat("cash_difference")
+		openingFloat := session.GetFloat("opening_float")       // ✅ AJOUTER
+		expectedCash := session.GetFloat("expected_cash_total") // ✅ AJOUTER
+		countedCash := session.GetFloat("counted_cash_total")   // ✅ AJOUTER
 
 		totalInvoiceCount += invoiceCount
 		totalTTC += ttc
 		totalCashDifference += cashDiff
 
-		// Agréger les totaux par méthode
+		// Récupérer totals_by_method pour cette session
+		sessionMethodTotals := make(map[string]float64) // ✅ AJOUTER
 		if methodsData := session.Get("totals_by_method"); methodsData != nil {
 			if methods, ok := methodsData.(map[string]interface{}); ok {
 				for method, amount := range methods {
 					if amt, ok := amount.(float64); ok {
 						totalsByMethod[method] += amt
+						sessionMethodTotals[method] = amt // ✅ AJOUTER
 					}
 				}
 			}
@@ -270,13 +289,17 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		closedAt, _ := time.Parse(time.RFC3339, session.GetString("closed_at"))
 
 		sessionsSummaries = append(sessionsSummaries, SessionSummary{
-			ID:             session.Id,
-			OpenedAt:       openedAt,
-			ClosedAt:       closedAt,
-			OpenedBy:       session.GetString("opened_by"),
-			InvoiceCount:   invoiceCount,
-			TotalTTC:       ttc,
-			CashDifference: cashDiff,
+			ID:                session.Id,
+			OpenedAt:          openedAt,
+			ClosedAt:          closedAt,
+			OpenedBy:          session.GetString("opened_by"),
+			InvoiceCount:      invoiceCount,
+			TotalTTC:          ttc,
+			OpeningFloat:      openingFloat, // ✅ AJOUTER
+			ExpectedCashTotal: expectedCash, // ✅ AJOUTER
+			CountedCashTotal:  countedCash,  // ✅ AJOUTER
+			CashDifference:    cashDiff,
+			TotalsByMethod:    sessionMethodTotals, // ✅ AJOUTER
 		})
 	}
 
@@ -302,5 +325,6 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		IsLocked: true,
 	}
 
+	fmt.Printf("✅ Rapport Z généré avec succès\n")
 	return rapport, nil
 }

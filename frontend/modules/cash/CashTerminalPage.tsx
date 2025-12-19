@@ -369,6 +369,7 @@ export function CashTerminalPage() {
 				}
 			})
 
+			// ✅ FIX: Ajout de is_pos_ticket: true
 			const invoice = await createInvoice.mutateAsync({
 				invoice_type: 'invoice',
 				date: new Date().toISOString().split('T')[0],
@@ -383,11 +384,15 @@ export function CashTerminalPage() {
 				total_tva: totalTtc - totalTtc / 1.2,
 				total_ttc: totalTtc,
 				currency: 'EUR',
+
+				// 🎯 CHAMPS DE CAISSE
 				cash_register: cashRegisterId,
 				session: activeSession.id,
+				is_pos_ticket: true, // ✅ FIX: Force le marquage comme ticket POS
 				sold_by: user?.id,
 			})
 
+			// Mouvement de caisse si espèces
 			if (selectedPaymentMethod === 'especes') {
 				await createCashMovement.mutateAsync({
 					sessionId: activeSession.id,
@@ -399,6 +404,7 @@ export function CashTerminalPage() {
 				})
 			}
 
+			// Impression ticket
 			if (printerSettings.enabled && printerSettings.printerName) {
 				if (printerSettings.autoPrint) {
 					await printReceipt({

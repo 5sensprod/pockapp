@@ -27,6 +27,7 @@ import { Route as ConnectInvoicesIndexImport } from './routes/connect/invoices/i
 import { Route as ConnectCustomersIndexImport } from './routes/connect/customers/index'
 import { Route as CashTicketsIndexImport } from './routes/cash/tickets/index'
 import { Route as CashTerminalIndexImport } from './routes/cash/terminal/index'
+import { Route as CashRapportZIndexImport } from './routes/cash/rapport-z/index'
 import { Route as CashProductsIndexImport } from './routes/cash/products/index'
 import { Route as ConnectQuotesNewImport } from './routes/connect/quotes/new'
 import { Route as ConnectInvoicesNewImport } from './routes/connect/invoices/new'
@@ -135,6 +136,12 @@ const CashTicketsIndexRoute = CashTicketsIndexImport.update({
 const CashTerminalIndexRoute = CashTerminalIndexImport.update({
   id: '/cash/terminal/',
   path: '/cash/terminal/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const CashRapportZIndexRoute = CashRapportZIndexImport.update({
+  id: '/cash/rapport-z/',
+  path: '/cash/rapport-z/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -325,6 +332,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CashProductsIndexImport
       parentRoute: typeof rootRoute
     }
+    '/cash/rapport-z/': {
+      id: '/cash/rapport-z/'
+      path: '/cash/rapport-z'
+      fullPath: '/cash/rapport-z'
+      preLoaderRoute: typeof CashRapportZIndexImport
+      parentRoute: typeof rootRoute
+    }
     '/cash/terminal/': {
       id: '/cash/terminal/'
       path: '/cash/terminal'
@@ -437,6 +451,7 @@ export interface FileRoutesByFullPath {
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
   '/cash/products': typeof CashProductsIndexRoute
+  '/cash/rapport-z': typeof CashRapportZIndexRoute
   '/cash/terminal': typeof CashTerminalIndexRoute
   '/cash/tickets': typeof CashTicketsIndexRoute
   '/connect/customers': typeof ConnectCustomersIndexRoute
@@ -468,6 +483,7 @@ export interface FileRoutesByTo {
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
   '/cash/products': typeof CashProductsIndexRoute
+  '/cash/rapport-z': typeof CashRapportZIndexRoute
   '/cash/terminal': typeof CashTerminalIndexRoute
   '/cash/tickets': typeof CashTicketsIndexRoute
   '/connect/customers': typeof ConnectCustomersIndexRoute
@@ -500,6 +516,7 @@ export interface FileRoutesById {
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
   '/cash/products/': typeof CashProductsIndexRoute
+  '/cash/rapport-z/': typeof CashRapportZIndexRoute
   '/cash/terminal/': typeof CashTerminalIndexRoute
   '/cash/tickets/': typeof CashTicketsIndexRoute
   '/connect/customers/': typeof ConnectCustomersIndexRoute
@@ -533,6 +550,7 @@ export interface FileRouteTypes {
     | '/connect/invoices/new'
     | '/connect/quotes/new'
     | '/cash/products'
+    | '/cash/rapport-z'
     | '/cash/terminal'
     | '/cash/tickets'
     | '/connect/customers'
@@ -563,6 +581,7 @@ export interface FileRouteTypes {
     | '/connect/invoices/new'
     | '/connect/quotes/new'
     | '/cash/products'
+    | '/cash/rapport-z'
     | '/cash/terminal'
     | '/cash/tickets'
     | '/connect/customers'
@@ -593,6 +612,7 @@ export interface FileRouteTypes {
     | '/connect/invoices/new'
     | '/connect/quotes/new'
     | '/cash/products/'
+    | '/cash/rapport-z/'
     | '/cash/terminal/'
     | '/cash/tickets/'
     | '/connect/customers/'
@@ -625,6 +645,7 @@ export interface RootRouteChildren {
   ConnectInvoicesNewRoute: typeof ConnectInvoicesNewRoute
   ConnectQuotesNewRoute: typeof ConnectQuotesNewRoute
   CashProductsIndexRoute: typeof CashProductsIndexRoute
+  CashRapportZIndexRoute: typeof CashRapportZIndexRoute
   CashTerminalIndexRoute: typeof CashTerminalIndexRoute
   CashTicketsIndexRoute: typeof CashTicketsIndexRoute
   ConnectCustomersIndexRoute: typeof ConnectCustomersIndexRoute
@@ -656,6 +677,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectInvoicesNewRoute: ConnectInvoicesNewRoute,
   ConnectQuotesNewRoute: ConnectQuotesNewRoute,
   CashProductsIndexRoute: CashProductsIndexRoute,
+  CashRapportZIndexRoute: CashRapportZIndexRoute,
   CashTerminalIndexRoute: CashTerminalIndexRoute,
   CashTicketsIndexRoute: CashTicketsIndexRoute,
   ConnectCustomersIndexRoute: ConnectCustomersIndexRoute,
@@ -699,6 +721,7 @@ export const routeTree = rootRoute
         "/connect/invoices/new",
         "/connect/quotes/new",
         "/cash/products/",
+        "/cash/rapport-z/",
         "/cash/terminal/",
         "/cash/tickets/",
         "/connect/customers/",
@@ -758,6 +781,9 @@ export const routeTree = rootRoute
     },
     "/cash/products/": {
       "filePath": "cash/products/index.tsx"
+    },
+    "/cash/rapport-z/": {
+      "filePath": "cash/rapport-z/index.tsx"
     },
     "/cash/terminal/": {
       "filePath": "cash/terminal/index.tsx"

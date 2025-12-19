@@ -1027,6 +1027,19 @@ export function CashPage() {
 									</span>
 								</Link>
 							</Button>
+							<Button
+								asChild
+								variant='outline'
+								size='sm'
+								className='flex w-full items-center justify-between'
+							>
+								<Link to='/cash/rapport-z'>
+									<span className='flex items-center gap-2'>
+										<Receipt className='h-4 w-4' />
+										Rapport Z (Clôture journalière)
+									</span>
+								</Link>
+							</Button>
 						</CardContent>
 					</Card>
 
