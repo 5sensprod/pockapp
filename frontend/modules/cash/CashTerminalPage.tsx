@@ -39,6 +39,7 @@ import { useCreateInvoice } from '@/lib/queries/invoices'
 import type { InvoiceItem, PaymentMethod } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useAuth } from '@/modules/auth/AuthProvider'
+import { CreateProductDialog } from '@/modules/cash/CreateProductDialog'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	ArrowLeft,
@@ -112,6 +113,13 @@ export function CashTerminalPage() {
 
 	// NEW: Ref pour l'input de recherche
 	const searchInputRef = React.useRef<HTMLInputElement>(null)
+
+	// NEW: Dialogue de création de produit
+	const [showCreateProductDialog, setShowCreateProductDialog] =
+		React.useState(false)
+	const [productNotFoundBarcode, setProductNotFoundBarcode] =
+		React.useState<string>('')
+	const [productInitialName, setProductInitialName] = React.useState<string>('') // 🆕 Pour le nom pré-rempli
 
 	const { data: registers } = useCashRegisters(activeCompanyId ?? undefined)
 	const { data: activeSession, isLoading: isSessionLoading } =
@@ -357,6 +365,46 @@ export function CashTerminalPage() {
 		setEditingLineId(null)
 	}, [])
 
+	// NEW: Callback après création d'un produit
+	const handleProductCreated = React.useCallback(
+		(product: any) => {
+			// Ajouter automatiquement le nouveau produit au panier
+			addToCart(product)
+
+			// Message de confirmation
+			toast.success(`${product.name} ajouté au panier`)
+
+			// Refocus sur l'input
+			setTimeout(() => {
+				searchInputRef.current?.focus()
+			}, 100)
+		},
+		[addToCart],
+	)
+
+	// 🆕 Callback pour ouvrir le dialogue de création manuellement
+	const handleCreateProductClick = React.useCallback(() => {
+		// Pré-remplir avec le terme de recherche si disponible
+		if (productSearch.trim()) {
+			// Si c'est un code-barres probable (8+ chiffres), mettre dans barcode
+			const isBarcode = /^\d{8,}$/.test(productSearch.trim())
+			if (isBarcode) {
+				setProductNotFoundBarcode(productSearch.trim())
+				setProductInitialName('')
+			} else {
+				// Sinon, c'est un nom de produit
+				setProductInitialName(productSearch.trim())
+				setProductNotFoundBarcode('')
+			}
+		} else {
+			setProductInitialName('')
+			setProductNotFoundBarcode('')
+		}
+
+		setShowCreateProductDialog(true)
+		setProductSearch('') // Vider la recherche
+	}, [productSearch])
+
 	const handleChangeDiscount = React.useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
 			const val = Number.parseFloat(e.target.value) || 0
@@ -578,34 +626,46 @@ export function CashTerminalPage() {
 
 	if (paymentStep === 'cart') {
 		return (
-			<CartStepView
-				currentRegisterName={currentRegister?.name || 'Caisse'}
-				sessionIdShort={activeSession?.id.slice(0, 8) ?? ''}
-				today={today}
-				onBack={() => navigate({ to: '/cash' })}
-				productSearch={productSearch}
-				onProductSearchChange={setProductSearch}
-				searchInputRef={searchInputRef}
-				isAppPosConnected={isAppPosConnected}
-				products={products}
-				onAddToCart={addToCart}
-				cart={cart}
-				onClearCart={clearCart}
-				onUpdateQuantity={updateQuantity}
-				subtotalTtc={subtotalTtc}
-				tax={tax}
-				totalTtc={totalTtc}
-				discountPercent={discountPercent}
-				onDiscountChange={handleChangeDiscount}
-				onPaymentClick={handlePaymentClick}
-				getEffectiveUnitTtc={getEffectiveUnitTtc}
-				getLineTotalTtc={getLineTotalTtc}
-				setLineDiscountMode={setLineDiscountMode}
-				setLineDiscountValue={setLineDiscountValue}
-				clearLineDiscount={clearLineDiscount}
-				editingLineId={editingLineId}
-				setEditingLineId={setEditingLineId}
-			/>
+			<>
+				<CartStepView
+					currentRegisterName={currentRegister?.name || 'Caisse'}
+					sessionIdShort={activeSession?.id.slice(0, 8) ?? ''}
+					today={today}
+					onBack={() => navigate({ to: '/cash' })}
+					productSearch={productSearch}
+					onProductSearchChange={setProductSearch}
+					searchInputRef={searchInputRef}
+					isAppPosConnected={isAppPosConnected}
+					products={products}
+					onAddToCart={addToCart}
+					onCreateProductClick={handleCreateProductClick}
+					cart={cart}
+					onClearCart={clearCart}
+					onUpdateQuantity={updateQuantity}
+					subtotalTtc={subtotalTtc}
+					tax={tax}
+					totalTtc={totalTtc}
+					discountPercent={discountPercent}
+					onDiscountChange={handleChangeDiscount}
+					onPaymentClick={handlePaymentClick}
+					getEffectiveUnitTtc={getEffectiveUnitTtc}
+					getLineTotalTtc={getLineTotalTtc}
+					setLineDiscountMode={setLineDiscountMode}
+					setLineDiscountValue={setLineDiscountValue}
+					clearLineDiscount={clearLineDiscount}
+					editingLineId={editingLineId}
+					setEditingLineId={setEditingLineId}
+				/>
+
+				{/* Dialogue de création de produit */}
+				<CreateProductDialog
+					open={showCreateProductDialog}
+					onOpenChange={setShowCreateProductDialog}
+					initialBarcode={productNotFoundBarcode}
+					initialName={productInitialName}
+					onProductCreated={handleProductCreated}
+				/>
+			</>
 		)
 	}
 
@@ -652,6 +712,7 @@ function CartStepView(props: {
 	isAppPosConnected: boolean
 	products: AppPosProduct[]
 	onAddToCart: (p: AppPosProduct) => void
+	onCreateProductClick: () => void // 🆕
 
 	cart: CartItem[]
 	onClearCart: () => void
@@ -685,6 +746,7 @@ function CartStepView(props: {
 		isAppPosConnected,
 		products,
 		onAddToCart,
+		onCreateProductClick,
 		cart,
 		onClearCart,
 		onUpdateQuantity,
@@ -721,6 +783,7 @@ function CartStepView(props: {
 						isAppPosConnected={isAppPosConnected}
 						products={products}
 						onAddToCart={onAddToCart}
+						onCreateProductClick={onCreateProductClick}
 					/>
 				</section>
 
@@ -791,6 +854,7 @@ function ProductsPanel(props: {
 	isAppPosConnected: boolean
 	products: AppPosProduct[]
 	onAddToCart: (p: AppPosProduct) => void
+	onCreateProductClick: () => void // 🆕 Callback pour créer un produit
 }) {
 	const {
 		productSearch,
@@ -799,6 +863,7 @@ function ProductsPanel(props: {
 		isAppPosConnected,
 		products,
 		onAddToCart,
+		onCreateProductClick,
 	} = props
 
 	return (
@@ -833,12 +898,42 @@ function ProductsPanel(props: {
 
 			<div className='h-[340px] overflow-auto text-sm'>
 				{products.length === 0 ? (
-					<div className='px-4 py-6 text-center text-xs text-slate-400'>
-						{isAppPosConnected
-							? productSearch.length > 0
-								? 'Aucun produit ne correspond à la recherche'
-								: 'Scannez un code-barres ou recherchez un produit'
-							: 'Connexion à AppPOS en cours ou échouée'}
+					<div className='flex h-full flex-col items-center justify-center gap-4 px-4 py-6'>
+						{isAppPosConnected ? (
+							productSearch.length > 0 ? (
+								<>
+									{/* Aucun résultat trouvé */}
+									<div className='text-center'>
+										<div className='mb-2 text-sm font-medium text-slate-700'>
+											Aucun produit trouvé
+										</div>
+										<div className='text-xs text-slate-500'>
+											Recherche : "{productSearch}"
+										</div>
+									</div>
+
+									{/* Bouton pour créer un nouveau produit */}
+									<Button
+										type='button'
+										variant='outline'
+										size='sm'
+										onClick={onCreateProductClick}
+										className='gap-2'
+									>
+										<span className='text-lg'>+</span>
+										Créer ce produit
+									</Button>
+								</>
+							) : (
+								<div className='text-center text-xs text-slate-400'>
+									Scannez un code-barres ou recherchez un produit
+								</div>
+							)
+						) : (
+							<div className='text-center text-xs text-slate-400'>
+								Connexion à AppPOS en cours ou échouée
+							</div>
+						)}
 					</div>
 				) : (
 					<>

@@ -8,6 +8,7 @@ import type {
 	AppPosLoginResponse,
 	AppPosProduct,
 	AppPosSupplier,
+	CreateAppPosProductInput,
 } from './apppos-types'
 
 // ============================================================================
@@ -43,8 +44,28 @@ async function fetchAppPos<T>(
 	})
 
 	if (!response.ok) {
-		const errorData = await response.json().catch(() => ({}))
-		throw new Error(errorData.message || `AppPOS API Error: ${response.status}`)
+		let errorMessage = `AppPOS API Error: ${response.status}`
+		let errorDetails = null
+
+		try {
+			const errorData = await response.json()
+			errorDetails = errorData
+			errorMessage = errorData.message || errorData.error || errorMessage
+
+			// Afficher plus de détails si c'est une erreur de validation
+			if (errorData.details || errorData.errors) {
+				console.error(
+					'❌ Détails erreur validation:',
+					errorData.details || errorData.errors,
+				)
+			}
+
+			console.error('❌ Erreur API complète:', errorData)
+		} catch (parseError) {
+			console.error("❌ Impossible de parser l'erreur:", parseError)
+		}
+
+		throw new Error(errorMessage)
 	}
 
 	return response.json()
@@ -124,6 +145,79 @@ export async function searchAppPosProductBySku(
 }
 
 // ============================================================================
+// 🆕 CREATE PRODUCT
+// ============================================================================
+export async function createAppPosProduct(
+	input: CreateAppPosProductInput,
+): Promise<AppPosProduct> {
+	// Structure EXACTE attendue par le schéma de validation backend
+	const productData: any = {
+		// ✅ Champs OBLIGATOIRES
+		name: input.name,
+		price: input.price_ttc, // Prix de vente TTC (OBLIGATOIRE)
+
+		// ✅ Champs avec valeurs par défaut
+		designation: input.designation || input.name,
+		sku: input.sku || '',
+		description: input.description || '',
+		status: 'published', // ⚠️ IMPORTANT: 'published' (pas 'publish')
+		manage_stock: true,
+		stock: input.stock_quantity || 0,
+		min_stock: input.stock_min || 0,
+
+		// ✅ Prix (tous optionnels sauf price)
+		regular_price: null, // Prix de vente HT
+		sale_price: null, // Prix promo TTC
+		purchase_price: input.cost_price || null, // Prix d'achat HT
+		tax_rate: input.tva_rate || 20,
+		margin_rate: null,
+		margin_amount: null,
+		promo_rate: null,
+		promo_amount: null,
+
+		// ✅ Statistiques de vente (initialisées à 0)
+		total_sold: 0,
+		sales_count: 0,
+		last_sold_at: null,
+		revenue_total: 0,
+
+		// ✅ Relations (IDs vides acceptés)
+		brand_id: input.brand_id || '',
+		supplier_id: input.supplier_id || '',
+		categories: input.category_ids || [],
+		category_id: input.category_ids?.[0] || '',
+
+		// ✅ Refs (null accepté)
+		brand_ref: null,
+		supplier_ref: null,
+
+		// ✅ Images (null accepté)
+		image: null,
+		gallery_images: [],
+
+		// ✅ Autres champs optionnels
+		slug: '',
+		description_short: '',
+		specifications: null,
+
+		// ✅ Meta data pour le barcode
+		meta_data: input.barcode ? [{ key: 'barcode', value: input.barcode }] : [],
+	}
+
+	console.log('📤 Données produit envoyées:', productData)
+
+	const response = await fetchAppPos<AppPosApiResponse<AppPosProduct>>(
+		'/products',
+		{
+			method: 'POST',
+			body: JSON.stringify(productData),
+		},
+	)
+
+	return response.data
+}
+
+// ============================================================================
 // CATEGORIES
 // ============================================================================
 export async function getAppPosCategories(): Promise<AppPosCategory[]> {
@@ -184,6 +278,7 @@ export const appPosApi = {
 	// Products
 	getProducts: getAppPosProducts,
 	getProduct: getAppPosProduct,
+	createProduct: createAppPosProduct, // 🆕
 	searchByBarcode: searchAppPosProductByBarcode,
 	searchBySku: searchAppPosProductBySku,
 

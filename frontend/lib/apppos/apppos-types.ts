@@ -182,6 +182,28 @@ export interface AppPosSupplier {
 }
 
 // ============================================================================
+// CREATE PRODUCT INPUT
+// ============================================================================
+export interface CreateAppPosProductInput {
+	// Champs obligatoires
+	name: string
+	price_ttc: number
+
+	// Champs optionnels
+	designation?: string
+	sku?: string
+	barcode?: string
+	description?: string
+	tva_rate?: number
+	cost_price?: number
+	stock_quantity?: number
+	stock_min?: number
+	category_ids?: string[]
+	brand_id?: string
+	supplier_id?: string
+}
+
+// ============================================================================
 // API RESPONSES
 // ============================================================================
 export interface AppPosApiResponse<T> {

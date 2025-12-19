@@ -8,6 +8,7 @@ export {
 	getAppPosToken,
 	loginToAppPos,
 	setAppPosToken,
+	createAppPosProduct, // 🆕
 } from './apppos-api'
 
 // Types
@@ -21,6 +22,7 @@ export type {
 	AppPosProduct,
 	AppPosProductImage,
 	AppPosSupplier,
+	CreateAppPosProductInput, // 🆕
 } from './apppos-types'
 
 // Transformers
@@ -49,6 +51,7 @@ export {
 	useAppPosProduct,
 	useAppPosProducts,
 	useAppPosSuppliers,
+	useCreateAppPosProduct, // 🆕
 } from './apppos-hooks'
 export type {
 	CategoryNode,
@@ -56,4 +59,5 @@ export type {
 	UseAppPosCategoriesOptions,
 	UseAppPosProductsOptions,
 	UseAppPosSuppliersOptions,
+	UseCreateAppPosProductOptions, // 🆕
 } from './apppos-hooks'

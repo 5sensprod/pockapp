@@ -2,10 +2,11 @@
 // Hooks React Query pour fetcher les données depuis l'API AppPOS
 // Optimisations: pas de refetch agressif, catalogue produits caché + filtrage local.
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { appPosApi } from './apppos-api'
 import { appPosTransformers } from './apppos-transformers'
+import type { CreateAppPosProductInput } from './apppos-types'
 
 // ============================================================================
 // PRODUCTS
@@ -147,6 +148,38 @@ export function useAppPosProduct(productId?: string, enabled = true) {
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false,
 		retry: 1,
+	})
+}
+
+// ============================================================================
+// 🆕 CREATE PRODUCT
+// ============================================================================
+
+export interface UseCreateAppPosProductOptions {
+	onSuccess?: (product: ReturnType<typeof appPosTransformers.product>) => void
+	onError?: (error: Error) => void
+}
+
+export function useCreateAppPosProduct(
+	options: UseCreateAppPosProductOptions = {},
+) {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (input: CreateAppPosProductInput) => {
+			const product = await appPosApi.createProduct(input)
+			return appPosTransformers.product(product)
+		},
+		onSuccess: (data) => {
+			// Invalider le cache du catalogue pour forcer un refresh
+			queryClient.invalidateQueries({
+				queryKey: ['apppos', 'products', 'catalog'],
+			})
+			options.onSuccess?.(data)
+		},
+		onError: (error: Error) => {
+			options.onError?.(error)
+		},
 	})
 }
 
@@ -293,6 +326,7 @@ export function buildAppPosCategoryTree(
 export const appPosHooks = {
 	useProducts: useAppPosProducts,
 	useProduct: useAppPosProduct,
+	useCreateProduct: useCreateAppPosProduct, // 🆕
 	useCategories: useAppPosCategories,
 	useCategory: useAppPosCategory,
 	useBrands: useAppPosBrands,
