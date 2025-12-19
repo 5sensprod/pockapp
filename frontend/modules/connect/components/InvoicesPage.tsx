@@ -648,6 +648,7 @@ export function InvoicesPage() {
 						<TableHeader>
 							<TableRow>
 								<TableHead>Numéro</TableHead>
+								<TableHead>Vendeur</TableHead>
 								<TableHead>Type</TableHead>
 								<TableHead>Client</TableHead>
 								<TableHead>Date</TableHead>
@@ -662,6 +663,13 @@ export function InvoicesPage() {
 								const displayStatus = getDisplayStatus(invoice)
 								const customer = invoice.expand?.customer
 								const overdue = isOverdue(invoice)
+
+								const soldBy = (invoice as any).expand?.sold_by
+								const sellerName =
+									soldBy?.name ||
+									soldBy?.username ||
+									soldBy?.email ||
+									(invoice.sold_by ? String(invoice.sold_by) : '—')
 
 								const hasCancellationCreditNote = invoices.some(
 									(other) =>
@@ -680,6 +688,10 @@ export function InvoicesPage() {
 												{invoice.converted_to_invoice && <Badge>→ FAC</Badge>}
 												{invoice.original_invoice_id && <Badge>← TIK</Badge>}
 											</div>
+										</TableCell>
+
+										<TableCell className='text-sm text-muted-foreground'>
+											{sellerName}
 										</TableCell>
 
 										<TableCell>

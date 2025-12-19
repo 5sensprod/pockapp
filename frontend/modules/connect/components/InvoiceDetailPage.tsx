@@ -1,4 +1,5 @@
-// frontend/modules/connect/components/InvoiceDetailPage.tsx
+// PATCH: frontend/modules/connect/components/InvoiceDetailPage.tsx
+// Ajoute l'affichage du "Vendeur" dans le bloc "Informations principales"
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -104,7 +105,6 @@ export function InvoiceDetailPage() {
 	const [isDownloading, setIsDownloading] = useState(false)
 	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 
-	// Charger la société active (pour le logo sur le PDF)
 	useEffect(() => {
 		const loadCompany = async () => {
 			if (!activeCompanyId) return
@@ -118,7 +118,6 @@ export function InvoiceDetailPage() {
 		void loadCompany()
 	}, [activeCompanyId, pb])
 
-	// 📥 Télécharger le PDF
 	const handleDownloadPdf = async () => {
 		if (!invoice) {
 			toast.error('Facture introuvable')
@@ -132,10 +131,8 @@ export function InvoiceDetailPage() {
 		setIsDownloading(true)
 
 		try {
-			// Client (déjà dans expand normalement)
 			const customer = invoice.expand?.customer
 
-			// Logo de l'entreprise (optionnel)
 			let logoDataUrl: string | null = null
 			let currentCompany: CompaniesResponse | null = company
 
@@ -220,9 +217,16 @@ export function InvoiceDetailPage() {
 	const displayStatus = getDisplayStatus(invoice)
 	const overdue = isOverdue(invoice)
 
+	// ✅ Vendeur / Caissier
+	const soldBy = (invoice as any).expand?.sold_by
+	const sellerName =
+		soldBy?.name ||
+		soldBy?.username ||
+		soldBy?.email ||
+		((invoice as any).sold_by ? String((invoice as any).sold_by) : '—')
+
 	return (
 		<div className='container mx-auto px-6 py-8'>
-			{/* Header */}
 			<div className='flex items-center justify-between mb-6'>
 				<div className='flex items-center gap-4'>
 					<Button
@@ -249,7 +253,6 @@ export function InvoiceDetailPage() {
 				</div>
 
 				<div className='flex items-center gap-2'>
-					{/* Statut combiné */}
 					<div className='flex items-center gap-2'>
 						<Badge variant={displayStatus.variant}>{displayStatus.label}</Badge>
 						{displayStatus.isPaid && (
@@ -260,7 +263,6 @@ export function InvoiceDetailPage() {
 						)}
 					</div>
 
-					{/* Bouton télécharger PDF */}
 					<Button
 						variant='outline'
 						size='sm'
@@ -275,7 +277,6 @@ export function InvoiceDetailPage() {
 						PDF
 					</Button>
 
-					{/* Bouton envoyer par email */}
 					<Button
 						variant='outline'
 						size='sm'
@@ -289,7 +290,6 @@ export function InvoiceDetailPage() {
 			</div>
 
 			<div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
-				{/* Informations principales */}
 				<Card className='lg:col-span-2'>
 					<CardHeader>
 						<CardTitle>
@@ -306,6 +306,7 @@ export function InvoiceDetailPage() {
 							— statut&nbsp;: {displayStatus.label}
 						</CardDescription>
 					</CardHeader>
+
 					<CardContent className='space-y-4'>
 						<div className='grid grid-cols-2 gap-4'>
 							<div>
@@ -313,7 +314,6 @@ export function InvoiceDetailPage() {
 								<p className='font-medium'>{formatDate(invoice.date)}</p>
 							</div>
 
-							{/* Échéance pour factures | Heure pour tickets */}
 							{invoice.is_pos_ticket ? (
 								<div>
 									<p className='text-sm text-muted-foreground'>
@@ -346,6 +346,12 @@ export function InvoiceDetailPage() {
 											? 'Avoir'
 											: 'Facture'}
 								</p>
+							</div>
+
+							{/* ✅ Nouveau: vendeur */}
+							<div>
+								<p className='text-sm text-muted-foreground'>Vendeur</p>
+								<p className='font-medium'>{sellerName}</p>
 							</div>
 
 							<div>
@@ -411,7 +417,6 @@ export function InvoiceDetailPage() {
 					</CardContent>
 				</Card>
 
-				{/* Client */}
 				<Card>
 					<CardHeader>
 						<CardTitle>Client</CardTitle>
@@ -447,7 +452,6 @@ export function InvoiceDetailPage() {
 					</CardContent>
 				</Card>
 
-				{/* Articles */}
 				<Card className='lg:col-span-3'>
 					<CardHeader>
 						<CardTitle>Articles</CardTitle>
@@ -487,7 +491,6 @@ export function InvoiceDetailPage() {
 							</TableBody>
 						</Table>
 
-						{/* Totaux */}
 						<div className='mt-6 flex justify-end'>
 							<div className='w-64 space-y-2 text-sm'>
 								<div className='flex justify-between'>
@@ -514,7 +517,6 @@ export function InvoiceDetailPage() {
 				</Card>
 			</div>
 
-			{/* Dialog envoi email */}
 			<SendInvoiceEmailDialog
 				open={emailDialogOpen}
 				onOpenChange={setEmailDialogOpen}

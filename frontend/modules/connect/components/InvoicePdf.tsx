@@ -1,4 +1,5 @@
 // frontend/modules/connect/components/InvoicePdf.tsx
+// PATCH: ajouter le nom du vendeur (sold_by) dans l'entête facture
 
 import type {
 	CompaniesResponse,
@@ -14,7 +15,6 @@ import {
 	View,
 } from '@react-pdf/renderer'
 
-// Styles PDF
 const styles = StyleSheet.create({
 	page: {
 		padding: 36,
@@ -23,7 +23,6 @@ const styles = StyleSheet.create({
 		lineHeight: 1.4,
 	},
 
-	// HEADER
 	header: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
@@ -63,7 +62,6 @@ const styles = StyleSheet.create({
 		fontSize: 11,
 	},
 
-	// SECTIONS
 	sectionTitle: {
 		fontSize: 12,
 		fontWeight: 'bold',
@@ -78,7 +76,6 @@ const styles = StyleSheet.create({
 		padding: 8,
 	},
 
-	// CLIENT
 	customerBlock: {
 		marginBottom: 4,
 		fontSize: 11,
@@ -87,7 +84,6 @@ const styles = StyleSheet.create({
 		fontSize: 11,
 	},
 
-	// TABLE
 	tableHeader: {
 		flexDirection: 'row',
 		borderBottomWidth: 1,
@@ -131,7 +127,6 @@ const styles = StyleSheet.create({
 		textAlign: 'right',
 	},
 
-	// TOTALS
 	totalsBlock: {
 		marginTop: 14,
 		marginLeft: 'auto',
@@ -165,7 +160,6 @@ const styles = StyleSheet.create({
 		fontWeight: 'bold',
 	},
 
-	// NOTES & FOOTER
 	notes: {
 		marginTop: 18,
 		fontSize: 10,
@@ -181,7 +175,6 @@ const styles = StyleSheet.create({
 		paddingTop: 8,
 	},
 
-	// BANK
 	bankBlock: {
 		marginTop: 16,
 		fontSize: 10,
@@ -228,9 +221,13 @@ export function InvoicePdfDocument({
 
 	const companyName = company?.trade_name || company?.name || 'Votre entreprise'
 
-	// -------------------------
-	// Lignes calculées (propre)
-	// -------------------------
+	const soldBy = (invoice as any)?.expand?.sold_by
+	const sellerName =
+		soldBy?.name ||
+		soldBy?.username ||
+		soldBy?.email ||
+		(invoice as any)?.sold_by ||
+		''
 
 	const addressLine1 = company?.address_line1 || ''
 	const addressLine2 = company?.address_line2 || ''
@@ -245,11 +242,8 @@ export function InvoicePdfDocument({
 
 	const legalLines: string[] = []
 
-	if (company?.legal_form) {
-		legalLines.push(company.legal_form)
-	}
+	if (company?.legal_form) legalLines.push(company.legal_form)
 
-	// ✅ Capital social seulement si > 0
 	if (typeof company?.share_capital === 'number' && company.share_capital > 0) {
 		const capitalStr = company.share_capital.toLocaleString('fr-FR', {
 			minimumFractionDigits: 0,
@@ -258,21 +252,12 @@ export function InvoicePdfDocument({
 		legalLines.push(`Capital social : ${capitalStr} €`)
 	}
 
-	if (company?.siren) {
-		legalLines.push(`SIREN : ${company.siren}`)
-	}
-	if (company?.siret) {
-		legalLines.push(`SIRET : ${company.siret}`)
-	}
-	if (company?.rcs) {
-		legalLines.push(`RCS : ${company.rcs}`)
-	}
-	if (company?.ape_naf) {
-		legalLines.push(`Code APE/NAF : ${company.ape_naf}`)
-	}
-	if (company?.vat_number) {
+	if (company?.siren) legalLines.push(`SIREN : ${company.siren}`)
+	if (company?.siret) legalLines.push(`SIRET : ${company.siret}`)
+	if (company?.rcs) legalLines.push(`RCS : ${company.rcs}`)
+	if (company?.ape_naf) legalLines.push(`Code APE/NAF : ${company.ape_naf}`)
+	if (company?.vat_number)
 		legalLines.push(`TVA intracom : ${company.vat_number}`)
-	}
 
 	const contactParts: string[] = []
 	if (company?.phone) contactParts.push(`Tél. : ${company.phone}`)
@@ -285,9 +270,7 @@ export function InvoicePdfDocument({
 	return (
 		<Document>
 			<Page size='A4' style={styles.page}>
-				{/* HEADER : Entreprise + Infos facture */}
 				<View style={styles.header}>
-					{/* Bloc entreprise / infos légales */}
 					<View style={styles.companyBlock}>
 						{companyLogoUrl && (
 							<Image src={companyLogoUrl} style={styles.logo} />
@@ -319,7 +302,6 @@ export function InvoicePdfDocument({
 						)}
 					</View>
 
-					{/* Bloc facture */}
 					<View style={styles.invoiceInfo}>
 						<Text style={styles.invoiceTitle}>FACTURE</Text>
 						<Text style={styles.invoiceInfoLine}>
@@ -333,10 +315,12 @@ export function InvoicePdfDocument({
 								Échéance : {formatDate(invoice.due_date)}
 							</Text>
 						)}
+						{sellerName && (
+							<Text style={styles.invoiceInfoLine}>Vendeur : {sellerName}</Text>
+						)}
 					</View>
 				</View>
 
-				{/* CLIENT */}
 				<Text style={styles.sectionTitle}>Client</Text>
 				<View style={styles.sectionBox}>
 					<View style={styles.customerBlock}>
@@ -362,7 +346,6 @@ export function InvoicePdfDocument({
 					</View>
 				</View>
 
-				{/* TABLE LIGNES */}
 				<Text style={styles.sectionTitle}>Détail</Text>
 				<View>
 					<View style={styles.tableHeader}>
@@ -382,7 +365,6 @@ export function InvoicePdfDocument({
 					{invoice.items.map((item, idx) => {
 						const key = `${item.name}-${item.quantity}-${item.unit_price_ht}-${item.tva_rate}-${item.total_ttc}`
 						const isAlt = idx % 2 === 1
-
 						const rowStyle = isAlt
 							? [styles.tableRow, styles.tableRowAlt]
 							: [styles.tableRow]
@@ -401,7 +383,6 @@ export function InvoicePdfDocument({
 					})}
 				</View>
 
-				{/* TOTAUX */}
 				<View style={styles.totalsBlock}>
 					<View style={styles.totalsRow}>
 						<Text style={styles.totalsLabel}>Total HT</Text>
@@ -423,7 +404,6 @@ export function InvoicePdfDocument({
 					</View>
 				</View>
 
-				{/* COORDONNÉES BANCAIRES (si dispo) */}
 				{(company?.iban || company?.bic || company?.bank_name) && (
 					<View style={styles.bankBlock}>
 						<Text style={styles.bankTitle}>Coordonnées bancaires</Text>
@@ -436,7 +416,6 @@ export function InvoicePdfDocument({
 					</View>
 				)}
 
-				{/* NOTES FACTURE */}
 				{invoice.notes && (
 					<View style={styles.notes}>
 						<Text>Notes :</Text>
@@ -444,7 +423,6 @@ export function InvoicePdfDocument({
 					</View>
 				)}
 
-				{/* PIED DE PAGE ENTREPRISE */}
 				{(company?.invoice_footer || company?.default_payment_terms_days) && (
 					<View style={styles.footerLegal}>
 						{company?.default_payment_terms_days && (
