@@ -69,22 +69,43 @@ export function useAppPosProducts(options: UseAppPosProductsOptions = {}) {
 		}
 
 		if (searchTerm) {
-			const term = norm(searchTerm)
-			filtered = filtered.filter((p: any) => {
-				const name = norm(p.name)
-				const sku = norm(p.sku)
-				const designation = norm(p.designation)
+			const termRaw = searchTerm.trim()
+			const termLower = termRaw.toLowerCase()
 
-				// meta_data: [{key,value}]
-				const barcode = Array.isArray(p.meta_data)
-					? norm(p.meta_data.find((m: any) => m?.key === 'barcode')?.value)
-					: ''
+			filtered = filtered.filter((p) => {
+				const anyP = p as unknown as {
+					name?: string | null
+					sku?: string | null
+					designation?: string | null
+					meta_data?: Array<{ key?: string; value?: unknown }> | null
+					metaData?: Array<{ key?: string; value?: unknown }> | null
+					metadata?: Array<{ key?: string; value?: unknown }> | null
+					barcode?: string | number | null
+				}
+
+				const name = (anyP.name ?? '').toLowerCase()
+				const sku = (anyP.sku ?? '').toLowerCase()
+				const designation = (anyP.designation ?? '').toLowerCase()
+
+				const meta = anyP.meta_data ?? anyP.metaData ?? anyP.metadata ?? null
+
+				const barcodeHit =
+					(typeof anyP.barcode !== 'undefined' &&
+						String(anyP.barcode ?? '')
+							.trim()
+							.includes(termRaw)) ||
+					(Array.isArray(meta) &&
+						meta.some((m) => {
+							if (m?.key !== 'barcode') return false
+							const v = String(m?.value ?? '').trim()
+							return v.includes(termRaw) || v.toLowerCase().includes(termLower)
+						}))
 
 				return (
-					(name ?? '').includes(term) ||
-					(sku ?? '').includes(term) ||
-					(designation ?? '').includes(term) ||
-					(barcode ?? '').includes(term)
+					name.includes(termLower) ||
+					sku.includes(termLower) ||
+					designation.includes(termLower) ||
+					barcodeHit
 				)
 			})
 		}
