@@ -228,6 +228,8 @@ export function useConvertQuoteToInvoice() {
 				notes: quote.notes
 					? `${quote.notes}\n\nConverti depuis le devis ${quote.number}`
 					: `Converti depuis le devis ${quote.number}`,
+
+				sold_by: quote.issued_by || undefined,
 			}
 
 			const invoice = await pb.collection('invoices').create(invoiceData)
