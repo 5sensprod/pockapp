@@ -610,13 +610,18 @@ export function CashTerminalPage() {
 				})
 			}
 
+			if (!activeCompanyId) {
+				toast.error('Entreprise active introuvable')
+				return
+			}
+
 			// Impression ticket
 			if (printerSettings.enabled && printerSettings.printerName) {
 				if (printerSettings.autoPrint) {
 					await printReceipt({
 						printerName: printerSettings.printerName,
 						width: printerSettings.width,
-						companyId: activeCompanyId!, // <-- AJOUT
+						companyId: activeCompanyId, // ✅ sans "!"
 						receipt: {
 							invoiceNumber: invoice.number,
 							dateLabel: new Date().toLocaleString('fr-FR'),
