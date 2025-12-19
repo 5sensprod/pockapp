@@ -239,6 +239,16 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 					},
 				},
 
+				&schema.SchemaField{
+					Name: "sold_by",
+					Type: schema.FieldTypeRelation,
+					Options: &schema.RelationOptions{
+						CollectionId:  "_pb_users_auth_",
+						MaxSelect:     types.Pointer(1),
+						CascadeDelete: false,
+					},
+				},
+
 				// === 🆕 Conversion TIK → Facture ===
 				&schema.SchemaField{
 					Name: "converted_to_invoice",
@@ -401,6 +411,21 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		})
 		changed = true
 		log.Println("🛠 Ajout du champ is_pos_ticket (bool)")
+	}
+
+	// 5bis) sold_by -> users
+	if f := collection.Schema.GetFieldByName("sold_by"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "sold_by",
+			Type: schema.FieldTypeRelation,
+			Options: &schema.RelationOptions{
+				CollectionId:  "_pb_users_auth_",
+				MaxSelect:     types.Pointer(1),
+				CascadeDelete: false,
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ sold_by -> users")
 	}
 
 	// Sauvegarde si nécessaire

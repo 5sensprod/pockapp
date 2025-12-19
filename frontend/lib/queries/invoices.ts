@@ -102,7 +102,7 @@ export function useInvoices(options: InvoicesListOptions = {}) {
 
 			const result = await pb.collection('invoices').getList(page, perPage, {
 				sort: sort || '-sequence_number',
-				expand: 'customer,original_invoice_id',
+				expand: 'customer,original_invoice_id,sold_by,session',
 				filter: finalFilter,
 			})
 

@@ -78,6 +78,19 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			record.Set("is_paid", false)
 		}
 
+		// -------------------------------------------------------------------------
+		// 🧾 sold_by : caissier/vendeur (auto-fill depuis l'utilisateur connecté)
+		// -------------------------------------------------------------------------
+		if record.GetString("sold_by") == "" {
+			if e.HttpContext != nil {
+				if authRecord := e.HttpContext.Get("authRecord"); authRecord != nil {
+					if user, ok := authRecord.(*models.Record); ok {
+						record.Set("sold_by", user.Id)
+					}
+				}
+			}
+		}
+
 		// ═════════════════════════════════════════════════════════════════════
 		// ✅ NOUVELLES VALIDATIONS MÉTIER
 		// ═════════════════════════════════════════════════════════════════════
@@ -603,6 +616,19 @@ func RegisterClosureHooks(app *pocketbase.PocketBase) {
 		// Initialiser is_paid si non défini
 		if record.Get("is_paid") == nil {
 			record.Set("is_paid", false)
+		}
+
+		// -------------------------------------------------------------------------
+		// 🧾 sold_by : caissier/vendeur (auto-fill depuis l'utilisateur connecté)
+		// -------------------------------------------------------------------------
+		if record.GetString("sold_by") == "" {
+			if e.HttpContext != nil {
+				if authRecord := e.HttpContext.Get("authRecord"); authRecord != nil {
+					if user, ok := authRecord.(*models.Record); ok {
+						record.Set("sold_by", user.Id)
+					}
+				}
+			}
 		}
 
 		// 🆕 NOUVEAU : LIAISON AUTOMATIQUE SESSION ACTIVE

@@ -1,5 +1,4 @@
 // frontend/modules/cash/components/TicketsPage.tsx
-// Liste des tickets de caisse (TIK-*)
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,7 +29,6 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useInvoices } from '@/lib/queries/invoices'
-// import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	Calendar,
@@ -42,7 +40,6 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-// Formater la date
 function formatDate(dateStr: string) {
 	return new Date(dateStr).toLocaleDateString('fr-FR', {
 		day: '2-digit',
@@ -51,7 +48,6 @@ function formatDate(dateStr: string) {
 	})
 }
 
-// Formater l'heure
 function formatTime(dateStr: string) {
 	return new Date(dateStr).toLocaleTimeString('fr-FR', {
 		hour: '2-digit',
@@ -59,7 +55,6 @@ function formatTime(dateStr: string) {
 	})
 }
 
-// Formater le montant
 function formatCurrency(amount: number) {
 	return new Intl.NumberFormat('fr-FR', {
 		style: 'currency',
@@ -69,7 +64,6 @@ function formatCurrency(amount: number) {
 
 function toYMD(value?: string) {
 	if (!value) return ''
-	// match "YYYY-MM-DD" au début, que ce soit "YYYY-MM-DD" ou "YYYY-MM-DD 00:00:00"
 	const m = value.match(/^(\d{4}-\d{2}-\d{2})/)
 	return m?.[1] ?? ''
 }
@@ -78,14 +72,12 @@ export function TicketsPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 
-	// États
 	const [searchTerm, setSearchTerm] = useState('')
 	const [conversionFilter, setConversionFilter] = useState<
 		'all' | 'converted' | 'not_converted'
 	>('all')
 	const [dateFilter, setDateFilter] = useState('')
 
-	// Charger les tickets (is_pos_ticket = true)
 	const { data: invoicesData, isLoading } = useInvoices({
 		companyId: activeCompanyId ?? undefined,
 		filter: 'is_pos_ticket = true',
@@ -94,10 +86,8 @@ export function TicketsPage() {
 
 	const tickets = invoicesData?.items || []
 
-	// Filtrer les tickets
 	const filteredTickets = useMemo(() => {
-		return tickets.filter((ticket) => {
-			// Filtre recherche
+		return tickets.filter((ticket: any) => {
 			if (searchTerm) {
 				const term = searchTerm.toLowerCase()
 				const matchNumber = ticket.number?.toLowerCase().includes(term)
@@ -107,7 +97,6 @@ export function TicketsPage() {
 				if (!matchNumber && !matchCustomer) return false
 			}
 
-			// Filtre conversion
 			if (conversionFilter === 'converted' && !ticket.converted_to_invoice) {
 				return false
 			}
@@ -115,7 +104,6 @@ export function TicketsPage() {
 				return false
 			}
 
-			// Filtre date
 			if (dateFilter) {
 				const ticketDate = toYMD(ticket.date)
 				if (ticketDate !== dateFilter) return false
@@ -124,11 +112,13 @@ export function TicketsPage() {
 		})
 	}, [tickets, searchTerm, conversionFilter, dateFilter])
 
-	// Stats
 	const stats = useMemo(() => {
 		const total = tickets.length
-		const converted = tickets.filter((t) => t.converted_to_invoice).length
-		const totalAmount = tickets.reduce((sum, t) => sum + t.total_ttc, 0)
+		const converted = tickets.filter((t: any) => t.converted_to_invoice).length
+		const totalAmount = tickets.reduce(
+			(sum: number, t: any) => sum + t.total_ttc,
+			0,
+		)
 
 		return {
 			total,
@@ -140,7 +130,6 @@ export function TicketsPage() {
 
 	return (
 		<div className='container mx-auto px-6 py-8'>
-			{/* Header */}
 			<div className='flex items-center justify-between mb-6'>
 				<div>
 					<h1 className='text-2xl font-bold flex items-center gap-2'>
@@ -153,7 +142,6 @@ export function TicketsPage() {
 				</div>
 			</div>
 
-			{/* Stats */}
 			<div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
 				<Card>
 					<CardHeader className='pb-3'>
@@ -206,11 +194,9 @@ export function TicketsPage() {
 				</Card>
 			</div>
 
-			{/* Filtres */}
 			<Card className='mb-6'>
 				<CardContent className='pt-6'>
 					<div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
-						{/* Recherche */}
 						<div className='md:col-span-2'>
 							<div className='relative'>
 								<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
@@ -223,7 +209,6 @@ export function TicketsPage() {
 							</div>
 						</div>
 
-						{/* Filtre conversion */}
 						<div>
 							<Select
 								value={conversionFilter}
@@ -240,7 +225,6 @@ export function TicketsPage() {
 							</Select>
 						</div>
 
-						{/* Filtre date */}
 						<div>
 							<div className='relative'>
 								<Calendar className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
@@ -256,7 +240,6 @@ export function TicketsPage() {
 				</CardContent>
 			</Card>
 
-			{/* Table */}
 			<Card>
 				<CardContent className='p-0'>
 					{isLoading ? (
@@ -281,18 +264,25 @@ export function TicketsPage() {
 									<TableHead>Date</TableHead>
 									<TableHead>Heure</TableHead>
 									<TableHead>Client</TableHead>
+									<TableHead>Caissier</TableHead>
 									<TableHead className='text-right'>Montant</TableHead>
 									<TableHead>Statut</TableHead>
 									<TableHead className='text-right'>Actions</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{filteredTickets.map((ticket) => {
+								{filteredTickets.map((ticket: any) => {
 									const customer = ticket.expand?.customer
+
+									const soldBy = ticket.expand?.sold_by
+									const cashierName =
+										soldBy?.name ||
+										soldBy?.username ||
+										soldBy?.email ||
+										(ticket.sold_by ? String(ticket.sold_by) : '—')
 
 									return (
 										<TableRow key={ticket.id}>
-											{/* Numéro */}
 											<TableCell>
 												<div className='flex items-center gap-2'>
 													<span className='font-mono font-medium'>
@@ -306,15 +296,12 @@ export function TicketsPage() {
 												</div>
 											</TableCell>
 
-											{/* Date */}
 											<TableCell>{formatDate(ticket.date)}</TableCell>
 
-											{/* Heure */}
 											<TableCell className='text-muted-foreground'>
 												{formatTime(ticket.created)}
 											</TableCell>
 
-											{/* Client */}
 											<TableCell>
 												<div>
 													<p className='font-medium'>
@@ -328,12 +315,14 @@ export function TicketsPage() {
 												</div>
 											</TableCell>
 
-											{/* Montant */}
+											<TableCell className='text-sm text-muted-foreground'>
+												{cashierName}
+											</TableCell>
+
 											<TableCell className='text-right font-medium'>
 												{formatCurrency(ticket.total_ttc)}
 											</TableCell>
 
-											{/* Statut */}
 											<TableCell>
 												<div className='flex items-center gap-2'>
 													<Badge variant='default' className='text-xs'>
@@ -347,7 +336,6 @@ export function TicketsPage() {
 												</div>
 											</TableCell>
 
-											{/* Actions */}
 											<TableCell className='text-right'>
 												<DropdownMenu>
 													<DropdownMenuTrigger asChild>
@@ -359,7 +347,6 @@ export function TicketsPage() {
 														<DropdownMenuLabel>Actions</DropdownMenuLabel>
 														<DropdownMenuSeparator />
 
-														{/* Voir le détail */}
 														<DropdownMenuItem
 															onClick={() =>
 																navigate({
@@ -372,7 +359,6 @@ export function TicketsPage() {
 															Voir le détail
 														</DropdownMenuItem>
 
-														{/* Convertir en facture */}
 														{!ticket.converted_to_invoice && (
 															<>
 																<DropdownMenuSeparator />
@@ -390,7 +376,6 @@ export function TicketsPage() {
 															</>
 														)}
 
-														{/* Voir la facture associée */}
 														{ticket.converted_to_invoice &&
 															ticket.converted_invoice_id && (
 																<>
@@ -423,7 +408,6 @@ export function TicketsPage() {
 				</CardContent>
 			</Card>
 
-			{/* Pagination info */}
 			{filteredTickets.length > 0 && (
 				<div className='mt-4 text-sm text-muted-foreground text-center'>
 					{filteredTickets.length} ticket(s) affiché(s) sur {tickets.length}{' '}
