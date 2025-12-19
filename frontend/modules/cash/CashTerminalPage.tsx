@@ -55,8 +55,18 @@ import * as React from 'react'
 import { toast } from 'sonner'
 
 // ============================================================================
-// TYPES
+// CONFIGURATION
 // ============================================================================
+const APPPOS_BASE_URL = 'http://localhost:3000'
+
+// Helper pour construire l'URL de l'image (comme dans ProductTable)
+const getImageUrl = (imagePath: string | undefined): string | null => {
+	if (!imagePath) return null
+	// Si c'est déjà une URL complète
+	if (imagePath.startsWith('http')) return imagePath
+	// Sinon, préfixer avec l'URL AppPOS
+	return `${APPPOS_BASE_URL}${imagePath}`
+}
 
 type LineDiscountMode = 'percent' | 'unit'
 type DisplayMode = 'name' | 'designation' | 'sku' // 🆕 Type pour le mode d'affichage
@@ -67,6 +77,7 @@ interface CartItem {
 	name: string
 	designation?: string // 🆕 Ajout de la désignation
 	sku?: string // 🆕 Ajout du SKU
+	image?: string // 🆕 Ajout de l'image
 	unitPrice: number // prix catalogue TTC
 	quantity: number
 
@@ -81,12 +92,13 @@ type PaymentStep = 'cart' | 'payment' | 'success'
 type AppPosProduct = {
 	id: string
 	name: string
-	designation?: string | null // 🆕 Ajout de la désignation
+	designation?: string | null
 	sku?: string | null
 	barcode?: string | null
 	price_ttc?: number | null
 	price_ht?: number | null
 	stock_quantity?: number | null
+	images?: string // 🔥 STRING au pluriel, comme dans ProductTable !
 }
 
 // ============================================================================
@@ -340,15 +352,20 @@ export function CashTerminalPage() {
 			}
 
 			const price = product.price_ttc || product.price_ht || 0
+
+			// 🔥 Utiliser getImageUrl comme dans ProductTable
+			const imageUrl = getImageUrl(product.images)
+
 			const newItem: CartItem = {
 				id: `cart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 				productId: product.id,
 				name: product.name,
-				designation: product.designation || product.name, // 🆕
-				sku: product.sku || '', // 🆕
+				designation: product.designation || product.name,
+				sku: product.sku || '',
+				image: imageUrl || '', // 🔥 Utiliser l'URL construite
 				unitPrice: price,
 				quantity: 1,
-				displayMode: 'name', // 🆕 Par défaut afficher le nom
+				displayMode: 'name',
 			}
 			return [...prev, newItem]
 		})
@@ -988,27 +1005,49 @@ function ProductsPanel(props: {
 					</div>
 				) : (
 					<>
-						{products.slice(0, 50).map((p) => (
-							<button
-								key={p.id}
-								type='button'
-								onClick={() => onAddToCart(p)}
-								className='flex w-full cursor-pointer items-center border-b px-4 py-2 text-left hover:bg-slate-50'
-							>
-								<div className='flex-1'>
-									<div className='font-medium'>{p.name}</div>
-									<div className='text-xs text-slate-500'>
-										{p.sku || p.barcode || 'N/A'}
+						{products.slice(0, 50).map((p) => {
+							// 🔥 Utiliser getImageUrl comme dans ProductTable
+							const imageUrl = getImageUrl(p.images)
+
+							return (
+								<button
+									key={p.id}
+									type='button'
+									onClick={() => onAddToCart(p)}
+									className='flex w-full cursor-pointer items-center gap-3 border-b px-4 py-2 text-left hover:bg-slate-50'
+								>
+									{/* Image du produit */}
+									{imageUrl ? (
+										<img
+											src={imageUrl}
+											alt={p.name}
+											className='h-10 w-10 rounded-md object-cover border border-slate-200'
+											onError={(e) => {
+												// Si l'image ne charge pas, cacher l'élément
+												e.currentTarget.style.display = 'none'
+											}}
+										/>
+									) : (
+										<div className='h-10 w-10 rounded-md bg-slate-100 flex items-center justify-center'>
+											<span className='text-xs text-slate-400'>?</span>
+										</div>
+									)}
+
+									<div className='flex-1'>
+										<div className='font-medium'>{p.name}</div>
+										<div className='text-xs text-slate-500'>
+											{p.sku || p.barcode || 'N/A'}
+										</div>
 									</div>
-								</div>
-								<div className='w-24 text-right text-sm font-semibold'>
-									{(p.price_ttc ?? 0).toFixed(2)} €
-								</div>
-								<div className='w-24 text-right text-xs text-slate-500'>
-									{p.stock_quantity ?? '?'} en stock
-								</div>
-							</button>
-						))}
+									<div className='w-24 text-right text-sm font-semibold'>
+										{(p.price_ttc ?? 0).toFixed(2)} €
+									</div>
+									<div className='w-24 text-right text-xs text-slate-500'>
+										{p.stock_quantity ?? '?'} en stock
+									</div>
+								</button>
+							)
+						})}
 					</>
 				)}
 			</div>
@@ -1132,11 +1171,35 @@ function CartPanel(props: {
 
 							return (
 								<div key={item.id} className='py-2'>
-									<div className='flex items-start justify-between gap-3'>
-										<div className='flex-1'>
+									<div className='flex items-start gap-3'>
+										{/* Image du produit */}
+										{item.image ? (
+											<img
+												src={item.image}
+												alt={getDisplayText(item)}
+												className='h-12 w-12 rounded-md object-cover border border-slate-200 flex-shrink-0'
+												onError={(e) => {
+													// Si l'image ne charge pas, afficher un placeholder
+													e.currentTarget.style.display = 'none'
+													const placeholder = e.currentTarget
+														.nextElementSibling as HTMLElement
+													if (placeholder) placeholder.style.display = 'flex'
+												}}
+											/>
+										) : null}
+										{/* Placeholder si pas d'image ou erreur de chargement */}
+										<div
+											className='h-12 w-12 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0'
+											style={{ display: item.image ? 'none' : 'flex' }}
+										>
+											<span className='text-xs text-slate-400'>?</span>
+										</div>
+
+										{/* Contenu principal (nom, boutons, etc.) */}
+										<div className='flex-1 min-w-0'>
 											{/* Nom du produit avec sélecteur de mode */}
 											<div className='flex items-center gap-2'>
-												<div className='flex-1 font-medium'>
+												<div className='flex-1 font-medium truncate'>
 													{getDisplayText(item)}
 												</div>
 
@@ -1149,7 +1212,7 @@ function CartPanel(props: {
 															setLineDisplayMode(item.id, v as DisplayMode)
 														}
 													>
-														<SelectTrigger className='h-6 w-[120px] text-xs'>
+														<SelectTrigger className='h-6 w-[120px] text-xs flex-shrink-0'>
 															<SelectValue />
 														</SelectTrigger>
 														<SelectContent>
