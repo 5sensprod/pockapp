@@ -1,5 +1,5 @@
 // Fichier: backend/reports/cash_reports.go
-// 🔧 FIX: Parsing des dates + recalcul dynamique des totaux et espèces
+// 🔧 FIX: Parsing des dates + recalcul dynamique + noms utilisateurs
 
 package reports
 
@@ -38,9 +38,37 @@ func parsePocketBaseDate(dateStr string) time.Time {
 		}
 	}
 
-	// Si aucun format ne marche, log et retourner une date vide
 	fmt.Printf("⚠️ Impossible de parser la date: %s\n", dateStr)
 	return time.Time{}
+}
+
+// ============================================================================
+// 🔧 HELPER: Récupérer le nom d'un utilisateur par son ID
+// ============================================================================
+
+func getUserName(app *pocketbase.PocketBase, userId string) string {
+	if userId == "" {
+		return ""
+	}
+
+	user, err := app.Dao().FindRecordById("users", userId)
+	if err != nil {
+		return userId // Retourner l'ID si l'utilisateur n'est pas trouvé
+	}
+
+	// Essayer différents champs pour le nom
+	name := user.GetString("name")
+	if name != "" {
+		return name
+	}
+
+	// Fallback sur email
+	email := user.GetString("email")
+	if email != "" {
+		return email
+	}
+
+	return userId
 }
 
 // ============================================================================
@@ -224,7 +252,10 @@ type SessionSummary struct {
 	ID                string             `json:"id"`
 	OpenedAt          time.Time          `json:"opened_at"`
 	ClosedAt          time.Time          `json:"closed_at"`
-	OpenedBy          string             `json:"opened_by"`
+	OpenedBy          string             `json:"opened_by"`      // ID utilisateur
+	OpenedByName      string             `json:"opened_by_name"` // 🆕 Nom utilisateur
+	ClosedBy          string             `json:"closed_by"`      // 🆕 ID utilisateur
+	ClosedByName      string             `json:"closed_by_name"` // 🆕 Nom utilisateur
 	InvoiceCount      int                `json:"invoice_count"`
 	TotalTTC          float64            `json:"total_ttc"`
 	OpeningFloat      float64            `json:"opening_float"`
@@ -303,8 +334,14 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		openingFloat := session.GetFloat("opening_float")
 		countedCash := session.GetFloat("counted_cash_total")
 
+		// 🆕 Récupérer les IDs et noms des utilisateurs
+		openedById := session.GetString("opened_by")
+		closedById := session.GetString("closed_by")
+		openedByName := getUserName(app, openedById)
+		closedByName := getUserName(app, closedById)
+
 		// ═══════════════════════════════════════════════════════════════════
-		// 🔧 FIX: Recalculer TOUS les totaux depuis les factures
+		// Recalculer les totaux depuis les factures
 		// ═══════════════════════════════════════════════════════════════════
 
 		invoices, err := dao.FindRecordsByFilter(
@@ -331,7 +368,6 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 					sessionMethodTotals[method] += invTtc
 					totalsByMethod[method] += invTtc
 
-					// Comptabiliser les espèces
 					if method == "especes" {
 						cashFromSales += invTtc
 					}
@@ -340,7 +376,7 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		}
 
 		// ═══════════════════════════════════════════════════════════════════
-		// 🔧 FIX: Recalculer les mouvements de caisse
+		// Recalculer les mouvements de caisse
 		// ═══════════════════════════════════════════════════════════════════
 
 		movements, _ := dao.FindRecordsByFilter(
@@ -367,25 +403,19 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		}
 
 		// ═══════════════════════════════════════════════════════════════════
-		// 🔧 FIX: Recalculer les espèces attendues et l'écart
+		// Recalculer les espèces attendues et l'écart
 		// ═══════════════════════════════════════════════════════════════════
 
 		expectedCash := openingFloat + cashFromSales + movementsTotal
 		cashDiff := countedCash - expectedCash
 
-		// Si countedCash est 0, c'est que l'utilisateur n'a pas compté
-		// Dans ce cas, on considère que la caisse est équilibrée
 		if countedCash == 0 {
 			countedCash = expectedCash
 			cashDiff = 0
 		}
 
-		fmt.Printf("📊 Session %s:\n", sessionId)
-		fmt.Printf("   - Tickets: %d, Total TTC: %.2f €\n", invoiceCount, ttc)
-		fmt.Printf("   - Espèces ventes: %.2f €, Mouvements: %.2f €\n", cashFromSales, movementsTotal)
-		fmt.Printf("   - Fond: %.2f € + Ventes: %.2f € + Mvts: %.2f € = Attendu: %.2f €\n",
-			openingFloat, cashFromSales, movementsTotal, expectedCash)
-		fmt.Printf("   - Compté: %.2f €, Écart: %.2f €\n", countedCash, cashDiff)
+		fmt.Printf("📊 Session %s: %d tickets, %.2f € TTC (ouvert par: %s, fermé par: %s)\n",
+			sessionId, invoiceCount, ttc, openedByName, closedByName)
 
 		totalInvoiceCount += invoiceCount
 		totalTTC += ttc
@@ -399,7 +429,10 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 			ID:                session.Id,
 			OpenedAt:          openedAt,
 			ClosedAt:          closedAt,
-			OpenedBy:          session.GetString("opened_by"),
+			OpenedBy:          openedById,
+			OpenedByName:      openedByName, // 🆕
+			ClosedBy:          closedById,   // 🆕
+			ClosedByName:      closedByName, // 🆕
 			InvoiceCount:      invoiceCount,
 			TotalTTC:          ttc,
 			OpeningFloat:      openingFloat,

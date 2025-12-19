@@ -15,7 +15,7 @@ import { useCashRegisters, useZReport } from '@/lib/queries/cash'
 import type { RapportZ } from '@/lib/types/cash.types'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Download, Printer } from 'lucide-react'
+import { ArrowLeft, Download, Printer, User } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -283,7 +283,6 @@ export function RapportZPage() {
 					</Card>
 
 					{/* Détail des sessions */}
-					{/* Détail des sessions */}
 					<Card>
 						<CardHeader>
 							<CardTitle className='text-base'>
@@ -308,6 +307,27 @@ export function RapportZPage() {
 														{formatDateTime(session.opened_at)} →{' '}
 														{formatDateTime(session.closed_at)}
 													</div>
+													{/* 🆕 Affichage des utilisateurs */}
+													<div className='flex items-center gap-4 mt-1'>
+														{session.opened_by_name && (
+															<div className='flex items-center gap-1 text-xs text-muted-foreground'>
+																<User className='h-3 w-3' />
+																<span>Ouvert par: </span>
+																<span className='font-medium text-foreground'>
+																	{session.opened_by_name}
+																</span>
+															</div>
+														)}
+														{session.closed_by_name && (
+															<div className='flex items-center gap-1 text-xs text-muted-foreground'>
+																<User className='h-3 w-3' />
+																<span>Fermé par: </span>
+																<span className='font-medium text-foreground'>
+																	{session.closed_by_name}
+																</span>
+															</div>
+														)}
+													</div>
 												</div>
 												<div className='text-right'>
 													<div className='text-sm font-medium'>
@@ -319,7 +339,7 @@ export function RapportZPage() {
 												</div>
 											</div>
 
-											{/* ✅ AJOUTER : Détails espèces */}
+											{/* Détails espèces */}
 											<div className='grid grid-cols-2 gap-3 text-sm bg-slate-50 p-3 rounded'>
 												<div>
 													<div className='text-xs text-muted-foreground'>
@@ -361,7 +381,7 @@ export function RapportZPage() {
 												</div>
 											</div>
 
-											{/* ✅ AJOUTER : Répartition par méthode */}
+											{/* Répartition par méthode */}
 											{session.totals_by_method &&
 												Object.keys(session.totals_by_method).length > 0 && (
 													<div className='text-sm'>

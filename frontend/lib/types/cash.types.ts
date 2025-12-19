@@ -118,6 +118,9 @@ export interface RapportZ {
 		opened_at: string
 		closed_at: string
 		opened_by: string
+		opened_by_name: string
+		closed_by: string
+		closed_by_name: string
 		invoice_count: number
 		total_ttc: number
 		opening_float: number // ✅ AJOUTER
