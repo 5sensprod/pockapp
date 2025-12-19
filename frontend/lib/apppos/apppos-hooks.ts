@@ -1,7 +1,9 @@
 // frontend/lib/apppos/apppos-hooks.ts
 // Hooks React Query pour fetcher les données depuis l'API AppPOS
+// Optimisations: pas de refetch agressif, catalogue produits caché + filtrage local.
 
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { appPosApi } from './apppos-api'
 import { appPosTransformers } from './apppos-transformers'
 
@@ -14,59 +16,102 @@ export interface UseAppPosProductsOptions {
 	filter?: string
 	searchTerm?: string
 	categoryId?: string
+	page?: number
+	limit?: number
 }
+
+type ProductsData = {
+	items: ReturnType<typeof appPosTransformers.product>[]
+	totalItems: number
+	totalPages: number
+	page: number
+}
+
+const norm = (v: unknown) =>
+	typeof v === 'string' ? v.trim().toLowerCase() : ''
 
 export function useAppPosProducts(options: UseAppPosProductsOptions = {}) {
-	const { enabled = true, searchTerm, categoryId } = options
+	const {
+		enabled = true,
+		filter,
+		searchTerm,
+		categoryId,
+		page = 1,
+		limit = 50,
+	} = options
 
-	return useQuery({
-		queryKey: ['apppos', 'products', searchTerm, categoryId],
+	// IMPORTANT:
+	// - queryKey stable => pas de refetch à chaque frappe
+	// - on charge le "catalogue" et on filtre en mémoire
+	const catalogQuery = useQuery({
+		queryKey: ['apppos', 'products', 'catalog'],
 		queryFn: async () => {
 			const products = await appPosApi.getProducts()
-
-			// Filtrer côté client (car l'API AppPOS ne supporte peut-être pas tous les filtres)
-			let filtered = products
-
-			// Filtre par terme de recherche
-			if (searchTerm) {
-				const term = searchTerm.toLowerCase()
-				filtered = filtered.filter(
-					(p) =>
-						p.name?.toLowerCase().includes(term) ||
-						p.sku?.toLowerCase().includes(term) ||
-						p.designation?.toLowerCase().includes(term) ||
-						p.meta_data?.some(
-							(m) =>
-								m.key === 'barcode' && m.value.toLowerCase().includes(term),
-						),
-				)
-			}
-
-			// Filtre par catégorie
-			if (categoryId) {
-				filtered = filtered.filter(
-					(p) =>
-						p.categories?.includes(categoryId) || p.category_id === categoryId,
-				)
-			}
-
-			// Transformer vers le format PocketBase
-			const transformed = appPosTransformers.products(filtered)
-
-			return {
-				items: transformed,
-				totalItems: transformed.length,
-				totalPages: 1,
-				page: 1,
-			}
+			return appPosTransformers.products(products)
 		},
 		enabled,
-		staleTime: 30000, // 30 secondes
-		refetchOnMount: 'always',
+		staleTime: 10 * 60 * 1000, // 10 min
+		gcTime: 60 * 60 * 1000, // 1h
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		retry: 1,
 	})
+
+	const data: ProductsData = useMemo(() => {
+		const all = catalogQuery.data ?? []
+
+		let filtered = all
+
+		if (filter) {
+			const f = norm(filter)
+			filtered = filtered.filter((p: any) => norm(p.status) === f)
+		}
+
+		if (searchTerm) {
+			const term = norm(searchTerm)
+			filtered = filtered.filter((p: any) => {
+				const name = norm(p.name)
+				const sku = norm(p.sku)
+				const designation = norm(p.designation)
+
+				// meta_data: [{key,value}]
+				const barcode = Array.isArray(p.meta_data)
+					? norm(p.meta_data.find((m: any) => m?.key === 'barcode')?.value)
+					: ''
+
+				return (
+					(name ?? '').includes(term) ||
+					(sku ?? '').includes(term) ||
+					(designation ?? '').includes(term) ||
+					(barcode ?? '').includes(term)
+				)
+			})
+		}
+
+		if (categoryId) {
+			filtered = filtered.filter((p: any) => {
+				const cats = p.categories as string[] | undefined
+				return (
+					(Array.isArray(cats) && cats.includes(categoryId)) ||
+					p.category_id === categoryId
+				)
+			})
+		}
+
+		const totalItems = filtered.length
+		const totalPages = Math.max(1, Math.ceil(totalItems / limit))
+		const safePage = Math.min(Math.max(1, page), totalPages)
+		const start = (safePage - 1) * limit
+		const items = filtered.slice(start, start + limit)
+
+		return { items, totalItems, totalPages, page: safePage }
+	}, [catalogQuery.data, filter, searchTerm, categoryId, page, limit])
+
+	return { ...catalogQuery, data }
 }
 
-export function useAppPosProduct(productId?: string) {
+export function useAppPosProduct(productId?: string, enabled = true) {
 	return useQuery({
 		queryKey: ['apppos', 'products', productId],
 		queryFn: async () => {
@@ -74,7 +119,13 @@ export function useAppPosProduct(productId?: string) {
 			const product = await appPosApi.getProduct(productId)
 			return appPosTransformers.product(product)
 		},
-		enabled: !!productId,
+		enabled: enabled && !!productId,
+		staleTime: 5 * 60 * 1000,
+		gcTime: 30 * 60 * 1000,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		retry: 1,
 	})
 }
 
@@ -96,12 +147,16 @@ export function useAppPosCategories(options: UseAppPosCategoriesOptions = {}) {
 			return appPosTransformers.categories(categories)
 		},
 		enabled,
-		staleTime: 60000, // 1 minute
-		refetchOnMount: 'always',
+		staleTime: 60 * 60 * 1000, // 1h
+		gcTime: 6 * 60 * 60 * 1000, // 6h
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		retry: 1,
 	})
 }
 
-export function useAppPosCategory(categoryId?: string) {
+export function useAppPosCategory(categoryId?: string, enabled = true) {
 	return useQuery({
 		queryKey: ['apppos', 'categories', categoryId],
 		queryFn: async () => {
@@ -109,7 +164,13 @@ export function useAppPosCategory(categoryId?: string) {
 			const category = await appPosApi.getCategory(categoryId)
 			return appPosTransformers.category(category)
 		},
-		enabled: !!categoryId,
+		enabled: enabled && !!categoryId,
+		staleTime: 60 * 60 * 1000,
+		gcTime: 6 * 60 * 60 * 1000,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		retry: 1,
 	})
 }
 
@@ -131,8 +192,12 @@ export function useAppPosBrands(options: UseAppPosBrandsOptions = {}) {
 			return appPosTransformers.brands(brands)
 		},
 		enabled,
-		staleTime: 60000, // 1 minute
-		refetchOnMount: 'always',
+		staleTime: 60 * 60 * 1000,
+		gcTime: 6 * 60 * 60 * 1000,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		retry: 1,
 	})
 }
 
@@ -154,13 +219,18 @@ export function useAppPosSuppliers(options: UseAppPosSuppliersOptions = {}) {
 			return appPosTransformers.suppliers(suppliers)
 		},
 		enabled,
-		staleTime: 60000, // 1 minute
-		refetchOnMount: 'always',
+		staleTime: 60 * 60 * 1000,
+		gcTime: 6 * 60 * 60 * 1000,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		retry: 1,
 	})
 }
 
 // ============================================================================
-// HELPER: Build Category Tree (compatible avec CategoryTree.tsx)
+// HELPER: Build Category Tree (compatible avec CategoryTreeAppPos.tsx)
+// (On garde EXACTEMENT la signature/types attendus par ton composant)
 // ============================================================================
 
 import type { CategoriesResponse } from '@/lib/pocketbase-types'
@@ -175,23 +245,18 @@ export function buildAppPosCategoryTree(
 	const map = new Map<string, CategoryNode>()
 	const roots: CategoryNode[] = []
 
-	// Créer les nodes
 	for (const cat of categories) {
 		map.set(cat.id, { ...cat, children: [] })
 	}
 
-	// Construire l'arbre
 	for (const cat of categories) {
 		const node = map.get(cat.id)
 		if (!node) continue
 
 		if (cat.parent) {
 			const parentNode = map.get(cat.parent)
-			if (parentNode) {
-				parentNode.children.push(node)
-			} else {
-				roots.push(node)
-			}
+			if (parentNode) parentNode.children.push(node)
+			else roots.push(node)
 		} else {
 			roots.push(node)
 		}
