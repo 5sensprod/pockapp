@@ -5,6 +5,7 @@ import {
 	CalendarDays,
 	Clock3,
 	CreditCard,
+	Monitor,
 	Printer,
 	Receipt,
 	Settings,
@@ -29,6 +30,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { CustomerDisplayConfigCard } from './components/CustomerDisplayConfigCard'
 import { PosPrinterConfigCard } from './components/PosPrinterConfigCard'
 import { manifest } from './index'
 
@@ -104,6 +106,7 @@ export function CashPage() {
 
 	const ownerCompanyId = activeCompanyId ?? undefined
 	const [isPrinterDialogOpen, setIsPrinterDialogOpen] = React.useState(false)
+	const [isDisplayDialogOpen, setIsDisplayDialogOpen] = React.useState(false)
 
 	// =========================
 	// CAISSES DISPONIBLES
@@ -888,6 +891,48 @@ export function CashPage() {
 
 							<div className='flex justify-end pt-2'>
 								<Button onClick={() => setIsPrinterDialogOpen(false)}>
+									Fermer
+								</Button>
+							</div>
+						</DialogContent>
+					</Dialog>
+
+					{/* 🆕 AFFICHEUR CLIENT */}
+					<Card className='border-slate-200'>
+						<CardHeader className='pb-3'>
+							<CardTitle className='flex items-center gap-2 text-sm'>
+								<Monitor className='h-4 w-4 text-slate-500' />
+								Afficheur Client
+							</CardTitle>
+							<CardDescription>
+								Écran VFD 20x2 pour affichage côté client.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className='space-y-3'>
+							<Button
+								variant='outline'
+								size='sm'
+								className='w-full'
+								onClick={() => setIsDisplayDialogOpen(true)}
+							>
+								Configurer l'afficheur
+							</Button>
+						</CardContent>
+					</Card>
+
+					<Dialog
+						open={isDisplayDialogOpen}
+						onOpenChange={setIsDisplayDialogOpen}
+					>
+						<DialogContent className='sm:max-w-lg'>
+							<DialogHeader>
+								<DialogTitle>Configuration afficheur client</DialogTitle>
+							</DialogHeader>
+
+							<CustomerDisplayConfigCard />
+
+							<div className='flex justify-end pt-2'>
+								<Button onClick={() => setIsDisplayDialogOpen(false)}>
 									Fermer
 								</Button>
 							</div>

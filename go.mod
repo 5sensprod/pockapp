@@ -1,6 +1,6 @@
 module pocket-react
 
-go 1.23.2
+go 1.24.0
 
 require (
 	github.com/labstack/echo/v5 v5.0.0-20230722203903-ec5b858dab61
@@ -12,7 +12,8 @@ require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/pocketbase/dbx v1.10.1
-	golang.org/x/text v0.22.0
+	go.bug.st/serial v1.6.4
+	golang.org/x/text v0.32.0
 )
 
 require (
@@ -39,6 +40,7 @@ require (
 	github.com/aws/smithy-go v1.20.4 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
+	github.com/creack/goselect v0.1.2 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/domodwyer/mailyak/v3 v3.6.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -89,7 +91,7 @@ require (
 	golang.org/x/image v0.19.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
-	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/time v0.8.0 // indirect

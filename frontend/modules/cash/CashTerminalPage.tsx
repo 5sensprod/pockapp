@@ -29,6 +29,7 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
 import { openCashDrawer, printReceipt } from '@/lib/pos/posPrint'
 import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
+import { useCustomerDisplay } from '@/lib/pos/useCustomerDisplay'
 import {
 	getOrCreateDefaultCustomer,
 	useActiveCashSession,
@@ -206,6 +207,19 @@ export function CashTerminalPage() {
 		const received = Number.parseFloat(amountReceived) || 0
 		return received - totalTtc
 	}, [amountReceived, totalTtc])
+
+	useCustomerDisplay({
+		total: totalTtc,
+		itemCount: cart.length,
+		currentItem: cart[cart.length - 1] || null,
+		paymentMethod:
+			paymentStep === 'payment' ? selectedPaymentMethod : undefined,
+		received:
+			paymentStep === 'payment'
+				? Number.parseFloat(amountReceived) || undefined
+				: undefined,
+		change: paymentStep === 'payment' && change > 0 ? change : undefined,
+	})
 
 	// ============================================================================
 	// NEW: GESTION DU FOCUS AUTOMATIQUE

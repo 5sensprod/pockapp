@@ -210,3 +210,59 @@ func (a *App) OpenCashDrawer(input OpenCashDrawerInput) error {
 	cmd := pos.OpenDrawerCmd()
 	return pos.RawPrint(input.PrinterName, cmd)
 }
+
+// ============================================
+// BINDINGS CUSTOMER DISPLAY - Afficheur VFD
+// ============================================
+
+type SendDisplayTextInput struct {
+	PortName   string `json:"portName"`
+	BaudRate   string `json:"baudRate"`
+	Protocol   string `json:"protocol"`
+	Line1      string `json:"line1"`
+	Line2      string `json:"line2"`
+	ClearFirst bool   `json:"clearFirst"`
+}
+
+type TestDisplayInput struct {
+	PortName string `json:"portName"`
+	BaudRate string `json:"baudRate"`
+	Protocol string `json:"protocol"`
+}
+
+// ListSerialPorts retourne la liste des ports série disponibles
+func (a *App) ListSerialPorts() ([]string, error) {
+	return pos.ListSerialPorts()
+}
+
+// SendDisplayText envoie du texte à l'afficheur VFD
+func (a *App) SendDisplayText(input SendDisplayTextInput) error {
+	baudRate := 9600
+	if input.BaudRate == "19200" {
+		baudRate = 19200
+	}
+
+	msg := pos.VFDMessage{
+		Line1:      input.Line1,
+		Line2:      input.Line2,
+		ClearFirst: input.ClearFirst,
+	}
+
+	protocol := pos.VFDProtocol(input.Protocol)
+	data := pos.BuildVFDCommand(msg, protocol, 100)
+
+	return pos.SendToSerialPort(input.PortName, baudRate, data)
+}
+
+// TestDisplay envoie un message de test à l'afficheur
+func (a *App) TestDisplay(input TestDisplayInput) error {
+	baudRate := 9600
+	if input.BaudRate == "19200" {
+		baudRate = 19200
+	}
+
+	protocol := pos.VFDProtocol(input.Protocol)
+	data := pos.BuildTestMessage(100, protocol)
+
+	return pos.SendToSerialPort(input.PortName, baudRate, data)
+}
