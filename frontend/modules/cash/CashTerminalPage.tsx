@@ -83,7 +83,8 @@ interface CartItem {
 	quantity: number
 
 	lineDiscountMode?: LineDiscountMode // 'percent' | 'unit'
-	lineDiscountValue?: number // percent (0-100) OU prix unitaire TTC
+	lineDiscountValue?: number // percent (0-100) OU prix unitaire TTC (pour calculs)
+	lineDiscountRaw?: string // 🆕 Valeur brute saisie par l'utilisateur (pour affichage)
 
 	displayMode?: DisplayMode // 🆕 Mode d'affichage (name par défaut)
 }
@@ -117,7 +118,13 @@ export function CashTerminalPage() {
 
 	const [cart, setCart] = React.useState<CartItem[]>([])
 	const [productSearch, setProductSearch] = React.useState('')
-	const [discountPercent, setDiscountPercent] = React.useState(0)
+
+	// 🆕 Remise globale avec mode et valeur brute
+	const [cartDiscountMode, setCartDiscountMode] = React.useState<
+		'percent' | 'amount'
+	>('percent')
+	const [cartDiscountValue, setCartDiscountValue] = React.useState<number>(0)
+	const [cartDiscountRaw, setCartDiscountRaw] = React.useState<string>('')
 
 	const [paymentStep, setPaymentStep] = React.useState<PaymentStep>('cart')
 	const [selectedPaymentMethod, setSelectedPaymentMethod] =
@@ -190,9 +197,18 @@ export function CashTerminalPage() {
 		[getEffectiveUnitTtc],
 	)
 
-	const { subtotalTtc, totalTtc, tax } = React.useMemo(() => {
+	const { subtotalTtc, totalTtc, tax, discountAmount } = React.useMemo(() => {
 		const subtotal = cart.reduce((sum, item) => sum + getLineTotalTtc(item), 0)
-		const discount = (subtotal * discountPercent) / 100
+
+		// 🆕 Calculer la remise selon le mode
+		let discount = 0
+		if (cartDiscountMode === 'percent') {
+			discount = (subtotal * cartDiscountValue) / 100
+		} else {
+			// Mode 'amount' : remise fixe en euros
+			discount = Math.min(cartDiscountValue, subtotal) // Ne pas dépasser le sous-total
+		}
+
 		const total = subtotal - discount
 		const taxAmount = total * 0.2
 		return {
@@ -201,7 +217,7 @@ export function CashTerminalPage() {
 			totalTtc: total,
 			tax: taxAmount,
 		}
-	}, [cart, discountPercent, getLineTotalTtc])
+	}, [cart, cartDiscountMode, cartDiscountValue, getLineTotalTtc])
 
 	const change = React.useMemo(() => {
 		const received = Number.parseFloat(amountReceived) || 0
@@ -399,7 +415,9 @@ export function CashTerminalPage() {
 
 	const clearCart = React.useCallback(() => {
 		setCart([])
-		setDiscountPercent(0)
+		setCartDiscountMode('percent')
+		setCartDiscountValue(0)
+		setCartDiscountRaw('')
 		setPaymentStep('cart')
 		setAmountReceived('')
 		setEditingLineId(null)
@@ -445,15 +463,37 @@ export function CashTerminalPage() {
 		setProductSearch('') // Vider la recherche
 	}, [productSearch])
 
-	const handleChangeDiscount = React.useCallback(
-		(e: React.ChangeEvent<HTMLInputElement>) => {
-			const val = Number.parseFloat(e.target.value) || 0
-			setDiscountPercent(Math.max(0, Math.min(100, val)))
+	const handleChangeCartDiscount = React.useCallback(
+		(raw: string) => {
+			// Stocker la valeur brute pour l'affichage
+			setCartDiscountRaw(raw)
+
+			// Si vide, réinitialiser
+			if (raw.trim() === '') {
+				setCartDiscountValue(0)
+				return
+			}
+
+			// Parser avec normalisation virgule→point
+			const normalized = raw.replace(',', '.')
+			const v = Number.parseFloat(normalized)
+
+			if (Number.isNaN(v)) {
+				return
+			}
+
+			// Appliquer les limites selon le mode
+			if (cartDiscountMode === 'percent') {
+				setCartDiscountValue(clamp(v, 0, 100))
+			} else {
+				// Mode 'amount' : pas de limite max (sera plafonné dans le calcul)
+				setCartDiscountValue(Math.max(0, v))
+			}
 		},
-		[],
+		[cartDiscountMode, clamp],
 	)
 
-	// Remise par ligne (logic)
+	// ✅ FIX: Remise par ligne - accepter virgule ET point, permettre input vide
 	const setLineDiscountMode = React.useCallback(
 		(itemId: string, mode: LineDiscountMode) => {
 			setCart((prev) =>
@@ -466,7 +506,12 @@ export function CashTerminalPage() {
 							? clamp(currentVal ?? 0, 0, 100)
 							: clamp(currentVal ?? it.unitPrice, 0, it.unitPrice)
 
-					return { ...it, lineDiscountMode: mode, lineDiscountValue: nextValue }
+					return {
+						...it,
+						lineDiscountMode: mode,
+						lineDiscountValue: nextValue,
+						lineDiscountRaw: String(nextValue), // ← Initialiser avec la valeur formatée
+					}
 				}),
 			)
 		},
@@ -475,24 +520,46 @@ export function CashTerminalPage() {
 
 	const setLineDiscountValue = React.useCallback(
 		(itemId: string, raw: string) => {
-			const v = Number.parseFloat(raw)
-
 			setCart((prev) =>
 				prev.map((it) => {
 					if (it.id !== itemId) return it
 
 					const mode = it.lineDiscountMode ?? 'percent'
+
+					// ✅ Si vide, tout remettre à undefined
+					if (raw.trim() === '') {
+						return {
+							...it,
+							lineDiscountMode: mode,
+							lineDiscountValue: undefined,
+							lineDiscountRaw: '',
+						}
+					}
+
+					// ✅ Stocker la valeur brute pour l'affichage
+					// ✅ Parser avec normalisation virgule→point pour les calculs
+					const normalized = raw.replace(',', '.')
+					const v = Number.parseFloat(normalized)
+
+					// Si c'est invalide (ex: "12."), on garde quand même la saisie
 					if (Number.isNaN(v)) {
 						return {
 							...it,
 							lineDiscountMode: mode,
-							lineDiscountValue: mode === 'unit' ? it.unitPrice : 0,
+							lineDiscountValue: undefined,
+							lineDiscountRaw: raw,
 						}
 					}
 
 					const next =
 						mode === 'percent' ? clamp(v, 0, 100) : clamp(v, 0, it.unitPrice)
-					return { ...it, lineDiscountMode: mode, lineDiscountValue: next }
+
+					return {
+						...it,
+						lineDiscountMode: mode,
+						lineDiscountValue: next,
+						lineDiscountRaw: raw, // ← Garder ce que l'utilisateur a tapé
+					}
 				}),
 			)
 		},
@@ -503,7 +570,12 @@ export function CashTerminalPage() {
 		setCart((prev) =>
 			prev.map((it) =>
 				it.id === itemId
-					? { ...it, lineDiscountMode: undefined, lineDiscountValue: undefined }
+					? {
+							...it,
+							lineDiscountMode: undefined,
+							lineDiscountValue: undefined,
+							lineDiscountRaw: undefined,
+						}
 					: it,
 			),
 		)
@@ -534,7 +606,7 @@ export function CashTerminalPage() {
 				return
 			}
 
-			// ✅ force l’affichage du total AU CLIC sur Encaisser
+			// ✅ force l'affichage du total AU CLIC sur Encaisser
 			customerDisplay.displayTotal(totalTtc, cart.length)
 
 			setSelectedPaymentMethod(method)
@@ -584,14 +656,29 @@ export function CashTerminalPage() {
 
 				return {
 					product_id: item.productId,
-					name: displayName, // 🆕 Utiliser le nom d'affichage
+					name: displayName,
 					quantity: item.quantity,
 					unit_price_ht: unitHt,
 					tva_rate: 20,
 					total_ht: totalHt,
 					total_ttc: totalLineTtc,
+					// ✅ AJOUTER LES REMISES PAR LIGNE
+					line_discount_mode:
+						item.lineDiscountMode === 'unit' ? 'amount' : item.lineDiscountMode,
+					line_discount_value: item.lineDiscountValue,
+					unit_price_ttc_before_discount: item.unitPrice, // Prix catalogue
 				}
 			})
+
+			// Calculer le total des remises par ligne
+			const lineDiscountsTotalTtc = cart.reduce((sum, item) => {
+				const baseTtc = item.unitPrice * item.quantity
+				const effectiveTtc = getLineTotalTtc(item)
+				return sum + (baseTtc - effectiveTtc)
+			}, 0)
+
+			// Calculer la remise globale
+			const cartDiscountTtc = discountAmount
 
 			// ✅ FIX: Ajout de is_pos_ticket: true
 			const invoice = await createInvoice.mutateAsync({
@@ -612,8 +699,17 @@ export function CashTerminalPage() {
 				// 🎯 CHAMPS DE CAISSE
 				cash_register: cashRegisterId,
 				session: activeSession.id,
-				is_pos_ticket: true, // ✅ FIX: Force le marquage comme ticket POS
+				is_pos_ticket: true,
 				sold_by: user?.id,
+
+				// ✅ AJOUTER LES REMISES GLOBALES
+				cart_discount_mode:
+					cartDiscountValue > 0 ? cartDiscountMode : undefined,
+				cart_discount_value:
+					cartDiscountValue > 0 ? cartDiscountValue : undefined,
+				cart_discount_ttc: cartDiscountTtc > 0 ? cartDiscountTtc : undefined,
+				line_discounts_total_ttc:
+					lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
 			})
 
 			// Mouvement de caisse si espèces
@@ -636,6 +732,16 @@ export function CashTerminalPage() {
 			// Impression ticket
 			if (printerSettings.enabled && printerSettings.printerName) {
 				if (printerSettings.autoPrint) {
+					// Calculer les remises
+					const lineDiscountsTotalTtc = cart.reduce((sum, item) => {
+						const baseTtc = item.unitPrice * item.quantity
+						const effectiveTtc = getLineTotalTtc(item)
+						return sum + (baseTtc - effectiveTtc)
+					}, 0)
+
+					const cartDiscountAmount = discountAmount
+					const grandSubtotal = subtotalTtc + lineDiscountsTotalTtc
+
 					await printReceipt({
 						printerName: printerSettings.printerName,
 						width: printerSettings.width,
@@ -643,7 +749,8 @@ export function CashTerminalPage() {
 						receipt: {
 							invoiceNumber: invoice.number,
 							dateLabel: new Date().toLocaleString('fr-FR'),
-							sellerName: user?.name || user?.username || '', // 🆕 NOM DU VENDEUR
+							sellerName: user?.name || user?.username || '',
+
 							items: cart.map((it) => {
 								const displayMode = it.displayMode || 'name'
 								let displayName = it.name
@@ -651,17 +758,45 @@ export function CashTerminalPage() {
 									displayName = it.designation || it.name
 								else if (displayMode === 'sku') displayName = it.sku || it.name
 
+								const hasDiscount =
+									it.lineDiscountValue && it.lineDiscountValue > 0
+								const baseUnitTtc = it.unitPrice
+								const effectiveUnitTtc = getEffectiveUnitTtc(it)
+
+								let discountText = null
+								if (hasDiscount) {
+									if (it.lineDiscountMode === 'percent') {
+										discountText = `-${it.lineDiscountValue}%`
+									} else {
+										const discount = baseUnitTtc - effectiveUnitTtc
+										discountText = `-${discount.toFixed(2)}€`
+									}
+								}
+
 								return {
 									name: displayName,
 									qty: it.quantity,
-									unitTtc: getEffectiveUnitTtc(it),
+									unitTtc: effectiveUnitTtc,
 									totalTtc: getLineTotalTtc(it),
+									hasDiscount,
+									baseUnitTtc: hasDiscount ? baseUnitTtc : undefined,
+									discountText,
 								}
 							}),
+
+							grandSubtotal,
+							lineDiscountsTotal:
+								lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
 							subtotalTtc,
-							discountAmount: (subtotalTtc * discountPercent) / 100,
+							discountAmount:
+								cartDiscountAmount > 0 ? cartDiscountAmount : undefined,
+							discountPercent:
+								cartDiscountMode === 'percent' && cartDiscountValue > 0
+									? cartDiscountValue
+									: undefined,
 							totalTtc,
 							taxAmount: tax,
+							totalSavings: lineDiscountsTotalTtc + cartDiscountAmount,
 							paymentMethod: selectedPaymentMethod,
 						},
 					})
@@ -696,7 +831,9 @@ export function CashTerminalPage() {
 		clearCart,
 		createCashMovement,
 		createInvoice,
-		discountPercent,
+		cartDiscountMode,
+		cartDiscountValue,
+		discountAmount,
 		getEffectiveUnitTtc,
 		getLineTotalTtc,
 		pb,
@@ -732,8 +869,11 @@ export function CashTerminalPage() {
 					subtotalTtc={subtotalTtc}
 					tax={tax}
 					totalTtc={totalTtc}
-					discountPercent={discountPercent}
-					onDiscountChange={handleChangeDiscount}
+					cartDiscountMode={cartDiscountMode}
+					cartDiscountRaw={cartDiscountRaw}
+					discountAmount={discountAmount}
+					onCartDiscountModeChange={setCartDiscountMode}
+					onCartDiscountChange={handleChangeCartDiscount}
 					onPaymentClick={handlePaymentClick}
 					getEffectiveUnitTtc={getEffectiveUnitTtc}
 					getLineTotalTtc={getLineTotalTtc}
@@ -800,7 +940,7 @@ function CartStepView(props: {
 	isAppPosConnected: boolean
 	products: AppPosProduct[]
 	onAddToCart: (p: AppPosProduct) => void
-	onCreateProductClick: () => void // 🆕
+	onCreateProductClick: () => void
 
 	cart: CartItem[]
 	onClearCart: () => void
@@ -809,8 +949,11 @@ function CartStepView(props: {
 	subtotalTtc: number
 	tax: number
 	totalTtc: number
-	discountPercent: number
-	onDiscountChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+	cartDiscountMode: 'percent' | 'amount'
+	cartDiscountRaw: string
+	discountAmount: number
+	onCartDiscountModeChange: (mode: 'percent' | 'amount') => void
+	onCartDiscountChange: (raw: string) => void
 
 	onPaymentClick: (method: PaymentMethod) => void
 
@@ -819,7 +962,7 @@ function CartStepView(props: {
 	setLineDiscountMode: (itemId: string, mode: LineDiscountMode) => void
 	setLineDiscountValue: (itemId: string, raw: string) => void
 	clearLineDiscount: (itemId: string) => void
-	setLineDisplayMode: (itemId: string, mode: DisplayMode) => void // 🆕
+	setLineDisplayMode: (itemId: string, mode: DisplayMode) => void
 
 	editingLineId: string | null
 	setEditingLineId: (id: string | null) => void
@@ -842,8 +985,11 @@ function CartStepView(props: {
 		subtotalTtc,
 		tax,
 		totalTtc,
-		discountPercent,
-		onDiscountChange,
+		cartDiscountMode,
+		cartDiscountRaw,
+		discountAmount,
+		onCartDiscountModeChange,
+		onCartDiscountChange,
 		onPaymentClick,
 		getEffectiveUnitTtc,
 		getLineTotalTtc,
@@ -885,8 +1031,11 @@ function CartStepView(props: {
 						subtotalTtc={subtotalTtc}
 						tax={tax}
 						totalTtc={totalTtc}
-						discountPercent={discountPercent}
-						onDiscountChange={onDiscountChange}
+						cartDiscountMode={cartDiscountMode}
+						cartDiscountRaw={cartDiscountRaw}
+						discountAmount={discountAmount}
+						onCartDiscountModeChange={onCartDiscountModeChange}
+						onCartDiscountChange={onCartDiscountChange}
 						onPaymentClick={onPaymentClick}
 						getEffectiveUnitTtc={getEffectiveUnitTtc}
 						getLineTotalTtc={getLineTotalTtc}
@@ -1085,8 +1234,11 @@ function CartPanel(props: {
 	subtotalTtc: number
 	tax: number
 	totalTtc: number
-	discountPercent: number
-	onDiscountChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+	cartDiscountMode: 'percent' | 'amount'
+	cartDiscountRaw: string
+	discountAmount: number
+	onCartDiscountModeChange: (mode: 'percent' | 'amount') => void
+	onCartDiscountChange: (raw: string) => void
 	onPaymentClick: (method: PaymentMethod) => void
 
 	getEffectiveUnitTtc: (item: CartItem) => number
@@ -1094,7 +1246,7 @@ function CartPanel(props: {
 	setLineDiscountMode: (itemId: string, mode: LineDiscountMode) => void
 	setLineDiscountValue: (itemId: string, raw: string) => void
 	clearLineDiscount: (itemId: string) => void
-	setLineDisplayMode: (itemId: string, mode: DisplayMode) => void // 🆕
+	setLineDisplayMode: (itemId: string, mode: DisplayMode) => void
 
 	editingLineId: string | null
 	setEditingLineId: (id: string | null) => void
@@ -1106,8 +1258,11 @@ function CartPanel(props: {
 		subtotalTtc,
 		tax,
 		totalTtc,
-		discountPercent,
-		onDiscountChange,
+		cartDiscountMode,
+		cartDiscountRaw,
+		discountAmount,
+		onCartDiscountModeChange,
+		onCartDiscountChange,
 		onPaymentClick,
 		getEffectiveUnitTtc,
 		getLineTotalTtc,
@@ -1188,8 +1343,8 @@ function CartPanel(props: {
 						{cart.map((item) => {
 							const open = editingLineId === item.id
 							const mode: LineDiscountMode = item.lineDiscountMode ?? 'percent'
-							const value =
-								item.lineDiscountValue ?? (mode === 'unit' ? item.unitPrice : 0)
+							// ✅ Utiliser la valeur brute pour l'affichage (ce que l'utilisateur a tapé)
+							const value = item.lineDiscountRaw || ''
 							const currentDisplayMode = item.displayMode || 'name'
 
 							return (
@@ -1302,7 +1457,7 @@ function CartPanel(props: {
 														<span className='h-1.5 w-1.5 rounded-full bg-emerald-500' />
 														{item.lineDiscountMode === 'percent'
 															? `-${item.lineDiscountValue}%`
-															: `${getEffectiveUnitTtc(item).toFixed(2)}€`}
+															: `-${(item.unitPrice - getEffectiveUnitTtc(item)).toFixed(2)}€`}
 													</span>
 												)}
 											</div>
@@ -1331,11 +1486,11 @@ function CartPanel(props: {
 													</div>
 
 													<Input
-														type='number'
-														step='0.01'
+														type='text'
+														inputMode='decimal'
 														className='h-8 flex-1'
 														placeholder={mode === 'unit' ? 'Prix TTC' : '%'}
-														value={String(value)}
+														value={value}
 														onChange={(e) =>
 															setLineDiscountValue(item.id, e.target.value)
 														}
@@ -1375,19 +1530,39 @@ function CartPanel(props: {
 					<span>{subtotalTtc.toFixed(2)} €</span>
 				</div>
 
-				<div className='mt-2 flex items-center justify-between'>
+				<div className='mt-2 flex items-center justify-between gap-2'>
 					<span>Remise</span>
 					<div className='flex items-center gap-1'>
+						<Select
+							value={cartDiscountMode}
+							onValueChange={onCartDiscountModeChange}
+						>
+							<SelectTrigger className='h-8 w-20'>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value='percent'>%</SelectItem>
+								<SelectItem value='amount'>€</SelectItem>
+							</SelectContent>
+						</Select>
+
 						<Input
-							type='number'
+							type='text'
+							inputMode='decimal'
 							className='h-8 w-20 bg-slate-50 text-right text-sm'
-							value={discountPercent.toString()}
-							onChange={onDiscountChange}
+							value={cartDiscountRaw}
+							onChange={(e) => onCartDiscountChange(e.target.value)}
 							placeholder='0'
 						/>
-						<span className='text-xs text-slate-500'>%</span>
 					</div>
 				</div>
+
+				{discountAmount > 0 && (
+					<div className='mt-1 flex items-center justify-between text-xs text-slate-500'>
+						<span>Montant remise</span>
+						<span>-{discountAmount.toFixed(2)} €</span>
+					</div>
+				)}
 
 				<div className='mt-2 flex items-center justify-between text-xs text-slate-500'>
 					<span>TVA (20 %)</span>

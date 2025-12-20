@@ -10,18 +10,32 @@ export type PrintReceiptPayload = {
 	companyName?: string
 	invoiceNumber: string
 	dateLabel: string
-	items: Array<{ name: string; qty: number; unitTtc: number; totalTtc: number }>
-	subtotalTtc: number
-	discountAmount?: number
+	sellerName?: string // ✅ AJOUTER
+	items: Array<{
+		name: string
+		qty: number
+		unitTtc: number
+		totalTtc: number
+		// ✅ AJOUTER pour remises
+		hasDiscount?: boolean
+		baseUnitTtc?: number
+		discountText?: string
+	}>
+	// ✅ AJOUTER totaux détaillés
+	grandSubtotal?: number // Sous-total avant TOUTES remises
+	lineDiscountsTotal?: number // Total remises lignes
+	subtotalTtc: number // Après remises lignes
+	discountAmount?: number // Remise globale
+	discountPercent?: number // Pourcentage remise globale
 	totalTtc: number
 	taxAmount: number
+	totalSavings?: number // ✅ Économie totale
 	paymentMethod: string
 	received?: number
 	change?: number
 	width: 58 | 80
 	printerName: string
 }
-
 type PrintPosReceiptInput = {
 	printerName: string
 	width: 58 | 80
