@@ -207,20 +207,31 @@ export function CustomerDisplayConfigCard() {
 				<Separator />
 
 				{/* Message d'accueil */}
-				<div className='space-y-2'>
-					<Label htmlFor='welcome-input'>Message d'accueil</Label>
+				<div className='space-y-3'>
+					<Label>Message d'accueil</Label>
+
 					<Input
-						id='welcome-input'
 						type='text'
 						maxLength={20}
-						placeholder='Bienvenue'
-						value={settings.welcomeMessage}
-						onChange={(e) => setValue('welcomeMessage', e.target.value)}
+						placeholder='Ligne 1 (ex: Axe Musique)'
+						value={settings.welcomeLine1}
+						onChange={(e) => setValue('welcomeLine1', e.target.value)}
 						disabled={!settings.enabled}
 						className='h-9'
 					/>
+
+					<Input
+						type='text'
+						maxLength={20}
+						placeholder='Ligne 2 (ex: vous souhaite la bienvenue)'
+						value={settings.welcomeLine2}
+						onChange={(e) => setValue('welcomeLine2', e.target.value)}
+						disabled={!settings.enabled}
+						className='h-9'
+					/>
+
 					<p className='text-xs text-muted-foreground'>
-						Max 20 caractères (ligne 1)
+						Max 20 caractères par ligne (20×2)
 					</p>
 				</div>
 

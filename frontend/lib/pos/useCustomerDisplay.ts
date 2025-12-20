@@ -75,8 +75,8 @@ export function useCustomerDisplay({
 			line1 = `Total: ${total.toFixed(2)} EUR`
 			line2 = `${itemCount} article${itemCount > 1 ? 's' : ''}`
 		} else {
-			line1 = settings.welcomeMessage || 'Bienvenue'
-			line2 = ''
+			line1 = settings.welcomeLine1 || 'Bienvenue'
+			line2 = settings.welcomeLine2 || ''
 		}
 
 		sendLines(line1, line2)
@@ -95,7 +95,10 @@ export function useCustomerDisplay({
 
 		displayWelcome: () => {
 			const settings = loadCustomerDisplaySettings()
-			sendLines(settings.welcomeMessage || 'Bienvenue', '')
+			sendLines(
+				settings.welcomeLine1 || 'Bienvenue',
+				settings.welcomeLine2 || '',
+			)
 		},
 
 		displayTotal: (totalTtc: number, count = 0) => {

@@ -10,16 +10,24 @@ const STORAGE_KEY = 'customerDisplay.settings'
 export function loadCustomerDisplaySettings(): CustomerDisplaySettings {
 	try {
 		const stored = localStorage.getItem(STORAGE_KEY)
-		if (!stored) {
-			// Pas de données → retourner les valeurs par défaut
-			return defaultCustomerDisplaySettings
-		}
+		if (!stored) return defaultCustomerDisplaySettings
+
 		const parsed = JSON.parse(stored)
-		// Valider et retourner les données stockées
-		return customerDisplaySettingsSchema.parse(parsed)
+
+		// ✅ Migration douce: welcomeMessage -> welcomeLine1/welcomeLine2
+		const migrated =
+			typeof parsed?.welcomeMessage === 'string' &&
+			typeof parsed?.welcomeLine1 !== 'string'
+				? {
+						...parsed,
+						welcomeLine1: parsed.welcomeMessage,
+						welcomeLine2: '',
+					}
+				: parsed
+
+		return customerDisplaySettingsSchema.parse(migrated)
 	} catch (error) {
 		console.error('Failed to load customer display settings:', error)
-		// En cas d'erreur → retourner les valeurs par défaut
 		return defaultCustomerDisplaySettings
 	}
 }

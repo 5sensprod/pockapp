@@ -18,27 +18,32 @@ export const customerDisplaySettingsSchema = z.object({
 		'LOGIC_CONTROL',
 	]),
 	autoDisplay: z.boolean(),
-	welcomeMessage: z.string(),
+
+	// ✅ 2 lignes (20x2)
+	welcomeLine1: z.string(),
+	welcomeLine2: z.string(),
+
 	brightness: z.number().min(0).max(100),
 })
 
-// Type inféré du schéma (ligne corrigée ici !)
 export type CustomerDisplaySettings = z.infer<
 	typeof customerDisplaySettingsSchema
 >
 
-// Valeurs par défaut (pour loadCustomerDisplaySettings)
 export const defaultCustomerDisplaySettings: CustomerDisplaySettings = {
 	enabled: false,
 	portName: '',
 	baudRate: '9600',
 	protocol: 'EPSON_D101',
 	autoDisplay: true,
-	welcomeMessage: 'Bienvenue',
+
+	// ✅ defaults
+	welcomeLine1: 'Bienvenue',
+	welcomeLine2: '',
+
 	brightness: 100,
 }
 
-// Payload pour envoyer du texte à l'afficheur
 export const displayTextPayloadSchema = z.object({
 	line1: z.string().max(20).default(''),
 	line2: z.string().max(20).default(''),
