@@ -1,5 +1,4 @@
 // frontend/modules/connect/components/InvoiceCreatePage.tsx
-// 🔢 Le numéro de facture est maintenant généré automatiquement par le backend
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +11,13 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -46,13 +52,21 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { CustomerDialog } from './CustomerDialog'
 
-// ============================================================================
-// TYPES
-// ============================================================================
+// =====================
+// TYPES + HELPERS
+// =====================
 
-// Item utilisé dans l'UI (on ajoute juste un id temporaire)
+type DiscountMode = 'percent' | 'amount'
+type DisplayMode = 'name' | 'designation' | 'sku'
+
 interface UiInvoiceItem extends InvoiceItem {
 	id: string
+	displayMode?: DisplayMode
+	designation?: string
+	sku?: string
+	unit_price_ttc: number
+	lineDiscountMode?: DiscountMode
+	lineDiscountValue?: number
 }
 
 interface SelectedCustomer {
@@ -64,20 +78,65 @@ interface SelectedCustomer {
 	company?: string
 }
 
-// On se base sur les types PocketBase
 type InvoiceCustomer = CustomersResponse
 type InvoiceProduct = ProductsResponse
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
+const clamp = (n: number, min: number, max: number) =>
+	Math.min(max, Math.max(min, n))
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+const getDisplayText = (it: UiInvoiceItem) => {
+	const mode = it.displayMode ?? 'name'
+	if (mode === 'designation') return it.designation || it.name
+	if (mode === 'sku') return it.sku || it.name
+	return it.name
+}
+
+const isDisplayModeAvailable = (it: UiInvoiceItem, mode: DisplayMode) => {
+	switch (mode) {
+		case 'name':
+			return true
+		case 'designation':
+			return !!(it.designation && it.designation !== it.name)
+		case 'sku':
+			return !!(it.sku && it.sku !== it.name && it.sku !== '')
+		default:
+			return false
+	}
+}
+
+const computeLineTotals = (it: UiInvoiceItem) => {
+	const qty = Math.max(0, it.quantity)
+	const rate = it.tva_rate ?? 20
+	const coef = 1 + rate / 100
+
+	const baseTtc = round2(it.unit_price_ttc * qty)
+	const mode = it.lineDiscountMode ?? 'percent'
+	const val = it.lineDiscountValue ?? 0
+
+	const discountTtc =
+		mode === 'percent'
+			? round2(baseTtc * (clamp(val, 0, 100) / 100))
+			: round2(clamp(val, 0, baseTtc))
+
+	const finalTtc = round2(baseTtc - discountTtc)
+	const finalHt = round2(finalTtc / coef)
+	const unitHt = qty > 0 ? round2(finalHt / qty) : 0
+
+	return {
+		unit_price_ht: unitHt,
+		total_ht: finalHt,
+		total_ttc: finalTtc,
+		line_discount_ttc: discountTtc,
+		base_ttc: baseTtc,
+	}
+}
 
 export function InvoiceCreatePage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 
-	// États
-	// 🔢 Plus besoin de générer le numéro côté client
+	// States de base
 	const [invoiceDate, setInvoiceDate] = useState(
 		new Date().toISOString().split('T')[0],
 	)
@@ -88,37 +147,33 @@ export function InvoiceCreatePage() {
 	const [notes, setNotes] = useState('')
 	const [currency] = useState('EUR')
 
-	// Dialog states
+	// States Promos
+	const [cartDiscountMode, setCartDiscountMode] =
+		useState<DiscountMode>('percent')
+	const [cartDiscountValue, setCartDiscountValue] = useState<number>(0)
+
+	// UI States
 	const [customerPickerOpen, setCustomerPickerOpen] = useState(false)
 	const [customerSearch, setCustomerSearch] = useState('')
 	const [productPickerOpen, setProductPickerOpen] = useState(false)
 	const [productSearch, setProductSearch] = useState('')
 	const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
-
-	// Connexion AppPOS (pour la recherche de produits)
 	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
 
-	// Queries clients PocketBase
+	// Queries
 	const { data: customersData } = useCustomers({
 		companyId: activeCompanyId ?? undefined,
 	})
-
-	// Produits depuis AppPOS (transformés en format PocketBase-like)
 	const { data: productsData } = useAppPosProducts({
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
 	})
-
-	// Mutations
 	const createInvoice = useCreateInvoice()
 	const createCustomer = useCreateCustomer()
 
-	const customers: InvoiceCustomer[] = (customersData?.items ??
-		[]) as InvoiceCustomer[]
-	const products: InvoiceProduct[] = (productsData?.items ??
-		[]) as InvoiceProduct[]
+	const customers = (customersData?.items ?? []) as InvoiceCustomer[]
+	const products = (productsData?.items ?? []) as InvoiceProduct[]
 
-	// Filtrer les clients selon la recherche
 	const filteredCustomers = customers.filter((c) => {
 		const term = customerSearch.toLowerCase()
 		return (
@@ -128,132 +183,189 @@ export function InvoiceCreatePage() {
 		)
 	})
 
-	// 🔐 Connexion automatique à AppPOS (pour ne plus avoir à passer par la page Stock)
 	useEffect(() => {
 		const connect = async () => {
 			if (isAppPosConnected) return
-
 			const existingToken = getAppPosToken()
 			if (existingToken) {
 				setIsAppPosConnected(true)
 				return
 			}
-
 			try {
-				// TODO: adapter ces identifiants si besoin
 				const res = await loginToAppPos('admin', 'admin123')
-				if (res.success && res.token) {
-					setIsAppPosConnected(true)
-				} else {
-					console.error('AppPOS: échec de connexion', res)
-				}
+				if (res.success && res.token) setIsAppPosConnected(true)
 			} catch (err) {
 				console.error('AppPOS: erreur de connexion', err)
 			}
 		}
-
 		void connect()
 	}, [isAppPosConnected])
 
-	// 🔢 SUPPRIMÉ: Le useEffect qui générait le numéro côté client
-	// Le numéro est maintenant généré automatiquement par le backend
+	// =====================
+	// ACTIONS PRODUITS
+	// =====================
 
-	// Calculer les totaux
-	const totals = items.reduce(
-		(acc, item) => ({
-			ht: acc.ht + item.total_ht,
-			tva: acc.tva + (item.total_ttc - item.total_ht),
-			ttc: acc.ttc + item.total_ttc,
-		}),
-		{ ht: 0, tva: 0, ttc: 0 },
-	)
+	const setLineDisplayMode = (itemId: string, mode: DisplayMode) => {
+		setItems((prev) =>
+			prev.map((it) => (it.id === itemId ? { ...it, displayMode: mode } : it)),
+		)
+	}
 
-	// Ajouter un produit
 	const addProduct = (product: InvoiceProduct) => {
 		const tvaRate = product.tva_rate ?? 20
+		const coef = 1 + tvaRate / 100
 
-		let priceHt = 0
-		if (typeof product.price_ht === 'number') {
-			priceHt = product.price_ht
-		} else if (typeof product.price_ttc === 'number') {
-			priceHt = product.price_ttc / (1 + tvaRate / 100)
-		}
+		let unitTtc = 0
+		if (typeof product.price_ttc === 'number') unitTtc = product.price_ttc
+		else if (typeof product.price_ht === 'number')
+			unitTtc = product.price_ht * coef
 
-		const totalHt = priceHt
-		const totalTtc = totalHt * (1 + tvaRate / 100)
+		unitTtc = round2(unitTtc)
+		const id = `item-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
-		const newItem: UiInvoiceItem = {
-			id: `item-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+		const draft: UiInvoiceItem = {
+			id,
 			product_id: product.id,
 			name: product.name,
+			designation: (product as any).designation ?? product.name,
+			sku: (product as any).sku ?? '',
+			displayMode: 'name',
 			quantity: 1,
-			unit_price_ht: priceHt,
 			tva_rate: tvaRate,
-			total_ht: totalHt,
-			total_ttc: totalTtc,
+			unit_price_ttc: unitTtc,
+			lineDiscountMode: 'percent',
+			lineDiscountValue: 0,
+			unit_price_ht: 0,
+			total_ht: 0,
+			total_ttc: 0,
 		}
 
-		setItems((prev) => [...prev, newItem])
+		const totals = computeLineTotals(draft)
+		setItems((prev) => [...prev, { ...draft, ...totals }])
 		setProductPickerOpen(false)
 		setProductSearch('')
 	}
 
-	// Modifier la quantité
 	const updateQuantity = (itemId: string, delta: number) => {
-		setItems((prevItems) => {
-			const updated: UiInvoiceItem[] = []
-
-			for (const item of prevItems) {
-				if (item.id === itemId) {
-					const newQty = Math.max(0, item.quantity + delta)
-					if (newQty === 0) {
-						continue
-					}
-					const totalHt = item.unit_price_ht * newQty
-					const totalTtc = totalHt * (1 + item.tva_rate / 100)
-					updated.push({
-						...item,
-						quantity: newQty,
-						total_ht: totalHt,
-						total_ttc: totalTtc,
+		setItems(
+			(prev) =>
+				prev
+					.map((it) => {
+						if (it.id !== itemId) return it
+						const q = Math.max(0, it.quantity + delta)
+						if (q === 0) return null
+						const next = { ...it, quantity: q }
+						return { ...next, ...computeLineTotals(next) }
 					})
-				} else {
-					updated.push(item)
-				}
-			}
+					.filter(Boolean) as UiInvoiceItem[],
+		)
+	}
 
-			return updated
+	const updateUnitTtc = (itemId: string, unitTtc: number) => {
+		setItems((prev) =>
+			prev.map((it) => {
+				if (it.id !== itemId) return it
+				const next = { ...it, unit_price_ttc: round2(Math.max(0, unitTtc)) }
+				return { ...next, ...computeLineTotals(next) }
+			}),
+		)
+	}
+
+	const updateLineDiscount = (
+		itemId: string,
+		mode: DiscountMode,
+		value: number,
+	) => {
+		setItems((prev) =>
+			prev.map((it) => {
+				if (it.id !== itemId) return it
+				const next: UiInvoiceItem = {
+					...it,
+					lineDiscountMode: mode,
+					lineDiscountValue: Math.max(0, value),
+				}
+				return { ...next, ...computeLineTotals(next) }
+			}),
+		)
+	}
+
+	const removeItem = (itemId: string) => {
+		setItems((prev) => prev.filter((it) => it.id !== itemId))
+	}
+
+	// =====================
+	// CALCULS TOTAUX
+	// =====================
+
+	const subTotals = items.reduce(
+		(acc, it) => {
+			const computed = computeLineTotals(it)
+			return {
+				ht: round2(acc.ht + computed.total_ht),
+				ttc: round2(acc.ttc + computed.total_ttc),
+				lineDiscountTtc: round2(
+					acc.lineDiscountTtc + computed.line_discount_ttc,
+				),
+			}
+		},
+		{ ht: 0, ttc: 0, lineDiscountTtc: 0 },
+	)
+
+	const cartDiscountTtc =
+		cartDiscountMode === 'percent'
+			? round2(subTotals.ttc * (clamp(cartDiscountValue, 0, 100) / 100))
+			: round2(clamp(cartDiscountValue, 0, subTotals.ttc))
+
+	const totals = {
+		ht: round2(
+			(subTotals.ttc - cartDiscountTtc) /
+				(1 + (items[0]?.tva_rate ?? 20) / 100),
+		),
+		tva: round2(
+			subTotals.ttc -
+				cartDiscountTtc -
+				(subTotals.ttc - cartDiscountTtc) /
+					(1 + (items[0]?.tva_rate ?? 20) / 100),
+		),
+		ttc: round2(subTotals.ttc - cartDiscountTtc),
+		subTtc: subTotals.ttc,
+		lineDiscountTtc: subTotals.lineDiscountTtc,
+		cartDiscountTtc,
+	}
+
+	// =====================
+	// SUBMIT & PRO-RATA
+	// =====================
+
+	const applyCartDiscountProRata = (
+		lines: UiInvoiceItem[],
+		cartDiscountTtc: number,
+	) => {
+		const totalTtc = lines.reduce((s, it) => round2(s + it.total_ttc), 0)
+		if (totalTtc <= 0 || cartDiscountTtc <= 0) return lines
+
+		let remaining = cartDiscountTtc
+		return lines.map((it, idx) => {
+			const coef = 1 + (it.tva_rate ?? 20) / 100
+			const share =
+				idx === lines.length - 1
+					? remaining
+					: round2((it.total_ttc / totalTtc) * cartDiscountTtc)
+
+			remaining = round2(remaining - share)
+			const newTotalTtc = round2(Math.max(0, it.total_ttc - share))
+			const newTotalHt = round2(newTotalTtc / coef)
+			const newUnitHt = it.quantity > 0 ? round2(newTotalHt / it.quantity) : 0
+
+			return {
+				...it,
+				unit_price_ht: newUnitHt,
+				total_ht: newTotalHt,
+				total_ttc: newTotalTtc,
+			}
 		})
 	}
 
-	// Supprimer un item
-	const removeItem = (itemId: string) => {
-		setItems((prev) => prev.filter((item) => item.id !== itemId))
-	}
-
-	// Créer un nouveau client rapidement
-	const handleQuickCreateCustomer = async () => {
-		if (!customerSearch.trim() || !activeCompanyId) return
-
-		try {
-			const newCustomer = await createCustomer.mutateAsync({
-				name: customerSearch,
-				owner_company: activeCompanyId,
-			})
-			setSelectedCustomer({
-				id: newCustomer.id,
-				name: newCustomer.name,
-			})
-			setCustomerPickerOpen(false)
-			setCustomerSearch('')
-			toast.success(`Client "${customerSearch}" créé`)
-		} catch (error) {
-			console.error(error)
-			toast.error('Erreur lors de la création du client')
-		}
-	}
-
-	// Soumettre la facture
 	const handleSubmit = async (status: 'draft' | 'validated') => {
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
@@ -269,8 +381,49 @@ export function InvoiceCreatePage() {
 		}
 
 		try {
-			// On enlève juste l'id temporaire
-			const invoiceItems: InvoiceItem[] = items.map(({ id, ...item }) => item)
+			const normalized: UiInvoiceItem[] = items.map((it) => ({
+				...it,
+				...computeLineTotals(it),
+			}))
+			const withCartDiscount = applyCartDiscountProRata(
+				normalized,
+				cartDiscountTtc,
+			)
+
+			const invoiceItems: InvoiceItem[] = withCartDiscount.map(
+				({
+					id,
+					displayMode,
+					designation,
+					sku,
+					unit_price_ttc,
+					lineDiscountMode,
+					lineDiscountValue,
+					...rest
+				}) => ({
+					...rest,
+					name: getDisplayText({
+						id,
+						displayMode,
+						designation,
+						sku,
+						unit_price_ttc,
+						...rest,
+					} as UiInvoiceItem),
+					line_discount_mode: lineDiscountMode,
+					line_discount_value: lineDiscountValue,
+					unit_price_ttc_before_discount: unit_price_ttc,
+				}),
+			)
+
+			const finalTotals = invoiceItems.reduce(
+				(acc, it) => ({
+					ht: round2(acc.ht + it.total_ht),
+					tva: round2(acc.tva + (it.total_ttc - it.total_ht)),
+					ttc: round2(acc.ttc + it.total_ttc),
+				}),
+				{ ht: 0, tva: 0, ttc: 0 },
+			)
 
 			const result = await createInvoice.mutateAsync({
 				invoice_type: 'invoice',
@@ -278,13 +431,17 @@ export function InvoiceCreatePage() {
 				due_date: dueDate || undefined,
 				customer: selectedCustomer.id,
 				owner_company: activeCompanyId,
-				status, // 👈 soit 'validated', soit 'draft'
+				status,
 				items: invoiceItems,
-				total_ht: totals.ht,
-				total_tva: totals.tva,
-				total_ttc: totals.ttc,
+				total_ht: finalTotals.ht,
+				total_tva: finalTotals.tva,
+				total_ttc: finalTotals.ttc,
 				currency,
 				notes: notes || undefined,
+				cart_discount_mode: cartDiscountMode,
+				cart_discount_value: cartDiscountValue,
+				cart_discount_ttc: cartDiscountTtc,
+				line_discounts_total_ttc: subTotals.lineDiscountTtc,
 			})
 
 			toast.success(`Facture ${result.number} créée avec succès`)
@@ -295,9 +452,25 @@ export function InvoiceCreatePage() {
 		}
 	}
 
+	const handleQuickCreateCustomer = async () => {
+		if (!customerSearch.trim() || !activeCompanyId) return
+		try {
+			const newCustomer = await createCustomer.mutateAsync({
+				name: customerSearch,
+				owner_company: activeCompanyId,
+			})
+			setSelectedCustomer({ id: newCustomer.id, name: newCustomer.name })
+			setCustomerPickerOpen(false)
+			setCustomerSearch('')
+			toast.success(`Client "${customerSearch}" créé`)
+		} catch (error) {
+			console.error(error)
+			toast.error('Erreur lors de la création du client')
+		}
+	}
+
 	return (
-		<div className='container mx-auto px-6 py-8 max-w-5xl'>
-			{/* Header */}
+		<div className='container mx-auto px-6 py-8 max-w-6xl'>
 			<div className='flex items-center gap-4 mb-6'>
 				<Button
 					variant='ghost'
@@ -317,15 +490,13 @@ export function InvoiceCreatePage() {
 				</div>
 			</div>
 
-			<div className='grid lg:grid-cols-3 gap-6'>
-				{/* Colonne principale */}
-				<div className='lg:col-span-2 space-y-6'>
-					{/* Infos facture */}
+			<div className='grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] items-stretch'>
+				<div className='grid gap-6 grid-rows-[auto_auto]'>
 					<Card>
-						<CardHeader>
+						<CardHeader className='pb-3'>
 							<CardTitle className='text-lg'>Informations</CardTitle>
 						</CardHeader>
-						<CardContent className='grid sm:grid-cols-3 gap-4'>
+						<CardContent className='grid grid-cols-3 gap-4'>
 							<div>
 								<Label>Numéro</Label>
 								<Input
@@ -353,23 +524,24 @@ export function InvoiceCreatePage() {
 						</CardContent>
 					</Card>
 
-					{/* Sélection client */}
 					<Card>
-						<CardHeader>
+						<CardHeader className='pb-3'>
 							<CardTitle className='text-lg'>Client</CardTitle>
 						</CardHeader>
-						<CardContent>
+						<CardContent className='space-y-3'>
 							{selectedCustomer ? (
-								<div className='flex items-center justify-between p-3 border rounded-lg bg-muted/30'>
-									<div>
-										<p className='font-medium'>{selectedCustomer.name}</p>
+								<div className='flex items-start justify-between gap-4 p-3 border rounded-lg bg-muted/30'>
+									<div className='min-w-0'>
+										<p className='font-medium truncate'>
+											{selectedCustomer.name}
+										</p>
 										{selectedCustomer.email && (
-											<p className='text-sm text-muted-foreground'>
+											<p className='text-sm text-muted-foreground truncate'>
 												{selectedCustomer.email}
 											</p>
 										)}
 										{selectedCustomer.address && (
-											<p className='text-sm text-muted-foreground'>
+											<p className='text-sm text-muted-foreground line-clamp-2'>
 												{selectedCustomer.address}
 											</p>
 										)}
@@ -392,7 +564,6 @@ export function InvoiceCreatePage() {
 										Sélectionner un client
 										<ChevronsUpDown className='ml-2 h-4 w-4 opacity-50' />
 									</Button>
-
 									<Dialog
 										open={customerPickerOpen}
 										onOpenChange={setCustomerPickerOpen}
@@ -427,38 +598,36 @@ export function InvoiceCreatePage() {
 														</div>
 													) : (
 														<ul className='divide-y'>
-															{(filteredCustomers as InvoiceCustomer[]).map(
-																(customer) => (
-																	<li key={customer.id}>
-																		<button
-																			type='button'
-																			className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
-																			onClick={() => {
-																				setSelectedCustomer({
-																					id: customer.id,
-																					name: customer.name,
-																					email: customer.email,
-																					phone: customer.phone,
-																					address: customer.address,
-																					company: customer.company,
-																				})
-																				setCustomerPickerOpen(false)
-																			}}
-																		>
-																			<div>
-																				<p className='font-medium'>
-																					{customer.name}
+															{filteredCustomers.map((customer) => (
+																<li key={customer.id}>
+																	<button
+																		type='button'
+																		className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
+																		onClick={() => {
+																			setSelectedCustomer({
+																				id: customer.id,
+																				name: customer.name,
+																				email: customer.email,
+																				phone: customer.phone,
+																				address: customer.address,
+																				company: customer.company,
+																			})
+																			setCustomerPickerOpen(false)
+																		}}
+																	>
+																		<div className='min-w-0'>
+																			<p className='font-medium truncate'>
+																				{customer.name}
+																			</p>
+																			{customer.email && (
+																				<p className='text-xs text-muted-foreground truncate'>
+																					{customer.email}
 																				</p>
-																				{customer.email && (
-																					<p className='text-xs text-muted-foreground'>
-																						{customer.email}
-																					</p>
-																				)}
-																			</div>
-																		</button>
-																	</li>
-																),
-															)}
+																			)}
+																		</div>
+																	</button>
+																</li>
+															))}
 														</ul>
 													)}
 												</div>
@@ -483,46 +652,163 @@ export function InvoiceCreatePage() {
 							)}
 						</CardContent>
 					</Card>
+				</div>
 
-					{/* Produits */}
-					<Card>
-						<CardHeader className='flex flex-row items-center justify-between'>
-							<CardTitle className='text-lg'>Produits</CardTitle>
+				<Card className='h-full'>
+					<CardHeader>
+						<CardTitle className='text-lg'>Récapitulatif</CardTitle>
+					</CardHeader>
+					<CardContent className='space-y-4'>
+						<div className='space-y-2'>
+							<div className='flex justify-between text-sm'>
+								<span className='text-muted-foreground'>Client</span>
+								<span className='font-medium'>
+									{selectedCustomer?.name || '-'}
+								</span>
+							</div>
+							<div className='flex justify-between text-sm'>
+								<span className='text-muted-foreground'>Articles</span>
+								<span className='font-medium'>{items.length}</span>
+							</div>
+						</div>
+
+						{/* Promotion globale */}
+						<div className='space-y-2 pt-2 border-t'>
+							<div className='text-sm font-medium'>Promotion globale</div>
+							<div className='flex items-center gap-2'>
+								<select
+									className='h-9 rounded-md border bg-white px-2 text-sm'
+									value={cartDiscountMode}
+									onChange={(e) =>
+										setCartDiscountMode(e.target.value as DiscountMode)
+									}
+								>
+									<option value='percent'>%</option>
+									<option value='amount'>€</option>
+								</select>
+								<Input
+									type='number'
+									inputMode='decimal'
+									step='0.01'
+									className='h-9'
+									value={cartDiscountValue}
+									onChange={(e) => setCartDiscountValue(Number(e.target.value))}
+								/>
+							</div>
+						</div>
+
+						<div className='border-t pt-3 space-y-2 text-sm'>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Sous-total TTC</span>
+								<span>{totals.subTtc.toFixed(2)} €</span>
+							</div>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Remises lignes</span>
+								<span>-{totals.lineDiscountTtc.toFixed(2)} €</span>
+							</div>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Remise globale</span>
+								<span>-{totals.cartDiscountTtc.toFixed(2)} €</span>
+							</div>
+							<div className='border-t pt-2 flex justify-between font-bold'>
+								<span>Total TTC</span>
+								<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
+							</div>
+						</div>
+
+						<div className='space-y-2 pt-2'>
 							<Button
-								size='sm'
-								className='gap-2'
-								onClick={() => setProductPickerOpen(true)}
+								className='w-full'
+								onClick={() => handleSubmit('validated')}
+								disabled={createInvoice.isPending}
 							>
-								<Plus className='h-4 w-4' />
-								Ajouter
+								Créer la facture
 							</Button>
-						</CardHeader>
-						<CardContent>
-							{items.length === 0 ? (
-								<div className='text-center py-8 text-muted-foreground'>
-									<Search className='h-8 w-8 mx-auto mb-2 opacity-50' />
-									<p>Aucun produit ajouté</p>
-									<p className='text-sm'>
-										Cliquez sur &quot;Ajouter&quot; pour rechercher des produits
-									</p>
-								</div>
-							) : (
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Produit</TableHead>
-											<TableHead className='text-center w-32'>Qté</TableHead>
-											<TableHead className='text-right'>P.U. HT</TableHead>
-											<TableHead className='text-right'>TVA</TableHead>
-											<TableHead className='text-right'>Total TTC</TableHead>
-											<TableHead className='w-10' />
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{items.map((item) => (
+							<Button
+								variant='outline'
+								className='w-full'
+								onClick={() => handleSubmit('draft')}
+								disabled={createInvoice.isPending}
+							>
+								Enregistrer en brouillon
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+			</div>
+
+			<div className='mt-6 space-y-6'>
+				<Card>
+					<CardHeader className='flex flex-row items-center justify-between'>
+						<CardTitle className='text-lg'>Produits</CardTitle>
+						<Button
+							size='sm'
+							className='gap-2'
+							onClick={() => setProductPickerOpen(true)}
+						>
+							<Plus className='h-4 w-4' />
+							Ajouter
+						</Button>
+					</CardHeader>
+					<CardContent>
+						{items.length === 0 ? (
+							<div className='text-center py-8 text-muted-foreground'>
+								<Search className='h-8 w-8 mx-auto mb-2 opacity-50' />
+								<p>Aucun produit ajouté</p>
+							</div>
+						) : (
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Produit</TableHead>
+										<TableHead className='text-center w-32'>Qté</TableHead>
+										<TableHead className='text-right w-40'>P.U. TTC</TableHead>
+										<TableHead className='w-52'>Promo</TableHead>
+										<TableHead className='text-right'>TVA</TableHead>
+										<TableHead className='text-right'>Total TTC</TableHead>
+										<TableHead className='w-10' />
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{items.map((item) => {
+										const currentDisplayMode = item.displayMode ?? 'name'
+										const showSelector =
+											isDisplayModeAvailable(item, 'designation') ||
+											isDisplayModeAvailable(item, 'sku')
+										return (
 											<TableRow key={item.id}>
 												<TableCell className='font-medium'>
-													{item.name}
+													<div className='flex items-center gap-2'>
+														<div className='min-w-0 flex-1 truncate'>
+															{getDisplayText(item)}
+														</div>
+														{showSelector && (
+															<Select
+																value={currentDisplayMode}
+																onValueChange={(v) =>
+																	setLineDisplayMode(item.id, v as DisplayMode)
+																}
+															>
+																<SelectTrigger className='h-7 w-[110px] text-xs flex-shrink-0'>
+																	<SelectValue />
+																</SelectTrigger>
+																<SelectContent>
+																	<SelectItem value='name'>Nom</SelectItem>
+																	{isDisplayModeAvailable(
+																		item,
+																		'designation',
+																	) && (
+																		<SelectItem value='designation'>
+																			Désignation
+																		</SelectItem>
+																	)}
+																	{isDisplayModeAvailable(item, 'sku') && (
+																		<SelectItem value='sku'>SKU</SelectItem>
+																	)}
+																</SelectContent>
+															</Select>
+														)}
+													</div>
 												</TableCell>
 												<TableCell>
 													<div className='flex items-center justify-center gap-1'>
@@ -548,7 +834,53 @@ export function InvoiceCreatePage() {
 													</div>
 												</TableCell>
 												<TableCell className='text-right'>
-													{item.unit_price_ht.toFixed(2)} €
+													<Input
+														type='number'
+														inputMode='decimal'
+														step='0.01'
+														className='h-8 w-28 ml-auto text-right'
+														value={
+															Number.isFinite(item.unit_price_ttc)
+																? item.unit_price_ttc
+																: 0
+														}
+														onChange={(e) =>
+															updateUnitTtc(item.id, Number(e.target.value))
+														}
+													/>
+												</TableCell>
+												<TableCell>
+													<div className='flex items-center gap-2'>
+														<select
+															className='h-8 rounded-md border bg-white px-1 text-xs'
+															value={item.lineDiscountMode ?? 'percent'}
+															onChange={(e) =>
+																updateLineDiscount(
+																	item.id,
+																	e.target.value as DiscountMode,
+																	item.lineDiscountValue ?? 0,
+																)
+															}
+														>
+															<option value='percent'>%</option>
+															<option value='amount'>€</option>
+														</select>
+														<Input
+															type='number'
+															inputMode='decimal'
+															step='0.01'
+															className='h-8 w-20'
+															value={item.lineDiscountValue ?? 0}
+															onChange={(e) =>
+																updateLineDiscount(
+																	item.id,
+																	(item.lineDiscountMode ??
+																		'percent') as DiscountMode,
+																	Number(e.target.value),
+																)
+															}
+														/>
+													</div>
 												</TableCell>
 												<TableCell className='text-right'>
 													{item.tva_rate}%
@@ -567,120 +899,53 @@ export function InvoiceCreatePage() {
 													</Button>
 												</TableCell>
 											</TableRow>
-										))}
-									</TableBody>
-									<TableFooter>
-										<TableRow>
-											<TableCell colSpan={4} className='text-right'>
-												Total HT
-											</TableCell>
-											<TableCell className='text-right'>
-												{totals.ht.toFixed(2)} €
-											</TableCell>
-											<TableCell />
-										</TableRow>
-										<TableRow>
-											<TableCell colSpan={4} className='text-right'>
-												TVA
-											</TableCell>
-											<TableCell className='text-right'>
-												{totals.tva.toFixed(2)} €
-											</TableCell>
-											<TableCell />
-										</TableRow>
-										<TableRow className='font-bold'>
-											<TableCell colSpan={4} className='text-right'>
-												Total TTC
-											</TableCell>
-											<TableCell className='text-right text-lg'>
-												{totals.ttc.toFixed(2)} €
-											</TableCell>
-											<TableCell />
-										</TableRow>
-									</TableFooter>
-								</Table>
-							)}
-						</CardContent>
-					</Card>
+										)
+									})}
+								</TableBody>
+								<TableFooter>
+									<TableRow>
+										<TableCell colSpan={5} className='text-right'>
+											Total HT (estimé)
+										</TableCell>
+										<TableCell className='text-right'>
+											{totals.ht.toFixed(2)} €
+										</TableCell>
+										<TableCell />
+									</TableRow>
+									<TableRow className='font-bold'>
+										<TableCell colSpan={5} className='text-right'>
+											Total TTC Final
+										</TableCell>
+										<TableCell className='text-right text-lg'>
+											{totals.ttc.toFixed(2)} €
+										</TableCell>
+										<TableCell />
+									</TableRow>
+								</TableFooter>
+							</Table>
+						)}
+					</CardContent>
+				</Card>
 
-					{/* Notes */}
-					<Card>
-						<CardHeader>
-							<CardTitle className='text-lg'>Notes</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<Textarea
-								placeholder='Notes ou conditions particulières...'
-								value={notes}
-								onChange={(e) => setNotes(e.target.value)}
-								rows={3}
-							/>
-						</CardContent>
-					</Card>
-				</div>
-
-				{/* Sidebar - Récapitulatif */}
-				<div className='space-y-6'>
-					<Card className='sticky top-20'>
-						<CardHeader>
-							<CardTitle className='text-lg'>Récapitulatif</CardTitle>
-						</CardHeader>
-						<CardContent className='space-y-4'>
-							<div className='space-y-2'>
-								<div className='flex justify-between text-sm'>
-									<span className='text-muted-foreground'>Client</span>
-									<span className='font-medium'>
-										{selectedCustomer?.name || '-'}
-									</span>
-								</div>
-								<div className='flex justify-between text-sm'>
-									<span className='text-muted-foreground'>Articles</span>
-									<span className='font-medium'>{items.length}</span>
-								</div>
-								<div className='flex justify-between text-sm'>
-									<span className='text-muted-foreground'>Total HT</span>
-									<span>{totals.ht.toFixed(2)} €</span>
-								</div>
-								<div className='flex justify-between text-sm'>
-									<span className='text-muted-foreground'>TVA</span>
-									<span>{totals.tva.toFixed(2)} €</span>
-								</div>
-								<div className='border-t pt-2 flex justify-between font-bold'>
-									<span>Total TTC</span>
-									<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
-								</div>
-							</div>
-
-							<div className='space-y-2 pt-4'>
-								<Button
-									className='w-full'
-									onClick={() => handleSubmit('validated')}
-									disabled={createInvoice.isPending}
-								>
-									Créer la facture
-								</Button>
-
-								<Button
-									variant='outline'
-									className='w-full'
-									onClick={() => handleSubmit('draft')}
-									disabled={createInvoice.isPending}
-								>
-									Enregistrer en brouillon
-								</Button>
-							</div>
-						</CardContent>
-					</Card>
-				</div>
+				<Card>
+					<CardHeader>
+						<CardTitle className='text-lg'>Notes</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<Textarea
+							placeholder='Notes ou conditions particulières...'
+							value={notes}
+							onChange={(e) => setNotes(e.target.value)}
+							rows={3}
+						/>
+					</CardContent>
+				</Card>
 			</div>
 
-			{/* Dialog nouveau client */}
 			<CustomerDialog
 				open={newCustomerDialogOpen}
 				onOpenChange={setNewCustomerDialogOpen}
 			/>
-
-			{/* Dialog choix produits */}
 			<Dialog open={productPickerOpen} onOpenChange={setProductPickerOpen}>
 				<DialogContent className='max-w-lg'>
 					<DialogHeader>
@@ -700,7 +965,7 @@ export function InvoiceCreatePage() {
 								<div className='p-4 text-center text-sm text-muted-foreground'>
 									{isAppPosConnected
 										? 'Aucun produit trouvé'
-										: 'Connexion à AppPOS en cours ou échouée'}
+										: 'Connexion à AppPOS...'}
 								</div>
 							) : (
 								<ul className='divide-y'>
@@ -708,7 +973,7 @@ export function InvoiceCreatePage() {
 										<li key={product.id}>
 											<button
 												type='button'
-												className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
+												className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between'
 												onClick={() => addProduct(product)}
 											>
 												<div>

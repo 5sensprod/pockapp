@@ -168,11 +168,37 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 					Options: &schema.TextOptions{Max: types.Pointer(2000)},
 				},
 
+				// ✅ AJOUT: Champs de remise (purement informatifs pour le PDF)
+				&schema.SchemaField{
+					Name: "cart_discount_mode",
+					Type: schema.FieldTypeSelect,
+					Options: &schema.SelectOptions{
+						MaxSelect: 1,
+						Values:    []string{"percent", "amount"},
+					},
+				},
+				&schema.SchemaField{
+					Name:    "cart_discount_value",
+					Type:    schema.FieldTypeNumber,
+					Options: &schema.NumberOptions{},
+				},
+				&schema.SchemaField{
+					Name:    "cart_discount_ttc",
+					Type:    schema.FieldTypeNumber,
+					Options: &schema.NumberOptions{},
+				},
+				&schema.SchemaField{
+					Name:    "line_discounts_total_ttc",
+					Type:    schema.FieldTypeNumber,
+					Options: &schema.NumberOptions{},
+				},
+
 				// === ISCA - Traçabilité (générés par hooks) ===
 				&schema.SchemaField{
 					Name: "sequence_number",
 					Type: schema.FieldTypeNumber,
 				},
+
 				&schema.SchemaField{
 					Name: "fiscal_year",
 					Type: schema.FieldTypeNumber,
@@ -426,6 +452,57 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		})
 		changed = true
 		log.Println("🛠 Ajout du champ sold_by -> users")
+	}
+
+	// ═══════════════════════════════════════════════════════════════════════════
+	// 🆕 6) Champs de remise (si absents)
+	// ═══════════════════════════════════════════════════════════════════════════
+
+	// cart_discount_mode
+	if f := collection.Schema.GetFieldByName("cart_discount_mode"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "cart_discount_mode",
+			Type: schema.FieldTypeSelect,
+			Options: &schema.SelectOptions{
+				MaxSelect: 1,
+				Values:    []string{"percent", "amount"},
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ cart_discount_mode")
+	}
+
+	// cart_discount_value
+	if f := collection.Schema.GetFieldByName("cart_discount_value"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "cart_discount_value",
+			Type:    schema.FieldTypeNumber,
+			Options: &schema.NumberOptions{},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ cart_discount_value")
+	}
+
+	// cart_discount_ttc
+	if f := collection.Schema.GetFieldByName("cart_discount_ttc"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "cart_discount_ttc",
+			Type:    schema.FieldTypeNumber,
+			Options: &schema.NumberOptions{},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ cart_discount_ttc")
+	}
+
+	// line_discounts_total_ttc
+	if f := collection.Schema.GetFieldByName("line_discounts_total_ttc"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "line_discounts_total_ttc",
+			Type:    schema.FieldTypeNumber,
+			Options: &schema.NumberOptions{},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ line_discounts_total_ttc")
 	}
 
 	// Sauvegarde si nécessaire

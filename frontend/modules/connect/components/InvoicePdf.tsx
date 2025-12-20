@@ -1,5 +1,6 @@
 // frontend/modules/connect/components/InvoicePdf.tsx
 // PATCH: ajouter le nom du vendeur (sold_by) dans l'entête facture
+// PATCH: ajouter l'affichage des remises par ligne et globale
 
 import type {
 	CompaniesResponse,
@@ -118,6 +119,11 @@ const styles = StyleSheet.create({
 		flex: 1.1,
 		textAlign: 'right',
 	},
+	// ✅ AJOUT: Colonne pour afficher les remises par ligne
+	colDiscount: {
+		flex: 0.9,
+		textAlign: 'right',
+	},
 	colTva: {
 		flex: 0.8,
 		textAlign: 'right',
@@ -158,6 +164,12 @@ const styles = StyleSheet.create({
 	totalsGrandText: {
 		fontSize: 13,
 		fontWeight: 'bold',
+	},
+	// ✅ AJOUT: Style pour les lignes de remise (en italique et couleur différente)
+	totalsDiscount: {
+		fontSize: 11,
+		fontStyle: 'italic',
+		color: '#16a34a', // Vert pour indiquer une réduction
 	},
 
 	notes: {
@@ -267,6 +279,19 @@ export function InvoicePdfDocument({
 
 	const websiteLine = company?.website ? `Site : ${company.website}` : undefined
 
+	// ✅ AJOUT: Récupérer les informations de remise globale
+	const cartDiscountTtc = (invoice as any)?.cart_discount_ttc || 0
+	const cartDiscountMode = (invoice as any)?.cart_discount_mode || 'percent'
+	const cartDiscountValue = (invoice as any)?.cart_discount_value || 0
+	const lineDiscountsTotalTtc = (invoice as any)?.line_discounts_total_ttc || 0
+
+	// ✅ AJOUT: Calculer le sous-total avant remises
+	const subTotalBeforeDiscounts =
+		invoice.total_ttc + cartDiscountTtc + lineDiscountsTotalTtc
+
+	// ✅ AJOUT: Vérifier s'il y a des remises à afficher
+	const hasDiscounts = cartDiscountTtc > 0 || lineDiscountsTotalTtc > 0
+
 	return (
 		<Document>
 			<Page size='A4' style={styles.page}>
@@ -356,6 +381,10 @@ export function InvoicePdfDocument({
 						<Text style={[styles.colUnit, styles.tableHeaderText]}>
 							P.U. HT
 						</Text>
+						{/* ✅ AJOUT: Colonne Remise */}
+						<Text style={[styles.colDiscount, styles.tableHeaderText]}>
+							Remise
+						</Text>
 						<Text style={[styles.colTva, styles.tableHeaderText]}>TVA</Text>
 						<Text style={[styles.colTotal, styles.tableHeaderText]}>
 							Total TTC
@@ -369,6 +398,15 @@ export function InvoicePdfDocument({
 							? [styles.tableRow, styles.tableRowAlt]
 							: [styles.tableRow]
 
+						// ✅ AJOUT: Récupérer les infos de remise par ligne
+						const lineDiscount = (item as any).line_discount_value || 0
+						const lineDiscountMode =
+							(item as any).line_discount_mode || 'percent'
+						const discountText =
+							lineDiscount > 0
+								? `${lineDiscount.toFixed(2)}${lineDiscountMode === 'percent' ? '%' : '€'}`
+								: '-'
+
 						return (
 							<View style={rowStyle} key={key}>
 								<Text style={styles.colDescription}>{item.name}</Text>
@@ -376,6 +414,8 @@ export function InvoicePdfDocument({
 								<Text style={styles.colUnit}>
 									{item.unit_price_ht.toFixed(2)}
 								</Text>
+								{/* ✅ AJOUT: Afficher la remise */}
+								<Text style={styles.colDiscount}>{discountText}</Text>
 								<Text style={styles.colTva}>{item.tva_rate}%</Text>
 								<Text style={styles.colTotal}>{item.total_ttc.toFixed(2)}</Text>
 							</View>
@@ -384,6 +424,41 @@ export function InvoicePdfDocument({
 				</View>
 
 				<View style={styles.totalsBlock}>
+					{/* ✅ AJOUT: Afficher le sous-total avant remises si des remises existent */}
+					{hasDiscounts && (
+						<View style={styles.totalsRow}>
+							<Text style={styles.totalsLabel}>Sous-total</Text>
+							<Text style={styles.totalsValue}>
+								{formatCurrency(subTotalBeforeDiscounts)}
+							</Text>
+						</View>
+					)}
+
+					{/* ✅ AJOUT: Afficher les remises par ligne si elles existent */}
+					{lineDiscountsTotalTtc > 0 && (
+						<View style={styles.totalsRow}>
+							<Text style={styles.totalsDiscount}>Remises lignes</Text>
+							<Text style={styles.totalsDiscount}>
+								-{formatCurrency(lineDiscountsTotalTtc)}
+							</Text>
+						</View>
+					)}
+
+					{/* ✅ AJOUT: Afficher la remise globale si elle existe */}
+					{cartDiscountTtc > 0 && (
+						<View style={styles.totalsRow}>
+							<Text style={styles.totalsDiscount}>
+								Remise globale
+								{cartDiscountMode === 'percent' &&
+									cartDiscountValue > 0 &&
+									` (${cartDiscountValue}%)`}
+							</Text>
+							<Text style={styles.totalsDiscount}>
+								-{formatCurrency(cartDiscountTtc)}
+							</Text>
+						</View>
+					)}
+
 					<View style={styles.totalsRow}>
 						<Text style={styles.totalsLabel}>Total HT</Text>
 						<Text style={styles.totalsValue}>

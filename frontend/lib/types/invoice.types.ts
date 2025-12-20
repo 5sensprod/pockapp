@@ -44,6 +44,9 @@ export interface InvoiceItem {
 	tva_rate: number // 0, 5.5, 10, 20
 	total_ht: number
 	total_ttc: number
+	line_discount_mode?: 'percent' | 'amount'
+	line_discount_value?: number
+	unit_price_ttc_before_discount?: number
 }
 
 // ============================================================================
@@ -74,6 +77,11 @@ export interface InvoiceBase {
 	session?: string
 	cash_register?: string
 	sold_by?: string
+
+	cart_discount_mode?: 'percent' | 'amount'
+	cart_discount_value?: number
+	cart_discount_ttc?: number
+	line_discounts_total_ttc?: number
 }
 
 // Pour la création (hash/sequence générés par le backend)

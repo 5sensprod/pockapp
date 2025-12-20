@@ -1,5 +1,5 @@
-// PATCH: frontend/modules/connect/components/InvoiceDetailPage.tsx
-// Ajoute l'affichage du "Vendeur" dans le bloc "Informations principales"
+// frontend/modules/connect/components/InvoiceDetailPage.tsx
+// Ajout: bouton "Modifier" qui redirige vers la page d’édition
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -37,6 +37,7 @@ import {
 	FileText,
 	Loader2,
 	Mail,
+	Pencil, // ✅ NEW
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -263,6 +264,27 @@ export function InvoiceDetailPage() {
 						)}
 					</div>
 
+					{/* ✅ NEW: bouton Modifier */}
+					<Button
+						variant='outline'
+						size='sm'
+						onClick={() =>
+							navigate({
+								to: '/connect/invoices/$invoiceId/edit',
+								params: { invoiceId },
+							})
+						}
+						disabled={invoice.status !== 'draft'}
+						title={
+							invoice.status !== 'draft'
+								? 'Seules les factures en brouillon peuvent être modifiées'
+								: undefined
+						}
+					>
+						<Pencil className='h-4 w-4 mr-2' />
+						Modifier
+					</Button>
+
 					<Button
 						variant='outline'
 						size='sm'
@@ -348,7 +370,6 @@ export function InvoiceDetailPage() {
 								</p>
 							</div>
 
-							{/* ✅ Nouveau: vendeur */}
 							<div>
 								<p className='text-sm text-muted-foreground'>Vendeur</p>
 								<p className='font-medium'>{sellerName}</p>
