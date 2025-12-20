@@ -621,10 +621,11 @@ export function CashTerminalPage() {
 					await printReceipt({
 						printerName: printerSettings.printerName,
 						width: printerSettings.width,
-						companyId: activeCompanyId, // ✅ sans "!"
+						companyId: activeCompanyId,
 						receipt: {
 							invoiceNumber: invoice.number,
 							dateLabel: new Date().toLocaleString('fr-FR'),
+							sellerName: user?.name || user?.username || '', // 🆕 NOM DU VENDEUR
 							items: cart.map((it) => {
 								const displayMode = it.displayMode || 'name'
 								let displayName = it.name
@@ -685,7 +686,7 @@ export function CashTerminalPage() {
 		subtotalTtc,
 		tax,
 		totalTtc,
-		user?.id,
+		user,
 	])
 
 	if (isSessionLoading) return <LoadingView />

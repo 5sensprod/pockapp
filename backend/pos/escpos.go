@@ -61,6 +61,7 @@ type ReceiptData struct {
 
 	InvoiceNumber  string        `json:"invoiceNumber"`
 	DateLabel      string        `json:"dateLabel"`
+	SellerName     string        `json:"sellerName"` // Nom du vendeur
 	Items          []ReceiptItem `json:"items"`
 	SubtotalTtc    float64       `json:"subtotalTtc"`
 	DiscountAmount float64       `json:"discountAmount"`
@@ -126,6 +127,10 @@ func BuildReceipt(r ReceiptData) []byte {
 	b.Write(NL())
 	b.Write(Text(r.DateLabel))
 	b.Write(NL())
+	if strings.TrimSpace(r.SellerName) != "" {
+		b.Write(Text(fmt.Sprintf("Vendeur: %s", r.SellerName)))
+		b.Write(NL())
+	}
 	b.Write(NL())
 
 	b.Write(AlignLeft())
