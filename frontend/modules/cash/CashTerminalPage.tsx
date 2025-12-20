@@ -208,7 +208,7 @@ export function CashTerminalPage() {
 		return received - totalTtc
 	}, [amountReceived, totalTtc])
 
-	useCustomerDisplay({
+	const customerDisplay = useCustomerDisplay({
 		total: totalTtc,
 		itemCount: cart.length,
 		currentItem: cart[cart.length - 1] || null,
@@ -533,14 +533,18 @@ export function CashTerminalPage() {
 				toast.error('Le panier est vide')
 				return
 			}
+
+			// ✅ force l’affichage du total AU CLIC sur Encaisser
+			customerDisplay.displayTotal(totalTtc, cart.length)
+
 			setSelectedPaymentMethod(method)
 			setPaymentStep('payment')
 			if (method === 'especes') setAmountReceived(totalTtc.toFixed(2))
 		},
-		[cart.length, totalTtc],
+		[cart.length, totalTtc, customerDisplay],
 	)
-
 	const handleConfirmPayment = React.useCallback(async () => {
+		customerDisplay.displayThankYou()
 		if (!activeCompanyId || !activeSession) {
 			toast.error('Session ou entreprise manquante')
 			return
@@ -701,6 +705,7 @@ export function CashTerminalPage() {
 		tax,
 		totalTtc,
 		user,
+		customerDisplay,
 	])
 
 	if (isSessionLoading) return <LoadingView />
