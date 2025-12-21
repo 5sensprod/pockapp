@@ -1,4 +1,5 @@
 // frontend/modules/connect/components/InvoiceEditPage.tsx
+// ✅ Ajout ventilation TVA (comme InvoiceCreatePage / InvoiceDetailPage)
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -162,6 +163,37 @@ const applyCartDiscountProRata = (
 	})
 }
 
+// ✅ AJOUT: ventilation TVA (par taux) calculée sur les lignes finales (après remises)
+interface VatBreakdown {
+	rate: number
+	base_ht: number
+	vat: number
+	total_ttc: number
+}
+
+const computeVatBreakdownFromItems = (lines: InvoiceItem[]): VatBreakdown[] => {
+	const map = new Map<number, VatBreakdown>()
+
+	for (const it of lines ?? []) {
+		const rate = (it as any).tva_rate ?? 0
+		const ht = Number((it as any).total_ht ?? 0)
+		const ttc = Number((it as any).total_ttc ?? 0)
+		const vat = ttc - ht
+
+		let entry = map.get(rate)
+		if (!entry) {
+			entry = { rate, base_ht: 0, vat: 0, total_ttc: 0 }
+			map.set(rate, entry)
+		}
+
+		entry.base_ht = round2(entry.base_ht + ht)
+		entry.vat = round2(entry.vat + vat)
+		entry.total_ttc = round2(entry.total_ttc + ttc)
+	}
+
+	return Array.from(map.values()).sort((a, b) => a.rate - b.rate)
+}
+
 export function InvoiceEditPage() {
 	const navigate = useNavigate()
 	const { invoiceId } = useParams({
@@ -264,8 +296,6 @@ export function InvoiceEditPage() {
 				const tvaRate = it.tva_rate ?? 20
 				const coef = 1 + tvaRate / 100
 
-				// On reconstruit unitaire TTC à partir des totaux existants
-				// (pas de remise historique stockée côté backend => 0 par défaut)
 				const inferredUnitTtc =
 					qty > 0
 						? round2((it.total_ttc ?? 0) / qty)
@@ -310,9 +340,10 @@ export function InvoiceEditPage() {
 		const coef = 1 + tvaRate / 100
 
 		let unitTtc = 0
-		if (typeof product.price_ttc === 'number') unitTtc = product.price_ttc
-		else if (typeof product.price_ht === 'number')
-			unitTtc = product.price_ht * coef
+		if (typeof (product as any).price_ttc === 'number')
+			unitTtc = (product as any).price_ttc
+		else if (typeof (product as any).price_ht === 'number')
+			unitTtc = (product as any).price_ht * coef
 
 		unitTtc = round2(unitTtc)
 		const id = `item-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -410,6 +441,8 @@ export function InvoiceEditPage() {
 			? round2(subTotals.ttc * (clamp(cartDiscountValue, 0, 100) / 100))
 			: round2(clamp(cartDiscountValue, 0, subTotals.ttc))
 
+	// ✅ NOTE: vos "totals.ht/tva" actuels supposent un seul taux (items[0]).
+	// On ne touche pas ici, mais la ventilation TVA ci-dessous est correcte car elle se base sur chaque ligne.
 	const totals = {
 		ht: round2(
 			(subTotals.ttc - cartDiscountTtc) /
@@ -426,6 +459,55 @@ export function InvoiceEditPage() {
 		lineDiscountTtc: subTotals.lineDiscountTtc,
 		cartDiscountTtc,
 	}
+
+	// ✅ AJOUT: calcul des lignes "finales" (après remise panier prorata) + ventilation TVA
+	const vatContext = useMemo(() => {
+		const normalized: UiInvoiceItem[] = items.map((it) => ({
+			...it,
+			...computeLineTotals(it),
+		}))
+
+		const withCartDiscount = applyCartDiscountProRata(
+			normalized,
+			cartDiscountTtc,
+		)
+
+		const invoiceItems: InvoiceItem[] = withCartDiscount.map(
+			({
+				id,
+				displayMode,
+				designation,
+				sku,
+				unit_price_ttc,
+				lineDiscountMode,
+				lineDiscountValue,
+				...rest
+			}) => ({
+				...rest,
+				name: getDisplayText({
+					id,
+					displayMode,
+					designation,
+					sku,
+					unit_price_ttc,
+					...rest,
+				} as UiInvoiceItem),
+			}),
+		)
+
+		const breakdown = computeVatBreakdownFromItems(invoiceItems)
+
+		const finalTotals = invoiceItems.reduce(
+			(acc, it) => ({
+				ht: round2(acc.ht + it.total_ht),
+				tva: round2(acc.tva + (it.total_ttc - it.total_ht)),
+				ttc: round2(acc.ttc + it.total_ttc),
+			}),
+			{ ht: 0, tva: 0, ttc: 0 },
+		)
+
+		return { invoiceItems, breakdown, finalTotals }
+	}, [items, cartDiscountTtc])
 
 	// =====================
 	// SUBMIT
@@ -463,47 +545,10 @@ export function InvoiceEditPage() {
 		}
 
 		try {
-			const normalized: UiInvoiceItem[] = items.map((it) => ({
-				...it,
-				...computeLineTotals(it),
-			}))
-
-			const withCartDiscount = applyCartDiscountProRata(
-				normalized,
-				cartDiscountTtc,
-			)
-
-			const invoiceItems: InvoiceItem[] = withCartDiscount.map(
-				({
-					id,
-					displayMode,
-					designation,
-					sku,
-					unit_price_ttc,
-					lineDiscountMode,
-					lineDiscountValue,
-					...rest
-				}) => ({
-					...rest,
-					name: getDisplayText({
-						id,
-						displayMode,
-						designation,
-						sku,
-						unit_price_ttc,
-						...rest,
-					} as UiInvoiceItem),
-				}),
-			)
-
-			const finalTotals = invoiceItems.reduce(
-				(acc, it) => ({
-					ht: round2(acc.ht + it.total_ht),
-					tva: round2(acc.tva + (it.total_ttc - it.total_ht)),
-					ttc: round2(acc.ttc + it.total_ttc),
-				}),
-				{ ht: 0, tva: 0, ttc: 0 },
-			)
+			// ✅ utilise les mêmes calculs que l’affichage (après remise panier)
+			const invoiceItems = vatContext.invoiceItems
+			const finalTotals = vatContext.finalTotals
+			const vat_breakdown = vatContext.breakdown
 
 			await updateInvoice.mutateAsync({
 				id: invoiceId,
@@ -515,6 +560,8 @@ export function InvoiceEditPage() {
 					total_ht: finalTotals.ht,
 					total_tva: finalTotals.tva,
 					total_ttc: finalTotals.ttc,
+					// ✅ optionnel, mais utile pour la DetailPage si tu persists cette info
+					vat_breakdown,
 					currency,
 					notes: notes || undefined,
 				},
@@ -545,7 +592,7 @@ export function InvoiceEditPage() {
 
 	if (!invoice) {
 		return (
-			<div className='container mx-auto px-6 py-8'>
+			<div className='container mx-auto px-6 py--8'>
 				<div className='text-muted-foreground'>Facture introuvable</div>
 				<Button
 					variant='outline'
@@ -828,9 +875,36 @@ export function InvoiceEditPage() {
 								<span className='text-muted-foreground'>Remise globale</span>
 								<span>-{totals.cartDiscountTtc.toFixed(2)} €</span>
 							</div>
+
+							{/* ✅ AJOUT: ventilation TVA */}
+							<div className='pt-2 border-t space-y-1'>
+								<div className='flex justify-between'>
+									<span className='text-muted-foreground'>Total HT</span>
+									<span>{vatContext.finalTotals.ht.toFixed(2)} €</span>
+								</div>
+								<div className='flex justify-between'>
+									<span className='text-muted-foreground'>Total TVA</span>
+									<span>{vatContext.finalTotals.tva.toFixed(2)} €</span>
+								</div>
+								{vatContext.breakdown.length > 0 && (
+									<div className='pl-3 space-y-1 text-xs text-muted-foreground'>
+										{vatContext.breakdown.map((vb) => (
+											<div key={vb.rate} className='flex justify-between'>
+												<span>
+													TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+												</span>
+												<span>{vb.vat.toFixed(2)} €</span>
+											</div>
+										))}
+									</div>
+								)}
+							</div>
+
 							<div className='border-t pt-2 flex justify-between font-bold'>
 								<span>Total TTC</span>
-								<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
+								<span className='text-lg'>
+									{vatContext.finalTotals.ttc.toFixed(2)} €
+								</span>
 							</div>
 						</div>
 
@@ -1039,7 +1113,7 @@ export function InvoiceEditPage() {
 											Total HT (estimé)
 										</TableCell>
 										<TableCell className='text-right'>
-											{totals.ht.toFixed(2)} €
+											{vatContext.finalTotals.ht.toFixed(2)} €
 										</TableCell>
 										<TableCell />
 									</TableRow>
@@ -1048,7 +1122,7 @@ export function InvoiceEditPage() {
 											Total TTC Final
 										</TableCell>
 										<TableCell className='text-right text-lg'>
-											{totals.ttc.toFixed(2)} €
+											{vatContext.finalTotals.ttc.toFixed(2)} €
 										</TableCell>
 										<TableCell />
 									</TableRow>
@@ -1110,9 +1184,10 @@ export function InvoiceEditPage() {
 											>
 												<div>
 													<p className='font-medium'>{product.name}</p>
-													{product.price_ttc != null && (
+													{(product as any).price_ttc != null && (
 														<p className='text-xs text-muted-foreground'>
-															{product.price_ttc.toFixed(2)} € TTC
+															{Number((product as any).price_ttc).toFixed(2)} €
+															TTC
 														</p>
 													)}
 												</div>

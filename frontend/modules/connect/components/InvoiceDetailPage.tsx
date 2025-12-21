@@ -1,7 +1,8 @@
 // frontend/modules/connect/components/InvoiceDetailPage.tsx
 // Ajout: bouton "Modifier" qui redirige vers la page d’édition
+// Ajout: affichage remises par ligne + remise globale (si présentes)
 
-import { Badge } from '@/components/ui/badge'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -37,9 +38,9 @@ import {
 	FileText,
 	Loader2,
 	Mail,
-	Pencil, // ✅ NEW
+	Pencil,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { InvoicePdfDocument } from './InvoicePdf'
 import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
@@ -62,6 +63,15 @@ function formatCurrency(amount: number, currency = 'EUR') {
 		style: 'currency',
 		currency,
 	}).format(amount)
+}
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+type VatBreakdown = {
+	rate: number
+	base_ht: number
+	vat: number
+	total_ttc: number
 }
 
 async function toPngDataUrl(url: string): Promise<string> {
@@ -90,6 +100,37 @@ async function toPngDataUrl(url: string): Promise<string> {
 	})
 }
 
+function getLineDiscountLabel(item: any): {
+	label: string
+	hasDiscount: boolean
+} {
+	const mode = item?.line_discount_mode
+	const value = item?.line_discount_value
+	if (!mode || value == null) return { label: '-', hasDiscount: false }
+
+	if (mode === 'percent') {
+		const p = Math.max(0, Math.min(100, Number(value) || 0))
+		if (p <= 0) return { label: '-', hasDiscount: false }
+		return { label: `-${p}%`, hasDiscount: true }
+	}
+
+	// mode === 'amount'
+	const beforeUnitTtc = Number(item?.unit_price_ttc_before_discount)
+	if (Number.isFinite(beforeUnitTtc) && beforeUnitTtc > 0) {
+		const unitTtcAfter = Number(value)
+		if (Number.isFinite(unitTtcAfter)) {
+			const diff = round2(Math.max(0, beforeUnitTtc - unitTtcAfter))
+			if (diff <= 0) return { label: '-', hasDiscount: false }
+			return { label: `-${diff.toFixed(2)} €/u`, hasDiscount: true }
+		}
+	}
+
+	// fallback: afficher la valeur brute (peut représenter un montant)
+	const v = round2(Math.max(0, Number(value) || 0))
+	if (v <= 0) return { label: '-', hasDiscount: false }
+	return { label: `-${v.toFixed(2)} €`, hasDiscount: true }
+}
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -106,18 +147,118 @@ export function InvoiceDetailPage() {
 	const [isDownloading, setIsDownloading] = useState(false)
 	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 
+	// ============================================================================
+	// LOAD COMPANY
+	// ============================================================================
+
 	useEffect(() => {
 		const loadCompany = async () => {
 			if (!activeCompanyId) return
 			try {
-				const result = await pb.collection('companies').getOne(activeCompanyId)
-				setCompany(result as CompaniesResponse)
+				const c = await pb.collection('companies').getOne(activeCompanyId)
+				setCompany(c)
 			} catch (err) {
-				console.error('Erreur chargement company', err)
+				console.error(err)
 			}
 		}
 		void loadCompany()
 	}, [activeCompanyId, pb])
+
+	// ============================================================================
+	// COMPUTATIONS
+	// ============================================================================
+	const vatBreakdown = useMemo<VatBreakdown[]>(() => {
+		const inv = invoice as any
+		const items = Array.isArray(inv?.items) ? inv.items : []
+		const map = new Map<number, VatBreakdown>()
+
+		for (const it of items) {
+			const rate = Number(it?.tva_rate ?? 20)
+			const ht = Number(it?.total_ht ?? 0)
+			const ttc = Number(it?.total_ttc ?? 0)
+			const vat = ttc - ht
+
+			let entry = map.get(rate)
+			if (!entry) {
+				entry = { rate, base_ht: 0, vat: 0, total_ttc: 0 }
+				map.set(rate, entry)
+			}
+
+			entry.base_ht = round2(entry.base_ht + ht)
+			entry.vat = round2(entry.vat + vat)
+			entry.total_ttc = round2(entry.total_ttc + ttc)
+		}
+
+		return Array.from(map.values()).sort((a, b) => a.rate - b.rate)
+	}, [invoice])
+	const customer = (invoice as any)?.expand?.customer ?? null
+	const displayStatus = invoice
+		? getDisplayStatus(invoice)
+		: { label: '', variant: 'outline', isPaid: false }
+	const badgeVariant = (displayStatus.variant ??
+		'outline') as BadgeProps['variant']
+	const overdue = invoice ? isOverdue(invoice) : false
+	const discounts = useMemo(() => {
+		const inv: any = invoice as any
+
+		const totalTtc = Number(inv?.total_ttc ?? 0)
+		const lineDiscountsTtc = Number(inv?.line_discounts_total_ttc ?? 0)
+		const cartDiscountTtc = Number(inv?.cart_discount_ttc ?? 0)
+
+		const subtotalAfterLine = round2(totalTtc + cartDiscountTtc)
+		const grandSubtotal = round2(subtotalAfterLine + lineDiscountsTtc)
+
+		const hasAnyDiscount = lineDiscountsTtc > 0 || cartDiscountTtc > 0
+
+		let cartDiscountLabel = ''
+		const mode = inv?.cart_discount_mode
+		const value = inv?.cart_discount_value
+		if (cartDiscountTtc > 0 && mode && value != null) {
+			if (mode === 'percent') cartDiscountLabel = `(${Number(value) || 0}%)`
+			else cartDiscountLabel = `(${round2(Number(value) || 0).toFixed(2)} €)`
+		}
+
+		return {
+			hasAnyDiscount,
+			totalTtc: round2(totalTtc),
+			grandSubtotal,
+			lineDiscountsTtc: round2(lineDiscountsTtc),
+			cartDiscountTtc: round2(cartDiscountTtc),
+			cartDiscountLabel,
+		}
+	}, [invoice])
+
+	// ============================================================================
+	// GUARDS
+	// ============================================================================
+
+	if (isLoading) {
+		return (
+			<div className='container mx-auto px-6 py-8 flex items-center justify-center'>
+				<Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+			</div>
+		)
+	}
+
+	if (!invoice) {
+		return (
+			<div className='container mx-auto px-6 py-8'>
+				<div className='text-muted-foreground'>Facture introuvable</div>
+				<Button
+					variant='outline'
+					className='mt-4'
+					onClick={() => navigate({ to: '/connect/invoices' })}
+				>
+					<ArrowLeft className='h-4 w-4 mr-2' />
+					Retour aux factures
+				</Button>
+			</div>
+		)
+	}
+
+	// ============================================================================
+	// ACTIONS
+	// ============================================================================
 
 	const handleDownloadPdf = async () => {
 		if (!invoice) {
@@ -165,6 +306,7 @@ export function InvoiceDetailPage() {
 				<InvoicePdfDocument
 					invoice={invoice as InvoiceResponse}
 					customer={customer as any}
+					// ✅ FIX 3
 					company={currentCompany || undefined}
 					companyLogoUrl={logoDataUrl}
 				/>
@@ -190,84 +332,24 @@ export function InvoiceDetailPage() {
 		}
 	}
 
-	if (isLoading) {
-		return (
-			<div className='container mx-auto px-6 py-8'>
-				<div className='text-muted-foreground'>Chargement...</div>
-			</div>
-		)
-	}
-
-	if (!invoice) {
-		return (
-			<div className='container mx-auto px-6 py-8'>
-				<div className='text-muted-foreground'>Facture introuvable</div>
-				<Button
-					variant='outline'
-					className='mt-4'
-					onClick={() => navigate({ to: '/connect/invoices' })}
-				>
-					<ArrowLeft className='h-4 w-4 mr-2' />
-					Retour aux factures
-				</Button>
-			</div>
-		)
-	}
-
-	const customer = invoice.expand?.customer
-	const displayStatus = getDisplayStatus(invoice)
-	const overdue = isOverdue(invoice)
-
-	// ✅ Vendeur / Caissier
-	const soldBy = (invoice as any).expand?.sold_by
-	const sellerName =
-		soldBy?.name ||
-		soldBy?.username ||
-		soldBy?.email ||
-		((invoice as any).sold_by ? String((invoice as any).sold_by) : '—')
+	// ============================================================================
+	// UI
+	// ============================================================================
 
 	return (
 		<div className='container mx-auto px-6 py-8'>
-			<div className='flex items-center justify-between mb-6'>
-				<div className='flex items-center gap-4'>
-					<Button
-						variant='ghost'
-						size='icon'
-						onClick={() => navigate({ to: '/connect/invoices' })}
-					>
-						<ArrowLeft className='h-4 w-4' />
-					</Button>
-					<div>
-						<h1 className='text-2xl font-bold flex items-center gap-2'>
-							<FileText className='h-6 w-6' />
-							{invoice.is_pos_ticket
-								? 'Ticket'
-								: invoice.invoice_type === 'credit_note'
-									? 'Avoir'
-									: 'Facture'}{' '}
-							{invoice.number}
-						</h1>
-						<p className='text-muted-foreground'>
-							Émise le {formatDate(invoice.date)}
-						</p>
-					</div>
-				</div>
+			<div className='flex items-center justify-between gap-3 mb-6'>
+				<Button
+					variant='ghost'
+					onClick={() => navigate({ to: '/connect/invoices' })}
+				>
+					<ArrowLeft className='h-4 w-4 mr-2' />
+					Retour
+				</Button>
 
 				<div className='flex items-center gap-2'>
-					<div className='flex items-center gap-2'>
-						<Badge variant={displayStatus.variant}>{displayStatus.label}</Badge>
-						{displayStatus.isPaid && (
-							<CheckCircle className='h-4 w-4 text-green-600' />
-						)}
-						{overdue && !invoice.is_paid && (
-							<AlertTriangle className='h-4 w-4 text-red-500' />
-						)}
-					</div>
-
-					{/* ✅ NEW: bouton Modifier */}
 					<Button
 						variant='outline'
-						size='sm'
 						onClick={() =>
 							navigate({
 								to: '/connect/invoices/$invoiceId/edit',
@@ -278,124 +360,66 @@ export function InvoiceDetailPage() {
 						title={
 							invoice.status !== 'draft'
 								? 'Seules les factures en brouillon peuvent être modifiées'
-								: undefined
+								: 'Modifier'
 						}
 					>
 						<Pencil className='h-4 w-4 mr-2' />
 						Modifier
 					</Button>
 
-					<Button
-						variant='outline'
-						size='sm'
-						onClick={handleDownloadPdf}
-						disabled={isDownloading}
-					>
+					<Button variant='outline' onClick={() => setEmailDialogOpen(true)}>
+						<Mail className='h-4 w-4 mr-2' />
+						Envoyer
+					</Button>
+
+					<Button onClick={handleDownloadPdf} disabled={isDownloading}>
 						{isDownloading ? (
 							<Loader2 className='h-4 w-4 animate-spin mr-2' />
 						) : (
 							<Download className='h-4 w-4 mr-2' />
 						)}
-						PDF
-					</Button>
-
-					<Button
-						variant='outline'
-						size='sm'
-						onClick={() => setEmailDialogOpen(true)}
-						disabled={invoice.status === 'draft'}
-					>
-						<Mail className='h-4 w-4 mr-2' />
-						Envoyer
+						Télécharger
 					</Button>
 				</div>
 			</div>
 
-			<div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
-				<Card className='lg:col-span-2'>
+			<div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
+				<Card className='lg:col-span-1'>
 					<CardHeader>
-						<CardTitle>
-							{invoice.is_pos_ticket
-								? 'Détails du ticket'
-								: 'Détails de la facture'}
-						</CardTitle>
-						<CardDescription>
-							{invoice.is_pos_ticket
-								? 'Ticket de caisse'
-								: invoice.invoice_type === 'credit_note'
-									? 'Avoir'
-									: 'Facture classique'}{' '}
-							— statut&nbsp;: {displayStatus.label}
-						</CardDescription>
+						<CardTitle>Facture</CardTitle>
+						<CardDescription>Détails généraux</CardDescription>
 					</CardHeader>
-
 					<CardContent className='space-y-4'>
-						<div className='grid grid-cols-2 gap-4'>
-							<div>
-								<p className='text-sm text-muted-foreground'>Date</p>
-								<p className='font-medium'>{formatDate(invoice.date)}</p>
-							</div>
+						<div>
+							<p className='text-sm text-muted-foreground'>Numéro</p>
+							<p className='font-medium'>{invoice.number || '-'}</p>
+						</div>
 
-							{invoice.is_pos_ticket ? (
-								<div>
-									<p className='text-sm text-muted-foreground'>
-										Heure de vente
-									</p>
-									<p className='font-medium'>
-										{new Date(invoice.created).toLocaleTimeString('fr-FR', {
-											hour: '2-digit',
-											minute: '2-digit',
-										})}
-									</p>
-								</div>
+						<div>
+							<p className='text-sm text-muted-foreground'>Date</p>
+							<p className='text-sm'>{formatDate(invoice.date)}</p>
+						</div>
+
+						<div>
+							<p className='text-sm text-muted-foreground'>Échéance</p>
+							<p className='text-sm'>{formatDate(invoice.due_date)}</p>
+						</div>
+
+						<div className='flex items-center gap-2'>
+							<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
+							{invoice.is_paid ? (
+								<Badge className='bg-emerald-600 hover:bg-emerald-600'>
+									<CheckCircle className='h-3 w-3 mr-1' />
+									Payée
+								</Badge>
+							) : overdue ? (
+								<Badge className='bg-amber-600 hover:bg-amber-600'>
+									<AlertTriangle className='h-3 w-3 mr-1' />
+									En retard
+								</Badge>
 							) : (
-								<div>
-									<p className='text-sm text-muted-foreground'>Échéance</p>
-									<p
-										className={`font-medium ${overdue && !invoice.is_paid ? 'text-red-600' : ''}`}
-									>
-										{invoice.due_date ? formatDate(invoice.due_date) : '-'}
-									</p>
-								</div>
+								<Badge variant='secondary'>Non payée</Badge>
 							)}
-
-							<div>
-								<p className='text-sm text-muted-foreground'>Type</p>
-								<p className='font-medium'>
-									{invoice.is_pos_ticket
-										? 'Ticket'
-										: invoice.invoice_type === 'credit_note'
-											? 'Avoir'
-											: 'Facture'}
-								</p>
-							</div>
-
-							<div>
-								<p className='text-sm text-muted-foreground'>Vendeur</p>
-								<p className='font-medium'>{sellerName}</p>
-							</div>
-
-							<div>
-								<p className='text-sm text-muted-foreground'>
-									Paiement / statut
-								</p>
-								<p className='font-medium'>
-									{invoice.is_paid
-										? 'Payée'
-										: invoice.status === 'draft'
-											? 'Brouillon'
-											: 'En attente de paiement'}
-								</p>
-								{invoice.is_paid && (
-									<p className='text-xs text-muted-foreground mt-1'>
-										Payée le{' '}
-										{invoice.paid_at
-											? formatDate(invoice.paid_at)
-											: '(date non renseignée)'}{' '}
-										par {invoice.payment_method || 'méthode inconnue'}.
-									</p>
-								)}
-							</div>
 						</div>
 
 						{invoice.is_pos_ticket &&
@@ -480,6 +504,7 @@ export function InvoiceDetailPage() {
 							{invoice.items.length} ligne(s) dans cette facture
 						</CardDescription>
 					</CardHeader>
+
 					<CardContent>
 						<Table>
 							<TableHeader>
@@ -487,45 +512,146 @@ export function InvoiceDetailPage() {
 									<TableHead>Article</TableHead>
 									<TableHead className='text-center w-20'>Qté</TableHead>
 									<TableHead className='text-right'>P.U. HT</TableHead>
+									<TableHead className='text-right'>Remise</TableHead>
 									<TableHead className='text-right'>TVA</TableHead>
 									<TableHead className='text-right'>Total TTC</TableHead>
 								</TableRow>
 							</TableHeader>
+
 							<TableBody>
-								{invoice.items.map((item, idx) => (
-									<TableRow key={`${item.name}-${idx}`}>
-										<TableCell className='font-medium'>{item.name}</TableCell>
-										<TableCell className='text-center'>
-											{item.quantity}
-										</TableCell>
-										<TableCell className='text-right'>
-											{item.unit_price_ht.toFixed(2)} €
-										</TableCell>
-										<TableCell className='text-right'>
-											{item.tva_rate}%
-										</TableCell>
-										<TableCell className='text-right'>
-											{item.total_ttc.toFixed(2)} €
-										</TableCell>
-									</TableRow>
-								))}
+								{invoice.items.map((item: any, idx: number) => {
+									const promo = getLineDiscountLabel(item)
+									const beforeUnitTtc = Number(
+										item?.unit_price_ttc_before_discount,
+									)
+									const hasBefore =
+										Number.isFinite(beforeUnitTtc) && beforeUnitTtc > 0
+									const coef = 1 + Number(item?.tva_rate ?? 20) / 100
+									const unitTtcFromHt = round2(
+										Number(item?.unit_price_ht ?? 0) * coef,
+									)
+
+									return (
+										<TableRow key={`${item.name}-${idx}`}>
+											<TableCell className='font-medium'>
+												<div className='flex flex-col'>
+													<span>{item.name}</span>
+													{hasBefore && promo.hasDiscount && (
+														<span className='text-xs text-muted-foreground'>
+															<span className='line-through mr-2'>
+																{round2(beforeUnitTtc).toFixed(2)} €
+															</span>
+															<span>{unitTtcFromHt.toFixed(2)} € TTC</span>
+														</span>
+													)}
+												</div>
+											</TableCell>
+
+											<TableCell className='text-center'>
+												{item.quantity}
+											</TableCell>
+
+											<TableCell className='text-right'>
+												{Number(item.unit_price_ht ?? 0).toFixed(2)} €
+											</TableCell>
+
+											<TableCell className='text-right'>
+												{promo.label}
+											</TableCell>
+
+											<TableCell className='text-right'>
+												{item.tva_rate}%
+											</TableCell>
+
+											<TableCell className='text-right'>
+												{Number(item.total_ttc ?? 0).toFixed(2)} €
+											</TableCell>
+										</TableRow>
+									)
+								})}
 							</TableBody>
 						</Table>
 
 						<div className='mt-6 flex justify-end'>
-							<div className='w-64 space-y-2 text-sm'>
+							<div className='w-72 space-y-2 text-sm'>
+								{discounts.hasAnyDiscount && (
+									<>
+										<div className='flex justify-between'>
+											<span className='text-muted-foreground'>
+												Sous-total TTC
+											</span>
+											<span>
+												{formatCurrency(
+													discounts.grandSubtotal,
+													invoice.currency,
+												)}
+											</span>
+										</div>
+
+										{discounts.lineDiscountsTtc > 0 && (
+											<div className='flex justify-between'>
+												<span className='text-muted-foreground'>
+													Remises lignes
+												</span>
+												<span>
+													-
+													{formatCurrency(
+														discounts.lineDiscountsTtc,
+														invoice.currency,
+													)}
+												</span>
+											</div>
+										)}
+
+										{discounts.cartDiscountTtc > 0 && (
+											<div className='flex justify-between'>
+												<span className='text-muted-foreground'>
+													Remise globale {discounts.cartDiscountLabel}
+												</span>
+												<span>
+													-
+													{formatCurrency(
+														discounts.cartDiscountTtc,
+														invoice.currency,
+													)}
+												</span>
+											</div>
+										)}
+
+										<div className='border-t pt-2' />
+									</>
+								)}
+
 								<div className='flex justify-between'>
 									<span className='text-muted-foreground'>Total HT</span>
 									<span>
 										{formatCurrency(invoice.total_ht, invoice.currency)}
 									</span>
 								</div>
+
 								<div className='flex justify-between'>
 									<span className='text-muted-foreground'>TVA</span>
 									<span>
 										{formatCurrency(invoice.total_tva, invoice.currency)}
 									</span>
 								</div>
+
+								{vatBreakdown.length > 0 && (
+									<div className='pt-1'>
+										{vatBreakdown.map((vb) => (
+											<div
+												key={vb.rate}
+												className='flex justify-between text-xs text-muted-foreground'
+											>
+												<span>
+													TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+												</span>
+												<span>{vb.vat.toFixed(2)} €</span>
+											</div>
+										))}
+									</div>
+								)}
+
 								<div className='flex justify-between font-bold text-lg border-t pt-2'>
 									<span>Total TTC</span>
 									<span>
