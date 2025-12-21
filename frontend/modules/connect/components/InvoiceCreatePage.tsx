@@ -1,4 +1,5 @@
 // frontend/modules/connect/components/InvoiceCreatePage.tsx
+// ✅ VERSION CORRIGÉE - Support multi-taux TVA avec ventilation
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -48,7 +49,7 @@ import {
 	Trash2,
 	UserPlus,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { CustomerDialog } from './CustomerDialog'
 
@@ -76,6 +77,14 @@ interface SelectedCustomer {
 	phone?: string
 	address?: string
 	company?: string
+}
+
+// ✅ AJOUT: Type pour la ventilation TVA
+interface VatBreakdown {
+	rate: number
+	base_ht: number
+	vat: number
+	total_ttc: number
 }
 
 type InvoiceCustomer = CustomersResponse
@@ -130,6 +139,36 @@ const computeLineTotals = (it: UiInvoiceItem) => {
 		line_discount_ttc: discountTtc,
 		base_ttc: baseTtc,
 	}
+}
+
+// ✅ Fonction helper pour appliquer la remise globale au prorata
+const applyCartDiscountProRata = (
+	lines: UiInvoiceItem[],
+	cartDiscountTtc: number,
+) => {
+	const totalTtc = lines.reduce((s, it) => round2(s + it.total_ttc), 0)
+	if (totalTtc <= 0 || cartDiscountTtc <= 0) return lines
+
+	let remaining = cartDiscountTtc
+	return lines.map((it, idx) => {
+		const coef = 1 + (it.tva_rate ?? 20) / 100
+		const share =
+			idx === lines.length - 1
+				? remaining
+				: round2((it.total_ttc / totalTtc) * cartDiscountTtc)
+
+		remaining = round2(remaining - share)
+		const newTotalTtc = round2(Math.max(0, it.total_ttc - share))
+		const newTotalHt = round2(newTotalTtc / coef)
+		const newUnitHt = it.quantity > 0 ? round2(newTotalHt / it.quantity) : 0
+
+		return {
+			...it,
+			unit_price_ht: newUnitHt,
+			total_ht: newTotalHt,
+			total_ttc: newTotalTtc,
+		}
+	})
 }
 
 export function InvoiceCreatePage() {
@@ -316,55 +355,75 @@ export function InvoiceCreatePage() {
 			? round2(subTotals.ttc * (clamp(cartDiscountValue, 0, 100) / 100))
 			: round2(clamp(cartDiscountValue, 0, subTotals.ttc))
 
-	const totals = {
-		ht: round2(
-			(subTotals.ttc - cartDiscountTtc) /
-				(1 + (items[0]?.tva_rate ?? 20) / 100),
-		),
-		tva: round2(
-			subTotals.ttc -
-				cartDiscountTtc -
-				(subTotals.ttc - cartDiscountTtc) /
-					(1 + (items[0]?.tva_rate ?? 20) / 100),
-		),
-		ttc: round2(subTotals.ttc - cartDiscountTtc),
-		subTtc: subTotals.ttc,
-		lineDiscountTtc: subTotals.lineDiscountTtc,
-		cartDiscountTtc,
-	}
+	// ✅ CORRECTION: Calculer les totaux multi-taux avec ventilation TVA
+	const totals = useMemo(() => {
+		// Normaliser les lignes avec remises par ligne appliquées
+		const normalized: UiInvoiceItem[] = items.map((it) => ({
+			...it,
+			...computeLineTotals(it),
+		}))
 
-	// =====================
-	// SUBMIT & PRO-RATA
-	// =====================
+		// Appliquer la remise globale au prorata
+		const withCartDiscount = applyCartDiscountProRata(
+			normalized,
+			cartDiscountTtc,
+		)
 
-	const applyCartDiscountProRata = (
-		lines: UiInvoiceItem[],
-		cartDiscountTtc: number,
-	) => {
-		const totalTtc = lines.reduce((s, it) => round2(s + it.total_ttc), 0)
-		if (totalTtc <= 0 || cartDiscountTtc <= 0) return lines
+		// Calculer les totaux finaux à partir des lignes normalisées
+		const finalTotals = withCartDiscount.reduce(
+			(acc, it) => ({
+				ht: round2(acc.ht + it.total_ht),
+				tva: round2(acc.tva + (it.total_ttc - it.total_ht)),
+				ttc: round2(acc.ttc + it.total_ttc),
+			}),
+			{ ht: 0, tva: 0, ttc: 0 },
+		)
 
-		let remaining = cartDiscountTtc
-		return lines.map((it, idx) => {
-			const coef = 1 + (it.tva_rate ?? 20) / 100
-			const share =
-				idx === lines.length - 1
-					? remaining
-					: round2((it.total_ttc / totalTtc) * cartDiscountTtc)
+		// ✅ Créer la ventilation TVA par taux
+		const breakdownMap = new Map<number, VatBreakdown>()
 
-			remaining = round2(remaining - share)
-			const newTotalTtc = round2(Math.max(0, it.total_ttc - share))
-			const newTotalHt = round2(newTotalTtc / coef)
-			const newUnitHt = it.quantity > 0 ? round2(newTotalHt / it.quantity) : 0
+		for (const it of withCartDiscount) {
+			const rate = it.tva_rate ?? 20
+			const ht = it.total_ht
+			const vat = it.total_ttc - it.total_ht
+			const ttc = it.total_ttc
 
-			return {
-				...it,
-				unit_price_ht: newUnitHt,
-				total_ht: newTotalHt,
-				total_ttc: newTotalTtc,
+			let entry = breakdownMap.get(rate)
+
+			if (!entry) {
+				entry = {
+					rate,
+					base_ht: 0,
+					vat: 0,
+					total_ttc: 0,
+				}
+				breakdownMap.set(rate, entry)
 			}
-		})
-	}
+
+			entry.base_ht = round2(entry.base_ht + ht)
+			entry.vat = round2(entry.vat + vat)
+			entry.total_ttc = round2(entry.total_ttc + ttc)
+		}
+
+		// Convertir en tableau et trier par taux
+		const vatBreakdown = Array.from(breakdownMap.values()).sort(
+			(a, b) => a.rate - b.rate,
+		)
+
+		return {
+			ht: finalTotals.ht,
+			tva: finalTotals.tva,
+			ttc: finalTotals.ttc,
+			subTtc: subTotals.ttc,
+			lineDiscountTtc: subTotals.lineDiscountTtc,
+			cartDiscountTtc,
+			vatBreakdown,
+		}
+	}, [items, cartDiscountTtc, subTotals.ttc, subTotals.lineDiscountTtc])
+
+	// =====================
+	// SUBMIT
+	// =====================
 
 	const handleSubmit = async (status: 'draft' | 'validated') => {
 		if (!activeCompanyId) {
@@ -714,6 +773,33 @@ export function InvoiceCreatePage() {
 								<span>Total TTC</span>
 								<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
 							</div>
+
+							{/* ✅ VENTILATION TVA PAR TAUX */}
+							{totals.vatBreakdown.length > 0 && (
+								<div className='border-t pt-2 space-y-1'>
+									<div className='flex justify-between font-medium text-muted-foreground'>
+										<span>Total HT</span>
+										<span>{totals.ht.toFixed(2)} €</span>
+									</div>
+									<div className='flex justify-between font-medium text-muted-foreground'>
+										<span>Total TVA</span>
+										<span>{totals.tva.toFixed(2)} €</span>
+									</div>
+									<div className='pl-3 space-y-1 text-xs'>
+										{totals.vatBreakdown.map((vb) => (
+											<div
+												key={vb.rate}
+												className='flex justify-between text-muted-foreground'
+											>
+												<span>
+													TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+												</span>
+												<span>{vb.vat.toFixed(2)} €</span>
+											</div>
+										))}
+									</div>
+								</div>
+							)}
 						</div>
 
 						<div className='space-y-2 pt-2'>
@@ -903,15 +989,38 @@ export function InvoiceCreatePage() {
 									})}
 								</TableBody>
 								<TableFooter>
+									{/* ✅ VENTILATION TVA DANS LE FOOTER DU TABLEAU */}
+									{totals.vatBreakdown.map((vb) => (
+										<TableRow key={vb.rate}>
+											<TableCell colSpan={5} className='text-right text-xs'>
+												Base HT TVA {vb.rate}%
+											</TableCell>
+											<TableCell className='text-right text-xs'>
+												{vb.base_ht.toFixed(2)} €
+											</TableCell>
+											<TableCell />
+										</TableRow>
+									))}
 									<TableRow>
 										<TableCell colSpan={5} className='text-right'>
-											Total HT (estimé)
+											Total HT
 										</TableCell>
 										<TableCell className='text-right'>
 											{totals.ht.toFixed(2)} €
 										</TableCell>
 										<TableCell />
 									</TableRow>
+									{totals.vatBreakdown.map((vb) => (
+										<TableRow key={`vat-${vb.rate}`}>
+											<TableCell colSpan={5} className='text-right text-xs'>
+												TVA {vb.rate}%
+											</TableCell>
+											<TableCell className='text-right text-xs'>
+												{vb.vat.toFixed(2)} €
+											</TableCell>
+											<TableCell />
+										</TableRow>
+									))}
 									<TableRow className='font-bold'>
 										<TableCell colSpan={5} className='text-right'>
 											Total TTC Final

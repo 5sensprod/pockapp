@@ -22,12 +22,11 @@ func InitCmd() []byte {
 
 func AlignCenter() []byte { return []byte{0x1B, 0x61, 0x01} }
 func AlignLeft() []byte   { return []byte{0x1B, 0x61, 0x00} }
-func AlignRight() []byte  { return []byte{0x1B, 0x61, 0x02} } // ✅ AJOUTER
+func AlignRight() []byte  { return []byte{0x1B, 0x61, 0x02} }
 
 func BoldOn() []byte  { return []byte{0x1B, 0x45, 0x01} }
 func BoldOff() []byte { return []byte{0x1B, 0x45, 0x00} }
 
-// ✅ AJOUTER pour texte plus petit
 func SmallTextOn() []byte  { return []byte{0x1B, 0x21, 0x01} }
 func SmallTextOff() []byte { return []byte{0x1B, 0x21, 0x00} }
 
@@ -42,19 +41,24 @@ func Text(s string) []byte {
 
 func NL() []byte { return []byte("\n") }
 
-// ✅ MODIFIER ReceiptItem
 type ReceiptItem struct {
-	Name     string  `json:"name"`
-	Qty      int     `json:"qty"`
-	UnitTtc  float64 `json:"unitTtc"`
-	TotalTtc float64 `json:"totalTtc"`
-	// ✅ AJOUTER pour remises
+	Name         string   `json:"name"`
+	Qty          int      `json:"qty"`
+	UnitTtc      float64  `json:"unitTtc"`
+	TotalTtc     float64  `json:"totalTtc"`
+	TvaRate      float64  `json:"tvaRate"`
 	HasDiscount  bool     `json:"hasDiscount"`
 	BaseUnitTtc  *float64 `json:"baseUnitTtc"`
 	DiscountText *string  `json:"discountText"`
 }
 
-// ✅ MODIFIER ReceiptData
+type VatBreakdown struct {
+	Rate     float64 `json:"rate"`
+	BaseHt   float64 `json:"baseHt"`
+	Vat      float64 `json:"vat"`
+	TotalTtc float64 `json:"totalTtc"`
+}
+
 type ReceiptData struct {
 	CompanyName  string `json:"companyName"`
 	CompanyLine1 string `json:"companyLine1"`
@@ -70,7 +74,6 @@ type ReceiptData struct {
 	SellerName    string        `json:"sellerName"`
 	Items         []ReceiptItem `json:"items"`
 
-	// ✅ AJOUTER totaux détaillés
 	GrandSubtotal      *float64 `json:"grandSubtotal"`
 	LineDiscountsTotal *float64 `json:"lineDiscountsTotal"`
 	SubtotalTtc        float64  `json:"subtotalTtc"`
@@ -80,13 +83,14 @@ type ReceiptData struct {
 	TaxAmount          float64  `json:"taxAmount"`
 	TotalSavings       *float64 `json:"totalSavings"`
 
+	VatBreakdown []VatBreakdown `json:"vatBreakdown"`
+
 	PaymentMethod string   `json:"paymentMethod"`
 	Received      *float64 `json:"received"`
 	Change        *float64 `json:"change"`
 	Width         int      `json:"width"`
 }
 
-// Helper pour aligner droite avec padding
 func rightAlign(text string, width int) string {
 	if len(text) >= width {
 		return text
@@ -94,7 +98,6 @@ func rightAlign(text string, width int) string {
 	return strings.Repeat(" ", width-len(text)) + text
 }
 
-// Helper pour ligne avec label à gauche et valeur à droite
 func labelValue(label string, value string, width int) string {
 	available := width - len(label) - len(value)
 	if available < 1 {
@@ -113,7 +116,7 @@ func BuildReceipt(r ReceiptData) []byte {
 
 	var b bytes.Buffer
 	b.Write(InitCmd())
-	b.Write([]byte{0x1B, 0x74, 0x02}) // Charset
+	b.Write([]byte{0x1B, 0x74, 0x02})
 
 	// =========== EN-TÊTE ===========
 	b.Write(AlignCenter())
@@ -173,7 +176,7 @@ func BuildReceipt(r ReceiptData) []byte {
 	b.Write(AlignLeft())
 
 	for _, it := range r.Items {
-		// Nom du produit (gras)
+		// Nom du produit (sans TVA)
 		name := it.Name
 		if len([]rune(name)) > lineWidth-2 {
 			name = string([]rune(name)[:lineWidth-2])
@@ -183,20 +186,14 @@ func BuildReceipt(r ReceiptData) []byte {
 		b.Write(BoldOff())
 		b.Write(NL())
 
-		// ✅ Détails avec ou sans remise
 		if it.HasDiscount && it.BaseUnitTtc != nil {
-			// On ne fait PAS confiance à DiscountText (peut contenir des caractères bizarres en remise "montant")
-			// On reconstruit l'affichage de la remise à partir des valeurs numériques sûres.
 			discAmt := *it.BaseUnitTtc - it.UnitTtc
 			if discAmt < 0 {
 				discAmt = 0
 			}
 
-			// Si tu as un vrai flag/mode pour distinguer % vs montant, branche-le ici.
-			// Sinon, on essaie d'utiliser DiscountText uniquement pour détecter le "%" (mais on n'imprime pas le texte).
 			isPercent := false
 			if it.DiscountText != nil {
-				// simple détection
 				for _, r := range *it.DiscountText {
 					if r == '%' {
 						isPercent = true
@@ -216,10 +213,11 @@ func BuildReceipt(r ReceiptData) []byte {
 				discountLabel = fmt.Sprintf("-%.2f EUR", discAmt)
 			}
 
-			// Ligne 1 : Qté x Prix avant remise + Remise
-			line1 := fmt.Sprintf("  %dx %.2fEUR %s",
+			// ✅ Ligne avec TVA
+			line1 := fmt.Sprintf("  %dx %.2fEUR (TVA %.2g%%) %s",
 				it.Qty,
 				*it.BaseUnitTtc,
+				it.TvaRate,
 				discountLabel,
 			)
 			b.Write(SmallTextOn())
@@ -227,28 +225,27 @@ func BuildReceipt(r ReceiptData) []byte {
 			b.Write(SmallTextOff())
 			b.Write(NL())
 
-			// Ligne 2 : Prix net + Total aligné droite
 			netPrice := fmt.Sprintf("= %.2fEUR", it.UnitTtc)
 			total := fmt.Sprintf("%.2fEUR", it.TotalTtc)
 			line2 := labelValue("  "+netPrice, total, lineWidth)
 			b.Write(Text(line2))
 			b.Write(NL())
 		} else {
-			// SANS REMISE - Format classique
-			qtyPrice := fmt.Sprintf("  %dx %.2fEUR", it.Qty, it.UnitTtc)
+			// ✅ Format: "2x 10.00EUR (TVA 5.5%)     20.00EUR"
+			qtyPrice := fmt.Sprintf("  %dx %.2fEUR (TVA %.2g%%)", it.Qty, it.UnitTtc, it.TvaRate)
 			total := fmt.Sprintf("%.2fEUR", it.TotalTtc)
 			line := labelValue(qtyPrice, total, lineWidth)
 			b.Write(Text(line))
 			b.Write(NL())
 		}
 
-		b.Write(NL()) // Espace entre articles
+		b.Write(NL())
 	}
+
 	// =========== TOTAUX ===========
 	b.Write(Text(strings.Repeat("-", lineWidth)))
 	b.Write(NL())
 
-	// ✅ Sous-total avant remises (si remises existent)
 	if r.GrandSubtotal != nil && *r.GrandSubtotal > r.SubtotalTtc {
 		line := labelValue("Sous-total", fmt.Sprintf("%.2fEUR", *r.GrandSubtotal), lineWidth)
 		b.Write(SmallTextOn())
@@ -257,14 +254,12 @@ func BuildReceipt(r ReceiptData) []byte {
 		b.Write(NL())
 	}
 
-	// ✅ Remises articles
 	if r.LineDiscountsTotal != nil && *r.LineDiscountsTotal > 0 {
 		line := labelValue("Remises articles", fmt.Sprintf("-%.2fEUR", *r.LineDiscountsTotal), lineWidth)
 		b.Write(Text(line))
 		b.Write(NL())
 	}
 
-	// ✅ Remise commerciale/globale
 	if r.DiscountAmount != nil && *r.DiscountAmount > 0 {
 		label := "Remise commerciale"
 		if r.DiscountPercent != nil && *r.DiscountPercent > 0 {
@@ -278,19 +273,32 @@ func BuildReceipt(r ReceiptData) []byte {
 	b.Write(Text(strings.Repeat("-", lineWidth)))
 	b.Write(NL())
 
-	// TVA
-	line := labelValue("TVA (20%)", fmt.Sprintf("%.2fEUR", r.TaxAmount), lineWidth)
-	b.Write(Text(line))
+	// ✅ TVA DÉTAILLÉE (une ligne par taux)
+	if len(r.VatBreakdown) > 0 {
+		for _, vb := range r.VatBreakdown {
+			label := fmt.Sprintf("TVA %.2g%% sur %.2fEUR HT", vb.Rate, vb.BaseHt)
+			value := fmt.Sprintf("%.2fEUR", vb.Vat)
+			line := labelValue(label, value, lineWidth)
+			b.Write(Text(line))
+			b.Write(NL())
+		}
+	} else {
+		// Fallback
+		line := labelValue("TVA", fmt.Sprintf("%.2fEUR", r.TaxAmount), lineWidth)
+		b.Write(Text(line))
+		b.Write(NL())
+	}
+
+	b.Write(Text(strings.Repeat("-", lineWidth)))
 	b.Write(NL())
 
-	// TOTAL TTC (GRAS + GRAND)
+	// TOTAL TTC
 	b.Write(BoldOn())
 	total := labelValue("TOTAL TTC", fmt.Sprintf("%.2fEUR", r.TotalTtc), lineWidth)
 	b.Write(Text(total))
 	b.Write(BoldOff())
 	b.Write(NL())
 
-	// ✅ Économie totale
 	if r.TotalSavings != nil && *r.TotalSavings > 0 {
 		b.Write(NL())
 		savingsLine := labelValue("VOUS ECONOMISEZ", fmt.Sprintf("%.2fEUR", *r.TotalSavings), lineWidth)

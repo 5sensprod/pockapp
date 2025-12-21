@@ -1,4 +1,5 @@
 // frontend/modules/cash/CashTerminalPage.tsx
+// ✅ VERSION CORRIGÉE - Support multi-taux TVA + Ticket de caisse
 
 import { Button } from '@/components/ui/button'
 import {
@@ -55,38 +56,33 @@ import {
 import * as React from 'react'
 import { toast } from 'sonner'
 
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
 const APPPOS_BASE_URL = 'http://localhost:3000'
 
-// Helper pour construire l'URL de l'image (comme dans ProductTable)
 const getImageUrl = (imagePath: string | undefined): string | null => {
 	if (!imagePath) return null
-	// Si c'est déjà une URL complète
 	if (imagePath.startsWith('http')) return imagePath
-	// Sinon, préfixer avec l'URL AppPOS
 	return `${APPPOS_BASE_URL}${imagePath}`
 }
 
 type LineDiscountMode = 'percent' | 'unit'
-type DisplayMode = 'name' | 'designation' | 'sku' // 🆕 Type pour le mode d'affichage
+type DisplayMode = 'name' | 'designation' | 'sku'
 
 interface CartItem {
 	id: string
 	productId: string
 	name: string
-	designation?: string // 🆕 Ajout de la désignation
-	sku?: string // 🆕 Ajout du SKU
-	image?: string // 🆕 Ajout de l'image
-	unitPrice: number // prix catalogue TTC
+	designation?: string
+	sku?: string
+	image?: string
+	unitPrice: number
 	quantity: number
+	tvaRate: number
 
-	lineDiscountMode?: LineDiscountMode // 'percent' | 'unit'
-	lineDiscountValue?: number // percent (0-100) OU prix unitaire TTC (pour calculs)
-	lineDiscountRaw?: string // 🆕 Valeur brute saisie par l'utilisateur (pour affichage)
+	lineDiscountMode?: LineDiscountMode
+	lineDiscountValue?: number
+	lineDiscountRaw?: string
 
-	displayMode?: DisplayMode // 🆕 Mode d'affichage (name par défaut)
+	displayMode?: DisplayMode
 }
 
 type PaymentStep = 'cart' | 'payment' | 'success'
@@ -100,12 +96,16 @@ type AppPosProduct = {
 	price_ttc?: number | null
 	price_ht?: number | null
 	stock_quantity?: number | null
-	images?: string // 🔥 STRING au pluriel, comme dans ProductTable !
+	images?: string
+	tva_rate?: number
 }
 
-// ============================================================================
-// COMPOSANT PRINCIPAL
-// ============================================================================
+interface VatBreakdown {
+	rate: number
+	base_ht: number
+	vat: number
+	total_ttc: number
+}
 
 export function CashTerminalPage() {
 	const navigate = useNavigate()
@@ -119,10 +119,10 @@ export function CashTerminalPage() {
 	const [cart, setCart] = React.useState<CartItem[]>([])
 	const [productSearch, setProductSearch] = React.useState('')
 
-	// 🆕 Remise globale avec mode et valeur brute
 	const [cartDiscountMode, setCartDiscountMode] = React.useState<
 		'percent' | 'amount'
 	>('percent')
+
 	const [cartDiscountValue, setCartDiscountValue] = React.useState<number>(0)
 	const [cartDiscountRaw, setCartDiscountRaw] = React.useState<string>('')
 
@@ -134,18 +134,15 @@ export function CashTerminalPage() {
 
 	const [isAppPosConnected, setIsAppPosConnected] = React.useState(false)
 
-	// NEW: ligne en édition (pour la remise)
 	const [editingLineId, setEditingLineId] = React.useState<string | null>(null)
 
-	// NEW: Ref pour l'input de recherche
 	const searchInputRef = React.useRef<HTMLInputElement>(null)
 
-	// NEW: Dialogue de création de produit
 	const [showCreateProductDialog, setShowCreateProductDialog] =
 		React.useState(false)
 	const [productNotFoundBarcode, setProductNotFoundBarcode] =
 		React.useState<string>('')
-	const [productInitialName, setProductInitialName] = React.useState<string>('') // 🆕 Pour le nom pré-rempli
+	const [productInitialName, setProductInitialName] = React.useState<string>('')
 
 	const { data: registers } = useCashRegisters(activeCompanyId ?? undefined)
 	const { data: activeSession, isLoading: isSessionLoading } =
@@ -186,7 +183,6 @@ export function CashTerminalPage() {
 				return +(base * (1 - p / 100)).toFixed(2)
 			}
 
-			// mode === 'unit' : prix unitaire TTC saisi
 			return +clamp(val, 0, base).toFixed(2)
 		},
 		[clamp],
@@ -197,27 +193,110 @@ export function CashTerminalPage() {
 		[getEffectiveUnitTtc],
 	)
 
-	const { subtotalTtc, totalTtc, tax, discountAmount } = React.useMemo(() => {
+	const getLineAmounts = React.useCallback(
+		(item: CartItem) => {
+			const ttc = getLineTotalTtc(item)
+			const coef = 1 + item.tvaRate / 100
+			const ht = ttc / coef
+			const vat = ttc - ht
+			return { ttc, ht, vat }
+		},
+		[getLineTotalTtc],
+	)
+
+	const applyCartDiscountProRata = React.useCallback(
+		(items: CartItem[], discountTtc: number) => {
+			if (discountTtc <= 0) return items.map((it) => getLineAmounts(it))
+
+			const subtotal = items.reduce((sum, it) => sum + getLineTotalTtc(it), 0)
+			if (subtotal <= 0) return items.map((it) => getLineAmounts(it))
+
+			return items.map((it) => {
+				const lineTtc = getLineTotalTtc(it)
+				const ratio = lineTtc / subtotal
+				const lineDiscount = discountTtc * ratio
+
+				const finalTtc = lineTtc - lineDiscount
+				const coef = 1 + it.tvaRate / 100
+				const finalHt = finalTtc / coef
+				const finalVat = finalTtc - finalHt
+
+				return { ttc: finalTtc, ht: finalHt, vat: finalVat }
+			})
+		},
+		[getLineTotalTtc, getLineAmounts],
+	)
+
+	const {
+		subtotalTtc,
+		totalTtc,
+		totalHt,
+		totalVat,
+		discountAmount,
+		vatBreakdown,
+	} = React.useMemo(() => {
 		const subtotal = cart.reduce((sum, item) => sum + getLineTotalTtc(item), 0)
 
-		// 🆕 Calculer la remise selon le mode
 		let discount = 0
 		if (cartDiscountMode === 'percent') {
 			discount = (subtotal * cartDiscountValue) / 100
 		} else {
-			// Mode 'amount' : remise fixe en euros
-			discount = Math.min(cartDiscountValue, subtotal) // Ne pas dépasser le sous-total
+			discount = Math.min(cartDiscountValue, subtotal)
 		}
 
-		const total = subtotal - discount
-		const taxAmount = total * 0.2
-		return {
-			subtotalTtc: subtotal,
-			discountAmount: discount,
-			totalTtc: total,
-			tax: taxAmount,
+		const finalLines = applyCartDiscountProRata(cart, discount)
+
+		const total_ttc = finalLines.reduce((sum, line) => sum + line.ttc, 0)
+		const total_ht = finalLines.reduce((sum, line) => sum + line.ht, 0)
+		const total_vat = finalLines.reduce((sum, line) => sum + line.vat, 0)
+
+		const breakdownMap = new Map<number, VatBreakdown>()
+
+		for (const [index, item] of cart.entries()) {
+			const rate = item.tvaRate
+			const amounts = finalLines[index]
+
+			let entry = breakdownMap.get(rate)
+
+			if (!entry) {
+				entry = {
+					rate,
+					base_ht: 0,
+					vat: 0,
+					total_ttc: 0,
+				}
+				breakdownMap.set(rate, entry)
+			}
+
+			entry.base_ht += amounts.ht
+			entry.vat += amounts.vat
+			entry.total_ttc += amounts.ttc
 		}
-	}, [cart, cartDiscountMode, cartDiscountValue, getLineTotalTtc])
+
+		const breakdown = Array.from(breakdownMap.values())
+			.map((entry) => ({
+				rate: entry.rate,
+				base_ht: +entry.base_ht.toFixed(2),
+				vat: +entry.vat.toFixed(2),
+				total_ttc: +entry.total_ttc.toFixed(2),
+			}))
+			.sort((a, b) => a.rate - b.rate)
+
+		return {
+			subtotalTtc: +subtotal.toFixed(2),
+			discountAmount: +discount.toFixed(2),
+			totalTtc: +total_ttc.toFixed(2),
+			totalHt: +total_ht.toFixed(2),
+			totalVat: +total_vat.toFixed(2),
+			vatBreakdown: breakdown,
+		}
+	}, [
+		cart,
+		cartDiscountMode,
+		cartDiscountValue,
+		getLineTotalTtc,
+		applyCartDiscountProRata,
+	])
 
 	const change = React.useMemo(() => {
 		const received = Number.parseFloat(amountReceived) || 0
@@ -237,36 +316,21 @@ export function CashTerminalPage() {
 		change: paymentStep === 'payment' && change > 0 ? change : undefined,
 	})
 
-	// ============================================================================
-	// NEW: GESTION DU FOCUS AUTOMATIQUE
-	// ============================================================================
 	React.useEffect(() => {
-		// Focus sur l'input de recherche au chargement et après chaque vente
 		if (paymentStep === 'cart' && searchInputRef.current) {
 			searchInputRef.current.focus()
 		}
 	}, [paymentStep])
 
-	// ============================================================================
-	// NEW: AJOUT AUTOMATIQUE AU PANIER SI UN SEUL RÉSULTAT
-	// ============================================================================
 	React.useEffect(() => {
-		// Si un seul produit correspond ET qu'il y a une recherche active
 		if (products.length === 1 && productSearch.length > 2) {
 			const product = products[0]
-
-			// Vérifier si c'est probablement un scan (code-barres ou SKU exact)
 			const isExactMatch =
 				product.barcode === productSearch || product.sku === productSearch
 
 			if (isExactMatch) {
-				// Ajouter au panier
 				addToCart(product)
-
-				// Vider la recherche
 				setProductSearch('')
-
-				// Refocus sur l'input
 				setTimeout(() => {
 					searchInputRef.current?.focus()
 				}, 0)
@@ -274,18 +338,13 @@ export function CashTerminalPage() {
 		}
 	}, [products, productSearch])
 
-	// ============================================================================
-	// NEW: CAPTURE GLOBALE DES SCANS DE CODE-BARRES
-	// ============================================================================
 	React.useEffect(() => {
-		// Ne fonctionner que si on est sur l'écran du panier
 		if (paymentStep !== 'cart') return
 
 		let scanBuffer = ''
 		let scanTimeout: NodeJS.Timeout | null = null
 
 		const handleKeyDown = (e: KeyboardEvent) => {
-			// Ne pas intercepter si on est déjà dans un input/textarea
 			const target = e.target as HTMLElement
 			if (
 				target instanceof HTMLInputElement ||
@@ -295,35 +354,24 @@ export function CashTerminalPage() {
 				return
 			}
 
-			// Accumuler les caractères alphanumériques
 			if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
 				e.preventDefault()
 				scanBuffer += e.key
 
-				// Clear le timeout précédent
 				if (scanTimeout) clearTimeout(scanTimeout)
 
-				// Reset le buffer après 100ms d'inactivité
 				scanTimeout = setTimeout(() => {
 					scanBuffer = ''
 				}, 100)
 			}
 
-			// Si Enter et qu'on a un buffer, c'est un scan
 			if (e.key === 'Enter' && scanBuffer.length > 0) {
 				e.preventDefault()
-
-				// Mettre à jour la recherche
 				setProductSearch(scanBuffer)
-
-				// Focus sur l'input
 				searchInputRef.current?.focus()
-
-				// Reset le buffer
 				scanBuffer = ''
 			}
 
-			// Échap pour clear la recherche
 			if (e.key === 'Escape') {
 				e.preventDefault()
 				setProductSearch('')
@@ -382,9 +430,9 @@ export function CashTerminalPage() {
 			}
 
 			const price = product.price_ttc || product.price_ht || 0
-
-			// 🔥 Utiliser getImageUrl comme dans ProductTable
 			const imageUrl = getImageUrl(product.images)
+
+			const tvaRate = product.tva_rate ?? 20
 
 			const newItem: CartItem = {
 				id: `cart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -392,9 +440,10 @@ export function CashTerminalPage() {
 				name: product.name,
 				designation: product.designation || product.name,
 				sku: product.sku || '',
-				image: imageUrl || '', // 🔥 Utiliser l'URL construite
+				image: imageUrl || '',
 				unitPrice: price,
 				quantity: 1,
+				tvaRate,
 				displayMode: 'name',
 			}
 			return [...prev, newItem]
@@ -423,16 +472,10 @@ export function CashTerminalPage() {
 		setEditingLineId(null)
 	}, [])
 
-	// NEW: Callback après création d'un produit
 	const handleProductCreated = React.useCallback(
 		(product: any) => {
-			// Ajouter automatiquement le nouveau produit au panier
 			addToCart(product)
-
-			// Message de confirmation
 			toast.success(`${product.name} ajouté au panier`)
-
-			// Refocus sur l'input
 			setTimeout(() => {
 				searchInputRef.current?.focus()
 			}, 100)
@@ -440,17 +483,13 @@ export function CashTerminalPage() {
 		[addToCart],
 	)
 
-	// 🆕 Callback pour ouvrir le dialogue de création manuellement
 	const handleCreateProductClick = React.useCallback(() => {
-		// Pré-remplir avec le terme de recherche si disponible
 		if (productSearch.trim()) {
-			// Si c'est un code-barres probable (8+ chiffres), mettre dans barcode
 			const isBarcode = /^\d{8,}$/.test(productSearch.trim())
 			if (isBarcode) {
 				setProductNotFoundBarcode(productSearch.trim())
 				setProductInitialName('')
 			} else {
-				// Sinon, c'est un nom de produit
 				setProductInitialName(productSearch.trim())
 				setProductNotFoundBarcode('')
 			}
@@ -460,21 +499,18 @@ export function CashTerminalPage() {
 		}
 
 		setShowCreateProductDialog(true)
-		setProductSearch('') // Vider la recherche
+		setProductSearch('')
 	}, [productSearch])
 
 	const handleChangeCartDiscount = React.useCallback(
 		(raw: string) => {
-			// Stocker la valeur brute pour l'affichage
 			setCartDiscountRaw(raw)
 
-			// Si vide, réinitialiser
 			if (raw.trim() === '') {
 				setCartDiscountValue(0)
 				return
 			}
 
-			// Parser avec normalisation virgule→point
 			const normalized = raw.replace(',', '.')
 			const v = Number.parseFloat(normalized)
 
@@ -482,18 +518,15 @@ export function CashTerminalPage() {
 				return
 			}
 
-			// Appliquer les limites selon le mode
 			if (cartDiscountMode === 'percent') {
 				setCartDiscountValue(clamp(v, 0, 100))
 			} else {
-				// Mode 'amount' : pas de limite max (sera plafonné dans le calcul)
 				setCartDiscountValue(Math.max(0, v))
 			}
 		},
 		[cartDiscountMode, clamp],
 	)
 
-	// ✅ FIX: Remise par ligne - accepter virgule ET point, permettre input vide
 	const setLineDiscountMode = React.useCallback(
 		(itemId: string, mode: LineDiscountMode) => {
 			setCart((prev) =>
@@ -510,7 +543,7 @@ export function CashTerminalPage() {
 						...it,
 						lineDiscountMode: mode,
 						lineDiscountValue: nextValue,
-						lineDiscountRaw: String(nextValue), // ← Initialiser avec la valeur formatée
+						lineDiscountRaw: String(nextValue),
 					}
 				}),
 			)
@@ -526,7 +559,6 @@ export function CashTerminalPage() {
 
 					const mode = it.lineDiscountMode ?? 'percent'
 
-					// ✅ Si vide, tout remettre à undefined
 					if (raw.trim() === '') {
 						return {
 							...it,
@@ -536,12 +568,9 @@ export function CashTerminalPage() {
 						}
 					}
 
-					// ✅ Stocker la valeur brute pour l'affichage
-					// ✅ Parser avec normalisation virgule→point pour les calculs
 					const normalized = raw.replace(',', '.')
 					const v = Number.parseFloat(normalized)
 
-					// Si c'est invalide (ex: "12."), on garde quand même la saisie
 					if (Number.isNaN(v)) {
 						return {
 							...it,
@@ -558,7 +587,7 @@ export function CashTerminalPage() {
 						...it,
 						lineDiscountMode: mode,
 						lineDiscountValue: next,
-						lineDiscountRaw: raw, // ← Garder ce que l'utilisateur a tapé
+						lineDiscountRaw: raw,
 					}
 				}),
 			)
@@ -581,17 +610,11 @@ export function CashTerminalPage() {
 		)
 	}, [])
 
-	// 🆕 Changer le mode d'affichage d'une ligne
 	const setLineDisplayMode = React.useCallback(
 		(itemId: string, mode: DisplayMode) => {
-			console.log('🔄 setLineDisplayMode called:', { itemId, mode })
 			setCart((prev) => {
 				const updated = prev.map((it) =>
 					it.id === itemId ? { ...it, displayMode: mode } : it,
-				)
-				console.log(
-					'🔄 Cart updated:',
-					updated.find((it) => it.id === itemId),
 				)
 				return updated
 			})
@@ -606,7 +629,6 @@ export function CashTerminalPage() {
 				return
 			}
 
-			// ✅ force l'affichage du total AU CLIC sur Encaisser
 			customerDisplay.displayTotal(totalTtc, cart.length)
 
 			setSelectedPaymentMethod(method)
@@ -615,6 +637,7 @@ export function CashTerminalPage() {
 		},
 		[cart.length, totalTtc, customerDisplay],
 	)
+
 	const handleConfirmPayment = React.useCallback(async () => {
 		customerDisplay.displayThankYou()
 		if (!activeCompanyId || !activeSession) {
@@ -639,13 +662,10 @@ export function CashTerminalPage() {
 				activeCompanyId,
 			)
 
-			const invoiceItems: InvoiceItem[] = cart.map((item) => {
-				const unitTtc = getEffectiveUnitTtc(item)
-				const totalLineTtc = unitTtc * item.quantity
-				const unitHt = unitTtc / 1.2
-				const totalHt = totalLineTtc / 1.2
+			const finalLines = applyCartDiscountProRata(cart, discountAmount)
 
-				// 🆕 Utiliser le texte d'affichage sélectionné
+			const invoiceItems: InvoiceItem[] = cart.map((item, index) => {
+				const amounts = finalLines[index]
 				const displayMode = item.displayMode || 'name'
 				let displayName = item.name
 				if (displayMode === 'designation') {
@@ -654,33 +674,32 @@ export function CashTerminalPage() {
 					displayName = item.sku || item.name
 				}
 
+				const unitHt = amounts.ht / item.quantity
+				// const unitTtc = amounts.ttc / item.quantity
+
 				return {
 					product_id: item.productId,
 					name: displayName,
 					quantity: item.quantity,
 					unit_price_ht: unitHt,
-					tva_rate: 20,
-					total_ht: totalHt,
-					total_ttc: totalLineTtc,
-					// ✅ AJOUTER LES REMISES PAR LIGNE
+					tva_rate: item.tvaRate,
+					total_ht: amounts.ht,
+					total_ttc: amounts.ttc,
 					line_discount_mode:
 						item.lineDiscountMode === 'unit' ? 'amount' : item.lineDiscountMode,
 					line_discount_value: item.lineDiscountValue,
-					unit_price_ttc_before_discount: item.unitPrice, // Prix catalogue
+					unit_price_ttc_before_discount: item.unitPrice,
 				}
 			})
 
-			// Calculer le total des remises par ligne
 			const lineDiscountsTotalTtc = cart.reduce((sum, item) => {
 				const baseTtc = item.unitPrice * item.quantity
 				const effectiveTtc = getLineTotalTtc(item)
 				return sum + (baseTtc - effectiveTtc)
 			}, 0)
 
-			// Calculer la remise globale
 			const cartDiscountTtc = discountAmount
 
-			// ✅ FIX: Ajout de is_pos_ticket: true
 			const invoice = await createInvoice.mutateAsync({
 				invoice_type: 'invoice',
 				date: new Date().toISOString().split('T')[0],
@@ -691,18 +710,16 @@ export function CashTerminalPage() {
 				paid_at: new Date().toISOString(),
 				payment_method: selectedPaymentMethod,
 				items: invoiceItems,
-				total_ht: totalTtc / 1.2,
-				total_tva: totalTtc - totalTtc / 1.2,
+				total_ht: totalHt,
+				total_tva: totalVat,
 				total_ttc: totalTtc,
 				currency: 'EUR',
 
-				// 🎯 CHAMPS DE CAISSE
 				cash_register: cashRegisterId,
 				session: activeSession.id,
 				is_pos_ticket: true,
 				sold_by: user?.id,
 
-				// ✅ AJOUTER LES REMISES GLOBALES
 				cart_discount_mode:
 					cartDiscountValue > 0 ? cartDiscountMode : undefined,
 				cart_discount_value:
@@ -712,7 +729,6 @@ export function CashTerminalPage() {
 					lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
 			})
 
-			// Mouvement de caisse si espèces
 			if (selectedPaymentMethod === 'especes') {
 				await createCashMovement.mutateAsync({
 					sessionId: activeSession.id,
@@ -729,10 +745,8 @@ export function CashTerminalPage() {
 				return
 			}
 
-			// Impression ticket
 			if (printerSettings.enabled && printerSettings.printerName) {
 				if (printerSettings.autoPrint) {
-					// Calculer les remises
 					const lineDiscountsTotalTtc = cart.reduce((sum, item) => {
 						const baseTtc = item.unitPrice * item.quantity
 						const effectiveTtc = getLineTotalTtc(item)
@@ -778,6 +792,7 @@ export function CashTerminalPage() {
 									qty: it.quantity,
 									unitTtc: effectiveUnitTtc,
 									totalTtc: getLineTotalTtc(it),
+									tvaRate: it.tvaRate,
 									hasDiscount,
 									baseUnitTtc: hasDiscount ? baseUnitTtc : undefined,
 									discountText,
@@ -795,9 +810,15 @@ export function CashTerminalPage() {
 									? cartDiscountValue
 									: undefined,
 							totalTtc,
-							taxAmount: tax,
+							taxAmount: totalVat,
 							totalSavings: lineDiscountsTotalTtc + cartDiscountAmount,
 							paymentMethod: selectedPaymentMethod,
+							vatBreakdown: vatBreakdown.map((vb) => ({
+								rate: vb.rate,
+								baseHt: vb.base_ht,
+								vat: vb.vat,
+								totalTtc: vb.total_ttc,
+							})),
 						},
 					})
 				}
@@ -836,11 +857,14 @@ export function CashTerminalPage() {
 		discountAmount,
 		getEffectiveUnitTtc,
 		getLineTotalTtc,
+		applyCartDiscountProRata,
 		pb,
 		selectedPaymentMethod,
 		subtotalTtc,
-		tax,
+		totalVat,
 		totalTtc,
+		totalHt,
+		vatBreakdown,
 		user,
 		customerDisplay,
 	])
@@ -867,8 +891,9 @@ export function CashTerminalPage() {
 					onClearCart={clearCart}
 					onUpdateQuantity={updateQuantity}
 					subtotalTtc={subtotalTtc}
-					tax={tax}
+					totalVat={totalVat}
 					totalTtc={totalTtc}
+					vatBreakdown={vatBreakdown}
 					cartDiscountMode={cartDiscountMode}
 					cartDiscountRaw={cartDiscountRaw}
 					discountAmount={discountAmount}
@@ -885,7 +910,6 @@ export function CashTerminalPage() {
 					setEditingLineId={setEditingLineId}
 				/>
 
-				{/* Dialogue de création de produit */}
 				<CreateProductDialog
 					open={showCreateProductDialog}
 					onOpenChange={setShowCreateProductDialog}
@@ -916,10 +940,6 @@ export function CashTerminalPage() {
 	return <SuccessView onNewSale={clearCart} />
 }
 
-// ============================================================================
-// COMPOSANTS (en bas du fichier)
-// ============================================================================
-
 function LoadingView() {
 	return (
 		<div className='flex h-screen items-center justify-center'>
@@ -947,8 +967,9 @@ function CartStepView(props: {
 	onUpdateQuantity: (itemId: string, newQuantity: number) => void
 
 	subtotalTtc: number
-	tax: number
+	totalVat: number
 	totalTtc: number
+	vatBreakdown: VatBreakdown[]
 	cartDiscountMode: 'percent' | 'amount'
 	cartDiscountRaw: string
 	discountAmount: number
@@ -983,8 +1004,9 @@ function CartStepView(props: {
 		onClearCart,
 		onUpdateQuantity,
 		subtotalTtc,
-		tax,
+		totalVat,
 		totalTtc,
+		vatBreakdown,
 		cartDiscountMode,
 		cartDiscountRaw,
 		discountAmount,
@@ -1029,8 +1051,9 @@ function CartStepView(props: {
 						onClearCart={onClearCart}
 						onUpdateQuantity={onUpdateQuantity}
 						subtotalTtc={subtotalTtc}
-						tax={tax}
+						totalVat={totalVat}
 						totalTtc={totalTtc}
+						vatBreakdown={vatBreakdown}
 						cartDiscountMode={cartDiscountMode}
 						cartDiscountRaw={cartDiscountRaw}
 						discountAmount={discountAmount}
@@ -1094,7 +1117,7 @@ function ProductsPanel(props: {
 	isAppPosConnected: boolean
 	products: AppPosProduct[]
 	onAddToCart: (p: AppPosProduct) => void
-	onCreateProductClick: () => void // 🆕 Callback pour créer un produit
+	onCreateProductClick: () => void
 }) {
 	const {
 		productSearch,
@@ -1142,7 +1165,6 @@ function ProductsPanel(props: {
 						{isAppPosConnected ? (
 							productSearch.length > 0 ? (
 								<>
-									{/* Aucun résultat trouvé */}
 									<div className='text-center'>
 										<div className='mb-2 text-sm font-medium text-slate-700'>
 											Aucun produit trouvé
@@ -1152,7 +1174,6 @@ function ProductsPanel(props: {
 										</div>
 									</div>
 
-									{/* Bouton pour créer un nouveau produit */}
 									<Button
 										type='button'
 										variant='outline'
@@ -1178,7 +1199,6 @@ function ProductsPanel(props: {
 				) : (
 					<>
 						{products.slice(0, 50).map((p) => {
-							// 🔥 Utiliser getImageUrl comme dans ProductTable
 							const imageUrl = getImageUrl(p.images)
 
 							return (
@@ -1188,14 +1208,12 @@ function ProductsPanel(props: {
 									onClick={() => onAddToCart(p)}
 									className='flex w-full cursor-pointer items-center gap-3 border-b px-4 py-2 text-left hover:bg-slate-50'
 								>
-									{/* Image du produit */}
 									{imageUrl ? (
 										<img
 											src={imageUrl}
 											alt={p.name}
 											className='h-10 w-10 rounded-md object-cover border border-slate-200'
 											onError={(e) => {
-												// Si l'image ne charge pas, cacher l'élément
 												e.currentTarget.style.display = 'none'
 											}}
 										/>
@@ -1232,8 +1250,9 @@ function CartPanel(props: {
 	onClearCart: () => void
 	onUpdateQuantity: (itemId: string, newQuantity: number) => void
 	subtotalTtc: number
-	tax: number
+	totalVat: number
 	totalTtc: number
+	vatBreakdown: VatBreakdown[]
 	cartDiscountMode: 'percent' | 'amount'
 	cartDiscountRaw: string
 	discountAmount: number
@@ -1256,8 +1275,9 @@ function CartPanel(props: {
 		onClearCart,
 		onUpdateQuantity,
 		subtotalTtc,
-		tax,
+		totalVat,
 		totalTtc,
+		vatBreakdown,
 		cartDiscountMode,
 		cartDiscountRaw,
 		discountAmount,
@@ -1280,7 +1300,6 @@ function CartPanel(props: {
 		return item.lineDiscountValue < item.unitPrice
 	}, [])
 
-	// 🆕 Obtenir le texte à afficher selon le mode
 	const getDisplayText = React.useCallback((item: CartItem) => {
 		const mode = item.displayMode
 
@@ -1294,17 +1313,15 @@ function CartPanel(props: {
 
 		return item.name
 	}, [])
-	// 🆕 Vérifier si une option de display est disponible (valeur différente du nom)
+
 	const isDisplayModeAvailable = React.useCallback(
 		(item: CartItem, mode: DisplayMode) => {
 			switch (mode) {
 				case 'name':
-					return true // Toujours disponible
+					return true
 				case 'designation':
-					// Disponible si designation existe ET est différente du nom
 					return !!(item.designation && item.designation !== item.name)
 				case 'sku':
-					// Disponible si SKU existe ET est différent du nom
 					return !!(item.sku && item.sku !== item.name && item.sku !== '')
 				default:
 					return false
@@ -1343,21 +1360,18 @@ function CartPanel(props: {
 						{cart.map((item) => {
 							const open = editingLineId === item.id
 							const mode: LineDiscountMode = item.lineDiscountMode ?? 'percent'
-							// ✅ Utiliser la valeur brute pour l'affichage (ce que l'utilisateur a tapé)
 							const value = item.lineDiscountRaw || ''
 							const currentDisplayMode = item.displayMode || 'name'
 
 							return (
 								<div key={item.id} className='py-2'>
 									<div className='flex items-start gap-3'>
-										{/* Image du produit */}
 										{item.image ? (
 											<img
 												src={item.image}
 												alt={getDisplayText(item)}
 												className='h-12 w-12 rounded-md object-cover border border-slate-200 flex-shrink-0'
 												onError={(e) => {
-													// Si l'image ne charge pas, afficher un placeholder
 													e.currentTarget.style.display = 'none'
 													const placeholder = e.currentTarget
 														.nextElementSibling as HTMLElement
@@ -1365,7 +1379,6 @@ function CartPanel(props: {
 												}}
 											/>
 										) : null}
-										{/* Placeholder si pas d'image ou erreur de chargement */}
 										<div
 											className='h-12 w-12 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0'
 											style={{ display: item.image ? 'none' : 'flex' }}
@@ -1373,15 +1386,12 @@ function CartPanel(props: {
 											<span className='text-xs text-slate-400'>?</span>
 										</div>
 
-										{/* Contenu principal (nom, boutons, etc.) */}
 										<div className='flex-1 min-w-0'>
-											{/* Nom du produit avec sélecteur de mode */}
 											<div className='flex items-center gap-2'>
 												<div className='flex-1 font-medium truncate'>
 													{getDisplayText(item)}
 												</div>
 
-												{/* Afficher le sélecteur seulement s'il y a plusieurs options */}
 												{(isDisplayModeAvailable(item, 'designation') ||
 													isDisplayModeAvailable(item, 'sku')) && (
 													<Select
@@ -1394,17 +1404,14 @@ function CartPanel(props: {
 															<SelectValue />
 														</SelectTrigger>
 														<SelectContent>
-															{/* Nom : toujours disponible */}
 															<SelectItem value='name'>Nom</SelectItem>
 
-															{/* Désignation : si différente du nom */}
 															{isDisplayModeAvailable(item, 'designation') && (
 																<SelectItem value='designation'>
 																	Désignation
 																</SelectItem>
 															)}
 
-															{/* SKU : si existe et différent du nom */}
 															{isDisplayModeAvailable(item, 'sku') && (
 																<SelectItem value='sku'>SKU</SelectItem>
 															)}
@@ -1462,7 +1469,6 @@ function CartPanel(props: {
 												)}
 											</div>
 
-											{/* NEW: panel ultra-compact (une seule ligne) */}
 											{open && (
 												<div className='mt-2 flex items-center gap-2 rounded-lg bg-slate-50 p-2'>
 													<div className='w-28'>
@@ -1564,9 +1570,22 @@ function CartPanel(props: {
 					</div>
 				)}
 
-				<div className='mt-2 flex items-center justify-between text-xs text-slate-500'>
-					<span>TVA (20 %)</span>
-					<span>{tax.toFixed(2)} €</span>
+				<div className='mt-3 space-y-1'>
+					<div className='flex items-center justify-between text-xs font-medium text-slate-600'>
+						<span>TVA totale</span>
+						<span>{totalVat.toFixed(2)} €</span>
+					</div>
+					{vatBreakdown.map((vb) => (
+						<div
+							key={vb.rate}
+							className='flex items-center justify-between text-xs text-slate-500 pl-4'
+						>
+							<span>
+								Dont TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+							</span>
+							<span>{vb.vat.toFixed(2)} €</span>
+						</div>
+					))}
 				</div>
 
 				<Separator className='my-2' />
