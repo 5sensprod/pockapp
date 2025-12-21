@@ -1,11 +1,14 @@
 // frontend/lib/queries/cash.ts
-// ✨ Queries React Query pour le système de caisse - VERSION COMPLÈTE
+// ✨ VERSION AMÉLIORÉE avec nouvelles queries pour rapports Z
 
 import type {
 	CashMovement,
 	CashMovementType,
 	CashRegister,
 	CashSession,
+	RapportZ,
+	ZReportCheckResponse,
+	ZReportListItem,
 } from '@/lib/types/cash.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -33,10 +36,18 @@ export const cashKeys = {
 	reports: () => [...cashKeys.all, 'reports'] as const,
 	sessionReport: (sessionId: string) =>
 		[...cashKeys.reports(), 'session', sessionId] as const,
-	zReport: (cashRegisterId: string, date: string) =>
-		[...cashKeys.reports(), 'z', cashRegisterId, date] as const,
 	xReport: (sessionId: string) =>
 		[...cashKeys.reports(), 'x', sessionId] as const,
+
+	// 🆕 Rapports Z
+	zReports: () => [...cashKeys.reports(), 'z'] as const,
+	zReportGenerate: (cashRegisterId: string, date: string) =>
+		[...cashKeys.zReports(), 'generate', cashRegisterId, date] as const,
+	zReportCheck: (cashRegisterId: string, date: string) =>
+		[...cashKeys.zReports(), 'check', cashRegisterId, date] as const,
+	zReportList: (cashRegisterId: string) =>
+		[...cashKeys.zReports(), 'list', cashRegisterId] as const,
+	zReportById: (id: string) => [...cashKeys.zReports(), 'detail', id] as const,
 }
 
 // ============================================================================
@@ -102,7 +113,6 @@ export function useActiveCashSession(cashRegisterId?: string) {
 			const data = await res.json()
 			return (data.session || null) as CashSession | null
 		},
-		// Rafraîchir automatiquement toutes les 30 secondes
 		refetchInterval: 30000,
 	})
 }
@@ -212,40 +222,6 @@ export function useSessionReport(sessionId: string) {
 	})
 }
 
-export function useZReport(
-	cashRegisterId: string,
-	date: string,
-	options?: { enabled?: boolean },
-) {
-	const pb = usePocketBase()
-
-	return useQuery({
-		queryKey: cashKeys.zReport(cashRegisterId, date),
-		queryFn: async () => {
-			const token = pb.authStore.token
-
-			const res = await fetch(
-				`/api/cash/reports/z?cash_register=${encodeURIComponent(cashRegisterId)}&date=${date}`,
-				{
-					headers: {
-						Authorization: token ? `Bearer ${token}` : '',
-					},
-				},
-			)
-
-			if (!res.ok) {
-				const err = await res.json().catch(() => ({}))
-				throw new Error(err.message || 'Erreur lors du chargement du rapport Z')
-			}
-
-			return await res.json()
-		},
-		enabled: options?.enabled ?? (!!cashRegisterId && !!date),
-		staleTime: 1000 * 60 * 5, // 5 minutes
-		retry: 1,
-	})
-}
-
 export function useXReport(sessionId: string) {
 	const pb = usePocketBase()
 
@@ -268,8 +244,157 @@ export function useXReport(sessionId: string) {
 			return await res.json()
 		},
 		enabled: !!sessionId,
-		// Rafraîchir automatiquement toutes les 30 secondes
 		refetchInterval: 30000,
+	})
+}
+
+// ============================================================================
+// 🆕 RAPPORT Z - VÉRIFICATION
+// ============================================================================
+
+export function useZReportCheck(
+	cashRegisterId: string,
+	date: string,
+	options?: { enabled?: boolean },
+) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: cashKeys.zReportCheck(cashRegisterId, date),
+		queryFn: async () => {
+			const token = pb.authStore.token
+
+			const res = await fetch(
+				`/api/cash/reports/z/check?cash_register=${encodeURIComponent(cashRegisterId)}&date=${date}`,
+				{
+					headers: {
+						Authorization: token ? `Bearer ${token}` : '',
+					},
+				},
+			)
+
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}))
+				throw new Error(err.message || 'Erreur vérification rapport Z')
+			}
+
+			return (await res.json()) as ZReportCheckResponse
+		},
+		enabled: options?.enabled ?? (!!cashRegisterId && !!date),
+		staleTime: 1000 * 30, // 30 secondes
+	})
+}
+
+// ============================================================================
+// 🆕 RAPPORT Z - GÉNÉRATION
+// ============================================================================
+
+export function useZReport(
+	cashRegisterId: string,
+	date: string,
+	options?: { enabled?: boolean },
+) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: cashKeys.zReportGenerate(cashRegisterId, date),
+		queryFn: async () => {
+			const token = pb.authStore.token
+
+			const res = await fetch(
+				`/api/cash/reports/z?cash_register=${encodeURIComponent(cashRegisterId)}&date=${date}`,
+				{
+					headers: {
+						Authorization: token ? `Bearer ${token}` : '',
+					},
+				},
+			)
+
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}))
+				throw new Error(err.message || 'Erreur lors du chargement du rapport Z')
+			}
+
+			return (await res.json()) as RapportZ
+		},
+		enabled: options?.enabled ?? (!!cashRegisterId && !!date),
+		staleTime: 1000 * 60 * 5, // 5 minutes
+		retry: 1,
+	})
+}
+
+// ============================================================================
+// 🆕 RAPPORT Z - LISTE
+// ============================================================================
+
+export function useZReportList(
+	cashRegisterId: string,
+	options?: { limit?: number; enabled?: boolean },
+) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: cashKeys.zReportList(cashRegisterId),
+		queryFn: async () => {
+			const token = pb.authStore.token
+			const limit = options?.limit ?? 50
+
+			const res = await fetch(
+				`/api/cash/reports/z/list?cash_register=${encodeURIComponent(cashRegisterId)}&limit=${limit}`,
+				{
+					headers: {
+						Authorization: token ? `Bearer ${token}` : '',
+					},
+				},
+			)
+
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}))
+				throw new Error(err.message || 'Erreur chargement liste rapports Z')
+			}
+
+			const data = await res.json()
+			return data.reports as ZReportListItem[]
+		},
+		enabled: options?.enabled ?? !!cashRegisterId,
+		staleTime: 1000 * 60, // 1 minute
+	})
+}
+
+// ============================================================================
+// 🆕 RAPPORT Z - PAR ID
+// ============================================================================
+
+export function useZReportById(id: string, options?: { enabled?: boolean }) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: cashKeys.zReportById(id),
+		queryFn: async () => {
+			const token = pb.authStore.token
+
+			const res = await fetch(`/api/cash/reports/z/${id}`, {
+				headers: {
+					Authorization: token ? `Bearer ${token}` : '',
+				},
+			})
+
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}))
+				throw new Error(err.message || 'Erreur chargement rapport Z')
+			}
+
+			const data = await res.json()
+
+			// Parser le full_report si c'est une string
+			if (typeof data.full_report === 'string') {
+				data.full_report = JSON.parse(data.full_report)
+			}
+
+			return data.full_report as RapportZ
+		},
+		enabled: options?.enabled ?? !!id,
+		staleTime: Number.POSITIVE_INFINITY, // Les rapports Z sont immuables
 	})
 }
 
@@ -368,6 +493,12 @@ export function useCloseCashSession() {
 			queryClient.invalidateQueries({
 				queryKey: cashKeys.sessionHistory(params.cashRegisterId),
 			})
+			// 🆕 Invalider les vérifications Z car une nouvelle session est disponible
+			if (params.cashRegisterId) {
+				queryClient.invalidateQueries({
+					queryKey: cashKeys.zReports(),
+				})
+			}
 		},
 	})
 }
@@ -446,23 +577,19 @@ export function useCreateCashMovement() {
 		},
 
 		onSuccess: (_, params) => {
-			// mouvements listés
 			queryClient.invalidateQueries({
 				queryKey: cashKeys.movementsBySession(params.sessionId),
 			})
 
-			// ✅ Rapport X (source pour "espèces attendues")
 			queryClient.invalidateQueries({
 				queryKey: cashKeys.xReport(params.sessionId),
 			})
 
-			// session active (si affichage fond, statut, etc.)
 			if (params.cashRegisterId) {
 				queryClient.invalidateQueries({
 					queryKey: cashKeys.activeSession(params.cashRegisterId),
 				})
 
-				// si tu as un écran historique basé sur ce key
 				queryClient.invalidateQueries({
 					queryKey: cashKeys.sessionHistory(params.cashRegisterId),
 				})
@@ -509,16 +636,11 @@ export function useLastClosedCashSession(cashRegisterId?: string) {
 // HELPER : GET/CREATE CLIENT PAR DÉFAUT
 // ============================================================================
 
-/**
- * Récupère ou crée le client "Client de passage" pour les ventes POS
- * Ce client est utilisé quand on ne veut pas associer de client spécifique
- */
 export async function getOrCreateDefaultCustomer(
 	pb: any,
 	ownerCompanyId: string,
 ): Promise<string> {
 	try {
-		// Chercher le client par défaut
 		const existing = await pb
 			.collection('customers')
 			.getFirstListItem(
@@ -527,7 +649,6 @@ export async function getOrCreateDefaultCustomer(
 
 		return existing.id
 	} catch {
-		// Créer le client par défaut
 		const created = await pb.collection('customers').create({
 			name: 'Client de passage',
 			owner_company: ownerCompanyId,

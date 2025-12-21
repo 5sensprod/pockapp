@@ -1,5 +1,5 @@
 // backend/routes/cash_routes.go
-// Version corrigée avec les 3 fixes
+// VERSION AMÉLIORÉE avec routes Z reports
 
 package backend
 
@@ -15,8 +15,7 @@ import (
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/models"
 
-	// ✅ FIX 1 : Import du package reports
-	// IMPORTANT : Remplacer "votre-projet" par le nom de votre module (voir go.mod)
+	// IMPORTANT : Remplacer "pocket-react" par le nom de votre module (voir go.mod)
 	"pocket-react/backend/reports"
 )
 
@@ -197,7 +196,7 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 	)
 
 	// ======================================================================
-	// ✅ NOUVELLES ROUTES (AJOUTÉES)
+	// RAPPORTS
 	// ======================================================================
 
 	// ----------------------------------------------------------------------
@@ -220,14 +219,13 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 	)
 
 	// ----------------------------------------------------------------------
-	// RAPPORT Z (Clôture journalière)
+	// RAPPORT Z (Clôture journalière) - GÉNÉRATION
 	// ----------------------------------------------------------------------
 	router.GET("/api/cash/reports/z", func(c echo.Context) error {
 		cashRegisterId := c.QueryParam("cash_register")
 		date := c.QueryParam("date")
 
-		// ✅ AJOUTER CES LOGS
-		fmt.Printf("\n🔍 === RAPPORT Z DEMANDÉ ===\n")
+		fmt.Printf("\n📝 === RAPPORT Z DEMANDÉ ===\n")
 		fmt.Printf("Caisse ID: %s\n", cashRegisterId)
 		fmt.Printf("Date: %s\n", date)
 
@@ -237,13 +235,122 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 
 		rapport, err := reports.GenerateRapportZ(app, cashRegisterId, date)
 		if err != nil {
-			// ✅ LOGGER L'ERREUR COMPLÈTE
 			fmt.Printf("❌ ERREUR: %v\n", err)
 			return apis.NewApiError(500, err.Error(), err)
 		}
 
-		fmt.Printf("✅ Rapport généré avec succès\n")
+		fmt.Printf("✅ Rapport généré avec succès: %s\n", rapport.Number)
 		return c.JSON(http.StatusOK, rapport)
+	},
+		apis.RequireRecordAuth(),
+	)
+
+	// ----------------------------------------------------------------------
+	// 🆕 LISTE DES RAPPORTS Z
+	// ----------------------------------------------------------------------
+	router.GET("/api/cash/reports/z/list", func(c echo.Context) error {
+		cashRegisterId := c.QueryParam("cash_register")
+		if cashRegisterId == "" {
+			return apis.NewBadRequestError("Paramètre 'cash_register' requis", nil)
+		}
+
+		limit := 50
+		if l := c.QueryParam("limit"); l != "" {
+			if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+				limit = parsed
+			}
+		}
+
+		items, err := reports.ListZReports(app, cashRegisterId, limit)
+		if err != nil {
+			return apis.NewApiError(500, "Erreur chargement rapports Z", err)
+		}
+
+		return c.JSON(http.StatusOK, echo.Map{
+			"reports": items,
+			"count":   len(items),
+		})
+	},
+		apis.RequireRecordAuth(),
+	)
+
+	// ----------------------------------------------------------------------
+	// 🆕 CHARGER UN RAPPORT Z PAR ID
+	// ----------------------------------------------------------------------
+	router.GET("/api/cash/reports/z/:id", func(c echo.Context) error {
+		dao := app.Dao()
+		id := c.PathParam("id")
+
+		record, err := dao.FindRecordById("z_reports", id)
+		if err != nil {
+			return apis.NewNotFoundError("Rapport Z introuvable", err)
+		}
+
+		// Retourner le rapport complet stocké
+		fullReport := record.Get("full_report")
+
+		return c.JSON(http.StatusOK, echo.Map{
+			"id":           record.Id,
+			"number":       record.GetString("number"),
+			"date":         record.GetString("date"),
+			"hash":         record.GetString("hash"),
+			"full_report":  fullReport,
+			"generated_at": record.GetString("generated_at"),
+		})
+	},
+		apis.RequireRecordAuth(),
+	)
+
+	// ----------------------------------------------------------------------
+	// 🆕 VÉRIFIER SI UN RAPPORT Z EXISTE DÉJÀ
+	// ----------------------------------------------------------------------
+	router.GET("/api/cash/reports/z/check", func(c echo.Context) error {
+		dao := app.Dao()
+		cashRegisterId := c.QueryParam("cash_register")
+		date := c.QueryParam("date")
+
+		if cashRegisterId == "" || date == "" {
+			return apis.NewBadRequestError("Paramètres 'cash_register' et 'date' requis", nil)
+		}
+
+		filter := fmt.Sprintf(
+			"cash_register = '%s' && date ~ '%s'",
+			cashRegisterId,
+			date,
+		)
+
+		existing, _ := dao.FindFirstRecordByFilter("z_reports", filter)
+
+		if existing != nil {
+			return c.JSON(http.StatusOK, echo.Map{
+				"exists":    true,
+				"report_id": existing.Id,
+				"number":    existing.GetString("number"),
+				"message":   "Un rapport Z existe déjà pour cette date",
+			})
+		}
+
+		// Compter les sessions disponibles
+		dateStart, _ := time.Parse("2006-01-02", date)
+		dateEnd := dateStart.Add(24 * time.Hour)
+		dateStartStr := dateStart.Format("2006-01-02") + " 00:00:00"
+		dateEndStr := dateEnd.Format("2006-01-02") + " 00:00:00"
+
+		sessionsFilter := fmt.Sprintf(
+			"cash_register = '%s' && status = 'closed' && closed_at >= '%s' && closed_at < '%s' && (z_report_id = '' || z_report_id = null)",
+			cashRegisterId,
+			dateStartStr,
+			dateEndStr,
+		)
+
+		sessions, _ := dao.FindRecordsByFilter("cash_sessions", sessionsFilter, "", 0, 0)
+
+		return c.JSON(http.StatusOK, echo.Map{
+			"exists":             false,
+			"available_sessions": len(sessions),
+			"can_generate":       len(sessions) > 0,
+			"message":            fmt.Sprintf("%d session(s) disponible(s) pour ce rapport", len(sessions)),
+		})
 	},
 		apis.RequireRecordAuth(),
 	)
@@ -255,13 +362,11 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		dao := app.Dao()
 		sessionId := c.PathParam("id")
 
-		// 1. Charger la session
 		session, err := dao.FindRecordById("cash_sessions", sessionId)
 		if err != nil {
 			return apis.NewNotFoundError("Session introuvable", err)
 		}
 
-		// 2. Charger les mouvements de caisse
 		movementsFilter := fmt.Sprintf("session = '%s'", sessionId)
 		movements, err := dao.FindRecordsByFilter(
 			"cash_movements",
@@ -289,13 +394,11 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 	router.GET("/api/cash/sessions", func(c echo.Context) error {
 		dao := app.Dao()
 
-		// Paramètres de filtrage
 		cashRegister := c.QueryParam("cash_register")
 		status := c.QueryParam("status")
 		dateFrom := c.QueryParam("date_from")
 		dateTo := c.QueryParam("date_to")
 
-		// Pagination
 		page := 1
 		if p := c.QueryParam("page"); p != "" {
 			if parsed, err := strconv.Atoi(p); err == nil {
@@ -310,7 +413,6 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			}
 		}
 
-		// Construire le filtre
 		var filters []string
 
 		if cashRegister != "" {
@@ -341,7 +443,6 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			finalFilter = strings.Join(filters, " && ")
 		}
 
-		// ✅ FIX 3 : Utiliser FindRecordsByFilter (pas FindRecordsByExpr)
 		result, err := dao.FindRecordsByFilter(
 			"cash_sessions",
 			finalFilter,
@@ -354,7 +455,6 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			return apis.NewApiError(500, "Erreur chargement sessions", err)
 		}
 
-		// ✅ FIX 2 : Utiliser len(result) au lieu de dao.CountRecords
 		return c.JSON(http.StatusOK, echo.Map{
 			"sessions":   result,
 			"page":       page,
