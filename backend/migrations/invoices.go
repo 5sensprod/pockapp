@@ -157,6 +157,11 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 					Options:  &schema.NumberOptions{},
 				},
 				&schema.SchemaField{
+					Name:    "vat_breakdown",
+					Type:    schema.FieldTypeJson,
+					Options: &schema.JsonOptions{MaxSize: 65536}, // 64KB suffisant
+				},
+				&schema.SchemaField{
 					Name:     "currency",
 					Type:     schema.FieldTypeText,
 					Required: true,
@@ -503,6 +508,17 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		})
 		changed = true
 		log.Println("🛠 Ajout du champ line_discounts_total_ttc")
+	}
+
+	// vat_breakdown (ventilation TVA par taux)
+	if f := collection.Schema.GetFieldByName("vat_breakdown"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "vat_breakdown",
+			Type:    schema.FieldTypeJson,
+			Options: &schema.JsonOptions{MaxSize: 65536},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ vat_breakdown (JSON)")
 	}
 
 	// Sauvegarde si nécessaire

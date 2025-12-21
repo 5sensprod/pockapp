@@ -2,6 +2,7 @@
 // Service de facturation conforme ISCA v2
 // 🔢 Le numéro est maintenant généré automatiquement par le backend
 // ✅ FIX: Ajout des champs optionnels pour les tickets POS
+// ✅ AJOUT: Support vat_breakdown pour ventilation TVA multi-taux
 
 import type {
 	InvoiceCreateDto,
@@ -21,6 +22,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 export type InvoiceItem = InvoiceItemType
 
+// ✅ AJOUT: Type pour la ventilation TVA
+export interface VatBreakdownItem {
+	rate: number // Taux de TVA (ex: 20, 10, 5.5, 2.1)
+	base_ht: number // Base HT pour ce taux
+	vat: number // Montant de TVA pour ce taux
+	total_ttc: number // Total TTC pour ce taux
+}
+
 // ✅ FIX: Extension du type pour inclure les champs optionnels de caisse
 export type CreateInvoiceParams = Omit<InvoiceCreateDto, 'number'> & {
 	// Champs spécifiques aux tickets POS (optionnels)
@@ -33,6 +42,9 @@ export type CreateInvoiceParams = Omit<InvoiceCreateDto, 'number'> & {
 	original_invoice_id?: string | null
 	converted_to_invoice?: boolean
 	converted_invoice_id?: string | null
+
+	// ✅ AJOUT: Ventilation TVA
+	vat_breakdown?: VatBreakdownItem[]
 }
 
 // ============================================================================
@@ -174,6 +186,7 @@ export function useInvoice(invoiceId?: string) {
  * ➕ Créer une facture (brouillon par défaut)
  * 🔢 Le numéro est généré automatiquement par le backend
  * ✅ FIX: Support des champs de caisse (is_pos_ticket, session, cash_register)
+ * ✅ AJOUT: Support vat_breakdown
  */
 export function useCreateInvoice() {
 	const pb = usePocketBase()
@@ -215,7 +228,7 @@ export function useUpdateDraft() {
 			data,
 		}: {
 			id: string
-			data: Partial<InvoiceCreateDto>
+			data: Partial<InvoiceCreateDto> & { vat_breakdown?: VatBreakdownItem[] }
 		}) => {
 			const existing = await pb.collection('invoices').getOne(id)
 
@@ -284,18 +297,17 @@ export function useUpdateInvoice() {
 			data,
 		}: {
 			id: string
-			data: Partial<InvoiceCreateDto>
+			data: Partial<InvoiceCreateDto> & { vat_breakdown?: VatBreakdownItem[] }
 		}) => {
-			// Vérifier que c'est un brouillon
-			const existing = (await pb
-				.collection('invoices')
-				.getOne(id)) as unknown as InvoiceResponse
+			const existing = await pb.collection('invoices').getOne(id)
 
-			if (!canEditInvoice(existing)) {
-				throw new Error('Seules les factures brouillon peuvent être modifiées')
+			if (existing.status !== 'draft') {
+				throw new Error(
+					'Seuls les brouillons peuvent être modifiés. ' +
+						'Pour une facture validée, créez un avoir.',
+				)
 			}
 
-			// Mettre à jour
 			const result = await pb.collection('invoices').update(id, data)
 			return result as unknown as InvoiceResponse
 		},
@@ -441,6 +453,7 @@ export function useCancelPayment() {
 /**
  * 🔄 Annuler une facture par création d'avoir
  * 🔢 Le numéro d'avoir est généré automatiquement par le backend
+ * ✅ AJOUT: Copie du vat_breakdown avec valeurs inversées
  */
 export function useCancelInvoice() {
 	const pb = usePocketBase()
@@ -466,7 +479,18 @@ export function useCancelInvoice() {
 				)
 			}
 
-			// 3. CRÉER l'avoir (numéro généré automatiquement par le backend)
+			// 3. Inverser la ventilation TVA si elle existe
+			const originalVatBreakdown = (original as any).vat_breakdown as
+				| VatBreakdownItem[]
+				| undefined
+			const invertedVatBreakdown = originalVatBreakdown?.map((vb) => ({
+				rate: vb.rate,
+				base_ht: -Math.abs(vb.base_ht),
+				vat: -Math.abs(vb.vat),
+				total_ttc: -Math.abs(vb.total_ttc),
+			}))
+
+			// 4. CRÉER l'avoir (numéro généré automatiquement par le backend)
 			const creditNoteData = {
 				// ⚠️ Pas de 'number' - généré par le backend
 				invoice_type: 'credit_note' as const,
@@ -486,6 +510,7 @@ export function useCancelInvoice() {
 				total_ht: -Math.abs(original.total_ht),
 				total_tva: -Math.abs(original.total_tva),
 				total_ttc: -Math.abs(original.total_ttc),
+				vat_breakdown: invertedVatBreakdown, // ✅ AJOUT
 				currency: original.currency,
 				cancellation_reason: reason,
 				notes: `Avoir d'annulation pour la facture ${original.number}. Motif: ${reason}`,

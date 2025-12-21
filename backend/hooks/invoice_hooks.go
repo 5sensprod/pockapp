@@ -889,6 +889,7 @@ func computeInvoiceHash(record *models.Record) (string, error) {
 		"total_ht":        record.GetFloat("total_ht"),
 		"total_tva":       record.GetFloat("total_tva"),
 		"total_ttc":       record.GetFloat("total_ttc"),
+		"vat_breakdown":   record.Get("vat_breakdown"), // ✅ AJOUT: Ventilation TVA
 		"currency":        record.GetString("currency"),
 		"previous_hash":   record.GetString("previous_hash"),
 		"sequence_number": record.GetInt("sequence_number"),

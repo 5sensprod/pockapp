@@ -501,8 +501,9 @@ export function InvoiceCreatePage() {
 				cart_discount_value: cartDiscountValue,
 				cart_discount_ttc: cartDiscountTtc,
 				line_discounts_total_ttc: subTotals.lineDiscountTtc,
+				// ✅ AJOUT: Ventilation TVA stockée en base
+				vat_breakdown: totals.vatBreakdown,
 			})
-
 			toast.success(`Facture ${result.number} créée avec succès`)
 			navigate({ to: '/connect/invoices' })
 		} catch (error) {

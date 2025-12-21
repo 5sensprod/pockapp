@@ -1,6 +1,5 @@
 // frontend/modules/connect/components/InvoicePdf.tsx
-// PATCH: ajouter le nom du vendeur (sold_by) dans l'entête facture
-// PATCH: ajouter l'affichage des remises par ligne et globale
+// ✅ VERSION CORRIGÉE - Support TVA multi-taux avec vat_breakdown stocké
 
 import type {
 	CompaniesResponse,
@@ -119,7 +118,6 @@ const styles = StyleSheet.create({
 		flex: 1.1,
 		textAlign: 'right',
 	},
-	// ✅ AJOUT: Colonne pour afficher les remises par ligne
 	colDiscount: {
 		flex: 0.9,
 		textAlign: 'right',
@@ -165,11 +163,24 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		fontWeight: 'bold',
 	},
-	// ✅ AJOUT: Style pour les lignes de remise (en italique et couleur différente)
 	totalsDiscount: {
 		fontSize: 11,
 		fontStyle: 'italic',
-		color: '#16a34a', // Vert pour indiquer une réduction
+		color: '#16a34a',
+	},
+	// ✅ Styles pour la ventilation TVA
+	totalsTvaBreakdown: {
+		fontSize: 10,
+		color: '#555',
+		fontStyle: 'italic',
+		paddingLeft: 8,
+	},
+	totalsTvaSection: {
+		marginTop: 2,
+		paddingTop: 4,
+		borderTopWidth: 0.5,
+		borderTopColor: '#ddd',
+		borderTopStyle: 'solid',
 	},
 
 	notes: {
@@ -208,6 +219,14 @@ export interface InvoicePdfProps {
 	customer?: CustomersResponse
 	company?: CompaniesResponse
 	companyLogoUrl?: string | null
+}
+
+// ✅ Type pour la ventilation TVA
+interface VatBreakdown {
+	rate: number
+	base_ht: number
+	vat: number
+	total_ttc: number
 }
 
 export function InvoicePdfDocument({
@@ -279,18 +298,67 @@ export function InvoicePdfDocument({
 
 	const websiteLine = company?.website ? `Site : ${company.website}` : undefined
 
-	// ✅ AJOUT: Récupérer les informations de remise globale
 	const cartDiscountTtc = (invoice as any)?.cart_discount_ttc || 0
 	const cartDiscountMode = (invoice as any)?.cart_discount_mode || 'percent'
 	const cartDiscountValue = (invoice as any)?.cart_discount_value || 0
 	const lineDiscountsTotalTtc = (invoice as any)?.line_discounts_total_ttc || 0
 
-	// ✅ AJOUT: Calculer le sous-total avant remises
 	const subTotalBeforeDiscounts =
 		invoice.total_ttc + cartDiscountTtc + lineDiscountsTotalTtc
 
-	// ✅ AJOUT: Vérifier s'il y a des remises à afficher
 	const hasDiscounts = cartDiscountTtc > 0 || lineDiscountsTotalTtc > 0
+
+	// ✅ Utiliser la ventilation stockée, ou recalculer en fallback
+	const getVatBreakdown = (): VatBreakdown[] => {
+		// 1. Si la ventilation est stockée en base, l'utiliser directement
+		const storedBreakdown = (invoice as any).vat_breakdown as
+			| VatBreakdown[]
+			| undefined
+		if (
+			storedBreakdown &&
+			Array.isArray(storedBreakdown) &&
+			storedBreakdown.length > 0
+		) {
+			return storedBreakdown.sort((a, b) => a.rate - b.rate)
+		}
+
+		// 2. Fallback : recalculer depuis les items
+		const vatBreakdownMap = new Map<number, VatBreakdown>()
+
+		for (const item of invoice.items) {
+			const rate = item.tva_rate
+			const ht = item.total_ht
+			const vat = item.total_ttc - item.total_ht
+			const ttc = item.total_ttc
+
+			let entry = vatBreakdownMap.get(rate)
+
+			if (!entry) {
+				entry = {
+					rate,
+					base_ht: 0,
+					vat: 0,
+					total_ttc: 0,
+				}
+				vatBreakdownMap.set(rate, entry)
+			}
+
+			entry.base_ht += ht
+			entry.vat += vat
+			entry.total_ttc += ttc
+		}
+
+		return Array.from(vatBreakdownMap.values())
+			.map((entry) => ({
+				rate: entry.rate,
+				base_ht: Math.round(entry.base_ht * 100) / 100,
+				vat: Math.round(entry.vat * 100) / 100,
+				total_ttc: Math.round(entry.total_ttc * 100) / 100,
+			}))
+			.sort((a, b) => a.rate - b.rate)
+	}
+
+	const vatBreakdown = getVatBreakdown()
 
 	return (
 		<Document>
@@ -381,7 +449,6 @@ export function InvoicePdfDocument({
 						<Text style={[styles.colUnit, styles.tableHeaderText]}>
 							P.U. HT
 						</Text>
-						{/* ✅ AJOUT: Colonne Remise */}
 						<Text style={[styles.colDiscount, styles.tableHeaderText]}>
 							Remise
 						</Text>
@@ -398,7 +465,6 @@ export function InvoicePdfDocument({
 							? [styles.tableRow, styles.tableRowAlt]
 							: [styles.tableRow]
 
-						// ✅ AJOUT: Récupérer les infos de remise par ligne
 						const lineDiscount = (item as any).line_discount_value || 0
 						const lineDiscountMode =
 							(item as any).line_discount_mode || 'percent'
@@ -414,7 +480,6 @@ export function InvoicePdfDocument({
 								<Text style={styles.colUnit}>
 									{item.unit_price_ht.toFixed(2)}
 								</Text>
-								{/* ✅ AJOUT: Afficher la remise */}
 								<Text style={styles.colDiscount}>{discountText}</Text>
 								<Text style={styles.colTva}>{item.tva_rate}%</Text>
 								<Text style={styles.colTotal}>{item.total_ttc.toFixed(2)}</Text>
@@ -424,7 +489,6 @@ export function InvoicePdfDocument({
 				</View>
 
 				<View style={styles.totalsBlock}>
-					{/* ✅ AJOUT: Afficher le sous-total avant remises si des remises existent */}
 					{hasDiscounts && (
 						<View style={styles.totalsRow}>
 							<Text style={styles.totalsLabel}>Sous-total</Text>
@@ -434,7 +498,6 @@ export function InvoicePdfDocument({
 						</View>
 					)}
 
-					{/* ✅ AJOUT: Afficher les remises par ligne si elles existent */}
 					{lineDiscountsTotalTtc > 0 && (
 						<View style={styles.totalsRow}>
 							<Text style={styles.totalsDiscount}>Remises lignes</Text>
@@ -444,7 +507,6 @@ export function InvoicePdfDocument({
 						</View>
 					)}
 
-					{/* ✅ AJOUT: Afficher la remise globale si elle existe */}
 					{cartDiscountTtc > 0 && (
 						<View style={styles.totalsRow}>
 							<Text style={styles.totalsDiscount}>
@@ -465,12 +527,48 @@ export function InvoicePdfDocument({
 							{formatCurrency(invoice.total_ht)}
 						</Text>
 					</View>
-					<View style={styles.totalsRow}>
-						<Text style={styles.totalsLabel}>TVA</Text>
-						<Text style={styles.totalsValue}>
-							{formatCurrency(invoice.total_tva)}
-						</Text>
+
+					{/* ✅ VENTILATION TVA MULTI-TAUX */}
+					<View style={styles.totalsTvaSection}>
+						{vatBreakdown.length > 1 ? (
+							<>
+								<View style={styles.totalsRow}>
+									<Text style={styles.totalsLabel}>Total TVA</Text>
+									<Text style={styles.totalsValue}>
+										{formatCurrency(invoice.total_tva)}
+									</Text>
+								</View>
+								{vatBreakdown.map((vb) => (
+									<View key={vb.rate} style={styles.totalsRow}>
+										<Text style={styles.totalsTvaBreakdown}>
+											dont TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+										</Text>
+										<Text style={styles.totalsTvaBreakdown}>
+											{vb.vat.toFixed(2)} €
+										</Text>
+									</View>
+								))}
+							</>
+						) : vatBreakdown.length === 1 ? (
+							<View style={styles.totalsRow}>
+								<Text style={styles.totalsLabel}>
+									TVA {vatBreakdown[0].rate}% sur{' '}
+									{vatBreakdown[0].base_ht.toFixed(2)} € HT
+								</Text>
+								<Text style={styles.totalsValue}>
+									{formatCurrency(vatBreakdown[0].vat)}
+								</Text>
+							</View>
+						) : (
+							<View style={styles.totalsRow}>
+								<Text style={styles.totalsLabel}>TVA</Text>
+								<Text style={styles.totalsValue}>
+									{formatCurrency(invoice.total_tva)}
+								</Text>
+							</View>
+						)}
 					</View>
+
 					<View style={[styles.totalsRow, styles.totalsGrand]}>
 						<Text style={styles.totalsGrandText}>Total TTC</Text>
 						<Text style={styles.totalsGrandText}>
