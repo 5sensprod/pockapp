@@ -10,6 +10,9 @@ interface CartItem {
 	totalPrice?: number
 }
 
+// ✅ Ajout d'une phase pour contrôler l'affichage
+type DisplayPhase = 'idle' | 'item' | 'total' | 'payment' | 'change' | 'success'
+
 interface UseCustomerDisplayProps {
 	total?: number
 	itemCount?: number
@@ -17,6 +20,7 @@ interface UseCustomerDisplayProps {
 	paymentMethod?: string
 	received?: number
 	change?: number
+	phase?: DisplayPhase // ✅ Nouvelle prop
 }
 
 export function useCustomerDisplay({
@@ -26,6 +30,7 @@ export function useCustomerDisplay({
 	paymentMethod,
 	received,
 	change,
+	phase = 'idle', // ✅ Par défaut idle
 }: UseCustomerDisplayProps) {
 	const sendText = useSendTextToDisplayMutation()
 	const lastDisplayedRef = useRef<string>('')
@@ -56,31 +61,63 @@ export function useCustomerDisplay({
 	useEffect(() => {
 		const settings = loadCustomerDisplaySettings()
 
-		// Ne rien faire si désactivé ou pas en mode auto
 		if (!settings.enabled || !settings.autoDisplay) return
 
 		let line1 = ''
 		let line2 = ''
 
-		if (change !== undefined && change > 0) {
-			line1 = 'RENDU'
-			line2 = `${change.toFixed(2)} EUR`
-		} else if (received !== undefined && paymentMethod) {
-			line1 = paymentMethod.substring(0, 20)
-			line2 = `Recu: ${received.toFixed(2)} EUR`
-		} else if (currentItem) {
-			line1 = currentItem.name.substring(0, 20)
-			line2 = `${currentItem.quantity}x ${currentItem.unitPrice.toFixed(2)} EUR`
-		} else if (total > 0) {
-			line1 = `Total: ${total.toFixed(2)} EUR`
-			line2 = `${itemCount} article${itemCount > 1 ? 's' : ''}`
-		} else {
-			line1 = settings.welcomeLine1 || 'Bienvenue'
-			line2 = settings.welcomeLine2 || ''
+		// ✅ Priorité basée sur la phase explicite
+		switch (phase) {
+			case 'success':
+				line1 = 'Axe Musique'
+				line2 = 'vous remercie'
+				break
+
+			case 'change':
+				if (change !== undefined && change > 0) {
+					line1 = 'RENDU'
+					line2 = `${change.toFixed(2)} EUR`
+				}
+				break
+
+			case 'payment':
+				if (received !== undefined && paymentMethod) {
+					line1 = paymentMethod.substring(0, 20)
+					line2 = `Recu: ${received.toFixed(2)} EUR`
+				} else if (total > 0) {
+					line1 = `A PAYER`
+					line2 = `${total.toFixed(2)} EUR`
+				}
+				break
+
+			case 'total':
+				line1 = `Total: ${total.toFixed(2)} EUR`
+				line2 = `${itemCount} article${itemCount > 1 ? 's' : ''}`
+				break
+
+			case 'item':
+				if (currentItem) {
+					line1 = currentItem.name.substring(0, 20)
+					line2 = `${currentItem.quantity}x ${currentItem.unitPrice.toFixed(2)} EUR`
+				}
+				break
+
+			default:
+				if (total > 0) {
+					line1 = `Total: ${total.toFixed(2)} EUR`
+					line2 = `${itemCount} article${itemCount > 1 ? 's' : ''}`
+				} else {
+					line1 = settings.welcomeLine1 || 'Bienvenue'
+					line2 = settings.welcomeLine2 || ''
+				}
+				break
 		}
 
-		sendLines(line1, line2)
+		if (line1) {
+			sendLines(line1, line2)
+		}
 	}, [
+		phase,
 		total,
 		itemCount,
 		currentItem,
@@ -108,7 +145,6 @@ export function useCustomerDisplay({
 			)
 		},
 
-		// ✅ NOUVEAU : message de remerciement
 		displayThankYou: () => {
 			sendLines('Axe Musique', 'vous remercie')
 		},

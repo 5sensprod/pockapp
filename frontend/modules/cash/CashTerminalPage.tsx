@@ -143,6 +143,9 @@ export function CashTerminalPage() {
 	const [productNotFoundBarcode, setProductNotFoundBarcode] =
 		React.useState<string>('')
 	const [productInitialName, setProductInitialName] = React.useState<string>('')
+	const [lastAddedItem, setLastAddedItem] = React.useState<CartItem | null>(
+		null,
+	)
 
 	const { data: registers } = useCashRegisters(activeCompanyId ?? undefined)
 	const { data: activeSession, isLoading: isSessionLoading } =
@@ -303,17 +306,25 @@ export function CashTerminalPage() {
 		return received - totalTtc
 	}, [amountReceived, totalTtc])
 
-	const customerDisplay = useCustomerDisplay({
+	const displayPhase = React.useMemo(() => {
+		if (paymentStep === 'success') return 'success'
+		if (paymentStep === 'payment') {
+			if (change > 0) return 'change'
+			return 'payment'
+		}
+		if (lastAddedItem) return 'item'
+		if (cart.length > 0) return 'total'
+		return 'idle'
+	}, [paymentStep, change, lastAddedItem, cart.length])
+
+	useCustomerDisplay({
 		total: totalTtc,
 		itemCount: cart.length,
-		currentItem: cart[cart.length - 1] || null,
-		paymentMethod:
-			paymentStep === 'payment' ? selectedPaymentMethod : undefined,
-		received:
-			paymentStep === 'payment'
-				? Number.parseFloat(amountReceived) || undefined
-				: undefined,
-		change: paymentStep === 'payment' && change > 0 ? change : undefined,
+		currentItem: lastAddedItem,
+		paymentMethod: selectedPaymentMethod,
+		received: Number.parseFloat(amountReceived) || undefined,
+		change: change > 0 ? change : undefined,
+		phase: displayPhase,
 	})
 
 	React.useEffect(() => {
@@ -416,6 +427,10 @@ export function CashTerminalPage() {
 	}, [isSessionLoading, isSessionOpen, navigate])
 
 	const addToCart = React.useCallback((product: AppPosProduct) => {
+		const price = product.price_ttc || product.price_ht || 0
+		const imageUrl = getImageUrl(product.images)
+		const tvaRate = product.tva_rate ?? 20
+
 		setCart((prev) => {
 			const existingIndex = prev.findIndex(
 				(item) => item.productId === product.id,
@@ -426,13 +441,10 @@ export function CashTerminalPage() {
 					...next[existingIndex],
 					quantity: next[existingIndex].quantity + 1,
 				}
+				// Afficher l'item mis à jour temporairement
+				setLastAddedItem(next[existingIndex])
 				return next
 			}
-
-			const price = product.price_ttc || product.price_ht || 0
-			const imageUrl = getImageUrl(product.images)
-
-			const tvaRate = product.tva_rate ?? 20
 
 			const newItem: CartItem = {
 				id: `cart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -446,8 +458,13 @@ export function CashTerminalPage() {
 				tvaRate,
 				displayMode: 'name',
 			}
+			// Afficher le nouvel item temporairement
+			setLastAddedItem(newItem)
 			return [...prev, newItem]
 		})
+
+		// Revenir au total après 1.5s
+		setTimeout(() => setLastAddedItem(null), 1500)
 	}, [])
 
 	const updateQuantity = React.useCallback(
@@ -470,6 +487,7 @@ export function CashTerminalPage() {
 		setPaymentStep('cart')
 		setAmountReceived('')
 		setEditingLineId(null)
+		setLastAddedItem(null)
 	}, [])
 
 	const handleProductCreated = React.useCallback(
@@ -629,17 +647,16 @@ export function CashTerminalPage() {
 				return
 			}
 
-			customerDisplay.displayTotal(totalTtc, cart.length)
-
+			// Effacer lastAddedItem pour forcer phase 'payment'
+			setLastAddedItem(null)
 			setSelectedPaymentMethod(method)
 			setPaymentStep('payment')
 			if (method === 'especes') setAmountReceived(totalTtc.toFixed(2))
 		},
-		[cart.length, totalTtc, customerDisplay],
+		[cart.length, totalTtc],
 	)
 
 	const handleConfirmPayment = React.useCallback(async () => {
-		customerDisplay.displayThankYou()
 		if (!activeCompanyId || !activeSession) {
 			toast.error('Session ou entreprise manquante')
 			return
@@ -866,7 +883,6 @@ export function CashTerminalPage() {
 		totalHt,
 		vatBreakdown,
 		user,
-		customerDisplay,
 	])
 
 	if (isSessionLoading) return <LoadingView />
