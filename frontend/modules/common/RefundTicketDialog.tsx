@@ -1,5 +1,4 @@
 // RefundTicketDialog.tsx
-// import * as React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -240,9 +239,11 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 					}
 				}
 
+				const ticketItems = ticket.items || []
 				const info: Record<number, ItemRefundInfo> = {}
-				for (let i = 0; i < items.length; i++) {
-					const originalQty = getItemQty(items[i])
+
+				for (let i = 0; i < ticketItems.length; i++) {
+					const originalQty = getItemQty(ticketItems[i])
 					const refundedQty = refundedByIndex[i] || 0
 					info[i] = {
 						index: i,
@@ -265,8 +266,10 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 		return () => {
 			cancelled = true
 		}
-	}, [open, ticket?.id, pb, items])
+		// biome-ignore lint/correctness/useExhaustiveDependencies: getItemQty est une fonction stable (module-scope) et ne doit pas déclencher l'effet
+	}, [open, ticket?.id, ticket?.items, pb])
 
+	// Initialiser les lignes quand le dialog s'ouvre
 	useEffect(() => {
 		if (!open) return
 
@@ -274,18 +277,25 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 		setRefundMethod('especes')
 		setGlobalReason('')
 
+		const ticketItems = ticket?.items ?? []
 		const initialLines: Record<number, UiLine> = {}
-		for (let i = 0; i < items.length; i++) {
+
+		for (let i = 0; i < ticketItems.length; i++) {
 			const info = itemsRefundInfo[i]
-			const maxQty = info?.remainingQty ?? getItemQty(items[i])
+			const maxQty = info?.remainingQty ?? getItemQty(ticketItems[i])
 			initialLines[i] = {
 				selected: false,
 				quantity: Math.min(1, maxQty),
 				reason: '',
 			}
 		}
+
 		setLines(initialLines)
-	}, [open, items, itemsRefundInfo])
+
+		// biome-ignore lint/correctness/useExhaustiveDependencies:
+		// - dépend fonctionnellement de ticket?.items (pas ticket?.id)
+		// - getItemQty est stable (module-scope) et ne doit pas déclencher l'effet
+	}, [open, ticket?.items, itemsRefundInfo])
 
 	const partialSelection = useMemo(() => {
 		const selected: { index: number; quantity: number; reason?: string }[] = []
@@ -382,10 +392,10 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 
 		if (mode === 'partial') {
 			base.refundedItems = partialSelection.selected.map((x) => ({
-				originalItemIndex: x.index,
+				original_item_index: x.index,
 				quantity: x.quantity,
 				reason: x.reason,
-			}))
+			})) as any
 		}
 
 		const confirmMsg =
