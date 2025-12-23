@@ -106,11 +106,17 @@ export interface RapportX {
 	opening_float: number
 	sales: {
 		invoice_count: number
-		total_ht: number // 🆕
-		total_tva: number // 🆕
+		total_ht: number
+		total_tva: number
 		total_ttc: number
 		by_method: Record<string, number>
-		vat_by_rate: VATByRate // 🆕
+		vat_by_rate: Record<string, any>
+		net_by_method?: Record<string, number>
+	}
+	refunds: {
+		credit_notes_count: number
+		total_ttc: number
+		by_method: Record<string, number>
 	}
 	movements: {
 		cash_in: number

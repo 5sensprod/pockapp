@@ -100,6 +100,7 @@ type RapportX struct {
 	Session      SessionInfo         `json:"session"`
 	OpeningFloat float64             `json:"opening_float"`
 	Sales        SalesSummaryX       `json:"sales"`
+	Refunds      RefundsSummaryX     `json:"refunds"`
 	Movements    MovementsSummary    `json:"movements"`
 	ExpectedCash ExpectedCashSummary `json:"expected_cash"`
 	Note         string              `json:"note"`
@@ -119,6 +120,7 @@ type SalesSummaryX struct {
 	TotalTTC     float64              `json:"total_ttc"`
 	ByMethod     map[string]float64   `json:"by_method"`
 	VATByRate    map[string]VATDetail `json:"vat_by_rate"`
+	NetByMethod  map[string]float64   `json:"net_by_method"`
 }
 
 type MovementsSummary struct {
@@ -133,6 +135,12 @@ type ExpectedCashSummary struct {
 	SalesCash    float64 `json:"sales_cash"`
 	Movements    float64 `json:"movements"`
 	Total        float64 `json:"total"`
+}
+
+type RefundsSummaryX struct {
+	CreditNotesCount int                `json:"credit_notes_count"`
+	TotalTTC         float64            `json:"total_ttc"` // ✅ en POSITIF (abs)
+	ByMethod         map[string]float64 `json:"by_method"` // ✅ en POSITIF (abs)
 }
 
 func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, error) {
@@ -158,18 +166,50 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		return nil, fmt.Errorf("erreur chargement factures: %w", err)
 	}
 
+	// --- SALES (invoices) ---
 	var invoiceCount int
 	var totalHT, totalTVA, totalTTC float64
 	totalsByMethod := make(map[string]float64)
 	vatByRate := make(map[string]VATDetail)
 	var cashFromSales float64
 
+	// --- REFUNDS (credit_notes) ---
+	var creditNotesCount int
+	var refundsTotalTTC float64
+	refundsByMethod := make(map[string]float64)
+
 	for _, inv := range invoices {
-		invoiceCount++
+		invType := inv.GetString("invoice_type")
 		ht := inv.GetFloat("total_ht")
 		tva := inv.GetFloat("total_tva")
 		ttc := inv.GetFloat("total_ttc")
 
+		if invType == "credit_note" {
+			creditNotesCount++
+
+			absTTC := abs(ttc)
+			refundsTotalTTC += absTTC
+
+			// Sur un avoir de remboursement, on préfère refund_method
+			method := inv.GetString("refund_method")
+			if method == "" {
+				// fallback si tu ne l’as pas encore partout
+				method = inv.GetString("payment_method")
+			}
+			if method == "" {
+				method = "autre"
+			}
+
+			refundsByMethod[method] += absTTC
+			continue
+		}
+
+		// Par défaut, on considère que c’est une vente (invoice)
+		if invType != "" && invType != "invoice" {
+			continue
+		}
+
+		invoiceCount++
 		totalHT += ht
 		totalTVA += tva
 		totalTTC += ttc
@@ -182,16 +222,24 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			}
 		}
 
-		// Agréger la TVA par taux (utiliser items si vat_breakdown est null ou vide)
 		vatBreakdown := inv.Get("vat_breakdown")
 		if isVATBreakdownValid(vatBreakdown) {
 			aggregateVATBreakdown(vatBreakdown, vatByRate)
 		} else {
-			// Fallback: calculer depuis items
 			aggregateVATFromItems(inv.Get("items"), vatByRate)
 		}
 	}
 
+	// Net by method = sales - refunds (affichage)
+	netByMethod := make(map[string]float64)
+	for k, v := range totalsByMethod {
+		netByMethod[k] += v
+	}
+	for k, v := range refundsByMethod {
+		netByMethod[k] -= v
+	}
+
+	// --- CASH MOVEMENTS ---
 	movements, err := dao.FindRecordsByFilter(
 		"cash_movements",
 		fmt.Sprintf("session = '%s'", sessionID),
@@ -204,6 +252,7 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	}
 
 	var cashIn, cashOut, safeDrop float64
+
 	for _, mov := range movements {
 		movType := mov.GetString("movement_type")
 		amount := mov.GetFloat("amount")
@@ -211,16 +260,25 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		switch movType {
 		case "cash_in":
 			cashIn += amount
+
 		case "cash_out":
 			cashOut += amount
+
+		case "refund_out":
+			// remboursement espèces = sortie caisse
+			cashOut += amount
+
 		case "safe_drop":
 			safeDrop += amount
 		}
 	}
 
+	// ✅ Modèle B : la caisse est pilotée par cash_movements
 	movementsTotal := cashIn - cashOut - safeDrop
+
 	openingFloat := session.GetFloat("opening_float")
-	expectedCash := openingFloat + cashFromSales + movementsTotal
+
+	expectedCash := openingFloat + movementsTotal
 
 	openedAt := parsePocketBaseDate(session.GetString("opened_at"))
 
@@ -241,6 +299,12 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			TotalTTC:     totalTTC,
 			ByMethod:     totalsByMethod,
 			VATByRate:    vatByRate,
+			NetByMethod:  netByMethod,
+		},
+		Refunds: RefundsSummaryX{
+			CreditNotesCount: creditNotesCount,
+			TotalTTC:         refundsTotalTTC,
+			ByMethod:         refundsByMethod,
 		},
 		Movements: MovementsSummary{
 			CashIn:   cashIn,
@@ -250,7 +314,7 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		},
 		ExpectedCash: ExpectedCashSummary{
 			OpeningFloat: openingFloat,
-			SalesCash:    cashFromSales,
+			SalesCash:    cashFromSales, // info UI uniquement
 			Movements:    movementsTotal,
 			Total:        expectedCash,
 		},
@@ -258,6 +322,14 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	}
 
 	return rapport, nil
+}
+
+// abs helper (si tu ne l’as pas déjà dans ce fichier)
+func abs(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // ============================================================================
@@ -1015,4 +1087,30 @@ func ListZReports(app *pocketbase.PocketBase, cashRegisterID string, limit int) 
 	}
 
 	return items, nil
+}
+
+func getMetaMap(rec *models.Record) map[string]any {
+	raw := rec.Get("meta")
+	if raw == nil {
+		return nil
+	}
+	if m, ok := raw.(map[string]any); ok {
+		return m
+	}
+	return nil
+}
+
+func isCashInFromSale(mov *models.Record) bool {
+	meta := getMetaMap(mov)
+	if meta == nil {
+		return false
+	}
+	// ✅ Ton cas: meta.invoice_id / meta.invoice_number
+	if v, ok := meta["invoice_id"].(string); ok && v != "" {
+		return true
+	}
+	if v, ok := meta["invoice_number"].(string); ok && v != "" {
+		return true
+	}
+	return false
 }

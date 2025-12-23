@@ -109,31 +109,110 @@ export function RapportXDialog({
 										</span>
 									</div>
 
-									{Object.keys(rapport.sales.by_method).length > 0 && (
-										<>
-											<Separator />
-											<div>
-												<div className='text-xs font-medium text-muted-foreground mb-2'>
-													Répartition par mode de paiement
+									{rapport.sales.by_method &&
+										Object.keys(rapport.sales.by_method).length > 0 && (
+											<>
+												<Separator />
+												<div>
+													<div className='text-xs font-medium text-muted-foreground mb-2'>
+														Répartition par mode de paiement
+													</div>
+													<div className='space-y-2'>
+														{Object.entries(rapport.sales.by_method).map(
+															([method, amount]) => (
+																<div
+																	key={method}
+																	className='flex justify-between text-sm'
+																>
+																	<span className='capitalize'>{method}</span>
+																	<span className='font-medium'>
+																		{formatCurrency(amount)}
+																	</span>
+																</div>
+															),
+														)}
+													</div>
 												</div>
-												<div className='space-y-2'>
-													{Object.entries(rapport.sales.by_method).map(
-														([method, amount]) => (
-															<div
-																key={method}
-																className='flex justify-between text-sm'
-															>
-																<span className='capitalize'>{method}</span>
-																<span className='font-medium'>
-																	{formatCurrency(amount)}
-																</span>
-															</div>
-														),
-													)}
+											</>
+										)}
+
+									{rapport.sales.net_by_method &&
+										Object.keys(rapport.sales.net_by_method).length > 0 && (
+											<>
+												<Separator />
+												<div>
+													<div className='text-xs font-medium text-muted-foreground mb-2'>
+														Résultat financier par mode (ventes -
+														remboursements)
+													</div>
+													<div className='space-y-2'>
+														{Object.entries(rapport.sales.net_by_method).map(
+															([method, amount]) => (
+																<div
+																	key={method}
+																	className='flex justify-between text-sm'
+																>
+																	<span className='capitalize'>{method}</span>
+																	<span className='font-medium'>
+																		{formatCurrency(amount)}
+																	</span>
+																</div>
+															),
+														)}
+													</div>
 												</div>
-											</div>
-										</>
-									)}
+											</>
+										)}
+								</CardContent>
+							</Card>
+						</div>
+
+						<Separator />
+
+						{/* Remboursements */}
+						<div>
+							<h4 className='font-semibold mb-3'>Remboursements</h4>
+							<Card>
+								<CardContent className='pt-6 space-y-3'>
+									<div className='flex justify-between text-sm'>
+										<span>Nombre d’avoirs :</span>
+										<span className='font-semibold'>
+											{rapport.refunds?.credit_notes_count ?? 0}
+										</span>
+									</div>
+									<div className='flex justify-between'>
+										<span>Total remboursé TTC :</span>
+										<span className='font-bold text-lg text-red-600'>
+											-{formatCurrency(rapport.refunds?.total_ttc ?? 0)}
+										</span>
+									</div>
+
+									{rapport.refunds?.by_method &&
+										Object.keys(rapport.refunds.by_method).length > 0 && (
+											<>
+												<Separator />
+												<div>
+													<div className='text-xs font-medium text-muted-foreground mb-2'>
+														Répartition par mode de remboursement
+													</div>
+													<div className='space-y-2'>
+														{Object.entries(rapport.refunds.by_method).map(
+															([method, amount]) => (
+																<div
+																	key={method}
+																	className='flex justify-between text-sm'
+																>
+																	<span className='capitalize'>{method}</span>
+																	<span className='font-medium text-red-600'>
+																		-{formatCurrency(amount)}
+																	</span>
+																</div>
+															),
+														)}
+													</div>
+												</div>
+											</>
+										)}
 								</CardContent>
 							</Card>
 						</div>
@@ -174,11 +253,13 @@ export function RapportXDialog({
 
 						<Separator />
 
-						{/* Espèces attendues */}
+						{/* Espèces attendues en caisse */}
 						<div>
 							<h4 className='font-semibold mb-3'>
 								Espèces attendues en caisse
 							</h4>
+
+							{/* Bloc "calcul caisse" (source of truth = journal cash_movements) */}
 							<Card className='border-2 border-primary'>
 								<CardContent className='pt-6 space-y-2 text-sm'>
 									<div className='flex justify-between'>
@@ -187,29 +268,56 @@ export function RapportXDialog({
 											{formatCurrency(rapport.expected_cash.opening_float)}
 										</span>
 									</div>
+
 									<div className='flex justify-between'>
-										<span>Ventes espèces :</span>
-										<span className='font-medium'>
-											{formatCurrency(rapport.expected_cash.sales_cash)}
-										</span>
-									</div>
-									<div className='flex justify-between'>
-										<span>Mouvements :</span>
+										<span>Impact caisse (journal) :</span>
 										<span className='font-medium'>
 											{formatCurrency(rapport.expected_cash.movements)}
 										</span>
 									</div>
+
 									<Separator />
+
 									<div className='flex justify-between text-xl font-bold'>
 										<span>Total attendu :</span>
 										<span className='text-primary'>
 											{formatCurrency(rapport.expected_cash.total)}
 										</span>
 									</div>
+
+									<div className='pt-2 text-xs text-muted-foreground leading-relaxed'>
+										Le total attendu est calculé à partir du{' '}
+										<b>journal de caisse</b> (entrées, sorties, remboursements,
+										dépôts).
+									</div>
+								</CardContent>
+							</Card>
+
+							{/* Bloc "info ventes" (ne participe pas au calcul caisse) */}
+							<Card className='mt-3'>
+								<CardContent className='pt-6 space-y-2 text-sm'>
+									<div className='flex justify-between'>
+										<span className='text-muted-foreground'>
+											Information ventes :
+										</span>
+										<span className='text-muted-foreground'>—</span>
+									</div>
+
+									<div className='flex justify-between'>
+										<span>Ventes espèces (info) :</span>
+										<span className='font-medium'>
+											{formatCurrency(rapport.expected_cash.sales_cash)}
+										</span>
+									</div>
+
+									<div className='pt-2 text-xs text-muted-foreground leading-relaxed'>
+										Ce montant est une statistique commerciale. Il peut être
+										inclus dans l’impact caisse si les ventes espèces sont
+										journalisées en mouvements.
+									</div>
 								</CardContent>
 							</Card>
 						</div>
-
 						{/* Note */}
 						<div className='text-center'>
 							<p className='text-sm text-muted-foreground italic'>

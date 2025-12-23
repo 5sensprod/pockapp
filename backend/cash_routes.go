@@ -387,10 +387,9 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		credit.Set("fiscal_year", fiscalYear)
 
 		credit.Set("original_invoice_id", orig.Id)
-		credit.Set("is_pos_ticket", false)
-		credit.Set("session", "")
-		credit.Set("cash_register", "")
-
+		credit.Set("is_pos_ticket", true)
+		credit.Set("session", orig.GetString("session"))
+		credit.Set("cash_register", orig.GetString("cash_register"))
 		credit.Set("refund_type", payload.RefundType)
 		credit.Set("refund_method", payload.RefundMethod)
 		if payload.Reason != "" {
