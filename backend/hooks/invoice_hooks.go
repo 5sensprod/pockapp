@@ -120,10 +120,17 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			if err != nil || orig == nil {
 				return fmt.Errorf("document original introuvable (original_invoice_id=%s)", originalInvoiceID)
 			}
-
-			// (tickets POS) : l'original doit être un ticket
-			if !orig.GetBool("is_pos_ticket") {
-				return fmt.Errorf("original_invoice_id doit référencer un ticket POS (is_pos_ticket=true)")
+			// ✅ Règle remboursement (avoirs): l'original doit être validé ET payé (ticket POS ou facture)
+			if invoiceType == "credit_note" {
+				if orig.GetString("status") != "validated" {
+					return fmt.Errorf("remboursement interdit: le document original n'est pas validé")
+				}
+				if !orig.GetBool("is_paid") {
+					return fmt.Errorf("remboursement interdit: le document original n'est pas payé")
+				}
+				if orig.GetString("invoice_type") == "credit_note" {
+					return fmt.Errorf("original_invoice_id ne peut pas référencer un avoir")
+				}
 			}
 
 			// Bloquer la conversion si déjà converti (logique existante)
@@ -185,11 +192,11 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 
 				if refundType == "partial" {
 					// refunded_items requis et non vide
-					refundedItems, err := getItemsArray(record.Get("refunded_items"))
+					refundedItemsRaw, err := getItemsArray(record.Get("refunded_items"))
 					if err != nil {
 						return fmt.Errorf("refunded_items invalide: %w", err)
 					}
-					if len(refundedItems) == 0 {
+					if len(refundedItemsRaw) == 0 {
 						return fmt.Errorf("refunded_items doit être présent et non vide (refund_type=partial)")
 					}
 
@@ -197,48 +204,144 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 					if err != nil {
 						return fmt.Errorf("items originaux invalides: %w", err)
 					}
-					origIndex := indexItemsByKey(origItems)
+					if len(origItems) == 0 {
+						return fmt.Errorf("items originaux vides")
+					}
 
-					// validations existence + quantité <= original
-					for i := range refundedItems {
-						key := itemKey(refundedItems[i])
-						if key == "" {
-							return fmt.Errorf("refunded_items[%d]: item sans identifiant (id/product_id/sku/name...)", i)
+					// Cumul des quantités déjà remboursées par ligne (original_item_index)
+					alreadyRefundedByIndex, err := sumCreditNotesRefundedQtyByIndex(app, orig.Id)
+					if err != nil {
+						return fmt.Errorf("impossible de calculer les quantités déjà remboursées: %w", err)
+					}
+
+					normalized := make([]map[string]any, 0, len(refundedItemsRaw))
+
+					for i := range refundedItemsRaw {
+						it := refundedItemsRaw[i]
+
+						idx, hasIdx := itemOriginalIndex(it)
+						if !hasIdx {
+							return fmt.Errorf("refunded_items[%d]: original_item_index requis", i)
 						}
-						origIt, ok := origIndex[key]
-						if !ok {
-							return fmt.Errorf("refunded_items[%d]: item '%s' absent des items originaux", i, key)
+						if idx < 0 || idx >= len(origItems) {
+							return fmt.Errorf("refunded_items[%d]: original_item_index hors limites (max=%d)", i, len(origItems)-1)
 						}
-						rq := itemQty(refundedItems[i])
-						oq := itemQty(origIt)
+
+						rq := math.Abs(itemQty(it))
 						if rq <= 0 {
 							return fmt.Errorf("refunded_items[%d]: quantité invalide (<=0)", i)
 						}
-						if rq > oq {
-							return fmt.Errorf("refunded_items[%d]: quantité remboursée %.6g > quantité originale %.6g", i, rq, oq)
+
+						origIt := origItems[idx]
+						oq := math.Abs(itemQty(origIt))
+						already := alreadyRefundedByIndex[idx]
+						remainingQty := oq - already
+						if remainingQty <= 0 {
+							return fmt.Errorf("refunded_items[%d]: item déjà totalement remboursé", i)
 						}
+						if rq > remainingQty {
+							return fmt.Errorf("refunded_items[%d]: quantité remboursée %.6g > restant remboursable %.6g", i, rq, remainingQty)
+						}
+
+						cp := make(map[string]any)
+						for k, v := range origIt {
+							cp[k] = v
+						}
+
+						reason := ""
+						if v, ok := it["refund_reason"]; ok {
+							reason = strings.TrimSpace(fmt.Sprint(v))
+						}
+						if reason == "" {
+							if v, ok := it["reason"]; ok {
+								reason = strings.TrimSpace(fmt.Sprint(v))
+							}
+						}
+
+						cp["original_item_index"] = idx
+						cp["refund_reason"] = reason
+
+						// Normaliser en négatif (avoir)
+						cp["quantity"] = -math.Abs(rq)
+
+						lineHT, lineTVA, lineTTC := computeLineTotalsForQty(origIt, rq)
+						cp["total_ht"] = -math.Abs(lineHT)
+						cp["total_tva"] = -math.Abs(lineTVA)
+						cp["total_ttc"] = -math.Abs(lineTTC)
+
+						normalized = append(normalized, cp)
 					}
 
-					// Recalcul des totaux depuis refunded_items (en négatif)
-					newTotals, vatBreakdown := computeTotalsAndVat(refundedItems)
+					newTotals, vatBreakdown := computeTotalsAndVat(normalized)
 
-					// Bloquer si total partiel dépasse le restant (tolérance 0.01)
 					absNew := math.Abs(newTotals.TotalTTC)
 					if absNew-remaining > 0.01 {
 						return fmt.Errorf("montant de l'avoir (%.2f) dépasse le restant remboursable (%.2f)", absNew, remaining)
 					}
 
-					record.Set("items", refundedItems)
+					record.Set("items", normalized)
 					record.Set("total_ht", -math.Abs(newTotals.TotalHT))
 					record.Set("total_tva", -math.Abs(newTotals.TotalTVA))
 					record.Set("total_ttc", -math.Abs(newTotals.TotalTTC))
 					record.Set("vat_breakdown", vatBreakdown)
 				} else {
-					// full: s'assurer d'être en négatif au minimum
-					record.Set("total_ht", -math.Abs(record.GetFloat("total_ht")))
-					record.Set("total_tva", -math.Abs(record.GetFloat("total_tva")))
-					record.Set("total_ttc", -math.Abs(record.GetFloat("total_ttc")))
+					// full: rembourser le RESTANT (multi-avoirs) en construisant l'avoir par ligne
+					origItems, err := getItemsArray(orig.Get("items"))
+					if err != nil {
+						return fmt.Errorf("items originaux invalides: %w", err)
+					}
+					if len(origItems) == 0 {
+						return fmt.Errorf("items originaux vides")
+					}
+
+					alreadyRefundedByIndex, err := sumCreditNotesRefundedQtyByIndex(app, orig.Id)
+					if err != nil {
+						return fmt.Errorf("impossible de calculer les quantités déjà remboursées: %w", err)
+					}
+
+					normalized := make([]map[string]any, 0, len(origItems))
+					for idx := range origItems {
+						origIt := origItems[idx]
+						oq := math.Abs(itemQty(origIt))
+						already := alreadyRefundedByIndex[idx]
+						remainingQty := oq - already
+						if remainingQty <= 0 {
+							continue
+						}
+
+						cp := make(map[string]any)
+						for k, v := range origIt {
+							cp[k] = v
+						}
+						cp["original_item_index"] = idx
+						cp["quantity"] = -math.Abs(remainingQty)
+
+						lineHT, lineTVA, lineTTC := computeLineTotalsForQty(origIt, remainingQty)
+						cp["total_ht"] = -math.Abs(lineHT)
+						cp["total_tva"] = -math.Abs(lineTVA)
+						cp["total_ttc"] = -math.Abs(lineTTC)
+
+						normalized = append(normalized, cp)
+					}
+
+					if len(normalized) == 0 {
+						return fmt.Errorf("plus de remboursement possible (remaining=%.2f€)", remaining)
+					}
+
+					newTotals, vatBreakdown := computeTotalsAndVat(normalized)
+
+					absNew := math.Abs(newTotals.TotalTTC)
+					if absNew-remaining > 0.01 {
+						return fmt.Errorf("montant de l'avoir (%.2f) dépasse le restant remboursable (%.2f)", absNew, remaining)
+					}
+
+					record.Set("items", normalized)
+					record.Set("total_ht", -math.Abs(newTotals.TotalHT))
+					record.Set("total_tva", -math.Abs(newTotals.TotalTVA))
+					record.Set("total_ttc", -math.Abs(newTotals.TotalTTC))
+					record.Set("vat_breakdown", vatBreakdown)
 				}
+
 			}
 		}
 
@@ -386,12 +489,15 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			if originalID != "" {
 				orig, err := app.Dao().FindRecordById("invoices", originalID)
 				if err != nil || orig == nil {
-					return fmt.Errorf("ticket original introuvable (original_invoice_id=%s)", originalID)
+					return fmt.Errorf("document original introuvable (original_invoice_id=%s)", originalID)
 				}
 
-				// 1) Vérifier original is_pos_ticket=true
-				if !orig.GetBool("is_pos_ticket") {
-					return fmt.Errorf("original_invoice_id doit référencer un ticket POS (is_pos_ticket=true)")
+				// ✅ Règle remboursement: l'original doit être validé ET payé
+				if orig.GetString("status") != "validated" {
+					return fmt.Errorf("remboursement interdit: le document original n'est pas validé")
+				}
+				if !orig.GetBool("is_paid") {
+					return fmt.Errorf("remboursement interdit: le document original n'est pas payé")
 				}
 
 				// 5) Mettre à jour le ticket original: has_credit_note = true
@@ -1489,6 +1595,126 @@ func toFloat(v any) (float64, bool) {
 
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
+}
+
+// sumCreditNotesRefundedQtyByIndex cumule les quantités (en absolu) déjà remboursées
+// par original_item_index sur l'ensemble des avoirs liés à originalInvoiceID.
+func sumCreditNotesRefundedQtyByIndex(app *pocketbase.PocketBase, originalInvoiceID string) (map[int]float64, error) {
+	records, err := app.Dao().FindRecordsByFilter(
+		"invoices",
+		fmt.Sprintf("invoice_type='credit_note' && original_invoice_id='%s'", originalInvoiceID),
+		"-created",
+		500,
+		0,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	refunded := map[int]float64{}
+	for _, r := range records {
+		items, err := getItemsArray(r.Get("items"))
+		if err != nil {
+			continue
+		}
+		for _, it := range items {
+			idx, ok := itemOriginalIndex(it)
+			if !ok {
+				continue
+			}
+			refunded[idx] += math.Abs(itemQty(it))
+		}
+	}
+
+	return refunded, nil
+}
+
+func itemOriginalIndex(it map[string]any) (int, bool) {
+	for _, k := range []string{"original_item_index", "originalItemIndex"} {
+		if v, ok := it[k]; ok {
+			if f, ok := toFloat(v); ok {
+				return int(f), true
+			}
+		}
+	}
+	return 0, false
+}
+
+// computeLineTotalsForQty calcule les totaux d'une ligne pour une quantité donnée.
+// - Si des unit prices existent, on utilise computeFromUnit.
+// - Sinon, on applique un prorata basé sur les totaux originaux.
+func computeLineTotalsForQty(origIt map[string]any, qty float64) (float64, float64, float64) {
+	if qty <= 0 {
+		return 0, 0, 0
+	}
+
+	hasUnit := false
+	for _, k := range []string{"unit_price_ht", "price_ht", "unit_ht", "unitPriceHT", "unit_price_ttc", "price_ttc", "unit_ttc", "unitPriceTTC"} {
+		if v, ok := origIt[k]; ok {
+			if f, ok := toFloat(v); ok && f != 0 {
+				hasUnit = true
+				break
+			}
+		}
+	}
+
+	if hasUnit {
+		cp := make(map[string]any)
+		for k, v := range origIt {
+			cp[k] = v
+		}
+		delete(cp, "total_ht")
+		delete(cp, "total_tva")
+		delete(cp, "total_ttc")
+		cp["quantity"] = qty
+		ht, tva, ttc := computeFromUnit(cp)
+		return round2(ht), round2(tva), round2(ttc)
+	}
+
+	oq := math.Abs(itemQty(origIt))
+	if oq == 0 {
+		oq = 1
+	}
+	ratio := qty / oq
+
+	// Base sur totaux originaux si présents
+	origHT := 0.0
+	if v, ok := origIt["total_ht"]; ok {
+		if f, ok := toFloat(v); ok {
+			origHT = f
+		}
+	}
+	origTVA := 0.0
+	if v, ok := origIt["total_tva"]; ok {
+		if f, ok := toFloat(v); ok {
+			origTVA = f
+		}
+	}
+	origTTC := 0.0
+	if v, ok := origIt["total_ttc"]; ok {
+		if f, ok := toFloat(v); ok {
+			origTTC = f
+		}
+	}
+
+	// Si total_ht manquant, on tente un calcul
+	if origHT == 0 && origTVA == 0 && origTTC == 0 {
+		cp := make(map[string]any)
+		for k, v := range origIt {
+			cp[k] = v
+		}
+		delete(cp, "total_ht")
+		delete(cp, "total_tva")
+		delete(cp, "total_ttc")
+		cp["quantity"] = qty
+		ht, tva, ttc := computeFromUnit(cp)
+		return round2(ht), round2(tva), round2(ttc)
+	}
+
+	ht := origHT * ratio
+	tva := origTVA * ratio
+	ttc := origTTC * ratio
+	return round2(math.Abs(ht)), round2(math.Abs(tva)), round2(math.Abs(ttc))
 }
 
 func sumCreditNotesAbsTotal(app *pocketbase.PocketBase, originalInvoiceID string) (float64, error) {

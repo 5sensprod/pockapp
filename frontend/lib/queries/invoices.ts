@@ -32,6 +32,85 @@ export interface VatBreakdownItem {
 }
 
 // ---------------------------------------------------------------------------
+// ✅ B2B INVOICE REFUND (INVOICE -> CREDIT NOTE) - /api/invoices/refund
+// ---------------------------------------------------------------------------
+
+export interface RefundInvoiceInput {
+	originalInvoiceId: string
+	refundType: 'full' | 'partial'
+	refundMethod: 'especes' | 'cb' | 'cheque' | 'autre'
+	refundedItems?: {
+		original_item_index: number
+		quantity: number
+		reason?: string
+	}[]
+	reason: string
+}
+
+function formatRefundInvoiceError(err: unknown): Error {
+	const e = err as Partial<ClientResponseError> & {
+		status?: number
+		data?: any
+		message?: string
+	}
+
+	const status = e?.status
+	const apiMsg =
+		typeof e?.data?.message === 'string'
+			? e.data.message
+			: typeof e?.message === 'string'
+				? e.message
+				: ''
+
+	if (status === 404) return new Error('Facture introuvable.')
+	if (status === 401 || status === 403)
+		return new Error('Accès refusé. Veuillez vous reconnecter.')
+	if (status === 400) return new Error(apiMsg || 'Requête invalide.')
+
+	return new Error(apiMsg || 'Une erreur est survenue lors du remboursement.')
+}
+
+export function useRefundInvoice() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (input: RefundInvoiceInput) => {
+			if (!input.originalInvoiceId)
+				throw new Error('originalInvoiceId est requis.')
+			if (!input.reason) throw new Error('reason est requis.')
+			if (
+				input.refundType === 'partial' &&
+				(!input.refundedItems || input.refundedItems.length === 0)
+			) {
+				throw new Error('refundedItems est requis si refundType = partial.')
+			}
+
+			const payload = {
+				original_invoice_id: input.originalInvoiceId,
+				refund_type: input.refundType,
+				refund_method: input.refundMethod,
+				refunded_items:
+					input.refundType === 'partial' ? input.refundedItems : undefined,
+				reason: input.reason,
+			}
+
+			try {
+				return await pb.send('/api/invoices/refund', {
+					method: 'POST',
+					body: payload,
+				})
+			} catch (err) {
+				throw formatRefundInvoiceError(err)
+			}
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
+		},
+	})
+}
+
+// ---------------------------------------------------------------------------
 // ✅ POS REFUND (TICKET -> AVOIR) - /api/pos/refund
 // ---------------------------------------------------------------------------
 

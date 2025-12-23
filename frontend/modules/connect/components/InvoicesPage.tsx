@@ -11,6 +11,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -60,6 +61,7 @@ import {
 	isOverdue,
 } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
+import { RefundInvoiceDialog } from '@/modules/common/RefundInvoiceDialog'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
 import { pdf } from '@react-pdf/renderer'
 import { useNavigate } from '@tanstack/react-router'
@@ -182,6 +184,10 @@ export function InvoicesPage() {
 	const [ticketToRefund, setTicketToRefund] = useState<InvoiceResponse | null>(
 		null,
 	)
+
+	const [refundInvoiceOpen, setRefundInvoiceOpen] = useState(false)
+	const [invoiceToRefund, setInvoiceToRefund] =
+		useState<InvoiceResponse | null>(null)
 
 	const handleOpenRefundTicketDialog = (ticket: InvoiceResponse) => {
 		setTicketToRefund(ticket)
@@ -953,6 +959,43 @@ export function InvoicesPage() {
 																</DropdownMenuItem>
 															</>
 														)}
+													{invoice.invoice_type === 'invoice' &&
+														!isTicket &&
+														invoice.status !== 'draft' && (
+															<>
+																<DropdownMenuSeparator />
+																<DropdownMenuItem
+																	onClick={() => {
+																		// même garde-fou que tickets
+																		if (remainingAmount <= 0) {
+																			toast.error(
+																				'Facture déjà totalement remboursée',
+																				{
+																					description: `La facture ${invoice.number} a déjà été intégralement remboursée.`,
+																				},
+																			)
+																			return
+																		}
+																		setInvoiceToRefund(invoice)
+																		setRefundInvoiceOpen(true)
+																	}}
+																	// pas de "disabled" -> on affiche un toast cohérent
+																	className={
+																		remainingAmount <= 0
+																			? 'text-muted-foreground'
+																			: ''
+																	}
+																>
+																	<RotateCcw className='h-4 w-4 mr-2' />
+																	Rembourser
+																	{remainingAmount <= 0 && (
+																		<span className='ml-2 text-xs text-muted-foreground'>
+																			(remboursée)
+																		</span>
+																	)}
+																</DropdownMenuItem>
+															</>
+														)}
 												</DropdownMenuContent>
 											</DropdownMenu>
 										</TableCell>
@@ -1188,6 +1231,15 @@ export function InvoicesPage() {
 				onSuccess={() => {
 					handleCloseRefundTicketDialog()
 					void refetchInvoices()
+				}}
+			/>
+
+			<RefundInvoiceDialog
+				open={refundInvoiceOpen}
+				invoice={invoiceToRefund}
+				onClose={() => {
+					setRefundInvoiceOpen(false)
+					setInvoiceToRefund(null)
 				}}
 			/>
 
