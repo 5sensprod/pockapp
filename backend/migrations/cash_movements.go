@@ -28,6 +28,11 @@ func ensureCashMovementsCollection(app *pocketbase.PocketBase) error {
 			return err
 		}
 
+		invoicesCol, err := app.Dao().FindCollectionByNameOrId("invoices")
+		if err != nil {
+			return err
+		}
+
 		collection = &models.Collection{
 			Name:       "cash_movements",
 			Type:       models.CollectionTypeBase,
@@ -75,7 +80,7 @@ func ensureCashMovementsCollection(app *pocketbase.PocketBase) error {
 					Required: true,
 					Options: &schema.SelectOptions{
 						MaxSelect: 1,
-						Values:    []string{"cash_in", "cash_out", "safe_drop", "adjustment"},
+						Values:    []string{"cash_in", "cash_out", "safe_drop", "adjustment", "refund_out"},
 					},
 				},
 				&schema.SchemaField{
@@ -95,6 +100,17 @@ func ensureCashMovementsCollection(app *pocketbase.PocketBase) error {
 					Name: "meta",
 					Type: schema.FieldTypeJson,
 				},
+
+				// Lien vers l'avoir (obligatoire côté métier pour refund_out)
+				&schema.SchemaField{
+					Name: "related_invoice",
+					Type: schema.FieldTypeRelation,
+					Options: &schema.RelationOptions{
+						CollectionId:  invoicesCol.Id,
+						MaxSelect:     types.Pointer(1),
+						CascadeDelete: false,
+					},
+				},
 			),
 		}
 
@@ -109,6 +125,7 @@ func ensureCashMovementsCollection(app *pocketbase.PocketBase) error {
 	log.Println("📦 Collection 'cash_movements' existe déjà, mise à jour des règles...")
 
 	needsUpdate := false
+	changed := false
 	authRule := "@request.auth.id != ''"
 
 	if collection.ListRule == nil || *collection.ListRule != authRule {
@@ -132,13 +149,65 @@ func ensureCashMovementsCollection(app *pocketbase.PocketBase) error {
 		needsUpdate = true
 	}
 
-	if needsUpdate {
+	// --- Mise à jour du schéma : movement_type + related_invoice ---
+
+	// 1) Ajouter "refund_out" à movement_type si manquant
+	if f := collection.Schema.GetFieldByName("movement_type"); f != nil {
+		if opts, ok := f.Options.(*schema.SelectOptions); ok {
+			has := false
+			for _, v := range opts.Values {
+				if v == "refund_out" {
+					has = true
+					break
+				}
+			}
+			if !has {
+				opts.Values = append(opts.Values, "refund_out")
+				changed = true
+				log.Println(`🛠 Ajout du champ movement_type: valeur "refund_out"`)
+			}
+		}
+	} else {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:     "movement_type",
+			Type:     schema.FieldTypeSelect,
+			Required: true,
+			Options: &schema.SelectOptions{
+				MaxSelect: 1,
+				Values:    []string{"cash_in", "cash_out", "safe_drop", "adjustment", "refund_out"},
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ movement_type (avec refund_out)")
+	}
+
+	// 2) Ajouter related_invoice (relation -> invoices) si manquant
+	if f := collection.Schema.GetFieldByName("related_invoice"); f == nil {
+		invoicesCol, err := app.Dao().FindCollectionByNameOrId("invoices")
+		if err != nil {
+			return err
+		}
+
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "related_invoice",
+			Type: schema.FieldTypeRelation,
+			Options: &schema.RelationOptions{
+				CollectionId:  invoicesCol.Id,
+				MaxSelect:     types.Pointer(1),
+				CascadeDelete: false,
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ related_invoice -> invoices")
+	}
+
+	if needsUpdate || changed {
 		if err := app.Dao().SaveCollection(collection); err != nil {
 			return err
 		}
-		log.Println("✅ Règles de 'cash_movements' mises à jour")
+		log.Println("✅ Collection 'cash_movements' mise à jour")
 	} else {
-		log.Println("✅ Collection 'cash_movements' OK (règles déjà présentes)")
+		log.Println("✅ Collection 'cash_movements' OK (aucune modification nécessaire)")
 	}
 
 	return nil

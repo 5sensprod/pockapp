@@ -60,6 +60,7 @@ import {
 	isOverdue,
 } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
+import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
 import { pdf } from '@react-pdf/renderer'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -73,6 +74,7 @@ import {
 	MoreHorizontal,
 	Plus,
 	Receipt,
+	RotateCcw,
 	Send,
 	XCircle,
 } from 'lucide-react'
@@ -175,6 +177,21 @@ export function InvoicesPage() {
 	)
 
 	const [company, setCompany] = useState<CompaniesResponse | null>(null)
+
+	const [refundTicketDialogOpen, setRefundTicketDialogOpen] = useState(false)
+	const [ticketToRefund, setTicketToRefund] = useState<InvoiceResponse | null>(
+		null,
+	)
+
+	const handleOpenRefundTicketDialog = (ticket: InvoiceResponse) => {
+		setTicketToRefund(ticket)
+		setRefundTicketDialogOpen(true)
+	}
+
+	const handleCloseRefundTicketDialog = () => {
+		setRefundTicketDialogOpen(false)
+		setTicketToRefund(null)
+	}
 
 	// Mutations / hooks factures
 	const cancelInvoice = useCancelInvoice()
@@ -677,6 +694,27 @@ export function InvoicesPage() {
 										other.original_invoice_id === invoice.id,
 								)
 
+								const isTicket =
+									invoice.is_pos_ticket === true ||
+									invoice.number?.startsWith('TIK-')
+
+								if (isTicket) {
+									console.log('🎫 Ticket:', invoice.number, {
+										is_pos_ticket: invoice.is_pos_ticket,
+										remaining_amount: invoice.remaining_amount,
+										credit_notes_total: invoice.credit_notes_total,
+										total_ttc: invoice.total_ttc,
+										invoice_type: invoice.invoice_type,
+									})
+								}
+
+								// Fix: Si remaining_amount n'existe pas, calculer depuis total_ttc
+								const remainingAmount =
+									typeof invoice.remaining_amount === 'number'
+										? invoice.remaining_amount
+										: (invoice.total_ttc ?? 0) -
+											(invoice.credit_notes_total ?? 0)
+
 								return (
 									<TableRow
 										key={invoice.id}
@@ -808,6 +846,36 @@ export function InvoicesPage() {
 																</DropdownMenuItem>
 															</>
 														)}
+
+													{isTicket && invoice.invoice_type === 'invoice' && (
+														<>
+															<DropdownMenuSeparator />
+															<DropdownMenuItem
+																onClick={() => {
+																	// Vérifier si remboursement possible
+																	if (remainingAmount <= 0) {
+																		toast.error(
+																			'Ticket déjà totalement remboursé',
+																			{
+																				description: `Le ticket ${invoice.number} a déjà été intégralement remboursé.`,
+																			},
+																		)
+																		return
+																	}
+																	handleOpenRefundTicketDialog(invoice)
+																}}
+																// Retirer le disabled pour permettre le clic et afficher le toast
+															>
+																<RotateCcw className='h-4 w-4 mr-2' />
+																Rembourser ticket
+																{remainingAmount <= 0 && (
+																	<span className='ml-2 text-xs text-muted-foreground'>
+																		(remboursé)
+																	</span>
+																)}
+															</DropdownMenuItem>
+														</>
+													)}
 
 													<DropdownMenuSeparator />
 
@@ -1110,6 +1178,18 @@ export function InvoicesPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+			<RefundTicketDialog
+				open={refundTicketDialogOpen}
+				onOpenChange={(o) => {
+					if (!o) handleCloseRefundTicketDialog()
+					else setRefundTicketDialogOpen(true)
+				}}
+				ticket={ticketToRefund}
+				onSuccess={() => {
+					handleCloseRefundTicketDialog()
+					void refetchInvoices()
+				}}
+			/>
 
 			{/* Dialog: Envoyer la facture par email */}
 			<SendInvoiceEmailDialog

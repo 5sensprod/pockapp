@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -22,17 +23,14 @@ import (
 // ============================================================================
 
 const (
-	GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
-
-	// 🔢 Format de numérotation uniforme (6 chiffres = jusqu'à 999 999 factures/an)
+	GENESIS_HASH  = "0000000000000000000000000000000000000000000000000000000000000000"
 	NumberPadding = 6
 )
 
 // Champs autorisés à être modifiés sur une facture verrouillée
-// NOUVEAU: is_paid, paid_at, payment_method sont autorisés (indépendants du statut)
 var allowedInvoiceUpdates = map[string]bool{
-	"status":               true, // draft -> validated -> sent
-	"is_paid":              true, // Peut être modifié indépendamment
+	"status":               true,
+	"is_paid":              true,
 	"paid_at":              true,
 	"payment_method":       true,
 	"is_locked":            true,
@@ -45,7 +43,7 @@ var allowedInvoiceUpdates = map[string]bool{
 var allowedStatusTransitions = map[string][]string{
 	"draft":     {"validated"},
 	"validated": {"sent"},
-	"sent":      {}, // Terminal pour le workflow d'envoi
+	"sent":      {},
 }
 
 // ============================================================================
@@ -53,9 +51,6 @@ var allowedStatusTransitions = map[string][]string{
 // ============================================================================
 
 func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
-	// -------------------------------------------------------------------------
-	// ✅ Autoriser le marquage "converti" sur un ticket verrouillé
-	// -------------------------------------------------------------------------
 	allowedInvoiceUpdates["converted_to_invoice"] = true
 	allowedInvoiceUpdates["converted_invoice_id"] = true
 
@@ -92,13 +87,18 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		}
 
 		// ═════════════════════════════════════════════════════════════════════
-		// ✅ NOUVELLES VALIDATIONS MÉTIER
+		// ✅ VALIDATIONS MÉTIER
 		// ═════════════════════════════════════════════════════════════════════
 
 		sessionID := record.GetString("session")
 		cashRegisterID := record.GetString("cash_register")
 		isPosTicket := record.GetBool("is_pos_ticket")
 		originalInvoiceID := record.GetString("original_invoice_id")
+
+		// Valeur par défaut refund_type
+		if record.GetString("refund_type") == "" {
+			record.Set("refund_type", "full")
+		}
 
 		// ─────────────────────────────────────────────────────────────────────
 		// RÈGLE 1: Si session présente → FORCER is_pos_ticket = true
@@ -111,44 +111,135 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		}
 
 		// ─────────────────────────────────────────────────────────────────────
-		// RÈGLE 2: Si original_invoice_id présent → FORCER session = null
-		// (Protection contre double comptabilisation)
+		// RÈGLE 2: Si original_invoice_id présent → protections & règles POS
 		// ─────────────────────────────────────────────────────────────────────
+		var orig *models.Record
 		if originalInvoiceID != "" {
-			// 2.1) Vérifier que le ticket original existe
-			orig, err := app.Dao().FindRecordById("invoices", originalInvoiceID)
+			var err error
+			orig, err = app.Dao().FindRecordById("invoices", originalInvoiceID)
 			if err != nil || orig == nil {
-				return fmt.Errorf("ticket original introuvable (original_invoice_id=%s)", originalInvoiceID)
+				return fmt.Errorf("document original introuvable (original_invoice_id=%s)", originalInvoiceID)
 			}
 
-			// 2.2) Le record original doit être un ticket POS
+			// (tickets POS) : l'original doit être un ticket
 			if !orig.GetBool("is_pos_ticket") {
 				return fmt.Errorf("original_invoice_id doit référencer un ticket POS (is_pos_ticket=true)")
 			}
 
-			// 2.3) Si le ticket est déjà marqué converti, bloquer
-			if orig.GetBool("converted_to_invoice") || orig.GetString("converted_invoice_id") != "" {
-				return fmt.Errorf("ce ticket a déjà été converti en facture")
+			// Bloquer la conversion si déjà converti (logique existante)
+			if invoiceType == "invoice" {
+				if orig.GetBool("converted_to_invoice") || orig.GetString("converted_invoice_id") != "" {
+					return fmt.Errorf("ce ticket a déjà été converti en facture")
+				}
+				existing, err := app.Dao().FindFirstRecordByFilter(
+					"invoices",
+					fmt.Sprintf("invoice_type='invoice' && original_invoice_id='%s'", originalInvoiceID),
+				)
+				if err == nil && existing != nil {
+					return fmt.Errorf("ce ticket a déjà une facture associée (invoiceId=%s)", existing.Id)
+				}
 			}
 
-			// 2.4) Vérifier qu'aucune facture n'existe déjà avec ce original_invoice_id
-			existing, err := app.Dao().FindFirstRecordByFilter(
-				"invoices",
-				fmt.Sprintf("invoice_type='invoice' && original_invoice_id='%s'", originalInvoiceID),
-			)
-			if err == nil && existing != nil {
-				return fmt.Errorf("ce ticket a déjà une facture associée (invoiceId=%s)", existing.Id)
-			}
-
-			// 2.5) FORCER session et cash_register à null
+			// Facture issue d'un ticket OU AVOIR sur ticket : pas de session/cash_register (pas de double comptage)
 			if sessionID != "" || cashRegisterID != "" {
-				log.Printf("⚠️ CORRECTION: Facture issue d'un ticket ne peut avoir de session/cash_register")
+				log.Printf("⚠️ CORRECTION: document lié à un ticket ne peut avoir de session/cash_register")
 				record.Set("session", "")
 				record.Set("cash_register", "")
+				sessionID = ""
+				cashRegisterID = ""
 			}
 
-			// 2.6) FORCER is_pos_ticket = false pour la facture
-			record.Set("is_pos_ticket", false)
+			// AVOIR sur ticket : document comptable
+			if invoiceType == "credit_note" {
+				record.Set("is_pos_ticket", false)
+			} else {
+				// facture issue d'un ticket : document comptable
+				record.Set("is_pos_ticket", false)
+			}
+
+			// ─────────────────────────────────────────────────────────────
+			// ✅ Remboursement partiel: validations + recalcul totaux
+			// ─────────────────────────────────────────────────────────────
+			if invoiceType == "credit_note" {
+				refundType := record.GetString("refund_type")
+
+				// Empêcher de dépasser le montant remboursable (multi-avoirs)
+				origTotal := orig.GetFloat("total_ttc")
+				if origTotal < 0 {
+					origTotal = -origTotal
+				}
+
+				// Recalculer depuis la BDD (pas depuis le champ qui peut être désynchronisé)
+				creditTotalSoFar, err := sumCreditNotesAbsTotal(app, orig.Id)
+				if err != nil {
+					return fmt.Errorf("impossible de calculer les avoirs existants: %w", err)
+				}
+
+				remaining := origTotal - creditTotalSoFar
+				log.Printf("🔍 Validation avoir: ticket=%s, total=%.2f, avoirs_existants=%.2f, remaining=%.2f",
+					orig.GetString("number"), origTotal, creditTotalSoFar, remaining)
+
+				if remaining <= 0.01 { // Tolérance pour arrondis
+					return fmt.Errorf("plus de remboursement possible (remaining=%.2f€)", remaining)
+				}
+
+				if refundType == "partial" {
+					// refunded_items requis et non vide
+					refundedItems, err := getItemsArray(record.Get("refunded_items"))
+					if err != nil {
+						return fmt.Errorf("refunded_items invalide: %w", err)
+					}
+					if len(refundedItems) == 0 {
+						return fmt.Errorf("refunded_items doit être présent et non vide (refund_type=partial)")
+					}
+
+					origItems, err := getItemsArray(orig.Get("items"))
+					if err != nil {
+						return fmt.Errorf("items originaux invalides: %w", err)
+					}
+					origIndex := indexItemsByKey(origItems)
+
+					// validations existence + quantité <= original
+					for i := range refundedItems {
+						key := itemKey(refundedItems[i])
+						if key == "" {
+							return fmt.Errorf("refunded_items[%d]: item sans identifiant (id/product_id/sku/name...)", i)
+						}
+						origIt, ok := origIndex[key]
+						if !ok {
+							return fmt.Errorf("refunded_items[%d]: item '%s' absent des items originaux", i, key)
+						}
+						rq := itemQty(refundedItems[i])
+						oq := itemQty(origIt)
+						if rq <= 0 {
+							return fmt.Errorf("refunded_items[%d]: quantité invalide (<=0)", i)
+						}
+						if rq > oq {
+							return fmt.Errorf("refunded_items[%d]: quantité remboursée %.6g > quantité originale %.6g", i, rq, oq)
+						}
+					}
+
+					// Recalcul des totaux depuis refunded_items (en négatif)
+					newTotals, vatBreakdown := computeTotalsAndVat(refundedItems)
+
+					// Bloquer si total partiel dépasse le restant (tolérance 0.01)
+					absNew := math.Abs(newTotals.TotalTTC)
+					if absNew-remaining > 0.01 {
+						return fmt.Errorf("montant de l'avoir (%.2f) dépasse le restant remboursable (%.2f)", absNew, remaining)
+					}
+
+					record.Set("items", refundedItems)
+					record.Set("total_ht", -math.Abs(newTotals.TotalHT))
+					record.Set("total_tva", -math.Abs(newTotals.TotalTVA))
+					record.Set("total_ttc", -math.Abs(newTotals.TotalTTC))
+					record.Set("vat_breakdown", vatBreakdown)
+				} else {
+					// full: s'assurer d'être en négatif au minimum
+					record.Set("total_ht", -math.Abs(record.GetFloat("total_ht")))
+					record.Set("total_tva", -math.Abs(record.GetFloat("total_tva")))
+					record.Set("total_ttc", -math.Abs(record.GetFloat("total_ttc")))
+				}
+			}
 		}
 
 		// ─────────────────────────────────────────────────────────────────────
@@ -187,7 +278,6 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 				}
 			}
 			record.Set("fiscal_year", fiscalYear)
-
 			return nil
 		}
 
@@ -207,7 +297,6 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		}
 		record.Set("fiscal_year", fiscalYear)
 
-		// Récupérer la dernière facture (pour chaînage)
 		lastInvoice, err := getLastInvoice(app, ownerCompany)
 
 		var previousHash string
@@ -224,7 +313,6 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		record.Set("previous_hash", previousHash)
 		record.Set("sequence_number", sequenceNumber)
 
-		// Génération automatique du numéro si absent / invalide
 		existingNumber := record.GetString("number")
 		if existingNumber == "" || !isValidDocumentNumber(existingNumber, fiscalYear) {
 			newNumber, err := generateDocumentNumber(app, ownerCompany, invoiceType, fiscalYear, record)
@@ -234,15 +322,25 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			record.Set("number", newNumber)
 		}
 
-		// Calcul du hash
 		hash, err := computeInvoiceHash(record)
 		if err != nil {
 			return fmt.Errorf("erreur calcul hash: %w", err)
 		}
 		record.Set("hash", hash)
-
-		// Verrouillage
 		record.Set("is_locked", true)
+
+		// ═══════════════════════════════════════════════════════════════════════
+		// ✅ AJOUTER ICI - Initialiser les champs de remboursement
+		// ═══════════════════════════════════════════════════════════════════════
+		if invoiceType != "credit_note" {
+			totalTTC := record.GetFloat("total_ttc")
+			if totalTTC < 0 {
+				totalTTC = -totalTTC
+			}
+			record.Set("remaining_amount", totalTTC)
+			record.Set("credit_notes_total", 0)
+			record.Set("has_credit_note", false)
+		}
 
 		return nil
 	})
@@ -251,8 +349,9 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 	// HOOK: Après création d'une facture
 	// -------------------------------------------------------------------------
 	app.OnRecordAfterCreateRequest("invoices").Add(func(e *core.RecordCreateEvent) error {
-		// Si une facture (invoice) est issue d'un ticket (original_invoice_id),
-		// marquer le ticket comme converti côté backend.
+		// ---------------------------------------------------------------------
+		// ✅ Conversion ticket -> facture (existant)
+		// ---------------------------------------------------------------------
 		if e.Record.GetString("invoice_type") == "invoice" {
 			originalID := e.Record.GetString("original_invoice_id")
 			if originalID != "" {
@@ -279,7 +378,110 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			}
 		}
 
-		// Audit log
+		// ---------------------------------------------------------------------
+		// 🆕 Avoirs sur tickets POS (TIK-) + partial refunds
+		// ---------------------------------------------------------------------
+		if e.Record.GetString("invoice_type") == "credit_note" {
+			originalID := e.Record.GetString("original_invoice_id")
+			if originalID != "" {
+				orig, err := app.Dao().FindRecordById("invoices", originalID)
+				if err != nil || orig == nil {
+					return fmt.Errorf("ticket original introuvable (original_invoice_id=%s)", originalID)
+				}
+
+				// 1) Vérifier original is_pos_ticket=true
+				if !orig.GetBool("is_pos_ticket") {
+					return fmt.Errorf("original_invoice_id doit référencer un ticket POS (is_pos_ticket=true)")
+				}
+
+				// 5) Mettre à jour le ticket original: has_credit_note = true
+				if !orig.GetBool("has_credit_note") {
+					orig.Set("has_credit_note", true)
+				}
+
+				// 6) Mettre à jour credit_notes_total & remaining_amount (multi-avoirs)
+				origTotal := orig.GetFloat("total_ttc")
+				if origTotal < 0 {
+					origTotal = -origTotal
+				}
+
+				currentCreditTotal, err := sumCreditNotesAbsTotal(app, orig.Id)
+				if err != nil {
+					return fmt.Errorf("impossible de recalculer credit_notes_total: %w", err)
+				}
+
+				newCreditAbs := math.Abs(e.Record.GetFloat("total_ttc"))
+				// currentCreditTotal inclut déjà cet avoir (créé), donc on recalc "à plat"
+				// -> remaining basé sur la somme totale des avoirs existants
+				remaining := origTotal - currentCreditTotal
+				if remaining < 0 {
+					remaining = 0
+				}
+
+				orig.Set("credit_notes_total", currentCreditTotal)
+				orig.Set("remaining_amount", remaining)
+
+				if err := app.Dao().SaveRecord(orig); err != nil {
+					return fmt.Errorf("impossible de mettre à jour le ticket (credit_notes_total/remaining_amount): %w", err)
+				}
+
+				_ = newCreditAbs // évite warning si build tags/linters
+
+				// -----------------------------------------------------------------
+				// 🆕 Gestion remboursement espèces (refund_method="especes")
+				// -----------------------------------------------------------------
+				if e.Record.GetString("refund_method") == "especes" {
+					origCashRegister := orig.GetString("cash_register")
+					if origCashRegister != "" {
+						activeSession, err := app.Dao().FindFirstRecordByFilter(
+							"cash_sessions",
+							fmt.Sprintf("cash_register = '%s' && status = 'open'", origCashRegister),
+						)
+
+						if err == nil && activeSession != nil {
+							cmCol, err := app.Dao().FindCollectionByNameOrId("cash_movements")
+							if err != nil {
+								return err
+							}
+
+							amount := math.Abs(e.Record.GetFloat("total_ttc"))
+
+							cm := models.NewRecord(cmCol)
+							cm.Set("owner_company", e.Record.GetString("owner_company"))
+							cm.Set("session", activeSession.Id)
+							cm.Set("movement_type", "refund_out")
+							cm.Set("amount", amount)
+							cm.Set("related_invoice", e.Record.Id)
+
+							if e.HttpContext != nil {
+								if authRecord := e.HttpContext.Get("authRecord"); authRecord != nil {
+									if user, ok := authRecord.(*models.Record); ok {
+										cm.Set("created_by", user.Id)
+									}
+								}
+							}
+
+							meta := map[string]interface{}{
+								"source":           "credit_note_cash_refund",
+								"original_ticket":  orig.Id,
+								"cash_register":    origCashRegister,
+								"cash_session_id":  activeSession.Id,
+								"credit_note_id":   e.Record.Id,
+								"credit_note_num":  e.Record.GetString("number"),
+								"original_ticketN": orig.GetString("number"),
+								"refund_type":      e.Record.GetString("refund_type"),
+							}
+							cm.Set("meta", meta)
+
+							if err := app.Dao().SaveRecord(cm); err != nil {
+								return fmt.Errorf("impossible de créer le cash_movement refund_out: %w", err)
+							}
+						}
+					}
+				}
+			}
+		}
+
 		action := "invoice_created"
 		if e.Record.GetString("invoice_type") == "credit_note" {
 			action = "credit_note_created"
@@ -297,6 +499,7 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 				"status":        e.Record.GetString("status"),
 				"is_pos_ticket": e.Record.GetBool("is_pos_ticket"),
 				"session":       e.Record.GetString("session"),
+				"refund_type":   e.Record.GetString("refund_type"),
 			},
 		})
 	})
@@ -667,7 +870,15 @@ func RegisterClosureHooks(app *pocketbase.PocketBase) {
 				}
 			}
 			record.Set("fiscal_year", fiscalYear)
-
+			if invoiceType != "credit_note" {
+				totalTTC := record.GetFloat("total_ttc")
+				if totalTTC < 0 {
+					totalTTC = -totalTTC
+				}
+				record.Set("remaining_amount", totalTTC)
+				record.Set("credit_notes_total", 0)
+				record.Set("has_credit_note", false)
+			}
 			// Pas de number, pas de hash, pas de previous_hash / sequence_number ici
 			return nil
 		}
@@ -727,6 +938,16 @@ func RegisterClosureHooks(app *pocketbase.PocketBase) {
 
 		// Verrouillage si ce n'est pas un brouillon
 		record.Set("is_locked", true)
+
+		if invoiceType != "credit_note" {
+			totalTTC := record.GetFloat("total_ttc")
+			if totalTTC < 0 {
+				totalTTC = -totalTTC
+			}
+			record.Set("remaining_amount", totalTTC)
+			record.Set("credit_notes_total", 0)
+			record.Set("has_credit_note", false)
+		}
 
 		return nil
 	})
@@ -1014,6 +1235,279 @@ func createAuditLog(app *pocketbase.PocketBase, ctx echo.Context, params AuditLo
 	}
 
 	return app.Dao().SaveRecord(record)
+}
+
+// ============================================================================
+// HELPERS partial refund
+// ============================================================================
+
+type Totals struct {
+	TotalHT  float64
+	TotalTVA float64
+	TotalTTC float64
+}
+
+func getItemsArray(v any) ([]map[string]any, error) {
+	if v == nil {
+		return nil, nil
+	}
+
+	switch t := v.(type) {
+	case []any:
+		out := make([]map[string]any, 0, len(t))
+		for _, it := range t {
+			m, ok := it.(map[string]any)
+			if !ok {
+				// fallback: marshal/unmarshal
+				b, err := json.Marshal(it)
+				if err != nil {
+					return nil, err
+				}
+				var mm map[string]any
+				if err := json.Unmarshal(b, &mm); err != nil {
+					return nil, err
+				}
+				out = append(out, mm)
+				continue
+			}
+			out = append(out, m)
+		}
+		return out, nil
+	case []map[string]any:
+		return t, nil
+	default:
+		// attempt marshal/unmarshal if PB gives json string/raw
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		var out []map[string]any
+		if err := json.Unmarshal(b, &out); err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
+}
+
+func indexItemsByKey(items []map[string]any) map[string]map[string]any {
+	idx := make(map[string]map[string]any, len(items))
+	for _, it := range items {
+		k := itemKey(it)
+		if k != "" {
+			idx[k] = it
+		}
+	}
+	return idx
+}
+
+func itemKey(it map[string]any) string {
+	candidates := []string{"id", "item_id", "product_id", "product", "sku", "barcode", "name", "label"}
+	for _, k := range candidates {
+		if v, ok := it[k]; ok {
+			s := strings.TrimSpace(fmt.Sprint(v))
+			if s != "" && s != "<nil>" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+func itemQty(it map[string]any) float64 {
+	for _, k := range []string{"quantity", "qty", "qte"} {
+		if v, ok := it[k]; ok {
+			if f, ok := toFloat(v); ok {
+				return f
+			}
+		}
+	}
+	// default qty=1 if missing
+	return 1
+}
+
+func computeTotalsAndVat(items []map[string]any) (Totals, any) {
+	var t Totals
+	vat := map[string]map[string]float64{} // rate -> {base_ht, tva, ttc}
+
+	for _, it := range items {
+		lineHT, lineTVA, lineTTC := lineTotals(it)
+
+		t.TotalHT += lineHT
+		t.TotalTVA += lineTVA
+		t.TotalTTC += lineTTC
+
+		rate := ""
+		for _, k := range []string{"vat_rate", "tax_rate", "tva_rate", "rate"} {
+			if v, ok := it[k]; ok {
+				rate = strings.TrimSpace(fmt.Sprint(v))
+				if rate != "" && rate != "<nil>" {
+					break
+				}
+			}
+		}
+		if rate == "" {
+			rate = "unknown"
+		}
+
+		if _, ok := vat[rate]; !ok {
+			vat[rate] = map[string]float64{"base_ht": 0, "tva": 0, "ttc": 0}
+		}
+		vat[rate]["base_ht"] += lineHT
+		vat[rate]["tva"] += lineTVA
+		vat[rate]["ttc"] += lineTTC
+	}
+
+	// output as array for UI friendliness
+	out := make([]map[string]any, 0, len(vat))
+	for rate, sums := range vat {
+		out = append(out, map[string]any{
+			"rate":      rate,
+			"base_ht":   round2(sums["base_ht"]),
+			"tva":       round2(sums["tva"]),
+			"total_ttc": round2(sums["ttc"]),
+		})
+	}
+	return Totals{
+		TotalHT:  round2(t.TotalHT),
+		TotalTVA: round2(t.TotalTVA),
+		TotalTTC: round2(t.TotalTTC),
+	}, out
+}
+
+func lineTotals(it map[string]any) (float64, float64, float64) {
+	// Prefer explicit totals if present
+	if v, ok := it["total_ttc"]; ok {
+		if f, ok := toFloat(v); ok {
+			ttc := f
+			ht := 0.0
+			tva := 0.0
+			if v2, ok := it["total_ht"]; ok {
+				if f2, ok := toFloat(v2); ok {
+					ht = f2
+				}
+			}
+			if v3, ok := it["total_tva"]; ok {
+				if f3, ok := toFloat(v3); ok {
+					tva = f3
+				}
+			}
+			// If ht/tva missing, try compute from unit price + rate
+			if ht == 0 && tva == 0 {
+				ht, tva, ttc = computeFromUnit(it)
+			}
+			return round2(ht), round2(tva), round2(ttc)
+		}
+	}
+
+	// Otherwise compute from unit fields
+	ht, tva, ttc := computeFromUnit(it)
+	return round2(ht), round2(tva), round2(ttc)
+}
+
+func computeFromUnit(it map[string]any) (float64, float64, float64) {
+	q := itemQty(it)
+
+	// unit prices candidates
+	var unitHT float64
+	if v, ok := it["unit_price_ht"]; ok {
+		if f, ok := toFloat(v); ok {
+			unitHT = f
+		}
+	}
+	if unitHT == 0 {
+		for _, k := range []string{"price_ht", "unit_ht", "unitPriceHT"} {
+			if v, ok := it[k]; ok {
+				if f, ok := toFloat(v); ok {
+					unitHT = f
+					break
+				}
+			}
+		}
+	}
+
+	// VAT rate
+	rate := 0.0
+	for _, k := range []string{"vat_rate", "tax_rate", "tva_rate"} {
+		if v, ok := it[k]; ok {
+			if f, ok := toFloat(v); ok {
+				rate = f
+				break
+			}
+		}
+	}
+
+	// If unitHT missing, try derive from unit_ttc
+	if unitHT == 0 {
+		if v, ok := it["unit_price_ttc"]; ok {
+			if f, ok := toFloat(v); ok && (1+rate/100) != 0 {
+				unitHT = f / (1 + rate/100)
+			}
+		}
+		if unitHT == 0 {
+			for _, k := range []string{"price_ttc", "unit_ttc", "unitPriceTTC"} {
+				if v, ok := it[k]; ok {
+					if f, ok := toFloat(v); ok && (1+rate/100) != 0 {
+						unitHT = f / (1 + rate/100)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	ht := unitHT * q
+	tva := ht * (rate / 100)
+	ttc := ht + tva
+	return ht, tva, ttc
+}
+
+func toFloat(v any) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case float32:
+		return float64(t), true
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	case json.Number:
+		f, err := t.Float64()
+		return f, err == nil
+	case string:
+		t = strings.TrimSpace(t)
+		if t == "" {
+			return 0, false
+		}
+		var f float64
+		_, err := fmt.Sscanf(t, "%f", &f)
+		return f, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func round2(v float64) float64 {
+	return math.Round(v*100) / 100
+}
+
+func sumCreditNotesAbsTotal(app *pocketbase.PocketBase, originalInvoiceID string) (float64, error) {
+	records, err := app.Dao().FindRecordsByFilter(
+		"invoices",
+		fmt.Sprintf("invoice_type='credit_note' && original_invoice_id='%s'", originalInvoiceID),
+		"-created",
+		500,
+		0,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	sum := 0.0
+	for _, r := range records {
+		sum += math.Abs(r.GetFloat("total_ttc"))
+	}
+	return round2(sum), nil
 }
 
 // ============================================================================

@@ -19,6 +19,7 @@ import {
 } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ClientResponseError } from 'pocketbase'
 
 export type InvoiceItem = InvoiceItemType
 
@@ -28,6 +29,111 @@ export interface VatBreakdownItem {
 	base_ht: number // Base HT pour ce taux
 	vat: number // Montant de TVA pour ce taux
 	total_ttc: number // Total TTC pour ce taux
+}
+
+// ---------------------------------------------------------------------------
+// ✅ POS REFUND (TICKET -> AVOIR) - /api/pos/refund
+// ---------------------------------------------------------------------------
+
+export interface RefundTicketInput {
+	originalTicketId: string
+	refundType: 'full' | 'partial'
+	refundMethod: 'especes' | 'cb' | 'cheque' | 'autre'
+	refundedItems?: {
+		originalItemIndex: number
+		quantity: number
+		reason?: string
+	}[]
+	reason: string
+}
+
+// Fallback minimal (si tu n'as pas encore un type dédié cash movement)
+export interface CashMovementResponse {
+	id: string
+	[key: string]: any
+}
+
+export interface RefundResult {
+	creditNote: InvoiceResponse
+	cashMovement?: CashMovementResponse
+	originalUpdated: InvoiceResponse
+}
+
+function formatRefundTicketError(err: unknown): Error {
+	const e = err as Partial<ClientResponseError> & {
+		status?: number
+		data?: any
+		message?: string
+	}
+
+	const status = e?.status
+	const apiMsg =
+		typeof e?.data?.message === 'string'
+			? e.data.message
+			: typeof e?.message === 'string'
+				? e.message
+				: ''
+
+	if (status === 404) return new Error('Ticket introuvable.')
+	if (status === 401 || status === 403)
+		return new Error('Accès refusé. Veuillez vous reconnecter.')
+	if (status === 400) {
+		// Le backend renvoie généralement un message explicite (déjà remboursé, session manquante, etc.)
+		return new Error(apiMsg || 'Requête invalide.')
+	}
+
+	return new Error(apiMsg || 'Une erreur est survenue lors du remboursement.')
+}
+
+export function useRefundTicket() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (input: RefundTicketInput): Promise<RefundResult> => {
+			if (!input.originalTicketId) {
+				throw new Error('originalTicketId est requis.')
+			}
+			if (!input.reason) {
+				throw new Error('reason est requis.')
+			}
+			if (
+				input.refundType === 'partial' &&
+				(!input.refundedItems || input.refundedItems.length === 0)
+			) {
+				throw new Error('refundedItems est requis si refundType = partial.')
+			}
+
+			const payload = {
+				original_ticket_id: input.originalTicketId,
+				refund_type: input.refundType,
+				refund_method: input.refundMethod,
+				refunded_items:
+					input.refundType === 'partial' ? input.refundedItems : undefined,
+				reason: input.reason,
+			}
+
+			try {
+				const res = await pb.send('/api/pos/refund', {
+					method: 'POST',
+					body: payload,
+				})
+
+				// res = { credit_note, cash_movement?, original_updated }
+				return {
+					creditNote: res.credit_note as InvoiceResponse,
+					cashMovement: res.cash_movement as CashMovementResponse | undefined,
+					originalUpdated: res.original_updated as InvoiceResponse,
+				}
+			} catch (err) {
+				throw formatRefundTicketError(err)
+			}
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
+			queryClient.invalidateQueries({ queryKey: ['cash-sessions'] })
+		},
+	})
 }
 
 // ✅ FIX: Extension du type pour inclure les champs optionnels de caisse

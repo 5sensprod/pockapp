@@ -239,6 +239,43 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 					Options: &schema.TextOptions{Max: types.Pointer(500)},
 				},
 
+				// === Remboursements (support partiel) ===
+				&schema.SchemaField{
+					Name: "refund_type",
+					Type: schema.FieldTypeSelect,
+					Options: &schema.SelectOptions{
+						MaxSelect: 1,
+						Values:    []string{"full", "partial"},
+					},
+				},
+				&schema.SchemaField{
+					Name:    "refunded_items",
+					Type:    schema.FieldTypeJson,
+					Options: &schema.JsonOptions{MaxSize: 1048576},
+				},
+				&schema.SchemaField{
+					Name: "refund_method",
+					Type: schema.FieldTypeSelect,
+					Options: &schema.SelectOptions{
+						MaxSelect: 1,
+						Values:    []string{"virement", "cb", "especes", "cheque", "autre"},
+					},
+				},
+				&schema.SchemaField{
+					Name: "has_credit_note",
+					Type: schema.FieldTypeBool,
+				},
+				&schema.SchemaField{
+					Name:    "credit_notes_total",
+					Type:    schema.FieldTypeNumber,
+					Options: &schema.NumberOptions{},
+				},
+				&schema.SchemaField{
+					Name:    "remaining_amount",
+					Type:    schema.FieldTypeNumber,
+					Options: &schema.NumberOptions{},
+				},
+
 				// === Clôture ===
 				&schema.SchemaField{
 					Name: "closure_id",
@@ -521,6 +558,81 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		log.Println("🛠 Ajout du champ vat_breakdown (JSON)")
 	}
 
+	// ═══════════════════════════════════════════════════════════════════════════
+	// 🆕 7) Champs remboursements (support remboursement partiel)
+	// ═══════════════════════════════════════════════════════════════════════════
+
+	// refund_type (select: full|partial) - Type de remboursement (pour les avoirs)
+	if f := collection.Schema.GetFieldByName("refund_type"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "refund_type",
+			Type: schema.FieldTypeSelect,
+			Options: &schema.SelectOptions{
+				MaxSelect: 1,
+				Values:    []string{"full", "partial"},
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ refund_type")
+	}
+
+	// refunded_items (json) - Détail des items remboursés (si partiel)
+	if f := collection.Schema.GetFieldByName("refunded_items"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "refunded_items",
+			Type:    schema.FieldTypeJson,
+			Options: &schema.JsonOptions{MaxSize: 1048576},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ refunded_items")
+	}
+
+	// refund_method (select: mêmes valeurs que payment_method) - Méthode de remboursement
+	if f := collection.Schema.GetFieldByName("refund_method"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "refund_method",
+			Type: schema.FieldTypeSelect,
+			Options: &schema.SelectOptions{
+				MaxSelect: 1,
+				Values:    []string{"virement", "cb", "especes", "cheque", "autre"},
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ refund_method")
+	}
+
+	// has_credit_note (bool) - Indique si le document a un/des avoirs liés
+	if f := collection.Schema.GetFieldByName("has_credit_note"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "has_credit_note",
+			Type: schema.FieldTypeBool,
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ has_credit_note")
+	}
+
+	// credit_notes_total (number) - Somme des montants d'avoirs (valeur absolue)
+	if f := collection.Schema.GetFieldByName("credit_notes_total"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "credit_notes_total",
+			Type:    schema.FieldTypeNumber,
+			Options: &schema.NumberOptions{},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ credit_notes_total")
+	}
+
+	// remaining_amount (number) - Montant restant après avoirs
+	if f := collection.Schema.GetFieldByName("remaining_amount"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "remaining_amount",
+			Type:    schema.FieldTypeNumber,
+			Options: &schema.NumberOptions{},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ remaining_amount")
+	}
+
 	// Sauvegarde si nécessaire
 	if changed {
 		if err := app.Dao().SaveCollection(collection); err != nil {
@@ -534,7 +646,18 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 	// ═══════════════════════════════════════════════════════════════════════════
 	// 🆕 6) Mettre à jour les données existantes (une seule fois)
 	// ═══════════════════════════════════════════════════════════════════════════
-
+	if _, err := app.Dao().DB().NewQuery(`
+    UPDATE invoices 
+    SET remaining_amount = total_ttc,
+        credit_notes_total = COALESCE(credit_notes_total, 0),
+        has_credit_note = COALESCE(has_credit_note, FALSE)
+    WHERE is_pos_ticket = TRUE 
+      AND invoice_type = 'invoice'
+      AND (remaining_amount IS NULL OR remaining_amount = 0)
+      AND (credit_notes_total IS NULL OR credit_notes_total = 0)
+`).Execute(); err == nil {
+		log.Println("🛠 Fix remaining_amount = total_ttc sur tickets existants")
+	}
 	// Marquer les tickets existants (TIK-*) comme tickets POS
 	if _, err := app.Dao().DB().NewQuery(`
 	UPDATE invoices 
