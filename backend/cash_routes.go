@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -1169,8 +1170,8 @@ func getRefundedItemsForTicket(dao *daos.Dao, ticketID string) map[int]float64 {
 					continue
 				}
 
-				qty := getItemQuantity(item)
-				refunded[idx] += qty
+				// qty := getItemQuantity(item)
+				refunded[idx] += math.Abs(getItemQuantity(item))
 			}
 		}
 	}
