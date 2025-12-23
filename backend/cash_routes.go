@@ -222,6 +222,8 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			log.Printf("🔍 Items déjà remboursés: %v", alreadyRefunded)
 
 			creditItems = make([]map[string]any, 0, len(payload.RefundedItems))
+			creditTotalHT, creditTotalTVA, creditTotalTTC = 0, 0, 0
+
 			for i, it := range payload.RefundedItems {
 				if it.OriginalItemIndex < 0 || it.OriginalItemIndex >= len(origItems) {
 					return apis.NewBadRequestError(
@@ -239,7 +241,6 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 				origItem := origItems[it.OriginalItemIndex]
 				origQty := getItemQuantity(origItem)
 
-				// 🆕 Calculer la quantité restante remboursable pour cet item
 				alreadyRefundedQty := alreadyRefunded[it.OriginalItemIndex]
 				remainingQty := origQty - alreadyRefundedQty
 
@@ -257,7 +258,6 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 					)
 				}
 
-				// Copier l'item et ajuster la quantité
 				cp := make(map[string]any)
 				for k, v := range origItem {
 					cp[k] = v
@@ -266,7 +266,6 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 				cp["refund_reason"] = it.Reason
 				cp["original_item_index"] = it.OriginalItemIndex
 
-				// Recalculer les totaux de la ligne
 				lineHT, lineTVA, lineTTC := computeItemTotals(origItem, it.Quantity)
 				cp["total_ht"] = lineHT
 				cp["total_tva"] = lineTVA
@@ -279,24 +278,67 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 				creditItems = append(creditItems, cp)
 			}
 		} else {
-			// Full refund: rembourser le montant RESTANT (pas le total original)
-			origItems, _ := parseItemsFromRecord(orig, "items")
-			creditItems = origItems
-
-			// Utiliser remaining et calculer HT/TVA proportionnellement
-			creditTotalTTC = remaining
-
-			if origTotal > 0 {
-				ratio := remaining / origTotal
-				creditTotalHT = abs(orig.GetFloat("total_ht")) * ratio
-				creditTotalTVA = abs(orig.GetFloat("total_tva")) * ratio
-			} else {
-				creditTotalHT = remaining
-				creditTotalTVA = 0
+			// Full refund: rembourser le RESTANT, mais en construisant l'avoir "par ligne"
+			// pour que original_item_index + quantity restent cohérents avec les partiels.
+			origItems, err := parseItemsFromRecord(orig, "items")
+			if err != nil || len(origItems) == 0 {
+				return apis.NewBadRequestError(
+					fmt.Sprintf("Items originaux invalides: %v", err),
+					nil,
+				)
 			}
 
-			log.Printf("🔍 Full refund: origTotal=%.2f, remaining=%.2f, ratio=%.4f",
-				origTotal, remaining, remaining/origTotal)
+			alreadyRefunded := getRefundedItemsForTicket(dao, orig.Id)
+			log.Printf("🔍 Items déjà remboursés: %v", alreadyRefunded)
+
+			creditItems = make([]map[string]any, 0, len(origItems))
+			creditTotalHT, creditTotalTVA, creditTotalTTC = 0, 0, 0
+
+			for idx, origItem := range origItems {
+				origQty := getItemQuantity(origItem)
+				refundedQty := alreadyRefunded[idx]
+				remainingQty := origQty - refundedQty
+				if remainingQty <= 0 {
+					continue
+				}
+
+				cp := make(map[string]any)
+				for k, v := range origItem {
+					cp[k] = v
+				}
+
+				cp["quantity"] = remainingQty
+				cp["original_item_index"] = idx
+				if payload.Reason != "" {
+					cp["refund_reason"] = payload.Reason
+				}
+
+				lineHT, lineTVA, lineTTC := computeItemTotals(origItem, remainingQty)
+				cp["total_ht"] = lineHT
+				cp["total_tva"] = lineTVA
+				cp["total_ttc"] = lineTTC
+
+				creditTotalHT += lineHT
+				creditTotalTVA += lineTVA
+				creditTotalTTC += lineTTC
+
+				creditItems = append(creditItems, cp)
+			}
+
+			if len(creditItems) == 0 {
+				return apis.NewBadRequestError("Ticket déjà totalement remboursé (aucune quantité restante)", nil)
+			}
+
+			// Sécurité: ne pas dépasser le restant monétaire calculé (tolérance arrondi)
+			if creditTotalTTC > remaining+0.01 {
+				return apis.NewBadRequestError(
+					fmt.Sprintf("Montant recalculé (%.2f€) dépasse le restant remboursable (%.2f€)", creditTotalTTC, remaining),
+					nil,
+				)
+			}
+
+			log.Printf("🔍 Full refund (par lignes): origTotal=%.2f, remaining=%.2f, creditTotalTTC=%.2f, items=%d",
+				origTotal, remaining, creditTotalTTC, len(creditItems))
 		}
 
 		// Vérifier que le montant ne dépasse pas le restant
