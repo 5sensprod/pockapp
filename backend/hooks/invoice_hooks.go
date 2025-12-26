@@ -1,8 +1,6 @@
 package hooks
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +14,8 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/models"
+
+	"pocket-react/backend/hash"
 )
 
 // ============================================================================
@@ -425,11 +425,8 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			record.Set("number", newNumber)
 		}
 
-		hash, err := computeInvoiceHash(record)
-		if err != nil {
-			return fmt.Errorf("erreur calcul hash: %w", err)
-		}
-		record.Set("hash", hash)
+		hashValue := hash.ComputeDocumentHash(record)
+		record.Set("hash", hashValue)
 		record.Set("is_locked", true)
 
 		// ═══════════════════════════════════════════════════════════════════════
@@ -708,11 +705,8 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 				}
 
 				// Recalcul du hash
-				hash, err := computeInvoiceHash(updated)
-				if err != nil {
-					return fmt.Errorf("erreur calcul hash (validation): %w", err)
-				}
-				updated.Set("hash", hash)
+				hashValue := hash.ComputeDocumentHash(updated)
+				updated.Set("hash", hashValue)
 
 				// Verrouiller à la validation
 				updated.Set("is_locked", true)
@@ -1036,11 +1030,8 @@ func RegisterClosureHooks(app *pocketbase.PocketBase) {
 		}
 
 		// Calcul du hash
-		hash, err := computeInvoiceHash(record)
-		if err != nil {
-			return fmt.Errorf("erreur calcul hash: %w", err)
-		}
-		record.Set("hash", hash)
+		hashValue := hash.ComputeDocumentHash(record)
+		record.Set("hash", hashValue)
 
 		// Verrouillage si ce n'est pas un brouillon
 		record.Set("is_locked", true)
@@ -1086,11 +1077,11 @@ func RegisterAuditLogHooks(app *pocketbase.PocketBase) {
 
 		record.Set("previous_hash", previousHash)
 
-		hash, err := computeAuditLogHash(record)
+		auditHash, err := hash.ComputeAuditLogHash(record)
 		if err != nil {
 			return fmt.Errorf("erreur calcul hash audit: %w", err)
 		}
-		record.Set("hash", hash)
+		record.Set("hash", auditHash)
 
 		return nil
 	})
@@ -1203,53 +1194,6 @@ func getLastAuditLog(app *pocketbase.PocketBase, ownerCompany string) (*models.R
 		return nil, nil
 	}
 	return records[0], nil
-}
-
-func computeInvoiceHash(record *models.Record) (string, error) {
-	data := map[string]interface{}{
-		"customer":        record.GetString("customer"),
-		"date":            record.GetString("date"),
-		"fiscal_year":     record.GetInt("fiscal_year"),
-		"invoice_type":    record.GetString("invoice_type"),
-		"number":          record.GetString("number"),
-		"owner_company":   record.GetString("owner_company"),
-		"previous_hash":   record.GetString("previous_hash"),
-		"sequence_number": record.GetInt("sequence_number"),
-		"total_ht":        record.GetFloat("total_ht"),
-		"total_ttc":       record.GetFloat("total_ttc"),
-		"total_tva":       record.GetFloat("total_tva"),
-	}
-
-	if original := record.GetString("original_invoice_id"); original != "" {
-		data["original_invoice_id"] = original
-	}
-
-	return computeHashFromMap(data)
-}
-
-func computeAuditLogHash(record *models.Record) (string, error) {
-	data := map[string]interface{}{
-		"action":        record.GetString("action"),
-		"entity_type":   record.GetString("entity_type"),
-		"entity_id":     record.GetString("entity_id"),
-		"owner_company": record.GetString("owner_company"),
-		"user_id":       record.GetString("user_id"),
-		"details":       record.Get("details"),
-		"previous_hash": record.GetString("previous_hash"),
-		"created":       record.GetString("created"),
-	}
-
-	return computeHashFromMap(data)
-}
-
-func computeHashFromMap(data map[string]interface{}) (string, error) {
-	jsonData, err := jsonMarshalOrdered(data)
-	if err != nil {
-		return "", err
-	}
-
-	hash := sha256.Sum256(jsonData)
-	return hex.EncodeToString(hash[:]), nil
 }
 
 func jsonMarshalOrdered(data map[string]interface{}) ([]byte, error) {

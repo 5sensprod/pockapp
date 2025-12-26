@@ -4,14 +4,12 @@
 package backend
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
-	"sort"
+
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +21,7 @@ import (
 	"github.com/pocketbase/pocketbase/models"
 
 	// IMPORTANT : Remplacer "pocket-react" par le nom de votre module (voir go.mod)
+	"pocket-react/backend/hash"
 	"pocket-react/backend/reports"
 )
 
@@ -408,8 +407,8 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		credit.Set("is_locked", true)
 
 		// Calculer le hash
-		hash := computeRecordHash(credit)
-		credit.Set("hash", hash)
+		hashValue := hash.ComputeDocumentHash(credit)
+		credit.Set("hash", hashValue)
 
 		if info.AuthRecord != nil {
 			credit.Set("sold_by", info.AuthRecord.Id)
@@ -1065,49 +1064,49 @@ func computeItemTotals(item map[string]any, qty float64) (ht, tva, ttc float64) 
 }
 
 // computeRecordHash calcule le hash SHA-256 d'un record
-func computeRecordHash(record *models.Record) string {
-	data := map[string]any{
-		"number":          record.GetString("number"),
-		"invoice_type":    record.GetString("invoice_type"),
-		"customer":        record.GetString("customer"),
-		"owner_company":   record.GetString("owner_company"),
-		"date":            record.GetString("date"),
-		"total_ht":        record.GetFloat("total_ht"),
-		"total_tva":       record.GetFloat("total_tva"),
-		"total_ttc":       record.GetFloat("total_ttc"),
-		"previous_hash":   record.GetString("previous_hash"),
-		"sequence_number": record.GetInt("sequence_number"),
-		"fiscal_year":     record.GetInt("fiscal_year"),
-	}
+// func computeRecordHash(record *models.Record) string {
+// 	data := map[string]any{
+// 		"number":          record.GetString("number"),
+// 		"invoice_type":    record.GetString("invoice_type"),
+// 		"customer":        record.GetString("customer"),
+// 		"owner_company":   record.GetString("owner_company"),
+// 		"date":            record.GetString("date"),
+// 		"total_ht":        record.GetFloat("total_ht"),
+// 		"total_tva":       record.GetFloat("total_tva"),
+// 		"total_ttc":       record.GetFloat("total_ttc"),
+// 		"previous_hash":   record.GetString("previous_hash"),
+// 		"sequence_number": record.GetInt("sequence_number"),
+// 		"fiscal_year":     record.GetInt("fiscal_year"),
+// 	}
 
-	if orig := record.GetString("original_invoice_id"); orig != "" {
-		data["original_invoice_id"] = orig
-	}
+// 	if orig := record.GetString("original_invoice_id"); orig != "" {
+// 		data["original_invoice_id"] = orig
+// 	}
 
-	// Tri des clés pour un hash déterministe
-	keys := make([]string, 0, len(data))
-	for k := range data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+// 	// Tri des clés pour un hash déterministe
+// 	keys := make([]string, 0, len(data))
+// 	for k := range data {
+// 		keys = append(keys, k)
+// 	}
+// 	sort.Strings(keys)
 
-	var builder strings.Builder
-	builder.WriteString("{")
-	for i, k := range keys {
-		if i > 0 {
-			builder.WriteString(",")
-		}
-		keyJSON, _ := json.Marshal(k)
-		valueJSON, _ := json.Marshal(data[k])
-		builder.Write(keyJSON)
-		builder.WriteString(":")
-		builder.Write(valueJSON)
-	}
-	builder.WriteString("}")
+// 	var builder strings.Builder
+// 	builder.WriteString("{")
+// 	for i, k := range keys {
+// 		if i > 0 {
+// 			builder.WriteString(",")
+// 		}
+// 		keyJSON, _ := json.Marshal(k)
+// 		valueJSON, _ := json.Marshal(data[k])
+// 		builder.Write(keyJSON)
+// 		builder.WriteString(":")
+// 		builder.Write(valueJSON)
+// 	}
+// 	builder.WriteString("}")
 
-	hash := sha256.Sum256([]byte(builder.String()))
-	return hex.EncodeToString(hash[:])
-}
+// 	hash := sha256.Sum256([]byte(builder.String()))
+// 	return hex.EncodeToString(hash[:])
+// }
 
 // sumCreditNotesForTicket calcule la somme des avoirs existants pour un ticket
 func sumCreditNotesForTicket(dao *daos.Dao, ticketID string) float64 {

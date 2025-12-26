@@ -158,6 +158,15 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 	pb.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		log.Println("OnBeforeServe called")
 
+		// 🔧 MIGRATION TEMPORAIRE
+		// log.Println("🔧 Démarrage migration des hashes...")
+		// if err := hash.MigrateRecalculateAllHashes(pb); err != nil {
+		// 	log.Printf("⚠️ Erreur migration hashes: %v", err)
+		// }
+		// hash.VerifyChainIntegrity(pb)
+		// log.Println("✅ Migration terminée")
+		// FIN MIGRATION
+
 		// API routes
 		e.Router.GET("/api/health", func(c echo.Context) error {
 			return c.JSON(200, map[string]string{"status": "ok"})

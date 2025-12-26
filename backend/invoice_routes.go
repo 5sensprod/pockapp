@@ -10,6 +10,8 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/models"
+
+	"pocket-react/backend/hash"
 )
 
 type InvoiceRefundInput struct {
@@ -251,8 +253,8 @@ func RegisterInvoiceRefundRoutes(app *pocketbase.PocketBase, router *echo.Echo) 
 		credit.Set("sequence_number", sequenceNumber)
 		credit.Set("is_locked", true)
 
-		hash := computeRecordHash(credit)
-		credit.Set("hash", hash)
+		hashValue := hash.ComputeDocumentHash(credit)
+		credit.Set("hash", hashValue)
 
 		if info.AuthRecord != nil {
 			credit.Set("sold_by", info.AuthRecord.Id)
