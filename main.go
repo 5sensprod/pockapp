@@ -157,7 +157,7 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 
 	pb.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		log.Println("OnBeforeServe called")
-
+		migrations.MigrateAuditLogsAddTicketEntityType(pb)
 		// 🔧 MIGRATION TEMPORAIRE
 		// log.Println("🔧 Démarrage migration des hashes...")
 		// if err := hash.MigrateRecalculateAllHashes(pb); err != nil {

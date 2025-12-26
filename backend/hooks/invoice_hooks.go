@@ -585,14 +585,14 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 			}
 		}
 
-		action := "invoice_created"
-		if e.Record.GetString("invoice_type") == "credit_note" {
-			action = "credit_note_created"
-		}
+		// action := "invoice_created"
+		// if e.Record.GetString("invoice_type") == "credit_note" {
+		// 	action = "credit_note_created"
+		// }
 
 		return createAuditLog(app, e.HttpContext, AuditLogParams{
-			Action:       action,
-			EntityType:   e.Record.GetString("invoice_type"),
+			Action:       getAuditAction(e.Record, "created"),
+			EntityType:   getEntityType(e.Record),
 			EntityID:     e.Record.Id,
 			EntityNumber: e.Record.GetString("number"),
 			OwnerCompany: e.Record.GetString("owner_company"),
@@ -738,27 +738,50 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		original := e.Record.OriginalCopy()
 		updated := e.Record
 
-		// Déterminer l'action
-		action := "invoice_validated"
 		oldStatus := original.GetString("status")
 		newStatus := updated.GetString("status")
 		oldIsPaid := original.GetBool("is_paid")
 		newIsPaid := updated.GetBool("is_paid")
 
+		// Déterminer l'action de base
+		var baseAction string
 		if oldStatus != newStatus {
 			switch newStatus {
 			case "validated":
-				action = "invoice_validated"
+				baseAction = "validated"
 			case "sent":
-				action = "invoice_sent"
+				baseAction = "sent"
+			default:
+				baseAction = "updated"
 			}
 		} else if !oldIsPaid && newIsPaid {
-			action = "payment_recorded"
+			// Paiement enregistré - action spéciale
+			return createAuditLog(app, e.HttpContext, AuditLogParams{
+				Action:       "payment_recorded",
+				EntityType:   getEntityType(updated),
+				EntityID:     updated.Id,
+				EntityNumber: updated.GetString("number"),
+				OwnerCompany: updated.GetString("owner_company"),
+				PreviousValues: map[string]interface{}{
+					"status":         oldStatus,
+					"is_paid":        oldIsPaid,
+					"payment_method": original.GetString("payment_method"),
+					"paid_at":        original.GetString("paid_at"),
+				},
+				NewValues: map[string]interface{}{
+					"status":         newStatus,
+					"is_paid":        newIsPaid,
+					"payment_method": updated.GetString("payment_method"),
+					"paid_at":        updated.GetString("paid_at"),
+				},
+			})
+		} else {
+			baseAction = "updated"
 		}
 
 		return createAuditLog(app, e.HttpContext, AuditLogParams{
-			Action:       action,
-			EntityType:   updated.GetString("invoice_type"),
+			Action:       getAuditAction(updated, baseAction),
+			EntityType:   getEntityType(updated),
 			EntityID:     updated.Id,
 			EntityNumber: updated.GetString("number"),
 			OwnerCompany: updated.GetString("owner_company"),
@@ -1062,6 +1085,26 @@ func RegisterClosureHooks(app *pocketbase.PocketBase) {
 // HOOKS AUDIT_LOGS
 // ============================================================================
 
+func getEntityType(record *models.Record) string {
+	if record.GetString("invoice_type") == "credit_note" {
+		return "credit_note"
+	}
+	if record.GetBool("is_pos_ticket") {
+		return "ticket"
+	}
+	return "invoice"
+}
+
+func getAuditAction(record *models.Record, baseAction string) string {
+	if record.GetString("invoice_type") == "credit_note" {
+		return "credit_note_" + baseAction
+	}
+	if record.GetBool("is_pos_ticket") {
+		return "ticket_" + baseAction
+	}
+	return "invoice_" + baseAction
+}
+
 func RegisterAuditLogHooks(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeCreateRequest("audit_logs").Add(func(e *core.RecordCreateEvent) error {
 		record := e.Record
@@ -1334,30 +1377,6 @@ func getItemsArray(v any) ([]map[string]any, error) {
 		}
 		return out, nil
 	}
-}
-
-func indexItemsByKey(items []map[string]any) map[string]map[string]any {
-	idx := make(map[string]map[string]any, len(items))
-	for _, it := range items {
-		k := itemKey(it)
-		if k != "" {
-			idx[k] = it
-		}
-	}
-	return idx
-}
-
-func itemKey(it map[string]any) string {
-	candidates := []string{"id", "item_id", "product_id", "product", "sku", "barcode", "name", "label"}
-	for _, k := range candidates {
-		if v, ok := it[k]; ok {
-			s := strings.TrimSpace(fmt.Sprint(v))
-			if s != "" && s != "<nil>" {
-				return s
-			}
-		}
-	}
-	return ""
 }
 
 func itemQty(it map[string]any) float64 {
