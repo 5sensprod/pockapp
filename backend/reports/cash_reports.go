@@ -187,23 +187,20 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		if invType == "credit_note" {
 			creditNotesCount++
 
-			absTTC := abs(ttc)
-			refundsTotalTTC += absTTC
-
-			// Sur un avoir de remboursement, on préfère refund_method
-			method := inv.GetString("refund_method")
-			if method == "" {
-				// fallback si tu ne l’as pas encore partout
-				method = inv.GetString("payment_method")
-			}
-			if method == "" {
-				method = "autre"
+			amt := inv.GetFloat("total_ttc")
+			if amt < 0 {
+				amt = -amt
 			}
 
-			refundsByMethod[method] += absTTC
+			refundsTotalTTC += amt // ✅
+			rm := inv.GetString("refund_method")
+			if rm == "" {
+				rm = "autre"
+			}
+			refundsByMethod[rm] += amt // ✅
+
 			continue
 		}
-
 		// Par défaut, on considère que c’est une vente (invoice)
 		if invType != "" && invType != "invoice" {
 			continue
@@ -232,11 +229,11 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 
 	// Net by method = sales - refunds (affichage)
 	netByMethod := make(map[string]float64)
-	for k, v := range totalsByMethod {
-		netByMethod[k] += v
+	for m, v := range totalsByMethod {
+		netByMethod[m] = v
 	}
-	for k, v := range refundsByMethod {
-		netByMethod[k] -= v
+	for m, r := range refundsByMethod {
+		netByMethod[m] -= r
 	}
 
 	// --- CASH MOVEMENTS ---
@@ -393,6 +390,8 @@ type DailyTotalsSummary struct {
 	TotalDiscounts      float64              `json:"total_discounts"`    // 🆕
 	CreditNotesCount    int                  `json:"credit_notes_count"` // 🆕
 	CreditNotesTotal    float64              `json:"credit_notes_total"` // 🆕
+	RefundsByMethod     map[string]float64   `json:"refunds_by_method"`
+	NetByMethod         map[string]float64   `json:"net_by_method"`
 }
 
 // GenerateRapportZ génère ET sauvegarde un rapport Z
@@ -483,6 +482,7 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 	var creditNotesCount int
 	var creditNotesTotal float64
 	totalsByMethod := make(map[string]float64)
+	refundsByMethod := make(map[string]float64)
 	globalVATByRate := make(map[string]VATDetail)
 
 	for _, session := range sessions {
@@ -512,6 +512,7 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		var sessionHT, sessionTVA, sessionTTC float64
 		var cashFromSales float64
 		sessionMethodTotals := make(map[string]float64)
+		sessionRefundsByMethod := make(map[string]float64)
 		sessionVATByRate := make(map[string]VATDetail)
 
 		if err == nil {
@@ -521,7 +522,22 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 				// Comptabiliser les avoirs séparément
 				if invType == "credit_note" {
 					creditNotesCount++
-					creditNotesTotal += inv.GetFloat("total_ttc")
+
+					// ✅ on stocke en positif (pour affichage + agrégats)
+					amt := inv.GetFloat("total_ttc")
+					if amt < 0 {
+						amt = -amt
+					}
+					creditNotesTotal += amt
+
+					// ✅ remboursements par mode
+					rm := inv.GetString("refund_method")
+					if rm == "" {
+						rm = "autre"
+					}
+					sessionRefundsByMethod[rm] += amt
+					refundsByMethod[rm] += amt
+
 					continue
 				}
 
@@ -593,7 +609,7 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		// Calcul des espèces
 		// ─────────────────────────────────────────────────────────────────
 
-		expectedCash := openingFloat + cashFromSales + movementsTotal
+		expectedCash := openingFloat + movementsTotal
 		cashDiff := countedCash - expectedCash
 
 		if countedCash == 0 {
@@ -686,6 +702,8 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 			TotalDiscounts:      totalDiscounts,
 			CreditNotesCount:    creditNotesCount,
 			CreditNotesTotal:    creditNotesTotal,
+
+			RefundsByMethod: refundsByMethod,
 		},
 		Note:     "Rapport Z - Document inaltérable",
 		IsLocked: true,

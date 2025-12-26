@@ -48,6 +48,23 @@ import {
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+function computeNetByMethod(
+	sales: Record<string, number> | undefined,
+	refunds: Record<string, number> | undefined,
+) {
+	const result: Record<string, number> = {}
+	const keys = new Set([
+		...Object.keys(sales ?? {}),
+		...Object.keys(refunds ?? {}),
+	])
+
+	for (const k of keys) {
+		result[k] = (sales?.[k] ?? 0) - (refunds?.[k] ?? 0)
+	}
+
+	return result
+}
+
 export function RapportZPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
@@ -456,26 +473,96 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 
 					<Separator />
 
-					{/* Moyens de paiement */}
-					<div>
-						<div className='text-sm font-medium mb-3'>
-							Répartition par moyen de paiement
-						</div>
-						<div className='grid grid-cols-2 gap-2'>
-							{Object.entries(rapport.daily_totals.by_method).map(
-								([method, amount]) => (
-									<div key={method} className='flex justify-between text-sm'>
-										<span className='text-muted-foreground'>
-											{getPaymentMethodLabel(method)}
-										</span>
-										<span className='font-medium'>
-											{formatCurrency(amount)}
-										</span>
+					{/* Encaissements / Remboursements / Net par moyen */}
+					{(() => {
+						const salesByMethod = rapport.daily_totals.by_method ?? {}
+						const refundsByMethod = rapport.daily_totals.refunds_by_method
+						const netByMethod =
+							rapport.daily_totals.net_by_method ??
+							(refundsByMethod
+								? computeNetByMethod(salesByMethod, refundsByMethod)
+								: undefined)
+
+						return (
+							<div className='space-y-4'>
+								{/* Encaissements (ventes) */}
+								<div>
+									<div className='text-sm font-medium mb-2'>
+										Encaissements (ventes) par moyen
 									</div>
-								),
-							)}
-						</div>
-					</div>
+									<div className='grid grid-cols-2 gap-2'>
+										{Object.entries(salesByMethod).map(([method, amount]) => (
+											<div
+												key={method}
+												className='flex justify-between text-sm'
+											>
+												<span className='text-muted-foreground'>
+													{getPaymentMethodLabel(method)}
+												</span>
+												<span className='font-medium'>
+													{formatCurrency(amount)}
+												</span>
+											</div>
+										))}
+									</div>
+								</div>
+
+								{/* Remboursements (si exposés par le backend) */}
+								{refundsByMethod && Object.keys(refundsByMethod).length > 0 && (
+									<div>
+										<div className='text-sm font-medium mb-2'>
+											Remboursements par moyen
+										</div>
+										<div className='grid grid-cols-2 gap-2'>
+											{Object.entries(refundsByMethod).map(
+												([method, amount]) => (
+													<div
+														key={method}
+														className='flex justify-between text-sm'
+													>
+														<span className='text-muted-foreground'>
+															{getPaymentMethodLabel(method)}
+														</span>
+														<span className='font-medium text-red-600'>
+															-{formatCurrency(Math.abs(amount))}
+														</span>
+													</div>
+												),
+											)}
+										</div>
+									</div>
+								)}
+
+								{/* Net (si dispo: net_by_method ou calculable) */}
+								{netByMethod && Object.keys(netByMethod).length > 0 && (
+									<div>
+										<div className='text-sm font-medium mb-2'>
+											Net par moyen (ventes - remboursements)
+										</div>
+										<div className='grid grid-cols-2 gap-2'>
+											{Object.entries(netByMethod).map(([method, amount]) => (
+												<div
+													key={method}
+													className='flex justify-between text-sm'
+												>
+													<span className='text-muted-foreground'>
+														{getPaymentMethodLabel(method)}
+													</span>
+													<span
+														className={`font-medium ${
+															amount < 0 ? 'text-red-600' : 'text-emerald-700'
+														}`}
+													>
+														{formatCurrency(amount)}
+													</span>
+												</div>
+											))}
+										</div>
+									</div>
+								)}
+							</div>
+						)
+					})()}
 
 					<Separator />
 

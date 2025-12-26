@@ -1,6 +1,9 @@
 // frontend/modules/connect/components/InvoiceDetailPage.tsx
-// Ajout: bouton "Modifier" qui redirige vers la page d’édition
-// Ajout: affichage remises par ligne + remise globale (si présentes)
+// ✅ CORRECTIONS:
+// 1. Affichage du moyen de remboursement pour les avoirs
+// 2. Logique de statut adaptée pour les avoirs (pas de "Non payée")
+// 3. Affichage du numéro du ticket/facture original dans l'avoir
+// 4. Affichage des avoirs liés dans le ticket/facture
 
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,7 +24,7 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
-import { useInvoice } from '@/lib/queries/invoices'
+import { useCreditNotesForInvoice, useInvoice } from '@/lib/queries/invoices'
 import {
 	type InvoiceResponse,
 	getDisplayStatus,
@@ -39,6 +42,7 @@ import {
 	Loader2,
 	Mail,
 	Pencil,
+	RefreshCcw,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -72,6 +76,24 @@ type VatBreakdown = {
 	base_ht: number
 	vat: number
 	total_ttc: number
+}
+
+// Helper pour afficher le libellé du moyen de remboursement
+function getRefundMethodLabel(method?: string): string {
+	switch (method) {
+		case 'especes':
+			return 'Espèces'
+		case 'cb':
+			return 'Carte bancaire'
+		case 'cheque':
+			return 'Chèque'
+		case 'virement':
+			return 'Virement'
+		case 'autre':
+			return 'Autre'
+		default:
+			return method || '-'
+	}
 }
 
 async function toPngDataUrl(url: string): Promise<string> {
@@ -147,6 +169,19 @@ export function InvoiceDetailPage() {
 	const [isDownloading, setIsDownloading] = useState(false)
 	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 
+	// Déterminer si c'est un avoir
+	const isCreditNote = invoice?.invoice_type === 'credit_note'
+
+	// ✅ AJOUT: Récupérer les avoirs liés (uniquement si ce n'est PAS un avoir)
+	const { data: linkedCreditNotes } = useCreditNotesForInvoice(
+		!isCreditNote ? invoiceId : undefined,
+	)
+
+	// ✅ AJOUT: Récupérer le numéro du document original (pour les avoirs)
+	const originalDocument = (invoice as any)?.expand?.original_invoice_id
+	const originalNumber = originalDocument?.number
+	const originalId = (invoice as any)?.original_invoice_id
+
 	// ============================================================================
 	// LOAD COMPANY
 	// ============================================================================
@@ -191,6 +226,7 @@ export function InvoiceDetailPage() {
 
 		return Array.from(map.values()).sort((a, b) => a.rate - b.rate)
 	}, [invoice])
+
 	const customer = (invoice as any)?.expand?.customer ?? null
 	const displayStatus = invoice
 		? getDisplayStatus(invoice)
@@ -198,6 +234,7 @@ export function InvoiceDetailPage() {
 	const badgeVariant = (displayStatus.variant ??
 		'outline') as BadgeProps['variant']
 	const overdue = invoice ? isOverdue(invoice) : false
+
 	const discounts = useMemo(() => {
 		const inv: any = invoice as any
 
@@ -306,7 +343,6 @@ export function InvoiceDetailPage() {
 				<InvoicePdfDocument
 					invoice={invoice as InvoiceResponse}
 					customer={customer as any}
-					// ✅ FIX 3
 					company={currentCompany || undefined}
 					companyLogoUrl={logoDataUrl}
 				/>
@@ -330,6 +366,49 @@ export function InvoiceDetailPage() {
 		} finally {
 			setIsDownloading(false)
 		}
+	}
+
+	// ============================================================================
+	// Fonction pour rendre le badge de statut approprié
+	// ============================================================================
+	const renderStatusBadges = () => {
+		// Pour les avoirs (credit_notes)
+		if (isCreditNote) {
+			return (
+				<>
+					<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
+					<Badge className='bg-blue-600 hover:bg-blue-600'>
+						<RefreshCcw className='h-3 w-3 mr-1' />
+						Remboursé
+					</Badge>
+				</>
+			)
+		}
+
+		// Pour les factures/tickets normaux
+		return (
+			<>
+				<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
+				{invoice.is_paid ? (
+					<Badge className='bg-emerald-600 hover:bg-emerald-600'>
+						<CheckCircle className='h-3 w-3 mr-1' />
+						Payée
+					</Badge>
+				) : displayStatus.isPaid ? (
+					<Badge className='bg-emerald-600 hover:bg-emerald-600'>
+						<CheckCircle className='h-3 w-3 mr-1' />
+						Payée
+					</Badge>
+				) : overdue ? (
+					<Badge className='bg-amber-600 hover:bg-amber-600'>
+						<AlertTriangle className='h-3 w-3 mr-1' />
+						En retard
+					</Badge>
+				) : (
+					<Badge variant='secondary'>Non payée</Badge>
+				)}
+			</>
+		)
 	}
 
 	// ============================================================================
@@ -386,7 +465,7 @@ export function InvoiceDetailPage() {
 			<div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
 				<Card className='lg:col-span-1'>
 					<CardHeader>
-						<CardTitle>Facture</CardTitle>
+						<CardTitle>{isCreditNote ? 'Avoir' : 'Facture'}</CardTitle>
 						<CardDescription>Détails généraux</CardDescription>
 					</CardHeader>
 					<CardContent className='space-y-4'>
@@ -406,22 +485,118 @@ export function InvoiceDetailPage() {
 						</div>
 
 						<div className='flex items-center gap-2'>
-							<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
-							{invoice.is_paid ? (
-								<Badge className='bg-emerald-600 hover:bg-emerald-600'>
-									<CheckCircle className='h-3 w-3 mr-1' />
-									Payée
-								</Badge>
-							) : overdue ? (
-								<Badge className='bg-amber-600 hover:bg-amber-600'>
-									<AlertTriangle className='h-3 w-3 mr-1' />
-									En retard
-								</Badge>
-							) : (
-								<Badge variant='secondary'>Non payée</Badge>
-							)}
+							{renderStatusBadges()}
 						</div>
 
+						{/* ════════════════════════════════════════════════════════════════
+						    SECTION AVOIR: Infos de remboursement + document original
+						    ════════════════════════════════════════════════════════════════ */}
+						{isCreditNote && (
+							<>
+								{/* Moyen de remboursement */}
+								{(invoice as any).refund_method && (
+									<div>
+										<p className='text-sm text-muted-foreground'>
+											Moyen de remboursement
+										</p>
+										<p className='text-sm font-medium'>
+											{getRefundMethodLabel((invoice as any).refund_method)}
+										</p>
+									</div>
+								)}
+
+								{/* Motif du remboursement */}
+								{(invoice as any).cancellation_reason && (
+									<div>
+										<p className='text-sm text-muted-foreground'>
+											Motif du remboursement
+										</p>
+										<p className='text-sm'>
+											{(invoice as any).cancellation_reason}
+										</p>
+									</div>
+								)}
+
+								{/* ✅ Document original avec numéro affiché */}
+								{originalId && (
+									<div className='border-t pt-4'>
+										<p className='text-sm text-muted-foreground mb-2'>
+											Document original
+										</p>
+										<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
+											<div className='flex items-center gap-2'>
+												<FileText className='h-4 w-4 text-muted-foreground' />
+												<span className='font-medium text-sm'>
+													{originalNumber || 'Document'}
+												</span>
+											</div>
+											<Button
+												variant='outline'
+												size='sm'
+												onClick={() => {
+													navigate({
+														to: '/connect/invoices/$invoiceId',
+														params: { invoiceId: originalId },
+													})
+												}}
+											>
+												Voir
+											</Button>
+										</div>
+									</div>
+								)}
+							</>
+						)}
+
+						{/* ════════════════════════════════════════════════════════════════
+						    SECTION TICKET/FACTURE: Avoirs liés
+						    ════════════════════════════════════════════════════════════════ */}
+						{!isCreditNote &&
+							linkedCreditNotes &&
+							linkedCreditNotes.length > 0 && (
+								<div className='border-t pt-4'>
+									<p className='text-sm text-muted-foreground mb-2'>
+										{linkedCreditNotes.length === 1
+											? 'Avoir associé'
+											: 'Avoirs associés'}
+									</p>
+									<div className='space-y-2'>
+										{linkedCreditNotes.map((cn) => (
+											<div
+												key={cn.id}
+												className='flex items-center justify-between bg-red-50 dark:bg-red-950/20 rounded-lg p-3 border border-red-200 dark:border-red-900'
+											>
+												<div className='flex items-center gap-2'>
+													<RefreshCcw className='h-4 w-4 text-red-600' />
+													<div className='flex flex-col'>
+														<span className='font-medium text-sm text-red-700 dark:text-red-400'>
+															{cn.number}
+														</span>
+														<span className='text-xs text-muted-foreground'>
+															{formatDate(cn.date)} •{' '}
+															{formatCurrency(cn.total_ttc)}
+														</span>
+													</div>
+												</div>
+												<Button
+													variant='outline'
+													size='sm'
+													onClick={() => {
+														navigate({
+															to: '/connect/invoices/$invoiceId',
+															params: { invoiceId: cn.id },
+														})
+													}}
+												>
+													Voir
+												</Button>
+											</div>
+										))}
+									</div>
+								</div>
+							)}
+
+						{/* Facture issue d'un ticket */}
 						{invoice.is_pos_ticket &&
 							invoice.converted_to_invoice &&
 							invoice.converted_invoice_id && (
@@ -501,7 +676,8 @@ export function InvoiceDetailPage() {
 					<CardHeader>
 						<CardTitle>Articles</CardTitle>
 						<CardDescription>
-							{invoice.items.length} ligne(s) dans cette facture
+							{invoice.items.length} ligne(s) dans{' '}
+							{isCreditNote ? 'cet avoir' : 'cette facture'}
 						</CardDescription>
 					</CardHeader>
 

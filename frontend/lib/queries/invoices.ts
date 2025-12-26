@@ -788,6 +788,34 @@ export function useSendInvoiceEmail() {
 }
 
 // ============================================================================
+// ✅ AJOUT: Hook pour récupérer les avoirs liés à un ticket/facture
+// À ajouter dans frontend/lib/queries/invoices.ts
+// ============================================================================
+
+/**
+ * 🔍 Récupérer les avoirs (credit_notes) liés à une facture/ticket
+ * Utile pour afficher les remboursements associés à un document
+ */
+export function useCreditNotesForInvoice(invoiceId?: string) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: [...invoiceKeys.all, 'credit-notes-for', invoiceId],
+		queryFn: async () => {
+			if (!invoiceId) return []
+
+			const result = await pb.collection('invoices').getList(1, 50, {
+				filter: `invoice_type = "credit_note" && original_invoice_id = "${invoiceId}"`,
+				sort: '-created',
+			})
+
+			return result.items as unknown as InvoiceResponse[]
+		},
+		enabled: !!invoiceId,
+	})
+}
+
+// ============================================================================
 // HELPERS EXPORTÉS
 // ============================================================================
 

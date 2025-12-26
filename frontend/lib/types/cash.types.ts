@@ -12,6 +12,7 @@ export type CashMovementType =
 	| 'cash_out'
 	| 'safe_drop'
 	| 'adjustment'
+	| 'refund_out'
 
 // ============================================================================
 // CAISSE (CASH REGISTER)
@@ -181,17 +182,24 @@ export interface RapportZSession {
 export interface RapportZDailyTotals {
 	sessions_count: number
 	invoice_count: number
-	total_ht: number // 🆕
-	total_tva: number // 🆕
+	total_ht: number
+	total_tva: number
 	total_ttc: number
+
 	by_method: Record<string, number>
-	vat_by_rate: VATByRate // 🆕
-	total_cash_expected: number // 🆕
-	total_cash_counted: number // 🆕
+	vat_by_rate: VATByRate
+
+	total_cash_expected: number
+	total_cash_counted: number
 	total_cash_difference: number
-	total_discounts: number // 🆕
-	credit_notes_count: number // 🆕
-	credit_notes_total: number // 🆕
+	total_discounts: number
+
+	credit_notes_count: number
+	credit_notes_total: number
+
+	// ✅ optionnels (dès que le backend les expose)
+	refunds_by_method?: Record<string, number>
+	net_by_method?: Record<string, number>
 }
 
 // ============================================================================
