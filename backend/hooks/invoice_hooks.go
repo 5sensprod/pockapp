@@ -1207,20 +1207,17 @@ func getLastAuditLog(app *pocketbase.PocketBase, ownerCompany string) (*models.R
 
 func computeInvoiceHash(record *models.Record) (string, error) {
 	data := map[string]interface{}{
-		"number":          record.GetString("number"),
-		"invoice_type":    record.GetString("invoice_type"),
 		"customer":        record.GetString("customer"),
-		"owner_company":   record.GetString("owner_company"),
 		"date":            record.GetString("date"),
-		"items":           record.Get("items"),
-		"total_ht":        record.GetFloat("total_ht"),
-		"total_tva":       record.GetFloat("total_tva"),
-		"total_ttc":       record.GetFloat("total_ttc"),
-		"vat_breakdown":   record.Get("vat_breakdown"), // ✅ AJOUT: Ventilation TVA
-		"currency":        record.GetString("currency"),
+		"fiscal_year":     record.GetInt("fiscal_year"),
+		"invoice_type":    record.GetString("invoice_type"),
+		"number":          record.GetString("number"),
+		"owner_company":   record.GetString("owner_company"),
 		"previous_hash":   record.GetString("previous_hash"),
 		"sequence_number": record.GetInt("sequence_number"),
-		"fiscal_year":     record.GetInt("fiscal_year"),
+		"total_ht":        record.GetFloat("total_ht"),
+		"total_ttc":       record.GetFloat("total_ttc"),
+		"total_tva":       record.GetFloat("total_tva"),
 	}
 
 	if original := record.GetString("original_invoice_id"); original != "" {

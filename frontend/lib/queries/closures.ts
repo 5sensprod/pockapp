@@ -1,4 +1,5 @@
 // frontend/lib/queries/closures.ts
+// ✅ VERSION CORRIGÉE - Hash aligné avec le backend
 // Service de clôtures périodiques et vérification d'intégrité
 
 import type {
@@ -25,12 +26,49 @@ export const closureKeys = {
 export const integrityKeys = {
 	all: ['integrity'] as const,
 	invoice: (id: string) => [...integrityKeys.all, 'invoice', id] as const,
-	chain: (companyId: string) =>
-		[...integrityKeys.all, 'chain', companyId] as const,
+	chain: (companyId: string, docType?: string) =>
+		[...integrityKeys.all, 'chain', companyId, docType ?? 'all'] as const,
+	summary: (companyId: string) =>
+		[...integrityKeys.all, 'summary', companyId] as const,
 }
 
 // ============================================================================
-// CLÔTURES
+// TYPES
+// ============================================================================
+
+export type DocumentType = 'all' | 'invoice' | 'pos_ticket' | 'credit_note'
+
+export interface IntegritySummary {
+	totalDocuments: number
+	validDocuments: number
+	invalidDocuments: number
+	chainBreaks: number
+	byType: {
+		invoices: { total: number; valid: number; invalid: number }
+		posTickets: { total: number; valid: number; invalid: number }
+		creditNotes: { total: number; valid: number; invalid: number }
+	}
+	checkedAt: string
+	allValid: boolean
+}
+
+export interface ChainVerificationResult {
+	allValid: boolean
+	checkedAt: string
+	totalChecked: number
+	validCount: number
+	invalidCount: number
+	chainBreaks: number
+	details: IntegrityCheckResult[]
+	summary: {
+		invoices: { count: number; valid: number }
+		posTickets: { count: number; valid: number }
+		creditNotes: { count: number; valid: number }
+	}
+}
+
+// ============================================================================
+// CLÔTURES (B2B uniquement)
 // ============================================================================
 
 /**
@@ -72,7 +110,8 @@ export function useClosures(options: ClosuresListOptions = {}) {
 }
 
 /**
- * 🔒 Effectuer une clôture journalière
+ * 🔒 Effectuer une clôture journalière B2B (factures classiques uniquement)
+ * ⚠️ Ne concerne PAS les tickets POS (qui ont leurs rapports Z)
  */
 export function usePerformDailyClosure() {
 	const pb = usePocketBase()
@@ -80,7 +119,6 @@ export function usePerformDailyClosure() {
 
 	return useMutation({
 		mutationFn: async (companyId: string) => {
-			// Calculer les dates de la journée
 			const today = new Date()
 			const startOfDay = new Date(today)
 			startOfDay.setHours(0, 0, 0, 0)
@@ -97,13 +135,13 @@ export function usePerformDailyClosure() {
 				throw new Error('Une clôture journalière existe déjà pour cette date.')
 			}
 
-			// Récupérer toutes les factures de la journée
+			// ✅ MODIFIÉ: Récupérer uniquement les factures B2B (pas les tickets POS)
 			const invoices = (await pb.collection('invoices').getFullList({
-				filter: `owner_company = "${companyId}" && created >= "${startOfDay.toISOString()}" && created <= "${endOfDay.toISOString()}"`,
+				filter: `owner_company = "${companyId}" && created >= "${startOfDay.toISOString()}" && created <= "${endOfDay.toISOString()}" && is_pos_ticket = false`,
 				sort: 'sequence_number',
 			})) as unknown as InvoiceResponse[]
 
-			// Séparer factures et avoirs
+			// Séparer factures et avoirs B2B
 			const invoicesOnly = invoices.filter((i) => i.invoice_type === 'invoice')
 			const creditNotes = invoices.filter(
 				(i) => i.invoice_type === 'credit_note',
@@ -174,7 +212,7 @@ export function usePerformDailyClosure() {
 // ============================================================================
 
 /**
- * 🔐 Vérifier l'intégrité d'une facture individuelle
+ * 🔍 Vérifier l'intégrité d'une facture individuelle
  */
 export function useVerifyInvoiceIntegrity(invoiceId?: string) {
 	const pb = usePocketBase()
@@ -194,7 +232,6 @@ export function useVerifyInvoiceIntegrity(invoiceId?: string) {
 			// Vérifier le chaînage
 			let chainValid = true
 			if (invoice.sequence_number > 1) {
-				// Récupérer la facture précédente
 				const previousInvoices = await pb.collection('invoices').getList(1, 1, {
 					filter: `owner_company = "${invoice.owner_company}" && sequence_number = ${invoice.sequence_number - 1}`,
 				})
@@ -205,7 +242,6 @@ export function useVerifyInvoiceIntegrity(invoiceId?: string) {
 					chainValid = invoice.previous_hash === previous.hash
 				}
 			} else {
-				// Première facture - doit avoir le genesis hash
 				chainValid =
 					invoice.previous_hash ===
 					'0000000000000000000000000000000000000000000000000000000000000000'
@@ -235,25 +271,60 @@ export function useVerifyInvoiceIntegrity(invoiceId?: string) {
 			}
 		},
 		enabled: !!invoiceId,
-		staleTime: 60000, // 1 minute
+		staleTime: 60000,
 	})
 }
 
 /**
- * 🔗 Vérifier l'intégrité de toute la chaîne de factures
+ * 🔗 Vérifier l'intégrité de la chaîne de documents
+ * ✅ AMÉLIORÉ: Supporte le filtrage par type de document
+ * @param docType - 'all' | 'invoice' | 'pos_ticket' | 'credit_note'
  */
 export function useVerifyInvoiceChain() {
 	const pb = usePocketBase()
 
 	return useMutation({
-		mutationFn: async (companyId: string) => {
+		mutationFn: async ({
+			companyId,
+			docType = 'all',
+		}: {
+			companyId: string
+			docType?: DocumentType
+		}): Promise<ChainVerificationResult> => {
+			// ✅ Construire le filtre selon le type de document
+			let filter = `owner_company = "${companyId}"`
+
+			switch (docType) {
+				case 'invoice':
+					// Factures B2B uniquement (pas POS)
+					filter += ` && invoice_type = "invoice" && is_pos_ticket = false`
+					break
+				case 'pos_ticket':
+					// Tickets POS uniquement
+					filter += ` && is_pos_ticket = true && invoice_type = "invoice"`
+					break
+				case 'credit_note':
+					// Tous les avoirs
+					filter += ` && invoice_type = "credit_note"`
+					break
+				// 'all' - pas de filtre supplémentaire
+			}
+
 			const invoices = (await pb.collection('invoices').getFullList({
-				filter: `owner_company = "${companyId}"`,
+				filter,
 				sort: 'sequence_number',
 			})) as unknown as InvoiceResponse[]
 
 			const results: IntegrityCheckResult[] = []
 			let allValid = true
+			let chainBreaks = 0
+
+			// ✅ AJOUT: Compteurs par type
+			const summary = {
+				invoices: { count: 0, valid: 0 },
+				posTickets: { count: 0, valid: 0 },
+				creditNotes: { count: 0, valid: 0 },
+			}
 
 			for (let i = 0; i < invoices.length; i++) {
 				const invoice = invoices[i]
@@ -268,22 +339,60 @@ export function useVerifyInvoiceChain() {
 				}
 
 				// Vérifier le chaînage
+				// ⚠️ IMPORTANT: La chaîne est GLOBALE, pas par type de document
 				let chainValid = true
 				if (i === 0) {
-					chainValid =
-						invoice.previous_hash ===
-						'0000000000000000000000000000000000000000000000000000000000000000'
+					// Premier document de la liste filtrée
+					if (invoice.sequence_number === 1) {
+						chainValid =
+							invoice.previous_hash ===
+							'0000000000000000000000000000000000000000000000000000000000000000'
+					} else {
+						// Il y a des documents avant celui-ci dans la chaîne globale
+						const prevDoc = await pb.collection('invoices').getList(1, 1, {
+							filter: `owner_company = "${companyId}" && sequence_number = ${invoice.sequence_number - 1}`,
+						})
+						if (prevDoc.items.length > 0) {
+							const prev = prevDoc.items[0] as unknown as InvoiceResponse
+							chainValid = invoice.previous_hash === prev.hash
+						}
+					}
 				} else {
-					chainValid = invoice.previous_hash === invoices[i - 1].hash
+					// Pour les documents suivants dans la liste filtrée
+					const prevDoc = await pb.collection('invoices').getList(1, 1, {
+						filter: `owner_company = "${companyId}" && sequence_number = ${invoice.sequence_number - 1}`,
+					})
+					if (prevDoc.items.length > 0) {
+						const prev = prevDoc.items[0] as unknown as InvoiceResponse
+						chainValid = invoice.previous_hash === prev.hash
+					}
 				}
 
 				if (!chainValid) {
 					errors.push(`Rupture de chaîne à ${invoice.number}`)
 					allValid = false
+					chainBreaks++
+				}
+
+				const isValid = hashValid && chainValid
+
+				// ✅ Mettre à jour les compteurs
+				const isPosTicket = (invoice as any).is_pos_ticket === true
+				const isCreditNote = invoice.invoice_type === 'credit_note'
+
+				if (isCreditNote) {
+					summary.creditNotes.count++
+					if (isValid) summary.creditNotes.valid++
+				} else if (isPosTicket) {
+					summary.posTickets.count++
+					if (isValid) summary.posTickets.valid++
+				} else {
+					summary.invoices.count++
+					if (isValid) summary.invoices.valid++
 				}
 
 				results.push({
-					isValid: hashValid && chainValid,
+					isValid,
 					checkedAt: new Date().toISOString(),
 					invoiceId: invoice.id,
 					invoiceNumber: invoice.number,
@@ -300,9 +409,167 @@ export function useVerifyInvoiceChain() {
 				totalChecked: invoices.length,
 				validCount: results.filter((r) => r.isValid).length,
 				invalidCount: results.filter((r) => !r.isValid).length,
+				chainBreaks,
 				details: results,
+				summary,
 			}
 		},
+	})
+}
+
+/**
+ * 📊 Obtenir un résumé rapide de l'intégrité
+ */
+export function useIntegritySummary(companyId?: string) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: integrityKeys.summary(companyId || ''),
+		queryFn: async (): Promise<IntegritySummary> => {
+			if (!companyId) throw new Error('companyId is required')
+
+			// Récupérer tous les documents
+			const allDocs = (await pb.collection('invoices').getFullList({
+				filter: `owner_company = "${companyId}"`,
+				sort: 'sequence_number',
+			})) as unknown as InvoiceResponse[]
+
+			let validCount = 0
+			let invalidCount = 0
+			let chainBreaks = 0
+
+			const byType = {
+				invoices: { total: 0, valid: 0, invalid: 0 },
+				posTickets: { total: 0, valid: 0, invalid: 0 },
+				creditNotes: { total: 0, valid: 0, invalid: 0 },
+			}
+
+			for (let i = 0; i < allDocs.length; i++) {
+				const doc = allDocs[i]
+				const isPosTicket = (doc as any).is_pos_ticket === true
+				const isCreditNote = doc.invoice_type === 'credit_note'
+
+				// Vérifier le hash
+				const expectedHash = await computeInvoiceHashBrowser(doc)
+				const hashValid = doc.hash === expectedHash
+
+				// Vérifier la chaîne
+				let chainValid = true
+				if (i === 0) {
+					chainValid =
+						doc.previous_hash ===
+						'0000000000000000000000000000000000000000000000000000000000000000'
+				} else {
+					chainValid = doc.previous_hash === allDocs[i - 1].hash
+				}
+
+				if (!chainValid) chainBreaks++
+
+				const isValid = hashValid && chainValid
+
+				if (isValid) {
+					validCount++
+				} else {
+					invalidCount++
+				}
+
+				// Compteurs par type
+				if (isCreditNote) {
+					byType.creditNotes.total++
+					if (isValid) byType.creditNotes.valid++
+					else byType.creditNotes.invalid++
+				} else if (isPosTicket) {
+					byType.posTickets.total++
+					if (isValid) byType.posTickets.valid++
+					else byType.posTickets.invalid++
+				} else {
+					byType.invoices.total++
+					if (isValid) byType.invoices.valid++
+					else byType.invoices.invalid++
+				}
+			}
+
+			return {
+				totalDocuments: allDocs.length,
+				validDocuments: validCount,
+				invalidDocuments: invalidCount,
+				chainBreaks,
+				byType,
+				checkedAt: new Date().toISOString(),
+				allValid: invalidCount === 0 && chainBreaks === 0,
+			}
+		},
+		enabled: !!companyId,
+		staleTime: 300000, // 5 minutes
+	})
+}
+
+/**
+ * 🔍 Vérifier l'intégrité des avoirs liés à un document original
+ */
+export function useVerifyCreditNotesIntegrity(originalInvoiceId?: string) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: [...integrityKeys.all, 'credit-notes', originalInvoiceId],
+		queryFn: async () => {
+			if (!originalInvoiceId) return null
+
+			// Récupérer l'original
+			const original = (await pb
+				.collection('invoices')
+				.getOne(originalInvoiceId)) as unknown as InvoiceResponse
+
+			// Récupérer les avoirs liés
+			const creditNotes = (await pb.collection('invoices').getFullList({
+				filter: `invoice_type = "credit_note" && original_invoice_id = "${originalInvoiceId}"`,
+				sort: 'sequence_number',
+			})) as unknown as InvoiceResponse[]
+
+			// Calculer les totaux
+			const originalTotal = Math.abs(original.total_ttc)
+			const refundedTotal = creditNotes.reduce(
+				(sum, cn) => sum + Math.abs(cn.total_ttc),
+				0,
+			)
+			const remainingAmount = originalTotal - refundedTotal
+
+			// Vérifier l'intégrité de chaque avoir
+			const creditNoteResults: IntegrityCheckResult[] = []
+			for (const cn of creditNotes) {
+				const expectedHash = await computeInvoiceHashBrowser(cn)
+				const hashValid = cn.hash === expectedHash
+
+				creditNoteResults.push({
+					isValid: hashValid,
+					checkedAt: new Date().toISOString(),
+					invoiceId: cn.id,
+					invoiceNumber: cn.number,
+					expectedHash,
+					actualHash: cn.hash,
+					chainValid: true,
+					errors: hashValid ? [] : ['Hash incorrect'],
+				})
+			}
+
+			return {
+				original: {
+					id: original.id,
+					number: original.number,
+					totalTtc: originalTotal,
+					isPosTicket: (original as any).is_pos_ticket,
+				},
+				creditNotes: creditNoteResults,
+				totals: {
+					originalAmount: originalTotal,
+					refundedAmount: refundedTotal,
+					remainingAmount,
+					isFullyRefunded: remainingAmount <= 0.01,
+				},
+				checkedAt: new Date().toISOString(),
+			}
+		},
+		enabled: !!originalInvoiceId,
 	})
 }
 
@@ -322,20 +589,26 @@ async function computeHashBrowser(data: string): Promise<string> {
 }
 
 /**
- * Calcule le hash d'une facture côté navigateur
- * ⚠️ Doit correspondre EXACTEMENT à la logique backend
+ * ✅ CORRIGÉ: Calcule le hash d'une facture côté navigateur
+ * ⚠️ DOIT correspondre EXACTEMENT à computeRecordHash() du backend (cash_routes.go)
+ *
+ * Le backend inclut UNIQUEMENT ces champs :
+ * - number, invoice_type, customer, owner_company, date
+ * - total_ht, total_tva, total_ttc
+ * - previous_hash, sequence_number, fiscal_year
+ * - original_invoice_id (si présent)
+ *
+ * ❌ NE PAS INCLURE : currency, items, vat_breakdown, is_pos_ticket, session, etc.
  */
 async function computeInvoiceHashBrowser(
 	invoice: InvoiceResponse,
 ): Promise<string> {
-	// Structure identique au backend (ordre alphabétique des clés)
+	// ✅ Structure IDENTIQUE au backend computeRecordHash()
 	const data: Record<string, unknown> = {
-		currency: invoice.currency,
 		customer: invoice.customer,
 		date: invoice.date,
 		fiscal_year: invoice.fiscal_year,
 		invoice_type: invoice.invoice_type,
-		items: invoice.items,
 		number: invoice.number,
 		owner_company: invoice.owner_company,
 		previous_hash: invoice.previous_hash,
@@ -345,18 +618,24 @@ async function computeInvoiceHashBrowser(
 		total_tva: invoice.total_tva,
 	}
 
+	// Ajouter original_invoice_id SEULEMENT si présent (comme le backend)
 	if (invoice.original_invoice_id) {
 		data.original_invoice_id = invoice.original_invoice_id
 	}
 
-	// Sérialisation avec clés ordonnées
+	// ✅ Sérialisation avec clés ordonnées alphabétiquement (comme le backend)
 	const orderedKeys = Object.keys(data).sort()
-	const orderedData: Record<string, unknown> = {}
-	for (const key of orderedKeys) {
-		orderedData[key] = data[key]
-	}
 
-	const jsonString = JSON.stringify(orderedData)
+	// ✅ Construire le JSON manuellement comme le backend Go
+	// Le backend Go utilise json.Marshal qui produit un format spécifique
+	const parts: string[] = []
+	for (const key of orderedKeys) {
+		const keyJSON = JSON.stringify(key)
+		const valueJSON = JSON.stringify(data[key])
+		parts.push(`${keyJSON}:${valueJSON}`)
+	}
+	const jsonString = `{${parts.join(',')}}`
+
 	return computeHashBrowser(jsonString)
 }
 

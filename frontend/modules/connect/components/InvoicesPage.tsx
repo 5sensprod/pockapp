@@ -41,7 +41,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import {
+	type ChainVerificationResult,
+	type DocumentType,
 	useClosures,
+	useIntegritySummary,
 	usePerformDailyClosure,
 	useVerifyInvoiceChain,
 } from '@/lib/queries/closures'
@@ -78,6 +81,9 @@ import {
 	Receipt,
 	RotateCcw,
 	Send,
+	Shield,
+	ShieldAlert,
+	ShieldCheck,
 	XCircle,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -198,6 +204,17 @@ export function InvoicesPage() {
 		setRefundTicketDialogOpen(false)
 		setTicketToRefund(null)
 	}
+
+	// Dialog intégrité
+	const [integrityDialogOpen, setIntegrityDialogOpen] = useState(false)
+	const [integrityDocType, setIntegrityDocType] = useState<DocumentType>('all')
+	const [integrityResult, setIntegrityResult] =
+		useState<ChainVerificationResult | null>(null)
+
+	// Hook pour le résumé rapide (optionnel - pour afficher un indicateur)
+	const { data: integritySummary } = useIntegritySummary(
+		activeCompanyId ?? undefined,
+	)
 
 	// Mutations / hooks factures
 	const cancelInvoice = useCancelInvoice()
@@ -501,21 +518,33 @@ export function InvoicesPage() {
 		}
 
 		try {
-			const result = await verifyChain.mutateAsync(activeCompanyId)
+			// ✅ MODIFIÉ: Utiliser la nouvelle API avec docType
+			const result = await verifyChain.mutateAsync({
+				companyId: activeCompanyId,
+				docType: integrityDocType,
+			})
+
+			setIntegrityResult(result)
 
 			if (result.allValid) {
 				toast.success(
-					`Chaîne de factures valide – ${result.totalChecked} factures vérifiées`,
+					`Intégrité vérifiée ✓ – ${result.totalChecked} document(s)`,
 				)
 			} else {
 				toast.error(
-					`Anomalies détectées: ${result.invalidCount} / ${result.totalChecked} factures`,
+					`Anomalies détectées: ${result.invalidCount}/${result.totalChecked} documents`,
 				)
-				console.warn('Détails intégrité factures', result.details)
 			}
 		} catch (error: any) {
 			toast.error(error.message || "Erreur lors de la vérification d'intégrité")
 		}
+	}
+
+	// Handler pour ouvrir le dialog
+	const handleOpenIntegrityDialog = () => {
+		setIntegrityResult(null)
+		setIntegrityDocType('all')
+		setIntegrityDialogOpen(true)
 	}
 
 	// === RENDER ===
@@ -534,12 +563,14 @@ export function InvoicesPage() {
 					</p>
 				</div>
 				<div className='flex items-center gap-2'>
-					<Button
-						variant='outline'
-						onClick={handleVerifyChain}
-						disabled={verifyChain.isPending}
-					>
-						{verifyChain.isPending ? 'Vérification...' : 'Vérifier intégrité'}
+					<Button variant='outline' onClick={handleOpenIntegrityDialog}>
+						<Shield className='h-4 w-4 mr-2' />
+						Vérifier intégrité
+						{integritySummary && !integritySummary.allValid && (
+							<Badge variant='destructive' className='ml-2'>
+								{integritySummary.invalidDocuments}
+							</Badge>
+						)}
 					</Button>
 					<Button
 						variant={hasTodayClosure ? 'outline' : 'destructive'}
@@ -1050,6 +1081,219 @@ export function InvoicesPage() {
 							{performDailyClosure.isPending
 								? 'Clôture en cours...'
 								: 'Je comprends, clôturer la journée'}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Dialog: Vérification d'intégrité */}
+			<Dialog open={integrityDialogOpen} onOpenChange={setIntegrityDialogOpen}>
+				<DialogContent className='max-w-2xl'>
+					<DialogHeader>
+						<DialogTitle className='flex items-center gap-2'>
+							<Shield className='h-5 w-5' />
+							Vérification d'intégrité
+						</DialogTitle>
+						<DialogDescription>
+							Vérifiez l'intégrité de la chaîne de hachage et des données
+							fiscales.
+						</DialogDescription>
+					</DialogHeader>
+
+					<div className='space-y-4 py-4'>
+						{/* Sélecteur de type */}
+						<div className='space-y-2'>
+							<Label>Type de documents à vérifier</Label>
+							<Select
+								value={integrityDocType}
+								onValueChange={(v) => setIntegrityDocType(v as DocumentType)}
+							>
+								<SelectTrigger>
+									<SelectValue placeholder='Sélectionner le type' />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value='all'>Tous les documents</SelectItem>
+									<SelectItem value='invoice'>
+										Factures B2B uniquement
+									</SelectItem>
+									<SelectItem value='pos_ticket'>
+										Tickets POS uniquement
+									</SelectItem>
+									<SelectItem value='credit_note'>Avoirs uniquement</SelectItem>
+								</SelectContent>
+							</Select>
+						</div>
+
+						{/* Résumé rapide (si disponible) */}
+						{integritySummary && (
+							<div className='grid grid-cols-4 gap-2 text-sm'>
+								<div className='p-2 rounded bg-muted/50 text-center'>
+									<p className='text-muted-foreground text-xs'>Total</p>
+									<p className='font-semibold'>
+										{integritySummary.totalDocuments}
+									</p>
+								</div>
+								<div className='p-2 rounded bg-muted/50 text-center'>
+									<p className='text-muted-foreground text-xs'>Factures</p>
+									<p className='font-semibold'>
+										{integritySummary.byType.invoices.valid}/
+										{integritySummary.byType.invoices.total}
+									</p>
+								</div>
+								<div className='p-2 rounded bg-muted/50 text-center'>
+									<p className='text-muted-foreground text-xs'>Tickets</p>
+									<p className='font-semibold'>
+										{integritySummary.byType.posTickets.valid}/
+										{integritySummary.byType.posTickets.total}
+									</p>
+								</div>
+								<div className='p-2 rounded bg-muted/50 text-center'>
+									<p className='text-muted-foreground text-xs'>Avoirs</p>
+									<p className='font-semibold'>
+										{integritySummary.byType.creditNotes.valid}/
+										{integritySummary.byType.creditNotes.total}
+									</p>
+								</div>
+							</div>
+						)}
+
+						{/* Résultats de la vérification */}
+						{integrityResult && (
+							<div className='space-y-3'>
+								{/* Statut global */}
+								<div
+									className={`flex items-center gap-3 p-4 rounded-lg ${
+										integrityResult.allValid
+											? 'bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200'
+											: 'bg-red-50 dark:bg-red-950/20 border border-red-200'
+									}`}
+								>
+									{integrityResult.allValid ? (
+										<ShieldCheck className='h-6 w-6 text-emerald-600' />
+									) : (
+										<ShieldAlert className='h-6 w-6 text-red-600' />
+									)}
+									<div>
+										<p className='font-semibold'>
+											{integrityResult.allValid
+												? 'Intégrité vérifiée ✓'
+												: 'Anomalies détectées'}
+										</p>
+										<p className='text-sm text-muted-foreground'>
+											{integrityResult.totalChecked} document(s) vérifié(s) •{' '}
+											{integrityResult.validCount} valide(s) •{' '}
+											{integrityResult.invalidCount} invalide(s)
+											{integrityResult.chainBreaks > 0 &&
+												` • ${integrityResult.chainBreaks} rupture(s) de chaîne`}
+										</p>
+									</div>
+								</div>
+
+								{/* Résumé par type */}
+								<div className='grid grid-cols-3 gap-2'>
+									<div
+										className={`text-center p-2 rounded ${
+											integrityResult.summary.invoices.count ===
+											integrityResult.summary.invoices.valid
+												? 'bg-emerald-50 dark:bg-emerald-950/20'
+												: 'bg-red-50 dark:bg-red-950/20'
+										}`}
+									>
+										<p className='text-xs text-muted-foreground'>
+											Factures B2B
+										</p>
+										<p className='font-medium'>
+											{integrityResult.summary.invoices.valid}/
+											{integrityResult.summary.invoices.count}
+										</p>
+									</div>
+									<div
+										className={`text-center p-2 rounded ${
+											integrityResult.summary.posTickets.count ===
+											integrityResult.summary.posTickets.valid
+												? 'bg-emerald-50 dark:bg-emerald-950/20'
+												: 'bg-red-50 dark:bg-red-950/20'
+										}`}
+									>
+										<p className='text-xs text-muted-foreground'>Tickets POS</p>
+										<p className='font-medium'>
+											{integrityResult.summary.posTickets.valid}/
+											{integrityResult.summary.posTickets.count}
+										</p>
+									</div>
+									<div
+										className={`text-center p-2 rounded ${
+											integrityResult.summary.creditNotes.count ===
+											integrityResult.summary.creditNotes.valid
+												? 'bg-emerald-50 dark:bg-emerald-950/20'
+												: 'bg-red-50 dark:bg-red-950/20'
+										}`}
+									>
+										<p className='text-xs text-muted-foreground'>Avoirs</p>
+										<p className='font-medium'>
+											{integrityResult.summary.creditNotes.valid}/
+											{integrityResult.summary.creditNotes.count}
+										</p>
+									</div>
+								</div>
+
+								{/* Détails des erreurs */}
+								{integrityResult.invalidCount > 0 && (
+									<div className='max-h-48 overflow-y-auto space-y-2'>
+										<p className='text-sm font-medium text-red-600'>
+											Documents avec erreurs:
+										</p>
+										{integrityResult.details
+											.filter((d) => !d.isValid)
+											.map((detail) => (
+												<div
+													key={detail.invoiceId}
+													className='flex items-start gap-2 p-2 rounded bg-red-50 dark:bg-red-950/20 text-sm'
+												>
+													<XCircle className='h-4 w-4 text-red-500 mt-0.5 shrink-0' />
+													<div>
+														<span className='font-medium'>
+															{detail.invoiceNumber}
+														</span>
+														{detail.errors.map((err) => (
+															<p
+																key={`${detail.invoiceId}-${err}`}
+																className='text-muted-foreground text-xs'
+															>
+																{err}
+															</p>
+														))}
+													</div>
+												</div>
+											))}
+									</div>
+								)}
+							</div>
+						)}
+					</div>
+
+					<DialogFooter>
+						<Button
+							variant='outline'
+							onClick={() => setIntegrityDialogOpen(false)}
+						>
+							Fermer
+						</Button>
+						<Button
+							onClick={handleVerifyChain}
+							disabled={verifyChain.isPending}
+						>
+							{verifyChain.isPending ? (
+								<>
+									<RotateCcw className='h-4 w-4 animate-spin mr-2' />
+									Vérification...
+								</>
+							) : (
+								<>
+									<ShieldCheck className='h-4 w-4 mr-2' />
+									Lancer la vérification
+								</>
+							)}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
