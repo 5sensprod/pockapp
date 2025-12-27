@@ -615,6 +615,18 @@ function normalizeAmount(amount: number): number {
 }
 
 /**
+ * Normalise une date pour le hash
+ * DOIT correspondre à normalizeDate() dans hash.go
+ * On garde uniquement la partie date (YYYY-MM-DD) pour éviter les problèmes
+ * de format (T vs espace, millisecondes, timezone, etc.)
+ */
+function normalizeDate(date: string): string {
+	if (!date) return date
+	// Extraire uniquement YYYY-MM-DD (les 10 premiers caractères)
+	return date.substring(0, 10)
+}
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * FONCTION DE HASH CENTRALISÉE - ALIGNÉE AVEC backend/hash/hash.go
  * ═══════════════════════════════════════════════════════════════════════════
@@ -635,7 +647,7 @@ async function computeDocumentHash(invoice: InvoiceResponse): Promise<string> {
 	// Construire les données avec les mêmes normalisations que le backend
 	const data: Record<string, unknown> = {
 		customer: invoice.customer,
-		date: invoice.date, // Le backend garde la date telle quelle
+		date: normalizeDate(invoice.date), // ✅ Normaliser la date
 		fiscal_year: invoice.fiscal_year,
 		invoice_type: invoice.invoice_type,
 		number: invoice.number,
@@ -664,8 +676,12 @@ async function computeDocumentHash(invoice: InvoiceResponse): Promise<string> {
 	}
 	const jsonString = `{${parts.join(',')}}`
 
-	// Debug: afficher le JSON hashé
-	// console.log('JSON à hasher:', jsonString)
+	// 🔍 DEBUG: Afficher les données hashées pour les avoirs
+	if (invoice.invoice_type === 'credit_note') {
+		console.log(`🔍 DEBUG HASH ${invoice.number}:`)
+		console.log(`   Data:`, data)
+		console.log(`   JSON:`, jsonString)
+	}
 
 	return computeHashBrowser(jsonString)
 }

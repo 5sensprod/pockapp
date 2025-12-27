@@ -118,12 +118,21 @@ func normalizeHashData(data map[string]interface{}) map[string]interface{} {
 }
 
 // normalizeDate normalise le format de date pour le hash
-// Garde uniquement la partie date ou datetime selon ce qui est stocké
+// PocketBase stocke les dates au format "2025-12-27 13:26:00.000Z"
+// Mais time.RFC3339 donne "2025-12-27T13:26:00Z"
+// On normalise en gardant uniquement "YYYY-MM-DD" pour éviter les problèmes
 func normalizeDate(date string) string {
-	// Si la date contient un 'T' (format RFC3339), on la garde telle quelle
-	// Sinon on la garde aussi telle quelle
-	// L'important est que le format soit cohérent entre création et vérification
-	return strings.TrimSpace(date)
+	date = strings.TrimSpace(date)
+	if date == "" {
+		return date
+	}
+
+	// Extraire uniquement la partie date (YYYY-MM-DD)
+	// Cela évite les problèmes de format T vs espace, millisecondes, timezone, etc.
+	if len(date) >= 10 {
+		return date[:10]
+	}
+	return date
 }
 
 // normalizeAmount normalise un montant pour le hash
@@ -210,42 +219,10 @@ func toInt(v interface{}) int {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FONCTION DE DEBUG (à retirer en production)
-// ═══════════════════════════════════════════════════════════════════════════
-
-// DebugHashData retourne les données utilisées pour le hash (pour debug)
-func DebugHashData(record *models.Record) (map[string]interface{}, string) {
-	data := buildHashData(record)
-
-	// Reconstruire le JSON pour voir ce qui est hashé
-	keys := make([]string, 0, len(data))
-	for k := range data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var builder strings.Builder
-	builder.WriteString("{")
-	for i, k := range keys {
-		if i > 0 {
-			builder.WriteString(",")
-		}
-		keyJSON, _ := json.Marshal(k)
-		valueJSON, _ := json.Marshal(data[k])
-		builder.Write(keyJSON)
-		builder.WriteString(":")
-		builder.Write(valueJSON)
-	}
-	builder.WriteString("}")
-
-	return data, builder.String()
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // FONCTIONS POUR AUDIT LOGS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ComputeAuditLogHash calcule le hash d'un audit log
+// ComputeAuditLogHash calcule le hash d'un audit log (après SaveRecord)
 func ComputeAuditLogHash(record *models.Record) (string, error) {
 	data := map[string]interface{}{
 		"action":        record.GetString("action"),
@@ -259,6 +236,35 @@ func ComputeAuditLogHash(record *models.Record) (string, error) {
 	}
 
 	return ComputeHashFromMap(data)
+}
+
+// ComputeAuditLogHashWithParams calcule le hash d'un audit log AVANT SaveRecord
+// Utilisé car PocketBase ne remplit "created" qu'après la sauvegarde
+func ComputeAuditLogHashWithParams(params AuditLogHashParams) (string, error) {
+	data := map[string]interface{}{
+		"action":        params.Action,
+		"entity_type":   params.EntityType,
+		"entity_id":     params.EntityID,
+		"owner_company": params.OwnerCompany,
+		"user_id":       params.UserID,
+		"details":       params.Details,
+		"previous_hash": params.PreviousHash,
+		"created":       params.Timestamp,
+	}
+
+	return ComputeHashFromMap(data)
+}
+
+// AuditLogHashParams contient les paramètres pour calculer le hash d'un audit log
+type AuditLogHashParams struct {
+	Action       string
+	EntityType   string
+	EntityID     string
+	OwnerCompany string
+	UserID       string
+	Details      interface{}
+	PreviousHash string
+	Timestamp    string
 }
 
 // ComputeHashFromMap calcule un hash SHA-256 à partir d'une map quelconque
