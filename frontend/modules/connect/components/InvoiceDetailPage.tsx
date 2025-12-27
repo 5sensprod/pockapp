@@ -465,7 +465,13 @@ export function InvoiceDetailPage() {
 			<div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
 				<Card className='lg:col-span-1'>
 					<CardHeader>
-						<CardTitle>{isCreditNote ? 'Avoir' : 'Facture'}</CardTitle>
+						<CardTitle>
+							{isCreditNote
+								? 'Avoir'
+								: invoice.is_pos_ticket
+									? 'Ticket'
+									: 'Facture'}
+						</CardTitle>
 						<CardDescription>Détails généraux</CardDescription>
 					</CardHeader>
 					<CardContent className='space-y-4'>
@@ -677,7 +683,11 @@ export function InvoiceDetailPage() {
 						<CardTitle>Articles</CardTitle>
 						<CardDescription>
 							{invoice.items.length} ligne(s) dans{' '}
-							{isCreditNote ? 'cet avoir' : 'cette facture'}
+							{isCreditNote
+								? 'cet avoir'
+								: invoice.is_pos_ticket
+									? 'ce ticket'
+									: 'cette facture'}
 						</CardDescription>
 					</CardHeader>
 

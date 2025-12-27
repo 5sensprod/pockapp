@@ -1,5 +1,6 @@
 // frontend/modules/connect/components/InvoicePdf.tsx
 // ✅ VERSION CORRIGÉE - Support TVA multi-taux avec vat_breakdown stocké
+// ✅ Titre dynamique selon le type de document (FACTURE/AVOIR/TICKET)
 
 import type {
 	CompaniesResponse,
@@ -360,6 +361,45 @@ export function InvoicePdfDocument({
 
 	const vatBreakdown = getVatBreakdown()
 
+	// ✅ Déterminer le titre du document selon son type
+	// LOGIQUE: Credit note > Ticket > Facture
+	const getDocumentTitle = (): string => {
+		// 🔍 DEBUG - Logs détaillés
+		console.log('🔍 PDF getDocumentTitle appelée', {
+			number: invoice.number,
+			invoice_type: invoice.invoice_type,
+			is_pos_ticket: invoice.is_pos_ticket,
+		})
+
+		// 1️⃣ PRIORITÉ 1: Vérifier si c'est un AVOIR (credit_note)
+		// Un avoir peut être lié à un ticket OU une facture, mais c'est d'abord un AVOIR
+		if (invoice.invoice_type === 'credit_note') {
+			console.log('✅ → Retourne AVOIR (invoice_type === credit_note)')
+			return 'AVOIR'
+		}
+
+		// 2️⃣ PRIORITÉ 2: Vérifier si c'est un TICKET (POS)
+		// Seulement si ce n'est PAS un avoir
+		if (invoice.is_pos_ticket === true || invoice.number?.startsWith('TIK-')) {
+			console.log('✅ → Retourne TICKET (is_pos_ticket ou TIK-)')
+			return 'TICKET'
+		}
+
+		// 3️⃣ Par défaut: FACTURE B2B standard
+		console.log('✅ → Retourne FACTURE (défaut)')
+		return 'FACTURE'
+	}
+
+	const documentTitle = getDocumentTitle()
+
+	console.log('📄 Titre final du document:', documentTitle)
+	const documentLabel =
+		documentTitle === 'AVOIR'
+			? 'Avoir n°'
+			: documentTitle === 'TICKET'
+				? 'Ticket n°'
+				: 'Facture n°'
+
 	return (
 		<Document>
 			<Page size='A4' style={styles.page}>
@@ -396,9 +436,9 @@ export function InvoicePdfDocument({
 					</View>
 
 					<View style={styles.invoiceInfo}>
-						<Text style={styles.invoiceTitle}>FACTURE</Text>
+						<Text style={styles.invoiceTitle}>{documentTitle}</Text>
 						<Text style={styles.invoiceInfoLine}>
-							Facture n° {invoice.number}
+							{documentLabel} {invoice.number}
 						</Text>
 						<Text style={styles.invoiceInfoLine}>
 							Date : {formatDate(invoice.date)}

@@ -476,7 +476,6 @@ export function InvoicesPage() {
 			toast.error('Erreur lors de la génération du PDF')
 		}
 	}
-
 	const handleDailyClosure = async () => {
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
@@ -760,8 +759,19 @@ export function InvoicesPage() {
 										<TableCell className='font-medium'>
 											<div className='flex items-center gap-2'>
 												<span className='font-mono'>{invoice.number}</span>
+
+												{/* Si c'est un ticket transformé en facture */}
 												{invoice.converted_to_invoice && <Badge>→ FAC</Badge>}
-												{invoice.original_invoice_id && <Badge>← TIK</Badge>}
+
+												{/* Si c'est un avoir (remboursement), on regarde le type de l'original */}
+												{invoice.original_invoice_id && (
+													<Badge>
+														←{' '}
+														{invoice.expand?.original_invoice_id?.is_pos_ticket
+															? 'TIK'
+															: 'FAC'}
+													</Badge>
+												)}
 											</div>
 										</TableCell>
 
@@ -884,35 +894,36 @@ export function InvoicesPage() {
 															</>
 														)}
 
-													{isTicket && invoice.invoice_type === 'invoice' && (
-														<>
-															<DropdownMenuSeparator />
-															<DropdownMenuItem
-																onClick={() => {
-																	// Vérifier si remboursement possible
-																	if (remainingAmount <= 0) {
-																		toast.error(
-																			'Ticket déjà totalement remboursé',
-																			{
-																				description: `Le ticket ${invoice.number} a déjà été intégralement remboursé.`,
-																			},
-																		)
-																		return
-																	}
-																	handleOpenRefundTicketDialog(invoice)
-																}}
-																// Retirer le disabled pour permettre le clic et afficher le toast
-															>
-																<RotateCcw className='h-4 w-4 mr-2' />
-																Rembourser ticket
-																{remainingAmount <= 0 && (
-																	<span className='ml-2 text-xs text-muted-foreground'>
-																		(remboursé)
-																	</span>
-																)}
-															</DropdownMenuItem>
-														</>
-													)}
+													{/* Ticket Remboursement - Ajout de displayStatus.isPaid */}
+													{isTicket &&
+														displayStatus.isPaid &&
+														invoice.invoice_type === 'invoice' && (
+															<>
+																<DropdownMenuSeparator />
+																<DropdownMenuItem
+																	onClick={() => {
+																		if (remainingAmount <= 0) {
+																			toast.error(
+																				'Ticket déjà totalement remboursé',
+																				{
+																					description: `Le ticket ${invoice.number} a déjà été intégralement remboursé.`,
+																				},
+																			)
+																			return
+																		}
+																		handleOpenRefundTicketDialog(invoice)
+																	}}
+																>
+																	<RotateCcw className='h-4 w-4 mr-2' />
+																	Rembourser ticket
+																	{remainingAmount <= 0 && (
+																		<span className='ml-2 text-xs text-muted-foreground'>
+																			(remboursé)
+																		</span>
+																	)}
+																</DropdownMenuItem>
+															</>
+														)}
 
 													<DropdownMenuSeparator />
 
@@ -973,8 +984,10 @@ export function InvoicesPage() {
 															</DropdownMenuItem>
 														)}
 
-													{/* Annulation par avoir */}
+													{/* Annulation par avoir - Ajout de displayStatus.isPaid */}
 													{invoice.invoice_type === 'invoice' &&
+														displayStatus.isPaid &&
+														!isTicket &&
 														invoice.status !== 'draft' &&
 														!hasCancellationCreditNote && (
 															<>
@@ -990,14 +1003,16 @@ export function InvoicesPage() {
 																</DropdownMenuItem>
 															</>
 														)}
+
+													{/* Rembourser Facture - Ajout de displayStatus.isPaid */}
 													{invoice.invoice_type === 'invoice' &&
+														displayStatus.isPaid &&
 														!isTicket &&
 														invoice.status !== 'draft' && (
 															<>
 																<DropdownMenuSeparator />
 																<DropdownMenuItem
 																	onClick={() => {
-																		// même garde-fou que tickets
 																		if (remainingAmount <= 0) {
 																			toast.error(
 																				'Facture déjà totalement remboursée',
@@ -1010,7 +1025,6 @@ export function InvoicesPage() {
 																		setInvoiceToRefund(invoice)
 																		setRefundInvoiceOpen(true)
 																	}}
-																	// pas de "disabled" -> on affiche un toast cohérent
 																	className={
 																		remainingAmount <= 0
 																			? 'text-muted-foreground'
