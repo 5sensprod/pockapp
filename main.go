@@ -191,6 +191,7 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		// ✅ NOUVEAU : routes remboursement factures (B2B)
 		backend.RegisterInvoiceRefundRoutes(pb, e.Router)
 
+		backend.RegisterPosRoutes(pb, e.Router)
 		// SPA handler avec assets embarqués (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 

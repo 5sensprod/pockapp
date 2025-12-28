@@ -1,5 +1,6 @@
 // frontend/modules/cash/CashTerminalPage.tsx
-// ✅ VERSION CORRIGÉE - Support multi-taux TVA + Ticket de caisse
+// ✅ VERSION REFACTORISÉE - Utilise la route backend centralisée /api/pos/ticket
+// Les calculs sont maintenant faits côté backend avec arrondis corrects
 
 import { Button } from '@/components/ui/button'
 import {
@@ -35,10 +36,10 @@ import {
 	getOrCreateDefaultCustomer,
 	useActiveCashSession,
 	useCashRegisters,
-	useCreateCashMovement,
 } from '@/lib/queries/cash'
-import { useCreateInvoice } from '@/lib/queries/invoices'
-import type { InvoiceItem, PaymentMethod } from '@/lib/types/invoice.types'
+// ✅ NOUVEAU: Import de la route POS centralisée
+import { cartItemToPosItem, useCreatePosTicket } from '@/lib/queries/pos'
+import type { PaymentMethod } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import { CreateProductDialog } from '@/modules/cash/CreateProductDialog'
@@ -157,8 +158,8 @@ export function CashTerminalPage() {
 	})
 	const products = (productsData?.items ?? []) as AppPosProduct[]
 
-	const createInvoice = useCreateInvoice()
-	const createCashMovement = useCreateCashMovement()
+	// ✅ NOUVEAU: Utilise la route POS centralisée (remplace createInvoice + createCashMovement)
+	const createPosTicket = useCreatePosTicket()
 
 	const currentRegister = registers?.find((r) => r.id === cashRegisterId)
 	const isSessionOpen = activeSession?.status === 'open'
@@ -230,76 +231,74 @@ export function CashTerminalPage() {
 		[getLineTotalTtc, getLineAmounts],
 	)
 
-	const {
-		subtotalTtc,
-		totalTtc,
-		totalHt,
-		totalVat,
-		discountAmount,
-		vatBreakdown,
-	} = React.useMemo(() => {
-		const subtotal = cart.reduce((sum, item) => sum + getLineTotalTtc(item), 0)
+	// Calculs locaux pour l'affichage UI (le backend recalculera avec arrondis corrects)
+	const { subtotalTtc, totalTtc, totalVat, discountAmount, vatBreakdown } =
+		React.useMemo(() => {
+			const subtotal = cart.reduce(
+				(sum, item) => sum + getLineTotalTtc(item),
+				0,
+			)
 
-		let discount = 0
-		if (cartDiscountMode === 'percent') {
-			discount = (subtotal * cartDiscountValue) / 100
-		} else {
-			discount = Math.min(cartDiscountValue, subtotal)
-		}
-
-		const finalLines = applyCartDiscountProRata(cart, discount)
-
-		const total_ttc = finalLines.reduce((sum, line) => sum + line.ttc, 0)
-		const total_ht = finalLines.reduce((sum, line) => sum + line.ht, 0)
-		const total_vat = finalLines.reduce((sum, line) => sum + line.vat, 0)
-
-		const breakdownMap = new Map<number, VatBreakdown>()
-
-		for (const [index, item] of cart.entries()) {
-			const rate = item.tvaRate
-			const amounts = finalLines[index]
-
-			let entry = breakdownMap.get(rate)
-
-			if (!entry) {
-				entry = {
-					rate,
-					base_ht: 0,
-					vat: 0,
-					total_ttc: 0,
-				}
-				breakdownMap.set(rate, entry)
+			let discount = 0
+			if (cartDiscountMode === 'percent') {
+				discount = (subtotal * cartDiscountValue) / 100
+			} else {
+				discount = Math.min(cartDiscountValue, subtotal)
 			}
 
-			entry.base_ht += amounts.ht
-			entry.vat += amounts.vat
-			entry.total_ttc += amounts.ttc
-		}
+			const finalLines = applyCartDiscountProRata(cart, discount)
 
-		const breakdown = Array.from(breakdownMap.values())
-			.map((entry) => ({
-				rate: entry.rate,
-				base_ht: +entry.base_ht.toFixed(2),
-				vat: +entry.vat.toFixed(2),
-				total_ttc: +entry.total_ttc.toFixed(2),
-			}))
-			.sort((a, b) => a.rate - b.rate)
+			const total_ttc = finalLines.reduce((sum, line) => sum + line.ttc, 0)
+			const total_ht = finalLines.reduce((sum, line) => sum + line.ht, 0)
+			const total_vat = finalLines.reduce((sum, line) => sum + line.vat, 0)
 
-		return {
-			subtotalTtc: +subtotal.toFixed(2),
-			discountAmount: +discount.toFixed(2),
-			totalTtc: +total_ttc.toFixed(2),
-			totalHt: +total_ht.toFixed(2),
-			totalVat: +total_vat.toFixed(2),
-			vatBreakdown: breakdown,
-		}
-	}, [
-		cart,
-		cartDiscountMode,
-		cartDiscountValue,
-		getLineTotalTtc,
-		applyCartDiscountProRata,
-	])
+			const breakdownMap = new Map<number, VatBreakdown>()
+
+			for (const [index, item] of cart.entries()) {
+				const rate = item.tvaRate
+				const amounts = finalLines[index]
+
+				let entry = breakdownMap.get(rate)
+
+				if (!entry) {
+					entry = {
+						rate,
+						base_ht: 0,
+						vat: 0,
+						total_ttc: 0,
+					}
+					breakdownMap.set(rate, entry)
+				}
+
+				entry.base_ht += amounts.ht
+				entry.vat += amounts.vat
+				entry.total_ttc += amounts.ttc
+			}
+
+			const breakdown = Array.from(breakdownMap.values())
+				.map((entry) => ({
+					rate: entry.rate,
+					base_ht: +entry.base_ht.toFixed(2),
+					vat: +entry.vat.toFixed(2),
+					total_ttc: +entry.total_ttc.toFixed(2),
+				}))
+				.sort((a, b) => a.rate - b.rate)
+
+			return {
+				subtotalTtc: +subtotal.toFixed(2),
+				discountAmount: +discount.toFixed(2),
+				totalTtc: +total_ttc.toFixed(2),
+				totalHt: +total_ht.toFixed(2),
+				totalVat: +total_vat.toFixed(2),
+				vatBreakdown: breakdown,
+			}
+		}, [
+			cart,
+			cartDiscountMode,
+			cartDiscountValue,
+			getLineTotalTtc,
+			applyCartDiscountProRata,
+		])
 
 	const change = React.useMemo(() => {
 		const received = Number.parseFloat(amountReceived) || 0
@@ -441,7 +440,6 @@ export function CashTerminalPage() {
 					...next[existingIndex],
 					quantity: next[existingIndex].quantity + 1,
 				}
-				// Afficher l'item mis à jour temporairement
 				setLastAddedItem(next[existingIndex])
 				return next
 			}
@@ -458,12 +456,10 @@ export function CashTerminalPage() {
 				tvaRate,
 				displayMode: 'name',
 			}
-			// Afficher le nouvel item temporairement
 			setLastAddedItem(newItem)
 			return [...prev, newItem]
 		})
 
-		// Revenir au total après 1.5s
 		setTimeout(() => setLastAddedItem(null), 1500)
 	}, [])
 
@@ -647,7 +643,6 @@ export function CashTerminalPage() {
 				return
 			}
 
-			// Effacer lastAddedItem pour forcer phase 'payment'
 			setLastAddedItem(null)
 			setSelectedPaymentMethod(method)
 			setPaymentStep('payment')
@@ -656,6 +651,7 @@ export function CashTerminalPage() {
 		[cart.length, totalTtc],
 	)
 
+	// ✅ NOUVEAU: handleConfirmPayment simplifié utilisant la route backend
 	const handleConfirmPayment = React.useCallback(async () => {
 		if (!activeCompanyId || !activeSession) {
 			toast.error('Session ou entreprise manquante')
@@ -674,94 +670,35 @@ export function CashTerminalPage() {
 		setIsProcessing(true)
 
 		try {
+			// Récupérer le client par défaut
 			const defaultCustomerId = await getOrCreateDefaultCustomer(
 				pb,
 				activeCompanyId,
 			)
 
-			const finalLines = applyCartDiscountProRata(cart, discountAmount)
-
-			const invoiceItems: InvoiceItem[] = cart.map((item, index) => {
-				const amounts = finalLines[index]
-				const displayMode = item.displayMode || 'name'
-				let displayName = item.name
-				if (displayMode === 'designation') {
-					displayName = item.designation || item.name
-				} else if (displayMode === 'sku') {
-					displayName = item.sku || item.name
-				}
-
-				const unitHt = amounts.ht / item.quantity
-				// const unitTtc = amounts.ttc / item.quantity
-
-				return {
-					product_id: item.productId,
-					name: displayName,
-					quantity: item.quantity,
-					unit_price_ht: unitHt,
-					tva_rate: item.tvaRate,
-					total_ht: amounts.ht,
-					total_ttc: amounts.ttc,
-					line_discount_mode:
-						item.lineDiscountMode === 'unit' ? 'amount' : item.lineDiscountMode,
-					line_discount_value: item.lineDiscountValue,
-					unit_price_ttc_before_discount: item.unitPrice,
-				}
-			})
-
-			const lineDiscountsTotalTtc = cart.reduce((sum, item) => {
-				const baseTtc = item.unitPrice * item.quantity
-				const effectiveTtc = getLineTotalTtc(item)
-				return sum + (baseTtc - effectiveTtc)
-			}, 0)
-
-			const cartDiscountTtc = discountAmount
-
-			const invoice = await createInvoice.mutateAsync({
-				invoice_type: 'invoice',
-				date: new Date().toISOString().split('T')[0],
-				customer: defaultCustomerId,
+			// ✅ NOUVEAU: Un seul appel API qui fait tout (calculs, ticket, cash_movement)
+			const result = await createPosTicket.mutateAsync({
 				owner_company: activeCompanyId,
-				status: 'validated',
-				is_paid: true,
-				paid_at: new Date().toISOString(),
-				payment_method: selectedPaymentMethod,
-				items: invoiceItems,
-				total_ht: totalHt,
-				total_tva: totalVat,
-				total_ttc: totalTtc,
-				currency: 'EUR',
-
 				cash_register: cashRegisterId,
-				session: activeSession.id,
-				is_pos_ticket: true,
-				sold_by: user?.id,
-
+				session_id: activeSession.id,
+				customer_id: defaultCustomerId,
+				items: cart.map(cartItemToPosItem),
+				payment_method: selectedPaymentMethod,
+				amount_paid:
+					selectedPaymentMethod === 'especes'
+						? Number.parseFloat(amountReceived)
+						: undefined,
 				cart_discount_mode:
 					cartDiscountValue > 0 ? cartDiscountMode : undefined,
 				cart_discount_value:
 					cartDiscountValue > 0 ? cartDiscountValue : undefined,
-				cart_discount_ttc: cartDiscountTtc > 0 ? cartDiscountTtc : undefined,
-				line_discounts_total_ttc:
-					lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
 			})
 
-			if (selectedPaymentMethod === 'especes') {
-				await createCashMovement.mutateAsync({
-					sessionId: activeSession.id,
-					movementType: 'cash_in',
-					amount: totalTtc,
-					reason: `Vente ticket ${invoice.number}`,
-					meta: { invoice_id: invoice.id, invoice_number: invoice.number },
-					cashRegisterId,
-				})
-			}
+			// Le ticket est créé avec les totaux calculés par le backend
+			const ticket = result.ticket
+			const backendTotals = result.totals
 
-			if (!activeCompanyId) {
-				toast.error('Entreprise active introuvable')
-				return
-			}
-
+			// Impression du ticket si configuré
 			if (printerSettings.enabled && printerSettings.printerName) {
 				if (printerSettings.autoPrint) {
 					const lineDiscountsTotalTtc = cart.reduce((sum, item) => {
@@ -778,7 +715,7 @@ export function CashTerminalPage() {
 						width: printerSettings.width,
 						companyId: activeCompanyId,
 						receipt: {
-							invoiceNumber: invoice.number,
+							invoiceNumber: ticket.number,
 							dateLabel: new Date().toLocaleString('fr-FR'),
 							sellerName: user?.name || user?.username || '',
 
@@ -826,14 +763,17 @@ export function CashTerminalPage() {
 								cartDiscountMode === 'percent' && cartDiscountValue > 0
 									? cartDiscountValue
 									: undefined,
-							totalTtc,
-							taxAmount: totalVat,
-							totalSavings: lineDiscountsTotalTtc + cartDiscountAmount,
+							// Utiliser les totaux du backend
+							totalTtc: backendTotals.total_ttc,
+							taxAmount: backendTotals.total_tva,
+							totalSavings:
+								backendTotals.line_discounts_ttc +
+								backendTotals.cart_discount_ttc,
 							paymentMethod: selectedPaymentMethod,
-							vatBreakdown: vatBreakdown.map((vb) => ({
+							vatBreakdown: backendTotals.vat_breakdown.map((vb) => ({
 								rate: vb.rate,
 								baseHt: vb.base_ht,
-								vat: vb.vat,
+								vat: vb.vat_amount,
 								totalTtc: vb.total_ttc,
 							})),
 						},
@@ -851,7 +791,7 @@ export function CashTerminalPage() {
 				}
 			}
 
-			toast.success(`Ticket ${invoice.number} créé`)
+			toast.success(`Ticket ${ticket.number} créé`)
 			setPaymentStep('success')
 			setTimeout(() => clearCart(), 3000)
 		} catch (error: any) {
@@ -867,21 +807,16 @@ export function CashTerminalPage() {
 		cart,
 		cashRegisterId,
 		clearCart,
-		createCashMovement,
-		createInvoice,
+		createPosTicket,
 		cartDiscountMode,
 		cartDiscountValue,
 		discountAmount,
 		getEffectiveUnitTtc,
 		getLineTotalTtc,
-		applyCartDiscountProRata,
 		pb,
 		selectedPaymentMethod,
 		subtotalTtc,
-		totalVat,
 		totalTtc,
-		totalHt,
-		vatBreakdown,
 		user,
 	])
 
