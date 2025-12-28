@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -279,6 +280,36 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 
 	openedAt := parsePocketBaseDate(session.GetString("opened_at"))
 
+	// ✅ FIX: Arrondir tous les montants à 2 décimales
+	totalHT = roundAmount(totalHT)
+	totalTVA = roundAmount(totalTVA)
+	totalTTC = roundAmount(totalTTC)
+	refundsTotalTTC = roundAmount(refundsTotalTTC)
+	cashIn = roundAmount(cashIn)
+	cashOut = roundAmount(cashOut)
+	safeDrop = roundAmount(safeDrop)
+	movementsTotal = roundAmount(movementsTotal)
+	expectedCash = roundAmount(expectedCash)
+	cashFromSales = roundAmount(cashFromSales)
+	openingFloat = roundAmount(openingFloat)
+
+	// Arrondir les montants dans les maps
+	for k, v := range totalsByMethod {
+		totalsByMethod[k] = roundAmount(v)
+	}
+	for k, v := range refundsByMethod {
+		refundsByMethod[k] = roundAmount(v)
+	}
+	for k, v := range netByMethod {
+		netByMethod[k] = roundAmount(v)
+	}
+	for k, v := range vatByRate {
+		v.BaseHT = roundAmount(v.BaseHT)
+		v.VATAmount = roundAmount(v.VATAmount)
+		v.TotalTTC = roundAmount(v.TotalTTC)
+		vatByRate[k] = v
+	}
+
 	rapport := &RapportX{
 		ReportType:  "x",
 		GeneratedAt: time.Now(),
@@ -327,6 +358,11 @@ func abs(v float64) float64 {
 		return -v
 	}
 	return v
+}
+
+// roundAmount arrondit proprement à 2 décimales pour éviter les .9999999998
+func roundAmount(val float64) float64 {
+	return math.Round(val*100) / 100
 }
 
 // ============================================================================
@@ -628,6 +664,29 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		openedAt := parsePocketBaseDate(session.GetString("opened_at"))
 		closedAt := parsePocketBaseDate(session.GetString("closed_at"))
 
+		// ✅ FIX: Arrondir les montants de session à 2 décimales
+		sessionHT = roundAmount(sessionHT)
+		sessionTVA = roundAmount(sessionTVA)
+		sessionTTC = roundAmount(sessionTTC)
+		expectedCash = roundAmount(expectedCash)
+		countedCash = roundAmount(countedCash)
+		cashDiff = roundAmount(cashDiff)
+		openingFloat = roundAmount(openingFloat)
+
+		// Arrondir les montants dans les maps de session
+		for k, v := range sessionMethodTotals {
+			sessionMethodTotals[k] = roundAmount(v)
+		}
+		for k, v := range sessionRefundsByMethod {
+			sessionRefundsByMethod[k] = roundAmount(v)
+		}
+		for k, v := range sessionVATByRate {
+			v.BaseHT = roundAmount(v.BaseHT)
+			v.VATAmount = roundAmount(v.VATAmount)
+			v.TotalTTC = roundAmount(v.TotalTTC)
+			sessionVATByRate[k] = v
+		}
+
 		sessionsSummaries = append(sessionsSummaries, SessionSummary{
 			ID:                session.Id,
 			OpenedAt:          openedAt,
@@ -673,6 +732,30 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 	// ═══════════════════════════════════════════════════════════════════════
 	// 6. CONSTRUIRE LE RAPPORT
 	// ═══════════════════════════════════════════════════════════════════════
+
+	// ✅ FIX: Arrondir tous les montants à 2 décimales
+	totalHT = roundAmount(totalHT)
+	totalTVA = roundAmount(totalTVA)
+	totalTTC = roundAmount(totalTTC)
+	totalCashExpected = roundAmount(totalCashExpected)
+	totalCashCounted = roundAmount(totalCashCounted)
+	totalCashDifference = roundAmount(totalCashDifference)
+	totalDiscounts = roundAmount(totalDiscounts)
+	creditNotesTotal = roundAmount(creditNotesTotal)
+
+	// Arrondir les montants dans les maps
+	for k, v := range totalsByMethod {
+		totalsByMethod[k] = roundAmount(v)
+	}
+	for k, v := range refundsByMethod {
+		refundsByMethod[k] = roundAmount(v)
+	}
+	for k, v := range globalVATByRate {
+		v.BaseHT = roundAmount(v.BaseHT)
+		v.VATAmount = roundAmount(v.VATAmount)
+		v.TotalTTC = roundAmount(v.TotalTTC)
+		globalVATByRate[k] = v
+	}
 
 	rapport := &RapportZ{
 		ReportType:   "z",

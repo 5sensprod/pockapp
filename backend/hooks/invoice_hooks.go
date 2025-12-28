@@ -46,6 +46,180 @@ var allowedStatusTransitions = map[string][]string{
 }
 
 // ============================================================================
+// FONCTIONS D'ARRONDI DES MONTANTS
+// ============================================================================
+
+// roundAmount arrondit proprement à 2 décimales pour éviter les erreurs de virgule flottante
+// Exemple: 119.70000000000002 → 119.70
+func roundAmount(val float64) float64 {
+	return math.Round(val*100) / 100
+}
+
+// roundInvoiceAmounts arrondit TOUS les montants d'une facture/ticket
+// Cette fonction garantit la cohérence des données avant hash et stockage
+func roundInvoiceAmounts(record *models.Record) {
+	// 1. Arrondir les totaux principaux
+	record.Set("total_ht", roundAmount(record.GetFloat("total_ht")))
+	record.Set("total_tva", roundAmount(record.GetFloat("total_tva")))
+	record.Set("total_ttc", roundAmount(record.GetFloat("total_ttc")))
+
+	// 2. Arrondir les champs de remise si présents
+	if cartDiscountTtc := record.GetFloat("cart_discount_ttc"); cartDiscountTtc != 0 {
+		record.Set("cart_discount_ttc", roundAmount(cartDiscountTtc))
+	}
+	if lineDiscountsTotalTtc := record.GetFloat("line_discounts_total_ttc"); lineDiscountsTotalTtc != 0 {
+		record.Set("line_discounts_total_ttc", roundAmount(lineDiscountsTotalTtc))
+	}
+
+	// 3. Arrondir les champs de remboursement
+	if remainingAmount := record.GetFloat("remaining_amount"); remainingAmount != 0 {
+		record.Set("remaining_amount", roundAmount(remainingAmount))
+	}
+	if creditNotesTotal := record.GetFloat("credit_notes_total"); creditNotesTotal != 0 {
+		record.Set("credit_notes_total", roundAmount(creditNotesTotal))
+	}
+
+	// 4. Arrondir les items
+	roundItems(record)
+
+	// 5. Arrondir la ventilation TVA
+	roundVatBreakdown(record)
+
+	// 6. Vérifier la cohérence HT + TVA = TTC (correction automatique si nécessaire)
+	totalHT := record.GetFloat("total_ht")
+	totalTVA := record.GetFloat("total_tva")
+	totalTTC := record.GetFloat("total_ttc")
+
+	expectedTTC := roundAmount(totalHT + totalTVA)
+	if math.Abs(expectedTTC-totalTTC) > 0.01 {
+		// Recalculer la TVA pour garantir la cohérence
+		correctedTVA := roundAmount(totalTTC - totalHT)
+		record.Set("total_tva", correctedTVA)
+		log.Printf("🔧 [Arrondi] Correction TVA: %.2f → %.2f (HT=%.2f, TTC=%.2f)",
+			totalTVA, correctedTVA, totalHT, totalTTC)
+	}
+}
+
+// roundItems arrondit les montants de chaque item dans le champ "items"
+func roundItems(record *models.Record) {
+	itemsRaw := record.Get("items")
+	if itemsRaw == nil {
+		return
+	}
+
+	var items []map[string]interface{}
+
+	// Parser les items selon leur type
+	switch v := itemsRaw.(type) {
+	case []interface{}:
+		for _, it := range v {
+			if m, ok := it.(map[string]interface{}); ok {
+				items = append(items, m)
+			}
+		}
+	case []map[string]interface{}:
+		items = v
+	case string:
+		if v == "" || v == "null" || v == "[]" {
+			return
+		}
+		if err := json.Unmarshal([]byte(v), &items); err != nil {
+			log.Printf("⚠️ [Arrondi] Erreur parsing items: %v", err)
+			return
+		}
+	default:
+		// Essayer de marshaler/unmarshaler
+		b, err := json.Marshal(v)
+		if err != nil {
+			return
+		}
+		if err := json.Unmarshal(b, &items); err != nil {
+			return
+		}
+	}
+
+	if len(items) == 0 {
+		return
+	}
+
+	// Arrondir chaque item
+	for i := range items {
+		item := items[i]
+
+		// Arrondir les champs monétaires courants
+		moneyFields := []string{
+			"unit_price_ht", "unit_price_ttc", "unit_price",
+			"total_ht", "total_ttc", "total_tva",
+			"line_discount_ttc", "line_discount_value",
+			"unit_price_ttc_before_discount",
+		}
+
+		for _, field := range moneyFields {
+			if val, ok := item[field].(float64); ok {
+				item[field] = roundAmount(val)
+			}
+		}
+	}
+
+	record.Set("items", items)
+}
+
+// roundVatBreakdown arrondit les montants dans la ventilation TVA
+func roundVatBreakdown(record *models.Record) {
+	vatRaw := record.Get("vat_breakdown")
+	if vatRaw == nil {
+		return
+	}
+
+	var vatBreakdown []map[string]interface{}
+
+	// Parser selon le type
+	switch v := vatRaw.(type) {
+	case []interface{}:
+		for _, it := range v {
+			if m, ok := it.(map[string]interface{}); ok {
+				vatBreakdown = append(vatBreakdown, m)
+			}
+		}
+	case []map[string]interface{}:
+		vatBreakdown = v
+	case string:
+		if v == "" || v == "null" || v == "[]" {
+			return
+		}
+		if err := json.Unmarshal([]byte(v), &vatBreakdown); err != nil {
+			return
+		}
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return
+		}
+		if err := json.Unmarshal(b, &vatBreakdown); err != nil {
+			return
+		}
+	}
+
+	if len(vatBreakdown) == 0 {
+		return
+	}
+
+	// Arrondir chaque entrée
+	for i := range vatBreakdown {
+		entry := vatBreakdown[i]
+
+		vatFields := []string{"base_ht", "vat", "vat_amount", "total_ttc"}
+		for _, field := range vatFields {
+			if val, ok := entry[field].(float64); ok {
+				entry[field] = roundAmount(val)
+			}
+		}
+	}
+
+	record.Set("vat_breakdown", vatBreakdown)
+}
+
+// ============================================================================
 // HELPER: DÉTECTION SKIP HOOK
 // ============================================================================
 
@@ -238,6 +412,13 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		// ═════════════════════════════════════════════════════════════════════
 		// FIN DES VALIDATIONS - DÉBUT NUMÉROTATION/HASH
 		// ═════════════════════════════════════════════════════════════════════
+
+		// ═════════════════════════════════════════════════════════════════════
+		// ✅ ARRONDI DES MONTANTS (avant hash pour garantir la cohérence)
+		// ═════════════════════════════════════════════════════════════════════
+		roundInvoiceAmounts(record)
+		log.Printf("✅ [Arrondi] Montants arrondis pour facture: HT=%.2f, TVA=%.2f, TTC=%.2f",
+			record.GetFloat("total_ht"), record.GetFloat("total_tva"), record.GetFloat("total_ttc"))
 
 		// Déterminer l'année fiscale
 		fiscalYear := time.Now().Year()
@@ -507,6 +688,11 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 					}
 				}
 				updated.Set("fiscal_year", fiscalYear)
+
+				// ✅ ARRONDI DES MONTANTS (avant hash pour garantir la cohérence)
+				roundInvoiceAmounts(updated)
+				log.Printf("✅ [Arrondi] Validation brouillon: HT=%.2f, TVA=%.2f, TTC=%.2f",
+					updated.GetFloat("total_ht"), updated.GetFloat("total_tva"), updated.GetFloat("total_ttc"))
 
 				// Chaînage
 				lastInvoice, err := getLastInvoice(app, ownerCompany)
