@@ -214,6 +214,11 @@ export function QuotesPage() {
 		setDownloadingQuoteId(quote.id)
 
 		try {
+			// ✅ IMPORTANT: Récupérer le devis complet avec getOne pour avoir vat_breakdown
+			const fullQuote = await pb.collection('quotes').getOne(quote.id, {
+				expand: 'customer,issued_by',
+			})
+
 			// Récupérer les infos de l'entreprise
 			let company: any
 			try {
@@ -223,10 +228,10 @@ export function QuotesPage() {
 			}
 
 			// Récupérer le client (si pas déjà dans expand)
-			let customer = quote.expand?.customer
-			if (!customer && quote.customer) {
+			let customer = fullQuote.expand?.customer
+			if (!customer && fullQuote.customer) {
 				try {
-					customer = await pb.collection('customers').getOne(quote.customer)
+					customer = await pb.collection('customers').getOne(fullQuote.customer)
 				} catch (err) {
 					console.warn('Client non trouvé:', err)
 				}
@@ -238,10 +243,10 @@ export function QuotesPage() {
 				companyLogoUrl = pb.files.getUrl(company, company.logo)
 			}
 
-			// Générer le PDF
+			// Générer le PDF avec le devis COMPLET
 			const blob = await pdf(
 				<QuotePdfDocument
-					quote={quote}
+					quote={fullQuote as any} // ✅ Utiliser fullQuote au lieu de quote
 					customer={customer}
 					company={company}
 					companyLogoUrl={companyLogoUrl}

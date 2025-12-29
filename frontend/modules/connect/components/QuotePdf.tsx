@@ -1,4 +1,5 @@
 // frontend/modules/connect/components/QuotePdf.tsx
+// ✅ VERSION HARMONISÉE - Support TVA multi-taux avec vat_breakdown stocké
 
 import type { QuoteResponse } from '@/lib/types/invoice.types'
 import {
@@ -47,6 +48,14 @@ interface CompanyInfo {
 	account_holder?: string
 	invoice_footer?: string
 	default_payment_terms_days?: number
+}
+
+// ✅ Type pour la ventilation TVA
+interface VatBreakdown {
+	rate: number
+	base_ht: number
+	vat: number
+	total_ttc: number
 }
 
 // Styles PDF
@@ -211,6 +220,20 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		fontWeight: 'bold',
 	},
+	// ✅ Styles pour la ventilation TVA
+	totalsTvaBreakdown: {
+		fontSize: 10,
+		color: '#555',
+		fontStyle: 'italic',
+		paddingLeft: 8,
+	},
+	totalsTvaSection: {
+		marginTop: 2,
+		paddingTop: 4,
+		borderTopWidth: 0.5,
+		borderTopColor: '#ddd',
+		borderTopStyle: 'solid',
+	},
 
 	// NOTES & FOOTER
 	notes: {
@@ -363,6 +386,61 @@ export function QuotePdfDocument({
 
 	const websiteLine = company?.website ? `Site : ${company.website}` : undefined
 
+	// ✅ Utiliser la ventilation stockée, ou recalculer en fallback
+	const getVatBreakdown = (): VatBreakdown[] => {
+		// 1. Si la ventilation est stockée en base, l'uti	liser directement
+		const storedBreakdown = (quote as any).vat_breakdown as
+			| VatBreakdown[]
+			| undefined
+
+		if (
+			storedBreakdown &&
+			Array.isArray(storedBreakdown) &&
+			storedBreakdown.length > 0
+		) {
+			return storedBreakdown.sort((a, b) => a.rate - b.rate)
+		}
+
+		console.log('⚠️ [QuotePDF] Fallback - recalcul depuis items')
+
+		// 2. Fallback : recalculer depuis les items
+		const vatBreakdownMap = new Map<number, VatBreakdown>()
+
+		for (const item of quote.items) {
+			const rate = item.tva_rate
+			const ht = item.total_ht
+			const vat = item.total_ttc - item.total_ht
+			const ttc = item.total_ttc
+
+			let entry = vatBreakdownMap.get(rate)
+
+			if (!entry) {
+				entry = {
+					rate,
+					base_ht: 0,
+					vat: 0,
+					total_ttc: 0,
+				}
+				vatBreakdownMap.set(rate, entry)
+			}
+
+			entry.base_ht += ht
+			entry.vat += vat
+			entry.total_ttc += ttc
+		}
+
+		return Array.from(vatBreakdownMap.values())
+			.map((entry) => ({
+				rate: entry.rate,
+				base_ht: Math.round(entry.base_ht * 100) / 100,
+				vat: Math.round(entry.vat * 100) / 100,
+				total_ttc: Math.round(entry.total_ttc * 100) / 100,
+			}))
+			.sort((a, b) => a.rate - b.rate)
+	}
+
+	const vatBreakdown = getVatBreakdown()
+
 	return (
 		<Document>
 			<Page size='A4' style={styles.page}>
@@ -493,12 +571,48 @@ export function QuotePdfDocument({
 							{formatCurrency(quote.total_ht)}
 						</Text>
 					</View>
-					<View style={styles.totalsRow}>
-						<Text style={styles.totalsLabel}>TVA</Text>
-						<Text style={styles.totalsValue}>
-							{formatCurrency(quote.total_tva)}
-						</Text>
+
+					{/* ✅ VENTILATION TVA MULTI-TAUX */}
+					<View style={styles.totalsTvaSection}>
+						{vatBreakdown.length > 1 ? (
+							<>
+								<View style={styles.totalsRow}>
+									<Text style={styles.totalsLabel}>Total TVA</Text>
+									<Text style={styles.totalsValue}>
+										{formatCurrency(quote.total_tva)}
+									</Text>
+								</View>
+								{vatBreakdown.map((vb) => (
+									<View key={vb.rate} style={styles.totalsRow}>
+										<Text style={styles.totalsTvaBreakdown}>
+											dont TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+										</Text>
+										<Text style={styles.totalsTvaBreakdown}>
+											{vb.vat.toFixed(2)} €
+										</Text>
+									</View>
+								))}
+							</>
+						) : vatBreakdown.length === 1 ? (
+							<View style={styles.totalsRow}>
+								<Text style={styles.totalsLabel}>
+									TVA {vatBreakdown[0].rate}% sur{' '}
+									{vatBreakdown[0].base_ht.toFixed(2)} € HT
+								</Text>
+								<Text style={styles.totalsValue}>
+									{formatCurrency(vatBreakdown[0].vat)}
+								</Text>
+							</View>
+						) : (
+							<View style={styles.totalsRow}>
+								<Text style={styles.totalsLabel}>TVA</Text>
+								<Text style={styles.totalsValue}>
+									{formatCurrency(quote.total_tva)}
+								</Text>
+							</View>
+						)}
 					</View>
+
 					<View style={[styles.totalsRow, styles.totalsGrand]}>
 						<Text style={styles.totalsGrandText}>Total TTC</Text>
 						<Text style={styles.totalsGrandText}>
