@@ -82,6 +82,7 @@ export interface InvoiceBase {
 	cart_discount_value?: number
 	cart_discount_ttc?: number
 	line_discounts_total_ttc?: number
+	vat_breakdown?: any[]
 }
 
 // Pour la création (hash/sequence générés par le backend)

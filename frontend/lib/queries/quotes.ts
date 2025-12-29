@@ -203,6 +203,11 @@ export function useConvertQuoteToInvoice() {
 				.collection('quotes')
 				.getOne(quoteId)) as unknown as QuoteResponse
 
+			console.log('📦 Quote récupéré:', quote)
+			console.log('🔍 vat_breakdown du quote:', quote.vat_breakdown)
+			console.log('🔍 Type de vat_breakdown:', typeof quote.vat_breakdown)
+			console.log('🔍 Est-ce un tableau ?:', Array.isArray(quote.vat_breakdown))
+
 			// Si déjà converti → erreur
 			if (quote.generated_invoice_id) {
 				throw new Error('Ce devis a déjà été converti en facture.')
@@ -247,6 +252,13 @@ export function useConvertQuoteToInvoice() {
 
 				sold_by: quote.issued_by || undefined,
 			}
+
+			console.log('📤 Invoice data à envoyer:', invoiceData)
+			console.log('📤 vat_breakdown à envoyer:', invoiceData.vat_breakdown)
+			console.log(
+				'📤 JSON stringifié:',
+				JSON.stringify(invoiceData.vat_breakdown),
+			)
 
 			const invoice = await pb.collection('invoices').create(invoiceData)
 

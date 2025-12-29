@@ -37,7 +37,6 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
@@ -50,7 +49,11 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { useDeleteQuote, useQuotes } from '@/lib/queries/quotes'
+import {
+	useConvertQuoteToInvoice,
+	useDeleteQuote,
+	useQuotes,
+} from '@/lib/queries/quotes'
 import type { QuoteResponse, QuoteStatus } from '@/lib/types/invoice.types'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
@@ -117,7 +120,6 @@ export function QuotesPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
-	const queryClient = useQueryClient()
 
 	// Filtres
 	const [searchTerm, setSearchTerm] = useState('')
@@ -153,80 +155,7 @@ export function QuotesPage() {
 
 	// Mutations
 	const deleteQuote = useDeleteQuote()
-
-	const convertQuoteToInvoice = useMutation({
-		mutationFn: async (quote: QuoteResponse) => {
-			if (!activeCompanyId) {
-				throw new Error('Aucune entreprise active')
-			}
-
-			// 1️⃣ Générer un numéro de facture
-			const year = new Date().getFullYear()
-			const prefix = `FAC-${year}-`
-
-			let nextNumber = 1
-			try {
-				const lastInvoice = await pb.collection('invoices').getList(1, 1, {
-					filter: `owner_company = "${activeCompanyId}" && invoice_type = "invoice" && number ~ "${prefix}"`,
-					sort: '-sequence_number',
-				})
-
-				if (lastInvoice.items.length > 0) {
-					const lastNumber = (lastInvoice.items[0] as InvoiceResponse).number
-					const match = lastNumber.match(/FAC-\d{4}-(\d+)/)
-					if (match) {
-						nextNumber = Number.parseInt(match[1], 10) + 1
-					}
-				}
-			} catch (err) {
-				console.error('Erreur lors de la génération du numéro de facture', err)
-			}
-
-			const invoiceNumber = `${prefix}${String(nextNumber).padStart(6, '0')}`
-
-			// 2️⃣ Créer la facture officielle à partir du devis
-			const invoicePayload = {
-				number: invoiceNumber,
-				invoice_type: 'invoice' as const,
-				date: new Date().toISOString(),
-				due_date: undefined,
-				customer: quote.customer,
-				owner_company: quote.owner_company,
-				status: 'validated' as const,
-				is_paid: false,
-				items: quote.items,
-				total_ht: quote.total_ht,
-				total_tva: quote.total_tva,
-				total_ttc: quote.total_ttc,
-				currency: quote.currency,
-				notes: quote.notes,
-			}
-
-			const createdInvoice = (await pb
-				.collection('invoices')
-				.create(invoicePayload)) as InvoiceResponse
-
-			// 3️⃣ Marquer le devis comme accepté + lien vers la facture
-			await pb.collection('quotes').update(quote.id, {
-				status: 'accepted',
-				generated_invoice_id: createdInvoice.id,
-			})
-
-			return createdInvoice
-		},
-		onSuccess: async (invoice, quote) => {
-			toast.success(
-				`Facture ${invoice.number} créée à partir du devis ${quote.number}`,
-			)
-			await Promise.all([
-				queryClient.invalidateQueries({ queryKey: ['quotes'] }),
-				queryClient.invalidateQueries({ queryKey: ['invoices'] }),
-			])
-		},
-		onError: (error: any) => {
-			toast.error(error?.message || 'Erreur lors de la création de la facture')
-		},
-	})
+	const convertQuoteToInvoice = useConvertQuoteToInvoice()
 
 	// Handlers
 	const handleOpenDelete = (quote: QuoteResponse) => {
@@ -256,11 +185,12 @@ export function QuotesPage() {
 	const handleConfirmConvert = async () => {
 		if (!quoteToConvert) return
 		try {
-			await convertQuoteToInvoice.mutateAsync(quoteToConvert)
+			await convertQuoteToInvoice.mutateAsync(quoteToConvert.id)
+			toast.success(`Facture créée à partir du devis ${quoteToConvert.number}`)
 			setConvertDialogOpen(false)
 			setQuoteToConvert(null)
-		} catch {
-			// OnError géré dans la mutation
+		} catch (error: any) {
+			toast.error(error?.message || 'Erreur lors de la création de la facture')
 		}
 	}
 
@@ -270,11 +200,11 @@ export function QuotesPage() {
 	}
 
 	const handleEmailSent = () => {
+		toast.success('Email envoyé avec succès')
 		setEmailDialogOpen(false)
 		setQuoteToEmail(null)
 	}
 
-	// 📥 Télécharger le PDF
 	const handleDownloadPdf = async (quote: QuoteResponse) => {
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
@@ -328,52 +258,43 @@ export function QuotesPage() {
 			document.body.removeChild(link)
 			URL.revokeObjectURL(url)
 
-			toast.success('Devis téléchargé')
+			toast.success('PDF téléchargé')
 		} catch (error) {
-			console.error('Erreur génération PDF:', error)
 			toast.error('Erreur lors de la génération du PDF')
+			console.error(error)
 		} finally {
 			setDownloadingQuoteId(null)
 		}
 	}
 
 	return (
-		<div className='container mx-auto px-6 py-8'>
+		<div className='container mx-auto py-6 space-y-6'>
 			{/* Header */}
-			<div className='flex items-center justify-between mb-6'>
+			<div className='flex items-center justify-between'>
 				<div>
-					<h1 className='text-2xl font-bold flex items-center gap-2'>
-						<FileText className='h-6 w-6' />
-						Devis
-					</h1>
+					<h1 className='text-3xl font-bold tracking-tight'>Devis</h1>
 					<p className='text-muted-foreground'>
-						Gérez vos devis clients et transformez-les en factures.
+						Gérez vos devis et convertissez-les en factures
 					</p>
 				</div>
-				<Button
-					onClick={() => navigate({ to: '/connect/quotes/new' })}
-					className='gap-2'
-				>
-					<Plus className='h-4 w-4' />
+				<Button onClick={() => navigate({ to: '/connect/quotes/new' })}>
+					<Plus className='h-4 w-4 mr-2' />
 					Nouveau devis
 				</Button>
 			</div>
 
 			{/* Filtres */}
-			<div className='flex gap-4 mb-6 flex-wrap'>
-				<div className='flex-1 max-w-sm'>
-					<Input
-						placeholder='Rechercher par numéro...'
-						value={searchTerm}
-						onChange={(e) => setSearchTerm(e.target.value)}
-					/>
-				</div>
+			<div className='flex gap-4'>
+				<Input
+					placeholder='Rechercher par numéro...'
+					value={searchTerm}
+					onChange={(e) => setSearchTerm(e.target.value)}
+					className='max-w-sm'
+				/>
 
 				<Select
 					value={statusFilter}
-					onValueChange={(value) =>
-						setStatusFilter(value as QuoteStatus | 'all')
-					}
+					onValueChange={(v) => setStatusFilter(v as QuoteStatus | 'all')}
 				>
 					<SelectTrigger className='w-[200px]'>
 						<SelectValue placeholder='Statut' />

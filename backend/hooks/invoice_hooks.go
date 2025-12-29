@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1095,12 +1096,162 @@ func RegisterAuditLogHooks(app *pocketbase.PocketBase) {
 // HOOKS QUOTES (DEVIS)
 // ============================================================================
 
+func normalizeQuoteVatBreakdown(record *models.Record) {
+	vatRaw := record.Get("vat_breakdown")
+	if vatRaw == nil {
+		return
+	}
+
+	var vatBreakdown []map[string]interface{}
+
+	// Parser selon le type
+	switch v := vatRaw.(type) {
+	case []interface{}:
+		for _, it := range v {
+			if m, ok := it.(map[string]interface{}); ok {
+				vatBreakdown = append(vatBreakdown, m)
+			}
+		}
+	case []map[string]interface{}:
+		vatBreakdown = v
+	case string:
+		if v == "" || v == "null" || v == "[]" {
+			return
+		}
+		if err := json.Unmarshal([]byte(v), &vatBreakdown); err != nil {
+			log.Printf("⚠️ [Quote] Erreur parsing vat_breakdown: %v", err)
+			return
+		}
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return
+		}
+		if err := json.Unmarshal(b, &vatBreakdown); err != nil {
+			return
+		}
+	}
+
+	if len(vatBreakdown) == 0 {
+		return
+	}
+
+	// Normaliser chaque entrée
+	for i := range vatBreakdown {
+		entry := vatBreakdown[i]
+
+		// 1. S'assurer que 'rate' existe et est un nombre
+		if rate, ok := entry["rate"].(float64); ok {
+			entry["rate"] = rate
+		} else if rateInt, ok := entry["rate"].(int); ok {
+			entry["rate"] = float64(rateInt)
+		} else {
+			// Si rate n'existe pas ou est invalide, essayer de récupérer depuis d'autres champs
+			entry["rate"] = 20.0 // Valeur par défaut
+		}
+
+		// 2. Normaliser base_ht (doit être float64)
+		if baseHt, ok := entry["base_ht"].(float64); ok {
+			entry["base_ht"] = baseHt
+		} else if baseHtInt, ok := entry["base_ht"].(int); ok {
+			entry["base_ht"] = float64(baseHtInt)
+		} else if baseHtStr, ok := entry["base_ht"].(string); ok {
+			// Essayer de parser la string
+			if parsed, err := strconv.ParseFloat(baseHtStr, 64); err == nil {
+				entry["base_ht"] = parsed
+			} else {
+				entry["base_ht"] = 0.0
+			}
+		} else {
+			entry["base_ht"] = 0.0
+		}
+
+		// 3. Normaliser vat / vat_amount
+		// Le frontend peut envoyer 'vat' OU 'vat_amount'
+		// On s'assure que les DEUX existent et sont identiques
+		var vatAmount float64
+		hasVat := false
+		hasVatAmount := false
+
+		// Chercher 'vat'
+		if vat, ok := entry["vat"].(float64); ok {
+			vatAmount = vat
+			hasVat = true
+		} else if vatInt, ok := entry["vat"].(int); ok {
+			vatAmount = float64(vatInt)
+			hasVat = true
+		} else if vatStr, ok := entry["vat"].(string); ok {
+			if parsed, err := strconv.ParseFloat(vatStr, 64); err == nil {
+				vatAmount = parsed
+				hasVat = true
+			}
+		}
+
+		// Chercher 'vat_amount'
+		if vat, ok := entry["vat_amount"].(float64); ok {
+			if hasVat && vatAmount != vat {
+				log.Printf("⚠️ [Quote] Incohérence: vat=%.2f != vat_amount=%.2f, on garde vat", vatAmount, vat)
+			} else {
+				vatAmount = vat
+				hasVatAmount = true
+			}
+		} else if vatInt, ok := entry["vat_amount"].(int); ok {
+			vatFloat := float64(vatInt)
+			if hasVat && vatAmount != vatFloat {
+				log.Printf("⚠️ [Quote] Incohérence: vat=%.2f != vat_amount=%.2f, on garde vat", vatAmount, vatFloat)
+			} else {
+				vatAmount = vatFloat
+				hasVatAmount = true
+			}
+		}
+
+		// Si ni vat ni vat_amount n'existe, calculer depuis base_ht et rate
+		if !hasVat && !hasVatAmount {
+			baseHt := entry["base_ht"].(float64)
+			rate := entry["rate"].(float64)
+			vatAmount = baseHt * rate / 100.0
+		}
+
+		// S'assurer que les DEUX champs existent
+		entry["vat"] = vatAmount
+		entry["vat_amount"] = vatAmount
+
+		// 4. Normaliser total_ttc
+		if totalTtc, ok := entry["total_ttc"].(float64); ok {
+			entry["total_ttc"] = totalTtc
+		} else if totalTtcInt, ok := entry["total_ttc"].(int); ok {
+			entry["total_ttc"] = float64(totalTtcInt)
+		} else if totalTtcStr, ok := entry["total_ttc"].(string); ok {
+			if parsed, err := strconv.ParseFloat(totalTtcStr, 64); err == nil {
+				entry["total_ttc"] = parsed
+			} else {
+				// Calculer total_ttc depuis base_ht + vat_amount
+				baseHt := entry["base_ht"].(float64)
+				entry["total_ttc"] = baseHt + vatAmount
+			}
+		} else {
+			// Calculer total_ttc depuis base_ht + vat_amount
+			baseHt := entry["base_ht"].(float64)
+			entry["total_ttc"] = baseHt + vatAmount
+		}
+	}
+
+	// Sauvegarder le vat_breakdown normalisé
+	record.Set("vat_breakdown", vatBreakdown)
+}
+
 func RegisterQuoteHooks(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeCreateRequest("quotes").Add(func(e *core.RecordCreateEvent) error {
 		record := e.Record
 
+		// ✅ ÉTAPE 1: Normaliser le vat_breakdown AVANT l'arrondi
+		// Cela garantit que la structure est identique aux factures
+		normalizeQuoteVatBreakdown(record)
+
+		// ✅ ÉTAPE 2: Arrondir tous les montants (y compris vat_breakdown)
 		roundInvoiceAmounts(record)
 
+		// ✅ ÉTAPE 3: Remplir issued_by si non fourni
 		if record.GetString("issued_by") == "" && e.HttpContext != nil {
 			if authRecord := e.HttpContext.Get("authRecord"); authRecord != nil {
 				if user, ok := authRecord.(*models.Record); ok {
@@ -1109,6 +1260,7 @@ func RegisterQuoteHooks(app *pocketbase.PocketBase) {
 			}
 		}
 
+		// ✅ ÉTAPE 4: Générer le numéro de devis si absent/invalide
 		ownerCompany := record.GetString("owner_company")
 		fiscalYear := time.Now().Year()
 
@@ -1120,6 +1272,19 @@ func RegisterQuoteHooks(app *pocketbase.PocketBase) {
 			}
 			record.Set("number", newNumber)
 		}
+
+		return nil
+	})
+
+	// ✅ Hook de mise à jour: même traitement
+	app.OnRecordBeforeUpdateRequest("quotes").Add(func(e *core.RecordUpdateEvent) error {
+		record := e.Record
+
+		// Si vat_breakdown est modifié, le normaliser
+		normalizeQuoteVatBreakdown(record)
+
+		// Arrondir tous les montants
+		roundInvoiceAmounts(record)
 
 		return nil
 	})

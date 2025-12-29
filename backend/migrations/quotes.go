@@ -1,5 +1,6 @@
 // backend/migrations/quotes.go
 // ✅ PROPRE: ajouter issued_by (Relation -> users) + update si collection existe déjà
+// ✅ AJOUT: Champ vat_breakdown pour avoir la même structure que les factures
 
 package migrations
 
@@ -81,7 +82,7 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 					},
 				},
 
-				// ✅ NOUVEAU: émis par (vendeur / commercial)
+				// ✅ NOUVEAU: Émis par (vendeur / commercial)
 				&schema.SchemaField{
 					Name: "issued_by",
 					Type: schema.FieldTypeRelation,
@@ -126,6 +127,12 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 					Required: true,
 					Options:  &schema.NumberOptions{},
 				},
+				// ✅ AJOUT: Ventilation TVA (même structure que factures)
+				&schema.SchemaField{
+					Name:    "vat_breakdown",
+					Type:    schema.FieldTypeJson,
+					Options: &schema.JsonOptions{MaxSize: 65536}, // 64KB suffisant
+				},
 				&schema.SchemaField{
 					Name:     "currency",
 					Type:     schema.FieldTypeText,
@@ -137,6 +144,32 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 					Type:    schema.FieldTypeText,
 					Options: &schema.TextOptions{Max: types.Pointer(2000)},
 				},
+
+				// ✅ AJOUT: Champs de remise (mêmes que factures)
+				&schema.SchemaField{
+					Name: "cart_discount_mode",
+					Type: schema.FieldTypeSelect,
+					Options: &schema.SelectOptions{
+						MaxSelect: 1,
+						Values:    []string{"percent", "amount"},
+					},
+				},
+				&schema.SchemaField{
+					Name:    "cart_discount_value",
+					Type:    schema.FieldTypeNumber,
+					Options: &schema.NumberOptions{},
+				},
+				&schema.SchemaField{
+					Name:    "cart_discount_ttc",
+					Type:    schema.FieldTypeNumber,
+					Options: &schema.NumberOptions{},
+				},
+				&schema.SchemaField{
+					Name:    "line_discounts_total_ttc",
+					Type:    schema.FieldTypeNumber,
+					Options: &schema.NumberOptions{},
+				},
+
 				&schema.SchemaField{
 					Name: "generated_invoice_id",
 					Type: schema.FieldTypeRelation,
@@ -180,6 +213,61 @@ func ensureQuotesCollection(app *pocketbase.PocketBase) error {
 		})
 		changed = true
 		log.Println("🛠 Ajout quotes.issued_by -> users")
+	}
+
+	// ✅ ajouter vat_breakdown si absent
+	if f := collection.Schema.GetFieldByName("vat_breakdown"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "vat_breakdown",
+			Type:    schema.FieldTypeJson,
+			Options: &schema.JsonOptions{MaxSize: 65536},
+		})
+		changed = true
+		log.Println("🛠 Ajout quotes.vat_breakdown (JSON)")
+	}
+
+	// ✅ ajouter champs de remise si absents
+	if f := collection.Schema.GetFieldByName("cart_discount_mode"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "cart_discount_mode",
+			Type: schema.FieldTypeSelect,
+			Options: &schema.SelectOptions{
+				MaxSelect: 1,
+				Values:    []string{"percent", "amount"},
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout quotes.cart_discount_mode")
+	}
+
+	if f := collection.Schema.GetFieldByName("cart_discount_value"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "cart_discount_value",
+			Type:    schema.FieldTypeNumber,
+			Options: &schema.NumberOptions{},
+		})
+		changed = true
+		log.Println("🛠 Ajout quotes.cart_discount_value")
+	}
+
+	if f := collection.Schema.GetFieldByName("cart_discount_ttc"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "cart_discount_ttc",
+			Type:    schema.FieldTypeNumber,
+			Options: &schema.NumberOptions{},
+		})
+		changed = true
+		log.Println("🛠 Ajout quotes.cart_discount_ttc")
+	}
+
+	if f := collection.Schema.GetFieldByName("line_discounts_total_ttc"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "line_discounts_total_ttc",
+			Type:    schema.FieldTypeNumber,
+			Options: &schema.NumberOptions{},
+		})
+		changed = true
+		log.Println("🛠 Ajout quotes.line_discounts_total_ttc")
 	}
 
 	if changed {
