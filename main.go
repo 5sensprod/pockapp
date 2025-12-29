@@ -12,6 +12,7 @@ import (
 	"pocket-react/backend"
 	"pocket-react/backend/hooks"
 	"pocket-react/backend/migrations"
+	"pocket-react/backend/routes" // ✅ NOUVEAU : import du package routes
 
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v5"
@@ -173,25 +174,27 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 			})
 		})
 
-		// Routes de setup
-		backend.RegisterSetupRoutes(pb, e.Router)
+		// ✅ MODIFIÉ : Routes de setup
+		routes.RegisterSetupRoutes(pb, e.Router)
 
-		// Routes settings SMTP (nouveau!)
-		backend.RegisterSmtpSettingsRoutes(pb, e.Router)
+		// ✅ MODIFIÉ : Routes settings SMTP
+		routes.RegisterSmtpSettingsRoutes(pb, e.Router)
 
-		// Route envoi email devis
-		backend.RegisterQuoteEmailRoutes(pb, e.Router)
+		// ✅ MODIFIÉ : Route envoi email devis
+		routes.RegisterQuoteEmailRoutes(pb, e.Router)
 
-		// Route envoi email factures
-		backend.RegisterInvoiceEmailRoutes(pb, e.Router)
+		// ✅ MODIFIÉ : Route envoi email factures
+		routes.RegisterInvoiceEmailRoutes(pb, e.Router)
 
-		// 🔹 NOUVEAU : routes caisse
-		backend.RegisterCashRoutes(pb, e.Router)
+		// 🔹 MODIFIÉ : routes caisse depuis le nouveau package routes
+		routes.RegisterCashRoutes(pb, e.Router)
 
-		// ✅ NOUVEAU : routes remboursement factures (B2B)
-		backend.RegisterInvoiceRefundRoutes(pb, e.Router)
+		// ✅ MODIFIÉ : routes remboursement factures (B2B)
+		routes.RegisterInvoiceRefundRoutes(pb, e.Router)
 
-		backend.RegisterPosRoutes(pb, e.Router)
+		// ✅ MODIFIÉ : routes POS
+		routes.RegisterPosRoutes(pb, e.Router)
+
 		// SPA handler avec assets embarqués (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 

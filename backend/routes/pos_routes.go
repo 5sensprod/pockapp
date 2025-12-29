@@ -2,10 +2,9 @@
 // 🎫 ROUTES API POS - Création de tickets avec logique métier centralisée
 // Inspiré des POS modernes (Square, Stripe Terminal, SumUp)
 
-package backend
+package routes
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -560,7 +559,10 @@ func calculateTicketTotals(input PosTicketInput) (TicketTotals, []map[string]any
 // FONCTIONS UTILITAIRES
 // ============================================================================
 
-// NOTE: roundAmount et absFloat sont définis dans refund.go
+// roundAmount arrondit au centime
+func roundAmount(amount float64) float64 {
+	return math.Round(amount*100) / 100
+}
 
 // clampFloat limite une valeur entre min et max
 func clampFloat(val, min, max float64) float64 {
@@ -619,51 +621,4 @@ func getTicketChainInfo(dao *daos.Dao, ownerCompany string) (string, int) {
 
 	lastInvoice := records[0]
 	return lastInvoice.GetString("hash"), lastInvoice.GetInt("sequence_number") + 1
-}
-
-// ============================================================================
-// PARSING HELPERS
-// ============================================================================
-
-// parseItemsFromJSON parse les items depuis différents formats
-func parseItemsFromJSON(data interface{}) ([]map[string]any, error) {
-	if data == nil {
-		return nil, fmt.Errorf("items est nil")
-	}
-
-	switch v := data.(type) {
-	case []interface{}:
-		result := make([]map[string]any, 0, len(v))
-		for _, item := range v {
-			if m, ok := item.(map[string]interface{}); ok {
-				result = append(result, m)
-			}
-		}
-		return result, nil
-
-	case []map[string]any:
-		return v, nil
-
-	case string:
-		if v == "" || v == "null" || v == "[]" {
-			return nil, fmt.Errorf("items vide")
-		}
-		var result []map[string]any
-		if err := json.Unmarshal([]byte(v), &result); err != nil {
-			return nil, err
-		}
-		return result, nil
-
-	default:
-		// Essayer marshal/unmarshal
-		b, err := json.Marshal(v)
-		if err != nil {
-			return nil, err
-		}
-		var result []map[string]any
-		if err := json.Unmarshal(b, &result); err != nil {
-			return nil, err
-		}
-		return result, nil
-	}
 }

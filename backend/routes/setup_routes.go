@@ -1,4 +1,5 @@
-package backend
+// backend/routes/setup_routes.go
+package routes
 
 import (
 	"log"
@@ -144,7 +145,7 @@ func RegisterSetupRoutes(app *pocketbase.PocketBase, e *echo.Echo) {
 			})
 		}
 
-		// 🔁 Relancer les migrations après la création du premier user
+		// 🔄 Relancer les migrations après la création du premier user
 		if err := migrations.RunMigrations(app); err != nil {
 			log.Println("Erreur lors des migrations après setup:", err)
 			// On ne bloque pas la réponse au client

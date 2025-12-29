@@ -1,5 +1,5 @@
 // backend/quotes_email.go
-package backend
+package routes
 
 import (
 	"bytes"

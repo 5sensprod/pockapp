@@ -1,5 +1,5 @@
-// backend/smtp_settings.go
-package backend
+// backend/routes/smtp_settings_routes.go
+package routes
 
 import (
 	"net/mail"
@@ -11,23 +11,23 @@ import (
 )
 
 type SmtpSettingsRequest struct {
-	Enabled      bool   `json:"enabled"`
-	Host         string `json:"host"`
-	Port         int    `json:"port"`
-	Username     string `json:"username"`
-	Password     string `json:"password"`
-	SenderName   string `json:"senderName"`
-	SenderEmail  string `json:"senderEmail"`
+	Enabled     bool   `json:"enabled"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	SenderName  string `json:"senderName"`
+	SenderEmail string `json:"senderEmail"`
 }
 
 type SmtpSettingsResponse struct {
-	Enabled      bool   `json:"enabled"`
-	Host         string `json:"host"`
-	Port         int    `json:"port"`
-	Username     string `json:"username"`
-	HasPassword  bool   `json:"hasPassword"` // Ne pas renvoyer le mot de passe en clair
-	SenderName   string `json:"senderName"`
-	SenderEmail  string `json:"senderEmail"`
+	Enabled     bool   `json:"enabled"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	HasPassword bool   `json:"hasPassword"` // Ne pas renvoyer le mot de passe en clair
+	SenderName  string `json:"senderName"`
+	SenderEmail string `json:"senderEmail"`
 }
 
 func RegisterSmtpSettingsRoutes(pb *pocketbase.PocketBase, e *echo.Echo) {

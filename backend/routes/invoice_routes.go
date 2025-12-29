@@ -1,4 +1,5 @@
-package backend
+// backend/routes/invoice_routes.go
+package routes
 
 import (
 	"log"
@@ -8,6 +9,8 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
+
+	"pocket-react/backend"
 )
 
 type InvoiceRefundInput struct {
@@ -59,7 +62,7 @@ func RegisterInvoiceRefundRoutes(app *pocketbase.PocketBase, router *echo.Echo) 
 		}
 
 		// 3) Convertir le payload vers RefundInput
-		refundInput := RefundInput{
+		refundInput := backend.RefundInput{
 			OriginalDocumentID: payload.OriginalInvoiceID,
 			RefundType:         payload.RefundType,
 			RefundMethod:       payload.RefundMethod,
@@ -72,9 +75,9 @@ func RegisterInvoiceRefundRoutes(app *pocketbase.PocketBase, router *echo.Echo) 
 			if len(payload.RefundedItems) == 0 {
 				return apis.NewBadRequestError("refunded_items requis si refund_type=partial", nil)
 			}
-			refundInput.RefundedItems = make([]RefundedItemInput, len(payload.RefundedItems))
+			refundInput.RefundedItems = make([]backend.RefundedItemInput, len(payload.RefundedItems))
 			for i, item := range payload.RefundedItems {
-				refundInput.RefundedItems[i] = RefundedItemInput{
+				refundInput.RefundedItems[i] = backend.RefundedItemInput{
 					OriginalItemIndex: item.OriginalItemIndex,
 					Quantity:          item.Quantity,
 					Reason:            item.Reason,
@@ -88,7 +91,7 @@ func RegisterInvoiceRefundRoutes(app *pocketbase.PocketBase, router *echo.Echo) 
 			soldByID = info.AuthRecord.Id
 		}
 
-		result, err := CreateCreditNote(dao, refundInput, soldByID)
+		result, err := backend.CreateCreditNote(dao, refundInput, soldByID)
 		if err != nil {
 			errMsg := err.Error()
 			if strings.Contains(errMsg, "introuvable") {
@@ -116,5 +119,4 @@ func RegisterInvoiceRefundRoutes(app *pocketbase.PocketBase, router *echo.Echo) 
 	},
 		apis.RequireRecordAuth(),
 	)
-
 }

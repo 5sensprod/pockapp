@@ -1,5 +1,5 @@
-// backend/invoices_email.go
-package backend
+// backend/routes/invoices_email_routes.go
+package routes
 
 import (
 	"bytes"

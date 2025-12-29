@@ -1,7 +1,7 @@
 // backend/routes/cash_routes.go
 // VERSION AMÉLIORÉE avec routes Z reports
 
-package backend
+package routes
 
 import (
 	"fmt"
@@ -17,8 +17,8 @@ import (
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/models"
 
-	// IMPORTANT : Remplacer "pocket-react" par le nom de votre module (voir go.mod)
-
+	// Import du package backend pour accéder à CreateCreditNote
+	"pocket-react/backend"
 	"pocket-react/backend/reports"
 )
 
@@ -110,7 +110,7 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		}
 
 		// 4) Convertir le payload vers RefundInput
-		refundInput := RefundInput{
+		refundInput := backend.RefundInput{
 			OriginalDocumentID: payload.OriginalTicketID,
 			RefundType:         payload.RefundType,
 			RefundMethod:       payload.RefundMethod,
@@ -120,9 +120,9 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 
 		// Convertir les items si partial
 		if payload.RefundType == "partial" {
-			refundInput.RefundedItems = make([]RefundedItemInput, len(payload.RefundedItems))
+			refundInput.RefundedItems = make([]backend.RefundedItemInput, len(payload.RefundedItems))
 			for i, item := range payload.RefundedItems {
-				refundInput.RefundedItems[i] = RefundedItemInput{
+				refundInput.RefundedItems[i] = backend.RefundedItemInput{
 					OriginalItemIndex: item.OriginalItemIndex,
 					Quantity:          item.Quantity,
 					Reason:            item.Reason,
@@ -136,7 +136,7 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			soldByID = info.AuthRecord.Id
 		}
 
-		result, err := CreateCreditNote(dao, refundInput, soldByID)
+		result, err := backend.CreateCreditNote(dao, refundInput, soldByID)
 		if err != nil {
 			// Déterminer le type d'erreur
 			errMsg := err.Error()
@@ -619,4 +619,12 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		apis.RequireRecordAuth(),
 	)
 
+}
+
+// absFloat retourne la valeur absolue d'un float64
+func absFloat(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
