@@ -2,6 +2,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -193,6 +203,9 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 	const [globalReason, setGlobalReason] = useState<string>('')
 	const [lines, setLines] = useState<Record<number, UiLine>>({})
 
+	// 🆕 State pour confirmation
+	const [showConfirm, setShowConfirm] = useState(false)
+
 	// 🆕 State pour les infos de remboursement par item
 	const [itemsRefundInfo, setItemsRefundInfo] = useState<
 		Record<number, ItemRefundInfo>
@@ -266,7 +279,6 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 		return () => {
 			cancelled = true
 		}
-		// biome-ignore lint/correctness/useExhaustiveDependencies: getItemQty est une fonction stable (module-scope) et ne doit pas déclencher l'effet
 	}, [open, ticket?.id, ticket?.items, pb])
 
 	// Initialiser les lignes quand le dialog s'ouvre
@@ -276,6 +288,7 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 		setMode('full')
 		setRefundMethod('especes')
 		setGlobalReason('')
+		setShowConfirm(false) // Reset confirmation state
 
 		const ticketItems = ticket?.items ?? []
 		const initialLines: Record<number, UiLine> = {}
@@ -291,10 +304,6 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 		}
 
 		setLines(initialLines)
-
-		// biome-ignore lint/correctness/useExhaustiveDependencies:
-		// - dépend fonctionnellement de ticket?.items (pas ticket?.id)
-		// - getItemQty est stable (module-scope) et ne doit pas déclencher l'effet
 	}, [open, ticket?.items, itemsRefundInfo])
 
 	const partialSelection = useMemo(() => {
@@ -379,8 +388,14 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 		}))
 	}
 
-	// 🔧 FIX: Un seul appel à mutateAsync
-	const handleSubmit = async () => {
+	// Phase 1: Validation et ouverture de la modale de confirmation
+	const triggerSubmit = () => {
+		if (!canSubmit) return
+		setShowConfirm(true)
+	}
+
+	// Phase 2: Exécution réelle du remboursement après confirmation
+	const handleConfirmRefund = async () => {
 		if (!ticket) return
 
 		const base: RefundTicketInput = {
@@ -398,13 +413,6 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 			})) as any
 		}
 
-		const confirmMsg =
-			mode === 'full'
-				? `Confirmer le remboursement total de ${formatMoney(amountToRefund, currency)} ?`
-				: `Confirmer le remboursement partiel de ${formatMoney(amountToRefund, currency)} ?`
-
-		if (!window.confirm(confirmMsg)) return
-
 		try {
 			await refundMutation.mutateAsync(base)
 
@@ -412,320 +420,340 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 				description: `Avoir de ${formatMoney(amountToRefund, currency)} créé pour ${ticket?.number}`,
 			})
 
+			setShowConfirm(false)
 			onOpenChange(false)
 			onSuccess()
 		} catch (error: any) {
 			toast.error('Erreur lors du remboursement', {
 				description: error?.message || 'Une erreur est survenue',
 			})
+			// On ferme la confirmation même en cas d'erreur pour laisser l'utilisateur corriger
+			setShowConfirm(false)
 		}
 	}
 
 	const errorMsg = (refundMutation.error as any)?.message as string | undefined
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className='max-w-3xl'>
-				<DialogHeader>
-					<DialogTitle>Remboursement ticket</DialogTitle>
-				</DialogHeader>
+		<>
+			<Dialog open={open} onOpenChange={onOpenChange}>
+				<DialogContent className='max-w-3xl'>
+					<DialogHeader>
+						<DialogTitle>Remboursement ticket</DialogTitle>
+					</DialogHeader>
 
-				{!ticket ? (
-					<div className='text-sm text-muted-foreground'>
-						Aucun ticket sélectionné.
-					</div>
-				) : (
-					<div className='space-y-4'>
-						<div className='rounded-lg border p-3'>
-							<div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-								<div className='space-y-1'>
-									<div className='text-sm font-medium'>
-										{ticket.number || 'Ticket'}{' '}
-										<span className='text-muted-foreground'>
-											• Total {formatMoney(ticketTotal, currency)}
-										</span>
-									</div>
-									<div className='text-xs text-muted-foreground'>
-										Déjà remboursé: {formatMoney(refundedAlready, currency)} •
-										Restant: {formatMoney(remaining, currency)}
-									</div>
-								</div>
-
-								<div className='flex items-center gap-2'>
-									<Button
-										type='button'
-										variant={mode === 'full' ? 'default' : 'outline'}
-										size='sm'
-										onClick={() => onToggleMode('full')}
-										disabled={disabledAll}
-									>
-										Total
-									</Button>
-									<Button
-										type='button'
-										variant={mode === 'partial' ? 'default' : 'outline'}
-										size='sm'
-										onClick={() => onToggleMode('partial')}
-										disabled={disabledAll}
-									>
-										Partiel
-									</Button>
-								</div>
-							</div>
-
-							{remaining <= 0 && (
-								<div className='mt-2 text-sm text-destructive'>
-									Ce ticket est déjà totalement remboursé.
-								</div>
-							)}
+					{!ticket ? (
+						<div className='text-sm text-muted-foreground'>
+							Aucun ticket sélectionné.
 						</div>
-
-						<div className='grid gap-4 sm:grid-cols-2'>
-							<div className='space-y-2'>
-								<Label>Méthode de remboursement</Label>
-								<Select
-									value={refundMethod}
-									onValueChange={(v) => setRefundMethod(v as RefundMethod)}
-									disabled={disabledAll}
-								>
-									<SelectTrigger>
-										<SelectValue placeholder='Sélectionner' />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value='especes'>Espèces</SelectItem>
-										<SelectItem value='cb'>CB</SelectItem>
-										<SelectItem value='cheque'>Chèque</SelectItem>
-										<SelectItem value='autre'>Autre</SelectItem>
-									</SelectContent>
-								</Select>
-								<div className='text-xs text-muted-foreground'>
-									Si espèces, une session ouverte est requise côté backend.
-								</div>
-							</div>
-
-							<div className='space-y-2'>
-								<Label>Motif (obligatoire)</Label>
-								<Textarea
-									value={globalReason}
-									onChange={(e) => setGlobalReason(e.target.value)}
-									placeholder='Ex: Client insatisfait, erreur de saisie...'
-									disabled={disabledAll}
-								/>
-							</div>
-						</div>
-
-						<Separator />
-
-						{mode === 'full' ? (
-							<div className='space-y-3'>
-								<div className='text-sm font-medium'>Récapitulatif</div>
-								<div className='rounded-lg border p-3'>
-									<div className='flex items-center justify-between text-sm'>
-										<span>Montant à rembourser</span>
-										<span className='font-semibold'>
-											{formatMoney(amountToRefund, currency)}
-										</span>
-									</div>
-								</div>
-							</div>
-						) : (
-							<div className='space-y-3'>
-								<div className='flex items-center justify-between'>
-									<div className='text-sm font-medium'>
-										Sélection des lignes
-										{loadingRefundInfo && (
-											<span className='ml-2 text-xs text-muted-foreground'>
-												(chargement...)
+					) : (
+						<div className='space-y-4'>
+							<div className='rounded-lg border p-3'>
+								<div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+									<div className='space-y-1'>
+										<div className='text-sm font-medium'>
+											{ticket.number || 'Ticket'}{' '}
+											<span className='text-muted-foreground'>
+												• Total {formatMoney(ticketTotal, currency)}
 											</span>
-										)}
+										</div>
+										<div className='text-xs text-muted-foreground'>
+											Déjà remboursé: {formatMoney(refundedAlready, currency)} •
+											Restant: {formatMoney(remaining, currency)}
+										</div>
 									</div>
-									<div className='text-sm'>
-										Montant sélectionné:{' '}
-										<span className='font-semibold'>
-											{formatMoney(amountToRefund, currency)}
-										</span>
+
+									<div className='flex items-center gap-2'>
+										<Button
+											type='button'
+											variant={mode === 'full' ? 'default' : 'outline'}
+											size='sm'
+											onClick={() => onToggleMode('full')}
+											disabled={disabledAll}
+										>
+											Total
+										</Button>
+										<Button
+											type='button'
+											variant={mode === 'partial' ? 'default' : 'outline'}
+											size='sm'
+											onClick={() => onToggleMode('partial')}
+											disabled={disabledAll}
+										>
+											Partiel
+										</Button>
 									</div>
 								</div>
 
-								<div className='rounded-lg border'>
-									<div className='max-h-[340px] overflow-auto'>
-										{items.length === 0 ? (
-											<div className='p-3 text-sm text-muted-foreground'>
-												Aucun item sur ce ticket.
-											</div>
-										) : (
-											<div className='divide-y'>
-												{items.map((it, idx) => {
-													const st = lines[idx]
-													const originalQty = getItemQty(it)
+								{remaining <= 0 && (
+									<div className='mt-2 text-sm text-destructive'>
+										Ce ticket est déjà totalement remboursé.
+									</div>
+								)}
+							</div>
 
-													// 🆕 Utiliser les infos de remboursement chargées
-													const info = itemsRefundInfo[idx]
-													const alreadyRefundedQty = info?.refundedQty ?? 0
-													const remainingQtyForItem =
-														info?.remainingQty ?? originalQty
-													const isItemFullyRefunded = remainingQtyForItem <= 0
+							<div className='grid gap-4 sm:grid-cols-2'>
+								<div className='space-y-2'>
+									<Label>Méthode de remboursement</Label>
+									<Select
+										value={refundMethod}
+										onValueChange={(v) => setRefundMethod(v as RefundMethod)}
+										disabled={disabledAll}
+									>
+										<SelectTrigger>
+											<SelectValue placeholder='Sélectionner' />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value='especes'>Espèces</SelectItem>
+											<SelectItem value='cb'>CB</SelectItem>
+											<SelectItem value='cheque'>Chèque</SelectItem>
+											<SelectItem value='autre'>Autre</SelectItem>
+										</SelectContent>
+									</Select>
+									<div className='text-xs text-muted-foreground'>
+										Si espèces, une session ouverte est requise côté backend.
+									</div>
+								</div>
 
-													const selected = !!st?.selected
-													const qty = clamp(
-														toNumber(st?.quantity ?? 1, 1),
-														0,
-														remainingQtyForItem,
-													)
+								<div className='space-y-2'>
+									<Label>Motif (obligatoire)</Label>
+									<Textarea
+										value={globalReason}
+										onChange={(e) => setGlobalReason(e.target.value)}
+										placeholder='Ex: Client insatisfait, erreur de saisie...'
+										disabled={disabledAll}
+									/>
+								</div>
+							</div>
 
-													const est =
-														selected && qty > 0
-															? computeLineAmounts(it, qty)
-															: { ttc: 0 }
-													const estTTC = abs(toNumber((est as any).ttc, 0))
+							<Separator />
 
-													const key = getItemStableKey(it, idx)
+							{mode === 'full' ? (
+								<div className='space-y-3'>
+									<div className='text-sm font-medium'>Récapitulatif</div>
+									<div className='rounded-lg border p-3'>
+										<div className='flex items-center justify-between text-sm'>
+											<span>Montant à rembourser</span>
+											<span className='font-semibold'>
+												{formatMoney(amountToRefund, currency)}
+											</span>
+										</div>
+									</div>
+								</div>
+							) : (
+								<div className='space-y-3'>
+									<div className='flex items-center justify-between'>
+										<div className='text-sm font-medium'>
+											Sélection des lignes
+											{loadingRefundInfo && (
+												<span className='ml-2 text-xs text-muted-foreground'>
+													(chargement...)
+												</span>
+											)}
+										</div>
+										<div className='text-sm'>
+											Montant sélectionné:{' '}
+											<span className='font-semibold'>
+												{formatMoney(amountToRefund, currency)}
+											</span>
+										</div>
+									</div>
 
-													return (
-														<div
-															key={key}
-															className={`p-3 ${isItemFullyRefunded ? 'opacity-50 bg-gray-100' : ''}`}
-														>
-															<div className='flex gap-3'>
-																<div className='pt-1'>
-																	<Checkbox
-																		checked={selected}
-																		onCheckedChange={(v) =>
-																			onToggleLine(idx, Boolean(v))
-																		}
-																		disabled={
-																			disabledAll || isItemFullyRefunded
-																		}
-																	/>
-																</div>
+									<div className='rounded-lg border'>
+										<div className='max-h-[340px] overflow-auto'>
+											{items.length === 0 ? (
+												<div className='p-3 text-sm text-muted-foreground'>
+													Aucun item sur ce ticket.
+												</div>
+											) : (
+												<div className='divide-y'>
+													{items.map((it, idx) => {
+														const st = lines[idx]
+														const originalQty = getItemQty(it)
 
-																<div className='flex-1 space-y-2'>
-																	<div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-																		<div className='space-y-0.5'>
-																			<div className='text-sm font-medium'>
-																				{getItemLabel(it, idx)}
-																				{isItemFullyRefunded && (
-																					<span className='ml-2 text-xs text-red-500'>
-																						(déjà remboursé)
-																					</span>
-																				)}
-																			</div>
-																			<div className='text-xs text-muted-foreground'>
-																				Qté originale: {originalQty}
-																				{alreadyRefundedQty > 0 && (
-																					<span className='text-orange-500'>
-																						{' '}
-																						• Déjà remboursé:{' '}
-																						{alreadyRefundedQty}
-																					</span>
-																				)}
-																				{remainingQtyForItem > 0 &&
-																					alreadyRefundedQty > 0 && (
-																						<span className='text-green-600'>
-																							{' '}
-																							• Restant: {remainingQtyForItem}
-																						</span>
-																					)}
-																			</div>
-																		</div>
+														const info = itemsRefundInfo[idx]
+														const alreadyRefundedQty = info?.refundedQty ?? 0
+														const remainingQtyForItem =
+															info?.remainingQty ?? originalQty
+														const isItemFullyRefunded = remainingQtyForItem <= 0
 
-																		<div className='flex items-center gap-2'>
-																			<Label className='text-xs text-muted-foreground'>
-																				Qté
-																			</Label>
-																			<Input
-																				type='number'
-																				min={0}
-																				step={1}
-																				max={remainingQtyForItem}
-																				value={qty}
-																				onChange={(e) =>
-																					onChangeQty(idx, e.target.value)
-																				}
-																				className='w-24'
-																				disabled={
-																					disabledAll || isItemFullyRefunded
-																				}
-																			/>
-																		</div>
+														const selected = !!st?.selected
+														const qty = clamp(
+															toNumber(st?.quantity ?? 1, 1),
+															0,
+															remainingQtyForItem,
+														)
+
+														const est =
+															selected && qty > 0
+																? computeLineAmounts(it, qty)
+																: { ttc: 0 }
+														const estTTC = abs(toNumber((est as any).ttc, 0))
+
+														const key = getItemStableKey(it, idx)
+
+														return (
+															<div
+																key={key}
+																className={`p-3 ${isItemFullyRefunded ? 'opacity-50 bg-gray-100' : ''}`}
+															>
+																<div className='flex gap-3'>
+																	<div className='pt-1'>
+																		<Checkbox
+																			checked={selected}
+																			onCheckedChange={(v) =>
+																				onToggleLine(idx, Boolean(v))
+																			}
+																			disabled={
+																				disabledAll || isItemFullyRefunded
+																			}
+																		/>
 																	</div>
 
-																	<div className='grid gap-2 sm:grid-cols-2'>
-																		<div className='space-y-1'>
-																			<Label className='text-xs text-muted-foreground'>
-																				Motif ligne (optionnel)
-																			</Label>
-																			<Input
-																				value={st?.reason ?? ''}
-																				onChange={(e) =>
-																					onChangeLineReason(
-																						idx,
-																						e.target.value,
-																					)
-																				}
-																				placeholder='Ex: Article défectueux'
-																				disabled={
-																					disabledAll || isItemFullyRefunded
-																				}
-																			/>
+																	<div className='flex-1 space-y-2'>
+																		<div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+																			<div className='space-y-0.5'>
+																				<div className='text-sm font-medium'>
+																					{getItemLabel(it, idx)}
+																					{isItemFullyRefunded && (
+																						<span className='ml-2 text-xs text-red-500'>
+																							(déjà remboursé)
+																						</span>
+																					)}
+																				</div>
+																				<div className='text-xs text-muted-foreground'>
+																					Qté originale: {originalQty}
+																					{alreadyRefundedQty > 0 && (
+																						<span className='text-orange-500'>
+																							{' '}
+																							• Déjà remboursé:{' '}
+																							{alreadyRefundedQty}
+																						</span>
+																					)}
+																					{remainingQtyForItem > 0 &&
+																						alreadyRefundedQty > 0 && (
+																							<span className='text-green-600'>
+																								{' '}
+																								• Restant: {remainingQtyForItem}
+																							</span>
+																						)}
+																				</div>
+																			</div>
+
+																			<div className='flex items-center gap-2'>
+																				<Label className='text-xs text-muted-foreground'>
+																					Qté
+																				</Label>
+																				<Input
+																					type='number'
+																					min={0}
+																					step={1}
+																					max={remainingQtyForItem}
+																					value={qty}
+																					onChange={(e) =>
+																						onChangeQty(idx, e.target.value)
+																					}
+																					className='w-24'
+																					disabled={
+																						disabledAll || isItemFullyRefunded
+																					}
+																				/>
+																			</div>
 																		</div>
-																		<div className='text-xs text-muted-foreground sm:text-right sm:self-end'>
-																			{selected ? (
-																				<span>
-																					Montant estimé ligne:{' '}
-																					{formatMoney(estTTC, currency)}
-																				</span>
-																			) : (
-																				<span>
-																					{isItemFullyRefunded
-																						? 'Item déjà remboursé'
-																						: 'Sélectionnez pour rembourser'}
-																				</span>
-																			)}
+
+																		<div className='grid gap-2 sm:grid-cols-2'>
+																			<div className='space-y-1'>
+																				<Label className='text-xs text-muted-foreground'>
+																					Motif ligne (optionnel)
+																				</Label>
+																				<Input
+																					value={st?.reason ?? ''}
+																					onChange={(e) =>
+																						onChangeLineReason(
+																							idx,
+																							e.target.value,
+																						)
+																					}
+																					placeholder='Ex: Article défectueux'
+																					disabled={
+																						disabledAll || isItemFullyRefunded
+																					}
+																				/>
+																			</div>
+																			<div className='text-xs text-muted-foreground sm:text-right sm:self-end'>
+																				{selected ? (
+																					<span>
+																						Montant estimé ligne:{' '}
+																						{formatMoney(estTTC, currency)}
+																					</span>
+																				) : (
+																					<span>
+																						{isItemFullyRefunded
+																							? 'Item déjà remboursé'
+																							: 'Sélectionnez pour rembourser'}
+																					</span>
+																				)}
+																			</div>
 																		</div>
 																	</div>
 																</div>
 															</div>
-														</div>
-													)
-												})}
-											</div>
-										)}
+														)
+													})}
+												</div>
+											)}
+										</div>
 									</div>
 								</div>
-							</div>
-						)}
+							)}
 
-						{errorMsg && (
-							<div className='text-sm text-destructive'>{errorMsg}</div>
-						)}
-					</div>
-				)}
+							{errorMsg && (
+								<div className='rounded bg-destructive/15 p-2 text-sm text-destructive'>
+									{errorMsg}
+								</div>
+							)}
+						</div>
+					)}
 
-				<DialogFooter className='gap-2'>
-					<Button
-						type='button'
-						variant='outline'
-						onClick={() => onOpenChange(false)}
-					>
-						Annuler
-					</Button>
+					<DialogFooter>
+						<Button
+							variant='outline'
+							onClick={() => onOpenChange(false)}
+							type='button'
+						>
+							Annuler
+						</Button>
+						<Button
+							onClick={triggerSubmit}
+							disabled={!canSubmit || refundMutation.isPending}
+							type='button'
+						>
+							{refundMutation.isPending
+								? 'En cours...'
+								: 'Valider le remboursement'}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
-					<Button
-						type='button'
-						onClick={handleSubmit}
-						disabled={
-							!canSubmit || refundMutation.isPending || loadingRefundInfo
-						}
-					>
-						{refundMutation.isPending
-							? 'Traitement...'
-							: mode === 'full'
-								? 'Rembourser tout'
-								: 'Rembourser la sélection'}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
+			<AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Confirmer le remboursement</AlertDialogTitle>
+						<AlertDialogDescription>
+							{mode === 'full'
+								? `Confirmer le remboursement total de ${formatMoney(amountToRefund, currency)} ?`
+								: `Confirmer le remboursement partiel de ${formatMoney(amountToRefund, currency)} ?`}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Annuler</AlertDialogCancel>
+						<AlertDialogAction onClick={handleConfirmRefund}>
+							Confirmer
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</>
 	)
 }

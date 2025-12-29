@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -162,13 +172,16 @@ export function RefundInvoiceDialog({
 	const [refundMethod, setRefundMethod] = useState<RefundMethod>('autre')
 	const [globalReason, setGlobalReason] = useState<string>('')
 	const [lines, setLines] = useState<Record<number, UiLine>>({})
+	const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
 	const [itemsRefundInfo, setItemsRefundInfo] = useState<
 		Record<number, ItemRefundInfo>
 	>({})
 	const [loadingRefundInfo, setLoadingRefundInfo] = useState(false)
 
-	const items = (invoice?.items || []) as any[]
+	// Mémoriser items pour éviter les re-renders inutiles
+	const items = useMemo(() => (invoice?.items || []) as any[], [invoice?.items])
+
 	const currency = invoice?.currency || 'EUR'
 
 	const invoiceTotal = abs(toNumber(invoice?.total_ttc, 0))
@@ -235,7 +248,7 @@ export function RefundInvoiceDialog({
 		return () => {
 			cancelled = true
 		}
-	}, [open, invoice?.id, invoice?.items, pb])
+	}, [open, invoice?.id, items, pb])
 
 	// Init lignes au open
 	useEffect(() => {
@@ -255,7 +268,7 @@ export function RefundInvoiceDialog({
 			}
 		}
 		setLines(initial)
-	}, [open, invoice?.items, itemsRefundInfo])
+	}, [open, items, itemsRefundInfo])
 
 	const partialSelection = useMemo(() => {
 		const selected: { index: number; quantity: number; reason?: string }[] = []
@@ -353,13 +366,6 @@ export function RefundInvoiceDialog({
 			}))
 		}
 
-		const confirmMsg =
-			mode === 'full'
-				? `Confirmer le remboursement total de ${formatMoney(amountToRefund, currency)} ?`
-				: `Confirmer le remboursement partiel de ${formatMoney(amountToRefund, currency)} ?`
-
-		if (!window.confirm(confirmMsg)) return
-
 		try {
 			await refundMutation.mutateAsync(base)
 
@@ -367,6 +373,7 @@ export function RefundInvoiceDialog({
 				description: `Avoir de ${formatMoney(amountToRefund, currency)} créé pour ${invoice.number}`,
 			})
 
+			setShowConfirmDialog(false)
 			onClose()
 			onSuccess?.()
 		} catch (error: any) {
@@ -382,151 +389,179 @@ export function RefundInvoiceDialog({
 		(x) => x.remainingQty > 0,
 	)
 
-	return (
-		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className='max-w-4xl'>
-				<DialogHeader>
-					<DialogTitle>Remboursement facture</DialogTitle>
-				</DialogHeader>
+	const confirmMsg =
+		mode === 'full'
+			? `Confirmer le remboursement total de ${formatMoney(amountToRefund, currency)} ?`
+			: `Confirmer le remboursement partiel de ${formatMoney(amountToRefund, currency)} ?`
 
-				<div className='rounded-lg border p-3'>
-					<div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-						<div className='space-y-1'>
-							<div className='text-sm font-medium'>
-								{invoice.number || 'Facture'}{' '}
-								<span className='text-muted-foreground'>
-									• Total {formatMoney(invoiceTotal, currency)}
-								</span>
-							</div>
-							<div className='text-xs text-muted-foreground'>
-								Déjà remboursé: {formatMoney(refundedAlready, currency)} •
-								Restant: {formatMoney(remaining, currency)}
+	return (
+		<>
+			<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+				<DialogContent className='max-w-4xl'>
+					<DialogHeader>
+						<DialogTitle>Remboursement facture</DialogTitle>
+					</DialogHeader>
+
+					<div className='rounded-lg border p-3'>
+						<div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+							<div className='space-y-1'>
+								<div className='text-sm font-medium'>
+									{invoice.number || 'Facture'}{' '}
+									<span className='text-muted-foreground'>
+										• Total {formatMoney(invoiceTotal, currency)}
+									</span>
+								</div>
+								<div className='text-xs text-muted-foreground'>
+									Déjà remboursé: {formatMoney(refundedAlready, currency)} •
+									Restant: {formatMoney(remaining, currency)}
+								</div>
 							</div>
 						</div>
 					</div>
-				</div>
 
-				<div className='flex flex-wrap gap-2'>
-					<Button
-						variant={mode === 'full' ? 'default' : 'outline'}
-						onClick={() => setMode('full')}
-						disabled={loadingRefundInfo}
-					>
-						Remboursement total
-					</Button>
-					<Button
-						variant={mode === 'partial' ? 'default' : 'outline'}
-						onClick={() => setMode('partial')}
-						disabled={!hasRemaining || loadingRefundInfo}
-					>
-						Remboursement partiel
-					</Button>
-				</div>
+					<div className='flex flex-wrap gap-2'>
+						<Button
+							variant={mode === 'full' ? 'default' : 'outline'}
+							onClick={() => setMode('full')}
+							disabled={loadingRefundInfo}
+						>
+							Remboursement total
+						</Button>
+						<Button
+							variant={mode === 'partial' ? 'default' : 'outline'}
+							onClick={() => setMode('partial')}
+							disabled={!hasRemaining || loadingRefundInfo}
+						>
+							Remboursement partiel
+						</Button>
+					</div>
 
-				<div className='grid gap-2'>
-					<Label>Mode de remboursement</Label>
-					<Select
-						value={refundMethod}
-						onValueChange={(v) => setRefundMethod(v as RefundMethod)}
-					>
-						<SelectTrigger>
-							<SelectValue placeholder='Choisir…' />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value='especes'>Espèces</SelectItem>
-							<SelectItem value='cb'>Carte</SelectItem>
-							<SelectItem value='cheque'>Chèque</SelectItem>
-							<SelectItem value='autre'>Autre</SelectItem>
-						</SelectContent>
-					</Select>
-				</div>
+					<div className='grid gap-2'>
+						<Label>Mode de remboursement</Label>
+						<Select
+							value={refundMethod}
+							onValueChange={(v) => setRefundMethod(v as RefundMethod)}
+						>
+							<SelectTrigger>
+								<SelectValue placeholder='Choisir…' />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value='especes'>Espèces</SelectItem>
+								<SelectItem value='cb'>Carte</SelectItem>
+								<SelectItem value='cheque'>Chèque</SelectItem>
+								<SelectItem value='autre'>Autre</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
 
-				<div className='grid gap-2'>
-					<Label>Motif global</Label>
-					<Textarea
-						value={globalReason}
-						onChange={(e) => setGlobalReason(e.target.value)}
-					/>
-				</div>
+					<div className='grid gap-2'>
+						<Label>Motif global</Label>
+						<Textarea
+							value={globalReason}
+							onChange={(e) => setGlobalReason(e.target.value)}
+						/>
+					</div>
 
-				{mode === 'partial' && (
-					<div className='space-y-2'>
-						<Separator />
-						<div className='text-sm font-medium'>Sélection des lignes</div>
+					{mode === 'partial' && (
+						<div className='space-y-2'>
+							<Separator />
+							<div className='text-sm font-medium'>Sélection des lignes</div>
 
-						{items.map((item: any, idx: number) => {
-							const info = itemsRefundInfo[idx]
-							const line = lines[idx]
-							const label = getItemLabel(item, idx)
+							{items.map((item: any, idx: number) => {
+								const info = itemsRefundInfo[idx]
+								const line = lines[idx]
+								const label = getItemLabel(item, idx)
 
-							const remainingQty = info?.remainingQty ?? getItemQty(item)
-							const disabled = remainingQty <= 0
+								const remainingQty = info?.remainingQty ?? getItemQty(item)
+								const disabled = remainingQty <= 0
 
-							return (
-								<div
-									key={`${invoice.id}-item-${idx}`}
-									className='rounded-md border p-2'
-								>
-									<div className='flex items-center justify-between gap-3'>
-										<div className='flex items-center gap-2'>
-											<Checkbox
-												checked={!!line?.selected}
-												onCheckedChange={(v) => onToggleLine(idx, !!v)}
-												disabled={disabled}
-											/>
-											<div className={disabled ? 'opacity-60' : ''}>
-												<div className='text-sm font-medium'>{label}</div>
-												<div className='text-xs text-muted-foreground'>
-													Restant: {remainingQty}
+								return (
+									<div
+										key={`${invoice.id}-item-${idx}`}
+										className='rounded-md border p-2'
+									>
+										<div className='flex items-center justify-between gap-3'>
+											<div className='flex items-center gap-2'>
+												<Checkbox
+													checked={!!line?.selected}
+													onCheckedChange={(v) => onToggleLine(idx, !!v)}
+													disabled={disabled}
+												/>
+												<div className={disabled ? 'opacity-60' : ''}>
+													<div className='text-sm font-medium'>{label}</div>
+													<div className='text-xs text-muted-foreground'>
+														Restant: {remainingQty}
+													</div>
 												</div>
+											</div>
+
+											<div className='flex items-center gap-2'>
+												<Input
+													className='w-24'
+													type='number'
+													min={0}
+													step={1}
+													value={line?.quantity ?? 0}
+													onChange={(e) => onChangeQty(idx, e.target.value)}
+													disabled={disabled}
+												/>
 											</div>
 										</div>
 
-										<div className='flex items-center gap-2'>
+										<div className='mt-2'>
 											<Input
-												className='w-24'
-												type='number'
-												min={0}
-												step={1}
-												value={line?.quantity ?? 0}
-												onChange={(e) => onChangeQty(idx, e.target.value)}
+												placeholder='Motif ligne (optionnel)'
+												value={line?.reason ?? ''}
+												onChange={(e) =>
+													onChangeLineReason(idx, e.target.value)
+												}
 												disabled={disabled}
 											/>
 										</div>
 									</div>
+								)
+							})}
+						</div>
+					)}
 
-									<div className='mt-2'>
-										<Input
-											placeholder='Motif ligne (optionnel)'
-											value={line?.reason ?? ''}
-											onChange={(e) => onChangeLineReason(idx, e.target.value)}
-											disabled={disabled}
-										/>
-									</div>
-								</div>
-							)
-						})}
-					</div>
-				)}
+					<DialogFooter className='flex items-center justify-between gap-2'>
+						<div className='text-sm'>
+							Montant à rembourser:{' '}
+							<b>{formatMoney(amountToRefund, currency)}</b>
+						</div>
 
-				<DialogFooter className='flex items-center justify-between gap-2'>
-					<div className='text-sm'>
-						Montant à rembourser: <b>{formatMoney(amountToRefund, currency)}</b>
-					</div>
+						<div className='flex gap-2'>
+							<Button variant='outline' onClick={onClose}>
+								Annuler
+							</Button>
+							<Button
+								onClick={() => setShowConfirmDialog(true)}
+								disabled={!canSubmit || refundMutation.isPending}
+							>
+								Valider
+							</Button>
+						</div>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
-					<div className='flex gap-2'>
-						<Button variant='outline' onClick={onClose}>
-							Annuler
-						</Button>
-						<Button
+			<AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Confirmer le remboursement</AlertDialogTitle>
+						<AlertDialogDescription>{confirmMsg}</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Annuler</AlertDialogCancel>
+						<AlertDialogAction
 							onClick={handleSubmit}
-							disabled={!canSubmit || refundMutation.isPending}
+							disabled={refundMutation.isPending}
 						>
-							Valider
-						</Button>
-					</div>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
+							Confirmer
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</>
 	)
 }
