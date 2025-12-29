@@ -791,6 +791,14 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 	})
 
 	// -------------------------------------------------------------------------
+	// HOOK: Après mise à jour d'un devis
+	// -------------------------------------------------------------------------
+	app.OnRecordBeforeUpdateRequest("quotes").Add(func(e *core.RecordUpdateEvent) error {
+		roundInvoiceAmounts(e.Record)
+		return nil
+	})
+
+	// -------------------------------------------------------------------------
 	// HOOK: Avant suppression d'une facture
 	// -------------------------------------------------------------------------
 	app.OnRecordBeforeDeleteRequest("invoices").Add(func(e *core.RecordDeleteEvent) error {
@@ -1090,6 +1098,8 @@ func RegisterAuditLogHooks(app *pocketbase.PocketBase) {
 func RegisterQuoteHooks(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeCreateRequest("quotes").Add(func(e *core.RecordCreateEvent) error {
 		record := e.Record
+
+		roundInvoiceAmounts(record)
 
 		if record.GetString("issued_by") == "" && e.HttpContext != nil {
 			if authRecord := e.HttpContext.Get("authRecord"); authRecord != nil {
