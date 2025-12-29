@@ -158,8 +158,13 @@ export interface QuoteBase {
 	currency: string
 	notes?: string
 
-	// ✅ NOUVEAU
+	// ✅ NOUVEAU : Champs ajoutés pour correspondre à la logique Invoice
 	issued_by?: string
+
+	cart_discount_mode?: 'percent' | 'amount'
+	cart_discount_value?: number
+	cart_discount_ttc?: number
+	line_discounts_total_ttc?: number
 }
 
 export interface QuoteCreateDto extends QuoteBase {}
@@ -169,11 +174,10 @@ export interface QuoteResponse extends QuoteBase {
 	created: string
 	updated: string
 	generated_invoice_id?: string
+	vat_breakdown?: any[]
 	expand?: {
 		customer?: CustomerExpand
 		generated_invoice_id?: InvoiceResponse
-
-		// ✅ NOUVEAU
 		issued_by?: {
 			id: string
 			email?: string

@@ -1,5 +1,7 @@
 // frontend/modules/connect/components/QuoteCreatePage.tsx
-// 🔢 Le numéro de devis est maintenant généré automatiquement par le backend
+// ✅ VERSION MISE À JOUR - Parité fonctionnelle et visuelle avec InvoiceCreatePage
+// ✅ FIX: Les inputs décimaux acceptent maintenant le point ET la virgule
+//    Utilise des états "raw" (string) séparés pour l'affichage, comme CashTerminalPage
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +14,13 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -47,17 +56,29 @@ import {
 	Trash2,
 	UserPlus,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { CustomerDialog } from './CustomerDialog'
 import { SendQuoteEmailDialog } from './SendQuoteEmailDialog'
 
 // ============================================================================
-// TYPES
+// TYPES + HELPERS (Identiques à InvoiceCreatePage)
 // ============================================================================
+
+type DiscountMode = 'percent' | 'amount'
+type DisplayMode = 'name' | 'designation' | 'sku'
 
 interface UiQuoteItem extends InvoiceItem {
 	id: string
+	displayMode?: DisplayMode
+	designation?: string
+	sku?: string
+	unit_price_ttc: number
+	lineDiscountMode?: DiscountMode
+	lineDiscountValue?: number
+	// ✅ NOUVEAU: États "raw" pour l'affichage des inputs
+	unitPriceRaw?: string
+	lineDiscountRaw?: string
 }
 
 interface SelectedCustomer {
@@ -69,8 +90,103 @@ interface SelectedCustomer {
 	company?: string
 }
 
+interface VatBreakdown {
+	rate: number
+	base_ht: number
+	vat: number
+	total_ttc: number
+}
+
 type QuoteCustomer = CustomersResponse
 type QuoteProduct = ProductsResponse
+
+const clamp = (n: number, min: number, max: number) =>
+	Math.min(max, Math.max(min, n))
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+// ✅ Fonction pour parser les entrées décimales (accepte point et virgule)
+const parseDecimalInput = (value: string): number | null => {
+	if (value.trim() === '') return null
+	const normalized = value.replace(',', '.')
+	const parsed = Number.parseFloat(normalized)
+	return Number.isNaN(parsed) ? null : parsed
+}
+
+const getDisplayText = (it: UiQuoteItem) => {
+	const mode = it.displayMode ?? 'name'
+	if (mode === 'designation') return it.designation || it.name
+	if (mode === 'sku') return it.sku || it.name
+	return it.name
+}
+
+const isDisplayModeAvailable = (it: UiQuoteItem, mode: DisplayMode) => {
+	switch (mode) {
+		case 'name':
+			return true
+		case 'designation':
+			return !!(it.designation && it.designation !== it.name)
+		case 'sku':
+			return !!(it.sku && it.sku !== it.name && it.sku !== '')
+		default:
+			return false
+	}
+}
+
+const computeLineTotals = (it: UiQuoteItem) => {
+	const qty = Math.max(0, it.quantity)
+	const rate = it.tva_rate ?? 20
+	const coef = 1 + rate / 100
+
+	const baseTtc = round2(it.unit_price_ttc * qty)
+	const mode = it.lineDiscountMode ?? 'percent'
+	const val = it.lineDiscountValue ?? 0
+
+	const discountTtc =
+		mode === 'percent'
+			? round2(baseTtc * (clamp(val, 0, 100) / 100))
+			: round2(clamp(val, 0, baseTtc))
+
+	const finalTtc = round2(baseTtc - discountTtc)
+	const finalHt = round2(finalTtc / coef)
+	const unitHt = qty > 0 ? round2(finalHt / qty) : 0
+
+	return {
+		unit_price_ht: unitHt,
+		total_ht: finalHt,
+		total_ttc: finalTtc,
+		line_discount_ttc: discountTtc,
+		base_ttc: baseTtc,
+	}
+}
+
+const applyCartDiscountProRata = (
+	lines: UiQuoteItem[],
+	cartDiscountTtc: number,
+) => {
+	const totalTtc = lines.reduce((s, it) => round2(s + it.total_ttc), 0)
+	if (totalTtc <= 0 || cartDiscountTtc <= 0) return lines
+
+	let remaining = cartDiscountTtc
+	return lines.map((it, idx) => {
+		const coef = 1 + (it.tva_rate ?? 20) / 100
+		const share =
+			idx === lines.length - 1
+				? remaining
+				: round2((it.total_ttc / totalTtc) * cartDiscountTtc)
+
+		remaining = round2(remaining - share)
+		const newTotalTtc = round2(Math.max(0, it.total_ttc - share))
+		const newTotalHt = round2(newTotalTtc / coef)
+		const newUnitHt = it.quantity > 0 ? round2(newTotalHt / it.quantity) : 0
+
+		return {
+			...it,
+			unit_price_ht: newUnitHt,
+			total_ht: newTotalHt,
+			total_ttc: newTotalTtc,
+		}
+	})
+}
 
 // ============================================================================
 // COMPONENT
@@ -80,13 +196,11 @@ export function QuoteCreatePage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 
-	// États
-	// 🔢 Plus besoin de quoteNumber - généré par le backend
+	// États généraux
 	const [quoteDate, setQuoteDate] = useState(
 		new Date().toISOString().split('T')[0],
 	)
 	const [validUntil, setValidUntil] = useState(() => {
-		// Par défaut : validité de 30 jours
 		const date = new Date()
 		date.setDate(date.getDate() + 30)
 		return date.toISOString().split('T')[0]
@@ -97,32 +211,33 @@ export function QuoteCreatePage() {
 	const [notes, setNotes] = useState('')
 	const [currency] = useState('EUR')
 
-	// Dialog states
+	// ✅ États Promos avec valeur raw séparée (comme CashTerminalPage)
+	const [cartDiscountMode, setCartDiscountMode] =
+		useState<DiscountMode>('percent')
+	const [cartDiscountValue, setCartDiscountValue] = useState<number>(0)
+	const [cartDiscountRaw, setCartDiscountRaw] = useState<string>('')
+
+	// UI States
 	const [customerPickerOpen, setCustomerPickerOpen] = useState(false)
 	const [customerSearch, setCustomerSearch] = useState('')
 	const [productPickerOpen, setProductPickerOpen] = useState(false)
 	const [productSearch, setProductSearch] = useState('')
 	const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
+	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
 
-	// Email dialog state
+	// Email Dialog specific
 	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 	const [createdQuote, setCreatedQuote] = useState<QuoteResponse | null>(null)
 
-	// Connexion AppPOS (pour la recherche de produits)
-	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
-
-	// Queries clients PocketBase
+	// Queries
 	const { data: customersData } = useCustomers({
 		companyId: activeCompanyId ?? undefined,
 	})
-
-	// Produits depuis AppPOS
 	const { data: productsData } = useAppPosProducts({
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
 	})
 
-	// Mutations
 	const createQuote = useCreateQuote()
 	const createCustomer = useCreateCustomer()
 
@@ -130,7 +245,6 @@ export function QuoteCreatePage() {
 		[]) as QuoteCustomer[]
 	const products: QuoteProduct[] = (productsData?.items ?? []) as QuoteProduct[]
 
-	// Filtrer les clients selon la recherche
 	const filteredCustomers = customers.filter((c) => {
 		const term = customerSearch.toLowerCase()
 		return (
@@ -140,121 +254,271 @@ export function QuoteCreatePage() {
 		)
 	})
 
-	// 🔐 Connexion automatique à AppPOS
 	useEffect(() => {
 		const connect = async () => {
 			if (isAppPosConnected) return
-
 			const existingToken = getAppPosToken()
 			if (existingToken) {
 				setIsAppPosConnected(true)
 				return
 			}
-
 			try {
 				const res = await loginToAppPos('admin', 'admin123')
-				if (res.success && res.token) {
-					setIsAppPosConnected(true)
-				} else {
-					console.error('AppPOS: échec de connexion', res)
-				}
+				if (res.success && res.token) setIsAppPosConnected(true)
 			} catch (err) {
 				console.error('AppPOS: erreur de connexion', err)
 			}
 		}
-
 		void connect()
 	}, [isAppPosConnected])
 
-	// 🔢 SUPPRIMÉ: Le useEffect qui générait le numéro côté client
-	// Le numéro est maintenant généré automatiquement par le backend
+	// =====================
+	// ACTIONS PRODUITS (Identique Invoice)
+	// =====================
 
-	// Calculer les totaux
-	const totals = items.reduce(
-		(acc, item) => ({
-			ht: acc.ht + item.total_ht,
-			tva: acc.tva + (item.total_ttc - item.total_ht),
-			ttc: acc.ttc + item.total_ttc,
-		}),
-		{ ht: 0, tva: 0, ttc: 0 },
-	)
+	const setLineDisplayMode = (itemId: string, mode: DisplayMode) => {
+		setItems((prev) =>
+			prev.map((it) => (it.id === itemId ? { ...it, displayMode: mode } : it)),
+		)
+	}
 
-	// Ajouter un produit
 	const addProduct = (product: QuoteProduct) => {
 		const tvaRate = product.tva_rate ?? 20
+		const coef = 1 + tvaRate / 100
 
-		let priceHt = 0
-		if (typeof product.price_ht === 'number') {
-			priceHt = product.price_ht
-		} else if (typeof product.price_ttc === 'number') {
-			priceHt = product.price_ttc / (1 + tvaRate / 100)
-		}
+		let unitTtc = 0
+		if (typeof product.price_ttc === 'number') unitTtc = product.price_ttc
+		else if (typeof product.price_ht === 'number')
+			unitTtc = product.price_ht * coef
 
-		const totalHt = priceHt
-		const totalTtc = totalHt * (1 + tvaRate / 100)
+		unitTtc = round2(unitTtc)
+		const id = `item-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
-		const newItem: UiQuoteItem = {
-			id: `item-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+		const draft: UiQuoteItem = {
+			id,
 			product_id: product.id,
 			name: product.name,
+			designation: (product as any).designation ?? product.name,
+			sku: (product as any).sku ?? '',
+			displayMode: 'name',
 			quantity: 1,
-			unit_price_ht: priceHt,
 			tva_rate: tvaRate,
-			total_ht: totalHt,
-			total_ttc: totalTtc,
+			unit_price_ttc: unitTtc,
+			unitPriceRaw: unitTtc.toString(),
+			lineDiscountMode: 'percent',
+			lineDiscountValue: 0,
+			lineDiscountRaw: '',
+			unit_price_ht: 0,
+			total_ht: 0,
+			total_ttc: 0,
 		}
 
-		setItems((prev) => [...prev, newItem])
+		const totals = computeLineTotals(draft)
+		setItems((prev) => [...prev, { ...draft, ...totals }])
 		setProductPickerOpen(false)
 		setProductSearch('')
 	}
 
-	// Modifier la quantité
 	const updateQuantity = (itemId: string, delta: number) => {
-		setItems((prevItems) => {
-			const updated: UiQuoteItem[] = []
-
-			for (const item of prevItems) {
-				if (item.id === itemId) {
-					const newQty = Math.max(0, item.quantity + delta)
-					if (newQty === 0) {
-						continue
-					}
-					const totalHt = item.unit_price_ht * newQty
-					const totalTtc = totalHt * (1 + item.tva_rate / 100)
-					updated.push({
-						...item,
-						quantity: newQty,
-						total_ht: totalHt,
-						total_ttc: totalTtc,
+		setItems(
+			(prev) =>
+				prev
+					.map((it) => {
+						if (it.id !== itemId) return it
+						const q = Math.max(0, it.quantity + delta)
+						if (q === 0) return null
+						const next = { ...it, quantity: q }
+						return { ...next, ...computeLineTotals(next) }
 					})
-				} else {
-					updated.push(item)
+					.filter(Boolean) as UiQuoteItem[],
+		)
+	}
+
+	// ✅ NOUVEAU: Gestion du prix unitaire avec état raw
+	const handleUnitPriceChange = useCallback((itemId: string, raw: string) => {
+		setItems((prev) =>
+			prev.map((it) => {
+				if (it.id !== itemId) return it
+
+				const parsed = parseDecimalInput(raw)
+				const newUnitTtc =
+					parsed !== null ? round2(Math.max(0, parsed)) : it.unit_price_ttc
+
+				const next = {
+					...it,
+					unitPriceRaw: raw,
+					unit_price_ttc: newUnitTtc,
 				}
+				return { ...next, ...computeLineTotals(next) }
+			}),
+		)
+	}, [])
+
+	// ✅ NOUVEAU: Gestion de la remise ligne avec état raw
+	const updateLineDiscount = useCallback(
+		(itemId: string, mode: DiscountMode, raw: string) => {
+			setItems((prev) =>
+				prev.map((it) => {
+					if (it.id !== itemId) return it
+
+					const parsed = parseDecimalInput(raw)
+					let newValue = it.lineDiscountValue ?? 0
+
+					if (parsed !== null) {
+						newValue = Math.max(0, parsed)
+					} else if (raw.trim() === '') {
+						newValue = 0
+					}
+
+					const next: UiQuoteItem = {
+						...it,
+						lineDiscountMode: mode,
+						lineDiscountValue: newValue,
+						lineDiscountRaw: raw,
+					}
+					return { ...next, ...computeLineTotals(next) }
+				}),
+			)
+		},
+		[],
+	)
+
+	// ✅ NOUVEAU: Changement du mode de remise ligne (garde la valeur raw)
+	const setLineDiscountMode = useCallback(
+		(itemId: string, mode: DiscountMode) => {
+			setItems((prev) =>
+				prev.map((it) => {
+					if (it.id !== itemId) return it
+					const next: UiQuoteItem = {
+						...it,
+						lineDiscountMode: mode,
+					}
+					return { ...next, ...computeLineTotals(next) }
+				}),
+			)
+		},
+		[],
+	)
+
+	const removeItem = (itemId: string) => {
+		setItems((prev) => prev.filter((it) => it.id !== itemId))
+	}
+
+	// ✅ NOUVEAU: Gestion de la remise panier avec état raw (comme CashTerminalPage)
+	const handleCartDiscountChange = useCallback(
+		(raw: string) => {
+			setCartDiscountRaw(raw)
+
+			if (raw.trim() === '') {
+				setCartDiscountValue(0)
+				return
 			}
 
-			return updated
-		})
-	}
+			const parsed = parseDecimalInput(raw)
+			if (parsed === null) return
 
-	// Supprimer un item
-	const removeItem = (itemId: string) => {
-		setItems((prev) => prev.filter((item) => item.id !== itemId))
-	}
+			if (cartDiscountMode === 'percent') {
+				setCartDiscountValue(clamp(parsed, 0, 100))
+			} else {
+				setCartDiscountValue(Math.max(0, parsed))
+			}
+		},
+		[cartDiscountMode],
+	)
 
-	// Créer un nouveau client rapidement
+	// =====================
+	// CALCULS TOTAUX (Identique Invoice)
+	// =====================
+
+	const subTotals = items.reduce(
+		(acc, it) => {
+			const computed = computeLineTotals(it)
+			return {
+				ht: round2(acc.ht + computed.total_ht),
+				ttc: round2(acc.ttc + computed.total_ttc),
+				lineDiscountTtc: round2(
+					acc.lineDiscountTtc + computed.line_discount_ttc,
+				),
+			}
+		},
+		{ ht: 0, ttc: 0, lineDiscountTtc: 0 },
+	)
+
+	const cartDiscountTtc =
+		cartDiscountMode === 'percent'
+			? round2(subTotals.ttc * (clamp(cartDiscountValue, 0, 100) / 100))
+			: round2(clamp(cartDiscountValue, 0, subTotals.ttc))
+
+	const totals = useMemo(() => {
+		// Normaliser les lignes
+		const normalized: UiQuoteItem[] = items.map((it) => ({
+			...it,
+			...computeLineTotals(it),
+		}))
+
+		// Appliquer remise globale
+		const withCartDiscount = applyCartDiscountProRata(
+			normalized,
+			cartDiscountTtc,
+		)
+
+		// Totaux finaux
+		const finalTotals = withCartDiscount.reduce(
+			(acc, it) => ({
+				ht: round2(acc.ht + it.total_ht),
+				tva: round2(acc.tva + (it.total_ttc - it.total_ht)),
+				ttc: round2(acc.ttc + it.total_ttc),
+			}),
+			{ ht: 0, tva: 0, ttc: 0 },
+		)
+
+		// Ventilation TVA
+		const breakdownMap = new Map<number, VatBreakdown>()
+
+		for (const it of withCartDiscount) {
+			const rate = it.tva_rate ?? 20
+			const ht = it.total_ht
+			const vat = it.total_ttc - it.total_ht
+			const ttc = it.total_ttc
+
+			let entry = breakdownMap.get(rate)
+			if (!entry) {
+				entry = { rate, base_ht: 0, vat: 0, total_ttc: 0 }
+				breakdownMap.set(rate, entry)
+			}
+
+			entry.base_ht = round2(entry.base_ht + ht)
+			entry.vat = round2(entry.vat + vat)
+			entry.total_ttc = round2(entry.total_ttc + ttc)
+		}
+
+		const vatBreakdown = Array.from(breakdownMap.values()).sort(
+			(a, b) => a.rate - b.rate,
+		)
+
+		return {
+			ht: finalTotals.ht,
+			tva: finalTotals.tva,
+			ttc: finalTotals.ttc,
+			subTtc: subTotals.ttc,
+			lineDiscountTtc: subTotals.lineDiscountTtc,
+			cartDiscountTtc,
+			vatBreakdown,
+		}
+	}, [items, cartDiscountTtc, subTotals.ttc, subTotals.lineDiscountTtc])
+
+	// =====================
+	// SUBMIT
+	// =====================
+
 	const handleQuickCreateCustomer = async () => {
 		if (!customerSearch.trim() || !activeCompanyId) return
-
 		try {
 			const newCustomer = await createCustomer.mutateAsync({
 				name: customerSearch,
 				owner_company: activeCompanyId,
 			})
-			setSelectedCustomer({
-				id: newCustomer.id,
-				name: newCustomer.name,
-			})
+			setSelectedCustomer({ id: newCustomer.id, name: newCustomer.name })
 			setCustomerPickerOpen(false)
 			setCustomerSearch('')
 			toast.success(`Client "${customerSearch}" créé`)
@@ -264,7 +528,6 @@ export function QuoteCreatePage() {
 		}
 	}
 
-	// Soumettre le devis
 	const handleSubmit = async (
 		status: QuoteStatus = 'draft',
 		openEmailDialog = false,
@@ -283,27 +546,74 @@ export function QuoteCreatePage() {
 		}
 
 		try {
-			// On enlève l'id temporaire
-			const quoteItems: InvoiceItem[] = items.map(({ id, ...item }) => item)
+			// Recalcul final avant envoi
+			const normalized: UiQuoteItem[] = items.map((it) => ({
+				...it,
+				...computeLineTotals(it),
+			}))
+			const withCartDiscount = applyCartDiscountProRata(
+				normalized,
+				cartDiscountTtc,
+			)
 
-			// 🔢 Le numéro sera généré automatiquement par le backend
+			const quoteItems: InvoiceItem[] = withCartDiscount.map(
+				({
+					id,
+					displayMode,
+					designation,
+					sku,
+					unit_price_ttc,
+					unitPriceRaw,
+					lineDiscountMode,
+					lineDiscountValue,
+					lineDiscountRaw,
+					...rest
+				}) => ({
+					...rest,
+					name: getDisplayText({
+						id,
+						displayMode,
+						designation,
+						sku,
+						unit_price_ttc,
+						...rest,
+					} as UiQuoteItem),
+					line_discount_mode: lineDiscountMode,
+					line_discount_value: lineDiscountValue,
+					unit_price_ttc_before_discount: unit_price_ttc,
+				}),
+			)
+
+			const finalTotals = quoteItems.reduce(
+				(acc, it) => ({
+					ht: round2(acc.ht + it.total_ht),
+					tva: round2(acc.tva + (it.total_ttc - it.total_ht)),
+					ttc: round2(acc.ttc + it.total_ttc),
+				}),
+				{ ht: 0, tva: 0, ttc: 0 },
+			)
+
 			const newQuote = await createQuote.mutateAsync({
-				// ⚠️ Pas de 'number' - généré par le backend
 				date: quoteDate,
 				valid_until: validUntil || undefined,
 				customer: selectedCustomer.id,
 				owner_company: activeCompanyId,
 				status,
 				items: quoteItems,
-				total_ht: totals.ht,
-				total_tva: totals.tva,
-				total_ttc: totals.ttc,
+				total_ht: finalTotals.ht,
+				total_tva: finalTotals.tva,
+				total_ttc: finalTotals.ttc,
 				currency,
 				notes: notes || undefined,
+				// Envoi des infos promos (si le backend les supporte sur Quote)
+				cart_discount_mode: cartDiscountMode,
+				cart_discount_value: cartDiscountValue,
+				cart_discount_ttc: cartDiscountTtc,
+				line_discounts_total_ttc: subTotals.lineDiscountTtc,
+				vat_breakdown: totals.vatBreakdown,
 			})
 
 			if (openEmailDialog) {
-				// Enrichir le devis créé avec les infos client pour le dialog
 				const enrichedQuote: QuoteResponse = {
 					...newQuote,
 					expand: {
@@ -327,22 +637,19 @@ export function QuoteCreatePage() {
 		}
 	}
 
-	// Après envoi email réussi
 	const handleEmailSent = () => {
 		navigate({ to: '/connect/quotes' })
 	}
 
-	// Fermer le dialog sans envoyer
 	const handleEmailDialogClose = (open: boolean) => {
 		setEmailDialogOpen(open)
 		if (!open) {
-			// Si on ferme sans envoyer, on redirige quand même
 			navigate({ to: '/connect/quotes' })
 		}
 	}
 
 	return (
-		<div className='container mx-auto px-6 py-8 max-w-5xl'>
+		<div className='container mx-auto px-6 py-8 max-w-6xl'>
 			{/* Header */}
 			<div className='flex items-center gap-4 mb-6'>
 				<Button
@@ -363,15 +670,15 @@ export function QuoteCreatePage() {
 				</div>
 			</div>
 
-			<div className='grid lg:grid-cols-3 gap-6'>
-				{/* Colonne principale */}
-				<div className='lg:col-span-2 space-y-6'>
-					{/* Infos devis */}
+			{/* Grid Layout (Identique Invoice) */}
+			<div className='grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] items-stretch'>
+				{/* Colonne Gauche : Infos + Client */}
+				<div className='grid gap-6 grid-rows-[auto_auto]'>
 					<Card>
-						<CardHeader>
+						<CardHeader className='pb-3'>
 							<CardTitle className='text-lg'>Informations</CardTitle>
 						</CardHeader>
-						<CardContent className='grid sm:grid-cols-3 gap-4'>
+						<CardContent className='grid grid-cols-3 gap-4'>
 							<div>
 								<Label>Numéro</Label>
 								<Input
@@ -399,23 +706,24 @@ export function QuoteCreatePage() {
 						</CardContent>
 					</Card>
 
-					{/* Sélection client */}
 					<Card>
-						<CardHeader>
+						<CardHeader className='pb-3'>
 							<CardTitle className='text-lg'>Client</CardTitle>
 						</CardHeader>
-						<CardContent>
+						<CardContent className='space-y-3'>
 							{selectedCustomer ? (
-								<div className='flex items-center justify-between p-3 border rounded-lg bg-muted/30'>
-									<div>
-										<p className='font-medium'>{selectedCustomer.name}</p>
+								<div className='flex items-start justify-between gap-4 p-3 border rounded-lg bg-muted/30'>
+									<div className='min-w-0'>
+										<p className='font-medium truncate'>
+											{selectedCustomer.name}
+										</p>
 										{selectedCustomer.email && (
-											<p className='text-sm text-muted-foreground'>
+											<p className='text-sm text-muted-foreground truncate'>
 												{selectedCustomer.email}
 											</p>
 										)}
 										{selectedCustomer.address && (
-											<p className='text-sm text-muted-foreground'>
+											<p className='text-sm text-muted-foreground line-clamp-2'>
 												{selectedCustomer.address}
 											</p>
 										)}
@@ -473,38 +781,36 @@ export function QuoteCreatePage() {
 														</div>
 													) : (
 														<ul className='divide-y'>
-															{(filteredCustomers as QuoteCustomer[]).map(
-																(customer) => (
-																	<li key={customer.id}>
-																		<button
-																			type='button'
-																			className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
-																			onClick={() => {
-																				setSelectedCustomer({
-																					id: customer.id,
-																					name: customer.name,
-																					email: customer.email,
-																					phone: customer.phone,
-																					address: customer.address,
-																					company: customer.company,
-																				})
-																				setCustomerPickerOpen(false)
-																			}}
-																		>
-																			<div>
-																				<p className='font-medium'>
-																					{customer.name}
+															{filteredCustomers.map((customer) => (
+																<li key={customer.id}>
+																	<button
+																		type='button'
+																		className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
+																		onClick={() => {
+																			setSelectedCustomer({
+																				id: customer.id,
+																				name: customer.name,
+																				email: customer.email,
+																				phone: customer.phone,
+																				address: customer.address,
+																				company: customer.company,
+																			})
+																			setCustomerPickerOpen(false)
+																		}}
+																	>
+																		<div className='min-w-0'>
+																			<p className='font-medium truncate'>
+																				{customer.name}
+																			</p>
+																			{customer.email && (
+																				<p className='text-xs text-muted-foreground truncate'>
+																					{customer.email}
 																				</p>
-																				{customer.email && (
-																					<p className='text-xs text-muted-foreground'>
-																						{customer.email}
-																					</p>
-																				)}
-																			</div>
-																		</button>
-																	</li>
-																),
-															)}
+																			)}
+																		</div>
+																	</button>
+																</li>
+															))}
 														</ul>
 													)}
 												</div>
@@ -529,46 +835,196 @@ export function QuoteCreatePage() {
 							)}
 						</CardContent>
 					</Card>
+				</div>
 
-					{/* Produits */}
-					<Card>
-						<CardHeader className='flex flex-row items-center justify-between'>
-							<CardTitle className='text-lg'>Produits</CardTitle>
-							<Button
-								size='sm'
-								className='gap-2'
-								onClick={() => setProductPickerOpen(true)}
-							>
-								<Plus className='h-4 w-4' />
-								Ajouter
-							</Button>
-						</CardHeader>
-						<CardContent>
-							{items.length === 0 ? (
-								<div className='text-center py-8 text-muted-foreground'>
-									<Search className='h-8 w-8 mx-auto mb-2 opacity-50' />
-									<p>Aucun produit ajouté</p>
-									<p className='text-sm'>
-										Cliquez sur &quot;Ajouter&quot; pour rechercher des produits
-									</p>
+				{/* Colonne Droite : Récapitulatif + Actions */}
+				<Card className='h-full'>
+					<CardHeader>
+						<CardTitle className='text-lg'>Récapitulatif</CardTitle>
+					</CardHeader>
+					<CardContent className='space-y-4'>
+						<div className='space-y-2'>
+							<div className='flex justify-between text-sm'>
+								<span className='text-muted-foreground'>Client</span>
+								<span className='font-medium'>
+									{selectedCustomer?.name || '-'}
+								</span>
+							</div>
+							<div className='flex justify-between text-sm'>
+								<span className='text-muted-foreground'>Articles</span>
+								<span className='font-medium'>{items.length}</span>
+							</div>
+						</div>
+
+						{/* Promotion globale */}
+						<div className='space-y-2 pt-2 border-t'>
+							<div className='text-sm font-medium'>Promotion globale</div>
+							<div className='flex items-center gap-2'>
+								<select
+									className='h-9 rounded-md border bg-white px-2 text-sm'
+									value={cartDiscountMode}
+									onChange={(e) =>
+										setCartDiscountMode(e.target.value as DiscountMode)
+									}
+								>
+									<option value='percent'>%</option>
+									<option value='amount'>€</option>
+								</select>
+								{/* ✅ FIX: Utilise cartDiscountRaw au lieu de cartDiscountValue */}
+								<Input
+									type='text'
+									inputMode='decimal'
+									className='h-9'
+									placeholder='0'
+									value={cartDiscountRaw}
+									onChange={(e) => handleCartDiscountChange(e.target.value)}
+								/>
+							</div>
+						</div>
+
+						{/* Totaux */}
+						<div className='border-t pt-3 space-y-2 text-sm'>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Sous-total TTC</span>
+								<span>{totals.subTtc.toFixed(2)} €</span>
+							</div>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Remises lignes</span>
+								<span>-{totals.lineDiscountTtc.toFixed(2)} €</span>
+							</div>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Remise globale</span>
+								<span>-{totals.cartDiscountTtc.toFixed(2)} €</span>
+							</div>
+							<div className='border-t pt-2 flex justify-between font-bold'>
+								<span>Total TTC</span>
+								<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
+							</div>
+
+							{/* Ventilation TVA */}
+							{totals.vatBreakdown.length > 0 && (
+								<div className='border-t pt-2 space-y-1'>
+									<div className='flex justify-between font-medium text-muted-foreground'>
+										<span>Total HT</span>
+										<span>{totals.ht.toFixed(2)} €</span>
+									</div>
+									<div className='flex justify-between font-medium text-muted-foreground'>
+										<span>Total TVA</span>
+										<span>{totals.tva.toFixed(2)} €</span>
+									</div>
+									<div className='pl-3 space-y-1 text-xs'>
+										{totals.vatBreakdown.map((vb) => (
+											<div
+												key={vb.rate}
+												className='flex justify-between text-muted-foreground'
+											>
+												<span>
+													TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+												</span>
+												<span>{vb.vat.toFixed(2)} €</span>
+											</div>
+										))}
+									</div>
 								</div>
-							) : (
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Produit</TableHead>
-											<TableHead className='text-center w-32'>Qté</TableHead>
-											<TableHead className='text-right'>P.U. HT</TableHead>
-											<TableHead className='text-right'>TVA</TableHead>
-											<TableHead className='text-right'>Total TTC</TableHead>
-											<TableHead className='w-10' />
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{items.map((item) => (
+							)}
+						</div>
+
+						{/* Actions */}
+						<div className='space-y-2 pt-4'>
+							<Button
+								className='w-full gap-2'
+								onClick={() => handleSubmit('sent', true)}
+								disabled={createQuote.isPending}
+							>
+								<Mail className='h-4 w-4' />
+								Créer et envoyer
+							</Button>
+							<Button
+								variant='outline'
+								className='w-full'
+								onClick={() => handleSubmit('draft', false)}
+								disabled={createQuote.isPending}
+							>
+								Enregistrer en brouillon
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+			</div>
+
+			{/* Zone Produits et Notes */}
+			<div className='mt-6 space-y-6'>
+				<Card>
+					<CardHeader className='flex flex-row items-center justify-between'>
+						<CardTitle className='text-lg'>Produits</CardTitle>
+						<Button
+							size='sm'
+							className='gap-2'
+							onClick={() => setProductPickerOpen(true)}
+						>
+							<Plus className='h-4 w-4' />
+							Ajouter
+						</Button>
+					</CardHeader>
+					<CardContent>
+						{items.length === 0 ? (
+							<div className='text-center py-8 text-muted-foreground'>
+								<Search className='h-8 w-8 mx-auto mb-2 opacity-50' />
+								<p>Aucun produit ajouté</p>
+							</div>
+						) : (
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Produit</TableHead>
+										<TableHead className='text-center w-32'>Qté</TableHead>
+										<TableHead className='text-right w-40'>P.U. TTC</TableHead>
+										<TableHead className='w-52'>Promo</TableHead>
+										<TableHead className='text-right'>TVA</TableHead>
+										<TableHead className='text-right'>Total TTC</TableHead>
+										<TableHead className='w-10' />
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{items.map((item) => {
+										const currentDisplayMode = item.displayMode ?? 'name'
+										const showSelector =
+											isDisplayModeAvailable(item, 'designation') ||
+											isDisplayModeAvailable(item, 'sku')
+										return (
 											<TableRow key={item.id}>
 												<TableCell className='font-medium'>
-													{item.name}
+													<div className='flex items-center gap-2'>
+														<div className='min-w-0 flex-1 truncate'>
+															{getDisplayText(item)}
+														</div>
+														{showSelector && (
+															<Select
+																value={currentDisplayMode}
+																onValueChange={(v) =>
+																	setLineDisplayMode(item.id, v as DisplayMode)
+																}
+															>
+																<SelectTrigger className='h-7 w-[110px] text-xs flex-shrink-0'>
+																	<SelectValue />
+																</SelectTrigger>
+																<SelectContent>
+																	<SelectItem value='name'>Nom</SelectItem>
+																	{isDisplayModeAvailable(
+																		item,
+																		'designation',
+																	) && (
+																		<SelectItem value='designation'>
+																			Désignation
+																		</SelectItem>
+																	)}
+																	{isDisplayModeAvailable(item, 'sku') && (
+																		<SelectItem value='sku'>SKU</SelectItem>
+																	)}
+																</SelectContent>
+															</Select>
+														)}
+													</div>
 												</TableCell>
 												<TableCell>
 													<div className='flex items-center justify-center gap-1'>
@@ -594,7 +1050,51 @@ export function QuoteCreatePage() {
 													</div>
 												</TableCell>
 												<TableCell className='text-right'>
-													{item.unit_price_ht.toFixed(2)} €
+													{/* ✅ FIX: Utilise unitPriceRaw au lieu de unit_price_ttc */}
+													<Input
+														type='text'
+														inputMode='decimal'
+														className='h-8 w-28 ml-auto text-right'
+														value={
+															item.unitPriceRaw ??
+															item.unit_price_ttc.toString()
+														}
+														onChange={(e) =>
+															handleUnitPriceChange(item.id, e.target.value)
+														}
+													/>
+												</TableCell>
+												<TableCell>
+													<div className='flex items-center gap-2'>
+														<select
+															className='h-8 rounded-md border bg-white px-1 text-xs'
+															value={item.lineDiscountMode ?? 'percent'}
+															onChange={(e) =>
+																setLineDiscountMode(
+																	item.id,
+																	e.target.value as DiscountMode,
+																)
+															}
+														>
+															<option value='percent'>%</option>
+															<option value='amount'>€</option>
+														</select>
+														{/* ✅ FIX: Utilise lineDiscountRaw au lieu de lineDiscountValue */}
+														<Input
+															type='text'
+															inputMode='decimal'
+															className='h-8 w-20'
+															placeholder='0'
+															value={item.lineDiscountRaw ?? ''}
+															onChange={(e) =>
+																updateLineDiscount(
+																	item.id,
+																	item.lineDiscountMode ?? 'percent',
+																	e.target.value,
+																)
+															}
+														/>
+													</div>
 												</TableCell>
 												<TableCell className='text-right'>
 													{item.tva_rate}%
@@ -613,120 +1113,78 @@ export function QuoteCreatePage() {
 													</Button>
 												</TableCell>
 											</TableRow>
-										))}
-									</TableBody>
-									<TableFooter>
-										<TableRow>
-											<TableCell colSpan={4} className='text-right'>
-												Total HT
+										)
+									})}
+								</TableBody>
+								<TableFooter>
+									{/* Ventilation TVA détaillée */}
+									{totals.vatBreakdown.map((vb) => (
+										<TableRow key={vb.rate}>
+											<TableCell colSpan={5} className='text-right text-xs'>
+												Base HT TVA {vb.rate}%
 											</TableCell>
-											<TableCell className='text-right'>
-												{totals.ht.toFixed(2)} €
-											</TableCell>
-											<TableCell />
-										</TableRow>
-										<TableRow>
-											<TableCell colSpan={4} className='text-right'>
-												TVA
-											</TableCell>
-											<TableCell className='text-right'>
-												{totals.tva.toFixed(2)} €
+											<TableCell className='text-right text-xs'>
+												{vb.base_ht.toFixed(2)} €
 											</TableCell>
 											<TableCell />
 										</TableRow>
-										<TableRow className='font-bold'>
-											<TableCell colSpan={4} className='text-right'>
-												Total TTC
+									))}
+									<TableRow>
+										<TableCell colSpan={5} className='text-right'>
+											Total HT
+										</TableCell>
+										<TableCell className='text-right'>
+											{totals.ht.toFixed(2)} €
+										</TableCell>
+										<TableCell />
+									</TableRow>
+									{totals.vatBreakdown.map((vb) => (
+										<TableRow key={`vat-${vb.rate}`}>
+											<TableCell colSpan={5} className='text-right text-xs'>
+												TVA {vb.rate}%
 											</TableCell>
-											<TableCell className='text-right text-lg'>
-												{totals.ttc.toFixed(2)} €
+											<TableCell className='text-right text-xs'>
+												{vb.vat.toFixed(2)} €
 											</TableCell>
 											<TableCell />
 										</TableRow>
-									</TableFooter>
-								</Table>
-							)}
-						</CardContent>
-					</Card>
+									))}
+									<TableRow className='font-bold'>
+										<TableCell colSpan={5} className='text-right'>
+											Total TTC Final
+										</TableCell>
+										<TableCell className='text-right text-lg'>
+											{totals.ttc.toFixed(2)} €
+										</TableCell>
+										<TableCell />
+									</TableRow>
+								</TableFooter>
+							</Table>
+						)}
+					</CardContent>
+				</Card>
 
-					{/* Notes */}
-					<Card>
-						<CardHeader>
-							<CardTitle className='text-lg'>Notes</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<Textarea
-								placeholder='Notes ou conditions particulières...'
-								value={notes}
-								onChange={(e) => setNotes(e.target.value)}
-								rows={3}
-							/>
-						</CardContent>
-					</Card>
-				</div>
-
-				{/* Sidebar - Récapitulatif */}
-				<div className='space-y-6'>
-					<Card className='sticky top-20'>
-						<CardHeader>
-							<CardTitle className='text-lg'>Récapitulatif</CardTitle>
-						</CardHeader>
-						<CardContent className='space-y-4'>
-							<div className='space-y-2'>
-								<div className='flex justify-between text-sm'>
-									<span className='text-muted-foreground'>Client</span>
-									<span className='font-medium'>
-										{selectedCustomer?.name || '-'}
-									</span>
-								</div>
-								<div className='flex justify-between text-sm'>
-									<span className='text-muted-foreground'>Articles</span>
-									<span className='font-medium'>{items.length}</span>
-								</div>
-								<div className='flex justify-between text-sm'>
-									<span className='text-muted-foreground'>Total HT</span>
-									<span>{totals.ht.toFixed(2)} €</span>
-								</div>
-								<div className='flex justify-between text-sm'>
-									<span className='text-muted-foreground'>TVA</span>
-									<span>{totals.tva.toFixed(2)} €</span>
-								</div>
-								<div className='border-t pt-2 flex justify-between font-bold'>
-									<span>Total TTC</span>
-									<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
-								</div>
-							</div>
-
-							<div className='space-y-2 pt-4'>
-								<Button
-									className='w-full gap-2'
-									onClick={() => handleSubmit('sent', true)}
-									disabled={createQuote.isPending}
-								>
-									<Mail className='h-4 w-4' />
-									Créer et envoyer
-								</Button>
-								<Button
-									variant='outline'
-									className='w-full'
-									onClick={() => handleSubmit('draft', false)}
-									disabled={createQuote.isPending}
-								>
-									Enregistrer en brouillon
-								</Button>
-							</div>
-						</CardContent>
-					</Card>
-				</div>
+				<Card>
+					<CardHeader>
+						<CardTitle className='text-lg'>Notes</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<Textarea
+							placeholder='Notes ou conditions particulières...'
+							value={notes}
+							onChange={(e) => setNotes(e.target.value)}
+							rows={3}
+						/>
+					</CardContent>
+				</Card>
 			</div>
 
-			{/* Dialog nouveau client */}
+			{/* Dialogs */}
 			<CustomerDialog
 				open={newCustomerDialogOpen}
 				onOpenChange={setNewCustomerDialogOpen}
 			/>
 
-			{/* Dialog choix produits */}
 			<Dialog open={productPickerOpen} onOpenChange={setProductPickerOpen}>
 				<DialogContent className='max-w-lg'>
 					<DialogHeader>
@@ -746,7 +1204,7 @@ export function QuoteCreatePage() {
 								<div className='p-4 text-center text-sm text-muted-foreground'>
 									{isAppPosConnected
 										? 'Aucun produit trouvé'
-										: 'Connexion à AppPOS en cours ou échouée'}
+										: 'Connexion à AppPOS...'}
 								</div>
 							) : (
 								<ul className='divide-y'>
@@ -775,7 +1233,6 @@ export function QuoteCreatePage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Dialog envoi email */}
 			<SendQuoteEmailDialog
 				open={emailDialogOpen}
 				onOpenChange={handleEmailDialogClose}

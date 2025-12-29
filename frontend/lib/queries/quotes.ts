@@ -1,6 +1,8 @@
 // frontend/lib/queries/quotes.ts
 // 🔢 Le numéro de devis est maintenant généré automatiquement par le backend
 
+// ✅ IMPORT: On récupère le type de ventilation TVA défini dans invoices
+import type { VatBreakdownItem } from '@/lib/queries/invoices'
 import type {
 	QuoteCreateDto,
 	QuoteResponse,
@@ -8,6 +10,11 @@ import type {
 } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+// ✅ DÉFINITION: Type étendu pour la création (incluant vat_breakdown)
+export type CreateQuoteParams = Omit<QuoteCreateDto, 'number'> & {
+	vat_breakdown?: VatBreakdownItem[]
+}
 
 export const quoteKeys = {
 	all: ['quotes'] as const,
@@ -86,8 +93,9 @@ export function useCreateQuote() {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
 
+	// ✅ FIX: Utilisation du type CreateQuoteParams au lieu de QuoteCreateDto direct
 	return useMutation({
-		mutationFn: async (data: Omit<QuoteCreateDto, 'number'>) => {
+		mutationFn: async (data: CreateQuoteParams) => {
 			const result = await pb.collection('quotes').create(data)
 			return result as unknown as QuoteResponse
 		},
@@ -108,7 +116,8 @@ export function useUpdateQuote() {
 			data,
 		}: {
 			id: string
-			data: Partial<QuoteCreateDto>
+			// ✅ FIX: On permet aussi la mise à jour de la ventilation TVA
+			data: Partial<QuoteCreateDto> & { vat_breakdown?: VatBreakdownItem[] }
 		}) => {
 			const result = await pb.collection('quotes').update(id, data)
 			return result as unknown as QuoteResponse
@@ -228,6 +237,13 @@ export function useConvertQuoteToInvoice() {
 				notes: quote.notes
 					? `${quote.notes}\n\nConverti depuis le devis ${quote.number}`
 					: `Converti depuis le devis ${quote.number}`,
+
+				// ✅ Transfert des infos promos lors de la conversion
+				cart_discount_mode: quote.cart_discount_mode,
+				cart_discount_value: quote.cart_discount_value,
+				cart_discount_ttc: quote.cart_discount_ttc,
+				line_discounts_total_ttc: quote.line_discounts_total_ttc,
+				vat_breakdown: quote.vat_breakdown, // Transfert de la ventilation
 
 				sold_by: quote.issued_by || undefined,
 			}

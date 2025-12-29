@@ -1,5 +1,7 @@
 // frontend/modules/connect/components/InvoiceCreatePage.tsx
 // ✅ VERSION CORRIGÉE - Support multi-taux TVA avec ventilation
+// ✅ FIX: Les inputs décimaux acceptent maintenant le point ET la virgule
+//    Utilise des états "raw" (string) séparés pour l'affichage, comme CashTerminalPage
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -49,7 +51,7 @@ import {
 	Trash2,
 	UserPlus,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { CustomerDialog } from './CustomerDialog'
 
@@ -68,6 +70,9 @@ interface UiInvoiceItem extends InvoiceItem {
 	unit_price_ttc: number
 	lineDiscountMode?: DiscountMode
 	lineDiscountValue?: number
+	// ✅ NOUVEAU: États "raw" pour l'affichage des inputs
+	unitPriceRaw?: string
+	lineDiscountRaw?: string
 }
 
 interface SelectedCustomer {
@@ -93,6 +98,14 @@ type InvoiceProduct = ProductsResponse
 const clamp = (n: number, min: number, max: number) =>
 	Math.min(max, Math.max(min, n))
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+// ✅ Fonction pour parser les entrées décimales (accepte point et virgule)
+const parseDecimalInput = (value: string): number | null => {
+	if (value.trim() === '') return null
+	const normalized = value.replace(',', '.')
+	const parsed = Number.parseFloat(normalized)
+	return Number.isNaN(parsed) ? null : parsed
+}
 
 const getDisplayText = (it: UiInvoiceItem) => {
 	const mode = it.displayMode ?? 'name'
@@ -186,10 +199,11 @@ export function InvoiceCreatePage() {
 	const [notes, setNotes] = useState('')
 	const [currency] = useState('EUR')
 
-	// States Promos
+	// ✅ États Promos avec valeur raw séparée (comme CashTerminalPage)
 	const [cartDiscountMode, setCartDiscountMode] =
 		useState<DiscountMode>('percent')
 	const [cartDiscountValue, setCartDiscountValue] = useState<number>(0)
+	const [cartDiscountRaw, setCartDiscountRaw] = useState<string>('')
 
 	// UI States
 	const [customerPickerOpen, setCustomerPickerOpen] = useState(false)
@@ -272,8 +286,10 @@ export function InvoiceCreatePage() {
 			quantity: 1,
 			tva_rate: tvaRate,
 			unit_price_ttc: unitTtc,
+			unitPriceRaw: unitTtc.toString(),
 			lineDiscountMode: 'percent',
 			lineDiscountValue: 0,
+			lineDiscountRaw: '',
 			unit_price_ht: 0,
 			total_ht: 0,
 			total_ttc: 0,
@@ -300,37 +316,97 @@ export function InvoiceCreatePage() {
 		)
 	}
 
-	const updateUnitTtc = (itemId: string, unitTtc: number) => {
+	// ✅ NOUVEAU: Gestion du prix unitaire avec état raw
+	const handleUnitPriceChange = useCallback((itemId: string, raw: string) => {
 		setItems((prev) =>
 			prev.map((it) => {
 				if (it.id !== itemId) return it
-				const next = { ...it, unit_price_ttc: round2(Math.max(0, unitTtc)) }
-				return { ...next, ...computeLineTotals(next) }
-			}),
-		)
-	}
 
-	const updateLineDiscount = (
-		itemId: string,
-		mode: DiscountMode,
-		value: number,
-	) => {
-		setItems((prev) =>
-			prev.map((it) => {
-				if (it.id !== itemId) return it
-				const next: UiInvoiceItem = {
+				const parsed = parseDecimalInput(raw)
+				const newUnitTtc =
+					parsed !== null ? round2(Math.max(0, parsed)) : it.unit_price_ttc
+
+				const next = {
 					...it,
-					lineDiscountMode: mode,
-					lineDiscountValue: Math.max(0, value),
+					unitPriceRaw: raw,
+					unit_price_ttc: newUnitTtc,
 				}
 				return { ...next, ...computeLineTotals(next) }
 			}),
 		)
-	}
+	}, [])
+
+	// ✅ NOUVEAU: Gestion de la remise ligne avec état raw
+	const updateLineDiscount = useCallback(
+		(itemId: string, mode: DiscountMode, raw: string) => {
+			setItems((prev) =>
+				prev.map((it) => {
+					if (it.id !== itemId) return it
+
+					const parsed = parseDecimalInput(raw)
+					let newValue = it.lineDiscountValue ?? 0
+
+					if (parsed !== null) {
+						newValue = Math.max(0, parsed)
+					} else if (raw.trim() === '') {
+						newValue = 0
+					}
+
+					const next: UiInvoiceItem = {
+						...it,
+						lineDiscountMode: mode,
+						lineDiscountValue: newValue,
+						lineDiscountRaw: raw,
+					}
+					return { ...next, ...computeLineTotals(next) }
+				}),
+			)
+		},
+		[],
+	)
+
+	// ✅ NOUVEAU: Changement du mode de remise ligne (garde la valeur raw)
+	const setLineDiscountMode = useCallback(
+		(itemId: string, mode: DiscountMode) => {
+			setItems((prev) =>
+				prev.map((it) => {
+					if (it.id !== itemId) return it
+					const next: UiInvoiceItem = {
+						...it,
+						lineDiscountMode: mode,
+					}
+					return { ...next, ...computeLineTotals(next) }
+				}),
+			)
+		},
+		[],
+	)
 
 	const removeItem = (itemId: string) => {
 		setItems((prev) => prev.filter((it) => it.id !== itemId))
 	}
+
+	// ✅ NOUVEAU: Gestion de la remise panier avec état raw (comme CashTerminalPage)
+	const handleCartDiscountChange = useCallback(
+		(raw: string) => {
+			setCartDiscountRaw(raw)
+
+			if (raw.trim() === '') {
+				setCartDiscountValue(0)
+				return
+			}
+
+			const parsed = parseDecimalInput(raw)
+			if (parsed === null) return
+
+			if (cartDiscountMode === 'percent') {
+				setCartDiscountValue(clamp(parsed, 0, 100))
+			} else {
+				setCartDiscountValue(Math.max(0, parsed))
+			}
+		},
+		[cartDiscountMode],
+	)
 
 	// =====================
 	// CALCULS TOTAUX
@@ -456,8 +532,10 @@ export function InvoiceCreatePage() {
 					designation,
 					sku,
 					unit_price_ttc,
+					unitPriceRaw,
 					lineDiscountMode,
 					lineDiscountValue,
+					lineDiscountRaw,
 					...rest
 				}) => ({
 					...rest,
@@ -746,13 +824,14 @@ export function InvoiceCreatePage() {
 									<option value='percent'>%</option>
 									<option value='amount'>€</option>
 								</select>
+								{/* ✅ FIX: Utilise cartDiscountRaw au lieu de cartDiscountValue */}
 								<Input
-									type='number'
+									type='text'
 									inputMode='decimal'
-									step='0.01'
 									className='h-9'
-									value={cartDiscountValue}
-									onChange={(e) => setCartDiscountValue(Number(e.target.value))}
+									placeholder='0'
+									value={cartDiscountRaw}
+									onChange={(e) => handleCartDiscountChange(e.target.value)}
 								/>
 							</div>
 						</div>
@@ -921,18 +1000,17 @@ export function InvoiceCreatePage() {
 													</div>
 												</TableCell>
 												<TableCell className='text-right'>
+													{/* ✅ FIX: Utilise unitPriceRaw au lieu de unit_price_ttc */}
 													<Input
-														type='number'
+														type='text'
 														inputMode='decimal'
-														step='0.01'
 														className='h-8 w-28 ml-auto text-right'
 														value={
-															Number.isFinite(item.unit_price_ttc)
-																? item.unit_price_ttc
-																: 0
+															item.unitPriceRaw ??
+															item.unit_price_ttc.toString()
 														}
 														onChange={(e) =>
-															updateUnitTtc(item.id, Number(e.target.value))
+															handleUnitPriceChange(item.id, e.target.value)
 														}
 													/>
 												</TableCell>
@@ -942,28 +1020,27 @@ export function InvoiceCreatePage() {
 															className='h-8 rounded-md border bg-white px-1 text-xs'
 															value={item.lineDiscountMode ?? 'percent'}
 															onChange={(e) =>
-																updateLineDiscount(
+																setLineDiscountMode(
 																	item.id,
 																	e.target.value as DiscountMode,
-																	item.lineDiscountValue ?? 0,
 																)
 															}
 														>
 															<option value='percent'>%</option>
 															<option value='amount'>€</option>
 														</select>
+														{/* ✅ FIX: Utilise lineDiscountRaw au lieu de lineDiscountValue */}
 														<Input
-															type='number'
+															type='text'
 															inputMode='decimal'
-															step='0.01'
 															className='h-8 w-20'
-															value={item.lineDiscountValue ?? 0}
+															placeholder='0'
+															value={item.lineDiscountRaw ?? ''}
 															onChange={(e) =>
 																updateLineDiscount(
 																	item.id,
-																	(item.lineDiscountMode ??
-																		'percent') as DiscountMode,
-																	Number(e.target.value),
+																	item.lineDiscountMode ?? 'percent',
+																	e.target.value,
 																)
 															}
 														/>
