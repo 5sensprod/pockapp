@@ -186,7 +186,11 @@ export function CashPage() {
 
 				{/* Section secondaire : Raccourcis et Journal */}
 				<section className='grid gap-4 lg:grid-cols-3'>
-					<CashShortcutsCard />
+					<CashShortcutsCard
+						isSessionOpen={sessionManager.isSessionOpen}
+						selectedRegisterId={registerManager.selectedRegisterId}
+						selectedRegisterName={registerManager.selectedRegister?.name}
+					/>
 
 					<QuickJournalCard />
 				</section>
