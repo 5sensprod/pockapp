@@ -1,5 +1,4 @@
-// frontend/modules/cash/components/RapportZPage.tsx
-// ✅ VERSION AMÉLIORÉE avec TVA ventilée, hash NF525, et historique
+// frontend/modules/cash/components/reports/RapportZPage.tsx
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -23,139 +22,80 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import {
-	useCashRegisters,
-	useZReport,
-	useZReportCheck,
-	useZReportList,
-} from '@/lib/queries/cash'
 import type { RapportZ } from '@/lib/types/cash.types'
-import { getPaymentMethodLabel, getVATRateLabel } from '@/lib/types/cash.types'
-
+import { getPaymentMethodLabel } from '@/lib/types/cash.types'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	AlertCircle,
-	ArrowLeft,
 	Calendar,
 	CheckCircle2,
-	Download,
 	FileText,
 	Hash,
 	Lock,
-	Printer,
 	User,
 } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
+import { useRegisterManager } from '../hooks/useRegisterManager'
 import {
+	PaymentMethodBreakdown,
+	ReportHeader,
 	VATBreakdownTable,
 	computeNetByMethod,
 	formatCurrency,
 	formatDateTime,
 	isCashDifferenceSignificant,
-} from './utils'
+	usePrintReport,
+	useZReportGenerator,
+} from './index'
 
 export function RapportZPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 
-	const [selectedRegisterId, setSelectedRegisterId] = useState<string>('')
 	const [selectedDate, setSelectedDate] = useState<string>(
 		new Date().toISOString().split('T')[0],
 	)
 	const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate')
 
-	// Charger les caisses
-	const { data: registers, isLoading: isLoadingRegisters } = useCashRegisters(
-		activeCompanyId ?? undefined,
-	)
-
-	// Vérifier si un rapport Z existe déjà
-	const { data: checkResult, isLoading: isLoadingCheck } = useZReportCheck(
-		selectedRegisterId,
-		selectedDate,
-		{ enabled: !!selectedRegisterId && !!selectedDate },
-	)
-
-	// Charger le rapport Z (seulement quand on clique sur générer)
-	const [shouldGenerate, setShouldGenerate] = useState(false)
+	// Gestion des caisses
 	const {
-		data: rapportZ,
-		isLoading: isLoadingRapport,
-		refetch,
+		registers,
+		isRegistersLoading,
+		selectedRegisterId,
+		setSelectedRegisterId,
+		// registerStatusLabel,
+	} = useRegisterManager({ ownerCompanyId: activeCompanyId ?? undefined })
+
+	// Gestion du rapport Z
+	const {
+		rapportZ,
+		isLoadingRapport,
 		isError,
 		error,
-	} = useZReport(selectedRegisterId, selectedDate, {
-		enabled: shouldGenerate && !!selectedRegisterId && !!selectedDate,
+		checkResult,
+		isLoadingCheck,
+		zReportsList,
+		handleGenerate,
+		setShouldGenerate,
+	} = useZReportGenerator({
+		selectedRegisterId: selectedRegisterId ?? '',
+		selectedDate,
 	})
 
-	// Liste des rapports Z précédents
-	const { data: zReportsList } = useZReportList(selectedRegisterId, {
-		enabled: !!selectedRegisterId,
-	})
-
-	const handleGenerate = () => {
-		if (!selectedRegisterId) {
-			toast.error('Veuillez sélectionner une caisse')
-			return
-		}
-		if (!selectedDate) {
-			toast.error('Veuillez sélectionner une date')
-			return
-		}
-
-		if (checkResult?.exists) {
-			toast.info('Ce rapport Z existe déjà, il sera affiché')
-		}
-
-		setShouldGenerate(true)
-		refetch()
-	}
-
-	const handlePrint = () => {
-		window.print()
-	}
-
-	const handleExport = () => {
-		// TODO: Implémenter l'export PDF avec @react-pdf/renderer
-		toast.info('Export PDF en cours de développement')
-	}
+	// Actions d'impression/export
+	const { handlePrint, handleExport } = usePrintReport()
 
 	return (
 		<div className='container mx-auto px-6 py-8 max-w-6xl'>
 			{/* Header */}
-			<div className='flex items-center justify-between mb-6'>
-				<div className='flex items-center gap-3'>
-					<Button
-						variant='ghost'
-						size='icon'
-						onClick={() => navigate({ to: '/cash' })}
-					>
-						<ArrowLeft className='h-5 w-5' />
-					</Button>
-					<div>
-						<h1 className='text-2xl font-semibold'>
-							Rapport Z - Clôture Journalière
-						</h1>
-						<p className='text-sm text-muted-foreground'>
-							Document fiscal inaltérable conforme NF525
-						</p>
-					</div>
-				</div>
-
-				{rapportZ && (
-					<div className='flex gap-2'>
-						<Button variant='outline' size='sm' onClick={handlePrint}>
-							<Printer className='h-4 w-4 mr-2' />
-							Imprimer
-						</Button>
-						<Button variant='outline' size='sm' onClick={handleExport}>
-							<Download className='h-4 w-4 mr-2' />
-							Export PDF
-						</Button>
-					</div>
-				)}
-			</div>
+			<ReportHeader
+				title='Rapport Z - Clôture Journalière'
+				subtitle='Document fiscal inaltérable conforme NF525'
+				onBack={() => navigate({ to: '/cash' })}
+				onPrint={handlePrint}
+				onExport={handleExport}
+				showActions={!!rapportZ}
+			/>
 
 			<Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
 				<TabsList className='mb-6'>
@@ -188,12 +128,12 @@ export function RapportZPage() {
 									<select
 										id='register'
 										className='w-full h-10 rounded-md border bg-white px-3 text-sm'
-										value={selectedRegisterId}
+										value={selectedRegisterId ?? ''}
 										onChange={(e) => {
 											setSelectedRegisterId(e.target.value)
 											setShouldGenerate(false)
 										}}
-										disabled={isLoadingRegisters}
+										disabled={isRegistersLoading}
 									>
 										<option value=''>Sélectionner une caisse</option>
 										{registers?.map((reg) => (
@@ -480,37 +420,23 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 									<div className='text-sm font-medium mb-2'>
 										Encaissements (ventes) par moyen
 									</div>
-									<div className='grid grid-cols-2 gap-2'>
-										{Object.entries(salesByMethod).map(([method, amount]) => (
-											<div
-												key={method}
-												className='flex justify-between text-sm'
-											>
-												<span className='text-muted-foreground'>
-													{getPaymentMethodLabel(method)}
-												</span>
-												<span className='font-medium'>
-													{formatCurrency(amount)}
-												</span>
-											</div>
-										))}
-									</div>
+									<PaymentMethodBreakdown byMethod={salesByMethod} label='' />
 								</div>
 
-								{/* Remboursements (si exposés par le backend) */}
+								{/* Remboursements */}
 								{refundsByMethod && Object.keys(refundsByMethod).length > 0 && (
 									<div>
 										<div className='text-sm font-medium mb-2'>
 											Remboursements par moyen
 										</div>
-										<div className='grid grid-cols-2 gap-2'>
+										<div className='space-y-2'>
 											{Object.entries(refundsByMethod).map(
 												([method, amount]) => (
 													<div
 														key={method}
 														className='flex justify-between text-sm'
 													>
-														<span className='text-muted-foreground'>
+														<span className='text-muted-foreground capitalize'>
 															{getPaymentMethodLabel(method)}
 														</span>
 														<span className='font-medium text-red-600'>
@@ -523,19 +449,19 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 									</div>
 								)}
 
-								{/* Net (si dispo: net_by_method ou calculable) */}
+								{/* Net */}
 								{netByMethod && Object.keys(netByMethod).length > 0 && (
 									<div>
 										<div className='text-sm font-medium mb-2'>
 											Net par moyen (ventes - remboursements)
 										</div>
-										<div className='grid grid-cols-2 gap-2'>
+										<div className='space-y-2'>
 											{Object.entries(netByMethod).map(([method, amount]) => (
 												<div
 													key={method}
 													className='flex justify-between text-sm'
 												>
-													<span className='text-muted-foreground'>
+													<span className='text-muted-foreground capitalize'>
 														{getPaymentMethodLabel(method)}
 													</span>
 													<span
@@ -578,7 +504,9 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 							<div className='text-xs text-muted-foreground'>Écart total</div>
 							<div
 								className={`text-lg font-bold ${
-									Math.abs(rapport.daily_totals.total_cash_difference) > 10
+									isCashDifferenceSignificant(
+										rapport.daily_totals.total_cash_difference,
+									)
 										? 'text-destructive'
 										: 'text-emerald-600'
 								}`}
@@ -727,7 +655,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 													([rate, detail]) => (
 														<div key={rate} className='flex justify-between'>
 															<span className='text-muted-foreground'>
-																{getVATRateLabel(rate)}
+																{rate}%
 															</span>
 															<span className='font-medium'>
 																{formatCurrency(detail.vat_amount)}
@@ -743,23 +671,10 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 								{session.totals_by_method &&
 									Object.keys(session.totals_by_method).length > 0 && (
 										<div className='text-sm'>
-											<div className='text-xs text-muted-foreground mb-2'>
-												Par moyen de paiement
-											</div>
-											<div className='grid grid-cols-4 gap-2'>
-												{Object.entries(session.totals_by_method).map(
-													([method, amount]) => (
-														<div key={method} className='flex justify-between'>
-															<span className='text-muted-foreground'>
-																{getPaymentMethodLabel(method)}
-															</span>
-															<span className='font-medium'>
-																{formatCurrency(amount)}
-															</span>
-														</div>
-													),
-												)}
-											</div>
+											<PaymentMethodBreakdown
+												byMethod={session.totals_by_method}
+												label='Par moyen de paiement'
+											/>
 										</div>
 									)}
 							</div>

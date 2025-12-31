@@ -1,4 +1,4 @@
-// frontend/modules/cash/components/TicketsPage.tsx
+// frontend/modules/cash/components/reports/TicketsPage.tsx
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,18 +38,17 @@ import {
 	Receipt,
 	Search,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { formatCurrency, formatDate, formatTime, toYMD } from './utils'
+import {
+	formatCurrency,
+	formatDate,
+	formatTime,
+	useTicketFilters,
+	useTicketStats,
+} from './index'
 
 export function TicketsPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
-
-	const [searchTerm, setSearchTerm] = useState('')
-	const [conversionFilter, setConversionFilter] = useState<
-		'all' | 'converted' | 'not_converted'
-	>('all')
-	const [dateFilter, setDateFilter] = useState('')
 
 	const { data: invoicesData, isLoading } = useInvoices({
 		companyId: activeCompanyId ?? undefined,
@@ -59,47 +58,20 @@ export function TicketsPage() {
 
 	const tickets = invoicesData?.items || []
 
-	const filteredTickets = useMemo(() => {
-		return tickets.filter((ticket: any) => {
-			if (searchTerm) {
-				const term = searchTerm.toLowerCase()
-				const matchNumber = ticket.number?.toLowerCase().includes(term)
-				const matchCustomer = ticket.expand?.customer?.name
-					?.toLowerCase()
-					.includes(term)
-				if (!matchNumber && !matchCustomer) return false
-			}
+	// Gestion des filtres
+	const {
+		searchTerm,
+		setSearchTerm,
+		conversionFilter,
+		setConversionFilter,
+		dateFilter,
+		setDateFilter,
+		filteredTickets,
+		hasActiveFilters,
+	} = useTicketFilters({ tickets })
 
-			if (conversionFilter === 'converted' && !ticket.converted_to_invoice) {
-				return false
-			}
-			if (conversionFilter === 'not_converted' && ticket.converted_to_invoice) {
-				return false
-			}
-
-			if (dateFilter) {
-				const ticketDate = toYMD(ticket.date)
-				if (ticketDate !== dateFilter) return false
-			}
-			return true
-		})
-	}, [tickets, searchTerm, conversionFilter, dateFilter])
-
-	const stats = useMemo(() => {
-		const total = tickets.length
-		const converted = tickets.filter((t: any) => t.converted_to_invoice).length
-		const totalAmount = tickets.reduce(
-			(sum: number, t: any) => sum + t.total_ttc,
-			0,
-		)
-
-		return {
-			total,
-			converted,
-			notConverted: total - converted,
-			totalAmount,
-		}
-	}, [tickets])
+	// Calcul des statistiques
+	const stats = useTicketStats({ tickets })
 
 	return (
 		<div className='container mx-auto px-6 py-8'>
@@ -224,7 +196,7 @@ export function TicketsPage() {
 							<Receipt className='h-12 w-12 mx-auto mb-4 opacity-50' />
 							<p className='font-medium'>Aucun ticket trouvé</p>
 							<p className='text-sm'>
-								{searchTerm || dateFilter || conversionFilter !== 'all'
+								{hasActiveFilters
 									? 'Essayez de modifier vos filtres'
 									: 'Les tickets de caisse apparaîtront ici'}
 							</p>
