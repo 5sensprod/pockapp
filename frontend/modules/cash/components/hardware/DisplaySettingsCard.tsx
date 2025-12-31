@@ -1,6 +1,3 @@
-// frontend/modules/cash/components/hardware/DisplaySettingsCard.tsx
-import * as React from 'react'
-import { Monitor } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -15,7 +12,10 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { CustomerDisplayConfigCard } from '../CustomerDisplayConfigCard'
+import { Monitor } from 'lucide-react'
+// frontend/modules/cash/components/hardware/DisplaySettingsCard.tsx
+import * as React from 'react'
+import { CustomerDisplayConfigCard } from './CustomerDisplayConfigCard'
 
 /**
  * Carte de configuration de l'afficheur client
