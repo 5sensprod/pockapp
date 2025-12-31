@@ -1,0 +1,13 @@
+// frontend/modules/cash/components/terminal/index.ts
+export * from './types/cart'
+export * from './types/payment'
+export * from './utils/calculations'
+export * from './utils/imageUtils'
+export * from './hooks/useCartManager'
+export * from './hooks/useCartCalculations'
+export * from './hooks/useBarcodeScanner'
+export * from './payment/PaymentDialog'
+export * from './payment/SuccessView'
+export * from './cart/CartPanel'
+export * from './products/ProductsPanel'
+export * from './layout/TerminalHeader'
