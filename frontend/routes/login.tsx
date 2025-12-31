@@ -19,7 +19,6 @@ function LoginPage() {
 	const [identity, setIdentity] = useState('')
 	const [password, setPassword] = useState('')
 	const [error, setError] = useState<string | null>(null)
-	const [debugInfo, setDebugInfo] = useState<string>('')
 
 	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
@@ -29,17 +28,6 @@ function LoginPage() {
 			navigate({ to: '/' })
 		} catch (err: any) {
 			console.error(err)
-			const debug = JSON.stringify(
-				{
-					message: err?.message,
-					status: err?.status,
-					data: err?.data,
-					response: err?.response,
-				},
-				null,
-				2,
-			)
-			setDebugInfo(debug) // ← Affiche l'erreur
 			setError(err?.message ?? 'Impossible de se connecter')
 		}
 	}
@@ -77,6 +65,7 @@ function LoginPage() {
 								spellCheck={false} // ← Et ça
 							/>
 						</div>
+
 						<div className='space-y-2'>
 							<label htmlFor='password' className='text-sm font-medium'>
 								Mot de passe
@@ -90,16 +79,12 @@ function LoginPage() {
 								autoComplete='current-password'
 							/>
 						</div>
+
 						{error && <p className='text-sm text-red-600'>{error}</p>}
+
 						<Button type='submit' className='w-full' disabled={loading}>
 							{loading ? 'Connexion…' : 'Se connecter'}
 						</Button>
-						{debugInfo && (
-							<pre className='mt-4 p-2 bg-gray-100 text-xs overflow-auto max-h-40'>
-								{debugInfo}
-							</pre>
-						)}
-						Peux-tu tester et me dire l'erreur exacte affichée ?
 					</form>
 				</CardContent>
 			</Card>
