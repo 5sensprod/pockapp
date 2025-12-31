@@ -1,4 +1,6 @@
 // frontend/modules/cash/components/PosPrinterConfigCard.tsx
+// ✅ ADAPTÉ : Fonctionne maintenant en mode Wails ET en mode web (HTTP)
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -28,21 +30,19 @@ export function PosPrinterConfigCard() {
 	const queryClient = useQueryClient()
 	const isWails = isWailsEnv()
 
-	// React Query pour la liste des imprimantes
+	// ✅ MODIFIÉ : enabled: true (fonctionne maintenant en HTTP aussi)
 	const {
 		data: printers = [],
 		isLoading,
 		refetch,
 	} = useQuery({
 		...printersQueryOptions,
-		enabled: isWails,
+		enabled: true, // Maintenant ça fonctionne en web aussi !
 	})
 
-	// Mutations pour les tests
 	const testPrint = useTestPrintMutation()
 	const testDrawer = useOpenCashDrawerMutation()
 
-	// React Hook Form avec Zod
 	const form = useForm<PosPrinterSettings>({
 		resolver: zodResolver(posPrinterSettingsSchema),
 		defaultValues: loadPosPrinterSettings(),
@@ -58,7 +58,7 @@ export function PosPrinterConfigCard() {
 		}
 	}, [printers, settings.printerName, setValue])
 
-	// Sauvegarde automatique à chaque changement
+	// Sauvegarde automatique
 	useEffect(() => {
 		const subscription = watch((value) => {
 			const validated = posPrinterSettingsSchema.safeParse(value)
@@ -94,19 +94,17 @@ export function PosPrinterConfigCard() {
 						<Printer className='h-4 w-4' />
 						Imprimante POS
 					</CardTitle>
-					{isWails && (
-						<Button
-							variant='ghost'
-							size='sm'
-							onClick={handleRefresh}
-							disabled={isLoading}
-							className='h-8 px-2'
-						>
-							<RefreshCw
-								className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`}
-							/>
-						</Button>
-					)}
+					<Button
+						variant='ghost'
+						size='sm'
+						onClick={handleRefresh}
+						disabled={isLoading}
+						className='h-8 px-2'
+					>
+						<RefreshCw
+							className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`}
+						/>
+					</Button>
 				</div>
 			</CardHeader>
 			<CardContent className='space-y-4 text-sm'>
@@ -126,9 +124,11 @@ export function PosPrinterConfigCard() {
 					/>
 				</div>
 
-				{!isWails && settings.enabled && (
-					<div className='rounded-md bg-yellow-50 border border-yellow-200 p-3 text-xs text-yellow-800'>
-						⚠️ L'impression POS nécessite l'application desktop (Wails)
+				{/* ✅ MODIFIÉ : Info uniquement si pas d'imprimante détectée en mode web */}
+				{!isWails && settings.enabled && printers.length === 0 && (
+					<div className='rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800'>
+						ℹ️ Les imprimantes doivent être installées sur le PC serveur (celui
+						qui exécute l'application)
 					</div>
 				)}
 
@@ -148,7 +148,7 @@ export function PosPrinterConfigCard() {
 							className='h-9 w-full rounded-md border bg-white px-3 text-sm disabled:bg-gray-50 disabled:text-gray-500'
 							value={settings.printerName}
 							onChange={(e) => setValue('printerName', e.target.value)}
-							disabled={!settings.enabled || !isWails}
+							disabled={!settings.enabled}
 						>
 							<option value=''>-- Sélectionner --</option>
 							{printers.map((name) => (
@@ -158,7 +158,7 @@ export function PosPrinterConfigCard() {
 							))}
 						</select>
 					)}
-					{isWails && printers.length === 0 && !isLoading && (
+					{printers.length === 0 && !isLoading && (
 						<p className='text-xs text-muted-foreground'>
 							Aucune imprimante détectée. Vérifiez vos pilotes.
 						</p>
@@ -227,10 +227,7 @@ export function PosPrinterConfigCard() {
 						variant='outline'
 						size='sm'
 						disabled={
-							!settings.enabled ||
-							!settings.printerName ||
-							testPrint.isPending ||
-							!isWails
+							!settings.enabled || !settings.printerName || testPrint.isPending
 						}
 						onClick={handleTestPrint}
 					>
@@ -250,10 +247,7 @@ export function PosPrinterConfigCard() {
 						variant='outline'
 						size='sm'
 						disabled={
-							!settings.enabled ||
-							!settings.printerName ||
-							testDrawer.isPending ||
-							!isWails
+							!settings.enabled || !settings.printerName || testDrawer.isPending
 						}
 						onClick={handleTestDrawer}
 					>

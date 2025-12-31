@@ -1,13 +1,10 @@
-import { isWailsEnv } from '@/lib/wails'
 // frontend/lib/pos/printerQueries.ts
-import {
-	queryOptions,
-	useMutation,
-	// useQueryClient,
-} from '@tanstack/react-query'
+// Adapté pour fonctionner en mode Wails (bindings) ET en mode HTTP (réseau)
+
+import { queryOptions, useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { listWindowsPrinters } from './listPrinters'
-import { openCashDrawer, printReceipt } from './posPrint'
+import { openCashDrawer, printReceipt, testPrint } from './posPrint'
 import { loadPosPrinterSettings } from './printerSettings'
 import type { PrintReceiptPayload } from './printerSettings.schema'
 
@@ -26,9 +23,7 @@ export const printerKeys = {
 export const printersQueryOptions = queryOptions({
 	queryKey: printerKeys.lists(),
 	queryFn: async () => {
-		if (!isWailsEnv()) {
-			return []
-		}
+		// ✅ MODIFIÉ : Fonctionne maintenant en Wails ET en HTTP
 		return listWindowsPrinters()
 	},
 	staleTime: 1000 * 60 * 5, // 5 minutes
@@ -44,18 +39,18 @@ type PrintReceiptInput = {
 	receipt: PrintReceiptPayload
 	printerName?: string
 	width?: 58 | 80
+	companyId?: string
 }
 
 export function usePrintReceiptMutation() {
 	return useMutation({
-		mutationFn: async ({ receipt, printerName, width }: PrintReceiptInput) => {
+		mutationFn: async ({
+			receipt,
+			printerName,
+			width,
+			companyId,
+		}: PrintReceiptInput) => {
 			const settings = loadPosPrinterSettings()
-
-			if (!isWailsEnv()) {
-				throw new Error(
-					"Impression disponible uniquement dans l'application desktop",
-				)
-			}
 
 			if (!settings.enabled) {
 				throw new Error('Imprimante désactivée dans les paramètres')
@@ -68,11 +63,12 @@ export function usePrintReceiptMutation() {
 
 			const finalWidth = width || settings.width
 
-			// Impression
+			// ✅ MODIFIÉ : Utilise la nouvelle fonction qui détecte automatiquement Wails/HTTP
 			await printReceipt({
 				printerName: finalPrinterName,
 				width: finalWidth,
 				receipt,
+				companyId,
 			})
 
 			// Ouverture tiroir auto si espèces
@@ -102,16 +98,11 @@ export function useOpenCashDrawerMutation() {
 		mutationFn: async () => {
 			const settings = loadPosPrinterSettings()
 
-			if (!isWailsEnv()) {
-				throw new Error(
-					"Tiroir caisse disponible uniquement dans l'application desktop",
-				)
-			}
-
 			if (!settings.enabled || !settings.printerName) {
 				throw new Error('Imprimante non configurée')
 			}
 
+			// ✅ MODIFIÉ : Utilise la nouvelle fonction qui détecte automatiquement Wails/HTTP
 			await openCashDrawer({
 				printerName: settings.printerName,
 				width: settings.width,
@@ -140,28 +131,10 @@ export function useTestPrintMutation() {
 			printerName: string
 			width: 58 | 80
 		}) => {
-			const testReceipt: PrintReceiptPayload = {
-				companyName: 'TEST BOUTIQUE',
-				invoiceNumber: 'TEST-001',
-				dateLabel: new Date().toLocaleString('fr-FR'),
-				items: [
-					{
-						name: 'Article Test',
-						qty: 1,
-						unitTtc: 10.0,
-						totalTtc: 10.0,
-					},
-				],
-				subtotalTtc: 10.0,
-				totalTtc: 10.0,
-				taxAmount: 1.67,
-				paymentMethod: 'Test',
-			}
-
-			await printReceipt({
+			// ✅ MODIFIÉ : Utilise la nouvelle fonction qui détecte automatiquement Wails/HTTP
+			await testPrint({
 				printerName,
 				width,
-				receipt: testReceipt,
 			})
 
 			return { success: true }
