@@ -1,6 +1,7 @@
 // frontend/lib/apppos/apppos-api.ts
 // Service API pour communiquer avec l'API AppPOS (NeDB/Express)
 
+import { APPPOS_API_BASE_URL } from './apppos-config'
 import type {
 	AppPosApiResponse,
 	AppPosBrand,
@@ -14,7 +15,7 @@ import type {
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-const APPPOS_BASE_URL = 'http://localhost:3000/api'
+const APPPOS_BASE_URL = APPPOS_API_BASE_URL
 
 // Stockage du token (simple, à améliorer avec un state manager)
 let authToken: string | null = null

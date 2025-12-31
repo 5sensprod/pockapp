@@ -1,8 +1,8 @@
 // frontend/modules/cash/components/terminal/utils/imageUtils.ts
-const APPPOS_BASE_URL = 'http://localhost:3000'
+import { getAppPosImageUrl } from '@/lib/apppos/apppos-config'
 
-export const getImageUrl = (imagePath: string | undefined): string | null => {
-	if (!imagePath) return null
-	if (imagePath.startsWith('http')) return imagePath
-	return `${APPPOS_BASE_URL}${imagePath}`
-}
+/**
+ * Récupère l'URL complète pour une image AppPos
+ * Utilise la configuration avec découverte réseau automatique
+ */
+export { getAppPosImageUrl as getImageUrl }

@@ -49,6 +49,7 @@ import {
 import { useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { APPPOS_ASSETS_BASE_URL } from '@/lib/apppos/apppos-config'
 import type {
 	CategoriesResponse,
 	ProductsResponse,
@@ -63,7 +64,7 @@ import { ProductDialog } from './ProductDialog'
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-const APPPOS_BASE_URL = 'http://localhost:3000'
+const APPPOS_BASE_URL = APPPOS_ASSETS_BASE_URL
 
 // Type étendu pour les produits avec expand AppPOS
 export interface ProductWithExpand extends ProductsResponse {
