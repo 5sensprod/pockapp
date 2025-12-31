@@ -12,9 +12,9 @@ import {
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import type { RapportX } from '@/lib/types/cash.types'
-import { formatCurrency, formatDateTime } from '@/lib/utils'
 import { FileText, Loader2, Printer } from 'lucide-react'
-
+import { formatCurrency, formatDateTime } from './utils'
+import { PaymentMethodBreakdown } from './utils'
 interface RapportXDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
@@ -109,32 +109,15 @@ export function RapportXDialog({
 										</span>
 									</div>
 
-									{rapport.sales.by_method &&
-										Object.keys(rapport.sales.by_method).length > 0 && (
-											<>
-												<Separator />
-												<div>
-													<div className='text-xs font-medium text-muted-foreground mb-2'>
-														Répartition par mode de paiement
-													</div>
-													<div className='space-y-2'>
-														{Object.entries(rapport.sales.by_method).map(
-															([method, amount]) => (
-																<div
-																	key={method}
-																	className='flex justify-between text-sm'
-																>
-																	<span className='capitalize'>{method}</span>
-																	<span className='font-medium'>
-																		{formatCurrency(amount)}
-																	</span>
-																</div>
-															),
-														)}
-													</div>
-												</div>
-											</>
-										)}
+									{rapport.sales.by_method && (
+										<>
+											<Separator />
+											<PaymentMethodBreakdown
+												byMethod={rapport.sales.by_method}
+												label='Répartition par mode de paiement'
+											/>
+										</>
+									)}
 
 									{rapport.sales.net_by_method &&
 										Object.keys(rapport.sales.net_by_method).length > 0 && (

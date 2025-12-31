@@ -1,6 +1,3 @@
-// frontend/modules/cash/components/hardware/PrinterSettingsCard.tsx
-import * as React from 'react'
-import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -15,7 +12,10 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { PosPrinterConfigCard } from '../PosPrinterConfigCard'
+import { Printer } from 'lucide-react'
+// frontend/modules/cash/components/hardware/PrinterSettingsCard.tsx
+import * as React from 'react'
+import { PosPrinterConfigCard } from './PosPrinterConfigCard'
 
 /**
  * Carte de configuration de l'imprimante POS

@@ -29,9 +29,9 @@ import {
 	useZReportCheck,
 	useZReportList,
 } from '@/lib/queries/cash'
-import type { RapportZ, VATByRate } from '@/lib/types/cash.types'
+import type { RapportZ } from '@/lib/types/cash.types'
 import { getPaymentMethodLabel, getVATRateLabel } from '@/lib/types/cash.types'
-import { formatCurrency, formatDateTime } from '@/lib/utils'
+
 import { useNavigate } from '@tanstack/react-router'
 import {
 	AlertCircle,
@@ -47,23 +47,13 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-
-function computeNetByMethod(
-	sales: Record<string, number> | undefined,
-	refunds: Record<string, number> | undefined,
-) {
-	const result: Record<string, number> = {}
-	const keys = new Set([
-		...Object.keys(sales ?? {}),
-		...Object.keys(refunds ?? {}),
-	])
-
-	for (const k of keys) {
-		result[k] = (sales?.[k] ?? 0) - (refunds?.[k] ?? 0)
-	}
-
-	return result
-}
+import {
+	VATBreakdownTable,
+	computeNetByMethod,
+	formatCurrency,
+	formatDateTime,
+	isCashDifferenceSignificant,
+} from './utils'
 
 export function RapportZPage() {
 	const navigate = useNavigate()
@@ -715,7 +705,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 										<div className='text-xs text-muted-foreground'>Écart</div>
 										<div
 											className={`font-medium ${
-												Math.abs(session.cash_difference) > 10
+												isCashDifferenceSignificant(session.cash_difference)
 													? 'text-destructive'
 													: 'text-emerald-600'
 											}`}
@@ -799,73 +789,5 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 				</CardContent>
 			</Card>
 		</div>
-	)
-}
-
-// ============================================================================
-// TABLEAU TVA VENTILÉE
-// ============================================================================
-
-function VATBreakdownTable({ vatByRate }: { vatByRate: VATByRate }) {
-	const entries = Object.entries(vatByRate).sort(
-		([a], [b]) => Number.parseFloat(b) - Number.parseFloat(a),
-	)
-
-	if (entries.length === 0) {
-		return <p className='text-sm text-muted-foreground'>Aucune TVA collectée</p>
-	}
-
-	// Calculer les totaux
-	const totals = entries.reduce(
-		(acc, [, detail]) => ({
-			baseHT: acc.baseHT + detail.base_ht,
-			vatAmount: acc.vatAmount + detail.vat_amount,
-			totalTTC: acc.totalTTC + detail.total_ttc,
-		}),
-		{ baseHT: 0, vatAmount: 0, totalTTC: 0 },
-	)
-
-	return (
-		<Table>
-			<TableHeader>
-				<TableRow>
-					<TableHead>Taux</TableHead>
-					<TableHead className='text-right'>Base HT</TableHead>
-					<TableHead className='text-right'>TVA</TableHead>
-					<TableHead className='text-right'>Total TTC</TableHead>
-				</TableRow>
-			</TableHeader>
-			<TableBody>
-				{entries.map(([rate, detail]) => (
-					<TableRow key={rate}>
-						<TableCell className='font-medium'>
-							{getVATRateLabel(rate)}
-						</TableCell>
-						<TableCell className='text-right'>
-							{formatCurrency(detail.base_ht)}
-						</TableCell>
-						<TableCell className='text-right text-blue-600 font-medium'>
-							{formatCurrency(detail.vat_amount)}
-						</TableCell>
-						<TableCell className='text-right'>
-							{formatCurrency(detail.total_ttc)}
-						</TableCell>
-					</TableRow>
-				))}
-				{/* Ligne de total */}
-				<TableRow className='bg-slate-50 font-medium'>
-					<TableCell>TOTAL</TableCell>
-					<TableCell className='text-right'>
-						{formatCurrency(totals.baseHT)}
-					</TableCell>
-					<TableCell className='text-right text-blue-600'>
-						{formatCurrency(totals.vatAmount)}
-					</TableCell>
-					<TableCell className='text-right text-emerald-600'>
-						{formatCurrency(totals.totalTTC)}
-					</TableCell>
-				</TableRow>
-			</TableBody>
-		</Table>
 	)
 }
