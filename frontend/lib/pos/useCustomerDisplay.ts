@@ -98,52 +98,39 @@ export function useCustomerDisplay({
 		let line2 = ''
 
 		// Priorité basée sur la phase
-		switch (phase) {
-			case 'success':
-				line1 = 'Axe Musique'
-				line2 = 'vous remercie'
-				break
-
-			case 'change':
-				if (change !== undefined && change > 0) {
-					line1 = 'RENDU'
-					line2 = `${change.toFixed(2)} EUR`
-				}
-				break
-
-			case 'payment':
-				if (received !== undefined && paymentMethod) {
-					line1 = paymentMethod.substring(0, 20)
-					line2 = `Recu: ${received.toFixed(2)} EUR`
-				} else if (total > 0) {
-					line1 = 'A PAYER'
-					line2 = `${total.toFixed(2)} EUR`
-				}
-				break
-
-			case 'total':
+		if (phase === 'success') {
+			line1 = 'Axe Musique'
+			line2 = 'vous remercie'
+		} else if (phase === 'change') {
+			if (change !== undefined && change > 0) {
+				line1 = 'RENDU'
+				line2 = `${change.toFixed(2)} EUR`
+			}
+		} else if (phase === 'payment') {
+			if (received !== undefined && paymentMethod) {
+				line1 = paymentMethod.substring(0, 20)
+				line2 = `Recu: ${received.toFixed(2)} EUR`
+			} else if (total > 0) {
+				line1 = 'A PAYER'
+				line2 = `${total.toFixed(2)} EUR`
+			}
+		} else if (phase === 'total') {
+			line1 = `Total: ${total.toFixed(2)} EUR`
+			line2 = `${itemCount} article${itemCount > 1 ? 's' : ''}`
+		} else if (phase === 'item') {
+			if (currentItem) {
+				line1 = currentItem.name.substring(0, 20)
+				line2 = `${currentItem.quantity}x ${currentItem.unitPrice.toFixed(2)} EUR`
+			}
+		} else {
+			// idle
+			if (total > 0) {
 				line1 = `Total: ${total.toFixed(2)} EUR`
 				line2 = `${itemCount} article${itemCount > 1 ? 's' : ''}`
-				break
-
-			case 'item':
-				if (currentItem) {
-					line1 = currentItem.name.substring(0, 20)
-					line2 = `${currentItem.quantity}x ${currentItem.unitPrice.toFixed(2)} EUR`
-				}
-				break
-
-			case 'idle':
-			default:
-				if (total > 0) {
-					line1 = `Total: ${total.toFixed(2)} EUR`
-					line2 = `${itemCount} article${itemCount > 1 ? 's' : ''}`
-				} else {
-					// ✅ MODIFIÉ : Utiliser les settings personnalisables
-					line1 = settings.welcomeLine1
-					line2 = settings.welcomeLine2
-				}
-				break
+			} else {
+				line1 = settings.welcomeLine1
+				line2 = settings.welcomeLine2
+			}
 		}
 
 		if (line1) {
