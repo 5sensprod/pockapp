@@ -197,6 +197,8 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 
 		routes.RegisterPosPrintRoutes(pb, e.Router)
 
+		routes.RegisterScannerRoutes(pb, e.Router)
+
 		// SPA handler avec assets embarqués (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 

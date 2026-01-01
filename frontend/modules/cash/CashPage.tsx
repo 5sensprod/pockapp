@@ -24,6 +24,9 @@ import {
 	useSessionManager,
 } from './components'
 
+// ✅ NOUVEAU : Import du composant scanette
+import { ScannerSettingsCard } from './ScannerSettingsCard'
+
 import { manifest } from './index'
 
 export function CashPage() {
@@ -180,6 +183,9 @@ export function CashPage() {
 					<PrinterSettingsCard />
 
 					<DisplaySettingsCard />
+
+					{/* ✅ NOUVEAU : Carte scanette */}
+					<ScannerSettingsCard />
 
 					<PaymentMethodsCard />
 				</section>

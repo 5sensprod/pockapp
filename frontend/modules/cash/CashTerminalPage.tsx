@@ -8,6 +8,8 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
 import { openCashDrawer, printReceipt } from '@/lib/pos/posPrint'
 import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
+// ✅ NOUVEAU : Import du hook WebSocket scanner
+import { useScanner } from '@/lib/pos/scanner'
 import { useCustomerDisplay } from '@/lib/pos/useCustomerDisplay'
 import {
 	getOrCreateDefaultCustomer,
@@ -122,17 +124,43 @@ export function CashTerminalPage() {
 		phase: displayPhase,
 	})
 
+	// ============================================
+	// GESTION DES SCANS (local + distant)
+	// ============================================
+
+	// Handler commun pour les scans (local ou distant)
+	const handleBarcodeScan = React.useCallback((barcode: string) => {
+		console.log('[Terminal] Scan reçu:', barcode)
+		setProductSearch(barcode)
+		searchInputRef.current?.focus()
+	}, [])
+
+	// Hook clavier local (HID) - fonctionne quand on est sur le PC serveur
 	useBarcodeScanner({
 		enabled: paymentStep === 'cart',
-		onScan: (barcode) => {
-			setProductSearch(barcode)
-			searchInputRef.current?.focus()
-		},
+		onScan: handleBarcodeScan,
 		onEscape: () => {
 			setProductSearch('')
 			searchInputRef.current?.focus()
 		},
 	})
+
+	// ✅ NOUVEAU : Hook WebSocket pour recevoir les scans distants
+	const { isConnected: isScannerConnected } = useScanner((barcode) => {
+		console.log('[Terminal] Scan distant reçu via WebSocket:', barcode)
+		if (paymentStep === 'cart') {
+			handleBarcodeScan(barcode)
+		}
+	})
+
+	// Log connexion WebSocket
+	React.useEffect(() => {
+		if (isScannerConnected) {
+			console.log('[Terminal] WebSocket scanner connecté')
+		}
+	}, [isScannerConnected])
+
+	// ============================================
 
 	React.useEffect(() => {
 		if (paymentStep === 'cart' && searchInputRef.current) {
