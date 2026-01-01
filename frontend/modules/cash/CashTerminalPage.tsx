@@ -93,22 +93,17 @@ export function CashTerminalPage() {
 	})
 
 	// ✅ NOUVEAU : Hook pour gérer le contrôle de l'affichage client
-	const { hasControl, isConnected: isDisplayConnected } = useDisplay()
+	const { hasControl } = useDisplay()
 
 	// ✅ NOUVEAU : Prendre le contrôle de l'affichage au montage
 	React.useEffect(() => {
-		console.log('[Terminal] Prise de contrôle display...')
-		takeControl().catch((err) => {
-			console.warn('[Terminal] Impossible de prendre le contrôle:', err)
+		takeControl().catch(() => {
 			toast.warning('Affichage client contrôlé par un autre appareil')
 		})
 
 		// Libérer le contrôle au démontage
 		return () => {
-			console.log('[Terminal] Libération contrôle display')
-			releaseControl().catch((err) => {
-				console.warn('[Terminal] Erreur libération contrôle:', err)
-			})
+			releaseControl().catch(() => {})
 		}
 	}, [])
 
@@ -154,7 +149,6 @@ export function CashTerminalPage() {
 
 	// Handler commun pour les scans (local ou distant)
 	const handleBarcodeScan = React.useCallback((barcode: string) => {
-		console.log('[Terminal] Scan reçu:', barcode)
 		setProductSearch(barcode)
 		searchInputRef.current?.focus()
 	}, [])
@@ -170,28 +164,11 @@ export function CashTerminalPage() {
 	})
 
 	// ✅ NOUVEAU : Hook WebSocket pour recevoir les scans distants
-	const { isConnected: isScannerConnected } = useScanner((barcode) => {
-		console.log('[Terminal] Scan distant reçu via WebSocket:', barcode)
+	useScanner((barcode) => {
 		if (paymentStep === 'cart') {
 			handleBarcodeScan(barcode)
 		}
 	})
-
-	// Log connexion WebSocket
-	React.useEffect(() => {
-		if (isScannerConnected) {
-			console.log('[Terminal] WebSocket scanner connecté')
-		}
-	}, [isScannerConnected])
-
-	// ✅ NOUVEAU : Log état display
-	React.useEffect(() => {
-		if (isDisplayConnected && hasControl) {
-			console.log('[Terminal] Display: connecté et contrôlé')
-		} else if (isDisplayConnected && !hasControl) {
-			console.warn('[Terminal] Display: connecté mais pas de contrôle')
-		}
-	}, [isDisplayConnected, hasControl])
 
 	// ============================================
 
@@ -231,7 +208,7 @@ export function CashTerminalPage() {
 				const res = await loginToAppPos('admin', 'admin123')
 				if (res.success && res.token) setIsAppPosConnected(true)
 			} catch (err) {
-				console.error('AppPOS: erreur de connexion', err)
+				// Connexion échouée, mode dégradé
 			}
 		}
 
@@ -462,7 +439,6 @@ export function CashTerminalPage() {
 			setPaymentStep('success')
 			setTimeout(() => clearAll(), 3000)
 		} catch (error: any) {
-			console.error('Erreur création ticket:', error)
 			toast.error(error.message || 'Erreur lors de la création du ticket')
 		} finally {
 			setIsProcessing(false)
