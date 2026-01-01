@@ -1,7 +1,9 @@
 // frontend/lib/pos/useCustomerDisplay.ts
+// ✅ NOUVEAU - Basé sur display.ts avec contrôle délégué
+
 import { useCallback, useEffect, useRef } from 'react'
-import { useSendTextToDisplayMutation } from './customerDisplayQueries'
-import { loadCustomerDisplaySettings } from './customerDisplaySettings'
+import { updateDisplay } from './display'
+import { loadDisplayWelcomeSettings } from './displaySettings'
 
 interface CartItem {
 	name: string
@@ -10,7 +12,6 @@ interface CartItem {
 	totalPrice?: number
 }
 
-// ✅ Ajout d'une phase pour contrôler l'affichage
 type DisplayPhase = 'idle' | 'item' | 'total' | 'payment' | 'change' | 'success'
 
 interface UseCustomerDisplayProps {
@@ -20,9 +21,37 @@ interface UseCustomerDisplayProps {
 	paymentMethod?: string
 	received?: number
 	change?: number
-	phase?: DisplayPhase // ✅ Nouvelle prop
+	phase?: DisplayPhase
+	enabled?: boolean // ✅ Nouveau : contrôle manuel de l'activation
 }
 
+/**
+ * Hook pour gérer l'affichage client automatique selon l'état du panier
+ *
+ * ⚠️ Ce hook envoie des commandes au display. Assurez-vous d'avoir le contrôle
+ * en appelant takeControl() avant d'utiliser ce hook, ou gérez les erreurs.
+ *
+ * @example
+ * ```tsx
+ * function CheckoutPage() {
+ *   const { hasControl } = useDisplay()
+ *
+ *   // Prendre le contrôle au montage
+ *   useEffect(() => {
+ *     takeControl()
+ *     return () => releaseControl()
+ *   }, [])
+ *
+ *   // Utiliser le hook seulement si on a le contrôle
+ *   useCustomerDisplay({
+ *     total: cart.total,
+ *     itemCount: cart.items.length,
+ *     phase: checkoutPhase,
+ *     enabled: hasControl,
+ *   })
+ * }
+ * ```
+ */
 export function useCustomerDisplay({
 	total = 0,
 	itemCount = 0,
@@ -30,43 +59,45 @@ export function useCustomerDisplay({
 	paymentMethod,
 	received,
 	change,
-	phase = 'idle', // ✅ Par défaut idle
+	phase = 'idle',
+	enabled = true,
 }: UseCustomerDisplayProps) {
-	const sendText = useSendTextToDisplayMutation()
 	const lastDisplayedRef = useRef<string>('')
 
 	const sendLines = useCallback(
-		(line1: string, line2 = '') => {
-			const settings = loadCustomerDisplaySettings()
-			if (!settings.enabled) return
+		async (line1: string, line2 = '') => {
+			if (!enabled) return
 
 			const l1 = line1.substring(0, 20)
 			const l2 = line2.substring(0, 20)
 			const displayKey = `${l1}|${l2}`
 
+			// Éviter les updates inutiles
 			if (displayKey === lastDisplayedRef.current) return
 			lastDisplayedRef.current = displayKey
 
-			sendText.mutate({
-				text: {
-					line1: l1,
-					line2: l2,
-					clearFirst: true,
-				},
-			})
+			try {
+				await updateDisplay(l1, l2, false)
+			} catch (err) {
+				// Erreur silencieuse si pas de contrôle
+				// L'utilisateur verra le message d'erreur via toast dans display.ts
+				console.warn('[useCustomerDisplay] Update failed:', err)
+			}
 		},
-		[sendText],
+		[enabled],
 	)
 
+	// Effect pour affichage automatique selon la phase
 	useEffect(() => {
-		const settings = loadCustomerDisplaySettings()
+		if (!enabled) return
 
-		if (!settings.enabled || !settings.autoDisplay) return
+		// ✅ NOUVEAU : Charger les messages de bienvenue depuis localStorage
+		const settings = loadDisplayWelcomeSettings()
 
 		let line1 = ''
 		let line2 = ''
 
-		// ✅ Priorité basée sur la phase explicite
+		// Priorité basée sur la phase
 		switch (phase) {
 			case 'success':
 				line1 = 'Axe Musique'
@@ -85,7 +116,7 @@ export function useCustomerDisplay({
 					line1 = paymentMethod.substring(0, 20)
 					line2 = `Recu: ${received.toFixed(2)} EUR`
 				} else if (total > 0) {
-					line1 = `A PAYER`
+					line1 = 'A PAYER'
 					line2 = `${total.toFixed(2)} EUR`
 				}
 				break
@@ -102,13 +133,15 @@ export function useCustomerDisplay({
 				}
 				break
 
+			case 'idle':
 			default:
 				if (total > 0) {
 					line1 = `Total: ${total.toFixed(2)} EUR`
 					line2 = `${itemCount} article${itemCount > 1 ? 's' : ''}`
 				} else {
-					line1 = settings.welcomeLine1 || 'Bienvenue'
-					line2 = settings.welcomeLine2 || ''
+					// ✅ MODIFIÉ : Utiliser les settings personnalisables
+					line1 = settings.welcomeLine1
+					line2 = settings.welcomeLine2
 				}
 				break
 		}
@@ -117,6 +150,7 @@ export function useCustomerDisplay({
 			sendLines(line1, line2)
 		}
 	}, [
+		enabled,
 		phase,
 		total,
 		itemCount,
@@ -127,17 +161,24 @@ export function useCustomerDisplay({
 		sendLines,
 	])
 
+	// Fonctions helper pour contrôle manuel
 	return {
+		/**
+		 * Afficher un texte personnalisé
+		 */
 		displayText: (line1: string, line2 = '') => sendLines(line1, line2),
 
+		/**
+		 * Afficher le message de bienvenue (utilise les settings)
+		 */
 		displayWelcome: () => {
-			const settings = loadCustomerDisplaySettings()
-			sendLines(
-				settings.welcomeLine1 || 'Bienvenue',
-				settings.welcomeLine2 || '',
-			)
+			const settings = loadDisplayWelcomeSettings()
+			sendLines(settings.welcomeLine1, settings.welcomeLine2)
 		},
 
+		/**
+		 * Afficher le total
+		 */
 		displayTotal: (totalTtc: number, count = 0) => {
 			sendLines(
 				`Total: ${totalTtc.toFixed(2)} EUR`,
@@ -145,10 +186,35 @@ export function useCustomerDisplay({
 			)
 		},
 
+		/**
+		 * Afficher le message de remerciement
+		 */
 		displayThankYou: () => {
 			sendLines('Axe Musique', 'vous remercie')
 		},
 
-		isSending: sendText.isPending,
+		/**
+		 * Afficher un produit scanné
+		 */
+		displayItem: (item: CartItem) => {
+			sendLines(
+				item.name.substring(0, 20),
+				`${item.quantity}x ${item.unitPrice.toFixed(2)} EUR`,
+			)
+		},
+
+		/**
+		 * Afficher le paiement en cours
+		 */
+		displayPayment: (method: string, amount: number) => {
+			sendLines(method.substring(0, 20), `Recu: ${amount.toFixed(2)} EUR`)
+		},
+
+		/**
+		 * Afficher le rendu
+		 */
+		displayChange: (changeAmount: number) => {
+			sendLines('RENDU', `${changeAmount.toFixed(2)} EUR`)
+		},
 	}
 }

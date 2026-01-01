@@ -2,7 +2,6 @@
 package pos
 
 import (
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -36,14 +35,10 @@ func (sm *ScannerManager) Start(portName string, baudRate int) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Arrêter si déjà en cours
 	if sm.isRunning && sm.port != nil {
 		sm.port.Close()
 	}
 
-	log.Printf("[SCANNER] Tentative ouverture %s @ %d baud...", portName, baudRate)
-
-	// Configuration du port série
 	mode := &serial.Mode{
 		BaudRate: baudRate,
 		DataBits: 8,
@@ -53,11 +48,9 @@ func (sm *ScannerManager) Start(portName string, baudRate int) error {
 
 	port, err := serial.Open(portName, mode)
 	if err != nil {
-		log.Printf("[SCANNER] ERREUR ouverture port: %v", err)
 		return err
 	}
 
-	// Timeout de lecture
 	port.SetReadTimeout(100 * time.Millisecond)
 
 	sm.port = port
@@ -65,10 +58,7 @@ func (sm *ScannerManager) Start(portName string, baudRate int) error {
 	sm.baudRate = baudRate
 	sm.isRunning = true
 
-	// Lancer la goroutine de lecture
 	go sm.readLoop()
-
-	log.Printf("[SCANNER] ✓ Démarré sur %s @ %d baud", portName, baudRate)
 	return nil
 }
 
@@ -82,7 +72,6 @@ func (sm *ScannerManager) Stop() error {
 	if sm.port != nil {
 		err := sm.port.Close()
 		sm.port = nil
-		log.Println("[SCANNER] Arrêté")
 		return err
 	}
 
@@ -115,13 +104,12 @@ func (sm *ScannerManager) GetStatus() map[string]interface{} {
 
 // Subscribe ajoute un subscriber pour recevoir les scans
 func (sm *ScannerManager) Subscribe() chan string {
-	ch := make(chan string, 10) // Buffer de 10 scans
+	ch := make(chan string, 10)
 
 	sm.subMu.Lock()
 	sm.subscribers[ch] = true
 	sm.subMu.Unlock()
 
-	log.Printf("[SCANNER] Nouveau subscriber (total: %d)", len(sm.subscribers))
 	return ch
 }
 
@@ -131,8 +119,6 @@ func (sm *ScannerManager) Unsubscribe(ch chan string) {
 	delete(sm.subscribers, ch)
 	close(ch)
 	sm.subMu.Unlock()
-
-	log.Printf("[SCANNER] Subscriber retiré (total: %d)", len(sm.subscribers))
 }
 
 // broadcast envoie un scan à tous les subscribers
@@ -140,24 +126,16 @@ func (sm *ScannerManager) broadcast(barcode string) {
 	sm.subMu.RLock()
 	defer sm.subMu.RUnlock()
 
-	log.Printf("[SCANNER] Broadcasting '%s' à %d subscribers", barcode, len(sm.subscribers))
-
 	for ch := range sm.subscribers {
 		select {
 		case ch <- barcode:
-			// Envoyé
 		default:
-			// Channel plein, on skip (évite le blocage)
-			log.Println("[SCANNER] Channel plein, scan ignoré pour un subscriber")
 		}
 	}
 }
 
 // readLoop lit continuellement le port série
 func (sm *ScannerManager) readLoop() {
-	log.Println("[SCANNER] readLoop démarré, en attente de scans...")
-
-	// Buffer pour accumuler les bytes
 	var buffer []byte
 
 	for {
@@ -167,27 +145,18 @@ func (sm *ScannerManager) readLoop() {
 		sm.mu.RUnlock()
 
 		if !running || port == nil {
-			log.Println("[SCANNER] readLoop arrêté")
 			return
 		}
 
-		// Lire des bytes (max 128 à la fois)
 		tmp := make([]byte, 128)
 		n, err := port.Read(tmp)
-
 		if err != nil {
-			// Timeout normal, on continue
 			continue
 		}
 
 		if n > 0 {
-			// Debug: afficher les bytes reçus
-			log.Printf("[SCANNER] Reçu %d bytes: %v (string: %q)", n, tmp[:n], string(tmp[:n]))
-
-			// Ajouter au buffer
 			buffer = append(buffer, tmp[:n]...)
 
-			// Chercher un délimiteur (CR, LF, ou les deux)
 			for {
 				idx := -1
 				for i, b := range buffer {
@@ -198,10 +167,7 @@ func (sm *ScannerManager) readLoop() {
 				}
 
 				if idx == -1 {
-					// Pas de délimiteur trouvé, attendre plus de données
-					// Mais si le buffer est long (>50 chars), c'est peut-être une scanette sans délimiteur
 					if len(buffer) > 50 {
-						log.Printf("[SCANNER] Buffer long sans délimiteur, envoi forcé: %q", string(buffer))
 						barcode := strings.TrimSpace(string(buffer))
 						if barcode != "" {
 							sm.broadcast(barcode)
@@ -211,16 +177,13 @@ func (sm *ScannerManager) readLoop() {
 					break
 				}
 
-				// Extraire le barcode
 				barcode := strings.TrimSpace(string(buffer[:idx]))
 				buffer = buffer[idx+1:]
 
-				// Ignorer les lignes vides
 				if barcode == "" {
 					continue
 				}
 
-				log.Printf("[SCANNER] ✓ Barcode complet: %s", barcode)
 				sm.broadcast(barcode)
 			}
 		}
@@ -229,12 +192,10 @@ func (sm *ScannerManager) readLoop() {
 
 // SimulateScan simule un scan (utile pour les tests)
 func (sm *ScannerManager) SimulateScan(barcode string) {
-	log.Printf("[SCANNER] Scan simulé: %s", barcode)
 	sm.broadcast(barcode)
 }
 
 // Broadcast envoie un scan à tous les clients (utilisé pour le mode HID)
 func (sm *ScannerManager) Broadcast(barcode string) {
-	log.Printf("[SCANNER] Broadcast HID: %s", barcode)
 	sm.broadcast(barcode)
 }

@@ -37,7 +37,6 @@ function getApiBaseUrl(): string {
 
 function getWsBaseUrl(): string {
 	const httpUrl = getApiBaseUrl()
-	// Convertir http:// en ws:// et https:// en wss://
 	return httpUrl.replace(/^http/, 'ws')
 }
 
@@ -54,86 +53,49 @@ class ScannerClient {
 	private pingInterval: ReturnType<typeof setInterval> | null = null
 	private isManualClose = false
 
-	/**
-	 * Se connecter au WebSocket de la scanette
-	 */
 	connect(): void {
-		if (this.ws?.readyState === WebSocket.OPEN) {
-			console.log('[Scanner] Déjà connecté')
-			return
-		}
-
-		if (this.ws?.readyState === WebSocket.CONNECTING) {
-			console.log('[Scanner] Connexion en cours...')
+		if (
+			this.ws?.readyState === WebSocket.OPEN ||
+			this.ws?.readyState === WebSocket.CONNECTING
+		) {
 			return
 		}
 
 		this.isManualClose = false
 		const wsUrl = `${getWsBaseUrl()}/api/scanner/ws`
-		console.log('[Scanner] Connexion à', wsUrl)
 
-		try {
-			this.ws = new WebSocket(wsUrl)
+		this.ws = new WebSocket(wsUrl)
 
-			this.ws.onopen = () => {
-				console.log('[Scanner] ✓ WebSocket connecté')
-				this.reconnectAttempts = 0
-				this.startPing()
-			}
-
-			this.ws.onmessage = (event) => {
-				try {
-					const data: ScanMessage = JSON.parse(event.data)
-					console.log('[Scanner] Message reçu:', data)
-
-					if (data.type === 'scan' && data.barcode) {
-						const barcode = data.barcode // ✅ Variable locale, plus besoin de !
-						console.log(
-							'[Scanner] Scan reçu, notification de',
-							this.callbacks.size,
-							'callbacks',
-						)
-						// Notifier tous les callbacks
-						for (const cb of this.callbacks) {
-							try {
-								cb(barcode)
-							} catch (err) {
-								console.error('[Scanner] Erreur dans callback:', err)
-							}
-						}
-					}
-				} catch (err) {
-					console.error('[Scanner] Erreur parsing message:', err)
-				}
-			}
-
-			this.ws.onclose = () => {
-				console.log('[Scanner] WebSocket fermé')
-				this.stopPing()
-
-				if (
-					!this.isManualClose &&
-					this.reconnectAttempts < this.maxReconnectAttempts
-				) {
-					this.reconnectAttempts++
-					console.log(
-						`[Scanner] Reconnexion dans ${this.reconnectDelay}ms (tentative ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
-					)
-					setTimeout(() => this.connect(), this.reconnectDelay)
-				}
-			}
-
-			this.ws.onerror = (error) => {
-				console.error('[Scanner] WebSocket erreur:', error)
-			}
-		} catch (err) {
-			console.error('[Scanner] Erreur création WebSocket:', err)
+		this.ws.onopen = () => {
+			this.reconnectAttempts = 0
+			this.startPing()
 		}
+
+		this.ws.onmessage = (event) => {
+			const data: ScanMessage = JSON.parse(event.data)
+
+			if (data.type === 'scan' && data.barcode) {
+				for (const cb of this.callbacks) {
+					cb(data.barcode)
+				}
+			}
+		}
+
+		this.ws.onclose = () => {
+			this.stopPing()
+
+			if (
+				!this.isManualClose &&
+				this.reconnectAttempts < this.maxReconnectAttempts
+			) {
+				this.reconnectAttempts++
+				setTimeout(() => this.connect(), this.reconnectDelay)
+			}
+		}
+
+		this.ws.onerror = () => {}
 	}
 
-	/**
-	 * Se déconnecter du WebSocket
-	 */
 	disconnect(): void {
 		this.isManualClose = true
 		this.stopPing()
@@ -142,40 +104,25 @@ class ScannerClient {
 			this.ws.close()
 			this.ws = null
 		}
-
-		console.log('[Scanner] Déconnecté')
 	}
 
-	/**
-	 * Ajouter un callback pour les scans
-	 */
 	onScan(callback: ScanCallback): () => void {
 		this.callbacks.add(callback)
-		console.log(`[Scanner] Callback ajouté (total: ${this.callbacks.size})`)
-
-		// Retourner une fonction pour se désabonner
 		return () => {
 			this.callbacks.delete(callback)
-			console.log(`[Scanner] Callback retiré (total: ${this.callbacks.size})`)
 		}
 	}
 
-	/**
-	 * Vérifier si connecté
-	 */
 	isConnected(): boolean {
 		return this.ws?.readyState === WebSocket.OPEN
 	}
 
-	/**
-	 * Ping pour garder la connexion active
-	 */
 	private startPing(): void {
 		this.pingInterval = setInterval(() => {
 			if (this.ws?.readyState === WebSocket.OPEN) {
 				this.ws.send('ping')
 			}
-		}, 30000) // Ping toutes les 30 secondes
+		}, 30000)
 	}
 
 	private stopPing(): void {
@@ -190,12 +137,9 @@ class ScannerClient {
 export const scannerClient = new ScannerClient()
 
 // ============================================================================
-// API HTTP (pour configurer la scanette)
+// API HTTP
 // ============================================================================
 
-/**
- * Récupérer le statut de la scanette
- */
 export async function getScannerStatus(): Promise<ScannerStatus> {
 	const response = await fetch(`${getApiBaseUrl()}/api/scanner/status`)
 	if (!response.ok) {
@@ -204,9 +148,6 @@ export async function getScannerStatus(): Promise<ScannerStatus> {
 	return response.json()
 }
 
-/**
- * Démarrer l'écoute de la scanette sur le serveur
- */
 export async function startScanner(
 	portName: string,
 	baudRate = 9600,
@@ -223,9 +164,6 @@ export async function startScanner(
 	}
 }
 
-/**
- * Arrêter l'écoute de la scanette
- */
 export async function stopScanner(): Promise<void> {
 	const response = await fetch(`${getApiBaseUrl()}/api/scanner/stop`, {
 		method: 'POST',
@@ -237,9 +175,6 @@ export async function stopScanner(): Promise<void> {
 	}
 }
 
-/**
- * Simuler un scan (pour les tests)
- */
 export async function simulateScan(barcode: string): Promise<void> {
 	const response = await fetch(`${getApiBaseUrl()}/api/scanner/simulate`, {
 		method: 'POST',
@@ -253,10 +188,6 @@ export async function simulateScan(barcode: string): Promise<void> {
 	}
 }
 
-/**
- * Broadcaster un scan HID aux autres appareils
- * Utilisé quand la scanette est en mode clavier (HID)
- */
 export async function broadcastScan(barcode: string): Promise<void> {
 	const response = await fetch(`${getApiBaseUrl()}/api/scanner/broadcast`, {
 		method: 'POST',
@@ -274,42 +205,18 @@ export async function broadcastScan(barcode: string): Promise<void> {
 // REACT HOOK
 // ============================================================================
 
-/**
- * Hook React pour utiliser la scanette
- * Se connecte automatiquement au WebSocket
- *
- * @example
- * ```tsx
- * function MyComponent() {
- *   const { lastScan, isConnected } = useScanner((barcode) => {
- *     console.log('Nouveau scan:', barcode)
- *   })
- *
- *   return <p>Dernier scan: {lastScan}</p>
- * }
- * ```
- */
 export function useScanner(onScan?: ScanCallback) {
 	const [lastScan, setLastScan] = useState<string | null>(null)
 	const [isConnected, setIsConnected] = useState(false)
 
-	// Utiliser useRef pour stocker le callback et éviter les re-renders
 	const onScanRef = useRef(onScan)
 	onScanRef.current = onScan
 
-	// ✅ AUTO-CONNECT au montage
 	useEffect(() => {
-		console.log('[useScanner] Montage, connexion automatique...')
 		scannerClient.connect()
-
-		// Note: on ne déconnecte PAS au démontage car d'autres composants
-		// peuvent utiliser le même scannerClient
-		return () => {
-			console.log('[useScanner] Démontage')
-		}
+		return () => {}
 	}, [])
 
-	// Vérifier la connexion périodiquement
 	useEffect(() => {
 		const checkConnection = () => {
 			setIsConnected(scannerClient.isConnected())
@@ -321,17 +228,15 @@ export function useScanner(onScan?: ScanCallback) {
 		return () => clearInterval(interval)
 	}, [])
 
-	// S'abonner aux scans
 	useEffect(() => {
 		const handleScan = (barcode: string) => {
-			console.log('[useScanner] Scan reçu:', barcode)
 			setLastScan(barcode)
 			onScanRef.current?.(barcode)
 		}
 
 		const unsubscribe = scannerClient.onScan(handleScan)
 		return unsubscribe
-	}, []) // Pas de dépendances car on utilise useRef
+	}, [])
 
 	const connect = useCallback(() => {
 		scannerClient.connect()

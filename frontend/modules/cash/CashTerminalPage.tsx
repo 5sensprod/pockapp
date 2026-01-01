@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
+// ✅ MODIFIÉ : Import du nouveau système display
+import { releaseControl, takeControl, useDisplay } from '@/lib/pos/display'
 import { openCashDrawer, printReceipt } from '@/lib/pos/posPrint'
 import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
 // ✅ NOUVEAU : Import du hook WebSocket scanner
@@ -90,6 +92,26 @@ export function CashTerminalPage() {
 		month: 'long',
 	})
 
+	// ✅ NOUVEAU : Hook pour gérer le contrôle de l'affichage client
+	const { hasControl, isConnected: isDisplayConnected } = useDisplay()
+
+	// ✅ NOUVEAU : Prendre le contrôle de l'affichage au montage
+	React.useEffect(() => {
+		console.log('[Terminal] Prise de contrôle display...')
+		takeControl().catch((err) => {
+			console.warn('[Terminal] Impossible de prendre le contrôle:', err)
+			toast.warning('Affichage client contrôlé par un autre appareil')
+		})
+
+		// Libérer le contrôle au démontage
+		return () => {
+			console.log('[Terminal] Libération contrôle display')
+			releaseControl().catch((err) => {
+				console.warn('[Terminal] Erreur libération contrôle:', err)
+			})
+		}
+	}, [])
+
 	const cartManager = useCartManager()
 	const { subtotalTtc, totalTtc, totalVat, discountAmount, vatBreakdown } =
 		useCartCalculations({
@@ -114,6 +136,7 @@ export function CashTerminalPage() {
 		return 'idle'
 	}, [paymentStep, change, cartManager.lastAddedItem, cartManager.cart.length])
 
+	// ✅ MODIFIÉ : Ajout du paramètre enabled
 	useCustomerDisplay({
 		total: totalTtc,
 		itemCount: cartManager.cart.length,
@@ -122,6 +145,7 @@ export function CashTerminalPage() {
 		received: Number.parseFloat(amountReceived) || undefined,
 		change: change > 0 ? change : undefined,
 		phase: displayPhase,
+		enabled: hasControl, // ← AJOUTÉ : Ne fonctionne que si on a le contrôle
 	})
 
 	// ============================================
@@ -159,6 +183,15 @@ export function CashTerminalPage() {
 			console.log('[Terminal] WebSocket scanner connecté')
 		}
 	}, [isScannerConnected])
+
+	// ✅ NOUVEAU : Log état display
+	React.useEffect(() => {
+		if (isDisplayConnected && hasControl) {
+			console.log('[Terminal] Display: connecté et contrôlé')
+		} else if (isDisplayConnected && !hasControl) {
+			console.warn('[Terminal] Display: connecté mais pas de contrôle')
+		}
+	}, [isDisplayConnected, hasControl])
 
 	// ============================================
 
