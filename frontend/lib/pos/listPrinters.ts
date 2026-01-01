@@ -4,15 +4,17 @@
 import { isWailsEnv } from '@/lib/wails'
 
 // ============================================================================
-// CONFIGURATION - Découverte réseau automatique
+// CONFIGURATION - URL dynamique
 // ============================================================================
 
 function getPosApiBaseUrl(): string {
-	// ⚠️ TEST EN DUR - RETIRER APRÈS
-	return 'http://192.168.1.12:8090/api/pos'
+	if (isWailsEnv()) {
+		// Mode Wails desktop : localhost
+		return 'http://127.0.0.1:8090/api/pos'
+	}
+	// Mode web : utilise l'origin actuel (fonctionne en local ET en public)
+	return `${document.location.origin}/api/pos`
 }
-
-const POS_API_BASE_URL = getPosApiBaseUrl()
 
 // ============================================================================
 // API HTTP
@@ -23,7 +25,7 @@ const POS_API_BASE_URL = getPosApiBaseUrl()
  */
 async function listPrintersHttp(): Promise<string[]> {
 	try {
-		const response = await fetch(`${POS_API_BASE_URL}/printers`)
+		const response = await fetch(`${getPosApiBaseUrl()}/printers`)
 
 		if (!response.ok) {
 			console.error('Failed to fetch printers:', response.status)
@@ -43,7 +45,7 @@ async function listPrintersHttp(): Promise<string[]> {
  */
 async function listSerialPortsHttp(): Promise<string[]> {
 	try {
-		const response = await fetch(`${POS_API_BASE_URL}/serial-ports`)
+		const response = await fetch(`${getPosApiBaseUrl()}/serial-ports`)
 
 		if (!response.ok) {
 			console.error('Failed to fetch serial ports:', response.status)
@@ -102,5 +104,5 @@ export async function listSerialPorts(): Promise<string[]> {
  * Debug: Affiche l'URL utilisée
  */
 export function getPosApiUrl(): string {
-	return POS_API_BASE_URL
+	return getPosApiBaseUrl()
 }

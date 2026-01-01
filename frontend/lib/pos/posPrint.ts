@@ -47,12 +47,22 @@ type OpenCashDrawerInput = {
 	width: 58 | 80
 }
 
+// ============================================================================
+// CONFIGURATION - URL dynamique
+// ============================================================================
+
 function getPosApiBaseUrl(): string {
-	// ⚠️ TEST EN DUR - RETIRER APRÈS
-	return 'http://192.168.1.12:8090/api/pos'
+	if (isWailsEnv()) {
+		// Mode Wails desktop : localhost
+		return 'http://127.0.0.1:8090/api/pos'
+	}
+	// Mode web : utilise l'origin actuel (fonctionne en local ET en public)
+	return `${document.location.origin}/api/pos`
 }
 
-const POS_API_BASE_URL = getPosApiBaseUrl()
+// ============================================================================
+// WAILS BINDINGS
+// ============================================================================
 
 function getGoApp(): any {
 	return (window as any)?.go?.main?.App
@@ -73,8 +83,12 @@ async function callGo(method: string, payload: any) {
 	return await fn(payload)
 }
 
+// ============================================================================
+// API HTTP
+// ============================================================================
+
 async function printReceiptHttp(payload: PrintPosReceiptInput): Promise<void> {
-	const response = await fetch(`${POS_API_BASE_URL}/print`, {
+	const response = await fetch(`${getPosApiBaseUrl()}/print`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -92,7 +106,7 @@ async function printReceiptHttp(payload: PrintPosReceiptInput): Promise<void> {
 }
 
 async function openCashDrawerHttp(payload: OpenCashDrawerInput): Promise<void> {
-	const response = await fetch(`${POS_API_BASE_URL}/drawer/open`, {
+	const response = await fetch(`${getPosApiBaseUrl()}/drawer/open`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -111,7 +125,7 @@ async function testPrintHttp(payload: {
 	printerName: string
 	width: 58 | 80
 }): Promise<void> {
-	const response = await fetch(`${POS_API_BASE_URL}/test-print`, {
+	const response = await fetch(`${getPosApiBaseUrl()}/test-print`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -125,6 +139,10 @@ async function testPrintHttp(payload: {
 	}
 	return response.json()
 }
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
 
 export async function printReceipt(payload: PrintPosReceiptInput) {
 	if (isWailsEnv()) {
@@ -183,6 +201,9 @@ export async function testPrint(payload: {
 	}
 }
 
+/**
+ * Debug: Affiche l'URL utilisée
+ */
 export function getPosApiUrl(): string {
-	return POS_API_BASE_URL
+	return getPosApiBaseUrl()
 }
