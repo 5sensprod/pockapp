@@ -1,9 +1,11 @@
+// frontend/modules/settings/SettingsPage.tsx
 import SmtpSettings from '@/components/settings/SmtpSettings'
+import UserManagement from '@/components/settings/UserManagement'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-// frontend/modules/settings/SettingsPage.tsx
+import { useAuth } from '@/modules/auth/AuthProvider'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
-import { ChevronLeft, Mail, User } from 'lucide-react'
+import { ChevronLeft, Mail, User, Users } from 'lucide-react'
 
 const settingsTabs = [
 	{
@@ -11,24 +13,46 @@ const settingsTabs = [
 		label: 'Mon compte',
 		icon: User,
 		path: '/settings',
+		adminOnly: false,
+	},
+	{
+		id: 'users',
+		label: 'Utilisateurs',
+		icon: Users,
+		path: '/settings/users',
+		adminOnly: true,
 	},
 	{
 		id: 'smtp',
 		label: 'Emails (SMTP)',
 		icon: Mail,
 		path: '/settings/smtp',
+		adminOnly: false,
 	},
 ]
 
 interface SettingsPageProps {
-	tab?: 'account' | 'smtp'
+	tab?: 'account' | 'smtp' | 'users'
 }
 
 export function SettingsPage({ tab = 'account' }: SettingsPageProps) {
 	const { pathname } = useLocation()
 	const navigate = useNavigate()
+	const { user } = useAuth()
+
+	// Vérifier le rôle de l'utilisateur
+	const userRole = (user as any)?.role || 'user'
+	const isAdmin = userRole === 'admin'
 
 	const activeTab = settingsTabs.find((t) => t.path === pathname)?.id ?? tab
+
+	// Filtrer les onglets selon le rôle
+	const visibleTabs = settingsTabs.filter((tab) => {
+		if (tab.adminOnly && !isAdmin) {
+			return false
+		}
+		return true
+	})
 
 	return (
 		<div className='container py-8'>
@@ -53,7 +77,7 @@ export function SettingsPage({ tab = 'account' }: SettingsPageProps) {
 			<div className='flex flex-col md:flex-row gap-8'>
 				{/* Sidebar navigation */}
 				<nav className='w-full md:w-64 space-y-1'>
-					{settingsTabs.map((item) => {
+					{visibleTabs.map((item) => {
 						const Icon = item.icon
 						const isActive = activeTab === item.id
 
@@ -78,6 +102,7 @@ export function SettingsPage({ tab = 'account' }: SettingsPageProps) {
 				{/* Content */}
 				<div className='flex-1 min-w-0'>
 					{activeTab === 'account' && <AccountSettings />}
+					{activeTab === 'users' && isAdmin && <UserManagement />}
 					{activeTab === 'smtp' && <SmtpSettings />}
 				</div>
 			</div>

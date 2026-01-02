@@ -39,6 +39,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// 7. 🆕 Rapports Z (dépend de cash_registers + cash_sessions)
 		ensureZReportsCollection,   // Crée la collection z_reports
 		AddZReportIdToCashSessions, // Ajoute z_report_id sur cash_sessions
+		AddRoleToUsers,
 	}
 
 	for _, migrate := range migrations {

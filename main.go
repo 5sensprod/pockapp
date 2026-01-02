@@ -158,6 +158,10 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 
 	pb.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		log.Println("OnBeforeServe called")
+
+		// ✅ Migration pour ajouter le champ role
+		migrations.AddRoleToUsers(pb)
+
 		migrations.MigrateAuditLogsAddTicketEntityType(pb)
 
 		// API routes
@@ -174,34 +178,21 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 			})
 		})
 
-		// ✅ MODIFIÉ : Routes de setup
 		routes.RegisterSetupRoutes(pb, e.Router)
-
-		// ✅ MODIFIÉ : Routes settings SMTP
 		routes.RegisterSmtpSettingsRoutes(pb, e.Router)
-
-		// ✅ MODIFIÉ : Route envoi email devis
 		routes.RegisterQuoteEmailRoutes(pb, e.Router)
-
-		// ✅ MODIFIÉ : Route envoi email factures
 		routes.RegisterInvoiceEmailRoutes(pb, e.Router)
-
-		// 🔹 MODIFIÉ : routes caisse depuis le nouveau package routes
 		routes.RegisterCashRoutes(pb, e.Router)
-
-		// ✅ MODIFIÉ : routes remboursement factures (B2B)
 		routes.RegisterInvoiceRefundRoutes(pb, e.Router)
-
-		// ✅ MODIFIÉ : routes POS
 		routes.RegisterPosRoutes(pb, e.Router)
-
 		routes.RegisterPosPrintRoutes(pb, e.Router)
-
 		routes.RegisterScannerRoutes(pb, e.Router)
-
 		routes.RegisterDisplayRoutes(pb, e.Router)
 
-		// SPA handler avec assets embarqués (doit rester en dernier)
+		// ✅ Routes de gestion des utilisateurs
+		routes.RegisterUserManagementRoutes(pb, e.Router)
+
+		// SPA handler (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 
 		return nil

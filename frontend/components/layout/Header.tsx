@@ -323,7 +323,10 @@ export function Header({
 											variant='secondary'
 											className='w-fit mt-1 text-xs capitalize'
 										>
-											user
+											{((user as any)?.role === 'admin' && 'Administrateur') ||
+												((user as any)?.role === 'manager' && 'Manager') ||
+												((user as any)?.role === 'caissier' && 'Caissier') ||
+												'Utilisateur'}
 										</Badge>
 									</div>
 								</DropdownMenuLabel>
