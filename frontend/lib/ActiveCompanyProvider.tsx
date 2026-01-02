@@ -1,5 +1,4 @@
 // frontend/lib/ActiveCompanyProvider.tsx
-import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import { useCompanies } from '@/lib/queries/companies'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import {
@@ -30,11 +29,7 @@ const ActiveCompanyContext = createContext<
 
 const ACTIVE_COMPANY_KEY = 'activeCompanyId'
 
-export function ActiveCompanyProvider({
-	children,
-}: {
-	children: ReactNode
-}) {
+export function ActiveCompanyProvider({ children }: { children: ReactNode }) {
 	const { isAuthenticated } = useAuth()
 
 	const { data: companiesData, isLoading } = useCompanies({
@@ -43,7 +38,6 @@ export function ActiveCompanyProvider({
 
 	const [activeCompanyId, setActiveCompanyIdState] = useState<string | null>(
 		() => {
-			// Initialiser depuis localStorage
 			if (typeof window !== 'undefined') {
 				return localStorage.getItem(ACTIVE_COMPANY_KEY)
 			}
@@ -51,28 +45,22 @@ export function ActiveCompanyProvider({
 		},
 	)
 
-	// getFullList retourne un tableau directement
 	const companies: CompanyForContext[] = useMemo(() => {
 		if (!companiesData) return []
-		return companiesData.map((c: CompaniesResponse) => ({
+		return companiesData.map((c) => ({
 			id: c.id,
 			name: c.trade_name || c.name,
 			active: c.active,
 		}))
 	}, [companiesData])
 
-	// Sélectionner automatiquement une entreprise si aucune n'est active
 	useEffect(() => {
 		if (!companies.length) return
 
-		// Si l'entreprise active n'existe plus dans la liste, la réinitialiser
-		const currentExists = companies.some(
-			(c: CompanyForContext) => c.id === activeCompanyId,
-		)
+		const currentExists = companies.some((c) => c.id === activeCompanyId)
 		if (activeCompanyId && currentExists) return
 
-		// Chercher une entreprise active ou prendre la première
-		const activeCompany = companies.find((c: CompanyForContext) => c.active)
+		const activeCompany = companies.find((c) => c.active)
 		const newActiveId = activeCompany?.id ?? companies[0]?.id ?? null
 
 		if (newActiveId) {
@@ -81,24 +69,15 @@ export function ActiveCompanyProvider({
 		}
 	}, [companies, activeCompanyId])
 
-	// Handler pour changer l'entreprise active
 	const setActiveCompanyId = (id: string | null) => {
 		setActiveCompanyIdState(id)
-		if (id) {
-			localStorage.setItem(ACTIVE_COMPANY_KEY, id)
-		} else {
-			localStorage.removeItem(ACTIVE_COMPANY_KEY)
-		}
+		if (id) localStorage.setItem(ACTIVE_COMPANY_KEY, id)
+		else localStorage.removeItem(ACTIVE_COMPANY_KEY)
 	}
 
 	return (
 		<ActiveCompanyContext.Provider
-			value={{
-				activeCompanyId,
-				setActiveCompanyId,
-				isLoading,
-				companies,
-			}}
+			value={{ activeCompanyId, setActiveCompanyId, isLoading, companies }}
 		>
 			{children}
 		</ActiveCompanyContext.Provider>
