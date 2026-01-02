@@ -1,4 +1,5 @@
 // frontend/modules/settings/SettingsPage.tsx
+import AccountSettings from '@/components/settings/AccountSettings'
 import SmtpSettings from '@/components/settings/SmtpSettings'
 import UserManagement from '@/components/settings/UserManagement'
 import { Button } from '@/components/ui/button'
@@ -105,19 +106,6 @@ export function SettingsPage({ tab = 'account' }: SettingsPageProps) {
 					{activeTab === 'users' && isAdmin && <UserManagement />}
 					{activeTab === 'smtp' && <SmtpSettings />}
 				</div>
-			</div>
-		</div>
-	)
-}
-
-function AccountSettings() {
-	return (
-		<div className='max-w-2xl'>
-			<div className='bg-card rounded-lg border p-6'>
-				<h2 className='text-xl font-semibold mb-4'>Mon compte</h2>
-				<p className='text-muted-foreground'>
-					Les paramètres du compte seront disponibles ici.
-				</p>
 			</div>
 		</div>
 	)
