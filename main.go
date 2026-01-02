@@ -160,7 +160,7 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		log.Println("OnBeforeServe called")
 
 		// ✅ Migration pour ajouter le champ role
-		migrations.AddRoleToUsers(pb)
+		// migrations.AddRoleToUsers(pb)
 
 		migrations.MigrateAuditLogsAddTicketEntityType(pb)
 
@@ -188,6 +188,7 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterPosPrintRoutes(pb, e.Router)
 		routes.RegisterScannerRoutes(pb, e.Router)
 		routes.RegisterDisplayRoutes(pb, e.Router)
+		routes.RegisterCompanyManagementRoutes(pb, e.Router)
 
 		// ✅ Routes de gestion des utilisateurs
 		routes.RegisterUserManagementRoutes(pb, e.Router)

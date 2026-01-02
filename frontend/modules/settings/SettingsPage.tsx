@@ -1,12 +1,13 @@
 // frontend/modules/settings/SettingsPage.tsx
 import AccountSettings from '@/components/settings/AccountSettings'
+import CompanyManagement from '@/components/settings/CompanyManagement'
 import SmtpSettings from '@/components/settings/SmtpSettings'
 import UserManagement from '@/components/settings/UserManagement'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
-import { ChevronLeft, Mail, User, Users } from 'lucide-react'
+import { Building2, ChevronLeft, Mail, User, Users } from 'lucide-react'
 
 const settingsTabs = [
 	{
@@ -24,6 +25,13 @@ const settingsTabs = [
 		adminOnly: true,
 	},
 	{
+		id: 'companies',
+		label: 'Entreprises',
+		icon: Building2,
+		path: '/settings/companies',
+		adminOnly: true,
+	},
+	{
 		id: 'smtp',
 		label: 'Emails (SMTP)',
 		icon: Mail,
@@ -33,7 +41,7 @@ const settingsTabs = [
 ]
 
 interface SettingsPageProps {
-	tab?: 'account' | 'smtp' | 'users'
+	tab?: 'account' | 'smtp' | 'users' | 'companies'
 }
 
 export function SettingsPage({ tab = 'account' }: SettingsPageProps) {
@@ -104,7 +112,8 @@ export function SettingsPage({ tab = 'account' }: SettingsPageProps) {
 				<div className='flex-1 min-w-0'>
 					{activeTab === 'account' && <AccountSettings />}
 					{activeTab === 'users' && isAdmin && <UserManagement />}
-					{activeTab === 'smtp' && <SmtpSettings />}
+					{activeTab === 'companies' && isAdmin && <CompanyManagement />}
+					{activeTab === 'smtp' && isAdmin && <SmtpSettings />}
 				</div>
 			</div>
 		</div>
