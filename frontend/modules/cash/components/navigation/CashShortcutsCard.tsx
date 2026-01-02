@@ -77,7 +77,7 @@ export function CashShortcutsCard({
 			requiresSession: false,
 		},
 		{
-			to: '/cash/reports/z',
+			to: '/cash/rapport-z',
 			icon: TrendingUp,
 			label: 'Rapports Z',
 			description: 'Clôture journalière',
