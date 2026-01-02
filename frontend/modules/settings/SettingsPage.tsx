@@ -27,7 +27,7 @@ const settingsTabs = [
 		label: 'Emails (SMTP)',
 		icon: Mail,
 		path: '/settings/smtp',
-		adminOnly: false,
+		adminOnly: true,
 	},
 ]
 
