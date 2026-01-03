@@ -437,7 +437,7 @@ export function CashTerminalPage() {
 
 			toast.success(`Ticket ${ticket.number} créé`)
 			setPaymentStep('success')
-			setTimeout(() => clearAll(), 3000)
+			setTimeout(() => clearAll(), 500)
 		} catch (error: any) {
 			toast.error(error.message || 'Erreur lors de la création du ticket')
 		} finally {
