@@ -31,16 +31,20 @@ import { Textarea } from '@/components/ui/textarea'
 import {
 	type Company,
 	type CompanyDto,
+	getLogoUrl,
 	useCompanies,
 	useCreateCompany,
 	useDeleteCompany,
 	useUpdateCompany,
 } from '@/lib/queries/companies'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import {
 	Building2,
+	Camera,
 	CheckCircle,
 	CreditCard,
 	FileText,
+	ImagePlus,
 	Loader2,
 	MapPin,
 	Pencil,
@@ -48,10 +52,17 @@ import {
 	ShieldAlert,
 	Trash2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-const emptyFormData: CompanyDto = {
+interface FormDataWithLogo extends CompanyDto {
+	logoFile?: File | null
+	logoPreview?: string | null
+	removeLogo?: boolean
+	existingLogo?: string
+}
+
+const emptyFormData: FormDataWithLogo = {
 	name: '',
 	trade_name: '',
 	active: true,
@@ -79,12 +90,20 @@ const emptyFormData: CompanyDto = {
 	default_payment_method: 'virement',
 	invoice_footer: '',
 	invoice_prefix: '',
+	logoFile: null,
+	logoPreview: null,
+	removeLogo: false,
+	existingLogo: '',
 }
 
 export default function CompanyManagement() {
+	const pb = usePocketBase()
+	const fileInputRef = useRef<HTMLInputElement>(null)
+
 	const [isDialogOpen, setIsDialogOpen] = useState(false)
 	const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null)
-	const [formData, setFormData] = useState<CompanyDto>(emptyFormData)
+	const [editingCompany, setEditingCompany] = useState<Company | null>(null)
+	const [formData, setFormData] = useState<FormDataWithLogo>(emptyFormData)
 
 	// Queries
 	const { data: companies = [], isLoading, error } = useCompanies()
@@ -92,9 +111,66 @@ export default function CompanyManagement() {
 	const updateCompany = useUpdateCompany()
 	const deleteCompany = useDeleteCompany()
 
+	// Gestion de l'upload de logo
+	const handleLogoChange = useCallback(
+		(e: React.ChangeEvent<HTMLInputElement>) => {
+			const file = e.target.files?.[0]
+			if (!file) return
+
+			// Vérifier le type
+			const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+			if (!allowedTypes.includes(file.type)) {
+				toast.error('Format non supporté. Utilisez JPG, PNG ou WebP.')
+				return
+			}
+
+			// Vérifier la taille (5 Mo max)
+			if (file.size > 5 * 1024 * 1024) {
+				toast.error('Le fichier est trop volumineux (max 5 Mo)')
+				return
+			}
+
+			// Créer un aperçu
+			const reader = new FileReader()
+			reader.onloadend = () => {
+				setFormData((prev) => ({
+					...prev,
+					logoFile: file,
+					logoPreview: reader.result as string,
+					removeLogo: false,
+				}))
+			}
+			reader.readAsDataURL(file)
+		},
+		[],
+	)
+
+	const handleRemoveLogo = useCallback(() => {
+		setFormData((prev) => ({
+			...prev,
+			logoFile: null,
+			logoPreview: null,
+			removeLogo: true,
+		}))
+		if (fileInputRef.current) {
+			fileInputRef.current.value = ''
+		}
+	}, [])
+
+	// ✅ Obtenir l'URL du logo à afficher (utilisé dans le Dialog)
+	const displayLogoUrl = useMemo((): string | null => {
+		if (formData.removeLogo) return null
+		if (formData.logoPreview) return formData.logoPreview
+		if (editingCompany?.logo) {
+			return getLogoUrl(pb, editingCompany)
+		}
+		return null
+	}, [formData.removeLogo, formData.logoPreview, editingCompany, pb])
+
 	// Ouvrir le dialog pour créer
 	const handleCreate = () => {
 		setEditingCompanyId(null)
+		setEditingCompany(null)
 		setFormData(emptyFormData)
 		setIsDialogOpen(true)
 	}
@@ -102,6 +178,7 @@ export default function CompanyManagement() {
 	// Ouvrir le dialog pour éditer
 	const handleEdit = (company: Company) => {
 		setEditingCompanyId(company.id)
+		setEditingCompany(company)
 		setFormData({
 			name: company.name || '',
 			trade_name: company.trade_name || '',
@@ -130,6 +207,10 @@ export default function CompanyManagement() {
 			default_payment_method: company.default_payment_method || 'virement',
 			invoice_footer: company.invoice_footer || '',
 			invoice_prefix: company.invoice_prefix || '',
+			logoFile: null,
+			logoPreview: null,
+			removeLogo: false,
+			existingLogo: company.logo || '',
 		})
 		setIsDialogOpen(true)
 	}
@@ -142,21 +223,40 @@ export default function CompanyManagement() {
 				return
 			}
 
+			const {
+				logoFile,
+				logoPreview,
+				removeLogo,
+				existingLogo,
+				...companyData
+			} = formData
+
 			if (editingCompanyId) {
 				await updateCompany.mutateAsync({
 					id: editingCompanyId,
-					data: formData,
+					data: {
+						...companyData,
+						logo: logoFile,
+						removeLogo,
+					},
 				})
 				toast.success('Entreprise modifiée avec succès')
 			} else {
-				await createCompany.mutateAsync(formData)
+				await createCompany.mutateAsync({
+					...companyData,
+					logo: logoFile,
+				})
 				toast.success('Entreprise créée avec succès')
 			}
 
 			setIsDialogOpen(false)
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error saving company:', error)
-			toast.error(error.message || "Erreur lors de l'enregistrement")
+			const message =
+				error instanceof Error
+					? error.message
+					: "Erreur lors de l'enregistrement"
+			toast.error(message)
 		}
 	}
 
@@ -178,10 +278,19 @@ export default function CompanyManagement() {
 		try {
 			await deleteCompany.mutateAsync(company.id)
 			toast.success('Entreprise supprimée')
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error deleting company:', error)
-			toast.error(error.message || "Impossible de supprimer l'entreprise")
+			const message =
+				error instanceof Error
+					? error.message
+					: "Impossible de supprimer l'entreprise"
+			toast.error(message)
 		}
+	}
+
+	// Obtenir l'URL du logo pour la liste
+	const getCompanyLogoUrl = (company: Company): string | null => {
+		return getLogoUrl(pb, company)
 	}
 
 	if (isLoading) {
@@ -240,82 +349,94 @@ export default function CompanyManagement() {
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{companies.map((company) => (
-								<TableRow key={company.id}>
-									<TableCell>
-										<div className='flex items-center gap-3'>
-											<div className='w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center'>
-												<Building2 className='h-5 w-5 text-primary' />
-											</div>
-											<div>
-												<div className='font-medium flex items-center gap-2'>
-													{company.name}
-													{company.is_first && (
-														<span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800'>
-															Principale
-														</span>
-													)}
-													{company.is_default && (
-														<CheckCircle className='h-4 w-4 text-green-600' />
+							{companies.map((company) => {
+								const logoUrl = getCompanyLogoUrl(company)
+								return (
+									<TableRow key={company.id}>
+										<TableCell>
+											<div className='flex items-center gap-3'>
+												{/* Logo ou icône par défaut */}
+												<div className='w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center overflow-hidden'>
+													{logoUrl ? (
+														<img
+															src={logoUrl}
+															alt={company.name}
+															className='w-full h-full object-cover'
+														/>
+													) : (
+														<Building2 className='h-5 w-5 text-primary' />
 													)}
 												</div>
-												{company.trade_name && (
-													<span className='text-xs text-muted-foreground'>
-														{company.trade_name}
-													</span>
-												)}
+												<div>
+													<div className='font-medium flex items-center gap-2'>
+														{company.name}
+														{company.is_first && (
+															<span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800'>
+																Principale
+															</span>
+														)}
+														{company.is_default && (
+															<CheckCircle className='h-4 w-4 text-green-600' />
+														)}
+													</div>
+													{company.trade_name && (
+														<span className='text-xs text-muted-foreground'>
+															{company.trade_name}
+														</span>
+													)}
+												</div>
 											</div>
-										</div>
-									</TableCell>
-									<TableCell className='text-sm text-muted-foreground font-mono'>
-										{company.siret || '-'}
-									</TableCell>
-									<TableCell className='text-sm text-muted-foreground'>
-										{company.city || '-'}
-									</TableCell>
-									<TableCell>
-										<span
-											className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-												company.active
-													? 'bg-green-100 text-green-800'
-													: 'bg-gray-100 text-gray-800'
-											}`}
-										>
-											{company.active ? 'Active' : 'Inactive'}
-										</span>
-									</TableCell>
-									<TableCell className='text-right'>
-										<div className='flex items-center justify-end gap-2'>
-											<Button
-												variant='ghost'
-												size='icon'
-												className='h-8 w-8'
-												onClick={() => handleEdit(company)}
+										</TableCell>
+										<TableCell className='text-sm text-muted-foreground font-mono'>
+											{company.siret || '-'}
+										</TableCell>
+										<TableCell className='text-sm text-muted-foreground'>
+											{company.city || '-'}
+										</TableCell>
+										<TableCell>
+											<span
+												className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+													company.active
+														? 'bg-green-100 text-green-800'
+														: 'bg-gray-100 text-gray-800'
+												}`}
 											>
-												<Pencil className='h-4 w-4' />
-											</Button>
-											<Button
-												variant='ghost'
-												size='icon'
-												className='h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50'
-												onClick={() => handleDelete(company)}
-												disabled={company.is_first}
-												title={
-													company.is_first
-														? "L'entreprise principale ne peut pas être supprimée"
-														: 'Supprimer'
-												}
-											>
-												{company.is_first ? (
-													<ShieldAlert className='h-4 w-4 text-gray-400' />
-												) : (
-													<Trash2 className='h-4 w-4' />
-												)}
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
+												{company.active ? 'Active' : 'Inactive'}
+											</span>
+										</TableCell>
+										<TableCell className='text-right'>
+											<div className='flex items-center justify-end gap-2'>
+												<Button
+													variant='ghost'
+													size='icon'
+													className='h-8 w-8'
+													onClick={() => handleEdit(company)}
+												>
+													<Pencil className='h-4 w-4' />
+												</Button>
+												<Button
+													variant='ghost'
+													size='icon'
+													className='h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50'
+													onClick={() => handleDelete(company)}
+													disabled={company.is_first}
+													title={
+														company.is_first
+															? "L'entreprise principale ne peut pas être supprimée"
+															: 'Supprimer'
+													}
+												>
+													{company.is_first ? (
+														<ShieldAlert className='h-4 w-4 text-gray-400' />
+													) : (
+														<Trash2 className='h-4 w-4' />
+													)}
+												</Button>
+											</div>
+										</TableCell>
+									</TableRow>
+								)
+							})}
 
 							{companies.length === 0 && (
 								<TableRow>
@@ -367,6 +488,69 @@ export default function CompanyManagement() {
 
 						{/* Onglet Général */}
 						<TabsContent value='general' className='space-y-4 mt-4'>
+							{/* Section Logo */}
+							<div className='flex items-start gap-6 p-4 bg-muted/50 rounded-lg'>
+								<div className='relative'>
+									{displayLogoUrl ? (
+										<img
+											src={displayLogoUrl}
+											alt='Logo'
+											className='w-20 h-20 rounded-lg object-cover border-2 border-muted'
+										/>
+									) : (
+										<div className='w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center border-2 border-dashed border-muted-foreground/30'>
+											<ImagePlus className='h-8 w-8 text-muted-foreground/50' />
+										</div>
+									)}
+									{/* Bouton overlay */}
+									<button
+										type='button'
+										onClick={() => fileInputRef.current?.click()}
+										className='absolute -bottom-2 -right-2 h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:bg-primary/90 transition-colors'
+									>
+										<Camera className='h-4 w-4' />
+									</button>
+								</div>
+
+								<div className='flex-1 space-y-2'>
+									<Label>Logo de l'entreprise</Label>
+									<div className='flex items-center gap-2'>
+										<Button
+											type='button'
+											variant='outline'
+											size='sm'
+											onClick={() => fileInputRef.current?.click()}
+										>
+											<Camera className='h-4 w-4 mr-2' />
+											{displayLogoUrl ? 'Changer' : 'Ajouter'}
+										</Button>
+										{displayLogoUrl && (
+											<Button
+												type='button'
+												variant='ghost'
+												size='sm'
+												className='text-red-600 hover:text-red-700 hover:bg-red-50'
+												onClick={handleRemoveLogo}
+											>
+												<Trash2 className='h-4 w-4 mr-2' />
+												Supprimer
+											</Button>
+										)}
+									</div>
+									<p className='text-xs text-muted-foreground'>
+										JPG, PNG ou WebP. Max 5 Mo.
+									</p>
+								</div>
+
+								<input
+									ref={fileInputRef}
+									type='file'
+									accept='image/jpeg,image/png,image/webp'
+									onChange={handleLogoChange}
+									className='hidden'
+								/>
+							</div>
+
 							<div className='grid grid-cols-2 gap-4'>
 								<div className='space-y-2'>
 									<Label htmlFor='name'>Raison sociale *</Label>
@@ -430,8 +614,8 @@ export default function CompanyManagement() {
 										onChange={(e) =>
 											setFormData({ ...formData, siren: e.target.value })
 										}
-										placeholder='123456789'
-										maxLength={9}
+										placeholder='123 456 789'
+										maxLength={11}
 									/>
 								</div>
 								<div className='space-y-2'>
@@ -442,22 +626,22 @@ export default function CompanyManagement() {
 										onChange={(e) =>
 											setFormData({ ...formData, siret: e.target.value })
 										}
-										placeholder='12345678900001'
-										maxLength={14}
+										placeholder='123 456 789 00012'
+										maxLength={17}
 									/>
 								</div>
 							</div>
 
 							<div className='grid grid-cols-2 gap-4'>
 								<div className='space-y-2'>
-									<Label htmlFor='vat_number'>N° TVA</Label>
+									<Label htmlFor='vat_number'>N° TVA intracommunautaire</Label>
 									<Input
 										id='vat_number'
 										value={formData.vat_number}
 										onChange={(e) =>
 											setFormData({ ...formData, vat_number: e.target.value })
 										}
-										placeholder='FR12345678901'
+										placeholder='FR 12 345678901'
 									/>
 								</div>
 								<div className='space-y-2'>
@@ -701,8 +885,12 @@ export default function CompanyManagement() {
 								</Label>
 								<Select
 									value={formData.default_payment_method}
-									onValueChange={(value: any) =>
-										setFormData({ ...formData, default_payment_method: value })
+									onValueChange={(value) =>
+										setFormData({
+											...formData,
+											default_payment_method:
+												value as CompanyDto['default_payment_method'],
+										})
 									}
 								>
 									<SelectTrigger>
