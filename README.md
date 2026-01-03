@@ -75,6 +75,8 @@ Why PocketBase is great for this project:
 To create a production build:
 ```bash
 pnpm build
+$env:PATH += ";C:\Program Files (x86)\NSIS"
+pnpm build:windows-installer
 ```
 
 This will create a single executable named `pocket-react` that contains your entire application. To run it:
