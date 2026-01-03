@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,7 +19,7 @@ import (
 const (
 	githubOwner    = "5sensprod" // Votre nom d'utilisateur GitHub
 	githubRepo     = "pockapp"   // Nom de votre repo
-	currentVersion = "1.0.1"     // Version actuelle (à synchroniser avec wails.json)
+	currentVersion = "1.0.2"     // Version actuelle (à synchroniser avec wails.json)
 )
 
 // UpdateInfo contient les informations sur une mise à jour disponible
@@ -107,6 +108,7 @@ func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
 	if err := downloadFile(zipPath, downloadURL); err != nil {
 		return fmt.Errorf("erreur téléchargement: %w", err)
 	}
+	log.Println("Download completed:", zipPath)
 
 	// Extrait le fichier
 	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
@@ -118,6 +120,7 @@ func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
 	if err := unzip(zipPath, extractDir); err != nil {
 		return fmt.Errorf("erreur extraction: %w", err)
 	}
+	log.Println("Extraction completed:", extractDir)
 
 	// Installe la mise à jour
 	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
@@ -133,6 +136,7 @@ func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
 		"status":  "completed",
 		"message": "Mise à jour terminée. Redémarrage nécessaire.",
 	})
+	log.Println("Installation completed")
 
 	return nil
 }
