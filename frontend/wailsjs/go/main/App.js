@@ -45,3 +45,11 @@ export function Quit() {
 export function ShowNotification(arg1, arg2) {
 	return window['go']['main']['App']['ShowNotification'](arg1, arg2)
 }
+
+export function CheckForUpdates() {
+	return window['go']['main']['App']['CheckForUpdates']()
+}
+
+export function DownloadAndInstallUpdate(arg1) {
+	return window['go']['main']['App']['DownloadAndInstallUpdate'](arg1)
+}

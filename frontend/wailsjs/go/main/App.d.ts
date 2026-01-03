@@ -32,3 +32,14 @@ export function PrintPosReceipt(arg1: {
 export function Quit(): Promise<void>
 
 export function ShowNotification(arg1: string, arg2: string): Promise<void>
+
+export function CheckForUpdates(): Promise<{
+	available: boolean
+	version: string
+	downloadUrl: string
+	releaseNotes: string
+	publishedAt: string
+	currentVersion: string
+}>
+
+export function DownloadAndInstallUpdate(arg1: string): Promise<void>

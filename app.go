@@ -30,6 +30,10 @@ func (a *App) startup(ctx context.Context) {
 
 	// Attend que PocketBase soit prêt
 	a.waitForPocketBase()
+
+	// ✅ NOUVEAU : Vérification automatique des mises à jour au démarrage
+	// Lance la vérification dans une goroutine pour ne pas bloquer le démarrage
+	go a.AutoCheckUpdates()
 }
 
 // shutdown est appelé à la fermeture
@@ -168,7 +172,7 @@ func (a *App) PrintPosReceipt(input PrintPosReceiptInput) error {
 				}
 			}
 
-			// Exemple d’assemblage adresse sur 1-3 lignes
+			// Exemple d'assemblage adresse sur 1-3 lignes
 			line1 := rec.GetString("address_line1")
 			line2 := rec.GetString("address_line2")
 			zip := rec.GetString("zip_code")
@@ -265,4 +269,51 @@ func (a *App) TestDisplay(input TestDisplayInput) error {
 	data := pos.BuildTestMessage(100, protocol)
 
 	return pos.SendToSerialPort(input.PortName, baudRate, data)
+}
+
+// ============================================
+// BINDINGS MISE À JOUR
+// ============================================
+
+// CheckForUpdates vérifie s'il y a une mise à jour disponible
+func (a *App) CheckForUpdates() (map[string]interface{}, error) {
+	info, err := checkForUpdates()
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"available":      info.Available,
+		"version":        info.Version,
+		"downloadUrl":    info.DownloadURL,
+		"releaseNotes":   info.ReleaseNotes,
+		"publishedAt":    info.PublishedAt,
+		"currentVersion": info.CurrentVersion,
+	}, nil
+}
+
+// DownloadAndInstallUpdate télécharge et installe la mise à jour
+func (a *App) DownloadAndInstallUpdate(downloadURL string) error {
+	return downloadAndInstallUpdate(a.ctx, downloadURL)
+}
+
+// AutoCheckUpdates vérifie automatiquement au démarrage
+func (a *App) AutoCheckUpdates() {
+	time.Sleep(5 * time.Second)
+
+	info, err := checkForUpdates()
+	if err != nil {
+		return
+	}
+
+	if info.Available {
+		runtime.EventsEmit(a.ctx, "update:available", map[string]interface{}{
+			"available":      info.Available,
+			"version":        info.Version,
+			"downloadUrl":    info.DownloadURL,
+			"releaseNotes":   info.ReleaseNotes,
+			"publishedAt":    info.PublishedAt,
+			"currentVersion": info.CurrentVersion,
+		})
+	}
 }

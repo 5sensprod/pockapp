@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 // frontend/routes/index.tsx
 import { Link, createFileRoute } from '@tanstack/react-router'
 import QRCode from 'react-qr-code'
+import { UpdateChecker } from '../components/UpdateChecker'
 
 export const Route = createFileRoute('/')({
 	component: Dashboard,
@@ -26,6 +27,10 @@ function Dashboard() {
 						<p className='text-muted-foreground'>
 							Sélectionnez un module pour commencer
 						</p>
+					</div>
+					<div className='mt-8'>
+						<h2>Mises à jour</h2>
+						<UpdateChecker />
 					</div>
 
 					{isWailsApp() ? <NetworkQRCode /> : null}
