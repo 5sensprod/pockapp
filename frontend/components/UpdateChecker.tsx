@@ -16,7 +16,7 @@ import {
 } from '@/wailsjs/go/main/App'
 import { EventsOn } from '@/wailsjs/runtime/runtime'
 import { ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 interface UpdateInfo {
 	available: boolean
@@ -32,33 +32,40 @@ interface UpdateProgress {
 	message: string
 }
 
+type DialogMode = 'update' | 'uptodate' | 'error'
+
 export function UpdateChecker() {
 	const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
 	const [showDialog, setShowDialog] = useState(false)
+	const [dialogMode, setDialogMode] = useState<DialogMode>('update')
 	const [isUpdating, setIsUpdating] = useState(false)
 	const [progress, setProgress] = useState<UpdateProgress | null>(null)
 	const [currentVersion, setCurrentVersion] = useState<string>('')
 	const [error, setError] = useState<string | null>(null)
 
+	const lastNotifiedVersionRef = useRef<string>('')
+
 	useEffect(() => {
-		// Charger la version au montage
 		GetAppVersion().then(setCurrentVersion)
 
-		// Écoute l'événement de mise à jour disponible
 		const unsubscribe = EventsOn('update:available', (info: unknown) => {
-			setUpdateInfo(info as UpdateInfo)
+			const data = info as UpdateInfo
+
+			if (data?.version && data.version === lastNotifiedVersionRef.current)
+				return
+			if (data?.version) lastNotifiedVersionRef.current = data.version
+
+			setUpdateInfo(data)
+			setDialogMode('update')
 			setShowDialog(true)
 		})
 
-		// Écoute la progression de la mise à jour
 		const unsubscribeProgress = EventsOn('update:progress', (prog: unknown) => {
 			const progressData = prog as UpdateProgress
 			setProgress(progressData)
 
 			if (progressData.status === 'completed') {
-				setTimeout(() => {
-					// L'application va se fermer automatiquement
-				}, 1000)
+				setTimeout(() => {}, 1000)
 			}
 		})
 
@@ -67,68 +74,6 @@ export function UpdateChecker() {
 			unsubscribeProgress()
 		}
 	}, [])
-
-	const handleCheckUpdates = async () => {
-		setError(null)
-		try {
-			const info = await CheckForUpdates()
-			setUpdateInfo(info as UpdateInfo)
-			if (info.available) {
-				setShowDialog(true)
-			} else {
-				alert(
-					'Aucune mise à jour disponible. Vous utilisez la dernière version.',
-				)
-			}
-		} catch (err) {
-			const errorMessage = err instanceof Error ? err.message : String(err)
-			console.error(
-				'Erreur lors de la vérification des mises à jour:',
-				errorMessage,
-			)
-			setError(`Erreur: ${errorMessage}`)
-			alert(`Erreur lors de la vérification: ${errorMessage}`)
-		}
-	}
-
-	const handleInstallUpdate = async () => {
-		if (!updateInfo?.downloadUrl) {
-			setError('URL de téléchargement manquante')
-			return
-		}
-
-		setIsUpdating(true)
-		setError(null)
-		setProgress({
-			status: 'downloading',
-			message: 'Préparation du téléchargement...',
-		})
-
-		try {
-			console.log('🚀 Lancement du téléchargement:', updateInfo.downloadUrl)
-			await DownloadAndInstallUpdate(updateInfo.downloadUrl)
-			// L'application se fermera automatiquement après le lancement de l'installateur
-		} catch (err) {
-			const errorMessage = err instanceof Error ? err.message : String(err)
-			console.error("Erreur lors de l'installation:", errorMessage)
-			setError(errorMessage)
-			setProgress({ status: 'error', message: errorMessage })
-			setIsUpdating(false)
-		}
-	}
-
-	const handleRetry = () => {
-		setError(null)
-		setProgress(null)
-		handleInstallUpdate()
-	}
-
-	const handleClose = () => {
-		setShowDialog(false)
-		setError(null)
-		setProgress(null)
-		setIsUpdating(false)
-	}
 
 	const formatDate = (dateString: string) => {
 		const date = new Date(dateString)
@@ -142,7 +87,7 @@ export function UpdateChecker() {
 	const getProgressMessage = () => {
 		if (error) {
 			return {
-				title: '❌ Erreur',
+				title: 'Erreur',
 				message: error,
 				color: 'text-red-600',
 				bgColor: 'bg-red-50 dark:bg-red-900/20',
@@ -155,7 +100,7 @@ export function UpdateChecker() {
 		switch (progress.status) {
 			case 'downloading':
 				return {
-					title: '⬇ Téléchargement en cours...',
+					title: 'Téléchargement en cours...',
 					message: progress.message,
 					color: 'text-blue-600',
 					bgColor: 'bg-blue-50 dark:bg-blue-900/20',
@@ -163,7 +108,7 @@ export function UpdateChecker() {
 				}
 			case 'ready':
 				return {
-					title: '🚀 Prêt à installer',
+					title: 'Prêt à installer',
 					message: progress.message,
 					color: 'text-green-600',
 					bgColor: 'bg-green-50 dark:bg-green-900/20',
@@ -171,7 +116,7 @@ export function UpdateChecker() {
 				}
 			case 'completed':
 				return {
-					title: '✅ Installation lancée',
+					title: 'Installation lancée',
 					message:
 						"L'installateur a été lancé. L'application va se fermer dans quelques secondes.",
 					color: 'text-green-600',
@@ -180,7 +125,7 @@ export function UpdateChecker() {
 				}
 			case 'error':
 				return {
-					title: '❌ Erreur',
+					title: 'Erreur',
 					message: progress.message,
 					color: 'text-red-600',
 					bgColor: 'bg-red-50 dark:bg-red-900/20',
@@ -188,7 +133,7 @@ export function UpdateChecker() {
 				}
 			default:
 				return {
-					title: '⏳ En cours...',
+					title: 'En cours...',
 					message: progress.message,
 					color: 'text-gray-600',
 					bgColor: 'bg-gray-50 dark:bg-gray-800',
@@ -199,9 +144,96 @@ export function UpdateChecker() {
 
 	const progressInfo = getProgressMessage()
 
+	const handleCheckUpdates = async () => {
+		setError(null)
+		setProgress(null)
+		setIsUpdating(false)
+
+		try {
+			const info = (await CheckForUpdates()) as UpdateInfo
+			setUpdateInfo(info)
+
+			setDialogMode(info.available ? 'update' : 'uptodate')
+			setShowDialog(true)
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err)
+			setError(msg)
+			setDialogMode('error')
+			setShowDialog(true)
+		}
+	}
+
+	const handleInstallUpdate = async () => {
+		if (!updateInfo?.downloadUrl) {
+			setError('URL de téléchargement manquante')
+			setDialogMode('error')
+			setShowDialog(true)
+			return
+		}
+
+		setIsUpdating(true)
+		setError(null)
+		setProgress({
+			status: 'downloading',
+			message: 'Préparation du téléchargement...',
+		})
+
+		try {
+			await DownloadAndInstallUpdate(updateInfo.downloadUrl)
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err)
+			setError(msg)
+			setProgress({ status: 'error', message: msg })
+			setIsUpdating(false)
+			setDialogMode('error')
+			setShowDialog(true)
+		}
+	}
+
+	const handleRetry = () => {
+		setError(null)
+		setProgress(null)
+		handleInstallUpdate()
+	}
+
+	const handleClose = () => {
+		if (isUpdating && !error) return
+		setShowDialog(false)
+		setError(null)
+		setProgress(null)
+		setIsUpdating(false)
+	}
+
+	const dialogTitle = useMemo(() => {
+		if (dialogMode === 'update') return 'Mise à jour disponible'
+		if (dialogMode === 'uptodate') return 'Logiciel à jour'
+		return 'Erreur de vérification'
+	}, [dialogMode])
+
+	const footerAction =
+		dialogMode !== 'update' ? null : error ? (
+			<Button
+				onClick={handleRetry}
+				className='bg-orange-600 hover:bg-orange-700'
+			>
+				Réessayer
+			</Button>
+		) : (
+			<AlertDialogAction
+				onClick={handleInstallUpdate}
+				disabled={isUpdating || progress?.status === 'completed'}
+				className='bg-green-600 hover:bg-green-700'
+			>
+				{isUpdating
+					? progress?.status === 'downloading'
+						? 'Téléchargement...'
+						: 'Préparation...'
+					: 'Télécharger et installer'}
+			</AlertDialogAction>
+		)
+
 	return (
 		<>
-			{/* Bouton et version */}
 			<div className='flex items-center gap-3'>
 				<Button
 					onClick={handleCheckUpdates}
@@ -218,12 +250,11 @@ export function UpdateChecker() {
 				)}
 			</div>
 
-			{/* Dialog de mise à jour disponible */}
 			<AlertDialog open={showDialog} onOpenChange={handleClose}>
 				<AlertDialogContent className='max-w-2xl'>
 					<AlertDialogHeader>
 						<AlertDialogTitle className='flex items-center justify-between'>
-							<span>Mise à jour disponible 🎉</span>
+							<span>{dialogTitle}</span>
 							<Button
 								variant='ghost'
 								size='sm'
@@ -233,13 +264,37 @@ export function UpdateChecker() {
 								<XMarkIcon className='h-5 w-5' />
 							</Button>
 						</AlertDialogTitle>
+
 						<AlertDialogDescription className='space-y-4 text-left'>
-							{updateInfo && (
+							{dialogMode === 'uptodate' && (
+								<div className='space-y-2'>
+									<p className='text-sm text-gray-700 dark:text-gray-300'>
+										Vous utilisez déjà la dernière version.
+									</p>
+									{currentVersion && (
+										<p className='text-sm'>
+											Version actuelle : <strong>v{currentVersion}</strong>
+										</p>
+									)}
+								</div>
+							)}
+
+							{dialogMode === 'error' && (
+								<div className='space-y-2'>
+									<p className='text-sm text-red-600'>
+										{error || 'Une erreur est survenue.'}
+									</p>
+								</div>
+							)}
+
+							{dialogMode === 'update' && updateInfo && (
 								<>
 									<div>
 										<p className='text-sm'>
 											Version actuelle :{' '}
-											<strong>{updateInfo.currentVersion}</strong>
+											<strong>
+												{updateInfo.currentVersion || currentVersion}
+											</strong>
 										</p>
 										<p className='text-sm'>
 											Nouvelle version :{' '}
@@ -247,9 +302,11 @@ export function UpdateChecker() {
 												{updateInfo.version}
 											</strong>
 										</p>
-										<p className='text-xs text-gray-500 mt-1'>
-											Publiée le {formatDate(updateInfo.publishedAt)}
-										</p>
+										{updateInfo.publishedAt && (
+											<p className='text-xs text-gray-500 mt-1'>
+												Publiée le {formatDate(updateInfo.publishedAt)}
+											</p>
+										)}
 									</div>
 
 									{updateInfo.releaseNotes && (
@@ -263,7 +320,6 @@ export function UpdateChecker() {
 										</div>
 									)}
 
-									{/* Debug info - URL de téléchargement */}
 									{updateInfo.downloadUrl && (
 										<div className='text-xs text-gray-400 break-all'>
 											<details>
@@ -277,7 +333,6 @@ export function UpdateChecker() {
 										</div>
 									)}
 
-									{/* Affichage de la progression / erreur */}
 									{progressInfo && (
 										<div
 											className={`${progressInfo.bgColor} p-4 rounded-lg border-l-4 ${progressInfo.borderColor}`}
@@ -298,7 +353,7 @@ export function UpdateChecker() {
 												</p>
 												{progress?.status === 'completed' && (
 													<p className='text-xs text-gray-600 dark:text-gray-400 mt-2'>
-														💡 Suivez les instructions de l'installateur pour
+														Suivez les instructions de l'installateur pour
 														terminer la mise à jour.
 													</p>
 												)}
@@ -309,34 +364,16 @@ export function UpdateChecker() {
 							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+
 					<AlertDialogFooter>
 						<AlertDialogCancel
 							disabled={isUpdating && !error}
 							onClick={handleClose}
 						>
-							{progress?.status === 'completed' ? 'Fermer' : 'Plus tard'}
+							Fermer
 						</AlertDialogCancel>
 
-						{error ? (
-							<Button
-								onClick={handleRetry}
-								className='bg-orange-600 hover:bg-orange-700'
-							>
-								Réessayer
-							</Button>
-						) : (
-							<AlertDialogAction
-								onClick={handleInstallUpdate}
-								disabled={isUpdating || progress?.status === 'completed'}
-								className='bg-green-600 hover:bg-green-700'
-							>
-								{isUpdating
-									? progress?.status === 'downloading'
-										? 'Téléchargement...'
-										: 'Préparation...'
-									: 'Télécharger et installer'}
-							</AlertDialogAction>
-						)}
+						{footerAction}
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
