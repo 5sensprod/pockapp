@@ -20,7 +20,7 @@ import (
 const (
 	githubOwner    = "5sensprod" // Votre nom d'utilisateur GitHub
 	githubRepo     = "pockapp"   // Nom de votre repo
-	currentVersion = "1.0.8"     // Version actuelle (à synchroniser avec wails.json)
+	currentVersion = "1.0.9"     // Version actuelle (à synchroniser avec wails.json)
 )
 
 // UpdateInfo contient les informations sur une mise à jour disponible
@@ -103,14 +103,21 @@ func checkForUpdates() (*UpdateInfo, error) {
 func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
 	log.Printf("Début de la mise à jour depuis : %s", downloadURL)
 
-	// ✨ CORRIGÉ : Télécharge directement dans le dossier Téléchargements de l'utilisateur
+	// ✨ CORRIGÉ : Télécharge dans le dossier Téléchargements de l'utilisateur
 	// pour que l'utilisateur puisse le retrouver en cas de problème
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("impossible de trouver le dossier utilisateur: %w", err)
 	}
 
+	// Utilise le dossier Téléchargements (localisé selon la langue de Windows)
 	downloadsDir := filepath.Join(userHomeDir, "Downloads")
+
+	// Vérifier si le dossier existe, sinon essayer "Téléchargements" (français)
+	if _, err := os.Stat(downloadsDir); os.IsNotExist(err) {
+		downloadsDir = filepath.Join(userHomeDir, "Téléchargements")
+	}
+
 	installerPath := filepath.Join(downloadsDir, "PocketReact-Installer.exe")
 
 	// Supprime l'ancien installateur s'il existe
