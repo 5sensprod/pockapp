@@ -1,4 +1,5 @@
-// updater_windows.go — version "clean" : aucun PowerShell, lancement UAC via ShellExecuteW (runas)
+// updater.go — Mise à jour automatique depuis GitHub
+
 package main
 
 import (
@@ -9,19 +10,19 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"golang.org/x/sys/windows"
 )
 
 const (
 	githubOwner    = "5sensprod"
 	githubRepo     = "pockapp"
-	currentVersion = "1.2.7" // bump-version.ps1
+	currentVersion = "1.2.8" // ⚠️ Mis à jour par bump-version.ps1
 )
 
 type UpdateInfo struct {
@@ -48,6 +49,7 @@ type GitHubRelease struct {
 
 func checkForUpdates() (*UpdateInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubOwner, githubRepo)
+
 	log.Printf("🔍 [UPDATE] Vérification: %s", url)
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -92,11 +94,17 @@ func checkForUpdates() (*UpdateInfo, error) {
 		CurrentVersion: currentVersion,
 	}
 
+	// Chercher l'installateur dans les assets
+	// Format attendu: PocketReact-X.Y.Z-windows-amd64-installer.exe
 	for _, asset := range release.Assets {
 		log.Printf("   📎 Asset: %s (%.2f MB)", asset.Name, float64(asset.Size)/1024/1024)
 
 		nameLower := strings.ToLower(asset.Name)
-		if strings.HasSuffix(nameLower, "-installer.exe") && strings.HasPrefix(nameLower, "pocketreact") {
+		// ✅ Accepte les deux formats :
+		// - Ancien: PocketReact-windows-amd64-installer.exe
+		// - Nouveau: PocketReact-X.Y.Z-windows-amd64-installer.exe
+		if strings.HasSuffix(nameLower, "-installer.exe") &&
+			strings.HasPrefix(nameLower, "pocketreact") {
 			info.DownloadURL = asset.BrowserDownloadURL
 			info.AssetName = asset.Name
 			log.Printf("✅ [UPDATE] Installateur trouvé: %s", asset.Name)
@@ -111,60 +119,21 @@ func checkForUpdates() (*UpdateInfo, error) {
 	return info, nil
 }
 
-/*
-   =========================
-   ShellExecuteW (runas) — no PowerShell, no console window
-   =========================
-*/
+func launchInstallerElevatedHidden(installerPath string) error {
+	ps := fmt.Sprintf("Start-Process -FilePath '%s' -Verb RunAs", installerPath)
 
-var (
-	shell32       = windows.NewLazySystemDLL("shell32.dll")
-	shellExecuteW = shell32.NewProc("ShellExecuteW")
-)
-
-func runInstallerAsAdmin(installerPath string, args string) error {
-	abs, err := filepath.Abs(installerPath)
-	if err == nil {
-		installerPath = abs
-	}
-
-	verb, err := windows.UTF16PtrFromString("runas")
-	if err != nil {
-		return err
-	}
-	file, err := windows.UTF16PtrFromString(installerPath)
-	if err != nil {
-		return err
-	}
-	params, err := windows.UTF16PtrFromString(args)
-	if err != nil {
-		return err
-	}
-	dir, err := windows.UTF16PtrFromString(filepath.Dir(installerPath))
-	if err != nil {
-		return err
-	}
-
-	const SW_SHOWNORMAL = 1
-
-	r, _, callErr := shellExecuteW.Call(
-		0,
-		uintptr(unsafe.Pointer(verb)),
-		uintptr(unsafe.Pointer(file)),
-		uintptr(unsafe.Pointer(params)),
-		uintptr(unsafe.Pointer(dir)),
-		uintptr(SW_SHOWNORMAL),
+	cmd := exec.Command(
+		"powershell",
+		"-NoProfile",
+		"-ExecutionPolicy", "Bypass",
+		"-WindowStyle", "Hidden",
+		"-Command", ps,
 	)
 
-	if r <= 32 {
-		// Si l’utilisateur annule l’UAC, code typique: 1223 (ERROR_CANCELLED)
-		if callErr != nil && callErr != windows.ERROR_SUCCESS {
-			return fmt.Errorf("ShellExecuteW failed: code=%d err=%v", r, callErr)
-		}
-		return fmt.Errorf("ShellExecuteW failed: code=%d", r)
-	}
+	// Cache la console (surtout utile si Windows décide quand même d’en créer une)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
-	return nil
+	return cmd.Start()
 }
 
 func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
@@ -172,14 +141,17 @@ func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
 	log.Println("🚀 [DOWNLOAD] DÉBUT DU TÉLÉCHARGEMENT")
 	log.Printf("📥 [DOWNLOAD] URL: %s", downloadURL)
 
+	// Notifier le frontend
 	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
 		"status":  "downloading",
 		"message": "Connexion au serveur GitHub...",
 	})
 
+	// Extraire le nom du fichier depuis l'URL
 	assetName := extractAssetName(downloadURL)
 	log.Printf("📄 [DOWNLOAD] Nom fichier: %s", assetName)
 
+	// Trouver le dossier Downloads
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("impossible de trouver le dossier utilisateur: %w", err)
@@ -196,21 +168,25 @@ func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
 
 	installerPath := filepath.Join(downloadsDir, assetName)
 
+	// Supprimer l'ancien fichier si présent
 	if _, err := os.Stat(installerPath); err == nil {
 		log.Println("🗑️ [DOWNLOAD] Suppression ancien fichier...")
-		_ = os.Remove(installerPath)
+		os.Remove(installerPath)
 	}
 
+	// Notifier progression
 	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
 		"status":  "downloading",
 		"message": "Téléchargement en cours...",
 	})
 
+	// Télécharger
 	if err := downloadFile(installerPath, downloadURL); err != nil {
 		log.Printf("❌ [DOWNLOAD] Erreur: %v", err)
 		return fmt.Errorf("erreur téléchargement: %w", err)
 	}
 
+	// Vérifier la taille
 	fileInfo, err := os.Stat(installerPath)
 	if err != nil {
 		return fmt.Errorf("fichier non trouvé: %w", err)
@@ -223,23 +199,29 @@ func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
 		return fmt.Errorf("fichier trop petit (%.1f MB)", fileSizeMB)
 	}
 
+	// Notifier prêt
 	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
 		"status":  "ready",
 		"message": fmt.Sprintf("Téléchargement terminé (%.1f MB). Lancement...", fileSizeMB),
 	})
 
-	log.Printf("🚀 [DOWNLOAD] Lancement (runas): %s", installerPath)
-	if err := runInstallerAsAdmin(installerPath, ""); err != nil {
+	// Lancer l'installateur
+	log.Printf("🚀 [DOWNLOAD] Lancement: %s", installerPath)
+	cmd := exec.Command("powershell", "-Command",
+		fmt.Sprintf("Start-Process -FilePath '%s' -Verb RunAs", installerPath))
+	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("erreur lancement installateur: %w", err)
 	}
 
 	log.Println("✅ [DOWNLOAD] Installateur lancé!")
 
+	// Notifier terminé
 	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
 		"status":  "completed",
 		"message": "Installation en cours. Fermeture de l'application...",
 	})
 
+	// Fermer l'app après un délai
 	go func() {
 		time.Sleep(2 * time.Second)
 		runtime.Quit(ctx)
