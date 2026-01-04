@@ -1,9 +1,5 @@
 // frontend/modules/connect/components/InvoiceDetailPage.tsx
-// ✅ CORRECTIONS:
-// 1. Affichage du moyen de remboursement pour les avoirs
-// 2. Logique de statut adaptée pour les avoirs (pas de "Non payée")
-// 3. Affichage du numéro du ticket/facture original dans l'avoir
-// 4. Affichage des avoirs liés dans le ticket/facture
+// ✅ AJOUT: affichage du vendeur/caissier dans "Détails généraux"
 
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -151,6 +147,16 @@ function getLineDiscountLabel(item: any): {
 	const v = round2(Math.max(0, Number(value) || 0))
 	if (v <= 0) return { label: '-', hasDiscount: false }
 	return { label: `-${v.toFixed(2)} €`, hasDiscount: true }
+}
+
+function getSoldByLabel(invoice: any): string {
+	const soldBy = invoice?.expand?.sold_by
+	return (
+		soldBy?.name ||
+		soldBy?.username ||
+		soldBy?.email ||
+		(invoice?.sold_by ? String(invoice.sold_by) : '-')
+	)
 }
 
 // ============================================================================
@@ -415,6 +421,8 @@ export function InvoiceDetailPage() {
 	// UI
 	// ============================================================================
 
+	const soldByLabel = getSoldByLabel(invoice as any)
+
 	return (
 		<div className='container mx-auto px-6 py-8'>
 			<div className='flex items-center justify-between gap-3 mb-6'>
@@ -474,6 +482,7 @@ export function InvoiceDetailPage() {
 						</CardTitle>
 						<CardDescription>Détails généraux</CardDescription>
 					</CardHeader>
+
 					<CardContent className='space-y-4'>
 						<div>
 							<p className='text-sm text-muted-foreground'>Numéro</p>
@@ -489,6 +498,16 @@ export function InvoiceDetailPage() {
 							<p className='text-sm text-muted-foreground'>Échéance</p>
 							<p className='text-sm'>{formatDate(invoice.due_date)}</p>
 						</div>
+
+						{/* ✅ AJOUT: vendeur/caissier */}
+						{!isCreditNote && (
+							<div>
+								<p className='text-sm text-muted-foreground'>
+									{invoice.is_pos_ticket ? 'Vendeur / Caissier' : 'Vendeur'}
+								</p>
+								<p className='text-sm font-medium'>{soldByLabel}</p>
+							</div>
+						)}
 
 						<div className='flex items-center gap-2'>
 							{renderStatusBadges()}
