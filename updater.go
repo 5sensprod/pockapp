@@ -21,7 +21,7 @@ import (
 const (
 	githubOwner    = "5sensprod"
 	githubRepo     = "pockapp"
-	currentVersion = "1.1.3" // ⚠️ CHANGEZ selon votre version actuelle
+	currentVersion = "1.1.4" // ⚠️ CHANGEZ selon votre version actuelle
 )
 
 type UpdateInfo struct {
@@ -204,7 +204,7 @@ func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
 
 	// Lancer l'installateur
 	log.Printf("🚀 Lancement de l'installateur: %s", installerPath)
-	cmd := exec.Command(installerPath)
+	cmd := exec.Command("cmd", "/C", "start", "", installerPath)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("erreur lancement installateur: %w", err)
 	}
