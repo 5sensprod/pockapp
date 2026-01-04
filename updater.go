@@ -20,7 +20,7 @@ import (
 const (
 	githubOwner    = "5sensprod" // Votre nom d'utilisateur GitHub
 	githubRepo     = "pockapp"   // Nom de votre repo
-	currentVersion = "1.0.5"     // Version actuelle (à synchroniser avec wails.json)
+	currentVersion = "1.0.6"     // Version actuelle (à synchroniser avec wails.json)
 )
 
 // UpdateInfo contient les informations sur une mise à jour disponible
