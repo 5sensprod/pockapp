@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -27,6 +28,10 @@ func NewApp(pb *pocketbase.PocketBase) *App {
 // startup est appelé au démarrage de l'app
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// ✨ NOUVEAU : Définir le titre avec la version
+	version := a.GetAppVersion()
+	runtime.WindowSetTitle(ctx, fmt.Sprintf("Pocket App - v%s", version))
 
 	// Attend que PocketBase soit prêt
 	a.waitForPocketBase()
