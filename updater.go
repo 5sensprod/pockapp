@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -22,7 +21,7 @@ import (
 const (
 	githubOwner    = "5sensprod"
 	githubRepo     = "pockapp"
-	currentVersion = "1.2.9" // ⚠️ Mis à jour par bump-version.ps1
+	currentVersion = "1.2.5" // ⚠️ Mis à jour par bump-version.ps1
 )
 
 type UpdateInfo struct {
@@ -117,23 +116,6 @@ func checkForUpdates() (*UpdateInfo, error) {
 	}
 
 	return info, nil
-}
-
-func launchInstallerElevatedHidden(installerPath string) error {
-	ps := fmt.Sprintf("Start-Process -FilePath '%s' -Verb RunAs", installerPath)
-
-	cmd := exec.Command(
-		"powershell",
-		"-NoProfile",
-		"-ExecutionPolicy", "Bypass",
-		"-WindowStyle", "Hidden",
-		"-Command", ps,
-	)
-
-	// Cache la console (surtout utile si Windows décide quand même d’en créer une)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-
-	return cmd.Start()
 }
 
 func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
