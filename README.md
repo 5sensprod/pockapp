@@ -77,6 +77,10 @@ To create a production build:
 pnpm build
 $env:PATH += ";C:\Program Files (x86)\NSIS"
 pnpm build:windows-installer
+.\bump-version.ps1 1.0.1 (change version)
+
+# 3. Testez avec v1.0.5 final release
+.\quick-release-nsis.bat 1.0.5 (change version)
 ```
 
 This will create a single executable named `pocket-react` that contains your entire application. To run it:
