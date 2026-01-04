@@ -32,19 +32,37 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Build Windows
-        run: wails build -platform windows/amd64 -clean
+      # ✨ MODIFIÉ : Build avec NSIS pour créer un installateur
+      - name: Build Windows with NSIS
+        run: |
+          $env:PATH += ";C:\Program Files (x86)\NSIS"
+          wails build -platform windows/amd64 -nsis
 
-      - name: Create Windows archive
+      # ✨ MODIFIÉ : Renommer et zipper l'installateur
+      - name: Prepare release artifacts
         run: |
           cd build/bin
-          Compress-Archive -Path PocketReact.exe -DestinationPath PocketReact-windows-amd64.zip
+          # Trouver l'installateur NSIS
+          $installer = Get-ChildItem -Filter "*.exe" | Select-Object -First 1
+          if ($installer) {
+            # Copier avec un nom standard pour GitHub
+            Copy-Item $installer.Name "PocketReact-windows-amd64-installer.exe"
+            # Créer un ZIP de l'installateur
+            Compress-Archive -Path "PocketReact-windows-amd64-installer.exe" -DestinationPath "PocketReact-windows-amd64.zip"
+            Write-Host "✅ Installateur et ZIP créés"
+            Get-ChildItem *.zip, *-installer.exe
+          } else {
+            Write-Host "❌ Aucun installateur trouvé"
+            exit 1
+          }
 
-      - name: Upload Windows artifact
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: build/bin/PocketReact-windows-amd64.zip
+          path: |
+            build/bin/PocketReact-windows-amd64.zip
+            build/bin/PocketReact-windows-amd64-installer.exe
 
   release:
     needs: [build-windows]
@@ -68,7 +86,34 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          body: |
+            ## 📦 Installation Windows
+            
+            Deux options disponibles :
+            
+            ### Option 1 : Installateur (Recommandé) 🎯
+            Téléchargez : **`PocketReact-windows-amd64-installer.exe`**
+            - Double-cliquez sur le fichier
+            - Suivez l'assistant d'installation
+            - L'application sera installée dans Program Files
+            - Un raccourci sera créé sur le bureau
+            
+            ### Option 2 : Archive ZIP
+            Téléchargez : **`PocketReact-windows-amd64.zip`**
+            - Extrayez le ZIP
+            - Lancez l'installateur à l'intérieur
+            
+            ## 🔄 Mise à jour automatique
+            
+            Si vous utilisez déjà Pocket App, l'application détectera automatiquement cette nouvelle version au démarrage.
+            
+            ## 📋 Notes de version
+            
+            Les changements sont détaillés ci-dessous.
+            
+            ---
           files: |
             windows-build/PocketReact-windows-amd64.zip
+            windows-build/PocketReact-windows-amd64-installer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

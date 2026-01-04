@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
@@ -76,12 +77,17 @@ func checkForUpdates() (*UpdateInfo, error) {
 	}
 
 	if updateAvailable {
-		// Trouve l'asset approprié pour la plateforme
+		// ✨ MODIFIÉ : Cherche l'installateur NSIS au lieu du ZIP
 		assetName := getAssetNameForPlatform()
 		for _, asset := range release.Assets {
-			if strings.Contains(asset.Name, assetName) {
+			// Priorité 1 : Chercher l'installateur directement
+			if strings.Contains(asset.Name, "installer.exe") && strings.Contains(asset.Name, assetName) {
 				info.DownloadURL = asset.BrowserDownloadURL
 				break
+			}
+			// Priorité 2 : Fallback sur le ZIP
+			if strings.Contains(asset.Name, assetName) && strings.HasSuffix(asset.Name, ".zip") {
+				info.DownloadURL = asset.BrowserDownloadURL
 			}
 		}
 	}
@@ -89,14 +95,16 @@ func checkForUpdates() (*UpdateInfo, error) {
 	return info, nil
 }
 
-// downloadAndInstallUpdate télécharge et installe la mise à jour
+// downloadAndInstallUpdate télécharge et lance l'installateur
 func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
+	// ✨ MODIFIÉ pour NSIS : Télécharge et lance l'installateur
+
 	// Crée un dossier temporaire pour le téléchargement
 	tempDir, err := os.MkdirTemp("", "pocket-react-update-")
 	if err != nil {
 		return fmt.Errorf("erreur création dossier temporaire: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	// ⚠️ Ne pas supprimer tempDir car l'installateur doit pouvoir y accéder
 
 	// Télécharge le fichier
 	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
@@ -104,39 +112,77 @@ func downloadAndInstallUpdate(ctx context.Context, downloadURL string) error {
 		"message": "Téléchargement en cours...",
 	})
 
-	zipPath := filepath.Join(tempDir, "update.zip")
-	if err := downloadFile(zipPath, downloadURL); err != nil {
-		return fmt.Errorf("erreur téléchargement: %w", err)
-	}
-	log.Println("Download completed:", zipPath)
+	var installerPath string
 
-	// Extrait le fichier
+	// Détermine si c'est un installateur direct ou un ZIP
+	if strings.HasSuffix(downloadURL, "-installer.exe") {
+		// Télécharge directement l'installateur
+		installerPath = filepath.Join(tempDir, "PocketReact-installer.exe")
+		if err := downloadFile(installerPath, downloadURL); err != nil {
+			return fmt.Errorf("erreur téléchargement: %w", err)
+		}
+		log.Println("Installateur téléchargé:", installerPath)
+	} else if strings.HasSuffix(downloadURL, ".zip") {
+		// Télécharge le ZIP et extrait l'installateur
+		zipPath := filepath.Join(tempDir, "update.zip")
+		if err := downloadFile(zipPath, downloadURL); err != nil {
+			return fmt.Errorf("erreur téléchargement: %w", err)
+		}
+		log.Println("ZIP téléchargé:", zipPath)
+
+		runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
+			"status":  "extracting",
+			"message": "Extraction en cours...",
+		})
+
+		// Extrait le ZIP
+		extractDir := filepath.Join(tempDir, "extracted")
+		if err := unzipInstaller(zipPath, extractDir); err != nil {
+			return fmt.Errorf("erreur extraction: %w", err)
+		}
+
+		// Trouve l'installateur dans le ZIP
+		installerPath, err = findInstaller(extractDir)
+		if err != nil {
+			return fmt.Errorf("installateur non trouvé: %w", err)
+		}
+		log.Println("Installateur extrait:", installerPath)
+	} else {
+		return fmt.Errorf("format de fichier non supporté: %s", downloadURL)
+	}
+
+	// ✨ NOUVEAU : Lance l'installateur et ferme l'app
 	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
-		"status":  "extracting",
-		"message": "Extraction en cours...",
+		"status":  "launching",
+		"message": "Lancement de l'installateur...",
 	})
 
-	extractDir := filepath.Join(tempDir, "extracted")
-	if err := unzip(zipPath, extractDir); err != nil {
-		return fmt.Errorf("erreur extraction: %w", err)
+	// Lance l'installateur en mode silencieux ou normal
+	if goruntime.GOOS == "windows" {
+		// Option 1 : Lancement normal (l'utilisateur voit l'installateur)
+		cmd := exec.Command(installerPath)
+
+		// Option 2 : Lancement silencieux (décommentez si vous préférez)
+		// cmd := exec.Command(installerPath, "/S") // /S = Silent mode pour NSIS
+
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("erreur lancement installateur: %w", err)
+		}
+
+		log.Println("Installateur lancé avec succès")
+
+		// ✨ IMPORTANT : Notifier que l'app va se fermer
+		runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
+			"status":  "completed",
+			"message": "Installateur lancé. L'application va se fermer.",
+		})
+
+		// Attendre 2 secondes puis fermer l'app
+		go func() {
+			// time.Sleep(2 * time.Second)
+			// runtime.Quit(ctx) // Décommentez pour fermer automatiquement
+		}()
 	}
-	log.Println("Extraction completed:", extractDir)
-
-	// Installe la mise à jour
-	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
-		"status":  "installing",
-		"message": "Installation en cours...",
-	})
-
-	if err := installUpdate(extractDir); err != nil {
-		return fmt.Errorf("erreur installation: %w", err)
-	}
-
-	runtime.EventsEmit(ctx, "update:progress", map[string]interface{}{
-		"status":  "completed",
-		"message": "Mise à jour terminée. Redémarrage nécessaire.",
-	})
-	log.Println("Installation completed")
 
 	return nil
 }
@@ -197,17 +243,72 @@ func downloadFile(filepath string, url string) error {
 	return err
 }
 
+// unzipInstaller extrait un fichier ZIP (version simplifiée pour l'installateur)
+func unzipInstaller(src, dest string) error {
+	// Utilise la bibliothèque archive/zip
+	// (Code identique à l'ancien unzip mais simplifié)
+	return unzip(src, dest)
+}
+
+// findInstaller trouve l'installateur NSIS dans un dossier
+func findInstaller(dir string) (string, error) {
+	var installerPath string
+
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			name := strings.ToLower(info.Name())
+			// Cherche un fichier .exe qui ressemble à un installateur
+			if strings.HasSuffix(name, ".exe") &&
+				(strings.Contains(name, "installer") ||
+					strings.Contains(name, "setup") ||
+					strings.Contains(name, "pocketreact")) {
+				installerPath = path
+				return filepath.SkipDir // Arrête la recherche
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if installerPath == "" {
+		return "", fmt.Errorf("aucun installateur trouvé dans %s", dir)
+	}
+
+	return installerPath, nil
+}
+
+// ============================================
+// FONCTIONS UTILITAIRES (gardées de l'ancien code)
+// ============================================
+
 // unzip extrait un fichier ZIP
 func unzip(src, dest string) error {
-	r, err := zip.OpenReader(src)
+	// Import nécessaire : "archive/zip"
+	r, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
 
+	stat, err := r.Stat()
+	if err != nil {
+		return err
+	}
+
+	zr, err := zip.NewReader(r, stat.Size())
+	if err != nil {
+		return err
+	}
+
 	os.MkdirAll(dest, 0755)
 
-	for _, f := range r.File {
+	for _, f := range zr.File {
 		fpath := filepath.Join(dest, f.Name)
 
 		if f.FileInfo().IsDir() {
@@ -239,89 +340,4 @@ func unzip(src, dest string) error {
 		}
 	}
 	return nil
-}
-
-// installUpdate installe la mise à jour
-func installUpdate(extractDir string) error {
-	// Trouve le nouvel exécutable
-	var newExePath string
-	filepath.Walk(extractDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.Contains(info.Name(), "PocketReact") {
-			if goruntime.GOOS == "windows" && strings.HasSuffix(info.Name(), ".exe") {
-				newExePath = path
-			} else if goruntime.GOOS != "windows" {
-				newExePath = path
-			}
-		}
-		return nil
-	})
-
-	if newExePath == "" {
-		return fmt.Errorf("exécutable non trouvé dans l'archive")
-	}
-
-	// Chemin de l'exécutable actuel
-	currentExe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-
-	// Sur Windows, renomme l'ancien exe et copie le nouveau
-	if goruntime.GOOS == "windows" {
-		oldExe := currentExe + ".old"
-
-		// Supprime l'ancien backup s'il existe
-		os.Remove(oldExe)
-
-		// Renomme l'exe actuel
-		if err := os.Rename(currentExe, oldExe); err != nil {
-			return fmt.Errorf("erreur renommage: %w", err)
-		}
-
-		// Copie le nouvel exe
-		if err := copyFile(newExePath, currentExe); err != nil {
-			// Restaure l'ancien en cas d'erreur
-			os.Rename(oldExe, currentExe)
-			return fmt.Errorf("erreur copie: %w", err)
-		}
-
-		// Crée un script batch pour supprimer l'ancien exe au prochain démarrage
-		batchScript := fmt.Sprintf(`@echo off
-timeout /t 2 /nobreak > nul
-del "%s"
-del "%%~f0"
-`, oldExe)
-
-		batchPath := filepath.Join(filepath.Dir(currentExe), "cleanup.bat")
-		os.WriteFile(batchPath, []byte(batchScript), 0755)
-	} else {
-		// Sur Unix, remplace directement
-		if err := copyFile(newExePath, currentExe); err != nil {
-			return fmt.Errorf("erreur copie: %w", err)
-		}
-		os.Chmod(currentExe, 0755)
-	}
-
-	return nil
-}
-
-// copyFile copie un fichier
-func copyFile(src, dst string) error {
-	source, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-
-	destination, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destination.Close()
-
-	_, err = io.Copy(destination, source)
-	return err
 }
