@@ -323,7 +323,7 @@ func BuildReceipt(r ReceiptData) []byte {
 		b.Write(NL())
 	}
 	if r.Change != nil && *r.Change > 0 {
-		changeLine := labelValue("Monnaie", fmt.Sprintf("%.2fEUR", *r.Change), lineWidth)
+		changeLine := labelValue("Rendu", fmt.Sprintf("%.2fEUR", *r.Change), lineWidth)
 		b.Write(Text(changeLine))
 		b.Write(NL())
 	}

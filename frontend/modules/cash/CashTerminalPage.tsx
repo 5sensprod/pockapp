@@ -414,6 +414,15 @@ export function CashTerminalPage() {
 								backendTotals.line_discounts_ttc +
 								backendTotals.cart_discount_ttc,
 							paymentMethod: selectedPaymentMethod,
+							// ✅ ADDED: Pass Received and Change amounts ONLY for cash
+							received:
+								selectedPaymentMethod === 'especes'
+									? Number.parseFloat(amountReceived)
+									: undefined,
+							change:
+								selectedPaymentMethod === 'especes' && change > 0
+									? change
+									: undefined,
 							vatBreakdown: backendTotals.vat_breakdown.map((vb) => ({
 								rate: vb.rate,
 								baseHt: vb.base_ht,
@@ -459,6 +468,7 @@ export function CashTerminalPage() {
 		subtotalTtc,
 		totalTtc,
 		user,
+		change,
 	])
 
 	if (isSessionLoading) {
