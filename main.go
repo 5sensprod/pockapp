@@ -193,6 +193,10 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		// ✅ Routes de gestion des utilisateurs
 		routes.RegisterUserManagementRoutes(pb, e.Router)
 
+		// ✅ NOUVEAU : Routes de gestion des secrets
+		routes.RegisterSecretsRoutes(pb, e.Router)
+		routes.InitSecretManager(pb)
+
 		// SPA handler (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 

@@ -1,3 +1,11 @@
+// remote_notifications.go
+// ═══════════════════════════════════════════════════════════════════════════
+// NOTIFICATIONS DISTANTES - POLLING SERVEUR
+// ═══════════════════════════════════════════════════════════════════════════
+// La clé API est maintenant stockée de manière sécurisée via le SecretManager
+// et configurée depuis l'interface Settings > Clés API
+// ═══════════════════════════════════════════════════════════════════════════
+
 package main
 
 import (
@@ -7,7 +15,10 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	"pocket-react/backend/secrets"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -17,8 +28,13 @@ const (
 	remoteNotifInterval = 10 * time.Second
 )
 
-// ⚠️ API KEY EN DUR POUR TEST
-const remoteNotifApiKey = "bae46852858b81746c3316e0f1ae16fff3889e1abda6e0732e3f17b6161fe353"
+// Cache pour la clé API (évite de déchiffrer à chaque requête)
+var (
+	cachedAPIKey     string
+	cachedAPIKeyTime time.Time
+	apiKeyCacheTTL   = 5 * time.Minute
+	apiKeyMutex      sync.RWMutex
+)
 
 type RemoteNotification struct {
 	ID        int                    `json:"id"`
@@ -34,10 +50,57 @@ type RemoteNotifResponse struct {
 	ServerTime    string               `json:"server_time"`
 }
 
+// getNotificationAPIKey récupère la clé API depuis le SecretManager avec cache
+func (a *App) getNotificationAPIKey() (string, error) {
+	apiKeyMutex.RLock()
+	if cachedAPIKey != "" && time.Since(cachedAPIKeyTime) < apiKeyCacheTTL {
+		key := cachedAPIKey
+		apiKeyMutex.RUnlock()
+		return key, nil
+	}
+	apiKeyMutex.RUnlock()
+
+	// Récupérer depuis le SecretManager
+	sm := secrets.NewSecretManager(a.pb)
+	apiKey, err := sm.GetSecret(secrets.KeyNotificationAPI)
+	if err != nil {
+		return "", fmt.Errorf("clé API notifications non configurée: %w", err)
+	}
+
+	if apiKey == "" {
+		return "", fmt.Errorf("clé API notifications vide")
+	}
+
+	// Mettre en cache
+	apiKeyMutex.Lock()
+	cachedAPIKey = apiKey
+	cachedAPIKeyTime = time.Now()
+	apiKeyMutex.Unlock()
+
+	return apiKey, nil
+}
+
+// InvalidateAPIKeyCache invalide le cache de la clé API
+// À appeler quand la clé est modifiée dans les settings
+func (a *App) InvalidateAPIKeyCache() {
+	apiKeyMutex.Lock()
+	cachedAPIKey = ""
+	cachedAPIKeyTime = time.Time{}
+	apiKeyMutex.Unlock()
+	log.Println("🔄 Cache clé API invalidé")
+}
+
+// IsNotificationAPIConfigured vérifie si la clé API est configurée (binding frontend)
+func (a *App) IsNotificationAPIConfigured() bool {
+	sm := secrets.NewSecretManager(a.pb)
+	return sm.HasSecret(secrets.KeyNotificationAPI)
+}
+
 // FetchRemoteNotifications récupère les notifications depuis le serveur distant
 func (a *App) FetchRemoteNotifications() ([]RemoteNotification, error) {
-	if remoteNotifApiKey == "" || remoteNotifApiKey == "COLLE_TON_API_KEY_ICI" {
-		return nil, fmt.Errorf("API key not configured")
+	apiKey, err := a.getNotificationAPIKey()
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest("GET", remoteNotifURL, nil)
@@ -45,9 +108,9 @@ func (a *App) FetchRemoteNotifications() ([]RemoteNotification, error) {
 		return nil, err
 	}
 
-	// ✅ CORRECTION : Ajout de User-Agent et Accept pour éviter le blocage 503/403
-	req.Header.Set("X-API-Key", remoteNotifApiKey)
-	req.Header.Set("User-Agent", "PocketApp/1.0 (Wails Desktop)") // Indispensable pour passer les filtres anti-bot
+	// Headers pour éviter le blocage 503/403
+	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("User-Agent", "PocketApp/1.0 (Wails Desktop)")
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -59,7 +122,6 @@ func (a *App) FetchRemoteNotifications() ([]RemoteNotification, error) {
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
-		// On limite l'affichage du body s'il est très long (cas du HTML d'erreur)
 		msg := string(body)
 		if len(msg) > 200 {
 			msg = msg[:200] + "..."
@@ -77,8 +139,9 @@ func (a *App) FetchRemoteNotifications() ([]RemoteNotification, error) {
 
 // MarkRemoteNotificationRead marque une notification comme lue (binding frontend)
 func (a *App) MarkRemoteNotificationRead(notificationID int) error {
-	if remoteNotifApiKey == "" || remoteNotifApiKey == "COLLE_TON_API_KEY_ICI" {
-		return fmt.Errorf("API key not configured")
+	apiKey, err := a.getNotificationAPIKey()
+	if err != nil {
+		return err
 	}
 
 	body := fmt.Sprintf(`{"notification_id":%d}`, notificationID)
@@ -88,8 +151,7 @@ func (a *App) MarkRemoteNotificationRead(notificationID int) error {
 		return err
 	}
 
-	// ✅ CORRECTION : Ajout headers ici aussi
-	req.Header.Set("X-API-Key", remoteNotifApiKey)
+	req.Header.Set("X-API-Key", apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "PocketApp/1.0 (Wails Desktop)")
 
@@ -109,33 +171,44 @@ func (a *App) MarkRemoteNotificationRead(notificationID int) error {
 
 // StartRemoteNotificationPoller démarre le polling en arrière-plan
 func (a *App) StartRemoteNotificationPoller() {
-	if remoteNotifApiKey == "" || remoteNotifApiKey == "COLLE_TON_API_KEY_ICI" {
+	// Vérifier si la clé est configurée avant de démarrer
+	if !a.IsNotificationAPIConfigured() {
+		log.Println("⚠️ Clé API notifications non configurée - polling désactivé")
+		log.Println("   → Configurez-la dans Paramètres > Clés API")
 		return
 	}
 
 	go func() {
-		// 👇 CHANGE ICI : Met 2 secondes au lieu de 30 secondes
-		// C'est le temps d'attente juste après le lancement de l'app
+		// Attendre 2 secondes après le lancement
 		time.Sleep(2 * time.Second)
 
 		// Exécute immédiatement une première fois
 		a.pollRemoteNotifications()
 
-		// Puis toutes les X secondes (défini plus haut)
+		// Puis toutes les X secondes
 		ticker := time.NewTicker(remoteNotifInterval)
 		defer ticker.Stop()
 
 		for range ticker.C {
+			// Revérifier si la clé est toujours configurée
+			if !a.IsNotificationAPIConfigured() {
+				log.Println("⚠️ Clé API supprimée - arrêt du polling")
+				return
+			}
 			a.pollRemoteNotifications()
 		}
 	}()
-}
-func (a *App) pollRemoteNotifications() {
-	log.Println("🔔 Polling remote notifications...")
 
+	log.Println("🔔 Remote notification poller started")
+}
+
+func (a *App) pollRemoteNotifications() {
 	notifications, err := a.FetchRemoteNotifications()
 	if err != nil {
-		log.Println("❌ Poll error:", err)
+		// Ne pas spammer les logs si c'est juste "non configuré"
+		if !strings.Contains(err.Error(), "non configurée") {
+			log.Println("❌ Poll error:", err)
+		}
 		return
 	}
 

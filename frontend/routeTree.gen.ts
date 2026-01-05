@@ -23,6 +23,7 @@ import { Route as ConnectIndexImport } from './routes/connect/index'
 import { Route as CashIndexImport } from './routes/cash/index'
 import { Route as SettingsUsersImport } from './routes/settings/users'
 import { Route as SettingsSmtpImport } from './routes/settings/smtp'
+import { Route as SettingsSecretsImport } from './routes/settings/secrets'
 import { Route as SettingsCompaniesImport } from './routes/settings/companies'
 import { Route as ConnectQuotesIndexImport } from './routes/connect/quotes/index'
 import { Route as ConnectInvoicesIndexImport } from './routes/connect/invoices/index'
@@ -114,6 +115,12 @@ const SettingsUsersRoute = SettingsUsersImport.update({
 const SettingsSmtpRoute = SettingsSmtpImport.update({
   id: '/settings/smtp',
   path: '/settings/smtp',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const SettingsSecretsRoute = SettingsSecretsImport.update({
+  id: '/settings/secrets',
+  path: '/settings/secrets',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -267,6 +274,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/companies'
       fullPath: '/settings/companies'
       preLoaderRoute: typeof SettingsCompaniesImport
+      parentRoute: typeof rootRoute
+    }
+    '/settings/secrets': {
+      id: '/settings/secrets'
+      path: '/settings/secrets'
+      fullPath: '/settings/secrets'
+      preLoaderRoute: typeof SettingsSecretsImport
       parentRoute: typeof rootRoute
     }
     '/settings/smtp': {
@@ -468,6 +482,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/settings/companies': typeof SettingsCompaniesRoute
+  '/settings/secrets': typeof SettingsSecretsRoute
   '/settings/smtp': typeof SettingsSmtpRoute
   '/settings/users': typeof SettingsUsersRoute
   '/cash': typeof CashIndexRoute
@@ -502,6 +517,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/settings/companies': typeof SettingsCompaniesRoute
+  '/settings/secrets': typeof SettingsSecretsRoute
   '/settings/smtp': typeof SettingsSmtpRoute
   '/settings/users': typeof SettingsUsersRoute
   '/cash': typeof CashIndexRoute
@@ -537,6 +553,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/settings/companies': typeof SettingsCompaniesRoute
+  '/settings/secrets': typeof SettingsSecretsRoute
   '/settings/smtp': typeof SettingsSmtpRoute
   '/settings/users': typeof SettingsUsersRoute
   '/cash/': typeof CashIndexRoute
@@ -573,6 +590,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/settings/companies'
+    | '/settings/secrets'
     | '/settings/smtp'
     | '/settings/users'
     | '/cash'
@@ -606,6 +624,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/settings/companies'
+    | '/settings/secrets'
     | '/settings/smtp'
     | '/settings/users'
     | '/cash'
@@ -639,6 +658,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/settings/companies'
+    | '/settings/secrets'
     | '/settings/smtp'
     | '/settings/users'
     | '/cash/'
@@ -674,6 +694,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRoute
   SettingsCompaniesRoute: typeof SettingsCompaniesRoute
+  SettingsSecretsRoute: typeof SettingsSecretsRoute
   SettingsSmtpRoute: typeof SettingsSmtpRoute
   SettingsUsersRoute: typeof SettingsUsersRoute
   CashIndexRoute: typeof CashIndexRoute
@@ -708,6 +729,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SetupRoute: SetupRoute,
   SettingsCompaniesRoute: SettingsCompaniesRoute,
+  SettingsSecretsRoute: SettingsSecretsRoute,
   SettingsSmtpRoute: SettingsSmtpRoute,
   SettingsUsersRoute: SettingsUsersRoute,
   CashIndexRoute: CashIndexRoute,
@@ -754,6 +776,7 @@ export const routeTree = rootRoute
         "/login",
         "/setup",
         "/settings/companies",
+        "/settings/secrets",
         "/settings/smtp",
         "/settings/users",
         "/cash/",
@@ -794,6 +817,9 @@ export const routeTree = rootRoute
     },
     "/settings/companies": {
       "filePath": "settings/companies.tsx"
+    },
+    "/settings/secrets": {
+      "filePath": "settings/secrets.tsx"
     },
     "/settings/smtp": {
       "filePath": "settings/smtp.tsx"

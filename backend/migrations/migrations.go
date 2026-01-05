@@ -41,6 +41,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		AddZReportIdToCashSessions, // Ajoute z_report_id sur cash_sessions
 		AddRoleToUsers,
 		AddCompanyToUsers,
+		MigrateAppSettings,
 	}
 
 	for _, migrate := range migrations {
