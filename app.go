@@ -39,6 +39,7 @@ func (a *App) startup(ctx context.Context) {
 	// ✅ NOUVEAU : Vérification automatique des mises à jour au démarrage
 	// Lance la vérification dans une goroutine pour ne pas bloquer le démarrage
 	go a.AutoCheckUpdates()
+	go a.StartRemoteNotificationPoller()
 }
 
 // shutdown est appelé à la fermeture
@@ -64,7 +65,7 @@ func (a *App) waitForPocketBase() {
 
 // GetAppVersion retourne la version de l'app
 func (a *App) GetAppVersion() string {
-	return "1.3.3"
+	return "1.3.4"
 }
 
 // OpenFileDialog ouvre un sélecteur de fichiers natif
