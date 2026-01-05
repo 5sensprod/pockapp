@@ -75,6 +75,23 @@ export function UpdateChecker() {
 		}
 	}, [])
 
+	useEffect(() => {
+		const onNotif = (ev: Event) => {
+			const detail = (ev as CustomEvent).detail as Partial<UpdateInfo>
+
+			// Important: on n'ouvre que si on a une URL (sinon erreur)
+			setUpdateInfo(detail as UpdateInfo)
+			setDialogMode('update')
+			setError(null)
+			setProgress(null)
+			setIsUpdating(false)
+			setShowDialog(true)
+		}
+
+		window.addEventListener('app:updateAvailable', onNotif)
+		return () => window.removeEventListener('app:updateAvailable', onNotif)
+	}, [])
+
 	const formatDate = (dateString: string) => {
 		const date = new Date(dateString)
 		return date.toLocaleDateString('fr-FR', {
@@ -212,23 +229,33 @@ export function UpdateChecker() {
 
 	const footerAction =
 		dialogMode !== 'update' ? null : error ? (
-			<Button
-				onClick={handleRetry}
-				className='bg-orange-600 hover:bg-orange-700'
-			>
-				Réessayer
-			</Button>
+			<AlertDialogAction asChild>
+				<Button
+					onClick={(e) => {
+						e.preventDefault()
+						handleRetry()
+					}}
+					className='bg-orange-600 hover:bg-orange-700'
+				>
+					Réessayer
+				</Button>
+			</AlertDialogAction>
 		) : (
-			<AlertDialogAction
-				onClick={handleInstallUpdate}
-				disabled={isUpdating || progress?.status === 'completed'}
-				className='bg-green-600 hover:bg-green-700'
-			>
-				{isUpdating
-					? progress?.status === 'downloading'
-						? 'Téléchargement...'
-						: 'Préparation...'
-					: 'Télécharger et installer'}
+			<AlertDialogAction asChild>
+				<Button
+					onClick={(e) => {
+						e.preventDefault()
+						handleInstallUpdate()
+					}}
+					disabled={isUpdating || progress?.status === 'completed'}
+					className='bg-green-600 hover:bg-green-700'
+				>
+					{isUpdating
+						? progress?.status === 'downloading'
+							? 'Téléchargement...'
+							: 'Préparation...'
+						: 'Télécharger et installer'}
+				</Button>
 			</AlertDialogAction>
 		)
 

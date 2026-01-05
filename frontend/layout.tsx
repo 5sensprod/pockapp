@@ -14,18 +14,6 @@ import { toast } from 'sonner'
 import { CheckForUpdates } from '@/wailsjs/go/main/App'
 import { EventsOn } from '@/wailsjs/runtime/runtime'
 
-type Notification = {
-	id: number
-	text: string
-	unread: boolean
-}
-
-const notifications: Notification[] = [
-	{ id: 1, text: 'Nouvelle commande #1234', unread: true },
-	{ id: 2, text: 'Stock faible', unread: true },
-	{ id: 3, text: 'Rapport mensuel', unread: false },
-]
-
 function findModuleByPath(pathname: string): ModuleManifest | null {
 	let best: ModuleManifest | null = null
 	const norm = (s: string) => (s || '/').replace(/\/+$/, '')
@@ -143,11 +131,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 	return (
 		<div className='min-h-screen flex flex-col bg-background'>
-			<Header
-				currentModule={currentModule}
-				isHomePage={isHomePage}
-				notifications={notifications}
-			/>
+			<Header currentModule={currentModule} isHomePage={isHomePage} />
 
 			{hasSidebar && (
 				<Sidebar currentModule={currentModule} onPanelChange={setIsPanelOpen} />

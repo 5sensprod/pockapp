@@ -1,3 +1,7 @@
+// frontend/components/layout/Header.tsx
+// ✅ 1) Supprime complètement la prop notifications (elle est désormais interne)
+// ✅ 2) Le Header récupère ses notifications via un hook/store interne
+
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
 	Bell,
@@ -22,17 +26,12 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { useNotifications } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import { toast } from 'sonner'
 import { CompanyDialog } from './CompanyDialog'
-
-type Notification = {
-	id: string | number
-	text: string
-	unread?: boolean
-}
 
 type CompanyItem = {
 	id: string
@@ -43,16 +42,11 @@ type CompanyItem = {
 interface HeaderProps {
 	currentModule: ModuleManifest | null
 	isHomePage: boolean
-	notifications: Notification[]
 }
 
-export function Header({
-	currentModule,
-	isHomePage,
-	notifications,
-}: HeaderProps) {
+export function Header({ currentModule, isHomePage }: HeaderProps) {
 	const navigate = useNavigate()
-	const { user, logout } = useAuth()
+	const { user, logout, isAuthenticated } = useAuth()
 
 	const { companies, activeCompanyId, setActiveCompanyId } = useActiveCompany()
 
@@ -65,7 +59,13 @@ export function Header({
 	const activeCompany =
 		companies.find((c: CompanyItem) => c.id === activeCompanyId) ?? companies[0]
 
-	const unreadCount = notifications.filter((n: Notification) => n.unread).length
+	// ✅ notifications (poll MAJ toutes les heures)
+	const {
+		items: notifications,
+		unreadCount,
+		markAllRead,
+		markRead,
+	} = useNotifications({ enabled: !!isAuthenticated })
 
 	const userWithAvatar = user as {
 		id: string
@@ -94,23 +94,14 @@ export function Header({
 
 	const handleDialogOpenChange = (open: boolean) => {
 		setIsCompanyDialogOpen(open)
-		if (!open) {
-			setEditingCompanyId(null)
-		}
+		if (!open) setEditingCompanyId(null)
 	}
 
-	// 🆕 Première visite sur l'accueil sans entreprise :
-	// on ouvre automatiquement la création d'entreprise + toast explicatif.
 	useEffect(() => {
 		if (!isHomePage) return
-
-		// Pas encore de données entreprises → on attend
 		if (!companies) return
-
-		// Si au moins une entreprise existe, on ne force rien
 		if (companies.length > 0) return
 
-		// Ne pas harceler l'utilisateur à chaque refresh : une seule fois par navigateur
 		const alreadyShown = localStorage.getItem('company_setup_prompt_shown')
 		if (alreadyShown === '1') return
 
@@ -126,7 +117,6 @@ export function Header({
 			<header className='sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
 				<div className='container flex h-14 items-center justify-between px-6'>
 					<div className='flex items-center gap-8'>
-						{/* Logo + bouton retour */}
 						<div className='flex items-center gap-2'>
 							{currentModule && !isHomePage && (
 								<Button
@@ -159,7 +149,6 @@ export function Header({
 							)}
 						</div>
 
-						{/* Menu topbar */}
 						{moduleMenu.length > 0 && (
 							<nav className='flex gap-4'>
 								{moduleMenu.map((item) => (
@@ -172,7 +161,6 @@ export function Header({
 					</div>
 
 					<div className='flex items-center gap-2'>
-						{/* 🏢 Dropdown entreprises compact */}
 						{companies.length > 0 && (
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>
@@ -200,16 +188,14 @@ export function Header({
 											key={company.id}
 											className='px-3 py-2 cursor-pointer'
 											onClick={() => {
-												if (company.id !== activeCompanyId) {
+												if (company.id !== activeCompanyId)
 													setActiveCompanyId(company.id)
-												}
 											}}
 										>
 											<div className='flex items-center w-full gap-2'>
 												<Building2 className='h-4 w-4 text-muted-foreground' />
 												<span className='flex-1 truncate'>{company.name}</span>
 
-												{/* Engrenage pour modifier */}
 												<button
 													type='button'
 													className='p-1 rounded hover:bg-accent'
@@ -243,7 +229,6 @@ export function Header({
 							</DropdownMenu>
 						)}
 
-						{/* 🏗️ Cas 2 : aucune entreprise → bouton de création */}
 						{companies.length === 0 && (
 							<Button
 								variant='outline'
@@ -257,7 +242,7 @@ export function Header({
 						)}
 
 						{/* 🔔 Notifications */}
-						<DropdownMenu>
+						<DropdownMenu onOpenChange={(open) => open && markAllRead()}>
 							<DropdownMenuTrigger asChild>
 								<Button variant='ghost' size='icon' className='relative'>
 									<Bell className='h-5 w-5' />
@@ -271,19 +256,46 @@ export function Header({
 								<DropdownMenuLabel>Notifications</DropdownMenuLabel>
 								<DropdownMenuSeparator />
 
-								{notifications.map((notif: Notification) => (
-									<DropdownMenuItem key={notif.id} className='py-3'>
-										<div className='flex items-start gap-3 w-full'>
-											<div
-												className={cn(
-													'w-2 h-2 rounded-full mt-1.5',
-													notif.unread ? 'bg-blue-600' : 'bg-muted',
-												)}
-											/>
-											<span className='text-sm flex-1'>{notif.text}</span>
-										</div>
-									</DropdownMenuItem>
-								))}
+								{notifications.length === 0 ? (
+									<div className='px-3 py-4 text-sm text-muted-foreground'>
+										Aucune notification.
+									</div>
+								) : (
+									notifications.slice(0, 8).map((notif) => (
+										<DropdownMenuItem
+											key={notif.id}
+											className='py-3'
+											onClick={() => {
+												markRead(notif.id)
+
+												if (notif.type === 'update') {
+													window.dispatchEvent(
+														new CustomEvent('app:updateAvailable', {
+															detail: notif.meta ?? {},
+														}),
+													)
+												}
+											}}
+										>
+											<div className='flex items-start gap-3 w-full'>
+												<div
+													className={cn(
+														'w-2 h-2 rounded-full mt-1.5',
+														notif.unread ? 'bg-blue-600' : 'bg-muted',
+													)}
+												/>
+												<div className='flex-1'>
+													<div className='text-sm font-medium'>
+														{notif.title}
+													</div>
+													<div className='text-sm text-muted-foreground'>
+														{notif.text}
+													</div>
+												</div>
+											</div>
+										</DropdownMenuItem>
+									))
+								)}
 
 								<DropdownMenuSeparator />
 								<DropdownMenuItem className='justify-center text-sm text-muted-foreground'>
@@ -362,7 +374,6 @@ export function Header({
 				</div>
 			</header>
 
-			{/* 💼 Dialog entreprise (création / édition) */}
 			<CompanyDialog
 				isOpen={isCompanyDialogOpen}
 				onOpenChange={handleDialogOpenChange}
