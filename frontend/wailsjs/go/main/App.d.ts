@@ -11,6 +11,8 @@ export function GetNetworkInfo(): Promise<{ [key: string]: any }>
 
 export function ListPrinters(): Promise<Array<string>>
 
+export function ListSerialPorts(): Promise<Array<string>>
+
 export function MinimizeToTray(): Promise<void>
 
 export function OpenCashDrawer(arg1: {
@@ -26,12 +28,28 @@ export function OpenFileDialog(
 export function PrintPosReceipt(arg1: {
 	printerName: string
 	width: number
+	companyId: string
 	receipt: any
 }): Promise<void>
 
 export function Quit(): Promise<void>
 
 export function ShowNotification(arg1: string, arg2: string): Promise<void>
+
+export function SendDisplayText(arg1: {
+	portName: string
+	baudRate: string
+	protocol: string
+	line1: string
+	line2: string
+	clearFirst: boolean
+}): Promise<void>
+
+export function TestDisplay(arg1: {
+	portName: string
+	baudRate: string
+	protocol: string
+}): Promise<void>
 
 export function CheckForUpdates(): Promise<{
 	available: boolean
@@ -43,3 +61,17 @@ export function CheckForUpdates(): Promise<{
 }>
 
 export function DownloadAndInstallUpdate(arg1: string): Promise<void>
+
+// ✅ Nouvelles fonctions pour notifications distantes
+export function FetchRemoteNotifications(): Promise<
+	Array<{
+		id: number
+		type: string
+		title: string
+		message: string
+		meta: { [key: string]: any } | null
+		created_at: string
+	}>
+>
+
+export function MarkRemoteNotificationRead(arg1: number): Promise<void>

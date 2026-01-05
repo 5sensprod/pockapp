@@ -28,12 +28,17 @@ function Dashboard() {
 							Sélectionnez un module pour commencer
 						</p>
 					</div>
-					<div className='mt-8'>
-						<h2>Mises à jour</h2>
-						<UpdateChecker />
-					</div>
 
-					{isWailsApp() ? <NetworkQRCode /> : null}
+					{isWailsApp() ? (
+						<>
+							<div className='mt-8'>
+								<h2>Mises à jour</h2>
+								<UpdateChecker />
+							</div>
+
+							<NetworkQRCode />
+						</>
+					) : null}
 				</div>
 			</div>
 
@@ -61,11 +66,22 @@ function Dashboard() {
 }
 
 function NetworkQRCode() {
+	const isWails = isWailsApp()
+
 	const { data } = useQuery({
 		queryKey: ['networkInfo'],
-		queryFn: () => GetNetworkInfo(),
+		queryFn: async () => {
+			// ✅ Sécurité : on ne lance l'appel que si Wails est présent
+			if (isWails) {
+				return GetNetworkInfo()
+			}
+			// En mode web distant, on retourne une valeur par défaut
+			// ou on récupère l'URL actuelle du navigateur
+			return { url: window.location.origin }
+		},
 		staleTime: 10_000,
-		refetchInterval: 10_000,
+		// On ne rafraîchit pas automatiquement si on est en mode Web
+		refetchInterval: isWails ? 10_000 : false,
 	})
 
 	const url = data?.url ?? ''

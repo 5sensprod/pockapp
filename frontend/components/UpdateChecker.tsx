@@ -1,3 +1,4 @@
+// frontend/components/UpdateChecker.tsx
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -9,6 +10,7 @@ import {
 	AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { isWails, tryWails, tryWailsSub } from '@/lib/wails-bridge'
 import {
 	CheckForUpdates,
 	DownloadAndInstallUpdate,
@@ -46,28 +48,30 @@ export function UpdateChecker() {
 	const lastNotifiedVersionRef = useRef<string>('')
 
 	useEffect(() => {
+		if (!isWails()) return
+
 		GetAppVersion().then(setCurrentVersion)
 
-		const unsubscribe = EventsOn('update:available', (info: unknown) => {
-			const data = info as UpdateInfo
+		const unsubscribe = tryWailsSub(() =>
+			EventsOn('update:available', (info: unknown) => {
+				const data = info as UpdateInfo
 
-			if (data?.version && data.version === lastNotifiedVersionRef.current)
-				return
-			if (data?.version) lastNotifiedVersionRef.current = data.version
+				if (data?.version && data.version === lastNotifiedVersionRef.current)
+					return
+				if (data?.version) lastNotifiedVersionRef.current = data.version
 
-			setUpdateInfo(data)
-			setDialogMode('update')
-			setShowDialog(true)
-		})
+				setUpdateInfo(data)
+				setDialogMode('update')
+				setShowDialog(true)
+			}),
+		)
 
-		const unsubscribeProgress = EventsOn('update:progress', (prog: unknown) => {
-			const progressData = prog as UpdateProgress
-			setProgress(progressData)
-
-			if (progressData.status === 'completed') {
-				setTimeout(() => {}, 1000)
-			}
-		})
+		const unsubscribeProgress = tryWailsSub(() =>
+			EventsOn('update:progress', (prog: unknown) => {
+				const progressData = prog as UpdateProgress
+				setProgress(progressData)
+			}),
+		)
 
 		return () => {
 			unsubscribe()
@@ -78,8 +82,6 @@ export function UpdateChecker() {
 	useEffect(() => {
 		const onNotif = (ev: Event) => {
 			const detail = (ev as CustomEvent).detail as Partial<UpdateInfo>
-
-			// Important: on n'ouvre que si on a une URL (sinon erreur)
 			setUpdateInfo(detail as UpdateInfo)
 			setDialogMode('update')
 			setError(null)
@@ -166,21 +168,26 @@ export function UpdateChecker() {
 		setProgress(null)
 		setIsUpdating(false)
 
-		try {
-			const info = (await CheckForUpdates()) as UpdateInfo
-			setUpdateInfo(info)
+		const info = await tryWails<UpdateInfo>(
+			async () => (await CheckForUpdates()) as UpdateInfo,
+			{
+				available: false,
+				version: '',
+				downloadUrl: '',
+				releaseNotes: '',
+				publishedAt: '',
+				currentVersion: currentVersion || '',
+			},
+		)
 
-			setDialogMode(info.available ? 'update' : 'uptodate')
-			setShowDialog(true)
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err)
-			setError(msg)
-			setDialogMode('error')
-			setShowDialog(true)
-		}
+		setUpdateInfo(info)
+		setDialogMode(info.available ? 'update' : 'uptodate')
+		setShowDialog(true)
 	}
 
 	const handleInstallUpdate = async () => {
+		if (!isWails()) return
+
 		if (!updateInfo?.downloadUrl) {
 			setError('URL de téléchargement manquante')
 			setDialogMode('error')
@@ -247,7 +254,9 @@ export function UpdateChecker() {
 						e.preventDefault()
 						handleInstallUpdate()
 					}}
-					disabled={isUpdating || progress?.status === 'completed'}
+					disabled={
+						isUpdating || progress?.status === 'completed' || !isWails()
+					}
 					className='bg-green-600 hover:bg-green-700'
 				>
 					{isUpdating
@@ -258,6 +267,8 @@ export function UpdateChecker() {
 				</Button>
 			</AlertDialogAction>
 		)
+
+	if (!isWails()) return null
 
 	return (
 		<>

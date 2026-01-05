@@ -22,6 +22,10 @@ export function ListPrinters() {
 	return window['go']['main']['App']['ListPrinters']()
 }
 
+export function ListSerialPorts() {
+	return window['go']['main']['App']['ListSerialPorts']()
+}
+
 export function MinimizeToTray() {
 	return window['go']['main']['App']['MinimizeToTray']()
 }
@@ -46,10 +50,27 @@ export function ShowNotification(arg1, arg2) {
 	return window['go']['main']['App']['ShowNotification'](arg1, arg2)
 }
 
+export function SendDisplayText(arg1) {
+	return window['go']['main']['App']['SendDisplayText'](arg1)
+}
+
+export function TestDisplay(arg1) {
+	return window['go']['main']['App']['TestDisplay'](arg1)
+}
+
 export function CheckForUpdates() {
 	return window['go']['main']['App']['CheckForUpdates']()
 }
 
 export function DownloadAndInstallUpdate(arg1) {
 	return window['go']['main']['App']['DownloadAndInstallUpdate'](arg1)
+}
+
+// ✅ Nouvelles fonctions pour notifications distantes
+export function FetchRemoteNotifications() {
+	return window['go']['main']['App']['FetchRemoteNotifications']()
+}
+
+export function MarkRemoteNotificationRead(arg1) {
+	return window['go']['main']['App']['MarkRemoteNotificationRead'](arg1)
 }

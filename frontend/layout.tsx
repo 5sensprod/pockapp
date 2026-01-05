@@ -5,12 +5,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Footer, Header, Sidebar } from '@/components/layout'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useSetupCheck } from '@/lib/hooks/useSetupCheck'
+import { isWails, tryWailsSub, tryWailsVoid } from '@/lib/wails-bridge'
 import { poles } from '@/modules/_registry'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import { toast } from 'sonner'
 
-// ✅ ajoute cet import
 import { CheckForUpdates } from '@/wailsjs/go/main/App'
 import { EventsOn } from '@/wailsjs/runtime/runtime'
 
@@ -37,17 +37,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const { isAuthenticated } = useAuth()
 	const [isPanelOpen, setIsPanelOpen] = useState(false)
 
-	// Vérifie si le setup initial est nécessaire
 	const { needsSetup, loading: setupLoading } = useSetupCheck()
 
 	const currentModule = useMemo(() => findModuleByPath(pathname), [pathname])
 	const isHomePage = pathname === '/'
 	const hasSidebar = !!currentModule?.sidebarMenu?.length
 
-	// Contexte entreprise active
 	const { activeCompanyId, companies } = useActiveCompany()
 
-	// Redirections avec gestion du setup + auth
 	useEffect(() => {
 		if (setupLoading) return
 
@@ -71,27 +68,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		}
 	}, [isAuthenticated, pathname, navigate, needsSetup, setupLoading])
 
-	// ✅ Vérification MAJ 10s après login (une seule fois par session)
 	useEffect(() => {
 		if (setupLoading || needsSetup) return
 		if (!isAuthenticated) return
+		if (!isWails()) return
 
-		// évite de relancer si le layout remonte (changement de route)
 		const key = 'update_check_done_session'
 		if (sessionStorage.getItem(key) === '1') return
 		sessionStorage.setItem(key, '1')
 
-		// (optionnel) s'assurer que l'écouteur est actif tôt
-		const unsub = EventsOn('update:available', () => {
-			// Ton UI actuelle (UpdateChecker) gère déjà l'affichage.
-			// Ici on ne fait rien; on garde juste l'écoute en place si besoin.
-		})
+		const unsub = tryWailsSub(() => EventsOn('update:available', () => {}))
 
 		const t = window.setTimeout(() => {
-			// Déclenche la vérif côté backend après 10s
-			CheckForUpdates().catch(() => {
-				// silencieux (pas de toast) pour ne pas polluer l'expérience
-			})
+			tryWailsVoid(() => CheckForUpdates())
 		}, 10_000)
 
 		return () => {
@@ -100,7 +89,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		}
 	}, [isAuthenticated, needsSetup, setupLoading])
 
-	// 🚫 Bloque l'accès aux modules qui nécessitent une entreprise
 	useEffect(() => {
 		if (setupLoading || needsSetup || !isAuthenticated) return
 		if (!currentModule) return

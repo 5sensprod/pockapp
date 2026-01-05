@@ -1,8 +1,23 @@
-import { CheckForUpdates } from '@/wailsjs/go/main/App'
+import {
+	isWails,
+	tryWails,
+	tryWailsSub,
+	tryWailsVoid,
+} from '@/lib/wails-bridge'
 // frontend/lib/notifications.ts
-import { useEffect, useMemo, useState } from 'react'
+import {
+	CheckForUpdates,
+	MarkRemoteNotificationRead,
+} from '@/wailsjs/go/main/App'
+import { EventsOn } from '@/wailsjs/runtime/runtime'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-export type AppNotificationType = 'update'
+export type AppNotificationType =
+	| 'update'
+	| 'info'
+	| 'warning'
+	| 'quota'
+	| 'message'
 
 export type AppNotification = {
 	id: string
@@ -12,6 +27,8 @@ export type AppNotification = {
 	unread: boolean
 	createdAt: number
 	meta?: Record<string, unknown>
+	remote?: boolean
+	remoteId?: number
 }
 
 const STORAGE_KEY = 'app_notifications_v1'
@@ -56,9 +73,10 @@ export function useNotifications(opts?: { enabled?: boolean }) {
 		loadNotifications(),
 	)
 
+	const remoteSubStarted = useRef(false)
+
 	useEffect(() => {
 		if (!enabled) return
-
 		const onStorage = (e: StorageEvent) => {
 			if (e.key === STORAGE_KEY) setItems(loadNotifications())
 		}
@@ -68,6 +86,7 @@ export function useNotifications(opts?: { enabled?: boolean }) {
 
 	useEffect(() => {
 		if (!enabled) return
+		if (!isWails()) return
 
 		const key = 'update_check_started_session'
 		if (sessionStorage.getItem(key) === '1') return
@@ -76,43 +95,95 @@ export function useNotifications(opts?: { enabled?: boolean }) {
 		let stopped = false
 
 		const run = async () => {
-			try {
-				const info = await CheckForUpdates()
-				if (stopped) return
+			const info = await tryWails<any>(() => CheckForUpdates(), null as any)
+			if (stopped || !info) return
 
-				if (info?.available) {
-					const version = String(info.version || '')
-					const id = `update:${version}`
+			if (info?.available) {
+				const version = String(info.version || '')
+				const id = `update:${version}`
 
-					const notif: AppNotification = {
-						id,
-						type: 'update',
-						title: 'Mise à jour disponible',
-						text: `Version ${version} disponible. Cliquez pour installer.`,
-						unread: true,
-						createdAt: Date.now(),
-						meta: info as unknown as Record<string, unknown>,
-					}
-
-					const current = loadNotifications()
-					const next = upsert(current, notif)
-					saveNotifications(next)
-					setItems(next)
+				const notif: AppNotification = {
+					id,
+					type: 'update',
+					title: 'Mise à jour disponible',
+					text: `Version ${version} disponible. Cliquez pour installer.`,
+					unread: true,
+					createdAt: Date.now(),
+					meta: info as unknown as Record<string, unknown>,
 				}
-			} catch {
-				// silent
+
+				const current = loadNotifications()
+				const next = upsert(current, notif)
+				saveNotifications(next)
+				setItems(next)
 			}
 		}
 
-		const first = window.setTimeout(run, 10_000)
-
-		// ✅ 5 minutes (test)
-		const interval = window.setInterval(run, 5 * 60 * 1000)
+		const first = window.setTimeout(() => {
+			tryWailsVoid(run)
+		}, 10_000)
+		const interval = window.setInterval(
+			() => {
+				tryWailsVoid(run)
+			},
+			60 * 60 * 1000,
+		)
 
 		return () => {
 			stopped = true
 			window.clearTimeout(first)
 			window.clearInterval(interval)
+		}
+	}, [enabled])
+
+	useEffect(() => {
+		if (!enabled) return
+		if (!isWails()) return
+		if (remoteSubStarted.current) return
+		remoteSubStarted.current = true
+
+		const unsub = tryWailsSub(() =>
+			EventsOn(
+				'remote:notification',
+				(data: {
+					id: number
+					type: string
+					title: string
+					message: string
+					meta?: Record<string, unknown>
+					createdAt: string
+				}) => {
+					const id = `remote:${data.id}`
+
+					const createdAt = Number.isFinite(Date.parse(data.createdAt))
+						? new Date(data.createdAt).getTime()
+						: Date.now()
+
+					const notif: AppNotification = {
+						id,
+						type: (data.type as AppNotificationType) || 'info',
+						title: data.title || 'Notification',
+						text: data.message || '',
+						unread: true,
+						createdAt,
+						meta: data.meta,
+						remote: true,
+						remoteId: data.id,
+					}
+
+					const current = loadNotifications()
+					if (current.some((n) => n.id === id)) return
+
+					const next = upsert(current, notif)
+					saveNotifications(next)
+					setItems(next)
+				},
+			),
+		)
+
+		return () => {
+			remoteSubStarted.current = false
+			unsub()
 		}
 	}, [enabled])
 
@@ -126,12 +197,27 @@ export function useNotifications(opts?: { enabled?: boolean }) {
 			items,
 			unreadCount,
 			markAllRead: () => {
-				const next = markAllRead(loadNotifications())
+				const current = loadNotifications()
+
+				current.forEach((n) => {
+					if (n.unread && n.remote && n.remoteId) {
+						tryWailsVoid(() => MarkRemoteNotificationRead(n.remoteId!))
+					}
+				})
+
+				const next = markAllRead(current)
 				saveNotifications(next)
 				setItems(next)
 			},
 			markRead: (id: string) => {
-				const next = markRead(loadNotifications(), id)
+				const current = loadNotifications()
+				const notif = current.find((n) => n.id === id)
+
+				if (notif?.remote && notif.remoteId) {
+					tryWailsVoid(() => MarkRemoteNotificationRead(notif.remoteId!))
+				}
+
+				const next = markRead(current, id)
 				saveNotifications(next)
 				setItems(next)
 			},
