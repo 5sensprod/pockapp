@@ -10,9 +10,13 @@ import {
 	useState,
 } from 'react'
 
+// ✅ Ajout des champs nécessaires pour le logo
 type CompanyForContext = {
 	id: string
 	name: string
+	logo?: string
+	collectionId?: string
+	collectionName?: string
 	active?: boolean
 }
 
@@ -45,11 +49,15 @@ export function ActiveCompanyProvider({ children }: { children: ReactNode }) {
 		},
 	)
 
+	// ✅ Mapping avec tous les champs nécessaires pour le logo
 	const companies: CompanyForContext[] = useMemo(() => {
 		if (!companiesData) return []
 		return companiesData.map((c) => ({
 			id: c.id,
 			name: c.trade_name || c.name,
+			logo: c.logo,
+			collectionId: c.collectionId,
+			collectionName: c.collectionName,
 			active: c.active,
 		}))
 	}, [companiesData])
