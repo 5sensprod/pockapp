@@ -26,12 +26,12 @@ export const tryWailsVoid = async (fn: () => Promise<any>) => {
 }
 
 export const tryWailsSub = (
-	subscribe: () => (() => void) | void,
+	subscribe: () => (() => void) | undefined,
 ): (() => void) => {
 	if (!isWails()) return () => {}
+
 	try {
-		const unsub = subscribe()
-		return typeof unsub === 'function' ? unsub : () => {}
+		return subscribe() ?? (() => {})
 	} catch {
 		return () => {}
 	}

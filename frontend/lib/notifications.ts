@@ -199,11 +199,15 @@ export function useNotifications(opts?: { enabled?: boolean }) {
 			markAllRead: () => {
 				const current = loadNotifications()
 
-				current.forEach((n) => {
-					if (n.unread && n.remote && n.remoteId) {
-						tryWailsVoid(() => MarkRemoteNotificationRead(n.remoteId!))
-					}
-				})
+				for (const n of current) {
+					if (!n.unread) continue
+					if (n.remote !== true) continue
+
+					const remoteId = n.remoteId
+					if (remoteId === undefined) continue
+
+					tryWailsVoid(() => MarkRemoteNotificationRead(remoteId))
+				}
 
 				const next = markAllRead(current)
 				saveNotifications(next)
@@ -213,8 +217,11 @@ export function useNotifications(opts?: { enabled?: boolean }) {
 				const current = loadNotifications()
 				const notif = current.find((n) => n.id === id)
 
-				if (notif?.remote && notif.remoteId) {
-					tryWailsVoid(() => MarkRemoteNotificationRead(notif.remoteId!))
+				if (notif?.remote === true) {
+					const remoteId = notif.remoteId
+					if (remoteId !== undefined) {
+						tryWailsVoid(() => MarkRemoteNotificationRead(remoteId))
+					}
 				}
 
 				const next = markRead(current, id)
