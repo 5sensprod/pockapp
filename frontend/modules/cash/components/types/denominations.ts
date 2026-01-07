@@ -5,11 +5,16 @@ import { z } from 'zod'
  * Schéma de validation pour les dénominations de pièces et billets
  */
 export const denominationsSchema = z.object({
+	coins_001: z.number().min(0),
+	coins_002: z.number().min(0),
+	coins_005: z.number().min(0),
+
 	coins_010: z.number().min(0),
 	coins_020: z.number().min(0),
 	coins_050: z.number().min(0),
 	coins_100: z.number().min(0),
 	coins_200: z.number().min(0),
+
 	bills_005: z.number().min(0),
 	bills_010: z.number().min(0),
 	bills_020: z.number().min(0),
@@ -23,17 +28,41 @@ export type DenominationsForm = z.infer<typeof denominationsSchema>
  * Liste des dénominations de pièces et billets disponibles
  */
 export const DENOMINATIONS = [
+	{ key: 'coins_001', label: '0,01 €', value: 0.01, type: 'coin' },
+	{ key: 'coins_002', label: '0,02 €', value: 0.02, type: 'coin' },
+	{ key: 'coins_005', label: '0,05 €', value: 0.05, type: 'coin' },
+
 	{ key: 'coins_010', label: '0,10 €', value: 0.1, type: 'coin' },
 	{ key: 'coins_020', label: '0,20 €', value: 0.2, type: 'coin' },
 	{ key: 'coins_050', label: '0,50 €', value: 0.5, type: 'coin' },
 	{ key: 'coins_100', label: '1,00 €', value: 1, type: 'coin' },
 	{ key: 'coins_200', label: '2,00 €', value: 2, type: 'coin' },
+
 	{ key: 'bills_005', label: '5 €', value: 5, type: 'bill' },
 	{ key: 'bills_010', label: '10 €', value: 10, type: 'bill' },
 	{ key: 'bills_020', label: '20 €', value: 20, type: 'bill' },
 	{ key: 'bills_050', label: '50 €', value: 50, type: 'bill' },
 	{ key: 'bills_100', label: '100 €', value: 100, type: 'bill' },
 ] as const
+
+/**
+ * Valeurs par défaut pour react-hook-form
+ */
+export const DEFAULT_DENOMINATIONS_VALUES: DenominationsForm = {
+	coins_001: 0,
+	coins_002: 0,
+	coins_005: 0,
+	coins_010: 0,
+	coins_020: 0,
+	coins_050: 0,
+	coins_100: 0,
+	coins_200: 0,
+	bills_005: 0,
+	bills_010: 0,
+	bills_020: 0,
+	bills_050: 0,
+	bills_100: 0,
+}
 
 /**
  * Convertit une valeur en nombre fini ou null

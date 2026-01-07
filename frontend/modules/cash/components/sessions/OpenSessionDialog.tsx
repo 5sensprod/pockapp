@@ -1,12 +1,6 @@
-// frontend/modules/cash/components/session/OpenSessionDialog.tsx
-import * as React from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
+// frontend/modules/cash/components/sessions/OpenSessionDialog.tsx
 import { Button } from '@/components/ui/button'
-import {
-	Card,
-	CardContent,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
 	Dialog,
 	DialogContent,
@@ -23,10 +17,14 @@ import {
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { formatCurrency } from '@/lib/utils'
+import { zodResolver } from '@hookform/resolvers/zod'
+import * as React from 'react'
+import { useForm } from 'react-hook-form'
 import {
-	denominationsSchema,
-	DenominationsForm,
+	DEFAULT_DENOMINATIONS_VALUES,
 	DENOMINATIONS,
+	type DenominationsForm,
+	denominationsSchema,
 } from '../types/denominations'
 
 interface OpenSessionDialogProps {
@@ -38,10 +36,6 @@ interface OpenSessionDialogProps {
 	isSubmitting?: boolean
 }
 
-/**
- * Dialog d'ouverture de session avec grille de comptage des billets/pièces
- * et option de reprise du dernier fond de caisse
- */
 export function OpenSessionDialog({
 	open,
 	onOpenChange,
@@ -56,23 +50,11 @@ export function OpenSessionDialog({
 
 	const form = useForm<DenominationsForm>({
 		resolver: zodResolver(denominationsSchema),
-		defaultValues: {
-			coins_010: 0,
-			coins_020: 0,
-			coins_050: 0,
-			coins_100: 0,
-			coins_200: 0,
-			bills_005: 0,
-			bills_010: 0,
-			bills_020: 0,
-			bills_050: 0,
-			bills_100: 0,
-		},
+		defaultValues: DEFAULT_DENOMINATIONS_VALUES,
 	})
 
 	const watched = form.watch()
 
-	// Calcul du total compté via la grille
 	const countedTotal = React.useMemo(() => {
 		return DENOMINATIONS.reduce((sum, denom) => {
 			const count = watched[denom.key as keyof DenominationsForm] || 0
@@ -80,10 +62,8 @@ export function OpenSessionDialog({
 		}, 0)
 	}, [watched])
 
-	// Montant final à envoyer (override ou compté)
 	const finalAmount = openingOverride ?? countedTotal
 
-	// Reset override quand le dialog se ferme
 	React.useEffect(() => {
 		if (!open) {
 			setOpeningOverride(null)
@@ -95,7 +75,7 @@ export function OpenSessionDialog({
 		try {
 			await onSubmit(finalAmount)
 		} catch {
-			// L'erreur est gérée dans le hook
+			// géré dans le hook
 		}
 	}
 
@@ -111,7 +91,6 @@ export function OpenSessionDialog({
 					<DialogTitle>Ouvrir une session de caisse</DialogTitle>
 				</DialogHeader>
 
-				{/* Suggestion du dernier fond connu */}
 				{lastKnownFloat !== null && (
 					<div className='flex items-center justify-between rounded-md border bg-slate-50 px-3 py-2'>
 						<div className='text-xs text-muted-foreground leading-tight'>
@@ -146,10 +125,9 @@ export function OpenSessionDialog({
 						onSubmit={form.handleSubmit(handleSubmit)}
 						className='space-y-6'
 					>
-						{/* Grille des pièces */}
 						<div>
 							<h4 className='font-semibold mb-3 text-sm'>Pièces</h4>
-							<div className='grid grid-cols-5 gap-3'>
+							<div className='grid grid-cols-4 gap-3'>
 								{DENOMINATIONS.filter((d) => d.type === 'coin').map((denom) => (
 									<FormField
 										key={denom.key}
@@ -164,7 +142,9 @@ export function OpenSessionDialog({
 														min='0'
 														{...field}
 														onChange={(e) =>
-															field.onChange(Number.parseInt(e.target.value) || 0)
+															field.onChange(
+																Number.parseInt(e.target.value) || 0,
+															)
 														}
 														className='text-center'
 													/>
@@ -176,7 +156,6 @@ export function OpenSessionDialog({
 							</div>
 						</div>
 
-						{/* Grille des billets */}
 						<div>
 							<h4 className='font-semibold mb-3 text-sm'>Billets</h4>
 							<div className='grid grid-cols-5 gap-3'>
@@ -194,7 +173,9 @@ export function OpenSessionDialog({
 														min='0'
 														{...field}
 														onChange={(e) =>
-															field.onChange(Number.parseInt(e.target.value) || 0)
+															field.onChange(
+																Number.parseInt(e.target.value) || 0,
+															)
 														}
 														className='text-center'
 													/>
@@ -206,7 +187,6 @@ export function OpenSessionDialog({
 							</div>
 						</div>
 
-						{/* Récapitulatif des montants */}
 						<Card>
 							<CardContent className='pt-6 space-y-3 text-sm'>
 								<div className='flex justify-between items-center'>
@@ -230,7 +210,6 @@ export function OpenSessionDialog({
 							</CardContent>
 						</Card>
 
-						{/* Actions */}
 						<div className='flex justify-end gap-2 pt-2'>
 							<Button
 								type='button'

@@ -29,41 +29,18 @@ import * as React from 'react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
-import { z } from 'zod'
-
-const denominationsSchema = z.object({
-	coins_010: z.number().min(0),
-	coins_020: z.number().min(0),
-	coins_050: z.number().min(0),
-	coins_100: z.number().min(0),
-	coins_200: z.number().min(0),
-	bills_005: z.number().min(0),
-	bills_010: z.number().min(0),
-	bills_020: z.number().min(0),
-	bills_050: z.number().min(0),
-	bills_100: z.number().min(0),
-})
-
-type DenominationsForm = z.infer<typeof denominationsSchema>
+import {
+	DEFAULT_DENOMINATIONS_VALUES,
+	DENOMINATIONS,
+	type DenominationsForm,
+	denominationsSchema,
+} from '../types/denominations'
 
 interface CloseSessionDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
 	session: CashSession
 }
-
-const DENOMINATIONS = [
-	{ key: 'coins_010', label: '0,10 €', value: 0.1, type: 'coin' },
-	{ key: 'coins_020', label: '0,20 €', value: 0.2, type: 'coin' },
-	{ key: 'coins_050', label: '0,50 €', value: 0.5, type: 'coin' },
-	{ key: 'coins_100', label: '1,00 €', value: 1, type: 'coin' },
-	{ key: 'coins_200', label: '2,00 €', value: 2, type: 'coin' },
-	{ key: 'bills_005', label: '5 €', value: 5, type: 'bill' },
-	{ key: 'bills_010', label: '10 €', value: 10, type: 'bill' },
-	{ key: 'bills_020', label: '20 €', value: 20, type: 'bill' },
-	{ key: 'bills_050', label: '50 €', value: 50, type: 'bill' },
-	{ key: 'bills_100', label: '100 €', value: 100, type: 'bill' },
-] as const
 
 export function CloseSessionDialog({
 	open,
@@ -81,31 +58,18 @@ export function CloseSessionDialog({
 		refetch: refetchX,
 	} = useXReport(sessionId)
 
+	const form = useForm<DenominationsForm>({
+		resolver: zodResolver(denominationsSchema),
+		defaultValues: DEFAULT_DENOMINATIONS_VALUES,
+	})
+
 	React.useEffect(() => {
-		if (open && sessionId) {
-			void refetchX()
-		}
+		if (open && sessionId) void refetchX()
 		if (!open) {
 			setShowConfirm(false)
 			form.reset()
 		}
-	}, [open, sessionId, refetchX])
-
-	const form = useForm<DenominationsForm>({
-		resolver: zodResolver(denominationsSchema),
-		defaultValues: {
-			coins_010: 0,
-			coins_020: 0,
-			coins_050: 0,
-			coins_100: 0,
-			coins_200: 0,
-			bills_005: 0,
-			bills_010: 0,
-			bills_020: 0,
-			bills_050: 0,
-			bills_100: 0,
-		},
-	})
+	}, [open, sessionId, refetchX, form])
 
 	const watchedValues = form.watch()
 
@@ -117,16 +81,13 @@ export function CloseSessionDialog({
 	}, [watchedValues])
 
 	const expectedCash = React.useMemo(() => {
-		// ✅ priorité au rapport X
 		const fromX = rapportX?.expected_cash?.total
 		if (typeof fromX === 'number' && Number.isFinite(fromX)) return fromX
 
-		// fallback si jamais
 		const fromSession = (session as any)?.expected_cash_total
 		if (typeof fromSession === 'number' && Number.isFinite(fromSession))
 			return fromSession
 
-		// minimum : le fond de caisse
 		const openingFloat = (session as any)?.opening_float
 		return typeof openingFloat === 'number' && Number.isFinite(openingFloat)
 			? openingFloat
@@ -190,7 +151,7 @@ export function CloseSessionDialog({
 							{/* Pièces */}
 							<div>
 								<h4 className='font-semibold mb-3 text-sm'>Pièces</h4>
-								<div className='grid grid-cols-5 gap-3'>
+								<div className='grid grid-cols-4 gap-3'>
 									{DENOMINATIONS.filter((d) => d.type === 'coin').map(
 										(denom) => (
 											<FormField
