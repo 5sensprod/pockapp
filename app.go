@@ -65,7 +65,7 @@ func (a *App) waitForPocketBase() {
 
 // GetAppVersion retourne la version de l'app
 func (a *App) GetAppVersion() string {
-	return "1.3.6"
+	return "1.3.7"
 }
 
 // OpenFileDialog ouvre un sélecteur de fichiers natif
