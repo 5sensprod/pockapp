@@ -12,8 +12,12 @@ func OpenDrawerCmd() []byte {
 	return []byte{0x1B, 0x70, 0x00, 0x3C, 0x78}
 }
 
-func CutCmd() []byte {
-	return []byte{0x1D, 0x56, 0x01}
+func CutCmdFeed(lines byte) []byte {
+	if lines == 0 {
+		lines = 3
+	}
+	// GS V 67 n : partial cut after feeding n lines
+	return []byte{0x1D, 0x56, 0x43, lines}
 }
 
 func InitCmd() []byte {
@@ -337,6 +341,6 @@ func BuildReceipt(r ReceiptData) []byte {
 	b.Write(NL())
 	b.Write(NL())
 
-	b.Write(CutCmd())
+	b.Write(CutCmdFeed(4))
 	return b.Bytes()
 }

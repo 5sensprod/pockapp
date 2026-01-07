@@ -4,6 +4,7 @@ package routes
 import (
 	"net/http"
 	"pocket-react/backend/pos"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
@@ -127,6 +128,96 @@ func RegisterPosPrintRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 			"success": true,
 			"message": "Ticket imprimé avec succès",
 		})
+	})
+
+	type receiptInput struct {
+		Width     int             `json:"width"`
+		CompanyId string          `json:"companyId"`
+		Receipt   pos.ReceiptData `json:"receipt"`
+	}
+
+	enrichCompany := func(receipt *pos.ReceiptData, companyId string) {
+		if companyId == "" {
+			return
+		}
+		rec, err := pb.Dao().FindRecordById("companies", companyId)
+		if err != nil || rec == nil {
+			return
+		}
+
+		if receipt.CompanyName == "" {
+			tradeName := rec.GetString("trade_name")
+			legalName := rec.GetString("name")
+			if strings.TrimSpace(tradeName) != "" {
+				receipt.CompanyName = tradeName
+			} else {
+				receipt.CompanyName = legalName
+			}
+		}
+
+		if receipt.CompanyLine1 == "" {
+			receipt.CompanyLine1 = rec.GetString("address_line1")
+		}
+		if receipt.CompanyLine2 == "" {
+			receipt.CompanyLine2 = rec.GetString("address_line2")
+		}
+		if receipt.CompanyLine3 == "" {
+			zip := rec.GetString("zip_code")
+			city := rec.GetString("city")
+			if zip != "" || city != "" {
+				receipt.CompanyLine3 = strings.TrimSpace(zip + " " + city)
+			}
+		}
+		if receipt.CompanyPhone == "" {
+			receipt.CompanyPhone = rec.GetString("phone")
+		}
+		if receipt.CompanyEmail == "" {
+			receipt.CompanyEmail = rec.GetString("email")
+		}
+		if receipt.CompanySiret == "" {
+			receipt.CompanySiret = rec.GetString("siret")
+		}
+		if receipt.CompanyVat == "" {
+			receipt.CompanyVat = rec.GetString("vat_number")
+		}
+	}
+
+	// Preview texte
+	posGroup.POST("/preview/text", func(c echo.Context) error {
+		var input receiptInput
+		if err := c.Bind(&input); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		}
+
+		if input.Width != 58 && input.Width != 80 {
+			input.Width = 58
+		}
+
+		receipt := input.Receipt
+		receipt.Width = input.Width
+		enrichCompany(&receipt, input.CompanyId)
+
+		out := pos.BuildReceiptPreviewText(receipt)
+		return c.Blob(http.StatusOK, "text/plain; charset=utf-8", []byte(out))
+	})
+
+	// Preview HTML (affichage direct + impression navigateur en PDF)
+	posGroup.POST("/preview/html", func(c echo.Context) error {
+		var input receiptInput
+		if err := c.Bind(&input); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		}
+
+		if input.Width != 58 && input.Width != 80 {
+			input.Width = 58
+		}
+
+		receipt := input.Receipt
+		receipt.Width = input.Width
+		enrichCompany(&receipt, input.CompanyId)
+
+		out := pos.BuildReceiptPreviewHTML(receipt)
+		return c.HTML(http.StatusOK, out)
 	})
 
 	// Ouverture du tiroir caisse

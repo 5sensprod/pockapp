@@ -1,3 +1,4 @@
+import { openReceiptPreviewWindow } from '@/lib/pos/posPreview'
 // frontend/modules/cash/CashTerminalPage.tsx
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
@@ -355,81 +356,81 @@ export function CashTerminalPage() {
 					const cartDiscountAmount = discountAmount
 					const grandSubtotal = subtotalTtc + lineDiscountsTotalTtc
 
+					const receiptPayload = {
+						invoiceNumber: ticket.number,
+						dateLabel: new Date().toLocaleString('fr-FR'),
+						sellerName: user?.name || user?.username || '',
+						items: cartManager.cart.map((it) => {
+							const displayMode = it.displayMode || 'name'
+							let displayName = it.name
+							if (displayMode === 'designation')
+								displayName = it.designation || it.name
+							else if (displayMode === 'sku') displayName = it.sku || it.name
+
+							const hasDiscount =
+								it.lineDiscountValue && it.lineDiscountValue > 0
+							const baseUnitTtc = it.unitPrice
+							const effectiveUnitTtc = getEffectiveUnitTtc(it)
+
+							let discountText = null
+							if (hasDiscount) {
+								if (it.lineDiscountMode === 'percent')
+									discountText = `-${it.lineDiscountValue}%`
+								else {
+									const discount = baseUnitTtc - effectiveUnitTtc
+									discountText = `-${discount.toFixed(2)}€`
+								}
+							}
+
+							return {
+								name: displayName,
+								qty: it.quantity,
+								unitTtc: effectiveUnitTtc,
+								totalTtc: getLineTotalTtc(it),
+								tvaRate: it.tvaRate,
+								hasDiscount,
+								baseUnitTtc: hasDiscount ? baseUnitTtc : undefined,
+								discountText,
+							}
+						}),
+						grandSubtotal,
+						lineDiscountsTotal:
+							lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
+						subtotalTtc,
+						discountAmount:
+							cartDiscountAmount > 0 ? cartDiscountAmount : undefined,
+						discountPercent:
+							cartDiscountMode === 'percent' && cartDiscountValue > 0
+								? cartDiscountValue
+								: undefined,
+						totalTtc: backendTotals.total_ttc,
+						taxAmount: backendTotals.total_tva,
+						totalSavings:
+							backendTotals.line_discounts_ttc +
+							backendTotals.cart_discount_ttc,
+						paymentMethod: selectedPaymentMethod,
+						received:
+							selectedPaymentMethod === 'especes'
+								? Number.parseFloat(amountReceived)
+								: undefined,
+						change:
+							selectedPaymentMethod === 'especes' && change > 0
+								? change
+								: undefined,
+						vatBreakdown: backendTotals.vat_breakdown.map((vb) => ({
+							rate: vb.rate,
+							baseHt: vb.base_ht,
+							vat: vb.vat,
+							totalTtc: vb.total_ttc,
+						})),
+					}
+
+					// printReceipt utilise receiptPayload
 					await printReceipt({
 						printerName: printerSettings.printerName,
 						width: printerSettings.width,
 						companyId: activeCompanyId,
-						receipt: {
-							invoiceNumber: ticket.number,
-							dateLabel: new Date().toLocaleString('fr-FR'),
-							sellerName: user?.name || user?.username || '',
-
-							items: cartManager.cart.map((it) => {
-								const displayMode = it.displayMode || 'name'
-								let displayName = it.name
-								if (displayMode === 'designation')
-									displayName = it.designation || it.name
-								else if (displayMode === 'sku') displayName = it.sku || it.name
-
-								const hasDiscount =
-									it.lineDiscountValue && it.lineDiscountValue > 0
-								const baseUnitTtc = it.unitPrice
-								const effectiveUnitTtc = getEffectiveUnitTtc(it)
-
-								let discountText = null
-								if (hasDiscount) {
-									if (it.lineDiscountMode === 'percent') {
-										discountText = `-${it.lineDiscountValue}%`
-									} else {
-										const discount = baseUnitTtc - effectiveUnitTtc
-										discountText = `-${discount.toFixed(2)}€`
-									}
-								}
-
-								return {
-									name: displayName,
-									qty: it.quantity,
-									unitTtc: effectiveUnitTtc,
-									totalTtc: getLineTotalTtc(it),
-									tvaRate: it.tvaRate,
-									hasDiscount,
-									baseUnitTtc: hasDiscount ? baseUnitTtc : undefined,
-									discountText,
-								}
-							}),
-
-							grandSubtotal,
-							lineDiscountsTotal:
-								lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
-							subtotalTtc,
-							discountAmount:
-								cartDiscountAmount > 0 ? cartDiscountAmount : undefined,
-							discountPercent:
-								cartDiscountMode === 'percent' && cartDiscountValue > 0
-									? cartDiscountValue
-									: undefined,
-							totalTtc: backendTotals.total_ttc,
-							taxAmount: backendTotals.total_tva,
-							totalSavings:
-								backendTotals.line_discounts_ttc +
-								backendTotals.cart_discount_ttc,
-							paymentMethod: selectedPaymentMethod,
-							// ✅ ADDED: Pass Received and Change amounts ONLY for cash
-							received:
-								selectedPaymentMethod === 'especes'
-									? Number.parseFloat(amountReceived)
-									: undefined,
-							change:
-								selectedPaymentMethod === 'especes' && change > 0
-									? change
-									: undefined,
-							vatBreakdown: backendTotals.vat_breakdown.map((vb) => ({
-								rate: vb.rate,
-								baseHt: vb.base_ht,
-								vat: vb.vat,
-								totalTtc: vb.total_ttc,
-							})),
-						},
+						receipt: receiptPayload,
 					})
 				}
 
@@ -559,6 +560,104 @@ export function CashTerminalPage() {
 				isProcessing={isProcessing}
 				onCancel={() => setPaymentStep('cart')}
 				onConfirm={handleConfirmPayment}
+				onPreviewReceipt={async () => {
+					try {
+						if (!activeCompanyId) throw new Error('Entreprise manquante')
+
+						const printerSettings = loadPosPrinterSettings()
+						const width = (printerSettings.width === 80 ? 80 : 58) as 58 | 80
+
+						// Reprends ta logique d'items (identique à printReceipt) pour un rendu réaliste
+						const lineDiscountsTotalTtc = cartManager.cart.reduce(
+							(sum, item) => {
+								const baseTtc = item.unitPrice * item.quantity
+								const effectiveTtc = getLineTotalTtc(item)
+								return sum + (baseTtc - effectiveTtc)
+							},
+							0,
+						)
+
+						const cartDiscountAmount = discountAmount
+						const grandSubtotal = subtotalTtc + lineDiscountsTotalTtc
+
+						await openReceiptPreviewWindow({
+							width,
+							companyId: activeCompanyId,
+							receipt: {
+								invoiceNumber: 'PREVIEW',
+								dateLabel: new Date().toLocaleString('fr-FR'),
+								sellerName: user?.name || user?.username || '',
+								items: cartManager.cart.map((it) => {
+									const displayMode = it.displayMode || 'name'
+									let displayName = it.name
+									if (displayMode === 'designation')
+										displayName = it.designation || it.name
+									else if (displayMode === 'sku')
+										displayName = it.sku || it.name
+
+									const hasDiscount =
+										it.lineDiscountValue && it.lineDiscountValue > 0
+									const baseUnitTtc = it.unitPrice
+									const effectiveUnitTtc = getEffectiveUnitTtc(it)
+
+									let discountText = null
+									if (hasDiscount) {
+										if (it.lineDiscountMode === 'percent') {
+											discountText = `-${it.lineDiscountValue}%`
+										} else {
+											const discount = baseUnitTtc - effectiveUnitTtc
+											discountText = `-${discount.toFixed(2)}€`
+										}
+									}
+
+									return {
+										name: displayName,
+										qty: it.quantity,
+										unitTtc: effectiveUnitTtc,
+										totalTtc: getLineTotalTtc(it),
+										tvaRate: it.tvaRate,
+										hasDiscount,
+										baseUnitTtc: hasDiscount ? baseUnitTtc : undefined,
+										discountText,
+									}
+								}),
+								grandSubtotal,
+								lineDiscountsTotal:
+									lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
+								subtotalTtc,
+								discountAmount:
+									cartDiscountAmount > 0 ? cartDiscountAmount : undefined,
+								discountPercent:
+									cartDiscountMode === 'percent' && cartDiscountValue > 0
+										? cartDiscountValue
+										: undefined,
+								totalTtc,
+								taxAmount: totalVat,
+								totalSavings:
+									lineDiscountsTotalTtc + cartDiscountAmount > 0
+										? lineDiscountsTotalTtc + cartDiscountAmount
+										: undefined,
+								paymentMethod: selectedPaymentMethod,
+								received:
+									selectedPaymentMethod === 'especes'
+										? Number.parseFloat(amountReceived) || 0
+										: undefined,
+								change:
+									selectedPaymentMethod === 'especes' && change > 0
+										? change
+										: undefined,
+								vatBreakdown: vatBreakdown.map((vb) => ({
+									rate: vb.rate,
+									baseHt: vb.base_ht,
+									vat: vb.vat,
+									totalTtc: vb.total_ttc,
+								})),
+							},
+						})
+					} catch (e: any) {
+						toast.error(e?.message || "Impossible d'afficher l'aperçu")
+					}
+				}}
 			/>
 		)
 	}

@@ -28,6 +28,9 @@ interface PaymentDialogProps {
 	isProcessing: boolean
 	onCancel: () => void
 	onConfirm: () => void | Promise<void>
+
+	// ✅ AJOUT
+	onPreviewReceipt?: () => void | Promise<void>
 }
 
 export function PaymentDialog({
@@ -40,6 +43,7 @@ export function PaymentDialog({
 	isProcessing,
 	onCancel,
 	onConfirm,
+	onPreviewReceipt,
 }: PaymentDialogProps) {
 	return (
 		<Dialog open={true} onOpenChange={onCancel}>
@@ -120,10 +124,28 @@ export function PaymentDialog({
 					)}
 				</div>
 
-				<DialogFooter>
-					<Button variant='outline' onClick={onCancel} disabled={isProcessing}>
-						Annuler
-					</Button>
+				<DialogFooter className='flex gap-2 sm:gap-2 sm:justify-between'>
+					<div className='flex gap-2'>
+						<Button
+							variant='outline'
+							onClick={onCancel}
+							disabled={isProcessing}
+						>
+							Annuler
+						</Button>
+
+						{onPreviewReceipt && (
+							<Button
+								type='button'
+								variant='outline'
+								onClick={onPreviewReceipt}
+								disabled={isProcessing}
+							>
+								Aperçu
+							</Button>
+						)}
+					</div>
+
 					<Button
 						onClick={onConfirm}
 						disabled={
