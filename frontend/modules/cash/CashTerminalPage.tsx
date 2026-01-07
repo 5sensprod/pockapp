@@ -426,7 +426,7 @@ export function CashTerminalPage() {
 							vatBreakdown: backendTotals.vat_breakdown.map((vb) => ({
 								rate: vb.rate,
 								baseHt: vb.base_ht,
-								vat: vb.vat_amount,
+								vat: vb.vat,
 								totalTtc: vb.total_ttc,
 							})),
 						},

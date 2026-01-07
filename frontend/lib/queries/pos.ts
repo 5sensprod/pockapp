@@ -42,6 +42,7 @@ export interface PosTicketTotals {
 		rate: number
 		base_ht: number
 		vat_amount: number
+		vat: number
 		total_ttc: number
 	}>
 }

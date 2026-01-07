@@ -63,14 +63,27 @@ export function usePrintReceiptMutation() {
 
 			const finalWidth = width || settings.width
 
-			// ✅ MODIFIÉ : Utilise la nouvelle fonction qui détecte automatiquement Wails/HTTP
+			const receiptForPrint = {
+				...receipt,
+				vatBreakdown: (receipt as any).vatBreakdown ?? [], // si déjà présent
+			} as any
+
+			console.log(
+				'[POS PRINT] vatBreakdown computed',
+				receiptForPrint.vatBreakdown?.map((vb: any) => ({
+					rate: vb.rate,
+					baseHt: vb.baseHt,
+					vat: vb.vat,
+					totalTtc: vb.totalTtc,
+				})),
+			)
+
 			await printReceipt({
 				printerName: finalPrinterName,
 				width: finalWidth,
-				receipt,
+				receipt: receiptForPrint,
 				companyId,
 			})
-
 			// Ouverture tiroir auto si espèces
 			if (
 				settings.autoOpenDrawer &&

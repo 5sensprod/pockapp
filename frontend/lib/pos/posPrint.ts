@@ -88,6 +88,19 @@ async function callGo(method: string, payload: any) {
 // ============================================================================
 
 async function printReceiptHttp(payload: PrintPosReceiptInput): Promise<void> {
+	console.log(
+		'[POS PRINT] HTTP payload',
+		JSON.stringify(
+			{
+				printerName: payload.printerName,
+				width: payload.width,
+				companyId: payload.companyId || '',
+				receipt: payload.receipt,
+			},
+			null,
+			2,
+		),
+	)
 	const response = await fetch(`${getPosApiBaseUrl()}/print`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -145,6 +158,8 @@ async function testPrintHttp(payload: {
 // ============================================================================
 
 export async function printReceipt(payload: PrintPosReceiptInput) {
+	console.log('[POS PRINT] mode', isWailsEnv() ? 'WAILS' : 'HTTP')
+	console.log('[POS PRINT] receipt.vatBreakdown', payload.receipt.vatBreakdown)
 	if (isWailsEnv()) {
 		await callGo('PrintPosReceipt', {
 			printerName: payload.printerName,
