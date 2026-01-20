@@ -60,12 +60,27 @@ func toGray(img image.Image) *image.Gray {
 	for y := 0; y < b.Dy(); y++ {
 		for x := 0; x < b.Dx(); x++ {
 			r, gg, bb, a := img.At(b.Min.X+x, b.Min.Y+y).RGBA()
-			if a == 0 {
+
+			// Traiter les pixels transparents ou semi-transparents comme blancs
+			// Seuil à 50% de transparence (32768 sur 65535)
+			if a < 32768 {
 				g.SetGray(x, y, color.Gray{Y: 255})
 				continue
 			}
+
+			// Pour les pixels opaques ou quasi-opaques, appliquer l'alpha blending sur fond blanc
+			alphaF := float64(a) / 65535.0
+			rF := float64(r>>8) * alphaF
+			gF := float64(gg>>8) * alphaF
+			bF := float64(bb>>8) * alphaF
+
+			// Fond blanc (255) avec alpha blending
+			rFinal := rF + 255.0*(1.0-alphaF)
+			gFinal := gF + 255.0*(1.0-alphaF)
+			bFinal := bF + 255.0*(1.0-alphaF)
+
 			// Luma approx
-			y8 := uint8(((299*r + 587*gg + 114*bb) / 1000) >> 8)
+			y8 := uint8((299.0*rFinal + 587.0*gFinal + 114.0*bFinal) / 1000.0)
 			g.SetGray(x, y, color.Gray{Y: y8})
 		}
 	}
@@ -130,6 +145,90 @@ func packRaster(bits []bool, w, h int) []byte {
 	return data
 }
 
+// Trim whitespace (white/transparent) around the bitmap.
+// bits: true = black, false = white
+func trimBits(bits []bool, w, h int) ([]bool, int, int) {
+	if w <= 0 || h <= 0 {
+		return bits, w, h
+	}
+
+	top := 0
+	for top < h {
+		allWhite := true
+		rowOff := top * w
+		for x := 0; x < w; x++ {
+			if bits[rowOff+x] {
+				allWhite = false
+				break
+			}
+		}
+		if !allWhite {
+			break
+		}
+		top++
+	}
+
+	bottom := h - 1
+	for bottom >= top {
+		allWhite := true
+		rowOff := bottom * w
+		for x := 0; x < w; x++ {
+			if bits[rowOff+x] {
+				allWhite = false
+				break
+			}
+		}
+		if !allWhite {
+			break
+		}
+		bottom--
+	}
+
+	left := 0
+	for left < w {
+		allWhite := true
+		for y := top; y <= bottom; y++ {
+			if bits[y*w+left] {
+				allWhite = false
+				break
+			}
+		}
+		if !allWhite {
+			break
+		}
+		left++
+	}
+
+	right := w - 1
+	for right >= left {
+		allWhite := true
+		for y := top; y <= bottom; y++ {
+			if bits[y*w+right] {
+				allWhite = false
+				break
+			}
+		}
+		if !allWhite {
+			break
+		}
+		right--
+	}
+
+	newW := right - left + 1
+	newH := bottom - top + 1
+	if newW <= 0 || newH <= 0 {
+		// nothing black => keep original to avoid empty image command
+		return bits, w, h
+	}
+
+	out := make([]bool, newW*newH)
+	for y := 0; y < newH; y++ {
+		srcY := top + y
+		copy(out[y*newW:(y+1)*newW], bits[srcY*w+left:srcY*w+left+newW])
+	}
+	return out, newW, newH
+}
+
 func RasterImageCmdFromBytes(imgBytes []byte, paperWidth int, threshold uint8, dither bool) ([]byte, error) {
 	if len(imgBytes) == 0 {
 		return nil, errors.New("empty image")
@@ -156,6 +255,14 @@ func RasterImageCmdFromBytes(imgBytes []byte, paperWidth int, threshold uint8, d
 				bits[y*w+x] = g.GrayAt(x, y).Y < threshold
 			}
 		}
+	}
+
+	// 🔴 TRIM ICI : suppression des lignes/colonnes 100% blanches
+	bits, w, h = trimBits(bits, w, h)
+
+	// Sécurité : si tout est blanc, on évite une commande image vide
+	if w == 0 || h == 0 {
+		return nil, errors.New("image contains no printable pixels")
 	}
 
 	raster := packRaster(bits, w, h)

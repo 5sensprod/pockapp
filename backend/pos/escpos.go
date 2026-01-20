@@ -132,7 +132,6 @@ func BuildReceipt(r ReceiptData) []byte {
 				b.Write(AlignCenter())
 				b.Write(cmd)
 				b.Write(NL())
-				b.Write(NL())
 			}
 		}
 	}
