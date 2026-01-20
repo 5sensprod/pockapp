@@ -21,7 +21,7 @@ import (
 const (
 	githubOwner    = "5sensprod"
 	githubRepo     = "pockapp"
-	currentVersion = "1.3.7" // ⚠️ Mis à jour par bump-version.ps1
+	currentVersion = "1.3.8" // ⚠️ Mis à jour par bump-version.ps1
 )
 
 type UpdateInfo struct {
