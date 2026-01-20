@@ -1,4 +1,7 @@
-// backend/pos/receipt_preview.go
+// backend/pos/receipt_preview.go (patch)
+// Intègre le logo dans la preview HTML, centré, au-dessus du ticket.
+// Pré-requis : ReceiptData contient CompanyLogoBase64 *string (data URL conseillé).
+
 package pos
 
 import (
@@ -28,7 +31,7 @@ func BuildReceiptPreviewText(r ReceiptData) string {
 	lineWidth := receiptLineWidth(r.Width)
 	var b strings.Builder
 
-	// =========== EN-TÊTE (AlignCenter sur imprimante) ===========
+	// EN-TÊTE (centré)
 	b.WriteString(centerText(r.CompanyName, lineWidth))
 	b.WriteString("\n")
 
@@ -67,8 +70,6 @@ func BuildReceiptPreviewText(r ReceiptData) string {
 	b.WriteString("\n")
 	b.WriteString(strings.Repeat("-", lineWidth))
 	b.WriteString("\n")
-
-	// le ticket physique repasse AlignLeft ici : on ne centre pas
 	b.WriteString(fmt.Sprintf("TICKET: %s", r.InvoiceNumber))
 	b.WriteString("\n")
 	b.WriteString(r.DateLabel)
@@ -80,7 +81,7 @@ func BuildReceiptPreviewText(r ReceiptData) string {
 	b.WriteString(strings.Repeat("-", lineWidth))
 	b.WriteString("\n\n")
 
-	// =========== ARTICLES (AlignLeft) ===========
+	// ARTICLES / TOTAUX / PAIEMENT (inchangé, align-left)
 	for _, it := range r.Items {
 		name := it.Name
 		if len([]rune(name)) > lineWidth-2 {
@@ -134,34 +135,27 @@ func BuildReceiptPreviewText(r ReceiptData) string {
 			b.WriteString(line)
 			b.WriteString("\n")
 		}
-
 		b.WriteString("\n")
 	}
 
-	// =========== TOTAUX ===========
 	b.WriteString(strings.Repeat("-", lineWidth))
 	b.WriteString("\n")
 
 	if r.GrandSubtotal != nil && *r.GrandSubtotal > r.SubtotalTtc {
 		line := labelValue("Sous-total", fmt.Sprintf("%.2fEUR", *r.GrandSubtotal), lineWidth)
-		b.WriteString(line)
-		b.WriteString("\n")
+		b.WriteString(line + "\n")
 	}
-
 	if r.LineDiscountsTotal != nil && *r.LineDiscountsTotal > 0 {
 		line := labelValue("Remises articles", fmt.Sprintf("-%.2fEUR", *r.LineDiscountsTotal), lineWidth)
-		b.WriteString(line)
-		b.WriteString("\n")
+		b.WriteString(line + "\n")
 	}
-
 	if r.DiscountAmount != nil && *r.DiscountAmount > 0 {
 		label := "Remise commerciale"
 		if r.DiscountPercent != nil && *r.DiscountPercent > 0 {
 			label = fmt.Sprintf("Remise commerciale (%.0f%%)", *r.DiscountPercent)
 		}
 		line := labelValue(label, fmt.Sprintf("-%.2fEUR", *r.DiscountAmount), lineWidth)
-		b.WriteString(line)
-		b.WriteString("\n")
+		b.WriteString(line + "\n")
 	}
 
 	b.WriteString(strings.Repeat("-", lineWidth))
@@ -172,50 +166,41 @@ func BuildReceiptPreviewText(r ReceiptData) string {
 			label := fmt.Sprintf("TVA %.2g%% sur %.2fEUR HT", vb.Rate, vb.BaseHt)
 			value := fmt.Sprintf("%.2fEUR", vb.Vat)
 			line := labelValue(label, value, lineWidth)
-			b.WriteString(line)
-			b.WriteString("\n")
+			b.WriteString(line + "\n")
 		}
 	} else {
 		line := labelValue("TVA", fmt.Sprintf("%.2fEUR", r.TaxAmount), lineWidth)
-		b.WriteString(line)
-		b.WriteString("\n")
+		b.WriteString(line + "\n")
 	}
 
 	b.WriteString(strings.Repeat("-", lineWidth))
 	b.WriteString("\n")
 
 	total := labelValue("TOTAL TTC", fmt.Sprintf("%.2fEUR", r.TotalTtc), lineWidth)
-	b.WriteString(total)
-	b.WriteString("\n")
+	b.WriteString(total + "\n")
 
 	if r.TotalSavings != nil && *r.TotalSavings > 0 {
 		b.WriteString("\n")
 		savingsLine := labelValue("VOUS ECONOMISEZ", fmt.Sprintf("%.2fEUR", *r.TotalSavings), lineWidth)
-		b.WriteString(savingsLine)
-		b.WriteString("\n")
+		b.WriteString(savingsLine + "\n")
 	}
 
 	b.WriteString(strings.Repeat("-", lineWidth))
-	b.WriteString("\n")
+	b.WriteString("\n\n")
 
-	// =========== PAIEMENT ===========
-	b.WriteString("\n")
 	paymentLine := labelValue("Paiement", r.PaymentMethod, lineWidth)
-	b.WriteString(paymentLine)
-	b.WriteString("\n")
+	b.WriteString(paymentLine + "\n")
 
 	if r.Received != nil {
 		receivedLine := labelValue("Recu", fmt.Sprintf("%.2fEUR", *r.Received), lineWidth)
-		b.WriteString(receivedLine)
-		b.WriteString("\n")
+		b.WriteString(receivedLine + "\n")
 	}
 	if r.Change != nil && *r.Change > 0 {
 		changeLine := labelValue("Rendu", fmt.Sprintf("%.2fEUR", *r.Change), lineWidth)
-		b.WriteString(changeLine)
-		b.WriteString("\n")
+		b.WriteString(changeLine + "\n")
 	}
 
-	// =========== FOOTER (AlignCenter) ===========
+	// FOOTER (centré)
 	b.WriteString("\n\n")
 	b.WriteString(centerText("MERCI DE VOTRE VISITE !", lineWidth))
 	b.WriteString("\n\n\n")
@@ -225,17 +210,38 @@ func BuildReceiptPreviewText(r ReceiptData) string {
 
 func BuildReceiptPreviewHTML(r ReceiptData) string {
 	txt := BuildReceiptPreviewText(r)
+
+	// Logo: on affiche si data URL fournie.
+	logoHTML := ""
+	if r.CompanyLogoBase64 != nil {
+		src := strings.TrimSpace(*r.CompanyLogoBase64)
+		if src != "" && strings.HasPrefix(src, "data:image/") {
+			logoHTML = `<div class="logo-wrap"><img class="logo" src="` + html.EscapeString(src) + `" alt="Logo"></div>`
+		}
+	}
+
 	return `<!doctype html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Receipt Preview</title>
 <style>
   body { margin: 16px; }
+  .paper-wrap { display:flex; justify-content:center; }
   .paper {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: 14px;
     line-height: 1.25;
     white-space: pre;
+    display:inline-block;
+  }
+  .logo-wrap { display:flex; justify-content:center; margin-bottom: 8px; }
+  .logo { max-width: 240px; height: auto; image-rendering: crisp-edges; }
+  @media print {
+    body { margin: 0; }
+    .logo { max-width: 240px; }
   }
 </style>
-</head><body><div class="paper">` + html.EscapeString(txt) + `</div></body></html>`
+</head><body>
+` + logoHTML + `
+<div class="paper-wrap"><div class="paper">` + html.EscapeString(txt) + `</div></div>
+</body></html>`
 }

@@ -29,7 +29,6 @@ interface PaymentDialogProps {
 	onCancel: () => void
 	onConfirm: () => void | Promise<void>
 
-	// ✅ AJOUT
 	onPreviewReceipt?: () => void | Promise<void>
 }
 
@@ -71,6 +70,7 @@ export function PaymentDialog({
 									<span className='text-xs'>Espèces</span>
 								</div>
 							</Button>
+
 							<Button
 								type='button'
 								variant={selectedPaymentMethod === 'cb' ? 'default' : 'outline'}
@@ -82,6 +82,7 @@ export function PaymentDialog({
 									<span className='text-xs'>CB</span>
 								</div>
 							</Button>
+
 							<Button
 								type='button'
 								variant={
@@ -124,7 +125,7 @@ export function PaymentDialog({
 					)}
 				</div>
 
-				<DialogFooter className='flex gap-2 sm:gap-2 sm:justify-between'>
+				<DialogFooter className='flex gap-2 sm:justify-between'>
 					<div className='flex gap-2'>
 						<Button
 							variant='outline'

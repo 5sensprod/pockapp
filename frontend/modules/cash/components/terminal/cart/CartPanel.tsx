@@ -16,6 +16,7 @@ import { PaymentButtons } from './PaymentButtons'
 interface CartPanelProps {
 	cart: CartItem[]
 	onClearCart: () => void
+	onParkCart: () => void
 	onUpdateQuantity: (itemId: string, newQuantity: number) => void
 	subtotalTtc: number
 	totalVat: number
@@ -40,6 +41,7 @@ interface CartPanelProps {
 export function CartPanel({
 	cart,
 	onClearCart,
+	onParkCart,
 	onUpdateQuantity,
 	subtotalTtc,
 	totalVat,
@@ -69,15 +71,27 @@ export function CartPanel({
 						Lignes en cours d&apos;encaissement.
 					</CardDescription>
 				</div>
-				<Button
-					type='button'
-					variant='ghost'
-					size='sm'
-					className='h-7 px-2 text-xs text-red-500 hover:text-red-600'
-					onClick={onClearCart}
-				>
-					Vider
-				</Button>
+				<div className='flex gap-2'>
+					<Button
+						type='button'
+						variant='outline'
+						size='sm'
+						className='h-7 px-2 text-xs'
+						onClick={onParkCart}
+						disabled={cart.length === 0}
+					>
+						Mettre en attente
+					</Button>
+					<Button
+						type='button'
+						variant='ghost'
+						size='sm'
+						className='h-7 px-2 text-xs text-red-500 hover:text-red-600'
+						onClick={onClearCart}
+					>
+						Vider
+					</Button>
+				</div>
 			</CardHeader>
 
 			<CardContent className='flex-1 overflow-auto px-4 py-2 text-sm'>

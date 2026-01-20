@@ -4,11 +4,19 @@ import type { AppPosProduct, CartItem, LineDiscountMode } from '../types/cart'
 import { clamp } from '../utils/calculations'
 import { getImageUrl } from '../utils/imageUtils'
 
+export interface ParkedCart {
+	id: string
+	items: CartItem[]
+	parkedAt: Date
+	label?: string
+}
+
 export function useCartManager() {
 	const [cart, setCart] = React.useState<CartItem[]>([])
 	const [lastAddedItem, setLastAddedItem] = React.useState<CartItem | null>(
 		null,
 	)
+	const [parkedCarts, setParkedCarts] = React.useState<ParkedCart[]>([])
 
 	const addToCart = React.useCallback((product: AppPosProduct) => {
 		const price = product.price_ttc || product.price_ht || 0
@@ -150,14 +158,50 @@ export function useCartManager() {
 		setLastAddedItem(null)
 	}, [])
 
+	const parkCart = React.useCallback(
+		(label?: string) => {
+			if (cart.length === 0) return
+
+			const parked: ParkedCart = {
+				id: `parked-${Date.now()}`,
+				items: cart,
+				parkedAt: new Date(),
+				label,
+			}
+
+			setParkedCarts((prev) => [...prev, parked])
+			clearCart()
+		},
+		[cart, clearCart],
+	)
+
+	const unparkCart = React.useCallback(
+		(parkedId: string) => {
+			const parked = parkedCarts.find((p) => p.id === parkedId)
+			if (!parked) return
+
+			setCart(parked.items)
+			setParkedCarts((prev) => prev.filter((p) => p.id !== parkedId))
+		},
+		[parkedCarts],
+	)
+
+	const deleteParkedCart = React.useCallback((parkedId: string) => {
+		setParkedCarts((prev) => prev.filter((p) => p.id !== parkedId))
+	}, [])
+
 	return {
 		cart,
 		lastAddedItem,
+		parkedCarts,
 		addToCart,
 		updateQuantity,
 		setLineDiscountMode,
 		setLineDiscountValue,
 		toggleItemDisplayMode,
 		clearCart,
+		parkCart,
+		unparkCart,
+		deleteParkedCart,
 	}
 }

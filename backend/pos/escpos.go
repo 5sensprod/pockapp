@@ -73,6 +73,8 @@ type ReceiptData struct {
 	CompanySiret string `json:"companySiret"`
 	CompanyVat   string `json:"companyVat"`
 
+	CompanyLogoBase64 *string `json:"companyLogoBase64,omitempty"`
+
 	InvoiceNumber string        `json:"invoiceNumber"`
 	DateLabel     string        `json:"dateLabel"`
 	SellerName    string        `json:"sellerName"`
@@ -121,6 +123,19 @@ func BuildReceipt(r ReceiptData) []byte {
 	var b bytes.Buffer
 	b.Write(InitCmd())
 	b.Write([]byte{0x1B, 0x74, 0x02})
+
+	// =========== LOGO (optionnel) ===========
+	if r.CompanyLogoBase64 != nil && strings.TrimSpace(*r.CompanyLogoBase64) != "" {
+		if imgBytes, err := DecodeBase64Image(*r.CompanyLogoBase64); err == nil {
+			// threshold 160-200 selon logos ; dither true pour logos/gris
+			if cmd, err := RasterImageCmdFromBytes(imgBytes, r.Width, 180, true); err == nil {
+				b.Write(AlignCenter())
+				b.Write(cmd)
+				b.Write(NL())
+				b.Write(NL())
+			}
+		}
+	}
 
 	// =========== EN-TÊTE ===========
 	b.Write(AlignCenter())

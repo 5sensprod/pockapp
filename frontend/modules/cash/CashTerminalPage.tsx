@@ -1,4 +1,3 @@
-import { openReceiptPreviewWindow } from '@/lib/pos/posPreview'
 // frontend/modules/cash/CashTerminalPage.tsx
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
@@ -7,11 +6,10 @@ import { toast } from 'sonner'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
-// ✅ MODIFIÉ : Import du nouveau système display
 import { releaseControl, takeControl, useDisplay } from '@/lib/pos/display'
+import { openReceiptPreviewWindow } from '@/lib/pos/posPreview'
 import { openCashDrawer, printReceipt } from '@/lib/pos/posPrint'
 import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
-// ✅ NOUVEAU : Import du hook WebSocket scanner
 import { useScanner } from '@/lib/pos/scanner'
 import { useCustomerDisplay } from '@/lib/pos/useCustomerDisplay'
 import {
@@ -19,6 +17,8 @@ import {
 	useActiveCashSession,
 	useCashRegisters,
 } from '@/lib/queries/cash'
+import { type Company, getLogoUrl, useCompany } from '@/lib/queries/companies'
+import { fetchAsDataUrl } from '@/lib/queries/logoToDataUrl'
 import { cartItemToPosItem, useCreatePosTicket } from '@/lib/queries/pos'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useAuth } from '@/modules/auth/AuthProvider'
@@ -93,6 +93,18 @@ export function CashTerminalPage() {
 		month: 'long',
 	})
 
+	// ✅ Charge l’entreprise active (pour URL logo)
+	const { data: activeCompany } = useCompany(activeCompanyId ?? undefined)
+
+	const getCompanyLogoBase64 = React.useCallback(async (): Promise<
+		string | undefined
+	> => {
+		if (!activeCompany) return undefined
+		const url = getLogoUrl(pb, activeCompany as Company)
+		if (!url) return undefined
+		return await fetchAsDataUrl(url) // data:image/...;base64,...
+	}, [activeCompany, pb])
+
 	// ✅ NOUVEAU : Hook pour gérer le contrôle de l'affichage client
 	const { hasControl } = useDisplay()
 
@@ -102,7 +114,6 @@ export function CashTerminalPage() {
 			toast.warning('Affichage client contrôlé par un autre appareil')
 		})
 
-		// Libérer le contrôle au démontage
 		return () => {
 			releaseControl().catch(() => {})
 		}
@@ -132,7 +143,6 @@ export function CashTerminalPage() {
 		return 'idle'
 	}, [paymentStep, change, cartManager.lastAddedItem, cartManager.cart.length])
 
-	// ✅ MODIFIÉ : Ajout du paramètre enabled
 	useCustomerDisplay({
 		total: totalTtc,
 		itemCount: cartManager.cart.length,
@@ -141,20 +151,18 @@ export function CashTerminalPage() {
 		received: Number.parseFloat(amountReceived) || undefined,
 		change: change > 0 ? change : undefined,
 		phase: displayPhase,
-		enabled: hasControl, // ← AJOUTÉ : Ne fonctionne que si on a le contrôle
+		enabled: hasControl,
 	})
 
 	// ============================================
 	// GESTION DES SCANS (local + distant)
 	// ============================================
 
-	// Handler commun pour les scans (local ou distant)
 	const handleBarcodeScan = React.useCallback((barcode: string) => {
 		setProductSearch(barcode)
 		searchInputRef.current?.focus()
 	}, [])
 
-	// Hook clavier local (HID) - fonctionne quand on est sur le PC serveur
 	useBarcodeScanner({
 		enabled: paymentStep === 'cart',
 		onScan: handleBarcodeScan,
@@ -164,14 +172,11 @@ export function CashTerminalPage() {
 		},
 	})
 
-	// ✅ NOUVEAU : Hook WebSocket pour recevoir les scans distants
 	useScanner((barcode) => {
 		if (paymentStep === 'cart') {
 			handleBarcodeScan(barcode)
 		}
 	})
-
-	// ============================================
 
 	React.useEffect(() => {
 		if (paymentStep === 'cart' && searchInputRef.current) {
@@ -208,8 +213,8 @@ export function CashTerminalPage() {
 			try {
 				const res = await loginToAppPos('admin', 'admin123')
 				if (res.success && res.token) setIsAppPosConnected(true)
-			} catch (err) {
-				// Connexion échouée, mode dégradé
+			} catch {
+				// mode dégradé
 			}
 		}
 
@@ -264,10 +269,7 @@ export function CashTerminalPage() {
 
 			const normalized = raw.replace(',', '.')
 			const v = Number.parseFloat(normalized)
-
-			if (Number.isNaN(v)) {
-				return
-			}
+			if (Number.isNaN(v)) return
 
 			if (cartDiscountMode === 'percent') {
 				setCartDiscountValue(Math.max(0, Math.min(100, v)))
@@ -301,6 +303,110 @@ export function CashTerminalPage() {
 		setAmountReceived('')
 		setEditingLineId(null)
 	}, [cartManager])
+
+	const buildReceiptPayload = React.useCallback(
+		async (args: {
+			invoiceNumber: string
+			dateLabel: string
+			totalTtcValue: number
+			taxAmountValue: number
+			totalSavingsValue?: number
+		}) => {
+			const lineDiscountsTotalTtc = cartManager.cart.reduce((sum, item) => {
+				const baseTtc = item.unitPrice * item.quantity
+				const effectiveTtc = getLineTotalTtc(item)
+				return sum + (baseTtc - effectiveTtc)
+			}, 0)
+
+			const cartDiscountAmount = discountAmount
+			const grandSubtotal = subtotalTtc + lineDiscountsTotalTtc
+			const companyLogoBase64 = await getCompanyLogoBase64().catch(
+				() => undefined,
+			)
+
+			return {
+				companyLogoBase64,
+				invoiceNumber: args.invoiceNumber,
+				dateLabel: args.dateLabel,
+				sellerName: user?.name || user?.username || '',
+				items: cartManager.cart.map((it) => {
+					const displayMode = it.displayMode || 'name'
+					let displayName = it.name
+					if (displayMode === 'designation')
+						displayName = it.designation || it.name
+					else if (displayMode === 'sku') displayName = it.sku || it.name
+
+					const hasDiscount = it.lineDiscountValue && it.lineDiscountValue > 0
+					const baseUnitTtc = it.unitPrice
+					const effectiveUnitTtc = getEffectiveUnitTtc(it)
+
+					let discountText = null
+					if (hasDiscount) {
+						if (it.lineDiscountMode === 'percent')
+							discountText = `-${it.lineDiscountValue}%`
+						else {
+							const discount = baseUnitTtc - effectiveUnitTtc
+							discountText = `-${discount.toFixed(2)}€`
+						}
+					}
+
+					return {
+						name: displayName,
+						qty: it.quantity,
+						unitTtc: effectiveUnitTtc,
+						totalTtc: getLineTotalTtc(it),
+						tvaRate: it.tvaRate,
+						hasDiscount,
+						baseUnitTtc: hasDiscount ? baseUnitTtc : undefined,
+						discountText,
+					}
+				}),
+				grandSubtotal,
+				lineDiscountsTotal:
+					lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
+				subtotalTtc,
+				discountAmount: cartDiscountAmount > 0 ? cartDiscountAmount : undefined,
+				discountPercent:
+					cartDiscountMode === 'percent' && cartDiscountValue > 0
+						? cartDiscountValue
+						: undefined,
+				totalTtc: args.totalTtcValue,
+				taxAmount: args.taxAmountValue,
+				totalSavings:
+					(args.totalSavingsValue ?? 0) > 0
+						? args.totalSavingsValue
+						: undefined,
+				paymentMethod: selectedPaymentMethod,
+				received:
+					selectedPaymentMethod === 'especes'
+						? Number.parseFloat(amountReceived) || 0
+						: undefined,
+				change:
+					selectedPaymentMethod === 'especes' && change > 0
+						? change
+						: undefined,
+				vatBreakdown: vatBreakdown.map((vb) => ({
+					rate: vb.rate,
+					baseHt: vb.base_ht,
+					vat: vb.vat,
+					totalTtc: vb.total_ttc,
+				})),
+			}
+		},
+		[
+			amountReceived,
+			cartDiscountMode,
+			cartDiscountValue,
+			cartManager.cart,
+			change,
+			discountAmount,
+			getCompanyLogoBase64,
+			selectedPaymentMethod,
+			subtotalTtc,
+			user,
+			vatBreakdown,
+		],
+	)
 
 	const handleConfirmPayment = React.useCallback(async () => {
 		if (!activeCompanyId || !activeSession) {
@@ -347,85 +453,16 @@ export function CashTerminalPage() {
 
 			if (printerSettings.enabled && printerSettings.printerName) {
 				if (printerSettings.autoPrint) {
-					const lineDiscountsTotalTtc = cartManager.cart.reduce((sum, item) => {
-						const baseTtc = item.unitPrice * item.quantity
-						const effectiveTtc = getLineTotalTtc(item)
-						return sum + (baseTtc - effectiveTtc)
-					}, 0)
-
-					const cartDiscountAmount = discountAmount
-					const grandSubtotal = subtotalTtc + lineDiscountsTotalTtc
-
-					const receiptPayload = {
+					const receiptPayload = await buildReceiptPayload({
 						invoiceNumber: ticket.number,
 						dateLabel: new Date().toLocaleString('fr-FR'),
-						sellerName: user?.name || user?.username || '',
-						items: cartManager.cart.map((it) => {
-							const displayMode = it.displayMode || 'name'
-							let displayName = it.name
-							if (displayMode === 'designation')
-								displayName = it.designation || it.name
-							else if (displayMode === 'sku') displayName = it.sku || it.name
-
-							const hasDiscount =
-								it.lineDiscountValue && it.lineDiscountValue > 0
-							const baseUnitTtc = it.unitPrice
-							const effectiveUnitTtc = getEffectiveUnitTtc(it)
-
-							let discountText = null
-							if (hasDiscount) {
-								if (it.lineDiscountMode === 'percent')
-									discountText = `-${it.lineDiscountValue}%`
-								else {
-									const discount = baseUnitTtc - effectiveUnitTtc
-									discountText = `-${discount.toFixed(2)}€`
-								}
-							}
-
-							return {
-								name: displayName,
-								qty: it.quantity,
-								unitTtc: effectiveUnitTtc,
-								totalTtc: getLineTotalTtc(it),
-								tvaRate: it.tvaRate,
-								hasDiscount,
-								baseUnitTtc: hasDiscount ? baseUnitTtc : undefined,
-								discountText,
-							}
-						}),
-						grandSubtotal,
-						lineDiscountsTotal:
-							lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
-						subtotalTtc,
-						discountAmount:
-							cartDiscountAmount > 0 ? cartDiscountAmount : undefined,
-						discountPercent:
-							cartDiscountMode === 'percent' && cartDiscountValue > 0
-								? cartDiscountValue
-								: undefined,
-						totalTtc: backendTotals.total_ttc,
-						taxAmount: backendTotals.total_tva,
-						totalSavings:
+						totalTtcValue: backendTotals.total_ttc,
+						taxAmountValue: backendTotals.total_tva,
+						totalSavingsValue:
 							backendTotals.line_discounts_ttc +
 							backendTotals.cart_discount_ttc,
-						paymentMethod: selectedPaymentMethod,
-						received:
-							selectedPaymentMethod === 'especes'
-								? Number.parseFloat(amountReceived)
-								: undefined,
-						change:
-							selectedPaymentMethod === 'especes' && change > 0
-								? change
-								: undefined,
-						vatBreakdown: backendTotals.vat_breakdown.map((vb) => ({
-							rate: vb.rate,
-							baseHt: vb.base_ht,
-							vat: vb.vat,
-							totalTtc: vb.total_ttc,
-						})),
-					}
+					})
 
-					// printReceipt utilise receiptPayload
 					await printReceipt({
 						printerName: printerSettings.printerName,
 						width: printerSettings.width,
@@ -457,19 +494,16 @@ export function CashTerminalPage() {
 		activeCompanyId,
 		activeSession,
 		amountReceived,
+		buildReceiptPayload,
+		cartDiscountMode,
+		cartDiscountValue,
 		cartManager.cart,
 		cashRegisterId,
 		clearAll,
 		createPosTicket,
-		cartDiscountMode,
-		cartDiscountValue,
-		discountAmount,
 		pb,
 		selectedPaymentMethod,
-		subtotalTtc,
 		totalTtc,
-		user,
-		change,
 	])
 
 	if (isSessionLoading) {
@@ -507,8 +541,39 @@ export function CashTerminalPage() {
 						</section>
 
 						<aside className='flex flex-1 flex-col gap-3'>
+							{cartManager.parkedCarts.length > 0 && (
+								<div className='rounded-lg border bg-card p-3'>
+									<div className='mb-2 text-sm font-medium'>
+										Paniers en attente ({cartManager.parkedCarts.length})
+									</div>
+									<div className='flex flex-wrap gap-2'>
+										{cartManager.parkedCarts.map((parked) => (
+											<button
+												key={parked.id}
+												type='button' // 👈 AJOUTER
+												onClick={() => cartManager.unparkCart(parked.id)}
+												className='rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90'
+											>
+												{parked.items.length} article
+												{parked.items.length > 1 ? 's' : ''}
+												<span className='ml-2 opacity-70'>
+													{new Date(parked.parkedAt).toLocaleTimeString(
+														'fr-FR',
+														{
+															hour: '2-digit',
+															minute: '2-digit',
+														},
+													)}
+												</span>
+											</button>
+										))}
+									</div>
+								</div>
+							)}
+
 							<CartPanel
 								cart={cartManager.cart}
+								onParkCart={() => cartManager.parkCart()}
 								onClearCart={clearAll}
 								onUpdateQuantity={cartManager.updateQuantity}
 								subtotalTtc={subtotalTtc}
@@ -567,92 +632,18 @@ export function CashTerminalPage() {
 						const printerSettings = loadPosPrinterSettings()
 						const width = (printerSettings.width === 80 ? 80 : 58) as 58 | 80
 
-						// Reprends ta logique d'items (identique à printReceipt) pour un rendu réaliste
-						const lineDiscountsTotalTtc = cartManager.cart.reduce(
-							(sum, item) => {
-								const baseTtc = item.unitPrice * item.quantity
-								const effectiveTtc = getLineTotalTtc(item)
-								return sum + (baseTtc - effectiveTtc)
-							},
-							0,
-						)
-
-						const cartDiscountAmount = discountAmount
-						const grandSubtotal = subtotalTtc + lineDiscountsTotalTtc
+						const previewReceipt = await buildReceiptPayload({
+							invoiceNumber: 'PREVIEW',
+							dateLabel: new Date().toLocaleString('fr-FR'),
+							totalTtcValue: totalTtc,
+							taxAmountValue: totalVat,
+							totalSavingsValue: undefined,
+						})
 
 						await openReceiptPreviewWindow({
 							width,
 							companyId: activeCompanyId,
-							receipt: {
-								invoiceNumber: 'PREVIEW',
-								dateLabel: new Date().toLocaleString('fr-FR'),
-								sellerName: user?.name || user?.username || '',
-								items: cartManager.cart.map((it) => {
-									const displayMode = it.displayMode || 'name'
-									let displayName = it.name
-									if (displayMode === 'designation')
-										displayName = it.designation || it.name
-									else if (displayMode === 'sku')
-										displayName = it.sku || it.name
-
-									const hasDiscount =
-										it.lineDiscountValue && it.lineDiscountValue > 0
-									const baseUnitTtc = it.unitPrice
-									const effectiveUnitTtc = getEffectiveUnitTtc(it)
-
-									let discountText = null
-									if (hasDiscount) {
-										if (it.lineDiscountMode === 'percent') {
-											discountText = `-${it.lineDiscountValue}%`
-										} else {
-											const discount = baseUnitTtc - effectiveUnitTtc
-											discountText = `-${discount.toFixed(2)}€`
-										}
-									}
-
-									return {
-										name: displayName,
-										qty: it.quantity,
-										unitTtc: effectiveUnitTtc,
-										totalTtc: getLineTotalTtc(it),
-										tvaRate: it.tvaRate,
-										hasDiscount,
-										baseUnitTtc: hasDiscount ? baseUnitTtc : undefined,
-										discountText,
-									}
-								}),
-								grandSubtotal,
-								lineDiscountsTotal:
-									lineDiscountsTotalTtc > 0 ? lineDiscountsTotalTtc : undefined,
-								subtotalTtc,
-								discountAmount:
-									cartDiscountAmount > 0 ? cartDiscountAmount : undefined,
-								discountPercent:
-									cartDiscountMode === 'percent' && cartDiscountValue > 0
-										? cartDiscountValue
-										: undefined,
-								totalTtc,
-								taxAmount: totalVat,
-								totalSavings:
-									lineDiscountsTotalTtc + cartDiscountAmount > 0
-										? lineDiscountsTotalTtc + cartDiscountAmount
-										: undefined,
-								paymentMethod: selectedPaymentMethod,
-								received:
-									selectedPaymentMethod === 'especes'
-										? Number.parseFloat(amountReceived) || 0
-										: undefined,
-								change:
-									selectedPaymentMethod === 'especes' && change > 0
-										? change
-										: undefined,
-								vatBreakdown: vatBreakdown.map((vb) => ({
-									rate: vb.rate,
-									baseHt: vb.base_ht,
-									vat: vb.vat,
-									totalTtc: vb.total_ttc,
-								})),
-							},
+							receipt: previewReceipt,
 						})
 					} catch (e: any) {
 						toast.error(e?.message || "Impossible d'afficher l'aperçu")
