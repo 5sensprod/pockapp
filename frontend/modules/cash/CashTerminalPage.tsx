@@ -158,11 +158,23 @@ export function CashTerminalPage() {
 	// GESTION DES SCANS (local + distant)
 	// ============================================
 
-	const handleBarcodeScan = React.useCallback((barcode: string) => {
-		setProductSearch(barcode)
-		searchInputRef.current?.focus()
-	}, [])
+	const handleBarcodeScan = React.useCallback(
+		(barcode: string) => {
+			console.log('[POS] Scan reçu:', barcode)
 
+			const product = products.find((p) => p.barcode === barcode)
+
+			if (product) {
+				cartManager.addToCart(product)
+				toast.success(`${product.name} ajouté`, { duration: 1500 })
+				setProductSearch('')
+			} else {
+				setProductSearch(barcode)
+				searchInputRef.current?.focus()
+			}
+		},
+		[products, cartManager],
+	)
 	useBarcodeScanner({
 		enabled: paymentStep === 'cart',
 		onScan: handleBarcodeScan,
