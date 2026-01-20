@@ -8,21 +8,22 @@ import (
 	"golang.org/x/text/encoding/charmap"
 )
 
-func OpenDrawerCmd() []byte {
-	return []byte{0x1B, 0x70, 0x00, 0x3C, 0x78}
-}
+func OpenDrawerCmd() []byte { return []byte{0x1B, 0x70, 0x00, 0x3C, 0x78} }
 
+// CutCmd : coupe (full cut).
+// Si ton imprimante ne supporte pas full cut, remplace 0x00 par 0x01 (partial cut).
+func CutCmd() []byte { return []byte{0x1D, 0x56, 0x00} }
+
+// CutCmdFeed : avance n lignes puis coupe (partial cut).
+// GS V 66 n (0x42) = feed then cut (variant largement supportée)
 func CutCmdFeed(lines byte) []byte {
 	if lines == 0 {
 		lines = 3
 	}
-	// GS V 67 n : partial cut after feeding n lines
-	return []byte{0x1D, 0x56, 0x43, lines}
+	return []byte{0x1D, 0x56, 0x42, lines}
 }
 
-func InitCmd() []byte {
-	return []byte{0x1B, 0x40}
-}
+func InitCmd() []byte { return []byte{0x1B, 0x40} }
 
 func AlignCenter() []byte { return []byte{0x1B, 0x61, 0x01} }
 func AlignLeft() []byte   { return []byte{0x1B, 0x61, 0x00} }
@@ -127,7 +128,6 @@ func BuildReceipt(r ReceiptData) []byte {
 	// =========== LOGO (optionnel) ===========
 	if r.CompanyLogoBase64 != nil && strings.TrimSpace(*r.CompanyLogoBase64) != "" {
 		if imgBytes, err := DecodeBase64Image(*r.CompanyLogoBase64); err == nil {
-			// threshold 160-200 selon logos ; dither true pour logos/gris
 			if cmd, err := RasterImageCmdFromBytes(imgBytes, r.Width, 180, true); err == nil {
 				b.Write(AlignCenter())
 				b.Write(cmd)
@@ -195,7 +195,6 @@ func BuildReceipt(r ReceiptData) []byte {
 	b.Write(AlignLeft())
 
 	for _, it := range r.Items {
-		// Nom du produit (sans TVA)
 		name := it.Name
 		if len([]rune(name)) > lineWidth-2 {
 			name = string([]rune(name)[:lineWidth-2])
@@ -232,7 +231,6 @@ func BuildReceipt(r ReceiptData) []byte {
 				discountLabel = fmt.Sprintf("-%.2f EUR", discAmt)
 			}
 
-			// ✅ Ligne avec TVA
 			line1 := fmt.Sprintf("  %dx %.2fEUR (TVA %.2g%%) %s",
 				it.Qty,
 				*it.BaseUnitTtc,
@@ -250,7 +248,6 @@ func BuildReceipt(r ReceiptData) []byte {
 			b.Write(Text(line2))
 			b.Write(NL())
 		} else {
-			// ✅ Format: "2x 10.00EUR (TVA 5.5%)     20.00EUR"
 			qtyPrice := fmt.Sprintf("  %dx %.2fEUR (TVA %.2g%%)", it.Qty, it.UnitTtc, it.TvaRate)
 			total := fmt.Sprintf("%.2fEUR", it.TotalTtc)
 			line := labelValue(qtyPrice, total, lineWidth)
@@ -292,7 +289,6 @@ func BuildReceipt(r ReceiptData) []byte {
 	b.Write(Text(strings.Repeat("-", lineWidth)))
 	b.Write(NL())
 
-	// ✅ TVA DÉTAILLÉE (une ligne par taux)
 	if len(r.VatBreakdown) > 0 {
 		for _, vb := range r.VatBreakdown {
 			label := fmt.Sprintf("TVA %.2g%% sur %.2fEUR HT", vb.Rate, vb.BaseHt)
@@ -302,7 +298,6 @@ func BuildReceipt(r ReceiptData) []byte {
 			b.Write(NL())
 		}
 	} else {
-		// Fallback
 		line := labelValue("TVA", fmt.Sprintf("%.2fEUR", r.TaxAmount), lineWidth)
 		b.Write(Text(line))
 		b.Write(NL())
@@ -311,7 +306,6 @@ func BuildReceipt(r ReceiptData) []byte {
 	b.Write(Text(strings.Repeat("-", lineWidth)))
 	b.Write(NL())
 
-	// TOTAL TTC
 	b.Write(BoldOn())
 	total := labelValue("TOTAL TTC", fmt.Sprintf("%.2fEUR", r.TotalTtc), lineWidth)
 	b.Write(Text(total))
@@ -354,8 +348,9 @@ func BuildReceipt(r ReceiptData) []byte {
 	b.Write(Text("MERCI DE VOTRE VISITE !"))
 	b.Write(NL())
 	b.Write(NL())
-	b.Write(NL())
 
+	// feed puis coupe (ou remplace par b.Write(CutCmd()) si tu veux couper direct)
 	b.Write(CutCmdFeed(4))
+
 	return b.Bytes()
 }
