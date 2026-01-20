@@ -1,6 +1,7 @@
 // frontend/modules/cash/components/terminal/layout/TerminalHeader.tsx
 import { Button } from '@/components/ui/button'
-import { ArrowLeft } from 'lucide-react'
+import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
+import { ArrowLeft, Loader2, Vault } from 'lucide-react'
 
 interface TerminalHeaderProps {
 	registerName: string
@@ -15,6 +16,12 @@ export function TerminalHeader({
 	today,
 	onBack,
 }: TerminalHeaderProps) {
+	const openDrawer = useOpenCashDrawerMutation()
+
+	const handleOpenDrawer = () => {
+		openDrawer.mutate()
+	}
+
 	return (
 		<header className='flex items-center justify-between gap-4'>
 			<div className='flex items-center gap-3'>
@@ -33,6 +40,26 @@ export function TerminalHeader({
 			</div>
 
 			<div className='flex items-center gap-4 text-xs text-muted-foreground'>
+				<Button
+					variant='outline'
+					size='sm'
+					onClick={handleOpenDrawer}
+					disabled={openDrawer.isPending}
+					className='h-8'
+				>
+					{openDrawer.isPending ? (
+						<>
+							<Loader2 className='h-3.5 w-3.5 mr-2 animate-spin' />
+							Ouverture...
+						</>
+					) : (
+						<>
+							<Vault className='h-3.5 w-3.5 mr-2' />
+							Ouvrir tiroir
+						</>
+					)}
+				</Button>
+
 				<div className='flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1'>
 					<span className='h-2 w-2 rounded-full bg-emerald-500' />
 					<span className='font-medium text-emerald-700'>Session ouverte</span>
