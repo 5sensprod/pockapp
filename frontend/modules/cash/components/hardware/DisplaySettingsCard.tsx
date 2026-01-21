@@ -1,5 +1,6 @@
 // frontend/modules/cash/components/hardware/DisplaySettingsCard.tsx
 import {
+	Edit3,
 	Lock,
 	LockOpen,
 	Monitor,
@@ -43,9 +44,13 @@ import {
 	testDisplay,
 	useDisplay,
 } from '@/lib/pos/display'
+import { getAvailablePorts } from '@/lib/pos/displayPorts'
 import {
+	type DisplayPortSettings,
 	type DisplayWelcomeSettings,
+	loadDisplayPortSettings,
 	loadDisplayWelcomeSettings,
+	saveDisplayPortSettings,
 	saveDisplayWelcomeSettings,
 } from '@/lib/pos/displaySettings'
 
@@ -86,11 +91,17 @@ export function DisplaySettingsCard() {
 
 	// Dialog configuration
 	const [showConfigDialog, setShowConfigDialog] = useState(false)
-	const [configForm, setConfigForm] = useState({
-		portName: 'COM3',
-		baudRate: '9600',
-		protocol: 'EPSON_D101',
-	})
+	const [configForm, setConfigForm] = useState<DisplayPortSettings>(() =>
+		loadDisplayPortSettings(),
+	)
+
+	// Liste des ports COM disponibles
+	const [availablePorts, setAvailablePorts] = useState<string[]>(['COM3'])
+	const [isLoadingPorts, setIsLoadingPorts] = useState(false)
+
+	// Saisie manuelle du port
+	const [isManualPort, setIsManualPort] = useState(false)
+	const [manualPortInput, setManualPortInput] = useState('')
 
 	// ✅ NOUVEAU : Messages de bienvenue
 	const [welcomeSettings, setWelcomeSettings] =
@@ -109,6 +120,56 @@ export function DisplaySettingsCard() {
 		return () => clearInterval(interval)
 	}, [])
 
+	// Charger la liste des ports quand le dialog s'ouvre
+	useEffect(() => {
+		if (showConfigDialog) {
+			loadAvailablePorts()
+		}
+	}, [showConfigDialog])
+
+	// Vérifier si le port actuel nécessite une saisie manuelle après chargement des ports
+	useEffect(() => {
+		if (showConfigDialog && availablePorts.length > 0) {
+			const currentPort = configForm.portName
+			const isInList = availablePorts.includes(currentPort)
+
+			if (!isInList && currentPort && currentPort !== 'MANUAL') {
+				setIsManualPort(true)
+				setManualPortInput(currentPort)
+			}
+		}
+	}, [showConfigDialog, availablePorts, configForm.portName])
+
+	const loadAvailablePorts = async () => {
+		setIsLoadingPorts(true)
+		try {
+			const ports = await getAvailablePorts()
+			if (ports.length > 0) {
+				setAvailablePorts(ports)
+			}
+		} catch (err) {
+			console.error('[DisplaySettingsCard] Erreur chargement ports:', err)
+			toast.error('Impossible de charger les ports disponibles')
+		} finally {
+			setIsLoadingPorts(false)
+		}
+	}
+
+	const handlePortChange = (value: string) => {
+		if (value === 'MANUAL') {
+			setIsManualPort(true)
+			setManualPortInput('')
+		} else {
+			setIsManualPort(false)
+			setConfigForm({ ...configForm, portName: value })
+		}
+	}
+
+	const handleManualPortChange = (value: string) => {
+		setManualPortInput(value)
+		setConfigForm({ ...configForm, portName: value })
+	}
+
 	const loadStatus = async () => {
 		try {
 			const data = await getDisplayStatus()
@@ -126,6 +187,10 @@ export function DisplaySettingsCard() {
 				configForm.baudRate,
 				configForm.protocol,
 			)
+
+			// ✅ Sauvegarder dans localStorage
+			saveDisplayPortSettings(configForm)
+
 			toast.success('Afficheur configuré')
 			setShowConfigDialog(false)
 			await loadStatus()
@@ -397,14 +462,77 @@ export function DisplaySettingsCard() {
 					<div className='space-y-4'>
 						<div className='space-y-2'>
 							<Label htmlFor='portName'>Port série</Label>
-							<Input
-								id='portName'
-								placeholder='COM3'
-								value={configForm.portName}
-								onChange={(e) =>
-									setConfigForm({ ...configForm, portName: e.target.value })
-								}
-							/>
+
+							{!isManualPort ? (
+								<>
+									<Select
+										value={
+											availablePorts.includes(configForm.portName)
+												? configForm.portName
+												: 'MANUAL'
+										}
+										onValueChange={handlePortChange}
+										disabled={isLoadingPorts}
+									>
+										<SelectTrigger>
+											<SelectValue
+												placeholder={
+													isLoadingPorts
+														? 'Chargement...'
+														: 'Sélectionner un port'
+												}
+											/>
+										</SelectTrigger>
+										<SelectContent>
+											{availablePorts.map((port) => (
+												<SelectItem key={port} value={port}>
+													{port}
+												</SelectItem>
+											))}
+											<SelectItem value='MANUAL'>
+												<div className='flex items-center gap-2'>
+													<Edit3 className='h-3.5 w-3.5' />
+													Autre (saisie manuelle)...
+												</div>
+											</SelectItem>
+										</SelectContent>
+									</Select>
+									<p className='text-xs text-muted-foreground'>
+										{availablePorts.length} port
+										{availablePorts.length > 1 ? 's' : ''} détecté
+										{availablePorts.length > 1 ? 's' : ''}
+									</p>
+								</>
+							) : (
+								<>
+									<div className='flex gap-2'>
+										<Input
+											type='text'
+											placeholder='Ex: COM10, COM15...'
+											value={manualPortInput}
+											onChange={(e) => handleManualPortChange(e.target.value)}
+											className='flex-1'
+										/>
+										<Button
+											type='button'
+											variant='outline'
+											size='sm'
+											onClick={() => {
+												setIsManualPort(false)
+												setConfigForm({
+													...configForm,
+													portName: availablePorts[0] || 'COM3',
+												})
+											}}
+										>
+											Liste
+										</Button>
+									</div>
+									<p className='text-xs text-muted-foreground'>
+										Entrez le nom du port manuellement (ex: COM10, COM15)
+									</p>
+								</>
+							)}
 						</div>
 
 						<div className='space-y-2'>
