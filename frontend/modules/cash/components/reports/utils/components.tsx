@@ -98,8 +98,18 @@ interface PaymentMethodBreakdownProps {
 /**
  * Affichage de la répartition par mode de paiement
  */
+// 1. INTERFACE (ajouter byMethodLabels)
+interface PaymentMethodBreakdownProps {
+	byMethod: Record<string, number>
+	byMethodLabels?: Record<string, string> // 🆕 AJOUTER
+	label?: string
+	colorClass?: string
+}
+
+// 2. FONCTION (ajouter le param et utiliser les labels)
 export function PaymentMethodBreakdown({
 	byMethod,
+	byMethodLabels, // 🆕 AJOUTER
 	label = 'Par mode de paiement',
 	colorClass = 'font-medium',
 }: PaymentMethodBreakdownProps) {
@@ -111,12 +121,27 @@ export function PaymentMethodBreakdown({
 		<div className='space-y-2'>
 			<div className='text-xs font-medium text-muted-foreground'>{label}</div>
 			<div className='space-y-2'>
-				{Object.entries(byMethod).map(([method, amount]) => (
-					<div key={method} className='flex justify-between text-sm'>
-						<span className='capitalize'>{method}</span>
-						<span className={colorClass}>{formatCurrency(amount)}</span>
-					</div>
-				))}
+				{Object.entries(byMethod).map(([method, amount]) => {
+					// 🆕 Utiliser le label custom si disponible
+					const displayName =
+						byMethodLabels?.[method] ||
+						(method === 'cb'
+							? 'CB'
+							: method === 'especes'
+								? 'Espèces'
+								: method === 'cheque'
+									? 'Chèque'
+									: method === 'virement'
+										? 'Virement'
+										: method)
+
+					return (
+						<div key={method} className='flex justify-between text-sm'>
+							<span className='capitalize'>{displayName}</span>
+							<span className={colorClass}>{formatCurrency(amount)}</span>
+						</div>
+					)
+				})}
 			</div>
 		</div>
 	)

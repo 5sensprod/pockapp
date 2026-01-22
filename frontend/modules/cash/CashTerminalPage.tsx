@@ -35,6 +35,8 @@ import {
 	TerminalHeader,
 	getEffectiveUnitTtc,
 	getLineTotalTtc,
+	getPaymentMethodCode, // 🆕 AJOUTER
+	getPaymentMethodLabel, // 🆕 AJOUTER
 	useBarcodeScanner,
 	useCartCalculations,
 	useCartManager,
@@ -58,7 +60,7 @@ export function CashTerminalPage() {
 
 	const [paymentStep, setPaymentStep] = React.useState<PaymentStep>('cart')
 	const [selectedPaymentMethod, setSelectedPaymentMethod] =
-		React.useState<PaymentMethod>('especes')
+		React.useState<PaymentMethod | null>(null)
 	const [amountReceived, setAmountReceived] = React.useState('')
 	const [isProcessing, setIsProcessing] = React.useState(false)
 
@@ -147,7 +149,7 @@ export function CashTerminalPage() {
 		total: totalTtc,
 		itemCount: cartManager.cart.length,
 		currentItem: cartManager.lastAddedItem,
-		paymentMethod: selectedPaymentMethod,
+		paymentMethod: selectedPaymentMethod?.name,
 		received: Number.parseFloat(amountReceived) || undefined,
 		change: change > 0 ? change : undefined,
 		phase: displayPhase,
@@ -158,51 +160,60 @@ export function CashTerminalPage() {
 	// GESTION DES SCANS (local + distant)
 	// ============================================
 
+	const recentScansRef = React.useRef<Map<string, number>>(new Map())
+
+	const isDuplicateScan = React.useCallback((barcode: string): boolean => {
+		const now = Date.now()
+		const lastScanTime = recentScansRef.current.get(barcode)
+
+		if (lastScanTime && now - lastScanTime < 2000) return true
+
+		recentScansRef.current.set(barcode, now)
+		return false
+	}, [])
+
 	const handleBarcodeScan = React.useCallback(
-		(barcode: string) => {
-			console.log('[POS] Scan reçu:', barcode)
+		(barcode: string, source: 'hid' | 'websocket' = 'hid') => {
+			console.log(`[POS] Scan reçu (${source}):`, barcode)
 
-			const product = products.find((p) => p.barcode === barcode)
+			if (isDuplicateScan(barcode)) return // ✅ FILTRE
 
-			if (product) {
-				cartManager.addToCart(product)
-				toast.success(`${product.name} ajouté`, { duration: 1500 })
-				setProductSearch('')
-			} else {
-				setProductSearch(barcode)
-				searchInputRef.current?.focus()
-			}
+			setProductSearch(barcode)
 		},
-		[products, cartManager],
+		[isDuplicateScan],
 	)
+
 	useBarcodeScanner({
 		enabled: paymentStep === 'cart',
-		onScan: handleBarcodeScan,
-		onEscape: () => {
-			setProductSearch('')
-			searchInputRef.current?.focus()
-		},
+		onScan: (barcode) => handleBarcodeScan(barcode, 'hid'), // ✅ SOURCE
 	})
 
 	useScanner((barcode) => {
 		if (paymentStep === 'cart') {
-			handleBarcodeScan(barcode)
+			handleBarcodeScan(barcode, 'websocket') // ✅ SOURCE
 		}
 	})
-
 	React.useEffect(() => {
 		if (paymentStep === 'cart' && searchInputRef.current) {
 			searchInputRef.current.focus()
 		}
 	}, [paymentStep])
 
+	const lastAutoAddRef = React.useRef<string | null>(null)
+
 	React.useEffect(() => {
-		if (products.length === 1 && productSearch.length > 2) {
+		if (
+			products.length === 1 &&
+			productSearch.length > 2 &&
+			lastAutoAddRef.current !== productSearch
+		) {
 			const product = products[0]
 			const isExactMatch =
 				product.barcode === productSearch || product.sku === productSearch
 
 			if (isExactMatch) {
+				console.log('[POS] Auto-add:', product.name)
+				lastAutoAddRef.current = productSearch
 				cartManager.addToCart(product)
 				setProductSearch('')
 				setTimeout(() => {
@@ -212,6 +223,12 @@ export function CashTerminalPage() {
 		}
 	}, [products, productSearch, cartManager])
 
+	// Reset quand productSearch est vidé
+	React.useEffect(() => {
+		if (!productSearch) {
+			lastAutoAddRef.current = null
+		}
+	}, [productSearch])
 	React.useEffect(() => {
 		const connect = async () => {
 			if (isAppPosConnected) return
@@ -301,7 +318,8 @@ export function CashTerminalPage() {
 
 			setSelectedPaymentMethod(method)
 			setPaymentStep('payment')
-			if (method === 'especes') setAmountReceived(totalTtc.toFixed(2))
+			if (method.accounting_category === 'cash')
+				setAmountReceived(totalTtc.toFixed(2))
 		},
 		[cartManager.cart.length, totalTtc],
 	)
@@ -388,13 +406,13 @@ export function CashTerminalPage() {
 					(args.totalSavingsValue ?? 0) > 0
 						? args.totalSavingsValue
 						: undefined,
-				paymentMethod: selectedPaymentMethod,
+				paymentMethod: selectedPaymentMethod?.name || 'Autre',
 				received:
-					selectedPaymentMethod === 'especes'
+					selectedPaymentMethod?.accounting_category === 'cash'
 						? Number.parseFloat(amountReceived) || 0
 						: undefined,
 				change:
-					selectedPaymentMethod === 'especes' && change > 0
+					selectedPaymentMethod?.accounting_category === 'cash'
 						? change
 						: undefined,
 				vatBreakdown: vatBreakdown.map((vb) => ({
@@ -426,7 +444,8 @@ export function CashTerminalPage() {
 			return
 		}
 
-		if (selectedPaymentMethod === 'especes') {
+		if (selectedPaymentMethod?.accounting_category === 'cash') {
+			// 🆕 MODIFIÉ
 			const received = Number.parseFloat(amountReceived) || 0
 			if (received < totalTtc) {
 				toast.error('Montant insuffisant')
@@ -449,9 +468,14 @@ export function CashTerminalPage() {
 				session_id: activeSession.id,
 				customer_id: defaultCustomerId,
 				items: cartManager.cart.map(cartItemToPosItem),
-				payment_method: selectedPaymentMethod,
+				payment_method: selectedPaymentMethod
+					? getPaymentMethodCode(selectedPaymentMethod)
+					: 'especes',
+				payment_method_label: selectedPaymentMethod
+					? getPaymentMethodLabel(selectedPaymentMethod)
+					: undefined, // 🆕 AJOUTÉ
 				amount_paid:
-					selectedPaymentMethod === 'especes'
+					selectedPaymentMethod?.accounting_category === 'cash' // 🆕 MODIFIÉ
 						? Number.parseFloat(amountReceived)
 						: undefined,
 				cart_discount_mode:
@@ -485,7 +509,7 @@ export function CashTerminalPage() {
 
 				if (
 					printerSettings.autoOpenDrawer &&
-					selectedPaymentMethod === 'especes'
+					selectedPaymentMethod?.accounting_category === 'cash' // 🆕 MODIFIÉ
 				) {
 					await openCashDrawer({
 						printerName: printerSettings.printerName,

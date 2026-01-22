@@ -43,11 +43,12 @@ type CashMovementInput struct {
 }
 
 type PosRefundInput struct {
-	OriginalTicketID string                 `json:"original_ticket_id"`
-	RefundType       string                 `json:"refund_type"`   // full|partial
-	RefundMethod     string                 `json:"refund_method"` // especes|cb|autre
-	RefundedItems    []PosRefundedItemInput `json:"refunded_items"`
-	Reason           string                 `json:"reason"`
+	OriginalTicketID  string                 `json:"original_ticket_id"`
+	RefundType        string                 `json:"refund_type"`   // full|partial
+	RefundMethod      string                 `json:"refund_method"` // especes|cb|autre
+	RefundMethodLabel string                 `json:"refund_method_label"`
+	RefundedItems     []PosRefundedItemInput `json:"refunded_items"`
+	Reason            string                 `json:"reason"`
 }
 
 type PosRefundedItemInput struct {
@@ -114,8 +115,9 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			OriginalDocumentID: payload.OriginalTicketID,
 			RefundType:         payload.RefundType,
 			RefundMethod:       payload.RefundMethod,
+			RefundMethodLabel:  payload.RefundMethodLabel, // AJOUTER
 			Reason:             payload.Reason,
-			IsPosTicket:        true, // C'est un ticket POS
+			IsPosTicket:        true,
 		}
 
 		// Convertir les items si partial

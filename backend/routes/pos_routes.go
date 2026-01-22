@@ -45,8 +45,9 @@ type PosTicketInput struct {
 	Items []PosItemInput `json:"items"`
 
 	// Paiement
-	PaymentMethod string  `json:"payment_method"` // especes, cb, virement, cheque, autre
-	AmountPaid    float64 `json:"amount_paid"`    // Montant reçu (pour calcul monnaie)
+	PaymentMethod      string  `json:"payment_method"` // especes, cb, virement, cheque, autre
+	PaymentMethodLabel string  `json:"payment_method_label"`
+	AmountPaid         float64 `json:"amount_paid"` // Montant reçu (pour calcul monnaie)
 
 	// Remises globales (optionnel)
 	CartDiscountMode  string  `json:"cart_discount_mode"`  // percent ou amount
@@ -211,6 +212,10 @@ func RegisterPosRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		ticket.Set("is_paid", true)
 		ticket.Set("paid_at", now.Format(time.RFC3339))
 		ticket.Set("payment_method", input.PaymentMethod)
+
+		if input.PaymentMethodLabel != "" {
+			ticket.Set("payment_method_label", input.PaymentMethodLabel)
+		}
 
 		// Items et totaux (ARRONDIS)
 		ticket.Set("items", processedItems)

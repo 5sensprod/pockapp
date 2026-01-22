@@ -1,4 +1,6 @@
 // frontend/modules/cash/components/terminal/payment/PaymentDialog.tsx
+// ✅ NOUVELLE VERSION - Charge les moyens depuis l'API
+
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -9,18 +11,23 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { usePaymentMethods } from '@/lib/queries/payment-methods'
 import {
+	ArrowRightLeft,
 	Banknote,
 	CreditCard,
 	DollarSign,
+	Gift,
 	Loader2,
 	Receipt,
+	Ticket,
 } from 'lucide-react'
 import type { PaymentMethod } from '../types/payment'
 
 interface PaymentDialogProps {
 	totalTtc: number
-	selectedPaymentMethod: PaymentMethod
+	selectedPaymentMethod: PaymentMethod | null
 	onSelectedPaymentMethodChange: (m: PaymentMethod) => void
 	amountReceived: string
 	onAmountReceivedChange: (v: string) => void
@@ -28,8 +35,18 @@ interface PaymentDialogProps {
 	isProcessing: boolean
 	onCancel: () => void
 	onConfirm: () => void | Promise<void>
-
 	onPreviewReceipt?: () => void | Promise<void>
+}
+
+// Mapping des icônes
+const iconMap: Record<string, any> = {
+	Banknote,
+	CreditCard,
+	Receipt,
+	ArrowRightLeft,
+	DollarSign,
+	Gift,
+	Ticket,
 }
 
 export function PaymentDialog({
@@ -44,6 +61,21 @@ export function PaymentDialog({
 	onConfirm,
 	onPreviewReceipt,
 }: PaymentDialogProps) {
+	const { activeCompanyId } = useActiveCompany()
+	const { paymentMethods, isLoading } = usePaymentMethods(activeCompanyId)
+
+	// Filtrer et trier les moyens actifs
+	const enabledMethods =
+		paymentMethods
+			?.filter((m) => m.enabled)
+			.sort((a, b) => a.display_order - b.display_order) || []
+
+	// Auto-sélection du premier moyen si aucun n'est sélectionné
+	const effectiveMethod = selectedPaymentMethod || enabledMethods[0] || null
+
+	// Vérifier si le moyen actuel nécessite le montant reçu (espèces)
+	const needsAmountReceived = effectiveMethod?.accounting_category === 'cash'
+
 	return (
 		<Dialog open={true} onOpenChange={onCancel}>
 			<DialogContent className='sm:max-w-md'>
@@ -55,51 +87,51 @@ export function PaymentDialog({
 				</DialogHeader>
 
 				<div className='space-y-4'>
+					{/* Boutons de sélection du moyen */}
 					<div>
-						<div className='grid grid-cols-3 gap-2 mt-2'>
-							<Button
-								type='button'
-								variant={
-									selectedPaymentMethod === 'especes' ? 'default' : 'outline'
-								}
-								className='h-20'
-								onClick={() => onSelectedPaymentMethodChange('especes')}
-							>
-								<div className='flex flex-col items-center gap-1'>
-									<Banknote className='h-5 w-5' />
-									<span className='text-xs'>Espèces</span>
-								</div>
-							</Button>
+						{isLoading ? (
+							<div className='flex items-center justify-center py-8'>
+								<Loader2 className='h-6 w-6 animate-spin text-muted-foreground' />
+							</div>
+						) : (
+							<div className='grid grid-cols-3 gap-2 mt-2'>
+								{enabledMethods.map((method) => {
+									const IconComponent =
+										iconMap[method.icon || 'Receipt'] || Receipt
+									const isSelected = effectiveMethod?.id === method.id
 
-							<Button
-								type='button'
-								variant={selectedPaymentMethod === 'cb' ? 'default' : 'outline'}
-								className='h-20'
-								onClick={() => onSelectedPaymentMethodChange('cb')}
-							>
-								<div className='flex flex-col items-center gap-1'>
-									<CreditCard className='h-5 w-5' />
-									<span className='text-xs'>CB</span>
-								</div>
-							</Button>
-
-							<Button
-								type='button'
-								variant={
-									selectedPaymentMethod === 'virement' ? 'default' : 'outline'
-								}
-								className='h-20'
-								onClick={() => onSelectedPaymentMethodChange('virement')}
-							>
-								<div className='flex flex-col items-center gap-1'>
-									<DollarSign className='h-5 w-5' />
-									<span className='text-xs'>Virement</span>
-								</div>
-							</Button>
-						</div>
+									return (
+										<Button
+											key={method.id}
+											type='button'
+											variant={isSelected ? 'default' : 'outline'}
+											className='h-20 flex-col gap-1'
+											onClick={() => onSelectedPaymentMethodChange(method)}
+											style={
+												isSelected
+													? {
+															backgroundColor: method.color || undefined,
+															borderColor: method.color || undefined,
+															color: method.text_color || undefined,
+														}
+													: {
+															borderColor: method.color || undefined,
+														}
+											}
+										>
+											<IconComponent className='h-5 w-5' />
+											<span className='text-xs leading-tight text-center'>
+												{method.name}
+											</span>
+										</Button>
+									)
+								})}
+							</div>
+						)}
 					</div>
 
-					{selectedPaymentMethod === 'especes' && (
+					{/* Input montant reçu (espèces uniquement) */}
+					{needsAmountReceived && (
 						<div>
 							<Input
 								type='number'
@@ -151,7 +183,8 @@ export function PaymentDialog({
 						onClick={onConfirm}
 						disabled={
 							isProcessing ||
-							(selectedPaymentMethod === 'especes' &&
+							!effectiveMethod ||
+							(needsAmountReceived &&
 								(Number.parseFloat(amountReceived) || 0) < totalTtc)
 						}
 					>

@@ -42,6 +42,12 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		AddRoleToUsers,
 		AddCompanyToUsers,
 		MigrateAppSettings,
+
+		// 🆕 Moyens de paiement
+		ensurePaymentMethodsCollection,  // Crée la collection
+		AddPaymentMethodLabelToInvoices, // Ajoute payment_method_label sur invoices
+
+		EnsureAllCompaniesHavePaymentMethods,
 	}
 
 	for _, migrate := range migrations {

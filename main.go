@@ -94,6 +94,8 @@ func main() {
 	// Enregistre les hooks personnalisés sur PocketBase
 	hooks.RegisterAllHooks(pb)
 
+	hooks.RegisterCompanyHooks(pb)
+
 	// Wrapper Wails qui utilise pb
 	app := NewApp(pb)
 
@@ -192,6 +194,8 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 
 		// ✅ Routes de gestion des utilisateurs
 		routes.RegisterUserManagementRoutes(pb, e.Router)
+
+		routes.RegisterPaymentMethodsRoutes(pb, e.Router)
 
 		// ✅ NOUVEAU : Routes de gestion des secrets
 		routes.RegisterSecretsRoutes(pb, e.Router)

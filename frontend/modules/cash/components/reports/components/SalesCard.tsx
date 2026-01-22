@@ -10,6 +10,7 @@ interface SalesCardProps {
 	totalTTC: number
 	byMethod?: Record<string, number>
 	netByMethod?: Record<string, number>
+	byMethodLabels?: Record<string, string>
 }
 
 /**
@@ -20,6 +21,7 @@ export function SalesCard({
 	totalTTC,
 	byMethod,
 	netByMethod,
+	byMethodLabels,
 }: SalesCardProps) {
 	return (
 		<Card>
@@ -38,6 +40,7 @@ export function SalesCard({
 						<Separator />
 						<PaymentMethodBreakdown
 							byMethod={byMethod}
+							byMethodLabels={byMethodLabels} // 🆕 AJOUTER
 							label='Répartition par mode de paiement'
 						/>
 					</>
@@ -48,6 +51,7 @@ export function SalesCard({
 						<Separator />
 						<PaymentMethodBreakdown
 							byMethod={netByMethod}
+							byMethodLabels={byMethodLabels} // 🆕 AJOUTER
 							label='Résultat financier par mode (ventes - remboursements)'
 						/>
 					</>

@@ -26,6 +26,7 @@ type RefundInput struct {
 	OriginalDocumentID string              `json:"original_document_id"` // ID du ticket ou facture
 	RefundType         string              `json:"refund_type"`          // "full" ou "partial"
 	RefundMethod       string              `json:"refund_method"`        // "especes", "cb", "cheque", "autre"
+	RefundMethodLabel  string              `json:"refund_method_label"`  // Nom du moyen custom
 	RefundedItems      []RefundedItemInput `json:"refunded_items"`       // Items à rembourser (si partial)
 	Reason             string              `json:"reason"`               // Motif du remboursement
 	IsPosTicket        bool                `json:"is_pos_ticket"`        // true = ticket POS, false = facture B2B
@@ -153,6 +154,9 @@ func CreateCreditNote(dao *daos.Dao, input RefundInput, soldByUserID string) (*R
 	// Infos remboursement
 	credit.Set("refund_type", input.RefundType)
 	credit.Set("refund_method", input.RefundMethod)
+	if input.RefundMethodLabel != "" {
+		credit.Set("payment_method_label", input.RefundMethodLabel)
+	}
 	credit.Set("cancellation_reason", input.Reason)
 
 	// Items et montants (NÉGATIFS, ARRONDIS)

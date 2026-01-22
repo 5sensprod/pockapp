@@ -275,7 +275,16 @@ export function TicketsPage() {
 													</Badge>
 													{ticket.payment_method && (
 														<span className='text-xs text-muted-foreground'>
-															{ticket.payment_method}
+															{ticket.payment_method_label ||
+																(ticket.payment_method === 'cb'
+																	? 'CB'
+																	: ticket.payment_method === 'especes'
+																		? 'Espèces'
+																		: ticket.payment_method === 'cheque'
+																			? 'Chèque'
+																			: ticket.payment_method === 'virement'
+																				? 'Virement'
+																				: ticket.payment_method)}
 														</span>
 													)}
 												</div>

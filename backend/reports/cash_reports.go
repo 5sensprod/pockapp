@@ -194,11 +194,16 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			}
 
 			refundsTotalTTC += amt // ✅
-			rm := inv.GetString("refund_method")
+			rm := inv.GetString("payment_method_label")
 			if rm == "" {
-				rm = "autre"
+				rm = inv.GetString("refund_method")
+				if rm == "" {
+					rm = "autre"
+				}
 			}
-			refundsByMethod[rm] += amt // ✅
+			sessionRefundsByMethod := make(map[string]float64)
+			sessionRefundsByMethod[rm] += amt
+			refundsByMethod[rm] += amt
 
 			continue
 		}
@@ -212,7 +217,11 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		totalTVA += tva
 		totalTTC += ttc
 
-		method := inv.GetString("payment_method")
+		method := inv.GetString("payment_method_label")
+		if method == "" {
+			method = inv.GetString("payment_method")
+		}
+
 		if method != "" {
 			totalsByMethod[method] += ttc
 			if method == "especes" {
@@ -586,7 +595,10 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 				sessionTVA += tva
 				sessionTTC += ttc
 
-				method := inv.GetString("payment_method")
+				method := inv.GetString("payment_method_label")
+				if method == "" {
+					method = inv.GetString("payment_method")
+				}
 				if method != "" {
 					sessionMethodTotals[method] += ttc
 					totalsByMethod[method] += ttc

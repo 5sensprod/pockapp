@@ -17,6 +17,7 @@ type InvoiceRefundInput struct {
 	OriginalInvoiceID string                     `json:"original_invoice_id"`
 	RefundType        string                     `json:"refund_type"` // full|partial
 	RefundMethod      string                     `json:"refund_method"`
+	RefundMethodLabel string                     `json:"refund_method_label"`
 	RefundedItems     []InvoiceRefundedItemInput `json:"refunded_items"`
 	Reason            string                     `json:"reason"`
 }
@@ -66,6 +67,7 @@ func RegisterInvoiceRefundRoutes(app *pocketbase.PocketBase, router *echo.Echo) 
 			OriginalDocumentID: payload.OriginalInvoiceID,
 			RefundType:         payload.RefundType,
 			RefundMethod:       payload.RefundMethod,
+			RefundMethodLabel:  payload.RefundMethodLabel,
 			Reason:             payload.Reason,
 			IsPosTicket:        false, // C'est une facture B2B
 		}

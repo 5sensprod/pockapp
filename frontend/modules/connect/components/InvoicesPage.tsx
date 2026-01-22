@@ -56,6 +56,7 @@ import {
 	useRecordPayment,
 	useValidateInvoice,
 } from '@/lib/queries/invoices'
+import { usePaymentMethods } from '@/lib/queries/payment-methods'
 import type { InvoiceResponse, InvoiceStatus } from '@/lib/types/invoice.types'
 import {
 	canMarkAsPaid,
@@ -151,6 +152,8 @@ type DocumentTypeFilter = 'all' | 'tik' | 'fac'
 export function InvoicesPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
+	const { paymentMethods } = usePaymentMethods(activeCompanyId)
+	const enabledMethods = paymentMethods?.filter((m) => m.enabled) || []
 	const pb = usePocketBase() as any
 
 	// États filtres
@@ -175,7 +178,8 @@ export function InvoicesPage() {
 
 	const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
 	const [invoiceToPay, setInvoiceToPay] = useState<InvoiceResponse | null>(null)
-	const [paymentMethod, setPaymentMethod] = useState<string>('')
+	const [, setPaymentMethod] = useState('virement')
+	const [selectedMethodId, setSelectedMethodId] = useState<string>('')
 
 	const [closureConfirmOpen, setClosureConfirmOpen] = useState(false)
 
@@ -393,22 +397,35 @@ export function InvoicesPage() {
 	}
 
 	const handleRecordPayment = async () => {
-		if (!invoiceToPay) return
+		if (!invoiceToPay || !selectedMethodId) return
 
-		try {
-			await recordPayment.mutateAsync({
-				invoiceId: invoiceToPay.id,
-				paymentMethod: (paymentMethod as any) || undefined,
-			})
-			toast.success(`Paiement enregistré pour ${invoiceToPay.number}`)
-			setPaymentDialogOpen(false)
-			setInvoiceToPay(null)
-			await refetchInvoices()
-		} catch (error: any) {
-			toast.error(
-				error.message || "Erreur lors de l'enregistrement du paiement",
-			)
+		const method = enabledMethods.find((m) => m.id === selectedMethodId)
+		if (!method) return
+
+		const mapping: Record<string, string> = {
+			card: 'cb',
+			cash: 'especes',
+			check: 'cheque',
+			transfer: 'virement',
 		}
+
+		const code =
+			method.type === 'default' ? mapping[method.code] || method.code : 'autre'
+
+		const label = method.type === 'custom' ? method.name : undefined
+		console.log('🔍 Envoi paiement:', {
+			invoiceId: invoiceToPay.id,
+			code,
+			label,
+		})
+		await recordPayment.mutateAsync({
+			invoiceId: invoiceToPay.id,
+			paymentMethod: code,
+			paymentMethodLabel: label,
+		})
+
+		setPaymentDialogOpen(false)
+		setSelectedMethodId('') // Reset
 	}
 
 	const handleOpenCancelDialog = (invoice: InvoiceResponse) => {
@@ -1384,16 +1401,19 @@ export function InvoicesPage() {
 					<div className='space-y-4 py-4'>
 						<div className='space-y-2'>
 							<Label htmlFor='payment-method'>Méthode de paiement</Label>
-							<Select value={paymentMethod} onValueChange={setPaymentMethod}>
+							<Select
+								value={selectedMethodId}
+								onValueChange={setSelectedMethodId}
+							>
 								<SelectTrigger>
-									<SelectValue placeholder='Sélectionner.' />
+									<SelectValue placeholder='Sélectionner' />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value='virement'>Virement</SelectItem>
-									<SelectItem value='cb'>Carte bancaire</SelectItem>
-									<SelectItem value='especes'>Espèces</SelectItem>
-									<SelectItem value='cheque'>Chèque</SelectItem>
-									<SelectItem value='autre'>Autre</SelectItem>
+									{enabledMethods.map((method) => (
+										<SelectItem key={method.id} value={method.id}>
+											{method.name}
+										</SelectItem>
+									))}
 								</SelectContent>
 							</Select>
 						</div>

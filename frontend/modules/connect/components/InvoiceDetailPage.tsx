@@ -159,6 +159,26 @@ function getSoldByLabel(invoice: any): string {
 	)
 }
 
+function getPaymentMethodLabel(invoice: any): string {
+	const label = (invoice?.payment_method_label || '').trim()
+	if (label) return label
+
+	switch (invoice?.payment_method) {
+		case 'especes':
+			return 'Espèces'
+		case 'cb':
+			return 'Carte bancaire'
+		case 'cheque':
+			return 'Chèque'
+		case 'virement':
+			return 'Virement'
+		case 'autre':
+			return 'Autre'
+		default:
+			return invoice?.payment_method || '-'
+	}
+}
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -391,16 +411,14 @@ export function InvoiceDetailPage() {
 			)
 		}
 
-		// Pour les factures/tickets normaux
+		const statusLabel = displayStatus.label
+		const showStatusBadge = statusLabel && statusLabel !== 'Payée'
+
 		return (
 			<>
-				<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
-				{invoice.is_paid ? (
-					<Badge className='bg-emerald-600 hover:bg-emerald-600'>
-						<CheckCircle className='h-3 w-3 mr-1' />
-						Payée
-					</Badge>
-				) : displayStatus.isPaid ? (
+				{showStatusBadge && <Badge variant={badgeVariant}>{statusLabel}</Badge>}
+
+				{invoice.is_paid || displayStatus.isPaid ? (
 					<Badge className='bg-emerald-600 hover:bg-emerald-600'>
 						<CheckCircle className='h-3 w-3 mr-1' />
 						Payée
@@ -494,10 +512,12 @@ export function InvoiceDetailPage() {
 							<p className='text-sm'>{formatDate(invoice.date)}</p>
 						</div>
 
-						<div>
-							<p className='text-sm text-muted-foreground'>Échéance</p>
-							<p className='text-sm'>{formatDate(invoice.due_date)}</p>
-						</div>
+						{invoice.due_date && (
+							<div>
+								<p className='text-sm text-muted-foreground'>Échéance</p>
+								<p className='text-sm'>{formatDate(invoice.due_date)}</p>
+							</div>
+						)}
 
 						{/* ✅ AJOUT: vendeur/caissier */}
 						{!isCreditNote && (
@@ -506,6 +526,25 @@ export function InvoiceDetailPage() {
 									{invoice.is_pos_ticket ? 'Vendeur / Caissier' : 'Vendeur'}
 								</p>
 								<p className='text-sm font-medium'>{soldByLabel}</p>
+							</div>
+						)}
+
+						{!isCreditNote && invoice.is_paid && (
+							<div>
+								<p className='text-sm text-muted-foreground'>
+									Moyen de paiement
+								</p>
+								<p className='text-sm font-medium'>
+									{getPaymentMethodLabel(invoice as any)}
+								</p>
+							</div>
+						)}
+						{!isCreditNote && invoice.is_paid && (
+							<div>
+								<p className='text-sm text-muted-foreground'>Payée le</p>
+								<p className='text-sm'>
+									{formatDate((invoice as any).paid_at)}
+								</p>
 							</div>
 						)}
 

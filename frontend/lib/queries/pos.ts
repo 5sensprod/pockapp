@@ -1,6 +1,6 @@
 // frontend/lib/queries/pos.ts
 // 🎫 Queries React Query pour les routes POS centralisées
-// Utilise la nouvelle route backend POST /api/pos/ticket
+// ✅ CORRIGÉ : Ajout de payment_method_label
 
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -26,6 +26,7 @@ export interface PosTicketInput {
 	customer_id?: string
 	items: PosItemInput[]
 	payment_method: 'especes' | 'cb' | 'cheque' | 'virement' | 'autre'
+	payment_method_label?: string // 🆕 AJOUTÉ pour les moyens customs
 	amount_paid?: number // Pour espèces uniquement
 	cart_discount_mode?: 'percent' | 'amount'
 	cart_discount_value?: number

@@ -214,7 +214,9 @@ export function useScanner(onScan?: ScanCallback) {
 
 	useEffect(() => {
 		scannerClient.connect()
-		return () => {}
+		return () => {
+			scannerClient.disconnect() // ✅ CLEANUP
+		}
 	}, [])
 
 	useEffect(() => {

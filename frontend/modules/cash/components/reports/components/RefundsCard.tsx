@@ -9,6 +9,7 @@ interface RefundsCardProps {
 	creditNotesCount: number
 	totalTTC: number
 	byMethod?: Record<string, number>
+	byMethodLabels?: Record<string, string>
 }
 
 /**
@@ -18,6 +19,7 @@ export function RefundsCard({
 	creditNotesCount,
 	totalTTC,
 	byMethod,
+	byMethodLabels,
 }: RefundsCardProps) {
 	return (
 		<Card>
@@ -38,6 +40,7 @@ export function RefundsCard({
 						<Separator />
 						<PaymentMethodBreakdown
 							byMethod={byMethod}
+							byMethodLabels={byMethodLabels} // 🆕 AJOUTER
 							label='Répartition par mode de remboursement'
 							colorClass='font-medium text-red-600'
 						/>

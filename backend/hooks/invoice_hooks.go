@@ -33,6 +33,7 @@ var allowedInvoiceUpdates = map[string]bool{
 	"is_paid":              true,
 	"paid_at":              true,
 	"payment_method":       true,
+	"payment_method_label": true,
 	"is_locked":            true,
 	"closure_id":           true,
 	"converted_to_invoice": true,

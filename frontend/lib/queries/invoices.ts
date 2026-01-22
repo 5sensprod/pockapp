@@ -9,7 +9,7 @@ import type {
 	InvoiceItem as InvoiceItemType,
 	InvoiceResponse,
 	InvoicesListOptions,
-	PaymentMethod,
+	// PaymentMethod,
 } from '@/lib/types/invoice.types'
 import {
 	ALLOWED_STATUS_TRANSITIONS,
@@ -546,26 +546,24 @@ export function useRecordPayment() {
 		mutationFn: async ({
 			invoiceId,
 			paymentMethod,
+			paymentMethodLabel,
 			paidAt,
 		}: {
 			invoiceId: string
-			paymentMethod?: PaymentMethod
+			paymentMethod?: string
+			paymentMethodLabel?: string
 			paidAt?: string
 		}) => {
-			// 1) Charger la facture
 			const existing = (await pb
 				.collection('invoices')
 				.getOne(invoiceId)) as unknown as InvoiceResponse
 
-			// 2) Règles métier "classiques"
 			if (!canMarkAsPaid(existing)) {
-				if (existing.is_paid) {
+				if (existing.is_paid)
 					throw new Error('Cette facture est déjà marquée comme payée.')
-				}
 				if (existing.status === 'draft') {
 					throw new Error(
-						'Impossible de marquer un brouillon comme payé. ' +
-							"Validez d'abord la facture.",
+						"Impossible de marquer un brouillon comme payé. Validez d'abord la facture.",
 					)
 				}
 				if (existing.invoice_type === 'credit_note') {
@@ -573,25 +571,43 @@ export function useRecordPayment() {
 				}
 			}
 
-			// 3) 🔒 Nouveau : interdire le paiement si un avoir d'annulation existe
 			const creditNotes = await pb.collection('invoices').getList(1, 1, {
 				filter: `invoice_type = "credit_note" && original_invoice_id = "${invoiceId}"`,
 			})
-
 			if (creditNotes.items.length > 0) {
 				throw new Error(
 					"Impossible d'enregistrer un paiement: la facture a été annulée par un avoir.",
 				)
 			}
 
-			// 4) Enregistrer le paiement
-			const result = await pb.collection('invoices').update(invoiceId, {
+			const updateData: Record<string, any> = {
 				is_paid: true,
-				payment_method: paymentMethod,
 				paid_at: paidAt || new Date().toISOString(),
-			})
+			}
 
-			return result as unknown as InvoiceResponse
+			if (paymentMethod) updateData.payment_method = paymentMethod
+
+			if (paymentMethod === 'autre') {
+				updateData.payment_method_label = paymentMethodLabel || ''
+			} else {
+				updateData.payment_method_label = ''
+			}
+			try {
+				console.log('UPDATE invoices payload:', updateData)
+
+				const result = await pb
+					.collection('invoices')
+					.update(invoiceId, updateData)
+
+				return result as unknown as InvoiceResponse
+			} catch (e: any) {
+				console.log('PB ERROR status:', e?.status)
+				console.log('PB ERROR message:', e?.message)
+				console.log('PB ERROR raw data:', e?.data)
+				console.log('PB ERROR field data:', e?.data?.data)
+				console.log('PB ERROR json:', JSON.stringify(e?.data, null, 2))
+				throw e
+			}
 		},
 		onSuccess: (_, { invoiceId }) => {
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })

@@ -113,11 +113,13 @@ export interface RapportX {
 		by_method: Record<string, number>
 		vat_by_rate: Record<string, any>
 		net_by_method?: Record<string, number>
+		by_method_labels?: Record<string, string>
 	}
 	refunds: {
 		credit_notes_count: number
 		total_ttc: number
 		by_method: Record<string, number>
+		by_method_labels?: Record<string, string>
 	}
 	movements: {
 		cash_in: number

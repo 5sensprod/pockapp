@@ -89,6 +89,7 @@ export function RapportXDialog({
 								totalTTC={rapport.sales.total_ttc}
 								byMethod={rapport.sales.by_method}
 								netByMethod={rapport.sales.net_by_method}
+								byMethodLabels={rapport.sales.by_method_labels} // 🆕
 							/>
 						</div>
 
@@ -101,6 +102,7 @@ export function RapportXDialog({
 								creditNotesCount={rapport.refunds?.credit_notes_count ?? 0}
 								totalTTC={rapport.refunds?.total_ttc ?? 0}
 								byMethod={rapport.refunds?.by_method}
+								byMethodLabels={rapport.refunds?.by_method_labels} // 🆕
 							/>
 						</div>
 
