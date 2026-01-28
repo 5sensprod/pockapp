@@ -41,6 +41,9 @@ export function CustomersPage() {
 					: c.tags
 						? [String(c.tags)]
 						: [],
+				// Nouveaux champs
+				customer_type: (c as any).customer_type || 'individual',
+				payment_terms: (c as any).payment_terms,
 			})),
 		[rawCustomers],
 	)

@@ -1,6 +1,7 @@
 // frontend/modules/connect/components/InvoicePdf.tsx
 // ✅ VERSION CORRIGÉE - Support TVA multi-taux avec vat_breakdown stocké
 // ✅ Titre dynamique selon le type de document (FACTURE/AVOIR/TICKET)
+// ✅ Utilise payment_terms du client en priorité
 
 import type {
 	CompaniesResponse,
@@ -230,6 +231,24 @@ interface VatBreakdown {
 	total_ttc: number
 }
 
+// ✅ Helper pour convertir payment_terms en jours
+const getPaymentTermsDays = (
+	paymentTerms?: string,
+): number | 'immediate' | null => {
+	switch (paymentTerms) {
+		case 'immediate':
+			return 'immediate'
+		case '30_days':
+			return 30
+		case '45_days':
+			return 45
+		case '60_days':
+			return 60
+		default:
+			return null
+	}
+}
+
 export function InvoicePdfDocument({
 	invoice,
 	customer,
@@ -302,49 +321,73 @@ export function InvoicePdfDocument({
 	const cartDiscountTtc = (invoice as any)?.cart_discount_ttc || 0
 	const cartDiscountMode = (invoice as any)?.cart_discount_mode || 'percent'
 	const cartDiscountValue = (invoice as any)?.cart_discount_value || 0
-	const lineDiscountsTotalTtc = (invoice as any)?.line_discounts_total_ttc || 0
 
+	const lineDiscountsTotalTtc = (invoice as any)?.line_discounts_total_ttc || 0
+	const hasDiscounts = cartDiscountTtc > 0 || lineDiscountsTotalTtc > 0
 	const subTotalBeforeDiscounts =
 		invoice.total_ttc + cartDiscountTtc + lineDiscountsTotalTtc
 
-	const hasDiscounts = cartDiscountTtc > 0 || lineDiscountsTotalTtc > 0
+	// ✅ Calculer les délais de paiement
+	// PRIORITÉ 1: payment_terms du client
+	// PRIORITÉ 2: default_payment_terms_days de la company
+	const customerPaymentTerms = (customer as any)?.payment_terms
+	const customerPaymentDays = getPaymentTermsDays(customerPaymentTerms)
 
-	// ✅ Utiliser la ventilation stockée, ou recalculer en fallback
-	const getVatBreakdown = (): VatBreakdown[] => {
-		// 1. Si la ventilation est stockée en base, l'utiliser directement
-		const storedBreakdown = (invoice as any).vat_breakdown as
-			| VatBreakdown[]
-			| undefined
-		if (
-			storedBreakdown &&
-			Array.isArray(storedBreakdown) &&
-			storedBreakdown.length > 0
-		) {
-			return storedBreakdown.sort((a, b) => a.rate - b.rate)
+	const paymentTermsText = (() => {
+		// 1. Utiliser payment_terms du client si disponible
+		if (customerPaymentDays === 'immediate') {
+			return 'Paiement immédiat.'
+		}
+		if (typeof customerPaymentDays === 'number') {
+			return `Paiement à ${customerPaymentDays} jours.`
 		}
 
-		// 2. Fallback : recalculer depuis les items
-		const vatBreakdownMap = new Map<number, VatBreakdown>()
+		// 2. Fallback sur company.default_payment_terms_days
+		if (company?.default_payment_terms_days) {
+			return `Paiement à ${company.default_payment_terms_days} jours.`
+		}
+
+		// 3. Aucun délai défini
+		return null
+	})()
+
+	const getVatBreakdown = (): VatBreakdown[] => {
+		const storedBreakdown = (invoice as any)?.vat_breakdown
+
+		if (Array.isArray(storedBreakdown) && storedBreakdown.length > 0) {
+			return storedBreakdown
+				.map((entry: any) => ({
+					rate: entry.rate || 0,
+					base_ht: entry.base_ht || 0,
+					vat: entry.vat || 0,
+					total_ttc: entry.total_ttc || 0,
+				}))
+				.sort((a: VatBreakdown, b: VatBreakdown) => a.rate - b.rate)
+		}
+
+		const vatBreakdownMap = new Map<
+			number,
+			{ rate: number; base_ht: number; vat: number; total_ttc: number }
+		>()
 
 		for (const item of invoice.items) {
-			const rate = item.tva_rate
-			const ht = item.total_ht
-			const vat = item.total_ttc - item.total_ht
-			const ttc = item.total_ttc
+			const rate = item.tva_rate || 0
 
+			// ✅ Récupérer ou créer l'entrée de manière sûre
 			let entry = vatBreakdownMap.get(rate)
-
 			if (!entry) {
-				entry = {
-					rate,
-					base_ht: 0,
-					vat: 0,
-					total_ttc: 0,
-				}
+				entry = { rate, base_ht: 0, vat: 0, total_ttc: 0 }
 				vatBreakdownMap.set(rate, entry)
 			}
 
-			entry.base_ht += ht
+			const lineTotal = item.quantity * item.unit_price_ht
+			const lineDiscount = (item as any).line_discount_amount_ht || 0
+			const baseHt = lineTotal - lineDiscount
+
+			const vat = (baseHt * rate) / 100
+			const ttc = baseHt + vat
+
+			entry.base_ht += baseHt
 			entry.vat += vat
 			entry.total_ttc += ttc
 		}
@@ -636,13 +679,10 @@ export function InvoicePdfDocument({
 					</View>
 				)}
 
-				{(company?.invoice_footer || company?.default_payment_terms_days) && (
+				{/* ✅ FOOTER LÉGAL - Utilise payment_terms du client en priorité */}
+				{(company?.invoice_footer || paymentTermsText) && (
 					<View style={styles.footerLegal}>
-						{company?.default_payment_terms_days && (
-							<Text>
-								Paiement à {company.default_payment_terms_days} jours.
-							</Text>
-						)}
+						{paymentTermsText && <Text>{paymentTermsText}</Text>}
 						{company?.invoice_footer && <Text>{company.invoice_footer}</Text>}
 					</View>
 				)}

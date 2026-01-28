@@ -44,12 +44,16 @@ import {
 } from '@tanstack/react-table'
 import {
 	ArrowUpDown,
+	Building2,
 	Eye,
+	Landmark,
 	Mail,
 	MoreHorizontal,
 	Pencil,
 	Phone,
 	Trash2,
+	User,
+	Users,
 } from 'lucide-react'
 import type { Customer } from './CustomerDialog'
 
@@ -58,8 +62,37 @@ interface CustomerTableProps {
 	onEditCustomer: (customer: Customer) => void
 }
 
+// Helper pour afficher le type de client
+const getCustomerTypeLabel = (type?: string) => {
+	switch (type) {
+		case 'individual':
+			return 'Particulier'
+		case 'professional':
+			return 'Professionnel'
+		case 'administration':
+			return 'Administration'
+		case 'association':
+			return 'Association'
+		default:
+			return 'Particulier'
+	}
+}
+
+const getCustomerTypeIcon = (type?: string) => {
+	switch (type) {
+		case 'professional':
+			return <Building2 className='h-3 w-3' />
+		case 'administration':
+			return <Landmark className='h-3 w-3' />
+		case 'association':
+			return <Users className='h-3 w-3' />
+		default:
+			return <User className='h-3 w-3' />
+	}
+}
+
 export function CustomerTable({ data, onEditCustomer }: CustomerTableProps) {
-	const navigate = useNavigate() // ← obligatoire
+	const navigate = useNavigate()
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 	const [pagination, setPagination] = useState<PaginationState>({
@@ -109,13 +142,38 @@ export function CustomerTable({ data, onEditCustomer }: CustomerTableProps) {
 			cell: ({ row }) => {
 				const name = row.getValue<string>('name')
 				const company = row.original.company
+				const customerType = row.original.customer_type
 				return (
 					<div>
-						<div className='font-medium'>{name}</div>
+						<div className='font-medium flex items-center gap-2'>
+							{getCustomerTypeIcon(customerType)}
+							{name}
+						</div>
 						{company && (
 							<div className='text-sm text-muted-foreground'>{company}</div>
 						)}
 					</div>
+				)
+			},
+		},
+		{
+			accessorKey: 'customer_type',
+			header: 'Type',
+			cell: ({ row }) => {
+				const type = row.getValue<string | undefined>('customer_type')
+				const typeColors: Record<string, string> = {
+					individual: 'bg-blue-100 text-blue-800',
+					professional: 'bg-purple-100 text-purple-800',
+					administration: 'bg-green-100 text-green-800',
+					association: 'bg-orange-100 text-orange-800',
+				}
+				return (
+					<Badge
+						variant='secondary'
+						className={typeColors[type || 'individual'] || ''}
+					>
+						{getCustomerTypeLabel(type)}
+					</Badge>
 				)
 			},
 		},

@@ -48,6 +48,11 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		AddPaymentMethodLabelToInvoices, // Ajoute payment_method_label sur invoices
 
 		EnsureAllCompaniesHavePaymentMethods,
+
+		// 🆕 Type de client et délais de paiement
+		AddCustomerTypeToCustomers, // Ajoute customer_type (individual, professional, administration, association)
+		AddPaymentTermsToCustomers, // Ajoute payment_terms (immediate, 30_days, 45_days, 60_days)
+		BackfillCustomerType,       // Remplit "individual" par défaut pour les clients existants
 	}
 
 	for _, migrate := range migrations {

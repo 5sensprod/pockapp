@@ -12,6 +12,12 @@ export interface CustomerDto {
 	address?: string
 	notes?: string
 	tags?: string
+	customer_type?:
+		| 'individual'
+		| 'professional'
+		| 'administration'
+		| 'association'
+	payment_terms?: 'immediate' | '30_days' | '45_days' | '60_days'
 	owner_company: string | string[]
 }
 

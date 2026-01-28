@@ -20,14 +20,17 @@ import type { InvoiceResponse, QuoteResponse } from '@/lib/types/invoice.types'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	ArrowLeft,
+	Building2,
 	CheckCircle,
 	Clock,
 	FileText,
+	Landmark,
 	Mail,
 	Phone,
 	Plus,
 	Receipt,
 	User,
+	Users,
 	XCircle,
 } from 'lucide-react'
 
@@ -50,6 +53,47 @@ const formatCurrency = (amount?: number) => {
 		style: 'currency',
 		currency: 'EUR',
 	}).format(amount)
+}
+
+// Helper pour afficher le type de client
+const getCustomerTypeDisplay = (type?: string) => {
+	const typeMap: Record<
+		string,
+		{ label: string; className: string; icon: any }
+	> = {
+		individual: {
+			label: 'Particulier',
+			className: 'bg-blue-100 text-blue-800',
+			icon: User,
+		},
+		professional: {
+			label: 'Professionnel',
+			className: 'bg-purple-100 text-purple-800',
+			icon: Building2,
+		},
+		administration: {
+			label: 'Administration',
+			className: 'bg-green-100 text-green-800',
+			icon: Landmark,
+		},
+		association: {
+			label: 'Association',
+			className: 'bg-orange-100 text-orange-800',
+			icon: Users,
+		},
+	}
+	return typeMap[type || 'individual'] || typeMap.individual
+}
+
+// Helper pour les délais de paiement
+const getPaymentTermsLabel = (terms?: string) => {
+	const termsMap: Record<string, string> = {
+		immediate: 'Immédiat',
+		'30_days': '30 jours',
+		'45_days': '45 jours',
+		'60_days': '60 jours',
+	}
+	return termsMap[terms || 'immediate'] || 'Immédiat'
 }
 
 // Statuts factures
@@ -128,6 +172,14 @@ export function CustomerDetailPage() {
 		acceptedQuotes: quotes.filter((q) => q.status === 'accepted').length,
 	}
 
+	// Type de client
+	const customerType = (customer as any)?.customer_type || 'individual'
+	const typeDisplay = getCustomerTypeDisplay(customerType)
+	const TypeIcon = typeDisplay.icon
+
+	const paymentTerms = (customer as any)?.payment_terms
+	const isIndividual = customerType === 'individual'
+
 	if (isLoadingCustomer) {
 		return (
 			<div className='container mx-auto px-6 py-8'>
@@ -165,7 +217,7 @@ export function CustomerDetailPage() {
 				</Button>
 				<div className='flex-1'>
 					<h1 className='text-2xl font-bold flex items-center gap-2'>
-						<User className='h-6 w-6' />
+						<TypeIcon className='h-6 w-6' />
 						{customer.name}
 					</h1>
 					<p className='text-muted-foreground'>Fiche détaillée du client</p>
@@ -235,6 +287,15 @@ export function CustomerDetailPage() {
 							<CardTitle>Informations</CardTitle>
 						</CardHeader>
 						<CardContent className='space-y-4'>
+							{/* Type de client */}
+							<div className='space-y-1'>
+								<p className='text-sm text-muted-foreground'>Type de client</p>
+								<Badge variant='secondary' className={typeDisplay.className}>
+									<TypeIcon className='h-3 w-3 mr-1' />
+									{typeDisplay.label}
+								</Badge>
+							</div>
+
 							<div className='space-y-1'>
 								<p className='text-sm text-muted-foreground'>Nom</p>
 								<p className='font-medium'>{customer.name}</p>
@@ -260,7 +321,7 @@ export function CustomerDetailPage() {
 									{customer.phone ? (
 										<a
 											href={`tel:${customer.phone}`}
-											className='flex items-center gap-2 hover:underline'
+											className='flex items-center gap-2 text-blue-600 hover:underline'
 										>
 											<Phone className='h-4 w-4' />
 											{customer.phone}
@@ -271,9 +332,60 @@ export function CustomerDetailPage() {
 								</div>
 							</div>
 
+							{/* Entreprise - masqué pour particuliers */}
+							{!isIndividual && (
+								<div className='space-y-1'>
+									<p className='text-sm text-muted-foreground'>
+										Entreprise / Organisation
+									</p>
+									<p className='font-medium'>{customer.company || '-'}</p>
+								</div>
+							)}
+
+							{/* Délai de paiement - uniquement pour pro/admin/association */}
+							{!isIndividual && (
+								<div className='space-y-1'>
+									<p className='text-sm text-muted-foreground'>
+										Délai de paiement
+									</p>
+									<Badge variant='outline'>
+										{getPaymentTermsLabel(paymentTerms)}
+									</Badge>
+								</div>
+							)}
+
+							{/* Tags */}
 							<div className='space-y-1'>
-								<p className='text-sm text-muted-foreground'>Entreprise</p>
-								<p className='font-medium'>{customer.company || '-'}</p>
+								<p className='text-sm text-muted-foreground'>Tags</p>
+								<div className='flex gap-1 flex-wrap'>
+									{(() => {
+										const rawTags = (customer as any).tags
+										const tags: string[] = Array.isArray(rawTags)
+											? rawTags
+											: rawTags
+												? [rawTags as string]
+												: []
+										const tagColors: Record<string, string> = {
+											vip: 'bg-yellow-100 text-yellow-800',
+											prospect: 'bg-blue-100 text-blue-800',
+											actif: 'bg-green-100 text-green-800',
+											inactif: 'bg-gray-100 text-gray-800',
+										}
+										return tags.length > 0 ? (
+											tags.map((tag) => (
+												<Badge
+													key={tag}
+													variant='secondary'
+													className={tagColors[tag] || ''}
+												>
+													{tag}
+												</Badge>
+											))
+										) : (
+											<span className='text-muted-foreground'>-</span>
+										)
+									})()}
+								</div>
 							</div>
 
 							<div className='space-y-1'>
@@ -293,7 +405,7 @@ export function CustomerDetailPage() {
 					</Card>
 				</TabsContent>
 
-				{/* Tab Factures */}
+				{/* Tab Factures - inchangé */}
 				<TabsContent value='invoices'>
 					<Card>
 						<CardHeader className='flex flex-row items-center justify-between'>
@@ -408,7 +520,7 @@ export function CustomerDetailPage() {
 					</Card>
 				</TabsContent>
 
-				{/* Tab Devis */}
+				{/* Tab Devis - inchangé */}
 				<TabsContent value='quotes'>
 					<Card>
 						<CardHeader className='flex flex-row items-center justify-between'>
@@ -460,7 +572,6 @@ export function CustomerDetailPage() {
 												quoteStatusConfig[quote.status] ||
 												quoteStatusConfig.draft
 
-											// Vérifier si le devis est expiré
 											const isExpired =
 												quote.valid_until &&
 												new Date(quote.valid_until) < new Date() &&

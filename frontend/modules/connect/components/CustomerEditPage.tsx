@@ -34,29 +34,50 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { ArrowLeft, User } from 'lucide-react'
 import { toast } from 'sonner'
 
-// ─────────────────────────────────────────────
-// Schéma de validation (même que CustomerDialog)
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────
+// Schéma de validation dynamique
+// ─────────────────────────────────────────────────
 
-const customerSchema = z.object({
-	name: z
-		.string()
-		.min(2, 'Le nom doit contenir au moins 2 caractères')
-		.max(100),
-	email: z.string().email('Email invalide').optional().or(z.literal('')),
-	phone: z.string().optional(),
-	company: z.string().optional(),
-	address: z.string().max(500, "L'adresse est trop longue").optional(),
-	notes: z.string().optional(),
-	// On garde un array dans le formulaire pour simplifier le Select
-	tags: z.array(z.string()).optional(),
-})
+const customerSchema = z
+	.object({
+		name: z
+			.string()
+			.min(2, 'Le nom doit contenir au moins 2 caractères')
+			.max(100),
+		email: z.string().email('Email invalide').optional().or(z.literal('')),
+		phone: z.string().optional(),
+		company: z.string().optional(),
+		address: z.string().max(500, "L'adresse est trop longue").optional(),
+		notes: z.string().optional(),
+		tags: z.array(z.string()).optional(),
+		customer_type: z
+			.enum(['individual', 'professional', 'administration', 'association'])
+			.optional(),
+		payment_terms: z
+			.enum(['immediate', '30_days', '45_days', '60_days'])
+			.optional(),
+	})
+	.superRefine((data, ctx) => {
+		// Adresse obligatoire pour pro/admin/association
+		const requiresAddress = [
+			'professional',
+			'administration',
+			'association',
+		].includes(data.customer_type || '')
+		if (requiresAddress && !data.address?.trim()) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "L'adresse est obligatoire pour ce type de client",
+				path: ['address'],
+			})
+		}
+	})
 
 type CustomerFormValues = z.infer<typeof customerSchema>
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────
 // Page d'édition de client
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────
 
 export function CustomerEditPage() {
 	const navigate = useNavigate()
@@ -77,10 +98,19 @@ export function CustomerEditPage() {
 			address: '',
 			notes: '',
 			tags: [],
+			customer_type: 'individual',
+			payment_terms: 'immediate',
 		},
 	})
 
 	const { reset } = form
+	const customerType = form.watch('customer_type')
+	const isIndividual = customerType === 'individual'
+	const requiresPaymentTerms = [
+		'professional',
+		'administration',
+		'association',
+	].includes(customerType || '')
 
 	// Quand les données arrivent, on pré-remplit le formulaire
 	useEffect(() => {
@@ -97,6 +127,8 @@ export function CustomerEditPage() {
 					: customer.tags
 						? [String(customer.tags)]
 						: [],
+				customer_type: (customer as any).customer_type || 'individual',
+				payment_terms: (customer as any).payment_terms || 'immediate',
 			})
 		}
 	}, [customer, reset])
@@ -110,6 +142,8 @@ export function CustomerEditPage() {
 			const payload: Partial<CustomerDto> = {
 				...data,
 				tags: singleTag,
+				// Ne pas envoyer payment_terms si particulier
+				payment_terms: isIndividual ? undefined : data.payment_terms,
 			}
 
 			await updateCustomer.mutateAsync({ id: customer.id, data: payload })
@@ -174,6 +208,41 @@ export function CustomerEditPage() {
 				<CardContent>
 					<Form {...form}>
 						<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+							{/* Type de client */}
+							<FormField
+								control={form.control}
+								name='customer_type'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Type de client *</FormLabel>
+										<Select
+											onValueChange={field.onChange}
+											value={field.value || 'individual'}
+										>
+											<FormControl>
+												<SelectTrigger>
+													<SelectValue placeholder='Sélectionner un type' />
+												</SelectTrigger>
+											</FormControl>
+											<SelectContent>
+												<SelectItem value='individual'>Particulier</SelectItem>
+												<SelectItem value='professional'>
+													Professionnel
+												</SelectItem>
+												<SelectItem value='administration'>
+													Administration
+												</SelectItem>
+												<SelectItem value='association'>Association</SelectItem>
+											</SelectContent>
+										</Select>
+										<FormDescription>
+											Détermine les mentions légales et la gestion du client.
+										</FormDescription>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
 							{/* Nom */}
 							<FormField
 								control={form.control}
@@ -224,28 +293,30 @@ export function CustomerEditPage() {
 								/>
 							</div>
 
-							{/* Entreprise */}
-							<FormField
-								control={form.control}
-								name='company'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Entreprise</FormLabel>
-										<FormControl>
-											<Input placeholder="Nom de l'entreprise" {...field} />
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
+							{/* Entreprise - masqué pour les particuliers */}
+							{!isIndividual && (
+								<FormField
+									control={form.control}
+									name='company'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Entreprise / Organisation</FormLabel>
+											<FormControl>
+												<Input placeholder="Nom de l'entreprise" {...field} />
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							)}
 
-							{/* Adresse */}
+							{/* Adresse - obligatoire pour pro/admin/association */}
 							<FormField
 								control={form.control}
 								name='address'
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Adresse</FormLabel>
+										<FormLabel>Adresse {!isIndividual && '*'}</FormLabel>
 										<FormControl>
 											<Textarea
 												placeholder='123 rue de la Paix, 75001 Paris'
@@ -253,10 +324,49 @@ export function CustomerEditPage() {
 												{...field}
 											/>
 										</FormControl>
+										{!isIndividual && (
+											<FormDescription>
+												Obligatoire pour les professionnels, administrations et
+												associations
+											</FormDescription>
+										)}
 										<FormMessage />
 									</FormItem>
 								)}
 							/>
+
+							{/* Délai de paiement - uniquement pour pro/admin/association */}
+							{requiresPaymentTerms && (
+								<FormField
+									control={form.control}
+									name='payment_terms'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Délai de paiement</FormLabel>
+											<Select
+												onValueChange={field.onChange}
+												value={field.value || 'immediate'}
+											>
+												<FormControl>
+													<SelectTrigger>
+														<SelectValue placeholder='Sélectionner un délai' />
+													</SelectTrigger>
+												</FormControl>
+												<SelectContent>
+													<SelectItem value='immediate'>Immédiat</SelectItem>
+													<SelectItem value='30_days'>30 jours</SelectItem>
+													<SelectItem value='45_days'>45 jours</SelectItem>
+													<SelectItem value='60_days'>60 jours</SelectItem>
+												</SelectContent>
+											</Select>
+											<FormDescription>
+												Délai de paiement accordé à ce client
+											</FormDescription>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							)}
 
 							{/* Statut / tags */}
 							<FormField
