@@ -157,6 +157,7 @@ export interface QuoteBase {
 	total_tva: number
 	total_ttc: number
 	currency: string
+	seller_name?: string
 	notes?: string
 
 	// ✅ NOUVEAU : Champs ajoutés pour correspondre à la logique Invoice

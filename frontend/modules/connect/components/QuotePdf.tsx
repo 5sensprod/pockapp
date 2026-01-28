@@ -1,5 +1,7 @@
 // frontend/modules/connect/components/QuotePdf.tsx
 // ✅ VERSION HARMONISÉE - Support TVA multi-taux avec vat_breakdown stocké
+// ✅ VERSION OPTIMISÉE - Marges réduites, sans titres de section, cases signature réduites
+// ✅ AJOUT REMISES - Affichage des remises comme dans InvoicePdf.tsx
 
 import type { QuoteResponse } from '@/lib/types/invoice.types'
 import {
@@ -58,21 +60,21 @@ interface VatBreakdown {
 	total_ttc: number
 }
 
-// Styles PDF
+// Styles PDF - VERSION OPTIMISÉE
 const styles = StyleSheet.create({
 	page: {
-		padding: 36,
-		fontSize: 11,
+		padding: 20, // Réduit de 36 à 20
+		fontSize: 10, // Réduit de 11 à 10
 		fontFamily: 'Helvetica',
-		lineHeight: 1.4,
+		lineHeight: 1.3, // Réduit de 1.4 à 1.3
 	},
 
 	// HEADER
 	header: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
-		marginBottom: 24,
-		paddingBottom: 12,
+		marginBottom: 12, // Réduit de 24 à 12
+		paddingBottom: 8, // Réduit de 12 à 8
 		borderBottomWidth: 1,
 		borderBottomColor: '#ddd',
 		borderBottomStyle: 'solid',
@@ -81,66 +83,61 @@ const styles = StyleSheet.create({
 		maxWidth: '60%',
 	},
 	logo: {
-		width: 80,
-		height: 80,
-		marginBottom: 8,
+		width: 60, // Réduit de 80 à 60
+		height: 60, // Réduit de 80 à 60
+		marginBottom: 4, // Réduit de 8 à 4
 		objectFit: 'contain',
 	},
 	companyName: {
-		fontSize: 18,
+		fontSize: 16, // Réduit de 18 à 16
 		fontWeight: 'bold',
-		marginBottom: 4,
+		marginBottom: 2, // Réduit de 4 à 2
 	},
 	companyLine: {
-		fontSize: 10,
+		fontSize: 9, // Réduit de 10 à 9
 		color: '#444',
 	},
 	quoteInfo: {
 		alignItems: 'flex-end',
 	},
 	quoteTitle: {
-		fontSize: 20,
+		fontSize: 18, // Réduit de 20 à 18
 		fontWeight: 'bold',
-		marginBottom: 6,
+		marginBottom: 4, // Réduit de 6 à 4
 		color: '#2563eb',
 	},
 	quoteInfoLine: {
-		fontSize: 11,
+		fontSize: 10, // Réduit de 11 à 10
 	},
 	validityBadge: {
-		marginTop: 8,
-		padding: 6,
+		marginTop: 4, // Réduit de 8 à 4
+		padding: 4, // Réduit de 6 à 4
 		backgroundColor: '#dbeafe',
 		borderRadius: 4,
 	},
 	validityText: {
-		fontSize: 10,
+		fontSize: 9, // Réduit de 10 à 9
 		color: '#1e40af',
 		textAlign: 'center',
 	},
 
-	// SECTIONS
-	sectionTitle: {
-		fontSize: 12,
-		fontWeight: 'bold',
-		marginBottom: 6,
-		marginTop: 18,
-	},
+	// SECTIONS - Sans titre
 	sectionBox: {
 		borderWidth: 0.5,
 		borderColor: '#ddd',
 		borderStyle: 'solid',
 		borderRadius: 4,
-		padding: 8,
+		padding: 6, // Réduit de 8 à 6
+		marginBottom: 8, // Réduit pour économiser de l'espace
 	},
 
 	// CLIENT
 	customerBlock: {
-		marginBottom: 4,
-		fontSize: 11,
+		marginBottom: 2, // Réduit de 4 à 2
+		fontSize: 10, // Réduit de 11 à 10
 	},
 	customerLine: {
-		fontSize: 11,
+		fontSize: 10, // Réduit de 11 à 10
 	},
 
 	// TABLE
@@ -149,17 +146,17 @@ const styles = StyleSheet.create({
 		borderBottomWidth: 1,
 		borderBottomColor: '#ccc',
 		borderBottomStyle: 'solid',
-		paddingVertical: 4,
-		marginTop: 10,
+		paddingVertical: 3, // Réduit de 4 à 3
+		marginTop: 6, // Réduit de 10 à 6
 		backgroundColor: '#f3f3f3',
 	},
 	tableHeaderText: {
-		fontSize: 10,
+		fontSize: 9, // Réduit de 10 à 9
 		fontWeight: 'bold',
 	},
 	tableRow: {
 		flexDirection: 'row',
-		paddingVertical: 4,
+		paddingVertical: 3, // Réduit de 4 à 3
 		borderBottomWidth: 0.5,
 		borderBottomColor: '#eee',
 		borderBottomStyle: 'solid',
@@ -178,6 +175,11 @@ const styles = StyleSheet.create({
 		flex: 1.1,
 		textAlign: 'right',
 	},
+	// ✅ AJOUT: Colonne remise
+	colDiscount: {
+		flex: 0.9,
+		textAlign: 'right',
+	},
 	colTva: {
 		flex: 0.8,
 		textAlign: 'right',
@@ -189,10 +191,10 @@ const styles = StyleSheet.create({
 
 	// TOTALS
 	totalsBlock: {
-		marginTop: 14,
+		marginTop: 8, // Réduit de 14 à 8
 		marginLeft: 'auto',
 		width: 230,
-		padding: 8,
+		padding: 6, // Réduit de 8 à 6
 		borderWidth: 0.8,
 		borderColor: '#ccc',
 		borderStyle: 'solid',
@@ -201,99 +203,92 @@ const styles = StyleSheet.create({
 	totalsRow: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
-		marginBottom: 3,
+		marginBottom: 2, // Réduit de 3 à 2
 	},
 	totalsLabel: {
-		fontSize: 11,
+		fontSize: 10, // Réduit de 11 à 10
 	},
 	totalsValue: {
-		fontSize: 11,
+		fontSize: 10, // Réduit de 11 à 10
 	},
 	totalsGrand: {
-		marginTop: 4,
-		paddingTop: 6,
+		marginTop: 3, // Réduit de 4 à 3
+		paddingTop: 4, // Réduit de 6 à 4
 		borderTopWidth: 1,
 		borderTopColor: '#000',
 		borderTopStyle: 'solid',
 	},
 	totalsGrandText: {
-		fontSize: 13,
+		fontSize: 12, // Réduit de 13 à 12
 		fontWeight: 'bold',
+	},
+	// ✅ AJOUT: Style pour les remises
+	totalsDiscount: {
+		fontSize: 10,
+		fontStyle: 'italic',
+		color: '#16a34a',
 	},
 	// ✅ Styles pour la ventilation TVA
 	totalsTvaBreakdown: {
-		fontSize: 10,
+		fontSize: 9, // Réduit de 10 à 9
 		color: '#555',
 		fontStyle: 'italic',
 		paddingLeft: 8,
 	},
 	totalsTvaSection: {
 		marginTop: 2,
-		paddingTop: 4,
+		paddingTop: 3, // Réduit de 4 à 3
 		borderTopWidth: 0.5,
 		borderTopColor: '#ddd',
 		borderTopStyle: 'solid',
 	},
 
-	// NOTES & FOOTER
+	// NOTES
 	notes: {
-		marginTop: 18,
-		fontSize: 10,
+		marginTop: 10, // Réduit de 18 à 10
+		fontSize: 9, // Réduit de 10 à 9
 		color: '#555',
 	},
 	footerLegal: {
-		marginTop: 20,
-		fontSize: 9,
+		marginTop: 10, // Réduit de 20 à 10
+		fontSize: 8, // Réduit de 9 à 8
 		color: '#444',
 		borderTopWidth: 0.5,
 		borderTopColor: '#ddd',
 		borderTopStyle: 'solid',
-		paddingTop: 8,
+		paddingTop: 6, // Réduit de 8 à 6
 	},
 
-	// DISCLAIMER DEVIS
-	disclaimerBox: {
-		marginTop: 20,
-		padding: 10,
-		backgroundColor: '#fef3c7',
-		borderRadius: 4,
-		borderWidth: 0.5,
-		borderColor: '#f59e0b',
-		borderStyle: 'solid',
-	},
-	disclaimerTitle: {
-		fontSize: 10,
-		fontWeight: 'bold',
-		color: '#92400e',
-		marginBottom: 4,
-	},
+	// DISCLAIMER DEVIS - Simplifié, sans encadrement
 	disclaimerText: {
-		fontSize: 9,
-		color: '#78350f',
+		marginTop: 10, // Réduit de 20 à 10
+		fontSize: 8, // Réduit de 9 à 8
+		color: '#666',
+		fontStyle: 'italic',
 	},
 
-	// SIGNATURE
+	// SIGNATURE - Hauteur réduite
 	signatureBlock: {
-		marginTop: 30,
+		marginTop: 12, // Réduit de 30 à 12
 		flexDirection: 'row',
 		justifyContent: 'space-between',
 	},
 	signatureBox: {
 		width: '45%',
-		padding: 10,
+		padding: 6, // Réduit de 10 à 6
 		borderWidth: 0.5,
 		borderColor: '#ddd',
 		borderStyle: 'solid',
 		borderRadius: 4,
-		minHeight: 80,
+		minHeight: 40, // Réduit de 80 à 40
 	},
 	signatureTitle: {
-		fontSize: 10,
+		fontSize: 9, // Réduit de 10 à 9
 		fontWeight: 'bold',
-		marginBottom: 4,
+		marginBottom: 2, // Réduit de 4 à 2
 	},
 	signatureSubtitle: {
-		fontSize: 9,
+		fontSize: 8, // Réduit de 9 à 8
 		color: '#666',
 	},
 })
@@ -328,18 +323,10 @@ export function QuotePdfDocument({
 
 	const companyName = company?.trade_name || company?.name || 'Votre entreprise'
 
-	// ✅ NOUVEAU: vendeur / commercial (issued_by)
-	const issuedBy = quote.expand?.issued_by
-	const sellerName =
-		issuedBy?.name ||
-		issuedBy?.username ||
-		issuedBy?.email ||
-		(quote.issued_by ? String(quote.issued_by) : '')
+	const sellerName = quote.seller_name || ''
 
-	// Lignes calculées
 	const addressLine1 = company?.address_line1 || ''
 	const addressLine2 = company?.address_line2 || ''
-
 	const addressLine3 = [
 		company?.zip_code || '',
 		company?.city || '',
@@ -386,9 +373,21 @@ export function QuotePdfDocument({
 
 	const websiteLine = company?.website ? `Site : ${company.website}` : undefined
 
+	// ✅ Calcul des remises (comme dans InvoicePdf.tsx)
+	const cartDiscountMode = (quote as any).cart_discount_mode || ''
+	const cartDiscountValue = (quote as any).cart_discount_value || 0
+	const cartDiscountTtc = (quote as any).cart_discount_ttc || 0
+	const lineDiscountsTotalTtc = (quote as any).line_discounts_total_ttc || 0
+
+	const hasDiscounts = lineDiscountsTotalTtc > 0 || cartDiscountTtc > 0
+
+	// Calcul du sous-total avant remises (si remises présentes)
+	const subTotalBeforeDiscounts =
+		quote.total_ttc + lineDiscountsTotalTtc + cartDiscountTtc
+
 	// ✅ Utiliser la ventilation stockée, ou recalculer en fallback
 	const getVatBreakdown = (): VatBreakdown[] => {
-		// 1. Si la ventilation est stockée en base, l'uti	liser directement
+		// 1. Si la ventilation est stockée en base, l'utiliser directement
 		const storedBreakdown = (quote as any).vat_breakdown as
 			| VatBreakdown[]
 			| undefined
@@ -408,9 +407,14 @@ export function QuotePdfDocument({
 
 		for (const item of quote.items) {
 			const rate = item.tva_rate
-			const ht = item.total_ht
-			const vat = item.total_ttc - item.total_ht
-			const ttc = item.total_ttc
+			const lineTotal = item.quantity * item.unit_price_ht
+
+			// ✅ Prendre en compte les remises ligne
+			const lineDiscount = (item as any).line_discount_amount_ht || 0
+			const baseHt = lineTotal - lineDiscount
+
+			const vat = (baseHt * rate) / 100
+			const ttc = baseHt + vat
 
 			let entry = vatBreakdownMap.get(rate)
 
@@ -424,7 +428,7 @@ export function QuotePdfDocument({
 				vatBreakdownMap.set(rate, entry)
 			}
 
-			entry.base_ht += ht
+			entry.base_ht += baseHt
 			entry.vat += vat
 			entry.total_ttc += ttc
 		}
@@ -498,8 +502,7 @@ export function QuotePdfDocument({
 					</View>
 				</View>
 
-				{/* CLIENT */}
-				<Text style={styles.sectionTitle}>Client</Text>
+				{/* CLIENT - Sans titre "Client" */}
 				<View style={styles.sectionBox}>
 					<View style={styles.customerBlock}>
 						{customer?.company && (
@@ -524,8 +527,7 @@ export function QuotePdfDocument({
 					</View>
 				</View>
 
-				{/* TABLE LIGNES */}
-				<Text style={styles.sectionTitle}>Détail de l'offre</Text>
+				{/* TABLE LIGNES - Sans titre "Détail de l'offre" */}
 				<View>
 					<View style={styles.tableHeader}>
 						<Text style={[styles.colDescription, styles.tableHeaderText]}>
@@ -534,6 +536,10 @@ export function QuotePdfDocument({
 						<Text style={[styles.colQty, styles.tableHeaderText]}>Qté</Text>
 						<Text style={[styles.colUnit, styles.tableHeaderText]}>
 							P.U. HT
+						</Text>
+						{/* ✅ AJOUT: Colonne Remise */}
+						<Text style={[styles.colDiscount, styles.tableHeaderText]}>
+							Remise
 						</Text>
 						<Text style={[styles.colTva, styles.tableHeaderText]}>TVA</Text>
 						<Text style={[styles.colTotal, styles.tableHeaderText]}>
@@ -549,6 +555,15 @@ export function QuotePdfDocument({
 							? [styles.tableRow, styles.tableRowAlt]
 							: [styles.tableRow]
 
+						// ✅ AJOUT: Affichage de la remise ligne
+						const lineDiscount = (item as any).line_discount_value || 0
+						const lineDiscountMode =
+							(item as any).line_discount_mode || 'percent'
+						const discountText =
+							lineDiscount > 0
+								? `${lineDiscount.toFixed(2)}${lineDiscountMode === 'percent' ? '%' : '€'}`
+								: '-'
+
 						return (
 							<View style={rowStyle} key={key}>
 								<Text style={styles.colDescription}>{item.name}</Text>
@@ -556,6 +571,8 @@ export function QuotePdfDocument({
 								<Text style={styles.colUnit}>
 									{item.unit_price_ht.toFixed(2)}
 								</Text>
+								{/* ✅ AJOUT: Affichage de la remise */}
+								<Text style={styles.colDiscount}>{discountText}</Text>
 								<Text style={styles.colTva}>{item.tva_rate}%</Text>
 								<Text style={styles.colTotal}>{item.total_ttc.toFixed(2)}</Text>
 							</View>
@@ -565,6 +582,41 @@ export function QuotePdfDocument({
 
 				{/* TOTAUX */}
 				<View style={styles.totalsBlock}>
+					{/* ✅ AJOUT: Sous-total avant remises (si remises présentes) */}
+					{hasDiscounts && (
+						<View style={styles.totalsRow}>
+							<Text style={styles.totalsLabel}>Sous-total</Text>
+							<Text style={styles.totalsValue}>
+								{formatCurrency(subTotalBeforeDiscounts)}
+							</Text>
+						</View>
+					)}
+
+					{/* ✅ AJOUT: Remises lignes */}
+					{lineDiscountsTotalTtc > 0 && (
+						<View style={styles.totalsRow}>
+							<Text style={styles.totalsDiscount}>Remises lignes</Text>
+							<Text style={styles.totalsDiscount}>
+								-{formatCurrency(lineDiscountsTotalTtc)}
+							</Text>
+						</View>
+					)}
+
+					{/* ✅ AJOUT: Remise globale */}
+					{cartDiscountTtc > 0 && (
+						<View style={styles.totalsRow}>
+							<Text style={styles.totalsDiscount}>
+								Remise globale
+								{cartDiscountMode === 'percent' &&
+									cartDiscountValue > 0 &&
+									` (${cartDiscountValue}%)`}
+							</Text>
+							<Text style={styles.totalsDiscount}>
+								-{formatCurrency(cartDiscountTtc)}
+							</Text>
+						</View>
+					)}
+
 					<View style={styles.totalsRow}>
 						<Text style={styles.totalsLabel}>Total HT</Text>
 						<Text style={styles.totalsValue}>
@@ -629,18 +681,15 @@ export function QuotePdfDocument({
 					</View>
 				)}
 
-				{/* DISCLAIMER DEVIS */}
-				<View style={styles.disclaimerBox}>
-					<Text style={styles.disclaimerTitle}>Information importante</Text>
-					<Text style={styles.disclaimerText}>
-						Ce document est un devis et ne constitue pas une facture. Les prix
-						indiqués sont valables jusqu'à la date de validité mentionnée
-						ci-dessus. Passé ce délai, nous nous réservons le droit de modifier
-						les tarifs.
-					</Text>
-				</View>
+				{/* DISCLAIMER DEVIS - Simplifié sans titre ni encadrement */}
+				<Text style={styles.disclaimerText}>
+					Ce document est un devis et ne constitue pas une facture. Les prix
+					indiqués sont valables jusqu'à la date de validité mentionnée
+					ci-dessus. Passé ce délai, nous nous réservons le droit de modifier
+					les tarifs.
+				</Text>
 
-				{/* BLOC SIGNATURE */}
+				{/* BLOC SIGNATURE - Hauteur réduite */}
 				<View style={styles.signatureBlock}>
 					<View style={styles.signatureBox}>
 						<Text style={styles.signatureTitle}>Bon pour accord</Text>
