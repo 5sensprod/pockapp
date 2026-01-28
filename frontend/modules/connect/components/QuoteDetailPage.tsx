@@ -1,4 +1,6 @@
 // frontend/modules/connect/components/QuoteDetailPage.tsx
+// ✅ AJOUT: Affichage des remises dans le tableau et les totaux
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -183,6 +185,15 @@ export function QuoteDetailPage() {
 		(quote as any).issued_by ||
 		'—'
 
+	// ✅ Calcul des remises
+	const cartDiscountTtc = (quote as any).cart_discount_ttc || 0
+	const lineDiscountsTotalTtc = (quote as any).line_discounts_total_ttc || 0
+	const hasDiscounts = cartDiscountTtc > 0 || lineDiscountsTotalTtc > 0
+	const subTotalBeforeDiscounts =
+		quote.total_ttc + cartDiscountTtc + lineDiscountsTotalTtc
+	const cartDiscountMode = (quote as any).cart_discount_mode || 'percent'
+	const cartDiscountValue = (quote as any).cart_discount_value || 0
+
 	return (
 		<div className='container mx-auto px-6 py-8'>
 			{/* Header */}
@@ -337,47 +348,103 @@ export function QuoteDetailPage() {
 									<TableHead>Désignation</TableHead>
 									<TableHead className='text-right'>Quantité</TableHead>
 									<TableHead className='text-right'>Prix unitaire HT</TableHead>
+									<TableHead className='text-right'>Remise</TableHead>
 									<TableHead className='text-right'>TVA</TableHead>
 									<TableHead className='text-right'>Total HT</TableHead>
 									<TableHead className='text-right'>Total TTC</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{quote.items.map((item, index) => (
-									// biome-ignore lint/suspicious/noArrayIndexKey: la liste est statique dans le détail du devis
-									<TableRow key={index}>
-										<TableCell className='font-medium'>{item.name}</TableCell>
-										<TableCell className='text-right'>
-											{item.quantity}
-										</TableCell>
-										<TableCell className='text-right'>
-											{formatCurrency(item.unit_price_ht, quote.currency)}
-										</TableCell>
-										<TableCell className='text-right'>
-											{item.tva_rate}%
-										</TableCell>
-										<TableCell className='text-right'>
-											{formatCurrency(item.total_ht, quote.currency)}
-										</TableCell>
-										<TableCell className='text-right'>
-											{formatCurrency(item.total_ttc, quote.currency)}
-										</TableCell>
-									</TableRow>
-								))}
+								{quote.items.map((item, index) => {
+									// ✅ Afficher la remise ligne
+									const lineDiscountValue =
+										(item as any).line_discount_value || 0
+									const lineDiscountMode =
+										(item as any).line_discount_mode || 'percent'
+									const discountText =
+										lineDiscountValue > 0
+											? `${lineDiscountValue.toFixed(2)}${lineDiscountMode === 'percent' ? '%' : '€'}`
+											: '-'
+
+									return (
+										// biome-ignore lint/suspicious/noArrayIndexKey: la liste est statique dans le détail du devis
+										<TableRow key={index}>
+											<TableCell className='font-medium'>{item.name}</TableCell>
+											<TableCell className='text-right'>
+												{item.quantity}
+											</TableCell>
+											<TableCell className='text-right'>
+												{formatCurrency(item.unit_price_ht, quote.currency)}
+											</TableCell>
+											<TableCell className='text-right text-green-600'>
+												{discountText}
+											</TableCell>
+											<TableCell className='text-right'>
+												{item.tva_rate}%
+											</TableCell>
+											<TableCell className='text-right'>
+												{formatCurrency(item.total_ht, quote.currency)}
+											</TableCell>
+											<TableCell className='text-right'>
+												{formatCurrency(item.total_ttc, quote.currency)}
+											</TableCell>
+										</TableRow>
+									)
+								})}
 							</TableBody>
 						</Table>
 
 						{/* Totaux */}
 						<div className='mt-6 flex justify-end'>
-							<div className='w-64 space-y-2'>
+							<div className='w-80 space-y-2'>
+								{/* ✅ Sous-total avant remises (si remises présentes) */}
+								{hasDiscounts && (
+									<div className='flex justify-between text-muted-foreground'>
+										<span>Sous-total TTC</span>
+										<span>
+											{formatCurrency(subTotalBeforeDiscounts, quote.currency)}
+										</span>
+									</div>
+								)}
+
+								{/* ✅ Remises lignes */}
+								{lineDiscountsTotalTtc > 0 && (
+									<div className='flex justify-between text-green-600 italic'>
+										<span>Remises lignes</span>
+										<span>
+											-{formatCurrency(lineDiscountsTotalTtc, quote.currency)}
+										</span>
+									</div>
+								)}
+
+								{/* ✅ Remise globale */}
+								{cartDiscountTtc > 0 && (
+									<div className='flex justify-between text-green-600 italic'>
+										<span>
+											Remise globale
+											{cartDiscountMode === 'percent' &&
+												cartDiscountValue > 0 &&
+												` (${cartDiscountValue}%)`}
+										</span>
+										<span>
+											-{formatCurrency(cartDiscountTtc, quote.currency)}
+										</span>
+									</div>
+								)}
+
+								{/* Total HT */}
 								<div className='flex justify-between'>
 									<span className='text-muted-foreground'>Total HT</span>
 									<span>{formatCurrency(quote.total_ht, quote.currency)}</span>
 								</div>
+
+								{/* TVA */}
 								<div className='flex justify-between'>
 									<span className='text-muted-foreground'>TVA</span>
 									<span>{formatCurrency(quote.total_tva, quote.currency)}</span>
 								</div>
+
+								{/* Total TTC */}
 								<div className='flex justify-between font-bold text-lg border-t pt-2'>
 									<span>Total TTC</span>
 									<span>{formatCurrency(quote.total_ttc, quote.currency)}</span>

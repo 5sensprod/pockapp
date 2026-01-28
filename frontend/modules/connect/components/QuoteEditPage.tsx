@@ -309,6 +309,12 @@ export function QuoteEditPage() {
 						? round2((it.total_ttc ?? 0) / qty)
 						: round2((it.unit_price_ht ?? 0) * coef)
 
+				// ✅ RESTAURER les remises ligne depuis le backend
+				const lineDiscountMode = (it as any).line_discount_mode || 'percent'
+				const lineDiscountValue = (it as any).line_discount_value || 0
+				const lineDiscountRaw =
+					lineDiscountValue > 0 ? lineDiscountValue.toString() : ''
+
 				const draft: UiQuoteItem = {
 					...it,
 					id: `existing-${index}-${Date.now()}-${Math.random()
@@ -319,9 +325,9 @@ export function QuoteEditPage() {
 					sku: '',
 					unit_price_ttc: inferredUnitTtc,
 					unitPriceRaw: inferredUnitTtc.toString(),
-					lineDiscountMode: 'percent',
-					lineDiscountValue: 0,
-					lineDiscountRaw: '',
+					lineDiscountMode,
+					lineDiscountValue,
+					lineDiscountRaw,
 					unit_price_ht: it.unit_price_ht ?? 0,
 					total_ht: it.total_ht ?? 0,
 					total_ttc: it.total_ttc ?? 0,
@@ -330,6 +336,15 @@ export function QuoteEditPage() {
 			})
 			setItems(uiItems)
 		}
+
+		// ✅ RESTAURER les remises panier depuis le backend
+		const savedCartDiscountMode = (quote as any).cart_discount_mode || 'percent'
+		const savedCartDiscountValue = (quote as any).cart_discount_value || 0
+		setCartDiscountMode(savedCartDiscountMode)
+		setCartDiscountValue(savedCartDiscountValue)
+		setCartDiscountRaw(
+			savedCartDiscountValue > 0 ? savedCartDiscountValue.toString() : '',
+		)
 		setIsInitialized(true)
 	}, [quote, isInitialized])
 
@@ -542,6 +557,9 @@ export function QuoteEditPage() {
 					unit_price_ttc,
 					...rest,
 				} as UiQuoteItem),
+				// ✅ SAUVEGARDER les remises ligne
+				line_discount_mode: lineDiscountMode,
+				line_discount_value: lineDiscountValue,
 			}),
 		)
 		const breakdown = computeVatBreakdownFromItems(invoiceItems)
@@ -1118,16 +1136,98 @@ export function QuoteEditPage() {
 									})}
 								</TableBody>
 								<TableFooter>
+									{/* Sous-total avant remises (si des remises existent) */}
+									{(subTotals.lineDiscountTtc > 0 || cartDiscountTtc > 0) && (
+										<TableRow>
+											<TableCell
+												colSpan={5}
+												className='text-right text-muted-foreground'
+											>
+												Sous-total TTC
+											</TableCell>
+											<TableCell className='text-right'>
+												{subTotals.ttc.toFixed(2)} €
+											</TableCell>
+											<TableCell />
+										</TableRow>
+									)}
+
+									{/* Remises lignes */}
+									{subTotals.lineDiscountTtc > 0 && (
+										<TableRow>
+											<TableCell
+												colSpan={5}
+												className='text-right text-green-600 italic'
+											>
+												Remises lignes
+											</TableCell>
+											<TableCell className='text-right text-green-600 italic'>
+												-{subTotals.lineDiscountTtc.toFixed(2)} €
+											</TableCell>
+											<TableCell />
+										</TableRow>
+									)}
+
+									{/* Remise globale */}
+									{cartDiscountTtc > 0 && (
+										<TableRow>
+											<TableCell
+												colSpan={5}
+												className='text-right text-green-600 italic'
+											>
+												Remise globale
+												{cartDiscountMode === 'percent' &&
+													cartDiscountValue > 0 &&
+													` (${cartDiscountValue}%)`}
+											</TableCell>
+											<TableCell className='text-right text-green-600 italic'>
+												-{cartDiscountTtc.toFixed(2)} €
+											</TableCell>
+											<TableCell />
+										</TableRow>
+									)}
+
+									{/* Total HT */}
 									<TableRow>
 										<TableCell colSpan={5} className='text-right'>
-											Total HT (estimé)
+											Total HT
 										</TableCell>
 										<TableCell className='text-right'>
 											{vatContext.finalTotals.ht.toFixed(2)} €
 										</TableCell>
 										<TableCell />
 									</TableRow>
-									<TableRow className='font-bold'>
+
+									{/* Total TVA avec ventilation */}
+									<TableRow>
+										<TableCell colSpan={5} className='text-right'>
+											Total TVA
+										</TableCell>
+										<TableCell className='text-right'>
+											{vatContext.finalTotals.tva.toFixed(2)} €
+										</TableCell>
+										<TableCell />
+									</TableRow>
+
+									{/* Ventilation TVA détaillée (si multi-taux) */}
+									{vatContext.breakdown.length > 1 &&
+										vatContext.breakdown.map((vb) => (
+											<TableRow key={vb.rate}>
+												<TableCell
+													colSpan={5}
+													className='text-right text-xs text-muted-foreground italic pl-8'
+												>
+													dont TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+												</TableCell>
+												<TableCell className='text-right text-xs text-muted-foreground italic'>
+													{vb.vat.toFixed(2)} €
+												</TableCell>
+												<TableCell />
+											</TableRow>
+										))}
+
+									{/* Total TTC Final */}
+									<TableRow className='font-bold border-t-2'>
 										<TableCell colSpan={5} className='text-right'>
 											Total TTC Final
 										</TableCell>
