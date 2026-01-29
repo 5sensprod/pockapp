@@ -34,7 +34,7 @@ import {
 	Lock,
 	User,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useRegisterManager } from '../hooks/useRegisterManager'
 import {
 	PaymentMethodBreakdown,
@@ -84,6 +84,9 @@ export function RapportZPage() {
 
 	// Actions d'impression/export
 	const { handlePrint, handleExport } = usePrintReport()
+	const handleExportWithRapport = useCallback(() => {
+		handleExport(rapportZ)
+	}, [handleExport, rapportZ])
 
 	return (
 		<div className='container mx-auto px-6 py-8 max-w-6xl'>
@@ -93,7 +96,7 @@ export function RapportZPage() {
 				subtitle='Document fiscal inaltérable conforme NF525'
 				onBack={() => navigate({ to: '/cash' })}
 				onPrint={handlePrint}
-				onExport={handleExport}
+				onExport={handleExportWithRapport} // ← Utiliser la nouvelle fonction
 				showActions={!!rapportZ}
 			/>
 
