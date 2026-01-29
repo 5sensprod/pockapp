@@ -328,26 +328,15 @@ export function InvoicePdfDocument({
 		invoice.total_ttc + cartDiscountTtc + lineDiscountsTotalTtc
 
 	// ✅ Calculer les délais de paiement
-	// PRIORITÉ 1: payment_terms du client
-	// PRIORITÉ 2: default_payment_terms_days de la company
 	const customerPaymentTerms = (customer as any)?.payment_terms
 	const customerPaymentDays = getPaymentTermsDays(customerPaymentTerms)
-
 	const paymentTermsText = (() => {
-		// 1. Utiliser payment_terms du client si disponible
 		if (customerPaymentDays === 'immediate') {
 			return 'Paiement immédiat.'
 		}
 		if (typeof customerPaymentDays === 'number') {
 			return `Paiement à ${customerPaymentDays} jours.`
 		}
-
-		// 2. Fallback sur company.default_payment_terms_days
-		if (company?.default_payment_terms_days) {
-			return `Paiement à ${company.default_payment_terms_days} jours.`
-		}
-
-		// 3. Aucun délai défini
 		return null
 	})()
 
