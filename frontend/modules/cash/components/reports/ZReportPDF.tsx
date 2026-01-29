@@ -3,6 +3,23 @@ import { getPaymentMethodLabel } from '@/lib/types/cash.types'
 // frontend/modules/cash/components/reports/ZReportPDF.tsx
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 
+// Type étendu pour inclure les tickets dans les sessions
+interface TicketItem {
+	id: string
+	number?: string
+	total_ttc: number
+	payment_method?: string
+	payment_method_label?: string
+}
+
+interface RapportZWithTickets extends Omit<RapportZ, 'sessions'> {
+	sessions: Array<
+		RapportZ['sessions'][number] & {
+			tickets?: TicketItem[]
+		}
+	>
+}
+
 const styles = StyleSheet.create({
 	page: {
 		padding: 30,
@@ -99,7 +116,7 @@ const styles = StyleSheet.create({
 })
 
 interface ZReportPDFProps {
-	rapport: RapportZ
+	rapport: RapportZWithTickets
 }
 
 export function ZReportPDF({ rapport }: ZReportPDFProps) {
@@ -327,6 +344,53 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 										</View>
 									</View>
 								)}
+
+							{/* Liste des tickets */}
+							{session.tickets && session.tickets.length > 0 && (
+								<View style={{ marginBottom: 4 }}>
+									<Text
+										style={{ fontSize: 8, fontWeight: 'bold', marginBottom: 2 }}
+									>
+										Détail des tickets:
+									</Text>
+									<View style={{ fontSize: 9 }}>
+										{session.tickets.map((ticket: any) => (
+											<View
+												key={ticket.id}
+												style={{
+													display: 'flex',
+													flexDirection: 'row',
+													justifyContent: 'space-between',
+													marginBottom: 1,
+													paddingVertical: 1,
+												}}
+											>
+												<Text style={{ flex: 1 }}>
+													{ticket.number || ticket.id.substring(0, 8)}
+												</Text>
+												<Text
+													style={{ flex: 1, textAlign: 'left', color: '#666' }}
+												>
+													{getPaymentMethodLabel(
+														ticket.payment_method_label ||
+															ticket.payment_method ||
+															'autre',
+													)}
+												</Text>
+												<Text
+													style={{
+														flex: 1,
+														textAlign: 'right',
+														fontWeight: 'bold',
+													}}
+												>
+													{formatCurrency(ticket.total_ttc || 0)}
+												</Text>
+											</View>
+										))}
+									</View>
+								</View>
+							)}
 
 							{/* Espèces */}
 							<View
