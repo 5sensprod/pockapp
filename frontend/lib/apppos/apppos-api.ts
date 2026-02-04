@@ -216,6 +216,79 @@ export async function createAppPosProduct(
 }
 
 // ============================================================================
+// 🆕 UPDATE PRODUCT STOCK
+// ============================================================================
+
+/**
+ * Met à jour le stock d'un produit dans AppPOS
+ * @param productId - ID du produit
+ * @param newStock - Nouveau stock (valeur absolue)
+ */
+export async function updateAppPosProductStock(
+	productId: string,
+	newStock: number,
+): Promise<AppPosProduct> {
+	// 1. Récupérer le produit complet
+	const currentProduct = await getAppPosProduct(productId)
+
+	// 2. Mettre à jour uniquement le stock
+	const updatedProduct = {
+		...currentProduct,
+		stock: newStock,
+	}
+
+	// 3. Envoyer avec PUT (remplacement complet)
+	const response = await fetchAppPos<AppPosApiResponse<AppPosProduct>>(
+		`/products/${productId}`,
+		{
+			method: 'PUT', // ✅ Généralement autorisé
+			body: JSON.stringify(updatedProduct),
+		},
+	)
+
+	return response.data
+}
+
+/**
+ * Décrémente le stock de plusieurs produits (après une vente)
+ * @param items - Array de { productId, quantitySold }
+ * @returns Array des produits mis à jour
+ */
+export async function decrementAppPosProductsStock(
+	items: Array<{ productId: string; quantitySold: number }>,
+): Promise<AppPosProduct[]> {
+	const results: AppPosProduct[] = []
+
+	for (const item of items) {
+		try {
+			// ✅ CORRECTION: Utiliser la route /decrement-stock qui émet l'événement WebSocket
+			const response = await fetchAppPos<AppPosApiResponse<AppPosProduct>>(
+				`/products/${item.productId}/decrement-stock`,
+				{
+					method: 'POST',
+					body: JSON.stringify({ quantity: item.quantitySold }),
+				},
+			)
+
+			const updatedProduct = response.data
+			results.push(updatedProduct)
+
+			console.log(
+				`✅ Stock décrémenté pour ${updatedProduct.name}: -${item.quantitySold}`,
+			)
+		} catch (error) {
+			console.error(
+				`❌ Erreur mise à jour stock produit ${item.productId}:`,
+				error,
+			)
+			// On continue même si un produit échoue
+		}
+	}
+
+	return results
+}
+
+// ============================================================================
 // CATEGORIES
 // ============================================================================
 export async function getAppPosCategories(): Promise<AppPosCategory[]> {
@@ -276,7 +349,9 @@ export const appPosApi = {
 	// Products
 	getProducts: getAppPosProducts,
 	getProduct: getAppPosProduct,
-	createProduct: createAppPosProduct, // 🆕
+	createProduct: createAppPosProduct,
+	updateProductStock: updateAppPosProductStock, // 🆕
+	decrementProductsStock: decrementAppPosProductsStock, // 🆕
 	searchByBarcode: searchAppPosProductByBarcode,
 	searchBySku: searchAppPosProductBySku,
 

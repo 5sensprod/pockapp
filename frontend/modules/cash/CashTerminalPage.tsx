@@ -5,7 +5,13 @@ import * as React from 'react'
 import { toast } from 'sonner'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
+import {
+	decrementAppPosProductsStock,
+	getAppPosToken,
+	loginToAppPos,
+	useAppPosProducts,
+	useAppPosStockUpdates,
+} from '@/lib/apppos'
 import { releaseControl, takeControl, useDisplay } from '@/lib/pos/display'
 import { openReceiptPreviewWindow } from '@/lib/pos/posPreview'
 import { openCashDrawer, printReceipt } from '@/lib/pos/posPrint'
@@ -65,6 +71,11 @@ export function CashTerminalPage() {
 	const [isProcessing, setIsProcessing] = React.useState(false)
 
 	const [isAppPosConnected, setIsAppPosConnected] = React.useState(false)
+
+	const [isAppPosConnecting, setIsAppPosConnecting] = React.useState(true) // ✅ NOUVEAU
+	const [appPosConnectionError, setAppPosConnectionError] = React.useState<
+		string | null
+	>(null) // ✅ NOUVEAU
 	const [editingLineId, setEditingLineId] = React.useState<string | null>(null)
 
 	const [showCreateProductDialog, setShowCreateProductDialog] =
@@ -82,6 +93,7 @@ export function CashTerminalPage() {
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
 	})
+	useAppPosStockUpdates({ enabled: true })
 	const products = (productsData?.items ?? []) as AppPosProduct[]
 
 	const createPosTicket = useCreatePosTicket()
@@ -230,25 +242,42 @@ export function CashTerminalPage() {
 		}
 	}, [productSearch])
 	React.useEffect(() => {
-		const connect = async () => {
-			if (isAppPosConnected) return
-
-			const existingToken = getAppPosToken()
-			if (existingToken) {
+		const connectToAppPos = async () => {
+			if (getAppPosToken()) {
+				console.log('✅ Token AppPOS existant trouvé')
 				setIsAppPosConnected(true)
+				setIsAppPosConnecting(false)
 				return
 			}
 
 			try {
-				const res = await loginToAppPos('admin', 'admin123')
-				if (res.success && res.token) setIsAppPosConnected(true)
-			} catch {
-				// mode dégradé
+				setIsAppPosConnecting(true)
+				setAppPosConnectionError(null)
+
+				console.log('🔐 Connexion à AppPOS...')
+				const response = await loginToAppPos('admin', 'admin123')
+
+				if (response.success && response.token) {
+					setIsAppPosConnected(true)
+					console.log('✅ Connecté à AppPOS:', response.user.username)
+				} else {
+					throw new Error('Login failed')
+				}
+			} catch (error) {
+				console.error('❌ Erreur connexion AppPOS:', error)
+				setAppPosConnectionError(
+					error instanceof Error
+						? error.message
+						: 'Impossible de se connecter à AppPOS',
+				)
+				setIsAppPosConnected(false)
+			} finally {
+				setIsAppPosConnecting(false)
 			}
 		}
 
-		void connect()
-	}, [isAppPosConnected])
+		connectToAppPos()
+	}, [])
 
 	React.useEffect(() => {
 		if (!isSessionLoading && !isSessionOpen) {
@@ -445,7 +474,6 @@ export function CashTerminalPage() {
 		}
 
 		if (selectedPaymentMethod?.accounting_category === 'cash') {
-			// 🆕 MODIFIÉ
 			const received = Number.parseFloat(amountReceived) || 0
 			if (received < totalTtc) {
 				toast.error('Montant insuffisant')
@@ -462,6 +490,7 @@ export function CashTerminalPage() {
 				activeCompanyId,
 			)
 
+			// ✅ 1. Créer le ticket dans PocketBase
 			const result = await createPosTicket.mutateAsync({
 				owner_company: activeCompanyId,
 				cash_register: cashRegisterId,
@@ -473,9 +502,9 @@ export function CashTerminalPage() {
 					: 'especes',
 				payment_method_label: selectedPaymentMethod
 					? getPaymentMethodLabel(selectedPaymentMethod)
-					: undefined, // 🆕 AJOUTÉ
+					: undefined,
 				amount_paid:
-					selectedPaymentMethod?.accounting_category === 'cash' // 🆕 MODIFIÉ
+					selectedPaymentMethod?.accounting_category === 'cash'
 						? Number.parseFloat(amountReceived)
 						: undefined,
 				cart_discount_mode:
@@ -487,6 +516,33 @@ export function CashTerminalPage() {
 			const ticket = result.ticket
 			const backendTotals = result.totals
 
+			// ✅ 2. 🆕 METTRE À JOUR LE STOCK DANS APPPOS
+			if (isAppPosConnected && getAppPosToken()) {
+				try {
+					const stockItems = cartManager.cart.map((item) => ({
+						productId: item.productId, // ✅ BON CHAMP (pas item.id)
+						quantitySold: item.quantity,
+					}))
+
+					console.log(
+						'📦 Mise à jour stock AppPOS pour',
+						stockItems.length,
+						'produit(s)',
+					)
+					await decrementAppPosProductsStock(stockItems)
+
+					console.log('✅ Stock AppPOS mis à jour avec succès')
+				} catch (stockError) {
+					console.error('❌ Erreur MAJ stock:', stockError)
+					toast.warning(
+						'Vente enregistrée mais erreur de synchronisation du stock',
+					)
+				}
+			} else {
+				console.warn('⚠️ AppPOS non connecté, stock non synchronisé')
+			}
+
+			// ✅ 3. Impression (si activée)
 			if (printerSettings.enabled && printerSettings.printerName) {
 				if (printerSettings.autoPrint) {
 					const receiptPayload = await buildReceiptPayload({
@@ -509,7 +565,7 @@ export function CashTerminalPage() {
 
 				if (
 					printerSettings.autoOpenDrawer &&
-					selectedPaymentMethod?.accounting_category === 'cash' // 🆕 MODIFIÉ
+					selectedPaymentMethod?.accounting_category === 'cash'
 				) {
 					await openCashDrawer({
 						printerName: printerSettings.printerName,
@@ -540,6 +596,7 @@ export function CashTerminalPage() {
 		pb,
 		selectedPaymentMethod,
 		totalTtc,
+		isAppPosConnected, // 🆕 AJOUTER dans les dépendances
 	])
 
 	if (isSessionLoading) {
@@ -562,6 +619,32 @@ export function CashTerminalPage() {
 						today={today}
 						onBack={() => navigate({ to: '/cash' })}
 					/>
+
+					<div className='flex items-center gap-2 px-6 py-2 bg-muted/30 border-b'>
+						{isAppPosConnecting ? (
+							<div className='flex items-center gap-2 text-sm text-muted-foreground'>
+								<Loader2 className='h-3 w-3 animate-spin' />
+								<span>Connexion AppPOS...</span>
+							</div>
+						) : isAppPosConnected ? (
+							<div className='flex items-center gap-2 text-sm'>
+								<div className='w-2 h-2 rounded-full bg-green-500' />
+								<span className='text-green-600 font-medium'>
+									AppPOS connecté
+								</span>
+							</div>
+						) : (
+							<div className='flex items-center gap-2 text-sm'>
+								<div className='w-2 h-2 rounded-full bg-red-500' />
+								<span className='text-red-600'>AppPOS déconnecté</span>
+								{appPosConnectionError && (
+									<span className='text-xs text-muted-foreground'>
+										({appPosConnectionError})
+									</span>
+								)}
+							</div>
+						)}
+					</div>
 
 					<main className='flex min-h-[520px] flex-1 flex-col gap-4 lg:flex-row'>
 						<section className='flex flex-1 flex-col gap-3'>

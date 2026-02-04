@@ -25,8 +25,8 @@ import {
 	useAppPosProducts,
 	useAppPosSuppliers,
 } from '@/lib/apppos'
+import { useAppPosStockUpdates } from '@/lib/apppos'
 import type { CategoriesResponse } from '@/lib/pocketbase-types'
-
 import { BrandListAppPos } from './components/BrandListAppPos'
 import { CategoryTreeAppPos } from './components/CategoryTreeAppPos'
 // Import des composants
@@ -138,7 +138,7 @@ export function StockPageAppPos() {
 		refetchBrands()
 		refetchSuppliers()
 	}
-
+	useAppPosStockUpdates({ enabled: isAppPosConnected })
 	const handleRetryConnection = async () => {
 		setIsConnecting(true)
 		setConnectionError(null)

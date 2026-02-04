@@ -8,7 +8,9 @@ export {
 	getAppPosToken,
 	loginToAppPos,
 	setAppPosToken,
-	createAppPosProduct, // 🆕
+	createAppPosProduct,
+	updateAppPosProductStock, // 🆕
+	decrementAppPosProductsStock, // 🆕
 } from './apppos-api'
 
 // Types
@@ -61,3 +63,12 @@ export type {
 	UseAppPosSuppliersOptions,
 	UseCreateAppPosProductOptions, // 🆕
 } from './apppos-hooks'
+
+// WebSocket
+export { appPosWebSocket } from './apppos-websocket'
+export type {
+	AppPosStockUpdateEvent,
+	AppPosWebSocketEvent,
+	AppPosWebSocketCallback,
+} from './apppos-websocket'
+export { useAppPosStockUpdates } from './apppos-hooks-websocket'
