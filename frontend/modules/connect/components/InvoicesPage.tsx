@@ -216,9 +216,8 @@ export function InvoicesPage() {
 		useState<ChainVerificationResult | null>(null)
 
 	// Hook pour le résumé rapide (optionnel - pour afficher un indicateur)
-	const { data: integritySummary } = useIntegritySummary(
-		activeCompanyId ?? undefined,
-	)
+	const { data: integritySummary, refetch: refetchIntegritySummary } =
+		useIntegritySummary(activeCompanyId ?? undefined)
 
 	// Mutations / hooks factures
 	const cancelInvoice = useCancelInvoice()
@@ -541,6 +540,7 @@ export function InvoicesPage() {
 			})
 
 			setIntegrityResult(result)
+			await refetchIntegritySummary()
 
 			if (result.allValid) {
 				toast.success(
@@ -558,7 +558,6 @@ export function InvoicesPage() {
 
 	// Handler pour ouvrir le dialog
 	const handleOpenIntegrityDialog = () => {
-		setIntegrityResult(null)
 		setIntegrityDocType('all')
 		setIntegrityDialogOpen(true)
 	}
@@ -582,9 +581,12 @@ export function InvoicesPage() {
 					<Button variant='outline' onClick={handleOpenIntegrityDialog}>
 						<Shield className='h-4 w-4 mr-2' />
 						Vérifier intégrité
-						{integritySummary && !integritySummary.allValid && (
+						{(integrityResult
+							? !integrityResult.allValid
+							: integritySummary && !integritySummary.allValid) && (
 							<Badge variant='destructive' className='ml-2'>
-								{integritySummary.invalidDocuments}
+								{integrityResult?.invalidCount ??
+									integritySummary?.invalidDocuments}
 							</Badge>
 						)}
 					</Button>
@@ -1156,33 +1158,37 @@ export function InvoicesPage() {
 						</div>
 
 						{/* Résumé rapide (si disponible) */}
-						{integritySummary && (
+						{(integrityResult || integritySummary) && (
 							<div className='grid grid-cols-4 gap-2 text-sm'>
 								<div className='p-2 rounded bg-muted/50 text-center'>
 									<p className='text-muted-foreground text-xs'>Total</p>
 									<p className='font-semibold'>
-										{integritySummary.totalDocuments}
+										{integrityResult?.totalChecked ??
+											integritySummary?.totalDocuments}
 									</p>
 								</div>
 								<div className='p-2 rounded bg-muted/50 text-center'>
 									<p className='text-muted-foreground text-xs'>Factures</p>
 									<p className='font-semibold'>
-										{integritySummary.byType.invoices.valid}/
-										{integritySummary.byType.invoices.total}
+										{integrityResult
+											? `${integrityResult.summary.invoices.valid}/${integrityResult.summary.invoices.count}`
+											: `${integritySummary?.byType.invoices.valid}/${integritySummary?.byType.invoices.total}`}
 									</p>
 								</div>
 								<div className='p-2 rounded bg-muted/50 text-center'>
 									<p className='text-muted-foreground text-xs'>Tickets</p>
 									<p className='font-semibold'>
-										{integritySummary.byType.posTickets.valid}/
-										{integritySummary.byType.posTickets.total}
+										{integrityResult
+											? `${integrityResult.summary.posTickets.valid}/${integrityResult.summary.posTickets.count}`
+											: `${integritySummary?.byType.posTickets.valid}/${integritySummary?.byType.posTickets.total}`}
 									</p>
 								</div>
 								<div className='p-2 rounded bg-muted/50 text-center'>
 									<p className='text-muted-foreground text-xs'>Avoirs</p>
 									<p className='font-semibold'>
-										{integritySummary.byType.creditNotes.valid}/
-										{integritySummary.byType.creditNotes.total}
+										{integrityResult
+											? `${integrityResult.summary.creditNotes.valid}/${integrityResult.summary.creditNotes.count}`
+											: `${integritySummary?.byType.creditNotes.valid}/${integritySummary?.byType.creditNotes.total}`}
 									</p>
 								</div>
 							</div>
