@@ -471,21 +471,21 @@ export function useIntegritySummary(companyId?: string) {
 					const expectedHash = await computeDocumentHash(doc)
 					hashValid = doc.hash === expectedHash
 
-					if (i === 0 || !allDocs[i - 1].sequence_number) {
-						if (doc.sequence_number === 1) {
-							chainValid =
-								doc.previous_hash ===
-								'0000000000000000000000000000000000000000000000000000000000000000'
-						} else {
-							const prevDocs = allDocs.filter(
-								(d) => d.sequence_number === doc.sequence_number - 1,
-							)
-							if (prevDocs.length > 0) {
-								chainValid = doc.previous_hash === prevDocs[0].hash
-							}
-						}
+					// Vérification du chaînage - chercher le BON document précédent
+					if (doc.sequence_number === 1) {
+						chainValid =
+							doc.previous_hash ===
+							'0000000000000000000000000000000000000000000000000000000000000000'
 					} else {
-						chainValid = doc.previous_hash === allDocs[i - 1].hash
+						// Chercher le document avec sequence_number - 1
+						const prevDoc = allDocs.find(
+							(d) => d.sequence_number === doc.sequence_number - 1,
+						)
+						if (prevDoc) {
+							chainValid = doc.previous_hash === prevDoc.hash
+						} else {
+							chainValid = false
+						}
 					}
 				}
 
@@ -525,7 +525,7 @@ export function useIntegritySummary(companyId?: string) {
 			}
 		},
 		enabled: !!companyId,
-		staleTime: 300000,
+		staleTime: 0,
 	})
 }
 
