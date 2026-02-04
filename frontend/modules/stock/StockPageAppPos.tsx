@@ -129,7 +129,32 @@ export function StockPageAppPos() {
 		enabled: isAppPosConnected,
 	})
 
-	const products = productsData?.items ?? []
+	const products = (productsData?.items ?? []).map((p: any) => ({
+		...p,
+
+		// ✅ PocketBase shape attendu par ProductTable
+		id: p.id ?? p._id,
+		barcode: p.barcode ?? p.sku ?? null,
+		price_ttc: p.price_ttc ?? p.price ?? null,
+		cost_price: p.cost_price ?? p.purchase_price ?? null,
+		stock_quantity: p.stock_quantity ?? p.stock ?? null,
+		active: p.active ?? (p.status ? p.status !== 'draft' : true),
+
+		// image: ProductTable lit row.original.images
+		images: p.images ?? p.image?.src ?? p.image?.url ?? null,
+
+		// ✅ optionnel: expand pour tes helpers
+		expand: {
+			brand: p.brand_ref
+				? { id: p.brand_ref.id, name: p.brand_ref.name }
+				: undefined,
+			supplier: p.supplier_ref
+				? { id: p.supplier_ref.id, name: p.supplier_ref.name }
+				: undefined,
+			categories:
+				p.categories_refs?.map((c: any) => ({ id: c.id, name: c.name })) ?? [],
+		},
+	})) as ProductWithExpand[]
 	const isLoading = productsLoading
 
 	const handleRefresh = () => {
@@ -349,7 +374,7 @@ export function StockPageAppPos() {
 											: 'Aucun produit dans AppPOS'}
 								</div>
 							) : (
-								<ProductTable data={products as ProductWithExpand[]} />
+								<ProductTable data={products} />
 							)}
 						</TabsContent>
 

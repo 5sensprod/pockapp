@@ -89,7 +89,10 @@ export function CashTerminalPage() {
 	const { data: activeSession, isLoading: isSessionLoading } =
 		useActiveCashSession(cashRegisterId)
 
-	const { data: productsData } = useAppPosProducts({
+	const {
+		data: productsData,
+		refetch: refetchProducts, // ✅ EXTRAIRE refetch
+	} = useAppPosProducts({
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
 	})
@@ -132,6 +135,12 @@ export function CashTerminalPage() {
 			releaseControl().catch(() => {})
 		}
 	}, [])
+
+	const handleRefresh = React.useCallback(() => {
+		console.log('🔄 Rafraîchissement des produits...')
+		refetchProducts()
+		toast.success('Données rafraîchies')
+	}, [refetchProducts])
 
 	const cartManager = useCartManager()
 	const { subtotalTtc, totalTtc, totalVat, discountAmount, vatBreakdown } =
@@ -618,6 +627,7 @@ export function CashTerminalPage() {
 						sessionIdShort={activeSession?.id.slice(0, 8) ?? ''}
 						today={today}
 						onBack={() => navigate({ to: '/cash' })}
+						onRefresh={handleRefresh}
 					/>
 
 					<div className='flex items-center gap-2 px-6 py-2 bg-muted/30 border-b'>
