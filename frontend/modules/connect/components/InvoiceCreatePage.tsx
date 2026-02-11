@@ -129,7 +129,7 @@ const isDisplayModeAvailable = (it: UiInvoiceItem, mode: DisplayMode) => {
 
 const computeLineTotals = (it: UiInvoiceItem) => {
 	const qty = Math.max(0, it.quantity)
-	const rate = it.tva_rate ?? 20
+	const rate = Number(it.tva_rate ?? 20)
 	const coef = 1 + rate / 100
 
 	const baseTtc = round2(it.unit_price_ttc * qty)
@@ -459,7 +459,7 @@ export function InvoiceCreatePage() {
 		const breakdownMap = new Map<number, VatBreakdown>()
 
 		for (const it of withCartDiscount) {
-			const rate = it.tva_rate ?? 20
+			const rate = Number(it.tva_rate ?? 20)
 			const ht = it.total_ht
 			const vat = it.total_ttc - it.total_ht
 			const ttc = it.total_ttc
@@ -539,6 +539,7 @@ export function InvoiceCreatePage() {
 					...rest
 				}) => ({
 					...rest,
+					tva_rate: Number(rest.tva_rate ?? 20),
 					name: getDisplayText({
 						id,
 						displayMode,

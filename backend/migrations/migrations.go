@@ -53,6 +53,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		AddCustomerTypeToCustomers, // Ajoute customer_type (individual, professional, administration, association)
 		AddPaymentTermsToCustomers, // Ajoute payment_terms (immediate, 30_days, 45_days, 60_days)
 		BackfillCustomerType,       // Remplit "individual" par défaut pour les clients existants
+		FixInvoiceTotalsNonzero,
 	}
 
 	for _, migrate := range migrations {

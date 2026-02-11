@@ -107,12 +107,14 @@ export function cartItemToPosItem(item: CartItem): PosItemInput {
 	return {
 		product_id: item.productId,
 		name: displayName,
-		quantity: item.quantity,
-		unit_price_ttc: item.unitPrice,
-		tva_rate: item.tvaRate,
+		quantity: Number(item.quantity) || 1,
+		unit_price_ttc: Number(item.unitPrice) || 0,
+		tva_rate: Number(item.tvaRate ?? 0),
 		line_discount_mode:
 			item.lineDiscountMode === 'unit' ? 'amount' : item.lineDiscountMode,
-		line_discount_value: item.lineDiscountValue,
+		line_discount_value: item.lineDiscountValue
+			? Number(item.lineDiscountValue)
+			: undefined,
 	}
 }
 
@@ -137,7 +139,7 @@ export function useCreatePosTicket() {
 			if (!input.items || input.items.length === 0) {
 				throw new Error('Le panier est vide')
 			}
-
+			console.log('📦 POS payload:', JSON.stringify(input, null, 2))
 			// Appel API backend
 			const response = await pb.send('/api/pos/ticket', {
 				method: 'POST',

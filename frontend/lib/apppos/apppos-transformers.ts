@@ -81,10 +81,10 @@ export function transformAppPosProduct(
 		// Prix
 		price_ttc: product.price ?? 0,
 		price_ht: product.price
-			? product.price / (1 + (product.tax_rate || 20) / 100)
+			? product.price / (1 + Number(product.tax_rate || 20) / 100)
 			: 0,
 		cost_price: product.purchase_price ?? 0,
-		tva_rate: product.tax_rate ?? 20,
+		tva_rate: Number(product.tax_rate ?? 20),
 
 		// Stock
 		stock_quantity: product.stock ?? 0,

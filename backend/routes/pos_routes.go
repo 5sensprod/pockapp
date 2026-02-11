@@ -424,8 +424,8 @@ func calculateTicketTotals(input PosTicketInput) (TicketTotals, []map[string]any
 
 		// Calcul HT et TVA
 		tvaRate := item.TVARate
-		if tvaRate <= 0 {
-			tvaRate = 20 // Par défaut
+		if tvaRate < 0 {
+			tvaRate = 20 // Par défaut (seulement si négatif/invalide)
 		}
 		coef := 1 + tvaRate/100
 		lineHT := roundAmount(lineTTC / coef)
