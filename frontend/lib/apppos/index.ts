@@ -67,7 +67,6 @@ export type {
 // WebSocket
 export { appPosWebSocket } from './apppos-websocket'
 export type {
-	AppPosStockUpdateEvent,
 	AppPosWebSocketEvent,
 	AppPosWebSocketCallback,
 } from './apppos-websocket'

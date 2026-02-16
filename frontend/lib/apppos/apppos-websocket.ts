@@ -1,116 +1,124 @@
 // frontend/lib/apppos/apppos-websocket.ts
-// Service WebSocket pour écouter les événements AppPOS en temps réel
 
 import { APPPOS_API_BASE_URL } from './apppos-config'
+import type { AppPosProduct } from './apppos-types'
 
-// ============================================================================
-// TYPES
-// ============================================================================
-
-export interface AppPosStockUpdateEvent {
-	productId: string
-	productName: string
-	previousStock: number
-	newStock: number
-	quantityChanged: number
-	timestamp: string
+export type AppPosProductsUpdatedPayload = {
+	entityId: string
+	data: AppPosProduct
 }
 
 export type AppPosWebSocketEvent =
-	| { type: 'stock.updated'; data: AppPosStockUpdateEvent }
+	| { type: 'products.updated'; data: AppPosProductsUpdatedPayload }
+	| { type: 'stock.updated'; data: { productId: string; newStock: number } }
+	| { type: 'server.time.update'; data: { timestamp: number; iso: string } }
 	| { type: 'connection.opened'; data: { clientId: string } }
 	| { type: 'connection.closed'; data: { reason: string } }
 
 export type AppPosWebSocketCallback = (event: AppPosWebSocketEvent) => void
 
-// ============================================================================
-// WEBSOCKET MANAGER
-// ============================================================================
-
 class AppPosWebSocketManager {
 	private ws: WebSocket | null = null
+	private callbacks = new Set<AppPosWebSocketCallback>()
+	private isManualClose = false
+
 	private reconnectTimer: number | null = null
 	private reconnectAttempts = 0
 	private maxReconnectAttempts = 5
 	private reconnectDelay = 3000
-	private callbacks: Set<AppPosWebSocketCallback> = new Set()
-	private isManualClose = false
 
-	/**
-	 * Connexion au WebSocket AppPOS
-	 */
 	connect() {
 		if (this.ws?.readyState === WebSocket.OPEN) {
 			console.log('📡 [AppPOS WS] Déjà connecté')
 			return
 		}
 
-		try {
-			// Construire l'URL WebSocket
-			const wsUrl = APPPOS_API_BASE_URL.replace('http://', 'ws://').replace(
-				'https://',
-				'wss://',
+		const httpBase = APPPOS_API_BASE_URL.replace(/\/+$/, '')
+		const wsBase = httpBase
+			.replace(/^http:\/\//, 'ws://')
+			.replace(/^https:\/\//, 'wss://')
+
+		// ✅ backend: new WebSocket.Server({ server }) => endpoint "/"
+		const wsEndpoint = wsBase.replace(/\/api$/, '')
+
+		console.log('📡 [AppPOS WS] Connexion à', wsEndpoint)
+		this.isManualClose = false
+		this.ws = new WebSocket(wsEndpoint)
+
+		this.ws.onopen = () => {
+			console.log('✅ [AppPOS WS] Connecté')
+			this.reconnectAttempts = 0
+
+			this.notifyCallbacks({
+				type: 'connection.opened',
+				data: { clientId: this.generateClientId() },
+			})
+
+			// ✅ obligatoire pour recevoir products.updated
+			this.ws?.send(
+				JSON.stringify({
+					type: 'subscribe',
+					payload: { entityType: 'products' },
+				}),
 			)
-			const wsEndpoint = wsUrl.replace('/api', '/ws') // Adapter selon ton endpoint
+			console.log('📩 [AppPOS WS] subscribe(products) envoyé')
+		}
 
-			console.log('📡 [AppPOS WS] Connexion à', wsEndpoint)
-			this.ws = new WebSocket(wsEndpoint)
+		this.ws.onmessage = (event) => {
+			try {
+				const message = JSON.parse(event.data)
+				console.log('📨 [AppPOS WS] Reçu:', message)
 
-			this.ws.onopen = () => {
-				console.log('✅ [AppPOS WS] Connecté')
-				this.reconnectAttempts = 0
-				this.notifyCallbacks({
-					type: 'connection.opened',
-					data: { clientId: this.generateClientId() },
-				})
-			}
+				const type = message?.type as string | undefined
+				const payload = message?.payload
 
-			this.ws.onmessage = (event) => {
-				try {
-					const message = JSON.parse(event.data)
-					console.log('📨 [AppPOS WS] Message reçu:', message)
+				if (!type) return
 
-					// Traiter les événements de stock
-					if (message.type === 'stock.updated') {
+				if (type === 'products.updated' && payload) {
+					const data = payload as AppPosProductsUpdatedPayload
+
+					this.notifyCallbacks({ type: 'products.updated', data })
+
+					const p = data?.data
+					if (p?._id && typeof p.stock === 'number') {
 						this.notifyCallbacks({
 							type: 'stock.updated',
-							data: message.payload, // ← Correction: payload au lieu de data
+							data: { productId: p._id, newStock: p.stock },
 						})
 					}
-				} catch (error) {
-					console.error('❌ [AppPOS WS] Erreur parsing message:', error)
+					return
 				}
-			}
 
-			this.ws.onerror = (error) => {
-				console.error('❌ [AppPOS WS] Erreur:', error)
-			}
-
-			this.ws.onclose = (event) => {
-				console.log('🔌 [AppPOS WS] Déconnecté', event.code, event.reason)
-				this.ws = null
-
-				this.notifyCallbacks({
-					type: 'connection.closed',
-					data: { reason: event.reason || 'Connection closed' },
-				})
-
-				// Reconnecter automatiquement si pas une fermeture manuelle
-				if (
-					!this.isManualClose &&
-					this.reconnectAttempts < this.maxReconnectAttempts
-				) {
-					this.scheduleReconnect()
+				if (type === 'server.time.update' && payload) {
+					this.notifyCallbacks({ type: 'server.time.update', data: payload })
 				}
+			} catch (e) {
+				console.error('❌ [AppPOS WS] Parse error:', e)
 			}
-		} catch (error) {
-			console.error('❌ [AppPOS WS] Erreur connexion:', error)
+		}
+
+		this.ws.onerror = (e) => {
+			console.error('❌ [AppPOS WS] Erreur:', e)
+		}
+
+		this.ws.onclose = (event) => {
+			console.log('🔌 [AppPOS WS] Déconnecté', event.code, event.reason)
+			this.ws = null
+
+			this.notifyCallbacks({
+				type: 'connection.closed',
+				data: { reason: event.reason || 'Connection closed' },
+			})
+
+			if (
+				!this.isManualClose &&
+				this.reconnectAttempts < this.maxReconnectAttempts
+			) {
+				this.scheduleReconnect()
+			}
 		}
 	}
 
-	/**
-	 * Déconnexion
-	 */
 	disconnect() {
 		console.log('🔌 [AppPOS WS] Déconnexion manuelle')
 		this.isManualClose = true
@@ -120,70 +128,43 @@ class AppPosWebSocketManager {
 			this.reconnectTimer = null
 		}
 
-		if (this.ws) {
-			this.ws.close()
-			this.ws = null
+		this.ws?.close()
+		this.ws = null
+	}
+
+	subscribe(callback: AppPosWebSocketCallback) {
+		this.callbacks.add(callback)
+		return () => this.callbacks.delete(callback)
+	}
+
+	private notifyCallbacks(event: AppPosWebSocketEvent) {
+		for (const cb of this.callbacks) {
+			try {
+				cb(event)
+			} catch (e) {
+				console.error('❌ [AppPOS WS] Erreur callback:', e)
+			}
 		}
 	}
 
-	/**
-	 * Planifier une reconnexion
-	 */
 	private scheduleReconnect() {
 		this.reconnectAttempts++
 		const delay = this.reconnectDelay * this.reconnectAttempts
 
 		console.log(
-			`🔄 [AppPOS WS] Reconnexion dans ${delay}ms (tentative ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+			`🔄 [AppPOS WS] Reconnexion dans ${delay}ms (${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
 		)
 
-		this.reconnectTimer = window.setTimeout(() => {
-			this.connect()
-		}, delay)
+		this.reconnectTimer = window.setTimeout(() => this.connect(), delay)
 	}
 
-	/**
-	 * S'abonner aux événements
-	 */
-	subscribe(callback: AppPosWebSocketCallback) {
-		this.callbacks.add(callback)
-
-		// Retourner une fonction de désabonnement
-		return () => {
-			this.callbacks.delete(callback)
-		}
-	}
-
-	/**
-	 * Notifier tous les callbacks
-	 */
-	private notifyCallbacks(event: AppPosWebSocketEvent) {
-		for (const callback of this.callbacks) {
-			try {
-				callback(event)
-			} catch (error) {
-				console.error('❌ [AppPOS WS] Erreur callback:', error)
-			}
-		}
-	}
-
-	/**
-	 * Générer un ID client unique
-	 */
 	private generateClientId() {
-		return `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+		return `client-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 	}
 
-	/**
-	 * Vérifier si connecté
-	 */
 	isConnected() {
 		return this.ws?.readyState === WebSocket.OPEN
 	}
 }
-
-// ============================================================================
-// INSTANCE SINGLETON
-// ============================================================================
 
 export const appPosWebSocket = new AppPosWebSocketManager()

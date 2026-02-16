@@ -1,20 +1,91 @@
 // frontend/lib/apppos/apppos-hooks-websocket.ts
-// Hook React pour gérer les événements WebSocket AppPOS
 
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import type { AppPosProduct } from './apppos-types'
 import { appPosWebSocket } from './apppos-websocket'
 
-/**
- * Hook pour écouter les mises à jour de stock en temps réel
- *
- * @example
- * ```tsx
- * // Dans CashTerminalPage.tsx
- * useAppPosStockUpdates({ enabled: isAppPosConnected })
- * ```
- */
+type AnyProduct = AppPosProduct & { id?: string }
+
+type ProductsDataShape =
+	| { items: AnyProduct[] }
+	| { data: AnyProduct[] } // AppPosApiResponse<List>
+	| { success: boolean; data: AnyProduct[] } // AppPosApiResponse<List> (autre variante)
+	| AnyProduct[]
+	| AnyProduct
+	| unknown
+
+const getProductId = (p: AnyProduct) => p._id ?? p.id
+
+function patchArray(arr: AnyProduct[], productId: string, newStock: number) {
+	let hits = 0
+	const next = arr.map((p) => {
+		if (getProductId(p) === productId) {
+			hits++
+			return { ...p, stock: newStock }
+		}
+		return p
+	})
+	return { next, hits }
+}
+
+function patchProductsData(
+	oldData: ProductsDataShape,
+	productId: string,
+	newStock: number,
+) {
+	if (!oldData) return oldData
+
+	// { items: [...] }
+	if (typeof oldData === 'object' && oldData !== null && 'items' in oldData) {
+		const od = oldData as { items: AnyProduct[] }
+		if (!Array.isArray(od.items)) return oldData
+
+		const { next, hits } = patchArray(od.items, productId, newStock)
+		return hits > 0 ? { ...od, items: next } : oldData
+	}
+
+	// { data: [...] }
+	if (typeof oldData === 'object' && oldData !== null && 'data' in oldData) {
+		const od = oldData as { data: AnyProduct[] }
+		if (!Array.isArray(od.data)) return oldData
+
+		const { next, hits } = patchArray(od.data, productId, newStock)
+		return hits > 0 ? { ...od, data: next } : oldData
+	}
+
+	// Array<product>
+	if (Array.isArray(oldData)) {
+		const { next, hits } = patchArray(
+			oldData as AnyProduct[],
+			productId,
+			newStock,
+		)
+		return hits > 0 ? next : oldData
+	}
+
+	// Product direct
+	if (
+		typeof oldData === 'object' &&
+		oldData !== null &&
+		('_id' in oldData || 'id' in oldData) &&
+		getProductId(oldData as AnyProduct) === productId
+	) {
+		return { ...(oldData as AnyProduct), stock: newStock }
+	}
+
+	return oldData
+}
+
+function isProductsQueryKey(queryKey: unknown): queryKey is unknown[] {
+	return (
+		Array.isArray(queryKey) &&
+		queryKey.length >= 2 &&
+		queryKey[0] === 'apppos' &&
+		queryKey[1] === 'products'
+	)
+}
+
 export function useAppPosStockUpdates(
 	options: {
 		enabled?: boolean
@@ -25,108 +96,64 @@ export function useAppPosStockUpdates(
 	const queryClient = useQueryClient()
 
 	useEffect(() => {
-		if (!enabled) {
-			console.log('🔕 [AppPOS Stock] Écoute désactivée')
-			return
-		}
+		if (!enabled) return undefined
 
-		console.log('🔔 [AppPOS Stock] Activation écoute mises à jour')
-
-		// Connexion WebSocket
 		appPosWebSocket.connect()
 
-		// S'abonner aux événements
 		const unsubscribe = appPosWebSocket.subscribe((event) => {
-			if (event.type === 'stock.updated') {
-				const { productId, newStock, productName, previousStock } = event.data
+			let productId: string | undefined
+			let newStock: number | undefined
 
-				console.log('🔍 [DEBUG] Event reçu:', event)
-				console.log('🔍 [DEBUG] productId:', productId)
-				console.log('🔍 [DEBUG] newStock:', newStock)
-
-				console.log(
-					`📦 [Stock Update] ${productName}: ${previousStock} → ${newStock}`,
-				)
-				// ✅ Mettre à jour le cache React Query
-
-				// 1. Mettre à jour le catalogue complet
-				queryClient.setQueryData(
-					['apppos', 'products', 'catalog'],
-					(oldData: { items: AppPosProduct[] } | undefined) => {
-						if (!oldData) return oldData
-
-						return {
-							...oldData,
-							items: oldData.items.map((product) =>
-								product._id === productId
-									? { ...product, stock: newStock }
-									: product,
-							),
-						}
-					},
-				)
-
-				// 2. Mettre à jour le produit individuel (si en cache)
-				queryClient.setQueryData(
-					['apppos', 'products', 'catalog'],
-					(oldData: { items: AppPosProduct[] } | undefined) => {
-						// ✅ AJOUTER CE LOG
-						console.log('🔍 [DEBUG] oldData:', oldData)
-						console.log('🔍 [DEBUG] Recherche productId:', productId)
-
-						if (!oldData) return oldData
-
-						const updatedItems = oldData.items.map((product) => {
-							// ✅ AJOUTER CE LOG
-							console.log(
-								'🔍 [DEBUG] Comparaison:',
-								product._id,
-								'===',
-								productId,
-								'?',
-								product._id === productId,
-							)
-
-							return product._id === productId
-								? { ...product, stock: newStock }
-								: product
-						})
-
-						// ✅ AJOUTER CE LOG
-						console.log(
-							'🔍 [DEBUG] Items mis à jour:',
-							updatedItems.filter((p) => p._id === productId),
-						)
-
-						return {
-							...oldData,
-							items: updatedItems,
-						}
-					},
-				)
-
-				// 3. Invalider les requêtes pour forcer un refresh si nécessaire
-				queryClient.invalidateQueries({
-					queryKey: ['apppos', 'products'],
-					refetchType: 'none', // Ne pas refetch, juste marquer comme stale
-				})
-
-				console.log('✅ [Cache] Produit mis à jour dans le cache React Query')
-
-				// 4. Callback optionnel
-				onStockUpdate?.(productId, newStock)
+			if (event.type === 'products.updated') {
+				productId = event.data.entityId ?? event.data.data?._id
+				newStock = event.data.data?.stock
+			} else if (event.type === 'stock.updated') {
+				productId = event.data.productId
+				newStock = event.data.newStock
+			} else {
+				return
 			}
+
+			if (!productId || typeof newStock !== 'number') return
+
+			const candidates = queryClient
+				.getQueryCache()
+				.getAll()
+				.filter((q) => isProductsQueryKey(q.queryKey))
+
+			console.log(
+				'🧩 [RQ PATCH] candidates:',
+				candidates.map((q) => q.queryKey),
+			)
+
+			let patched = 0
+
+			for (const q of candidates) {
+				const key = q.queryKey
+				const prev = queryClient.getQueryData<ProductsDataShape>(key)
+				const next = patchProductsData(prev, productId, newStock)
+
+				if (next !== prev) {
+					patched++
+					queryClient.setQueryData(key, next)
+				} else {
+					// DEBUG utile: voir la shape réelle
+					// console.log('🧪 [RQ PATCH] no change for key', key, prev)
+				}
+			}
+
+			console.log('✅ [RQ PATCH] patched queries:', patched, {
+				productId,
+				newStock,
+			})
+
+			onStockUpdate?.(productId, newStock)
 		})
 
-		// Cleanup : déconnexion au démontage
 		return () => {
-			console.log('🔕 [AppPOS Stock] Désactivation écoute')
 			unsubscribe()
-			// Note : on ne déconnecte pas le WebSocket ici car d'autres composants peuvent l'utiliser
 		}
-	}, [enabled, queryClient, onStockUpdate])
+	}, [enabled, onStockUpdate, queryClient])
 
-	return {
-		isConnected: appPosWebSocket.isConnected(),
-	}
+	return { isConnected: appPosWebSocket.isConnected() }
 }
