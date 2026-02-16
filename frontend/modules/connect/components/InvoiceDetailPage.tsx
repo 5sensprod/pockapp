@@ -134,16 +134,17 @@ function getLineDiscountLabel(item: any): {
 
 	// mode === 'amount'
 	const beforeUnitTtc = Number(item?.unit_price_ttc_before_discount)
+	const unitHt = Number(item?.unit_price_ht ?? 0)
+	const tvaRate = Number(item?.tva_rate ?? 20)
+	const effectiveUnitTtc = round2(unitHt * (1 + tvaRate / 100))
+
 	if (Number.isFinite(beforeUnitTtc) && beforeUnitTtc > 0) {
-		const unitTtcAfter = Number(value)
-		if (Number.isFinite(unitTtcAfter)) {
-			const diff = round2(Math.max(0, beforeUnitTtc - unitTtcAfter))
-			if (diff <= 0) return { label: '-', hasDiscount: false }
-			return { label: `-${diff.toFixed(2)} €/u`, hasDiscount: true }
-		}
+		const diff = round2(Math.max(0, beforeUnitTtc - effectiveUnitTtc))
+		if (diff <= 0) return { label: '-', hasDiscount: false }
+		return { label: `-${diff.toFixed(2)} €/u`, hasDiscount: true }
 	}
 
-	// fallback: afficher la valeur brute (peut représenter un montant)
+	// fallback: si pas de prix avant remise, essayer avec la valeur brute
 	const v = round2(Math.max(0, Number(value) || 0))
 	if (v <= 0) return { label: '-', hasDiscount: false }
 	return { label: `-${v.toFixed(2)} €`, hasDiscount: true }

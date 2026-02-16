@@ -95,6 +95,10 @@ interface CartItem {
 /**
  * Convertit un item du panier frontend vers le format attendu par l'API backend
  */
+function round2(n: number) {
+	return Math.round(n * 100) / 100
+}
+
 export function cartItemToPosItem(item: CartItem): PosItemInput {
 	const displayMode = item.displayMode || 'name'
 	let displayName = item.name
@@ -104,17 +108,39 @@ export function cartItemToPosItem(item: CartItem): PosItemInput {
 		displayName = item.sku || item.name
 	}
 
+	const qty = Number(item.quantity) || 1
+	const unitPrice = Number(item.unitPrice) || 0
+
+	// UI "unit" = prix TTC saisi (override), pas une remise
+	if (item.lineDiscountMode === 'unit' && item.lineDiscountValue != null) {
+		const desiredUnitTtc = Number(item.lineDiscountValue) || 0
+		const discountTotalTtc = round2(
+			Math.max(0, (unitPrice - desiredUnitTtc) * qty),
+		)
+
+		return {
+			product_id: item.productId,
+			name: displayName,
+			quantity: qty,
+			unit_price_ttc: unitPrice,
+			tva_rate: Number(item.tvaRate ?? 0),
+			line_discount_mode: discountTotalTtc > 0 ? 'amount' : undefined,
+			line_discount_value: discountTotalTtc > 0 ? discountTotalTtc : undefined,
+		}
+	}
+
 	return {
 		product_id: item.productId,
 		name: displayName,
-		quantity: Number(item.quantity) || 1,
-		unit_price_ttc: Number(item.unitPrice) || 0,
+		quantity: qty,
+		unit_price_ttc: unitPrice,
 		tva_rate: Number(item.tvaRate ?? 0),
 		line_discount_mode:
-			item.lineDiscountMode === 'unit' ? 'amount' : item.lineDiscountMode,
-		line_discount_value: item.lineDiscountValue
-			? Number(item.lineDiscountValue)
-			: undefined,
+			item.lineDiscountMode === 'percent' ? 'percent' : undefined,
+		line_discount_value:
+			item.lineDiscountMode === 'percent' && item.lineDiscountValue != null
+				? Number(item.lineDiscountValue)
+				: undefined,
 	}
 }
 
