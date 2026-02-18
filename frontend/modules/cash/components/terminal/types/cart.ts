@@ -10,6 +10,8 @@ export interface CartItem {
 	sku?: string
 	image?: string
 	unitPrice: number
+	originalUnitPrice?: number // prix catalogue (pour reset + affichage barré)
+	unitPriceRaw?: string // saisie brute pour l'input
 	quantity: number
 	tvaRate: number
 	lineDiscountMode?: LineDiscountMode

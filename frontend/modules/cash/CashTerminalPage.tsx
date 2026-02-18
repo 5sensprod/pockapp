@@ -726,6 +726,8 @@ export function CashTerminalPage() {
 								toggleItemDisplayMode={cartManager.toggleItemDisplayMode}
 								editingLineId={editingLineId}
 								setEditingLineId={setEditingLineId}
+								setUnitPrice={cartManager.setUnitPrice}
+								clearUnitPrice={cartManager.clearUnitPrice}
 							/>
 						</aside>
 					</main>

@@ -36,6 +36,8 @@ interface CartPanelProps {
 	toggleItemDisplayMode: (itemId: string) => void
 	editingLineId: string | null
 	setEditingLineId: (id: string | null) => void
+	setUnitPrice: (itemId: string, raw: string) => void
+	clearUnitPrice: (itemId: string) => void
 }
 
 export function CartPanel({
@@ -61,6 +63,8 @@ export function CartPanel({
 	toggleItemDisplayMode,
 	editingLineId,
 	setEditingLineId,
+	setUnitPrice,
+	clearUnitPrice,
 }: CartPanelProps) {
 	return (
 		<Card className='flex h-full flex-col'>
@@ -114,6 +118,8 @@ export function CartPanel({
 								onSetDisplayMode={toggleItemDisplayMode}
 								getEffectiveUnitTtc={getEffectiveUnitTtc}
 								getLineTotalTtc={getLineTotalTtc}
+								onSetUnitPrice={setUnitPrice}
+								onClearUnitPrice={clearUnitPrice}
 							/>
 						))}
 					</div>

@@ -68,6 +68,54 @@ export function useCartManager() {
 		[],
 	)
 
+	const setUnitPrice = React.useCallback((itemId: string, raw: string) => {
+		setCart((prev) =>
+			prev.map((it) => {
+				if (it.id !== itemId) return it
+
+				const original = it.originalUnitPrice ?? it.unitPrice
+
+				if (raw.trim() === '') {
+					return {
+						...it,
+						unitPrice: original,
+						originalUnitPrice: original,
+						unitPriceRaw: '',
+					}
+				}
+
+				const normalized = raw.replace(',', '.')
+				const v = Number.parseFloat(normalized)
+
+				if (Number.isNaN(v)) {
+					return { ...it, unitPriceRaw: raw }
+				}
+
+				return {
+					...it,
+					unitPrice: Math.max(0, +v.toFixed(2)),
+					originalUnitPrice: original,
+					unitPriceRaw: raw,
+				}
+			}),
+		)
+	}, [])
+
+	const clearUnitPrice = React.useCallback((itemId: string) => {
+		setCart((prev) =>
+			prev.map((it) => {
+				if (it.id !== itemId) return it
+				const original = it.originalUnitPrice ?? it.unitPrice
+				return {
+					...it,
+					unitPrice: original,
+					originalUnitPrice: undefined,
+					unitPriceRaw: '',
+				}
+			}),
+		)
+	}, [])
+
 	const setLineDiscountMode = React.useCallback(
 		(itemId: string, mode: LineDiscountMode) => {
 			setCart((prev) =>
@@ -196,6 +244,8 @@ export function useCartManager() {
 		parkedCarts,
 		addToCart,
 		updateQuantity,
+		setUnitPrice,
+		clearUnitPrice,
 		setLineDiscountMode,
 		setLineDiscountValue,
 		toggleItemDisplayMode,

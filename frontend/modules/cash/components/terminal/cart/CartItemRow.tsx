@@ -21,6 +21,8 @@ interface CartItemRowProps {
 	onSetDisplayMode: (itemId: string, mode: DisplayMode) => void
 	getEffectiveUnitTtc: (item: CartItem) => number
 	getLineTotalTtc: (item: CartItem) => number
+	onSetUnitPrice: (itemId: string, raw: string) => void
+	onClearUnitPrice: (itemId: string) => void
 }
 
 export function CartItemRow({
@@ -34,7 +36,12 @@ export function CartItemRow({
 	onSetDisplayMode,
 	getEffectiveUnitTtc,
 	getLineTotalTtc,
+	onSetUnitPrice,
+	onClearUnitPrice,
 }: CartItemRowProps) {
+	const hasPriceOverride =
+		item.originalUnitPrice != null && item.unitPrice !== item.originalUnitPrice
+
 	const hasActiveLineDiscount =
 		!!item.lineDiscountMode &&
 		item.lineDiscountValue != null &&
@@ -135,7 +142,19 @@ export function CartItemRow({
 							−
 						</Button>
 						<span>
-							{item.quantity} × {item.unitPrice.toFixed(2)} €
+							{item.quantity} ×{' '}
+							{hasPriceOverride ? (
+								<>
+									<span className='line-through text-slate-400 mr-1'>
+										{(item.originalUnitPrice ?? item.unitPrice).toFixed(2)}
+									</span>
+									<span className='text-blue-600 font-medium'>
+										{item.unitPrice.toFixed(2)} €
+									</span>
+								</>
+							) : (
+								<>{item.unitPrice.toFixed(2)} €</>
+							)}
 						</span>
 						<Button
 							type='button'
@@ -151,11 +170,20 @@ export function CartItemRow({
 							type='button'
 							variant='ghost'
 							size='sm'
-							className='h-6 px-2 text-[11px]'
+							className={`h-6 px-2 text-[11px] ${hasPriceOverride ? 'text-blue-600' : ''}`}
 							onClick={() => onToggleEdit(isEditing ? null : item.id)}
 						>
-							Remise
+							{hasPriceOverride || hasActiveLineDiscount
+								? 'Modifier'
+								: 'Prix / Remise'}
 						</Button>
+
+						{hasPriceOverride && (
+							<span className='inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700'>
+								<span className='h-1.5 w-1.5 rounded-full bg-blue-500' />
+								Prix modifié
+							</span>
+						)}
 
 						{hasActiveLineDiscount && (
 							<span className='inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700'>
@@ -168,48 +196,76 @@ export function CartItemRow({
 					</div>
 
 					{isEditing && (
-						<div className='mt-2 flex items-center gap-2 rounded-lg bg-slate-50 p-2'>
-							<div className='w-28'>
-								<Select
-									value={mode}
-									onValueChange={(v) =>
-										onSetLineDiscountMode(item.id, v as LineDiscountMode)
+						<div className='mt-2 space-y-2'>
+							{/* Correction du prix */}
+							<div className='flex items-center gap-2 rounded-lg bg-blue-50 p-2'>
+								<span className='text-xs text-slate-600 whitespace-nowrap'>
+									Prix TTC :
+								</span>
+								<Input
+									type='text'
+									inputMode='decimal'
+									className='h-8 flex-1'
+									placeholder={(
+										item.originalUnitPrice ?? item.unitPrice
+									).toFixed(2)}
+									value={item.unitPriceRaw ?? ''}
+									onChange={(e) => onSetUnitPrice(item.id, e.target.value)}
+								/>
+								{hasPriceOverride && (
+									<Button
+										type='button'
+										variant='ghost'
+										size='sm'
+										className='h-8 px-2 text-[11px]'
+										onClick={() => onClearUnitPrice(item.id)}
+									>
+										Reset prix
+									</Button>
+								)}
+							</div>
+
+							{/* Remise */}
+							<div className='flex items-center gap-2 rounded-lg bg-slate-50 p-2'>
+								<div className='w-28'>
+									<Select
+										value={mode}
+										onValueChange={(v) =>
+											onSetLineDiscountMode(item.id, v as LineDiscountMode)
+										}
+									>
+										<SelectTrigger className='h-8'>
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value='percent'>%</SelectItem>
+											<SelectItem value='unit'>Prix unit.</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
+								<Input
+									type='text'
+									inputMode='decimal'
+									className='h-8 flex-1'
+									placeholder={mode === 'unit' ? 'Prix TTC' : '%'}
+									value={value}
+									onChange={(e) =>
+										onSetLineDiscountValue(item.id, e.target.value)
 									}
+								/>
+								<div className='text-xs text-slate-600 w-28 text-right'>
+									{getEffectiveUnitTtc(item).toFixed(2)} €
+								</div>
+								<Button
+									type='button'
+									variant='ghost'
+									size='sm'
+									className='h-8 px-2 text-[11px]'
+									onClick={() => onClearLineDiscount(item.id)}
 								>
-									<SelectTrigger className='h-8'>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value='percent'>%</SelectItem>
-										<SelectItem value='unit'>Prix unit.</SelectItem>
-									</SelectContent>
-								</Select>
+									Reset
+								</Button>
 							</div>
-
-							<Input
-								type='text'
-								inputMode='decimal'
-								className='h-8 flex-1'
-								placeholder={mode === 'unit' ? 'Prix TTC' : '%'}
-								value={value}
-								onChange={(e) =>
-									onSetLineDiscountValue(item.id, e.target.value)
-								}
-							/>
-
-							<div className='text-xs text-slate-600 w-28 text-right'>
-								{getEffectiveUnitTtc(item).toFixed(2)} €
-							</div>
-
-							<Button
-								type='button'
-								variant='ghost'
-								size='sm'
-								className='h-8 px-2 text-[11px]'
-								onClick={() => onClearLineDiscount(item.id)}
-							>
-								Reset
-							</Button>
 						</div>
 					)}
 				</div>
