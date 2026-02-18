@@ -28,8 +28,9 @@ const styles = StyleSheet.create({
 	header: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
-		marginBottom: 24,
-		paddingBottom: 12,
+		alignItems: 'flex-start',
+		marginBottom: 12,
+		paddingBottom: 10,
 		borderBottomWidth: 1,
 		borderBottomColor: '#ddd',
 		borderBottomStyle: 'solid',
@@ -78,6 +79,30 @@ const styles = StyleSheet.create({
 		padding: 8,
 	},
 
+	headerParties: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		marginBottom: 14,
+	},
+	headerPartyLeft: {
+		flex: 1,
+		paddingRight: 12,
+	},
+	headerPartyRight: {
+		flex: 1,
+		paddingLeft: 12,
+		borderLeftWidth: 0.5,
+		borderLeftColor: '#ddd',
+		borderLeftStyle: 'solid',
+	},
+	partyLabel: {
+		fontSize: 9,
+		fontWeight: 'bold',
+		color: '#888',
+		textTransform: 'uppercase',
+		marginBottom: 4,
+		letterSpacing: 0.5,
+	},
 	customerBlock: {
 		marginBottom: 4,
 		fontSize: 11,
@@ -436,37 +461,7 @@ export function InvoicePdfDocument({
 		<Document>
 			<Page size='A4' style={styles.page}>
 				<View style={styles.header}>
-					<View style={styles.companyBlock}>
-						{companyLogoUrl && (
-							<Image src={companyLogoUrl} style={styles.logo} />
-						)}
-
-						<Text style={styles.companyName}>{companyName}</Text>
-
-						{addressLine1 && (
-							<Text style={styles.companyLine}>{addressLine1}</Text>
-						)}
-						{addressLine2 && (
-							<Text style={styles.companyLine}>{addressLine2}</Text>
-						)}
-						{addressLine3 && (
-							<Text style={styles.companyLine}>{addressLine3}</Text>
-						)}
-
-						{legalLines.map((line) => (
-							<Text key={line} style={styles.companyLine}>
-								{line}
-							</Text>
-						))}
-
-						{contactLine && (
-							<Text style={styles.companyLine}>{contactLine}</Text>
-						)}
-						{websiteLine && (
-							<Text style={styles.companyLine}>{websiteLine}</Text>
-						)}
-					</View>
-
+					{companyLogoUrl && <Image src={companyLogoUrl} style={styles.logo} />}
 					<View style={styles.invoiceInfo}>
 						<Text style={styles.invoiceTitle}>{documentTitle}</Text>
 						<Text style={styles.invoiceInfoLine}>
@@ -486,28 +481,53 @@ export function InvoicePdfDocument({
 					</View>
 				</View>
 
-				<Text style={styles.sectionTitle}>Client</Text>
-				<View style={styles.sectionBox}>
-					<View style={styles.customerBlock}>
-						{customer?.company && (
+				{/* ✅ Bloc entreprise + client côte à côte */}
+				<View style={styles.headerParties}>
+					<View style={styles.headerPartyLeft}>
+						{/* logo dans le header uniquement */}
+						<Text style={styles.companyName}>{companyName}</Text>
+						{addressLine1 && (
+							<Text style={styles.companyLine}>{addressLine1}</Text>
+						)}
+						{addressLine2 && (
+							<Text style={styles.companyLine}>{addressLine2}</Text>
+						)}
+						{addressLine3 && (
+							<Text style={styles.companyLine}>{addressLine3}</Text>
+						)}
+						{contactLine && (
+							<Text style={styles.companyLine}>{contactLine}</Text>
+						)}
+						{websiteLine && (
+							<Text style={styles.companyLine}>{websiteLine}</Text>
+						)}
+					</View>
+
+					<View style={styles.headerPartyRight}>
+						<Text style={styles.partyLabel}>Client</Text>
+						<View style={styles.customerBlock}>
+							{customer?.company && (
+								<Text style={styles.customerLine}>
+									Société : {customer.company}
+								</Text>
+							)}
 							<Text style={styles.customerLine}>
-								Société : {customer.company}
+								Nom : {customer?.name || 'Client inconnu'}
 							</Text>
-						)}
-						<Text style={styles.customerLine}>
-							Nom : {customer?.name || 'Client inconnu'}
-						</Text>
-						{customer?.address && (
-							<Text style={styles.customerLine}>{customer.address}</Text>
-						)}
-						{customer?.email && (
-							<Text style={styles.customerLine}>Email : {customer.email}</Text>
-						)}
-						{customer?.phone && (
-							<Text style={styles.customerLine}>
-								Téléphone : {customer.phone}
-							</Text>
-						)}
+							{customer?.address && (
+								<Text style={styles.customerLine}>{customer.address}</Text>
+							)}
+							{customer?.email && (
+								<Text style={styles.customerLine}>
+									Email : {customer.email}
+								</Text>
+							)}
+							{customer?.phone && (
+								<Text style={styles.customerLine}>
+									Téléphone : {customer.phone}
+								</Text>
+							)}
+						</View>
 					</View>
 				</View>
 
