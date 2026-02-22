@@ -1477,5 +1477,5 @@ func RegisterAllHooks(app *pocketbase.PocketBase) {
 	RegisterClosureHooks(app)
 	RegisterAuditLogHooks(app)
 	RegisterCashSessionHooks(app)
-	RegisterInventoryHooks(app)
+	// RegisterInventoryHooks(app)
 }
