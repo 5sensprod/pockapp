@@ -35,6 +35,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { type RefundTicketInput, useRefundTicket } from '@/lib/queries/invoices'
 import { usePocketBase } from '@/lib/use-pocketbase'
+import type { StockReclassificationItem } from './StockReclassificationDialog'
 
 type RefundMethod = 'especes' | 'cb' | 'cheque' | 'autre'
 type RefundType = 'full' | 'partial'
@@ -62,7 +63,8 @@ export interface RefundTicketDialogProps {
 	onOpenChange: (open: boolean) => void
 	ticket: InvoiceResponse | null
 	sessionId?: string
-	onSuccess: () => void
+	// 🆕 stockItems passés au parent pour ouvrir StockReclassificationDialog
+	onSuccess: (stockItems?: StockReclassificationItem[]) => void
 }
 
 type UiLine = {
@@ -71,7 +73,6 @@ type UiLine = {
 	reason?: string
 }
 
-// 🆕 Type pour les infos de remboursement par item
 type ItemRefundInfo = {
 	index: number
 	originalQty: number
@@ -202,11 +203,8 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 	const [refundMethod, setRefundMethod] = useState<RefundMethod>('especes')
 	const [globalReason, setGlobalReason] = useState<string>('')
 	const [lines, setLines] = useState<Record<number, UiLine>>({})
-
-	// 🆕 State pour confirmation
 	const [showConfirm, setShowConfirm] = useState(false)
 
-	// 🆕 State pour les infos de remboursement par item
 	const [itemsRefundInfo, setItemsRefundInfo] = useState<
 		Record<number, ItemRefundInfo>
 	>({})
@@ -223,7 +221,7 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 	)
 	const disabledAll = !ticket || remaining <= 0
 
-	// 🆕 Charger les avoirs existants pour calculer les items déjà remboursés
+	// Charger les avoirs existants pour calculer les items déjà remboursés
 	useEffect(() => {
 		if (!open || !ticket?.id) {
 			setItemsRefundInfo({})
@@ -288,7 +286,7 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 		setMode('full')
 		setRefundMethod('especes')
 		setGlobalReason('')
-		setShowConfirm(false) // Reset confirmation state
+		setShowConfirm(false)
 
 		const ticketItems = ticket?.items ?? []
 		const initialLines: Record<number, UiLine> = {}
@@ -314,7 +312,6 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 			const st = lines[i]
 			if (!st?.selected) continue
 
-			// Utiliser la quantité restante comme max
 			const info = itemsRefundInfo[i]
 			const maxQty = info?.remainingQty ?? getItemQty(items[i])
 			const qty = clamp(toNumber(st.quantity, 0), 0, maxQty)
@@ -388,13 +385,37 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 		}))
 	}
 
-	// Phase 1: Validation et ouverture de la modale de confirmation
 	const triggerSubmit = () => {
 		if (!canSubmit) return
 		setShowConfirm(true)
 	}
 
-	// Phase 2: Exécution réelle du remboursement après confirmation
+	// 🆕 Extraction des items AppPOS remboursés pour reclassification stock
+	const buildStockItems = (
+		creditNoteItems: any[],
+	): StockReclassificationItem[] => {
+		return creditNoteItems
+			.filter((it: any) => !!it?.product_id)
+			.map((it: any, idx: number) => ({
+				product_id: it.product_id,
+				name: it.name ?? it.label ?? `Article #${idx + 1}`,
+				quantity: Math.abs(Number(it.quantity ?? 1)),
+				sku: it.sku ?? undefined,
+			}))
+			.reduce(
+				(acc: StockReclassificationItem[], item: StockReclassificationItem) => {
+					const existing = acc.find((x) => x.product_id === item.product_id)
+					if (existing) {
+						existing.quantity += item.quantity
+					} else {
+						acc.push(item)
+					}
+					return acc
+				},
+				[],
+			)
+	}
+
 	const handleConfirmRefund = async () => {
 		if (!ticket) return
 
@@ -414,7 +435,7 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 		}
 
 		try {
-			await refundMutation.mutateAsync(base)
+			const result = await refundMutation.mutateAsync(base)
 
 			toast.success('Remboursement effectué', {
 				description: `Avoir de ${formatMoney(amountToRefund, currency)} créé pour ${ticket?.number}`,
@@ -422,12 +443,15 @@ export function RefundTicketDialog(props: RefundTicketDialogProps) {
 
 			setShowConfirm(false)
 			onOpenChange(false)
-			onSuccess()
+
+			// 🆕 Extraire les items du credit_note retourné et les passer au parent
+			const creditNoteItems: any[] = result?.creditNote?.items ?? []
+			const stockItems = buildStockItems(creditNoteItems)
+			onSuccess(stockItems.length > 0 ? stockItems : undefined)
 		} catch (error: any) {
 			toast.error('Erreur lors du remboursement', {
 				description: error?.message || 'Une erreur est survenue',
 			})
-			// On ferme la confirmation même en cas d'erreur pour laisser l'utilisateur corriger
 			setShowConfirm(false)
 		}
 	}

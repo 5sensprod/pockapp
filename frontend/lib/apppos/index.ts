@@ -11,6 +11,7 @@ export {
 	createAppPosProduct,
 	updateAppPosProductStock, // 🆕
 	decrementAppPosProductsStock, // 🆕
+	incrementAppPosProductsStock,
 } from './apppos-api'
 
 // Types
@@ -24,8 +25,13 @@ export type {
 	AppPosProduct,
 	AppPosProductImage,
 	AppPosSupplier,
-	CreateAppPosProductInput, // 🆕
+	CreateAppPosProductInput,
 } from './apppos-types'
+
+export type {
+	StockReturnDestination,
+	StockReturnItem,
+} from './apppos-api'
 
 // Transformers
 export {

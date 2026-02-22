@@ -288,6 +288,48 @@ export async function decrementAppPosProductsStock(
 	return results
 }
 
+export type StockReturnDestination = 'restock' | 'sav' | 'stock_b'
+
+export interface StockReturnItem {
+	productId: string
+	quantityReturned: number
+	destination: StockReturnDestination
+	reason?: string
+}
+
+export async function incrementAppPosProductsStock(
+	items: StockReturnItem[],
+): Promise<AppPosProduct[]> {
+	const results: AppPosProduct[] = []
+
+	for (const item of items) {
+		try {
+			const response = await fetchAppPos<AppPosApiResponse<AppPosProduct>>(
+				`/products/${item.productId}/increment-stock`,
+				{
+					method: 'POST',
+					body: JSON.stringify({
+						quantity: item.quantityReturned,
+						destination: item.destination,
+						reason: item.reason || '',
+					}),
+				},
+			)
+			results.push(response.data)
+			console.log(
+				`✅ [Retour] ${response.data.name}: +${item.quantityReturned} → ${item.destination}`,
+			)
+		} catch (error) {
+			console.error(
+				`❌ [Retour stock] Erreur produit ${item.productId}:`,
+				error,
+			)
+		}
+	}
+
+	return results
+}
+
 // ============================================================================
 // CATEGORIES
 // ============================================================================
@@ -352,6 +394,7 @@ export const appPosApi = {
 	createProduct: createAppPosProduct,
 	updateProductStock: updateAppPosProductStock, // 🆕
 	decrementProductsStock: decrementAppPosProductsStock, // 🆕
+	incrementProductsStock: incrementAppPosProductsStock,
 	searchByBarcode: searchAppPosProductByBarcode,
 	searchBySku: searchAppPosProductBySku,
 

@@ -1,3 +1,4 @@
+// frontend/modules/common/RefundInvoiceDialog.tsx
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -38,6 +39,7 @@ import {
 } from '@/lib/queries/invoices'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
+import type { StockReclassificationItem } from './StockReclassificationDialog'
 
 type RefundMethod = 'especes' | 'cb' | 'cheque' | 'autre'
 type RefundType = 'full' | 'partial'
@@ -79,7 +81,6 @@ function formatMoney(amount: number, currency?: string) {
 }
 
 function getItemQty(item: any) {
-	// compatible anciennes données (quantités négatives)
 	const q = toNumber(item?.quantity ?? item?.qty ?? item?.qte, 0)
 	return abs(q)
 }
@@ -156,7 +157,8 @@ type Props = {
 	open: boolean
 	onClose: () => void
 	invoice: InvoiceResponse | null
-	onSuccess?: () => void
+	// 🆕 stockItems passés au parent pour ouvrir StockReclassificationDialog
+	onSuccess?: (stockItems?: StockReclassificationItem[]) => void
 }
 
 export function RefundInvoiceDialog({
@@ -179,7 +181,6 @@ export function RefundInvoiceDialog({
 	>({})
 	const [loadingRefundInfo, setLoadingRefundInfo] = useState(false)
 
-	// Mémoriser items pour éviter les re-renders inutiles
 	const items = useMemo(() => (invoice?.items || []) as any[], [invoice?.items])
 
 	const currency = invoice?.currency || 'EUR'
@@ -348,6 +349,32 @@ export function RefundInvoiceDialog({
 		}))
 	}
 
+	// 🆕 Extraction des items AppPOS remboursés pour reclassification stock
+	const buildStockItems = (
+		creditNoteItems: any[],
+	): StockReclassificationItem[] => {
+		return creditNoteItems
+			.filter((it: any) => !!it?.product_id)
+			.map((it: any, idx: number) => ({
+				product_id: it.product_id,
+				name: it.name ?? it.label ?? `Article #${idx + 1}`,
+				quantity: Math.abs(Number(it.quantity ?? 1)),
+				sku: it.sku ?? undefined,
+			}))
+			.reduce(
+				(acc: StockReclassificationItem[], item: StockReclassificationItem) => {
+					const existing = acc.find((x) => x.product_id === item.product_id)
+					if (existing) {
+						existing.quantity += item.quantity
+					} else {
+						acc.push(item)
+					}
+					return acc
+				},
+				[],
+			)
+	}
+
 	const handleSubmit = async () => {
 		if (!invoice) return
 
@@ -367,7 +394,7 @@ export function RefundInvoiceDialog({
 		}
 
 		try {
-			await refundMutation.mutateAsync(base)
+			const result = await refundMutation.mutateAsync(base)
 
 			toast.success('Remboursement effectué', {
 				description: `Avoir de ${formatMoney(amountToRefund, currency)} créé pour ${invoice.number}`,
@@ -375,7 +402,23 @@ export function RefundInvoiceDialog({
 
 			setShowConfirmDialog(false)
 			onClose()
-			onSuccess?.()
+
+			// 🆕 Extraire les items depuis le credit_note retourné
+			// Fallback : reconstruire depuis les items originaux si le backend
+			// ne retourne pas le credit_note complet
+			const creditNoteItems: any[] =
+				(result as any)?.credit_note?.items ??
+				(result as any)?.creditNote?.items ??
+				(mode === 'partial'
+					? partialSelection.selected.map((sel) => ({
+							...invoice.items[sel.index],
+							quantity: sel.quantity,
+						}))
+					: invoice.items) ??
+				[]
+
+			const stockItems = buildStockItems(creditNoteItems)
+			onSuccess?.(stockItems.length > 0 ? stockItems : undefined)
 		} catch (error: any) {
 			toast.error('Erreur lors du remboursement', {
 				description: error?.message || 'Une erreur est survenue',

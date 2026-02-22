@@ -12,6 +12,8 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 
+import { decrementAppPosProductsStock, getAppPosToken } from '@/lib/apppos'
+
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -48,6 +50,7 @@ import {
 	usePerformDailyClosure,
 	useVerifyInvoiceChain,
 } from '@/lib/queries/closures'
+
 import {
 	useCancelInvoice,
 	useDeleteDraftInvoice,
@@ -67,6 +70,10 @@ import {
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { RefundInvoiceDialog } from '@/modules/common/RefundInvoiceDialog'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
+import {
+	StockReclassificationDialog,
+	type StockReclassificationItem,
+} from '@/modules/common/StockReclassificationDialog'
 import { pdf } from '@react-pdf/renderer'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -198,6 +205,14 @@ export function InvoicesPage() {
 	const [refundInvoiceOpen, setRefundInvoiceOpen] = useState(false)
 	const [invoiceToRefund, setInvoiceToRefund] =
 		useState<InvoiceResponse | null>(null)
+
+	const [stockReclassifyOpen, setStockReclassifyOpen] = useState(false)
+	const [stockItemsToReclassify, setStockItemsToReclassify] = useState<
+		StockReclassificationItem[]
+	>([])
+	const [stockDocumentNumber, setStockDocumentNumber] = useState<
+		string | undefined
+	>()
 
 	const handleOpenRefundTicketDialog = (ticket: InvoiceResponse) => {
 		setTicketToRefund(ticket)
@@ -425,6 +440,22 @@ export function InvoicesPage() {
 
 		setPaymentDialogOpen(false)
 		setSelectedMethodId('') // Reset
+		if (getAppPosToken() && invoiceToPay.items?.length) {
+			const stockItems = buildStockItemsFromInvoice(invoiceToPay.items)
+			if (stockItems.length > 0) {
+				try {
+					await decrementAppPosProductsStock(stockItems)
+					toast.success('Stock synchronisé', {
+						description: `${stockItems.length} produit(s) mis à jour dans AppPOS`,
+					})
+				} catch (err) {
+					console.error('❌ Erreur synchro stock AppPOS:', err)
+					toast.warning(
+						'Paiement enregistré mais erreur de synchronisation du stock',
+					)
+				}
+			}
+		}
 	}
 
 	const handleOpenCancelDialog = (invoice: InvoiceResponse) => {
@@ -447,8 +478,26 @@ export function InvoicesPage() {
 			toast.success(`Avoir créé pour la facture ${invoiceToCancel.number}`)
 			setCancelDialogOpen(false)
 			setCancelReason('')
+
+			// 🆕 Proposer la reclassification stock si items AppPOS
+			const stockItems = buildStockItemsFromInvoice(
+				invoiceToCancel.items ?? [],
+			).map((it) => ({
+				product_id: it.productId,
+				name:
+					invoiceToCancel.items?.find((i: any) => i.product_id === it.productId)
+						?.name ?? it.productId,
+				quantity: it.quantitySold,
+			}))
+
 			setInvoiceToCancel(null)
 			await refetchInvoices()
+
+			if (stockItems.length > 0 && getAppPosToken()) {
+				setStockItemsToReclassify(stockItems)
+				setStockDocumentNumber(invoiceToCancel.number)
+				setStockReclassifyOpen(true)
+			}
 		} catch (error: any) {
 			toast.error(error.message || "Erreur lors de la création de l'avoir")
 		}
@@ -562,6 +611,25 @@ export function InvoicesPage() {
 		setIntegrityDialogOpen(true)
 	}
 
+	const handleOpenStockReclassify = (
+		items: StockReclassificationItem[],
+		documentNumber?: string,
+	) => {
+		setStockItemsToReclassify(items)
+		setStockDocumentNumber(documentNumber)
+		setStockReclassifyOpen(true)
+	}
+
+	const buildStockItemsFromInvoice = (
+		items: any[],
+	): { productId: string; quantitySold: number }[] => {
+		return items
+			.filter((it) => !!it?.product_id)
+			.map((it) => ({
+				productId: it.product_id,
+				quantitySold: Math.abs(Number(it.quantity ?? 1)),
+			}))
+	}
 	// === RENDER ===
 
 	return (
@@ -1512,9 +1580,12 @@ export function InvoicesPage() {
 					else setRefundTicketDialogOpen(true)
 				}}
 				ticket={ticketToRefund}
-				onSuccess={() => {
+				onSuccess={(stockItems) => {
 					handleCloseRefundTicketDialog()
 					void refetchInvoices()
+					if (stockItems && stockItems.length > 0) {
+						handleOpenStockReclassify(stockItems, ticketToRefund?.number)
+					}
 				}}
 			/>
 
@@ -1524,6 +1595,23 @@ export function InvoicesPage() {
 				onClose={() => {
 					setRefundInvoiceOpen(false)
 					setInvoiceToRefund(null)
+				}}
+				onSuccess={(stockItems) => {
+					void refetchInvoices()
+					if (stockItems && stockItems.length > 0) {
+						handleOpenStockReclassify(stockItems, invoiceToRefund?.number)
+					}
+				}}
+			/>
+			<StockReclassificationDialog
+				open={stockReclassifyOpen}
+				onOpenChange={setStockReclassifyOpen}
+				items={stockItemsToReclassify}
+				documentNumber={stockDocumentNumber}
+				onComplete={() => {
+					setStockReclassifyOpen(false)
+					setStockItemsToReclassify([])
+					setStockDocumentNumber(undefined)
 				}}
 			/>
 
