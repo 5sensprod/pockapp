@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
 	Building2,
+	ClipboardList,
 	Database,
 	LogIn,
 	Package,
@@ -27,6 +28,7 @@ import {
 } from '@/lib/apppos'
 import { useAppPosStockUpdates } from '@/lib/apppos'
 import type { CategoriesResponse } from '@/lib/pocketbase-types'
+import { Link } from '@tanstack/react-router'
 import { BrandListAppPos } from './components/BrandListAppPos'
 import { CategoryTreeAppPos } from './components/CategoryTreeAppPos'
 // Import des composants
@@ -275,6 +277,12 @@ export function StockPageAppPos() {
 									Données depuis l'API AppPOS (http://localhost:3000)
 								</p>
 							</div>
+							<Link to='/inventory-apppos'>
+								<Button variant='outline' size='sm' className='gap-2'>
+									<ClipboardList className='h-4 w-4' />
+									Inventaire
+								</Button>
+							</Link>
 							<Button
 								variant='outline'
 								size='sm'

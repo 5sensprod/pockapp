@@ -36,24 +36,31 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		ensureCashSessionsCollection,
 		ensureCashMovementsCollection,
 
-		// 7. 🆕 Rapports Z (dépend de cash_registers + cash_sessions)
-		ensureZReportsCollection,   // Crée la collection z_reports
-		AddZReportIdToCashSessions, // Ajoute z_report_id sur cash_sessions
+		// 7. Rapports Z (dépend de cash_registers + cash_sessions)
+		ensureZReportsCollection,
+		AddZReportIdToCashSessions,
 		AddRoleToUsers,
 		AddCompanyToUsers,
 		MigrateAppSettings,
 
-		// 🆕 Moyens de paiement
-		ensurePaymentMethodsCollection,  // Crée la collection
-		AddPaymentMethodLabelToInvoices, // Ajoute payment_method_label sur invoices
+		// Moyens de paiement
+		ensurePaymentMethodsCollection,
+		AddPaymentMethodLabelToInvoices,
 
 		EnsureAllCompaniesHavePaymentMethods,
 
-		// 🆕 Type de client et délais de paiement
-		AddCustomerTypeToCustomers, // Ajoute customer_type (individual, professional, administration, association)
-		AddPaymentTermsToCustomers, // Ajoute payment_terms (immediate, 30_days, 45_days, 60_days)
-		BackfillCustomerType,       // Remplit "individual" par défaut pour les clients existants
+		// Type de client et délais de paiement
+		AddCustomerTypeToCustomers,
+		AddPaymentTermsToCustomers,
+		BackfillCustomerType,
 		FixInvoiceTotalsNonzero,
+
+		// 8. 🆕 Inventaire physique
+		// sessions d'abord — entries dépend de son ID via RelationField
+		ensureInventorySessionsCollection,
+		ensureInventoryEntriesCollection,
+
+		FixInventoryCollectionFields,
 	}
 
 	for _, migrate := range migrations {

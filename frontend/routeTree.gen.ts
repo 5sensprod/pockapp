@@ -19,6 +19,7 @@ import { Route as StockAppposIndexImport } from './routes/stock-apppos/index'
 import { Route as StickIndexImport } from './routes/stick/index'
 import { Route as StatsIndexImport } from './routes/stats/index'
 import { Route as SettingsIndexImport } from './routes/settings/index'
+import { Route as InventoryAppposIndexImport } from './routes/inventory-apppos/index'
 import { Route as ConnectIndexImport } from './routes/connect/index'
 import { Route as CashIndexImport } from './routes/cash/index'
 import { Route as SettingsUsersImport } from './routes/settings/users'
@@ -91,6 +92,12 @@ const StatsIndexRoute = StatsIndexImport.update({
 const SettingsIndexRoute = SettingsIndexImport.update({
   id: '/settings/',
   path: '/settings/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const InventoryAppposIndexRoute = InventoryAppposIndexImport.update({
+  id: '/inventory-apppos/',
+  path: '/inventory-apppos/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -311,6 +318,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectIndexImport
       parentRoute: typeof rootRoute
     }
+    '/inventory-apppos/': {
+      id: '/inventory-apppos/'
+      path: '/inventory-apppos'
+      fullPath: '/inventory-apppos'
+      preLoaderRoute: typeof InventoryAppposIndexImport
+      parentRoute: typeof rootRoute
+    }
     '/settings/': {
       id: '/settings/'
       path: '/settings'
@@ -487,6 +501,7 @@ export interface FileRoutesByFullPath {
   '/settings/users': typeof SettingsUsersRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
+  '/inventory-apppos': typeof InventoryAppposIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/stats': typeof StatsIndexRoute
   '/stick': typeof StickIndexRoute
@@ -522,6 +537,7 @@ export interface FileRoutesByTo {
   '/settings/users': typeof SettingsUsersRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
+  '/inventory-apppos': typeof InventoryAppposIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/stats': typeof StatsIndexRoute
   '/stick': typeof StickIndexRoute
@@ -558,6 +574,7 @@ export interface FileRoutesById {
   '/settings/users': typeof SettingsUsersRoute
   '/cash/': typeof CashIndexRoute
   '/connect/': typeof ConnectIndexRoute
+  '/inventory-apppos/': typeof InventoryAppposIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/stats/': typeof StatsIndexRoute
   '/stick/': typeof StickIndexRoute
@@ -595,6 +612,7 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/cash'
     | '/connect'
+    | '/inventory-apppos'
     | '/settings'
     | '/stats'
     | '/stick'
@@ -629,6 +647,7 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/cash'
     | '/connect'
+    | '/inventory-apppos'
     | '/settings'
     | '/stats'
     | '/stick'
@@ -663,6 +682,7 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/cash/'
     | '/connect/'
+    | '/inventory-apppos/'
     | '/settings/'
     | '/stats/'
     | '/stick/'
@@ -699,6 +719,7 @@ export interface RootRouteChildren {
   SettingsUsersRoute: typeof SettingsUsersRoute
   CashIndexRoute: typeof CashIndexRoute
   ConnectIndexRoute: typeof ConnectIndexRoute
+  InventoryAppposIndexRoute: typeof InventoryAppposIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   StatsIndexRoute: typeof StatsIndexRoute
   StickIndexRoute: typeof StickIndexRoute
@@ -734,6 +755,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsUsersRoute: SettingsUsersRoute,
   CashIndexRoute: CashIndexRoute,
   ConnectIndexRoute: ConnectIndexRoute,
+  InventoryAppposIndexRoute: InventoryAppposIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   StatsIndexRoute: StatsIndexRoute,
   StickIndexRoute: StickIndexRoute,
@@ -781,6 +803,7 @@ export const routeTree = rootRoute
         "/settings/users",
         "/cash/",
         "/connect/",
+        "/inventory-apppos/",
         "/settings/",
         "/stats/",
         "/stick/",
@@ -832,6 +855,9 @@ export const routeTree = rootRoute
     },
     "/connect/": {
       "filePath": "connect/index.tsx"
+    },
+    "/inventory-apppos/": {
+      "filePath": "inventory-apppos/index.tsx"
     },
     "/settings/": {
       "filePath": "settings/index.tsx"
