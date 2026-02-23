@@ -12,7 +12,7 @@ import { useMemo, useState } from 'react'
 import { usePocketBase } from '../use-pocketbase'
 import {
 	cancelInventorySession,
-	completeInventorySession,
+	completeInventorySessionWithStats,
 	computeGaps,
 	countInventoryProduct,
 	createInventoryEntries,
@@ -278,7 +278,19 @@ export function useInventorySession(sessionId: string | undefined) {
 	const completeSession = useMutation({
 		mutationFn: () => {
 			if (!sessionId) throw new Error('Pas de session active')
-			return completeInventorySession(pb, sessionId)
+			if (!summary) throw new Error('Résumé de session indisponible')
+
+			// Collecter les noms de catégories uniques depuis les entrées
+			const categoryNames = [
+				...new Set(entries.map((e) => e.category_name).filter(Boolean)),
+			].sort()
+
+			return completeInventorySessionWithStats(pb, sessionId, {
+				totalProducts: summary.totalProducts,
+				countedProducts: summary.countedProducts,
+				totalGaps: summary.totalGaps.length,
+				categoryNames,
+			})
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: inventoryKeys.all })

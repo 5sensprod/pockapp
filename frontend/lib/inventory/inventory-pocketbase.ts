@@ -141,6 +141,7 @@ export async function validateInventoryCategory(
 
 /**
  * Complète la session (tous les écarts ont été appliqués).
+ * Écrit les stats dénormalisées pour l'affichage de l'historique sans requêter les entrées.
  */
 export async function completeInventorySession(
 	pb: PocketBase,
@@ -151,6 +152,33 @@ export async function completeInventorySession(
 		.update<InventorySession>(sessionId, {
 			status: 'completed',
 			completed_at: new Date().toISOString(),
+		})
+}
+
+/**
+ * Complète la session ET écrit les stats dénormalisées.
+ * À préférer à completeInventorySession() pour un historique riche.
+ * @param stats - Calculées depuis le summary avant clôture
+ */
+export async function completeInventorySessionWithStats(
+	pb: PocketBase,
+	sessionId: string,
+	stats: {
+		totalProducts: number
+		countedProducts: number
+		totalGaps: number
+		categoryNames: string[]
+	},
+): Promise<InventorySession> {
+	return pb
+		.collection(INVENTORY_SESSIONS_COLLECTION)
+		.update<InventorySession>(sessionId, {
+			status: 'completed',
+			completed_at: new Date().toISOString(),
+			stats_total_products: stats.totalProducts,
+			stats_counted_products: stats.countedProducts,
+			stats_total_gaps: stats.totalGaps,
+			stats_category_names: stats.categoryNames,
 		})
 }
 

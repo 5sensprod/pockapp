@@ -891,6 +891,17 @@ function CategoryCountingView({
 function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 	const { data, isLoading } = useInventoryHistory()
 	const sessions = data?.items ?? []
+	const [expandedId, setExpandedId] = useState<string | null>(null)
+
+	function formatDuration(startedAt: string, completedAt: string | null) {
+		if (!completedAt) return null
+		const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime()
+		const totalMin = Math.round(ms / 60000)
+		if (totalMin < 60) return `${totalMin} min`
+		const h = Math.floor(totalMin / 60)
+		const m = totalMin % 60
+		return m > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${h}h`
+	}
 
 	return (
 		<div className='flex flex-col h-full'>
@@ -900,6 +911,9 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 					Retour
 				</Button>
 				<h2 className='font-semibold text-lg'>Historique des inventaires</h2>
+				<span className='text-xs text-muted-foreground ml-auto'>
+					{sessions.length} session{sessions.length > 1 ? 's' : ''}
+				</span>
 			</div>
 
 			<div className='flex-1 overflow-y-auto'>
@@ -914,62 +928,188 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 					</div>
 				) : (
 					<div className='divide-y'>
-						{sessions.map((session) => (
-							<div
-								key={session.id}
-								className='flex items-center gap-4 px-6 py-4 hover:bg-muted/30'
-							>
-								<div
-									className={cn(
-										'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
-										session.status === 'completed'
-											? 'bg-green-500/10'
-											: 'bg-muted',
-									)}
-								>
-									{session.status === 'completed' ? (
-										<CheckCircle2 className='h-5 w-5 text-green-500' />
-									) : (
-										<X className='h-5 w-5 text-muted-foreground' />
-									)}
-								</div>
+						{sessions.map((session) => {
+							const isExpanded = expandedId === session.id
+							const duration = formatDuration(
+								session.started_at,
+								session.completed_at,
+							)
+							const hasStats = session.stats_total_products != null
+							const categoryNames: string[] = session.stats_category_names ?? []
+							const gapCount = session.stats_total_gaps ?? 0
+							const totalProducts = session.stats_total_products ?? 0
+							const countedProducts = session.stats_counted_products ?? 0
+							const progressPct =
+								totalProducts > 0
+									? Math.round((countedProducts / totalProducts) * 100)
+									: 0
 
-								<div className='flex-1 min-w-0'>
-									<div className='flex items-center gap-2 mb-0.5'>
-										<span className='font-medium text-sm'>
-											Inventaire du{' '}
-											{new Date(session.started_at).toLocaleDateString(
-												'fr-FR',
-												{
-													day: '2-digit',
-													month: '2-digit',
-													year: 'numeric',
-												},
-											)}
-										</span>
-										<span
+							return (
+								<div
+									key={session.id}
+									className='hover:bg-muted/20 transition-colors'
+								>
+									{/* Ligne principale */}
+									<button
+										type='button'
+										className='w-full flex items-center gap-4 px-6 py-4 text-left'
+										onClick={() =>
+											setExpandedId(isExpanded ? null : session.id)
+										}
+									>
+										{/* Icône statut */}
+										<div
 											className={cn(
-												'text-xs px-2 py-0.5 rounded-full font-medium',
+												'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
 												session.status === 'completed'
-													? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-													: 'bg-muted text-muted-foreground',
+													? 'bg-green-500/10'
+													: 'bg-muted',
 											)}
 										>
-											{session.status === 'completed' ? 'Complété' : 'Annulé'}
-										</span>
-									</div>
-									<div className='text-xs text-muted-foreground flex items-center gap-3'>
-										<span>Opérateur : {session.operator}</span>
-										<span>·</span>
-										<span>
-											{session.scope === 'all'
-												? 'Catalogue complet'
-												: `${session.scope_category_ids?.length ?? 0} catégorie(s)`}
-										</span>
-										{session.completed_at && (
-											<>
+											{session.status === 'completed' ? (
+												<CheckCircle2 className='h-5 w-5 text-green-500' />
+											) : (
+												<X className='h-5 w-5 text-muted-foreground' />
+											)}
+										</div>
+
+										{/* Infos principales */}
+										<div className='flex-1 min-w-0'>
+											<div className='flex items-center gap-2 mb-1'>
+												<span className='font-medium text-sm'>
+													Inventaire du{' '}
+													{new Date(session.started_at).toLocaleDateString(
+														'fr-FR',
+														{
+															day: '2-digit',
+															month: 'long',
+															year: 'numeric',
+														},
+													)}
+												</span>
+												<span
+													className={cn(
+														'text-xs px-2 py-0.5 rounded-full font-medium shrink-0',
+														session.status === 'completed'
+															? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+															: 'bg-muted text-muted-foreground',
+													)}
+												>
+													{session.status === 'completed'
+														? 'Complété'
+														: 'Annulé'}
+												</span>
+											</div>
+
+											{/* Méta-infos ligne 1 */}
+											<div className='flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground'>
+												<span className='flex items-center gap-1'>
+													<span className='font-medium text-foreground/70'>
+														{session.operator}
+													</span>
+												</span>
 												<span>·</span>
 												<span>
+													{session.scope === 'all'
+														? 'Catalogue complet'
+														: `${session.scope_category_ids?.length ?? 0} catégorie(s) sélectionnée(s)`}
+												</span>
+												{duration && (
+													<>
+														<span>·</span>
+														<span className='flex items-center gap-0.5'>
+															<Clock className='h-3 w-3' />
+															{duration}
+														</span>
+													</>
+												)}
+											</div>
+
+											{/* Stats dénormalisées si disponibles */}
+											{hasStats && (
+												<div className='flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs mt-1'>
+													<span className='text-muted-foreground'>
+														<span className='font-semibold text-foreground/80'>
+															{totalProducts}
+														</span>{' '}
+														produit{totalProducts > 1 ? 's' : ''}
+													</span>
+													<span className='text-muted-foreground'>·</span>
+													<span className='text-muted-foreground'>
+														<span className='font-semibold text-foreground/80'>
+															{progressPct}%
+														</span>{' '}
+														compté{progressPct < 100 ? '' : ''}
+													</span>
+													{gapCount > 0 ? (
+														<>
+															<span className='text-muted-foreground'>·</span>
+															<span className='flex items-center gap-0.5 text-orange-600 dark:text-orange-400 font-medium'>
+																<AlertTriangle className='h-3 w-3' />
+																{gapCount} écart{gapCount > 1 ? 's' : ''}
+															</span>
+														</>
+													) : (
+														<>
+															<span className='text-muted-foreground'>·</span>
+															<span className='flex items-center gap-0.5 text-green-600 dark:text-green-400 font-medium'>
+																<CheckCircle2 className='h-3 w-3' />
+																Aucun écart
+															</span>
+														</>
+													)}
+												</div>
+											)}
+										</div>
+
+										{/* Chevron expand */}
+										{(hasStats && categoryNames.length > 0) || session.notes ? (
+											<ChevronRight
+												className={cn(
+													'h-4 w-4 text-muted-foreground shrink-0 transition-transform',
+													isExpanded && 'rotate-90',
+												)}
+											/>
+										) : null}
+									</button>
+
+									{/* Panneau expansible — catégories + notes */}
+									{isExpanded && (
+										<div className='px-6 pb-4 pl-20 space-y-3'>
+											{/* Catégories inventoriées */}
+											{categoryNames.length > 0 && (
+												<div>
+													<p className='text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2'>
+														Catégories inventoriées ({categoryNames.length})
+													</p>
+													<div className='flex flex-wrap gap-1.5'>
+														{categoryNames.map((name) => (
+															<span
+																key={name}
+																className='text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground'
+															>
+																{name}
+															</span>
+														))}
+													</div>
+												</div>
+											)}
+
+											{/* Notes */}
+											{session.notes && (
+												<div>
+													<p className='text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1'>
+														Notes
+													</p>
+													<p className='text-sm text-muted-foreground italic'>
+														{session.notes}
+													</p>
+												</div>
+											)}
+
+											{/* Date de clôture */}
+											{session.completed_at && (
+												<p className='text-xs text-muted-foreground'>
 													Clôturé le{' '}
 													{new Date(session.completed_at).toLocaleDateString(
 														'fr-FR',
@@ -981,13 +1121,13 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 															minute: '2-digit',
 														},
 													)}
-												</span>
-											</>
-										)}
-									</div>
+												</p>
+											)}
+										</div>
+									)}
 								</div>
-							</div>
-						))}
+							)
+						})}
 					</div>
 				)}
 			</div>
@@ -1035,6 +1175,7 @@ export function InventoryPageAppPos() {
 			setView('home')
 		}
 	}, [activeSession, sessionLoading, view])
+
 	const handleCreateConfirm = async (
 		operator: string,
 		scope: 'all' | 'selection',

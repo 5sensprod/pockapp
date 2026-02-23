@@ -28,6 +28,12 @@ export interface InventorySession {
 	validated_category_ids: string[] // Catégories dont le comptage est validé (plus modifiables)
 	apppos_snapshot_at: string // ISO date — moment du gel des stocks théoriques
 	notes: string
+	// Stats dénormalisées — écrites à la clôture de la session (completeInventorySession)
+	// Évite de requêter toutes les entrées pour afficher l'historique
+	stats_total_products: number | null // Nb total de produits dans la session
+	stats_counted_products: number | null // Nb de produits effectivement comptés
+	stats_total_gaps: number | null // Nb de produits avec écart ≠ 0
+	stats_category_names: string[] | null // Snapshot des noms de catégories inventoriées
 	// Champs PocketBase auto
 	created: string
 	updated: string
@@ -165,6 +171,10 @@ export interface AdjustmentResult {
  * - validated_category_ids : JSON
  * - apppos_snapshot_at     : Date
  * - notes           : Text    — optional
+ * - stats_total_products    : Number  — optional (null avant clôture)
+ * - stats_counted_products  : Number  — optional
+ * - stats_total_gaps        : Number  — optional
+ * - stats_category_names    : JSON    — optional (snapshot noms catégories)
  */
 export const INVENTORY_SESSIONS_COLLECTION = 'inventory_sessions'
 

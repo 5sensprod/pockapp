@@ -13,14 +13,22 @@ import (
 // ensureInventorySessionsCollection
 // Collection : inventory_sessions
 // Une session = un inventaire physique avec statut, périmètre et opérateur
+// ⚠️  Si la collection existe déjà, elle est supprimée puis recrée
+//
+//	(entraîne la suppression en cascade de inventory_entries)
+//
 // ─────────────────────────────────────────────────────────────────────────────
 func ensureInventorySessionsCollection(app *pocketbase.PocketBase) error {
 	const collectionName = "inventory_sessions"
 
+	// Supprimer si elle existe déjà (repart de zéro)
 	existing, _ := app.Dao().FindCollectionByNameOrId(collectionName)
 	if existing != nil {
-		log.Printf("✅ Collection %s existe déjà", collectionName)
-		return nil
+		log.Printf("🗑️  Suppression de la collection existante %s...", collectionName)
+		if err := app.Dao().DeleteCollection(existing); err != nil {
+			return fmt.Errorf("erreur suppression %s: %w", collectionName, err)
+		}
+		log.Printf("✅ Collection %s supprimée", collectionName)
 	}
 
 	log.Printf("📦 Création de la collection %s...", collectionName)
@@ -29,7 +37,7 @@ func ensureInventorySessionsCollection(app *pocketbase.PocketBase) error {
 		Name: collectionName,
 		Type: models.CollectionTypeBase,
 		Schema: schema.NewSchema(
-			// Statut de la session
+			// ── Statut de la session ─────────────────────────────────────────
 			&schema.SchemaField{
 				Name:     "status",
 				Type:     schema.FieldTypeSelect,
@@ -39,25 +47,24 @@ func ensureInventorySessionsCollection(app *pocketbase.PocketBase) error {
 					Values:    []string{"draft", "in_progress", "completed", "cancelled"},
 				},
 			},
-			// Date de démarrage du comptage
+			// ── Dates ────────────────────────────────────────────────────────
 			&schema.SchemaField{
 				Name:     "started_at",
 				Type:     schema.FieldTypeDate,
 				Required: true,
 			},
-			// Date de clôture (null tant que non terminée)
 			&schema.SchemaField{
 				Name:     "completed_at",
 				Type:     schema.FieldTypeDate,
 				Required: false,
 			},
-			// Nom de l'opérateur qui réalise l'inventaire
+			// ── Opérateur ────────────────────────────────────────────────────
 			&schema.SchemaField{
 				Name:     "operator",
 				Type:     schema.FieldTypeText,
 				Required: true,
 			},
-			// Périmètre : tout le catalogue ou sélection de catégories
+			// ── Périmètre ────────────────────────────────────────────────────
 			&schema.SchemaField{
 				Name:     "scope",
 				Type:     schema.FieldTypeSelect,
@@ -74,7 +81,7 @@ func ensureInventorySessionsCollection(app *pocketbase.PocketBase) error {
 				Required: false,
 				Options:  &schema.JsonOptions{MaxSize: 5242880},
 			},
-			// IDs catégories dont le comptage est validé (plus modifiables)
+			// IDs catégories dont le comptage est validé (verrouillées)
 			&schema.SchemaField{
 				Name:     "validated_category_ids",
 				Type:     schema.FieldTypeJson,
@@ -87,11 +94,45 @@ func ensureInventorySessionsCollection(app *pocketbase.PocketBase) error {
 				Type:     schema.FieldTypeDate,
 				Required: true,
 			},
-			// Notes libres
+			// Notes libres de l'opérateur
 			&schema.SchemaField{
 				Name:     "notes",
 				Type:     schema.FieldTypeText,
 				Required: false,
+			},
+			// ── Stats dénormalisées (écrites à la clôture) ───────────────────
+			// Permettent d'afficher l'historique sans requêter inventory_entries
+			&schema.SchemaField{
+				Name:     "stats_total_products",
+				Type:     schema.FieldTypeNumber,
+				Required: false,
+				Options: &schema.NumberOptions{
+					Min: func() *float64 { v := float64(0); return &v }(),
+				},
+			},
+			&schema.SchemaField{
+				Name:     "stats_counted_products",
+				Type:     schema.FieldTypeNumber,
+				Required: false,
+				Options: &schema.NumberOptions{
+					Min: func() *float64 { v := float64(0); return &v }(),
+				},
+			},
+			// Nombre de produits avec écart ≠ 0 après comptage
+			&schema.SchemaField{
+				Name:     "stats_total_gaps",
+				Type:     schema.FieldTypeNumber,
+				Required: false,
+				Options: &schema.NumberOptions{
+					Min: func() *float64 { v := float64(0); return &v }(),
+				},
+			},
+			// Snapshot des noms de catégories inventoriées (pour affichage historique)
+			&schema.SchemaField{
+				Name:     "stats_category_names",
+				Type:     schema.FieldTypeJson,
+				Required: false,
+				Options:  &schema.JsonOptions{MaxSize: 5242880},
 			},
 		),
 	}
@@ -116,15 +157,23 @@ func ensureInventorySessionsCollection(app *pocketbase.PocketBase) error {
 // ensureInventoryEntriesCollection
 // Collection : inventory_entries
 // Une entrée = un produit dans une session (snapshot stock + quantité saisie)
-// Dépend de inventory_sessions (RelationField + cascade delete)
+// ⚠️  Dépend de inventory_sessions (RelationField + cascade delete)
+//
+//	La suppression de la session supprime automatiquement ses entrées,
+//	mais on supprime aussi explicitement ici pour repartir proprement.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 func ensureInventoryEntriesCollection(app *pocketbase.PocketBase) error {
 	const collectionName = "inventory_entries"
 
+	// Supprimer si elle existe déjà (repart de zéro)
 	existing, _ := app.Dao().FindCollectionByNameOrId(collectionName)
 	if existing != nil {
-		log.Printf("✅ Collection %s existe déjà", collectionName)
-		return nil
+		log.Printf("🗑️  Suppression de la collection existante %s...", collectionName)
+		if err := app.Dao().DeleteCollection(existing); err != nil {
+			return fmt.Errorf("erreur suppression %s: %w", collectionName, err)
+		}
+		log.Printf("✅ Collection %s supprimée", collectionName)
 	}
 
 	log.Printf("📦 Création de la collection %s...", collectionName)
