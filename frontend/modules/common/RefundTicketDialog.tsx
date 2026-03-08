@@ -43,7 +43,7 @@ type RefundType = 'full' | 'partial'
 export type InvoiceResponse = {
 	id: string
 	number?: string
-	invoice_type?: 'invoice' | 'credit_note'
+	invoice_type?: 'invoice' | 'credit_note' | 'deposit'
 	is_pos_ticket?: boolean
 	currency?: string
 	date?: string

@@ -241,11 +241,27 @@ const styles = StyleSheet.create({
 	},
 })
 
+export type DepositPdfData =
+	| {
+			type: 'deposit' // Vue depuis une facture d'acompte
+			parentInvoice: InvoiceResponse
+	  }
+	| {
+			type: 'balance' // Vue depuis une facture de solde
+			parentInvoice: InvoiceResponse
+			deposits: InvoiceResponse[]
+	  }
+	| {
+			type: 'parent' // Vue depuis la facture d'origine (avec acomptes)
+			deposits: InvoiceResponse[]
+	  }
+
 export interface InvoicePdfProps {
 	invoice: InvoiceResponse
 	customer?: CustomersResponse
 	company?: CompaniesResponse
 	companyLogoUrl?: string | null
+	depositPdfData?: DepositPdfData // 🆕
 }
 
 // ✅ Type pour la ventilation TVA
@@ -279,6 +295,7 @@ export function InvoicePdfDocument({
 	customer,
 	company,
 	companyLogoUrl,
+	depositPdfData,
 }: InvoicePdfProps) {
 	const formatCurrency = (amount: number) =>
 		new Intl.NumberFormat('fr-FR', {
@@ -421,32 +438,21 @@ export function InvoicePdfDocument({
 	// ✅ Déterminer le titre du document selon son type
 	// LOGIQUE: Credit note > Ticket > Facture
 	const getDocumentTitle = (): string => {
-		// 🔍 DEBUG - Logs détaillés
-		console.log('🔍 PDF getDocumentTitle appelée', {
-			number: invoice.number,
-			invoice_type: invoice.invoice_type,
-			is_pos_ticket: invoice.is_pos_ticket,
-		})
-
-		// 1️⃣ PRIORITÉ 1: Vérifier si c'est un AVOIR (credit_note)
-		// Un avoir peut être lié à un ticket OU une facture, mais c'est d'abord un AVOIR
 		if (invoice.invoice_type === 'credit_note') {
-			console.log('✅ → Retourne AVOIR (invoice_type === credit_note)')
 			return 'AVOIR'
 		}
-
-		// 2️⃣ PRIORITÉ 2: Vérifier si c'est un TICKET (POS)
-		// Seulement si ce n'est PAS un avoir
+		if (invoice.invoice_type === 'deposit') {
+			return "FACTURE D'ACOMPTE"
+		}
+		// 🆕 Facture de solde = invoice avec original_invoice_id
+		if (invoice.invoice_type === 'invoice' && invoice.original_invoice_id) {
+			return 'FACTURE DE SOLDE'
+		}
 		if (invoice.is_pos_ticket === true || invoice.number?.startsWith('TIK-')) {
-			console.log('✅ → Retourne TICKET (is_pos_ticket ou TIK-)')
 			return 'TICKET'
 		}
-
-		// 3️⃣ Par défaut: FACTURE B2B standard
-		console.log('✅ → Retourne FACTURE (défaut)')
 		return 'FACTURE'
 	}
-
 	const documentTitle = getDocumentTitle()
 
 	console.log('📄 Titre final du document:', documentTitle)
@@ -455,7 +461,11 @@ export function InvoicePdfDocument({
 			? 'Avoir n°'
 			: documentTitle === 'TICKET'
 				? 'Ticket n°'
-				: 'Facture n°'
+				: documentTitle === "FACTURE D'ACOMPTE"
+					? 'Acompte n°'
+					: documentTitle === 'FACTURE DE SOLDE'
+						? 'Facture de solde n°'
+						: 'Facture n°'
 
 	return (
 		<Document>
@@ -668,6 +678,269 @@ export function InvoicePdfDocument({
 						</Text>
 					</View>
 				</View>
+
+				{/* 🆕 RÉCAP ACOMPTES */}
+				{depositPdfData && (
+					<View
+						style={{
+							marginTop: 14,
+							padding: 10,
+							borderWidth: 0.5,
+							borderColor: '#93c5fd',
+							borderStyle: 'solid',
+							borderRadius: 4,
+							backgroundColor: '#eff6ff',
+						}}
+					>
+						{/* ── Facture d'acompte : référence à la facture parente ── */}
+						{depositPdfData.type === 'deposit' && (
+							<>
+								<Text
+									style={{ fontSize: 11, fontWeight: 'bold', marginBottom: 6 }}
+								>
+									Référence facture principale
+								</Text>
+								<View
+									style={{
+										flexDirection: 'row',
+										justifyContent: 'space-between',
+										marginBottom: 3,
+									}}
+								>
+									<Text style={{ fontSize: 10, color: '#444' }}>
+										Facture n° {depositPdfData.parentInvoice.number}
+									</Text>
+									<Text style={{ fontSize: 10, color: '#444' }}>
+										Total :{' '}
+										{formatCurrency(depositPdfData.parentInvoice.total_ttc)}
+									</Text>
+								</View>
+								<View
+									style={{
+										flexDirection: 'row',
+										justifyContent: 'space-between',
+										marginBottom: 3,
+									}}
+								>
+									<Text style={{ fontSize: 10, color: '#444' }}>
+										Acompte{' '}
+										{invoice.deposit_percentage
+											? `(${invoice.deposit_percentage}%)`
+											: ''}
+									</Text>
+									<Text
+										style={{
+											fontSize: 10,
+											fontWeight: 'bold',
+											color: '#1d4ed8',
+										}}
+									>
+										{formatCurrency(invoice.total_ttc)}
+									</Text>
+								</View>
+								<View
+									style={{
+										flexDirection: 'row',
+										justifyContent: 'space-between',
+										marginTop: 4,
+										paddingTop: 4,
+										borderTopWidth: 0.5,
+										borderTopColor: '#93c5fd',
+										borderTopStyle: 'solid',
+									}}
+								>
+									<Text style={{ fontSize: 10, color: '#444' }}>
+										Solde restant après cet acompte
+									</Text>
+									<Text style={{ fontSize: 10, fontWeight: 'bold' }}>
+										{formatCurrency(
+											(depositPdfData.parentInvoice.balance_due ?? 0) > 0
+												? (depositPdfData.parentInvoice.balance_due ?? 0)
+												: depositPdfData.parentInvoice.total_ttc -
+														invoice.total_ttc,
+										)}
+									</Text>
+								</View>
+							</>
+						)}
+
+						{/* ── Facture de solde : récap complet ── */}
+						{depositPdfData.type === 'balance' && (
+							<>
+								<Text
+									style={{ fontSize: 11, fontWeight: 'bold', marginBottom: 6 }}
+								>
+									Récapitulatif des acomptes
+								</Text>
+								{/* Facture d'origine */}
+								<View
+									style={{
+										flexDirection: 'row',
+										justifyContent: 'space-between',
+										marginBottom: 4,
+									}}
+								>
+									<Text style={{ fontSize: 10, color: '#444' }}>
+										Facture principale n° {depositPdfData.parentInvoice.number}
+									</Text>
+									<Text style={{ fontSize: 10 }}>
+										{formatCurrency(depositPdfData.parentInvoice.total_ttc)}
+									</Text>
+								</View>
+								{/* Liste des acomptes */}
+								{depositPdfData.deposits.map((dep) => (
+									<View
+										key={dep.id}
+										style={{
+											flexDirection: 'row',
+											justifyContent: 'space-between',
+											marginBottom: 2,
+										}}
+									>
+										<Text style={{ fontSize: 10, color: '#1d4ed8' }}>
+											Acompte {dep.number} du {formatDate(dep.date)}
+											{dep.deposit_percentage
+												? ` (${dep.deposit_percentage}%)`
+												: ''}
+										</Text>
+										<Text style={{ fontSize: 10, color: '#1d4ed8' }}>
+											-{formatCurrency(dep.total_ttc)}
+										</Text>
+									</View>
+								))}
+								{/* Total acomptes */}
+								<View
+									style={{
+										flexDirection: 'row',
+										justifyContent: 'space-between',
+										marginTop: 4,
+										paddingTop: 4,
+										borderTopWidth: 0.5,
+										borderTopColor: '#93c5fd',
+										borderTopStyle: 'solid',
+									}}
+								>
+									<Text style={{ fontSize: 10, color: '#444' }}>
+										Total acomptes versés
+									</Text>
+									<Text style={{ fontSize: 10, color: '#1d4ed8' }}>
+										-
+										{formatCurrency(
+											depositPdfData.parentInvoice.deposits_total_ttc ?? 0,
+										)}
+									</Text>
+								</View>
+								{/* Solde = total TTC de la facture de solde */}
+								<View
+									style={{
+										flexDirection: 'row',
+										justifyContent: 'space-between',
+										marginTop: 3,
+									}}
+								>
+									<Text style={{ fontSize: 11, fontWeight: 'bold' }}>
+										Solde à régler
+									</Text>
+									<Text style={{ fontSize: 11, fontWeight: 'bold' }}>
+										{formatCurrency(invoice.total_ttc)}
+									</Text>
+								</View>
+							</>
+						)}
+
+						{/* ── Facture parente : récap des acomptes reçus ── */}
+						{depositPdfData.type === 'parent' && (
+							<>
+								<Text
+									style={{ fontSize: 11, fontWeight: 'bold', marginBottom: 6 }}
+								>
+									Acomptes versés
+								</Text>
+								{depositPdfData.deposits.map((dep) => (
+									<View
+										key={dep.id}
+										style={{
+											flexDirection: 'row',
+											justifyContent: 'space-between',
+											marginBottom: 2,
+										}}
+									>
+										<Text style={{ fontSize: 10, color: '#1d4ed8' }}>
+											{dep.number} du {formatDate(dep.date)}
+											{dep.deposit_percentage
+												? ` (${dep.deposit_percentage}%)`
+												: ''}
+											{dep.is_paid ? ' ✓' : ' (en attente)'}
+										</Text>
+										<Text style={{ fontSize: 10, color: '#1d4ed8' }}>
+											{formatCurrency(dep.total_ttc)}
+										</Text>
+									</View>
+								))}
+								<View
+									style={{
+										flexDirection: 'row',
+										justifyContent: 'space-between',
+										marginTop: 4,
+										paddingTop: 4,
+										borderTopWidth: 0.5,
+										borderTopColor: '#93c5fd',
+										borderTopStyle: 'solid',
+									}}
+								>
+									<Text style={{ fontSize: 10 }}>Solde restant</Text>
+									<Text style={{ fontSize: 10, fontWeight: 'bold' }}>
+										{formatCurrency(invoice.balance_due ?? invoice.total_ttc)}
+									</Text>
+								</View>
+							</>
+						)}
+					</View>
+				)}
+
+				{invoice.is_paid && invoice.payment_method && (
+					<View
+						style={{
+							marginTop: 12,
+							padding: 8,
+							borderWidth: 0.5,
+							borderColor: '#ddd',
+							borderStyle: 'solid',
+							borderRadius: 4,
+							flexDirection: 'row',
+							alignItems: 'center',
+							gap: 8,
+						}}
+					>
+						<Text style={{ fontSize: 10, fontWeight: 'bold' }}>
+							Mode de règlement :
+						</Text>
+						<Text style={{ fontSize: 10 }}>
+							{(() => {
+								if (invoice.payment_method === 'autre') {
+									return (invoice as any).payment_method_label || 'Autre'
+								}
+								const labels: Record<string, string> = {
+									virement: 'Virement bancaire',
+									cb: 'Carte bancaire',
+									especes: 'Espèces',
+									cheque: 'Chèque',
+								}
+								return labels[invoice.payment_method] ?? invoice.payment_method
+							})()}
+						</Text>
+						{invoice.paid_at && (
+							<Text style={{ fontSize: 10, color: '#666' }}>
+								— le{' '}
+								{new Date(invoice.paid_at).toLocaleDateString('fr-FR', {
+									day: '2-digit',
+									month: '2-digit',
+									year: 'numeric',
+								})}
+							</Text>
+						)}
+					</View>
+				)}
 
 				{(company?.iban || company?.bic || company?.bank_name) && (
 					<View style={styles.bankBlock}>

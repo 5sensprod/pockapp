@@ -586,20 +586,39 @@ export function useRecordPayment() {
 			}
 
 			if (paymentMethod) updateData.payment_method = paymentMethod
-
 			if (paymentMethod === 'autre') {
 				updateData.payment_method_label = paymentMethodLabel || ''
 			} else {
 				updateData.payment_method_label = ''
 			}
+
 			try {
-				console.log('UPDATE invoices payload:', updateData)
-
-				const result = await pb
+				const result = (await pb
 					.collection('invoices')
-					.update(invoiceId, updateData)
+					.update(invoiceId, updateData)) as unknown as InvoiceResponse
 
-				return result as unknown as InvoiceResponse
+				// 🆕 Si c'est une facture de solde → marquer la parente comme payée
+				if (
+					existing.invoice_type === 'invoice' &&
+					existing.original_invoice_id
+				) {
+					try {
+						await pb
+							.collection('invoices')
+							.update(existing.original_invoice_id, {
+								is_paid: true,
+								paid_at: paidAt || new Date().toISOString(),
+								balance_due: 0,
+							})
+					} catch (parentErr) {
+						console.warn(
+							'⚠️ Impossible de marquer la facture parente comme payée:',
+							parentErr,
+						)
+					}
+				}
+
+				return result
 			} catch (e: any) {
 				console.log('PB ERROR status:', e?.status)
 				console.log('PB ERROR message:', e?.message)
@@ -609,9 +628,15 @@ export function useRecordPayment() {
 				throw e
 			}
 		},
-		onSuccess: (_, { invoiceId }) => {
+		onSuccess: (data, { invoiceId }) => {
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) })
+			// 🆕 Invalider aussi la parente si facture de solde
+			if (data?.original_invoice_id) {
+				queryClient.invalidateQueries({
+					queryKey: invoiceKeys.detail(data.original_invoice_id),
+				})
+			}
 		},
 	})
 }

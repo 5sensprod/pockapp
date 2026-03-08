@@ -201,6 +201,11 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterSecretsRoutes(pb, e.Router)
 		routes.InitSecretManager(pb)
 
+		routes.RegisterDepositRoutes(pb, e.Router)
+		routes.RegisterInvoicePayRoutes(pb, e.Router) // ✅ Paiement + stats factures
+
+		routes.RegisterDepositRoutes(pb, e.Router)
+
 		// SPA handler (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 

@@ -6,7 +6,7 @@
 // ENUMS
 // ============================================================================
 
-export type InvoiceType = 'invoice' | 'credit_note'
+export type InvoiceType = 'invoice' | 'credit_note' | 'deposit'
 
 // NOUVEAU: Le statut ne contient plus "paid" - c'est un champ séparé
 export type InvoiceStatus = 'draft' | 'validated' | 'sent'
@@ -29,6 +29,8 @@ export type AuditAction =
 	| 'integrity_check'
 	| 'export_generated'
 	| 'pdf_generated'
+	| 'deposit_created' // 🆕
+	| 'balance_invoice_created' // 🆕
 
 export type ClosureType = 'daily' | 'monthly' | 'annual'
 
@@ -117,6 +119,10 @@ export interface InvoiceResponse extends InvoiceBase {
 	has_credit_note?: boolean
 	credit_notes_total?: number
 	remaining_amount?: number
+	// 🆕 Acomptes
+	deposit_percentage?: number // % de l'acompte (sur une facture deposit)
+	deposits_total_ttc?: number // somme des acomptes versés (sur la facture parente)
+	balance_due?: number // solde restant à payer (sur la facture parente)
 }
 
 export interface CustomerExpand {
@@ -231,7 +237,7 @@ export interface ClosureResponse {
 export interface AuditLogResponse {
 	id: string
 	action: AuditAction
-	entity_type: 'invoice' | 'credit_note' | 'closure'
+	entity_type: 'invoice' | 'credit_note' | 'closure' | 'deposit'
 	entity_id: string
 	entity_number?: string
 	owner_company: string
@@ -333,25 +339,20 @@ export function canEditInvoice(invoice: InvoiceResponse): boolean {
 }
 
 export function canCancelInvoice(invoice: InvoiceResponse): boolean {
-	// On peut créer un avoir pour annuler une facture validée/envoyée
-	// mais pas pour un brouillon (on peut juste le modifier)
+	if (invoice.invoice_type === 'deposit') {
+		// Avoir sur acompte : seulement si déjà encaissé
+		return invoice.is_paid && invoice.status !== 'draft'
+	}
 	return invoice.invoice_type === 'invoice' && invoice.status !== 'draft'
 }
 
 export function canMarkAsPaid(invoice: InvoiceResponse): boolean {
-	// On peut marquer comme payée si:
-	// - C'est une facture (pas un avoir)
-	// - Elle n'est pas déjà payée
-	// - Elle n'est pas en brouillon
 	return (
-		invoice.invoice_type === 'invoice' &&
+		(invoice.invoice_type === 'invoice' ||
+			invoice.invoice_type === 'deposit') &&
 		!invoice.is_paid &&
 		invoice.status !== 'draft'
 	)
-}
-
-export function getInvoiceTypeLabel(type: InvoiceType): string {
-	return type === 'invoice' ? 'Facture' : 'Avoir'
 }
 
 export function getStatusLabel(status: InvoiceStatus): string {
@@ -382,6 +383,10 @@ export function getDisplayStatus(invoice: InvoiceResponse): {
 		return { label: 'Avoir', variant: 'destructive', isPaid: false }
 	}
 
+	if (invoice.invoice_type === 'deposit') {
+		return { label: 'Acompte', variant: 'outline', isPaid: invoice.is_paid }
+	}
+
 	if (invoice.is_paid) {
 		return { label: 'Payée', variant: 'default', isPaid: true }
 	}
@@ -399,6 +404,48 @@ export function getDisplayStatus(invoice: InvoiceResponse): {
 	}
 
 	return { ...statusConfig[invoice.status], isPaid: false }
+}
+
+// Vérifier si une facture peut recevoir un acompte
+export function canCreateDeposit(invoice: InvoiceResponse): boolean {
+	return (
+		invoice.invoice_type === 'invoice' &&
+		invoice.status !== 'draft' &&
+		!invoice.is_pos_ticket &&
+		!invoice.original_invoice_id &&
+		!invoice.is_paid && // 🆕
+		(invoice.balance_due === undefined ||
+			invoice.balance_due === null ||
+			invoice.balance_due === 0 ||
+			invoice.balance_due > 0.01)
+	)
+}
+
+// Vérifier si la facture de solde peut être générée
+// (tous les acomptes doivent être payés)
+export function canCreateBalanceInvoice(invoice: InvoiceResponse): boolean {
+	return (
+		invoice.invoice_type === 'invoice' &&
+		invoice.status !== 'draft' &&
+		!invoice.is_pos_ticket &&
+		!invoice.original_invoice_id && // 🆕 pas une facture de solde
+		(invoice.deposits_total_ttc ?? 0) > 0 &&
+		(invoice.balance_due ?? 0) > 0.01
+	)
+}
+
+export function isDepositInvoice(invoice: InvoiceResponse): boolean {
+	return invoice.invoice_type === 'deposit'
+}
+
+// Label et couleur pour l'affichage des acomptes dans les listes
+export function getInvoiceTypeLabel(type: InvoiceType): string {
+	const labels: Record<InvoiceType, string> = {
+		invoice: 'Facture',
+		credit_note: 'Avoir',
+		deposit: 'Acompte',
+	}
+	return labels[type]
 }
 
 // NOUVEAU: Vérifier si une facture est en retard de paiement

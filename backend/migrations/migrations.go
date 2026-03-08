@@ -61,6 +61,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		ensureInventoryEntriesCollection,
 
 		FixInventoryCollectionFields,
+		AddDepositFieldsToInvoices,
 	}
 
 	for _, migrate := range migrations {

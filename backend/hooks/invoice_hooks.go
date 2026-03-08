@@ -38,6 +38,9 @@ var allowedInvoiceUpdates = map[string]bool{
 	"closure_id":           true,
 	"converted_to_invoice": true,
 	"converted_invoice_id": true,
+	// 🆕 Acomptes — mis à jour par CreateDepositInvoice sur la facture parente
+	"deposits_total_ttc": true,
+	"balance_due":        true,
 }
 
 // Transitions de statut autorisées (SANS "paid")
@@ -478,7 +481,7 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 		record.Set("is_locked", true)
 
 		// Initialiser les champs de remboursement pour les documents non-avoirs
-		if invoiceType != "credit_note" {
+		if invoiceType != "credit_note" && invoiceType != "deposit" {
 			totalTTC := math.Abs(record.GetFloat("total_ttc"))
 			record.Set("remaining_amount", totalTTC)
 			record.Set("credit_notes_total", 0)
@@ -879,6 +882,7 @@ func isValidDocumentNumber(number string, fiscalYear int) bool {
 		fmt.Sprintf("AVO-%d-", fiscalYear),
 		fmt.Sprintf("DEV-%d-", fiscalYear),
 		fmt.Sprintf("TIK-%d-", fiscalYear),
+		fmt.Sprintf("ACC-%d-", fiscalYear),
 	}
 
 	for _, prefix := range prefixes {

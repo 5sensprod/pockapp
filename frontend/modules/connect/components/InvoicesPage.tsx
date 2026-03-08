@@ -51,6 +51,7 @@ import {
 	useVerifyInvoiceChain,
 } from '@/lib/queries/closures'
 
+import { useCreateDeposit } from '@/lib/queries/deposits'
 import {
 	useCancelInvoice,
 	useDeleteDraftInvoice,
@@ -67,6 +68,7 @@ import {
 	getDisplayStatus,
 	isOverdue,
 } from '@/lib/types/invoice.types'
+import { canCreateDeposit } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { RefundInvoiceDialog } from '@/modules/common/RefundInvoiceDialog'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
@@ -78,6 +80,7 @@ import { pdf } from '@react-pdf/renderer'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	AlertTriangle,
+	Banknote,
 	CheckCircle,
 	Download,
 	Edit,
@@ -96,7 +99,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { InvoicePdfDocument } from './InvoicePdf'
+import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
 import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
 
 // ============================================================================
@@ -187,6 +190,10 @@ export function InvoicesPage() {
 	const [invoiceToPay, setInvoiceToPay] = useState<InvoiceResponse | null>(null)
 	const [, setPaymentMethod] = useState('virement')
 	const [selectedMethodId, setSelectedMethodId] = useState<string>('')
+
+	const [paymentMode, setPaymentMode] = useState<'full' | 'deposit'>('full')
+	const [depositPercentage, setDepositPercentage] = useState<number>(30)
+	const createDeposit = useCreateDeposit()
 
 	const [closureConfirmOpen, setClosureConfirmOpen] = useState(false)
 
@@ -311,14 +318,12 @@ export function InvoicesPage() {
 		() =>
 			invoices.reduce(
 				(acc, inv) => {
-					if (inv.invoice_type === 'invoice') {
+					if (inv.invoice_type === 'invoice' && !inv.original_invoice_id) {
+						// Factures normales uniquement (pas les factures de solde)
 						acc.invoiceCount++
-
 						const creditTotal = creditNotesByOriginal[inv.id] ?? 0
 						const netAmount = inv.total_ttc + creditTotal
-
 						acc.totalTTC += inv.total_ttc
-
 						if (inv.is_paid) {
 							acc.paid += inv.total_ttc
 						} else if (inv.status !== 'draft') {
@@ -332,6 +337,7 @@ export function InvoicesPage() {
 						acc.totalTTC += inv.total_ttc
 						acc.creditNotesTTC += inv.total_ttc
 					}
+					// deposit et factures de solde → ignorés dans les stats
 					return acc
 				},
 				{
@@ -344,7 +350,6 @@ export function InvoicesPage() {
 					overdue: 0,
 				},
 			),
-		// deps: surtout pas creditNotesByOriginal (c'est un nouvel objet à chaque render)
 		[invoices],
 	)
 	// Clôture du jour déjà existante ?
@@ -405,12 +410,38 @@ export function InvoicesPage() {
 	}
 
 	const handleOpenPaymentDialog = (invoice: InvoiceResponse) => {
+		console.log('🔍 invoice to pay:', {
+			id: invoice.id,
+			status: invoice.status,
+			invoice_type: invoice.invoice_type,
+			is_pos_ticket: invoice.is_pos_ticket,
+			balance_due: invoice.balance_due,
+			canCreateDeposit: canCreateDeposit(invoice),
+		})
 		setInvoiceToPay(invoice)
 		setPaymentMethod('')
+		setPaymentMode('full')
+		setDepositPercentage(30)
+		setSelectedMethodId('')
 		setPaymentDialogOpen(true)
 	}
 
 	const handleRecordPayment = async () => {
+		// 🆕 Mode acompte
+		if (paymentMode === 'deposit') {
+			if (!invoiceToPay) return
+			try {
+				await createDeposit.mutateAsync({
+					parentId: invoiceToPay.id,
+					percentage: depositPercentage,
+				})
+				toast.success(`Acompte de ${depositPercentage}% créé`)
+				setPaymentDialogOpen(false)
+			} catch (err: any) {
+				toast.error(err?.message || "Erreur lors de la création de l'acompte")
+			}
+			return
+		}
 		if (!invoiceToPay || !selectedMethodId) return
 
 		const method = enabledMethods.find((m) => m.id === selectedMethodId)
@@ -517,18 +548,61 @@ export function InvoicesPage() {
 				}
 			}
 
-			const doc = (
+			// 🆕 Fetch depositPdfData
+			let depositPdfData: DepositPdfData | undefined
+
+			if (invoice.invoice_type === 'deposit' && invoice.original_invoice_id) {
+				try {
+					const parent = (await pb
+						.collection('invoices')
+						.getOne(invoice.original_invoice_id)) as InvoiceResponse
+					depositPdfData = { type: 'deposit', parentInvoice: parent }
+				} catch (err) {
+					console.warn('Facture parente non trouvée:', err)
+				}
+			} else if (
+				invoice.invoice_type === 'invoice' &&
+				invoice.original_invoice_id
+			) {
+				try {
+					const parent = (await pb
+						.collection('invoices')
+						.getOne(invoice.original_invoice_id)) as InvoiceResponse
+					const deposits = (await pb.collection('invoices').getFullList({
+						filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.original_invoice_id}"`,
+						sort: '+created',
+					})) as InvoiceResponse[]
+					depositPdfData = { type: 'balance', parentInvoice: parent, deposits }
+				} catch (err) {
+					console.warn('Données solde non trouvées:', err)
+				}
+			} else if (
+				invoice.invoice_type === 'invoice' &&
+				!invoice.original_invoice_id &&
+				(invoice.deposits_total_ttc ?? 0) > 0
+			) {
+				try {
+					const deposits = (await pb.collection('invoices').getFullList({
+						filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.id}"`,
+						sort: '+created',
+					})) as InvoiceResponse[]
+					depositPdfData = { type: 'parent', deposits }
+				} catch (err) {
+					console.warn('Acomptes non trouvés:', err)
+				}
+			}
+
+			const blob = await pdf(
 				<InvoicePdfDocument
 					invoice={invoice}
 					customer={customer as any}
 					company={company || undefined}
 					companyLogoUrl={logoDataUrl}
-				/>
-			)
+					depositPdfData={depositPdfData}
+				/>,
+			).toBlob()
 
-			const blob = await pdf(doc).toBlob()
 			const url = URL.createObjectURL(blob)
-
 			const link = document.createElement('a')
 			link.href = url
 			link.download = `${invoice.number}.pdf`
@@ -1062,15 +1136,30 @@ export function InvoicesPage() {
 
 													{/* Paiement */}
 													{canMarkAsPaid(invoice) &&
-														!hasCancellationCreditNote && (
+														!hasCancellationCreditNote &&
+														// Facture avec acomptes ET pas déjà une facture de solde
+														(invoice.invoice_type === 'invoice' &&
+														(invoice.deposits_total_ttc ?? 0) > 0 &&
+														!invoice.original_invoice_id ? (
+															<DropdownMenuItem
+																onClick={() =>
+																	navigate({
+																		to: '/connect/invoices/$invoiceId',
+																		params: { invoiceId: invoice.id },
+																	})
+																}
+															>
+																<CheckCircle className='h-4 w-4 mr-2 text-blue-600' />
+																Solder
+															</DropdownMenuItem>
+														) : (
 															<DropdownMenuItem
 																onClick={() => handleOpenPaymentDialog(invoice)}
 															>
 																<CheckCircle className='h-4 w-4 mr-2 text-green-600' />
 																Enregistrer paiement
 															</DropdownMenuItem>
-														)}
-
+														))}
 													{/* Annulation par avoir - Ajout de displayStatus.isPaid */}
 													{invoice.invoice_type === 'invoice' &&
 														displayStatus.isPaid &&
@@ -1468,41 +1557,138 @@ export function InvoicesPage() {
 					<DialogHeader>
 						<DialogTitle>Enregistrer un paiement</DialogTitle>
 						<DialogDescription>
-							Marquer la facture <strong>{invoiceToPay?.number}</strong> comme
-							payée.
+							{formatCurrency(
+								invoiceToPay?.deposits_total_ttc
+									? (invoiceToPay?.balance_due ?? 0)
+									: (invoiceToPay?.total_ttc ?? 0),
+							)}
 						</DialogDescription>
 					</DialogHeader>
+
 					<div className='space-y-4 py-4'>
-						<div className='space-y-2'>
-							<Label htmlFor='payment-method'>Méthode de paiement</Label>
-							<Select
-								value={selectedMethodId}
-								onValueChange={setSelectedMethodId}
-							>
-								<SelectTrigger>
-									<SelectValue placeholder='Sélectionner' />
-								</SelectTrigger>
-								<SelectContent>
-									{enabledMethods.map((method) => (
-										<SelectItem key={method.id} value={method.id}>
-											{method.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-						{invoiceToPay && (
-							<div className='bg-green-50 rounded-lg p-3 text-sm'>
-								<p>
-									<strong>Montant:</strong>{' '}
-									{formatCurrency(invoiceToPay.total_ttc)}
-								</p>
-								<p>
-									<strong>Client:</strong> {invoiceToPay.expand?.customer?.name}
-								</p>
+						{/* Toggle mode — seulement si la facture peut recevoir un acompte */}
+						{invoiceToPay &&
+							invoiceToPay.invoice_type !== 'deposit' &&
+							canCreateDeposit(invoiceToPay) && (
+								<div className='flex rounded-lg border overflow-hidden'>
+									<button
+										type='button'
+										onClick={() => setPaymentMode('full')}
+										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+											paymentMode === 'full'
+												? 'bg-primary text-primary-foreground'
+												: 'bg-background text-muted-foreground hover:bg-muted'
+										}`}
+									>
+										<CheckCircle className='h-4 w-4 inline mr-2' />
+										Paiement total
+									</button>
+									<button
+										type='button'
+										onClick={() => setPaymentMode('deposit')}
+										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+											paymentMode === 'deposit'
+												? 'bg-primary text-primary-foreground'
+												: 'bg-background text-muted-foreground hover:bg-muted'
+										}`}
+									>
+										<Banknote className='h-4 w-4 inline mr-2' />
+										Acompte
+									</button>
+								</div>
+							)}
+
+						{paymentMode === 'full' ? (
+							/* ── Paiement total ── */
+							<div className='space-y-2'>
+								<Label>Méthode de paiement</Label>
+								<Select
+									value={selectedMethodId}
+									onValueChange={setSelectedMethodId}
+								>
+									<SelectTrigger>
+										<SelectValue placeholder='Sélectionner' />
+									</SelectTrigger>
+									<SelectContent>
+										{enabledMethods.map((method) => (
+											<SelectItem key={method.id} value={method.id}>
+												{method.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								{invoiceToPay && (
+									<div className='bg-green-50 dark:bg-green-950/20 rounded-lg p-3 text-sm space-y-1'>
+										<p>
+											<strong>Montant :</strong>{' '}
+											{formatCurrency(
+												invoiceToPay.invoice_type === 'deposit'
+													? invoiceToPay.total_ttc
+													: invoiceToPay.deposits_total_ttc
+														? (invoiceToPay.balance_due ??
+															invoiceToPay.total_ttc)
+														: invoiceToPay.total_ttc,
+											)}
+										</p>
+										<p>
+											<strong>Client :</strong>{' '}
+											{invoiceToPay.expand?.customer?.name}
+										</p>
+									</div>
+								)}
+							</div>
+						) : (
+							/* ── Acompte ── */
+							<div className='space-y-3'>
+								<Label>Pourcentage de l'acompte</Label>
+								<div className='flex items-center gap-3'>
+									<input
+										type='range'
+										min={10}
+										max={90}
+										step={5}
+										value={depositPercentage}
+										onChange={(e) =>
+											setDepositPercentage(Number(e.target.value))
+										}
+										className='flex-1'
+									/>
+									<span className='w-12 text-right font-semibold'>
+										{depositPercentage}%
+									</span>
+								</div>
+								{invoiceToPay && (
+									<div className='bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 text-sm space-y-1'>
+										<p>
+											<strong>Acompte :</strong>{' '}
+											{formatCurrency(
+												((invoiceToPay.deposits_total_ttc
+													? (invoiceToPay.balance_due ?? invoiceToPay.total_ttc)
+													: invoiceToPay.total_ttc) *
+													depositPercentage) /
+													100,
+											)}
+										</p>
+										<p>
+											<strong>Solde restant :</strong>{' '}
+											{formatCurrency(
+												((invoiceToPay.deposits_total_ttc
+													? (invoiceToPay.balance_due ?? invoiceToPay.total_ttc)
+													: invoiceToPay.total_ttc) *
+													(100 - depositPercentage)) /
+													100,
+											)}
+										</p>
+										<p>
+											<strong>Client :</strong>{' '}
+											{invoiceToPay.expand?.customer?.name}
+										</p>
+									</div>
+								)}
 							</div>
 						)}
 					</div>
+
 					<DialogFooter>
 						<Button
 							variant='outline'
@@ -1512,12 +1698,22 @@ export function InvoicesPage() {
 						</Button>
 						<Button
 							onClick={handleRecordPayment}
-							disabled={recordPayment.isPending}
-							className='bg-green-600 hover:bg-green-700'
+							disabled={
+								paymentMode === 'full'
+									? !selectedMethodId || recordPayment.isPending
+									: createDeposit.isPending
+							}
+							className={
+								paymentMode === 'full' ? 'bg-green-600 hover:bg-green-700' : ''
+							}
 						>
-							{recordPayment.isPending
-								? 'Enregistrement...'
-								: 'Confirmer le paiement'}
+							{paymentMode === 'full'
+								? recordPayment.isPending
+									? 'Enregistrement...'
+									: 'Confirmer le paiement'
+								: createDeposit.isPending
+									? 'Création...'
+									: `Créer l'acompte ${depositPercentage}%`}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

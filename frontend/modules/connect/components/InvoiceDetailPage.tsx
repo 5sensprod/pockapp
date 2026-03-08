@@ -20,9 +20,16 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
+import {
+	useCreateBalanceInvoice,
+	useCreateDeposit,
+	useDepositsForInvoice,
+} from '@/lib/queries/deposits'
 import { useCreditNotesForInvoice, useInvoice } from '@/lib/queries/invoices'
 import {
 	type InvoiceResponse,
+	canCreateBalanceInvoice,
+	canCreateDeposit,
 	getDisplayStatus,
 	isOverdue,
 } from '@/lib/types/invoice.types'
@@ -32,17 +39,20 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	AlertTriangle,
 	ArrowLeft,
+	Banknote,
 	CheckCircle,
+	CreditCard,
 	Download,
 	FileText,
 	Loader2,
 	Mail,
 	Pencil,
+	Plus,
 	RefreshCcw,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { InvoicePdfDocument } from './InvoicePdf'
+import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
 import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
 
 // ============================================================================
@@ -199,6 +209,17 @@ export function InvoiceDetailPage() {
 	// Déterminer si c'est un avoir
 	const isCreditNote = invoice?.invoice_type === 'credit_note'
 
+	const isDeposit = invoice?.invoice_type === 'deposit'
+
+	const { data: depositsData } = useDepositsForInvoice(
+		!isCreditNote && !isDeposit ? invoiceId : undefined,
+	)
+	const createDeposit = useCreateDeposit()
+	const createBalanceInvoice = useCreateBalanceInvoice()
+
+	const [depositDialogOpen, setDepositDialogOpen] = useState(false)
+	const [depositPercentage, setDepositPercentage] = useState<number>(30)
+
 	// ✅ AJOUT: Récupérer les avoirs liés (uniquement si ce n'est PAS un avoir)
 	const { data: linkedCreditNotes } = useCreditNotesForInvoice(
 		!isCreditNote ? invoiceId : undefined,
@@ -333,15 +354,11 @@ export function InvoiceDetailPage() {
 			toast.error('Aucune entreprise sélectionnée')
 			return
 		}
-
 		setIsDownloading(true)
-
 		try {
 			const customer = invoice.expand?.customer
-
 			let logoDataUrl: string | null = null
 			let currentCompany: CompaniesResponse | null = company
-
 			if (!currentCompany) {
 				try {
 					const result = await pb
@@ -353,7 +370,6 @@ export function InvoiceDetailPage() {
 					console.warn('Entreprise non trouvée:', err)
 				}
 			}
-
 			if (currentCompany && (currentCompany as any).logo) {
 				const fileUrl = pb.files.getUrl(
 					currentCompany,
@@ -366,18 +382,61 @@ export function InvoiceDetailPage() {
 				}
 			}
 
-			const doc = (
+			// 🆕 Fetch depositPdfData
+			let depositPdfData: DepositPdfData | undefined
+
+			if (invoice.invoice_type === 'deposit' && invoice.original_invoice_id) {
+				try {
+					const parent = (await pb
+						.collection('invoices')
+						.getOne(invoice.original_invoice_id)) as InvoiceResponse
+					depositPdfData = { type: 'deposit', parentInvoice: parent }
+				} catch (err) {
+					console.warn('Facture parente non trouvée:', err)
+				}
+			} else if (
+				invoice.invoice_type === 'invoice' &&
+				invoice.original_invoice_id
+			) {
+				try {
+					const parent = (await pb
+						.collection('invoices')
+						.getOne(invoice.original_invoice_id)) as InvoiceResponse
+					const deposits = (await pb.collection('invoices').getFullList({
+						filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.original_invoice_id}"`,
+						sort: '+created',
+					})) as InvoiceResponse[]
+					depositPdfData = { type: 'balance', parentInvoice: parent, deposits }
+				} catch (err) {
+					console.warn('Données solde non trouvées:', err)
+				}
+			} else if (
+				invoice.invoice_type === 'invoice' &&
+				!invoice.original_invoice_id &&
+				(invoice.deposits_total_ttc ?? 0) > 0
+			) {
+				try {
+					const deposits = (await pb.collection('invoices').getFullList({
+						filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.id}"`,
+						sort: '+created',
+					})) as InvoiceResponse[]
+					depositPdfData = { type: 'parent', deposits }
+				} catch (err) {
+					console.warn('Acomptes non trouvés:', err)
+				}
+			}
+
+			const blob = await pdf(
 				<InvoicePdfDocument
 					invoice={invoice as InvoiceResponse}
 					customer={customer as any}
 					company={currentCompany || undefined}
 					companyLogoUrl={logoDataUrl}
-				/>
-			)
+					depositPdfData={depositPdfData}
+				/>,
+			).toBlob()
 
-			const blob = await pdf(doc).toBlob()
 			const url = URL.createObjectURL(blob)
-
 			const link = document.createElement('a')
 			link.href = url
 			link.download = `${invoice.number}.pdf`
@@ -385,13 +444,38 @@ export function InvoiceDetailPage() {
 			link.click()
 			document.body.removeChild(link)
 			URL.revokeObjectURL(url)
-
 			toast.success('Facture téléchargée')
 		} catch (error) {
 			console.error('Erreur génération PDF:', error)
 			toast.error('Erreur lors de la génération du PDF')
 		} finally {
 			setIsDownloading(false)
+		}
+	}
+
+	const handleCreateDeposit = async () => {
+		if (!invoice) return
+		try {
+			await createDeposit.mutateAsync({
+				parentId: invoice.id,
+				percentage: depositPercentage,
+			})
+			toast.success(`Acompte de ${depositPercentage}% créé`)
+			setDepositDialogOpen(false)
+		} catch (err: any) {
+			toast.error(err?.message || "Erreur lors de la création de l'acompte")
+		}
+	}
+
+	const handleCreateBalanceInvoice = async () => {
+		if (!invoice) return
+		try {
+			await createBalanceInvoice.mutateAsync(invoice.id)
+			toast.success('Facture de solde créée')
+		} catch (err: any) {
+			toast.error(
+				err?.message || 'Erreur lors de la création de la facture de solde',
+			)
 		}
 	}
 
@@ -501,6 +585,15 @@ export function InvoiceDetailPage() {
 						</CardTitle>
 						<CardDescription>Détails généraux</CardDescription>
 					</CardHeader>
+					{isDeposit && originalId && (
+						<div>
+							<p className='text-sm text-muted-foreground'>Solde restant</p>
+							<p className='text-sm font-semibold'>
+								{/* balance_due est sur la parente, pas sur l'acompte */}
+								???
+							</p>
+						</div>
+					)}
 
 					<CardContent className='space-y-4'>
 						<div>
@@ -692,6 +785,236 @@ export function InvoiceDetailPage() {
 									</div>
 								</div>
 							)}
+						{/* ════════════════════════════════════════════════════════════════
+    SECTION ACOMPTES — Facture parente B2B
+    ════════════════════════════════════════════════════════════════ */}
+						{!isCreditNote && !isDeposit && !invoice.is_pos_ticket && (
+							<div className='border-t pt-4 space-y-3'>
+								{/* Récap financier si acomptes existants */}
+								{(invoice.deposits_total_ttc ?? 0) > 0 && (
+									<div className='space-y-1'>
+										<p className='text-sm font-medium text-muted-foreground'>
+											Acomptes
+										</p>
+										<div className='flex justify-between text-sm'>
+											<span className='text-muted-foreground'>Versés</span>
+											<span className='font-medium text-emerald-600'>
+												{formatCurrency(
+													invoice.deposits_total_ttc ?? 0,
+													invoice.currency,
+												)}
+											</span>
+										</div>
+										<div className='flex justify-between text-sm'>
+											<span className='text-muted-foreground'>
+												Solde restant
+											</span>
+											<span className='font-semibold'>
+												{formatCurrency(
+													invoice.balance_due ?? invoice.total_ttc,
+													invoice.currency,
+												)}
+											</span>
+										</div>
+									</div>
+								)}
+
+								{/* Liste des acomptes */}
+								{depositsData && depositsData.depositsCount > 0 && (
+									<div className='space-y-2'>
+										{depositsData.deposits.map((dep) => (
+											<div
+												key={dep.id}
+												className='flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200 dark:border-blue-900'
+											>
+												<div className='flex items-center gap-2'>
+													<Banknote className='h-4 w-4 text-blue-600' />
+													<div className='flex flex-col'>
+														<span className='font-medium text-sm text-blue-700 dark:text-blue-400'>
+															{dep.number}
+														</span>
+														<span className='text-xs text-muted-foreground'>
+															{formatDate(dep.date)} •{' '}
+															{formatCurrency(dep.total_ttc)} •{' '}
+															{dep.is_paid ? (
+																<span className='text-emerald-600'>Réglé</span>
+															) : (
+																<span className='text-amber-600'>
+																	En attente
+																</span>
+															)}
+														</span>
+													</div>
+												</div>
+												<Button
+													variant='outline'
+													size='sm'
+													onClick={() =>
+														navigate({
+															to: '/connect/invoices/$invoiceId',
+															params: { invoiceId: dep.id },
+														})
+													}
+												>
+													Voir
+												</Button>
+											</div>
+										))}
+
+										{/* Facture de solde si elle existe */}
+										{depositsData.balanceInvoice && (
+											<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3 border'>
+												<div className='flex items-center gap-2'>
+													<CreditCard className='h-4 w-4 text-muted-foreground' />
+													<div className='flex flex-col'>
+														<span className='font-medium text-sm'>
+															{depositsData.balanceInvoice.number}
+														</span>
+														<span className='text-xs text-muted-foreground'>
+															Facture de solde
+														</span>
+													</div>
+												</div>
+												<Button
+													variant='outline'
+													size='sm'
+													onClick={() => {
+														if (depositsData.balanceInvoice) {
+															navigate({
+																to: '/connect/invoices/$invoiceId',
+																params: {
+																	invoiceId: depositsData.balanceInvoice.id,
+																},
+															})
+														}
+													}}
+												>
+													Voir
+												</Button>
+											</div>
+										)}
+									</div>
+								)}
+
+								{/* Actions */}
+								<div className='flex flex-col gap-2'>
+									{invoice &&
+										canCreateDeposit(invoice) &&
+										(depositDialogOpen ? (
+											<div className='space-y-2 bg-muted/50 rounded-lg p-3'>
+												<p className='text-sm font-medium'>Nouvel acompte</p>
+												<div className='flex items-center gap-2'>
+													<input
+														type='range'
+														min={10}
+														max={90}
+														step={5}
+														value={depositPercentage}
+														onChange={(e) =>
+															setDepositPercentage(Number(e.target.value))
+														}
+														className='flex-1'
+													/>
+													<span className='text-sm font-semibold w-10'>
+														{depositPercentage}%
+													</span>
+												</div>
+												<p className='text-xs text-muted-foreground'>
+													≈{' '}
+													{formatCurrency(
+														((invoice.deposits_total_ttc
+															? (invoice.balance_due ?? invoice.total_ttc)
+															: invoice.total_ttc) *
+															depositPercentage) /
+															100,
+														invoice.currency,
+													)}
+												</p>
+												<div className='flex gap-2'>
+													<Button
+														size='sm'
+														onClick={handleCreateDeposit}
+														disabled={createDeposit.isPending}
+													>
+														{createDeposit.isPending && (
+															<Loader2 className='h-3 w-3 animate-spin mr-1' />
+														)}
+														Créer
+													</Button>
+													<Button
+														size='sm'
+														variant='ghost'
+														onClick={() => setDepositDialogOpen(false)}
+													>
+														Annuler
+													</Button>
+												</div>
+											</div>
+										) : (
+											<Button
+												variant='outline'
+												size='sm'
+												className='w-full'
+												onClick={() => setDepositDialogOpen(true)}
+											>
+												<Plus className='h-4 w-4 mr-2' />
+												Demander un acompte
+											</Button>
+										))}
+
+									{invoice &&
+										canCreateBalanceInvoice(invoice) &&
+										!depositsData?.balanceInvoice &&
+										depositsData?.pendingCount === 0 && (
+											<Button
+												variant='outline'
+												size='sm'
+												className='w-full'
+												onClick={handleCreateBalanceInvoice}
+												disabled={createBalanceInvoice.isPending}
+											>
+												{createBalanceInvoice.isPending ? (
+													<Loader2 className='h-3 w-3 animate-spin mr-2' />
+												) : (
+													<CreditCard className='h-4 w-4 mr-2' />
+												)}
+												Générer la facture de solde
+											</Button>
+										)}
+								</div>
+							</div>
+						)}
+
+						{/* ════════════════════════════════════════════════════════════════
+    SECTION ACOMPTE — Lien retour vers la facture parente
+    ════════════════════════════════════════════════════════════════ */}
+						{isDeposit && originalId && (
+							<div className='border-t pt-4'>
+								<p className='text-sm text-muted-foreground mb-2'>
+									Facture principale
+								</p>
+								<div className='flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200 dark:border-blue-900'>
+									<div className='flex items-center gap-2'>
+										<FileText className='h-4 w-4 text-blue-600' />
+										<span className='font-medium text-sm'>
+											{originalNumber || 'Document'}
+										</span>
+									</div>
+									<Button
+										variant='outline'
+										size='sm'
+										onClick={() =>
+											navigate({
+												to: '/connect/invoices/$invoiceId',
+												params: { invoiceId: originalId },
+											})
+										}
+									>
+										Voir
+									</Button>
+								</div>
+							</div>
+						)}
 
 						{invoice.notes && (
 							<div>
