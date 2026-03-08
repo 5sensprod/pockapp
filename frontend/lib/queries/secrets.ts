@@ -87,7 +87,7 @@ export function useSettings() {
 	return useQuery<AppSetting[]>({
 		queryKey: ['settings'],
 		queryFn: async () => {
-			return await fetchWithAuth(pb, '/api/settings')
+			return await fetchWithAuth(pb, '/api/app-settings')
 		},
 		retry: false,
 	})

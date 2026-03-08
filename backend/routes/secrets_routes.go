@@ -37,7 +37,7 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 	// ═══════════════════════════════════════════════════════════════════════
 
 	// GET /api/settings - Liste tous les settings (valeurs masquées pour les secrets)
-	router.GET("/api/settings", func(c echo.Context) error {
+	router.GET("/api/app-settings", func(c echo.Context) error {
 		log.Println("📋 GET /api/settings")
 
 		settings, err := sm.ListSettings()
