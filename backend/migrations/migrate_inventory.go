@@ -13,22 +13,16 @@ import (
 // ensureInventorySessionsCollection
 // Collection : inventory_sessions
 // Une session = un inventaire physique avec statut, périmètre et opérateur
-// ⚠️  Si la collection existe déjà, elle est supprimée puis recrée
-//
-//	(entraîne la suppression en cascade de inventory_entries)
-//
+// ✅ Idempotent — si la collection existe déjà, les données sont préservées.
 // ─────────────────────────────────────────────────────────────────────────────
 func ensureInventorySessionsCollection(app *pocketbase.PocketBase) error {
 	const collectionName = "inventory_sessions"
 
-	// Supprimer si elle existe déjà (repart de zéro)
+	// Si la collection existe déjà → rien à faire, on préserve les données
 	existing, _ := app.Dao().FindCollectionByNameOrId(collectionName)
 	if existing != nil {
-		log.Printf("🗑️  Suppression de la collection existante %s...", collectionName)
-		if err := app.Dao().DeleteCollection(existing); err != nil {
-			return fmt.Errorf("erreur suppression %s: %w", collectionName, err)
-		}
-		log.Printf("✅ Collection %s supprimée", collectionName)
+		log.Printf("✅ Collection %s déjà présente, conservée telle quelle", collectionName)
+		return nil
 	}
 
 	log.Printf("📦 Création de la collection %s...", collectionName)
@@ -157,23 +151,16 @@ func ensureInventorySessionsCollection(app *pocketbase.PocketBase) error {
 // ensureInventoryEntriesCollection
 // Collection : inventory_entries
 // Une entrée = un produit dans une session (snapshot stock + quantité saisie)
-// ⚠️  Dépend de inventory_sessions (RelationField + cascade delete)
-//
-//	La suppression de la session supprime automatiquement ses entrées,
-//	mais on supprime aussi explicitement ici pour repartir proprement.
-//
+// ✅ Idempotent — si la collection existe déjà, les données sont préservées.
 // ─────────────────────────────────────────────────────────────────────────────
 func ensureInventoryEntriesCollection(app *pocketbase.PocketBase) error {
 	const collectionName = "inventory_entries"
 
-	// Supprimer si elle existe déjà (repart de zéro)
+	// Si la collection existe déjà → rien à faire, on préserve les données
 	existing, _ := app.Dao().FindCollectionByNameOrId(collectionName)
 	if existing != nil {
-		log.Printf("🗑️  Suppression de la collection existante %s...", collectionName)
-		if err := app.Dao().DeleteCollection(existing); err != nil {
-			return fmt.Errorf("erreur suppression %s: %w", collectionName, err)
-		}
-		log.Printf("✅ Collection %s supprimée", collectionName)
+		log.Printf("✅ Collection %s déjà présente, conservée telle quelle", collectionName)
+		return nil
 	}
 
 	log.Printf("📦 Création de la collection %s...", collectionName)
@@ -214,6 +201,12 @@ func ensureInventoryEntriesCollection(app *pocketbase.PocketBase) error {
 			// Snapshot SKU
 			&schema.SchemaField{
 				Name:     "product_sku",
+				Type:     schema.FieldTypeText,
+				Required: false,
+			},
+			// Snapshot code-barres (pour scan rapide et affichage historique)
+			&schema.SchemaField{
+				Name:     "product_barcode",
 				Type:     schema.FieldTypeText,
 				Required: false,
 			},

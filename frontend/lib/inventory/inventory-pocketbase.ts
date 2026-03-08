@@ -18,22 +18,23 @@ import {
 // ============================================================================
 
 /**
- * Récupère la session active (draft ou in_progress), s'il y en a une.
- * Il ne peut y en avoir qu'une seule à la fois.
+ * Récupère toutes les sessions actives (draft ou in_progress).
+ * Plusieurs sessions peuvent coexister simultanément.
  */
-export async function getActiveInventorySession(
+export async function getActiveSessions(
 	pb: PocketBase,
-): Promise<InventorySession | null> {
+): Promise<InventorySession[]> {
 	try {
-		const record = await pb
+		const result = await pb
 			.collection(INVENTORY_SESSIONS_COLLECTION)
-			.getFirstListItem<InventorySession>(
-				'status = "draft" || status = "in_progress"',
-				{ sort: '-created', $autoCancel: false },
-			)
-		return record
+			.getList<InventorySession>(1, 50, {
+				filter: 'status = "draft" || status = "in_progress"',
+				sort: '-created',
+				$autoCancel: false,
+			})
+		return result.items
 	} catch {
-		return null
+		return []
 	}
 }
 
@@ -72,20 +73,12 @@ export async function getInventorySessionHistory(
 
 /**
  * Crée une nouvelle session d'inventaire.
- * Échoue si une session active existe déjà.
+ * Plusieurs sessions peuvent coexister simultanément.
  */
 export async function createInventorySession(
 	pb: PocketBase,
 	input: CreateInventorySessionInput,
 ): Promise<InventorySession> {
-	// Vérifier qu'il n'y a pas déjà une session active
-	const existing = await getActiveInventorySession(pb)
-	if (existing) {
-		throw new Error(
-			`Une session d'inventaire est déjà en cours (ID: ${existing.id}). Terminez-la avant d'en créer une nouvelle.`,
-		)
-	}
-
 	return pb.collection(INVENTORY_SESSIONS_COLLECTION).create<InventorySession>({
 		status: 'draft' as InventorySessionStatus,
 		started_at: new Date().toISOString(),
@@ -255,6 +248,7 @@ export async function createInventoryEntries(
 		product_id: string
 		product_name: string
 		product_sku: string
+		product_barcode: string
 		product_image: string
 		category_id: string
 		category_name: string
@@ -272,6 +266,7 @@ export async function createInventoryEntries(
 					product_id: p.product_id,
 					product_name: p.product_name,
 					product_sku: p.product_sku || '',
+					product_barcode: p.product_barcode || '',
 					product_image: p.product_image || '',
 					category_id: p.category_id,
 					category_name: p.category_name,
@@ -344,6 +339,39 @@ export async function markEntryAsAdjusted(
 		})
 }
 
+/**
+ * Récupère un résumé de progression d'une session pour l'affichage en card.
+ * Charge uniquement les champs nécessaires (fields) pour limiter la charge réseau.
+ */
+export async function getSessionProgress(
+	pb: PocketBase,
+	sessionId: string,
+): Promise<{
+	total: number
+	counted: number
+	categoryNames: string[]
+}> {
+	try {
+		const records = await pb
+			.collection(INVENTORY_ENTRIES_COLLECTION)
+			.getFullList<Pick<InventoryEntry, 'status' | 'category_name'>>(500, {
+				filter: `session_id ~ "${sessionId}"`,
+				fields: 'status,category_name',
+				$autoCancel: false,
+			})
+
+		const total = records.length
+		const counted = records.filter((r) => r.status === 'counted').length
+		const categoryNames = [
+			...new Set(records.map((r) => r.category_name)),
+		].sort()
+
+		return { total, counted, categoryNames }
+	} catch {
+		return { total: 0, counted: 0, categoryNames: [] }
+	}
+}
+
 // ============================================================================
 // HELPERS DÉRIVÉS
 // ============================================================================
@@ -369,4 +397,22 @@ export function computeGaps(
  */
 export function isCategoryFullyCounted(entries: InventoryEntry[]): boolean {
 	return entries.length > 0 && entries.every((e) => e.status === 'counted')
+}
+
+/**
+ * Récupère les entrées d'une session clôturée pour affichage dans l'historique.
+ * Triées par catégorie puis par nom produit — seulement les produits comptés.
+ */
+export async function getInventoryEntriesForHistory(
+	pb: PocketBase,
+	sessionId: string,
+): Promise<InventoryEntry[]> {
+	const records = await pb
+		.collection(INVENTORY_ENTRIES_COLLECTION)
+		.getFullList<InventoryEntry>(500, {
+			filter: `session_id ~ "${sessionId}" && status = "counted"`,
+			sort: 'category_name,product_name',
+			$autoCancel: false,
+		})
+	return records
 }

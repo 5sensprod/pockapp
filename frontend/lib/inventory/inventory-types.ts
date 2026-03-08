@@ -59,6 +59,7 @@ export interface InventoryEntry {
 	product_id: string // ID AppPOS du produit
 	product_name: string // Snapshot nom (au moment du gel)
 	product_sku: string // Snapshot SKU
+	product_barcode: string // Snapshot code-barres (pour scan rapide)
 	product_image: string // Snapshot image URL (pour l'UI)
 	category_id: string // ID AppPOS de la catégorie
 	category_name: string // Snapshot nom catégorie
@@ -84,6 +85,7 @@ export interface ProductGap {
 	productId: string
 	productName: string
 	productSku: string
+	productBarcode: string // Code-barres snapshot
 	categoryId: string
 	categoryName: string
 	stockTheorique: number
@@ -186,6 +188,7 @@ export const INVENTORY_SESSIONS_COLLECTION = 'inventory_sessions'
  * - product_id      : Text    — required
  * - product_name    : Text    — required
  * - product_sku     : Text
+ * - product_barcode : Text    — optional (snapshot code-barres)
  * - product_image   : Text
  * - category_id     : Text    — required
  * - category_name   : Text    — required

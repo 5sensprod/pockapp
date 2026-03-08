@@ -17,10 +17,12 @@ import {
 	countInventoryProduct,
 	createInventoryEntries,
 	createInventorySession,
-	getActiveInventorySession,
+	getActiveSessions,
 	getInventoryEntries,
 	getInventoryEntriesByCategory,
+	getInventoryEntriesForHistory,
 	getInventorySessionHistory,
+	getSessionProgress,
 	isCategoryFullyCounted,
 	markEntryAsAdjusted,
 	resetInventoryProduct,
@@ -45,18 +47,34 @@ export const inventoryKeys = {
 		[...inventoryKeys.all, 'entries', sessionId] as const,
 	entriesByCategory: (sessionId: string, categoryId: string) =>
 		[...inventoryKeys.all, 'entries', sessionId, categoryId] as const,
+	sessionDetail: (sessionId: string) =>
+		[...inventoryKeys.all, 'detail', sessionId] as const,
 }
 
 // ============================================================================
-// HOOK: Session active
+// HOOK: Sessions actives (plusieurs simultanées possibles)
 // ============================================================================
-export function useActiveInventorySession() {
+export function useActiveSessions() {
 	const pb = usePocketBase()
 
 	return useQuery({
 		queryKey: inventoryKeys.activeSession(),
-		queryFn: () => getActiveInventorySession(pb),
+		queryFn: () => getActiveSessions(pb),
 		staleTime: 30 * 1000,
+		refetchOnWindowFocus: true,
+	})
+}
+
+// ============================================================================
+// HOOK: Progression d'une session (pour l'affichage en card sur l'accueil)
+// ============================================================================
+export function useSessionProgress(sessionId: string) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: [...inventoryKeys.all, 'progress', sessionId],
+		queryFn: () => getSessionProgress(pb, sessionId),
+		staleTime: 10 * 1000,
 		refetchOnWindowFocus: true,
 	})
 }
@@ -117,7 +135,7 @@ export function useInventorySession(sessionId: string | undefined) {
 		useInventoryEntries(sessionId)
 
 	const summary = useMemo<InventorySessionSummary | null>(() => {
-		if (!sessionId || entriesLoading) return null
+		if (!sessionId) return null
 
 		const byCategory = new Map<string, InventoryEntry[]>()
 		for (const entry of entries) {
@@ -150,6 +168,7 @@ export function useInventorySession(sessionId: string | undefined) {
 					productId: entry.product_id,
 					productName: entry.product_name,
 					productSku: entry.product_sku,
+					productBarcode: entry.product_barcode,
 					categoryId: entry.category_id,
 					categoryName: entry.category_name,
 					stockTheorique: entry.stock_theorique,
@@ -185,6 +204,7 @@ export function useInventorySession(sessionId: string | undefined) {
 				productId: entry.product_id,
 				productName: entry.product_name,
 				productSku: entry.product_sku,
+				productBarcode: entry.product_barcode,
 				categoryId: entry.category_id,
 				categoryName: entry.category_name,
 				stockTheorique: entry.stock_theorique,
@@ -195,7 +215,7 @@ export function useInventorySession(sessionId: string | undefined) {
 			categories,
 			canComplete: totalProducts > 0 && countedProducts === totalProducts,
 		}
-	}, [entries, sessionId, entriesLoading])
+	}, [entries, sessionId])
 
 	const countProduct = useMutation({
 		mutationFn: ({
@@ -374,10 +394,15 @@ export function useCreateInventorySession() {
 
 			const entries = products.map((p) => {
 				const categoryId = p.category_id ?? p.categories?.[0] ?? ''
+				// Extraire le code-barres depuis meta_data AppPOS
+				const barcode = Array.isArray(p.meta_data)
+					? (p.meta_data.find((m: any) => m.key === 'barcode')?.value ?? '')
+					: ''
 				return {
 					product_id: p._id,
 					product_name: p.name ?? '',
 					product_sku: p.sku ?? '',
+					product_barcode: String(barcode),
 					product_image: p.image?.src ?? '',
 					category_id: categoryId,
 					category_name: categoryNameById.get(categoryId) ?? 'Sans categorie',
@@ -408,6 +433,66 @@ export function useCreateInventorySession() {
 }
 
 export { inventoryKeys as inventoryQueryKeys }
+
+// ============================================================================
+// HOOK: Détail d'une session (pour l'historique) — produits comptés + écarts
+// ============================================================================
+export function useInventorySessionDetail(sessionId: string | undefined) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: inventoryKeys.sessionDetail(sessionId ?? ''),
+		queryFn: async () => {
+			if (!sessionId) throw new Error('sessionId est requis')
+			const entries = await getInventoryEntriesForHistory(pb, sessionId)
+
+			// Grouper par catégorie
+			const byCategory = new Map<
+				string,
+				{ name: string; entries: typeof entries }
+			>()
+			for (const e of entries) {
+				const existing = byCategory.get(e.category_id)
+				if (existing) {
+					existing.entries.push(e)
+				} else {
+					byCategory.set(e.category_id, {
+						name: e.category_name,
+						entries: [e],
+					})
+				}
+			}
+
+			const categories = Array.from(byCategory.entries())
+				.map(([categoryId, { name, entries: catEntries }]) => {
+					const gaps = catEntries
+						.filter((e) => e.stock_compte !== null)
+						.map((e) => ({
+							entry: e,
+							ecart: (e.stock_compte ?? 0) - e.stock_theorique,
+						}))
+					const withGap = gaps.filter((g) => g.ecart !== 0)
+					return {
+						categoryId,
+						categoryName: name,
+						totalProducts: catEntries.length,
+						gapCount: withGap.length,
+						entries: catEntries,
+					}
+				})
+				.sort((a, b) => a.categoryName.localeCompare(b.categoryName))
+
+			return {
+				totalEntries: entries.length,
+				totalGaps: categories.reduce((acc, c) => acc + c.gapCount, 0),
+				categories,
+			}
+		},
+		enabled: !!sessionId,
+		staleTime: 5 * 60 * 1000, // 5 min — données historiques stables
+		refetchOnWindowFocus: false,
+	})
+}
 
 // ============================================================================
 // HOOK: Historique des sessions
