@@ -327,14 +327,17 @@ export async function countAndAdjustProduct(
 	// 1. Toujours mettre à jour PocketBase
 	const updated = await pb
 		.collection(INVENTORY_ENTRIES_COLLECTION)
-		.update<InventoryEntry>(entry.id, {
-			stock_compte: stockCompte,
-			status: 'counted',
-			counted_at: new Date().toISOString(),
-			// On remet adjusted à false si la valeur a changé par rapport à avant
-			adjusted: false,
-			adjusted_at: null,
-		})
+		.update<InventoryEntry>(
+			entry.id,
+			{
+				stock_compte: stockCompte,
+				status: 'counted',
+				counted_at: new Date().toISOString(),
+				adjusted: false,
+				adjusted_at: null,
+			},
+			{ $autoCancel: false },
+		)
 
 	// 2. Si écart → ajuster AppPOS immédiatement
 	if (hasGap) {
@@ -342,10 +345,14 @@ export async function countAndAdjustProduct(
 			await updateAppPosStock(entry.product_id, stockCompte)
 			const adjustedEntry = await pb
 				.collection(INVENTORY_ENTRIES_COLLECTION)
-				.update<InventoryEntry>(entry.id, {
-					adjusted: true,
-					adjusted_at: new Date().toISOString(),
-				})
+				.update<InventoryEntry>(
+					entry.id,
+					{
+						adjusted: true,
+						adjusted_at: new Date().toISOString(),
+					},
+					{ $autoCancel: false },
+				)
 			return { entry: adjustedEntry, adjusted: true }
 		} catch (err: any) {
 			// L'ajustement AppPOS a échoué — on retourne l'entrée comptée sans adjusted
