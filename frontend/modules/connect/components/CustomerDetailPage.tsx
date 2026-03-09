@@ -1,6 +1,7 @@
 // frontend/modules/connect/components/CustomerDetailPage.tsx
 
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 
@@ -41,6 +42,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import type {
+	CompaniesResponse,
+	CustomersResponse,
+} from '@/lib/pocketbase-types'
 import {
 	type ConsignmentItemDto,
 	type UpdateConsignmentItemDto,
@@ -53,12 +58,15 @@ import { useCustomer } from '@/lib/queries/customers'
 import { useInvoices } from '@/lib/queries/invoices'
 import { useQuotes } from '@/lib/queries/quotes'
 import type { InvoiceResponse, QuoteResponse } from '@/lib/types/invoice.types'
+import { usePocketBase } from '@/lib/use-pocketbase'
+import { PDFDownloadLink } from '@react-pdf/renderer'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	ArrowLeft,
 	Building2,
 	CheckCircle,
 	Clock,
+	FileDown,
 	FileText,
 	Guitar,
 	Landmark,
@@ -75,6 +83,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { ConsignmentPdfDocument } from './ConsignmentPdf'
+import { SendConsignmentEmailDialog } from './SendConsignmentEmailDialog'
 
 // ============================================================================
 // HELPERS
@@ -198,14 +208,26 @@ type ConsignmentFormValues = z.infer<typeof consignmentSchema>
 interface ConsignmentTabProps {
 	customerId: string
 	ownerCompanyId: string
+	customer: CustomersResponse
+	company?: CompaniesResponse
+	companyLogoUrl?: string | null
+	commissionRate?: number
 }
 
-function ConsignmentTab({ customerId, ownerCompanyId }: ConsignmentTabProps) {
+function ConsignmentTab({
+	customerId,
+	ownerCompanyId,
+	customer,
+	company,
+	companyLogoUrl,
+	commissionRate = 20,
+}: ConsignmentTabProps) {
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [editItem, setEditItem] = useState<ConsignmentItemDto | null>(null)
 	const [deleteTarget, setDeleteTarget] = useState<ConsignmentItemDto | null>(
 		null,
 	)
+	const [emailItem, setEmailItem] = useState<ConsignmentItemDto | null>(null)
 
 	const { data, isLoading } = useConsignmentItems(customerId)
 	const createItem = useCreateConsignmentItem()
@@ -384,6 +406,38 @@ function ConsignmentTab({ customerId, ownerCompanyId }: ConsignmentTabProps) {
 													</Button>
 												</DropdownMenuTrigger>
 												<DropdownMenuContent align='end'>
+													{company && (
+														<DropdownMenuItem asChild>
+															<PDFDownloadLink
+																document={
+																	<ConsignmentPdfDocument
+																		item={item}
+																		customer={customer}
+																		company={company}
+																		companyLogoUrl={companyLogoUrl}
+																		commissionRate={commissionRate}
+																	/>
+																}
+																fileName={`depot-vente-${item.id.slice(0, 6)}.pdf`}
+																className='flex items-center w-full px-2 py-1.5 text-sm cursor-pointer'
+															>
+																{({ loading }) => (
+																	<>
+																		<FileDown className='h-4 w-4 mr-2' />
+																		{loading
+																			? 'Génération...'
+																			: 'Bordereau PDF'}
+																	</>
+																)}
+															</PDFDownloadLink>
+														</DropdownMenuItem>
+													)}
+													<DropdownMenuSeparator />
+													<DropdownMenuItem onClick={() => setEmailItem(item)}>
+														<Mail className='h-4 w-4 mr-2' />
+														Envoyer par email
+													</DropdownMenuItem>
+													<DropdownMenuSeparator />
 													<DropdownMenuItem onClick={() => openEdit(item)}>
 														<Pencil className='h-4 w-4 mr-2' />
 														Modifier
@@ -555,6 +609,21 @@ function ConsignmentTab({ customerId, ownerCompanyId }: ConsignmentTabProps) {
 				</DialogContent>
 			</Dialog>
 
+			{/* Dialog Email bordereau */}
+			{company && emailItem && (
+				<SendConsignmentEmailDialog
+					open={!!emailItem}
+					onOpenChange={(open) => {
+						if (!open) setEmailItem(null)
+					}}
+					item={emailItem}
+					customer={customer}
+					company={company}
+					companyLogoUrl={companyLogoUrl}
+					commissionRate={commissionRate}
+				/>
+			)}
+
 			{/* Dialog Suppression */}
 			<Dialog
 				open={!!deleteTarget}
@@ -593,6 +662,17 @@ export function CustomerDetailPage() {
 	const { customerId } = useParams({ from: '/connect/customers/$customerId/' })
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
+	const pb = usePocketBase() as any
+
+	// Charger les donnees de l entreprise active pour le PDF
+	const { data: company } = useQuery({
+		queryKey: ['companies', activeCompanyId],
+		enabled: !!activeCompanyId,
+		queryFn: async () => {
+			const result = await pb.collection('companies').getOne(activeCompanyId)
+			return result as CompaniesResponse
+		},
+	})
 
 	const { data: customer, isLoading: isLoadingCustomer } =
 		useCustomer(customerId)
@@ -1100,6 +1180,9 @@ export function CustomerDetailPage() {
 					<ConsignmentTab
 						customerId={customerId}
 						ownerCompanyId={activeCompanyId ?? ''}
+						customer={customer as CustomersResponse}
+						company={company}
+						commissionRate={20}
 					/>
 				</TabsContent>
 			</Tabs>

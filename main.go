@@ -204,6 +204,8 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterDepositRoutes(pb, e.Router)
 		routes.RegisterInvoicePayRoutes(pb, e.Router) // ✅ Paiement + stats factures
 
+		routes.RegisterConsignmentEmailRoutes(pb, e.Router) // ✅ Envoi de bordereaux de dépôt-vente par email
+
 		routes.RegisterDepositRoutes(pb, e.Router)
 
 		// SPA handler (doit rester en dernier)
