@@ -55,13 +55,16 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		BackfillCustomerType,
 		FixInvoiceTotalsNonzero,
 
-		// 8. 🆕 Inventaire physique
+		// 8. Inventaire physique
 		// sessions d'abord — entries dépend de son ID via RelationField
 		ensureInventorySessionsCollection,
 		ensureInventoryEntriesCollection,
 
 		FixInventoryCollectionFields,
 		AddDepositFieldsToInvoices,
+
+		// 9. 🆕 Dépôt-vente instruments d'occasion (dépend de customers + companies)
+		EnsureConsignmentItemsCollection,
 	}
 
 	for _, migrate := range migrations {
