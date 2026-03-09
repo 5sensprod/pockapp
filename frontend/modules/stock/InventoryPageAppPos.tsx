@@ -665,7 +665,7 @@ function CountingRow({
 	entry: InventoryEntry
 	isValidated: boolean
 	isCountingProduct: boolean
-	onSave: (entryId: string, value: number) => void
+	onSave: (entry: InventoryEntry, value: number) => void
 	onReset: (entryId: string) => void
 }) {
 	const [localValue, setLocalValue] = useState(
@@ -684,7 +684,7 @@ function CountingRow({
 		if (localValue === '') return
 		const val = Number.parseInt(localValue, 10)
 		if (Number.isNaN(val) || val < 0) return
-		onSave(entry.id, val)
+		onSave(entry, val)
 	}
 
 	// Sync la valeur locale si l'entry change depuis le serveur
@@ -694,11 +694,17 @@ function CountingRow({
 		}
 	}, [entry.status, entry.stock_compte])
 
+	const isAdjusted = entry.adjusted
+
 	return (
 		<tr
 			className={cn(
 				'transition-colors',
-				isCounted ? 'bg-muted/20' : 'hover:bg-muted/30',
+				isAdjusted
+					? 'bg-muted/40 opacity-60'
+					: isCounted
+						? 'bg-muted/20'
+						: 'hover:bg-muted/30',
 			)}
 		>
 			{/* Nom produit */}
@@ -707,7 +713,11 @@ function CountingRow({
 					<div
 						className={cn(
 							'w-2 h-2 rounded-full shrink-0',
-							isCounted ? 'bg-green-500' : 'bg-muted-foreground/30',
+							isAdjusted
+								? 'bg-blue-400'
+								: isCounted
+									? 'bg-green-500'
+									: 'bg-muted-foreground/30',
 						)}
 					/>
 					<div className='min-w-0'>
@@ -722,6 +732,11 @@ function CountingRow({
 						{entry.product_barcode && (
 							<div className='text-xs text-muted-foreground font-mono tracking-wider'>
 								{entry.product_barcode}
+							</div>
+						)}
+						{isAdjusted && (
+							<div className='text-xs text-blue-500 font-medium'>
+								✓ Ajusté AppPOS
 							</div>
 						)}
 					</div>
@@ -809,18 +824,9 @@ function CategoryCountingView({
 		entriesLoading,
 		countProduct,
 		resetProduct,
-		validateCategory,
 		isCountingProduct,
-		isValidatingCategory,
-		validateError,
 	} = useInventorySession(sessionId)
 
-	const [showValidateDialog, setShowValidateDialog] = useState(false)
-	const [lastAdjustmentResult, setLastAdjustmentResult] = useState<null | {
-		adjustedCount: number
-		skippedCount: number
-		errors: { productId: string; productName: string; error: string }[]
-	}>(null)
 	const [searchQuery, setSearchQuery] = useState('')
 	const searchRef = useRef<HTMLInputElement>(null)
 
@@ -852,63 +858,20 @@ function CategoryCountingView({
 	}, [entriesLoading])
 	const isValidated =
 		session.validated_category_ids?.includes(categoryId) ?? false
-	const allCounted =
-		catEntries.length > 0 && catEntries.every((e) => e.status === 'counted')
 
-	const gaps = catEntries.filter((e) => {
-		if (e.status !== 'counted' || e.stock_compte === null) return false
-		return e.stock_compte !== e.stock_theorique
-	})
-
-	const handleValidate = async () => {
-		try {
-			const result = await validateCategory(categoryId)
-			setLastAdjustmentResult(result)
-			setShowValidateDialog(false)
-		} catch {
-			// L'erreur est accessible via validateError
-		}
-	}
+	const countedEntries = catEntries.filter((e) => e.status === 'counted')
+	const adjustedEntries = catEntries.filter((e) => e.adjusted)
+	const gapsCount = catEntries.filter(
+		(e) =>
+			e.adjusted &&
+			e.stock_compte !== null &&
+			e.stock_compte !== e.stock_theorique,
+	).length
 
 	if (entriesLoading) {
 		return (
 			<div className='flex items-center justify-center h-64'>
 				<Loader2 className='h-6 w-6 animate-spin text-muted-foreground' />
-			</div>
-		)
-	}
-
-	// Résumé post-validation
-	if (lastAdjustmentResult) {
-		return (
-			<div className='flex flex-col items-center justify-center h-full gap-6 px-6'>
-				<div className='w-16 h-16 rounded-2xl bg-green-500/10 flex items-center justify-center'>
-					<CheckCircle2 className='h-8 w-8 text-green-500' />
-				</div>
-				<div className='text-center'>
-					<h3 className='text-lg font-semibold mb-1'>Catégorie validée</h3>
-					<p className='text-muted-foreground text-sm'>
-						{lastAdjustmentResult.adjustedCount} ajustement
-						{lastAdjustmentResult.adjustedCount > 1 ? 's' : ''} appliqué
-						{lastAdjustmentResult.adjustedCount > 1 ? 's' : ''} dans AppPOS
-						{lastAdjustmentResult.skippedCount > 0 &&
-							` · ${lastAdjustmentResult.skippedCount} sans écart`}
-					</p>
-				</div>
-				{lastAdjustmentResult.errors.length > 0 && (
-					<div className='w-full max-w-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-400'>
-						<p className='font-medium mb-1'>Erreurs lors de l'ajustement :</p>
-						{lastAdjustmentResult.errors.map((e) => (
-							<p key={e.productId}>
-								• {e.productName} : {e.error}
-							</p>
-						))}
-					</div>
-				)}
-				<Button onClick={onBack} className='gap-2'>
-					<ArrowLeft className='h-4 w-4' />
-					Retour aux catégories
-				</Button>
 			</div>
 		)
 	}
@@ -932,32 +895,18 @@ function CategoryCountingView({
 						)}
 					</div>
 					<p className='text-xs text-muted-foreground'>
-						{catEntries.filter((e) => e.status === 'counted').length}/
-						{catEntries.length} produits comptés
-						{gaps.length > 0 && (
+						{countedEntries.length}/{catEntries.length} comptés
+						{' · '}
+						{adjustedEntries.length} ajusté
+						{adjustedEntries.length > 1 ? 's' : ''} AppPOS
+						{gapsCount > 0 && (
 							<span className='ml-2 text-amber-600'>
-								· {gaps.length} écart{gaps.length > 1 ? 's' : ''}
+								· {gapsCount} écart{gapsCount > 1 ? 's' : ''}
 							</span>
 						)}
 					</p>
 				</div>
-				{!isValidated && allCounted && (
-					<Button
-						size='sm'
-						onClick={() => setShowValidateDialog(true)}
-						className='bg-green-600 hover:bg-green-700 text-white gap-1.5 shrink-0'
-					>
-						<CheckCircle2 className='h-3.5 w-3.5' />
-						Valider
-					</Button>
-				)}
 			</div>
-
-			{validateError && (
-				<div className='mx-6 mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400'>
-					{(validateError as Error).message}
-				</div>
-			)}
 
 			{/* Barre de recherche / scan */}
 			<div className='px-6 py-2 border-b bg-muted/30'>
@@ -1022,83 +971,13 @@ function CategoryCountingView({
 								entry={entry}
 								isValidated={isValidated}
 								isCountingProduct={isCountingProduct}
-								onSave={(entryId, value) => countProduct(entryId, value)}
+								onSave={(entry, value) => countProduct(entry, value)}
 								onReset={(entryId) => resetProduct(entryId)}
 							/>
 						))}
 					</tbody>
 				</table>
 			</div>
-
-			{/* Dialog de validation */}
-			<Dialog open={showValidateDialog} onOpenChange={setShowValidateDialog}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Valider {categoryName}</DialogTitle>
-					</DialogHeader>
-					<div className='py-2 space-y-3'>
-						<p className='text-sm text-muted-foreground'>
-							{gaps.length === 0 ? (
-								<>
-									Aucun écart détecté — tous les stocks sont conformes. La
-									catégorie sera verrouillée.
-								</>
-							) : (
-								<>
-									<span className='font-medium text-amber-600'>
-										{gaps.length} écart{gaps.length > 1 ? 's' : ''} détecté
-										{gaps.length > 1 ? 's' : ''}
-									</span>{' '}
-									— les stocks AppPOS seront mis à jour, puis la catégorie sera
-									verrouillée.
-								</>
-							)}
-						</p>
-						{gaps.length > 0 && (
-							<div className='border rounded-lg divide-y max-h-48 overflow-y-auto text-sm'>
-								{gaps.map((e) => {
-									const ecart = (e.stock_compte ?? 0) - e.stock_theorique
-									return (
-										<div
-											key={e.id}
-											className='flex items-center justify-between px-3 py-2'
-										>
-											<span className='truncate text-muted-foreground'>
-												{e.product_name}
-											</span>
-											<div className='flex items-center gap-3 shrink-0 ml-4'>
-												<span className='font-mono text-xs text-muted-foreground'>
-													{e.stock_theorique} → {e.stock_compte}
-												</span>
-												<EcartBadge ecart={ecart} />
-											</div>
-										</div>
-									)
-								})}
-							</div>
-						)}
-					</div>
-					<DialogFooter>
-						<Button
-							variant='ghost'
-							onClick={() => setShowValidateDialog(false)}
-							disabled={isValidatingCategory}
-						>
-							Annuler
-						</Button>
-						<Button
-							onClick={handleValidate}
-							disabled={isValidatingCategory}
-							className='bg-green-600 hover:bg-green-700 text-white gap-2'
-						>
-							{isValidatingCategory && (
-								<Loader2 className='h-4 w-4 animate-spin' />
-							)}
-							Confirmer et verrouiller
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
 		</div>
 	)
 }

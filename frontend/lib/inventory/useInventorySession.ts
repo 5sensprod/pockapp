@@ -14,7 +14,7 @@ import {
 	cancelInventorySession,
 	completeInventorySessionWithStats,
 	computeGaps,
-	countInventoryProduct,
+	countAndAdjustProduct,
 	createInventoryEntries,
 	createInventorySession,
 	getActiveSessions,
@@ -23,11 +23,8 @@ import {
 	getInventoryEntriesForHistory,
 	getInventorySessionHistory,
 	getSessionProgress,
-	isCategoryFullyCounted,
-	markEntryAsAdjusted,
 	resetInventoryProduct,
 	startInventorySession,
-	validateInventoryCategory,
 } from './inventory-pocketbase'
 import type {
 	CategoryInventorySummary,
@@ -219,12 +216,13 @@ export function useInventorySession(sessionId: string | undefined) {
 
 	const countProduct = useMutation({
 		mutationFn: ({
-			entryId,
+			entry,
 			stockCompte,
 		}: {
-			entryId: string
+			entry: import('./inventory-types').InventoryEntry
 			stockCompte: number
-		}) => countInventoryProduct(pb, entryId, stockCompte),
+		}) =>
+			countAndAdjustProduct(pb, entry, stockCompte, updateAppPosProductStock),
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: inventoryKeys.entries(sessionId ?? ''),
@@ -238,60 +236,6 @@ export function useInventorySession(sessionId: string | undefined) {
 			queryClient.invalidateQueries({
 				queryKey: inventoryKeys.entries(sessionId ?? ''),
 			})
-		},
-	})
-
-	const validateCategory = useMutation({
-		mutationFn: async (categoryId: string) => {
-			if (!sessionId) throw new Error('Pas de session active')
-
-			const catEntries = await getInventoryEntriesByCategory(
-				pb,
-				sessionId,
-				categoryId,
-			)
-
-			if (!isCategoryFullyCounted(catEntries)) {
-				throw new Error(
-					'Tous les produits doivent etre comptes avant de valider la categorie',
-				)
-			}
-
-			const gaps = computeGaps(catEntries)
-
-			const result = {
-				categoryId,
-				categoryName: catEntries[0]?.category_name ?? '',
-				adjustedCount: 0,
-				skippedCount: catEntries.length - gaps.length,
-				errors: [] as Array<{
-					productId: string
-					productName: string
-					error: string
-				}>,
-			}
-
-			for (const { entry } of gaps) {
-				const newStock = entry.stock_compte ?? 0
-				try {
-					await updateAppPosProductStock(entry.product_id, newStock)
-					await markEntryAsAdjusted(pb, entry.id)
-					result.adjustedCount++
-				} catch (error) {
-					result.errors.push({
-						productId: entry.product_id,
-						productName: entry.product_name,
-						error: error instanceof Error ? error.message : 'Erreur inconnue',
-					})
-				}
-			}
-
-			await validateInventoryCategory(pb, sessionId, categoryId)
-
-			return result
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: inventoryKeys.all })
 		},
 	})
 
@@ -332,21 +276,19 @@ export function useInventorySession(sessionId: string | undefined) {
 		summary,
 		entriesLoading,
 
-		countProduct: (entryId: string, stockCompte: number) =>
-			countProduct.mutateAsync({ entryId, stockCompte }),
+		countProduct: (
+			entry: import('./inventory-types').InventoryEntry,
+			stockCompte: number,
+		) => countProduct.mutateAsync({ entry, stockCompte }),
 		resetProduct: (entryId: string) => resetProduct.mutateAsync(entryId),
-		validateCategory: (categoryId: string) =>
-			validateCategory.mutateAsync(categoryId),
 		completeSession: () => completeSession.mutateAsync(),
 		cancelSession: () => cancelSession.mutateAsync(),
 
 		isCountingProduct: countProduct.isPending,
-		isValidatingCategory: validateCategory.isPending,
 		isCompletingSession: completeSession.isPending,
 		isCancellingSession: cancelSession.isPending,
 
 		countError: countProduct.error,
-		validateError: validateCategory.error,
 		completeError: completeSession.error,
 	}
 }

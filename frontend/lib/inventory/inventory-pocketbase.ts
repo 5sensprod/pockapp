@@ -308,6 +308,59 @@ export async function countInventoryProduct(
 }
 
 /**
+ * Compte un produit ET applique immédiatement l'ajustement AppPOS si écart.
+ * Appelé dès que l'opérateur valide la quantité (onBlur / Enter).
+ * Si le stock_compte === stock_theorique : marked counted, adjusted reste false.
+ * Si écart : PUT AppPOS + adjusted: true en une seule opération.
+ */
+export async function countAndAdjustProduct(
+	pb: PocketBase,
+	entry: InventoryEntry,
+	stockCompte: number,
+	updateAppPosStock: (productId: string, stock: number) => Promise<unknown>,
+): Promise<{ entry: InventoryEntry; adjusted: boolean; error?: string }> {
+	if (stockCompte < 0)
+		throw new Error('Le stock compté ne peut pas être négatif')
+
+	const hasGap = stockCompte !== entry.stock_theorique
+
+	// 1. Toujours mettre à jour PocketBase
+	const updated = await pb
+		.collection(INVENTORY_ENTRIES_COLLECTION)
+		.update<InventoryEntry>(entry.id, {
+			stock_compte: stockCompte,
+			status: 'counted',
+			counted_at: new Date().toISOString(),
+			// On remet adjusted à false si la valeur a changé par rapport à avant
+			adjusted: false,
+			adjusted_at: null,
+		})
+
+	// 2. Si écart → ajuster AppPOS immédiatement
+	if (hasGap) {
+		try {
+			await updateAppPosStock(entry.product_id, stockCompte)
+			const adjustedEntry = await pb
+				.collection(INVENTORY_ENTRIES_COLLECTION)
+				.update<InventoryEntry>(entry.id, {
+					adjusted: true,
+					adjusted_at: new Date().toISOString(),
+				})
+			return { entry: adjustedEntry, adjusted: true }
+		} catch (err: any) {
+			// L'ajustement AppPOS a échoué — on retourne l'entrée comptée sans adjusted
+			return {
+				entry: updated,
+				adjusted: false,
+				error: err?.message ?? 'Erreur ajustement AppPOS',
+			}
+		}
+	}
+
+	return { entry: updated, adjusted: false }
+}
+
+/**
  * Réinitialise le comptage d'un produit (retour à "pending").
  * Impossible si la catégorie est déjà validée.
  */
