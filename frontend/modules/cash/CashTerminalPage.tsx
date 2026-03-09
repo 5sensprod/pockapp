@@ -34,6 +34,7 @@ import {
 	type AppPosProduct,
 	CartPanel,
 	PaymentDialog,
+	type PaymentEntry,
 	type PaymentMethod,
 	type PaymentStep,
 	ProductsPanel,
@@ -41,8 +42,8 @@ import {
 	TerminalHeader,
 	getEffectiveUnitTtc,
 	getLineTotalTtc,
-	getPaymentMethodCode, // 🆕 AJOUTER
-	getPaymentMethodLabel, // 🆕 AJOUTER
+	getMainPaymentMethodCode,
+	paymentEntriesToApiPayload,
 	useBarcodeScanner,
 	useCartCalculations,
 	useCartManager,
@@ -65,10 +66,21 @@ export function CashTerminalPage() {
 	const [cartDiscountRaw, setCartDiscountRaw] = React.useState('')
 
 	const [paymentStep, setPaymentStep] = React.useState<PaymentStep>('cart')
-	const [selectedPaymentMethod, setSelectedPaymentMethod] =
+	// ✅ MULTIPAIEMENT
+	const [paymentEntries, setPaymentEntries] = React.useState<PaymentEntry[]>([])
+	const [initialPaymentMethod, setInitialPaymentMethod] =
 		React.useState<PaymentMethod | null>(null)
-	const [amountReceived, setAmountReceived] = React.useState('')
 	const [isProcessing, setIsProcessing] = React.useState(false)
+
+	const amountReceived = React.useMemo(() => {
+		const cashEntry = paymentEntries.find(
+			(e) => e.method.accounting_category === 'cash',
+		)
+		return cashEntry ? cashEntry.amount.toFixed(2) : ''
+	}, [paymentEntries])
+
+	const selectedPaymentMethod: PaymentMethod | null =
+		paymentEntries[0]?.method ?? initialPaymentMethod ?? null
 
 	const [isAppPosConnected, setIsAppPosConnected] = React.useState(false)
 
@@ -354,12 +366,11 @@ export function CashTerminalPage() {
 				return
 			}
 
-			setSelectedPaymentMethod(method)
+			setInitialPaymentMethod(method)
+			setPaymentEntries([])
 			setPaymentStep('payment')
-			if (method.accounting_category === 'cash')
-				setAmountReceived(totalTtc.toFixed(2))
 		},
-		[cartManager.cart.length, totalTtc],
+		[cartManager.cart.length],
 	)
 
 	const clearAll = React.useCallback(() => {
@@ -368,7 +379,8 @@ export function CashTerminalPage() {
 		setCartDiscountValue(0)
 		setCartDiscountRaw('')
 		setPaymentStep('cart')
-		setAmountReceived('')
+		setPaymentEntries([])
+		setInitialPaymentMethod(null)
 		setEditingLineId(null)
 	}, [cartManager])
 
@@ -444,15 +456,24 @@ export function CashTerminalPage() {
 					(args.totalSavingsValue ?? 0) > 0
 						? args.totalSavingsValue
 						: undefined,
-				paymentMethod: selectedPaymentMethod?.name || 'Autre',
-				received:
-					selectedPaymentMethod?.accounting_category === 'cash'
-						? Number.parseFloat(amountReceived) || 0
-						: undefined,
-				change:
-					selectedPaymentMethod?.accounting_category === 'cash'
-						? change
-						: undefined,
+				paymentMethod:
+					paymentEntries.length > 0
+						? paymentEntries.length === 1
+							? paymentEntries[0].method.name
+							: paymentEntries.map((e) => e.method.name).join(' + ')
+						: 'Autre',
+				received: paymentEntries.some(
+					(e) => e.method.accounting_category === 'cash',
+				)
+					? paymentEntries
+							.filter((e) => e.method.accounting_category === 'cash')
+							.reduce((s, e) => s + e.amount, 0)
+					: undefined,
+				change: paymentEntries.some(
+					(e) => e.method.accounting_category === 'cash',
+				)
+					? change
+					: undefined,
 				vatBreakdown: vatBreakdown.map((vb) => ({
 					rate: vb.rate,
 					baseHt: vb.base_ht,
@@ -462,14 +483,13 @@ export function CashTerminalPage() {
 			}
 		},
 		[
-			amountReceived,
 			cartDiscountMode,
 			cartDiscountValue,
 			cartManager.cart,
 			change,
 			discountAmount,
 			getCompanyLogoBase64,
-			selectedPaymentMethod,
+			paymentEntries,
 			subtotalTtc,
 			user,
 			vatBreakdown,
@@ -482,12 +502,15 @@ export function CashTerminalPage() {
 			return
 		}
 
-		if (selectedPaymentMethod?.accounting_category === 'cash') {
-			const received = Number.parseFloat(amountReceived) || 0
-			if (received < totalTtc) {
-				toast.error('Montant insuffisant')
-				return
-			}
+		// Validation multipaiement
+		if (paymentEntries.length === 0) {
+			toast.error('Aucun moyen de paiement sélectionné')
+			return
+		}
+		const totalPaid = paymentEntries.reduce((sum, e) => sum + e.amount, 0)
+		if (totalPaid < totalTtc - 0.005) {
+			toast.error('Paiements insuffisants')
+			return
 		}
 
 		const printerSettings = loadPosPrinterSettings()
@@ -500,22 +523,28 @@ export function CashTerminalPage() {
 			)
 
 			// ✅ 1. Créer le ticket dans PocketBase
+			// Construire le payload multipaiement
+			const apiPayments = paymentEntriesToApiPayload(paymentEntries)
+			const mainMethodCode = getMainPaymentMethodCode(paymentEntries)
+			const cashEntry = paymentEntries.find(
+				(e) => e.method.accounting_category === 'cash',
+			)
+
 			const result = await createPosTicket.mutateAsync({
 				owner_company: activeCompanyId,
 				cash_register: cashRegisterId,
 				session_id: activeSession.id,
 				customer_id: defaultCustomerId,
 				items: cartManager.cart.map(cartItemToPosItem),
-				payment_method: selectedPaymentMethod
-					? getPaymentMethodCode(selectedPaymentMethod)
-					: 'especes',
-				payment_method_label: selectedPaymentMethod
-					? getPaymentMethodLabel(selectedPaymentMethod)
-					: undefined,
-				amount_paid:
-					selectedPaymentMethod?.accounting_category === 'cash'
-						? Number.parseFloat(amountReceived)
-						: undefined,
+				payment_method: mainMethodCode,
+				payment_method_label:
+					paymentEntries.length > 1
+						? paymentEntries.map((e) => e.method.name).join(' + ')
+						: paymentEntries[0]?.method.type === 'custom'
+							? paymentEntries[0].method.name
+							: undefined,
+				amount_paid: cashEntry ? cashEntry.amount : undefined,
+				payments: apiPayments,
 				cart_discount_mode:
 					cartDiscountValue > 0 ? cartDiscountMode : undefined,
 				cart_discount_value:
@@ -574,7 +603,7 @@ export function CashTerminalPage() {
 
 				if (
 					printerSettings.autoOpenDrawer &&
-					selectedPaymentMethod?.accounting_category === 'cash'
+					paymentEntries.some((e) => e.method.accounting_category === 'cash')
 				) {
 					await openCashDrawer({
 						printerName: printerSettings.printerName,
@@ -594,7 +623,6 @@ export function CashTerminalPage() {
 	}, [
 		activeCompanyId,
 		activeSession,
-		amountReceived,
 		buildReceiptPayload,
 		cartDiscountMode,
 		cartDiscountValue,
@@ -602,10 +630,10 @@ export function CashTerminalPage() {
 		cashRegisterId,
 		clearAll,
 		createPosTicket,
+		isAppPosConnected,
+		paymentEntries,
 		pb,
-		selectedPaymentMethod,
 		totalTtc,
-		isAppPosConnected, // 🆕 AJOUTER dans les dépendances
 	])
 
 	if (isSessionLoading) {
@@ -748,11 +776,9 @@ export function CashTerminalPage() {
 		return (
 			<PaymentDialog
 				totalTtc={totalTtc}
-				selectedPaymentMethod={selectedPaymentMethod}
-				onSelectedPaymentMethodChange={setSelectedPaymentMethod}
-				amountReceived={amountReceived}
-				onAmountReceivedChange={setAmountReceived}
-				change={change}
+				paymentEntries={paymentEntries}
+				onPaymentEntriesChange={setPaymentEntries}
+				initialMethod={initialPaymentMethod}
 				isProcessing={isProcessing}
 				onCancel={() => setPaymentStep('cart')}
 				onConfirm={handleConfirmPayment}

@@ -1,8 +1,9 @@
 // frontend/lib/queries/pos.ts
 // 🎫 Queries React Query pour les routes POS centralisées
-// ✅ CORRIGÉ : Ajout de payment_method_label
+// ✅ CORRIGÉ : Ajout de payment_method_label + multipaiement
 
 import { usePocketBase } from '@/lib/use-pocketbase'
+import type { PosPaymentInput } from '@/modules/cash/components/terminal/types/payment'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 // ============================================================================
@@ -25,9 +26,15 @@ export interface PosTicketInput {
 	session_id: string
 	customer_id?: string
 	items: PosItemInput[]
-	payment_method: 'especes' | 'cb' | 'cheque' | 'virement' | 'autre'
-	payment_method_label?: string // 🆕 AJOUTÉ pour les moyens customs
-	amount_paid?: number // Pour espèces uniquement
+
+	// Paiement legacy (mono) — conservé pour rétrocompat
+	payment_method: 'especes' | 'cb' | 'cheque' | 'virement' | 'autre' | 'multi'
+	payment_method_label?: string
+	amount_paid?: number
+
+	// ✅ Multipaiement — prend la priorité côté backend si renseigné
+	payments?: PosPaymentInput[]
+
 	cart_discount_mode?: 'percent' | 'amount'
 	cart_discount_value?: number
 }
@@ -49,8 +56,8 @@ export interface PosTicketTotals {
 }
 
 export interface PosTicketResult {
-	ticket: any // Record PocketBase
-	cash_movement?: any // Record PocketBase (si espèces)
+	ticket: any
+	cash_movement?: any
 	change: number
 	totals: PosTicketTotals
 }
@@ -92,9 +99,6 @@ interface CartItem {
 	displayMode?: DisplayMode
 }
 
-/**
- * Convertit un item du panier frontend vers le format attendu par l'API backend
- */
 function round2(n: number) {
 	return Math.round(n * 100) / 100
 }
@@ -111,7 +115,6 @@ export function cartItemToPosItem(item: CartItem): PosItemInput {
 	const qty = Number(item.quantity) || 1
 	const unitPrice = Number(item.unitPrice) || 0
 
-	// UI "unit" = prix TTC saisi (override), pas une remise
 	if (item.lineDiscountMode === 'unit' && item.lineDiscountValue != null) {
 		const desiredUnitTtc = Number(item.lineDiscountValue) || 0
 		const discountTotalTtc = round2(
@@ -148,17 +151,12 @@ export function cartItemToPosItem(item: CartItem): PosItemInput {
 // MUTATIONS
 // ============================================================================
 
-/**
- * Hook pour créer un ticket POS via la route backend centralisée
- * Remplace useCreateInvoice + useCreateCashMovement
- */
 export function useCreatePosTicket() {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
 
 	return useMutation({
 		mutationFn: async (input: PosTicketInput): Promise<PosTicketResult> => {
-			// Validation côté client (fail-fast)
 			if (!input.owner_company) throw new Error('owner_company requis')
 			if (!input.cash_register) throw new Error('cash_register requis')
 			if (!input.session_id) throw new Error('session_id requis')
@@ -166,7 +164,7 @@ export function useCreatePosTicket() {
 				throw new Error('Le panier est vide')
 			}
 			console.log('📦 POS payload:', JSON.stringify(input, null, 2))
-			// Appel API backend
+
 			const response = await pb.send('/api/pos/ticket', {
 				method: 'POST',
 				body: JSON.stringify(input),
@@ -178,7 +176,6 @@ export function useCreatePosTicket() {
 			return response as PosTicketResult
 		},
 		onSuccess: (_data, variables) => {
-			// Invalider les caches pertinents
 			queryClient.invalidateQueries({ queryKey: ['invoices'] })
 			queryClient.invalidateQueries({ queryKey: ['tickets'] })
 			queryClient.invalidateQueries({
@@ -201,9 +198,6 @@ export function useCreatePosTicket() {
 // QUERIES
 // ============================================================================
 
-/**
- * Hook pour récupérer les détails d'un ticket avec ses avoirs
- */
 export function usePosTicket(ticketId: string | undefined) {
 	const pb = usePocketBase()
 
@@ -211,20 +205,15 @@ export function usePosTicket(ticketId: string | undefined) {
 		queryKey: ['pos_ticket', ticketId],
 		queryFn: async (): Promise<PosTicketDetails> => {
 			if (!ticketId) throw new Error('ticketId requis')
-
 			const response = await pb.send(`/api/pos/ticket/${ticketId}`, {
 				method: 'GET',
 			})
-
 			return response as PosTicketDetails
 		},
 		enabled: !!ticketId,
 	})
 }
 
-/**
- * Hook pour récupérer tous les tickets d'une session
- */
 export function useSessionTickets(sessionId: string | undefined) {
 	const pb = usePocketBase()
 
@@ -232,14 +221,12 @@ export function useSessionTickets(sessionId: string | undefined) {
 		queryKey: ['session_tickets', sessionId],
 		queryFn: async (): Promise<SessionTicketsResult> => {
 			if (!sessionId) throw new Error('sessionId requis')
-
 			const response = await pb.send(`/api/pos/session/${sessionId}/tickets`, {
 				method: 'GET',
 			})
-
 			return response as SessionTicketsResult
 		},
 		enabled: !!sessionId,
-		refetchInterval: 30000, // Rafraîchir toutes les 30s
+		refetchInterval: 30000,
 	})
 }

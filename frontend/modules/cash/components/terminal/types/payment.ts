@@ -1,5 +1,9 @@
 // frontend/modules/cash/components/terminal/types/payment.ts
 
+// ============================================================================
+// TYPES DE BASE
+// ============================================================================
+
 export type PaymentStep = 'cart' | 'payment' | 'success'
 
 export type BackendPaymentMethod =
@@ -8,6 +12,7 @@ export type BackendPaymentMethod =
 	| 'cheque'
 	| 'autre'
 	| 'virement'
+	| 'multi' // ✅ NOUVEAU : règlement multipaiement
 
 export interface PaymentMethod {
 	id: string
@@ -23,6 +28,60 @@ export interface PaymentMethod {
 	text_color?: string
 	display_order: number
 }
+
+// ============================================================================
+// MULTIPAIEMENT
+// ============================================================================
+
+/**
+ * Une ligne de paiement dans un règlement multipaiement.
+ */
+export interface PaymentEntry {
+	method: PaymentMethod
+	amount: number
+}
+
+/**
+ * Ce qui est envoyé à l'API pour chaque ligne de paiement.
+ */
+export interface PosPaymentInput {
+	method_code: string
+	method_label: string
+	accounting_category: string
+	amount: number
+	/** Montant reçu en espèces — seulement si accounting_category === 'cash' */
+	amount_received?: number
+}
+
+/**
+ * Convertit un PaymentEntry[] en PosPaymentInput[] pour l'API backend.
+ */
+export function paymentEntriesToApiPayload(
+	entries: PaymentEntry[],
+): PosPaymentInput[] {
+	return entries.map((entry) => ({
+		method_code: entry.method.code,
+		method_label: entry.method.name,
+		accounting_category: entry.method.accounting_category,
+		amount: entry.amount,
+		...(entry.method.accounting_category === 'cash'
+			? { amount_received: entry.amount }
+			: {}),
+	}))
+}
+
+/**
+ * Label lisible pour le ticket (ex: "CB + Espèces").
+ */
+export function getMultiPaymentLabel(entries: PaymentEntry[]): string {
+	if (entries.length === 0) return ''
+	const names = [...new Set(entries.map((e) => e.method.name))]
+	return names.join(' + ')
+}
+
+// ============================================================================
+// HELPERS EXISTANTS (inchangés + compatibles multipaiement)
+// ============================================================================
 
 export function getDefaultPaymentMethod(
 	code: 'cash' | 'card' | 'check' | 'transfer',
@@ -84,6 +143,10 @@ export function getDefaultPaymentMethod(
 	return defaults[code]
 }
 
+/**
+ * Retourne le code backend legacy pour un moyen unique (rétrocompat).
+ * Pour le multipaiement, utiliser getMainPaymentMethodCode().
+ */
 export function getPaymentMethodCode(
 	method: PaymentMethod,
 ): BackendPaymentMethod {
@@ -101,12 +164,29 @@ export function getPaymentMethodCode(
 			mapping[method.code as 'card' | 'cash' | 'check' | 'transfer'] ?? 'autre'
 		)
 	}
-
 	return 'autre'
 }
 
+/**
+ * Retourne le label d'un moyen unique (rétrocompat).
+ * Pour le multipaiement, utiliser getMultiPaymentLabel().
+ */
 export function getPaymentMethodLabel(
 	method: PaymentMethod,
 ): string | undefined {
 	return method.type === 'custom' ? method.name : undefined
+}
+
+/**
+ * Détermine le code backend principal pour un règlement multipaiement.
+ * - 1 seul moyen default → son code legacy (ex: 'cb')
+ * - 1 seul moyen custom  → 'autre'
+ * - Plusieurs moyens      → 'multi'
+ */
+export function getMainPaymentMethodCode(
+	entries: PaymentEntry[],
+): BackendPaymentMethod {
+	if (entries.length === 0) return 'autre'
+	if (entries.length === 1) return getPaymentMethodCode(entries[0].method)
+	return 'multi'
 }
