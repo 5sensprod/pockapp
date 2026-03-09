@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { useAppPosCategories } from '@/lib/apppos'
+import { getAppPosToken, loginToAppPos } from '@/lib/apppos'
 import type {
 	CategoryInventorySummary,
 	InventoryEntry,
@@ -31,6 +32,7 @@ import {
 } from '@/lib/inventory/useInventorySession'
 import { useScanner } from '@/lib/pos/scanner'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/modules/auth/AuthProvider'
 import {
 	AlertTriangle,
 	ArrowLeft,
@@ -128,6 +130,7 @@ function CreateSessionDialog({
 	onConfirm,
 	isLoading,
 	activeSessions,
+	defaultOperator = '',
 }: {
 	open: boolean
 	onClose: () => void
@@ -138,8 +141,9 @@ function CreateSessionDialog({
 	) => void
 	isLoading: boolean
 	activeSessions: InventorySession[]
+	defaultOperator?: string
 }) {
-	const [operator, setOperator] = useState('')
+	const [operator, setOperator] = useState(defaultOperator)
 	const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
 	const [search, setSearch] = useState('')
 	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -150,12 +154,12 @@ function CreateSessionDialog({
 	// Reset à l'ouverture
 	useEffect(() => {
 		if (open) {
-			setOperator('')
+			setOperator(defaultOperator)
 			setSelectedCategoryIds([])
 			setSearch('')
 			setExpandedGroups(new Set())
 		}
-	}, [open])
+	}, [open, defaultOperator])
 
 	// Index : categoryId → tag à afficher
 	const categoryTags = useMemo(() => {
@@ -1594,6 +1598,87 @@ export function InventoryPageAppPos() {
 	const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
 	const [activeCategoryName, setActiveCategoryName] = useState('')
 
+	const { user } = useAuth()
+	const userName = (user as any)?.name || (user as any)?.username || ''
+
+	// Connexion AppPOS — token persisté en sessionStorage
+	const [showAppPosAuth, setShowAppPosAuth] = useState(() => !getAppPosToken())
+	const [appPosPassword, setAppPosPassword] = useState('')
+	const [appPosAuthError, setAppPosAuthError] = useState<string | null>(null)
+	const [appPosAuthLoading, setAppPosAuthLoading] = useState(false)
+
+	const handleAppPosLogin = async () => {
+		setAppPosAuthLoading(true)
+		setAppPosAuthError(null)
+		try {
+			const res = await loginToAppPos('admin', appPosPassword)
+			if (res.success && res.token) {
+				setShowAppPosAuth(false)
+				setAppPosPassword('')
+			} else {
+				setAppPosAuthError('Mot de passe incorrect')
+			}
+		} catch {
+			setAppPosAuthError('Mot de passe incorrect')
+		} finally {
+			setAppPosAuthLoading(false)
+		}
+	}
+
+	if (showAppPosAuth) {
+		return (
+			<div className='flex items-center justify-center h-full min-h-[400px]'>
+				<div className='w-full max-w-sm border rounded-xl p-6 bg-background shadow-md'>
+					<div className='flex items-center gap-3 mb-6'>
+						<div className='w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center'>
+							<ClipboardList className='h-5 w-5 text-orange-500' />
+						</div>
+						<div>
+							<h2 className='text-lg font-semibold'>Accès inventaire</h2>
+							<p className='text-xs text-muted-foreground'>
+								Code administrateur requis
+							</p>
+						</div>
+					</div>
+
+					<div className='space-y-4'>
+						<div className='space-y-2'>
+							<Label htmlFor='apppos-password'>Mot de passe AppPOS</Label>
+							<Input
+								id='apppos-password'
+								type='password'
+								placeholder='••••••••'
+								value={appPosPassword}
+								onChange={(e) => setAppPosPassword(e.target.value)}
+								onKeyDown={(e) => e.key === 'Enter' && handleAppPosLogin()}
+								autoFocus
+							/>
+						</div>
+
+						{appPosAuthError && (
+							<p className='text-sm text-red-500'>{appPosAuthError}</p>
+						)}
+
+						<Button
+							className='w-full'
+							onClick={handleAppPosLogin}
+							disabled={appPosAuthLoading || !appPosPassword}
+						>
+							{appPosAuthLoading ? (
+								<>
+									<Loader2 className='h-4 w-4 animate-spin mr-2' />
+									Connexion...
+								</>
+							) : (
+								'Déverrouiller'
+							)}
+						</Button>
+					</div>
+				</div>
+			</div>
+		)
+	}
+
 	// Sessions actives (plusieurs possibles)
 	const { data: activeSessions = [], isLoading: sessionsLoading } =
 		useActiveSessions()
@@ -1829,6 +1914,7 @@ export function InventoryPageAppPos() {
 				onConfirm={handleCreateConfirm}
 				isLoading={createSession.isPending}
 				activeSessions={activeSessions}
+				defaultOperator={userName}
 			/>
 
 			{/* Erreur création */}

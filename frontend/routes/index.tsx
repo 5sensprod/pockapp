@@ -1,4 +1,5 @@
 import { poles } from '@/modules/_registry'
+import { useAuth } from '@/modules/auth/AuthProvider'
 import { GetNetworkInfo } from '@/wailsjs/go/main/App'
 import { useQuery } from '@tanstack/react-query'
 // frontend/routes/index.tsx
@@ -10,6 +11,8 @@ export const Route = createFileRoute('/')({
 	component: Dashboard,
 })
 
+const UTILISATEUR_ALLOWED_MODULES = ['stock']
+
 function isWailsApp() {
 	if (typeof window === 'undefined') return false
 	const w = window as any
@@ -18,6 +21,19 @@ function isWailsApp() {
 }
 
 function Dashboard() {
+	const { user } = useAuth()
+	const userRole = (user as any)?.role ?? 'user'
+	const isUtilisateur = userRole === 'user'
+
+	const visiblePoles = poles
+		.map((pole) => ({
+			...pole,
+			modules: isUtilisateur
+				? pole.modules.filter((m) => UTILISATEUR_ALLOWED_MODULES.includes(m.id))
+				: pole.modules,
+		}))
+		.filter((pole) => pole.modules.length > 0)
+
 	return (
 		<div className='container mx-auto px-6 py-8 max-w-7xl'>
 			<div className='mb-8'>
@@ -29,7 +45,7 @@ function Dashboard() {
 						</p>
 					</div>
 
-					{isWailsApp() ? (
+					{isWailsApp() && !isUtilisateur ? (
 						<>
 							<div className='mt-8'>
 								<h2>Mises à jour</h2>
@@ -43,7 +59,7 @@ function Dashboard() {
 			</div>
 
 			<div className='space-y-10'>
-				{poles.map((pole) => (
+				{visiblePoles.map((pole) => (
 					<section key={pole.id}>
 						<div className='flex items-center justify-between mb-4'>
 							<div

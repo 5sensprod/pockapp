@@ -17,8 +17,9 @@ import type {
 // ============================================================================
 const APPPOS_BASE_URL = APPPOS_API_BASE_URL
 
-// Stockage du token (simple, à améliorer avec un state manager)
-let authToken: string | null = null
+// Stockage du token — persisté en sessionStorage pour survivre aux rechargements
+const APPPOS_TOKEN_KEY = 'apppos_auth_token'
+let authToken: string | null = sessionStorage.getItem(APPPOS_TOKEN_KEY)
 
 // ============================================================================
 // HELPERS
@@ -83,6 +84,7 @@ export async function loginToAppPos(
 
 	if (response.success && response.token) {
 		authToken = response.token
+		sessionStorage.setItem(APPPOS_TOKEN_KEY, response.token)
 	}
 
 	return response
@@ -90,14 +92,16 @@ export async function loginToAppPos(
 
 export function setAppPosToken(token: string) {
 	authToken = token
+	sessionStorage.setItem(APPPOS_TOKEN_KEY, token)
 }
 
 export function getAppPosToken(): string | null {
-	return authToken
+	return authToken ?? sessionStorage.getItem(APPPOS_TOKEN_KEY)
 }
 
 export function clearAppPosToken() {
 	authToken = null
+	sessionStorage.removeItem(APPPOS_TOKEN_KEY)
 }
 
 // ============================================================================
