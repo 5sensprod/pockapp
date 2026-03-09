@@ -150,7 +150,7 @@ type InvoiceStats struct {
 	InvoiceCount    int `json:"invoice_count"`
 	CreditNoteCount int `json:"credit_note_count"`
 
-	// Montants (en centimes d'€ pour éviter les flottants dans la réponse JSON)
+	// Montants
 	TotalTTC       float64 `json:"total_ttc"`        // Somme factures + avoirs (avoirs négatifs)
 	CreditNotesTTC float64 `json:"credit_notes_ttc"` // Somme avoirs seuls (négatif)
 	Paid           float64 `json:"paid"`             // Somme des factures payées
@@ -158,13 +158,26 @@ type InvoiceStats struct {
 	Overdue        float64 `json:"overdue"`          // Somme des factures en retard
 }
 
+// StatsFilter regroupe les paramètres de filtrage pour ComputeInvoiceStats
+type StatsFilter struct {
+	FiscalYear int    // 0 = pas de filtre année fiscale
+	DateFrom   string // "YYYY-MM-DD" — début de période (inclusif), vide = pas de filtre
+	DateTo     string // "YYYY-MM-DD" — fin de période (inclusif), vide = pas de filtre
+}
+
 // ComputeInvoiceStats calcule les stats sur TOUTES les factures d'une company (sans pagination)
-func ComputeInvoiceStats(dao *daos.Dao, companyID string, fiscalYear int) (*InvoiceStats, error) {
+func ComputeInvoiceStats(dao *daos.Dao, companyID string, f StatsFilter) (*InvoiceStats, error) {
 
 	// Construire le filtre
 	filter := fmt.Sprintf("owner_company = '%s'", companyID)
-	if fiscalYear > 0 {
-		filter += fmt.Sprintf(" && fiscal_year = %d", fiscalYear)
+	if f.FiscalYear > 0 {
+		filter += fmt.Sprintf(" && fiscal_year = %d", f.FiscalYear)
+	}
+	if f.DateFrom != "" {
+		filter += fmt.Sprintf(" && date >= \"%s\"", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		filter += fmt.Sprintf(" && date <= \"%s 23:59:59\"", f.DateTo)
 	}
 
 	// Récupérer toutes les factures sans limite de pagination

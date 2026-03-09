@@ -278,11 +278,13 @@ export interface InvoicesListOptions {
 	status?: InvoiceStatus
 	invoiceType?: InvoiceType
 	fiscalYear?: number
-	isPaid?: boolean // NOUVEAU
+	isPaid?: boolean
 	filter?: string
 	sort?: string
 	page?: number
 	perPage?: number
+	dateFrom?: string // "YYYY-MM-DD"
+	dateTo?: string // "YYYY-MM-DD"
 }
 
 export interface ClosuresListOptions {

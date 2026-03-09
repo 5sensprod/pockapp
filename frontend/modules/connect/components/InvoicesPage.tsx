@@ -51,10 +51,13 @@ import {
 	useVerifyInvoiceChain,
 } from '@/lib/queries/closures'
 
+import { PeriodSelector } from '@/components/PeriodSelector'
+import { usePeriodFilter } from '@/lib/hooks/usePeriodFilter'
 import { useCreateDeposit } from '@/lib/queries/deposits'
 import {
 	useCancelInvoice,
 	useDeleteDraftInvoice,
+	useInvoiceStats,
 	useInvoices,
 	useMarkInvoiceAsSent,
 	useRecordPayment,
@@ -97,7 +100,7 @@ import {
 	ShieldCheck,
 	XCircle,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
 import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
@@ -256,6 +259,9 @@ export function InvoicesPage() {
 		closureType: 'daily',
 	})
 
+	// Filtre de période — affecte stats + liste
+	const { period, setPeriod, dateRange } = usePeriodFilter('this_month')
+
 	// Query avec filtres
 	const {
 		data: invoicesData,
@@ -272,6 +278,8 @@ export function InvoicesPage() {
 		invoiceType: typeFilter !== 'all' ? typeFilter : undefined,
 		isPaid: statusFilter === 'unpaid' ? false : undefined,
 		filter: searchTerm ? `number ~ "${searchTerm}"` : undefined,
+		dateFrom: dateRange.from,
+		dateTo: dateRange.to,
 	})
 
 	// Base list
@@ -313,45 +321,21 @@ export function InvoicesPage() {
 		}
 	}
 
-	// Stats (NOUVEAU: utilise is_paid au lieu du statut)
-	const stats = useMemo(
-		() =>
-			invoices.reduce(
-				(acc, inv) => {
-					if (inv.invoice_type === 'invoice' && !inv.original_invoice_id) {
-						// Factures normales uniquement (pas les factures de solde)
-						acc.invoiceCount++
-						const creditTotal = creditNotesByOriginal[inv.id] ?? 0
-						const netAmount = inv.total_ttc + creditTotal
-						acc.totalTTC += inv.total_ttc
-						if (inv.is_paid) {
-							acc.paid += inv.total_ttc
-						} else if (inv.status !== 'draft') {
-							if (netAmount > 0) {
-								acc.pending += netAmount
-								if (isOverdue(inv)) acc.overdue += netAmount
-							}
-						}
-					} else if (inv.invoice_type === 'credit_note') {
-						acc.creditNoteCount++
-						acc.totalTTC += inv.total_ttc
-						acc.creditNotesTTC += inv.total_ttc
-					}
-					// deposit et factures de solde → ignorés dans les stats
-					return acc
-				},
-				{
-					invoiceCount: 0,
-					creditNoteCount: 0,
-					totalTTC: 0,
-					creditNotesTTC: 0,
-					paid: 0,
-					pending: 0,
-					overdue: 0,
-				},
-			),
-		[invoices],
-	)
+	// Stats globales — calculées côté backend sur TOUTES les factures (sans limite de pagination)
+	const { data: invoiceStats } = useInvoiceStats(activeCompanyId ?? undefined, {
+		dateFrom: dateRange.from,
+		dateTo: dateRange.to,
+	})
+
+	const stats = {
+		totalTTC: invoiceStats?.total_ttc ?? 0,
+		paid: invoiceStats?.paid ?? 0,
+		pending: invoiceStats?.pending ?? 0,
+		overdue: invoiceStats?.overdue ?? 0,
+		invoiceCount: invoiceStats?.invoice_count ?? 0,
+		creditNoteCount: invoiceStats?.credit_note_count ?? 0,
+		creditNotesTTC: invoiceStats?.credit_notes_ttc ?? 0,
+	}
 	// Clôture du jour déjà existante ?
 	const today = new Date()
 	today.setHours(0, 0, 0, 0)
@@ -750,6 +734,11 @@ export function InvoicesPage() {
 						Nouvelle facture
 					</Button>
 				</div>
+			</div>
+
+			{/* Filtre de période */}
+			<div className='flex items-center justify-between mb-3'>
+				<PeriodSelector period={period} onPeriodChange={setPeriod} />
 			</div>
 
 			{/* Stats */}

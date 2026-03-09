@@ -244,6 +244,21 @@ export const invoiceKeys = {
 	details: () => [...invoiceKeys.all, 'detail'] as const,
 	detail: (id: string) => [...invoiceKeys.details(), id] as const,
 	integrity: (id: string) => [...invoiceKeys.all, 'integrity', id] as const,
+	// Stats globales (calculées côté backend, sans limite de pagination)
+	stats: (
+		companyId: string,
+		fiscalYear?: number,
+		dateFrom?: string,
+		dateTo?: string,
+	) =>
+		[
+			...invoiceKeys.all,
+			'stats',
+			companyId,
+			fiscalYear ?? 'all',
+			dateFrom ?? '',
+			dateTo ?? '',
+		] as const,
 }
 
 // ============================================================================
@@ -253,7 +268,13 @@ export const invoiceKeys = {
 /**
  * 📋 Liste des factures avec filtres
  */
-export function useInvoices(options: InvoicesListOptions = {}) {
+// Extension de InvoicesListOptions pour le filtre de période
+type InvoicesListOptionsWithPeriod = InvoicesListOptions & {
+	dateFrom?: string // "YYYY-MM-DD"
+	dateTo?: string // "YYYY-MM-DD"
+}
+
+export function useInvoices(options: InvoicesListOptionsWithPeriod = {}) {
 	const pb = usePocketBase()
 	const {
 		companyId,
@@ -266,6 +287,8 @@ export function useInvoices(options: InvoicesListOptions = {}) {
 		sort,
 		page = 1,
 		perPage = 50,
+		dateFrom,
+		dateTo,
 	} = options
 
 	return useQuery({
@@ -290,6 +313,12 @@ export function useInvoices(options: InvoicesListOptions = {}) {
 			}
 			if (isPaid !== undefined) {
 				filters.push(`is_paid = ${isPaid}`)
+			}
+			if (dateFrom) {
+				filters.push(`date >= "${dateFrom}"`)
+			}
+			if (dateTo) {
+				filters.push(`date <= "${dateTo} 23:59:59"`)
 			}
 			if (filter) {
 				filters.push(filter)
@@ -554,87 +583,40 @@ export function useRecordPayment() {
 			paymentMethodLabel?: string
 			paidAt?: string
 		}) => {
-			const existing = (await pb
-				.collection('invoices')
-				.getOne(invoiceId)) as unknown as InvoiceResponse
-
-			if (!canMarkAsPaid(existing)) {
-				if (existing.is_paid)
-					throw new Error('Cette facture est déjà marquée comme payée.')
-				if (existing.status === 'draft') {
-					throw new Error(
-						"Impossible de marquer un brouillon comme payé. Validez d'abord la facture.",
-					)
-				}
-				if (existing.invoice_type === 'credit_note') {
-					throw new Error('Les avoirs ne peuvent pas être marqués comme payés.')
-				}
-			}
-
-			const creditNotes = await pb.collection('invoices').getList(1, 1, {
-				filter: `invoice_type = "credit_note" && original_invoice_id = "${invoiceId}"`,
+			const response = await fetch(`/api/invoices/${invoiceId}/pay`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: pb.authStore.token,
+				},
+				body: JSON.stringify({
+					payment_method: paymentMethod || 'autre',
+					payment_method_label: paymentMethodLabel || '',
+					paid_at: paidAt || '',
+				}),
 			})
-			if (creditNotes.items.length > 0) {
-				throw new Error(
-					"Impossible d'enregistrer un paiement: la facture a été annulée par un avoir.",
-				)
+
+			if (!response.ok) {
+				const err = await response.json().catch(() => ({}))
+				throw new Error(err?.message || `Erreur ${response.status}`)
 			}
 
-			const updateData: Record<string, any> = {
-				is_paid: true,
-				paid_at: paidAt || new Date().toISOString(),
+			const data = (await response.json()) as {
+				invoice: InvoiceResponse
+				parent_updated: InvoiceResponse | null
 			}
 
-			if (paymentMethod) updateData.payment_method = paymentMethod
-			if (paymentMethod === 'autre') {
-				updateData.payment_method_label = paymentMethodLabel || ''
-			} else {
-				updateData.payment_method_label = ''
-			}
-
-			try {
-				const result = (await pb
-					.collection('invoices')
-					.update(invoiceId, updateData)) as unknown as InvoiceResponse
-
-				// 🆕 Si c'est une facture de solde → marquer la parente comme payée
-				if (
-					existing.invoice_type === 'invoice' &&
-					existing.original_invoice_id
-				) {
-					try {
-						await pb
-							.collection('invoices')
-							.update(existing.original_invoice_id, {
-								is_paid: true,
-								paid_at: paidAt || new Date().toISOString(),
-								balance_due: 0,
-							})
-					} catch (parentErr) {
-						console.warn(
-							'⚠️ Impossible de marquer la facture parente comme payée:',
-							parentErr,
-						)
-					}
-				}
-
-				return result
-			} catch (e: any) {
-				console.log('PB ERROR status:', e?.status)
-				console.log('PB ERROR message:', e?.message)
-				console.log('PB ERROR raw data:', e?.data)
-				console.log('PB ERROR field data:', e?.data?.data)
-				console.log('PB ERROR json:', JSON.stringify(e?.data, null, 2))
-				throw e
-			}
+			return data
 		},
-		onSuccess: (data, { invoiceId }) => {
+		onSuccess: (data) => {
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
-			queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) })
-			// 🆕 Invalider aussi la parente si facture de solde
-			if (data?.original_invoice_id) {
+			queryClient.invalidateQueries({
+				queryKey: invoiceKeys.detail(data.invoice.id),
+			})
+			// Invalider la parente si facture de solde
+			if (data.parent_updated) {
 				queryClient.invalidateQueries({
-					queryKey: invoiceKeys.detail(data.original_invoice_id),
+					queryKey: invoiceKeys.detail(data.parent_updated.id),
 				})
 			}
 		},
@@ -853,6 +835,61 @@ export function useCreditNotesForInvoice(invoiceId?: string) {
 			return result.items as unknown as InvoiceResponse[]
 		},
 		enabled: !!invoiceId,
+	})
+}
+
+// ============================================================================
+// STATS GLOBALES
+// ============================================================================
+
+interface InvoiceStats {
+	invoice_count: number
+	credit_note_count: number
+	total_ttc: number
+	credit_notes_ttc: number
+	paid: number
+	pending: number
+	overdue: number
+}
+
+/**
+ * 📊 Stats globales des factures — calculées côté backend sur TOUTES les factures
+ * (sans la limite de pagination de 50 items de useInvoices)
+ */
+export function useInvoiceStats(
+	companyId: string | undefined,
+	options?: {
+		fiscalYear?: number
+		dateFrom?: string // "YYYY-MM-DD"
+		dateTo?: string // "YYYY-MM-DD"
+	},
+) {
+	const pb = usePocketBase()
+	const { fiscalYear, dateFrom, dateTo } = options ?? {}
+
+	return useQuery({
+		queryKey: invoiceKeys.stats(companyId ?? '', fiscalYear, dateFrom, dateTo),
+		queryFn: async (): Promise<InvoiceStats> => {
+			const params = new URLSearchParams({ company_id: companyId! })
+			if (fiscalYear) params.set('fiscal_year', String(fiscalYear))
+			if (dateFrom) params.set('date_from', dateFrom)
+			if (dateTo) params.set('date_to', dateTo)
+
+			const response = await fetch(`/api/invoices/stats?${params}`, {
+				headers: {
+					Authorization: pb.authStore.token,
+				},
+			})
+
+			if (!response.ok) {
+				const err = await response.json().catch(() => ({}))
+				throw new Error(err?.message || `Erreur ${response.status}`)
+			}
+
+			return response.json()
+		},
+		enabled: !!companyId,
+		staleTime: 30_000,
 	})
 }
 

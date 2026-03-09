@@ -124,7 +124,13 @@ func RegisterInvoicePayRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			}
 		}
 
-		stats, err := backend.ComputeInvoiceStats(app.Dao(), companyID, fiscalYear)
+		statsFilter := backend.StatsFilter{
+			FiscalYear: fiscalYear,
+			DateFrom:   c.QueryParam("date_from"), // "YYYY-MM-DD"
+			DateTo:     c.QueryParam("date_to"),   // "YYYY-MM-DD"
+		}
+
+		stats, err := backend.ComputeInvoiceStats(app.Dao(), companyID, statsFilter)
 		if err != nil {
 			return apis.NewApiError(500, "Erreur calcul stats", err)
 		}
