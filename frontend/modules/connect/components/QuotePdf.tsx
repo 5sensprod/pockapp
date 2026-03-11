@@ -330,6 +330,7 @@ export function QuotePdfDocument({
 		new Intl.NumberFormat('fr-FR', {
 			style: 'currency',
 			currency: quote.currency || 'EUR',
+			useGrouping: false, // ✅ supprime le séparateur de milliers
 		}).format(amount)
 
 	const formatDate = (dateStr?: string) =>
