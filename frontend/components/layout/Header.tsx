@@ -7,8 +7,10 @@ import {
 	ChevronDown,
 	ChevronLeft,
 	LogOut,
+	RefreshCw,
 	Settings,
 	User,
+	Wallet,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 
@@ -22,8 +24,16 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { usePocketAppCredits } from '@/lib/credits'
 import { useNotifications } from '@/lib/notifications'
+
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
@@ -62,6 +72,18 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 		markAllRead,
 		markRead,
 	} = useNotifications({ enabled: !!isAuthenticated })
+
+	// ── Crédits PocketApp ──────────────────────────────────────────────────────
+	const {
+		balanceEur,
+		loading: creditsLoading,
+		error: creditsError,
+		lastUpdated,
+		refresh: refreshCredits,
+	} = usePocketAppCredits()
+
+	const isLowBalance = balanceEur <= 0.5
+	const isEmptyBalance = balanceEur <= 0
 
 	const userWithAvatar = user as {
 		id: string
@@ -158,6 +180,72 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 				</div>
 
 				<div className='flex items-center gap-2'>
+					{/* ── Badge crédits IA ────────────────────────────────────────── */}
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<div
+									className={cn(
+										'flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium transition-colors',
+										creditsLoading && 'opacity-50',
+										creditsError &&
+											'border-yellow-300 bg-yellow-50 text-yellow-700',
+										!creditsError &&
+											isEmptyBalance &&
+											'border-red-300 bg-red-50 text-red-700',
+										!creditsError &&
+											!isEmptyBalance &&
+											isLowBalance &&
+											'border-orange-300 bg-orange-50 text-orange-700',
+										!creditsError &&
+											!isEmptyBalance &&
+											!isLowBalance &&
+											'border-border bg-muted/50 text-muted-foreground',
+									)}
+								>
+									<Wallet className='h-3.5 w-3.5' />
+									<span>
+										{creditsLoading
+											? '...'
+											: creditsError
+												? '⚠ erreur'
+												: `${balanceEur.toFixed(4)} €`}
+									</span>
+									<button
+										type='button'
+										onClick={(e) => {
+											e.stopPropagation()
+											refreshCredits()
+										}}
+										className='ml-0.5 hover:opacity-70 transition-opacity'
+										title='Rafraîchir'
+									>
+										<RefreshCw
+											className={cn(
+												'h-3 w-3',
+												creditsLoading && 'animate-spin',
+											)}
+										/>
+									</button>
+								</div>
+							</TooltipTrigger>
+							<TooltipContent side='bottom' className='text-xs'>
+								<p className='font-medium'>Crédits IA restants</p>
+								{lastUpdated && (
+									<p className='text-muted-foreground'>
+										Mis à jour : {lastUpdated.toLocaleTimeString('fr-FR')}
+									</p>
+								)}
+								{isLowBalance && !isEmptyBalance && (
+									<p className='text-orange-600 mt-1'>⚠ Solde faible</p>
+								)}
+								{isEmptyBalance && (
+									<p className='text-red-600 mt-1'>✕ Solde épuisé</p>
+								)}
+							</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
+
 					{isAdmin && companies.length > 0 && (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>

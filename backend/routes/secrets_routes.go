@@ -120,6 +120,22 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		})
 	}, requireAdmin)
 
+	// la clé API PocketApp stockée dans app_settings.
+	// Ne retourne que la clé "pocketapp_api_key" — aucune autre valeur sensible.
+	router.GET("/api/settings/pocketapp-key", func(c echo.Context) error {
+		key, err := sm.GetSecret("notification_api_key")
+		if err != nil || key == "" {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"configured": false,
+				"api_key":    "",
+			})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"configured": true,
+			"api_key":    key,
+		})
+	})
+
 	// DELETE /api/settings/secret/:key - Supprimer un secret
 	router.DELETE("/api/settings/secret/:key", func(c echo.Context) error {
 		key := c.PathParam("key")
