@@ -544,7 +544,14 @@ export function QuotePdfDocument({
 
 						return (
 							<View style={rowStyle} key={key}>
-								<Text style={styles.colDescription}>{item.name}</Text>
+								<View style={styles.colDescription}>
+									<Text>{item.name}</Text>
+									{(item as any).brand_name && (
+										<Text style={{ fontSize: 8, color: '#888' }}>
+											{(item as any).brand_name}
+										</Text>
+									)}
+								</View>
 								<Text style={styles.colQty}>{item.quantity}</Text>
 								<Text style={styles.colUnit}>
 									{item.unit_price_ht.toFixed(2)}

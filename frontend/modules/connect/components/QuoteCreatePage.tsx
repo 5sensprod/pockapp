@@ -33,6 +33,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
+import type { ProductWithRefs } from '@/lib/apppos/apppos-transformers'
 import type {
 	CustomersResponse,
 	ProductsResponse,
@@ -76,9 +77,9 @@ interface UiQuoteItem extends InvoiceItem {
 	unit_price_ttc: number
 	lineDiscountMode?: DiscountMode
 	lineDiscountValue?: number
-	// ✅ NOUVEAU: États "raw" pour l'affichage des inputs
 	unitPriceRaw?: string
 	lineDiscountRaw?: string
+	brandName?: string // 🆕
 }
 
 interface SelectedCustomer {
@@ -112,6 +113,7 @@ const parseDecimalInput = (value: string): number | null => {
 	return Number.isNaN(parsed) ? null : parsed
 }
 
+// Retire le brandName de getDisplayText :
 const getDisplayText = (it: UiQuoteItem) => {
 	const mode = it.displayMode ?? 'name'
 	if (mode === 'designation') return it.designation || it.name
@@ -283,8 +285,12 @@ export function QuoteCreatePage() {
 	}
 
 	const addProduct = (product: QuoteProduct) => {
+		console.log('product complet:', JSON.stringify(product, null, 2))
 		const tvaRate = product.tva_rate ?? 20
 		const coef = 1 + tvaRate / 100
+		const p = product as unknown as ProductWithRefs
+
+		console.log('brandName:', p.expand?.brand?.name) // doit afficher "MAGRABO"
 
 		let unitTtc = 0
 		if (typeof product.price_ttc === 'number') unitTtc = product.price_ttc
@@ -300,6 +306,7 @@ export function QuoteCreatePage() {
 			name: product.name,
 			designation: (product as any).designation ?? product.name,
 			sku: (product as any).sku ?? '',
+			brandName: p.expand?.brand?.name ?? undefined,
 			displayMode: 'name',
 			quantity: 1,
 			tva_rate: tvaRate,
@@ -567,6 +574,7 @@ export function QuoteCreatePage() {
 					lineDiscountMode,
 					lineDiscountValue,
 					lineDiscountRaw,
+					brandName,
 					...rest
 				}) => ({
 					...rest,
@@ -576,11 +584,13 @@ export function QuoteCreatePage() {
 						designation,
 						sku,
 						unit_price_ttc,
+						brandName,
 						...rest,
 					} as UiQuoteItem),
 					line_discount_mode: lineDiscountMode,
 					line_discount_value: lineDiscountValue,
 					unit_price_ttc_before_discount: unit_price_ttc,
+					brand_name: brandName,
 				}),
 			)
 
@@ -995,8 +1005,13 @@ export function QuoteCreatePage() {
 											<TableRow key={item.id}>
 												<TableCell className='font-medium'>
 													<div className='flex items-center gap-2'>
-														<div className='min-w-0 flex-1 truncate'>
+														<div className='min-w-0 flex-1 break-words overflow-hidden'>
 															{getDisplayText(item)}
+															{item.brandName && (
+																<span className='text-muted-foreground text-xs ml-1'>
+																	{item.brandName}
+																</span>
+															)}
 														</div>
 														{showSelector && (
 															<Select

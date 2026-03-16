@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import type { ProductWithRefs } from '@/lib/apppos/apppos-transformers'
+
 import {
 	Select,
 	SelectContent,
@@ -74,6 +76,7 @@ interface UiQuoteItem extends InvoiceItem {
 	// ✅ NOUVEAU: États "raw" pour l'affichage des inputs
 	unitPriceRaw?: string
 	lineDiscountRaw?: string
+	brandName?: string // 🆕
 }
 
 interface SelectedCustomer {
@@ -323,6 +326,7 @@ export function QuoteEditPage() {
 					displayMode: 'name',
 					designation: it.name,
 					sku: '',
+					brandName: (it as any).brand_name ?? undefined, // 🆕 restaurer depuis le backend
 					unit_price_ttc: inferredUnitTtc,
 					unitPriceRaw: inferredUnitTtc.toString(),
 					lineDiscountMode,
@@ -359,14 +363,17 @@ export function QuoteEditPage() {
 	}
 
 	const addProduct = (product: QuoteProduct) => {
+		console.log('product complet:', JSON.stringify(product, null, 2))
 		const tvaRate = product.tva_rate ?? 20
 		const coef = 1 + tvaRate / 100
+		const p = product as unknown as ProductWithRefs
+
+		console.log('brandName:', p.expand?.brand?.name) // doit afficher "MAGRABO"
 
 		let unitTtc = 0
-		if (typeof (product as any).price_ttc === 'number')
-			unitTtc = (product as any).price_ttc
-		else if (typeof (product as any).price_ht === 'number')
-			unitTtc = (product as any).price_ht * coef
+		if (typeof product.price_ttc === 'number') unitTtc = product.price_ttc
+		else if (typeof product.price_ht === 'number')
+			unitTtc = product.price_ht * coef
 
 		unitTtc = round2(unitTtc)
 		const id = `item-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -377,6 +384,7 @@ export function QuoteEditPage() {
 			name: product.name,
 			designation: (product as any).designation ?? product.name,
 			sku: (product as any).sku ?? '',
+			brandName: p.expand?.brand?.name ?? undefined,
 			displayMode: 'name',
 			quantity: 1,
 			tva_rate: tvaRate,
@@ -546,6 +554,7 @@ export function QuoteEditPage() {
 				lineDiscountMode,
 				lineDiscountValue,
 				lineDiscountRaw,
+				brandName,
 				...rest
 			}) => ({
 				...rest,
@@ -555,6 +564,8 @@ export function QuoteEditPage() {
 					designation,
 					sku,
 					unit_price_ttc,
+
+					brandName,
 					...rest,
 				} as UiQuoteItem),
 				// ✅ SAUVEGARDER les remises ligne
@@ -1008,8 +1019,13 @@ export function QuoteEditPage() {
 											<TableRow key={item.id}>
 												<TableCell className='font-medium'>
 													<div className='flex items-center gap-2'>
-														<div className='min-w-0 flex-1 truncate'>
+														<div className='min-w-0 flex-1 break-words overflow-hidden'>
 															{getDisplayText(item)}
+															{item.brandName && (
+																<span className='text-muted-foreground text-xs ml-1'>
+																	{item.brandName}
+																</span>
+															)}
 														</div>
 														{showSelector && (
 															<Select

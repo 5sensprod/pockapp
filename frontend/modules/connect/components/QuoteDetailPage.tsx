@@ -369,7 +369,14 @@ export function QuoteDetailPage() {
 									return (
 										// biome-ignore lint/suspicious/noArrayIndexKey: la liste est statique dans le détail du devis
 										<TableRow key={index}>
-											<TableCell className='font-medium'>{item.name}</TableCell>
+											<TableCell className='font-medium'>
+												<div>{item.name}</div>
+												{(item as any).brand_name && (
+													<div className='text-xs text-muted-foreground'>
+														{(item as any).brand_name}
+													</div>
+												)}
+											</TableCell>
 											<TableCell className='text-right'>
 												{item.quantity}
 											</TableCell>
