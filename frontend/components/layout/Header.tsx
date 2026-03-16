@@ -65,6 +65,7 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 
 	const userRole = (user as any)?.role || 'user'
 	const isAdmin = userRole === 'admin'
+	const isUtilisateur = userRole === 'user'
 
 	const {
 		items: notifications,
@@ -181,70 +182,72 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 
 				<div className='flex items-center gap-2'>
 					{/* ── Badge crédits IA ────────────────────────────────────────── */}
-					<TooltipProvider>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<div
-									className={cn(
-										'flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium transition-colors',
-										creditsLoading && 'opacity-50',
-										creditsError &&
-											'border-yellow-300 bg-yellow-50 text-yellow-700',
-										!creditsError &&
-											isEmptyBalance &&
-											'border-red-300 bg-red-50 text-red-700',
-										!creditsError &&
-											!isEmptyBalance &&
-											isLowBalance &&
-											'border-orange-300 bg-orange-50 text-orange-700',
-										!creditsError &&
-											!isEmptyBalance &&
-											!isLowBalance &&
-											'border-border bg-muted/50 text-muted-foreground',
-									)}
-								>
-									<Wallet className='h-3.5 w-3.5' />
-									<span>
-										{creditsLoading
-											? '...'
-											: creditsError
-												? '⚠ erreur'
-												: `${balanceEur.toFixed(4)} €`}
-									</span>
-									<button
-										type='button'
-										onClick={(e) => {
-											e.stopPropagation()
-											refreshCredits()
-										}}
-										className='ml-0.5 hover:opacity-70 transition-opacity'
-										title='Rafraîchir'
+					{!isUtilisateur && (
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<div
+										className={cn(
+											'flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium transition-colors',
+											creditsLoading && 'opacity-50',
+											creditsError &&
+												'border-yellow-300 bg-yellow-50 text-yellow-700',
+											!creditsError &&
+												isEmptyBalance &&
+												'border-red-300 bg-red-50 text-red-700',
+											!creditsError &&
+												!isEmptyBalance &&
+												isLowBalance &&
+												'border-orange-300 bg-orange-50 text-orange-700',
+											!creditsError &&
+												!isEmptyBalance &&
+												!isLowBalance &&
+												'border-border bg-muted/50 text-muted-foreground',
+										)}
 									>
-										<RefreshCw
-											className={cn(
-												'h-3 w-3',
-												creditsLoading && 'animate-spin',
-											)}
-										/>
-									</button>
-								</div>
-							</TooltipTrigger>
-							<TooltipContent side='bottom' className='text-xs'>
-								<p className='font-medium'>Crédits IA restants</p>
-								{lastUpdated && (
-									<p className='text-muted-foreground'>
-										Mis à jour : {lastUpdated.toLocaleTimeString('fr-FR')}
-									</p>
-								)}
-								{isLowBalance && !isEmptyBalance && (
-									<p className='text-orange-600 mt-1'>⚠ Solde faible</p>
-								)}
-								{isEmptyBalance && (
-									<p className='text-red-600 mt-1'>✕ Solde épuisé</p>
-								)}
-							</TooltipContent>
-						</Tooltip>
-					</TooltipProvider>
+										<Wallet className='h-3.5 w-3.5' />
+										<span>
+											{creditsLoading
+												? '...'
+												: creditsError
+													? '⚠ erreur'
+													: `${balanceEur.toFixed(4)} €`}
+										</span>
+										<button
+											type='button'
+											onClick={(e) => {
+												e.stopPropagation()
+												refreshCredits()
+											}}
+											className='ml-0.5 hover:opacity-70 transition-opacity'
+											title='Rafraîchir'
+										>
+											<RefreshCw
+												className={cn(
+													'h-3 w-3',
+													creditsLoading && 'animate-spin',
+												)}
+											/>
+										</button>
+									</div>
+								</TooltipTrigger>
+								<TooltipContent side='bottom' className='text-xs'>
+									<p className='font-medium'>Crédits IA restants</p>
+									{lastUpdated && (
+										<p className='text-muted-foreground'>
+											Mis à jour : {lastUpdated.toLocaleTimeString('fr-FR')}
+										</p>
+									)}
+									{isLowBalance && !isEmptyBalance && (
+										<p className='text-orange-600 mt-1'>⚠ Solde faible</p>
+									)}
+									{isEmptyBalance && (
+										<p className='text-red-600 mt-1'>✕ Solde épuisé</p>
+									)}
+								</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
+					)}
 
 					{isAdmin && companies.length > 0 && (
 						<DropdownMenu>
