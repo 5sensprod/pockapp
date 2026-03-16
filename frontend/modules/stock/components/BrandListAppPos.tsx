@@ -1,95 +1,101 @@
-// frontend/modules/stock/components/BrandListAppPos.tsx
-// Liste des marques pour AppPOS (lecture seule)
-
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { RefreshCw, Building2 } from 'lucide-react'
-import { useState } from 'react'
-
 import type { BrandsResponse } from '@/lib/pocketbase-types'
+// frontend/modules/stock/components/BrandListAppPos.tsx
+import { cn } from '@/lib/utils'
+import { Building2, Search, X } from 'lucide-react'
+import { useState } from 'react'
 
 interface BrandListAppPosProps {
 	brands: BrandsResponse[]
 	isLoading: boolean
+	selectedId?: string | null
+	onSelect: (brand: BrandsResponse | null) => void
+	onClose?: () => void
 }
 
-export function BrandListAppPos({ brands, isLoading }: BrandListAppPosProps) {
-	const [searchTerm, setSearchTerm] = useState('')
+export function BrandListAppPos({
+	brands,
+	isLoading,
+	selectedId,
+	onSelect,
+	onClose,
+}: BrandListAppPosProps) {
+	const [search, setSearch] = useState('')
 
-	const filteredBrands = brands.filter((brand) =>
-		brand.name.toLowerCase().includes(searchTerm.toLowerCase()),
-	)
-
-	if (isLoading) {
-		return (
-			<div className='text-center py-12 text-muted-foreground'>
-				<RefreshCw className='h-6 w-6 animate-spin mx-auto mb-2' />
-				Chargement des marques...
-			</div>
-		)
-	}
+	const filtered = [...brands]
+		.filter((b) => b.name.toLowerCase().includes(search.toLowerCase()))
+		.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
 
 	return (
-		<div className='space-y-4'>
-			<div className='flex items-center gap-4'>
-				<div className='flex-1 max-w-md'>
-					<Input
-						placeholder='Rechercher une marque...'
-						value={searchTerm}
-						onChange={(e) => setSearchTerm(e.target.value)}
-					/>
+		<div className='flex flex-col h-full'>
+			<div className='p-3 border-b flex items-center justify-between shrink-0'>
+				<span className='font-medium text-sm'>Marques</span>
+				<div className='flex items-center gap-2'>
+					<span className='text-xs text-muted-foreground'>{brands.length}</span>
+					{onClose && (
+						<button
+							type='button'
+							onClick={onClose}
+							className='p-1 rounded hover:bg-accent transition-colors'
+							title='Fermer'
+						>
+							<X className='h-3.5 w-3.5 text-muted-foreground' />
+						</button>
+					)}
 				</div>
-				<Badge variant='outline'>
-					{filteredBrands.length} marque(s)
-				</Badge>
 			</div>
 
-			<div className='rounded-md border'>
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Marque</TableHead>
-							<TableHead>Description</TableHead>
-							<TableHead className='text-right'>ID AppPOS</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{filteredBrands.length === 0 ? (
-							<TableRow>
-								<TableCell colSpan={3} className='h-24 text-center'>
-									Aucune marque trouvée
-								</TableCell>
-							</TableRow>
-						) : (
-							filteredBrands.map((brand) => (
-								<TableRow key={brand.id}>
-									<TableCell>
-										<div className='flex items-center gap-2'>
-											<Building2 className='h-4 w-4 text-blue-500' />
-											<span className='font-medium'>{brand.name}</span>
-										</div>
-									</TableCell>
-									<TableCell className='text-muted-foreground'>
-										{brand.description || '-'}
-									</TableCell>
-									<TableCell className='text-right'>
-										<code className='text-xs bg-muted px-1 py-0.5 rounded'>
-											{brand.id}
-										</code>
-									</TableCell>
-								</TableRow>
-							))
+			<div className='px-2 py-2 border-b shrink-0'>
+				<div className='relative'>
+					<Search className='absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none' />
+					<Input
+						placeholder='Rechercher...'
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+						className='h-7 pl-7 text-xs'
+					/>
+				</div>
+			</div>
+
+			<div className='flex-1 overflow-y-auto p-2'>
+				{isLoading ? (
+					<p className='text-xs text-muted-foreground p-2'>Chargement...</p>
+				) : (
+					<>
+						<button
+							type='button'
+							onClick={() => onSelect(null)}
+							className={cn(
+								'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left hover:bg-accent',
+								selectedId === null && 'bg-accent font-medium',
+							)}
+						>
+							<Building2 className='h-4 w-4 shrink-0 text-muted-foreground' />
+							<span className='truncate'>Toutes les marques</span>
+						</button>
+
+						{filtered.map((brand) => (
+							<button
+								key={brand.id}
+								type='button'
+								onClick={() => onSelect(brand)}
+								title={brand.name}
+								className={cn(
+									'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left hover:bg-accent',
+									selectedId === brand.id &&
+										'bg-primary/15 text-primary font-medium',
+								)}
+							>
+								<Building2 className='h-4 w-4 shrink-0 text-blue-500' />
+								<span className='truncate'>{brand.name}</span>
+							</button>
+						))}
+
+						{filtered.length === 0 && (
+							<p className='text-xs text-muted-foreground p-2'>Aucune marque</p>
 						)}
-					</TableBody>
-				</Table>
+					</>
+				)}
 			</div>
 		</div>
 	)
