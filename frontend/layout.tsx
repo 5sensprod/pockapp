@@ -115,7 +115,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 	if (pathname === '/setup') return <>{children}</>
 	if (pathname === '/login') return <>{children}</>
-	if (!isAuthenticated || setupLoading) return null
+	if (setupLoading)
+		return (
+			<div className='min-h-screen flex items-center justify-center bg-background'>
+				<div className='h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin' />
+			</div>
+		)
+	if (!isAuthenticated) return null
 
 	return (
 		<div className='min-h-screen flex flex-col bg-background'>

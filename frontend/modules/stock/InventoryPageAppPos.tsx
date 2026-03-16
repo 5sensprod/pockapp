@@ -1625,6 +1625,39 @@ export function InventoryPageAppPos() {
 		}
 	}
 
+	// ⚠️ RÈGLE DES HOOKS : tous les hooks doivent être appelés inconditionnellement,
+	// AVANT tout return conditionnel (showAppPosAuth, authLoading, etc.)
+	const { data: activeSessions = [], isLoading: sessionsLoading } =
+		useActiveSessions()
+
+	const createSession = useCreateInventorySession()
+	const { progress: creationProgress } = createSession
+
+	const currentSession =
+		activeSessions.find((s) => s.id === selectedSessionId) ?? null
+
+	const {
+		summary,
+		entriesLoading,
+		completeSession,
+		cancelSession,
+		isCompletingSession,
+		isCancellingSession,
+	} = useInventorySession(selectedSessionId ?? undefined)
+
+	useEffect(() => {
+		if (
+			selectedSessionId &&
+			!sessionsLoading &&
+			activeSessions.length > 0 &&
+			!activeSessions.find((s) => s.id === selectedSessionId)
+		) {
+			setSelectedSessionId(null)
+			setView('home')
+		}
+	}, [activeSessions, selectedSessionId, sessionsLoading])
+
+	// Returns conditionnels APRÈS tous les hooks
 	if (showAppPosAuth) {
 		return (
 			<div className='flex items-center justify-center h-full min-h-[400px]'>
@@ -1678,39 +1711,6 @@ export function InventoryPageAppPos() {
 			</div>
 		)
 	}
-
-	// Sessions actives (plusieurs possibles)
-	const { data: activeSessions = [], isLoading: sessionsLoading } =
-		useActiveSessions()
-
-	const createSession = useCreateInventorySession()
-	const { progress: creationProgress } = createSession
-
-	// Session couramment consultée
-	const currentSession =
-		activeSessions.find((s) => s.id === selectedSessionId) ?? null
-
-	const {
-		summary,
-		entriesLoading,
-		completeSession,
-		cancelSession,
-		isCompletingSession,
-		isCancellingSession,
-	} = useInventorySession(selectedSessionId ?? undefined)
-
-	// Si la session sélectionnée n'est plus active (clôturée/annulée), retour à l'accueil
-	useEffect(() => {
-		if (
-			selectedSessionId &&
-			!sessionsLoading &&
-			activeSessions.length > 0 &&
-			!activeSessions.find((s) => s.id === selectedSessionId)
-		) {
-			setSelectedSessionId(null)
-			setView('home')
-		}
-	}, [activeSessions, selectedSessionId, sessionsLoading])
 
 	const handleSelectSession = (session: InventorySession) => {
 		setSelectedSessionId(session.id)
