@@ -11,6 +11,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 	log.Println("🚀 Démarrage des migrations...")
 
 	migrations := []func(*pocketbase.PocketBase) error{
+		FixTokenKeys,
 		// 1. Companies (base, pas de dépendances)
 		ensureCompaniesCollection,
 
