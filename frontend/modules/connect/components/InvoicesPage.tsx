@@ -61,6 +61,7 @@ import {
 	useInvoices,
 	useMarkInvoiceAsSent,
 	useRecordPayment,
+	useRefundDeposit,
 	useValidateInvoice,
 } from '@/lib/queries/invoices'
 import { usePaymentMethods } from '@/lib/queries/payment-methods'
@@ -196,7 +197,18 @@ export function InvoicesPage() {
 
 	const [paymentMode, setPaymentMode] = useState<'full' | 'deposit'>('full')
 	const [depositPercentage, setDepositPercentage] = useState<number>(30)
+	const [depositInputMode, setDepositInputMode] = useState<
+		'percent' | 'amount'
+	>('percent')
+	const [depositAmount, setDepositAmount] = useState<number>(0)
 	const createDeposit = useCreateDeposit()
+
+	// 🆕 Remboursement acompte
+	const [refundDepositOpen, setRefundDepositOpen] = useState(false)
+	const [refundDepositReason, setRefundDepositReason] = useState('')
+	const [depositToRefund, setDepositToRefund] =
+		useState<InvoiceResponse | null>(null)
+	const refundDeposit = useRefundDeposit()
 
 	const [closureConfirmOpen, setClosureConfirmOpen] = useState(false)
 
@@ -254,6 +266,7 @@ export function InvoicesPage() {
 	// Clôtures & intégrité
 	const performDailyClosure = usePerformDailyClosure()
 	const verifyChain = useVerifyInvoiceChain()
+
 	const { data: closuresData } = useClosures({
 		companyId: activeCompanyId ?? undefined,
 		closureType: 'daily',
@@ -347,11 +360,6 @@ export function InvoicesPage() {
 			return d.getTime() === today.getTime()
 		}) ?? false
 
-	const [depositInputMode, setDepositInputMode] = useState<
-		'percent' | 'amount'
-	>('percent')
-	const [depositAmount, setDepositAmount] = useState<number>(0)
-
 	// === HANDLERS ===
 
 	const handleOpenSendEmailDialog = (invoice: InvoiceResponse) => {
@@ -403,14 +411,14 @@ export function InvoicesPage() {
 		setPaymentMethod('')
 		setPaymentMode('full')
 		setDepositPercentage(30)
-		setSelectedMethodId('')
 		setDepositInputMode('percent')
 		setDepositAmount(0)
+		setSelectedMethodId('')
 		setPaymentDialogOpen(true)
 	}
 
 	const handleRecordPayment = async () => {
-		// 🆕 Mode acompte
+		// Mode acompte
 		if (paymentMode === 'deposit') {
 			if (!invoiceToPay) return
 			try {
@@ -446,11 +454,6 @@ export function InvoicesPage() {
 			method.type === 'default' ? mapping[method.code] || method.code : 'autre'
 
 		const label = method.type === 'custom' ? method.name : undefined
-		console.log('🔍 Envoi paiement:', {
-			invoiceId: invoiceToPay.id,
-			code,
-			label,
-		})
 		await recordPayment.mutateAsync({
 			invoiceId: invoiceToPay.id,
 			paymentMethod: code,
@@ -458,7 +461,7 @@ export function InvoicesPage() {
 		})
 
 		setPaymentDialogOpen(false)
-		setSelectedMethodId('') // Reset
+		setSelectedMethodId('')
 		if (getAppPosToken() && invoiceToPay.items?.length) {
 			const stockItems = buildStockItemsFromInvoice(invoiceToPay.items)
 			if (stockItems.length > 0) {
@@ -498,7 +501,6 @@ export function InvoicesPage() {
 			setCancelDialogOpen(false)
 			setCancelReason('')
 
-			// 🆕 Proposer la reclassification stock si items AppPOS
 			const stockItems = buildStockItemsFromInvoice(
 				invoiceToCancel.items ?? [],
 			).map((it) => ({
@@ -536,7 +538,6 @@ export function InvoicesPage() {
 				}
 			}
 
-			// 🆕 Fetch depositPdfData
 			let depositPdfData: DepositPdfData | undefined
 
 			if (invoice.invoice_type === 'deposit' && invoice.original_invoice_id) {
@@ -603,6 +604,7 @@ export function InvoicesPage() {
 			toast.error('Erreur lors de la génération du PDF')
 		}
 	}
+
 	const handleDailyClosure = async () => {
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
@@ -644,7 +646,6 @@ export function InvoicesPage() {
 		}
 
 		try {
-			// ✅ MODIFIÉ: Utiliser la nouvelle API avec docType
 			const result = await verifyChain.mutateAsync({
 				companyId: activeCompanyId,
 				docType: integrityDocType,
@@ -667,7 +668,6 @@ export function InvoicesPage() {
 		}
 	}
 
-	// Handler pour ouvrir le dialog
 	const handleOpenIntegrityDialog = () => {
 		setIntegrityDocType('all')
 		setIntegrityDialogOpen(true)
@@ -692,6 +692,7 @@ export function InvoicesPage() {
 				quantitySold: Math.abs(Number(it.quantity ?? 1)),
 			}))
 	}
+
 	// === RENDER ===
 
 	return (
@@ -888,17 +889,6 @@ export function InvoicesPage() {
 									invoice.is_pos_ticket === true ||
 									invoice.number?.startsWith('TIK-')
 
-								if (isTicket) {
-									console.log('🎫 Ticket:', invoice.number, {
-										is_pos_ticket: invoice.is_pos_ticket,
-										remaining_amount: invoice.remaining_amount,
-										credit_notes_total: invoice.credit_notes_total,
-										total_ttc: invoice.total_ttc,
-										invoice_type: invoice.invoice_type,
-									})
-								}
-
-								// Fix: Si remaining_amount n'existe pas, calculer depuis total_ttc
 								const remainingAmount =
 									typeof invoice.remaining_amount === 'number'
 										? invoice.remaining_amount
@@ -914,10 +904,8 @@ export function InvoicesPage() {
 											<div className='flex items-center gap-2'>
 												<span className='font-mono'>{invoice.number}</span>
 
-												{/* Si c'est un ticket transformé en facture */}
 												{invoice.converted_to_invoice && <Badge>→ FAC</Badge>}
 
-												{/* Si c'est un avoir (remboursement), on regarde le type de l'original */}
 												{invoice.original_invoice_id && (
 													<Badge>
 														←{' '}
@@ -945,7 +933,9 @@ export function InvoicesPage() {
 													? 'Ticket'
 													: invoice.invoice_type === 'credit_note'
 														? 'Avoir'
-														: 'Facture'}
+														: invoice.invoice_type === 'deposit'
+															? 'Acompte'
+															: 'Facture'}
 											</Badge>
 										</TableCell>
 
@@ -1048,7 +1038,7 @@ export function InvoicesPage() {
 															</>
 														)}
 
-													{/* Ticket Remboursement - Ajout de displayStatus.isPaid */}
+													{/* Ticket Remboursement */}
 													{isTicket &&
 														displayStatus.isPaid &&
 														invoice.invoice_type === 'invoice' && (
@@ -1130,7 +1120,6 @@ export function InvoicesPage() {
 													{/* Paiement */}
 													{canMarkAsPaid(invoice) &&
 														!hasCancellationCreditNote &&
-														// Facture avec acomptes ET pas déjà une facture de solde
 														(invoice.invoice_type === 'invoice' &&
 														(invoice.deposits_total_ttc ?? 0) > 0 &&
 														!invoice.original_invoice_id ? (
@@ -1153,27 +1142,67 @@ export function InvoicesPage() {
 																Enregistrer paiement
 															</DropdownMenuItem>
 														))}
-													{/* Annulation par avoir - Ajout de displayStatus.isPaid */}
+
+													{/* Rembourser acompte */}
+													{invoice.invoice_type === 'deposit' &&
+														invoice.is_paid &&
+														invoice.status !== 'draft' &&
+														!invoice.has_credit_note && (
+															<>
+																<DropdownMenuSeparator />
+																<DropdownMenuItem
+																	onClick={() => {
+																		setDepositToRefund(invoice)
+																		setRefundDepositReason('')
+																		setRefundDepositOpen(true)
+																	}}
+																	className='text-orange-600'
+																>
+																	<RotateCcw className='h-4 w-4 mr-2' />
+																	Rembourser l'acompte
+																</DropdownMenuItem>
+															</>
+														)}
+
+													{/* Créer un avoir — facture validée ou envoyée, payée ou non */}
 													{invoice.invoice_type === 'invoice' &&
-														displayStatus.isPaid &&
 														!isTicket &&
 														invoice.status !== 'draft' &&
 														!hasCancellationCreditNote && (
 															<>
 																<DropdownMenuSeparator />
 																<DropdownMenuItem
-																	onClick={() =>
+																	onClick={() => {
+																		if ((invoice.deposits_total_ttc ?? 0) > 0) {
+																			toast.error(
+																				'Impossible de créer un avoir',
+																				{
+																					description:
+																						"Cette facture a des acomptes en cours ou payés. Remboursez d'abord les acomptes avant d'annuler la facture.",
+																				},
+																			)
+																			return
+																		}
 																		handleOpenCancelDialog(invoice)
+																	}}
+																	className={
+																		(invoice.deposits_total_ttc ?? 0) > 0
+																			? 'text-muted-foreground'
+																			: 'text-red-600'
 																	}
-																	className='text-red-600'
 																>
 																	<XCircle className='h-4 w-4 mr-2' />
 																	Créer un avoir
+																	{(invoice.deposits_total_ttc ?? 0) > 0 && (
+																		<span className='ml-2 text-xs'>
+																			(acompte en cours)
+																		</span>
+																	)}
 																</DropdownMenuItem>
 															</>
 														)}
 
-													{/* Rembourser Facture - Ajout de displayStatus.isPaid */}
+													{/* Rembourser — uniquement si payée */}
 													{invoice.invoice_type === 'invoice' &&
 														displayStatus.isPaid &&
 														!isTicket &&
@@ -1284,7 +1313,6 @@ export function InvoicesPage() {
 					</DialogHeader>
 
 					<div className='space-y-4 py-4'>
-						{/* Sélecteur de type */}
 						<div className='space-y-2'>
 							<Label>Type de documents à vérifier</Label>
 							<Select
@@ -1307,7 +1335,6 @@ export function InvoicesPage() {
 							</Select>
 						</div>
 
-						{/* Résumé rapide (si disponible) */}
 						{(integrityResult || integritySummary) && (
 							<div className='grid grid-cols-4 gap-2 text-sm'>
 								<div className='p-2 rounded bg-muted/50 text-center'>
@@ -1344,10 +1371,8 @@ export function InvoicesPage() {
 							</div>
 						)}
 
-						{/* Résultats de la vérification */}
 						{integrityResult && (
 							<div className='space-y-3'>
-								{/* Statut global */}
 								<div
 									className={`flex items-center gap-3 p-4 rounded-lg ${
 										integrityResult.allValid
@@ -1376,7 +1401,6 @@ export function InvoicesPage() {
 									</div>
 								</div>
 
-								{/* Résumé par type */}
 								<div className='grid grid-cols-3 gap-2'>
 									<div
 										className={`text-center p-2 rounded ${
@@ -1424,7 +1448,6 @@ export function InvoicesPage() {
 									</div>
 								</div>
 
-								{/* Détails des erreurs */}
 								{integrityResult.invalidCount > 0 && (
 									<div className='max-h-48 overflow-y-auto space-y-2'>
 										<p className='text-sm font-medium text-red-600'>
@@ -1780,6 +1803,83 @@ export function InvoicesPage() {
 				</DialogContent>
 			</Dialog>
 
+			{/* 🆕 Dialog: Rembourser un acompte */}
+			<Dialog open={refundDepositOpen} onOpenChange={setRefundDepositOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Rembourser l'acompte</DialogTitle>
+						<DialogDescription>
+							Un avoir sera créé pour annuler l'acompte{' '}
+							<strong>{depositToRefund?.number}</strong> de{' '}
+							<strong>{formatCurrency(depositToRefund?.total_ttc ?? 0)}</strong>
+							. Le solde de la facture parente sera recalculé.
+						</DialogDescription>
+					</DialogHeader>
+					<div className='space-y-2 py-4'>
+						<Label>Motif du remboursement *</Label>
+						<Textarea
+							value={refundDepositReason}
+							onChange={(e) => setRefundDepositReason(e.target.value)}
+							placeholder='Ex: Annulation de commande, litige client...'
+							rows={3}
+						/>
+						{depositToRefund && (
+							<div className='bg-muted/50 rounded-lg p-3 text-sm mt-2'>
+								<p>
+									<strong>Acompte :</strong> {depositToRefund.number}
+								</p>
+								<p>
+									<strong>Montant :</strong>{' '}
+									{formatCurrency(depositToRefund.total_ttc)}
+								</p>
+								<p>
+									<strong>Client :</strong>{' '}
+									{depositToRefund.expand?.customer?.name}
+								</p>
+							</div>
+						)}
+					</div>
+					<DialogFooter>
+						<Button
+							variant='outline'
+							onClick={() => {
+								setRefundDepositOpen(false)
+								setDepositToRefund(null)
+								setRefundDepositReason('')
+							}}
+						>
+							Annuler
+						</Button>
+						<Button
+							variant='destructive'
+							disabled={!refundDepositReason.trim() || refundDeposit.isPending}
+							onClick={async () => {
+								if (!depositToRefund) return
+								try {
+									await refundDeposit.mutateAsync({
+										depositId: depositToRefund.id,
+										reason: refundDepositReason,
+									})
+									toast.success(
+										`Avoir créé pour l'acompte ${depositToRefund.number}`,
+									)
+									setRefundDepositOpen(false)
+									setDepositToRefund(null)
+									setRefundDepositReason('')
+									await refetchInvoices()
+								} catch (err: any) {
+									toast.error(
+										err?.message || "Erreur lors du remboursement de l'acompte",
+									)
+								}
+							}}
+						>
+							{refundDeposit.isPending ? 'Création...' : "Créer l'avoir"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
 			{/* Dialog: Suppression de brouillon */}
 			<Dialog
 				open={deleteDraftDialogOpen}
@@ -1830,6 +1930,7 @@ export function InvoicesPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
 			<RefundTicketDialog
 				open={refundTicketDialogOpen}
 				onOpenChange={(o) => {

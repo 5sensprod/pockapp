@@ -345,10 +345,11 @@ func RegisterInvoiceHooks(app *pocketbase.PocketBase) {
 
 			// ✅ Règle remboursement (avoirs): l'original doit être validé ET payé
 			if invoiceType == "credit_note" {
-				if orig.GetString("status") != "validated" {
-					return fmt.Errorf("remboursement interdit: le document original n'est pas validé")
+				if orig.GetString("status") == "draft" {
+					return fmt.Errorf("remboursement interdit: le document original est en brouillon")
 				}
-				if !orig.GetBool("is_paid") {
+				// Si c'est un remboursement (refund_method présent) → l'original doit être payé
+				if record.GetString("refund_method") != "" && !orig.GetBool("is_paid") {
 					return fmt.Errorf("remboursement interdit: le document original n'est pas payé")
 				}
 				if orig.GetString("invoice_type") == "credit_note" {

@@ -866,11 +866,15 @@ export function useInvoiceStats(
 ) {
 	const pb = usePocketBase()
 	const { fiscalYear, dateFrom, dateTo } = options ?? {}
-
 	return useQuery({
 		queryKey: invoiceKeys.stats(companyId ?? '', fiscalYear, dateFrom, dateTo),
 		queryFn: async (): Promise<InvoiceStats> => {
-			const params = new URLSearchParams({ company_id: companyId! })
+			if (!companyId) {
+				throw new Error('companyId is required')
+			}
+
+			const params = new URLSearchParams({ company_id: companyId })
+
 			if (fiscalYear) params.set('fiscal_year', String(fiscalYear))
 			if (dateFrom) params.set('date_from', dateFrom)
 			if (dateTo) params.set('date_to', dateTo)
@@ -890,6 +894,38 @@ export function useInvoiceStats(
 		},
 		enabled: !!companyId,
 		staleTime: 30_000,
+	})
+}
+
+// ============================================================================
+// REMBOURSEMENT D'ACOMPTE
+// ============================================================================
+
+export interface RefundDepositInput {
+	depositId: string
+	reason: string
+}
+
+export function useRefundDeposit() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (input: RefundDepositInput) => {
+			if (!input.depositId) throw new Error('depositId requis')
+			if (!input.reason) throw new Error('reason requis')
+
+			return await pb.send('/api/invoices/deposit/refund', {
+				method: 'POST',
+				body: {
+					deposit_id: input.depositId,
+					reason: input.reason,
+				},
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
+		},
 	})
 }
 

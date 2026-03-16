@@ -496,6 +496,26 @@ export function InvoiceDetailPage() {
 			)
 		}
 
+		if (isDeposit) {
+			return (
+				<>
+					<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
+					{invoice.is_paid && (
+						<Badge className='bg-emerald-600 hover:bg-emerald-600'>
+							<CheckCircle className='h-3 w-3 mr-1' />
+							Réglé
+						</Badge>
+					)}
+					{(invoice as any).has_credit_note && (
+						<Badge className='bg-red-600 hover:bg-red-600'>
+							<RefreshCcw className='h-3 w-3 mr-1' />
+							Remboursé
+						</Badge>
+					)}
+				</>
+			)
+		}
+
 		const statusLabel = displayStatus.label
 		const showStatusBadge = statusLabel && statusLabel !== 'Payée'
 
@@ -952,6 +972,50 @@ export function InvoiceDetailPage() {
 												Demander un acompte
 											</Button>
 										))}
+
+									{/* Avoir lié si l'acompte a été remboursé */}
+									{(invoice as any).has_credit_note &&
+										linkedCreditNotes &&
+										linkedCreditNotes.length > 0 && (
+											<div className='mt-3'>
+												<p className='text-sm text-muted-foreground mb-2'>
+													Avoir associé
+												</p>
+												<div className='space-y-2'>
+													{linkedCreditNotes.map((cn) => (
+														<div
+															key={cn.id}
+															className='flex items-center justify-between bg-red-50 dark:bg-red-950/20 rounded-lg p-3 border border-red-200 dark:border-red-900'
+														>
+															<div className='flex items-center gap-2'>
+																<RefreshCcw className='h-4 w-4 text-red-600' />
+																<div className='flex flex-col'>
+																	<span className='font-medium text-sm text-red-700 dark:text-red-400'>
+																		{cn.number}
+																	</span>
+																	<span className='text-xs text-muted-foreground'>
+																		{formatDate(cn.date)} •{' '}
+																		{formatCurrency(cn.total_ttc)}
+																	</span>
+																</div>
+															</div>
+															<Button
+																variant='outline'
+																size='sm'
+																onClick={() =>
+																	navigate({
+																		to: '/connect/invoices/$invoiceId',
+																		params: { invoiceId: cn.id },
+																	})
+																}
+															>
+																Voir
+															</Button>
+														</div>
+													))}
+												</div>
+											</div>
+										)}
 
 									{invoice &&
 										canCreateBalanceInvoice(invoice) &&
