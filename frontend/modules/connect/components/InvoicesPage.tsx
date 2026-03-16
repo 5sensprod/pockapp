@@ -347,6 +347,11 @@ export function InvoicesPage() {
 			return d.getTime() === today.getTime()
 		}) ?? false
 
+	const [depositInputMode, setDepositInputMode] = useState<
+		'percent' | 'amount'
+	>('percent')
+	const [depositAmount, setDepositAmount] = useState<number>(0)
+
 	// === HANDLERS ===
 
 	const handleOpenSendEmailDialog = (invoice: InvoiceResponse) => {
@@ -394,19 +399,13 @@ export function InvoicesPage() {
 	}
 
 	const handleOpenPaymentDialog = (invoice: InvoiceResponse) => {
-		console.log('🔍 invoice to pay:', {
-			id: invoice.id,
-			status: invoice.status,
-			invoice_type: invoice.invoice_type,
-			is_pos_ticket: invoice.is_pos_ticket,
-			balance_due: invoice.balance_due,
-			canCreateDeposit: canCreateDeposit(invoice),
-		})
 		setInvoiceToPay(invoice)
 		setPaymentMethod('')
 		setPaymentMode('full')
 		setDepositPercentage(30)
 		setSelectedMethodId('')
+		setDepositInputMode('percent')
+		setDepositAmount(0)
 		setPaymentDialogOpen(true)
 	}
 
@@ -415,11 +414,16 @@ export function InvoicesPage() {
 		if (paymentMode === 'deposit') {
 			if (!invoiceToPay) return
 			try {
-				await createDeposit.mutateAsync({
-					parentId: invoiceToPay.id,
-					percentage: depositPercentage,
-				})
-				toast.success(`Acompte de ${depositPercentage}% créé`)
+				await createDeposit.mutateAsync(
+					depositInputMode === 'percent'
+						? { parentId: invoiceToPay.id, percentage: depositPercentage }
+						: { parentId: invoiceToPay.id, amount: depositAmount },
+				)
+				const label =
+					depositInputMode === 'percent'
+						? `Acompte de ${depositPercentage}% créé`
+						: `Acompte de ${formatCurrency(depositAmount)} créé`
+				toast.success(label)
 				setPaymentDialogOpen(false)
 			} catch (err: any) {
 				toast.error(err?.message || "Erreur lors de la création de l'acompte")
@@ -1629,49 +1633,107 @@ export function InvoicesPage() {
 						) : (
 							/* ── Acompte ── */
 							<div className='space-y-3'>
-								<Label>Pourcentage de l'acompte</Label>
-								<div className='flex items-center gap-3'>
-									<input
-										type='range'
-										min={10}
-										max={90}
-										step={5}
-										value={depositPercentage}
-										onChange={(e) =>
-											setDepositPercentage(Number(e.target.value))
-										}
-										className='flex-1'
-									/>
-									<span className='w-12 text-right font-semibold'>
-										{depositPercentage}%
-									</span>
+								{/* Toggle pourcentage / montant fixe */}
+								<div className='flex rounded-lg border overflow-hidden'>
+									<button
+										type='button'
+										onClick={() => setDepositInputMode('percent')}
+										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+											depositInputMode === 'percent'
+												? 'bg-primary text-primary-foreground'
+												: 'bg-background text-muted-foreground hover:bg-muted'
+										}`}
+									>
+										Pourcentage
+									</button>
+									<button
+										type='button'
+										onClick={() => setDepositInputMode('amount')}
+										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+											depositInputMode === 'amount'
+												? 'bg-primary text-primary-foreground'
+												: 'bg-background text-muted-foreground hover:bg-muted'
+										}`}
+									>
+										Montant fixe
+									</button>
 								</div>
+
+								{depositInputMode === 'percent' ? (
+									<>
+										<Label>Pourcentage de l'acompte</Label>
+										<div className='flex items-center gap-3'>
+											<input
+												type='range'
+												min={10}
+												max={90}
+												step={5}
+												value={depositPercentage}
+												onChange={(e) =>
+													setDepositPercentage(Number(e.target.value))
+												}
+												className='flex-1'
+											/>
+											<span className='w-12 text-right font-semibold'>
+												{depositPercentage}%
+											</span>
+										</div>
+									</>
+								) : (
+									<>
+										<Label>Montant de l'acompte (TTC)</Label>
+										<Input
+											type='number'
+											min={0.01}
+											step={0.01}
+											placeholder='Ex: 500.00'
+											value={depositAmount || ''}
+											onChange={(e) => setDepositAmount(Number(e.target.value))}
+										/>
+										{depositAmount >
+											(invoiceToPay?.balance_due && invoiceToPay.balance_due > 0
+												? invoiceToPay.balance_due
+												: (invoiceToPay?.total_ttc ?? 0)) && (
+											<p className='text-sm text-red-500'>
+												Le montant ne peut pas dépasser{' '}
+												{formatCurrency(
+													invoiceToPay?.balance_due &&
+														invoiceToPay.balance_due > 0
+														? invoiceToPay.balance_due
+														: (invoiceToPay?.total_ttc ?? 0),
+												)}
+											</p>
+										)}
+									</>
+								)}
+
 								{invoiceToPay && (
 									<div className='bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 text-sm space-y-1'>
-										<p>
-											<strong>Acompte :</strong>{' '}
-											{formatCurrency(
-												((invoiceToPay.deposits_total_ttc
-													? (invoiceToPay.balance_due ?? invoiceToPay.total_ttc)
-													: invoiceToPay.total_ttc) *
-													depositPercentage) /
-													100,
-											)}
-										</p>
-										<p>
-											<strong>Solde restant :</strong>{' '}
-											{formatCurrency(
-												((invoiceToPay.deposits_total_ttc
-													? (invoiceToPay.balance_due ?? invoiceToPay.total_ttc)
-													: invoiceToPay.total_ttc) *
-													(100 - depositPercentage)) /
-													100,
-											)}
-										</p>
-										<p>
-											<strong>Client :</strong>{' '}
-											{invoiceToPay.expand?.customer?.name}
-										</p>
+										{(() => {
+											const base = invoiceToPay.deposits_total_ttc
+												? (invoiceToPay.balance_due ?? invoiceToPay.total_ttc)
+												: invoiceToPay.total_ttc
+											const acompte =
+												depositInputMode === 'percent'
+													? (base * depositPercentage) / 100
+													: depositAmount
+											const solde = base - acompte
+											return (
+												<>
+													<p>
+														<strong>Acompte :</strong> {formatCurrency(acompte)}
+													</p>
+													<p>
+														<strong>Solde restant :</strong>{' '}
+														{formatCurrency(Math.max(0, solde))}
+													</p>
+													<p>
+														<strong>Client :</strong>{' '}
+														{invoiceToPay.expand?.customer?.name}
+													</p>
+												</>
+											)
+										})()}
 									</div>
 								)}
 							</div>
@@ -1690,7 +1752,15 @@ export function InvoicesPage() {
 							disabled={
 								paymentMode === 'full'
 									? !selectedMethodId || recordPayment.isPending
-									: createDeposit.isPending
+									: createDeposit.isPending ||
+										(depositInputMode === 'amount' &&
+											(depositAmount <= 0 ||
+												depositAmount >
+													(invoiceToPay?.balance_due &&
+													invoiceToPay.balance_due > 0
+														? invoiceToPay.balance_due
+														: (invoiceToPay?.total_ttc ?? 0)))) ||
+										(depositInputMode === 'percent' && depositPercentage <= 0)
 							}
 							className={
 								paymentMode === 'full' ? 'bg-green-600 hover:bg-green-700' : ''
@@ -1702,7 +1772,9 @@ export function InvoicesPage() {
 									: 'Confirmer le paiement'
 								: createDeposit.isPending
 									? 'Création...'
-									: `Créer l'acompte ${depositPercentage}%`}
+									: depositInputMode === 'percent'
+										? `Créer l'acompte ${depositPercentage}%`
+										: `Créer l'acompte ${formatCurrency(depositAmount)}`}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

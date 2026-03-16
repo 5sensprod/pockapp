@@ -141,7 +141,18 @@ func CreateDepositInvoice(dao *daos.Dao, input DepositInput, soldByID string) (*
 	var effectiveTvaRate float64
 	if parentHT > 0 {
 		parentTVA := parent.GetFloat("total_tva")
-		effectiveTvaRate = math.Round((parentTVA/parentHT*100)*100) / 100
+		// Arrondir au taux légal le plus proche : 0, 2.1, 5.5, 10, 20
+		rawRate := parentTVA / parentHT * 100
+		legalRates := []float64{0, 2.1, 5.5, 10, 20}
+		closest := 0.0
+		minDiff := math.Abs(rawRate - 0)
+		for _, r := range legalRates {
+			if diff := math.Abs(rawRate - r); diff < minDiff {
+				minDiff = diff
+				closest = r
+			}
+		}
+		effectiveTvaRate = closest
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────

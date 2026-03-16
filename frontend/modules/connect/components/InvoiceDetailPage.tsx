@@ -208,12 +208,13 @@ export function InvoiceDetailPage() {
 
 	// Déterminer si c'est un avoir
 	const isCreditNote = invoice?.invoice_type === 'credit_note'
-
+	const originalId = (invoice as any)?.original_invoice_id
 	const isDeposit = invoice?.invoice_type === 'deposit'
 
 	const { data: depositsData } = useDepositsForInvoice(
 		!isCreditNote && !isDeposit ? invoiceId : undefined,
 	)
+
 	const createDeposit = useCreateDeposit()
 	const createBalanceInvoice = useCreateBalanceInvoice()
 
@@ -228,7 +229,6 @@ export function InvoiceDetailPage() {
 	// ✅ AJOUT: Récupérer le numéro du document original (pour les avoirs)
 	const originalDocument = (invoice as any)?.expand?.original_invoice_id
 	const originalNumber = originalDocument?.number
-	const originalId = (invoice as any)?.original_invoice_id
 
 	// ============================================================================
 	// LOAD COMPANY
@@ -585,15 +585,6 @@ export function InvoiceDetailPage() {
 						</CardTitle>
 						<CardDescription>Détails généraux</CardDescription>
 					</CardHeader>
-					{isDeposit && originalId && (
-						<div>
-							<p className='text-sm text-muted-foreground'>Solde restant</p>
-							<p className='text-sm font-semibold'>
-								{/* balance_due est sur la parente, pas sur l'acompte */}
-								???
-							</p>
-						</div>
-					)}
 
 					<CardContent className='space-y-4'>
 						<div>
