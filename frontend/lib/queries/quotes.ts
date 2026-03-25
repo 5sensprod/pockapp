@@ -1,6 +1,7 @@
 // frontend/lib/queries/quotes.ts
 // 🔢 Le numéro de devis est maintenant généré automatiquement par le backend
 
+import { decrementStockFromItems } from '@/lib/apppos/stock-utils'
 // ✅ IMPORT: On récupère le type de ventilation TVA défini dans invoices
 import type { VatBreakdownItem } from '@/lib/queries/invoices'
 import type {
@@ -203,11 +204,6 @@ export function useConvertQuoteToInvoice() {
 				.collection('quotes')
 				.getOne(quoteId)) as unknown as QuoteResponse
 
-			console.log('📦 Quote récupéré:', quote)
-			console.log('🔍 vat_breakdown du quote:', quote.vat_breakdown)
-			console.log('🔍 Type de vat_breakdown:', typeof quote.vat_breakdown)
-			console.log('🔍 Est-ce un tableau ?:', Array.isArray(quote.vat_breakdown))
-
 			// Si déjà converti → erreur
 			if (quote.generated_invoice_id) {
 				throw new Error('Ce devis a déjà été converti en facture.')
@@ -257,14 +253,12 @@ export function useConvertQuoteToInvoice() {
 				sold_by: quote.issued_by || undefined,
 			}
 
-			console.log('📤 Invoice data à envoyer:', invoiceData)
-			console.log('📤 vat_breakdown à envoyer:', invoiceData.vat_breakdown)
-			console.log(
-				'📤 JSON stringifié:',
-				JSON.stringify(invoiceData.vat_breakdown),
-			)
-
 			const invoice = await pb.collection('invoices').create(invoiceData)
+
+			// ✅ Décrémenter le stock — facture créée directement en validated
+			if (quote.items?.length) {
+				await decrementStockFromItems(quote.items)
+			}
 
 			// 3. Mettre à jour le devis :
 			//    - le lier à la facture
@@ -279,6 +273,9 @@ export function useConvertQuoteToInvoice() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: quoteKeys.all })
 			queryClient.invalidateQueries({ queryKey: ['invoices'] })
+			queryClient.invalidateQueries({
+				queryKey: ['apppos', 'products', 'catalog'],
+			})
 		},
 	})
 }

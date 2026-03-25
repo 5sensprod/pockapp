@@ -3,7 +3,7 @@
 // 🔢 Le numéro est maintenant généré automatiquement par le backend
 // ✅ FIX: Ajout des champs optionnels pour les tickets POS
 // ✅ AJOUT: Support vat_breakdown pour ventilation TVA multi-taux
-
+import { decrementStockFromItems } from '@/lib/apppos/stock-utils'
 import type {
 	InvoiceCreateDto,
 	InvoiceItem as InvoiceItemType,
@@ -412,14 +412,29 @@ export function useCreateInvoice() {
 				...data,
 				status: data.status || 'draft',
 				is_paid: false,
-				// ⚠️ Ne pas envoyer 'number' - le backend le génère automatiquement
 			}
 
 			const result = await pb.collection('invoices').create(invoiceData)
+
+			// ✅ Stock uniquement si création directe en validated
+			// Exclure : brouillons, acomptes, avoirs, caisse, factures de solde
+			if (
+				invoiceData.status === 'validated' &&
+				invoiceData.invoice_type === 'invoice' &&
+				!invoiceData.is_pos_ticket &&
+				!invoiceData.original_invoice_id &&
+				invoiceData.items?.length
+			) {
+				await decrementStockFromItems(invoiceData.items)
+			}
+
 			return result as unknown as InvoiceResponse
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
+			queryClient.invalidateQueries({
+				queryKey: ['apppos', 'products', 'catalog'],
+			})
 		},
 	})
 }
@@ -480,7 +495,9 @@ export function useValidateInvoice() {
 
 	return useMutation({
 		mutationFn: async (invoiceId: string) => {
-			const existing = await pb.collection('invoices').getOne(invoiceId)
+			const existing = (await pb
+				.collection('invoices')
+				.getOne(invoiceId)) as unknown as InvoiceResponse
 
 			if (existing.status !== 'draft') {
 				throw new Error('Seul un brouillon peut être validé.')
@@ -489,11 +506,26 @@ export function useValidateInvoice() {
 			const result = await pb.collection('invoices').update(invoiceId, {
 				status: 'validated',
 			})
+
+			// ✅ Stock uniquement pour les factures de vente (brouillon → validated)
+			// Exclure : acomptes, avoirs, caisse, factures de solde
+			if (
+				existing.invoice_type === 'invoice' &&
+				!existing.is_pos_ticket &&
+				!existing.original_invoice_id &&
+				existing.items?.length
+			) {
+				await decrementStockFromItems(existing.items)
+			}
+
 			return result as unknown as InvoiceResponse
 		},
 		onSuccess: (_, invoiceId) => {
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.all })
 			queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) })
+			queryClient.invalidateQueries({
+				queryKey: ['apppos', 'products', 'catalog'],
+			})
 		},
 	})
 }
