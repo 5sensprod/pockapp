@@ -219,7 +219,11 @@ export function useConvertQuoteToInvoice() {
 			}
 
 			// On accepte les statuts "draft" ou "accepted"
-			if (quote.status !== 'draft' && quote.status !== 'accepted') {
+			if (
+				quote.status !== 'draft' &&
+				quote.status !== 'accepted' &&
+				quote.status !== 'sent'
+			) {
 				throw new Error(
 					`Ce devis ne peut pas être converti depuis le statut ${quote.status}.`,
 				)

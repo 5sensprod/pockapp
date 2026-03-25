@@ -10,6 +10,8 @@ export type AppPosProductsUpdatedPayload = {
 
 export type AppPosWebSocketEvent =
 	| { type: 'products.updated'; data: AppPosProductsUpdatedPayload }
+	| { type: 'products.created'; data: AppPosProductsUpdatedPayload }
+	| { type: 'products.deleted'; data: { entityId: string } }
 	| { type: 'stock.updated'; data: { productId: string; newStock: number } }
 	| { type: 'server.time.update'; data: { timestamp: number; iso: string } }
 	| { type: 'connection.opened'; data: { clientId: string } }
@@ -54,7 +56,7 @@ class AppPosWebSocketManager {
 				data: { clientId: this.generateClientId() },
 			})
 
-			// ✅ obligatoire pour recevoir products.updated
+			// ✅ obligatoire pour recevoir products.*
 			this.ws?.send(
 				JSON.stringify({
 					type: 'subscribe',
@@ -74,11 +76,12 @@ class AppPosWebSocketManager {
 
 				if (!type) return
 
+				// ── Mise à jour produit ──────────────────────────────────────
 				if (type === 'products.updated' && payload) {
 					const data = payload as AppPosProductsUpdatedPayload
-
 					this.notifyCallbacks({ type: 'products.updated', data })
 
+					// Event synthétique stock.updated pour rétrocompatibilité
 					const p = data?.data
 					if (p?._id && typeof p.stock === 'number') {
 						this.notifyCallbacks({
@@ -89,6 +92,25 @@ class AppPosWebSocketManager {
 					return
 				}
 
+				// ── Création produit ─────────────────────────────────────────
+				if (type === 'products.created' && payload) {
+					this.notifyCallbacks({
+						type: 'products.created',
+						data: payload as AppPosProductsUpdatedPayload,
+					})
+					return
+				}
+
+				// ── Suppression produit ──────────────────────────────────────
+				if (type === 'products.deleted' && payload) {
+					this.notifyCallbacks({
+						type: 'products.deleted',
+						data: { entityId: payload.entityId ?? payload._id ?? payload.id },
+					})
+					return
+				}
+
+				// ── Heure serveur ────────────────────────────────────────────
 				if (type === 'server.time.update' && payload) {
 					this.notifyCallbacks({ type: 'server.time.update', data: payload })
 				}

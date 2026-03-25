@@ -35,7 +35,10 @@ import { CategoryTreeAppPos } from './components/CategoryTreeAppPos'
 import { ProductTable, type ProductWithExpand } from './components/ProductTable'
 import { SupplierListAppPos } from './components/SupplierListAppPos'
 
-const APPPOS_CREDENTIALS = { username: 'admin', password: 'admin123' }
+const APPPOS_CREDENTIALS = {
+	username: import.meta.env.VITE_APPPOS_USERNAME ?? '',
+	password: import.meta.env.VITE_APPPOS_PASSWORD ?? '',
+}
 
 type PanelType = 'categories' | 'brands' | 'suppliers' | null
 
