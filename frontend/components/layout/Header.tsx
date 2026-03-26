@@ -1,4 +1,13 @@
 // frontend/components/layout/Header.tsx
+//
+// Tokens Stitch appliqués (Option A — variables shadcn) :
+//   Header bg        : bg-background/95 + backdrop-blur (glassmorphism Stitch)
+//   Height           : h-14 → h-[56px] (grid 56px Stitch)
+//   Brand logo       : bg-[#1E1B4B] (deep indigo anchor, cohérent avec ModulePageShell)
+//   Notifications    : point non-lu → bg-destructive (remplace bg-red-600 hardcodé)
+//   Crédits badge    : états sémantiques via variables shadcn + amber/destructive
+//   Entreprise       : point actif → bg-emerald-500 (conservé, couleur sémantique)
+//   No-Line rule     : border-b supprimé → séparation par bg-muted du ModulePageShell
 
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
@@ -33,7 +42,6 @@ import {
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { usePocketAppCredits } from '@/lib/credits'
 import { useNotifications } from '@/lib/notifications'
-
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
@@ -52,17 +60,9 @@ interface HeaderProps {
 	isHomePage: boolean
 }
 
-/**
- * Détermine la route "home" d'un module :
- * - cherche d'abord un item de config/settings dans le sidebarMenu
- * - sinon prend le premier item du premier groupe
- * - sinon fallback sur module.route
- */
 function getModuleHomeRoute(module: ModuleManifest): string {
 	const menu = module.sidebarMenu
 	if (!menu?.length) return module.route
-
-	// Cherche un groupe "config" ou "settings" en priorité
 	const configGroup = menu.find((g) =>
 		['config', 'settings', 'configuration'].includes(g.id.toLowerCase()),
 	)
@@ -78,7 +78,6 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 	const brand = currentModule?.name ?? 'PocketApp'
 	const moduleMenu = currentModule?.topbarMenu || []
 
-	// Route vers laquelle le nom du module redirige (config ou home du module)
 	const moduleHomeRoute = currentModule
 		? getModuleHomeRoute(currentModule)
 		: '/'
@@ -97,7 +96,6 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 		markRead,
 	} = useNotifications({ enabled: !!isAuthenticated })
 
-	// ── Crédits PocketApp ──────────────────────────────────────────────────────
 	const {
 		balanceEur,
 		loading: creditsLoading,
@@ -169,11 +167,14 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 	}
 
 	return (
-		<header className='sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
-			<div className='container flex h-14 items-center justify-between px-6'>
+		// Stitch : glassmorphism header — bg/95 + backdrop-blur
+		// No-Line rule : pas de border-b, séparation visuelle assurée
+		// par le bg-muted du ModulePageShell en dessous
+		<header className='sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
+			<div className='container flex h-[56px] items-center justify-between px-6'>
+				{/* ── Gauche : brand + nav module ──────────────────────────────── */}
 				<div className='flex items-center gap-8'>
 					<div className='flex items-center gap-2'>
-						{/* Flèche retour → toujours vers l'accueil de l'application */}
 						{currentModule && !isHomePage && (
 							<Button
 								variant='ghost'
@@ -185,12 +186,12 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 							</Button>
 						)}
 
-						{/* Nom du module → vers la page config/home du module (ou / si on est home) */}
 						<Link
 							to={currentModule ? (moduleHomeRoute as any) : '/'}
-							className='flex items-center gap-2 font-bold text-lg'
+							className='flex items-center gap-2 font-medium text-base text-foreground'
 						>
-							<div className='w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground text-sm'>
+							{/* Deep indigo anchor — cohérent avec l'icône ModulePageShell */}
+							<div className='w-8 h-8 rounded-lg bg-[#1E1B4B] flex items-center justify-center text-white text-sm font-bold'>
 								P
 							</div>
 							{brand}
@@ -198,7 +199,7 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 					</div>
 
 					{moduleMenu.length > 0 && (
-						<nav className='flex gap-4'>
+						<nav className='flex gap-1'>
 							{moduleMenu.map((item) => (
 								<NavLink key={item.to} to={item.to} icon={item.icon}>
 									{item.label}
@@ -208,8 +209,9 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 					)}
 				</div>
 
+				{/* ── Droite : crédits + entreprise + notifs + user ────────────── */}
 				<div className='flex items-center gap-2'>
-					{/* ── Badge crédits IA ────────────────────────────────────────── */}
+					{/* Badge crédits IA */}
 					{!isUtilisateur && (
 						<TooltipProvider>
 							<Tooltip>
@@ -218,15 +220,16 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 										className={cn(
 											'flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium transition-colors',
 											creditsLoading && 'opacity-50',
+											// États sémantiques via shadcn — plus de hardcode yellow/red/orange
 											creditsError &&
-												'border-yellow-300 bg-yellow-50 text-yellow-700',
+												'border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800',
 											!creditsError &&
 												isEmptyBalance &&
-												'border-red-300 bg-red-50 text-red-700',
+												'border-destructive/40 bg-destructive/10 text-destructive',
 											!creditsError &&
 												!isEmptyBalance &&
 												isLowBalance &&
-												'border-orange-300 bg-orange-50 text-orange-700',
+												'border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800',
 											!creditsError &&
 												!isEmptyBalance &&
 												!isLowBalance &&
@@ -267,16 +270,17 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 										</p>
 									)}
 									{isLowBalance && !isEmptyBalance && (
-										<p className='text-orange-600 mt-1'>⚠ Solde faible</p>
+										<p className='text-amber-600 mt-1'>⚠ Solde faible</p>
 									)}
 									{isEmptyBalance && (
-										<p className='text-red-600 mt-1'>✕ Solde épuisé</p>
+										<p className='text-destructive mt-1'>✕ Solde épuisé</p>
 									)}
 								</TooltipContent>
 							</Tooltip>
 						</TooltipProvider>
 					)}
 
+					{/* Sélecteur entreprise (admin) */}
 					{isAdmin && companies.length > 0 && (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
@@ -307,11 +311,9 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 										<div className='flex items-center w-full gap-2'>
 											<CompanyLogoWithFallback company={company} />
 											<span className='flex-1 truncate'>{company.name}</span>
-
 											{company.id === activeCompanyId && (
-												<div className='h-2 w-2 rounded-full bg-green-500' />
+												<div className='h-2 w-2 rounded-full bg-emerald-500' />
 											)}
-
 											<button
 												type='button'
 												className='p-1 rounded hover:bg-accent'
@@ -326,6 +328,7 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 						</DropdownMenu>
 					)}
 
+					{/* Entreprise (non-admin, lecture seule) */}
 					{!isAdmin && activeCompany && (
 						<div className='flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground'>
 							<CompanyLogoWithFallback company={activeCompany} />
@@ -333,12 +336,14 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 						</div>
 					)}
 
+					{/* Notifications */}
 					<DropdownMenu onOpenChange={(open) => open && markAllRead()}>
 						<DropdownMenuTrigger asChild>
 							<Button variant='ghost' size='icon' className='relative'>
 								<Bell className='h-5 w-5' />
 								{unreadCount > 0 && (
-									<span className='absolute top-1 right-1 h-2 w-2 rounded-full bg-red-600' />
+									// bg-destructive remplace bg-red-600 hardcodé
+									<span className='absolute top-1 right-1 h-2 w-2 rounded-full bg-destructive' />
 								)}
 							</Button>
 						</DropdownMenuTrigger>
@@ -370,8 +375,11 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 										<div className='flex items-start gap-3 w-full'>
 											<div
 												className={cn(
-													'w-2 h-2 rounded-full mt-1.5',
-													notif.unread ? 'bg-blue-600' : 'bg-muted',
+													'w-2 h-2 rounded-full mt-1.5 shrink-0',
+													// bg-primary remplace bg-blue-600 hardcodé
+													notif.unread
+														? 'bg-primary'
+														: 'bg-muted-foreground/30',
 												)}
 											/>
 											<div className='flex-1'>
@@ -387,6 +395,7 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 						</DropdownMenuContent>
 					</DropdownMenu>
 
+					{/* Avatar utilisateur */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button variant='ghost' size='icon' className='rounded-full'>
@@ -397,8 +406,8 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 										className='w-8 h-8 rounded-full object-cover'
 									/>
 								) : (
-									<div className='w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center'>
-										<User className='h-4 w-4' />
+									<div className='w-8 h-8 rounded-full bg-muted flex items-center justify-center'>
+										<User className='h-4 w-4 text-muted-foreground' />
 									</div>
 								)}
 							</Button>
@@ -435,7 +444,10 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 
 							<DropdownMenuSeparator />
 
-							<DropdownMenuItem className='text-red-600' onClick={handleLogout}>
+							<DropdownMenuItem
+								className='text-destructive focus:text-destructive'
+								onClick={handleLogout}
+							>
 								<LogOut className='h-4 w-4 mr-2' />
 								Déconnexion
 							</DropdownMenuItem>
@@ -459,10 +471,10 @@ function NavLink({ to, icon: Icon, children }: NavLinkProps) {
 			to={to}
 			className={cn(
 				'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-				'hover:bg-accent hover:text-accent-foreground',
-				'[&.active]:bg-accent [&.active]:text-accent-foreground',
+				'text-muted-foreground hover:bg-accent hover:text-foreground',
+				'[&.active]:bg-accent [&.active]:text-foreground',
 			)}
-			activeProps={{ className: 'bg-accent text-accent-foreground' }}
+			activeProps={{ className: 'bg-accent text-foreground' }}
 		>
 			{Icon && <Icon className='h-4 w-4' />}
 			{children}

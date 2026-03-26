@@ -1,4 +1,14 @@
 // frontend/components/layout/Sidebar.tsx
+//
+// Tokens Stitch appliqués (Option A — variables shadcn + ancres Stitch) :
+//   Rail bg          : bg-[#283044]  (inverse-surface Stitch — "dark accent anchor")
+//   Rail icône actif : barre left 4px bg-white (Stitch : active state = primary vertical bar)
+//   Rail icône inactif : text-white/60, hover text-white bg-white/5
+//   Panneau bg       : bg-background (surface Stitch)
+//   Panneau header   : bg-muted (surface-container-low) — No-Line rule, pas de border-b
+//   Panneau item actif : bg-accent text-accent-foreground
+//   top-14 → top-[56px] aligné sur la nouvelle hauteur header
+
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
@@ -45,9 +55,12 @@ export function Sidebar({
 	}
 
 	return (
-		<div className='fixed left-0 top-14 bottom-0 flex z-40'>
-			{/* Rail d'icônes */}
-			<div className='w-14 bg-muted border-r flex flex-col items-center py-4 gap-1'>
+		<div className='fixed left-0 top-[56px] bottom-0 flex z-40'>
+			{/* ── Rail d'icônes ──────────────────────────────────────────────
+          Stitch : 56px, bg inverse-surface (#283044), "dark accent anchor"
+          Pas de border-r — No-Line rule, séparation par contraste de teinte
+      ─────────────────────────────────────────────────────────────────── */}
+			<div className='w-14 bg-[#283044] flex flex-col items-center py-4 gap-1'>
 				{sidebarMenu.map((group) => {
 					const Icon = group.icon
 					const isSingleItem = group.items?.length === 1
@@ -60,34 +73,40 @@ export function Sidebar({
 							onClick={() => handleGroupClick(group)}
 							title={isSingleItem ? group.items[0].label : group.label}
 							className={cn(
-								'relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-150',
-								// Inactif : hover gris discret
-								!isActive &&
-									'text-muted-foreground hover:bg-accent hover:text-foreground',
-								// Actif : fond coloré qui RESTE présent au hover
-								isActive && 'bg-primary/15 text-primary hover:bg-primary/20',
+								'relative w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-150',
+								// Inactif : blanc à 60%, hover plein + fond subtil
+								!isActive && 'text-white/60 hover:text-white hover:bg-white/5',
+								// Actif : blanc plein + fond blanc/10
+								isActive && 'text-white bg-white/10',
 							)}
 						>
 							<Icon className='h-5 w-5' />
 
-							{/* Indicateur latéral — barre verticale à gauche quand actif */}
+							{/* Stitch : active state = barre verticale gauche 4px blanche */}
 							{isActive && (
-								<span className='absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full bg-primary' />
+								<span className='absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-white' />
 							)}
 						</button>
 					)
 				})}
 			</div>
 
-			{/* Panneau latéral — uniquement si le groupe actif a plusieurs items */}
+			{/* ── Panneau secondaire ─────────────────────────────────────────
+          Visible uniquement si le groupe actif a plusieurs items.
+          bg-background (surface Stitch) — No-Line rule : pas de border-r,
+          la transition visuelle rail sombre → fond clair suffit.
+      ─────────────────────────────────────────────────────────────────── */}
 			{activeGroupData && (activeGroupData.items?.length ?? 0) > 1 && (
-				<div className='w-64 bg-background border-r flex flex-col'>
-					<div className='p-4 border-b flex items-center justify-between'>
-						<h2 className='font-semibold text-sm'>{activeGroupData.label}</h2>
+				<div className='w-64 bg-background flex flex-col'>
+					{/* Header panneau : bg-muted pour shift tonal sans border */}
+					<div className='h-[56px] px-4 bg-muted flex items-center justify-between shrink-0'>
+						<h2 className='text-sm font-medium text-foreground'>
+							{activeGroupData.label}
+						</h2>
 						<button
 							type='button'
 							onClick={onClosePanel}
-							className='rounded p-1 hover:bg-accent transition-colors'
+							className='rounded-md p-1.5 hover:bg-accent transition-colors'
 							title='Fermer'
 						>
 							<X className='h-4 w-4 text-muted-foreground' />
