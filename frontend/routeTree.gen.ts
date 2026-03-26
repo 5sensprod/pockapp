@@ -24,6 +24,7 @@ import { Route as SettingsUsersRouteImport } from './routes/settings/users'
 import { Route as SettingsSmtpRouteImport } from './routes/settings/smtp'
 import { Route as SettingsSecretsRouteImport } from './routes/settings/secrets'
 import { Route as SettingsCompaniesRouteImport } from './routes/settings/companies'
+import { Route as CashConfigRouteImport } from './routes/cash/config'
 import { Route as ConnectQuotesIndexRouteImport } from './routes/connect/quotes/index'
 import { Route as ConnectInvoicesIndexRouteImport } from './routes/connect/invoices/index'
 import { Route as ConnectCustomersIndexRouteImport } from './routes/connect/customers/index'
@@ -116,6 +117,11 @@ const SettingsSecretsRoute = SettingsSecretsRouteImport.update({
 const SettingsCompaniesRoute = SettingsCompaniesRouteImport.update({
   id: '/settings/companies',
   path: '/settings/companies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CashConfigRoute = CashConfigRouteImport.update({
+  id: '/cash/config',
+  path: '/cash/config',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectQuotesIndexRoute = ConnectQuotesIndexRouteImport.update({
@@ -221,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/cash/config': typeof CashConfigRoute
   '/settings/companies': typeof SettingsCompaniesRoute
   '/settings/secrets': typeof SettingsSecretsRoute
   '/settings/smtp': typeof SettingsSmtpRoute
@@ -256,6 +263,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/cash/config': typeof CashConfigRoute
   '/settings/companies': typeof SettingsCompaniesRoute
   '/settings/secrets': typeof SettingsSecretsRoute
   '/settings/smtp': typeof SettingsSmtpRoute
@@ -292,6 +300,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/cash/config': typeof CashConfigRoute
   '/settings/companies': typeof SettingsCompaniesRoute
   '/settings/secrets': typeof SettingsSecretsRoute
   '/settings/smtp': typeof SettingsSmtpRoute
@@ -329,6 +338,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/cash/config'
     | '/settings/companies'
     | '/settings/secrets'
     | '/settings/smtp'
@@ -364,6 +374,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/cash/config'
     | '/settings/companies'
     | '/settings/secrets'
     | '/settings/smtp'
@@ -399,6 +410,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/cash/config'
     | '/settings/companies'
     | '/settings/secrets'
     | '/settings/smtp'
@@ -435,6 +447,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRoute
+  CashConfigRoute: typeof CashConfigRoute
   SettingsCompaniesRoute: typeof SettingsCompaniesRoute
   SettingsSecretsRoute: typeof SettingsSecretsRoute
   SettingsSmtpRoute: typeof SettingsSmtpRoute
@@ -574,6 +587,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsCompaniesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cash/config': {
+      id: '/cash/config'
+      path: '/cash/config'
+      fullPath: '/cash/config'
+      preLoaderRoute: typeof CashConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/connect/quotes/': {
       id: '/connect/quotes/'
       path: '/connect/quotes'
@@ -707,6 +727,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   SetupRoute: SetupRoute,
+  CashConfigRoute: CashConfigRoute,
   SettingsCompaniesRoute: SettingsCompaniesRoute,
   SettingsSecretsRoute: SettingsSecretsRoute,
   SettingsSmtpRoute: SettingsSmtpRoute,

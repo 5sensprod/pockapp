@@ -1,7 +1,7 @@
 // frontend/components/layout/Sidebar.tsx
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
-import { Link, useLocation } from '@tanstack/react-router'
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 
 const normalizePath = (path: string) => (path || '/').replace(/\/+$/, '') || '/'
@@ -20,6 +20,7 @@ export function Sidebar({
 	onClosePanel,
 }: SidebarProps) {
 	const { pathname } = useLocation()
+	const navigate = useNavigate()
 
 	const sidebarMenu = currentModule?.sidebarMenu || []
 
@@ -35,34 +36,51 @@ export function Sidebar({
 		})
 	}
 
+	const handleGroupClick = (group: (typeof sidebarMenu)[0]) => {
+		if (group.items?.length === 1) {
+			navigate({ to: group.items[0].to as any })
+			return
+		}
+		onToggleGroup(group.id)
+	}
+
 	return (
 		<div className='fixed left-0 top-14 bottom-0 flex z-40'>
 			{/* Rail d'icônes */}
-			<div className='w-14 bg-muted border-r flex flex-col items-center py-4 gap-2'>
+			<div className='w-14 bg-muted border-r flex flex-col items-center py-4 gap-1'>
 				{sidebarMenu.map((group) => {
 					const Icon = group.icon
+					const isSingleItem = group.items?.length === 1
 					const isActive = activeGroup === group.id || groupMatchesUrl(group)
 
 					return (
 						<button
 							key={group.id}
 							type='button'
-							onClick={() => onToggleGroup(group.id)}
+							onClick={() => handleGroupClick(group)}
+							title={isSingleItem ? group.items[0].label : group.label}
 							className={cn(
-								'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
-								'hover:bg-accent',
-								isActive && 'bg-primary/15 text-primary',
+								'relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-150',
+								// Inactif : hover gris discret
+								!isActive &&
+									'text-muted-foreground hover:bg-accent hover:text-foreground',
+								// Actif : fond coloré qui RESTE présent au hover
+								isActive && 'bg-primary/15 text-primary hover:bg-primary/20',
 							)}
-							title={group.label}
 						>
 							<Icon className='h-5 w-5' />
+
+							{/* Indicateur latéral — barre verticale à gauche quand actif */}
+							{isActive && (
+								<span className='absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full bg-primary' />
+							)}
 						</button>
 					)
 				})}
 			</div>
 
-			{/* Panneau latéral */}
-			{activeGroupData && (
+			{/* Panneau latéral — uniquement si le groupe actif a plusieurs items */}
+			{activeGroupData && (activeGroupData.items?.length ?? 0) > 1 && (
 				<div className='w-64 bg-background border-r flex flex-col'>
 					<div className='p-4 border-b flex items-center justify-between'>
 						<h2 className='font-semibold text-sm'>{activeGroupData.label}</h2>
@@ -85,10 +103,11 @@ export function Sidebar({
 							return (
 								<Link
 									key={item.to}
-									to={item.to}
+									to={item.to as any}
 									className={cn(
 										'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-										'hover:bg-accent',
+										!isItemActive &&
+											'text-muted-foreground hover:bg-accent hover:text-foreground',
 										isItemActive &&
 											'bg-accent text-accent-foreground font-medium',
 									)}

@@ -27,7 +27,7 @@ export const manifest: ModuleManifest = {
 			label: 'Terminal',
 			icon: Monitor,
 			items: [
-				{ label: 'Terminal de vente', to: '/cash/terminal/', icon: Monitor }, // ✅ avec slash final
+				{ label: 'Terminal de vente', to: '/cash/terminal/', icon: Monitor },
 			],
 		},
 		{
@@ -46,7 +46,10 @@ export const manifest: ModuleManifest = {
 			id: 'config',
 			label: 'Configuration',
 			icon: Settings,
-			items: [{ label: 'Configuration caisse', to: '/cash', icon: Settings }],
+			// ✅ Route dédiée — ne sera jamais un préfixe des autres routes
+			items: [
+				{ label: 'Configuration caisse', to: '/cash/config', icon: Settings },
+			],
 		},
 	],
 }
