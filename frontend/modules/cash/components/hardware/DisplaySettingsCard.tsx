@@ -1,20 +1,6 @@
 // frontend/modules/cash/components/hardware/DisplaySettingsCard.tsx
-import {
-	Edit3,
-	Lock,
-	LockOpen,
-	Monitor,
-	Settings,
-	Trash2,
-	Wifi,
-	WifiOff,
-	Zap,
-} from 'lucide-react'
-import { useEffect, useState } from 'react'
-
-import { Badge } from '@/components/ui/badge'
+import { ModuleCard, StatusBadge } from '@/components/module-ui'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	Dialog,
 	DialogContent,
@@ -33,8 +19,6 @@ import {
 	SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { toast } from 'sonner'
-
 import {
 	clearDisplay,
 	configureDisplay,
@@ -53,6 +37,17 @@ import {
 	saveDisplayPortSettings,
 	saveDisplayWelcomeSettings,
 } from '@/lib/pos/displaySettings'
+import {
+	Edit3,
+	Lock,
+	LockOpen,
+	Monitor,
+	Settings,
+	Trash2,
+	Zap,
+} from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 
 const PROTOCOLS = [
 	{ value: 'EPSON_D101', label: 'Epson D101 (défaut)' },
@@ -70,7 +65,6 @@ const PROTOCOLS = [
 const BAUD_RATES = ['2400', '4800', '9600', '19200', '38400', '57600', '115200']
 
 export function DisplaySettingsCard() {
-	// État du display via WebSocket + contrôle
 	const {
 		currentLine1,
 		currentLine2,
@@ -79,7 +73,7 @@ export function DisplaySettingsCard() {
 		isControlled,
 		deviceID,
 	} = useDisplay()
-	// Status depuis l'API
+
 	const [status, setStatus] = useState<{
 		active: boolean
 		portName: string
@@ -89,51 +83,39 @@ export function DisplaySettingsCard() {
 		controllerID: string
 	} | null>(null)
 
-	// Dialog configuration
 	const [showConfigDialog, setShowConfigDialog] = useState(false)
 	const [configForm, setConfigForm] = useState<DisplayPortSettings>(() =>
 		loadDisplayPortSettings(),
 	)
-
-	// Liste des ports COM disponibles
 	const [availablePorts, setAvailablePorts] = useState<string[]>(['COM3'])
 	const [isLoadingPorts, setIsLoadingPorts] = useState(false)
-
-	// Saisie manuelle du port
 	const [isManualPort, setIsManualPort] = useState(false)
 	const [manualPortInput, setManualPortInput] = useState('')
-
-	// ✅ NOUVEAU : Messages de bienvenue
 	const [welcomeSettings, setWelcomeSettings] =
 		useState<DisplayWelcomeSettings>(() => loadDisplayWelcomeSettings())
-
-	// Loading states
 	const [isConfiguring, setIsConfiguring] = useState(false)
 	const [isTesting, setIsTesting] = useState(false)
 	const [isClearing, setIsClearing] = useState(false)
 	const [isTogglingControl, setIsTogglingControl] = useState(false)
 
-	// Charger le status au montage
 	useEffect(() => {
 		loadStatus()
-		const interval = setInterval(loadStatus, 2000) // Rafraîchir toutes les 2s
+		const interval = setInterval(loadStatus, 2000)
 		return () => clearInterval(interval)
 	}, [])
 
-	// Charger la liste des ports quand le dialog s'ouvre
 	useEffect(() => {
-		if (showConfigDialog) {
-			loadAvailablePorts()
-		}
+		if (showConfigDialog) loadAvailablePorts()
 	}, [showConfigDialog])
 
-	// Vérifier si le port actuel nécessite une saisie manuelle après chargement des ports
 	useEffect(() => {
 		if (showConfigDialog && availablePorts.length > 0) {
 			const currentPort = configForm.portName
-			const isInList = availablePorts.includes(currentPort)
-
-			if (!isInList && currentPort && currentPort !== 'MANUAL') {
+			if (
+				!availablePorts.includes(currentPort) &&
+				currentPort &&
+				currentPort !== 'MANUAL'
+			) {
 				setIsManualPort(true)
 				setManualPortInput(currentPort)
 			}
@@ -144,11 +126,8 @@ export function DisplaySettingsCard() {
 		setIsLoadingPorts(true)
 		try {
 			const ports = await getAvailablePorts()
-			if (ports.length > 0) {
-				setAvailablePorts(ports)
-			}
-		} catch (err) {
-			console.error('[DisplaySettingsCard] Erreur chargement ports:', err)
+			if (ports.length > 0) setAvailablePorts(ports)
+		} catch {
 			toast.error('Impossible de charger les ports disponibles')
 		} finally {
 			setIsLoadingPorts(false)
@@ -174,9 +153,7 @@ export function DisplaySettingsCard() {
 		try {
 			const data = await getDisplayStatus()
 			setStatus(data)
-		} catch (err) {
-			console.error('[DisplaySettingsCard] Erreur chargement status:', err)
-		}
+		} catch {}
 	}
 
 	const handleConfigure = async () => {
@@ -187,10 +164,7 @@ export function DisplaySettingsCard() {
 				configForm.baudRate,
 				configForm.protocol,
 			)
-
-			// ✅ Sauvegarder dans localStorage
 			saveDisplayPortSettings(configForm)
-
 			toast.success('Afficheur configuré')
 			setShowConfigDialog(false)
 			await loadStatus()
@@ -243,89 +217,62 @@ export function DisplaySettingsCard() {
 		}
 	}
 
-	// ✅ NOUVEAU : Sauvegarder les messages de bienvenue
 	const handleWelcomeChange = (line1: string, line2: string) => {
 		const newSettings = { welcomeLine1: line1, welcomeLine2: line2 }
 		setWelcomeSettings(newSettings)
 		saveDisplayWelcomeSettings(newSettings)
 	}
 
+	// Badges statut pour headerRight
+	const headerBadges = (
+		<div className='flex items-center gap-1.5'>
+			{isControlled && (
+				<StatusBadge
+					label={hasControl ? 'Vous contrôlez' : 'Contrôlé'}
+					variant={hasControl ? 'info' : 'warning'}
+				/>
+			)}
+			<StatusBadge
+				label={status?.active ? 'Configuré' : 'Non configuré'}
+				variant={status?.active ? 'info' : 'closed'}
+			/>
+			<StatusBadge
+				label={isConnected ? 'Sync' : 'Hors ligne'}
+				variant={isConnected ? 'open' : 'closed'}
+			/>
+		</div>
+	)
+
 	return (
 		<>
-			<Card>
-				<CardHeader className='pb-3'>
-					<div className='flex items-center justify-between'>
-						<CardTitle className='flex items-center gap-2 text-base font-medium'>
-							<Monitor className='h-4 w-4' />
-							Afficheur Client
-						</CardTitle>
-						<div className='flex gap-2'>
-							{/* Badge contrôle */}
-							{isControlled && (
-								<Badge
-									variant={hasControl ? 'default' : 'secondary'}
-									className={hasControl ? 'bg-purple-500' : ''}
-								>
-									{hasControl ? (
-										<>
-											<Lock className='mr-1 h-3 w-3' /> Vous contrôlez
-										</>
-									) : (
-										<>
-											<LockOpen className='mr-1 h-3 w-3' /> Contrôlé
-										</>
-									)}
-								</Badge>
-							)}
-							{/* Badge status config */}
-							<Badge
-								variant={status?.active ? 'default' : 'secondary'}
-								className={status?.active ? 'bg-blue-500' : ''}
-							>
-								{status?.active ? 'Configuré' : 'Non configuré'}
-							</Badge>
-							{/* Badge WebSocket */}
-							<Badge
-								variant={isConnected ? 'default' : 'secondary'}
-								className={isConnected ? 'bg-emerald-500' : ''}
-							>
-								{isConnected ? (
-									<>
-										<Wifi className='mr-1 h-3 w-3' /> Sync
-									</>
-								) : (
-									<>
-										<WifiOff className='mr-1 h-3 w-3' /> Hors ligne
-									</>
-								)}
-							</Badge>
-						</div>
-					</div>
-				</CardHeader>
-
-				<CardContent className='space-y-4'>
+			<ModuleCard
+				icon={Monitor}
+				title='Afficheur Client'
+				headerRight={headerBadges}
+			>
+				<div className='space-y-4'>
 					{/* Info config actuelle */}
 					{status?.active && (
-						<div className='rounded-md bg-muted/50 p-3 text-sm'>
+						<div className='rounded-md bg-muted/50 p-3'>
 							<div className='grid grid-cols-2 gap-2 text-xs'>
 								<div>
-									<span className='text-muted-foreground'>Port:</span>
+									<span className='text-muted-foreground'>Port :</span>
 									<p className='font-medium'>{status.portName}</p>
 								</div>
 								<div>
-									<span className='text-muted-foreground'>Baudrate:</span>
+									<span className='text-muted-foreground'>Baudrate :</span>
 									<p className='font-medium'>{status.baudRate}</p>
 								</div>
 								<div className='col-span-2'>
-									<span className='text-muted-foreground'>Protocole:</span>
+									<span className='text-muted-foreground'>Protocole :</span>
 									<p className='font-medium'>{status.protocol}</p>
 								</div>
 							</div>
 						</div>
 					)}
 
-					{/* Affichage actuel */}
-					<div className='rounded-lg border-2 border-dashed border-slate-300 bg-slate-900 p-4 font-mono text-green-400 dark:border-slate-700'>
+					{/* Affichage actuel — style terminal conservé intentionnellement */}
+					<div className='rounded-lg border-2 border-dashed border-border bg-slate-900 p-4 font-mono text-green-400'>
 						<div className='space-y-1 text-center'>
 							<div className='text-sm tracking-wider'>
 								{currentLine1 || '─'.repeat(20)}
@@ -339,30 +286,27 @@ export function DisplaySettingsCard() {
 						</div>
 					</div>
 
-					{/* Info contrôle */}
+					{/* Alertes contrôle */}
 					{isControlled && !hasControl && (
-						<div className='rounded-md bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-950/20 dark:text-amber-400'>
+						<div className='rounded-md bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-700 dark:text-amber-400'>
 							Un autre appareil contrôle l'afficheur. Prenez le contrôle pour
 							envoyer des commandes.
 						</div>
 					)}
-
 					{hasControl && (
-						<div className='rounded-md bg-purple-50 p-3 text-sm text-purple-700 dark:bg-purple-950/20 dark:text-purple-400'>
+						<div className='rounded-md bg-primary/5 p-3 text-sm text-primary'>
 							✓ Vous contrôlez l'afficheur. Les autres appareils ne peuvent pas
 							envoyer de commandes.
 						</div>
 					)}
-
-					{/* Info synchronisation */}
 					{!status?.active && (
-						<div className='rounded-md bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-950/20 dark:text-amber-400'>
+						<div className='rounded-md bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-700 dark:text-amber-400'>
 							Configurez le port série pour activer la synchronisation de
 							l'afficheur entre appareils.
 						</div>
 					)}
 
-					{/* Boutons */}
+					{/* Boutons actions */}
 					<div className='grid grid-cols-2 gap-2'>
 						<Button
 							variant='outline'
@@ -372,7 +316,6 @@ export function DisplaySettingsCard() {
 							<Settings className='mr-1 h-3 w-3' />
 							Config
 						</Button>
-
 						<Button
 							variant={hasControl ? 'destructive' : 'default'}
 							onClick={handleToggleControl}
@@ -391,7 +334,6 @@ export function DisplaySettingsCard() {
 								</>
 							)}
 						</Button>
-
 						<Button
 							variant='outline'
 							onClick={handleTest}
@@ -401,7 +343,6 @@ export function DisplaySettingsCard() {
 							<Zap className='mr-1 h-3 w-3' />
 							{isTesting ? 'Test...' : 'Test'}
 						</Button>
-
 						<Button
 							variant='outline'
 							onClick={handleClear}
@@ -417,7 +358,7 @@ export function DisplaySettingsCard() {
 					<div className='flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground'>
 						<div className='flex items-center gap-1'>
 							<span
-								className={`h-2 w-2 rounded-full ${status?.active ? 'bg-blue-500' : 'bg-gray-400'}`}
+								className={`h-2 w-2 rounded-full ${status?.active ? 'bg-primary' : 'bg-muted-foreground/40'}`}
 							/>
 							Config {status?.active ? 'ok' : 'manquante'}
 						</div>
@@ -429,24 +370,17 @@ export function DisplaySettingsCard() {
 						</div>
 						{status?.subscribers !== undefined && (
 							<div className='flex items-center gap-1'>
-								<span className='h-2 w-2 rounded-full bg-purple-500' />
+								<span className='h-2 w-2 rounded-full bg-primary' />
 								{status.subscribers} appareil{status.subscribers > 1 ? 's' : ''}
-							</div>
-						)}
-						{isControlled && (
-							<div className='flex items-center gap-1'>
-								<span className='h-2 w-2 rounded-full bg-purple-500' />
-								{hasControl ? 'Vous' : 'Autre'} contrôle
 							</div>
 						)}
 					</div>
 
-					{/* Device ID (debug) */}
 					<div className='text-center text-xs text-muted-foreground'>
-						Device: {deviceID.slice(-8)}
+						Device : {deviceID.slice(-8)}
 					</div>
-				</CardContent>
-			</Card>
+				</div>
+			</ModuleCard>
 
 			{/* Dialog Configuration */}
 			<Dialog open={showConfigDialog} onOpenChange={setShowConfigDialog}>
@@ -461,8 +395,7 @@ export function DisplaySettingsCard() {
 
 					<div className='space-y-4'>
 						<div className='space-y-2'>
-							<Label htmlFor='portName'>Port série</Label>
-
+							<Label>Port série</Label>
 							{!isManualPort ? (
 								<>
 									<Select
@@ -507,7 +440,6 @@ export function DisplaySettingsCard() {
 								<>
 									<div className='flex gap-2'>
 										<Input
-											type='text'
 											placeholder='Ex: COM10, COM15...'
 											value={manualPortInput}
 											onChange={(e) => handleManualPortChange(e.target.value)}
@@ -536,7 +468,7 @@ export function DisplaySettingsCard() {
 						</div>
 
 						<div className='space-y-2'>
-							<Label htmlFor='baudRate'>Vitesse (baud rate)</Label>
+							<Label>Vitesse (baud rate)</Label>
 							<Select
 								value={configForm.baudRate}
 								onValueChange={(value) =>
@@ -557,7 +489,7 @@ export function DisplaySettingsCard() {
 						</div>
 
 						<div className='space-y-2'>
-							<Label htmlFor='protocol'>Protocole</Label>
+							<Label>Protocole</Label>
 							<Select
 								value={configForm.protocol}
 								onValueChange={(value) =>
@@ -581,10 +513,8 @@ export function DisplaySettingsCard() {
 
 						<div className='space-y-3'>
 							<Label>Message de bienvenue</Label>
-
 							<div className='space-y-2'>
 								<Input
-									type='text'
 									maxLength={20}
 									placeholder='Ligne 1 (ex: Bienvenue)'
 									value={welcomeSettings.welcomeLine1}
@@ -595,9 +525,7 @@ export function DisplaySettingsCard() {
 										)
 									}
 								/>
-
 								<Input
-									type='text'
 									maxLength={20}
 									placeholder='Ligne 2 (ex: Axe Musique)'
 									value={welcomeSettings.welcomeLine2}
@@ -608,7 +536,6 @@ export function DisplaySettingsCard() {
 										)
 									}
 								/>
-
 								<p className='text-xs text-muted-foreground'>
 									Affiché quand le panier est vide (max 20 caractères par ligne)
 								</p>
