@@ -24,9 +24,21 @@ function findModuleByPath(pathname: string): ModuleManifest | null {
 	for (const pole of poles || []) {
 		for (const m of pole.modules || []) {
 			if (!m?.route) continue
+
+			// Vérifie la route principale
 			const route = norm(m.route)
 			if (path === route || path.startsWith(`${route}/`)) {
 				if (!best || route.length > best.route.length) best = m
+			}
+
+			// Vérifie les aliases — routes hors préfixe rattachées au même module
+			// Ex : /inventory-apppos est un alias du module stock
+			for (const alias of m.aliases ?? []) {
+				const aliasNorm = norm(alias)
+				if (path === aliasNorm || path.startsWith(`${aliasNorm}/`)) {
+					// On compare avec la longueur de l'alias pour le score
+					if (!best || aliasNorm.length > norm(best.route).length) best = m
+				}
 			}
 		}
 	}
@@ -96,9 +108,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		setActiveGroup(null)
 	}
 
-	// ✅ Le panneau est visuellement ouvert uniquement si :
-	// - un groupe est actif ET
-	// - ce groupe a PLUS d'un item (sinon c'est un groupe à navigation directe, pas de panneau)
 	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
 	const isPanelOpen =
 		activeGroupData !== null && (activeGroupData.items?.length ?? 0) > 1

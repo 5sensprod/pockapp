@@ -36,10 +36,18 @@ export interface ModuleManifest {
 	topbarMenu?: TopbarMenuItem[]
 	sidebarMenu?: SidebarGroup[]
 
+	/**
+	 * Routes supplémentaires qui appartiennent à ce module.
+	 * Permet à findModuleByPath de reconnaître des routes hors préfixe principal.
+	 * Ex : aliases: ['/inventory-apppos'] sur le module stock
+	 * → la Sidebar stock s'affiche sur /inventory-apppos
+	 */
+	aliases?: string[]
+
 	// pour la monétisation plus tard
 	paid?: boolean
 	plan?: 'free' | 'pro' | 'enterprise'
-	// 🆕 module utilisable uniquement si une entreprise est sélectionnée
+	// module utilisable uniquement si une entreprise est sélectionnée
 	requiresCompany?: boolean
 }
 
@@ -65,6 +73,7 @@ export const modulesByPole = activeModules.reduce(
 	},
 	{} as Record<PoleId, ModuleManifest[]>,
 )
+
 export const getModule = (id: string) => allModules.find((m) => m.id === id)
 
 export const getPoleModules = (pole: PoleId) => modulesByPole[pole] || []

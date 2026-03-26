@@ -1,7 +1,13 @@
 // frontend/modules/stock/InventoryPageAppPos.tsx
 // Page d'inventaire physique AppPOS
 // Vues : accueil → création session → liste catégories → comptage → validation
+//
+// MODIFIÉ :
+// - Le header interne est remplacé par ModulePageShell
+// - Le bouton Historique passe en actions du shell
+// - La page est autonome : fonctionne dans ou hors Layout global
 
+import { ModulePageShell, StatusBadge } from '@/components/module-ui'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -53,13 +59,23 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+// Manifest local pour le ModulePageShell
+// (on ne réutilise pas le manifest stock pour éviter le sidebarMenu du stock)
+const inventoryManifest = {
+	id: 'inventory',
+	name: 'Inventaire',
+	description: 'Inventaire physique AppPOS',
+	icon: ClipboardList,
+	route: '/inventory-apppos',
+}
+
 // ============================================================================
 // TYPES LOCAUX
 // ============================================================================
 type PageView = 'home' | 'overview' | 'counting' | 'history'
 
 // ============================================================================
-// HELPERS VISUELS
+// HELPERS VISUELS — inchangés
 // ============================================================================
 function CategoryStatusIcon({
 	status,
@@ -118,11 +134,7 @@ function EcartBadge({ ecart }: { ecart: number }) {
 }
 
 // ============================================================================
-// DIALOG CRÉATION SESSION — sélection de catégories groupées par parent
-// Fonctionnalités :
-//   • Groupes repliables (expanded/collapsed)
-//   • Champ de recherche (auto-déplie les groupes concernés)
-//   • Tags "En cours" / "Inventorié le XX par YY" par catégorie
+// DIALOG CRÉATION SESSION — inchangé
 // ============================================================================
 function CreateSessionDialog({
 	open,
@@ -151,7 +163,6 @@ function CreateSessionDialog({
 	const { data: categories = [] } = useAppPosCategories()
 	const { data: history } = useInventoryHistory()
 
-	// Reset à l'ouverture
 	useEffect(() => {
 		if (open) {
 			setOperator(defaultOperator)
@@ -161,23 +172,17 @@ function CreateSessionDialog({
 		}
 	}, [open, defaultOperator])
 
-	// Index : categoryId → tag à afficher
 	const categoryTags = useMemo(() => {
 		const tags = new Map<
 			string,
 			| { type: 'active'; sessionOperator: string }
 			| { type: 'done'; date: string; operator: string }
 		>()
-
-		// Sessions actives : catégories "En cours"
 		for (const session of activeSessions) {
 			for (const catId of session.scope_category_ids ?? []) {
 				tags.set(catId, { type: 'active', sessionOperator: session.operator })
 			}
 		}
-
-		// Sessions complétées récentes : "Inventorié le XX par YY"
-		// (seulement si pas déjà marquée "active")
 		for (const session of history?.items ?? []) {
 			if (session.status !== 'completed') continue
 			const dateStr = session.completed_at
@@ -197,20 +202,16 @@ function CreateSessionDialog({
 				}
 			}
 		}
-
 		return tags
 	}, [activeSessions, history])
 
-	// Grouper par parent
 	const grouped = useMemo(() => {
 		const byId = new Map(categories.map((c) => [c.id, c]))
 		const roots = categories.filter((c) => !(c as any).parent)
-
 		const groups: Array<{
 			parent: (typeof categories)[0] | null
 			children: typeof categories
 		}> = []
-
 		for (const root of roots) {
 			const children = categories.filter((c) => (c as any).parent === root.id)
 			if (children.length > 0) {
@@ -219,18 +220,15 @@ function CreateSessionDialog({
 				groups.push({ parent: null, children: [root] })
 			}
 		}
-
 		const orphans = categories.filter(
 			(c) => (c as any).parent && !byId.has((c as any).parent),
 		)
 		if (orphans.length > 0) {
 			groups.push({ parent: null, children: orphans })
 		}
-
 		return groups
 	}, [categories])
 
-	// Filtrage par recherche
 	const searchLower = search.trim().toLowerCase()
 	const filteredGrouped = useMemo(() => {
 		if (!searchLower) return grouped
@@ -244,7 +242,6 @@ function CreateSessionDialog({
 			.filter((g) => g.children.length > 0)
 	}, [grouped, searchLower])
 
-	// IDs des groupes qui contiennent des résultats de recherche → auto-dépliés
 	const searchExpandedIds = useMemo(() => {
 		if (!searchLower) return new Set<string>()
 		return new Set(
@@ -282,7 +279,6 @@ function CreateSessionDialog({
 
 	const canConfirm =
 		operator.trim().length > 0 && selectedCategoryIds.length > 0
-
 	const handleConfirm = () => {
 		if (!canConfirm) return
 		onConfirm(operator.trim(), 'selection', selectedCategoryIds)
@@ -299,7 +295,6 @@ function CreateSessionDialog({
 				</DialogHeader>
 
 				<div className='flex-1 overflow-y-auto space-y-5 py-2'>
-					{/* Opérateur */}
 					<div className='space-y-1.5'>
 						<Label>Opérateur</Label>
 						<Input
@@ -312,7 +307,6 @@ function CreateSessionDialog({
 
 					<Separator />
 
-					{/* Sélection catégories */}
 					<div className='space-y-2'>
 						<div className='flex items-center justify-between'>
 							<Label>Catégories à inventorier</Label>
@@ -324,7 +318,6 @@ function CreateSessionDialog({
 							)}
 						</div>
 
-						{/* Recherche */}
 						<div className='relative'>
 							<Search className='absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none' />
 							<Input
@@ -342,13 +335,11 @@ function CreateSessionDialog({
 									Chargement des catégories...
 								</div>
 							)}
-
 							{filteredGrouped.length === 0 && categories.length > 0 && (
 								<div className='px-3 py-4 text-sm text-muted-foreground text-center'>
 									Aucune catégorie trouvée
 								</div>
 							)}
-
 							{filteredGrouped.map((group, gi) => {
 								const childIds = group.children.map((c) => c.id)
 								const allSelected = childIds.every((id) =>
@@ -360,14 +351,12 @@ function CreateSessionDialog({
 								const groupKey = group.parent?.id ?? `orphan-${gi}`
 								const expanded = group.parent
 									? isGroupExpanded(group.parent.id)
-									: true // groupes sans parent toujours visibles
+									: true
 
 								return (
 									<div key={groupKey}>
-										{/* Header groupe parent — clic gauche = replier, clic droit = tout sélectionner */}
 										{group.parent && (
 											<div className='flex items-center border-b bg-muted/60 hover:bg-muted transition-colors'>
-												{/* Bouton replier/déplier */}
 												<button
 													type='button'
 													onClick={() =>
@@ -396,7 +385,6 @@ function CreateSessionDialog({
 														</span>
 													)}
 												</button>
-												{/* Bouton tout sélectionner */}
 												<button
 													type='button'
 													onClick={() => toggleGroup(childIds)}
@@ -412,7 +400,6 @@ function CreateSessionDialog({
 											</div>
 										)}
 
-										{/* Catégories enfants — affichées seulement si groupe déplié */}
 										{expanded &&
 											group.children.map((cat, ci) => {
 												const tag = categoryTags.get(cat.id)
@@ -432,7 +419,6 @@ function CreateSessionDialog({
 															className='rounded accent-orange-500 shrink-0'
 														/>
 														<span className='text-sm flex-1'>{cat.name}</span>
-														{/* Tag statut */}
 														{tag?.type === 'active' && (
 															<span className='text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 shrink-0 whitespace-nowrap'>
 																En cours
@@ -475,7 +461,7 @@ function CreateSessionDialog({
 }
 
 // ============================================================================
-// VUE OVERVIEW — liste des catégories avec progression
+// SOUS-VUES — inchangées (SessionOverviewView, CategoryCountingView, etc.)
 // ============================================================================
 function SessionOverviewView({
 	session,
@@ -504,7 +490,6 @@ function SessionOverviewView({
 
 	return (
 		<div className='flex flex-col h-full'>
-			{/* Header session */}
 			<div className='px-6 py-4 border-b'>
 				<div className='flex items-center justify-between'>
 					<div>
@@ -559,7 +544,6 @@ function SessionOverviewView({
 					</div>
 				</div>
 
-				{/* Barre de progression globale */}
 				<div className='mt-4'>
 					<div className='flex justify-between text-xs text-muted-foreground mb-1.5'>
 						<span>
@@ -573,7 +557,6 @@ function SessionOverviewView({
 					<Progress value={summary.progressPercent} className='h-2' />
 				</div>
 
-				{/* Stats rapides */}
 				<div className='flex gap-4 mt-3 text-sm'>
 					<div className='flex items-center gap-1.5 text-muted-foreground'>
 						<CheckCircle2 className='h-3.5 w-3.5 text-green-500' />
@@ -594,7 +577,6 @@ function SessionOverviewView({
 				</div>
 			</div>
 
-			{/* Liste des catégories */}
 			<div className='flex-1 overflow-y-auto divide-y'>
 				{categoriesWithValidation.map((cat) => {
 					const validated = cat.status === 'validated'
@@ -612,7 +594,6 @@ function SessionOverviewView({
 							)}
 						>
 							<CategoryStatusIcon status={cat.status} />
-
 							<div className='flex-1 min-w-0'>
 								<div className='flex items-center gap-2 mb-0.5'>
 									<span className='font-medium text-sm'>
@@ -630,9 +611,7 @@ function SessionOverviewView({
 									{cat.countedProducts}/{cat.totalProducts} produits
 								</div>
 							</div>
-
 							<div className='flex items-center gap-3'>
-								{/* Mini progress par catégorie */}
 								<div className='w-24 hidden sm:block'>
 									<Progress
 										value={
@@ -656,9 +635,6 @@ function SessionOverviewView({
 	)
 }
 
-// ============================================================================
-// COMPOSANT LIGNE DE COMPTAGE — extrait pour respecter les règles des hooks
-// ============================================================================
 function CountingRow({
 	entry,
 	isValidated,
@@ -691,7 +667,6 @@ function CountingRow({
 		onSave(entry, val)
 	}
 
-	// Sync la valeur locale si l'entry change depuis le serveur
 	useEffect(() => {
 		if (entry.status === 'counted' && entry.stock_compte !== null) {
 			setLocalValue(String(entry.stock_compte))
@@ -711,7 +686,6 @@ function CountingRow({
 						: 'hover:bg-muted/30',
 			)}
 		>
-			{/* Nom produit */}
 			<td className='px-6 py-3'>
 				<div className='flex items-center gap-2.5'>
 					<div
@@ -746,15 +720,11 @@ function CountingRow({
 					</div>
 				</div>
 			</td>
-
-			{/* Stock théorique */}
 			<td className='px-3 py-3 text-center'>
 				<span className='text-muted-foreground font-mono'>
 					{entry.stock_theorique}
 				</span>
 			</td>
-
-			{/* Input comptage */}
 			<td className='px-3 py-3 text-center'>
 				{isValidated ? (
 					<span className='font-mono font-medium'>
@@ -781,8 +751,6 @@ function CountingRow({
 					/>
 				)}
 			</td>
-
-			{/* Écart */}
 			<td className='px-3 py-3 text-center'>
 				{ecart !== null ? (
 					<EcartBadge ecart={ecart} />
@@ -790,8 +758,6 @@ function CountingRow({
 					<span className='text-muted-foreground/40 text-sm'>…</span>
 				)}
 			</td>
-
-			{/* Reset */}
 			{!isValidated && (
 				<td className='px-3 py-3 text-center'>
 					{isCounted && (
@@ -830,19 +796,15 @@ function CategoryCountingView({
 		resetProduct,
 		isCountingProduct,
 	} = useInventorySession(sessionId)
-
 	const [searchQuery, setSearchQuery] = useState('')
 	const searchRef = useRef<HTMLInputElement>(null)
 
-	// Intégration scanette — un scan remplit le champ de recherche
 	useScanner((barcode) => {
 		setSearchQuery(barcode)
 		searchRef.current?.focus()
 	})
 
 	const catEntries = entries.filter((e) => e.category_id === categoryId)
-
-	// Filtrage par nom, SKU ou code-barres
 	const filteredEntries = useMemo(() => {
 		const q = searchQuery.trim().toLowerCase()
 		if (!q) return catEntries
@@ -854,15 +816,14 @@ function CategoryCountingView({
 		)
 	}, [catEntries, searchQuery])
 
-	// Auto-focus sur le champ de recherche (pratique pour la scanette)
 	useEffect(() => {
 		if (!entriesLoading) {
 			setTimeout(() => searchRef.current?.focus(), 100)
 		}
 	}, [entriesLoading])
+
 	const isValidated =
 		session.validated_category_ids?.includes(categoryId) ?? false
-
 	const countedEntries = catEntries.filter((e) => e.status === 'counted')
 	const adjustedEntries = catEntries.filter((e) => e.adjusted)
 	const gapsCount = catEntries.filter(
@@ -882,7 +843,6 @@ function CategoryCountingView({
 
 	return (
 		<div className='flex flex-col h-full'>
-			{/* Header catégorie */}
 			<div className='px-6 py-4 border-b flex items-center gap-4'>
 				<Button variant='ghost' size='sm' onClick={onBack} className='gap-1.5'>
 					<ArrowLeft className='h-4 w-4' />
@@ -912,7 +872,6 @@ function CategoryCountingView({
 				</div>
 			</div>
 
-			{/* Barre de recherche / scan */}
 			<div className='px-6 py-2 border-b bg-muted/30'>
 				<div className='relative max-w-sm'>
 					<Search className='absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none' />
@@ -944,7 +903,6 @@ function CategoryCountingView({
 				)}
 			</div>
 
-			{/* Tableau produits */}
 			<div className='flex-1 overflow-y-auto'>
 				<table className='w-full text-sm'>
 					<thead className='sticky top-0 bg-background border-b'>
@@ -986,9 +944,6 @@ function CategoryCountingView({
 	)
 }
 
-// ============================================================================
-// VUE DÉTAIL SESSION — liste des produits comptés avec écarts
-// ============================================================================
 function SessionDetailView({
 	sessionId,
 	sessionDate,
@@ -1050,7 +1005,6 @@ function SessionDetailView({
 							const isOpen = openCategoryId === cat.categoryId
 							return (
 								<div key={cat.categoryId}>
-									{/* Header catégorie */}
 									<button
 										type='button'
 										className='w-full flex items-center gap-3 px-6 py-3 hover:bg-muted/30 transition-colors text-left'
@@ -1082,8 +1036,6 @@ function SessionDetailView({
 											)}
 										/>
 									</button>
-
-									{/* Liste produits */}
 									{isOpen && (
 										<div className='bg-muted/10 border-t'>
 											{cat.entries.map((entry) => {
@@ -1092,7 +1044,6 @@ function SessionDetailView({
 														? entry.stock_compte - entry.stock_theorique
 														: null
 												const hasGap = ecart !== null && ecart !== 0
-
 												return (
 													<div
 														key={entry.id}
@@ -1101,7 +1052,6 @@ function SessionDetailView({
 															hasGap && 'bg-orange-500/5',
 														)}
 													>
-														{/* Image produit */}
 														{entry.product_image ? (
 															<img
 																src={entry.product_image}
@@ -1113,8 +1063,6 @@ function SessionDetailView({
 																<ClipboardList className='h-3.5 w-3.5 text-muted-foreground/50' />
 															</div>
 														)}
-
-														{/* Nom + SKU / barcode */}
 														<div className='flex-1 min-w-0'>
 															<p className='text-sm font-medium truncate'>
 																{entry.product_name}
@@ -1131,8 +1079,6 @@ function SessionDetailView({
 																)}
 															</p>
 														</div>
-
-														{/* Stocks */}
 														<div className='text-right shrink-0'>
 															<div className='flex items-center gap-2 justify-end'>
 																<span className='text-xs text-muted-foreground'>
@@ -1172,9 +1118,6 @@ function SessionDetailView({
 	)
 }
 
-// ============================================================================
-// VUE HISTORIQUE — sessions complétées/annulées
-// ============================================================================
 function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 	const { data, isLoading } = useInventoryHistory()
 	const sessions = data?.items ?? []
@@ -1193,7 +1136,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 		return m > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${h}h`
 	}
 
-	// Si une session est sélectionnée → afficher le détail
 	if (selectedSession) {
 		return (
 			<SessionDetailView
@@ -1256,7 +1198,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 										})
 									}
 								>
-									{/* Icône statut */}
 									<div
 										className={cn(
 											'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
@@ -1272,7 +1213,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 										)}
 									</div>
 
-									{/* Infos */}
 									<div className='flex-1 min-w-0'>
 										<div className='flex items-center gap-2 mb-1'>
 											<span className='font-medium text-sm'>
@@ -1353,7 +1293,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 											</div>
 										)}
 
-										{/* Chips catégories */}
 										{categoryNames.length > 0 && (
 											<div className='flex flex-wrap gap-1 mt-1.5'>
 												{categoryNames.slice(0, 5).map((name) => (
@@ -1384,9 +1323,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 	)
 }
 
-// ============================================================================
-// VUE ACCUEIL — liste des sessions actives
-// ============================================================================
 function InventoryHomeView({
 	activeSessions,
 	sessionsLoading,
@@ -1410,7 +1346,6 @@ function InventoryHomeView({
 
 	return (
 		<div className='flex flex-col h-full overflow-y-auto'>
-			{/* Sessions actives */}
 			{activeSessions.length > 0 && (
 				<div className='px-6 pt-6 pb-4'>
 					<h2 className='text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3'>
@@ -1428,7 +1363,6 @@ function InventoryHomeView({
 				</div>
 			)}
 
-			{/* Zone de démarrage */}
 			<div
 				className={cn(
 					'flex flex-col items-center justify-center gap-8 px-6',
@@ -1487,9 +1421,6 @@ function InventoryHomeView({
 	)
 }
 
-// ============================================================================
-// CARD SESSION — affiche progression et catégories
-// ============================================================================
 function SessionCard({
 	session,
 	onSelect,
@@ -1498,13 +1429,11 @@ function SessionCard({
 	onSelect: () => void
 }) {
 	const { data: progress } = useSessionProgress(session.id)
-
 	const date = new Date(session.started_at).toLocaleDateString('fr-FR', {
 		day: '2-digit',
 		month: '2-digit',
 		year: 'numeric',
 	})
-
 	const total = progress?.total ?? 0
 	const counted = progress?.counted ?? 0
 	const percent = total > 0 ? Math.round((counted / total) * 100) : 0
@@ -1521,7 +1450,6 @@ function SessionCard({
 			</div>
 
 			<div className='flex-1 min-w-0'>
-				{/* Titre + badge statut */}
 				<div className='flex items-center gap-2 mb-1'>
 					<span className='font-semibold text-sm'>Inventaire du {date}</span>
 					<span
@@ -1536,12 +1464,10 @@ function SessionCard({
 					</span>
 				</div>
 
-				{/* Opérateur */}
 				<div className='text-xs text-muted-foreground mb-2'>
 					Opérateur : {session.operator}
 				</div>
 
-				{/* Catégories */}
 				{categoryNames.length > 0 && (
 					<div className='flex flex-wrap gap-1 mb-2'>
 						{categoryNames.slice(0, 4).map((name) => (
@@ -1560,7 +1486,6 @@ function SessionCard({
 					</div>
 				)}
 
-				{/* Jauge de progression */}
 				{total > 0 && (
 					<div className='space-y-1'>
 						<div className='flex items-center justify-between'>
@@ -1587,7 +1512,7 @@ function SessionCard({
 }
 
 // ============================================================================
-// PAGE PRINCIPALE
+// PAGE PRINCIPALE — wrappée dans ModulePageShell
 // ============================================================================
 export function InventoryPageAppPos() {
 	const [view, setView] = useState<PageView>('home')
@@ -1601,7 +1526,6 @@ export function InventoryPageAppPos() {
 	const { user } = useAuth()
 	const userName = (user as any)?.name || (user as any)?.username || ''
 
-	// Connexion AppPOS — token persisté en sessionStorage
 	const [showAppPosAuth, setShowAppPosAuth] = useState(() => !getAppPosToken())
 	const [appPosPassword, setAppPosPassword] = useState('')
 	const [appPosAuthError, setAppPosAuthError] = useState<string | null>(null)
@@ -1625,14 +1549,11 @@ export function InventoryPageAppPos() {
 		}
 	}
 
-	// ⚠️ RÈGLE DES HOOKS : tous les hooks doivent être appelés inconditionnellement,
-	// AVANT tout return conditionnel (showAppPosAuth, authLoading, etc.)
+	// ⚠️ Tous les hooks avant les returns conditionnels
 	const { data: activeSessions = [], isLoading: sessionsLoading } =
 		useActiveSessions()
-
 	const createSession = useCreateInventorySession()
 	const { progress: creationProgress } = createSession
-
 	const currentSession =
 		activeSessions.find((s) => s.id === selectedSessionId) ?? null
 
@@ -1657,61 +1578,57 @@ export function InventoryPageAppPos() {
 		}
 	}, [activeSessions, selectedSessionId, sessionsLoading])
 
-	// Returns conditionnels APRÈS tous les hooks
-	if (showAppPosAuth) {
-		return (
-			<div className='flex items-center justify-center h-full min-h-[400px]'>
-				<div className='w-full max-w-sm border rounded-xl p-6 bg-background shadow-md'>
-					<div className='flex items-center gap-3 mb-6'>
-						<div className='w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center'>
-							<ClipboardList className='h-5 w-5 text-orange-500' />
-						</div>
-						<div>
-							<h2 className='text-lg font-semibold'>Accès inventaire</h2>
-							<p className='text-xs text-muted-foreground'>
-								Code administrateur requis
-							</p>
-						</div>
+	// ── Contenu selon l'état d'auth AppPOS ───────────────────────────────────
+	const authContent = showAppPosAuth ? (
+		<div className='flex items-center justify-center h-full min-h-[400px]'>
+			<div className='w-full max-w-sm border rounded-xl p-6 bg-card shadow-md'>
+				<div className='flex items-center gap-3 mb-6'>
+					<div className='w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center'>
+						<ClipboardList className='h-5 w-5 text-orange-500' />
 					</div>
-
-					<div className='space-y-4'>
-						<div className='space-y-2'>
-							<Label htmlFor='apppos-password'>Mot de passe AppPOS</Label>
-							<Input
-								id='apppos-password'
-								type='password'
-								placeholder='••••••••'
-								value={appPosPassword}
-								onChange={(e) => setAppPosPassword(e.target.value)}
-								onKeyDown={(e) => e.key === 'Enter' && handleAppPosLogin()}
-								autoFocus
-							/>
-						</div>
-
-						{appPosAuthError && (
-							<p className='text-sm text-red-500'>{appPosAuthError}</p>
-						)}
-
-						<Button
-							className='w-full'
-							onClick={handleAppPosLogin}
-							disabled={appPosAuthLoading || !appPosPassword}
-						>
-							{appPosAuthLoading ? (
-								<>
-									<Loader2 className='h-4 w-4 animate-spin mr-2' />
-									Connexion...
-								</>
-							) : (
-								'Déverrouiller'
-							)}
-						</Button>
+					<div>
+						<h2 className='text-base font-medium'>Accès inventaire</h2>
+						<p className='text-xs text-muted-foreground'>
+							Code administrateur requis
+						</p>
 					</div>
 				</div>
+				<div className='space-y-4'>
+					<div className='space-y-2'>
+						<Label htmlFor='apppos-password'>Mot de passe AppPOS</Label>
+						<Input
+							id='apppos-password'
+							type='password'
+							placeholder='••••••••'
+							value={appPosPassword}
+							onChange={(e) => setAppPosPassword(e.target.value)}
+							onKeyDown={(e) => e.key === 'Enter' && handleAppPosLogin()}
+							autoFocus
+						/>
+					</div>
+					{appPosAuthError && (
+						<p className='text-sm text-destructive'>{appPosAuthError}</p>
+					)}
+					<Button
+						className='w-full'
+						onClick={handleAppPosLogin}
+						disabled={appPosAuthLoading || !appPosPassword}
+					>
+						{appPosAuthLoading ? (
+							<>
+								<Loader2 className='h-4 w-4 animate-spin mr-2' />
+								Connexion...
+							</>
+						) : (
+							'Déverrouiller'
+						)}
+					</Button>
+				</div>
 			</div>
-		)
-	}
+		</div>
+	) : null
 
+	// ── Handlers ─────────────────────────────────────────────────────────────
 	const handleSelectSession = (session: InventorySession) => {
 		setSelectedSessionId(session.id)
 		setView('overview')
@@ -1756,173 +1673,152 @@ export function InventoryPageAppPos() {
 		setView('home')
 	}
 
-	const handleBackToHome = () => {
-		setSelectedSessionId(null)
-		setView('home')
-	}
+	// Badge sessions actives pour le shell
+	const sessionsBadge =
+		activeSessions.length > 0 ? (
+			<StatusBadge label={`${activeSessions.length} en cours`} variant='info' />
+		) : undefined
 
 	return (
-		<div className='flex flex-col h-full'>
-			{/* Header global */}
-			<div className='flex items-center gap-3 px-6 py-4 border-b shrink-0'>
-				<div className='w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center'>
-					<ClipboardList className='h-5 w-5 text-orange-500' />
-				</div>
-				<div className='flex-1'>
-					<div className='flex items-center gap-2'>
-						{(view === 'overview' || view === 'counting') && (
-							<button
-								type='button'
-								onClick={handleBackToHome}
-								className='mr-1 p-1 rounded hover:bg-accent transition-colors'
-							>
-								<ArrowLeft className='h-4 w-4' />
-							</button>
-						)}
-						<h1 className='text-xl font-bold'>Inventaire</h1>
-						{activeSessions.length > 0 && (
-							<Badge
-								variant='outline'
-								className='text-orange-600 border-orange-300 text-xs'
-							>
-								{activeSessions.length} en cours
-							</Badge>
-						)}
-					</div>
-					<p className='text-xs text-muted-foreground'>
-						Inventaire physique AppPOS
-					</p>
-				</div>
-				<Button
-					variant='outline'
-					size='sm'
-					className='gap-1.5'
-					onClick={() => setView('history')}
-				>
-					<History className='h-3.5 w-3.5' />
-					Historique
-				</Button>
-			</div>
+		<ModulePageShell
+			manifest={inventoryManifest as any}
+			badge={sessionsBadge}
+			actions={
+				!showAppPosAuth ? (
+					<Button
+						variant='outline'
+						size='sm'
+						className='gap-1.5'
+						onClick={() => setView('history')}
+					>
+						<History className='h-3.5 w-3.5' />
+						Historique
+					</Button>
+				) : undefined
+			}
+		>
+			{/* Auth AppPOS */}
+			{authContent}
 
-			{/* Contenu selon la vue */}
-			<div className='flex-1 overflow-hidden'>
-				{/* Écran de progression lors de la création */}
-				{creationProgress && (
-					<div className='flex flex-col items-center justify-center h-full gap-6'>
-						<div className='w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center'>
-							<Loader2 className='h-8 w-8 text-orange-500 animate-spin' />
-						</div>
-						<div className='text-center'>
-							<h3 className='text-lg font-semibold mb-1'>
-								Création du snapshot en cours...
-							</h3>
-							<p className='text-sm text-muted-foreground mb-4'>
-								{creationProgress.done} / {creationProgress.total} produits
-								enregistrés
-							</p>
-							<div className='w-72'>
-								<div className='h-2 bg-muted rounded-full overflow-hidden'>
-									<div
-										className='h-full bg-orange-500 rounded-full transition-all duration-300'
-										style={{
-											width: `${Math.round((creationProgress.done / creationProgress.total) * 100)}%`,
-										}}
-									/>
-								</div>
-								<p className='text-xs text-muted-foreground mt-1 text-right'>
-									{Math.round(
-										(creationProgress.done / creationProgress.total) * 100,
-									)}
-									%
+			{/* Contenu principal */}
+			{!showAppPosAuth && (
+				<div className='flex flex-col h-full -m-6 overflow-hidden'>
+					{/* Écran progression création */}
+					{creationProgress && (
+						<div className='flex flex-col items-center justify-center h-full gap-6'>
+							<div className='w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center'>
+								<Loader2 className='h-8 w-8 text-orange-500 animate-spin' />
+							</div>
+							<div className='text-center'>
+								<h3 className='text-lg font-semibold mb-1'>
+									Création du snapshot en cours...
+								</h3>
+								<p className='text-sm text-muted-foreground mb-4'>
+									{creationProgress.done} / {creationProgress.total} produits
+									enregistrés
 								</p>
+								<div className='w-72'>
+									<div className='h-2 bg-muted rounded-full overflow-hidden'>
+										<div
+											className='h-full bg-orange-500 rounded-full transition-all duration-300'
+											style={{
+												width: `${Math.round((creationProgress.done / creationProgress.total) * 100)}%`,
+											}}
+										/>
+									</div>
+									<p className='text-xs text-muted-foreground mt-1 text-right'>
+										{Math.round(
+											(creationProgress.done / creationProgress.total) * 100,
+										)}
+										%
+									</p>
+								</div>
 							</div>
 						</div>
-					</div>
-				)}
+					)}
 
-				{view === 'home' && !creationProgress && (
-					<InventoryHomeView
-						activeSessions={activeSessions}
-						sessionsLoading={sessionsLoading}
-						onSelectSession={handleSelectSession}
-						onStart={() => setShowCreateDialog(true)}
-						isStarting={createSession.isPending}
-					/>
-				)}
-
-				{view === 'overview' &&
-					currentSession &&
-					!creationProgress &&
-					(entriesLoading || !summary ? (
-						<div className='flex flex-col items-center justify-center h-full gap-4'>
-							<Loader2 className='h-6 w-6 animate-spin text-orange-500' />
-							<p className='text-sm text-muted-foreground'>
-								Chargement des produits...
-							</p>
-						</div>
-					) : summary.totalProducts === 0 ? (
-						<div className='flex flex-col items-center justify-center h-full gap-4'>
-							<p className='text-sm text-muted-foreground'>
-								Aucun produit dans cette session.
-							</p>
-							<Button
-								variant='outline'
-								size='sm'
-								onClick={() => window.location.reload()}
-								className='gap-2'
-							>
-								<RotateCcw className='h-3.5 w-3.5' />
-								Rafraîchir la page
-							</Button>
-						</div>
-					) : (
-						<SessionOverviewView
-							session={currentSession}
-							summary={summary}
-							onSelectCategory={(catId) => {
-								const cat = summary.categories.find(
-									(c) => c.categoryId === catId,
-								)
-								handleSelectCategory(catId, cat?.categoryName ?? '')
-							}}
-							onComplete={handleCompleteSession}
-							onCancel={handleCancelSession}
-							isCompleting={isCompletingSession}
-							isCancelling={isCancellingSession}
+					{view === 'home' && !creationProgress && (
+						<InventoryHomeView
+							activeSessions={activeSessions}
+							sessionsLoading={sessionsLoading}
+							onSelectSession={handleSelectSession}
+							onStart={() => setShowCreateDialog(true)}
+							isStarting={createSession.isPending}
 						/>
-					))}
+					)}
 
-				{view === 'history' && (
-					<InventoryHistoryView onBack={() => setView('home')} />
-				)}
+					{view === 'overview' &&
+						currentSession &&
+						!creationProgress &&
+						(entriesLoading || !summary ? (
+							<div className='flex flex-col items-center justify-center h-full gap-4'>
+								<Loader2 className='h-6 w-6 animate-spin text-orange-500' />
+								<p className='text-sm text-muted-foreground'>
+									Chargement des produits...
+								</p>
+							</div>
+						) : summary.totalProducts === 0 ? (
+							<div className='flex flex-col items-center justify-center h-full gap-4'>
+								<p className='text-sm text-muted-foreground'>
+									Aucun produit dans cette session.
+								</p>
+								<Button
+									variant='outline'
+									size='sm'
+									onClick={() => window.location.reload()}
+									className='gap-2'
+								>
+									<RotateCcw className='h-3.5 w-3.5' />
+									Rafraîchir la page
+								</Button>
+							</div>
+						) : (
+							<SessionOverviewView
+								session={currentSession}
+								summary={summary}
+								onSelectCategory={(catId) => {
+									const cat = summary.categories.find(
+										(c) => c.categoryId === catId,
+									)
+									handleSelectCategory(catId, cat?.categoryName ?? '')
+								}}
+								onComplete={handleCompleteSession}
+								onCancel={handleCancelSession}
+								isCompleting={isCompletingSession}
+								isCancelling={isCancellingSession}
+							/>
+						))}
 
-				{view === 'counting' && currentSession && activeCategoryId && (
-					<CategoryCountingView
-						sessionId={currentSession.id}
-						session={currentSession}
-						categoryId={activeCategoryId}
-						categoryName={activeCategoryName}
-						onBack={() => setView('overview')}
+					{view === 'history' && (
+						<InventoryHistoryView onBack={() => setView('home')} />
+					)}
+
+					{view === 'counting' && currentSession && activeCategoryId && (
+						<CategoryCountingView
+							sessionId={currentSession.id}
+							session={currentSession}
+							categoryId={activeCategoryId}
+							categoryName={activeCategoryName}
+							onBack={() => setView('overview')}
+						/>
+					)}
+
+					<CreateSessionDialog
+						open={showCreateDialog}
+						onClose={() => setShowCreateDialog(false)}
+						onConfirm={handleCreateConfirm}
+						isLoading={createSession.isPending}
+						activeSessions={activeSessions}
+						defaultOperator={userName}
 					/>
-				)}
-			</div>
 
-			{/* Dialog création */}
-			<CreateSessionDialog
-				open={showCreateDialog}
-				onClose={() => setShowCreateDialog(false)}
-				onConfirm={handleCreateConfirm}
-				isLoading={createSession.isPending}
-				activeSessions={activeSessions}
-				defaultOperator={userName}
-			/>
-
-			{/* Erreur création */}
-			{createSession.error && (
-				<div className='fixed bottom-4 right-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-400 shadow-lg max-w-sm'>
-					{(createSession.error as Error).message}
+					{createSession.error && (
+						<div className='fixed bottom-4 right-4 bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive shadow-lg max-w-sm'>
+							{(createSession.error as Error).message}
+						</div>
+					)}
 				</div>
 			)}
-		</div>
+		</ModulePageShell>
 	)
 }
