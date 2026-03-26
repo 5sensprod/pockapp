@@ -26,6 +26,7 @@ import {
 import { type Company, getLogoUrl, useCompany } from '@/lib/queries/companies'
 import { fetchAsDataUrl } from '@/lib/queries/logoToDataUrl'
 import { cartItemToPosItem, useCreatePosTicket } from '@/lib/queries/pos'
+import { clearLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import { CreateProductDialog } from '@/modules/cash/CreateProductDialog'
@@ -645,7 +646,10 @@ export function CashTerminalPage() {
 						registerName={currentRegister?.name || 'Caisse'}
 						sessionIdShort={activeSession?.id.slice(0, 8) ?? ''}
 						today={today}
-						onBack={() => navigate({ to: '/cash' })}
+						onBack={() => {
+							clearLastRouteForModule('cash')
+							navigate({ to: '/cash' })
+						}}
 					/>
 
 					<div className='flex items-center gap-2 px-6 py-2 bg-muted/30 border-b'>

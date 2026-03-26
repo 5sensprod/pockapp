@@ -24,7 +24,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { RapportZ } from '@/lib/types/cash.types'
 import { getPaymentMethodLabel } from '@/lib/types/cash.types'
-import { useNavigate } from '@tanstack/react-router'
 import {
 	AlertCircle,
 	Calendar,
@@ -36,9 +35,9 @@ import {
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useRegisterManager } from '../hooks/useRegisterManager'
+import { CashPageHeader } from '../layout/CashPageHeader'
 import {
 	PaymentMethodBreakdown,
-	ReportHeader,
 	VATBreakdownTable,
 	computeNetByMethod,
 	formatCurrency,
@@ -49,7 +48,6 @@ import {
 } from './index'
 
 export function RapportZPage() {
-	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 
 	const [selectedDate, setSelectedDate] = useState<string>(
@@ -91,13 +89,25 @@ export function RapportZPage() {
 	return (
 		<div className='container mx-auto px-6 py-8 max-w-6xl'>
 			{/* Header */}
-			<ReportHeader
-				title='Rapport Z - Clôture Journalière'
+			<CashPageHeader
+				title='Rapport Z — Clôture Journalière'
 				subtitle='Document fiscal inaltérable conforme NF525'
-				onBack={() => navigate({ to: '/cash' })}
-				onPrint={handlePrint}
-				onExport={handleExportWithRapport} // ← Utiliser la nouvelle fonction
-				showActions={!!rapportZ}
+				actions={
+					rapportZ && (
+						<>
+							<Button variant='outline' size='sm' onClick={handlePrint}>
+								Imprimer
+							</Button>
+							<Button
+								variant='outline'
+								size='sm'
+								onClick={handleExportWithRapport}
+							>
+								Exporter
+							</Button>
+						</>
+					)
+				}
 			/>
 
 			<Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>

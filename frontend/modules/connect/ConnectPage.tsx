@@ -1,4 +1,5 @@
 // frontend/modules/connect/ConnectPage.tsx
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
@@ -7,13 +8,11 @@ import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import type { Customer } from './components/CustomerDialog'
 import { CustomerTable } from './components/CustomerTable'
-
 import { manifest } from './index'
 
 export function ConnectPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const navigate = useNavigate()
-
 	const [searchTerm, setSearchTerm] = useState('')
 
 	const {
@@ -27,14 +26,10 @@ export function ConnectPage() {
 			: '',
 	})
 
-	// Refetch quand l'entreprise change
 	useEffect(() => {
-		if (activeCompanyId) {
-			refetch()
-		}
+		if (activeCompanyId) refetch()
 	}, [activeCompanyId, refetch])
 
-	// Adaptation PocketBase -> Customer (tags: string[])
 	const customers: Customer[] = useMemo(
 		() =>
 			customersData?.items.map((c: any) => ({
@@ -55,11 +50,7 @@ export function ConnectPage() {
 	)
 
 	const Icon = manifest.icon
-
-	const handleNewCustomer = () => {
-		navigate({ to: '/connect/customers/new' })
-	}
-
+	const handleNewCustomer = () => navigate({ to: '/connect/customers/new' })
 	const handleEditCustomer = (customer: Customer) => {
 		navigate({
 			to: '/connect/customers/$customerId/edit',
@@ -69,7 +60,6 @@ export function ConnectPage() {
 
 	return (
 		<div className='container mx-auto px-6 py-8'>
-			{/* Header */}
 			<div className='mb-8'>
 				<div className='flex items-center gap-3 mb-2'>
 					<div className='w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center'>
@@ -77,17 +67,13 @@ export function ConnectPage() {
 							className={`h-6 w-6 ${manifest.iconColor ?? 'text-primary'}`}
 						/>
 					</div>
-
 					<div className='flex-1'>
 						<h1 className='text-3xl font-bold'>{manifest.name}</h1>
 						<p className='text-muted-foreground'>{manifest.description}</p>
 					</div>
-
 					<Button onClick={handleNewCustomer}>Nouveau client</Button>
 				</div>
 			</div>
-
-			{/* Search */}
 			<div className='mb-6 flex gap-4'>
 				<div className='relative flex-1 max-w-md'>
 					<Input
@@ -98,8 +84,6 @@ export function ConnectPage() {
 					/>
 				</div>
 			</div>
-
-			{/* Table */}
 			{isLoading ? (
 				<div className='text-center py-12 text-muted-foreground'>
 					Chargement...

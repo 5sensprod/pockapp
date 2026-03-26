@@ -1,7 +1,13 @@
-// frontend/routes/cash/index.tsx
-import { createFileRoute } from '@tanstack/react-router'
+import { getLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
 import { CashPage } from '@/modules/cash'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/cash/')({
-  component: CashPage,
+	beforeLoad: () => {
+		const last = getLastRouteForModule('cash')
+		if (last && last !== '/cash' && last !== '/cash/') {
+			throw redirect({ to: last as any })
+		}
+	},
+	component: CashPage,
 })

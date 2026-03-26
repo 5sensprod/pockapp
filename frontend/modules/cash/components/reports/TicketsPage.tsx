@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useInvoices } from '@/lib/queries/invoices'
+
 import { useNavigate } from '@tanstack/react-router'
 import {
 	Calendar,
@@ -38,6 +39,7 @@ import {
 	Receipt,
 	Search,
 } from 'lucide-react'
+import { CashPageHeader } from '../layout/CashPageHeader'
 import {
 	formatCurrency,
 	formatDate,
@@ -76,14 +78,16 @@ export function TicketsPage() {
 	return (
 		<div className='container mx-auto px-6 py-8'>
 			<div className='flex items-center justify-between mb-6'>
-				<div>
-					<h1 className='text-2xl font-bold flex items-center gap-2'>
-						<Receipt className='h-6 w-6' />
-						Tickets de caisse
-					</h1>
-					<p className='text-muted-foreground'>
-						Gérez et convertissez vos tickets POS
-					</p>
+				<div className='mb-6'>
+					<CashPageHeader
+						title={
+							<>
+								<Receipt className='h-6 w-6' />
+								Tickets de caisse
+							</>
+						}
+						subtitle='Gérez et convertissez vos tickets POS'
+					/>
 				</div>
 			</div>
 
