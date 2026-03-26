@@ -127,7 +127,8 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 					Type: schema.FieldTypeSelect,
 					Options: &schema.SelectOptions{
 						MaxSelect: 1,
-						Values:    []string{"virement", "cb", "especes", "cheque", "autre"},
+						// "multi" = paiement fractionné (split payment, tickets POS uniquement)
+						Values: []string{"virement", "cb", "especes", "cheque", "autre", "multi"},
 					},
 				},
 
@@ -355,6 +356,25 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 			f.Required = false
 			changed = true
 			log.Println("🛠 Fix number.Required -> false (généré par hook)")
+		}
+	}
+
+	// 🔧 FIX split payment: ajouter "multi" aux valeurs autorisées de payment_method
+	// "multi" = paiement fractionné (plusieurs moyens sur un même ticket POS)
+	if f := collection.Schema.GetFieldByName("payment_method"); f != nil {
+		if opts, ok := f.Options.(*schema.SelectOptions); ok {
+			hasMulti := false
+			for _, v := range opts.Values {
+				if v == "multi" {
+					hasMulti = true
+					break
+				}
+			}
+			if !hasMulti {
+				opts.Values = append(opts.Values, "multi")
+				changed = true
+				log.Println("🛠 Fix payment_method: ajout de la valeur multi (split payment)")
+			}
 		}
 	}
 

@@ -188,6 +188,22 @@ export function ConvertTicketToInvoicePage() {
 			}
 
 			// 1. Créer la facture
+			// 🔧 FIX split payment: seules ces valeurs sont acceptées par PocketBase.
+			// Toute autre valeur (ex: "multi", "card", code custom...) → "autre".
+			// Le détail des paiements est tracé dans les notes ci-dessous.
+			const PB_VALID_PAYMENT_METHODS = new Set([
+				'virement',
+				'cb',
+				'especes',
+				'cheque',
+				'autre',
+			])
+			const rawMethod = ticket.payment_method as string | undefined
+			const safePaymentMethod =
+				rawMethod && PB_VALID_PAYMENT_METHODS.has(rawMethod)
+					? rawMethod
+					: 'autre'
+
 			const invoice = await pb.collection('invoices').create<InvoicesResponse>({
 				invoice_type: 'invoice',
 				date: new Date().toISOString().split('T')[0],
@@ -196,7 +212,7 @@ export function ConvertTicketToInvoicePage() {
 				status: 'validated',
 				is_paid: ticket.is_paid ?? true,
 				paid_at: ticket.paid_at ?? new Date().toISOString(),
-				payment_method: (ticket.payment_method as any) ?? 'especes',
+				payment_method: safePaymentMethod as any,
 				items: ticket.items,
 				total_ht: ticket.total_ht,
 				total_tva: ticket.total_tva,
@@ -214,6 +230,17 @@ export function ConvertTicketToInvoicePage() {
 
 				notes: [
 					`Facture issue du ticket ${ticket.number}`,
+					// 🔧 FIX split payment: tracer les moyens de paiement multiples
+					rawMethod === 'multi' && (ticket as any).split_payments
+						? `Paiements multiples : ${(
+								(ticket as any).split_payments as Array<{
+									method: string
+									amount: number
+								}>
+							)
+								.map((p) => `${p.method} ${p.amount.toFixed(2)} €`)
+								.join(', ')}`
+						: '',
 					ticket.notes || '',
 					additionalNotes,
 				]
