@@ -15,7 +15,7 @@ export function TerminalHeader({
 	registerName,
 	sessionIdShort,
 	today,
-	onBack,
+	// onBack,
 }: TerminalHeaderProps) {
 	const openDrawer = useOpenCashDrawerMutation()
 
@@ -27,7 +27,7 @@ export function TerminalHeader({
 		<CashPageHeader
 			title={registerName}
 			subtitle={`Session ${sessionIdShort} — ${today}`}
-			onBack={onBack}
+			// onBack={onBack}
 			actions={
 				<>
 					<Button

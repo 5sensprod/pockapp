@@ -87,7 +87,7 @@ export function RapportZPage() {
 	}, [handleExport, rapportZ])
 
 	return (
-		<div className='container mx-auto px-6 py-8 max-w-6xl'>
+		<div className='container mx-auto px-6 py-8'>
 			{/* Header */}
 			<CashPageHeader
 				title='Rapport Z — Clôture Journalière'

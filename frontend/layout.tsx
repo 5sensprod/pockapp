@@ -38,7 +38,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const navigate = useNavigate()
 	const { isAuthenticated } = useAuth()
 
-	// ── Sidebar state (ici pour survivre aux remounts de Sidebar) ──────────────
 	const [activeGroup, setActiveGroup] = useState<string | null>(null)
 	const [manuallyClosed, setManuallyClosed] = useState(false)
 
@@ -70,7 +69,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 	// Reset manuallyClosed quand on change de module
 	useEffect(() => {
-		// Le linter voit que tu utilises la dépendance ici, il sera content
 		if (currentModule?.id !== undefined) {
 			setManuallyClosed(false)
 			setActiveGroup(null)
@@ -98,7 +96,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		setActiveGroup(null)
 	}
 
-	const isPanelOpen = activeGroup !== null
+	// ✅ Le panneau est visuellement ouvert uniquement si :
+	// - un groupe est actif ET
+	// - ce groupe a PLUS d'un item (sinon c'est un groupe à navigation directe, pas de panneau)
+	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
+	const isPanelOpen =
+		activeGroupData !== null && (activeGroupData.items?.length ?? 0) > 1
 
 	useEffect(() => {
 		if (setupLoading) return

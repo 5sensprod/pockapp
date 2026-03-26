@@ -52,6 +52,24 @@ interface HeaderProps {
 	isHomePage: boolean
 }
 
+/**
+ * Détermine la route "home" d'un module :
+ * - cherche d'abord un item de config/settings dans le sidebarMenu
+ * - sinon prend le premier item du premier groupe
+ * - sinon fallback sur module.route
+ */
+function getModuleHomeRoute(module: ModuleManifest): string {
+	const menu = module.sidebarMenu
+	if (!menu?.length) return module.route
+
+	// Cherche un groupe "config" ou "settings" en priorité
+	const configGroup = menu.find((g) =>
+		['config', 'settings', 'configuration'].includes(g.id.toLowerCase()),
+	)
+	const firstItem = (configGroup ?? menu[0])?.items?.[0]
+	return firstItem?.to ?? module.route
+}
+
 export function Header({ currentModule, isHomePage }: HeaderProps) {
 	const navigate = useNavigate()
 	const { user, logout, isAuthenticated } = useAuth()
@@ -59,6 +77,11 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 
 	const brand = currentModule?.name ?? 'PocketApp'
 	const moduleMenu = currentModule?.topbarMenu || []
+
+	// Route vers laquelle le nom du module redirige (config ou home du module)
+	const moduleHomeRoute = currentModule
+		? getModuleHomeRoute(currentModule)
+		: '/'
 
 	const activeCompany =
 		companies.find((c: CompanyItem) => c.id === activeCompanyId) ?? companies[0]
@@ -150,6 +173,7 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 			<div className='container flex h-14 items-center justify-between px-6'>
 				<div className='flex items-center gap-8'>
 					<div className='flex items-center gap-2'>
+						{/* Flèche retour → toujours vers l'accueil de l'application */}
 						{currentModule && !isHomePage && (
 							<Button
 								variant='ghost'
@@ -161,7 +185,11 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 							</Button>
 						)}
 
-						<Link to='/' className='flex items-center gap-2 font-bold text-lg'>
+						{/* Nom du module → vers la page config/home du module (ou / si on est home) */}
+						<Link
+							to={currentModule ? (moduleHomeRoute as any) : '/'}
+							className='flex items-center gap-2 font-bold text-lg'
+						>
 							<div className='w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground text-sm'>
 								P
 							</div>
