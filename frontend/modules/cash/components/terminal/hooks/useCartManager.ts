@@ -1,3 +1,8 @@
+import {
+	clearTerminalState,
+	getTerminalState,
+	setTerminalState,
+} from '@/lib/stores/appCashStore'
 // frontend/modules/cash/components/terminal/hooks/useCartManager.ts
 import * as React from 'react'
 import type { AppPosProduct, CartItem, LineDiscountMode } from '../types/cart'
@@ -11,50 +16,72 @@ export interface ParkedCart {
 	label?: string
 }
 
-export function useCartManager() {
-	const [cart, setCart] = React.useState<CartItem[]>([])
+export function useCartManager(registerId: string) {
+	// ✅ Initialisation depuis le store (persiste entre navigations)
+	const [cart, setCart_] = React.useState<CartItem[]>(
+		() => getTerminalState(registerId).cart,
+	)
+	const [parkedCarts, setParkedCarts] = React.useState<ParkedCart[]>(
+		() => getTerminalState(registerId).parkedCarts,
+	)
 	const [lastAddedItem, setLastAddedItem] = React.useState<CartItem | null>(
 		null,
 	)
-	const [parkedCarts, setParkedCarts] = React.useState<ParkedCart[]>([])
 
-	const addToCart = React.useCallback((product: AppPosProduct) => {
-		const price = product.price_ttc || product.price_ht || 0
-		const imageUrl = getImageUrl(product.images)
-		const tvaRate = product.tva_rate ?? 20
+	// ✅ Sync vers le store à chaque changement
+	React.useEffect(() => {
+		setTerminalState(registerId, { cart, parkedCarts })
+	}, [registerId, cart, parkedCarts])
 
-		setCart((prev) => {
-			const existingIndex = prev.findIndex(
-				(item) => item.productId === product.id,
+	const setCart = React.useCallback(
+		(updater: React.SetStateAction<CartItem[]>) => {
+			setCart_((prev) =>
+				typeof updater === 'function' ? updater(prev) : updater,
 			)
-			if (existingIndex >= 0) {
-				const next = [...prev]
-				next[existingIndex] = {
-					...next[existingIndex],
-					quantity: next[existingIndex].quantity + 1,
+		},
+		[],
+	)
+
+	const addToCart = React.useCallback(
+		(product: AppPosProduct) => {
+			const price = product.price_ttc || product.price_ht || 0
+			const imageUrl = getImageUrl(product.images)
+			const tvaRate = product.tva_rate ?? 20
+
+			setCart((prev) => {
+				const existingIndex = prev.findIndex(
+					(item) => item.productId === product.id,
+				)
+				if (existingIndex >= 0) {
+					const next = [...prev]
+					next[existingIndex] = {
+						...next[existingIndex],
+						quantity: next[existingIndex].quantity + 1,
+					}
+					setLastAddedItem(next[existingIndex])
+					return next
 				}
-				setLastAddedItem(next[existingIndex])
-				return next
-			}
 
-			const newItem: CartItem = {
-				id: `cart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-				productId: product.id,
-				name: product.name,
-				designation: product.designation || product.name,
-				sku: product.sku || '',
-				image: imageUrl || '',
-				unitPrice: price,
-				quantity: 1,
-				tvaRate,
-				displayMode: 'name',
-			}
-			setLastAddedItem(newItem)
-			return [...prev, newItem]
-		})
+				const newItem: CartItem = {
+					id: `cart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+					productId: product.id,
+					name: product.name,
+					designation: product.designation || product.name,
+					sku: product.sku || '',
+					image: imageUrl || '',
+					unitPrice: price,
+					quantity: 1,
+					tvaRate,
+					displayMode: 'name',
+				}
+				setLastAddedItem(newItem)
+				return [...prev, newItem]
+			})
 
-		setTimeout(() => setLastAddedItem(null), 1500)
-	}, [])
+			setTimeout(() => setLastAddedItem(null), 1500)
+		},
+		[setCart],
+	)
 
 	const updateQuantity = React.useCallback(
 		(itemId: string, newQuantity: number) => {
@@ -65,69 +92,65 @@ export function useCartManager() {
 				)
 			})
 		},
-		[],
+		[setCart],
 	)
 
-	const setUnitPrice = React.useCallback((itemId: string, raw: string) => {
-		setCart((prev) =>
-			prev.map((it) => {
-				if (it.id !== itemId) return it
+	const setUnitPrice = React.useCallback(
+		(itemId: string, raw: string) => {
+			setCart((prev) =>
+				prev.map((it) => {
+					if (it.id !== itemId) return it
+					const original = it.originalUnitPrice ?? it.unitPrice
+					if (raw.trim() === '') {
+						return {
+							...it,
+							unitPrice: original,
+							originalUnitPrice: original,
+							unitPriceRaw: '',
+						}
+					}
+					const v = Number.parseFloat(raw.replace(',', '.'))
+					if (Number.isNaN(v)) return { ...it, unitPriceRaw: raw }
+					return {
+						...it,
+						unitPrice: Math.max(0, +v.toFixed(2)),
+						originalUnitPrice: original,
+						unitPriceRaw: raw,
+					}
+				}),
+			)
+		},
+		[setCart],
+	)
 
-				const original = it.originalUnitPrice ?? it.unitPrice
-
-				if (raw.trim() === '') {
+	const clearUnitPrice = React.useCallback(
+		(itemId: string) => {
+			setCart((prev) =>
+				prev.map((it) => {
+					if (it.id !== itemId) return it
+					const original = it.originalUnitPrice ?? it.unitPrice
 					return {
 						...it,
 						unitPrice: original,
-						originalUnitPrice: original,
+						originalUnitPrice: undefined,
 						unitPriceRaw: '',
 					}
-				}
-
-				const normalized = raw.replace(',', '.')
-				const v = Number.parseFloat(normalized)
-
-				if (Number.isNaN(v)) {
-					return { ...it, unitPriceRaw: raw }
-				}
-
-				return {
-					...it,
-					unitPrice: Math.max(0, +v.toFixed(2)),
-					originalUnitPrice: original,
-					unitPriceRaw: raw,
-				}
-			}),
-		)
-	}, [])
-
-	const clearUnitPrice = React.useCallback((itemId: string) => {
-		setCart((prev) =>
-			prev.map((it) => {
-				if (it.id !== itemId) return it
-				const original = it.originalUnitPrice ?? it.unitPrice
-				return {
-					...it,
-					unitPrice: original,
-					originalUnitPrice: undefined,
-					unitPriceRaw: '',
-				}
-			}),
-		)
-	}, [])
+				}),
+			)
+		},
+		[setCart],
+	)
 
 	const setLineDiscountMode = React.useCallback(
 		(itemId: string, mode: LineDiscountMode) => {
 			setCart((prev) =>
 				prev.map((it) => {
 					if (it.id !== itemId) return it
-
 					const currentVal = it.lineDiscountValue
 					const nextValue =
 						mode === 'percent'
 							? clamp(currentVal ?? 0, 0, 100)
 							: clamp(currentVal ?? it.unitPrice, 0, it.unitPrice)
-
 					return {
 						...it,
 						lineDiscountMode: mode,
@@ -137,7 +160,7 @@ export function useCartManager() {
 				}),
 			)
 		},
-		[],
+		[setCart],
 	)
 
 	const setLineDiscountValue = React.useCallback(
@@ -145,9 +168,7 @@ export function useCartManager() {
 			setCart((prev) =>
 				prev.map((it) => {
 					if (it.id !== itemId) return it
-
 					const mode = it.lineDiscountMode ?? 'percent'
-
 					if (raw.trim() === '') {
 						return {
 							...it,
@@ -156,10 +177,7 @@ export function useCartManager() {
 							lineDiscountRaw: '',
 						}
 					}
-
-					const normalized = raw.replace(',', '.')
-					const v = Number.parseFloat(normalized)
-
+					const v = Number.parseFloat(raw.replace(',', '.'))
 					if (Number.isNaN(v)) {
 						return {
 							...it,
@@ -168,10 +186,8 @@ export function useCartManager() {
 							lineDiscountRaw: raw,
 						}
 					}
-
 					const next =
 						mode === 'percent' ? clamp(v, 0, 100) : clamp(v, 0, it.unitPrice)
-
 					return {
 						...it,
 						lineDiscountMode: mode,
@@ -181,42 +197,50 @@ export function useCartManager() {
 				}),
 			)
 		},
-		[],
+		[setCart],
 	)
 
-	const toggleItemDisplayMode = React.useCallback((itemId: string) => {
-		setCart((prev) =>
-			prev.map((it) => {
-				if (it.id !== itemId) return it
-				const modes: Array<'name' | 'designation' | 'sku'> = [
-					'name',
-					'designation',
-					'sku',
-				]
-				const current = it.displayMode ?? 'name'
-				const currentIndex = modes.indexOf(current)
-				const nextIndex = (currentIndex + 1) % modes.length
-				return { ...it, displayMode: modes[nextIndex] }
-			}),
-		)
-	}, [])
+	const toggleItemDisplayMode = React.useCallback(
+		(itemId: string) => {
+			setCart((prev) =>
+				prev.map((it) => {
+					if (it.id !== itemId) return it
+					const modes: Array<'name' | 'designation' | 'sku'> = [
+						'name',
+						'designation',
+						'sku',
+					]
+					const current = it.displayMode ?? 'name'
+					const nextIndex = (modes.indexOf(current) + 1) % modes.length
+					return { ...it, displayMode: modes[nextIndex] }
+				}),
+			)
+		},
+		[setCart],
+	)
 
 	const clearCart = React.useCallback(() => {
 		setCart([])
 		setLastAddedItem(null)
-	}, [])
+	}, [setCart])
+
+	// ✅ À appeler après une vente confirmée : vide le state ET le store
+	const clearCartAndStore = React.useCallback(() => {
+		setCart([])
+		setParkedCarts([])
+		setLastAddedItem(null)
+		clearTerminalState(registerId)
+	}, [setCart, registerId])
 
 	const parkCart = React.useCallback(
 		(label?: string) => {
 			if (cart.length === 0) return
-
 			const parked: ParkedCart = {
 				id: `parked-${Date.now()}`,
 				items: cart,
 				parkedAt: new Date(),
 				label,
 			}
-
 			setParkedCarts((prev) => [...prev, parked])
 			clearCart()
 		},
@@ -227,11 +251,10 @@ export function useCartManager() {
 		(parkedId: string) => {
 			const parked = parkedCarts.find((p) => p.id === parkedId)
 			if (!parked) return
-
 			setCart(parked.items)
 			setParkedCarts((prev) => prev.filter((p) => p.id !== parkedId))
 		},
-		[parkedCarts],
+		[parkedCarts, setCart],
 	)
 
 	const deleteParkedCart = React.useCallback((parkedId: string) => {
@@ -250,6 +273,7 @@ export function useCartManager() {
 		setLineDiscountValue,
 		toggleItemDisplayMode,
 		clearCart,
+		clearCartAndStore,
 		parkCart,
 		unparkCart,
 		deleteParkedCart,

@@ -146,7 +146,7 @@ export function CashTerminalPage() {
 		}
 	}, [])
 
-	const cartManager = useCartManager()
+	const cartManager = useCartManager(cashRegisterId)
 	const { subtotalTtc, totalTtc, totalVat, discountAmount, vatBreakdown } =
 		useCartCalculations({
 			cart: cartManager.cart,
@@ -366,7 +366,7 @@ export function CashTerminalPage() {
 	)
 
 	const clearAll = React.useCallback(() => {
-		cartManager.clearCart()
+		cartManager.clearCartAndStore()
 		setCartDiscountMode('percent')
 		setCartDiscountValue(0)
 		setCartDiscountRaw('')
