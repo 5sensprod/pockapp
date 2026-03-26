@@ -488,145 +488,151 @@ export function CashTerminalPage() {
 		],
 	)
 
-	const handleConfirmPayment = React.useCallback(async () => {
-		if (!activeCompanyId || !activeSession) {
-			toast.error('Session ou entreprise manquante')
-			return
-		}
-
-		// Validation multipaiement
-		if (paymentEntries.length === 0) {
-			toast.error('Aucun moyen de paiement sélectionné')
-			return
-		}
-		const totalPaid = paymentEntries.reduce((sum, e) => sum + e.amount, 0)
-		if (totalPaid < totalTtc - 0.005) {
-			toast.error('Paiements insuffisants')
-			return
-		}
-
-		const printerSettings = loadPosPrinterSettings()
-		setIsProcessing(true)
-
-		try {
-			const defaultCustomerId = await getOrCreateDefaultCustomer(
-				pb,
-				activeCompanyId,
-			)
-
-			// ✅ 1. Créer le ticket dans PocketBase
-			// Construire le payload multipaiement
-			const apiPayments = paymentEntriesToApiPayload(paymentEntries)
-			const mainMethodCode = getMainPaymentMethodCode(paymentEntries)
-			const cashEntry = paymentEntries.find(
-				(e) => e.method.accounting_category === 'cash',
-			)
-
-			const result = await createPosTicket.mutateAsync({
-				owner_company: activeCompanyId,
-				cash_register: cashRegisterId,
-				session_id: activeSession.id,
-				customer_id: defaultCustomerId,
-				items: cartManager.cart.map(cartItemToPosItem),
-				payment_method: mainMethodCode,
-				payment_method_label:
-					paymentEntries.length > 1
-						? paymentEntries.map((e) => e.method.name).join(' + ')
-						: paymentEntries[0]?.method.type === 'custom'
-							? paymentEntries[0].method.name
-							: undefined,
-				amount_paid: cashEntry ? cashEntry.amount : undefined,
-				payments: apiPayments,
-				cart_discount_mode:
-					cartDiscountValue > 0 ? cartDiscountMode : undefined,
-				cart_discount_value:
-					cartDiscountValue > 0 ? cartDiscountValue : undefined,
-			})
-
-			const ticket = result.ticket
-			const backendTotals = result.totals
-
-			// ✅ 2. 🆕 METTRE À JOUR LE STOCK DANS APPPOS
-			if (isAppPosConnected && getAppPosToken()) {
-				try {
-					const stockItems = cartManager.cart.map((item) => ({
-						productId: item.productId, // ✅ BON CHAMP (pas item.id)
-						quantitySold: item.quantity,
-					}))
-
-					console.log(
-						'📦 Mise à jour stock AppPOS pour',
-						stockItems.length,
-						'produit(s)',
-					)
-					await decrementAppPosProductsStock(stockItems)
-
-					console.log('✅ Stock AppPOS mis à jour avec succès')
-				} catch (stockError) {
-					console.error('❌ Erreur MAJ stock:', stockError)
-					toast.warning(
-						'Vente enregistrée mais erreur de synchronisation du stock',
-					)
-				}
-			} else {
-				console.warn('⚠️ AppPOS non connecté, stock non synchronisé')
+	const handleConfirmPayment = React.useCallback(
+		async (finalEntries?: PaymentEntry[]) => {
+			if (!activeCompanyId || !activeSession) {
+				toast.error('Session ou entreprise manquante')
+				return
 			}
 
-			// ✅ 3. Impression (si activée)
-			if (printerSettings.enabled && printerSettings.printerName) {
-				if (printerSettings.autoPrint) {
-					const receiptPayload = await buildReceiptPayload({
-						invoiceNumber: ticket.number,
-						dateLabel: new Date().toLocaleString('fr-FR'),
-						totalTtcValue: backendTotals.total_ttc,
-						taxAmountValue: backendTotals.total_tva,
-						totalSavingsValue:
-							backendTotals.line_discounts_ttc +
-							backendTotals.cart_discount_ttc,
-					})
+			// Utiliser les entries passées en paramètre (évite le problème d'async state)
+			const entries = finalEntries ?? paymentEntries
 
-					await printReceipt({
-						printerName: printerSettings.printerName,
-						width: printerSettings.width,
-						companyId: activeCompanyId,
-						receipt: receiptPayload,
-					})
-				}
-
-				if (
-					printerSettings.autoOpenDrawer &&
-					paymentEntries.some((e) => e.method.accounting_category === 'cash')
-				) {
-					await openCashDrawer({
-						printerName: printerSettings.printerName,
-						width: printerSettings.width,
-					})
-				}
+			// Validation multipaiement
+			if (entries.length === 0) {
+				toast.error('Aucun moyen de paiement sélectionné')
+				return
+			}
+			const totalPaid = entries.reduce((sum, e) => sum + e.amount, 0)
+			if (totalPaid < totalTtc - 0.005) {
+				toast.error('Paiements insuffisants')
+				return
 			}
 
-			toast.success(`Ticket ${ticket.number} créé`)
-			setPaymentStep('success')
-			setTimeout(() => clearAll(), 500)
-		} catch (error: any) {
-			toast.error(error.message || 'Erreur lors de la création du ticket')
-		} finally {
-			setIsProcessing(false)
-		}
-	}, [
-		activeCompanyId,
-		activeSession,
-		buildReceiptPayload,
-		cartDiscountMode,
-		cartDiscountValue,
-		cartManager.cart,
-		cashRegisterId,
-		clearAll,
-		createPosTicket,
-		isAppPosConnected,
-		paymentEntries,
-		pb,
-		totalTtc,
-	])
+			const printerSettings = loadPosPrinterSettings()
+			setIsProcessing(true)
+
+			try {
+				const defaultCustomerId = await getOrCreateDefaultCustomer(
+					pb,
+					activeCompanyId,
+				)
+
+				// ✅ 1. Créer le ticket dans PocketBase
+				// Construire le payload multipaiement
+				const apiPayments = paymentEntriesToApiPayload(entries)
+				const mainMethodCode = getMainPaymentMethodCode(entries)
+				const cashEntry = entries.find(
+					(e) => e.method.accounting_category === 'cash',
+				)
+
+				const result = await createPosTicket.mutateAsync({
+					owner_company: activeCompanyId,
+					cash_register: cashRegisterId,
+					session_id: activeSession.id,
+					customer_id: defaultCustomerId,
+					items: cartManager.cart.map(cartItemToPosItem),
+					payment_method: mainMethodCode,
+					payment_method_label:
+						entries.length > 1
+							? entries.map((e) => e.method.name).join(' + ')
+							: entries[0]?.method.type === 'custom'
+								? entries[0].method.name
+								: undefined,
+					amount_paid: cashEntry ? cashEntry.amount : undefined,
+					payments: apiPayments,
+					cart_discount_mode:
+						cartDiscountValue > 0 ? cartDiscountMode : undefined,
+					cart_discount_value:
+						cartDiscountValue > 0 ? cartDiscountValue : undefined,
+				})
+
+				const ticket = result.ticket
+				const backendTotals = result.totals
+
+				// ✅ 2. 🆕 METTRE À JOUR LE STOCK DANS APPPOS
+				if (isAppPosConnected && getAppPosToken()) {
+					try {
+						const stockItems = cartManager.cart.map((item) => ({
+							productId: item.productId, // ✅ BON CHAMP (pas item.id)
+							quantitySold: item.quantity,
+						}))
+
+						console.log(
+							'📦 Mise à jour stock AppPOS pour',
+							stockItems.length,
+							'produit(s)',
+						)
+						await decrementAppPosProductsStock(stockItems)
+
+						console.log('✅ Stock AppPOS mis à jour avec succès')
+					} catch (stockError) {
+						console.error('❌ Erreur MAJ stock:', stockError)
+						toast.warning(
+							'Vente enregistrée mais erreur de synchronisation du stock',
+						)
+					}
+				} else {
+					console.warn('⚠️ AppPOS non connecté, stock non synchronisé')
+				}
+
+				// ✅ 3. Impression (si activée)
+				if (printerSettings.enabled && printerSettings.printerName) {
+					if (printerSettings.autoPrint) {
+						const receiptPayload = await buildReceiptPayload({
+							invoiceNumber: ticket.number,
+							dateLabel: new Date().toLocaleString('fr-FR'),
+							totalTtcValue: backendTotals.total_ttc,
+							taxAmountValue: backendTotals.total_tva,
+							totalSavingsValue:
+								backendTotals.line_discounts_ttc +
+								backendTotals.cart_discount_ttc,
+						})
+
+						await printReceipt({
+							printerName: printerSettings.printerName,
+							width: printerSettings.width,
+							companyId: activeCompanyId,
+							receipt: receiptPayload,
+						})
+					}
+
+					if (
+						printerSettings.autoOpenDrawer &&
+						entries.some((e) => e.method.accounting_category === 'cash')
+					) {
+						await openCashDrawer({
+							printerName: printerSettings.printerName,
+							width: printerSettings.width,
+						})
+					}
+				}
+
+				toast.success(`Ticket ${ticket.number} créé`)
+				setPaymentStep('success')
+				setTimeout(() => clearAll(), 500)
+			} catch (error: any) {
+				toast.error(error.message || 'Erreur lors de la création du ticket')
+			} finally {
+				setIsProcessing(false)
+			}
+		},
+		[
+			activeCompanyId,
+			activeSession,
+			buildReceiptPayload,
+			cartDiscountMode,
+			cartDiscountValue,
+			cartManager.cart,
+			cashRegisterId,
+			clearAll,
+			createPosTicket,
+			isAppPosConnected,
+			paymentEntries,
+			pb,
+			totalTtc,
+		],
+	)
 
 	if (isSessionLoading) {
 		return (

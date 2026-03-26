@@ -37,7 +37,7 @@ interface PaymentDialogProps {
 	initialMethod?: PaymentMethod | null
 	isProcessing: boolean
 	onCancel: () => void
-	onConfirm: () => void | Promise<void>
+	onConfirm: (entries: PaymentEntry[]) => void | Promise<void>
 	onPreviewReceipt?: () => void | Promise<void>
 }
 
@@ -161,15 +161,15 @@ export function PaymentDialog({
 
 	// Auto-valider la ligne en cours si elle couvre exactement le reste et qu'on confirme
 	const handleConfirm = async () => {
-		if (pendingMethod && pendingAmountNum > 0) {
-			// Ajouter la ligne en attente avant confirmation
-			const finalEntries: PaymentEntry[] = [
-				...paymentEntries,
-				{ method: pendingMethod, amount: pendingAmountNum },
-			]
-			onPaymentEntriesChange(finalEntries)
-		}
-		await onConfirm()
+		const finalEntries: PaymentEntry[] =
+			pendingMethod && pendingAmountNum > 0
+				? [
+						...paymentEntries,
+						{ method: pendingMethod, amount: pendingAmountNum },
+					]
+				: [...paymentEntries]
+		onPaymentEntriesChange(finalEntries)
+		await onConfirm(finalEntries)
 	}
 
 	return (
@@ -262,31 +262,47 @@ export function PaymentDialog({
 										const IconComponent =
 											iconMap[method.icon || 'Receipt'] || Receipt
 										const isSelected = pendingMethod?.id === method.id
+										const isDefaultColor =
+											!method.color ||
+											method.color === '#f8fafc' ||
+											method.color === '#ffffff'
 
 										return (
-											<Button
+											<button
 												key={method.id}
 												type='button'
-												variant={isSelected ? 'default' : 'outline'}
-												className='h-16 flex-col gap-1'
 												onClick={() => handleSelectMethod(method)}
 												style={
 													isSelected
 														? {
-																backgroundColor: method.color || undefined,
-																borderColor: method.color || undefined,
-																color: method.text_color || undefined,
+																backgroundColor: isDefaultColor
+																	? 'hsl(var(--primary))'
+																	: method.color,
+																borderColor: isDefaultColor
+																	? 'hsl(var(--primary))'
+																	: method.color,
+																color: isDefaultColor
+																	? 'hsl(var(--primary-foreground))'
+																	: method.text_color ||
+																		'hsl(var(--primary-foreground))',
+																borderWidth: '2px',
+																borderStyle: 'solid',
 															}
 														: {
-																borderColor: method.color || undefined,
+																backgroundColor: 'transparent',
+																borderColor: 'hsl(var(--border))',
+																color: 'hsl(var(--foreground))',
+																borderWidth: '1px',
+																borderStyle: 'solid',
 															}
 												}
+												className='h-16 w-full flex flex-col items-center justify-center gap-1 rounded-md text-sm font-medium transition-colors cursor-pointer'
 											>
 												<IconComponent className='h-4 w-4' />
 												<span className='text-[11px] leading-tight text-center'>
 													{method.name}
 												</span>
-											</Button>
+											</button>
 										)
 									})}
 								</div>
