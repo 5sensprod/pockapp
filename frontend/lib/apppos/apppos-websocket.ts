@@ -1,6 +1,6 @@
 // frontend/lib/apppos/apppos-websocket.ts
 
-import { APPPOS_API_BASE_URL } from './apppos-config'
+import { getAppPosApiBaseUrl } from './apppos-config'
 import type { AppPosProduct } from './apppos-types'
 
 export type AppPosProductsUpdatedPayload = {
@@ -35,7 +35,7 @@ class AppPosWebSocketManager {
 			return
 		}
 
-		const httpBase = APPPOS_API_BASE_URL.replace(/\/+$/, '')
+		const httpBase = getAppPosApiBaseUrl().replace(/\/+$/, '')
 		const wsBase = httpBase
 			.replace(/^http:\/\//, 'ws://')
 			.replace(/^https:\/\//, 'wss://')

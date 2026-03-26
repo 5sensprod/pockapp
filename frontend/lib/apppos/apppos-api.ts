@@ -1,7 +1,7 @@
 // frontend/lib/apppos/apppos-api.ts
 // Service API pour communiquer avec l'API AppPOS (NeDB/Express)
 
-import { APPPOS_API_BASE_URL } from './apppos-config'
+import { getAppPosApiBaseUrl } from './apppos-config'
 import type {
 	AppPosApiResponse,
 	AppPosBrand,
@@ -15,7 +15,6 @@ import type {
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-const APPPOS_BASE_URL = APPPOS_API_BASE_URL
 
 // Stockage du token — persisté en sessionStorage pour survivre aux rechargements
 const APPPOS_TOKEN_KEY = 'apppos_auth_token'
@@ -28,7 +27,7 @@ async function fetchAppPos<T>(
 	endpoint: string,
 	options: RequestInit = {},
 ): Promise<T> {
-	const url = `${APPPOS_BASE_URL}${endpoint}`
+	const url = `${getAppPosApiBaseUrl()}${endpoint}`
 
 	const headers: HeadersInit = {
 		'Content-Type': 'application/json',
