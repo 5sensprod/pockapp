@@ -1,8 +1,10 @@
+// frontend/routes/index.tsx
+import { ModulePageShell } from '@/components/module-ui'
 import { poles } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
+import { homeDashboardManifest } from '@/modules/home'
 import { GetNetworkInfo } from '@/wailsjs/go/main/App'
 import { useQuery } from '@tanstack/react-query'
-// frontend/routes/index.tsx
 import { Link, createFileRoute } from '@tanstack/react-router'
 import QRCode from 'react-qr-code'
 import { UpdateChecker } from '../components/UpdateChecker'
@@ -16,7 +18,6 @@ const UTILISATEUR_ALLOWED_MODULES = ['stock']
 function isWailsApp() {
 	if (typeof window === 'undefined') return false
 	const w = window as any
-	// Wails expose généralement `window.go` et `window.runtime`
 	return Boolean(w.go?.main?.App && w.runtime)
 }
 
@@ -34,39 +35,25 @@ function Dashboard() {
 		}))
 		.filter((pole) => pole.modules.length > 0)
 
-	return (
-		<div className='container mx-auto px-6 py-8 max-w-7xl'>
-			<div className='mb-8'>
-				<div className='flex items-start justify-between gap-6'>
-					<div>
-						<h1 className='text-3xl font-bold mb-2'>Tableau de bord</h1>
-						<p className='text-muted-foreground'>
-							Sélectionnez un module pour commencer
-						</p>
-					</div>
-
-					{isWailsApp() && !isUtilisateur ? (
-						<>
-							<div className='mt-8'>
-								<h2>Mises à jour</h2>
-								<UpdateChecker />
-							</div>
-
-							<NetworkQRCode />
-						</>
-					) : null}
-				</div>
+	const headerBadge =
+		isWailsApp() && !isUtilisateur ? (
+			<div className='flex items-center gap-3'>
+				<UpdateChecker />
+				<NetworkQRCode />
 			</div>
+		) : null
 
+	return (
+		<ModulePageShell manifest={homeDashboardManifest} badge={headerBadge}>
 			<div className='space-y-10'>
 				{visiblePoles.map((pole) => (
 					<section key={pole.id}>
-						<div className='flex items-center justify-between mb-4'>
-							<div
-								className={`px-3 py-1 rounded-full text-sm font-semibold ${pole.color}`}
+						<div className='mb-4'>
+							<span
+								className={`inline-flex px-3 py-1 rounded-full text-sm font-semibold ${pole.color}`}
 							>
 								{pole.name}
-							</div>
+							</span>
 						</div>
 
 						<div className='grid md:grid-cols-3 gap-4'>
@@ -77,7 +64,7 @@ function Dashboard() {
 					</section>
 				))}
 			</div>
-		</div>
+		</ModulePageShell>
 	)
 }
 
@@ -87,41 +74,30 @@ function NetworkQRCode() {
 	const { data } = useQuery({
 		queryKey: ['networkInfo'],
 		queryFn: async () => {
-			// ✅ Sécurité : on ne lance l'appel que si Wails est présent
-			if (isWails) {
-				return GetNetworkInfo()
-			}
-			// En mode web distant, on retourne une valeur par défaut
-			// ou on récupère l'URL actuelle du navigateur
+			if (isWails) return GetNetworkInfo()
 			return { url: window.location.origin }
 		},
 		staleTime: 10_000,
-		// On ne rafraîchit pas automatiquement si on est en mode Web
 		refetchInterval: isWails ? 10_000 : false,
 	})
 
 	const url = data?.url ?? ''
 
 	return (
-		<div className='border rounded-lg p-3 bg-background'>
-			<div className='text-sm font-semibold mb-2'>Accès distant</div>
-
-			<div className='flex items-center gap-3'>
-				<div className='bg-white rounded-md p-2'>
-					{url ? (
-						<QRCode value={url} size={96} />
-					) : (
-						<div className='w-[96px] h-[96px] rounded-md bg-muted' />
-					)}
+		<div className='flex items-center gap-2 border rounded-md px-2.5 py-1 bg-background'>
+			<div className='bg-white rounded p-0.5 shrink-0'>
+				{url ? (
+					<QRCode value={url} size={28} />
+				) : (
+					<div className='w-7 h-7 rounded bg-muted' />
+				)}
+			</div>
+			<div className='min-w-0 hidden md:block'>
+				<div className='text-[10px] text-muted-foreground leading-tight'>
+					Accès distant
 				</div>
-
-				<div className='min-w-0'>
-					<div className='text-xs text-muted-foreground'>
-						Scannez pour ouvrir
-					</div>
-					<div className='text-sm font-medium truncate max-w-[240px]'>
-						{url || '—'}
-					</div>
+				<div className='text-xs font-medium truncate max-w-[180px] leading-tight'>
+					{url || '—'}
 				</div>
 			</div>
 		</div>
@@ -134,19 +110,17 @@ function ModuleCard({ module }: { module: any }) {
 	return (
 		<div className='border rounded-lg p-4 hover:shadow-md transition-shadow flex flex-col justify-between'>
 			<div>
-				<div className='flex items-center justify-between mb-3'>
-					<div className='flex items-center gap-2'>
-						<div className='w-10 h-10 rounded-lg bg-muted flex items-center justify-center'>
-							{Icon && <Icon className={`h-5 w-5 ${module.iconColor}`} />}
-						</div>
-						<div>
-							<h2 className={`text-lg font-semibold ${module.color}`}>
-								{module.name}
-							</h2>
-							<p className='text-xs text-muted-foreground'>
-								{module.pole.toUpperCase()}
-							</p>
-						</div>
+				<div className='flex items-center gap-2 mb-3'>
+					<div className='w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0'>
+						{Icon && <Icon className={`h-5 w-5 ${module.iconColor}`} />}
+					</div>
+					<div>
+						<h2 className={`text-base font-semibold ${module.color}`}>
+							{module.name}
+						</h2>
+						<p className='text-xs text-muted-foreground'>
+							{module.pole.toUpperCase()}
+						</p>
 					</div>
 				</div>
 				<p className='text-sm text-muted-foreground'>{module.description}</p>

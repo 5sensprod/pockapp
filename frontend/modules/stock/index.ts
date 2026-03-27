@@ -10,7 +10,7 @@ export const manifest: ModuleManifest = {
 	description: 'Catalogue & produits',
 	pole: 'commerce',
 	icon: Package,
-	route: '/stock',
+	route: '/stock-apppos', // ← route principale corrigée
 	color: 'text-orange-500',
 	iconColor: 'text-orange-500',
 	enabled: true,
@@ -19,16 +19,18 @@ export const manifest: ModuleManifest = {
 	paid: true,
 	plan: 'pro',
 
-	// Aliases : ces routes sont reconnues comme appartenant au module stock
-	// → la Sidebar stock s'affiche sur /inventory-apppos et /stock-apppos
-	aliases: ['/inventory-apppos', '/stock-apppos'],
+	// /stock gardé en alias au cas où des liens internes l'utilisent encore
+	// /inventory-apppos reste alias pour l'inventaire physique
+	aliases: ['/stock', '/inventory-apppos'],
 
 	sidebarMenu: [
 		{
 			id: 'stock',
 			label: 'Stock',
 			icon: Database,
-			items: [{ label: 'Catalogue produits', to: '/stock', icon: Database }],
+			items: [
+				{ label: 'Catalogue produits', to: '/stock-apppos', icon: Database },
+			],
 		},
 		{
 			id: 'inventory',

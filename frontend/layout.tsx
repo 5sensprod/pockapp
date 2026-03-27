@@ -9,6 +9,7 @@ import { isWails, tryWailsSub, tryWailsVoid } from '@/lib/wails-bridge'
 import { poles } from '@/modules/_registry'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
+import { homeDashboardManifest } from '@/modules/home'
 import { toast } from 'sonner'
 
 import { CheckForUpdates } from '@/wailsjs/go/main/App'
@@ -17,6 +18,8 @@ import { EventsOn } from '@/wailsjs/runtime/runtime'
 const normalizePath = (path: string) => (path || '/').replace(/\/+$/, '') || '/'
 
 function findModuleByPath(pathname: string): ModuleManifest | null {
+	if (pathname === '/') return homeDashboardManifest
+
 	let best: ModuleManifest | null = null
 	const norm = (s: string) => (s || '/').replace(/\/+$/, '')
 	const path = norm(pathname)
@@ -25,18 +28,14 @@ function findModuleByPath(pathname: string): ModuleManifest | null {
 		for (const m of pole.modules || []) {
 			if (!m?.route) continue
 
-			// Vérifie la route principale
 			const route = norm(m.route)
 			if (path === route || path.startsWith(`${route}/`)) {
 				if (!best || route.length > best.route.length) best = m
 			}
 
-			// Vérifie les aliases — routes hors préfixe rattachées au même module
-			// Ex : /inventory-apppos est un alias du module stock
 			for (const alias of m.aliases ?? []) {
 				const aliasNorm = norm(alias)
 				if (path === aliasNorm || path.startsWith(`${aliasNorm}/`)) {
-					// On compare avec la longueur de l'alias pour le score
 					if (!best || aliasNorm.length > norm(best.route).length) best = m
 				}
 			}
@@ -59,7 +58,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const hasSidebar = !!currentModule?.sidebarMenu?.length
 	const sidebarMenu = currentModule?.sidebarMenu || []
 
-	// ✅ FIX : on récupère isLoading pour éviter le redirect prématuré
 	const {
 		activeCompanyId,
 		companies,
@@ -93,19 +91,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	}, [currentModule?.id])
 
 	const handleToggleGroup = (groupId: string) => {
+		// Ferme si déjà actif
 		if (activeGroup === groupId) {
 			setManuallyClosed(true)
 			setActiveGroup(null)
 			return
 		}
+
+		// Ouvre le panneau — PAS de navigation automatique
+		// C'est la Sidebar qui gère la navigation directe pour les groupes à 1 item
 		setManuallyClosed(false)
 		setActiveGroup(groupId)
-
-		const group = sidebarMenu.find((g) => g.id === groupId)
-		const firstItem = group?.items?.[0]
-		if (firstItem?.to) {
-			navigate({ to: firstItem.to as any })
-		}
 	}
 
 	const handleClosePanel = () => {
@@ -172,6 +168,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		needsSetup,
 		setupLoading,
 	])
+
 	if (pathname === '/setup') return <>{children}</>
 	if (pathname === '/login') return <>{children}</>
 	if (setupLoading)
