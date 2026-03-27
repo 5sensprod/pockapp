@@ -16,13 +16,20 @@ function getModuleIdFromPath(pathname: string): string | null {
 
 export function useSaveModuleRoute() {
 	const location = useLocation()
-
 	useEffect(() => {
 		if (IGNORED_ROUTES.includes(location.pathname)) return
 		const moduleId = getModuleIdFromPath(location.pathname)
 		if (!moduleId) return
 
-		// ⚠️ On sauvegarde location.href pour garder les paramètres (?filtre=avo)
-		setLastRouteForModule(moduleId, location.href)
-	}, [location.pathname, location.href]) // Ajout des dépendances
+		// ✅ Ne pas sauvegarder la route racine du module (évite les boucles)
+		const module = allModules.find((m) => m.id === moduleId)
+		if (
+			!module ||
+			location.pathname === module.route ||
+			location.pathname === `${module.route}/`
+		)
+			return
+
+		setLastRouteForModule(moduleId, location.pathname)
+	}, [location.pathname])
 }

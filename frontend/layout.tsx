@@ -59,7 +59,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const hasSidebar = !!currentModule?.sidebarMenu?.length
 	const sidebarMenu = currentModule?.sidebarMenu || []
 
-	const { activeCompanyId, companies } = useActiveCompany()
+	// ✅ FIX : on récupère isLoading pour éviter le redirect prématuré
+	const {
+		activeCompanyId,
+		companies,
+		isLoading: companiesLoading,
+	} = useActiveCompany()
 
 	// Sync activeGroup avec l'URL (sauf si fermé manuellement)
 	useEffect(() => {
@@ -149,16 +154,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		if (setupLoading || needsSetup || !isAuthenticated) return
 		if (!currentModule) return
 		if (!currentModule.requiresCompany) return
-		const noCompany = !companies || companies.length === 0 || !activeCompanyId
+		if (companiesLoading) return
+		const noCompany = companies.length === 0 || !activeCompanyId
 		if (noCompany && pathname !== '/') {
-			toast.error(
-				"Tu dois d'abord créer une entreprise avant d'accéder à ce module.",
-			)
+			console.log('[Layout] ⛔ redirect vers / car noCompany=true')
+			toast.error("Tu dois d'abord créer une entreprise...")
 			navigate({ to: '/' })
 		}
 	}, [
 		activeCompanyId,
 		companies,
+		companiesLoading,
 		currentModule,
 		isAuthenticated,
 		navigate,
@@ -166,7 +172,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		needsSetup,
 		setupLoading,
 	])
-
 	if (pathname === '/setup') return <>{children}</>
 	if (pathname === '/login') return <>{children}</>
 	if (setupLoading)

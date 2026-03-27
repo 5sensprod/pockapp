@@ -6,7 +6,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 export const Route = createFileRoute('/connect/')({
 	beforeLoad: () => {
 		const last = getLastRouteForModule('connect')
-		if (last) {
+		if (last && last !== '/connect' && last !== '/connect/') {
 			throw redirect({ to: last as any })
 		}
 	},
