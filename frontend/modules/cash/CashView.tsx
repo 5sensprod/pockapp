@@ -1,14 +1,12 @@
 // frontend/modules/cash/CashView.tsx
 //
-// Composant PRESENTATIONAL — zéro logique métier, zéro hook.
-// Reçoit tout via les props (type CashModuleData depuis useCashModule).
+// Grille bento asymétrique — style Stitch "Editorial Precision"
+// PrinterSettingsCard : col-span-7 featured
+// DisplaySettingsCard : col-span-5
+// ScannerSettingsCard : col-span-4
+// PaymentMethodsCard  : col-span-8
 
-// import { EmptyState } from '@/components/module-ui'
-// import { ShoppingCart } from 'lucide-react'
-import { CashMovementDialog } from './components/movements/CashMovementDialog'
-import { RapportXDialog } from './components/reports/RapportXDialog'
-import { CloseSessionDialog } from './components/sessions/CloseSessionDialog'
-
+import { ScannerSettingsCard } from './ScannerSettingsCard'
 import {
 	DisplaySettingsCard,
 	NoRegisterState,
@@ -16,29 +14,22 @@ import {
 	PaymentMethodsCard,
 	PrinterSettingsCard,
 } from './components'
-
-import { ScannerSettingsCard } from './ScannerSettingsCard'
+import { CashMovementDialog } from './components/movements/CashMovementDialog'
+import { RapportXDialog } from './components/reports/RapportXDialog'
+import { CloseSessionDialog } from './components/sessions/CloseSessionDialog'
 import type { CashModuleData } from './useCashModule'
 
-// CashView reçoit exactement ce que retourne useCashModule()
 type CashViewProps = CashModuleData
 
 export function CashView({
-	// Registres
 	selectedRegisterId,
-
 	handleCreateRegister,
 	isCreatingRegister,
 	hasNoRegisters,
-
-	// Session
-
 	activeSession,
 	lastKnownFloat,
 	lastClosedAtLabel,
 	openSessionMutationPending,
-
-	// Dialogs state
 	showOpenDialog,
 	setShowOpenDialog,
 	showCloseDialog,
@@ -47,14 +38,9 @@ export function CashView({
 	setShowRapportX,
 	showMovement,
 	setShowMovement,
-
-	// Handlers
 	handleOpenSession,
-
-	// Data
 	rapportX,
 }: CashViewProps) {
-	// ── Early return : aucune caisse configurée ──────────────────────────────
 	if (hasNoRegisters) {
 		return (
 			<NoRegisterState
@@ -66,7 +52,6 @@ export function CashView({
 
 	return (
 		<>
-			{/* ── Dialog ouverture de session ─────────────────────────────────── */}
 			<OpenSessionDialog
 				open={showOpenDialog}
 				onOpenChange={setShowOpenDialog}
@@ -76,21 +61,31 @@ export function CashView({
 				isSubmitting={openSessionMutationPending}
 			/>
 
-			{/* ── Grille principale ───────────────────────────────────────────── */}
-			<div className='flex flex-col gap-6'>
-				{/* Section 1 : Configurations (3 colonnes sur xl) */}
-				<section className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
+			{/* ── Bento grid asymétrique 12 colonnes — style Stitch ─────────────── */}
+			{/* Fond surface-container-low (#F1F3FF) → cards bg-card ressortent par lift tonal */}
+			<div className='grid grid-cols-1 md:grid-cols-12 gap-6'>
+				{/* Imprimante — featured, col 7 */}
+				<div className='md:col-span-7'>
 					<PrinterSettingsCard />
+				</div>
 
+				{/* Afficheur client — col 5 */}
+				<div className='md:col-span-5'>
 					<DisplaySettingsCard />
+				</div>
 
+				{/* Scanette — col 4 */}
+				<div className='md:col-span-4'>
 					<ScannerSettingsCard />
+				</div>
 
+				{/* Moyens de paiement — col 8 */}
+				<div className='md:col-span-8'>
 					<PaymentMethodsCard />
-				</section>
+				</div>
 			</div>
 
-			{/* ── Dialogs conditionnels (session active requise) ──────────────── */}
+			{/* Dialogs conditionnels */}
 			{activeSession && selectedRegisterId && (
 				<>
 					<CloseSessionDialog
@@ -98,13 +93,11 @@ export function CashView({
 						onOpenChange={setShowCloseDialog}
 						session={activeSession}
 					/>
-
 					<RapportXDialog
 						open={showRapportX}
 						onOpenChange={setShowRapportX}
 						rapport={rapportX}
 					/>
-
 					<CashMovementDialog
 						open={showMovement}
 						onOpenChange={setShowMovement}

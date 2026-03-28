@@ -1,15 +1,18 @@
 // frontend/modules/cash/components/infos/PaymentMethodsCard.tsx
-import { ModuleCard, StatusBadge } from '@/components/module-ui'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+//
+// Layout Stitch : grille de tuiles icône + label + statut dot
+// Pas de liste — tuiles cliquables centrées style "payment tile"
+
+import { ModuleCard } from '@/components/module-ui'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { usePaymentMethods } from '@/lib/queries/payment-methods'
+import { cn } from '@/lib/utils'
 import {
 	ArrowRightLeft,
 	Banknote,
 	CreditCard,
+	Plus,
 	Receipt,
-	Settings,
 } from 'lucide-react'
 import * as React from 'react'
 import { PaymentMethodsManager } from '../payment-methods/PaymentMethodsManager'
@@ -26,83 +29,116 @@ export function PaymentMethodsCard() {
 		ArrowRightLeft,
 	}
 
+	// Sous-titre dynamique avec les noms des méthodes
+	const subtitle = paymentMethods?.length
+		? paymentMethods
+				.slice(0, 3)
+				.map((m) => m.name)
+				.join(', ') + (paymentMethods.length > 3 ? '…' : '')
+		: undefined
+
+	const headerRight = (
+		<button
+			type='button'
+			onClick={() => setShowManager(true)}
+			onKeyDown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') setShowManager(true)
+			}}
+			className='text-[11px] font-medium text-primary hover:underline transition-colors'
+		>
+			Gérer tout
+		</button>
+	)
+
 	return (
 		<>
 			<ModuleCard
 				icon={CreditCard}
 				title='Moyens de paiement'
-				className='md:col-span-2 xl:col-span-1'
+				headerRight={headerRight}
 			>
-				<div className='space-y-3 text-sm'>
-					{isLoading ? (
-						<div className='text-sm text-muted-foreground'>Chargement...</div>
-					) : (
-						<>
-							{paymentMethods?.map((method) => {
-								const IconComponent = iconMap[method.icon] || Receipt
+				{/* Sous-titre méthodes */}
+				{subtitle && (
+					<p className='text-[10px] uppercase tracking-wider text-muted-foreground -mt-2 mb-4'>
+						{subtitle}
+					</p>
+				)}
 
-								return (
-									<div
-										key={method.id}
-										className='flex items-center justify-between rounded-md border border-border/40 px-3 py-2 bg-muted/20'
-									>
-										<div className='flex items-center gap-2'>
-											<div
-												className='flex h-7 w-7 items-center justify-center rounded-md shrink-0'
-												style={{
-													backgroundColor: method.color,
-													color: method.text_color,
-												}}
-											>
-												<IconComponent className='h-3.5 w-3.5' />
-											</div>
-											<div>
-												<div className='flex items-center gap-2'>
-													<span className='text-sm font-medium'>
-														{method.name}
-													</span>
-													{method.type === 'custom' && (
-														<Badge
-															variant='outline'
-															className='text-[10px] bg-primary/5 text-primary border-0'
-														>
-															Custom
-														</Badge>
-													)}
-												</div>
-												{method.description && (
-													<div className='text-xs text-muted-foreground'>
-														{method.description}
-													</div>
-												)}
-											</div>
-										</div>
-										<StatusBadge
-											label={method.enabled ? 'Activé' : 'Désactivé'}
-											variant={method.enabled ? 'open' : 'closed'}
-										/>
+				{isLoading ? (
+					<div className='text-xs text-muted-foreground py-4 text-center'>
+						Chargement...
+					</div>
+				) : (
+					<div className='flex flex-wrap gap-2'>
+						{paymentMethods?.map((method) => {
+							const IconComponent = iconMap[method.icon] || Receipt
+							return (
+								<button
+									key={method.id}
+									type='button'
+									onClick={() => setShowManager(true)}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') setShowManager(true)
+									}}
+									className={cn(
+										'group flex flex-col items-center gap-1.5 py-3 w-24 rounded-lg text-center shrink-0',
+										'bg-muted/30 border border-border/20',
+										'hover:bg-card hover:shadow-sm hover:border-border/40 transition-all',
+										!method.enabled && 'opacity-40 grayscale',
+									)}
+								>
+									{/* Icône — fond neutre, couleur en tinte légère */}
+									<div className='w-8 h-8 rounded-lg bg-muted/60 flex items-center justify-center shrink-0'>
+										<IconComponent className='h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors' />
 									</div>
-								)
-							})}
 
-							{paymentMethods && paymentMethods.length === 0 && (
-								<div className='text-sm text-muted-foreground text-center py-4'>
-									Aucun moyen de paiement configuré
-								</div>
+									{/* Nom */}
+									<span className='text-xs font-medium text-foreground leading-tight group-hover:text-primary transition-colors'>
+										{method.name}
+									</span>
+
+									{/* Dot statut */}
+									<span
+										className={cn(
+											'h-1.5 w-1.5 rounded-full',
+											method.enabled
+												? 'bg-emerald-500'
+												: 'bg-muted-foreground/40',
+										)}
+									/>
+								</button>
+							)
+						})}
+
+						{/* Tuile "Ajouter" */}
+						<button
+							type='button'
+							onClick={() => setShowManager(true)}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') setShowManager(true)
+							}}
+							className={cn(
+								'group flex flex-col items-center gap-2 p-4 rounded-lg text-center',
+								'bg-background border border-dashed border-border/30',
+								'hover:bg-card hover:border-primary/30 transition-all',
 							)}
+						>
+							<div className='w-8 h-8 rounded-lg bg-muted/60 flex items-center justify-center'>
+								<Plus className='h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors' />
+							</div>
+							<span className='text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors'>
+								Ajouter
+							</span>
+							<span className='h-1.5 w-1.5' /> {/* spacer alignement */}
+						</button>
+					</div>
+				)}
 
-							<Button
-								variant='ghost'
-								size='sm'
-								className='w-full justify-start gap-2 text-xs text-muted-foreground'
-								onClick={() => setShowManager(true)}
-							>
-								<Settings className='h-3.5 w-3.5' />
-								Configurer les moyens de paiement
-							</Button>
-						</>
-					)}
-				</div>
+				{paymentMethods?.length === 0 && !isLoading && (
+					<div className='text-xs text-muted-foreground text-center py-4'>
+						Aucun moyen de paiement configuré
+					</div>
+				)}
 			</ModuleCard>
 
 			<PaymentMethodsManager open={showManager} onOpenChange={setShowManager} />

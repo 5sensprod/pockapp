@@ -4,25 +4,32 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* ── Stitch "Editorial Precision" tokens ──────────────────────────────
+       surface             (#F9F9FF) → background / card
+       surface-container-low (#F1F3FF) → muted (fond de page, header)
+       on-surface          (#19315D) → foreground
+       primary             (#4D44E3) → primary
+       outline-variant     (#9BB2E5) → border
+    ──────────────────────────────────────────────────────────────────── */
+    --background: 240 100% 99.6%; /* #F9F9FF — surface Stitch       */
+    --foreground: 220 57% 23%; /* #19315D — on-surface Stitch    */
+    --card: 0 0% 100%; /* #FFFFFF — surface-container-lowest */
+    --card-foreground: 220 57% 23%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --popover-foreground: 220 57% 23%;
+    --primary: 244 46% 20%; /* #1E1B4B — deep indigo sidebar  */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 234 100% 97%; /* #F1F3FF — surface-container-low */
+    --secondary-foreground: 220 57% 23%;
+    --muted: 220 14% 93%; /* gris-bleu neutre — header barre */
+    --muted-foreground: 220 22% 46%; /* on-surface-variant             */
+    --accent: 234 100% 97%;
+    --accent-foreground: 220 57% 23%;
+    --destructive: 350 60% 47%; /* #9E3F4E — error Stitch         */
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 55% 88%; /* outline-variant Stitch         */
+    --input: 234 100% 97%;
+    --ring: 244 75% 58%;
     --radius: 0.5rem;
   }
 
