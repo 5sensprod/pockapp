@@ -9,7 +9,7 @@
 import { ModulePageShell, StatusBadge } from '@/components/module-ui'
 import { Button } from '@/components/ui/button'
 import { CashView } from './CashView'
-import { manifest } from './index'
+import { manifest } from './manifest'
 import { useCashModule } from './useCashModule'
 
 export function CashPage() {

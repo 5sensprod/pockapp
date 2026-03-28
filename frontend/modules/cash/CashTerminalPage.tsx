@@ -1,9 +1,15 @@
 // frontend/modules/cash/CashTerminalPage.tsx
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ShieldAlert } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
+import {
+	EmptyState,
+	ModulePageShell,
+	StatusBadge,
+} from '@/components/module-ui'
+import { Button } from '@/components/ui/button'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import {
 	decrementAppPosProductsStock,
@@ -30,6 +36,12 @@ import { clearLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import { CreateProductDialog } from '@/modules/cash/CreateProductDialog'
+import { OpenSessionDialog } from './components'
+import { CashMovementDialog } from './components/movements/CashMovementDialog'
+import { RapportXDialog } from './components/reports/RapportXDialog'
+import { CloseSessionDialog } from './components/sessions/CloseSessionDialog'
+import { manifest } from './manifest'
+import { useCashModule } from './useCashModule'
 
 import {
 	type AppPosProduct,
@@ -58,6 +70,15 @@ export function CashTerminalPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const { user } = useAuth()
 	const pb = usePocketBase()
+
+	// ── Hook module cash — fournit session, dialogs, rapport X, mouvements ───
+	const cash = useCashModule()
+	// Synchroniser le registre sélectionné avec l'URL
+	React.useEffect(() => {
+		if (cashRegisterId && cash.selectedRegisterId !== cashRegisterId) {
+			cash.setSelectedRegisterId(cashRegisterId)
+		}
+	}, [cashRegisterId, cash.selectedRegisterId, cash.setSelectedRegisterId])
 
 	const [productSearch, setProductSearch] = React.useState('')
 	const [cartDiscountMode, setCartDiscountMode] = React.useState<
@@ -291,13 +312,6 @@ export function CashTerminalPage() {
 
 		connectToAppPos()
 	}, [])
-
-	React.useEffect(() => {
-		if (!isSessionLoading && !isSessionOpen) {
-			toast.error('Aucune session ouverte pour cette caisse')
-			navigate({ to: '/cash' })
-		}
-	}, [isSessionLoading, isSessionOpen, navigate])
 
 	const handleProductCreated = React.useCallback(
 		(product: any) => {
@@ -634,19 +648,148 @@ export function CashTerminalPage() {
 		],
 	)
 
+	// ── Header partagé (présent sur tous les états) ─────────────────────────
+	const headerBadge = (
+		<StatusBadge
+			label={cash.sessionLabel}
+			variant={cash.sessionVariant}
+			sublabel={cash.today}
+		/>
+	)
+
+	const headerActions = (
+		<div className='flex items-center gap-2'>
+			{/* Sélecteur caisse */}
+			{cash.registers && cash.registers.length > 0 && (
+				<select
+					className='h-7 rounded-md border bg-card px-2 text-[11px]'
+					value={cashRegisterId}
+					onChange={(e) => cash.setSelectedRegisterId(e.target.value)}
+				>
+					{cash.registers.map((reg) => (
+						<option key={reg.id} value={reg.id}>
+							{reg.code ? `${reg.code} — ${reg.name}` : reg.name}
+						</option>
+					))}
+				</select>
+			)}
+
+			{/* Fond de caisse */}
+			<span className='text-[11px] text-muted-foreground border-l pl-2'>
+				Fond{' '}
+				<span className='font-medium text-foreground'>
+					{cash.activeSession?.opening_float?.toFixed(2) ?? '—'} €
+				</span>
+			</span>
+
+			{/* Actions session ouverte */}
+			{cash.isSessionOpen && (
+				<>
+					<Button size='sm' variant='outline' onClick={cash.handleShowRapportX}>
+						Rapport X
+					</Button>
+					<Button size='sm' variant='outline' onClick={cash.handleShowMovement}>
+						Mouvement
+					</Button>
+				</>
+			)}
+
+			{/* CTA principal session */}
+			<Button
+				size='sm'
+				onClick={cash.handleToggleSession}
+				disabled={!cash.canToggleSession}
+			>
+				{cash.isSessionOpen ? 'Clôturer la session' : 'Ouvrir une session'}
+			</Button>
+		</div>
+	)
+
 	if (isSessionLoading) {
 		return (
-			<div className='flex h-screen items-center justify-center'>
-				<Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
-			</div>
+			<ModulePageShell
+				manifest={manifest}
+				badge={headerBadge}
+				actions={headerActions}
+			>
+				<div className='flex flex-1 items-center justify-center py-24'>
+					<Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+				</div>
+			</ModulePageShell>
 		)
 	}
 
-	if (!isSessionOpen) return null
+	if (!isSessionOpen) {
+		return (
+			<ModulePageShell
+				manifest={manifest}
+				badge={headerBadge}
+				actions={headerActions}
+			>
+				{/* Dialogs accessibles même sans session active */}
+				<OpenSessionDialog
+					open={cash.showOpenDialog}
+					onOpenChange={cash.setShowOpenDialog}
+					onSubmit={cash.handleOpenSession}
+					lastKnownFloat={cash.lastKnownFloat}
+					lastClosedAtLabel={cash.lastClosedAtLabel}
+					isSubmitting={cash.openSessionMutationPending}
+				/>
+				<EmptyState
+					icon={ShieldAlert}
+					title='Aucune session ouverte'
+					description={`La caisse "${currentRegister?.name ?? cashRegisterId}" n'a pas de session active. Ouvrez une session depuis le tableau de bord Caisse avant d'accéder au terminal.`}
+					fullPage
+					actions={[
+						{
+							label: 'Ouvrir une session',
+							onClick: cash.handleToggleSession,
+						},
+						{
+							label: 'Tableau de bord',
+							variant: 'secondary',
+							onClick: () => {
+								clearLastRouteForModule('cash')
+								navigate({ to: '/cash' })
+							},
+						},
+					]}
+				/>
+			</ModulePageShell>
+		)
+	}
+
+	// Dialogs communs à tous les états session ouverte
+	const sessionDialogs =
+		cash.activeSession && cashRegisterId ? (
+			<>
+				<CloseSessionDialog
+					open={cash.showCloseDialog}
+					onOpenChange={cash.setShowCloseDialog}
+					session={cash.activeSession}
+				/>
+				<RapportXDialog
+					open={cash.showRapportX}
+					onOpenChange={cash.setShowRapportX}
+					rapport={cash.rapportX}
+				/>
+				<CashMovementDialog
+					open={cash.showMovement}
+					onOpenChange={cash.setShowMovement}
+					sessionId={cash.activeSession.id ?? ''}
+					cashRegisterId={cashRegisterId}
+				/>
+			</>
+		) : null
 
 	if (paymentStep === 'cart') {
 		return (
-			<>
+			<ModulePageShell
+				manifest={manifest}
+				badge={headerBadge}
+				actions={headerActions}
+			>
+				{sessionDialogs}
 				<div className='container mx-auto flex flex-col gap-6 px-6 py-8'>
 					<TerminalHeader
 						registerName={currentRegister?.name || 'Caisse'}
@@ -768,7 +911,7 @@ export function CashTerminalPage() {
 					initialName={productInitialName}
 					onProductCreated={handleProductCreated}
 				/>
-			</>
+			</ModulePageShell>
 		)
 	}
 
