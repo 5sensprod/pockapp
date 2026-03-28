@@ -34,8 +34,8 @@ import {
 	User,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import { CashModuleShell } from '../../CashModuleShell'
 import { useRegisterManager } from '../hooks/useRegisterManager'
-import { CashPageHeader } from '../layout/CashPageHeader'
 import {
 	PaymentMethodBreakdown,
 	VATBreakdownTable,
@@ -87,232 +87,232 @@ export function RapportZPage() {
 	}, [handleExport, rapportZ])
 
 	return (
-		<div className='container mx-auto px-6 py-8'>
-			{/* Header */}
-			<CashPageHeader
-				title='Rapport Z — Clôture Journalière'
-				subtitle='Document fiscal inaltérable conforme NF525'
-				actions={
-					rapportZ && (
-						<>
-							<Button variant='outline' size='sm' onClick={handlePrint}>
-								Imprimer
-							</Button>
-							<Button
-								variant='outline'
-								size='sm'
-								onClick={handleExportWithRapport}
-							>
-								Exporter
-							</Button>
-						</>
-					)
-				}
-			/>
+		<CashModuleShell
+			extraActions={
+				rapportZ ? (
+					<>
+						<Button variant='outline' size='sm' onClick={handlePrint}>
+							Imprimer
+						</Button>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={handleExportWithRapport}
+						>
+							Exporter
+						</Button>
+					</>
+				) : undefined
+			}
+		>
+			<div className='container mx-auto px-6 py-8'>
+				<Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+					<TabsList className='mb-6'>
+						<TabsTrigger value='generate'>
+							<FileText className='h-4 w-4 mr-2' />
+							Générer un rapport
+						</TabsTrigger>
+						<TabsTrigger value='history'>
+							<Calendar className='h-4 w-4 mr-2' />
+							Historique
+						</TabsTrigger>
+					</TabsList>
 
-			<Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-				<TabsList className='mb-6'>
-					<TabsTrigger value='generate'>
-						<FileText className='h-4 w-4 mr-2' />
-						Générer un rapport
-					</TabsTrigger>
-					<TabsTrigger value='history'>
-						<Calendar className='h-4 w-4 mr-2' />
-						Historique
-					</TabsTrigger>
-				</TabsList>
+					{/* ═══════════════════════════════════════════════════════════════════ */}
+					{/* TAB: GÉNÉRER */}
+					{/* ═══════════════════════════════════════════════════════════════════ */}
+					<TabsContent value='generate'>
+						{/* Sélection */}
+						<Card className='mb-6'>
+							<CardHeader>
+								<CardTitle className='text-base'>Sélection</CardTitle>
+								<CardDescription>
+									Choisissez la caisse et la date pour générer le rapport Z
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<div className='grid grid-cols-4 gap-4'>
+									<div className='space-y-2'>
+										<Label htmlFor='register'>Caisse</Label>
+										<select
+											id='register'
+											className='w-full h-10 rounded-md border bg-white px-3 text-sm'
+											value={selectedRegisterId ?? ''}
+											onChange={(e) => {
+												setSelectedRegisterId(e.target.value)
+												setShouldGenerate(false)
+											}}
+											disabled={isRegistersLoading}
+										>
+											<option value=''>Sélectionner une caisse</option>
+											{registers?.map((reg) => (
+												<option key={reg.id} value={reg.id}>
+													{reg.code ? `${reg.code} — ${reg.name}` : reg.name}
+												</option>
+											))}
+										</select>
+									</div>
 
-				{/* ═══════════════════════════════════════════════════════════════════ */}
-				{/* TAB: GÉNÉRER */}
-				{/* ═══════════════════════════════════════════════════════════════════ */}
-				<TabsContent value='generate'>
-					{/* Sélection */}
-					<Card className='mb-6'>
-						<CardHeader>
-							<CardTitle className='text-base'>Sélection</CardTitle>
-							<CardDescription>
-								Choisissez la caisse et la date pour générer le rapport Z
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<div className='grid grid-cols-4 gap-4'>
-								<div className='space-y-2'>
-									<Label htmlFor='register'>Caisse</Label>
-									<select
-										id='register'
-										className='w-full h-10 rounded-md border bg-white px-3 text-sm'
-										value={selectedRegisterId ?? ''}
-										onChange={(e) => {
-											setSelectedRegisterId(e.target.value)
-											setShouldGenerate(false)
-										}}
-										disabled={isRegistersLoading}
-									>
-										<option value=''>Sélectionner une caisse</option>
-										{registers?.map((reg) => (
-											<option key={reg.id} value={reg.id}>
-												{reg.code ? `${reg.code} — ${reg.name}` : reg.name}
-											</option>
-										))}
-									</select>
-								</div>
+									<div className='space-y-2'>
+										<Label htmlFor='date'>Date</Label>
+										<Input
+											id='date'
+											type='date'
+											value={selectedDate}
+											onChange={(e) => {
+												setSelectedDate(e.target.value)
+												setShouldGenerate(false)
+											}}
+										/>
+									</div>
 
-								<div className='space-y-2'>
-									<Label htmlFor='date'>Date</Label>
-									<Input
-										id='date'
-										type='date'
-										value={selectedDate}
-										onChange={(e) => {
-											setSelectedDate(e.target.value)
-											setShouldGenerate(false)
-										}}
-									/>
-								</div>
+									<div className='space-y-2'>
+										<Label>Statut</Label>
+										<div className='h-10 flex items-center'>
+											{isLoadingCheck ? (
+												<span className='text-sm text-muted-foreground'>
+													Vérification...
+												</span>
+											) : checkResult?.exists ? (
+												<Badge variant='secondary' className='gap-1'>
+													<CheckCircle2 className='h-3 w-3' />
+													Rapport existant
+												</Badge>
+											) : checkResult?.can_generate ? (
+												<Badge
+													variant='outline'
+													className='gap-1 text-emerald-600'
+												>
+													<FileText className='h-3 w-3' />
+													{checkResult.available_sessions} session(s)
+													disponible(s)
+												</Badge>
+											) : (
+												<Badge
+													variant='outline'
+													className='gap-1 text-amber-600'
+												>
+													<AlertCircle className='h-3 w-3' />
+													Aucune session
+												</Badge>
+											)}
+										</div>
+									</div>
 
-								<div className='space-y-2'>
-									<Label>Statut</Label>
-									<div className='h-10 flex items-center'>
-										{isLoadingCheck ? (
-											<span className='text-sm text-muted-foreground'>
-												Vérification...
-											</span>
-										) : checkResult?.exists ? (
-											<Badge variant='secondary' className='gap-1'>
-												<CheckCircle2 className='h-3 w-3' />
-												Rapport existant
-											</Badge>
-										) : checkResult?.can_generate ? (
-											<Badge
-												variant='outline'
-												className='gap-1 text-emerald-600'
-											>
-												<FileText className='h-3 w-3' />
-												{checkResult.available_sessions} session(s)
-												disponible(s)
-											</Badge>
-										) : (
-											<Badge variant='outline' className='gap-1 text-amber-600'>
-												<AlertCircle className='h-3 w-3' />
-												Aucune session
-											</Badge>
-										)}
+									<div className='flex items-end'>
+										<Button
+											onClick={handleGenerate}
+											disabled={
+												!selectedRegisterId ||
+												!selectedDate ||
+												isLoadingRapport ||
+												(!checkResult?.exists && !checkResult?.can_generate)
+											}
+											className='w-full'
+										>
+											{isLoadingRapport
+												? 'Génération...'
+												: checkResult?.exists
+													? 'Afficher le rapport'
+													: 'Générer le rapport'}
+										</Button>
 									</div>
 								</div>
-
-								<div className='flex items-end'>
-									<Button
-										onClick={handleGenerate}
-										disabled={
-											!selectedRegisterId ||
-											!selectedDate ||
-											isLoadingRapport ||
-											(!checkResult?.exists && !checkResult?.can_generate)
-										}
-										className='w-full'
-									>
-										{isLoadingRapport
-											? 'Génération...'
-											: checkResult?.exists
-												? 'Afficher le rapport'
-												: 'Générer le rapport'}
-									</Button>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-
-					{/* Erreur */}
-					{isError && (
-						<Card className='border-destructive mb-6'>
-							<CardContent className='pt-6'>
-								<p className='text-sm text-destructive'>
-									{(error as Error)?.message ||
-										'Erreur lors de la génération du rapport Z'}
-								</p>
 							</CardContent>
 						</Card>
-					)}
 
-					{/* Rapport Z */}
-					{rapportZ && <RapportZDisplay rapport={rapportZ} />}
-				</TabsContent>
+						{/* Erreur */}
+						{isError && (
+							<Card className='border-destructive mb-6'>
+								<CardContent className='pt-6'>
+									<p className='text-sm text-destructive'>
+										{(error as Error)?.message ||
+											'Erreur lors de la génération du rapport Z'}
+									</p>
+								</CardContent>
+							</Card>
+						)}
 
-				{/* ═══════════════════════════════════════════════════════════════════ */}
-				{/* TAB: HISTORIQUE */}
-				{/* ═══════════════════════════════════════════════════════════════════ */}
-				<TabsContent value='history'>
-					<Card>
-						<CardHeader>
-							<CardTitle className='text-base'>
-								Historique des rapports Z
-							</CardTitle>
-							<CardDescription>
-								{selectedRegisterId
-									? 'Liste des rapports Z générés pour cette caisse'
-									: "Sélectionnez une caisse pour voir l'historique"}
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
-							{!selectedRegisterId ? (
-								<p className='text-sm text-muted-foreground py-8 text-center'>
-									Sélectionnez une caisse dans l'onglet "Générer un rapport"
-								</p>
-							) : !zReportsList?.length ? (
-								<p className='text-sm text-muted-foreground py-8 text-center'>
-									Aucun rapport Z pour cette caisse
-								</p>
-							) : (
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Numéro</TableHead>
-											<TableHead>Date</TableHead>
-											<TableHead className='text-right'>Sessions</TableHead>
-											<TableHead className='text-right'>Tickets</TableHead>
-											<TableHead className='text-right'>Total TTC</TableHead>
-											<TableHead>Généré le</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{zReportsList.map((z) => (
-											<TableRow
-												key={z.id}
-												className='cursor-pointer hover:bg-slate-50'
-												onClick={() => {
-													setSelectedDate(z.date.split('T')[0])
-													setShouldGenerate(true)
-													setActiveTab('generate')
-												}}
-											>
-												<TableCell className='font-mono font-medium'>
-													{z.number}
-												</TableCell>
-												<TableCell>
-													{new Date(z.date).toLocaleDateString('fr-FR')}
-												</TableCell>
-												<TableCell className='text-right'>
-													{z.sessions_count}
-												</TableCell>
-												<TableCell className='text-right'>
-													{z.invoice_count}
-												</TableCell>
-												<TableCell className='text-right font-medium'>
-													{formatCurrency(z.total_ttc)}
-												</TableCell>
-												<TableCell className='text-muted-foreground'>
-													{formatDateTime(z.generated_at)}
-												</TableCell>
+						{/* Rapport Z */}
+						{rapportZ && <RapportZDisplay rapport={rapportZ} />}
+					</TabsContent>
+
+					{/* ═══════════════════════════════════════════════════════════════════ */}
+					{/* TAB: HISTORIQUE */}
+					{/* ═══════════════════════════════════════════════════════════════════ */}
+					<TabsContent value='history'>
+						<Card>
+							<CardHeader>
+								<CardTitle className='text-base'>
+									Historique des rapports Z
+								</CardTitle>
+								<CardDescription>
+									{selectedRegisterId
+										? 'Liste des rapports Z générés pour cette caisse'
+										: "Sélectionnez une caisse pour voir l'historique"}
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								{!selectedRegisterId ? (
+									<p className='text-sm text-muted-foreground py-8 text-center'>
+										Sélectionnez une caisse dans l'onglet "Générer un rapport"
+									</p>
+								) : !zReportsList?.length ? (
+									<p className='text-sm text-muted-foreground py-8 text-center'>
+										Aucun rapport Z pour cette caisse
+									</p>
+								) : (
+									<Table>
+										<TableHeader>
+											<TableRow>
+												<TableHead>Numéro</TableHead>
+												<TableHead>Date</TableHead>
+												<TableHead className='text-right'>Sessions</TableHead>
+												<TableHead className='text-right'>Tickets</TableHead>
+												<TableHead className='text-right'>Total TTC</TableHead>
+												<TableHead>Généré le</TableHead>
 											</TableRow>
-										))}
-									</TableBody>
-								</Table>
-							)}
-						</CardContent>
-					</Card>
-				</TabsContent>
-			</Tabs>
-		</div>
+										</TableHeader>
+										<TableBody>
+											{zReportsList.map((z) => (
+												<TableRow
+													key={z.id}
+													className='cursor-pointer hover:bg-slate-50'
+													onClick={() => {
+														setSelectedDate(z.date.split('T')[0])
+														setShouldGenerate(true)
+														setActiveTab('generate')
+													}}
+												>
+													<TableCell className='font-mono font-medium'>
+														{z.number}
+													</TableCell>
+													<TableCell>
+														{new Date(z.date).toLocaleDateString('fr-FR')}
+													</TableCell>
+													<TableCell className='text-right'>
+														{z.sessions_count}
+													</TableCell>
+													<TableCell className='text-right'>
+														{z.invoice_count}
+													</TableCell>
+													<TableCell className='text-right font-medium'>
+														{formatCurrency(z.total_ttc)}
+													</TableCell>
+													<TableCell className='text-muted-foreground'>
+														{formatDateTime(z.generated_at)}
+													</TableCell>
+												</TableRow>
+											))}
+										</TableBody>
+									</Table>
+								)}
+							</CardContent>
+						</Card>
+					</TabsContent>
+				</Tabs>
+			</div>
+		</CashModuleShell>
 	)
 }
 
