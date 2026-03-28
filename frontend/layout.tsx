@@ -91,15 +91,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	}, [currentModule?.id])
 
 	const handleToggleGroup = (groupId: string) => {
-		// Ferme si déjà actif
-		if (activeGroup === groupId) {
+		const group = sidebarMenu.find((g) => g.id === groupId)
+		const isSingleItem = (group?.items?.length ?? 0) === 1
+
+		if (activeGroup === groupId && !isSingleItem) {
+			// Re-clic sur groupe multi-items → ferme le panneau
 			setManuallyClosed(true)
 			setActiveGroup(null)
 			return
 		}
-
-		// Ouvre le panneau — PAS de navigation automatique
-		// C'est la Sidebar qui gère la navigation directe pour les groupes à 1 item
+		// Groupe à 1 item : toujours actif, jamais fermé par re-clic
 		setManuallyClosed(false)
 		setActiveGroup(groupId)
 	}
@@ -110,6 +111,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	}
 
 	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
+	// Le panneau module est ouvert si le groupe actif a plusieurs items
+	// Le panneau home est géré dans Sidebar.tsx directement (état local)
 	const isPanelOpen =
 		activeGroupData !== null && (activeGroupData.items?.length ?? 0) > 1
 
