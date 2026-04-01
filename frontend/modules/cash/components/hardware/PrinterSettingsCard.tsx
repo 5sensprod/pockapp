@@ -114,7 +114,6 @@ export function PrinterSettingsCard() {
 			icon={Printer}
 			title='Imprimante de caisse'
 			headerRight={headerRight}
-			featured
 		>
 			<div className='space-y-5'>
 				{/* Info web sans imprimante */}

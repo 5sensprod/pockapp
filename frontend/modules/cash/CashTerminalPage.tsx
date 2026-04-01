@@ -1,6 +1,6 @@
 // frontend/modules/cash/CashTerminalPage.tsx
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { Loader2, ShieldAlert } from 'lucide-react'
+import { Loader2, ShieldAlert, Vault } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
@@ -33,6 +33,7 @@ import { useAuth } from '@/modules/auth/AuthProvider'
 import { CreateProductDialog } from '@/modules/cash/CreateProductDialog'
 import { CashModuleShell } from './CashModuleShell'
 
+import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
 import {
 	type AppPosProduct,
 	CartPanel,
@@ -42,7 +43,6 @@ import {
 	type PaymentStep,
 	ProductsPanel,
 	SuccessView,
-	TerminalHeader,
 	getEffectiveUnitTtc,
 	getLineTotalTtc,
 	getMainPaymentMethodCode,
@@ -51,6 +51,28 @@ import {
 	useCartCalculations,
 	useCartManager,
 } from './components/terminal'
+
+// Bouton tiroir — isolé pour éviter re-render du terminal entier
+function TerminalDrawerButton() {
+	const openDrawer = useOpenCashDrawerMutation()
+	return (
+		<button
+			type='button'
+			onClick={() => openDrawer.mutate()}
+			disabled={openDrawer.isPending}
+			className='inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-xs font-medium
+				border border-border/50 text-foreground hover:bg-muted/30 hover:border-border
+				disabled:opacity-40 disabled:cursor-not-allowed transition-all'
+		>
+			{openDrawer.isPending ? (
+				<Loader2 className='h-3 w-3 animate-spin' />
+			) : (
+				<Vault className='h-3 w-3' />
+			)}
+			Ouvrir tiroir
+		</button>
+	)
+}
 
 export function CashTerminalPage() {
 	const navigate = useNavigate()
@@ -88,9 +110,7 @@ export function CashTerminalPage() {
 	const [isAppPosConnected, setIsAppPosConnected] = React.useState(false)
 
 	const [isAppPosConnecting, setIsAppPosConnecting] = React.useState(true) // ✅ NOUVEAU
-	const [appPosConnectionError, setAppPosConnectionError] = React.useState<
-		string | null
-	>(null) // ✅ NOUVEAU
+	const [, setAppPosConnectionError] = React.useState<string | null>(null) // ✅ NOUVEAU
 	const [editingLineId, setEditingLineId] = React.useState<string | null>(null)
 
 	const [showCreateProductDialog, setShowCreateProductDialog] =
@@ -669,41 +689,48 @@ export function CashTerminalPage() {
 	if (paymentStep === 'cart') {
 		return (
 			<CashModuleShell forcedRegisterId={cashRegisterId}>
-				<div className='container mx-auto flex flex-col gap-6 px-6 py-8'>
-					<TerminalHeader
-						registerName={currentRegister?.name || 'Caisse'}
-						sessionIdShort={activeSession?.id.slice(0, 8) ?? ''}
-						today={today}
-						onBack={() => {
-							clearLastRouteForModule('cash')
-							navigate({ to: '/cash' })
-						}}
-					/>
-
-					<div className='flex items-center gap-2 px-6 py-2 bg-muted/30 border-b'>
-						{isAppPosConnecting ? (
-							<div className='flex items-center gap-2 text-sm text-muted-foreground'>
-								<Loader2 className='h-3 w-3 animate-spin' />
-								<span>Connexion AppPOS...</span>
-							</div>
-						) : isAppPosConnected ? (
-							<div className='flex items-center gap-2 text-sm'>
-								<div className='w-2 h-2 rounded-full bg-green-500' />
-								<span className='text-green-600 font-medium'>
-									AppPOS connecté
-								</span>
-							</div>
-						) : (
-							<div className='flex items-center gap-2 text-sm'>
-								<div className='w-2 h-2 rounded-full bg-red-500' />
-								<span className='text-red-600'>AppPOS déconnecté</span>
-								{appPosConnectionError && (
-									<span className='text-xs text-muted-foreground'>
-										({appPosConnectionError})
-									</span>
+				<div className='container mx-auto flex flex-col gap-6 px-6 py-2'>
+					{/* Header terminal sobre — nom caisse + session + statut + tiroir */}
+					<div className='flex items-center justify-between'>
+						<div>
+							<h1 className='text-xl font-medium text-foreground tracking-tight'>
+								{currentRegister?.name || 'Caisse'}
+							</h1>
+							<p className='text-xs text-muted-foreground mt-0.5'>
+								Session {(activeSession as any)?.id?.slice(0, 8) ?? '—'} —{' '}
+								{today}
+							</p>
+						</div>
+						<div className='flex items-center gap-3'>
+							{/* Statut AppPOS */}
+							<div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+								{isAppPosConnecting ? (
+									<>
+										<Loader2 className='h-3 w-3 animate-spin' />
+										<span>AppPOS...</span>
+									</>
+								) : isAppPosConnected ? (
+									<>
+										<span className='h-1.5 w-1.5 rounded-full bg-emerald-500' />
+										<span className='text-emerald-700'>AppPOS connecté</span>
+									</>
+								) : (
+									<>
+										<span className='h-1.5 w-1.5 rounded-full bg-destructive' />
+										<span className='text-destructive'>AppPOS déconnecté</span>
+									</>
 								)}
 							</div>
-						)}
+							{/* Badge session */}
+							<div className='flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1'>
+								<span className='h-1.5 w-1.5 rounded-full bg-emerald-500' />
+								<span className='text-xs font-medium text-emerald-700'>
+									Session ouverte
+								</span>
+							</div>
+							{/* Tiroir */}
+							<TerminalDrawerButton />
+						</div>
 					</div>
 
 					<main className='flex min-h-[520px] flex-1 flex-col gap-4 lg:flex-row'>
