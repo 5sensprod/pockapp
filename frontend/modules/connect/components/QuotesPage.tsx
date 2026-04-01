@@ -41,7 +41,7 @@ import { pdf } from '@react-pdf/renderer'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { QuotePdfDocument } from './QuotePdf'
 import { QuotesTable } from './QuotesTable'
@@ -66,14 +66,14 @@ export function QuotesPage() {
 
 	// Pagination
 	const [page, setPage] = useState(1)
-	const prevDebouncedRef = useRef('')
+	// const prevDebouncedRef = useRef('')
 	const debouncedSearch = useDebounce(searchTerm, 400)
 
 	// Reset page via ref quand la recherche change — sans re-render supplémentaire
-	if (debouncedSearch !== prevDebouncedRef.current) {
-		prevDebouncedRef.current = debouncedSearch
-		if (page !== 1) setPage(1)
-	}
+	// if (debouncedSearch !== prevDebouncedRef.current) {
+	// 	prevDebouncedRef.current = debouncedSearch
+	// 	if (page !== 1) setPage(1)
+	// }
 
 	// Résolution des IDs clients correspondant au terme recherché
 	const { data: matchingCustomerIds } = useQuery({
@@ -258,7 +258,10 @@ export function QuotesPage() {
 				<Input
 					placeholder='Rechercher par numéro ou nom du client...'
 					value={searchTerm}
-					onChange={(e) => setSearchTerm(e.target.value)}
+					onChange={(e) => {
+						setSearchTerm(e.target.value)
+						setPage(1) // <-- Le retour instantané à la page 1 !
+					}}
 					className='max-w-sm'
 				/>
 				<Select

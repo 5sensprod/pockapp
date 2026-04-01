@@ -74,7 +74,7 @@ import {
 	ShieldCheck,
 	XCircle,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
 import { InvoicesTable } from './InvoicesTable'
@@ -153,14 +153,14 @@ export function InvoicesPage() {
 
 	// Pagination
 	const [page, setPage] = useState(1)
-	const prevDebouncedRef = useRef('')
+	// const prevDebouncedRef = useRef('')
 	const debouncedSearch = useDebounce(searchTerm, 400)
 
 	// Reset page via ref quand la recherche change — sans re-render supplémentaire
-	if (debouncedSearch !== prevDebouncedRef.current) {
-		prevDebouncedRef.current = debouncedSearch
-		if (page !== 1) setPage(1)
-	}
+	// if (debouncedSearch !== prevDebouncedRef.current) {
+	// 	prevDebouncedRef.current = debouncedSearch
+	// 	if (page !== 1) setPage(1)
+	// }
 
 	// Résolution des IDs clients correspondant au terme recherché.
 	// PocketBase ne supporte pas customer.name ~ "x" en filtre cross-collection fiable,
@@ -744,7 +744,10 @@ export function InvoicesPage() {
 					<Input
 						placeholder='Rechercher par numéro ou nom du client...'
 						value={searchTerm}
-						onChange={(e) => setSearchTerm(e.target.value)}
+						onChange={(e) => {
+							setSearchTerm(e.target.value)
+							setPage(1) // <-- Retour instantané à la page 1 !
+						}}
 					/>
 				</div>
 				<div className='flex gap-2'>
