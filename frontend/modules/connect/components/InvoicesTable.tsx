@@ -46,24 +46,8 @@ import {
 	XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(dateStr: string) {
-	if (!dateStr) return '-'
-	return new Date(dateStr).toLocaleDateString('fr-FR', {
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-	})
-}
-
-function formatCurrency(amount: number) {
-	return new Intl.NumberFormat('fr-FR', {
-		style: 'currency',
-		currency: 'EUR',
-	}).format(amount)
-}
+import { formatCurrency, formatDate } from '../utils/formatters'
+import { getPaginationRange } from '../utils/pagination'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -112,8 +96,7 @@ export function InvoicesTable({
 }: InvoicesTableProps) {
 	const navigate = useNavigate()
 
-	const rangeStart = totalItems === 0 ? 0 : (page - 1) * perPage + 1
-	const rangeEnd = Math.min(page * perPage, totalItems)
+	const { rangeStart, rangeEnd } = getPaginationRange(page, perPage, totalItems)
 
 	return (
 		<div className='space-y-4'>

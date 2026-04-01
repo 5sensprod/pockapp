@@ -21,7 +21,11 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import type { InvoiceResponse, QuoteResponse, QuoteStatus } from '@/lib/types/invoice.types'
+import type {
+	InvoiceResponse,
+	QuoteResponse,
+	QuoteStatus,
+} from '@/lib/types/invoice.types'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	ArrowRight,
@@ -36,21 +40,8 @@ import {
 	MoreHorizontal,
 	Trash2,
 } from 'lucide-react'
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatDate(dateStr?: string) {
-	if (!dateStr) return '-'
-	return new Date(dateStr).toLocaleDateString('fr-FR', {
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-	})
-}
-
-function formatCurrency(amount: number, currency = 'EUR') {
-	return new Intl.NumberFormat('fr-FR', { style: 'currency', currency }).format(amount)
-}
+import { formatCurrency, formatDate } from '../utils/formatters'
+import { getPaginationRange } from '../utils/pagination'
 
 function getQuoteStatusLabel(status: QuoteStatus) {
 	const map: Record<QuoteStatus, string> = {
@@ -62,12 +53,18 @@ function getQuoteStatusLabel(status: QuoteStatus) {
 	return map[status]
 }
 
-function getQuoteStatusVariant(status: QuoteStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
+function getQuoteStatusVariant(
+	status: QuoteStatus,
+): 'default' | 'secondary' | 'destructive' | 'outline' {
 	switch (status) {
-		case 'draft': return 'secondary'
-		case 'sent': return 'outline'
-		case 'accepted': return 'default'
-		case 'rejected': return 'destructive'
+		case 'draft':
+			return 'secondary'
+		case 'sent':
+			return 'outline'
+		case 'accepted':
+			return 'default'
+		case 'rejected':
+			return 'destructive'
 	}
 }
 
@@ -110,8 +107,7 @@ export function QuotesTable({
 }: QuotesTableProps) {
 	const navigate = useNavigate()
 
-	const rangeStart = totalItems === 0 ? 0 : (page - 1) * perPage + 1
-	const rangeEnd = Math.min(page * perPage, totalItems)
+	const { rangeStart, rangeEnd } = getPaginationRange(page, perPage, totalItems)
 
 	return (
 		<div className='space-y-4'>
@@ -140,14 +136,19 @@ export function QuotesTable({
 							</TableRow>
 						) : quotes.length === 0 ? (
 							<TableRow>
-								<TableCell colSpan={8} className='h-24 text-center text-muted-foreground'>
+								<TableCell
+									colSpan={8}
+									className='h-24 text-center text-muted-foreground'
+								>
 									Aucun devis trouvé pour ces filtres.
 								</TableCell>
 							</TableRow>
 						) : (
 							quotes.map((quote) => {
 								const customer = quote.expand?.customer
-								const linkedInvoice = quote.expand?.generated_invoice_id as InvoiceResponse | undefined
+								const linkedInvoice = quote.expand?.generated_invoice_id as
+									| InvoiceResponse
+									| undefined
 								const isDownloading = downloadingQuoteId === quote.id
 
 								const issuedBy = (quote as any).expand?.issued_by
@@ -168,9 +169,13 @@ export function QuotesTable({
 										</TableCell>
 										<TableCell>
 											<div>
-												<p className='font-medium'>{customer?.name || 'Client inconnu'}</p>
+												<p className='font-medium'>
+													{customer?.name || 'Client inconnu'}
+												</p>
 												{customer?.email && (
-													<p className='text-xs text-muted-foreground'>{customer.email}</p>
+													<p className='text-xs text-muted-foreground'>
+														{customer.email}
+													</p>
 												)}
 											</div>
 										</TableCell>
@@ -206,14 +211,24 @@ export function QuotesTable({
 													<DropdownMenuLabel>Actions</DropdownMenuLabel>
 
 													<DropdownMenuItem
-														onClick={() => navigate({ to: '/connect/quotes/$quoteId', params: { quoteId: quote.id } })}
+														onClick={() =>
+															navigate({
+																to: '/connect/quotes/$quoteId',
+																params: { quoteId: quote.id },
+															})
+														}
 													>
 														<Eye className='h-4 w-4 mr-2' />
 														Voir
 													</DropdownMenuItem>
 
 													<DropdownMenuItem
-														onClick={() => navigate({ to: '/connect/quotes/$quoteId/edit', params: { quoteId: quote.id } })}
+														onClick={() =>
+															navigate({
+																to: '/connect/quotes/$quoteId/edit',
+																params: { quoteId: quote.id },
+															})
+														}
 													>
 														<Edit className='h-4 w-4 mr-2' />
 														Modifier
@@ -221,10 +236,15 @@ export function QuotesTable({
 
 													<DropdownMenuSeparator />
 
-													<DropdownMenuItem onClick={() => onDownloadPdf(quote)} disabled={isDownloading}>
-														{isDownloading
-															? <Loader2 className='h-4 w-4 mr-2 animate-spin' />
-															: <Download className='h-4 w-4 mr-2' />}
+													<DropdownMenuItem
+														onClick={() => onDownloadPdf(quote)}
+														disabled={isDownloading}
+													>
+														{isDownloading ? (
+															<Loader2 className='h-4 w-4 mr-2 animate-spin' />
+														) : (
+															<Download className='h-4 w-4 mr-2' />
+														)}
 														Télécharger PDF
 													</DropdownMenuItem>
 
@@ -234,7 +254,9 @@ export function QuotesTable({
 													</DropdownMenuItem>
 
 													<DropdownMenuItem
-														disabled={!!quote.generated_invoice_id || convertIsPending}
+														disabled={
+															!!quote.generated_invoice_id || convertIsPending
+														}
 														onClick={() => onOpenConvert(quote)}
 													>
 														<ArrowRight className='h-4 w-4 mr-2' />
@@ -243,7 +265,10 @@ export function QuotesTable({
 
 													<DropdownMenuSeparator />
 
-													<DropdownMenuItem onClick={() => onOpenDelete(quote)} className='text-red-600'>
+													<DropdownMenuItem
+														onClick={() => onOpenDelete(quote)}
+														className='text-red-600'
+													>
 														<Trash2 className='h-4 w-4 mr-2' />
 														Supprimer
 													</DropdownMenuItem>
@@ -265,12 +290,24 @@ export function QuotesTable({
 						{rangeStart}–{rangeEnd} sur {totalItems} devis
 					</div>
 					<div className='flex items-center gap-1'>
-						<Button variant='outline' size='sm' onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={() => onPageChange(page - 1)}
+							disabled={page <= 1}
+						>
 							<ChevronLeft className='h-4 w-4' />
 							Précédent
 						</Button>
-						<span className='px-3 text-sm text-muted-foreground'>{page} / {totalPages}</span>
-						<Button variant='outline' size='sm' onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
+						<span className='px-3 text-sm text-muted-foreground'>
+							{page} / {totalPages}
+						</span>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={() => onPageChange(page + 1)}
+							disabled={page >= totalPages}
+						>
 							Suivant
 							<ChevronRight className='h-4 w-4' />
 						</Button>

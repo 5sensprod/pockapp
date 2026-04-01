@@ -43,15 +43,10 @@ import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { formatCurrency } from '../utils/formatters'
 import { QuotePdfDocument } from './QuotePdf'
 import { QuotesTable } from './QuotesTable'
 import { SendQuoteEmailDialog } from './SendQuoteEmailDialog'
-
-function formatCurrency(amount: number, currency = 'EUR') {
-	return new Intl.NumberFormat('fr-FR', { style: 'currency', currency }).format(
-		amount,
-	)
-}
 
 const PER_PAGE = 20
 

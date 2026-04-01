@@ -76,54 +76,11 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { formatCurrency, formatDate } from '../utils/formatters'
+import { toPngDataUrl } from '../utils/images' // Uniquement dans InvoicesPage (et QuotesPage si besoin)
 import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
 import { InvoicesTable } from './InvoicesTable'
 import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
-
-// ============================================================================
-// HELPERS
-// ============================================================================
-
-function formatDate(dateStr: string) {
-	if (!dateStr) return '-'
-	return new Date(dateStr).toLocaleDateString('fr-FR', {
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-	})
-}
-
-function formatCurrency(amount: number) {
-	return new Intl.NumberFormat('fr-FR', {
-		style: 'currency',
-		currency: 'EUR',
-	}).format(amount)
-}
-
-async function toPngDataUrl(url: string): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const img = new Image()
-		img.crossOrigin = 'anonymous'
-		img.onload = () => {
-			try {
-				const canvas = document.createElement('canvas')
-				canvas.width = img.naturalWidth || img.width
-				canvas.height = img.naturalHeight || img.height
-				const ctx = canvas.getContext('2d')
-				if (!ctx) {
-					reject(new Error('Impossible de créer un contexte 2D'))
-					return
-				}
-				ctx.drawImage(img, 0, 0)
-				resolve(canvas.toDataURL('image/png'))
-			} catch (err) {
-				reject(err)
-			}
-		}
-		img.onerror = (err) => reject(err)
-		img.src = url
-	})
-}
 
 // ============================================================================
 // TYPES
