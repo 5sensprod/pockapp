@@ -3,31 +3,44 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import type { CustomersResponse } from '@/lib/pocketbase-types'
+import { useDebounce } from '@/lib/hooks/useDebounce'
 import { useCustomers } from '@/lib/queries/customers'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus, Users } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { Customer } from './CustomerDialog'
 import { CustomerTable } from './CustomerTable'
+
+const PER_PAGE = 20
 
 export function CustomersPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 
 	const [searchTerm, setSearchTerm] = useState('')
+	const [page, setPage] = useState(1)
+	const prevDebouncedRef = useRef('')
+
+	const debouncedSearch = useDebounce(searchTerm, 400)
+
+	// Reset page via ref quand la recherche change — sans re-render supplémentaire
+	if (debouncedSearch !== prevDebouncedRef.current) {
+		prevDebouncedRef.current = debouncedSearch
+		if (page !== 1) setPage(1)
+	}
 
 	const { data: customersData, isLoading } = useCustomers({
 		companyId: activeCompanyId ?? undefined,
+		filter: debouncedSearch
+			? `name ~ "${debouncedSearch}" || email ~ "${debouncedSearch}" || phone ~ "${debouncedSearch}" || company ~ "${debouncedSearch}"`
+			: '',
+		page,
+		perPage: PER_PAGE,
 	})
 
-	// On récupère les enregistrements bruts PocketBase
-	const rawCustomers = (customersData?.items ?? []) as CustomersResponse[]
-
-	// On les mappe vers le type Customer utilisé par CustomerTable / CustomerDialog
 	const customers: Customer[] = useMemo(
 		() =>
-			rawCustomers.map((c) => ({
+			(customersData?.items ?? []).map((c: any) => ({
 				id: c.id,
 				name: c.name,
 				email: c.email,
@@ -35,33 +48,16 @@ export function CustomersPage() {
 				company: c.company,
 				address: c.address,
 				notes: c.notes,
-				// c.tags (PocketBase) -> string[] pour l'UI
 				tags: Array.isArray(c.tags)
 					? (c.tags as unknown as string[])
 					: c.tags
 						? [String(c.tags)]
 						: [],
-				// Nouveaux champs
-				customer_type: (c as any).customer_type || 'individual',
-				payment_terms: (c as any).payment_terms,
+				customer_type: c.customer_type || 'individual',
+				payment_terms: c.payment_terms,
 			})),
-		[rawCustomers],
+		[customersData],
 	)
-
-	// Filtre simple côté client (nom, email, téléphone, entreprise)
-	const filteredCustomers = useMemo(() => {
-		if (!searchTerm.trim()) return customers
-
-		const term = searchTerm.toLowerCase()
-		return customers.filter((c) => {
-			return (
-				c.name.toLowerCase().includes(term) ||
-				(c.email ?? '').toLowerCase().includes(term) ||
-				(c.phone ?? '').toLowerCase().includes(term) ||
-				(c.company ?? '').toLowerCase().includes(term)
-			)
-		})
-	}, [customers, searchTerm])
 
 	const handleEditCustomer = (customer: Customer) => {
 		navigate({
@@ -70,24 +66,7 @@ export function CustomersPage() {
 		})
 	}
 
-	if (!activeCompanyId) {
-		return (
-			<div className='container mx-auto px-6 py-8'>
-				<p className='text-muted-foreground'>
-					Aucune entreprise active sélectionnée.
-				</p>
-			</div>
-		)
-	}
-
-	if (isLoading) {
-		return (
-			<div className='container mx-auto px-6 py-8'>
-				<p className='text-muted-foreground'>Chargement des clients...</p>
-			</div>
-		)
-	}
-
+	// Pas de early return sur isLoading — ça détruirait le focus de l'input
 	return (
 		<div className='container mx-auto px-6 py-8'>
 			{/* Header */}
@@ -102,24 +81,21 @@ export function CustomersPage() {
 						</p>
 					</div>
 				</div>
-
 				<div className='flex gap-2'>
-					<Button
-						onClick={() =>
-							navigate({
-								to: '/connect/customers/new',
-							})
-						}
-					>
+					<Button onClick={() => navigate({ to: '/connect/customers/new' })}>
 						<Plus className='h-4 w-4 mr-2' />
 						Nouveau client
 					</Button>
 				</div>
 			</div>
 
-			{/* Filtres + table */}
-			<div className='mt-6 space-y-4'>
-				<div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+			{/* Message si pas d'entreprise active */}
+			{!activeCompanyId ? (
+				<p className='mt-8 text-muted-foreground'>
+					Aucune entreprise active sélectionnée.
+				</p>
+			) : (
+				<div className='mt-6 space-y-4'>
 					<div className='flex-1 max-w-md'>
 						<Input
 							placeholder='Rechercher par nom, email, téléphone, entreprise...'
@@ -127,13 +103,19 @@ export function CustomersPage() {
 							onChange={(e) => setSearchTerm(e.target.value)}
 						/>
 					</div>
-				</div>
 
-				<CustomerTable
-					data={filteredCustomers}
-					onEditCustomer={handleEditCustomer}
-				/>
-			</div>
+					<CustomerTable
+						data={customers}
+						onEditCustomer={handleEditCustomer}
+						page={page}
+						totalPages={customersData?.totalPages ?? 1}
+						totalItems={customersData?.totalItems ?? 0}
+						perPage={PER_PAGE}
+						onPageChange={setPage}
+						isLoading={isLoading}
+					/>
+				</div>
+			)}
 		</div>
 	)
 }

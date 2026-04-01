@@ -18,6 +18,11 @@ export function ConnectView({
 	searchTerm,
 	setSearchTerm,
 	handleEditCustomer,
+	page,
+	setPage,
+	totalItems,
+	totalPages,
+	perPage,
 }: ConnectViewProps) {
 	return (
 		<div className='flex flex-col gap-6'>
@@ -52,7 +57,15 @@ export function ConnectView({
 				/>
 			) : (
 				// Table clients
-				<CustomerTable data={customers} onEditCustomer={handleEditCustomer} />
+				<CustomerTable
+					data={customers}
+					onEditCustomer={handleEditCustomer}
+					page={page}
+					totalPages={totalPages}
+					totalItems={totalItems}
+					perPage={perPage}
+					onPageChange={setPage}
+				/>
 			)}
 		</div>
 	)

@@ -1,8 +1,6 @@
 // frontend/modules/connect/components/InvoicesPage.tsx
-// ISCA v2 - avec is_paid séparé, avoirs, clôtures, intégrité et suppression de brouillons
+// ISCA v2 - refactorisé : table extraite dans InvoicesTable, pagination serveur, debounce
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -14,14 +12,8 @@ import {
 
 import { decrementAppPosProductsStock, getAppPosToken } from '@/lib/apppos'
 
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -31,16 +23,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { useDebounce } from '@/lib/hooks/useDebounce'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import {
 	type ChainVerificationResult,
@@ -66,12 +51,7 @@ import {
 } from '@/lib/queries/invoices'
 import { usePaymentMethods } from '@/lib/queries/payment-methods'
 import type { InvoiceResponse, InvoiceStatus } from '@/lib/types/invoice.types'
-import {
-	canMarkAsPaid,
-	canTransitionTo,
-	getDisplayStatus,
-	isOverdue,
-} from '@/lib/types/invoice.types'
+import { isOverdue } from '@/lib/types/invoice.types'
 import { canCreateDeposit } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { RefundInvoiceDialog } from '@/modules/common/RefundInvoiceDialog'
@@ -81,29 +61,23 @@ import {
 	type StockReclassificationItem,
 } from '@/modules/common/StockReclassificationDialog'
 import { pdf } from '@react-pdf/renderer'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
-	AlertTriangle,
 	Banknote,
 	CheckCircle,
-	Download,
-	Edit,
-	Eye,
 	FileText,
-	Mail,
-	MoreHorizontal,
 	Plus,
-	Receipt,
 	RotateCcw,
-	Send,
 	Shield,
 	ShieldAlert,
 	ShieldCheck,
 	XCircle,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
+import { InvoicesTable } from './InvoicesTable'
 import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
 
 // ============================================================================
@@ -141,8 +115,7 @@ async function toPngDataUrl(url: string): Promise<string> {
 					return
 				}
 				ctx.drawImage(img, 0, 0)
-				const dataUrl = canvas.toDataURL('image/png')
-				resolve(dataUrl)
+				resolve(canvas.toDataURL('image/png'))
 			} catch (err) {
 				reject(err)
 			}
@@ -153,11 +126,12 @@ async function toPngDataUrl(url: string): Promise<string> {
 }
 
 // ============================================================================
-// TYPES POUR LES FILTRES
+// TYPES
 // ============================================================================
 
 type StatusFilter = InvoiceStatus | 'all' | 'unpaid' | 'overdue'
-type DocumentTypeFilter = 'all' | 'tik' | 'fac'
+
+const PER_PAGE = 30
 
 // ============================================================================
 // COMPONENT
@@ -176,8 +150,47 @@ export function InvoicesPage() {
 	const [typeFilter, setTypeFilter] = useState<
 		'all' | 'invoice' | 'credit_note'
 	>('all')
-	const [documentTypeFilter, setDocumentTypeFilter] =
-		useState<DocumentTypeFilter>('all')
+
+	// Pagination
+	const [page, setPage] = useState(1)
+	const prevDebouncedRef = useRef('')
+	const debouncedSearch = useDebounce(searchTerm, 400)
+
+	// Reset page via ref quand la recherche change — sans re-render supplémentaire
+	if (debouncedSearch !== prevDebouncedRef.current) {
+		prevDebouncedRef.current = debouncedSearch
+		if (page !== 1) setPage(1)
+	}
+
+	// Résolution des IDs clients correspondant au terme recherché.
+	// PocketBase ne supporte pas customer.name ~ "x" en filtre cross-collection fiable,
+	// on cherche d'abord les IDs dans la collection customers, puis on filtre les factures.
+	const { data: matchingCustomerIds } = useQuery({
+		queryKey: ['customer-search-ids', activeCompanyId, debouncedSearch],
+		queryFn: async () => {
+			if (!debouncedSearch || !activeCompanyId) return []
+			const result = await pb.collection('customers').getFullList({
+				filter: `owner_company = "${activeCompanyId}" && name ~ "${debouncedSearch}"`,
+				fields: 'id',
+			})
+			return result.map((c: any) => c.id as string)
+		},
+		enabled: !!debouncedSearch && !!activeCompanyId,
+		staleTime: 10_000,
+	})
+
+	// Filtre combiné : numéro OU clients correspondants
+	const searchFilter = useMemo(() => {
+		if (!debouncedSearch) return undefined
+		const parts: string[] = [`number ~ "${debouncedSearch}"`]
+		if (matchingCustomerIds && matchingCustomerIds.length > 0) {
+			const customerFilter = matchingCustomerIds
+				.map((id: string) => `customer = "${id}"`)
+				.join(' || ')
+			parts.push(`(${customerFilter})`)
+		}
+		return `(${parts.join(' || ')})`
+	}, [debouncedSearch, matchingCustomerIds])
 
 	// États dialogs
 	const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
@@ -203,7 +216,6 @@ export function InvoicesPage() {
 	const [depositAmount, setDepositAmount] = useState<number>(0)
 	const createDeposit = useCreateDeposit()
 
-	// 🆕 Remboursement acompte
 	const [refundDepositOpen, setRefundDepositOpen] = useState(false)
 	const [refundDepositReason, setRefundDepositReason] = useState('')
 	const [depositToRefund, setDepositToRefund] =
@@ -236,34 +248,20 @@ export function InvoicesPage() {
 		string | undefined
 	>()
 
-	const handleOpenRefundTicketDialog = (ticket: InvoiceResponse) => {
-		setTicketToRefund(ticket)
-		setRefundTicketDialogOpen(true)
-	}
-
-	const handleCloseRefundTicketDialog = () => {
-		setRefundTicketDialogOpen(false)
-		setTicketToRefund(null)
-	}
-
-	// Dialog intégrité
 	const [integrityDialogOpen, setIntegrityDialogOpen] = useState(false)
 	const [integrityDocType, setIntegrityDocType] = useState<DocumentType>('all')
 	const [integrityResult, setIntegrityResult] =
 		useState<ChainVerificationResult | null>(null)
 
-	// Hook pour le résumé rapide (optionnel - pour afficher un indicateur)
 	const { data: integritySummary, refetch: refetchIntegritySummary } =
 		useIntegritySummary(activeCompanyId ?? undefined)
 
-	// Mutations / hooks factures
+	// Mutations
 	const cancelInvoice = useCancelInvoice()
 	const deleteDraftInvoice = useDeleteDraftInvoice()
 	const recordPayment = useRecordPayment()
 	const validateInvoice = useValidateInvoice()
 	const markAsSent = useMarkInvoiceAsSent()
-
-	// Clôtures & intégrité
 	const performDailyClosure = usePerformDailyClosure()
 	const verifyChain = useVerifyInvoiceChain()
 
@@ -272,10 +270,9 @@ export function InvoicesPage() {
 		closureType: 'daily',
 	})
 
-	// Filtre de période — affecte stats + liste
-	const { period, setPeriod, dateRange } = usePeriodFilter('this_month')
+	const { period, setPeriod, dateRange } = usePeriodFilter('all')
 
-	// Query avec filtres
+	// Query principale avec pagination serveur
 	const {
 		data: invoicesData,
 		isLoading,
@@ -290,24 +287,19 @@ export function InvoicesPage() {
 				: undefined,
 		invoiceType: typeFilter !== 'all' ? typeFilter : undefined,
 		isPaid: statusFilter === 'unpaid' ? false : undefined,
-		filter: searchTerm ? `number ~ "${searchTerm}"` : undefined,
+		filter: searchFilter
+			? `is_pos_ticket != true && ${searchFilter}`
+			: 'is_pos_ticket != true',
 		dateFrom: dateRange.from,
 		dateTo: dateRange.to,
+		page,
+		perPage: PER_PAGE,
 	})
 
-	// Base list
+	// Filtres côté client (overdue, TIK/FAC) — appliqués sur la page courante uniquement
 	let invoices = (invoicesData?.items ?? []) as InvoiceResponse[]
-
-	// Filtrer côté client pour "overdue"
 	if (statusFilter === 'overdue') {
 		invoices = invoices.filter((inv) => isOverdue(inv))
-	}
-
-	// Filtrer côté client pour document type (TIK / FAC)
-	if (documentTypeFilter === 'tik') {
-		invoices = invoices.filter((inv) => inv.number?.startsWith('TIK-'))
-	} else if (documentTypeFilter === 'fac') {
-		invoices = invoices.filter((inv) => inv.number?.startsWith('FAC-'))
 	}
 
 	// Charger la société active
@@ -324,17 +316,7 @@ export function InvoicesPage() {
 		void loadCompany()
 	}, [activeCompanyId, pb])
 
-	// Somme des montants d'avoirs par facture d'origine
-	const creditNotesByOriginal: Record<string, number> = {}
-
-	for (const inv of invoices) {
-		if (inv.invoice_type === 'credit_note' && inv.original_invoice_id) {
-			creditNotesByOriginal[inv.original_invoice_id] =
-				(creditNotesByOriginal[inv.original_invoice_id] ?? 0) + inv.total_ttc
-		}
-	}
-
-	// Stats globales — calculées côté backend sur TOUTES les factures (sans limite de pagination)
+	// Stats globales
 	const { data: invoiceStats } = useInvoiceStats(activeCompanyId ?? undefined, {
 		dateFrom: dateRange.from,
 		dateTo: dateRange.to,
@@ -347,12 +329,10 @@ export function InvoicesPage() {
 		overdue: invoiceStats?.overdue ?? 0,
 		invoiceCount: invoiceStats?.invoice_count ?? 0,
 		creditNoteCount: invoiceStats?.credit_note_count ?? 0,
-		creditNotesTTC: invoiceStats?.credit_notes_ttc ?? 0,
 	}
-	// Clôture du jour déjà existante ?
+
 	const today = new Date()
 	today.setHours(0, 0, 0, 0)
-
 	const hasTodayClosure =
 		(closuresData?.items ?? []).some((c) => {
 			const d = new Date(c.period_start)
@@ -374,7 +354,6 @@ export function InvoicesPage() {
 
 	const handleConfirmDeleteDraft = async () => {
 		if (!draftToDelete) return
-
 		try {
 			await deleteDraftInvoice.mutateAsync(draftToDelete.id)
 			toast.success(`Brouillon ${draftToDelete.number} supprimé`)
@@ -418,7 +397,6 @@ export function InvoicesPage() {
 	}
 
 	const handleRecordPayment = async () => {
-		// Mode acompte
 		if (paymentMode === 'deposit') {
 			if (!invoiceToPay) return
 			try {
@@ -449,11 +427,10 @@ export function InvoicesPage() {
 			check: 'cheque',
 			transfer: 'virement',
 		}
-
 		const code =
 			method.type === 'default' ? mapping[method.code] || method.code : 'autre'
-
 		const label = method.type === 'custom' ? method.name : undefined
+
 		await recordPayment.mutateAsync({
 			invoiceId: invoiceToPay.id,
 			paymentMethod: code,
@@ -462,6 +439,7 @@ export function InvoicesPage() {
 
 		setPaymentDialogOpen(false)
 		setSelectedMethodId('')
+
 		if (getAppPosToken() && invoiceToPay.items?.length) {
 			const stockItems = buildStockItemsFromInvoice(invoiceToPay.items)
 			if (stockItems.length > 0) {
@@ -491,7 +469,6 @@ export function InvoicesPage() {
 			toast.error("Veuillez indiquer un motif d'annulation")
 			return
 		}
-
 		try {
 			await cancelInvoice.mutateAsync({
 				invoiceId: invoiceToCancel.id,
@@ -610,7 +587,6 @@ export function InvoicesPage() {
 			toast.error('Aucune entreprise sélectionnée')
 			return
 		}
-
 		try {
 			const closure = await performDailyClosure.mutateAsync(activeCompanyId)
 			toast.success(
@@ -621,21 +597,12 @@ export function InvoicesPage() {
 		}
 	}
 
-	const handleConfirmDailyClosure = async () => {
-		setClosureConfirmOpen(false)
-		await handleDailyClosure()
-	}
-
 	const handleDailyClosureClick = () => {
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
 			return
 		}
-
-		if (hasTodayClosure) {
-			return
-		}
-
+		if (hasTodayClosure) return
 		setClosureConfirmOpen(true)
 	}
 
@@ -644,16 +611,13 @@ export function InvoicesPage() {
 			toast.error('Aucune entreprise sélectionnée')
 			return
 		}
-
 		try {
 			const result = await verifyChain.mutateAsync({
 				companyId: activeCompanyId,
 				docType: integrityDocType,
 			})
-
 			setIntegrityResult(result)
 			await refetchIntegritySummary()
-
 			if (result.allValid) {
 				toast.success(
 					`Intégrité vérifiée ✓ – ${result.totalChecked} document(s)`,
@@ -666,11 +630,6 @@ export function InvoicesPage() {
 		} catch (error: any) {
 			toast.error(error.message || "Erreur lors de la vérification d'intégrité")
 		}
-	}
-
-	const handleOpenIntegrityDialog = () => {
-		setIntegrityDocType('all')
-		setIntegrityDialogOpen(true)
 	}
 
 	const handleOpenStockReclassify = (
@@ -709,7 +668,13 @@ export function InvoicesPage() {
 					</p>
 				</div>
 				<div className='flex items-center gap-2'>
-					<Button variant='outline' onClick={handleOpenIntegrityDialog}>
+					<Button
+						variant='outline'
+						onClick={() => {
+							setIntegrityDocType('all')
+							setIntegrityDialogOpen(true)
+						}}
+					>
 						<Shield className='h-4 w-4 mr-2' />
 						Vérifier intégrité
 						{(integrityResult
@@ -728,13 +693,7 @@ export function InvoicesPage() {
 					>
 						{hasTodayClosure ? 'Journée déjà clôturée' : 'Clôture journalière'}
 					</Button>
-					<Button
-						onClick={() =>
-							navigate({
-								to: '/connect/invoices/new',
-							})
-						}
-					>
+					<Button onClick={() => navigate({ to: '/connect/invoices/new' })}>
 						<Plus className='h-4 w-4 mr-2' />
 						Nouvelle facture
 					</Button>
@@ -783,16 +742,18 @@ export function InvoicesPage() {
 			<div className='flex flex-col md:flex-row gap-4 mb-6'>
 				<div className='flex-1'>
 					<Input
-						placeholder='Rechercher par numéro de facture...'
+						placeholder='Rechercher par numéro ou nom du client...'
 						value={searchTerm}
 						onChange={(e) => setSearchTerm(e.target.value)}
 					/>
 				</div>
-
 				<div className='flex gap-2'>
 					<Select
 						value={statusFilter}
-						onValueChange={(value: StatusFilter) => setStatusFilter(value)}
+						onValueChange={(value: StatusFilter) => {
+							setStatusFilter(value)
+							setPage(1)
+						}}
 					>
 						<SelectTrigger className='w-[160px]'>
 							<SelectValue placeholder='Statut' />
@@ -810,9 +771,10 @@ export function InvoicesPage() {
 
 					<Select
 						value={typeFilter}
-						onValueChange={(value: 'all' | 'invoice' | 'credit_note') =>
+						onValueChange={(value: 'all' | 'invoice' | 'credit_note') => {
 							setTypeFilter(value)
-						}
+							setPage(1)
+						}}
 					>
 						<SelectTrigger className='w-[160px]'>
 							<SelectValue placeholder='Type' />
@@ -823,434 +785,43 @@ export function InvoicesPage() {
 							<SelectItem value='credit_note'>Avoirs uniquement</SelectItem>
 						</SelectContent>
 					</Select>
-
-					{/* Filtre TIK/FAC */}
-					<Select
-						value={documentTypeFilter}
-						onValueChange={(value: DocumentTypeFilter) =>
-							setDocumentTypeFilter(value)
-						}
-					>
-						<SelectTrigger className='w-[180px]'>
-							<SelectValue placeholder='Document' />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value='all'>Tous documents</SelectItem>
-							<SelectItem value='tik'>Tickets POS</SelectItem>
-							<SelectItem value='fac'>Factures</SelectItem>
-						</SelectContent>
-					</Select>
 				</div>
 			</div>
 
-			{/* Table */}
-			{isLoading ? (
-				<p className='text-muted-foreground'>Chargement des factures...</p>
-			) : invoices.length === 0 ? (
-				<div className='border rounded-lg p-6 text-center text-muted-foreground'>
-					Aucune facture trouvée pour ces filtres.
-				</div>
-			) : (
-				<div className='border rounded-lg overflow-hidden'>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Numéro</TableHead>
-								<TableHead>Vendeur</TableHead>
-								<TableHead>Type</TableHead>
-								<TableHead>Client</TableHead>
-								<TableHead>Date</TableHead>
-								<TableHead>Échéance</TableHead>
-								<TableHead>Statut</TableHead>
-								<TableHead className='text-right'>Montant TTC</TableHead>
-								<TableHead className='w-10' />
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{invoices.map((invoice) => {
-								const displayStatus = getDisplayStatus(invoice)
-								const customer = invoice.expand?.customer
-								const overdue = isOverdue(invoice)
+			{/* Table — pas de early return sur isLoading, spinner géré dans InvoicesTable */}
+			<InvoicesTable
+				invoices={invoices}
+				isLoading={isLoading}
+				page={page}
+				totalPages={invoicesData?.totalPages ?? 1}
+				totalItems={invoicesData?.totalItems ?? 0}
+				perPage={PER_PAGE}
+				onPageChange={setPage}
+				onDownloadPdf={handleDownloadPdf}
+				onOpenSendEmail={handleOpenSendEmailDialog}
+				onValidate={handleValidate}
+				onMarkAsSent={handleMarkAsSent}
+				onOpenPayment={handleOpenPaymentDialog}
+				onOpenCancel={handleOpenCancelDialog}
+				onOpenDeleteDraft={handleOpenDeleteDraftDialog}
+				onOpenRefundTicket={(ticket) => {
+					setTicketToRefund(ticket)
+					setRefundTicketDialogOpen(true)
+				}}
+				onOpenRefundInvoice={(invoice) => {
+					setInvoiceToRefund(invoice)
+					setRefundInvoiceOpen(true)
+				}}
+				onOpenRefundDeposit={(invoice) => {
+					setDepositToRefund(invoice)
+					setRefundDepositReason('')
+					setRefundDepositOpen(true)
+				}}
+			/>
 
-								const soldBy = (invoice as any).expand?.sold_by
-								const sellerName =
-									soldBy?.name ||
-									soldBy?.username ||
-									soldBy?.email ||
-									(invoice.sold_by ? String(invoice.sold_by) : '—')
+			{/* ── Dialogs ─────────────────────────────────────────────────────── */}
 
-								const hasCancellationCreditNote = invoices.some(
-									(other) =>
-										other.invoice_type === 'credit_note' &&
-										other.original_invoice_id === invoice.id,
-								)
-
-								const isTicket =
-									invoice.is_pos_ticket === true ||
-									invoice.number?.startsWith('TIK-')
-
-								const remainingAmount =
-									typeof invoice.remaining_amount === 'number'
-										? invoice.remaining_amount
-										: (invoice.total_ttc ?? 0) -
-											(invoice.credit_notes_total ?? 0)
-
-								return (
-									<TableRow
-										key={invoice.id}
-										className={overdue ? 'bg-red-50/50' : ''}
-									>
-										<TableCell className='font-medium'>
-											<div className='flex items-center gap-2'>
-												<span className='font-mono'>{invoice.number}</span>
-
-												{invoice.converted_to_invoice && <Badge>→ FAC</Badge>}
-
-												{invoice.original_invoice_id && (
-													<Badge>
-														←{' '}
-														{invoice.expand?.original_invoice_id?.is_pos_ticket
-															? 'TIK'
-															: 'FAC'}
-													</Badge>
-												)}
-											</div>
-										</TableCell>
-
-										<TableCell className='text-sm text-muted-foreground'>
-											{sellerName}
-										</TableCell>
-
-										<TableCell>
-											<Badge
-												variant={
-													invoice.invoice_type === 'credit_note'
-														? 'destructive'
-														: 'outline'
-												}
-											>
-												{invoice.is_pos_ticket
-													? 'Ticket'
-													: invoice.invoice_type === 'credit_note'
-														? 'Avoir'
-														: invoice.invoice_type === 'deposit'
-															? 'Acompte'
-															: 'Facture'}
-											</Badge>
-										</TableCell>
-
-										<TableCell>
-											<div>
-												<p className='font-medium'>
-													{customer?.name || 'Client inconnu'}
-												</p>
-												{customer?.email && (
-													<p className='text-xs text-muted-foreground'>
-														{customer.email}
-													</p>
-												)}
-											</div>
-										</TableCell>
-
-										<TableCell>{formatDate(invoice.date)}</TableCell>
-
-										<TableCell>
-											<span
-												className={overdue ? 'text-red-600 font-medium' : ''}
-											>
-												{invoice.due_date ? formatDate(invoice.due_date) : '-'}
-											</span>
-											{overdue && (
-												<AlertTriangle className='h-3 w-3 inline ml-1 text-red-500' />
-											)}
-										</TableCell>
-
-										<TableCell>
-											<div className='flex items-center gap-2'>
-												<Badge variant={displayStatus.variant}>
-													{displayStatus.label}
-												</Badge>
-												{displayStatus.isPaid && (
-													<CheckCircle className='h-4 w-4 text-green-600' />
-												)}
-											</div>
-										</TableCell>
-
-										<TableCell
-											className={`text-right font-medium ${invoice.total_ttc < 0 ? 'text-red-600' : ''}`}
-										>
-											{formatCurrency(invoice.total_ttc)}
-										</TableCell>
-
-										<TableCell>
-											<DropdownMenu>
-												<DropdownMenuTrigger asChild>
-													<Button variant='ghost' className='h-8 w-8 p-0'>
-														<MoreHorizontal className='h-4 w-4' />
-													</Button>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align='end'>
-													<DropdownMenuLabel>Actions</DropdownMenuLabel>
-
-													<DropdownMenuItem
-														onClick={() =>
-															navigate({
-																to: '/connect/invoices/$invoiceId',
-																params: () => ({ invoiceId: invoice.id }),
-															})
-														}
-													>
-														<Eye className='h-4 w-4 mr-2' />
-														Voir
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														onClick={() => handleDownloadPdf(invoice)}
-													>
-														<Download className='h-4 w-4 mr-2' />
-														Télécharger PDF
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														onClick={() => handleOpenSendEmailDialog(invoice)}
-														disabled={invoice.status === 'draft'}
-													>
-														<Mail className='h-4 w-4 mr-2' />
-														Envoyer par email
-													</DropdownMenuItem>
-
-													{/* Convertir ticket -> facture */}
-													{invoice.number?.startsWith('TIK-') &&
-														!invoice.converted_to_invoice && (
-															<>
-																<DropdownMenuSeparator />
-																<DropdownMenuItem
-																	onClick={() =>
-																		navigate({
-																			to: '/cash/convert-to-invoice/$ticketId',
-																			params: { ticketId: invoice.id },
-																		})
-																	}
-																>
-																	<Receipt className='h-4 w-4 mr-2' />
-																	Convertir en facture
-																</DropdownMenuItem>
-															</>
-														)}
-
-													{/* Ticket Remboursement */}
-													{isTicket &&
-														displayStatus.isPaid &&
-														invoice.invoice_type === 'invoice' && (
-															<>
-																<DropdownMenuSeparator />
-																<DropdownMenuItem
-																	onClick={() => {
-																		if (remainingAmount <= 0) {
-																			toast.error(
-																				'Ticket déjà totalement remboursé',
-																				{
-																					description: `Le ticket ${invoice.number} a déjà été intégralement remboursé.`,
-																				},
-																			)
-																			return
-																		}
-																		handleOpenRefundTicketDialog(invoice)
-																	}}
-																>
-																	<RotateCcw className='h-4 w-4 mr-2' />
-																	Rembourser ticket
-																	{remainingAmount <= 0 && (
-																		<span className='ml-2 text-xs text-muted-foreground'>
-																			(remboursé)
-																		</span>
-																	)}
-																</DropdownMenuItem>
-															</>
-														)}
-
-													<DropdownMenuSeparator />
-
-													{/* Actions spécifiques aux brouillons */}
-													{invoice.status === 'draft' &&
-														invoice.invoice_type === 'invoice' && (
-															<>
-																<DropdownMenuItem
-																	onClick={() =>
-																		navigate({
-																			to: '/connect/invoices/$invoiceId/edit',
-																			params: { invoiceId: invoice.id },
-																		})
-																	}
-																>
-																	<Edit className='h-4 w-4 mr-2' />
-																	Modifier
-																</DropdownMenuItem>
-																<DropdownMenuItem
-																	onClick={() => handleValidate(invoice)}
-																>
-																	<CheckCircle className='h-4 w-4 mr-2' />
-																	Valider
-																</DropdownMenuItem>
-
-																<DropdownMenuItem
-																	onClick={() =>
-																		handleOpenDeleteDraftDialog(invoice)
-																	}
-																	className='text-red-600'
-																>
-																	<XCircle className='h-4 w-4 mr-2' />
-																	Supprimer le brouillon
-																</DropdownMenuItem>
-
-																<DropdownMenuSeparator />
-															</>
-														)}
-
-													{/* Workflow après brouillon */}
-													{canTransitionTo(invoice.status, 'sent') && (
-														<DropdownMenuItem
-															onClick={() => handleMarkAsSent(invoice)}
-														>
-															<Send className='h-4 w-4 mr-2' />
-															Marquer envoyée
-														</DropdownMenuItem>
-													)}
-
-													{/* Paiement */}
-													{canMarkAsPaid(invoice) &&
-														!hasCancellationCreditNote &&
-														(invoice.invoice_type === 'invoice' &&
-														(invoice.deposits_total_ttc ?? 0) > 0 &&
-														!invoice.original_invoice_id ? (
-															<DropdownMenuItem
-																onClick={() =>
-																	navigate({
-																		to: '/connect/invoices/$invoiceId',
-																		params: { invoiceId: invoice.id },
-																	})
-																}
-															>
-																<CheckCircle className='h-4 w-4 mr-2 text-blue-600' />
-																Solder
-															</DropdownMenuItem>
-														) : (
-															<DropdownMenuItem
-																onClick={() => handleOpenPaymentDialog(invoice)}
-															>
-																<CheckCircle className='h-4 w-4 mr-2 text-green-600' />
-																Enregistrer paiement
-															</DropdownMenuItem>
-														))}
-
-													{/* Rembourser acompte */}
-													{invoice.invoice_type === 'deposit' &&
-														invoice.is_paid &&
-														invoice.status !== 'draft' &&
-														!invoice.has_credit_note && (
-															<>
-																<DropdownMenuSeparator />
-																<DropdownMenuItem
-																	onClick={() => {
-																		setDepositToRefund(invoice)
-																		setRefundDepositReason('')
-																		setRefundDepositOpen(true)
-																	}}
-																	className='text-orange-600'
-																>
-																	<RotateCcw className='h-4 w-4 mr-2' />
-																	Rembourser l'acompte
-																</DropdownMenuItem>
-															</>
-														)}
-
-													{/* Créer un avoir — facture validée ou envoyée, payée ou non */}
-													{invoice.invoice_type === 'invoice' &&
-														!isTicket &&
-														invoice.status !== 'draft' &&
-														!hasCancellationCreditNote && (
-															<>
-																<DropdownMenuSeparator />
-																<DropdownMenuItem
-																	onClick={() => {
-																		if ((invoice.deposits_total_ttc ?? 0) > 0) {
-																			toast.error(
-																				'Impossible de créer un avoir',
-																				{
-																					description:
-																						"Cette facture a des acomptes en cours ou payés. Remboursez d'abord les acomptes avant d'annuler la facture.",
-																				},
-																			)
-																			return
-																		}
-																		handleOpenCancelDialog(invoice)
-																	}}
-																	className={
-																		(invoice.deposits_total_ttc ?? 0) > 0
-																			? 'text-muted-foreground'
-																			: 'text-red-600'
-																	}
-																>
-																	<XCircle className='h-4 w-4 mr-2' />
-																	Créer un avoir
-																	{(invoice.deposits_total_ttc ?? 0) > 0 && (
-																		<span className='ml-2 text-xs'>
-																			(acompte en cours)
-																		</span>
-																	)}
-																</DropdownMenuItem>
-															</>
-														)}
-
-													{/* Rembourser — uniquement si payée */}
-													{invoice.invoice_type === 'invoice' &&
-														displayStatus.isPaid &&
-														!isTicket &&
-														invoice.status !== 'draft' && (
-															<>
-																<DropdownMenuSeparator />
-																<DropdownMenuItem
-																	onClick={() => {
-																		if (remainingAmount <= 0) {
-																			toast.error(
-																				'Facture déjà totalement remboursée',
-																				{
-																					description: `La facture ${invoice.number} a déjà été intégralement remboursée.`,
-																				},
-																			)
-																			return
-																		}
-																		setInvoiceToRefund(invoice)
-																		setRefundInvoiceOpen(true)
-																	}}
-																	className={
-																		remainingAmount <= 0
-																			? 'text-muted-foreground'
-																			: ''
-																	}
-																>
-																	<RotateCcw className='h-4 w-4 mr-2' />
-																	Rembourser
-																	{remainingAmount <= 0 && (
-																		<span className='ml-2 text-xs text-muted-foreground'>
-																			(remboursée)
-																		</span>
-																	)}
-																</DropdownMenuItem>
-															</>
-														)}
-												</DropdownMenuContent>
-											</DropdownMenu>
-										</TableCell>
-									</TableRow>
-								)
-							})}
-						</TableBody>
-					</Table>
-				</div>
-			)}
-
-			{/* Dialog: Clôture journalière */}
+			{/* Clôture journalière */}
 			<Dialog open={closureConfirmOpen} onOpenChange={setClosureConfirmOpen}>
 				<DialogContent>
 					<DialogHeader>
@@ -1263,16 +834,8 @@ export function InvoicesPage() {
 							<br />
 							Elle ne peut être réalisée qu&apos;
 							<strong>une seule fois par jour</strong> et contribue à respecter
-							les exigences légales françaises (inaltérabilité, traçabilité,
-							chronologie des écritures).
+							les exigences légales françaises.
 							<br />
-							<br />
-							Toutes les factures et avoirs du jour seront :
-							<ul className='mt-2 list-disc list-inside'>
-								<li>inclus dans cette clôture</li>
-								<li>chaînés cryptographiquement (hash ISCA)</li>
-								<li>rattachés à cette période via un identifiant de clôture</li>
-							</ul>
 							<br />
 							Cette opération est <strong>irréversible</strong> pour la période
 							concernée.
@@ -1286,7 +849,10 @@ export function InvoicesPage() {
 							Annuler
 						</Button>
 						<Button
-							onClick={handleConfirmDailyClosure}
+							onClick={async () => {
+								setClosureConfirmOpen(false)
+								await handleDailyClosure()
+							}}
 							disabled={performDailyClosure.isPending}
 							className='bg-red-600 hover:bg-red-700'
 						>
@@ -1298,7 +864,7 @@ export function InvoicesPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Dialog: Vérification d'intégrité */}
+			{/* Vérification d'intégrité */}
 			<Dialog open={integrityDialogOpen} onOpenChange={setIntegrityDialogOpen}>
 				<DialogContent className='max-w-2xl'>
 					<DialogHeader>
@@ -1311,7 +877,6 @@ export function InvoicesPage() {
 							fiscales.
 						</DialogDescription>
 					</DialogHeader>
-
 					<div className='space-y-4 py-4'>
 						<div className='space-y-2'>
 							<Label>Type de documents à vérifier</Label>
@@ -1334,7 +899,6 @@ export function InvoicesPage() {
 								</SelectContent>
 							</Select>
 						</div>
-
 						{(integrityResult || integritySummary) && (
 							<div className='grid grid-cols-4 gap-2 text-sm'>
 								<div className='p-2 rounded bg-muted/50 text-center'>
@@ -1370,15 +934,10 @@ export function InvoicesPage() {
 								</div>
 							</div>
 						)}
-
 						{integrityResult && (
 							<div className='space-y-3'>
 								<div
-									className={`flex items-center gap-3 p-4 rounded-lg ${
-										integrityResult.allValid
-											? 'bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200'
-											: 'bg-red-50 dark:bg-red-950/20 border border-red-200'
-									}`}
+									className={`flex items-center gap-3 p-4 rounded-lg ${integrityResult.allValid ? 'bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200' : 'bg-red-50 dark:bg-red-950/20 border border-red-200'}`}
 								>
 									{integrityResult.allValid ? (
 										<ShieldCheck className='h-6 w-6 text-emerald-600' />
@@ -1400,54 +959,32 @@ export function InvoicesPage() {
 										</p>
 									</div>
 								</div>
-
 								<div className='grid grid-cols-3 gap-2'>
-									<div
-										className={`text-center p-2 rounded ${
-											integrityResult.summary.invoices.count ===
-											integrityResult.summary.invoices.valid
-												? 'bg-emerald-50 dark:bg-emerald-950/20'
-												: 'bg-red-50 dark:bg-red-950/20'
-										}`}
-									>
-										<p className='text-xs text-muted-foreground'>
-											Factures B2B
-										</p>
-										<p className='font-medium'>
-											{integrityResult.summary.invoices.valid}/
-											{integrityResult.summary.invoices.count}
-										</p>
-									</div>
-									<div
-										className={`text-center p-2 rounded ${
-											integrityResult.summary.posTickets.count ===
-											integrityResult.summary.posTickets.valid
-												? 'bg-emerald-50 dark:bg-emerald-950/20'
-												: 'bg-red-50 dark:bg-red-950/20'
-										}`}
-									>
-										<p className='text-xs text-muted-foreground'>Tickets POS</p>
-										<p className='font-medium'>
-											{integrityResult.summary.posTickets.valid}/
-											{integrityResult.summary.posTickets.count}
-										</p>
-									</div>
-									<div
-										className={`text-center p-2 rounded ${
-											integrityResult.summary.creditNotes.count ===
-											integrityResult.summary.creditNotes.valid
-												? 'bg-emerald-50 dark:bg-emerald-950/20'
-												: 'bg-red-50 dark:bg-red-950/20'
-										}`}
-									>
-										<p className='text-xs text-muted-foreground'>Avoirs</p>
-										<p className='font-medium'>
-											{integrityResult.summary.creditNotes.valid}/
-											{integrityResult.summary.creditNotes.count}
-										</p>
-									</div>
+									{[
+										{
+											label: 'Factures B2B',
+											data: integrityResult.summary.invoices,
+										},
+										{
+											label: 'Tickets POS',
+											data: integrityResult.summary.posTickets,
+										},
+										{
+											label: 'Avoirs',
+											data: integrityResult.summary.creditNotes,
+										},
+									].map(({ label, data }) => (
+										<div
+											key={label}
+											className={`text-center p-2 rounded ${data.count === data.valid ? 'bg-emerald-50 dark:bg-emerald-950/20' : 'bg-red-50 dark:bg-red-950/20'}`}
+										>
+											<p className='text-xs text-muted-foreground'>{label}</p>
+											<p className='font-medium'>
+												{data.valid}/{data.count}
+											</p>
+										</div>
+									))}
 								</div>
-
 								{integrityResult.invalidCount > 0 && (
 									<div className='max-h-48 overflow-y-auto space-y-2'>
 										<p className='text-sm font-medium text-red-600'>
@@ -1481,7 +1018,6 @@ export function InvoicesPage() {
 							</div>
 						)}
 					</div>
-
 					<DialogFooter>
 						<Button
 							variant='outline'
@@ -1509,7 +1045,7 @@ export function InvoicesPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Dialog: Créer un avoir */}
+			{/* Créer un avoir */}
 			<Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
@@ -1567,7 +1103,7 @@ export function InvoicesPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Dialog: Enregistrer paiement */}
+			{/* Enregistrer paiement */}
 			<Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
@@ -1580,9 +1116,7 @@ export function InvoicesPage() {
 							)}
 						</DialogDescription>
 					</DialogHeader>
-
 					<div className='space-y-4 py-4'>
-						{/* Toggle mode — seulement si la facture peut recevoir un acompte */}
 						{invoiceToPay &&
 							invoiceToPay.invoice_type !== 'deposit' &&
 							canCreateDeposit(invoiceToPay) && (
@@ -1590,11 +1124,7 @@ export function InvoicesPage() {
 									<button
 										type='button'
 										onClick={() => setPaymentMode('full')}
-										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-											paymentMode === 'full'
-												? 'bg-primary text-primary-foreground'
-												: 'bg-background text-muted-foreground hover:bg-muted'
-										}`}
+										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${paymentMode === 'full' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
 									>
 										<CheckCircle className='h-4 w-4 inline mr-2' />
 										Paiement total
@@ -1602,20 +1132,14 @@ export function InvoicesPage() {
 									<button
 										type='button'
 										onClick={() => setPaymentMode('deposit')}
-										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-											paymentMode === 'deposit'
-												? 'bg-primary text-primary-foreground'
-												: 'bg-background text-muted-foreground hover:bg-muted'
-										}`}
+										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${paymentMode === 'deposit' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
 									>
 										<Banknote className='h-4 w-4 inline mr-2' />
 										Acompte
 									</button>
 								</div>
 							)}
-
 						{paymentMode === 'full' ? (
-							/* ── Paiement total ── */
 							<div className='space-y-2'>
 								<Label>Méthode de paiement</Label>
 								<Select
@@ -1654,34 +1178,23 @@ export function InvoicesPage() {
 								)}
 							</div>
 						) : (
-							/* ── Acompte ── */
 							<div className='space-y-3'>
-								{/* Toggle pourcentage / montant fixe */}
 								<div className='flex rounded-lg border overflow-hidden'>
 									<button
 										type='button'
 										onClick={() => setDepositInputMode('percent')}
-										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-											depositInputMode === 'percent'
-												? 'bg-primary text-primary-foreground'
-												: 'bg-background text-muted-foreground hover:bg-muted'
-										}`}
+										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${depositInputMode === 'percent' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
 									>
 										Pourcentage
 									</button>
 									<button
 										type='button'
 										onClick={() => setDepositInputMode('amount')}
-										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-											depositInputMode === 'amount'
-												? 'bg-primary text-primary-foreground'
-												: 'bg-background text-muted-foreground hover:bg-muted'
-										}`}
+										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${depositInputMode === 'amount' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
 									>
 										Montant fixe
 									</button>
 								</div>
-
 								{depositInputMode === 'percent' ? (
 									<>
 										<Label>Pourcentage de l'acompte</Label>
@@ -1713,23 +1226,8 @@ export function InvoicesPage() {
 											value={depositAmount || ''}
 											onChange={(e) => setDepositAmount(Number(e.target.value))}
 										/>
-										{depositAmount >
-											(invoiceToPay?.balance_due && invoiceToPay.balance_due > 0
-												? invoiceToPay.balance_due
-												: (invoiceToPay?.total_ttc ?? 0)) && (
-											<p className='text-sm text-red-500'>
-												Le montant ne peut pas dépasser{' '}
-												{formatCurrency(
-													invoiceToPay?.balance_due &&
-														invoiceToPay.balance_due > 0
-														? invoiceToPay.balance_due
-														: (invoiceToPay?.total_ttc ?? 0),
-												)}
-											</p>
-										)}
 									</>
 								)}
-
 								{invoiceToPay && (
 									<div className='bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 text-sm space-y-1'>
 										{(() => {
@@ -1740,7 +1238,6 @@ export function InvoicesPage() {
 												depositInputMode === 'percent'
 													? (base * depositPercentage) / 100
 													: depositAmount
-											const solde = base - acompte
 											return (
 												<>
 													<p>
@@ -1748,7 +1245,7 @@ export function InvoicesPage() {
 													</p>
 													<p>
 														<strong>Solde restant :</strong>{' '}
-														{formatCurrency(Math.max(0, solde))}
+														{formatCurrency(Math.max(0, base - acompte))}
 													</p>
 													<p>
 														<strong>Client :</strong>{' '}
@@ -1762,7 +1259,6 @@ export function InvoicesPage() {
 							</div>
 						)}
 					</div>
-
 					<DialogFooter>
 						<Button
 							variant='outline'
@@ -1803,7 +1299,7 @@ export function InvoicesPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* 🆕 Dialog: Rembourser un acompte */}
+			{/* Rembourser un acompte */}
 			<Dialog open={refundDepositOpen} onOpenChange={setRefundDepositOpen}>
 				<DialogContent>
 					<DialogHeader>
@@ -1880,7 +1376,7 @@ export function InvoicesPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Dialog: Suppression de brouillon */}
+			{/* Suppression de brouillon */}
 			<Dialog
 				open={deleteDraftDialogOpen}
 				onOpenChange={setDeleteDraftDialogOpen}
@@ -1931,22 +1427,24 @@ export function InvoicesPage() {
 				</DialogContent>
 			</Dialog>
 
+			{/* Dialogs externes */}
 			<RefundTicketDialog
 				open={refundTicketDialogOpen}
 				onOpenChange={(o) => {
-					if (!o) handleCloseRefundTicketDialog()
-					else setRefundTicketDialogOpen(true)
+					if (!o) {
+						setRefundTicketDialogOpen(false)
+						setTicketToRefund(null)
+					} else setRefundTicketDialogOpen(true)
 				}}
 				ticket={ticketToRefund}
 				onSuccess={(stockItems) => {
-					handleCloseRefundTicketDialog()
+					setRefundTicketDialogOpen(false)
+					setTicketToRefund(null)
 					void refetchInvoices()
-					if (stockItems && stockItems.length > 0) {
+					if (stockItems && stockItems.length > 0)
 						handleOpenStockReclassify(stockItems, ticketToRefund?.number)
-					}
 				}}
 			/>
-
 			<RefundInvoiceDialog
 				open={refundInvoiceOpen}
 				invoice={invoiceToRefund}
@@ -1956,9 +1454,8 @@ export function InvoicesPage() {
 				}}
 				onSuccess={(stockItems) => {
 					void refetchInvoices()
-					if (stockItems && stockItems.length > 0) {
+					if (stockItems && stockItems.length > 0)
 						handleOpenStockReclassify(stockItems, invoiceToRefund?.number)
-					}
 				}}
 			/>
 			<StockReclassificationDialog
@@ -1972,8 +1469,6 @@ export function InvoicesPage() {
 					setStockDocumentNumber(undefined)
 				}}
 			/>
-
-			{/* Dialog: Envoyer la facture par email */}
 			<SendInvoiceEmailDialog
 				open={sendEmailDialogOpen}
 				onOpenChange={setSendEmailDialogOpen}

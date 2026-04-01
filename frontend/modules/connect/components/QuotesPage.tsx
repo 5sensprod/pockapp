@@ -1,5 +1,5 @@
 // frontend/modules/connect/components/QuotesPage.tsx
-// Page de gestion des devis (quotes)
+// Page de gestion des devis — pagination serveur + debounce + recherche client
 
 import {
 	AlertDialog,
@@ -11,7 +11,6 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -29,92 +28,32 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
-import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
-
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { useDebounce } from '@/lib/hooks/useDebounce'
 import {
 	useConvertQuoteToInvoice,
 	useDeleteQuote,
 	useQuotes,
 } from '@/lib/queries/quotes'
 import type { QuoteResponse, QuoteStatus } from '@/lib/types/invoice.types'
-import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { pdf } from '@react-pdf/renderer'
-import {
-	ArrowRight,
-	CheckCircle,
-	Download,
-	Edit,
-	Eye,
-	FileText,
-	Loader2,
-	Mail,
-	MoreHorizontal,
-	Plus,
-	Trash2,
-} from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import { Plus } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { QuotePdfDocument } from './QuotePdf'
+import { QuotesTable } from './QuotesTable'
 import { SendQuoteEmailDialog } from './SendQuoteEmailDialog'
 
-function formatDate(dateStr?: string) {
-	if (!dateStr) return '-'
-	return new Date(dateStr).toLocaleDateString('fr-FR', {
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-	})
-}
-
 function formatCurrency(amount: number, currency = 'EUR') {
-	return new Intl.NumberFormat('fr-FR', {
-		style: 'currency',
-		currency,
-	}).format(amount)
+	return new Intl.NumberFormat('fr-FR', { style: 'currency', currency }).format(
+		amount,
+	)
 }
 
-function getQuoteStatusLabel(status: QuoteStatus) {
-	const map: Record<QuoteStatus, string> = {
-		draft: 'Brouillon',
-		sent: 'Envoyé',
-		accepted: 'Accepté',
-		rejected: 'Refusé',
-	}
-	return map[status]
-}
-
-function getQuoteStatusVariant(
-	status: QuoteStatus,
-): 'default' | 'secondary' | 'destructive' | 'outline' {
-	switch (status) {
-		case 'draft':
-			return 'secondary'
-		case 'sent':
-			return 'outline'
-		case 'accepted':
-			return 'default'
-		case 'rejected':
-			return 'destructive'
-	}
-}
+const PER_PAGE = 20
 
 export function QuotesPage() {
 	const navigate = useNavigate()
@@ -125,30 +64,65 @@ export function QuotesPage() {
 	const [searchTerm, setSearchTerm] = useState('')
 	const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all')
 
-	// Dialogs suppression
+	// Pagination
+	const [page, setPage] = useState(1)
+	const prevDebouncedRef = useRef('')
+	const debouncedSearch = useDebounce(searchTerm, 400)
+
+	// Reset page via ref quand la recherche change — sans re-render supplémentaire
+	if (debouncedSearch !== prevDebouncedRef.current) {
+		prevDebouncedRef.current = debouncedSearch
+		if (page !== 1) setPage(1)
+	}
+
+	// Résolution des IDs clients correspondant au terme recherché
+	const { data: matchingCustomerIds } = useQuery({
+		queryKey: ['customer-search-ids-quotes', activeCompanyId, debouncedSearch],
+		queryFn: async () => {
+			if (!debouncedSearch || !activeCompanyId) return []
+			const result = await pb.collection('customers').getFullList({
+				filter: `owner_company = "${activeCompanyId}" && name ~ "${debouncedSearch}"`,
+				fields: 'id',
+			})
+			return result.map((c: any) => c.id as string)
+		},
+		enabled: !!debouncedSearch && !!activeCompanyId,
+		staleTime: 10_000,
+	})
+
+	// Filtre combiné : numéro OU clients correspondants
+	const searchFilter = useMemo(() => {
+		if (!debouncedSearch) return undefined
+		const parts: string[] = [`number ~ "${debouncedSearch}"`]
+		if (matchingCustomerIds && matchingCustomerIds.length > 0) {
+			const customerFilter = matchingCustomerIds
+				.map((id: string) => `customer = "${id}"`)
+				.join(' || ')
+			parts.push(`(${customerFilter})`)
+		}
+		return `(${parts.join(' || ')})`
+	}, [debouncedSearch, matchingCustomerIds])
+
+	// Dialogs
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [quoteToDelete, setQuoteToDelete] = useState<QuoteResponse | null>(null)
-
-	// Dialog transformation en facture
 	const [convertDialogOpen, setConvertDialogOpen] = useState(false)
 	const [quoteToConvert, setQuoteToConvert] = useState<QuoteResponse | null>(
 		null,
 	)
-
-	// Dialog envoi email
 	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 	const [quoteToEmail, setQuoteToEmail] = useState<QuoteResponse | null>(null)
-
-	// État téléchargement PDF
 	const [downloadingQuoteId, setDownloadingQuoteId] = useState<string | null>(
 		null,
 	)
 
-	// Queries
+	// Query avec pagination serveur
 	const { data: quotesData, isLoading } = useQuotes({
 		companyId: activeCompanyId ?? undefined,
 		status: statusFilter !== 'all' ? statusFilter : undefined,
-		filter: searchTerm ? `number ~ "${searchTerm}"` : undefined,
+		filter: searchFilter,
+		page,
+		perPage: PER_PAGE,
 	})
 
 	const quotes = (quotesData?.items ?? []) as QuoteResponse[]
@@ -165,7 +139,6 @@ export function QuotesPage() {
 
 	const handleConfirmDelete = async () => {
 		if (!quoteToDelete) return
-
 		try {
 			await deleteQuote.mutateAsync(quoteToDelete.id)
 			toast.success(`Devis ${quoteToDelete.number} supprimé`)
@@ -212,14 +185,11 @@ export function QuotesPage() {
 		}
 
 		setDownloadingQuoteId(quote.id)
-
 		try {
-			// ✅ IMPORTANT: Récupérer le devis complet avec getOne pour avoir vat_breakdown
 			const fullQuote = await pb.collection('quotes').getOne(quote.id, {
 				expand: 'customer,issued_by',
 			})
 
-			// Récupérer les infos de l'entreprise
 			let company: any
 			try {
 				company = await pb.collection('companies').getOne(activeCompanyId)
@@ -227,7 +197,6 @@ export function QuotesPage() {
 				console.warn('Entreprise non trouvée:', err)
 			}
 
-			// Récupérer le client (si pas déjà dans expand)
 			let customer = fullQuote.expand?.customer
 			if (!customer && fullQuote.customer) {
 				try {
@@ -237,23 +206,20 @@ export function QuotesPage() {
 				}
 			}
 
-			// Récupérer le logo de l'entreprise (si disponible)
 			let companyLogoUrl: string | null = null
 			if (company?.logo) {
 				companyLogoUrl = pb.files.getUrl(company, company.logo)
 			}
 
-			// Générer le PDF avec le devis COMPLET
 			const blob = await pdf(
 				<QuotePdfDocument
-					quote={fullQuote as any} // ✅ Utiliser fullQuote au lieu de quote
+					quote={fullQuote as any}
 					customer={customer}
 					company={company}
 					companyLogoUrl={companyLogoUrl}
 				/>,
 			).toBlob()
 
-			// Télécharger le fichier
 			const url = URL.createObjectURL(blob)
 			const link = document.createElement('a')
 			link.href = url
@@ -262,7 +228,6 @@ export function QuotesPage() {
 			link.click()
 			document.body.removeChild(link)
 			URL.revokeObjectURL(url)
-
 			toast.success('PDF téléchargé')
 		} catch (error) {
 			toast.error('Erreur lors de la génération du PDF')
@@ -288,18 +253,20 @@ export function QuotesPage() {
 				</Button>
 			</div>
 
-			{/* Filtres */}
+			{/* Filtres — pas de early return sur isLoading, focus préservé */}
 			<div className='flex gap-4'>
 				<Input
-					placeholder='Rechercher par numéro...'
+					placeholder='Rechercher par numéro ou nom du client...'
 					value={searchTerm}
 					onChange={(e) => setSearchTerm(e.target.value)}
 					className='max-w-sm'
 				/>
-
 				<Select
 					value={statusFilter}
-					onValueChange={(v) => setStatusFilter(v as QuoteStatus | 'all')}
+					onValueChange={(v) => {
+						setStatusFilter(v as QuoteStatus | 'all')
+						setPage(1)
+					}}
 				>
 					<SelectTrigger className='w-[200px]'>
 						<SelectValue placeholder='Statut' />
@@ -314,181 +281,24 @@ export function QuotesPage() {
 				</Select>
 			</div>
 
-			{/* Table */}
-			{isLoading ? (
-				<div className='text-center py-12 text-muted-foreground'>
-					Chargement...
-				</div>
-			) : quotes.length === 0 ? (
-				<div className='text-center py-12'>
-					<FileText className='h-12 w-12 mx-auto text-muted-foreground/50 mb-4' />
-					<p className='text-muted-foreground'>Aucun devis pour le moment</p>
-					<Button
-						className='mt-4'
-						onClick={() => navigate({ to: '/connect/quotes/new' })}
-					>
-						Créer mon premier devis
-					</Button>
-				</div>
-			) : (
-				<div className='rounded-md border'>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Numéro</TableHead>
-								<TableHead>Vendeur</TableHead>
-								<TableHead>Client</TableHead>
-								<TableHead>Date</TableHead>
-								<TableHead>Montant TTC</TableHead>
-								<TableHead>Statut</TableHead>
-								<TableHead>Facture liée</TableHead>
-								<TableHead className='w-10' />
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{quotes.map((quote) => {
-								const customer = quote.expand?.customer
-								const linkedInvoice = quote.expand?.generated_invoice_id as
-									| InvoiceResponse
-									| undefined
-								const isDownloading = downloadingQuoteId === quote.id
+			{/* Table — spinner géré dans QuotesTable, pas de early return */}
+			<QuotesTable
+				quotes={quotes}
+				isLoading={isLoading}
+				downloadingQuoteId={downloadingQuoteId}
+				page={page}
+				totalPages={quotesData?.totalPages ?? 1}
+				totalItems={quotesData?.totalItems ?? 0}
+				perPage={PER_PAGE}
+				onPageChange={setPage}
+				onDownloadPdf={handleDownloadPdf}
+				onOpenEmail={handleOpenEmail}
+				onOpenConvert={handleOpenConvert}
+				onOpenDelete={handleOpenDelete}
+				convertIsPending={convertQuoteToInvoice.isPending}
+			/>
 
-								const issuedBy = (quote as any).expand?.issued_by
-								const sellerName =
-									issuedBy?.name ||
-									issuedBy?.username ||
-									issuedBy?.email ||
-									(quote as any).issued_by ||
-									'—'
-
-								return (
-									<TableRow key={quote.id}>
-										<TableCell className='font-mono font-medium'>
-											{quote.number}
-										</TableCell>
-										<TableCell className='text-sm text-muted-foreground'>
-											{sellerName}
-										</TableCell>
-										<TableCell>
-											<div>
-												<p className='font-medium'>
-													{customer?.name || 'Client inconnu'}
-												</p>
-												{customer?.email && (
-													<p className='text-xs text-muted-foreground'>
-														{customer.email}
-													</p>
-												)}
-											</div>
-										</TableCell>
-										<TableCell>{formatDate(quote.date)}</TableCell>
-										<TableCell className='font-medium'>
-											{formatCurrency(quote.total_ttc, quote.currency)}
-										</TableCell>
-										<TableCell>
-											<Badge variant={getQuoteStatusVariant(quote.status)}>
-												{getQuoteStatusLabel(quote.status)}
-											</Badge>
-										</TableCell>
-										<TableCell>
-											{linkedInvoice ? (
-												<div className='flex items-center gap-2 text-sm text-green-700'>
-													<CheckCircle className='h-4 w-4' />
-													<span>Facture {linkedInvoice.number}</span>
-												</div>
-											) : (
-												<span className='text-xs text-muted-foreground'>
-													Pas encore transformé
-												</span>
-											)}
-										</TableCell>
-										<TableCell>
-											<DropdownMenu>
-												<DropdownMenuTrigger asChild>
-													<Button variant='ghost' className='h-8 w-8 p-0'>
-														<MoreHorizontal className='h-4 w-4' />
-													</Button>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align='end'>
-													<DropdownMenuLabel>Actions</DropdownMenuLabel>
-
-													<DropdownMenuItem
-														onClick={() =>
-															navigate({
-																to: '/connect/quotes/$quoteId',
-																params: { quoteId: quote.id },
-															})
-														}
-													>
-														<Eye className='h-4 w-4 mr-2' />
-														Voir
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														onClick={() =>
-															navigate({
-																to: '/connect/quotes/$quoteId/edit',
-																params: { quoteId: quote.id },
-															})
-														}
-													>
-														<Edit className='h-4 w-4 mr-2' />
-														Modifier
-													</DropdownMenuItem>
-
-													<DropdownMenuSeparator />
-
-													<DropdownMenuItem
-														onClick={() => handleDownloadPdf(quote)}
-														disabled={isDownloading}
-													>
-														{isDownloading ? (
-															<Loader2 className='h-4 w-4 mr-2 animate-spin' />
-														) : (
-															<Download className='h-4 w-4 mr-2' />
-														)}
-														Télécharger PDF
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														onClick={() => handleOpenEmail(quote)}
-													>
-														<Mail className='h-4 w-4 mr-2' />
-														Envoyer par email
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														disabled={
-															!!quote.generated_invoice_id ||
-															convertQuoteToInvoice.isPending
-														}
-														onClick={() => handleOpenConvert(quote)}
-													>
-														<ArrowRight className='h-4 w-4 mr-2' />
-														Transformer en facture
-													</DropdownMenuItem>
-
-													<DropdownMenuSeparator />
-
-													<DropdownMenuItem
-														onClick={() => handleOpenDelete(quote)}
-														className='text-red-600'
-													>
-														<Trash2 className='h-4 w-4 mr-2' />
-														Supprimer
-													</DropdownMenuItem>
-												</DropdownMenuContent>
-											</DropdownMenu>
-										</TableCell>
-									</TableRow>
-								)
-							})}
-						</TableBody>
-					</Table>
-				</div>
-			)}
-
-			{/* AlertDialog suppression devis */}
+			{/* AlertDialog suppression */}
 			<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
@@ -497,7 +307,7 @@ export function QuotesPage() {
 							Cette action est irréversible. Le devis{' '}
 							<strong>{quoteToDelete?.number}</strong> sera définitivement
 							supprimé. Aucune écriture légale n&apos;est liée à un devis, donc
-							cette operation ne crée pas de trou dans la numérotation de
+							cette opération ne crée pas de trou dans la numérotation de
 							factures.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
@@ -525,7 +335,6 @@ export function QuotesPage() {
 							annulation par avoir sera possible).
 						</DialogDescription>
 					</DialogHeader>
-
 					{quoteToConvert && (
 						<div className='mt-4 space-y-1 text-sm'>
 							<p>
@@ -541,7 +350,6 @@ export function QuotesPage() {
 							</p>
 						</div>
 					)}
-
 					<DialogFooter className='mt-4'>
 						<Button
 							variant='outline'

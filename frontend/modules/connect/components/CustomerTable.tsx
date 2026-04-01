@@ -33,18 +33,18 @@ import { useDeleteCustomer } from '@/lib/queries/customers'
 import {
 	type ColumnDef,
 	type ColumnFiltersState,
-	type PaginationState,
 	type SortingState,
 	flexRender,
 	getCoreRowModel,
 	getFilteredRowModel,
-	getPaginationRowModel,
 	getSortedRowModel,
 	useReactTable,
 } from '@tanstack/react-table'
 import {
 	ArrowUpDown,
 	Building2,
+	ChevronLeft,
+	ChevronRight,
 	Eye,
 	Landmark,
 	Mail,
@@ -60,6 +60,13 @@ import type { Customer } from './CustomerDialog'
 interface CustomerTableProps {
 	data: Customer[]
 	onEditCustomer: (customer: Customer) => void
+	isLoading?: boolean
+	// Pagination serveur
+	page: number
+	totalPages: number
+	totalItems: number
+	perPage: number
+	onPageChange: (page: number) => void
 }
 
 // Helper pour afficher le type de client
@@ -91,14 +98,19 @@ const getCustomerTypeIcon = (type?: string) => {
 	}
 }
 
-export function CustomerTable({ data, onEditCustomer }: CustomerTableProps) {
+export function CustomerTable({
+	data,
+	onEditCustomer,
+	isLoading = false,
+	page,
+	totalPages,
+	totalItems,
+	perPage,
+	onPageChange,
+}: CustomerTableProps) {
 	const navigate = useNavigate()
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-	const [pagination, setPagination] = useState<PaginationState>({
-		pageIndex: 0,
-		pageSize: 10,
-	})
 
 	const deleteCustomer = useDeleteCustomer()
 
@@ -300,18 +312,19 @@ export function CustomerTable({ data, onEditCustomer }: CustomerTableProps) {
 		data,
 		columns,
 		getCoreRowModel: getCoreRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		getFilteredRowModel: getFilteredRowModel(),
 		onSortingChange: setSorting,
 		onColumnFiltersChange: setColumnFilters,
-		onPaginationChange: setPagination,
 		state: {
 			sorting,
 			columnFilters,
-			pagination,
 		},
 	})
+
+	// Calcul de la plage affichée (ex: "21–40 sur 87")
+	const rangeStart = totalItems === 0 ? 0 : (page - 1) * perPage + 1
+	const rangeEnd = Math.min(page * perPage, totalItems)
 
 	return (
 		<div className='space-y-4'>
@@ -334,7 +347,18 @@ export function CustomerTable({ data, onEditCustomer }: CustomerTableProps) {
 						))}
 					</TableHeader>
 					<TableBody>
-						{table.getRowModel().rows?.length ? (
+						{isLoading ? (
+							<TableRow>
+								<TableCell
+									colSpan={columns.length}
+									className='h-24 text-center'
+								>
+									<div className='flex items-center justify-center'>
+										<div className='h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin' />
+									</div>
+								</TableCell>
+							</TableRow>
+						) : table.getRowModel().rows?.length ? (
 							table.getRowModel().rows.map((row) => (
 								<TableRow
 									key={row.id}
@@ -364,32 +388,39 @@ export function CustomerTable({ data, onEditCustomer }: CustomerTableProps) {
 				</Table>
 			</div>
 
-			{/* Pagination */}
+			{/* ── Pagination serveur ──────────────────────────────────────── */}
 			<div className='flex items-center justify-between'>
 				<div className='text-sm text-muted-foreground'>
-					{table.getFilteredRowModel().rows.length} client(s) au total
+					{totalItems === 0
+						? '0 client'
+						: `${rangeStart}–${rangeEnd} sur ${totalItems} client${totalItems > 1 ? 's' : ''}`}
 				</div>
-				<div className='flex items-center space-x-2'>
+				<div className='flex items-center gap-1'>
 					<Button
 						variant='outline'
 						size='sm'
-						onClick={() => table.previousPage()}
-						disabled={!table.getCanPreviousPage()}
+						onClick={() => onPageChange(page - 1)}
+						disabled={page <= 1}
 					>
+						<ChevronLeft className='h-4 w-4' />
 						Précédent
 					</Button>
+					<span className='px-3 text-sm text-muted-foreground'>
+						{page} / {totalPages}
+					</span>
 					<Button
 						variant='outline'
 						size='sm'
-						onClick={() => table.nextPage()}
-						disabled={!table.getCanNextPage()}
+						onClick={() => onPageChange(page + 1)}
+						disabled={page >= totalPages}
 					>
 						Suivant
+						<ChevronRight className='h-4 w-4' />
 					</Button>
 				</div>
 			</div>
 
-			{/* Boîte de dialogue de confirmation de suppression */}
+			{/* ── Boîte de dialogue de confirmation de suppression ────────── */}
 			<Dialog
 				open={confirmOpen}
 				onOpenChange={(open) => {

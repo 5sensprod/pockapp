@@ -321,7 +321,9 @@ export function useInvoices(options: InvoicesListOptionsWithPeriod = {}) {
 				filters.push(`date <= "${dateTo} 23:59:59"`)
 			}
 			if (filter) {
-				filters.push(filter)
+				// Parenthèses obligatoires pour que le || interne
+				// ne court-circuite pas les filtres owner_company etc.
+				filters.push(`(${filter})`)
 			}
 
 			const finalFilter = filters.length ? filters.join(' && ') : undefined

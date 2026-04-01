@@ -26,6 +26,8 @@ export interface CustomersListOptions {
 	filter?: string
 	sort?: string
 	expand?: string
+	page?: number
+	perPage?: number
 	[key: string]: unknown
 }
 
@@ -41,26 +43,31 @@ export interface CustomersListResult {
 // 📋 Liste tous les clients
 export function useCustomers(options: CustomersListOptions = {}) {
 	const pb = usePocketBase() as any
-	const { companyId, filter, sort, ...otherOptions } = options
+	const {
+		companyId,
+		filter,
+		sort,
+		page = 1,
+		perPage = 20,
+		...otherOptions
+	} = options
 
 	return useQuery<CustomersListResult>({
-		queryKey: ['customers', companyId, filter, sort],
+		queryKey: ['customers', companyId, filter, sort, page, perPage],
 		queryFn: async () => {
 			const filters: string[] = []
 
-			// Filtrer par entreprise si un companyId est fourni
 			if (companyId) {
 				filters.push(`owner_company = "${companyId}"`)
 			}
 
-			// Ajouter les autres filtres s'ils existent
 			if (filter) {
 				filters.push(filter)
 			}
 
 			const finalFilter = filters.length > 0 ? filters.join(' && ') : undefined
 
-			const result = await pb.collection('customers').getList(1, 50, {
+			const result = await pb.collection('customers').getList(page, perPage, {
 				sort: sort || '-created',
 				expand: '',
 				filter: finalFilter,
