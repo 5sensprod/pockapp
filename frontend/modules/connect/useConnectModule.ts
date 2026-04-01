@@ -4,7 +4,7 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useDebounce } from '@/lib/hooks/useDebounce'
 import { useCustomers } from '@/lib/queries/customers'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Customer } from './components/CustomerDialog'
 
 const PER_PAGE = 20
@@ -12,17 +12,16 @@ const PER_PAGE = 20
 export function useConnectModule() {
 	const { activeCompanyId } = useActiveCompany()
 	const navigate = useNavigate()
+
 	const [searchTerm, setSearchTerm] = useState('')
 	const [page, setPage] = useState(1)
-	const prevDebouncedRef = useRef('')
 
 	const debouncedSearch = useDebounce(searchTerm, 400)
 
-	// Reset page quand la recherche change, via ref — sans re-render
-	if (debouncedSearch !== prevDebouncedRef.current) {
-		prevDebouncedRef.current = debouncedSearch
-		if (page !== 1) setPage(1)
-	}
+	// ✅ LA CORRECTION : Dès que la recherche (debouncée) change, on force le retour à la page 1
+	// useEffect(() => {
+	// 	setPage(1)
+	// }, [debouncedSearch])
 
 	const {
 		data: customersData,
@@ -31,7 +30,7 @@ export function useConnectModule() {
 	} = useCustomers({
 		companyId: activeCompanyId ?? undefined,
 		filter: debouncedSearch
-			? `name ~ "${debouncedSearch}" || email ~ "${debouncedSearch}" || phone ~ "${debouncedSearch}"`
+			? `name ~ "${debouncedSearch}" || email ~ "${debouncedSearch}" || phone ~ "${debouncedSearch}" || company ~ "${debouncedSearch}"`
 			: '',
 		page,
 		perPage: PER_PAGE,
@@ -67,7 +66,10 @@ export function useConnectModule() {
 		isLoading,
 		hasNoCustomers: !isLoading && customers.length === 0,
 		searchTerm,
-		setSearchTerm,
+		setSearchTerm: (term: string) => {
+			setSearchTerm(term)
+			setPage(1)
+		},
 		page,
 		setPage,
 		perPage: PER_PAGE,

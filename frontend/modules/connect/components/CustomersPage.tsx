@@ -3,70 +3,30 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { useDebounce } from '@/lib/hooks/useDebounce'
-import { useCustomers } from '@/lib/queries/customers'
-import { useNavigate } from '@tanstack/react-router'
 import { Plus, Users } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
-import type { Customer } from './CustomerDialog'
 import { CustomerTable } from './CustomerTable'
 
-const PER_PAGE = 20
+// ✅ Import du hook personnalisé (vérifie que le chemin correspond bien à ton arborescence)
+import { useConnectModule } from '../useConnectModule'
 
 export function CustomersPage() {
-	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 
-	const [searchTerm, setSearchTerm] = useState('')
-	const [page, setPage] = useState(1)
-	const prevDebouncedRef = useRef('')
-
-	const debouncedSearch = useDebounce(searchTerm, 400)
-
-	// Reset page via ref quand la recherche change — sans re-render supplémentaire
-	if (debouncedSearch !== prevDebouncedRef.current) {
-		prevDebouncedRef.current = debouncedSearch
-		if (page !== 1) setPage(1)
-	}
-
-	const { data: customersData, isLoading } = useCustomers({
-		companyId: activeCompanyId ?? undefined,
-		filter: debouncedSearch
-			? `name ~ "${debouncedSearch}" || email ~ "${debouncedSearch}" || phone ~ "${debouncedSearch}" || company ~ "${debouncedSearch}"`
-			: '',
+	// ✅ On délègue TOUTE la logique d'état et de requête au hook
+	const {
+		customers,
+		isLoading,
+		searchTerm,
+		setSearchTerm,
 		page,
-		perPage: PER_PAGE,
-	})
+		setPage,
+		totalItems,
+		totalPages,
+		perPage,
+		handleNewCustomer,
+		handleEditCustomer,
+	} = useConnectModule()
 
-	const customers: Customer[] = useMemo(
-		() =>
-			(customersData?.items ?? []).map((c: any) => ({
-				id: c.id,
-				name: c.name,
-				email: c.email,
-				phone: c.phone,
-				company: c.company,
-				address: c.address,
-				notes: c.notes,
-				tags: Array.isArray(c.tags)
-					? (c.tags as unknown as string[])
-					: c.tags
-						? [String(c.tags)]
-						: [],
-				customer_type: c.customer_type || 'individual',
-				payment_terms: c.payment_terms,
-			})),
-		[customersData],
-	)
-
-	const handleEditCustomer = (customer: Customer) => {
-		navigate({
-			to: '/connect/customers/$customerId/edit',
-			params: { customerId: customer.id },
-		})
-	}
-
-	// Pas de early return sur isLoading — ça détruirait le focus de l'input
 	return (
 		<div className='container mx-auto px-6 py-8'>
 			{/* Header */}
@@ -82,7 +42,7 @@ export function CustomersPage() {
 					</div>
 				</div>
 				<div className='flex gap-2'>
-					<Button onClick={() => navigate({ to: '/connect/customers/new' })}>
+					<Button onClick={handleNewCustomer}>
 						<Plus className='h-4 w-4 mr-2' />
 						Nouveau client
 					</Button>
@@ -108,9 +68,9 @@ export function CustomersPage() {
 						data={customers}
 						onEditCustomer={handleEditCustomer}
 						page={page}
-						totalPages={customersData?.totalPages ?? 1}
-						totalItems={customersData?.totalItems ?? 0}
-						perPage={PER_PAGE}
+						totalPages={totalPages}
+						totalItems={totalItems}
+						perPage={perPage}
 						onPageChange={setPage}
 						isLoading={isLoading}
 					/>
