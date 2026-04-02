@@ -220,6 +220,10 @@ export function InvoiceDetailPage() {
 
 	const [depositDialogOpen, setDepositDialogOpen] = useState(false)
 	const [depositPercentage, setDepositPercentage] = useState<number>(30)
+	const [depositMode, setDepositMode] = useState<'percent' | 'amount'>(
+		'percent',
+	)
+	const [depositAmount, setDepositAmount] = useState<string>('')
 
 	// ✅ AJOUT: Récupérer les avoirs liés (uniquement si ce n'est PAS un avoir)
 	const { data: linkedCreditNotes } = useCreditNotesForInvoice(
@@ -455,13 +459,32 @@ export function InvoiceDetailPage() {
 
 	const handleCreateDeposit = async () => {
 		if (!invoice) return
+		const baseAmount = invoice.deposits_total_ttc
+			? (invoice.balance_due ?? invoice.total_ttc)
+			: invoice.total_ttc
+		let percentage: number
+		if (depositMode === 'amount') {
+			const amountVal = Number.parseFloat(depositAmount.replace(',', '.'))
+			if (!amountVal || amountVal <= 0 || amountVal >= baseAmount) {
+				toast.error('Montant invalide')
+				return
+			}
+			percentage = round2((amountVal / baseAmount) * 100)
+		} else {
+			percentage = depositPercentage
+		}
 		try {
 			await createDeposit.mutateAsync({
 				parentId: invoice.id,
-				percentage: depositPercentage,
+				percentage,
 			})
-			toast.success(`Acompte de ${depositPercentage}% créé`)
+			const label =
+				depositMode === 'amount'
+					? `${Number.parseFloat(depositAmount.replace(',', '.')).toFixed(2)} €`
+					: `${percentage}%`
+			toast.success(`Acompte de ${label} créé`)
 			setDepositDialogOpen(false)
+			setDepositAmount('')
 		} catch (err: any) {
 			toast.error(err?.message || "Erreur lors de la création de l'acompte")
 		}
@@ -914,33 +937,97 @@ export function InvoiceDetailPage() {
 										(depositDialogOpen ? (
 											<div className='space-y-2 bg-muted/50 rounded-lg p-3'>
 												<p className='text-sm font-medium'>Nouvel acompte</p>
-												<div className='flex items-center gap-2'>
-													<input
-														type='range'
-														min={10}
-														max={90}
-														step={5}
-														value={depositPercentage}
-														onChange={(e) =>
-															setDepositPercentage(Number(e.target.value))
-														}
-														className='flex-1'
-													/>
-													<span className='text-sm font-semibold w-10'>
-														{depositPercentage}%
-													</span>
+												<div className='flex rounded-md overflow-hidden border border-border text-xs font-medium'>
+													<button
+														type='button'
+														className={`flex-1 px-2 py-1.5 transition-colors ${
+															depositMode === 'percent'
+																? 'bg-primary text-primary-foreground'
+																: 'bg-background text-muted-foreground hover:bg-muted'
+														}`}
+														onClick={() => setDepositMode('percent')}
+													>
+														%
+													</button>
+													<button
+														type='button'
+														className={`flex-1 px-2 py-1.5 transition-colors ${
+															depositMode === 'amount'
+																? 'bg-primary text-primary-foreground'
+																: 'bg-background text-muted-foreground hover:bg-muted'
+														}`}
+														onClick={() => setDepositMode('amount')}
+													>
+														€
+													</button>
 												</div>
-												<p className='text-xs text-muted-foreground'>
-													≈{' '}
-													{formatCurrency(
-														((invoice.deposits_total_ttc
-															? (invoice.balance_due ?? invoice.total_ttc)
-															: invoice.total_ttc) *
-															depositPercentage) /
-															100,
-														invoice.currency,
-													)}
-												</p>
+												{depositMode === 'percent' ? (
+													<>
+														<div className='flex items-center gap-2'>
+															<input
+																type='range'
+																min={10}
+																max={90}
+																step={5}
+																value={depositPercentage}
+																onChange={(e) =>
+																	setDepositPercentage(Number(e.target.value))
+																}
+																className='flex-1'
+															/>
+															<span className='text-sm font-semibold w-10'>
+																{depositPercentage}%
+															</span>
+														</div>
+														<p className='text-xs text-muted-foreground'>
+															≈{' '}
+															{formatCurrency(
+																((invoice.deposits_total_ttc
+																	? (invoice.balance_due ?? invoice.total_ttc)
+																	: invoice.total_ttc) *
+																	depositPercentage) /
+																	100,
+																invoice.currency,
+															)}
+														</p>
+													</>
+												) : (
+													<>
+														<div className='flex items-center gap-2'>
+															<input
+																type='number'
+																min={0.01}
+																step={0.01}
+																placeholder='Montant en €'
+																value={depositAmount}
+																onChange={(e) =>
+																	setDepositAmount(e.target.value)
+																}
+																className='flex-1 text-sm border border-border rounded-md px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring'
+															/>
+															<span className='text-sm font-semibold'>€</span>
+														</div>
+														{depositAmount &&
+															Number.parseFloat(
+																depositAmount.replace(',', '.'),
+															) > 0 && (
+																<p className='text-xs text-muted-foreground'>
+																	≈{' '}
+																	{round2(
+																		(Number.parseFloat(
+																			depositAmount.replace(',', '.'),
+																		) /
+																			(invoice.deposits_total_ttc
+																				? (invoice.balance_due ??
+																					invoice.total_ttc)
+																				: invoice.total_ttc)) *
+																			100,
+																	).toFixed(1)}
+																	% du total
+																</p>
+															)}
+													</>
+												)}
 												<div className='flex gap-2'>
 													<Button
 														size='sm'
