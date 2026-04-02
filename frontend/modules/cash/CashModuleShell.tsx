@@ -1,25 +1,8 @@
 // frontend/modules/cash/CashModuleShell.tsx
-//
-// Shell mutualisé pour TOUTES les pages du module PocketCash.
-// Wrape ModulePageShell avec :
-//   - StatusBadge session + date
-//   - Sélecteur de caisse
-//   - Fond de caisse
-//   - Boutons Rapport X / Mouvement / Ouvrir / Clôturer
-//   - Tous les dialogs session (Open, Close, RapportX, Movement)
-//
-// Usage :
-//   <CashModuleShell>
-//     <MonContenu />
-//   </CashModuleShell>
-//
-// Pour forcer une caisse spécifique (ex: CashTerminalPage) :
-//   <CashModuleShell forcedRegisterId={cashRegisterId}>
-//     ...
-//   </CashModuleShell>
 
 import { ModulePageShell, StatusBadge } from '@/components/module-ui'
 import { Button } from '@/components/ui/button'
+import type { ModuleManifest } from '@/modules/_registry'
 import type { ReactNode } from 'react'
 import * as React from 'react'
 import { OpenSessionDialog } from './components'
@@ -31,27 +14,33 @@ import { useCashModule } from './useCashModule'
 
 interface CashModuleShellProps {
 	children: ReactNode
-	/** Optionnel — force la caisse active (ex: terminal lié à une caisse URL) */
 	forcedRegisterId?: string
-	/** Actions supplémentaires à droite du header (ex: boutons spécifiques à une page) */
 	extraActions?: ReactNode
+	/** Remplace "PocketCash" — masque aussi le badge PRO et la description */
+	pageTitle?: string
+	/** Contenu injecté dans la barre (filtres, stats…) */
+	headerExtras?: ReactNode
+	/** Masque sélecteur caisse, fond, Rapport X, Mouvement et Clôturer */
+	hideSessionActions?: boolean
 }
 
 export function CashModuleShell({
 	children,
 	forcedRegisterId,
 	extraActions,
+	pageTitle,
+	headerExtras,
+	hideSessionActions = false,
 }: CashModuleShellProps) {
 	const cash = useCashModule()
 
-	// Synchroniser avec la caisse forcée si fournie (CashTerminalPage)
 	React.useEffect(() => {
 		if (forcedRegisterId && cash.selectedRegisterId !== forcedRegisterId) {
 			cash.setSelectedRegisterId(forcedRegisterId)
 		}
 	}, [forcedRegisterId, cash.selectedRegisterId, cash.setSelectedRegisterId])
 
-	// ── Heure temps réel (synchronisée sur le début de chaque minute) ─────────
+	// ── Heure temps réel ──────────────────────────────────────────────────────
 	const [time, setTime] = React.useState(() =>
 		new Date().toLocaleTimeString('fr-FR', {
 			hour: '2-digit',
@@ -66,12 +55,10 @@ export function CashModuleShell({
 					minute: '2-digit',
 				}),
 			)
-		// Attendre le début de la prochaine minute, puis ticker toutes les 60s
 		const msUntilNextMinute = (60 - new Date().getSeconds()) * 1000
 		const timeout = setTimeout(() => {
 			tick()
 			const interval = setInterval(tick, 60_000)
-			// Cleanup de l'interval dans le cleanup du timeout
 			;(timeout as any)._interval = interval
 		}, msUntilNextMinute)
 		return () => {
@@ -79,6 +66,11 @@ export function CashModuleShell({
 			if ((timeout as any)._interval) clearInterval((timeout as any)._interval)
 		}
 	}, [])
+
+	// ── Manifest contextuel — pageTitle masque PRO + description ─────────────
+	const contextualManifest: ModuleManifest = pageTitle
+		? { ...manifest, name: pageTitle, description: '', plan: undefined }
+		: manifest
 
 	const badge = (
 		<StatusBadge
@@ -90,58 +82,70 @@ export function CashModuleShell({
 
 	const actions = (
 		<div className='flex items-center gap-2'>
-			{/* Sélecteur caisse */}
-			{cash.registers && cash.registers.length > 0 && (
-				<select
-					className='h-7 rounded-md border bg-card px-2 text-[11px]'
-					value={cash.selectedRegisterId ?? ''}
-					onChange={(e) => cash.setSelectedRegisterId(e.target.value)}
-				>
-					{cash.registers.map((reg) => (
-						<option key={reg.id} value={reg.id}>
-							{reg.code ? `${reg.code} — ${reg.name}` : reg.name}
-						</option>
-					))}
-				</select>
-			)}
+			{headerExtras}
 
-			{/* Fond de caisse */}
-			<span className='text-[11px] text-muted-foreground border-l pl-2'>
-				Fond{' '}
-				<span className='font-medium text-foreground'>
-					{cash.activeSession?.opening_float?.toFixed(2) ?? '—'} €
-				</span>
-			</span>
-
-			{/* Actions session ouverte */}
-			{cash.isSessionOpen && (
+			{!hideSessionActions && (
 				<>
-					<Button size='sm' variant='outline' onClick={cash.handleShowRapportX}>
-						Rapport X
-					</Button>
-					<Button size='sm' variant='outline' onClick={cash.handleShowMovement}>
-						Mouvement
+					{cash.registers && cash.registers.length > 0 && (
+						<select
+							className='h-7 rounded-md border bg-card px-2 text-[11px]'
+							value={cash.selectedRegisterId ?? ''}
+							onChange={(e) => cash.setSelectedRegisterId(e.target.value)}
+						>
+							{cash.registers.map((reg) => (
+								<option key={reg.id} value={reg.id}>
+									{reg.code ? `${reg.code} — ${reg.name}` : reg.name}
+								</option>
+							))}
+						</select>
+					)}
+
+					<span className='text-[11px] text-muted-foreground border-l pl-2'>
+						Fond{' '}
+						<span className='font-medium text-foreground'>
+							{cash.activeSession?.opening_float?.toFixed(2) ?? '—'} €
+						</span>
+					</span>
+
+					{cash.isSessionOpen && (
+						<>
+							<Button
+								size='sm'
+								variant='outline'
+								onClick={cash.handleShowRapportX}
+							>
+								Rapport X
+							</Button>
+							<Button
+								size='sm'
+								variant='outline'
+								onClick={cash.handleShowMovement}
+							>
+								Mouvement
+							</Button>
+						</>
+					)}
+
+					{extraActions}
+
+					<Button
+						size='sm'
+						onClick={cash.handleToggleSession}
+						disabled={!cash.canToggleSession}
+					>
+						{cash.isSessionOpen ? 'Clôturer la session' : 'Ouvrir une session'}
 					</Button>
 				</>
 			)}
-
-			{/* Actions supplémentaires injectées par la page */}
-			{extraActions}
-
-			{/* CTA session */}
-			<Button
-				size='sm'
-				onClick={cash.handleToggleSession}
-				disabled={!cash.canToggleSession}
-			>
-				{cash.isSessionOpen ? 'Clôturer la session' : 'Ouvrir une session'}
-			</Button>
 		</div>
 	)
 
 	return (
-		<ModulePageShell manifest={manifest} badge={badge} actions={actions}>
-			{/* ── Dialogs session (montés sur toutes les pages) ─────────────────── */}
+		<ModulePageShell
+			manifest={contextualManifest}
+			badge={badge}
+			actions={actions}
+		>
 			<OpenSessionDialog
 				open={cash.showOpenDialog}
 				onOpenChange={cash.setShowOpenDialog}
@@ -172,7 +176,6 @@ export function CashModuleShell({
 				</>
 			)}
 
-			{/* ── Contenu de la page ────────────────────────────────────────────── */}
 			{children}
 		</ModulePageShell>
 	)
