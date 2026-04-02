@@ -383,7 +383,7 @@ export function ConvertTicketToInvoicePage() {
 				<Button
 					variant='ghost'
 					size='icon'
-					onClick={() => navigate({ to: '/connect/invoices' })}
+					onClick={() => navigate({ to: '/cash/tickets' })}
 				>
 					<ArrowLeft className='h-5 w-5' />
 				</Button>

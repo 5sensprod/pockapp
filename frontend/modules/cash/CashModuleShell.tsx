@@ -3,6 +3,7 @@
 import { ModulePageShell, StatusBadge } from '@/components/module-ui'
 import { Button } from '@/components/ui/button'
 import type { ModuleManifest } from '@/modules/_registry'
+import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import * as React from 'react'
 import { OpenSessionDialog } from './components'
@@ -18,8 +19,10 @@ interface CashModuleShellProps {
 	extraActions?: ReactNode
 	/** Remplace "PocketCash" — masque aussi le badge PRO et la description */
 	pageTitle?: string
+	pageIcon?: LucideIcon
 	/** Contenu injecté dans la barre (filtres, stats…) */
 	headerExtras?: ReactNode
+	centerContent?: ReactNode
 	/** Masque sélecteur caisse, fond, Rapport X, Mouvement et Clôturer */
 	hideSessionActions?: boolean
 }
@@ -29,7 +32,9 @@ export function CashModuleShell({
 	forcedRegisterId,
 	extraActions,
 	pageTitle,
+	pageIcon,
 	headerExtras,
+	centerContent,
 	hideSessionActions = false,
 }: CashModuleShellProps) {
 	const cash = useCashModule()
@@ -69,7 +74,13 @@ export function CashModuleShell({
 
 	// ── Manifest contextuel — pageTitle masque PRO + description ─────────────
 	const contextualManifest: ModuleManifest = pageTitle
-		? { ...manifest, name: pageTitle, description: '', plan: undefined }
+		? {
+				...manifest,
+				name: pageTitle,
+				description: '',
+				plan: undefined,
+				icon: pageIcon || manifest.icon, // <-- REMPLACE L'ICÔNE ICI SI FOURNIE
+			}
 		: manifest
 
 	const badge = (
@@ -144,6 +155,7 @@ export function CashModuleShell({
 		<ModulePageShell
 			manifest={contextualManifest}
 			badge={badge}
+			centerContent={centerContent}
 			actions={actions}
 		>
 			<OpenSessionDialog

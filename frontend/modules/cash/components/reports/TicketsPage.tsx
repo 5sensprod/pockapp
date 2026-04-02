@@ -1,5 +1,5 @@
 // frontend/modules/cash/components/reports/TicketsPage.tsx
-// Page tickets POS — recherche par numéro uniquement, table épurée
+// Page tickets POS — recherche par numéro au centre, pagination dans la barre
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -107,16 +107,10 @@ export function TicketsPage() {
 		perPage: PER_PAGE,
 	})
 
-	const { data: allTicketsData } = useInvoices({
-		companyId: activeCompanyId ?? undefined,
-		filter: 'is_pos_ticket = true',
-		perPage: 1,
-	})
-
 	const tickets = (invoicesData?.items ?? []) as InvoiceResponse[]
 	const totalItems = invoicesData?.totalItems ?? 0
 	const totalPages = invoicesData?.totalPages ?? 1
-	const totalTickets = allTicketsData?.totalItems ?? 0
+
 	const rangeStart = totalItems === 0 ? 0 : (page - 1) * PER_PAGE + 1
 	const rangeEnd = Math.min(page * PER_PAGE, totalItems)
 
@@ -132,27 +126,58 @@ export function TicketsPage() {
 		string | undefined
 	>()
 
-	// ── Barre contextuelle ────────────────────────────────────────────────────
-	const headerExtras = (
-		<div className='flex items-center gap-3 border-l pl-3'>
-			{/* Compteur */}
-			<span className='text-[11px] text-muted-foreground whitespace-nowrap'>
-				<span className='font-semibold text-foreground'>{totalTickets}</span>{' '}
-				tickets
-			</span>
+	// ── Barre Centrale (Recherche Pro) ─────────────────────────────────────────
+	const centerContent = (
+		<div className='relative w-[350px] transition-all focus-within:w-[400px]'>
+			<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+			<Input
+				placeholder='Rechercher un N° de ticket...'
+				value={search}
+				onChange={(e) => {
+					setSearch(e.target.value)
+					setPage(1)
+				}}
+				className='h-9 pl-9 bg-background/50 focus-visible:bg-background border-muted-foreground/20 shadow-sm transition-all text-sm'
+			/>
+		</div>
+	)
 
-			{/* Recherche — large, feat principale */}
-			<div className='relative'>
-				<Search className='absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground' />
-				<Input
-					placeholder='Rechercher un N° de ticket…'
-					value={search}
-					onChange={(e) => {
-						setSearch(e.target.value)
-						setPage(1)
-					}}
-					className='h-8 w-64 pl-8 text-xs'
-				/>
+	// ── Barre Droite (Pagination compacte et Stats) ──────────────────────────
+	const headerExtras = (
+		<div className='flex items-center gap-4 border-l pl-4 border-muted-foreground/20'>
+			{/* Stats textuelles */}
+			<div className='flex flex-col items-end leading-none'>
+				<span className='text-xs font-semibold text-foreground mb-1'>
+					{totalItems} ticket{totalItems > 1 ? 's' : ''}
+				</span>
+				<span className='text-[10px] text-muted-foreground uppercase tracking-wider'>
+					{rangeStart} - {rangeEnd} affichés
+				</span>
+			</div>
+
+			{/* Contrôles de pagination */}
+			<div className='flex items-center gap-1.5 bg-background/50 p-1 rounded-md border border-muted-foreground/20 shadow-sm'>
+				<Button
+					variant='ghost'
+					size='icon'
+					className='h-6 w-6 rounded-[4px]'
+					onClick={() => setPage((p) => p - 1)}
+					disabled={page <= 1}
+				>
+					<ChevronLeft className='h-3 w-3' />
+				</Button>
+				<span className='text-[11px] font-medium min-w-[30px] text-center'>
+					{page}/{totalPages}
+				</span>
+				<Button
+					variant='ghost'
+					size='icon'
+					className='h-6 w-6 rounded-[4px]'
+					onClick={() => setPage((p) => p + 1)}
+					disabled={page >= totalPages}
+				>
+					<ChevronRight className='h-3 w-3' />
+				</Button>
 			</div>
 		</div>
 	)
@@ -160,11 +185,13 @@ export function TicketsPage() {
 	return (
 		<CashModuleShell
 			pageTitle='Tickets de caisse'
+			pageIcon={Receipt} // <-- AJOUTEZ CETTE LIGNE
+			centerContent={centerContent}
 			headerExtras={headerExtras}
 			hideSessionActions
 		>
 			<div className='container mx-auto px-6 py-6'>
-				<Card>
+				<Card className='shadow-sm border-muted/60'>
 					<CardContent className='p-0'>
 						<Table>
 							<TableHeader>
@@ -211,11 +238,38 @@ export function TicketsPage() {
 														<span className='font-mono font-medium'>
 															{ticket.number}
 														</span>
+
+														{/* Badge : Converti en facture */}
 														{ticket.converted_to_invoice && (
-															<Badge variant='outline' className='text-xs'>
-																→ FAC
+															<Badge
+																variant='secondary'
+																className='text-[10px] uppercase tracking-wider bg-blue-100 text-blue-700 hover:bg-blue-100/80 dark:bg-blue-900/40 dark:text-blue-400 border-none'
+															>
+																Facture
 															</Badge>
 														)}
+
+														{/* Badge : Remboursé (Totalement) */}
+														{remainingAmount <= 0 &&
+															(ticket.total_ttc ?? 0) > 0 && (
+																<Badge
+																	variant='secondary'
+																	className='text-[10px] uppercase tracking-wider bg-orange-100 text-orange-700 hover:bg-orange-100/80 dark:bg-orange-900/40 dark:text-orange-400 border-none'
+																>
+																	Remboursé
+																</Badge>
+															)}
+
+														{/* Badge optionnel : Remboursé (Partiellement) */}
+														{remainingAmount > 0 &&
+															(ticket.credit_notes_total ?? 0) > 0 && (
+																<Badge
+																	variant='outline'
+																	className='text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-500 border-orange-200 dark:border-orange-900'
+																>
+																	Remb. partiel
+																</Badge>
+															)}
 													</div>
 												</TableCell>
 												<TableCell>{formatDate(ticket.date)}</TableCell>
@@ -337,38 +391,7 @@ export function TicketsPage() {
 					</CardContent>
 				</Card>
 
-				{totalItems > 0 && (
-					<div className='flex items-center justify-between mt-4'>
-						<div className='text-sm text-muted-foreground'>
-							{rangeStart}–{rangeEnd} sur {totalItems} ticket
-							{totalItems > 1 ? 's' : ''}
-						</div>
-						<div className='flex items-center gap-1'>
-							<Button
-								variant='outline'
-								size='sm'
-								onClick={() => setPage((p) => p - 1)}
-								disabled={page <= 1}
-							>
-								<ChevronLeft className='h-4 w-4' />
-								Précédent
-							</Button>
-							<span className='px-3 text-sm text-muted-foreground'>
-								{page} / {totalPages}
-							</span>
-							<Button
-								variant='outline'
-								size='sm'
-								onClick={() => setPage((p) => p + 1)}
-								disabled={page >= totalPages}
-							>
-								Suivant
-								<ChevronRight className='h-4 w-4' />
-							</Button>
-						</div>
-					</div>
-				)}
-
+				{/* Dialogues */}
 				<RefundTicketDialog
 					open={refundTicketDialogOpen}
 					onOpenChange={(o) => {
