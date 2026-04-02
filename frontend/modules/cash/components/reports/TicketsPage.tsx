@@ -1,6 +1,6 @@
 // frontend/modules/cash/components/reports/TicketsPage.tsx
-// Page tickets POS — recherche par numéro au centre, pagination dans la barre
 
+import { EmptyState } from '@/components/module-ui'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -36,12 +36,12 @@ import {
 	ChevronRight,
 	Eye,
 	FileText,
-	MoreHorizontal,
 	Receipt,
 	RotateCcw,
 	Search,
+	X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react' // <-- AJOUT de useRef
 import { CashModuleShell } from '../../CashModuleShell'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -81,6 +81,31 @@ function getPaymentMethodLabel(method: string, label?: string) {
 	return map[method] || method
 }
 
+function getItemsPreview(ticket: any) {
+	const lines =
+		ticket.expand?.items ||
+		ticket.expand?.lines ||
+		ticket.expand?.['invoice_lines(invoice)'] ||
+		ticket.expand?.['invoice_items(invoice)']
+
+	if (Array.isArray(lines) && lines.length > 0) {
+		const names = lines.map(
+			(l: any) =>
+				l.name || l.designation || l.title || l.product_name || 'Article',
+		)
+		const firstTwo = names.slice(0, 2).join(', ')
+		return names.length > 2
+			? `${firstTwo} ... (+${names.length - 2})`
+			: firstTwo
+	}
+
+	return (
+		<span className='text-muted-foreground italic text-xs'>
+			Détails dans le ticket...
+		</span>
+	)
+}
+
 const PER_PAGE = 30
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -92,6 +117,9 @@ export function TicketsPage() {
 	const [search, setSearch] = useState('')
 	const [page, setPage] = useState(1)
 	const debouncedSearch = useDebounce(search, 400)
+
+	// <-- AJOUT : Référence pour l'input de recherche
+	const searchInputRef = useRef<HTMLInputElement>(null)
 
 	const searchFilter = useMemo(() => {
 		const parts: string[] = ['is_pos_ticket = true']
@@ -110,7 +138,6 @@ export function TicketsPage() {
 	const tickets = (invoicesData?.items ?? []) as InvoiceResponse[]
 	const totalItems = invoicesData?.totalItems ?? 0
 	const totalPages = invoicesData?.totalPages ?? 1
-
 	const rangeStart = totalItems === 0 ? 0 : (page - 1) * PER_PAGE + 1
 	const rangeEnd = Math.min(page * PER_PAGE, totalItems)
 
@@ -126,26 +153,45 @@ export function TicketsPage() {
 		string | undefined
 	>()
 
-	// ── Barre Centrale (Recherche Pro) ─────────────────────────────────────────
+	// ── Fonction pour réinitialiser la recherche ──────────────────────────────
+	const handleResetSearch = () => {
+		setSearch('')
+		setPage(1)
+		// <-- AJOUT : On redonne le focus à l'input après avoir vidé la recherche
+		// Le setTimeout permet de s'assurer que React a fini son cycle de rendu
+		setTimeout(() => {
+			searchInputRef.current?.focus()
+		}, 0)
+	}
+
+	// ── Barres ─────────────────────────────────────────────────────────────────
 	const centerContent = (
 		<div className='relative w-[350px] transition-all focus-within:w-[400px]'>
 			<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
 			<Input
+				ref={searchInputRef} // <-- AJOUT : on lie la référence ici
 				placeholder='Rechercher un N° de ticket...'
 				value={search}
 				onChange={(e) => {
 					setSearch(e.target.value)
 					setPage(1)
 				}}
-				className='h-9 pl-9 bg-background/50 focus-visible:bg-background border-muted-foreground/20 shadow-sm transition-all text-sm'
+				className='h-9 pl-9 pr-9 bg-background/50 focus-visible:bg-background border-muted-foreground/20 shadow-sm transition-all text-sm'
 			/>
+			{search && (
+				<button
+					type='button'
+					onClick={handleResetSearch}
+					className='absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors'
+				>
+					<X className='h-4 w-4' />
+				</button>
+			)}
 		</div>
 	)
 
-	// ── Barre Droite (Pagination compacte et Stats) ──────────────────────────
 	const headerExtras = (
 		<div className='flex items-center gap-4 border-l pl-4 border-muted-foreground/20'>
-			{/* Stats textuelles */}
 			<div className='flex flex-col items-end leading-none'>
 				<span className='text-xs font-semibold text-foreground mb-1'>
 					{totalItems} ticket{totalItems > 1 ? 's' : ''}
@@ -155,7 +201,6 @@ export function TicketsPage() {
 				</span>
 			</div>
 
-			{/* Contrôles de pagination */}
 			<div className='flex items-center gap-1.5 bg-background/50 p-1 rounded-md border border-muted-foreground/20 shadow-sm'>
 				<Button
 					variant='ghost'
@@ -185,7 +230,7 @@ export function TicketsPage() {
 	return (
 		<CashModuleShell
 			pageTitle='Tickets de caisse'
-			pageIcon={Receipt} // <-- AJOUTEZ CETTE LIGNE
+			pageIcon={Receipt}
 			centerContent={centerContent}
 			headerExtras={headerExtras}
 			hideSessionActions
@@ -197,17 +242,16 @@ export function TicketsPage() {
 							<TableHeader>
 								<TableRow>
 									<TableHead>Numéro</TableHead>
-									<TableHead>Date</TableHead>
-									<TableHead>Heure</TableHead>
+									<TableHead>Date & Heure</TableHead>
+									<TableHead className='w-1/3'>Articles</TableHead>
 									<TableHead className='text-right'>Montant</TableHead>
 									<TableHead>Paiement</TableHead>
-									<TableHead className='w-10' />
 								</TableRow>
 							</TableHeader>
 							<TableBody>
 								{isLoading ? (
 									<TableRow>
-										<TableCell colSpan={6} className='h-24 text-center'>
+										<TableCell colSpan={5} className='h-24 text-center'>
 											<div className='flex items-center justify-center'>
 												<div className='h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin' />
 											</div>
@@ -215,12 +259,26 @@ export function TicketsPage() {
 									</TableRow>
 								) : tickets.length === 0 ? (
 									<TableRow>
-										<TableCell
-											colSpan={6}
-											className='h-24 text-center text-muted-foreground'
-										>
-											<Receipt className='h-8 w-8 mx-auto mb-2 opacity-30' />
-											<p>Aucun ticket trouvé</p>
+										<TableCell colSpan={5} className='py-16'>
+											<EmptyState
+												icon={debouncedSearch ? Search : Receipt}
+												title='Aucun ticket trouvé'
+												description={
+													debouncedSearch
+														? `Aucun résultat ne correspond à votre recherche "${debouncedSearch}".`
+														: "Aucun ticket de caisse n'a été enregistré pour le moment."
+												}
+												actions={
+													debouncedSearch
+														? [
+																{
+																	label: 'Effectuer une nouvelle recherche',
+																	onClick: handleResetSearch,
+																},
+															]
+														: []
+												}
+											/>
 										</TableCell>
 									</TableRow>
 								) : (
@@ -232,157 +290,155 @@ export function TicketsPage() {
 													(ticket.credit_notes_total ?? 0)
 
 										return (
-											<TableRow key={ticket.id}>
-												<TableCell>
-													<div className='flex items-center gap-2'>
-														<span className='font-mono font-medium'>
-															{ticket.number}
-														</span>
+											<DropdownMenu key={ticket.id}>
+												<DropdownMenuTrigger asChild>
+													<TableRow className='cursor-pointer hover:bg-muted/50 data-[state=open]:bg-muted transition-colors'>
+														<TableCell>
+															<div className='flex items-center gap-2'>
+																<span className='font-mono font-medium'>
+																	{ticket.number}
+																</span>
 
-														{/* Badge : Converti en facture */}
-														{ticket.converted_to_invoice && (
-															<Badge
-																variant='secondary'
-																className='text-[10px] uppercase tracking-wider bg-blue-100 text-blue-700 hover:bg-blue-100/80 dark:bg-blue-900/40 dark:text-blue-400 border-none'
-															>
-																Facture
-															</Badge>
-														)}
+																{ticket.converted_to_invoice && (
+																	<Badge
+																		variant='secondary'
+																		className='text-[10px] uppercase tracking-wider bg-blue-100 text-blue-700 hover:bg-blue-100/80 dark:bg-blue-900/40 dark:text-blue-400 border-none'
+																	>
+																		Facturé
+																	</Badge>
+																)}
 
-														{/* Badge : Remboursé (Totalement) */}
-														{remainingAmount <= 0 &&
-															(ticket.total_ttc ?? 0) > 0 && (
-																<Badge
-																	variant='secondary'
-																	className='text-[10px] uppercase tracking-wider bg-orange-100 text-orange-700 hover:bg-orange-100/80 dark:bg-orange-900/40 dark:text-orange-400 border-none'
-																>
-																	Remboursé
-																</Badge>
-															)}
+																{remainingAmount <= 0 &&
+																	(ticket.total_ttc ?? 0) > 0 && (
+																		<Badge
+																			variant='secondary'
+																			className='text-[10px] uppercase tracking-wider bg-orange-100 text-orange-700 hover:bg-orange-100/80 dark:bg-orange-900/40 dark:text-orange-400 border-none'
+																		>
+																			Remboursé
+																		</Badge>
+																	)}
 
-														{/* Badge optionnel : Remboursé (Partiellement) */}
-														{remainingAmount > 0 &&
-															(ticket.credit_notes_total ?? 0) > 0 && (
-																<Badge
-																	variant='outline'
-																	className='text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-500 border-orange-200 dark:border-orange-900'
-																>
-																	Remb. partiel
-																</Badge>
-															)}
-													</div>
-												</TableCell>
-												<TableCell>{formatDate(ticket.date)}</TableCell>
-												<TableCell className='text-muted-foreground'>
-													{formatTime(ticket.created)}
-												</TableCell>
-												<TableCell className='text-right font-medium'>
-													{formatCurrency(ticket.total_ttc)}
-												</TableCell>
-												<TableCell className='text-sm text-muted-foreground'>
-													{ticket.payment_method
-														? getPaymentMethodLabel(
-																ticket.payment_method,
-																(ticket as any).payment_method_label,
-															)
-														: '-'}
-												</TableCell>
-												<TableCell>
-													<DropdownMenu>
-														<DropdownMenuTrigger asChild>
-															<Button variant='ghost' size='icon'>
-																<MoreHorizontal className='h-4 w-4' />
-															</Button>
-														</DropdownMenuTrigger>
-														<DropdownMenuContent align='end'>
-															<DropdownMenuLabel>Actions</DropdownMenuLabel>
-															<DropdownMenuSeparator />
+																{remainingAmount > 0 &&
+																	(ticket.credit_notes_total ?? 0) > 0 && (
+																		<Badge
+																			variant='outline'
+																			className='text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-500 border-orange-200 dark:border-orange-900'
+																		>
+																			Remb. partiel
+																		</Badge>
+																	)}
+															</div>
+														</TableCell>
 
+														<TableCell>
+															<div className='flex flex-col'>
+																<span className='font-medium'>
+																	{formatDate(ticket.date)}
+																</span>
+																<span className='text-xs text-muted-foreground'>
+																	{formatTime(ticket.created)}
+																</span>
+															</div>
+														</TableCell>
+
+														<TableCell className='max-w-[200px] truncate'>
+															<span className='text-sm'>
+																{getItemsPreview(ticket)}
+															</span>
+														</TableCell>
+
+														<TableCell className='text-right font-medium'>
+															{formatCurrency(ticket.total_ttc)}
+														</TableCell>
+
+														<TableCell className='text-sm text-muted-foreground'>
+															{ticket.payment_method
+																? getPaymentMethodLabel(
+																		ticket.payment_method,
+																		(ticket as any).payment_method_label,
+																	)
+																: '-'}
+														</TableCell>
+													</TableRow>
+												</DropdownMenuTrigger>
+
+												<DropdownMenuContent align='center' className='w-56'>
+													<DropdownMenuLabel>
+														Actions pour {ticket.number}
+													</DropdownMenuLabel>
+													<DropdownMenuSeparator />
+
+													<DropdownMenuItem
+														onClick={() =>
+															navigate({
+																to: '/cash/tickets/$ticketId' as any,
+																params: { ticketId: ticket.id } as any,
+															})
+														}
+													>
+														<Eye className='h-4 w-4 mr-2' />
+														Voir le détail
+													</DropdownMenuItem>
+
+													{ticket.invoice_type !== 'credit_note' &&
+														!ticket.converted_to_invoice &&
+														remainingAmount > 0 && (
 															<DropdownMenuItem
 																onClick={() =>
 																	navigate({
-																		to: '/cash/tickets/$ticketId' as any,
-																		params: { ticketId: ticket.id } as any,
+																		to: '/cash/convert-to-invoice/$ticketId',
+																		params: { ticketId: ticket.id },
 																	})
 																}
 															>
-																<Eye className='h-4 w-4 mr-2' />
-																Voir le détail
+																<FileText className='h-4 w-4 mr-2' />
+																Convertir en facture
 															</DropdownMenuItem>
+														)}
 
-															{ticket.invoice_type !== 'credit_note' &&
-																!ticket.converted_to_invoice &&
-																remainingAmount > 0 && (
-																	<>
-																		<DropdownMenuSeparator />
-																		<DropdownMenuItem
-																			onClick={() =>
-																				navigate({
-																					to: '/cash/convert-to-invoice/$ticketId',
-																					params: { ticketId: ticket.id },
-																				})
-																			}
-																		>
-																			<Receipt className='h-4 w-4 mr-2' />
-																			Convertir en facture
-																		</DropdownMenuItem>
-																	</>
-																)}
+													{ticket.converted_to_invoice &&
+														ticket.converted_invoice_id && (
+															<DropdownMenuItem
+																onClick={() => {
+																	if (!ticket.converted_invoice_id) return
+																	navigate({
+																		to: '/connect/invoices/$invoiceId',
+																		params: {
+																			invoiceId: ticket.converted_invoice_id,
+																		},
+																	})
+																}}
+															>
+																<FileText className='h-4 w-4 mr-2 text-blue-600' />
+																Voir la facture associée
+															</DropdownMenuItem>
+														)}
 
-															{ticket.converted_to_invoice &&
-																ticket.converted_invoice_id && (
-																	<>
-																		<DropdownMenuSeparator />
-																		<DropdownMenuItem
-																			onClick={() => {
-																				if (!ticket.converted_invoice_id) return
-																				navigate({
-																					to: '/connect/invoices/$invoiceId',
-																					params: {
-																						invoiceId:
-																							ticket.converted_invoice_id,
-																					},
-																				})
-																			}}
-																		>
-																			<FileText className='h-4 w-4 mr-2' />
-																			Voir la facture associée
-																		</DropdownMenuItem>
-																	</>
-																)}
-
-															{ticket.invoice_type === 'invoice' &&
-																ticket.is_paid &&
-																!ticket.converted_to_invoice && (
-																	<>
-																		<DropdownMenuSeparator />
-																		<DropdownMenuItem
-																			disabled={remainingAmount <= 0}
-																			onClick={() => {
-																				if (remainingAmount <= 0) return
-																				setTicketToRefund(ticket)
-																				setRefundTicketDialogOpen(true)
-																			}}
-																			className={
-																				remainingAmount <= 0
-																					? 'text-muted-foreground'
-																					: 'text-orange-600'
-																			}
-																		>
-																			<RotateCcw className='h-4 w-4 mr-2' />
-																			Rembourser
-																			{remainingAmount <= 0 && (
-																				<span className='ml-2 text-xs'>
-																					(remboursé)
-																				</span>
-																			)}
-																		</DropdownMenuItem>
-																	</>
-																)}
-														</DropdownMenuContent>
-													</DropdownMenu>
-												</TableCell>
-											</TableRow>
+													{ticket.invoice_type === 'invoice' &&
+														ticket.is_paid &&
+														!ticket.converted_to_invoice && (
+															<>
+																<DropdownMenuSeparator />
+																<DropdownMenuItem
+																	disabled={remainingAmount <= 0}
+																	onClick={() => {
+																		if (remainingAmount <= 0) return
+																		setTicketToRefund(ticket)
+																		setRefundTicketDialogOpen(true)
+																	}}
+																	className={
+																		remainingAmount <= 0
+																			? 'text-muted-foreground'
+																			: 'text-orange-600 focus:text-orange-700'
+																	}
+																>
+																	<RotateCcw className='h-4 w-4 mr-2' />
+																	Rembourser
+																</DropdownMenuItem>
+															</>
+														)}
+												</DropdownMenuContent>
+											</DropdownMenu>
 										)
 									})
 								)}
@@ -391,7 +447,6 @@ export function TicketsPage() {
 					</CardContent>
 				</Card>
 
-				{/* Dialogues */}
 				<RefundTicketDialog
 					open={refundTicketDialogOpen}
 					onOpenChange={(o) => {
