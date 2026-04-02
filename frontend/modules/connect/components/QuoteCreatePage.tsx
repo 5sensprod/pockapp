@@ -38,7 +38,7 @@ import type {
 	CustomersResponse,
 	ProductsResponse,
 } from '@/lib/pocketbase-types'
-import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
+import { useAllCustomers, useCreateCustomer } from '@/lib/queries/customers'
 import { useCreateQuote } from '@/lib/queries/quotes'
 import type {
 	InvoiceItem,
@@ -232,9 +232,6 @@ export function QuoteCreatePage() {
 	const [createdQuote, setCreatedQuote] = useState<QuoteResponse | null>(null)
 
 	// Queries
-	const { data: customersData } = useCustomers({
-		companyId: activeCompanyId ?? undefined,
-	})
 	const { data: productsData } = useAppPosProducts({
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
@@ -243,8 +240,10 @@ export function QuoteCreatePage() {
 	const createQuote = useCreateQuote()
 	const createCustomer = useCreateCustomer()
 
-	const customers: QuoteCustomer[] = (customersData?.items ??
-		[]) as QuoteCustomer[]
+	const customers: QuoteCustomer[] = (useAllCustomers(
+		activeCompanyId ?? undefined,
+	).data ?? []) as QuoteCustomer[]
+
 	const products: QuoteProduct[] = (productsData?.items ?? []) as QuoteProduct[]
 
 	const filteredCustomers = customers.filter((c) => {

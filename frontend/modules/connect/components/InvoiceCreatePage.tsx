@@ -33,11 +33,8 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
-import type {
-	CustomersResponse,
-	ProductsResponse,
-} from '@/lib/pocketbase-types'
-import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
+import type { ProductsResponse } from '@/lib/pocketbase-types'
+import { useAllCustomers, useCreateCustomer } from '@/lib/queries/customers'
 import { useCreateInvoice } from '@/lib/queries/invoices'
 import type { InvoiceItem } from '@/lib/types/invoice.types'
 import { useNavigate } from '@tanstack/react-router'
@@ -92,7 +89,6 @@ interface VatBreakdown {
 	total_ttc: number
 }
 
-type InvoiceCustomer = CustomersResponse
 type InvoiceProduct = ProductsResponse
 
 const clamp = (n: number, min: number, max: number) =>
@@ -214,9 +210,11 @@ export function InvoiceCreatePage() {
 	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
 
 	// Queries
-	const { data: customersData } = useCustomers({
-		companyId: activeCompanyId ?? undefined,
-	})
+	// ❌ Supprime cette ligne - plus utilisée
+	// const { data: customersData } = useCustomers({
+	//     companyId: activeCompanyId ?? undefined,
+	// })
+
 	const { data: productsData } = useAppPosProducts({
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
@@ -224,7 +222,8 @@ export function InvoiceCreatePage() {
 	const createInvoice = useCreateInvoice()
 	const createCustomer = useCreateCustomer()
 
-	const customers = (customersData?.items ?? []) as InvoiceCustomer[]
+	// ✅ Remplace l'ancien
+	const { data: customers = [] } = useAllCustomers(activeCompanyId ?? undefined)
 	const products = (productsData?.items ?? []) as InvoiceProduct[]
 
 	const filteredCustomers = customers.filter((c) => {

@@ -1,16 +1,8 @@
 // frontend/modules/connect/components/InvoiceDetailContent.tsx
-// Composant partagé — utilisé par InvoiceDetailPage (connect) et TicketDetailPage (cash)
-// Reçoit invoiceId, backRoute, et detailRoute via props pour rester découplé.
 
+import { ModuleCard } from '@/components/module-ui/ModuleCard'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from '@/components/ui/card'
 import {
 	Table,
 	TableBody,
@@ -35,6 +27,11 @@ import {
 	isOverdue,
 } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
+import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
+import {
+	StockReclassificationDialog,
+	type StockReclassificationItem,
+} from '@/modules/common/StockReclassificationDialog'
 import { pdf } from '@react-pdf/renderer'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -50,17 +47,17 @@ import {
 	Pencil,
 	Plus,
 	RefreshCcw,
+	RotateCcw,
+	ShoppingCart,
+	User,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import { formatCurrency, formatDate } from '../utils/formatters'
 import { toPngDataUrl } from '../utils/images'
 import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
 import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
-
-// ============================================================================
-// HELPERS
-// ============================================================================
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
@@ -135,34 +132,21 @@ function getLineDiscountLabel(item: any): {
 	return { label: `-${v.toFixed(2)} €`, hasDiscount: true }
 }
 
-// ============================================================================
-// PROPS
-// ============================================================================
-
 export interface InvoiceDetailContentProps {
 	invoiceId: string
-	/** Route de retour arrière (ex: '/connect/invoices' ou '/connect/tickets') */
 	backRoute: string
-	/** Fonction qui retourne la route de détail d'un document lié (avoir, acompte…)
-	 *  Par défaut navigue vers /connect/invoices/$invoiceId mais peut être
-	 *  surchargée pour rester dans /connect/tickets/$ticketId si c'est un ticket */
 	getDetailRoute?: (
 		id: string,
 		isTicket?: boolean,
 	) => { to: string; params: Record<string, string> }
 }
 
-// Route par défaut — connect invoices
 function defaultDetailRoute(id: string): {
 	to: string
 	params: Record<string, string>
 } {
 	return { to: '/connect/invoices/$invoiceId', params: { invoiceId: id } }
 }
-
-// ============================================================================
-// COMPONENT
-// ============================================================================
 
 export function InvoiceDetailContent({
 	invoiceId,
@@ -181,6 +165,7 @@ export function InvoiceDetailContent({
 	const isCreditNote = invoice?.invoice_type === 'credit_note'
 	const originalId = (invoice as any)?.original_invoice_id
 	const isDeposit = invoice?.invoice_type === 'deposit'
+	const isTicket = invoice?.is_pos_ticket
 
 	const { data: depositsData } = useDepositsForInvoice(
 		!isCreditNote && !isDeposit ? invoiceId : undefined,
@@ -197,6 +182,25 @@ export function InvoiceDetailContent({
 
 	const originalDocument = (invoice as any)?.expand?.original_invoice_id
 	const originalNumber = originalDocument?.number
+
+	// Portals targets
+	const [infoTarget, setInfoTarget] = useState<HTMLElement | null>(null)
+	const [actionsTarget, setActionsTarget] = useState<HTMLElement | null>(null)
+
+	useEffect(() => {
+		setInfoTarget(document.getElementById('ticket-info-portal'))
+		setActionsTarget(document.getElementById('ticket-actions-portal'))
+	}, [])
+
+	// États Dialogues POS
+	const [refundTicketDialogOpen, setRefundTicketDialogOpen] = useState(false)
+	const [stockReclassifyOpen, setStockReclassifyOpen] = useState(false)
+	const [stockItemsToReclassify, setStockItemsToReclassify] = useState<
+		StockReclassificationItem[]
+	>([])
+	const [stockDocumentNumber, setStockDocumentNumber] = useState<
+		string | undefined
+	>()
 
 	useEffect(() => {
 		const loadCompany = async () => {
@@ -239,6 +243,11 @@ export function InvoiceDetailContent({
 	const badgeVariant = (displayStatus.variant ??
 		'outline') as BadgeProps['variant']
 	const overdue = invoice ? isOverdue(invoice) : false
+
+	const remainingAmount =
+		typeof (invoice as any)?.remaining_amount === 'number'
+			? (invoice as any).remaining_amount
+			: (invoice?.total_ttc ?? 0) - ((invoice as any)?.credit_notes_total ?? 0)
 
 	const discounts = useMemo(() => {
 		const inv: any = invoice as any
@@ -468,141 +477,485 @@ export function InvoiceDetailContent({
 
 	const soldByLabel = getSoldByLabel(invoice as any)
 
-	// ── Render ────────────────────────────────────────────────────────────────
+	// ── Logique Sidebar Ticket ────────────────────────────────────────────────
 
-	return (
-		<div className='container mx-auto px-6 py-8'>
-			<div className='flex items-center justify-between gap-3 mb-6'>
+	const hasTicketLinkedDocs =
+		(invoice.converted_to_invoice && invoice.converted_invoice_id) ||
+		(linkedCreditNotes && linkedCreditNotes.length > 0)
+	const hasTicketNotes = !!invoice.notes
+	const needsTicketSidebar =
+		hasTicketLinkedDocs || hasTicketNotes || remainingAmount <= 0
+
+	// ── Portals UI ────────────────────────────────────────────────────────────
+
+	const standardRetourContent = !isTicket && (
+		<Button
+			variant='ghost'
+			className='-ml-2 text-muted-foreground'
+			onClick={() => navigate({ to: backRoute as any })}
+		>
+			<ArrowLeft className='h-4 w-4 mr-2' />
+			Retour
+		</Button>
+	)
+
+	const ticketInfoContent = isTicket && (
+		<div className='flex items-center gap-4 w-full'>
+			<Button
+				variant='ghost'
+				size='sm'
+				className='-ml-2 text-muted-foreground hover:text-foreground'
+				onClick={() => navigate({ to: backRoute as any })}
+			>
+				<ArrowLeft className='h-4 w-4 mr-1.5' />
+				Retour
+			</Button>
+			<div className='h-4 w-px bg-border/60 shrink-0' />
+			<div className='flex items-center flex-wrap gap-x-3 gap-y-1 text-[13px] text-muted-foreground'>
+				<span className='font-mono font-medium text-foreground'>
+					{invoice.number}
+				</span>
+				<span className='opacity-40'>•</span>
+				<span>{formatDate(invoice.date)}</span>
+				<span className='opacity-40'>•</span>
+				<span>{soldByLabel}</span>
+				{invoice.is_paid && (
+					<>
+						<span className='opacity-40'>•</span>
+						<span>{getPaymentMethodLabel(invoice as any)}</span>
+					</>
+				)}
+			</div>
+		</div>
+	)
+
+	const actionsContent = (
+		<>
+			{invoice.status === 'draft' && !isTicket && (
 				<Button
-					variant='ghost'
-					onClick={() => navigate({ to: backRoute as any })}
+					variant='outline'
+					onClick={() => {
+						if (!invoiceId) return
+						navigate({
+							to: '/connect/invoices/$invoiceId/edit' as any,
+							params: { invoiceId } as any,
+						})
+					}}
 				>
-					<ArrowLeft className='h-4 w-4 mr-2' />
-					Retour
+					<Pencil className='h-4 w-4 mr-2' />
+					Modifier
 				</Button>
-				<div className='flex items-center gap-2'>
+			)}
+
+			{isTicket &&
+				invoice.invoice_type === 'invoice' &&
+				invoice.is_paid &&
+				!invoice.converted_to_invoice &&
+				remainingAmount > 0 && (
+					<Button
+						variant='outline'
+						className='text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-200'
+						onClick={() => setRefundTicketDialogOpen(true)}
+					>
+						<RotateCcw className='h-4 w-4 mr-2' />
+						Rembourser
+					</Button>
+				)}
+
+			{isTicket &&
+				invoice.invoice_type !== 'credit_note' &&
+				!invoice.converted_to_invoice &&
+				remainingAmount > 0 && (
 					<Button
 						variant='outline'
 						onClick={() =>
 							navigate({
-								to: '/connect/invoices/$invoiceId/edit' as any,
-								params: { invoiceId } as any,
+								to: '/cash/convert-to-invoice/$ticketId' as any,
+								params: { ticketId: invoice.id } as any,
 							})
 						}
-						disabled={invoice.status !== 'draft' || invoice.is_pos_ticket}
-						title={
-							invoice.status !== 'draft'
-								? 'Seules les factures brouillon peuvent être modifiées'
-								: 'Modifier'
-						}
 					>
-						<Pencil className='h-4 w-4 mr-2' />
-						Modifier
+						<FileText className='h-4 w-4 mr-2' />
+						Convertir en facture
 					</Button>
-					<Button variant='outline' onClick={() => setEmailDialogOpen(true)}>
-						<Mail className='h-4 w-4 mr-2' />
-						Envoyer
-					</Button>
-					<Button onClick={handleDownloadPdf} disabled={isDownloading}>
-						{isDownloading ? (
-							<Loader2 className='h-4 w-4 animate-spin mr-2' />
-						) : (
-							<Download className='h-4 w-4 mr-2' />
-						)}
-						Télécharger
-					</Button>
+				)}
+
+			<Button variant='outline' onClick={() => setEmailDialogOpen(true)}>
+				<Mail className='h-4 w-4 mr-2' />
+				Envoyer
+			</Button>
+			<Button onClick={handleDownloadPdf} disabled={isDownloading}>
+				{isDownloading ? (
+					<Loader2 className='h-4 w-4 animate-spin mr-2' />
+				) : (
+					<Download className='h-4 w-4 mr-2' />
+				)}
+				Télécharger
+			</Button>
+		</>
+	)
+
+	// ── Render ────────────────────────────────────────────────────────────────
+
+	return (
+		<div className='container mx-auto px-6 py-6'>
+			{!actionsTarget && (
+				<div className='flex items-center justify-between gap-3 mb-6'>
+					{!isTicket && standardRetourContent}
+					<div className='flex items-center gap-2'>{actionsContent}</div>
 				</div>
-			</div>
+			)}
 
-			<div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
-				{/* ── Détails généraux ── */}
-				<Card className='lg:col-span-1'>
-					<CardHeader>
-						<CardTitle>
-							{isCreditNote
-								? 'Avoir'
-								: invoice.is_pos_ticket
-									? 'Ticket'
-									: 'Facture'}
-						</CardTitle>
-						<CardDescription>Détails généraux</CardDescription>
-					</CardHeader>
-					<CardContent className='space-y-4'>
-						<div>
-							<p className='text-sm text-muted-foreground'>Numéro</p>
-							<p className='font-medium'>{invoice.number || '-'}</p>
-						</div>
-						<div>
-							<p className='text-sm text-muted-foreground'>Date</p>
-							<p className='text-sm'>{formatDate(invoice.date)}</p>
-						</div>
-						{invoice.due_date && (
-							<div>
-								<p className='text-sm text-muted-foreground'>Échéance</p>
-								<p className='text-sm'>{formatDate(invoice.due_date)}</p>
-							</div>
-						)}
-						{!isCreditNote && (
-							<div>
-								<p className='text-sm text-muted-foreground'>
-									{invoice.is_pos_ticket ? 'Vendeur / Caissier' : 'Vendeur'}
-								</p>
-								<p className='text-sm font-medium'>{soldByLabel}</p>
-							</div>
-						)}
-						{!isCreditNote && invoice.is_paid && (
-							<>
+			{actionsTarget && createPortal(actionsContent, actionsTarget)}
+			{infoTarget &&
+				ticketInfoContent &&
+				createPortal(ticketInfoContent, infoTarget)}
+
+			<div className='grid grid-cols-1 lg:grid-cols-12 gap-6'>
+				{/* ── Logique Facture Classique (Non Ticket) ── */}
+				{!isTicket && (
+					<>
+						{/* Détails généraux */}
+						<ModuleCard
+							title={isCreditNote ? 'Avoir' : 'Détails de la facture'}
+							icon={FileText}
+							className='lg:col-span-3'
+						>
+							<div className='space-y-4 pt-1'>
 								<div>
-									<p className='text-sm text-muted-foreground'>
-										Moyen de paiement
-									</p>
-									<p className='text-sm font-medium'>
-										{getPaymentMethodLabel(invoice as any)}
-									</p>
+									<p className='text-sm text-muted-foreground'>Numéro</p>
+									<p className='font-medium'>{invoice.number || '-'}</p>
 								</div>
 								<div>
-									<p className='text-sm text-muted-foreground'>Payée le</p>
-									<p className='text-sm'>
-										{formatDate((invoice as any).paid_at)}
-									</p>
+									<p className='text-sm text-muted-foreground'>Date</p>
+									<p className='text-sm'>{formatDate(invoice.date)}</p>
 								</div>
-							</>
-						)}
-						<div className='flex items-center gap-2'>
-							{renderStatusBadges()}
-						</div>
+								{invoice.due_date && (
+									<div>
+										<p className='text-sm text-muted-foreground'>Échéance</p>
+										<p className='text-sm'>{formatDate(invoice.due_date)}</p>
+									</div>
+								)}
+								{!isCreditNote && (
+									<div>
+										<p className='text-sm text-muted-foreground'>Vendeur</p>
+										<p className='text-sm font-medium'>{soldByLabel}</p>
+									</div>
+								)}
+								{!isCreditNote && invoice.is_paid && (
+									<>
+										<div>
+											<p className='text-sm text-muted-foreground'>
+												Moyen de paiement
+											</p>
+											<p className='text-sm font-medium'>
+												{getPaymentMethodLabel(invoice as any)}
+											</p>
+										</div>
+										<div>
+											<p className='text-sm text-muted-foreground'>Payée le</p>
+											<p className='text-sm'>
+												{formatDate((invoice as any).paid_at)}
+											</p>
+										</div>
+									</>
+								)}
+								<div className='flex items-center gap-2'>
+									{renderStatusBadges()}
+								</div>
 
-						{/* Avoir : document original */}
-						{isCreditNote && (
-							<>
-								{(invoice as any).refund_method && (
-									<div>
-										<p className='text-sm text-muted-foreground'>
-											Moyen de remboursement
-										</p>
-										<p className='text-sm font-medium'>
-											{getRefundMethodLabel((invoice as any).refund_method)}
-										</p>
+								{/* Avoir : document original */}
+								{isCreditNote && (
+									<>
+										{(invoice as any).refund_method && (
+											<div>
+												<p className='text-sm text-muted-foreground'>
+													Moyen de remboursement
+												</p>
+												<p className='text-sm font-medium'>
+													{getRefundMethodLabel((invoice as any).refund_method)}
+												</p>
+											</div>
+										)}
+										{(invoice as any).cancellation_reason && (
+											<div>
+												<p className='text-sm text-muted-foreground'>
+													Motif du remboursement
+												</p>
+												<p className='text-sm'>
+													{(invoice as any).cancellation_reason}
+												</p>
+											</div>
+										)}
+										{originalId && (
+											<div className='border-t border-border/50 pt-4 mt-2'>
+												<p className='text-sm text-muted-foreground mb-2'>
+													Document original
+												</p>
+												<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
+													<div className='flex items-center gap-2'>
+														<FileText className='h-4 w-4 text-muted-foreground' />
+														<span className='font-medium text-sm'>
+															{originalNumber || 'Document'}
+														</span>
+													</div>
+													<Button
+														variant='outline'
+														size='sm'
+														onClick={() =>
+															navigate(getDetailRoute(originalId) as any)
+														}
+													>
+														Voir
+													</Button>
+												</div>
+											</div>
+										)}
+									</>
+								)}
+
+								{/* Avoirs liés */}
+								{!isCreditNote &&
+									linkedCreditNotes &&
+									linkedCreditNotes.length > 0 && (
+										<div className='border-t border-border/50 pt-4 mt-2'>
+											<p className='text-sm text-muted-foreground mb-2'>
+												{linkedCreditNotes.length === 1
+													? 'Avoir associé'
+													: 'Avoirs associés'}
+											</p>
+											<div className='space-y-2'>
+												{linkedCreditNotes.map((cn) => (
+													<div
+														key={cn.id}
+														className='flex items-center justify-between bg-red-50 dark:bg-red-950/20 rounded-lg p-3 border border-red-200 dark:border-red-900'
+													>
+														<div className='flex items-center gap-2'>
+															<RefreshCcw className='h-4 w-4 text-red-600' />
+															<div className='flex flex-col'>
+																<span className='font-medium text-sm text-red-700 dark:text-red-400'>
+																	{cn.number}
+																</span>
+																<span className='text-xs text-muted-foreground'>
+																	{formatDate(cn.date)} •{' '}
+																	{formatCurrency(cn.total_ttc)}
+																</span>
+															</div>
+														</div>
+														<Button
+															variant='outline'
+															size='sm'
+															onClick={() =>
+																navigate(getDetailRoute(cn.id) as any)
+															}
+														>
+															Voir
+														</Button>
+													</div>
+												))}
+											</div>
+										</div>
+									)}
+
+								{/* Acomptes B2B */}
+								{!isCreditNote && !isDeposit && (
+									<div className='border-t border-border/50 pt-4 space-y-3 mt-2'>
+										{(invoice.deposits_total_ttc ?? 0) > 0 && (
+											<div className='space-y-1'>
+												<p className='text-sm font-medium text-muted-foreground'>
+													Acomptes
+												</p>
+												<div className='flex justify-between text-sm'>
+													<span className='text-muted-foreground'>Versés</span>
+													<span className='font-medium text-emerald-600'>
+														{formatCurrency(
+															invoice.deposits_total_ttc ?? 0,
+															invoice.currency,
+														)}
+													</span>
+												</div>
+												<div className='flex justify-between text-sm'>
+													<span className='text-muted-foreground'>
+														Solde restant
+													</span>
+													<span className='font-semibold'>
+														{formatCurrency(
+															invoice.balance_due ?? invoice.total_ttc,
+															invoice.currency,
+														)}
+													</span>
+												</div>
+											</div>
+										)}
+										{depositsData && depositsData.depositsCount > 0 && (
+											<div className='space-y-2'>
+												{depositsData.deposits.map((dep) => (
+													<div
+														key={dep.id}
+														className='flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200 dark:border-blue-900'
+													>
+														<div className='flex items-center gap-2'>
+															<Banknote className='h-4 w-4 text-blue-600' />
+															<div className='flex flex-col'>
+																<span className='font-medium text-sm text-blue-700 dark:text-blue-400'>
+																	{dep.number}
+																</span>
+																<span className='text-xs text-muted-foreground'>
+																	{formatDate(dep.date)} •{' '}
+																	{formatCurrency(dep.total_ttc)} •{' '}
+																	{dep.is_paid ? (
+																		<span className='text-emerald-600'>
+																			Réglé
+																		</span>
+																	) : (
+																		<span className='text-amber-600'>
+																			En attente
+																		</span>
+																	)}
+																</span>
+															</div>
+														</div>
+														<Button
+															variant='outline'
+															size='sm'
+															onClick={() =>
+																navigate(getDetailRoute(dep.id) as any)
+															}
+														>
+															Voir
+														</Button>
+													</div>
+												))}
+												{depositsData.balanceInvoice && (
+													<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3 border border-border/50'>
+														<div className='flex items-center gap-2'>
+															<CreditCard className='h-4 w-4 text-muted-foreground' />
+															<div className='flex flex-col'>
+																<span className='font-medium text-sm'>
+																	{depositsData.balanceInvoice.number}
+																</span>
+																<span className='text-xs text-muted-foreground'>
+																	Facture de solde
+																</span>
+															</div>
+														</div>
+														<Button
+															variant='outline'
+															size='sm'
+															onClick={() =>
+																depositsData.balanceInvoice &&
+																navigate(
+																	getDetailRoute(
+																		depositsData.balanceInvoice.id,
+																	) as any,
+																)
+															}
+														>
+															Voir
+														</Button>
+													</div>
+												)}
+											</div>
+										)}
+										<div className='flex flex-col gap-2'>
+											{invoice &&
+												canCreateDeposit(invoice) &&
+												(depositDialogOpen ? (
+													<div className='space-y-2 bg-muted/50 rounded-lg p-3'>
+														<p className='text-sm font-medium'>
+															Nouvel acompte
+														</p>
+														<div className='flex items-center gap-2'>
+															<input
+																type='range'
+																min={10}
+																max={90}
+																step={5}
+																value={depositPercentage}
+																onChange={(e) =>
+																	setDepositPercentage(Number(e.target.value))
+																}
+																className='flex-1'
+															/>
+															<span className='text-sm font-semibold w-10'>
+																{depositPercentage}%
+															</span>
+														</div>
+														<p className='text-xs text-muted-foreground'>
+															≈{' '}
+															{formatCurrency(
+																((invoice.deposits_total_ttc
+																	? (invoice.balance_due ?? invoice.total_ttc)
+																	: invoice.total_ttc) *
+																	depositPercentage) /
+																	100,
+																invoice.currency,
+															)}
+														</p>
+														<div className='flex gap-2'>
+															<Button
+																size='sm'
+																onClick={handleCreateDeposit}
+																disabled={createDeposit.isPending}
+															>
+																{createDeposit.isPending && (
+																	<Loader2 className='h-3 w-3 animate-spin mr-1' />
+																)}
+																Créer
+															</Button>
+															<Button
+																size='sm'
+																variant='ghost'
+																onClick={() => setDepositDialogOpen(false)}
+															>
+																Annuler
+															</Button>
+														</div>
+													</div>
+												) : (
+													<Button
+														variant='outline'
+														size='sm'
+														className='w-full'
+														onClick={() => setDepositDialogOpen(true)}
+													>
+														<Plus className='h-4 w-4 mr-2' /> Demander un
+														acompte
+													</Button>
+												))}
+
+											{invoice &&
+												canCreateBalanceInvoice(invoice) &&
+												!depositsData?.balanceInvoice &&
+												depositsData?.pendingCount === 0 && (
+													<Button
+														variant='outline'
+														size='sm'
+														className='w-full'
+														onClick={handleCreateBalanceInvoice}
+														disabled={createBalanceInvoice.isPending}
+													>
+														{createBalanceInvoice.isPending ? (
+															<Loader2 className='h-3 w-3 animate-spin mr-2' />
+														) : (
+															<CreditCard className='h-4 w-4 mr-2' />
+														)}
+														Générer la facture de solde
+													</Button>
+												)}
+										</div>
 									</div>
 								)}
-								{(invoice as any).cancellation_reason && (
-									<div>
-										<p className='text-sm text-muted-foreground'>
-											Motif du remboursement
-										</p>
-										<p className='text-sm'>
-											{(invoice as any).cancellation_reason}
-										</p>
-									</div>
-								)}
-								{originalId && (
-									<div className='border-t pt-4'>
+
+								{/* Acompte : lien retour facture parente */}
+								{isDeposit && originalId && (
+									<div className='border-t border-border/50 pt-4 mt-2'>
 										<p className='text-sm text-muted-foreground mb-2'>
-											Document original
+											Facture principale
 										</p>
-										<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
+										<div className='flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200 dark:border-blue-900'>
 											<div className='flex items-center gap-2'>
-												<FileText className='h-4 w-4 text-muted-foreground' />
+												<FileText className='h-4 w-4 text-blue-600' />
 												<span className='font-medium text-sm'>
 													{originalNumber || 'Document'}
 												</span>
@@ -619,14 +972,120 @@ export function InvoiceDetailContent({
 										</div>
 									</div>
 								)}
-							</>
-						)}
 
-						{/* Avoirs liés */}
-						{!isCreditNote &&
-							linkedCreditNotes &&
-							linkedCreditNotes.length > 0 && (
-								<div className='border-t pt-4'>
+								{invoice.notes && (
+									<div className='pt-2 border-t border-border/50'>
+										<p className='text-sm text-muted-foreground'>Notes</p>
+										<p className='text-sm mt-1'>{invoice.notes}</p>
+									</div>
+								)}
+							</div>
+						</ModuleCard>
+
+						{/* Client */}
+						<ModuleCard title='Client' icon={User} className='lg:col-span-3'>
+							<div className='space-y-2 pt-1'>
+								{customer ? (
+									<>
+										<p className='font-medium'>{customer.name}</p>
+										{customer.company && (
+											<p className='text-sm text-muted-foreground'>
+												{customer.company}
+											</p>
+										)}
+										{customer.email && (
+											<p className='text-sm text-muted-foreground'>
+												{customer.email}
+											</p>
+										)}
+										{customer.phone && (
+											<p className='text-sm text-muted-foreground'>
+												{customer.phone}
+											</p>
+										)}
+										{customer.address && (
+											<p className='text-sm text-muted-foreground mt-2'>
+												{customer.address}
+											</p>
+										)}
+									</>
+								) : (
+									<p className='text-muted-foreground text-sm'>
+										Client inconnu
+									</p>
+								)}
+							</div>
+						</ModuleCard>
+					</>
+				)}
+
+				{/* ── Logique Sidebar Spécifique Ticket ── */}
+				{isTicket && needsTicketSidebar && (
+					<ModuleCard
+						title='Suivi & Notes'
+						icon={FileText}
+						className='lg:col-span-4'
+					>
+						<div className='space-y-4 pt-1'>
+							<div className='flex flex-wrap gap-2'>
+								{invoice.converted_to_invoice && (
+									<Badge
+										variant='secondary'
+										className='bg-blue-100 text-blue-700 hover:bg-blue-100/80'
+									>
+										Facturé
+									</Badge>
+								)}
+								{remainingAmount <= 0 && (invoice.total_ttc ?? 0) > 0 && (
+									<Badge
+										variant='secondary'
+										className='bg-orange-100 text-orange-700 hover:bg-orange-100/80'
+									>
+										Remboursé
+									</Badge>
+								)}
+								{remainingAmount > 0 &&
+									((invoice as any).credit_notes_total ?? 0) > 0 && (
+										<Badge
+											variant='outline'
+											className='text-orange-600 border-orange-200'
+										>
+											Remboursé partiel
+										</Badge>
+									)}
+							</div>
+
+							{invoice.converted_to_invoice && invoice.converted_invoice_id && (
+								<div className='border-t border-border/50 pt-4 mt-2'>
+									<p className='text-sm text-muted-foreground mb-2'>
+										Facture associée
+									</p>
+									<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
+										<div className='flex items-center gap-2'>
+											<FileText className='h-4 w-4 text-muted-foreground' />
+											<span className='font-medium text-sm'>
+												Voir la facture
+											</span>
+										</div>
+										<Button
+											variant='outline'
+											size='sm'
+											onClick={() => {
+												if (!invoice.converted_invoice_id) return
+												navigate({
+													to: '/connect/invoices/$invoiceId',
+													params: { invoiceId: invoice.converted_invoice_id },
+												})
+											}}
+										>
+											Ouvrir
+										</Button>
+									</div>
+								</div>
+							)}
+
+							{linkedCreditNotes && linkedCreditNotes.length > 0 && (
+								<div className='border-t border-border/50 pt-4 mt-2'>
 									<p className='text-sm text-muted-foreground mb-2'>
 										{linkedCreditNotes.length === 1
 											? 'Avoir associé'
@@ -663,348 +1122,37 @@ export function InvoiceDetailContent({
 								</div>
 							)}
 
-						{/* Ticket converti en facture */}
-						{invoice.is_pos_ticket &&
-							invoice.converted_to_invoice &&
-							invoice.converted_invoice_id && (
-								<div className='border-t pt-4'>
-									<p className='text-sm text-muted-foreground mb-2'>
-										Facture associée
-									</p>
-									<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
-										<div className='flex items-center gap-2'>
-											<FileText className='h-4 w-4 text-muted-foreground' />
-											<span className='font-medium'>Converti en facture</span>
-										</div>
-										<Button
-											variant='outline'
-											size='sm'
-											disabled={!invoice.converted_invoice_id}
-											onClick={() => {
-												if (!invoice.converted_invoice_id) return
-
-												navigate({
-													to: '/connect/invoices/$invoiceId',
-													params: { invoiceId: invoice.converted_invoice_id },
-												})
-											}}
-										>
-											Voir la facture
-										</Button>
-									</div>
+							{invoice.notes && (
+								<div className='pt-2 border-t border-border/50'>
+									<p className='text-sm text-muted-foreground'>Notes</p>
+									<p className='text-sm mt-1'>{invoice.notes}</p>
 								</div>
 							)}
+						</div>
+					</ModuleCard>
+				)}
 
-						{/* Acomptes B2B */}
-						{!isCreditNote && !isDeposit && !invoice.is_pos_ticket && (
-							<div className='border-t pt-4 space-y-3'>
-								{(invoice.deposits_total_ttc ?? 0) > 0 && (
-									<div className='space-y-1'>
-										<p className='text-sm font-medium text-muted-foreground'>
-											Acomptes
-										</p>
-										<div className='flex justify-between text-sm'>
-											<span className='text-muted-foreground'>Versés</span>
-											<span className='font-medium text-emerald-600'>
-												{formatCurrency(
-													invoice.deposits_total_ttc ?? 0,
-													invoice.currency,
-												)}
-											</span>
-										</div>
-										<div className='flex justify-between text-sm'>
-											<span className='text-muted-foreground'>
-												Solde restant
-											</span>
-											<span className='font-semibold'>
-												{formatCurrency(
-													invoice.balance_due ?? invoice.total_ttc,
-													invoice.currency,
-												)}
-											</span>
-										</div>
-									</div>
-								)}
-								{depositsData && depositsData.depositsCount > 0 && (
-									<div className='space-y-2'>
-										{depositsData.deposits.map((dep) => (
-											<div
-												key={dep.id}
-												className='flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200 dark:border-blue-900'
-											>
-												<div className='flex items-center gap-2'>
-													<Banknote className='h-4 w-4 text-blue-600' />
-													<div className='flex flex-col'>
-														<span className='font-medium text-sm text-blue-700 dark:text-blue-400'>
-															{dep.number}
-														</span>
-														<span className='text-xs text-muted-foreground'>
-															{formatDate(dep.date)} •{' '}
-															{formatCurrency(dep.total_ttc)} •{' '}
-															{dep.is_paid ? (
-																<span className='text-emerald-600'>Réglé</span>
-															) : (
-																<span className='text-amber-600'>
-																	En attente
-																</span>
-															)}
-														</span>
-													</div>
-												</div>
-												<Button
-													variant='outline'
-													size='sm'
-													onClick={() =>
-														navigate(getDetailRoute(dep.id) as any)
-													}
-												>
-													Voir
-												</Button>
-											</div>
-										))}
-										{depositsData.balanceInvoice && (
-											<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3 border'>
-												<div className='flex items-center gap-2'>
-													<CreditCard className='h-4 w-4 text-muted-foreground' />
-													<div className='flex flex-col'>
-														<span className='font-medium text-sm'>
-															{depositsData.balanceInvoice.number}
-														</span>
-														<span className='text-xs text-muted-foreground'>
-															Facture de solde
-														</span>
-													</div>
-												</div>
-												<Button
-													variant='outline'
-													size='sm'
-													onClick={() =>
-														depositsData.balanceInvoice &&
-														navigate(
-															getDetailRoute(
-																depositsData.balanceInvoice.id,
-															) as any,
-														)
-													}
-												>
-													Voir
-												</Button>
-											</div>
-										)}
-									</div>
-								)}
-								<div className='flex flex-col gap-2'>
-									{invoice &&
-										canCreateDeposit(invoice) &&
-										(depositDialogOpen ? (
-											<div className='space-y-2 bg-muted/50 rounded-lg p-3'>
-												<p className='text-sm font-medium'>Nouvel acompte</p>
-												<div className='flex items-center gap-2'>
-													<input
-														type='range'
-														min={10}
-														max={90}
-														step={5}
-														value={depositPercentage}
-														onChange={(e) =>
-															setDepositPercentage(Number(e.target.value))
-														}
-														className='flex-1'
-													/>
-													<span className='text-sm font-semibold w-10'>
-														{depositPercentage}%
-													</span>
-												</div>
-												<p className='text-xs text-muted-foreground'>
-													≈{' '}
-													{formatCurrency(
-														((invoice.deposits_total_ttc
-															? (invoice.balance_due ?? invoice.total_ttc)
-															: invoice.total_ttc) *
-															depositPercentage) /
-															100,
-														invoice.currency,
-													)}
-												</p>
-												<div className='flex gap-2'>
-													<Button
-														size='sm'
-														onClick={handleCreateDeposit}
-														disabled={createDeposit.isPending}
-													>
-														{createDeposit.isPending && (
-															<Loader2 className='h-3 w-3 animate-spin mr-1' />
-														)}
-														Créer
-													</Button>
-													<Button
-														size='sm'
-														variant='ghost'
-														onClick={() => setDepositDialogOpen(false)}
-													>
-														Annuler
-													</Button>
-												</div>
-											</div>
-										) : (
-											<Button
-												variant='outline'
-												size='sm'
-												className='w-full'
-												onClick={() => setDepositDialogOpen(true)}
-											>
-												<Plus className='h-4 w-4 mr-2' />
-												Demander un acompte
-											</Button>
-										))}
-									{(invoice as any).has_credit_note &&
-										linkedCreditNotes &&
-										linkedCreditNotes.length > 0 && (
-											<div className='mt-3'>
-												<p className='text-sm text-muted-foreground mb-2'>
-													Avoir associé
-												</p>
-												<div className='space-y-2'>
-													{linkedCreditNotes.map((cn) => (
-														<div
-															key={cn.id}
-															className='flex items-center justify-between bg-red-50 dark:bg-red-950/20 rounded-lg p-3 border border-red-200 dark:border-red-900'
-														>
-															<div className='flex items-center gap-2'>
-																<RefreshCcw className='h-4 w-4 text-red-600' />
-																<div className='flex flex-col'>
-																	<span className='font-medium text-sm text-red-700 dark:text-red-400'>
-																		{cn.number}
-																	</span>
-																	<span className='text-xs text-muted-foreground'>
-																		{formatDate(cn.date)} •{' '}
-																		{formatCurrency(cn.total_ttc)}
-																	</span>
-																</div>
-															</div>
-															<Button
-																variant='outline'
-																size='sm'
-																onClick={() =>
-																	navigate(getDetailRoute(cn.id) as any)
-																}
-															>
-																Voir
-															</Button>
-														</div>
-													))}
-												</div>
-											</div>
-										)}
-									{invoice &&
-										canCreateBalanceInvoice(invoice) &&
-										!depositsData?.balanceInvoice &&
-										depositsData?.pendingCount === 0 && (
-											<Button
-												variant='outline'
-												size='sm'
-												className='w-full'
-												onClick={handleCreateBalanceInvoice}
-												disabled={createBalanceInvoice.isPending}
-											>
-												{createBalanceInvoice.isPending ? (
-													<Loader2 className='h-3 w-3 animate-spin mr-2' />
-												) : (
-													<CreditCard className='h-4 w-4 mr-2' />
-												)}
-												Générer la facture de solde
-											</Button>
-										)}
-								</div>
-							</div>
-						)}
-
-						{/* Acompte : lien retour facture parente */}
-						{isDeposit && originalId && (
-							<div className='border-t pt-4'>
-								<p className='text-sm text-muted-foreground mb-2'>
-									Facture principale
-								</p>
-								<div className='flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200 dark:border-blue-900'>
-									<div className='flex items-center gap-2'>
-										<FileText className='h-4 w-4 text-blue-600' />
-										<span className='font-medium text-sm'>
-											{originalNumber || 'Document'}
-										</span>
-									</div>
-									<Button
-										variant='outline'
-										size='sm'
-										onClick={() => navigate(getDetailRoute(originalId) as any)}
-									>
-										Voir
-									</Button>
-								</div>
-							</div>
-						)}
-
-						{invoice.notes && (
-							<div>
-								<p className='text-sm text-muted-foreground'>Notes</p>
-								<p className='text-sm'>{invoice.notes}</p>
-							</div>
-						)}
-					</CardContent>
-				</Card>
-
-				{/* ── Client ── */}
-				<Card>
-					<CardHeader>
-						<CardTitle>Client</CardTitle>
-					</CardHeader>
-					<CardContent>
-						{customer ? (
-							<div className='space-y-2'>
-								<p className='font-medium'>{customer.name}</p>
-								{customer.company && (
-									<p className='text-sm text-muted-foreground'>
-										{customer.company}
-									</p>
-								)}
-								{customer.email && (
-									<p className='text-sm text-muted-foreground'>
-										{customer.email}
-									</p>
-								)}
-								{customer.phone && (
-									<p className='text-sm text-muted-foreground'>
-										{customer.phone}
-									</p>
-								)}
-								{customer.address && (
-									<p className='text-sm text-muted-foreground'>
-										{customer.address}
-									</p>
-								)}
-							</div>
-						) : (
-							<p className='text-muted-foreground'>Client inconnu</p>
-						)}
-					</CardContent>
-				</Card>
-
-				{/* ── Articles ── */}
-				<Card className='lg:col-span-3'>
-					<CardHeader>
-						<CardTitle>Articles</CardTitle>
-						<CardDescription>
-							{invoice.items.length} ligne(s) dans{' '}
-							{isCreditNote
-								? 'cet avoir'
-								: invoice.is_pos_ticket
-									? 'ce ticket'
-									: 'cette facture'}
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
+				{/* ── Articles (Étendu intelligemment) ── */}
+				<ModuleCard
+					title='Articles'
+					icon={ShoppingCart}
+					className={
+						isTicket
+							? needsTicketSidebar
+								? 'lg:col-span-8'
+								: 'lg:col-span-12'
+							: 'lg:col-span-6'
+					}
+					headerRight={
+						<span className='text-xs font-medium text-muted-foreground bg-muted/50 px-2 py-1 rounded'>
+							{invoice.items.length} ligne(s)
+						</span>
+					}
+				>
+					<div className='overflow-x-auto'>
 						<Table>
 							<TableHeader>
-								<TableRow>
+								<TableRow className='border-border/50'>
 									<TableHead>Article</TableHead>
 									<TableHead className='text-center w-20'>Qté</TableHead>
 									<TableHead className='text-right'>P.U. HT</TableHead>
@@ -1026,13 +1174,16 @@ export function InvoiceDetailContent({
 										Number(item?.unit_price_ht ?? 0) * coef,
 									)
 									return (
-										<TableRow key={`${item.name}-${idx}`}>
+										<TableRow
+											key={`${item.name}-${idx}`}
+											className='border-border/40'
+										>
 											<TableCell className='font-medium'>
 												<div className='flex flex-col'>
 													<span>{item.name}</span>
 													{hasBefore && promo.hasDiscount && (
-														<span className='text-xs text-muted-foreground'>
-															<span className='line-through mr-2'>
+														<span className='text-xs text-muted-foreground mt-0.5'>
+															<span className='line-through mr-2 opacity-70'>
 																{round2(beforeUnitTtc).toFixed(2)} €
 															</span>
 															<span>{unitTtcFromHt.toFixed(2)} € TTC</span>
@@ -1049,10 +1200,10 @@ export function InvoiceDetailContent({
 											<TableCell className='text-right'>
 												{promo.label}
 											</TableCell>
-											<TableCell className='text-right'>
+											<TableCell className='text-right text-muted-foreground'>
 												{item.tva_rate}%
 											</TableCell>
-											<TableCell className='text-right'>
+											<TableCell className='text-right font-medium'>
 												{Number(item.total_ttc ?? 0).toFixed(2)} €
 											</TableCell>
 										</TableRow>
@@ -1060,97 +1211,124 @@ export function InvoiceDetailContent({
 								})}
 							</TableBody>
 						</Table>
+					</div>
 
-						<div className='mt-6 flex justify-end'>
-							<div className='w-72 space-y-2 text-sm'>
-								{discounts.hasAnyDiscount && (
-									<>
+					<div className='mt-8 flex justify-end'>
+						<div className='w-72 space-y-2.5 text-sm'>
+							{discounts.hasAnyDiscount && (
+								<>
+									<div className='flex justify-between'>
+										<span className='text-muted-foreground'>
+											Sous-total TTC
+										</span>
+										<span>
+											{formatCurrency(
+												discounts.grandSubtotal,
+												invoice.currency,
+											)}
+										</span>
+									</div>
+									{discounts.lineDiscountsTtc > 0 && (
 										<div className='flex justify-between'>
 											<span className='text-muted-foreground'>
-												Sous-total TTC
+												Remises lignes
 											</span>
 											<span>
+												-
 												{formatCurrency(
-													discounts.grandSubtotal,
+													discounts.lineDiscountsTtc,
 													invoice.currency,
 												)}
 											</span>
 										</div>
-										{discounts.lineDiscountsTtc > 0 && (
-											<div className='flex justify-between'>
-												<span className='text-muted-foreground'>
-													Remises lignes
-												</span>
-												<span>
-													-
-													{formatCurrency(
-														discounts.lineDiscountsTtc,
-														invoice.currency,
-													)}
-												</span>
-											</div>
-										)}
-										{discounts.cartDiscountTtc > 0 && (
-											<div className='flex justify-between'>
-												<span className='text-muted-foreground'>
-													Remise globale {discounts.cartDiscountLabel}
-												</span>
-												<span>
-													-
-													{formatCurrency(
-														discounts.cartDiscountTtc,
-														invoice.currency,
-													)}
-												</span>
-											</div>
-										)}
-										<div className='border-t pt-2' />
-									</>
-								)}
-								<div className='flex justify-between'>
-									<span className='text-muted-foreground'>Total HT</span>
-									<span>
-										{formatCurrency(invoice.total_ht, invoice.currency)}
-									</span>
+									)}
+									{discounts.cartDiscountTtc > 0 && (
+										<div className='flex justify-between'>
+											<span className='text-muted-foreground'>
+												Remise globale {discounts.cartDiscountLabel}
+											</span>
+											<span>
+												-
+												{formatCurrency(
+													discounts.cartDiscountTtc,
+													invoice.currency,
+												)}
+											</span>
+										</div>
+									)}
+									<div className='border-t border-border/50 pt-2.5' />
+								</>
+							)}
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Total HT</span>
+								<span>
+									{formatCurrency(invoice.total_ht, invoice.currency)}
+								</span>
+							</div>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>TVA</span>
+								<span>
+									{formatCurrency(invoice.total_tva, invoice.currency)}
+								</span>
+							</div>
+							{vatBreakdown.length > 0 && (
+								<div className='pt-1'>
+									{vatBreakdown.map((vb) => (
+										<div
+											key={vb.rate}
+											className='flex justify-between text-[11px] text-muted-foreground/80'
+										>
+											<span>
+												TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+											</span>
+											<span>{vb.vat.toFixed(2)} €</span>
+										</div>
+									))}
 								</div>
-								<div className='flex justify-between'>
-									<span className='text-muted-foreground'>TVA</span>
-									<span>
-										{formatCurrency(invoice.total_tva, invoice.currency)}
-									</span>
-								</div>
-								{vatBreakdown.length > 0 && (
-									<div className='pt-1'>
-										{vatBreakdown.map((vb) => (
-											<div
-												key={vb.rate}
-												className='flex justify-between text-xs text-muted-foreground'
-											>
-												<span>
-													TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
-												</span>
-												<span>{vb.vat.toFixed(2)} €</span>
-											</div>
-										))}
-									</div>
-								)}
-								<div className='flex justify-between font-bold text-lg border-t pt-2'>
-									<span>Total TTC</span>
-									<span>
-										{formatCurrency(invoice.total_ttc, invoice.currency)}
-									</span>
-								</div>
+							)}
+							<div className='flex justify-between font-bold text-lg border-t border-border/50 pt-3 mt-1'>
+								<span>Total TTC</span>
+								<span>
+									{formatCurrency(invoice.total_ttc, invoice.currency)}
+								</span>
 							</div>
 						</div>
-					</CardContent>
-				</Card>
+					</div>
+				</ModuleCard>
 			</div>
 
+			{/* Dialogues */}
 			<SendInvoiceEmailDialog
 				open={emailDialogOpen}
 				onOpenChange={setEmailDialogOpen}
 				invoice={invoice}
 				onSuccess={() => setEmailDialogOpen(false)}
+			/>
+
+			<RefundTicketDialog
+				open={refundTicketDialogOpen}
+				onOpenChange={(open) => setRefundTicketDialogOpen(open)}
+				ticket={invoice as any}
+				onSuccess={(stockItems) => {
+					setRefundTicketDialogOpen(false)
+					if (stockItems && stockItems.length > 0) {
+						setStockItemsToReclassify(stockItems)
+						setStockDocumentNumber(invoice.number)
+						setStockReclassifyOpen(true)
+					}
+				}}
+			/>
+
+			<StockReclassificationDialog
+				open={stockReclassifyOpen}
+				onOpenChange={setStockReclassifyOpen}
+				items={stockItemsToReclassify}
+				documentNumber={stockDocumentNumber}
+				onComplete={() => {
+					setStockReclassifyOpen(false)
+					setStockItemsToReclassify([])
+					setStockDocumentNumber(undefined)
+				}}
 			/>
 		</div>
 	)

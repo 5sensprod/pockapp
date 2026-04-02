@@ -135,6 +135,23 @@ export function useUpdateCustomer() {
 	})
 }
 
+export function useAllCustomers(companyId?: string) {
+	const pb = usePocketBase() as any
+
+	return useQuery<CustomersResponse[]>({
+		queryKey: ['customers', 'all', companyId],
+		queryFn: async () => {
+			if (!companyId) return []
+			return await pb.collection('customers').getFullList({
+				filter: `owner_company = "${companyId}"`,
+				sort: 'name',
+			})
+		},
+		enabled: !!companyId,
+		staleTime: 30_000,
+	})
+}
+
 // 🗑️ Supprimer un client
 export function useDeleteCustomer() {
 	const pb = usePocketBase() as any

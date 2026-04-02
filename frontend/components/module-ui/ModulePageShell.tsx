@@ -9,6 +9,7 @@ interface ModulePageShellProps {
 	badge?: ReactNode
 	centerContent?: ReactNode
 	actions?: ReactNode
+	headerLeft?: ReactNode // <-- NOUVEAU
 	children: ReactNode
 	className?: string
 }
@@ -18,6 +19,7 @@ export function ModulePageShell({
 	badge,
 	centerContent,
 	actions,
+	headerLeft, // <-- NOUVEAU
 	children,
 	className,
 }: ModulePageShellProps) {
@@ -25,14 +27,14 @@ export function ModulePageShell({
 
 	return (
 		<div className={cn('flex flex-col min-h-full', className)}>
-			{/* ── Module Header — Sticky à 56px (sous le Header global) ── */}
+			{/* ── Module Header — Sticky à 56px ── */}
 			<header className='sticky top-[56px] z-40 h-[72px] flex items-center justify-between px-6 bg-muted/95 backdrop-blur-sm shrink-0 border-b shadow-sm'>
 				{/* 1. Gauche — flex-1 pour pousser le centre */}
 				<div className='flex items-center gap-4 flex-1 overflow-hidden'>
+					{headerLeft} {/* <-- INJECTION DU BOUTON RETOUR ICI */}
 					<div className='w-10 h-10 rounded-lg bg-[#1E1B4B] flex items-center justify-center shrink-0'>
 						<Icon className='h-5 w-5 text-white' />
 					</div>
-
 					<div className='flex flex-col truncate'>
 						<div className='flex items-center gap-2'>
 							<h1 className='text-sm font-semibold text-foreground leading-tight tracking-widest uppercase truncate'>
@@ -53,7 +55,7 @@ export function ModulePageShell({
 					</div>
 				</div>
 
-				{/* 2. Centre — Zone de recherche */}
+				{/* 2. Centre — Zone de recherche / Infos ticket */}
 				<div className='flex justify-center shrink-0 px-4'>{centerContent}</div>
 
 				{/* 3. Droite — flex-1 pour équilibrer la gauche */}

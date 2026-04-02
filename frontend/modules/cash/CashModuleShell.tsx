@@ -17,14 +17,12 @@ interface CashModuleShellProps {
 	children: ReactNode
 	forcedRegisterId?: string
 	extraActions?: ReactNode
-	/** Remplace "PocketCash" — masque aussi le badge PRO et la description */
 	pageTitle?: string
 	pageIcon?: LucideIcon
-	/** Contenu injecté dans la barre (filtres, stats…) */
 	headerExtras?: ReactNode
 	centerContent?: ReactNode
-	/** Masque sélecteur caisse, fond, Rapport X, Mouvement et Clôturer */
 	hideSessionActions?: boolean
+	hideBadge?: boolean // <-- AJOUT DE LA PROP
 }
 
 export function CashModuleShell({
@@ -36,6 +34,7 @@ export function CashModuleShell({
 	headerExtras,
 	centerContent,
 	hideSessionActions = false,
+	hideBadge = false, // <-- VALEUR PAR DEFAUT
 }: CashModuleShellProps) {
 	const cash = useCashModule()
 
@@ -45,7 +44,6 @@ export function CashModuleShell({
 		}
 	}, [forcedRegisterId, cash.selectedRegisterId, cash.setSelectedRegisterId])
 
-	// ── Heure temps réel ──────────────────────────────────────────────────────
 	const [time, setTime] = React.useState(() =>
 		new Date().toLocaleTimeString('fr-FR', {
 			hour: '2-digit',
@@ -72,18 +70,18 @@ export function CashModuleShell({
 		}
 	}, [])
 
-	// ── Manifest contextuel — pageTitle masque PRO + description ─────────────
 	const contextualManifest: ModuleManifest = pageTitle
 		? {
 				...manifest,
 				name: pageTitle,
 				description: '',
 				plan: undefined,
-				icon: pageIcon || manifest.icon, // <-- REMPLACE L'ICÔNE ICI SI FOURNIE
+				icon: pageIcon || manifest.icon,
 			}
 		: manifest
 
-	const badge = (
+	// <-- CONDITION SUR LE BADGE
+	const badge = hideBadge ? null : (
 		<StatusBadge
 			label={cash.sessionLabel}
 			variant={cash.sessionVariant}
