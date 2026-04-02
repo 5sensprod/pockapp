@@ -1,4 +1,4 @@
-// frontend/modules/connect/components/TicketsPage.tsx
+// frontend/modules/cash/components/reports/TicketsPage.tsx
 // Page tickets POS — pattern ModulePageShell, pagination serveur, debounce
 
 import { Badge } from '@/components/ui/badge'
@@ -397,8 +397,8 @@ export function TicketsPage() {
 														<DropdownMenuItem
 															onClick={() =>
 																navigate({
-																	to: '/connect/invoices/$invoiceId',
-																	params: { invoiceId: ticket.id },
+																	to: '/cash/tickets/$ticketId' as any,
+																	params: { ticketId: ticket.id } as any,
 																})
 															}
 														>
