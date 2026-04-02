@@ -6,7 +6,7 @@ import { ConnectPage } from './ConnectPage'
 export const manifest: ModuleManifest = {
 	id: 'connect',
 	name: 'PocketConnect',
-	description: 'Clients & relation',
+	description: 'Clients & Factures',
 	pole: 'commerce',
 	icon: Users,
 	iconColor: 'text-blue-600',

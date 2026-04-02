@@ -15,7 +15,7 @@ import type { ModuleManifest } from '../_registry'
 export const manifest: ModuleManifest = {
 	id: 'cash',
 	name: 'PocketCash',
-	description: 'Caisse & facturation',
+	description: 'Caisse & Tickets',
 	pole: 'commerce',
 	icon: ShoppingCart,
 	route: '/cash',

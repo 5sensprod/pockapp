@@ -7,7 +7,7 @@ import { StockPageAppPos as StockPage } from './StockPageAppPos'
 export const manifest: ModuleManifest = {
 	id: 'stock',
 	name: 'PocketStock',
-	description: 'Catalogue & produits',
+	description: 'Stock & Catalogue',
 	pole: 'commerce',
 	icon: Package,
 	route: '/stock-apppos', // ← route principale corrigée
