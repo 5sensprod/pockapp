@@ -4,7 +4,6 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -51,7 +50,7 @@ import {
 	RotateCcw,
 	Search,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -99,24 +98,25 @@ export function TicketsPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
 
-	// Filtres
-	const [searchTerm, setSearchTerm] = useState('')
-	const [conversionFilter, setConversionFilter] = useState<
-		'all' | 'converted' | 'not_converted'
-	>('all')
-	const [dateFilter, setDateFilter] = useState('')
+	// ── Filtres + pagination en un seul état atomique ──────────────────────────
+	const [filters, setFilters] = useState({
+		search: '',
+		conversionFilter: 'all' as 'all' | 'converted' | 'not_converted',
+		dateFilter: '',
+		page: 1,
+	})
 
-	// Pagination
-	const [page, setPage] = useState(1)
-	const prevDebouncedRef = useRef('')
-	const debouncedSearch = useDebounce(searchTerm, 400)
+	const setSearch = (v: string) =>
+		setFilters((f) => ({ ...f, search: v, page: 1 }))
+	const setConversion = (v: typeof filters.conversionFilter) =>
+		setFilters((f) => ({ ...f, conversionFilter: v, page: 1 }))
+	const setDate = (v: string) =>
+		setFilters((f) => ({ ...f, dateFilter: v, page: 1 }))
+	const setPage = (v: number) => setFilters((f) => ({ ...f, page: v }))
 
-	if (debouncedSearch !== prevDebouncedRef.current) {
-		prevDebouncedRef.current = debouncedSearch
-		if (page !== 1) setPage(1)
-	}
+	const debouncedSearch = useDebounce(filters.search, 400)
 
-	// Résolution IDs clients par nom
+	// ── Résolution IDs clients par nom ─────────────────────────────────────────
 	const { data: matchingCustomerIds } = useQuery({
 		queryKey: ['customer-search-ids-tickets', activeCompanyId, debouncedSearch],
 		queryFn: async () => {
@@ -131,7 +131,7 @@ export function TicketsPage() {
 		staleTime: 10_000,
 	})
 
-	// Filtre de recherche combiné
+	// ── Filtre de recherche combiné ────────────────────────────────────────────
 	const searchFilter = useMemo(() => {
 		const parts: string[] = ['is_pos_ticket = true']
 		if (debouncedSearch) {
@@ -145,28 +145,38 @@ export function TicketsPage() {
 			}
 			parts.push(`(${textParts.join(' || ')})`)
 		}
-		if (conversionFilter === 'converted')
+		if (filters.conversionFilter === 'converted')
 			parts.push('converted_to_invoice = true')
-		if (conversionFilter === 'not_converted')
+		if (filters.conversionFilter === 'not_converted')
 			parts.push('converted_to_invoice = false')
-		if (dateFilter)
-			parts.push(`date >= "${dateFilter}" && date <= "${dateFilter} 23:59:59"`)
+		if (filters.dateFilter)
+			parts.push(
+				`date >= "${filters.dateFilter}" && date <= "${filters.dateFilter} 23:59:59"`,
+			)
 		return parts.join(' && ')
-	}, [debouncedSearch, matchingCustomerIds, conversionFilter, dateFilter])
+	}, [
+		debouncedSearch,
+		matchingCustomerIds,
+		filters.conversionFilter,
+		filters.dateFilter,
+	])
+
+	// ── Bloquer useInvoices tant que les IDs clients ne sont pas résolus ───────
+	const customerIdsReady = !debouncedSearch || matchingCustomerIds !== undefined
 
 	const { data: invoicesData, isLoading } = useInvoices({
-		companyId: activeCompanyId ?? undefined,
+		companyId: customerIdsReady ? (activeCompanyId ?? undefined) : undefined,
 		filter: searchFilter,
 		sort: '-created',
-		page,
+		page: filters.page,
 		perPage: PER_PAGE,
 	})
 
-	// Stats (sur tous les tickets, sans pagination)
+	// ── Stats (total tickets, sans filtre) ─────────────────────────────────────
 	const { data: allTicketsData } = useInvoices({
 		companyId: activeCompanyId ?? undefined,
 		filter: 'is_pos_ticket = true',
-		perPage: 1, // on veut juste totalItems
+		perPage: 1,
 	})
 
 	const tickets = (invoicesData?.items ?? []) as InvoiceResponse[]
@@ -174,7 +184,10 @@ export function TicketsPage() {
 	const totalPages = invoicesData?.totalPages ?? 1
 	const totalTickets = allTicketsData?.totalItems ?? 0
 
-	// Dialogs remboursement ticket
+	const rangeStart = totalItems === 0 ? 0 : (filters.page - 1) * PER_PAGE + 1
+	const rangeEnd = Math.min(filters.page * PER_PAGE, totalItems)
+
+	// ── Dialogs remboursement ──────────────────────────────────────────────────
 	const [refundTicketDialogOpen, setRefundTicketDialogOpen] = useState(false)
 	const [ticketToRefund, setTicketToRefund] = useState<InvoiceResponse | null>(
 		null,
@@ -188,9 +201,7 @@ export function TicketsPage() {
 		string | undefined
 	>()
 
-	const rangeStart = totalItems === 0 ? 0 : (page - 1) * PER_PAGE + 1
-	const rangeEnd = Math.min(page * PER_PAGE, totalItems)
-
+	// ── Rendu ──────────────────────────────────────────────────────────────────
 	return (
 		<div className='container mx-auto px-6 py-8'>
 			{/* Header */}
@@ -236,7 +247,7 @@ export function TicketsPage() {
 					</CardHeader>
 					<CardContent>
 						<div className='text-2xl font-bold'>
-							{page} / {totalPages || 1}
+							{filters.page} / {totalPages || 1}
 						</div>
 					</CardContent>
 				</Card>
@@ -250,17 +261,14 @@ export function TicketsPage() {
 							<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
 							<Input
 								placeholder='Rechercher par numéro ou client...'
-								value={searchTerm}
-								onChange={(e) => setSearchTerm(e.target.value)}
+								value={filters.search}
+								onChange={(e) => setSearch(e.target.value)}
 								className='pl-10'
 							/>
 						</div>
 						<Select
-							value={conversionFilter}
-							onValueChange={(v: any) => {
-								setConversionFilter(v)
-								setPage(1)
-							}}
+							value={filters.conversionFilter}
+							onValueChange={(v: any) => setConversion(v)}
 						>
 							<SelectTrigger>
 								<SelectValue placeholder='Conversion' />
@@ -273,11 +281,8 @@ export function TicketsPage() {
 						</Select>
 						<Input
 							type='date'
-							value={dateFilter}
-							onChange={(e) => {
-								setDateFilter(e.target.value)
-								setPage(1)
-							}}
+							value={filters.dateFilter}
+							onChange={(e) => setDate(e.target.value)}
 						/>
 					</div>
 				</CardContent>
@@ -406,7 +411,6 @@ export function TicketsPage() {
 															Voir le détail
 														</DropdownMenuItem>
 
-														{/* Convertir — uniquement ticket original, pas encore converti, et pas remboursé */}
 														{ticket.invoice_type !== 'credit_note' &&
 															!ticket.converted_to_invoice &&
 															remainingAmount > 0 && (
@@ -433,7 +437,6 @@ export function TicketsPage() {
 																	<DropdownMenuItem
 																		onClick={() => {
 																			if (!ticket.converted_invoice_id) return
-
 																			navigate({
 																				to: '/connect/invoices/$invoiceId',
 																				params: {
@@ -449,7 +452,6 @@ export function TicketsPage() {
 																</>
 															)}
 
-														{/* Rembourser — visible pour tous les tickets payés, grisé si déjà remboursé */}
 														{ticket.invoice_type === 'invoice' &&
 															ticket.is_paid &&
 															!ticket.converted_to_invoice && (
@@ -501,20 +503,20 @@ export function TicketsPage() {
 						<Button
 							variant='outline'
 							size='sm'
-							onClick={() => setPage(page - 1)}
-							disabled={page <= 1}
+							onClick={() => setPage(filters.page - 1)}
+							disabled={filters.page <= 1}
 						>
 							<ChevronLeft className='h-4 w-4' />
 							Précédent
 						</Button>
 						<span className='px-3 text-sm text-muted-foreground'>
-							{page} / {totalPages}
+							{filters.page} / {totalPages}
 						</span>
 						<Button
 							variant='outline'
 							size='sm'
-							onClick={() => setPage(page + 1)}
-							disabled={page >= totalPages}
+							onClick={() => setPage(filters.page + 1)}
+							disabled={filters.page >= totalPages}
 						>
 							Suivant
 							<ChevronRight className='h-4 w-4' />
