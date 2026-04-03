@@ -1,9 +1,12 @@
-// frontend/modules/cash/components/reports/TicketDetailPage.tsx
+// frontend/modules/cash/TicketDetailPage.tsx
+//
+// Page route — branche CashModuleShell sur TicketDetailContent.
+// Zéro logique propre.
 
-import { TicketDetailContent } from '@/modules/cash/components/TicketDetailContent'
 import { useParams } from '@tanstack/react-router'
 import { Receipt } from 'lucide-react'
 import { CashModuleShell } from './CashModuleShell'
+import { TicketDetailContent } from './components/ticket-detail/TicketDetailContent'
 
 export function TicketDetailPage() {
 	const { ticketId } = useParams({ from: '/cash/tickets/$ticketId/' })
@@ -13,15 +16,13 @@ export function TicketDetailPage() {
 			pageTitle='Détail du ticket'
 			pageIcon={Receipt}
 			hideSessionActions
-			hideBadge // <-- On masque le badge et l'heure ici !
-			// Portail pour les informations générales et le bouton retour
+			hideBadge
 			centerContent={
 				<div
 					id='ticket-info-portal'
 					className='flex items-center w-full max-w-3xl px-4'
 				/>
 			}
-			// Portail pour les actions (Télécharger, etc.)
 			headerExtras={
 				<div id='ticket-actions-portal' className='flex items-center gap-2' />
 			}
