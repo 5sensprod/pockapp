@@ -45,7 +45,7 @@ import {
 	X,
 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
-import { CashModuleShell } from '../../CashModuleShell'
+import { CashModuleShell } from './CashModuleShell'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

@@ -34,8 +34,8 @@ import {
 	User,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { CashModuleShell } from '../../CashModuleShell'
-import { useRegisterManager } from '../hooks/useRegisterManager'
+import { CashModuleShell } from './CashModuleShell'
+import { useRegisterManager } from './components/hooks/useRegisterManager'
 import {
 	PaymentMethodBreakdown,
 	VATBreakdownTable,
@@ -45,7 +45,7 @@ import {
 	isCashDifferenceSignificant,
 	usePrintReport,
 	useZReportGenerator,
-} from './index'
+} from './components/reports/index'
 
 export function RapportZPage() {
 	const { activeCompanyId } = useActiveCompany()

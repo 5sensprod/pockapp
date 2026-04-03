@@ -3,7 +3,7 @@
 import { InvoiceDetailContent } from '@/modules/connect/components/InvoiceDetailContent'
 import { useParams } from '@tanstack/react-router'
 import { Receipt } from 'lucide-react'
-import { CashModuleShell } from '../../CashModuleShell'
+import { CashModuleShell } from './CashModuleShell'
 
 export function TicketDetailPage() {
 	const { ticketId } = useParams({ from: '/cash/tickets/$ticketId/' })

@@ -10,4 +10,4 @@ export * from './hooks'
 export * from './components'
 
 // Pages
-export * from './RapportZPage'
+export * from '../../RapportZPage'
