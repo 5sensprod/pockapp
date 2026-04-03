@@ -35,6 +35,7 @@ export interface ModuleManifest {
 	minVersion?: string
 	topbarMenu?: TopbarMenuItem[]
 	sidebarMenu?: SidebarGroup[]
+	sidebarOverlay?: boolean
 
 	/**
 	 * Routes supplémentaires qui appartiennent à ce module.

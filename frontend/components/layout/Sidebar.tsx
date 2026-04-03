@@ -24,6 +24,7 @@ interface SidebarProps {
 	activeGroup: string | null
 	onToggleGroup: (groupId: string) => void
 	onClosePanel: () => void
+	onHomePanelChange?: (open: boolean) => void // ← AJOUT
 }
 
 export function Sidebar({
@@ -31,12 +32,25 @@ export function Sidebar({
 	activeGroup,
 	onToggleGroup,
 	onClosePanel,
+	onHomePanelChange, // ← AJOUT
 }: SidebarProps) {
 	const { pathname } = useLocation()
 	const navigate = useNavigate()
 
 	// ⚠️ Hooks AVANT tout return conditionnel
 	const [homePanel, setHomePanel] = React.useState(false)
+
+	// ── Wrapper qui notifie aussi le Layout ──────────────────────────────────
+	const setHomePanelWithNotify = React.useCallback(
+		(val: boolean | ((v: boolean) => boolean)) => {
+			setHomePanel((prev) => {
+				const next = typeof val === 'function' ? val(prev) : val
+				onHomePanelChange?.(next)
+				return next
+			})
+		},
+		[onHomePanelChange],
+	)
 
 	const isHomePage = pathname === '/'
 	const sidebarMenu = currentModule?.sidebarMenu || []
@@ -54,8 +68,7 @@ export function Sidebar({
 		})
 
 	const handleGroupClick = (group: SidebarGroup) => {
-		setHomePanel(false)
-		// Toujours notifier le layout → activeGroup mis à jour → barre active visible
+		setHomePanelWithNotify(false)
 		onToggleGroup(group.id)
 		if (group.items?.length === 1) {
 			navigate({ to: group.items[0].to as any })
@@ -64,7 +77,7 @@ export function Sidebar({
 
 	const handleHomePanelToggle = () => {
 		if (activeGroup) onClosePanel()
-		setHomePanel((v) => !v)
+		setHomePanelWithNotify((v) => !v)
 	}
 
 	const showHomePanel = homePanel && !isHomePage
@@ -74,7 +87,7 @@ export function Sidebar({
 		(activeGroupData.items?.length ?? 0) > 1
 
 	return (
-		<div className='fixed left-0 top-[56px] bottom-0 flex z-40'>
+		<div className='fixed left-0 top-[56px] bottom-0 flex z-50'>
 			{/* ── Rail ──────────────────────────────────────────────────────────
           Zone haute  : icônes du module courant
           Zone basse  : séparateur + icône LayoutDashboard (menu global)
@@ -151,8 +164,8 @@ export function Sidebar({
 				<HomePanel
 					groups={homeSidebarMenu}
 					normPath={normPath}
-					onClose={() => setHomePanel(false)}
-					onNavigate={() => setHomePanel(false)}
+					onClose={() => setHomePanelWithNotify(false)}
+					onNavigate={() => setHomePanelWithNotify(false)}
 				/>
 			)}
 		</div>

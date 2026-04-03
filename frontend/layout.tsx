@@ -57,6 +57,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const isHomePage = pathname === '/'
 	const hasSidebar = !!currentModule?.sidebarMenu?.length
 	const sidebarMenu = currentModule?.sidebarMenu || []
+	const [homePanelOpen, setHomePanelOpen] = useState(false)
 
 	const {
 		activeCompanyId,
@@ -111,10 +112,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	}
 
 	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
-	// Le panneau module est ouvert si le groupe actif a plusieurs items
-	// Le panneau home est géré dans Sidebar.tsx directement (état local)
+	const sidebarOverlay = currentModule?.sidebarOverlay ?? false
 	const isPanelOpen =
-		activeGroupData !== null && (activeGroupData.items?.length ?? 0) > 1
+		!sidebarOverlay &&
+		(homePanelOpen ||
+			(activeGroupData !== null && (activeGroupData.items?.length ?? 0) > 1))
 
 	useEffect(() => {
 		if (setupLoading) return
@@ -192,6 +194,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 					activeGroup={activeGroup}
 					onToggleGroup={handleToggleGroup}
 					onClosePanel={handleClosePanel}
+					onHomePanelChange={setHomePanelOpen}
 				/>
 			)}
 

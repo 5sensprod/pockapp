@@ -673,7 +673,7 @@ export function CashTerminalPage() {
 							onClick: () => navigate({ to: '/cash' }),
 						},
 						{
-							label: 'Tableau de bord',
+							label: 'Configurer la caisse',
 							variant: 'secondary' as const,
 							onClick: () => {
 								clearLastRouteForModule('cash')
