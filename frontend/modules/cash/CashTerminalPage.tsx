@@ -665,13 +665,9 @@ export function CashTerminalPage() {
 				<EmptyState
 					icon={ShieldAlert}
 					title='Aucune session ouverte'
-					description={`La caisse "${currentRegister?.name ?? cashRegisterId}" n'a pas de session active. Ouvrez une session depuis le tableau de bord Caisse avant d'accéder au terminal.`}
+					description={`La caisse "${currentRegister?.name ?? cashRegisterId}" n'a pas de session active. Ouvrez une session avant d'accéder au terminal.`}
 					fullPage
 					actions={[
-						{
-							label: 'Ouvrir une session',
-							onClick: () => navigate({ to: '/cash' }),
-						},
 						{
 							label: 'Configurer la caisse',
 							variant: 'secondary' as const,
