@@ -14,6 +14,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { buildReceiptFromInvoice } from '@/lib/pos/buildReceiptFromInvoice'
+import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
 import { useUpdateCustomer } from '@/lib/queries/customers'
 import { useSendInvoiceEmail } from '@/lib/queries/invoices'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
@@ -59,22 +61,32 @@ export function SendInvoiceEmailDialog({
 			const customer = invoice.expand?.customer
 			setRecipientEmail(customer?.email || '')
 			setRecipientName(customer?.name || '')
-			setSubject(`${documentLabelCapitalized} ${invoice.number}`)
 
-			const dueDateText = invoice.due_date
-				? `\n\nDate d'échéance : ${new Date(invoice.due_date).toLocaleDateString('fr-FR')}`
-				: ''
+			const isTicket = invoice.is_pos_ticket
+
+			setSubject(
+				isTicket
+					? `Ticket de caisse ${invoice.number}`
+					: `${documentLabelCapitalized} ${invoice.number}`,
+			)
 
 			const totalText = new Intl.NumberFormat('fr-FR', {
 				style: 'currency',
 				currency: invoice.currency || 'EUR',
 			}).format(invoice.total_ttc)
 
-			if (isCreditNote) {
+			if (isTicket) {
+				setMessage(
+					`Bonjour${customer?.name ? ` ${customer.name}` : ''},\n\nVeuillez trouver ci-joint votre ticket de caisse ${invoice.number} d'un montant de ${totalText}.\n\nMerci de votre achat !\n\nCordialement`,
+				)
+			} else if (isCreditNote) {
 				setMessage(
 					`Bonjour${customer?.name ? ` ${customer.name}` : ''},\n\nVeuillez trouver ci-joint notre avoir ${invoice.number} d'un montant de ${totalText}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement`,
 				)
 			} else {
+				const dueDateText = invoice.due_date
+					? `\n\nDate d'échéance : ${new Date(invoice.due_date).toLocaleDateString('fr-FR')}`
+					: ''
 				setMessage(
 					`Bonjour${customer?.name ? ` ${customer.name}` : ''},\n\nVeuillez trouver ci-joint notre facture ${invoice.number} d'un montant de ${totalText}.${dueDateText}\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement`,
 				)
@@ -108,50 +120,101 @@ export function SendInvoiceEmailDialog({
 		setIsGeneratingPdf(true)
 
 		try {
-			// 1️⃣ Générer le PDF
-			let company: any
-			try {
-				company = await pb.collection('companies').getOne(activeCompanyId)
-			} catch (err) {
-				console.warn('Entreprise non trouvée:', err)
-			}
+			let pdfBase64: string
 
-			let customer = invoice.expand?.customer
-			if (!customer && invoice.customer) {
+			if (invoice.is_pos_ticket) {
+				// ── Ticket POS : PDF via chromedp backend ──────────────────────────
+				const printerSettings = loadPosPrinterSettings()
+				const width = (printerSettings.width === 80 ? 80 : 58) as 58 | 80
+
+				// Logo
+				let logoBase64: string | undefined
 				try {
-					customer = await pb.collection('customers').getOne(invoice.customer)
+					const currentCompany: any = await pb
+						.collection('companies')
+						.getOne(activeCompanyId)
+					if (currentCompany?.logo) {
+						const { toPngDataUrl } = await import('../utils/images')
+						logoBase64 = await toPngDataUrl(
+							pb.files.getUrl(currentCompany, currentCompany.logo),
+						)
+					}
+				} catch {
+					// logo optionnel
+				}
+
+				const receipt = buildReceiptFromInvoice(invoice, logoBase64)
+
+				const res = await fetch('/api/pos/preview/pdf', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						width,
+						companyId: activeCompanyId,
+						receipt,
+					}),
+				})
+
+				if (!res.ok) {
+					const err = await res.json().catch(() => null)
+					throw new Error(err?.error || 'Erreur génération PDF du ticket')
+				}
+
+				const pdfBlob = await res.blob()
+				pdfBase64 = await new Promise<string>((resolve, reject) => {
+					const reader = new FileReader()
+					reader.onloadend = () =>
+						resolve((reader.result as string).split(',')[1])
+					reader.onerror = reject
+					reader.readAsDataURL(pdfBlob)
+				})
+			} else {
+				// ── Facture classique : PDF via @react-pdf/renderer ────────────────
+				let company: any
+				try {
+					company = await pb.collection('companies').getOne(activeCompanyId)
 				} catch (err) {
-					console.warn('Client non trouvé:', err)
+					console.warn('Entreprise non trouvée:', err)
 				}
+
+				let customer = invoice.expand?.customer
+				if (!customer && invoice.customer) {
+					try {
+						customer = await pb.collection('customers').getOne(invoice.customer)
+					} catch (err) {
+						console.warn('Client non trouvé:', err)
+					}
+				}
+
+				let companyLogoUrl: string | null = null
+				if (company?.logo) {
+					companyLogoUrl = pb.files.getUrl(company, company.logo)
+				}
+
+				const pdfBlob = await pdf(
+					<InvoicePdfDocument
+						invoice={invoice}
+						customer={customer as any}
+						company={company}
+						companyLogoUrl={companyLogoUrl}
+					/>,
+				).toBlob()
+
+				pdfBase64 = await new Promise<string>((resolve, reject) => {
+					const reader = new FileReader()
+					reader.onloadend = () =>
+						resolve((reader.result as string).split(',')[1])
+					reader.onerror = reject
+					reader.readAsDataURL(pdfBlob)
+				})
 			}
 
-			let companyLogoUrl: string | null = null
-			if (company?.logo) {
-				companyLogoUrl = pb.files.getUrl(company, company.logo)
-			}
-
-			const pdfBlob = await pdf(
-				<InvoicePdfDocument
-					invoice={invoice}
-					customer={customer as any}
-					company={company}
-					companyLogoUrl={companyLogoUrl}
-				/>,
-			).toBlob()
-
-			// 2️⃣ Convertir en base64
-			const pdfBase64 = await new Promise<string>((resolve, reject) => {
-				const reader = new FileReader()
-				reader.onloadend = () => {
-					const base64 = (reader.result as string).split(',')[1]
-					resolve(base64)
-				}
-				reader.onerror = reject
-				reader.readAsDataURL(pdfBlob)
-			})
-
-			// 3️⃣ Envoyer l'email avec le PDF en pièce jointe
-			const filenamePrefix = isCreditNote ? 'Avoir' : 'Facture'
+			// Envoyer l'email avec le PDF en pièce jointe
+			const filenamePrefix = invoice.is_pos_ticket
+				? 'Ticket'
+				: isCreditNote
+					? 'Avoir'
+					: 'Facture'
 			await sendEmail.mutateAsync({
 				invoiceId: invoice.id,
 				recipientEmail: recipientEmail.trim(),

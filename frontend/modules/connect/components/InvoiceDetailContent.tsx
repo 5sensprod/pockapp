@@ -13,6 +13,10 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
+import { buildReceiptFromInvoice } from '@/lib/pos/buildReceiptFromInvoice'
+import { downloadReceiptPreviewPdf } from '@/lib/pos/posPreview'
+import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
+import { useReprintTicket } from '@/lib/pos/useReprintTicket'
 import {
 	useCreateBalanceInvoice,
 	useCreateDeposit,
@@ -46,6 +50,8 @@ import {
 	Mail,
 	Pencil,
 	Plus,
+	Printer,
+	Receipt,
 	RefreshCcw,
 	RotateCcw,
 	ShoppingCart,
@@ -161,6 +167,14 @@ export function InvoiceDetailContent({
 	const [company, setCompany] = useState<CompaniesResponse | null>(null)
 	const [isDownloading, setIsDownloading] = useState(false)
 	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
+
+	// ── Réimpression POS ──────────────────────────────────────────────────────
+	const { reprintTicket, previewTicket, isPrinting, isPreviewing } =
+		useReprintTicket()
+	const isPrinterConfigured = useMemo(() => {
+		const s = loadPosPrinterSettings()
+		return s.enabled && !!s.printerName
+	}, [])
 
 	const isCreditNote = invoice?.invoice_type === 'credit_note'
 	const originalId = (invoice as any)?.original_invoice_id
@@ -402,6 +416,43 @@ export function InvoiceDetailContent({
 		}
 	}
 
+	// ── Téléchargement ticket POS (PDF via chromedp backend) ──────────────────
+	const handleDownloadTicketHtml = async () => {
+		if (!invoice) return
+		setIsDownloading(true)
+		try {
+			const printerSettings = loadPosPrinterSettings()
+			const width = (printerSettings.width === 80 ? 80 : 58) as 58 | 80
+
+			// Charger le logo (même logique que useReprintTicket)
+			let logoBase64: string | undefined
+			if (company && (company as any).logo) {
+				try {
+					logoBase64 = await toPngDataUrl(
+						pb.files.getUrl(company, (company as any).logo),
+					)
+				} catch {
+					// logo optionnel, on continue sans
+				}
+			}
+
+			const receipt = buildReceiptFromInvoice(invoice as any, logoBase64)
+
+			await downloadReceiptPreviewPdf({
+				width,
+				companyId: activeCompanyId ?? undefined,
+				receipt: receipt as any,
+				filename: `${invoice.number}.pdf`,
+			})
+
+			toast.success('Ticket téléchargé')
+		} catch (err: any) {
+			toast.error(err?.message || 'Erreur lors du téléchargement du ticket')
+		} finally {
+			setIsDownloading(false)
+		}
+	}
+
 	const handleCreateDeposit = async () => {
 		const baseAmount = invoice.deposits_total_ttc
 			? (invoice.balance_due ?? invoice.total_ttc)
@@ -609,7 +660,43 @@ export function InvoiceDetailContent({
 				<Mail className='h-4 w-4 mr-2' />
 				Envoyer
 			</Button>
-			<Button onClick={handleDownloadPdf} disabled={isDownloading}>
+
+			{/* ── Actions impression POS (tickets uniquement) ── */}
+			{isTicket && (
+				<>
+					<Button
+						variant='outline'
+						disabled={isPreviewing}
+						onClick={() => invoice && previewTicket(invoice as any)}
+					>
+						{isPreviewing ? (
+							<Loader2 className='h-4 w-4 animate-spin mr-2' />
+						) : (
+							<Receipt className='h-4 w-4 mr-2' />
+						)}
+						Aperçu ticket
+					</Button>
+
+					{isPrinterConfigured && (
+						<Button
+							variant='outline'
+							disabled={isPrinting}
+							onClick={() => invoice && reprintTicket(invoice as any)}
+						>
+							{isPrinting ? (
+								<Loader2 className='h-4 w-4 animate-spin mr-2' />
+							) : (
+								<Printer className='h-4 w-4 mr-2' />
+							)}
+							Réimprimer
+						</Button>
+					)}
+				</>
+			)}
+			<Button
+				onClick={isTicket ? handleDownloadTicketHtml : handleDownloadPdf}
+				disabled={isDownloading}
+			>
 				{isDownloading ? (
 					<Loader2 className='h-4 w-4 animate-spin mr-2' />
 				) : (

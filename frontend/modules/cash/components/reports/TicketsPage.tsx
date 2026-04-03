@@ -23,6 +23,8 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useDebounce } from '@/lib/hooks/useDebounce'
+import { loadPosPrinterSettings } from '@/lib/pos/printerSettings' // ← AJOUT
+import { useReprintTicket } from '@/lib/pos/useReprintTicket' // ← AJOUT
 import { useInvoices } from '@/lib/queries/invoices'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
@@ -36,12 +38,13 @@ import {
 	ChevronRight,
 	Eye,
 	FileText,
+	Printer, // ← AJOUT
 	Receipt,
 	RotateCcw,
 	Search,
 	X,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react' // <-- AJOUT de useRef
+import { useMemo, useRef, useState } from 'react'
 import { CashModuleShell } from '../../CashModuleShell'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -118,8 +121,17 @@ export function TicketsPage() {
 	const [page, setPage] = useState(1)
 	const debouncedSearch = useDebounce(search, 400)
 
-	// <-- AJOUT : Référence pour l'input de recherche
 	const searchInputRef = useRef<HTMLInputElement>(null)
+
+	// ── Impression / aperçu ───────────────────────────────────────────────────
+	const { reprintTicket, previewTicket, isPrinting, isPreviewing } =
+		useReprintTicket()
+
+	// Imprimante configurée ? (lecture locale synchrone — pas de hook)
+	const isPrinterConfigured = useMemo(() => {
+		const s = loadPosPrinterSettings()
+		return s.enabled && !!s.printerName
+	}, [])
 
 	const searchFilter = useMemo(() => {
 		const parts: string[] = ['is_pos_ticket = true']
@@ -153,12 +165,9 @@ export function TicketsPage() {
 		string | undefined
 	>()
 
-	// ── Fonction pour réinitialiser la recherche ──────────────────────────────
 	const handleResetSearch = () => {
 		setSearch('')
 		setPage(1)
-		// <-- AJOUT : On redonne le focus à l'input après avoir vidé la recherche
-		// Le setTimeout permet de s'assurer que React a fini son cycle de rendu
 		setTimeout(() => {
 			searchInputRef.current?.focus()
 		}, 0)
@@ -169,7 +178,7 @@ export function TicketsPage() {
 		<div className='relative w-[350px] transition-all focus-within:w-[400px]'>
 			<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
 			<Input
-				ref={searchInputRef} // <-- AJOUT : on lie la référence ici
+				ref={searchInputRef}
 				placeholder='Rechercher un N° de ticket...'
 				value={search}
 				onChange={(e) => {
@@ -368,6 +377,7 @@ export function TicketsPage() {
 													</DropdownMenuLabel>
 													<DropdownMenuSeparator />
 
+													{/* ── Voir le détail ── */}
 													<DropdownMenuItem
 														onClick={() =>
 															navigate({
@@ -380,22 +390,47 @@ export function TicketsPage() {
 														Voir le détail
 													</DropdownMenuItem>
 
+													{/* ── Aperçu ticket (toujours disponible) ── */}
+													<DropdownMenuItem
+														disabled={isPreviewing}
+														onClick={() => previewTicket(ticket)}
+													>
+														<Receipt className='h-4 w-4 mr-2' />
+														{isPreviewing ? 'Chargement…' : 'Aperçu ticket'}
+													</DropdownMenuItem>
+
+													{/* ── Réimprimer (seulement si imprimante configurée) ── */}
+													{isPrinterConfigured && (
+														<DropdownMenuItem
+															disabled={isPrinting}
+															onClick={() => reprintTicket(ticket)}
+														>
+															<Printer className='h-4 w-4 mr-2' />
+															{isPrinting ? 'Impression…' : 'Réimprimer'}
+														</DropdownMenuItem>
+													)}
+
+													{/* ── Convertir en facture ── */}
 													{ticket.invoice_type !== 'credit_note' &&
 														!ticket.converted_to_invoice &&
 														remainingAmount > 0 && (
-															<DropdownMenuItem
-																onClick={() =>
-																	navigate({
-																		to: '/cash/convert-to-invoice/$ticketId',
-																		params: { ticketId: ticket.id },
-																	})
-																}
-															>
-																<FileText className='h-4 w-4 mr-2' />
-																Convertir en facture
-															</DropdownMenuItem>
+															<>
+																<DropdownMenuSeparator />
+																<DropdownMenuItem
+																	onClick={() =>
+																		navigate({
+																			to: '/cash/convert-to-invoice/$ticketId',
+																			params: { ticketId: ticket.id },
+																		})
+																	}
+																>
+																	<FileText className='h-4 w-4 mr-2' />
+																	Convertir en facture
+																</DropdownMenuItem>
+															</>
 														)}
 
+													{/* ── Voir la facture associée ── */}
 													{ticket.converted_to_invoice &&
 														ticket.converted_invoice_id && (
 															<DropdownMenuItem
@@ -414,6 +449,7 @@ export function TicketsPage() {
 															</DropdownMenuItem>
 														)}
 
+													{/* ── Rembourser ── */}
 													{ticket.invoice_type === 'invoice' &&
 														ticket.is_paid &&
 														!ticket.converted_to_invoice && (

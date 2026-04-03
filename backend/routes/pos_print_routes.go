@@ -220,6 +220,37 @@ func RegisterPosPrintRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		return c.HTML(http.StatusOK, out)
 	})
 
+	// Preview PDF (ticket thermique → PDF téléchargeable via headless Chrome)
+	posGroup.POST("/preview/pdf", func(c echo.Context) error {
+		var input receiptInput
+		if err := c.Bind(&input); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		}
+
+		if input.Width != 58 && input.Width != 80 {
+			input.Width = 58
+		}
+
+		receipt := input.Receipt
+		receipt.Width = input.Width
+		enrichCompany(&receipt, input.CompanyId)
+
+		pdfBytes, err := pos.BuildReceiptPreviewPDF(receipt)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "Erreur generation PDF: " + err.Error(),
+			})
+		}
+
+		filename := "ticket.pdf"
+		if receipt.InvoiceNumber != "" {
+			filename = receipt.InvoiceNumber + ".pdf"
+		}
+
+		c.Response().Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		return c.Blob(http.StatusOK, "application/pdf", pdfBytes)
+	})
+
 	// Ouverture du tiroir caisse
 	posGroup.POST("/drawer/open", func(c echo.Context) error {
 		var input struct {
