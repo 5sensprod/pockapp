@@ -1,7 +1,19 @@
 // frontend/modules/cash/CashModuleShell.tsx
+//
+// Shell contextuel du module cash.
+// Injecte la logique session (useCashModule) dans ModulePageShell.
+//
+// Slots disponibles pour les pages :
+//   headerLeft        → zone gauche du header (bouton retour, infos contextuelles)
+//   headerCenter      → zone centre (recherche, infos ticket…)
+//   headerRight       → zone droite avant les actions session
+//   extraActions      → boutons supplémentaires dans la zone session
+//   hideSessionActions → masque tout le bloc session (tickets, détails…)
+//   hideBadge         → masque le badge session/heure (détail ticket)
 
 import { ModulePageShell, StatusBadge } from '@/components/module-ui'
 import { Button } from '@/components/ui/button'
+import { useClock } from '@/hooks/useClock'
 import type { ModuleManifest } from '@/modules/_registry'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -13,74 +25,67 @@ import { CloseSessionDialog } from './components/sessions/CloseSessionDialog'
 import { manifest } from './manifest'
 import { useCashModule } from './useCashModule'
 
-interface CashModuleShellProps {
+export interface CashModuleShellProps {
 	children: ReactNode
+
+	// Sync caisse forcée (terminal)
 	forcedRegisterId?: string
-	extraActions?: ReactNode
+
+	// Override titre/icône du module dans le header
 	pageTitle?: string
 	pageIcon?: LucideIcon
-	headerExtras?: ReactNode
-	centerContent?: ReactNode
+
+	// Slots header — remplacent les portails DOM
+	headerLeft?: ReactNode // zone gauche : bouton retour, breadcrumb, infos ticket
+	headerCenter?: ReactNode // zone centre : recherche, pagination…
+	headerRight?: ReactNode // zone droite : actions contextuelles de la page
+
+	// Actions supplémentaires dans le bloc session (Imprimer, Exporter…)
+	extraActions?: ReactNode
+
+	// Masquage
 	hideSessionActions?: boolean
-	hideBadge?: boolean // <-- AJOUT DE LA PROP
+	hideBadge?: boolean
+	hideTitle?: boolean
+	hideIcon?: boolean
 }
 
 export function CashModuleShell({
 	children,
 	forcedRegisterId,
-	extraActions,
 	pageTitle,
 	pageIcon,
-	headerExtras,
-	centerContent,
+	headerLeft,
+	headerCenter,
+	headerRight,
+	extraActions,
 	hideSessionActions = false,
-	hideBadge = false, // <-- VALEUR PAR DEFAUT
+	hideBadge = false,
+	hideTitle = false,
+	hideIcon = false,
 }: CashModuleShellProps) {
 	const cash = useCashModule()
+	const time = useClock()
 
+	// Sync caisse forcée (terminal POS)
 	React.useEffect(() => {
 		if (forcedRegisterId && cash.selectedRegisterId !== forcedRegisterId) {
 			cash.setSelectedRegisterId(forcedRegisterId)
 		}
 	}, [forcedRegisterId, cash.selectedRegisterId, cash.setSelectedRegisterId])
 
-	const [time, setTime] = React.useState(() =>
-		new Date().toLocaleTimeString('fr-FR', {
-			hour: '2-digit',
-			minute: '2-digit',
-		}),
-	)
-	React.useEffect(() => {
-		const tick = () =>
-			setTime(
-				new Date().toLocaleTimeString('fr-FR', {
-					hour: '2-digit',
-					minute: '2-digit',
-				}),
-			)
-		const msUntilNextMinute = (60 - new Date().getSeconds()) * 1000
-		const timeout = setTimeout(() => {
-			tick()
-			const interval = setInterval(tick, 60_000)
-			;(timeout as any)._interval = interval
-		}, msUntilNextMinute)
-		return () => {
-			clearTimeout(timeout)
-			if ((timeout as any)._interval) clearInterval((timeout as any)._interval)
-		}
-	}, [])
-
+	// Override du manifest pour les sous-pages (titre contextuel)
 	const contextualManifest: ModuleManifest = pageTitle
 		? {
 				...manifest,
 				name: pageTitle,
 				description: '',
 				plan: undefined,
-				icon: pageIcon || manifest.icon,
+				icon: pageIcon ?? manifest.icon,
 			}
 		: manifest
 
-	// <-- CONDITION SUR LE BADGE
+	// Badge session + horloge
 	const badge = hideBadge ? null : (
 		<StatusBadge
 			label={cash.sessionLabel}
@@ -89,10 +94,13 @@ export function CashModuleShell({
 		/>
 	)
 
+	// Bloc actions droite : page + session
 	const actions = (
 		<div className='flex items-center gap-2'>
-			{headerExtras}
+			{/* Actions contextuelles de la page (ex: Télécharger, Aperçu…) */}
+			{headerRight}
 
+			{/* Bloc session — masqué sur les pages détail/rapport */}
 			{!hideSessionActions && (
 				<>
 					{cash.registers && cash.registers.length > 0 && (
@@ -153,9 +161,13 @@ export function CashModuleShell({
 		<ModulePageShell
 			manifest={contextualManifest}
 			badge={badge}
-			centerContent={centerContent}
+			headerLeft={headerLeft}
+			centerContent={headerCenter}
 			actions={actions}
+			hideTitle={hideTitle}
+			hideIcon={hideIcon}
 		>
+			{/* Dialogs session — toujours montés, contrôlés par useCashModule */}
 			<OpenSessionDialog
 				open={cash.showOpenDialog}
 				onOpenChange={cash.setShowOpenDialog}

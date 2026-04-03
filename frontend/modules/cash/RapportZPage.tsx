@@ -88,7 +88,7 @@ export function RapportZPage() {
 
 	return (
 		<CashModuleShell
-			extraActions={
+			headerRight={
 				rapportZ ? (
 					<>
 						<Button variant='outline' size='sm' onClick={handlePrint}>

@@ -1,16 +1,30 @@
 // frontend/modules/cash/components/ticket-detail/TicketDetailHeader.tsx
 //
-// Gère :
-//  - Les portails CashModuleShell (ticket-info-portal, ticket-actions-portal)
-//  - La barre d'actions hors-portail (fallback mode facture B2B)
-// Encapsule toute la mécanique createPortal pour en libérer TicketDetailPage.
+// Retourne headerLeft + headerRight pour CashModuleShell.
+//
+// headerLeft — affiché après le titre "DÉTAIL DU TICKET" dans ModulePageShell :
+//   Ligne 1 : numéro ticket (monospace, fort)
+//   Ligne 2 : date · vendeur · moyen de paiement (secondaire)
+//
+// headerRight — boutons d'action :
+//   Convertir en facture (conditionnel, visible)
+//   Rembourser           (conditionnel, visible orange)
+//   Actions ▾            (dropdown : Envoyer, Aperçu, Réimprimer, Modifier)
+//   Télécharger          (toujours visible, primaire)
 
 import { Button } from '@/components/ui/button'
-
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { formatDate } from '@/modules/connect/utils/formatters'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	ArrowLeft,
+	ChevronDown,
 	Download,
 	FileText,
 	Loader2,
@@ -20,8 +34,6 @@ import {
 	Receipt,
 	RotateCcw,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import type { TicketActionsState } from './useTicketActions'
 import type { TicketDetailData } from './useTicketDetail'
 
@@ -30,7 +42,7 @@ function getPaymentMethodLabel(invoice: any): string {
 	if (label) return label
 	const map: Record<string, string> = {
 		especes: 'Espèces',
-		cb: 'Carte bancaire',
+		cb: 'CB',
 		cheque: 'Chèque',
 		virement: 'Virement',
 		autre: 'Autre',
@@ -42,6 +54,11 @@ function getPaymentMethodLabel(invoice: any): string {
 	)
 }
 
+interface TicketHeaderSlots {
+	headerLeft: React.ReactNode
+	headerRight: React.ReactNode
+}
+
 interface TicketDetailHeaderProps {
 	data: TicketDetailData
 	actions: TicketActionsState
@@ -49,86 +66,158 @@ interface TicketDetailHeaderProps {
 	invoiceId: string
 }
 
-export function TicketDetailHeader({
+export function useTicketDetailHeader({
 	data,
 	actions,
 	backRoute,
 	invoiceId,
-}: TicketDetailHeaderProps) {
+}: TicketDetailHeaderProps): TicketHeaderSlots {
 	const navigate = useNavigate()
 	const { invoice, isTicket, remainingAmount, soldByLabel } = data
 
-	const [infoTarget, setInfoTarget] = useState<HTMLElement | null>(null)
-	const [actionsTarget, setActionsTarget] = useState<HTMLElement | null>(null)
+	if (!invoice) return { headerLeft: null, headerRight: null }
 
-	useEffect(() => {
-		setInfoTarget(document.getElementById('ticket-info-portal'))
-		setActionsTarget(document.getElementById('ticket-actions-portal'))
-	}, [])
-
-	if (!invoice) return null
-
-	// ── Bouton retour (mode B2B) ────────────────────────────────────────────────
-	const standardRetourContent = !isTicket && (
-		<Button
-			variant='ghost'
-			className='-ml-2 text-muted-foreground'
-			onClick={() => navigate({ to: backRoute as any })}
-		>
-			<ArrowLeft className='h-4 w-4 mr-2' />
-			Retour
-		</Button>
-	)
-
-	// ── Info ticket (portail header gauche) ─────────────────────────────────────
-	const ticketInfoContent = isTicket && (
-		<div className='flex items-center gap-4 w-full'>
+	// ── headerLeft : bouton retour + bloc infos ticket sur 2 lignes ─────────
+	const headerLeft = (
+		<div className='flex items-center gap-3 min-w-0'>
+			{/* Bouton retour */}
 			<Button
 				variant='ghost'
 				size='sm'
-				className='-ml-2 text-muted-foreground hover:text-foreground'
+				className='-ml-1 text-muted-foreground hover:text-foreground shrink-0'
 				onClick={() => navigate({ to: backRoute as any })}
 			>
 				<ArrowLeft className='h-4 w-4 mr-1.5' />
 				Retour
 			</Button>
-			<div className='h-4 w-px bg-border/60 shrink-0' />
-			<div className='flex items-center flex-wrap gap-x-3 gap-y-1 text-[13px] text-muted-foreground'>
-				<span className='font-mono font-medium text-foreground'>
-					{invoice.number}
-				</span>
-				<span className='opacity-40'>•</span>
-				<span>{formatDate(invoice.date)}</span>
-				<span className='opacity-40'>•</span>
-				<span>{soldByLabel}</span>
-				{invoice.is_paid && (
-					<>
-						<span className='opacity-40'>•</span>
-						<span>{getPaymentMethodLabel(invoice)}</span>
-					</>
-				)}
-			</div>
+
+			{isTicket && (
+				<>
+					<div className='h-8 w-px bg-border/50 shrink-0' />
+					<div className='flex flex-col min-w-0 flex-1'>
+						<span className='font-mono font-semibold text-[15px] text-foreground leading-tight truncate'>
+							{invoice.number}
+						</span>
+						<div className='flex items-center gap-1.5 text-[12px] text-muted-foreground leading-tight mt-0.5 overflow-hidden'>
+							<span className='shrink-0'>{formatDate(invoice.date)}</span>
+							<span className='opacity-40 shrink-0'>·</span>
+							<span className='shrink-0'>
+								{new Date(invoice.created).toLocaleTimeString('fr-FR', {
+									hour: '2-digit',
+									minute: '2-digit',
+								})}
+							</span>
+							{soldByLabel && soldByLabel !== '-' && (
+								<>
+									<span className='opacity-40 shrink-0'>·</span>
+									<span className='truncate'>{soldByLabel}</span>
+								</>
+							)}
+							{invoice.is_paid && (
+								<>
+									<span className='opacity-40 shrink-0'>·</span>
+									<span className='truncate'>
+										{getPaymentMethodLabel(invoice)}
+									</span>
+								</>
+							)}
+						</div>
+					</div>
+				</>
+			)}
 		</div>
 	)
 
-	// ── Boutons d'action (portail header droit) ─────────────────────────────────
-	const actionsContent = (
-		<>
-			{invoice.status === 'draft' && !isTicket && (
-				<Button
-					variant='outline'
-					onClick={() =>
-						navigate({
-							to: '/connect/invoices/$invoiceId/edit' as any,
-							params: { invoiceId } as any,
-						})
-					}
-				>
-					<Pencil className='h-4 w-4 mr-2' />
-					Modifier
-				</Button>
-			)}
+	// ── headerRight : actions contextuelles ─────────────────────────────────
+	const secondaryItems: React.ReactNode[] = []
 
+	if (invoice.status === 'draft' && !isTicket) {
+		secondaryItems.push(
+			<DropdownMenuItem
+				key='modifier'
+				onClick={() =>
+					navigate({
+						to: '/connect/invoices/$invoiceId/edit' as any,
+						params: { invoiceId } as any,
+					})
+				}
+			>
+				<Pencil className='h-4 w-4 mr-2' />
+				Modifier
+			</DropdownMenuItem>,
+		)
+	}
+
+	secondaryItems.push(
+		<DropdownMenuItem
+			key='envoyer'
+			onClick={() => actions.setEmailDialogOpen(true)}
+		>
+			<Mail className='h-4 w-4 mr-2' />
+			Envoyer par email
+		</DropdownMenuItem>,
+	)
+
+	if (isTicket) {
+		secondaryItems.push(
+			<DropdownMenuItem
+				key='apercu'
+				disabled={actions.isPreviewing}
+				onClick={() => actions.previewTicket(invoice as any)}
+			>
+				{actions.isPreviewing ? (
+					<Loader2 className='h-4 w-4 mr-2 animate-spin' />
+				) : (
+					<Receipt className='h-4 w-4 mr-2' />
+				)}
+				Aperçu ticket
+			</DropdownMenuItem>,
+		)
+
+		if (actions.isPrinterConfigured) {
+			secondaryItems.push(
+				<DropdownMenuSeparator key='sep-print' />,
+				<DropdownMenuItem
+					key='reimprimer'
+					disabled={actions.isPrinting}
+					onClick={() => actions.reprintTicket(invoice as any)}
+				>
+					{actions.isPrinting ? (
+						<Loader2 className='h-4 w-4 mr-2 animate-spin' />
+					) : (
+						<Printer className='h-4 w-4 mr-2' />
+					)}
+					Réimprimer
+				</DropdownMenuItem>,
+			)
+		}
+	}
+
+	const headerRight = (
+		<div className='flex items-center gap-1.5'>
+			{/* Convertir en facture */}
+			{isTicket &&
+				invoice.invoice_type !== 'credit_note' &&
+				!invoice.converted_to_invoice &&
+				remainingAmount > 0 && (
+					<Button
+						variant='outline'
+						size='sm'
+						title='Convertir en facture'
+						onClick={() =>
+							navigate({
+								to: '/cash/convert-to-invoice/$ticketId' as any,
+								params: { ticketId: invoice.id } as any,
+							})
+						}
+						className='gap-1.5'
+					>
+						<FileText className='h-4 w-4 shrink-0' />
+						<span className='hidden lg:inline'>Convertir en facture</span>
+					</Button>
+				)}
+
+			{/* Rembourser */}
 			{isTicket &&
 				invoice.invoice_type === 'invoice' &&
 				invoice.is_paid &&
@@ -136,103 +225,57 @@ export function TicketDetailHeader({
 				remainingAmount > 0 && (
 					<Button
 						variant='outline'
-						className='text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-200'
+						size='sm'
+						title='Rembourser'
+						className='text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-200 gap-1.5'
 						onClick={() => actions.setRefundTicketDialogOpen(true)}
 					>
-						<RotateCcw className='h-4 w-4 mr-2' />
-						Rembourser
+						<RotateCcw className='h-4 w-4 shrink-0' />
+						<span className='hidden lg:inline'>Rembourser</span>
 					</Button>
 				)}
 
-			{isTicket &&
-				invoice.invoice_type !== 'credit_note' &&
-				!invoice.converted_to_invoice &&
-				remainingAmount > 0 && (
-					<Button
-						variant='outline'
-						onClick={() =>
-							navigate({
-								to: '/cash/convert-to-invoice/$ticketId' as any,
-								params: { ticketId: invoice.id } as any,
-							})
-						}
-					>
-						<FileText className='h-4 w-4 mr-2' />
-						Convertir en facture
-					</Button>
-				)}
-
-			<Button
-				variant='outline'
-				onClick={() => actions.setEmailDialogOpen(true)}
-			>
-				<Mail className='h-4 w-4 mr-2' />
-				Envoyer
-			</Button>
-
-			{isTicket && (
-				<>
-					<Button
-						variant='outline'
-						disabled={actions.isPreviewing}
-						onClick={() => actions.previewTicket(invoice as any)}
-					>
-						{actions.isPreviewing ? (
-							<Loader2 className='h-4 w-4 animate-spin mr-2' />
-						) : (
-							<Receipt className='h-4 w-4 mr-2' />
-						)}
-						Aperçu ticket
-					</Button>
-
-					{actions.isPrinterConfigured && (
+			{/* Actions secondaires — dropdown */}
+			{secondaryItems.length > 0 && (
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
 						<Button
 							variant='outline'
-							disabled={actions.isPrinting}
-							onClick={() => actions.reprintTicket(invoice as any)}
+							size='sm'
+							title="Plus d'actions"
+							className='gap-1.5'
 						>
-							{actions.isPrinting ? (
-								<Loader2 className='h-4 w-4 animate-spin mr-2' />
-							) : (
-								<Printer className='h-4 w-4 mr-2' />
-							)}
-							Réimprimer
+							<ChevronDown className='h-4 w-4 shrink-0' />
+							<span className='hidden lg:inline'>Actions</span>
 						</Button>
-					)}
-				</>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align='end' className='w-48'>
+						{secondaryItems}
+					</DropdownMenuContent>
+				</DropdownMenu>
 			)}
 
+			{/* Télécharger */}
 			<Button
+				size='sm'
+				title='Télécharger'
 				onClick={
 					isTicket
 						? actions.handleDownloadTicketHtml
 						: actions.handleDownloadPdf
 				}
 				disabled={actions.isDownloading}
+				className='gap-1.5'
 			>
 				{actions.isDownloading ? (
-					<Loader2 className='h-4 w-4 animate-spin mr-2' />
+					<Loader2 className='h-4 w-4 animate-spin shrink-0' />
 				) : (
-					<Download className='h-4 w-4 mr-2' />
+					<Download className='h-4 w-4 shrink-0' />
 				)}
-				Télécharger
+				<span className='hidden lg:inline'>Télécharger</span>
 			</Button>
-		</>
+		</div>
 	)
 
-	// ── Rendu : portails si disponibles, fallback inline sinon ──────────────────
-	return (
-		<>
-			{!actionsTarget && (
-				<div className='flex items-center justify-between gap-3 mb-6'>
-					{!isTicket && standardRetourContent}
-					<div className='flex items-center gap-2'>{actionsContent}</div>
-				</div>
-			)}
-			{actionsTarget && createPortal(actionsContent, actionsTarget)}
-			{infoTarget &&
-				ticketInfoContent &&
-				createPortal(ticketInfoContent, infoTarget)}
-		</>
-	)
+	return { headerLeft, headerRight }
 }

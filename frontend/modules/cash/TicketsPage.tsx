@@ -1,4 +1,4 @@
-// frontend/modules/cash/components/reports/TicketsPage.tsx
+// frontend/modules/cash/TicketsPage.tsx
 
 import { EmptyState } from '@/components/module-ui'
 import { Badge } from '@/components/ui/badge'
@@ -23,8 +23,8 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useDebounce } from '@/lib/hooks/useDebounce'
-import { loadPosPrinterSettings } from '@/lib/pos/printerSettings' // ← AJOUT
-import { useReprintTicket } from '@/lib/pos/useReprintTicket' // ← AJOUT
+import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
+import { useReprintTicket } from '@/lib/pos/useReprintTicket'
 import { useInvoices } from '@/lib/queries/invoices'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
@@ -38,7 +38,7 @@ import {
 	ChevronRight,
 	Eye,
 	FileText,
-	Printer, // ← AJOUT
+	Printer,
 	Receipt,
 	RotateCcw,
 	Search,
@@ -111,7 +111,7 @@ function getItemsPreview(ticket: any) {
 
 const PER_PAGE = 30
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Composant ─────────────────────────────────────────────────────────────────
 
 export function TicketsPage() {
 	const navigate = useNavigate()
@@ -120,19 +120,18 @@ export function TicketsPage() {
 	const [search, setSearch] = useState('')
 	const [page, setPage] = useState(1)
 	const debouncedSearch = useDebounce(search, 400)
-
 	const searchInputRef = useRef<HTMLInputElement>(null)
 
 	// ── Impression / aperçu ───────────────────────────────────────────────────
 	const { reprintTicket, previewTicket, isPrinting, isPreviewing } =
 		useReprintTicket()
 
-	// Imprimante configurée ? (lecture locale synchrone — pas de hook)
 	const isPrinterConfigured = useMemo(() => {
 		const s = loadPosPrinterSettings()
 		return s.enabled && !!s.printerName
 	}, [])
 
+	// ── Données ───────────────────────────────────────────────────────────────
 	const searchFilter = useMemo(() => {
 		const parts: string[] = ['is_pos_ticket = true']
 		if (debouncedSearch) parts.push(`number ~ "${debouncedSearch}"`)
@@ -153,6 +152,7 @@ export function TicketsPage() {
 	const rangeStart = totalItems === 0 ? 0 : (page - 1) * PER_PAGE + 1
 	const rangeEnd = Math.min(page * PER_PAGE, totalItems)
 
+	// ── Dialogues ────────────────────────────────────────────────────────────
 	const [refundTicketDialogOpen, setRefundTicketDialogOpen] = useState(false)
 	const [ticketToRefund, setTicketToRefund] = useState<InvoiceResponse | null>(
 		null,
@@ -168,13 +168,13 @@ export function TicketsPage() {
 	const handleResetSearch = () => {
 		setSearch('')
 		setPage(1)
-		setTimeout(() => {
-			searchInputRef.current?.focus()
-		}, 0)
+		setTimeout(() => searchInputRef.current?.focus(), 0)
 	}
 
-	// ── Barres ─────────────────────────────────────────────────────────────────
-	const centerContent = (
+	// ── Slots header ──────────────────────────────────────────────────────────
+
+	// Centre : barre de recherche
+	const headerCenter = (
 		<div className='relative w-[350px] transition-all focus-within:w-[400px]'>
 			<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
 			<Input
@@ -199,18 +199,21 @@ export function TicketsPage() {
 		</div>
 	)
 
-	const headerExtras = (
-		<div className='flex items-center gap-4 border-l pl-4 border-muted-foreground/20'>
+	// Droite : compteur + pagination (avant le badge session)
+	const headerRight = (
+		<div className='flex items-center gap-3'>
+			{/* Compteur */}
 			<div className='flex flex-col items-end leading-none'>
-				<span className='text-xs font-semibold text-foreground mb-1'>
+				<span className='text-xs font-semibold text-foreground'>
 					{totalItems} ticket{totalItems > 1 ? 's' : ''}
 				</span>
-				<span className='text-[10px] text-muted-foreground uppercase tracking-wider'>
-					{rangeStart} - {rangeEnd} affichés
+				<span className='text-[10px] text-muted-foreground'>
+					{rangeStart}–{rangeEnd} affichés
 				</span>
 			</div>
 
-			<div className='flex items-center gap-1.5 bg-background/50 p-1 rounded-md border border-muted-foreground/20 shadow-sm'>
+			{/* Pagination */}
+			<div className='flex items-center gap-1 bg-background/50 p-1 rounded-md border border-muted-foreground/20 shadow-sm'>
 				<Button
 					variant='ghost'
 					size='icon'
@@ -220,7 +223,7 @@ export function TicketsPage() {
 				>
 					<ChevronLeft className='h-3 w-3' />
 				</Button>
-				<span className='text-[11px] font-medium min-w-[30px] text-center'>
+				<span className='text-[11px] font-medium min-w-[28px] text-center'>
 					{page}/{totalPages}
 				</span>
 				<Button
@@ -236,13 +239,14 @@ export function TicketsPage() {
 		</div>
 	)
 
+	// ── Rendu ─────────────────────────────────────────────────────────────────
 	return (
 		<CashModuleShell
 			pageTitle='Tickets de caisse'
 			pageIcon={Receipt}
-			centerContent={centerContent}
-			headerExtras={headerExtras}
 			hideSessionActions
+			headerCenter={headerCenter}
+			headerRight={headerRight}
 		>
 			<div className='container mx-auto px-6 py-6'>
 				<Card className='shadow-sm border-muted/60'>
@@ -377,7 +381,6 @@ export function TicketsPage() {
 													</DropdownMenuLabel>
 													<DropdownMenuSeparator />
 
-													{/* ── Voir le détail ── */}
 													<DropdownMenuItem
 														onClick={() =>
 															navigate({
@@ -390,7 +393,6 @@ export function TicketsPage() {
 														Voir le détail
 													</DropdownMenuItem>
 
-													{/* ── Aperçu ticket (toujours disponible) ── */}
 													<DropdownMenuItem
 														disabled={isPreviewing}
 														onClick={() => previewTicket(ticket)}
@@ -399,7 +401,6 @@ export function TicketsPage() {
 														{isPreviewing ? 'Chargement…' : 'Aperçu ticket'}
 													</DropdownMenuItem>
 
-													{/* ── Réimprimer (seulement si imprimante configurée) ── */}
 													{isPrinterConfigured && (
 														<DropdownMenuItem
 															disabled={isPrinting}
@@ -410,7 +411,6 @@ export function TicketsPage() {
 														</DropdownMenuItem>
 													)}
 
-													{/* ── Convertir en facture ── */}
 													{ticket.invoice_type !== 'credit_note' &&
 														!ticket.converted_to_invoice &&
 														remainingAmount > 0 && (
@@ -430,7 +430,6 @@ export function TicketsPage() {
 															</>
 														)}
 
-													{/* ── Voir la facture associée ── */}
 													{ticket.converted_to_invoice &&
 														ticket.converted_invoice_id && (
 															<DropdownMenuItem
@@ -449,7 +448,6 @@ export function TicketsPage() {
 															</DropdownMenuItem>
 														)}
 
-													{/* ── Rembourser ── */}
 													{ticket.invoice_type === 'invoice' &&
 														ticket.is_paid &&
 														!ticket.converted_to_invoice && (
@@ -489,7 +487,9 @@ export function TicketsPage() {
 						if (!o) {
 							setRefundTicketDialogOpen(false)
 							setTicketToRefund(null)
-						} else setRefundTicketDialogOpen(true)
+						} else {
+							setRefundTicketDialogOpen(true)
+						}
 					}}
 					ticket={ticketToRefund}
 					onSuccess={(stockItems) => {
@@ -502,6 +502,7 @@ export function TicketsPage() {
 						}
 					}}
 				/>
+
 				<StockReclassificationDialog
 					open={stockReclassifyOpen}
 					onOpenChange={setStockReclassifyOpen}
