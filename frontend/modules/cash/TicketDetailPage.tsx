@@ -1,6 +1,6 @@
 // frontend/modules/cash/components/reports/TicketDetailPage.tsx
 
-import { InvoiceDetailContent } from '@/modules/connect/components/InvoiceDetailContent'
+import { TicketDetailContent } from '@/modules/cash/components/TicketDetailContent'
 import { useParams } from '@tanstack/react-router'
 import { Receipt } from 'lucide-react'
 import { CashModuleShell } from './CashModuleShell'
@@ -26,7 +26,7 @@ export function TicketDetailPage() {
 				<div id='ticket-actions-portal' className='flex items-center gap-2' />
 			}
 		>
-			<InvoiceDetailContent
+			<TicketDetailContent
 				invoiceId={ticketId}
 				backRoute='/cash/tickets'
 				getDetailRoute={(id: string) => ({

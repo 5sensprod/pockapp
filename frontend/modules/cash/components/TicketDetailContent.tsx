@@ -1,4 +1,4 @@
-// frontend/modules/connect/components/InvoiceDetailContent.tsx
+// frontend/modules/connect/components/TicketDetailContent.tsx
 
 import { ModuleCard } from '@/components/module-ui/ModuleCard'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
@@ -60,10 +60,13 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { formatCurrency, formatDate } from '../utils/formatters'
-import { toPngDataUrl } from '../utils/images'
-import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
-import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
+import {
+	type DepositPdfData,
+	InvoicePdfDocument,
+} from '../../connect/components/InvoicePdf'
+import { SendInvoiceEmailDialog } from '../../connect/components/SendInvoiceEmailDialog'
+import { formatCurrency, formatDate } from '../../connect/utils/formatters'
+import { toPngDataUrl } from '../../connect/utils/images'
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
@@ -138,7 +141,7 @@ function getLineDiscountLabel(item: any): {
 	return { label: `-${v.toFixed(2)} €`, hasDiscount: true }
 }
 
-export interface InvoiceDetailContentProps {
+export interface TicketDetailContentProps {
 	invoiceId: string
 	backRoute: string
 	getDetailRoute?: (
@@ -154,11 +157,11 @@ function defaultDetailRoute(id: string): {
 	return { to: '/connect/invoices/$invoiceId', params: { invoiceId: id } }
 }
 
-export function InvoiceDetailContent({
+export function TicketDetailContent({
 	invoiceId,
 	backRoute,
 	getDetailRoute = defaultDetailRoute,
-}: InvoiceDetailContentProps) {
+}: TicketDetailContentProps) {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
