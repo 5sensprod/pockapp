@@ -3,37 +3,52 @@
 @tailwind utilities;
 
 @layer base {
+  /* ═══════════════════════════════════════════════════════════════════════
+     STITCH LAYOUT TOKENS — variables CSS
+     Source unique de vérité pour toutes les dimensions structurelles.
+     ═══════════════════════════════════════════════════════════════════════ */
   :root {
-    /* ── Stitch "Editorial Precision" tokens ──────────────────────────────
-       surface             (#F9F9FF) → background / card
-       surface-container-low (#F1F3FF) → muted (fond de page, header)
-       on-surface          (#19315D) → foreground
-       primary             (#4D44E3) → primary
-       outline-variant     (#9BB2E5) → border
-    ──────────────────────────────────────────────────────────────────── */
-    --background: 240 100% 99.6%; /* #F9F9FF — surface Stitch       */
-    --foreground: 220 57% 23%; /* #19315D — on-surface Stitch    */
-    --card: 0 0% 100%; /* #FFFFFF — surface-container-lowest */
+    /* ── Hauteurs ─────────────────────────────────────────────────────── */
+    --header-h: 56px; /* Header global (Layout > Header)            */
+    --subheader-h: 72px; /* Sub-header de page (ModulePageShell)       */
+    --bottom-nav-h: 56px; /* Bottom nav mobile (BottomNav)              */
+
+    /* ── Largeurs sidebar ─────────────────────────────────────────────── */
+    --rail-w: 3.5rem; /* Rail d'icônes (= 56px = w-14)             */
+    --panel-w: 16rem; /* Panneau déplié (= 256px = w-64)           */
+    --sidebar-open-w: calc(var(--rail-w) + var(--panel-w)); /* 312px        */
+
+    /* ── Stitch "Editorial Precision" design tokens ───────────────────── */
+    --background: 240 100% 99.6%;
+    --foreground: 220 57% 23%;
+    --card: 0 0% 100%;
     --card-foreground: 220 57% 23%;
     --popover: 0 0% 100%;
     --popover-foreground: 220 57% 23%;
-    --primary: 244 46% 20%; /* #1E1B4B — deep indigo sidebar  */
+    --primary: 244 46% 20%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 234 100% 97%; /* #F1F3FF — surface-container-low */
+    --secondary: 234 100% 97%;
     --secondary-foreground: 220 57% 23%;
-    --muted: 220 14% 93%; /* gris-bleu neutre — header barre */
-    --muted-foreground: 220 22% 46%; /* on-surface-variant             */
+    --muted: 220 14% 93%;
+    --muted-foreground: 220 22% 46%;
     --accent: 234 100% 97%;
     --accent-foreground: 220 57% 23%;
-    --destructive: 350 60% 47%; /* #9E3F4E — error Stitch         */
+    --destructive: 350 60% 47%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 55% 88%; /* outline-variant Stitch         */
+    --border: 220 55% 88%;
     --input: 234 100% 97%;
     --ring: 244 75% 58%;
     --radius: 0.5rem;
   }
 
   .dark {
+    --header-h: 56px;
+    --subheader-h: 72px;
+    --bottom-nav-h: 56px;
+    --rail-w: 3.5rem;
+    --panel-w: 16rem;
+    --sidebar-open-w: calc(var(--rail-w) + var(--panel-w));
+
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
     --card: 222.2 84% 4.9%;
@@ -62,5 +77,17 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UTILITAIRE : pb-bottom-nav
+   Appliqué sur <main> uniquement sur mobile pour que le contenu ne soit
+   jamais masqué par la BottomNav fixe.
+   env(safe-area-inset-bottom) gère l'indicateur home iOS.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer utilities {
+  .pb-bottom-nav {
+    padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom));
   }
 }

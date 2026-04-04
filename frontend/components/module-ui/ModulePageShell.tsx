@@ -1,4 +1,12 @@
 // frontend/components/module-ui/ModulePageShell.tsx
+//
+// Changements vs version précédente :
+//   - top-[56px]   → top-header    (var CSS --header-h)
+//   - h-[72px]     → h-subheader   (var CSS --subheader-h)
+//   - px-4 lg:px-6 → conservé (spacing fine)
+//
+// Le composant est sticky sous le header global.
+// Si --header-h change dans index.css, ce composant suit automatiquement.
 
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
@@ -31,20 +39,24 @@ export function ModulePageShell({
 
 	return (
 		<div className={cn('flex flex-col min-h-full', className)}>
-			<header className='sticky top-[56px] z-40 h-[72px] flex items-center justify-between px-6 bg-muted/95 backdrop-blur-sm shrink-0 border-b shadow-sm'>
+			{/*
+        Sticky bar sous le header global.
+        top-page-shell = top-header = var(--header-h) = 56px
+        h-subheader    = var(--subheader-h)           = 72px
+      */}
+			<header className='sticky top-page-shell z-40 h-subheader flex items-center justify-between px-4 lg:px-6 bg-muted/95 backdrop-blur-sm shrink-0 border-b shadow-sm gap-4'>
 				{/* 1. Gauche */}
-				<div className='flex items-center gap-3 flex-1 min-w-0 overflow-hidden'>
+				<div className='flex items-center gap-3 min-w-0 shrink'>
 					{!hideIcon && (
-						<div className='w-10 h-10 rounded-lg bg-[#1E1B4B] flex items-center justify-center shrink-0'>
+						<div className='hidden md:flex w-10 h-10 rounded-lg bg-primary items-center justify-center shrink-0'>
 							<Icon className='h-5 w-5 text-white' />
 						</div>
 					)}
 
-					{/* Titre — masqué si hideTitle */}
 					{!hideTitle && (
-						<div className='flex flex-col min-w-0 shrink-0'>
-							<div className='flex items-center gap-2'>
-								<h1 className='text-sm font-semibold text-foreground leading-tight tracking-widest uppercase'>
+						<div className='hidden md:flex flex-col min-w-0'>
+							<div className='flex items-center gap-2 min-w-0'>
+								<h1 className='text-sm font-semibold text-foreground leading-tight tracking-widest uppercase truncate'>
 									{manifest.name}
 								</h1>
 								{manifest.plan && (
@@ -54,20 +66,20 @@ export function ModulePageShell({
 								)}
 							</div>
 							{manifest.description && (
-								<p className='text-xs text-muted-foreground leading-tight mt-0.5'>
+								<p className='text-xs text-muted-foreground leading-tight mt-0.5 truncate'>
 									{manifest.description}
 								</p>
 							)}
 						</div>
 					)}
 
-					{/* headerLeft — directement après l'icône si hideTitle, sinon avec séparateur */}
+					{/* headerLeft */}
 					{headerLeft && (
 						<>
 							{!hideTitle && (
-								<div className='h-8 w-px bg-border/50 shrink-0 mx-1' />
+								<div className='hidden md:block h-8 w-px bg-border/50 shrink-0 mx-1' />
 							)}
-							<div className='flex items-center min-w-0 overflow-hidden flex-1'>
+							<div className='flex items-center min-w-0 shrink'>
 								{headerLeft}
 							</div>
 						</>
@@ -75,12 +87,14 @@ export function ModulePageShell({
 				</div>
 
 				{/* 2. Centre */}
-				<div className='flex justify-center shrink-0 px-4'>{centerContent}</div>
+				<div className='flex-1 flex justify-center min-w-0 px-2 lg:px-4'>
+					{centerContent}
+				</div>
 
 				{/* 3. Droite */}
-				<div className='flex items-center justify-end gap-4 flex-1'>
-					{badge}
+				<div className='flex items-center justify-end gap-2 lg:gap-4 shrink-0'>
 					{actions}
+					{badge && <div className='hidden lg:block'>{badge}</div>}
 				</div>
 			</header>
 

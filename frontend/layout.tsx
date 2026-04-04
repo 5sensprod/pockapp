@@ -1,9 +1,17 @@
 // frontend/layout.tsx
+//
+// Changements vs étape 2 :
+//   - Import et rendu de BottomNav (mobile uniquement)
+//   - <main> reçoit pb-bottom-nav sur mobile (contenu jamais masqué)
+//   - token layout-tokens mis à jour avec bottom-nav
+
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Footer, Header, Sidebar } from '@/components/layout'
+import { BottomNav } from '@/components/layout/BottomNav'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import { useSetupCheck } from '@/lib/hooks/useSetupCheck'
 import { isWails, tryWailsSub, tryWailsVoid } from '@/lib/wails-bridge'
 import { poles } from '@/modules/_registry'
@@ -27,12 +35,10 @@ function findModuleByPath(pathname: string): ModuleManifest | null {
 	for (const pole of poles || []) {
 		for (const m of pole.modules || []) {
 			if (!m?.route) continue
-
 			const route = norm(m.route)
 			if (path === route || path.startsWith(`${route}/`)) {
 				if (!best || route.length > best.route.length) best = m
 			}
-
 			for (const alias of m.aliases ?? []) {
 				const aliasNorm = norm(alias)
 				if (path === aliasNorm || path.startsWith(`${aliasNorm}/`)) {
@@ -48,16 +54,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const { pathname } = useLocation()
 	const navigate = useNavigate()
 	const { isAuthenticated } = useAuth()
+	const { isMobile, isTablet, canPushContent } = useBreakpoint()
 
 	const [activeGroup, setActiveGroup] = useState<string | null>(null)
 	const [manuallyClosed, setManuallyClosed] = useState(false)
+	const [homePanelOpen, setHomePanelOpen] = useState(false)
 
 	const { needsSetup, loading: setupLoading } = useSetupCheck()
 	const currentModule = useMemo(() => findModuleByPath(pathname), [pathname])
 	const isHomePage = pathname === '/'
 	const hasSidebar = !!currentModule?.sidebarMenu?.length
 	const sidebarMenu = currentModule?.sidebarMenu || []
-	const [homePanelOpen, setHomePanelOpen] = useState(false)
 
 	const {
 		activeCompanyId,
@@ -65,11 +72,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		isLoading: companiesLoading,
 	} = useActiveCompany()
 
-	// Sync activeGroup avec l'URL (sauf si fermé manuellement)
+	// ── Sync activeGroup avec l'URL ─────────────────────────────────────────
 	useEffect(() => {
-		if (!sidebarMenu.length) return
-		if (manuallyClosed) return
-
+		if (!sidebarMenu.length || manuallyClosed) return
 		const normPath = normalizePath(pathname)
 		const matchingGroup = sidebarMenu.find((group) =>
 			group.items?.some((item) => {
@@ -77,13 +82,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				return normPath === t || normPath.startsWith(t)
 			}),
 		)
-
 		if (matchingGroup && matchingGroup.id !== activeGroup) {
 			setActiveGroup(matchingGroup.id)
 		}
 	}, [pathname, sidebarMenu, activeGroup, manuallyClosed])
 
-	// Reset manuallyClosed quand on change de module
+	// ── Reset sur changement de module ─────────────────────────────────────
 	useEffect(() => {
 		if (currentModule?.id !== undefined) {
 			setManuallyClosed(false)
@@ -94,14 +98,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const handleToggleGroup = (groupId: string) => {
 		const group = sidebarMenu.find((g) => g.id === groupId)
 		const isSingleItem = (group?.items?.length ?? 0) === 1
-
 		if (activeGroup === groupId && !isSingleItem) {
-			// Re-clic sur groupe multi-items → ferme le panneau
 			setManuallyClosed(true)
 			setActiveGroup(null)
 			return
 		}
-		// Groupe à 1 item : toujours actif, jamais fermé par re-clic
 		setManuallyClosed(false)
 		setActiveGroup(groupId)
 	}
@@ -112,12 +113,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	}
 
 	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
-	const sidebarOverlay = currentModule?.sidebarOverlay ?? false
+
+	// sidebarOverlay : vrai si le manifest le déclare OU si on est sur tablette.
+	// Sur tablette, le panel est toujours un overlay (pas de push du contenu),
+	// quelle que soit la valeur du flag manifest — car l'espace est trop étroit.
+	const sidebarOverlay = (currentModule?.sidebarOverlay ?? false) || isTablet
+
+	// ── Marge et padding <main> ─────────────────────────────────────────────
+	// isPanelOpen → push du contenu uniquement sur desktop, manifest non-overlay
 	const isPanelOpen =
 		!sidebarOverlay &&
+		canPushContent &&
 		(homePanelOpen ||
 			(activeGroupData !== null && (activeGroupData.items?.length ?? 0) > 1))
 
+	const mainMargin = (() => {
+		if (!hasSidebar || isMobile) return ''
+		if (isTablet) return 'ml-rail'
+		return isPanelOpen ? 'ml-sidebar-open' : 'ml-rail'
+	})()
+
+	// pb-bottom-nav : évite que le contenu soit masqué par la BottomNav fixe
+	const mainPadding = isMobile && hasSidebar ? 'pb-bottom-nav' : ''
+
+	// ── Redirections ────────────────────────────────────────────────────────
 	useEffect(() => {
 		if (setupLoading) return
 		if (needsSetup && pathname !== '/setup') {
@@ -135,16 +154,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	}, [isAuthenticated, pathname, navigate, needsSetup, setupLoading])
 
 	useEffect(() => {
-		if (setupLoading || needsSetup) return
-		if (!isAuthenticated) return
-		if (!isWails()) return
+		if (setupLoading || needsSetup || !isAuthenticated || !isWails()) return
 		const key = 'update_check_done_session'
 		if (sessionStorage.getItem(key) === '1') return
 		sessionStorage.setItem(key, '1')
 		const unsub = tryWailsSub(() => EventsOn('update:available', () => {}))
-		const t = window.setTimeout(() => {
-			tryWailsVoid(() => CheckForUpdates())
-		}, 10_000)
+		const t = window.setTimeout(
+			() => tryWailsVoid(() => CheckForUpdates()),
+			10_000,
+		)
 		return () => {
 			window.clearTimeout(t)
 			unsub()
@@ -152,13 +170,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	}, [isAuthenticated, needsSetup, setupLoading])
 
 	useEffect(() => {
-		if (setupLoading || needsSetup || !isAuthenticated) return
-		if (!currentModule) return
-		if (!currentModule.requiresCompany) return
-		if (companiesLoading) return
+		if (
+			setupLoading ||
+			needsSetup ||
+			!isAuthenticated ||
+			!currentModule?.requiresCompany ||
+			companiesLoading
+		)
+			return
 		const noCompany = companies.length === 0 || !activeCompanyId
 		if (noCompany && pathname !== '/') {
-			console.log('[Layout] ⛔ redirect vers / car noCompany=true')
 			toast.error("Tu dois d'abord créer une entreprise...")
 			navigate({ to: '/' })
 		}
@@ -174,6 +195,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		setupLoading,
 	])
 
+	// ── Pages sans layout ───────────────────────────────────────────────────
 	if (pathname === '/setup') return <>{children}</>
 	if (pathname === '/login') return <>{children}</>
 	if (setupLoading)
@@ -188,6 +210,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		<div className='min-h-screen flex flex-col bg-background'>
 			<Header currentModule={currentModule} isHomePage={isHomePage} />
 
+			{/* Sidebar desktop/tablet — nulle sur mobile (géré en interne) */}
 			{hasSidebar && (
 				<Sidebar
 					currentModule={currentModule}
@@ -198,15 +221,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				/>
 			)}
 
+			{/*
+        Contenu principal
+          mobile  → ml-0,        pb-bottom-nav (espace sous la BottomNav)
+          tablet  → ml-rail,     pas de pb
+          desktop → ml-rail/ml-sidebar-open, transition margin, pas de pb
+      */}
 			<main
-				className={`flex-1 transition-[margin] duration-200 ease-in-out ${
-					hasSidebar ? (isPanelOpen ? 'ml-[19.5rem]' : 'ml-14') : ''
-				}`}
+				className={[
+					'flex-1',
+					mainMargin,
+					mainPadding,
+					canPushContent && hasSidebar
+						? 'transition-[margin] duration-200 ease-in-out'
+						: '',
+				]
+					.filter(Boolean)
+					.join(' ')}
 			>
 				{children}
 			</main>
 
 			<Footer />
+
+			{/* BottomNav — visible uniquement sur mobile, si le module a un menu */}
+			{isMobile && hasSidebar && <BottomNav currentModule={currentModule} />}
 		</div>
 	)
 }

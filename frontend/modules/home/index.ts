@@ -17,7 +17,7 @@ import type { ModuleManifest } from '../_registry'
 
 export const manifest: ModuleManifest = {
 	id: 'home',
-	name: 'Tableau de bord',
+	name: 'Pocket App',
 	description: "Vue d'ensemble des modules",
 	pole: 'pilotage',
 	icon: LayoutDashboard,

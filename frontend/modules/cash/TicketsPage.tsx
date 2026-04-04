@@ -203,7 +203,7 @@ export function TicketsPage() {
 	const headerRight = (
 		<div className='flex items-center gap-3'>
 			{/* Compteur */}
-			<div className='flex flex-col items-end leading-none'>
+			<div className='hidden md:flex flex-col items-end leading-none'>
 				<span className='text-xs font-semibold text-foreground'>
 					{totalItems} ticket{totalItems > 1 ? 's' : ''}
 				</span>
