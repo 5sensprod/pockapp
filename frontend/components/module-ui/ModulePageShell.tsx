@@ -4,10 +4,12 @@
 //   - top-[56px]   → top-header    (var CSS --header-h)
 //   - h-[72px]     → h-subheader   (var CSS --subheader-h)
 //   - px-4 lg:px-6 → conservé (spacing fine)
+//   - Sub-header masqué sur mobile si aucun contenu visible (headerLeft, centerContent, actions)
 //
 // Le composant est sticky sous le header global.
 // Si --header-h change dans index.css, ce composant suit automatiquement.
 
+import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import type { ReactNode } from 'react'
@@ -36,6 +38,20 @@ export function ModulePageShell({
 	className,
 }: ModulePageShellProps) {
 	const Icon = manifest.icon
+	const { isMobile } = useBreakpoint()
+
+	// Sur mobile : le titre et l'icône sont cachés (hidden md:flex)
+	// Le sub-header n'est utile que s'il a du contenu visible sur mobile
+	const hasMobileContent = !!(headerLeft || centerContent || actions)
+
+	// Sur mobile sans contenu → on masque complètement le sub-header
+	if (isMobile && !hasMobileContent) {
+		return (
+			<div className={cn('flex flex-col min-h-full', className)}>
+				<div className='flex-1 bg-background p-4 md:p-6'>{children}</div>
+			</div>
+		)
+	}
 
 	return (
 		<div className={cn('flex flex-col min-h-full', className)}>
@@ -98,7 +114,7 @@ export function ModulePageShell({
 				</div>
 			</header>
 
-			<div className='flex-1 bg-background p-6'>{children}</div>
+			<div className='flex-1 bg-background p-4 md:p-6'>{children}</div>
 		</div>
 	)
 }

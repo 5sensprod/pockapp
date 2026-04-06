@@ -40,7 +40,9 @@ function LoginPage() {
 	}, [])
 
 	return (
-		<div className='min-h-screen flex items-center justify-center bg-background'>
+		// px-4 : évite que la card touche les bords sur iPhone
+		// w-full overflow-x-hidden : empêche Safari de déborder
+		<div className='min-h-screen w-full overflow-x-hidden flex items-center justify-center bg-background px-4'>
 			<Card className='w-full max-w-md'>
 				<CardHeader>
 					<CardTitle className='text-2xl font-bold text-center'>
@@ -55,14 +57,14 @@ function LoginPage() {
 							</label>
 							<Input
 								id='identity'
-								type='text' // ← Change 'text' en 'email'
+								type='text'
 								value={identity}
 								onChange={(e) => setIdentity(e.target.value)}
 								required
 								autoComplete='email'
-								autoCapitalize='none' // ← Ajoute ça
-								autoCorrect='off' // ← Et ça
-								spellCheck={false} // ← Et ça
+								autoCapitalize='none'
+								autoCorrect='off'
+								spellCheck={false}
 							/>
 						</div>
 

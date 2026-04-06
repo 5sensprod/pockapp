@@ -91,3 +91,30 @@
     padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom));
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BRAND NAME — visible partout sauf < 360px (très petits mobiles)
+   .brand-visible : display:none sous 360px, inline au-dessus.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer utilities {
+  .brand-visible {
+    display: none;
+  }
+  @media (min-width: 360px) {
+    .brand-visible {
+      display: inline;
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FIX SAFARI iOS — zoom automatique au focus sur input
+   Safari zoome si font-size < 16px. On force 16px minimum.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer base {
+  input:not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
