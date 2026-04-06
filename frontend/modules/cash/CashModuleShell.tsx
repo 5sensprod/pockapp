@@ -13,8 +13,17 @@
 
 import { ModulePageShell, StatusBadge } from '@/components/module-ui'
 import { Button } from '@/components/ui/button'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useClock } from '@/hooks/useClock'
+import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import type { ModuleManifest } from '@/modules/_registry'
+import { MoreHorizontal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import * as React from 'react'
@@ -85,6 +94,8 @@ export function CashModuleShell({
 			}
 		: manifest
 
+	const { isDesktop } = useBreakpoint()
+
 	// Badge session + horloge
 	const badge = hideBadge ? null : (
 		<StatusBadge
@@ -103,6 +114,7 @@ export function CashModuleShell({
 			{/* Bloc session — masqué sur les pages détail/rapport */}
 			{!hideSessionActions && (
 				<>
+					{/* Sélecteur de caisse — toujours visible */}
 					{cash.registers && cash.registers.length > 0 && (
 						<select
 							className='h-7 rounded-md border bg-card px-2 text-[11px]'
@@ -117,40 +129,79 @@ export function CashModuleShell({
 						</select>
 					)}
 
-					<span className='text-[11px] text-muted-foreground border-l pl-2'>
-						Fond{' '}
-						<span className='font-medium text-foreground'>
-							{cash.activeSession?.opening_float?.toFixed(2) ?? '—'} €
+					{/* Fond — visible uniquement sur desktop */}
+					{isDesktop && (
+						<span className='text-[11px] text-muted-foreground border-l pl-2 shrink-0'>
+							Fond{' '}
+							<span className='font-medium text-foreground'>
+								{cash.activeSession?.opening_float?.toFixed(2) ?? '—'} €
+							</span>
 						</span>
-					</span>
+					)}
 
 					{cash.isSessionOpen && (
 						<>
-							<Button
-								size='sm'
-								variant='outline'
-								onClick={cash.handleShowRapportX}
-							>
-								Rapport X
-							</Button>
-							<Button
-								size='sm'
-								variant='outline'
-								onClick={cash.handleShowMovement}
-							>
-								Mouvement
-							</Button>
+							{/* Desktop : boutons en clair */}
+							{isDesktop ? (
+								<>
+									<Button
+										size='sm'
+										variant='outline'
+										onClick={cash.handleShowRapportX}
+									>
+										Rapport X
+									</Button>
+									<Button
+										size='sm'
+										variant='outline'
+										onClick={cash.handleShowMovement}
+									>
+										Mouvement
+									</Button>
+									{extraActions}
+								</>
+							) : (
+								/* Tablet/mobile : actions secondaires dans un dropdown ⋯ */
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<Button size='sm' variant='outline' className='px-2'>
+											<MoreHorizontal className='h-4 w-4' />
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align='end'>
+										{/* Fond affiché ici sur tablet */}
+										{!isDesktop &&
+											cash.activeSession?.opening_float != null && (
+												<>
+													<div className='px-3 py-1.5 text-[11px] text-muted-foreground'>
+														Fond :{' '}
+														<span className='font-medium text-foreground'>
+															{cash.activeSession.opening_float.toFixed(2)} €
+														</span>
+													</div>
+													<DropdownMenuSeparator />
+												</>
+											)}
+										<DropdownMenuItem onClick={cash.handleShowRapportX}>
+											Rapport X
+										</DropdownMenuItem>
+										<DropdownMenuItem onClick={cash.handleShowMovement}>
+											Mouvement
+										</DropdownMenuItem>
+										{extraActions}
+									</DropdownMenuContent>
+								</DropdownMenu>
+							)}
 						</>
 					)}
 
-					{extraActions}
-
+					{/* Bouton principal — toujours visible */}
 					<Button
 						size='sm'
 						onClick={cash.handleToggleSession}
 						disabled={!cash.canToggleSession}
 					>
-						{cash.isSessionOpen ? 'Clôturer la session' : 'Ouvrir une session'}
+						{cash.isSessionOpen ? 'Clôturer' : 'Ouvrir'}
 					</Button>
 				</>
 			)}
