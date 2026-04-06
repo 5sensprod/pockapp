@@ -208,14 +208,16 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 					{/* Logo + brand name */}
 					<Link
 						to={currentModule ? (moduleHomeRoute as any) : '/'}
-						className='flex items-center gap-2 font-medium text-base text-foreground shrink-0'
+						className='flex items-center gap-2 font-medium text-base text-foreground min-w-0 overflow-hidden'
 					>
 						{/* bg-primary = #1E1B4B via token shadcn */}
 						<div className='w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0'>
 							P
 						</div>
 						{/* Brand name : visible partout sauf < 360px (très petits mobiles) */}
-						<span className='hidden brand-visible truncate'>{brand}</span>
+						<span className='hidden brand-visible truncate min-w-0'>
+							{brand}
+						</span>
 					</Link>
 
 					{/* Nav topbarMenu — desktop uniquement */}

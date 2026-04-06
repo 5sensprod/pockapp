@@ -1,6 +1,6 @@
 // frontend/modules/cash/CashTerminalPage.tsx
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { Loader2, ShieldAlert, Vault } from 'lucide-react'
+import { Loader2, Monitor, ShieldAlert, Vault } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
@@ -651,7 +651,11 @@ export function CashTerminalPage() {
 
 	if (isSessionLoading) {
 		return (
-			<CashModuleShell forcedRegisterId={cashRegisterId}>
+			<CashModuleShell
+				forcedRegisterId={cashRegisterId}
+				pageTitle='Terminal'
+				pageIcon={Monitor}
+			>
 				<div className='flex flex-1 items-center justify-center py-24'>
 					<Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
 				</div>
@@ -661,7 +665,11 @@ export function CashTerminalPage() {
 
 	if (!isSessionOpen) {
 		return (
-			<CashModuleShell forcedRegisterId={cashRegisterId}>
+			<CashModuleShell
+				forcedRegisterId={cashRegisterId}
+				pageTitle='Terminal'
+				pageIcon={Monitor}
+			>
 				<EmptyState
 					icon={ShieldAlert}
 					title='Aucune session ouverte'
@@ -684,7 +692,11 @@ export function CashTerminalPage() {
 
 	if (paymentStep === 'cart') {
 		return (
-			<CashModuleShell forcedRegisterId={cashRegisterId}>
+			<CashModuleShell
+				forcedRegisterId={cashRegisterId}
+				pageTitle='Terminal'
+				pageIcon={Monitor}
+			>
 				<div className='container mx-auto flex flex-col gap-6 px-6 py-2'>
 					{/* Header terminal sobre — nom caisse + session + statut + tiroir */}
 					<div className='flex items-center justify-between'>

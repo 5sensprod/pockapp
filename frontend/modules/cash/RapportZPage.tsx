@@ -26,6 +26,7 @@ import type { RapportZ } from '@/lib/types/cash.types'
 import { getPaymentMethodLabel } from '@/lib/types/cash.types'
 import {
 	AlertCircle,
+	BarChart2,
 	Calendar,
 	CheckCircle2,
 	FileText,
@@ -88,6 +89,8 @@ export function RapportZPage() {
 
 	return (
 		<CashModuleShell
+			pageTitle='Rapport Z'
+			pageIcon={BarChart2}
 			headerRight={
 				rapportZ ? (
 					<>

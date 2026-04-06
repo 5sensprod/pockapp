@@ -5,6 +5,7 @@
 //   - h-[72px]     → h-subheader   (var CSS --subheader-h)
 //   - px-4 lg:px-6 → conservé (spacing fine)
 //   - Sub-header masqué sur mobile si aucun contenu visible (headerLeft, centerContent, actions)
+//   - hidden md:flex → hidden brand-visible (titre/icône visibles dès 360px)
 //
 // Le composant est sticky sous le header global.
 // Si --header-h change dans index.css, ce composant suit automatiquement.
@@ -40,11 +41,8 @@ export function ModulePageShell({
 	const Icon = manifest.icon
 	const { isMobile } = useBreakpoint()
 
-	// Sur mobile : le titre et l'icône sont cachés (hidden md:flex)
-	// Le sub-header n'est utile que s'il a du contenu visible sur mobile
 	const hasMobileContent = !!(headerLeft || centerContent || actions)
 
-	// Sur mobile sans contenu → on masque complètement le sub-header
 	if (isMobile && !hasMobileContent) {
 		return (
 			<div className={cn('flex flex-col min-h-full', className)}>
@@ -55,22 +53,17 @@ export function ModulePageShell({
 
 	return (
 		<div className={cn('flex flex-col min-h-full', className)}>
-			{/*
-        Sticky bar sous le header global.
-        top-page-shell = top-header = var(--header-h) = 56px
-        h-subheader    = var(--subheader-h)           = 72px
-      */}
 			<header className='sticky top-page-shell z-40 h-subheader flex items-center justify-between px-4 lg:px-6 bg-muted/95 backdrop-blur-sm shrink-0 border-b shadow-sm gap-4'>
 				{/* 1. Gauche */}
 				<div className='flex items-center gap-3 min-w-0 shrink'>
 					{!hideIcon && (
-						<div className='hidden md:flex w-10 h-10 rounded-lg bg-primary items-center justify-center shrink-0'>
+						<div className='flex w-10 h-10 rounded-lg bg-primary items-center justify-center shrink-0'>
 							<Icon className='h-5 w-5 text-white' />
 						</div>
 					)}
 
 					{!hideTitle && (
-						<div className='hidden md:flex flex-col min-w-0'>
+						<div className='hidden brand-visible flex-col min-w-0'>
 							<div className='flex items-center gap-2 min-w-0'>
 								<h1 className='text-sm font-semibold text-foreground leading-tight tracking-widest uppercase truncate'>
 									{manifest.name}
@@ -93,7 +86,7 @@ export function ModulePageShell({
 					{headerLeft && (
 						<>
 							{!hideTitle && (
-								<div className='hidden md:block h-8 w-px bg-border/50 shrink-0 mx-1' />
+								<div className='hidden brand-visible h-8 w-px bg-border/50 shrink-0 mx-1' />
 							)}
 							<div className='flex items-center min-w-0 shrink'>
 								{headerLeft}

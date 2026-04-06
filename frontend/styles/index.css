@@ -94,14 +94,18 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BRAND NAME — visible partout sauf < 360px (très petits mobiles)
-   .brand-visible : display:none sous 360px, inline au-dessus.
+   Masqué sous 360px. Au-dessus, chaque élément reprend son display naturel
+   (flex pour les divs du subheader, inline pour le span du header).
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer utilities {
   .brand-visible {
     display: none;
   }
   @media (min-width: 360px) {
-    .brand-visible {
+    div.brand-visible {
+      display: flex;
+    }
+    span.brand-visible {
       display: inline;
     }
   }
