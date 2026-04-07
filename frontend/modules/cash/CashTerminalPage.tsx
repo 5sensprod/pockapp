@@ -136,11 +136,11 @@ export function CashTerminalPage() {
 	const currentRegister = registers?.find((r) => r.id === cashRegisterId)
 	const isSessionOpen = activeSession?.status === 'open'
 
-	const today = new Date().toLocaleDateString('fr-FR', {
-		weekday: 'long',
-		day: '2-digit',
-		month: 'long',
-	})
+	// const today = new Date().toLocaleDateString('fr-FR', {
+	// 	weekday: 'long',
+	// 	day: '2-digit',
+	// 	month: 'long',
+	// })
 
 	// ✅ Charge l’entreprise active (pour URL logo)
 	const { data: activeCompany } = useCompany(activeCompanyId ?? undefined)
@@ -651,11 +651,7 @@ export function CashTerminalPage() {
 
 	if (isSessionLoading) {
 		return (
-			<CashModuleShell
-				forcedRegisterId={cashRegisterId}
-				pageTitle='Terminal'
-				pageIcon={Monitor}
-			>
+			<CashModuleShell forcedRegisterId={cashRegisterId}>
 				<div className='flex flex-1 items-center justify-center py-24'>
 					<Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
 				</div>
@@ -665,11 +661,7 @@ export function CashTerminalPage() {
 
 	if (!isSessionOpen) {
 		return (
-			<CashModuleShell
-				forcedRegisterId={cashRegisterId}
-				pageTitle='Terminal'
-				pageIcon={Monitor}
-			>
+			<CashModuleShell forcedRegisterId={cashRegisterId}>
 				<EmptyState
 					icon={ShieldAlert}
 					title='Aucune session ouverte'
@@ -691,56 +683,36 @@ export function CashTerminalPage() {
 	}
 
 	if (paymentStep === 'cart') {
+		// Statut AppPOS condensé + tiroir → injectés dans la barre grise via headerRight
+		const headerRight = (
+			<div className='flex items-center gap-2'>
+				{/* Statut AppPOS : point coloré + label court */}
+				<div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+					{isAppPosConnecting ? (
+						<Loader2 className='h-3 w-3 animate-spin' />
+					) : isAppPosConnected ? (
+						<span className='h-2 w-2 rounded-full bg-emerald-500 shrink-0' />
+					) : (
+						<span className='h-2 w-2 rounded-full bg-destructive shrink-0' />
+					)}
+					<span className='hidden tablet:inline'>
+						{isAppPosConnecting ? 'API...' : 'API'}
+					</span>
+				</div>
+
+				{/* Bouton tiroir */}
+				<TerminalDrawerButton />
+			</div>
+		)
+
 		return (
 			<CashModuleShell
 				forcedRegisterId={cashRegisterId}
 				pageTitle='Terminal'
 				pageIcon={Monitor}
+				headerRight={headerRight}
 			>
 				<div className='container mx-auto flex flex-col gap-6 px-6 py-2'>
-					{/* Header terminal sobre — nom caisse + session + statut + tiroir */}
-					<div className='flex items-center justify-between'>
-						<div>
-							<h1 className='text-xl font-medium text-foreground tracking-tight'>
-								{currentRegister?.name || 'Caisse'}
-							</h1>
-							<p className='text-xs text-muted-foreground mt-0.5'>
-								Session {(activeSession as any)?.id?.slice(0, 8) ?? '—'} —{' '}
-								{today}
-							</p>
-						</div>
-						<div className='flex items-center gap-3'>
-							{/* Statut AppPOS */}
-							<div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-								{isAppPosConnecting ? (
-									<>
-										<Loader2 className='h-3 w-3 animate-spin' />
-										<span>AppPOS...</span>
-									</>
-								) : isAppPosConnected ? (
-									<>
-										<span className='h-1.5 w-1.5 rounded-full bg-emerald-500' />
-										<span className='text-emerald-700'>AppPOS connecté</span>
-									</>
-								) : (
-									<>
-										<span className='h-1.5 w-1.5 rounded-full bg-destructive' />
-										<span className='text-destructive'>AppPOS déconnecté</span>
-									</>
-								)}
-							</div>
-							{/* Badge session */}
-							<div className='flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1'>
-								<span className='h-1.5 w-1.5 rounded-full bg-emerald-500' />
-								<span className='text-xs font-medium text-emerald-700'>
-									Session ouverte
-								</span>
-							</div>
-							{/* Tiroir */}
-							<TerminalDrawerButton />
-						</div>
-					</div>
-
 					<main className='flex min-h-[520px] flex-1 flex-col gap-4 lg:flex-row'>
 						<section className='flex flex-1 flex-col gap-3'>
 							<ProductsPanel

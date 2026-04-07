@@ -21,7 +21,6 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useClock } from '@/hooks/useClock'
-import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import type { ModuleManifest } from '@/modules/_registry'
 import { MoreHorizontal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -94,8 +93,6 @@ export function CashModuleShell({
 			}
 		: manifest
 
-	const { isDesktop } = useBreakpoint()
-
 	// Badge session + horloge
 	const badge = hideBadge ? null : (
 		<StatusBadge
@@ -123,75 +120,73 @@ export function CashModuleShell({
 						>
 							{cash.registers.map((reg) => (
 								<option key={reg.id} value={reg.id}>
-									{reg.code ? `${reg.code} — ${reg.name}` : reg.name}
+									{reg.name}
 								</option>
 							))}
 						</select>
 					)}
 
-					{/* Fond — visible uniquement sur desktop */}
-					{isDesktop && (
-						<span className='text-[11px] text-muted-foreground border-l pl-2 shrink-0'>
-							Fond{' '}
-							<span className='font-medium text-foreground'>
-								{cash.activeSession?.opening_float?.toFixed(2) ?? '—'} €
-							</span>
+					{/* Fond — visible uniquement ≥ desktop */}
+					<span className='hidden desktop:inline text-[11px] text-muted-foreground border-l pl-2 shrink-0'>
+						Fond{' '}
+						<span className='font-medium text-foreground'>
+							{cash.activeSession?.opening_float?.toFixed(2) ?? '—'} €
 						</span>
-					)}
+					</span>
 
 					{cash.isSessionOpen && (
 						<>
-							{/* Desktop : boutons en clair */}
-							{isDesktop ? (
-								<>
+							{/* ≥ desktop : boutons texte en clair */}
+							<Button
+								size='sm'
+								variant='outline'
+								onClick={cash.handleShowRapportX}
+								className='hidden desktop:inline-flex'
+							>
+								Rapport X
+							</Button>
+							<Button
+								size='sm'
+								variant='outline'
+								onClick={cash.handleShowMovement}
+								className='hidden desktop:inline-flex'
+							>
+								Mouvement
+							</Button>
+							<div className='hidden desktop:flex'>{extraActions}</div>
+
+							{/* < desktop : dropdown ⋯ */}
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
 									<Button
 										size='sm'
 										variant='outline'
-										onClick={cash.handleShowRapportX}
+										className='desktop:hidden px-2'
 									>
+										<MoreHorizontal className='h-4 w-4' />
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align='end'>
+									{cash.activeSession?.opening_float != null && (
+										<>
+											<div className='px-3 py-1.5 text-[11px] text-muted-foreground'>
+												Fond :{' '}
+												<span className='font-medium text-foreground'>
+													{cash.activeSession.opening_float.toFixed(2)} €
+												</span>
+											</div>
+											<DropdownMenuSeparator />
+										</>
+									)}
+									<DropdownMenuItem onClick={cash.handleShowRapportX}>
 										Rapport X
-									</Button>
-									<Button
-										size='sm'
-										variant='outline'
-										onClick={cash.handleShowMovement}
-									>
+									</DropdownMenuItem>
+									<DropdownMenuItem onClick={cash.handleShowMovement}>
 										Mouvement
-									</Button>
+									</DropdownMenuItem>
 									{extraActions}
-								</>
-							) : (
-								/* Tablet/mobile : actions secondaires dans un dropdown ⋯ */
-								<DropdownMenu>
-									<DropdownMenuTrigger asChild>
-										<Button size='sm' variant='outline' className='px-2'>
-											<MoreHorizontal className='h-4 w-4' />
-										</Button>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align='end'>
-										{/* Fond affiché ici sur tablet */}
-										{!isDesktop &&
-											cash.activeSession?.opening_float != null && (
-												<>
-													<div className='px-3 py-1.5 text-[11px] text-muted-foreground'>
-														Fond :{' '}
-														<span className='font-medium text-foreground'>
-															{cash.activeSession.opening_float.toFixed(2)} €
-														</span>
-													</div>
-													<DropdownMenuSeparator />
-												</>
-											)}
-										<DropdownMenuItem onClick={cash.handleShowRapportX}>
-											Rapport X
-										</DropdownMenuItem>
-										<DropdownMenuItem onClick={cash.handleShowMovement}>
-											Mouvement
-										</DropdownMenuItem>
-										{extraActions}
-									</DropdownMenuContent>
-								</DropdownMenu>
-							)}
+								</DropdownMenuContent>
+							</DropdownMenu>
 						</>
 					)}
 
