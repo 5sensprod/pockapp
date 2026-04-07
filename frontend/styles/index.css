@@ -112,6 +112,20 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   GRID RESPONSIVE POS — 1 colonne sous 260px, 2 colonnes au-dessus
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer utilities {
+  .grid-pos-products {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+  @media (min-width: 260px) {
+    .grid-pos-products {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    FIX SAFARI iOS — zoom automatique au focus sur input
    Safari zoome si font-size < 16px. On force 16px minimum.
    ═══════════════════════════════════════════════════════════════════════════ */

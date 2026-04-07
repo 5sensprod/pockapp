@@ -1,4 +1,8 @@
 // frontend/modules/cash/components/terminal/cart/CartPanel.tsx
+//
+// Desktop : card avec header actions icône+texte
+// Mobile  : version épurée (utilisé dans l'onglet Panier)
+
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -7,6 +11,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/components/ui/card'
+import { Clock, Trash2 } from 'lucide-react'
 import type { CartItem, LineDiscountMode, VatBreakdown } from '../types/cart'
 import type { PaymentMethod } from '../types/payment'
 import { CartItemRow } from './CartItemRow'
@@ -28,6 +33,7 @@ interface CartPanelProps {
 	onCartDiscountModeChange: (mode: 'percent' | 'amount') => void
 	onCartDiscountChange: (raw: string) => void
 	onPaymentClick: (method: PaymentMethod) => void
+	hideMethodButtons?: boolean
 	getEffectiveUnitTtc: (item: CartItem) => number
 	getLineTotalTtc: (item: CartItem) => number
 	setLineDiscountMode: (itemId: string, mode: LineDiscountMode) => void
@@ -55,6 +61,7 @@ export function CartPanel({
 	onCartDiscountModeChange,
 	onCartDiscountChange,
 	onPaymentClick,
+	hideMethodButtons = false,
 	getEffectiveUnitTtc,
 	getLineTotalTtc,
 	setLineDiscountMode,
@@ -66,63 +73,74 @@ export function CartPanel({
 	setUnitPrice,
 	clearUnitPrice,
 }: CartPanelProps) {
+	const cartItems = (
+		<div className='divide-y'>
+			{cart.map((item) => (
+				<CartItemRow
+					key={item.id}
+					item={item}
+					isEditing={editingLineId === item.id}
+					onUpdateQuantity={onUpdateQuantity}
+					onToggleEdit={setEditingLineId}
+					onSetLineDiscountMode={setLineDiscountMode}
+					onSetLineDiscountValue={setLineDiscountValue}
+					onClearLineDiscount={clearLineDiscount}
+					onSetDisplayMode={toggleItemDisplayMode}
+					getEffectiveUnitTtc={getEffectiveUnitTtc}
+					getLineTotalTtc={getLineTotalTtc}
+					onSetUnitPrice={setUnitPrice}
+					onClearUnitPrice={clearUnitPrice}
+				/>
+			))}
+		</div>
+	)
+
 	return (
 		<Card className='flex h-full flex-col'>
-			<CardHeader className='flex flex-row items-center justify-between border-b px-4 py-3'>
+			<CardHeader className='flex flex-row items-center justify-between border-b px-4 py-3 shrink-0'>
 				<div>
 					<CardTitle className='text-base'>Ticket</CardTitle>
 					<CardDescription className='text-xs'>
 						Lignes en cours d&apos;encaissement.
 					</CardDescription>
 				</div>
-				<div className='flex gap-2'>
+
+				{/* Actions avec icônes — tactile-friendly */}
+				<div className='flex gap-1'>
 					<Button
 						type='button'
 						variant='outline'
 						size='sm'
-						className='h-7 px-2 text-xs'
+						className='h-9 px-3 gap-1.5 text-xs'
 						onClick={onParkCart}
 						disabled={cart.length === 0}
+						title='Mettre en attente'
 					>
-						Mettre en attente
+						<Clock className='h-3.5 w-3.5 shrink-0' />
+						<span className='hidden desktop:inline'>Attente</span>
 					</Button>
 					<Button
 						type='button'
 						variant='ghost'
 						size='sm'
-						className='h-7 px-2 text-xs text-red-500 hover:text-red-600'
+						className='h-9 px-3 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10'
 						onClick={onClearCart}
+						disabled={cart.length === 0}
+						title='Vider le panier'
 					>
-						Vider
+						<Trash2 className='h-3.5 w-3.5 shrink-0' />
+						<span className='hidden desktop:inline'>Vider</span>
 					</Button>
 				</div>
 			</CardHeader>
 
 			<CardContent className='flex-1 overflow-auto px-4 py-2 text-sm'>
 				{cart.length === 0 ? (
-					<div className='flex h-full items-center justify-center text-xs text-slate-400'>
+					<div className='flex h-full items-center justify-center text-xs text-muted-foreground'>
 						Aucun article pour le moment.
 					</div>
 				) : (
-					<div className='divide-y'>
-						{cart.map((item) => (
-							<CartItemRow
-								key={item.id}
-								item={item}
-								isEditing={editingLineId === item.id}
-								onUpdateQuantity={onUpdateQuantity}
-								onToggleEdit={setEditingLineId}
-								onSetLineDiscountMode={setLineDiscountMode}
-								onSetLineDiscountValue={setLineDiscountValue}
-								onClearLineDiscount={clearLineDiscount}
-								onSetDisplayMode={toggleItemDisplayMode}
-								getEffectiveUnitTtc={getEffectiveUnitTtc}
-								getLineTotalTtc={getLineTotalTtc}
-								onSetUnitPrice={setUnitPrice}
-								onClearUnitPrice={clearUnitPrice}
-							/>
-						))}
-					</div>
+					cartItems
 				)}
 			</CardContent>
 
@@ -142,6 +160,7 @@ export function CartPanel({
 				totalTtc={totalTtc}
 				cartLength={cart.length}
 				onPaymentClick={onPaymentClick}
+				hideMethodButtons={hideMethodButtons}
 			/>
 		</Card>
 	)

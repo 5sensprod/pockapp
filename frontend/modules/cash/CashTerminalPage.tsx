@@ -1,6 +1,13 @@
 // frontend/modules/cash/CashTerminalPage.tsx
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { Loader2, Monitor, ShieldAlert, Vault } from 'lucide-react'
+import {
+	Loader2,
+	Monitor,
+	Package,
+	ShieldAlert,
+	ShoppingCart,
+	Vault,
+} from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
@@ -89,34 +96,23 @@ export function CashTerminalPage() {
 	>('percent')
 	const [cartDiscountValue, setCartDiscountValue] = React.useState(0)
 	const [cartDiscountRaw, setCartDiscountRaw] = React.useState('')
-
 	const [paymentStep, setPaymentStep] = React.useState<PaymentStep>('cart')
-	// ✅ MULTIPAIEMENT
 	const [paymentEntries, setPaymentEntries] = React.useState<PaymentEntry[]>([])
 	const [initialPaymentMethod, setInitialPaymentMethod] =
 		React.useState<PaymentMethod | null>(null)
 	const [isProcessing, setIsProcessing] = React.useState(false)
-
-	const amountReceived = React.useMemo(() => {
-		const cashEntry = paymentEntries.find(
-			(e) => e.method.accounting_category === 'cash',
-		)
-		return cashEntry ? cashEntry.amount.toFixed(2) : ''
-	}, [paymentEntries])
-
-	const selectedPaymentMethod: PaymentMethod | null =
-		paymentEntries[0]?.method ?? initialPaymentMethod ?? null
-
 	const [isAppPosConnected, setIsAppPosConnected] = React.useState(false)
-
-	const [isAppPosConnecting, setIsAppPosConnecting] = React.useState(true) // ✅ NOUVEAU
-	const [, setAppPosConnectionError] = React.useState<string | null>(null) // ✅ NOUVEAU
+	const [isAppPosConnecting, setIsAppPosConnecting] = React.useState(true)
+	const [, setAppPosConnectionError] = React.useState<string | null>(null)
 	const [editingLineId, setEditingLineId] = React.useState<string | null>(null)
-
 	const [showCreateProductDialog, setShowCreateProductDialog] =
 		React.useState(false)
 	const [productNotFoundBarcode, setProductNotFoundBarcode] = React.useState('')
 	const [productInitialName, setProductInitialName] = React.useState('')
+	// ── Onglet mobile — AU NIVEAU RACINE (règle des hooks React) ──────────────
+	const [mobileTab, setMobileTab] = React.useState<
+		'products' | 'cart' | 'payment'
+	>('products')
 
 	const searchInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -132,17 +128,9 @@ export function CashTerminalPage() {
 	const products = (productsData?.items ?? []) as AppPosProduct[]
 
 	const createPosTicket = useCreatePosTicket()
-
 	const currentRegister = registers?.find((r) => r.id === cashRegisterId)
 	const isSessionOpen = activeSession?.status === 'open'
 
-	// const today = new Date().toLocaleDateString('fr-FR', {
-	// 	weekday: 'long',
-	// 	day: '2-digit',
-	// 	month: 'long',
-	// })
-
-	// ✅ Charge l’entreprise active (pour URL logo)
 	const { data: activeCompany } = useCompany(activeCompanyId ?? undefined)
 
 	const getCompanyLogoBase64 = React.useCallback(async (): Promise<
@@ -151,18 +139,15 @@ export function CashTerminalPage() {
 		if (!activeCompany) return undefined
 		const url = getLogoUrl(pb, activeCompany as Company)
 		if (!url) return undefined
-		return await fetchAsDataUrl(url) // data:image/...;base64,...
+		return await fetchAsDataUrl(url)
 	}, [activeCompany, pb])
 
-	// ✅ NOUVEAU : Hook pour gérer le contrôle de l'affichage client
 	const { hasControl } = useDisplay()
 
-	// ✅ NOUVEAU : Prendre le contrôle de l'affichage au montage
 	React.useEffect(() => {
 		takeControl().catch(() => {
 			toast.warning('Affichage client contrôlé par un autre appareil')
 		})
-
 		return () => {
 			releaseControl().catch(() => {})
 		}
@@ -175,6 +160,16 @@ export function CashTerminalPage() {
 			cartDiscountMode,
 			cartDiscountValue,
 		})
+
+	const amountReceived = React.useMemo(() => {
+		const cashEntry = paymentEntries.find(
+			(e) => e.method.accounting_category === 'cash',
+		)
+		return cashEntry ? cashEntry.amount.toFixed(2) : ''
+	}, [paymentEntries])
+
+	const selectedPaymentMethod: PaymentMethod | null =
+		paymentEntries[0]?.method ?? initialPaymentMethod ?? null
 
 	const change = React.useMemo(() => {
 		const received = Number.parseFloat(amountReceived) || 0
@@ -203,18 +198,12 @@ export function CashTerminalPage() {
 		enabled: hasControl,
 	})
 
-	// ============================================
-	// GESTION DES SCANS (local + distant)
-	// ============================================
-
 	const recentScansRef = React.useRef<Map<string, number>>(new Map())
 
 	const isDuplicateScan = React.useCallback((barcode: string): boolean => {
 		const now = Date.now()
 		const lastScanTime = recentScansRef.current.get(barcode)
-
 		if (lastScanTime && now - lastScanTime < 2000) return true
-
 		recentScansRef.current.set(barcode, now)
 		return false
 	}, [])
@@ -222,9 +211,7 @@ export function CashTerminalPage() {
 	const handleBarcodeScan = React.useCallback(
 		(barcode: string, source: 'hid' | 'websocket' = 'hid') => {
 			console.log(`[POS] Scan reçu (${source}):`, barcode)
-
-			if (isDuplicateScan(barcode)) return // ✅ FILTRE
-
+			if (isDuplicateScan(barcode)) return
 			setProductSearch(barcode)
 		},
 		[isDuplicateScan],
@@ -232,14 +219,13 @@ export function CashTerminalPage() {
 
 	useBarcodeScanner({
 		enabled: paymentStep === 'cart',
-		onScan: (barcode) => handleBarcodeScan(barcode, 'hid'), // ✅ SOURCE
+		onScan: (barcode) => handleBarcodeScan(barcode, 'hid'),
 	})
 
 	useScanner((barcode) => {
-		if (paymentStep === 'cart') {
-			handleBarcodeScan(barcode, 'websocket') // ✅ SOURCE
-		}
+		if (paymentStep === 'cart') handleBarcodeScan(barcode, 'websocket')
 	})
+
 	React.useEffect(() => {
 		if (paymentStep === 'cart' && searchInputRef.current) {
 			searchInputRef.current.focus()
@@ -257,9 +243,7 @@ export function CashTerminalPage() {
 			const product = products[0]
 			const isExactMatch =
 				product.barcode === productSearch || product.sku === productSearch
-
 			if (isExactMatch) {
-				console.log('[POS] Auto-add:', product.name)
 				lastAutoAddRef.current = productSearch
 				cartManager.addToCart(product)
 				setProductSearch('')
@@ -270,36 +254,27 @@ export function CashTerminalPage() {
 		}
 	}, [products, productSearch, cartManager])
 
-	// Reset quand productSearch est vidé
 	React.useEffect(() => {
-		if (!productSearch) {
-			lastAutoAddRef.current = null
-		}
+		if (!productSearch) lastAutoAddRef.current = null
 	}, [productSearch])
+
 	React.useEffect(() => {
 		const connectToAppPos = async () => {
 			if (getAppPosToken()) {
-				console.log('✅ Token AppPOS existant trouvé')
 				setIsAppPosConnected(true)
 				setIsAppPosConnecting(false)
 				return
 			}
-
 			try {
 				setIsAppPosConnecting(true)
 				setAppPosConnectionError(null)
-
-				console.log('🔐 Connexion à AppPOS...')
 				const response = await loginToAppPos('admin', 'admin123')
-
 				if (response.success && response.token) {
 					setIsAppPosConnected(true)
-					console.log('✅ Connecté à AppPOS:', response.user.username)
 				} else {
 					throw new Error('Login failed')
 				}
 			} catch (error) {
-				console.error('❌ Erreur connexion AppPOS:', error)
 				setAppPosConnectionError(
 					error instanceof Error
 						? error.message
@@ -310,7 +285,6 @@ export function CashTerminalPage() {
 				setIsAppPosConnecting(false)
 			}
 		}
-
 		connectToAppPos()
 	}, [])
 
@@ -339,7 +313,6 @@ export function CashTerminalPage() {
 			setProductInitialName('')
 			setProductNotFoundBarcode('')
 		}
-
 		setShowCreateProductDialog(true)
 		setProductSearch('')
 	}, [productSearch])
@@ -347,16 +320,13 @@ export function CashTerminalPage() {
 	const handleChangeCartDiscount = React.useCallback(
 		(raw: string) => {
 			setCartDiscountRaw(raw)
-
 			if (raw.trim() === '') {
 				setCartDiscountValue(0)
 				return
 			}
-
 			const normalized = raw.replace(',', '.')
 			const v = Number.parseFloat(normalized)
 			if (Number.isNaN(v)) return
-
 			if (cartDiscountMode === 'percent') {
 				setCartDiscountValue(Math.max(0, Math.min(100, v)))
 			} else {
@@ -372,7 +342,6 @@ export function CashTerminalPage() {
 				toast.error('Le panier est vide')
 				return
 			}
-
 			setInitialPaymentMethod(method)
 			setPaymentEntries([])
 			setPaymentStep('payment')
@@ -404,7 +373,6 @@ export function CashTerminalPage() {
 				const effectiveTtc = getLineTotalTtc(item)
 				return sum + (baseTtc - effectiveTtc)
 			}, 0)
-
 			const cartDiscountAmount = discountAmount
 			const grandSubtotal = subtotalTtc + lineDiscountsTotalTtc
 			const companyLogoBase64 = await getCompanyLogoBase64().catch(
@@ -422,11 +390,9 @@ export function CashTerminalPage() {
 					if (displayMode === 'designation')
 						displayName = it.designation || it.name
 					else if (displayMode === 'sku') displayName = it.sku || it.name
-
 					const hasDiscount = it.lineDiscountValue && it.lineDiscountValue > 0
 					const baseUnitTtc = it.unitPrice
 					const effectiveUnitTtc = getEffectiveUnitTtc(it)
-
 					let discountText = null
 					if (hasDiscount) {
 						if (it.lineDiscountMode === 'percent')
@@ -436,7 +402,6 @@ export function CashTerminalPage() {
 							discountText = `-${discount.toFixed(2)}€`
 						}
 					}
-
 					return {
 						name: displayName,
 						qty: it.quantity,
@@ -509,11 +474,7 @@ export function CashTerminalPage() {
 				toast.error('Session ou entreprise manquante')
 				return
 			}
-
-			// Utiliser les entries passées en paramètre (évite le problème d'async state)
 			const entries = finalEntries ?? paymentEntries
-
-			// Validation multipaiement
 			if (entries.length === 0) {
 				toast.error('Aucun moyen de paiement sélectionné')
 				return
@@ -526,15 +487,11 @@ export function CashTerminalPage() {
 
 			const printerSettings = loadPosPrinterSettings()
 			setIsProcessing(true)
-
 			try {
 				const defaultCustomerId = await getOrCreateDefaultCustomer(
 					pb,
 					activeCompanyId,
 				)
-
-				// ✅ 1. Créer le ticket dans PocketBase
-				// Construire le payload multipaiement
 				const apiPayments = paymentEntriesToApiPayload(entries)
 				const mainMethodCode = getMainPaymentMethodCode(entries)
 				const cashEntry = entries.find(
@@ -565,33 +522,20 @@ export function CashTerminalPage() {
 				const ticket = result.ticket
 				const backendTotals = result.totals
 
-				// ✅ 2. 🆕 METTRE À JOUR LE STOCK DANS APPPOS
 				if (isAppPosConnected && getAppPosToken()) {
 					try {
 						const stockItems = cartManager.cart.map((item) => ({
-							productId: item.productId, // ✅ BON CHAMP (pas item.id)
+							productId: item.productId,
 							quantitySold: item.quantity,
 						}))
-
-						console.log(
-							'📦 Mise à jour stock AppPOS pour',
-							stockItems.length,
-							'produit(s)',
-						)
 						await decrementAppPosProductsStock(stockItems)
-
-						console.log('✅ Stock AppPOS mis à jour avec succès')
 					} catch (stockError) {
-						console.error('❌ Erreur MAJ stock:', stockError)
 						toast.warning(
 							'Vente enregistrée mais erreur de synchronisation du stock',
 						)
 					}
-				} else {
-					console.warn('⚠️ AppPOS non connecté, stock non synchronisé')
 				}
 
-				// ✅ 3. Impression (si activée)
 				if (printerSettings.enabled && printerSettings.printerName) {
 					if (printerSettings.autoPrint) {
 						const receiptPayload = await buildReceiptPayload({
@@ -603,7 +547,6 @@ export function CashTerminalPage() {
 								backendTotals.line_discounts_ttc +
 								backendTotals.cart_discount_ttc,
 						})
-
 						await printReceipt({
 							printerName: printerSettings.printerName,
 							width: printerSettings.width,
@@ -611,7 +554,6 @@ export function CashTerminalPage() {
 							receipt: receiptPayload,
 						})
 					}
-
 					if (
 						printerSettings.autoOpenDrawer &&
 						entries.some((e) => e.method.accounting_category === 'cash')
@@ -649,9 +591,14 @@ export function CashTerminalPage() {
 		],
 	)
 
+	// ── Early returns APRÈS tous les hooks ────────────────────────────────────
 	if (isSessionLoading) {
 		return (
-			<CashModuleShell forcedRegisterId={cashRegisterId}>
+			<CashModuleShell
+				forcedRegisterId={cashRegisterId}
+				pageTitle='Terminal'
+				pageIcon={Monitor}
+			>
 				<div className='flex flex-1 items-center justify-center py-24'>
 					<Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
 				</div>
@@ -661,7 +608,11 @@ export function CashTerminalPage() {
 
 	if (!isSessionOpen) {
 		return (
-			<CashModuleShell forcedRegisterId={cashRegisterId}>
+			<CashModuleShell
+				forcedRegisterId={cashRegisterId}
+				pageTitle='Terminal'
+				pageIcon={Monitor}
+			>
 				<EmptyState
 					icon={ShieldAlert}
 					title='Aucune session ouverte'
@@ -682,125 +633,6 @@ export function CashTerminalPage() {
 		)
 	}
 
-	if (paymentStep === 'cart') {
-		// Statut AppPOS condensé + tiroir → injectés dans la barre grise via headerRight
-		const headerRight = (
-			<div className='flex items-center gap-2'>
-				{/* Statut AppPOS : point coloré + label court */}
-				<div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-					{isAppPosConnecting ? (
-						<Loader2 className='h-3 w-3 animate-spin' />
-					) : isAppPosConnected ? (
-						<span className='h-2 w-2 rounded-full bg-emerald-500 shrink-0' />
-					) : (
-						<span className='h-2 w-2 rounded-full bg-destructive shrink-0' />
-					)}
-					<span className='hidden tablet:inline'>
-						{isAppPosConnecting ? 'API...' : 'API'}
-					</span>
-				</div>
-
-				{/* Bouton tiroir */}
-				<TerminalDrawerButton />
-			</div>
-		)
-
-		return (
-			<CashModuleShell
-				forcedRegisterId={cashRegisterId}
-				pageTitle='Terminal'
-				pageIcon={Monitor}
-				headerRight={headerRight}
-			>
-				<div className='container mx-auto flex flex-col gap-6 px-6 py-2'>
-					<main className='flex min-h-[520px] flex-1 flex-col gap-4 lg:flex-row'>
-						<section className='flex flex-1 flex-col gap-3'>
-							<ProductsPanel
-								productSearch={productSearch}
-								onProductSearchChange={setProductSearch}
-								searchInputRef={searchInputRef}
-								isAppPosConnected={isAppPosConnected}
-								products={products}
-								onAddToCart={cartManager.addToCart}
-								onCreateProductClick={handleCreateProductClick}
-							/>
-						</section>
-
-						<aside className='flex flex-1 flex-col gap-3'>
-							{cartManager.parkedCarts.length > 0 && (
-								<div className='rounded-lg border bg-card p-3'>
-									<div className='mb-2 text-sm font-medium'>
-										Paniers en attente ({cartManager.parkedCarts.length})
-									</div>
-									<div className='flex flex-wrap gap-2'>
-										{cartManager.parkedCarts.map((parked) => (
-											<button
-												key={parked.id}
-												type='button' // 👈 AJOUTER
-												onClick={() => cartManager.unparkCart(parked.id)}
-												className='rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90'
-											>
-												{parked.items.length} article
-												{parked.items.length > 1 ? 's' : ''}
-												<span className='ml-2 opacity-70'>
-													{new Date(parked.parkedAt).toLocaleTimeString(
-														'fr-FR',
-														{
-															hour: '2-digit',
-															minute: '2-digit',
-														},
-													)}
-												</span>
-											</button>
-										))}
-									</div>
-								</div>
-							)}
-
-							<CartPanel
-								cart={cartManager.cart}
-								onParkCart={() => cartManager.parkCart()}
-								onClearCart={clearAll}
-								onUpdateQuantity={cartManager.updateQuantity}
-								subtotalTtc={subtotalTtc}
-								totalVat={totalVat}
-								totalTtc={totalTtc}
-								vatBreakdown={vatBreakdown}
-								cartDiscountMode={cartDiscountMode}
-								cartDiscountRaw={cartDiscountRaw}
-								discountAmount={discountAmount}
-								onCartDiscountModeChange={setCartDiscountMode}
-								onCartDiscountChange={handleChangeCartDiscount}
-								onPaymentClick={handlePaymentClick}
-								getEffectiveUnitTtc={getEffectiveUnitTtc}
-								getLineTotalTtc={getLineTotalTtc}
-								setLineDiscountMode={cartManager.setLineDiscountMode}
-								setLineDiscountValue={cartManager.setLineDiscountValue}
-								clearLineDiscount={(id) => {
-									cartManager.setLineDiscountMode(id, 'percent')
-									cartManager.setLineDiscountValue(id, '')
-								}}
-								toggleItemDisplayMode={cartManager.toggleItemDisplayMode}
-								editingLineId={editingLineId}
-								setEditingLineId={setEditingLineId}
-								setUnitPrice={cartManager.setUnitPrice}
-								clearUnitPrice={cartManager.clearUnitPrice}
-							/>
-						</aside>
-					</main>
-				</div>
-
-				<CreateProductDialog
-					open={showCreateProductDialog}
-					onOpenChange={setShowCreateProductDialog}
-					initialBarcode={productNotFoundBarcode}
-					initialName={productInitialName}
-					onProductCreated={handleProductCreated}
-				/>
-			</CashModuleShell>
-		)
-	}
-
 	if (paymentStep === 'payment') {
 		return (
 			<PaymentDialog
@@ -814,10 +646,8 @@ export function CashTerminalPage() {
 				onPreviewReceipt={async () => {
 					try {
 						if (!activeCompanyId) throw new Error('Entreprise manquante')
-
 						const printerSettings = loadPosPrinterSettings()
 						const width = (printerSettings.width === 80 ? 80 : 58) as 58 | 80
-
 						const previewReceipt = await buildReceiptPayload({
 							invoiceNumber: 'PREVIEW',
 							dateLabel: new Date().toLocaleString('fr-FR'),
@@ -825,7 +655,6 @@ export function CashTerminalPage() {
 							taxAmountValue: totalVat,
 							totalSavingsValue: undefined,
 						})
-
 						await openReceiptPreviewWindow({
 							width,
 							companyId: activeCompanyId,
@@ -839,5 +668,196 @@ export function CashTerminalPage() {
 		)
 	}
 
-	return <SuccessView onNewSale={clearAll} />
+	if (paymentStep === 'success') {
+		return <SuccessView onNewSale={clearAll} />
+	}
+
+	// ── paymentStep === 'cart' — rendu principal ───────────────────────────────
+	const headerRight = (
+		<div className='flex items-center gap-2'>
+			<div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+				{isAppPosConnecting ? (
+					<Loader2 className='h-3 w-3 animate-spin' />
+				) : isAppPosConnected ? (
+					<span className='h-2 w-2 rounded-full bg-emerald-500 shrink-0' />
+				) : (
+					<span className='h-2 w-2 rounded-full bg-destructive shrink-0' />
+				)}
+				<span className='hidden tablet:inline'>
+					{isAppPosConnecting ? 'API...' : 'API'}
+				</span>
+			</div>
+			<TerminalDrawerButton />
+		</div>
+	)
+
+	const cartProps = {
+		cart: cartManager.cart,
+		onParkCart: () => cartManager.parkCart(),
+		onClearCart: clearAll,
+		onUpdateQuantity: cartManager.updateQuantity,
+		subtotalTtc,
+		totalVat,
+		totalTtc,
+		vatBreakdown,
+		cartDiscountMode,
+		cartDiscountRaw,
+		discountAmount,
+		onCartDiscountModeChange: setCartDiscountMode,
+		onCartDiscountChange: handleChangeCartDiscount,
+		onPaymentClick: handlePaymentClick,
+		getEffectiveUnitTtc,
+		getLineTotalTtc,
+		setLineDiscountMode: cartManager.setLineDiscountMode,
+		setLineDiscountValue: cartManager.setLineDiscountValue,
+		clearLineDiscount: (id: string) => {
+			cartManager.setLineDiscountMode(id, 'percent')
+			cartManager.setLineDiscountValue(id, '')
+		},
+		toggleItemDisplayMode: cartManager.toggleItemDisplayMode,
+		editingLineId,
+		setEditingLineId,
+		setUnitPrice: cartManager.setUnitPrice,
+		clearUnitPrice: cartManager.clearUnitPrice,
+	}
+
+	const productsPanel = (
+		<ProductsPanel
+			productSearch={productSearch}
+			onProductSearchChange={setProductSearch}
+			searchInputRef={searchInputRef}
+			isAppPosConnected={isAppPosConnected}
+			products={products}
+			onAddToCart={(p) => {
+				cartManager.addToCart(p)
+				setMobileTab('cart')
+			}}
+			onCreateProductClick={handleCreateProductClick}
+		/>
+	)
+
+	const parkedCartsBar = cartManager.parkedCarts.length > 0 && (
+		<div className='rounded-lg border bg-card p-3 shrink-0'>
+			<div className='mb-2 text-sm font-medium'>
+				Paniers en attente ({cartManager.parkedCarts.length})
+			</div>
+			<div className='flex flex-wrap gap-2'>
+				{cartManager.parkedCarts.map((parked) => (
+					<button
+						key={parked.id}
+						type='button'
+						onClick={() => cartManager.unparkCart(parked.id)}
+						className='rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90'
+					>
+						{parked.items.length} article{parked.items.length > 1 ? 's' : ''}
+						<span className='ml-2 opacity-70'>
+							{new Date(parked.parkedAt).toLocaleTimeString('fr-FR', {
+								hour: '2-digit',
+								minute: '2-digit',
+							})}
+						</span>
+					</button>
+				))}
+			</div>
+		</div>
+	)
+
+	return (
+		<CashModuleShell
+			forcedRegisterId={cashRegisterId}
+			pageTitle='Terminal'
+			pageIcon={Monitor}
+			headerRight={headerRight}
+		>
+			{/* ── DESKTOP : layout côte à côte ──────────────────────── */}
+			<div className='hidden desktop:block container mx-auto px-6 py-2'>
+				<main
+					className='flex gap-4'
+					style={{
+						height: 'calc(100vh - var(--header-h) - var(--subheader-h) - 2rem)',
+					}}
+				>
+					{/* ProductsPanel — prend l'espace restant, scroll interne */}
+					<section
+						className='flex flex-col gap-3 min-w-0 overflow-hidden'
+						style={{ flex: '1 1 0' }}
+					>
+						{productsPanel}
+					</section>
+					{/* CartPanel — largeur fixe plus généreuse, hauteur complète */}
+					<aside
+						className='flex flex-col gap-3 shrink-0 overflow-hidden'
+						style={{ width: '460px' }}
+					>
+						{parkedCartsBar}
+						<CartPanel {...cartProps} />
+					</aside>
+				</main>
+			</div>
+
+			{/* ── MOBILE : 2 onglets ────────────────────────────────── */}
+			<div className='desktop:hidden flex flex-col h-full'>
+				{/* Barre d'onglets sticky en haut */}
+				<div className='shrink-0 border-b bg-background/95 backdrop-blur-sm sticky top-subheader z-30'>
+					<div className='grid grid-cols-2'>
+						<button
+							type='button'
+							onClick={() => setMobileTab('products')}
+							className={`flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition-colors ${
+								mobileTab === 'products'
+									? 'text-primary border-b-2 border-primary'
+									: 'text-muted-foreground'
+							}`}
+						>
+							<Package className='h-5 w-5' />
+							Produits
+						</button>
+
+						<button
+							type='button'
+							onClick={() => setMobileTab('cart')}
+							className={`relative flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition-colors ${
+								mobileTab === 'cart'
+									? 'text-primary border-b-2 border-primary'
+									: 'text-muted-foreground'
+							}`}
+						>
+							<div className='relative'>
+								<ShoppingCart className='h-5 w-5' />
+								{cartManager.cart.length > 0 && (
+									<span className='absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-primary text-[10px] font-bold text-primary-foreground flex items-center justify-center'>
+										{cartManager.cart.length > 9
+											? '9+'
+											: cartManager.cart.length}
+									</span>
+								)}
+							</div>
+							Panier
+						</button>
+					</div>
+				</div>
+
+				{/* Contenu de l'onglet actif */}
+				<div className='flex-1 overflow-auto p-3'>
+					{mobileTab === 'products' && (
+						<div className='h-full flex flex-col gap-3'>{productsPanel}</div>
+					)}
+					{mobileTab === 'cart' && (
+						<div className='h-full flex flex-col gap-3'>
+							{parkedCartsBar}
+							<CartPanel {...cartProps} />
+						</div>
+					)}
+				</div>
+			</div>
+
+			<CreateProductDialog
+				open={showCreateProductDialog}
+				onOpenChange={setShowCreateProductDialog}
+				initialBarcode={productNotFoundBarcode}
+				initialName={productInitialName}
+				onProductCreated={handleProductCreated}
+			/>
+		</CashModuleShell>
+	)
 }
