@@ -86,20 +86,34 @@ function getPaymentMethodLabel(method: string, label?: string) {
 
 function getItemsPreview(ticket: any) {
 	const lines =
-		ticket.expand?.items ||
-		ticket.expand?.lines ||
+		ticket.items || // ← champ JSON direct, à mettre en premier
 		ticket.expand?.['invoice_lines(invoice)'] ||
-		ticket.expand?.['invoice_items(invoice)']
+		ticket.expand?.['invoice_items(invoice)'] ||
+		ticket.expand?.items ||
+		ticket.expand?.lines
 
 	if (Array.isArray(lines) && lines.length > 0) {
 		const names = lines.map(
 			(l: any) =>
 				l.name || l.designation || l.title || l.product_name || 'Article',
 		)
-		const firstTwo = names.slice(0, 2).join(', ')
-		return names.length > 2
-			? `${firstTwo} ... (+${names.length - 2})`
-			: firstTwo
+		const firstTwo = names.slice(0, 2)
+		const extra = names.length - 2
+
+		return (
+			<div className='flex flex-col gap-0.5'>
+				{firstTwo.map((name: string) => (
+					<span key={name} className='text-sm truncate'>
+						{name}
+					</span>
+				))}
+				{extra > 0 && (
+					<span className='text-xs text-muted-foreground'>
+						+{extra} article{extra > 1 ? 's' : ''}
+					</span>
+				)}
+			</div>
+		)
 	}
 
 	return (
@@ -354,10 +368,8 @@ export function TicketsPage() {
 															</div>
 														</TableCell>
 
-														<TableCell className='max-w-[200px] truncate'>
-															<span className='text-sm'>
-																{getItemsPreview(ticket)}
-															</span>
+														<TableCell className='max-w-[200px]'>
+															{getItemsPreview(ticket)}
 														</TableCell>
 
 														<TableCell className='text-right font-medium'>
