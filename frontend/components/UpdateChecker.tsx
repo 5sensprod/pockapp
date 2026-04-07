@@ -10,6 +10,12 @@ import {
 	AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { isWails, tryWails, tryWailsSub } from '@/lib/wails-bridge'
 import {
 	CheckForUpdates,
@@ -272,19 +278,35 @@ export function UpdateChecker() {
 
 	return (
 		<>
-			<div className='flex items-center gap-3'>
-				<Button
-					onClick={handleCheckUpdates}
-					variant='outline'
-					size='sm'
-					className='gap-2'
-					disabled={isUpdating}
-				>
-					<ArrowDownTrayIcon className='h-4 w-4' />
-					Vérifier les mises à jour
-				</Button>
+			<div className='flex items-center gap-1.5'>
+				<TooltipProvider>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								onClick={handleCheckUpdates}
+								variant='outline'
+								size='sm'
+								className='gap-2 shrink-0'
+								disabled={isUpdating}
+							>
+								<ArrowDownTrayIcon className='h-4 w-4 shrink-0' />
+								<span className='hidden desktop:inline'>
+									Vérifier les mises à jour
+								</span>
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent side='bottom' className='text-xs'>
+							<p>Vérifier les mises à jour</p>
+							{currentVersion && (
+								<p className='text-muted-foreground'>v{currentVersion}</p>
+							)}
+						</TooltipContent>
+					</Tooltip>
+				</TooltipProvider>
 				{currentVersion && (
-					<span className='text-xs text-gray-500'>v{currentVersion}</span>
+					<span className='hidden desktop:inline text-xs text-gray-500'>
+						v{currentVersion}
+					</span>
 				)}
 			</div>
 

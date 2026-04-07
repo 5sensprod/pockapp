@@ -35,16 +35,16 @@ function Dashboard() {
 		}))
 		.filter((pole) => pole.modules.length > 0)
 
-	const headerBadge =
+	const wailsActions =
 		isWailsApp() && !isUtilisateur ? (
-			<div className='flex items-center gap-3'>
+			<div className='flex items-center gap-2'>
 				<UpdateChecker />
 				<NetworkQRCode />
 			</div>
 		) : null
 
 	return (
-		<ModulePageShell manifest={homeDashboardManifest} badge={headerBadge}>
+		<ModulePageShell manifest={homeDashboardManifest} actions={wailsActions}>
 			<div className='space-y-10'>
 				{visiblePoles.map((pole) => (
 					<section key={pole.id}>
@@ -84,7 +84,7 @@ function NetworkQRCode() {
 	const url = data?.url ?? ''
 
 	return (
-		<div className='flex items-center gap-2 border rounded-md px-2.5 py-1 bg-background'>
+		<div className='flex items-center gap-2 border rounded-md px-2 py-1 bg-background shrink-0'>
 			<div className='bg-white rounded p-0.5 shrink-0'>
 				{url ? (
 					<QRCode value={url} size={28} />
@@ -92,7 +92,7 @@ function NetworkQRCode() {
 					<div className='w-7 h-7 rounded bg-muted' />
 				)}
 			</div>
-			<div className='min-w-0 hidden md:block'>
+			<div className='hidden desktop:flex flex-col min-w-0'>
 				<div className='text-[10px] text-muted-foreground leading-tight'>
 					Accès distant
 				</div>
