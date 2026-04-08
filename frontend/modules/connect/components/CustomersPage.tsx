@@ -1,81 +1,67 @@
 // frontend/modules/connect/components/CustomersPage.tsx
+//
+// Migré sur ConnectModuleShell.
+// Avant : header inline (titre H1, bouton Nouveau), container mx-auto manuel.
+// Après : shell gère header/badge/CTA — la page ne fait qu'afficher la table.
 
-import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/module-ui'
 import { Input } from '@/components/ui/input'
-import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { Plus, Users } from 'lucide-react'
+import { Search } from 'lucide-react'
+import { Users } from 'lucide-react'
+import { ConnectModuleShell } from '../ConnectModuleShell'
+import { useConnectModule } from '../useConnectModule'
 import { CustomerTable } from './CustomerTable'
 
-// ✅ Import du hook personnalisé (vérifie que le chemin correspond bien à ton arborescence)
-import { useConnectModule } from '../useConnectModule'
-
 export function CustomersPage() {
-	const { activeCompanyId } = useActiveCompany()
-
-	// ✅ On délègue TOUTE la logique d'état et de requête au hook
-	const {
-		customers,
-		isLoading,
-		searchTerm,
-		setSearchTerm,
-		page,
-		setPage,
-		totalItems,
-		totalPages,
-		perPage,
-		handleNewCustomer,
-		handleEditCustomer,
-	} = useConnectModule()
+	const connect = useConnectModule()
 
 	return (
-		<div className='container mx-auto px-6 py-8'>
-			{/* Header */}
-			<div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
-				<div className='flex items-center gap-3'>
-					<Users className='h-7 w-7 text-muted-foreground' />
-					<div>
-						<h1 className='text-2xl font-bold'>Clients</h1>
-						<p className='text-muted-foreground'>
-							Gérez la liste de vos clients (création, modification,
-							suppression).
-						</p>
-					</div>
-				</div>
-				<div className='flex gap-2'>
-					<Button onClick={handleNewCustomer}>
-						<Plus className='h-4 w-4 mr-2' />
-						Nouveau client
-					</Button>
-				</div>
-			</div>
-
-			{/* Message si pas d'entreprise active */}
-			{!activeCompanyId ? (
-				<p className='mt-8 text-muted-foreground'>
-					Aucune entreprise active sélectionnée.
-				</p>
-			) : (
-				<div className='mt-6 space-y-4'>
-					<div className='flex-1 max-w-md'>
-						<Input
-							placeholder='Rechercher par nom, email, téléphone, entreprise...'
-							value={searchTerm}
-							onChange={(e) => setSearchTerm(e.target.value)}
-						/>
-					</div>
-
-					<CustomerTable
-						data={customers}
-						onEditCustomer={handleEditCustomer}
-						page={page}
-						totalPages={totalPages}
-						totalItems={totalItems}
-						perPage={perPage}
-						onPageChange={setPage}
-						isLoading={isLoading}
+		<ConnectModuleShell
+			// Barre de recherche dans la zone centre du subheader
+			headerCenter={
+				<div className='relative w-full max-w-sm'>
+					<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+					<Input
+						placeholder='Rechercher un client...'
+						value={connect.searchTerm}
+						onChange={(e) => connect.setSearchTerm(e.target.value)}
+						className='pl-10 h-8 text-sm'
 					/>
 				</div>
-			)}
-		</div>
+			}
+		>
+			<div className='flex flex-col gap-6'>
+				{connect.isLoading ? (
+					<div className='flex items-center justify-center py-16'>
+						<div className='h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin' />
+					</div>
+				) : connect.hasNoCustomers ? (
+					<EmptyState
+						icon={Users}
+						title={
+							connect.searchTerm
+								? 'Aucun résultat'
+								: 'Aucun client pour le moment'
+						}
+						description={
+							connect.searchTerm
+								? `Aucun client ne correspond à "${connect.searchTerm}".`
+								: 'Commencez par ajouter votre premier client.'
+						}
+						fullPage
+					/>
+				) : (
+					<CustomerTable
+						data={connect.customers}
+						onEditCustomer={connect.handleEditCustomer}
+						page={connect.page}
+						totalPages={connect.totalPages}
+						totalItems={connect.totalItems}
+						perPage={connect.perPage}
+						onPageChange={connect.setPage}
+					/>
+				)}
+			</div>
+		</ConnectModuleShell>
 	)
 }

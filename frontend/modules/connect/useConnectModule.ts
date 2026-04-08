@@ -18,11 +18,6 @@ export function useConnectModule() {
 
 	const debouncedSearch = useDebounce(searchTerm, 400)
 
-	// ✅ LA CORRECTION : Dès que la recherche (debouncée) change, on force le retour à la page 1
-	// useEffect(() => {
-	// 	setPage(1)
-	// }, [debouncedSearch])
-
 	const {
 		data: customersData,
 		isLoading,
