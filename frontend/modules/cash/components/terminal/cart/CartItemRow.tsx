@@ -111,7 +111,7 @@ export function CartItemRow({
 						</span>
 					)}
 					{hasActiveLineDiscount && !hasPriceOverride && (
-						<span className='text-[10px] text-emerald-600 font-medium'>
+						<span className='text-sm text-emerald-600 font-bold block mt-0.5'>
 							{item.lineDiscountMode === 'percent'
 								? `-${item.lineDiscountValue}%`
 								: `-${(item.unitPrice - getEffectiveUnitTtc(item)).toFixed(2)}€`}
@@ -209,7 +209,11 @@ export function CartItemRow({
 								2,
 							)}
 							value={item.unitPriceRaw ?? ''}
-							onChange={(e) => onSetUnitPrice(item.id, e.target.value)}
+							onChange={(e) => {
+								// On supprime instantanément tout signe "-" de la saisie
+								const positiveValue = e.target.value.replace(/-/g, '')
+								onSetUnitPrice(item.id, positiveValue)
+							}}
 						/>
 						{hasPriceOverride && (
 							<Button
@@ -250,7 +254,11 @@ export function CartItemRow({
 							className='h-7 flex-1 text-xs'
 							placeholder={mode === 'unit' ? 'Prix TTC' : '%'}
 							value={value}
-							onChange={(e) => onSetLineDiscountValue(item.id, e.target.value)}
+							onChange={(e) => {
+								// On supprime instantanément tout signe "-" de la saisie de la remise
+								const positiveValue = e.target.value.replace(/-/g, '')
+								onSetLineDiscountValue(item.id, positiveValue)
+							}}
 						/>
 						<span className='text-xs text-muted-foreground tabular-nums whitespace-nowrap'>
 							→ {getEffectiveUnitTtc(item).toFixed(2)} €

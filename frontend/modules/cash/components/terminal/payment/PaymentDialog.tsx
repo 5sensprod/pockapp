@@ -174,7 +174,10 @@ export function PaymentDialog({
 
 	return (
 		<Dialog open={true} onOpenChange={onCancel}>
-			<DialogContent className='sm:max-w-lg'>
+			<DialogContent
+				className='sm:max-w-lg'
+				onOpenAutoFocus={(e) => e.preventDefault()}
+			>
 				<DialogHeader>
 					<DialogTitle>Paiement</DialogTitle>
 					<DialogDescription>
@@ -320,7 +323,6 @@ export function PaymentDialog({
 											onChange={(e) => setPendingAmount(e.target.value)}
 											className='text-lg h-12 text-right flex-1'
 											placeholder='Montant'
-											autoFocus
 											onKeyDown={(e) => {
 												if (e.key === 'Enter') {
 													e.preventDefault()

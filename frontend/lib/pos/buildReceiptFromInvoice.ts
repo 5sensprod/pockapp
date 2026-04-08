@@ -80,7 +80,11 @@ export function buildReceiptFromInvoice(
 				if (item.line_discount_mode === 'percent') {
 					effectiveUnitTtc =
 						baseUnitTtc * (1 - (item.line_discount_value ?? 0) / 100)
-					discountText = `-${item.line_discount_value}%`
+					// On arrondit à 2 décimales max pour éviter les -9.999999999999993%
+					const cleanPercent = Number.parseFloat(
+						Number(item.line_discount_value ?? 0).toFixed(2),
+					)
+					discountText = `-${cleanPercent}%`
 				} else {
 					// mode 'amount' : la valeur est la remise totale sur la ligne
 					const discountPerUnit =
@@ -114,7 +118,7 @@ export function buildReceiptFromInvoice(
 		invoice.cart_discount_mode === 'percent' &&
 		invoice.cart_discount_value &&
 		invoice.cart_discount_value > 0
-			? invoice.cart_discount_value
+			? Number.parseFloat(Number(invoice.cart_discount_value).toFixed(2))
 			: undefined
 
 	// ── Remises sur lignes (total) ─────────────────────────────────────────────

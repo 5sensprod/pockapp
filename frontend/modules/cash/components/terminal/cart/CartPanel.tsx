@@ -3,6 +3,7 @@
 // Desktop : card avec header actions icône+texte
 // Mobile  : version épurée (utilisé dans l'onglet Panier)
 
+import { EmptyState } from '@/components/module-ui/EmptyState' // ✅ Ajout de l'import
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -11,7 +12,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/components/ui/card'
-import { Clock, Trash2 } from 'lucide-react'
+import { Clock, ShoppingCart, Trash2 } from 'lucide-react' // ✅ Ajout de ShoppingCart
 import type { CartItem, LineDiscountMode, VatBreakdown } from '../types/cart'
 import type { PaymentMethod } from '../types/payment'
 import { CartItemRow } from './CartItemRow'
@@ -134,11 +135,19 @@ export function CartPanel({
 				</div>
 			</CardHeader>
 
-			<CardContent className='flex-1 overflow-auto px-4 py-2 text-sm'>
+			{/* ✅ Modification ici : ajout de flex-col si le panier est vide pour que l'EmptyState prenne toute la hauteur */}
+			<CardContent
+				className={`flex-1 overflow-auto px-4 py-2 text-sm ${
+					cart.length === 0 ? 'flex flex-col' : ''
+				}`}
+			>
 				{cart.length === 0 ? (
-					<div className='flex h-full items-center justify-center text-xs text-muted-foreground'>
-						Aucun article pour le moment.
-					</div>
+					<EmptyState
+						icon={ShoppingCart}
+						title='Panier vide'
+						description="Aucun article n'a été ajouté au ticket pour le moment."
+						fullPage
+					/>
 				) : (
 					cartItems
 				)}
