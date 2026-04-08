@@ -1,5 +1,5 @@
-// frontend/modules/connect/components/InvoiceCreatePage.tsx
-// ✅ VERSION CORRIGÉE - Support multi-taux TVA avec ventilation
+// frontend/modules/connect/components/QuoteEditPage.tsx
+// ✅ Synchronisé avec InvoiceEditPage : remises, ventilation TVA, design et UX
 // ✅ FIX: Les inputs décimaux acceptent maintenant le point ET la virgule
 //    Utilise des états "raw" (string) séparés pour l'affichage, comme CashTerminalPage
 
@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import type { ProductWithRefs } from '@/lib/apppos/apppos-transformers'
+
 import {
 	Select,
 	SelectContent,
@@ -33,15 +35,19 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
-import type { ProductsResponse } from '@/lib/pocketbase-types'
-import { useAllCustomers, useCreateCustomer } from '@/lib/queries/customers'
-import { useCreateInvoice } from '@/lib/queries/invoices'
-import type { InvoiceItem } from '@/lib/types/invoice.types'
-import { useNavigate } from '@tanstack/react-router'
+import type {
+	CustomersResponse,
+	ProductsResponse,
+} from '@/lib/pocketbase-types'
+import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
+import { useQuote, useUpdateQuote } from '@/lib/queries/quotes'
+import type { InvoiceItem, QuoteStatus } from '@/lib/types/invoice.types'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	ArrowLeft,
 	ChevronsUpDown,
 	FileText,
+	Loader2,
 	Minus,
 	Plus,
 	Search,
@@ -50,7 +56,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CustomerDialog } from './CustomerDialog'
+import { CustomerDialog } from '../../features/customers/CustomerDialog'
 
 // =====================
 // TYPES + HELPERS
@@ -59,7 +65,7 @@ import { CustomerDialog } from './CustomerDialog'
 type DiscountMode = 'percent' | 'amount'
 type DisplayMode = 'name' | 'designation' | 'sku'
 
-interface UiInvoiceItem extends InvoiceItem {
+interface UiQuoteItem extends InvoiceItem {
 	id: string
 	displayMode?: DisplayMode
 	designation?: string
@@ -70,6 +76,7 @@ interface UiInvoiceItem extends InvoiceItem {
 	// ✅ NOUVEAU: États "raw" pour l'affichage des inputs
 	unitPriceRaw?: string
 	lineDiscountRaw?: string
+	brandName?: string // 🆕
 }
 
 interface SelectedCustomer {
@@ -81,15 +88,8 @@ interface SelectedCustomer {
 	company?: string
 }
 
-// ✅ AJOUT: Type pour la ventilation TVA
-interface VatBreakdown {
-	rate: number
-	base_ht: number
-	vat: number
-	total_ttc: number
-}
-
-type InvoiceProduct = ProductsResponse
+type QuoteCustomer = CustomersResponse
+type QuoteProduct = ProductsResponse
 
 const clamp = (n: number, min: number, max: number) =>
 	Math.min(max, Math.max(min, n))
@@ -103,14 +103,14 @@ const parseDecimalInput = (value: string): number | null => {
 	return Number.isNaN(parsed) ? null : parsed
 }
 
-const getDisplayText = (it: UiInvoiceItem) => {
+const getDisplayText = (it: UiQuoteItem) => {
 	const mode = it.displayMode ?? 'name'
 	if (mode === 'designation') return it.designation || it.name
 	if (mode === 'sku') return it.sku || it.name
 	return it.name
 }
 
-const isDisplayModeAvailable = (it: UiInvoiceItem, mode: DisplayMode) => {
+const isDisplayModeAvailable = (it: UiQuoteItem, mode: DisplayMode) => {
 	switch (mode) {
 		case 'name':
 			return true
@@ -123,9 +123,9 @@ const isDisplayModeAvailable = (it: UiInvoiceItem, mode: DisplayMode) => {
 	}
 }
 
-const computeLineTotals = (it: UiInvoiceItem) => {
+const computeLineTotals = (it: UiQuoteItem) => {
 	const qty = Math.max(0, it.quantity)
-	const rate = Number(it.tva_rate ?? 20)
+	const rate = it.tva_rate ?? 20
 	const coef = 1 + rate / 100
 
 	const baseTtc = round2(it.unit_price_ttc * qty)
@@ -150,9 +150,8 @@ const computeLineTotals = (it: UiInvoiceItem) => {
 	}
 }
 
-// ✅ Fonction helper pour appliquer la remise globale au prorata
 const applyCartDiscountProRata = (
-	lines: UiInvoiceItem[],
+	lines: UiQuoteItem[],
 	cartDiscountTtc: number,
 ) => {
 	const totalTtc = lines.reduce((s, it) => round2(s + it.total_ttc), 0)
@@ -180,20 +179,52 @@ const applyCartDiscountProRata = (
 	})
 }
 
-export function InvoiceCreatePage() {
+interface VatBreakdown {
+	rate: number
+	base_ht: number
+	vat: number
+	total_ttc: number
+}
+
+const computeVatBreakdownFromItems = (lines: InvoiceItem[]): VatBreakdown[] => {
+	const map = new Map<number, VatBreakdown>()
+	for (const it of lines ?? []) {
+		const rate = (it as any).tva_rate ?? 0
+		const ht = Number((it as any).total_ht ?? 0)
+		const ttc = Number((it as any).total_ttc ?? 0)
+		const vat = ttc - ht
+
+		let entry = map.get(rate)
+		if (!entry) {
+			entry = { rate, base_ht: 0, vat: 0, total_ttc: 0 }
+			map.set(rate, entry)
+		}
+		entry.base_ht = round2(entry.base_ht + ht)
+		entry.vat = round2(entry.vat + vat)
+		entry.total_ttc = round2(entry.total_ttc + ttc)
+	}
+	return Array.from(map.values()).sort((a, b) => a.rate - b.rate)
+}
+
+export function QuoteEditPage() {
 	const navigate = useNavigate()
+	const { quoteId } = useParams({ from: '/connect/quotes/$quoteId/edit' })
 	const { activeCompanyId } = useActiveCompany()
 
-	// States de base
-	const [invoiceDate, setInvoiceDate] = useState(
-		new Date().toISOString().split('T')[0],
-	)
-	const [dueDate, setDueDate] = useState('')
+	const { data: quote, isLoading: isLoadingQuote } = useQuote(quoteId)
+	const updateQuote = useUpdateQuote()
+	const createCustomer = useCreateCustomer()
+
+	// Base states
+	const [quoteNumber, setQuoteNumber] = useState('')
+	const [quoteDate, setQuoteDate] = useState('')
+	const [validUntil, setValidUntil] = useState('')
 	const [selectedCustomer, setSelectedCustomer] =
 		useState<SelectedCustomer | null>(null)
-	const [items, setItems] = useState<UiInvoiceItem[]>([])
+	const [items, setItems] = useState<UiQuoteItem[]>([])
 	const [notes, setNotes] = useState('')
-	const [currency] = useState('EUR')
+	// const [currency] = useState('EUR')
+	const [isInitialized, setIsInitialized] = useState(false)
 
 	// ✅ États Promos avec valeur raw séparée (comme CashTerminalPage)
 	const [cartDiscountMode, setCartDiscountMode] =
@@ -201,7 +232,7 @@ export function InvoiceCreatePage() {
 	const [cartDiscountValue, setCartDiscountValue] = useState<number>(0)
 	const [cartDiscountRaw, setCartDiscountRaw] = useState<string>('')
 
-	// UI States
+	// UI states
 	const [customerPickerOpen, setCustomerPickerOpen] = useState(false)
 	const [customerSearch, setCustomerSearch] = useState('')
 	const [productPickerOpen, setProductPickerOpen] = useState(false)
@@ -210,30 +241,27 @@ export function InvoiceCreatePage() {
 	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
 
 	// Queries
-	// ❌ Supprime cette ligne - plus utilisée
-	// const { data: customersData } = useCustomers({
-	//     companyId: activeCompanyId ?? undefined,
-	// })
-
+	const { data: customersData } = useCustomers({
+		companyId: activeCompanyId ?? undefined,
+	})
 	const { data: productsData } = useAppPosProducts({
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
 	})
-	const createInvoice = useCreateInvoice()
-	const createCustomer = useCreateCustomer()
 
-	// ✅ Remplace l'ancien
-	const { data: customers = [] } = useAllCustomers(activeCompanyId ?? undefined)
-	const products = (productsData?.items ?? []) as InvoiceProduct[]
+	const customers = (customersData?.items ?? []) as QuoteCustomer[]
+	const products = (productsData?.items ?? []) as QuoteProduct[]
 
-	const filteredCustomers = customers.filter((c) => {
+	const filteredCustomers = useMemo(() => {
 		const term = customerSearch.toLowerCase()
-		return (
-			c.name.toLowerCase().includes(term) ||
-			(c.email ?? '').toLowerCase().includes(term) ||
-			(c.phone ?? '').includes(customerSearch)
-		)
-	})
+		return customers.filter((c) => {
+			return (
+				c.name.toLowerCase().includes(term) ||
+				(c.email ?? '').toLowerCase().includes(term) ||
+				(c.phone ?? '').includes(customerSearch)
+			)
+		})
+	}, [customers, customerSearch])
 
 	useEffect(() => {
 		const connect = async () => {
@@ -253,6 +281,77 @@ export function InvoiceCreatePage() {
 		void connect()
 	}, [isAppPosConnected])
 
+	useEffect(() => {
+		if (!quote || isInitialized) return
+
+		setQuoteNumber(quote.number)
+		setQuoteDate(quote.date?.split('T')[0] || '')
+		setValidUntil(quote.valid_until?.split('T')[0] || '')
+		setNotes(quote.notes || '')
+
+		if (quote.expand?.customer) {
+			const c = quote.expand.customer
+			setSelectedCustomer({
+				id: c.id,
+				name: c.name,
+				email: c.email,
+				phone: c.phone,
+				address: c.address,
+				company: c.company,
+			})
+		}
+
+		if (quote.items && Array.isArray(quote.items)) {
+			const uiItems: UiQuoteItem[] = quote.items.map((it, index) => {
+				const qty = Math.max(0, it.quantity ?? 0)
+				const tvaRate = it.tva_rate ?? 20
+				const coef = 1 + tvaRate / 100
+
+				const inferredUnitTtc =
+					qty > 0
+						? round2((it.total_ttc ?? 0) / qty)
+						: round2((it.unit_price_ht ?? 0) * coef)
+
+				// ✅ RESTAURER les remises ligne depuis le backend
+				const lineDiscountMode = (it as any).line_discount_mode || 'percent'
+				const lineDiscountValue = (it as any).line_discount_value || 0
+				const lineDiscountRaw =
+					lineDiscountValue > 0 ? lineDiscountValue.toString() : ''
+
+				const draft: UiQuoteItem = {
+					...it,
+					id: `existing-${index}-${Date.now()}-${Math.random()
+						.toString(16)
+						.slice(2)}`,
+					displayMode: 'name',
+					designation: it.name,
+					sku: '',
+					brandName: (it as any).brand_name ?? undefined, // 🆕 restaurer depuis le backend
+					unit_price_ttc: inferredUnitTtc,
+					unitPriceRaw: inferredUnitTtc.toString(),
+					lineDiscountMode,
+					lineDiscountValue,
+					lineDiscountRaw,
+					unit_price_ht: it.unit_price_ht ?? 0,
+					total_ht: it.total_ht ?? 0,
+					total_ttc: it.total_ttc ?? 0,
+				}
+				return { ...draft, ...computeLineTotals(draft) }
+			})
+			setItems(uiItems)
+		}
+
+		// ✅ RESTAURER les remises panier depuis le backend
+		const savedCartDiscountMode = (quote as any).cart_discount_mode || 'percent'
+		const savedCartDiscountValue = (quote as any).cart_discount_value || 0
+		setCartDiscountMode(savedCartDiscountMode)
+		setCartDiscountValue(savedCartDiscountValue)
+		setCartDiscountRaw(
+			savedCartDiscountValue > 0 ? savedCartDiscountValue.toString() : '',
+		)
+		setIsInitialized(true)
+	}, [quote, isInitialized])
+
 	// =====================
 	// ACTIONS PRODUITS
 	// =====================
@@ -263,9 +362,13 @@ export function InvoiceCreatePage() {
 		)
 	}
 
-	const addProduct = (product: InvoiceProduct) => {
+	const addProduct = (product: QuoteProduct) => {
+		console.log('product complet:', JSON.stringify(product, null, 2))
 		const tvaRate = product.tva_rate ?? 20
 		const coef = 1 + tvaRate / 100
+		const p = product as unknown as ProductWithRefs
+
+		console.log('brandName:', p.expand?.brand?.name) // doit afficher "MAGRABO"
 
 		let unitTtc = 0
 		if (typeof product.price_ttc === 'number') unitTtc = product.price_ttc
@@ -275,12 +378,13 @@ export function InvoiceCreatePage() {
 		unitTtc = round2(unitTtc)
 		const id = `item-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
-		const draft: UiInvoiceItem = {
+		const draft: UiQuoteItem = {
 			id,
 			product_id: product.id,
 			name: product.name,
 			designation: (product as any).designation ?? product.name,
 			sku: (product as any).sku ?? '',
+			brandName: p.expand?.brand?.name ?? undefined,
 			displayMode: 'name',
 			quantity: 1,
 			tva_rate: tvaRate,
@@ -311,7 +415,7 @@ export function InvoiceCreatePage() {
 						const next = { ...it, quantity: q }
 						return { ...next, ...computeLineTotals(next) }
 					})
-					.filter(Boolean) as UiInvoiceItem[],
+					.filter(Boolean) as UiQuoteItem[],
 		)
 	}
 
@@ -351,7 +455,7 @@ export function InvoiceCreatePage() {
 						newValue = 0
 					}
 
-					const next: UiInvoiceItem = {
+					const next: UiQuoteItem = {
 						...it,
 						lineDiscountMode: mode,
 						lineDiscountValue: newValue,
@@ -370,7 +474,7 @@ export function InvoiceCreatePage() {
 			setItems((prev) =>
 				prev.map((it) => {
 					if (it.id !== itemId) return it
-					const next: UiInvoiceItem = {
+					const next: UiQuoteItem = {
 						...it,
 						lineDiscountMode: mode,
 					}
@@ -430,22 +534,47 @@ export function InvoiceCreatePage() {
 			? round2(subTotals.ttc * (clamp(cartDiscountValue, 0, 100) / 100))
 			: round2(clamp(cartDiscountValue, 0, subTotals.ttc))
 
-	// ✅ CORRECTION: Calculer les totaux multi-taux avec ventilation TVA
-	const totals = useMemo(() => {
-		// Normaliser les lignes avec remises par ligne appliquées
-		const normalized: UiInvoiceItem[] = items.map((it) => ({
+	const vatContext = useMemo(() => {
+		const normalized: UiQuoteItem[] = items.map((it) => ({
 			...it,
 			...computeLineTotals(it),
 		}))
-
-		// Appliquer la remise globale au prorata
 		const withCartDiscount = applyCartDiscountProRata(
 			normalized,
 			cartDiscountTtc,
 		)
+		const invoiceItems: InvoiceItem[] = withCartDiscount.map(
+			({
+				id,
+				displayMode,
+				designation,
+				sku,
+				unit_price_ttc,
+				unitPriceRaw,
+				lineDiscountMode,
+				lineDiscountValue,
+				lineDiscountRaw,
+				brandName,
+				...rest
+			}) => ({
+				...rest,
+				name: getDisplayText({
+					id,
+					displayMode,
+					designation,
+					sku,
+					unit_price_ttc,
 
-		// Calculer les totaux finaux à partir des lignes normalisées
-		const finalTotals = withCartDiscount.reduce(
+					brandName,
+					...rest,
+				} as UiQuoteItem),
+				// ✅ SAUVEGARDER les remises ligne
+				line_discount_mode: lineDiscountMode,
+				line_discount_value: lineDiscountValue,
+			}),
+		)
+		const breakdown = computeVatBreakdownFromItems(invoiceItems)
+		const finalTotals = invoiceItems.reduce(
 			(acc, it) => ({
 				ht: round2(acc.ht + it.total_ht),
 				tva: round2(acc.tva + (it.total_ttc - it.total_ht)),
@@ -453,142 +582,12 @@ export function InvoiceCreatePage() {
 			}),
 			{ ht: 0, tva: 0, ttc: 0 },
 		)
-
-		// ✅ Créer la ventilation TVA par taux
-		const breakdownMap = new Map<number, VatBreakdown>()
-
-		for (const it of withCartDiscount) {
-			const rate = Number(it.tva_rate ?? 20)
-			const ht = it.total_ht
-			const vat = it.total_ttc - it.total_ht
-			const ttc = it.total_ttc
-
-			let entry = breakdownMap.get(rate)
-
-			if (!entry) {
-				entry = {
-					rate,
-					base_ht: 0,
-					vat: 0,
-					total_ttc: 0,
-				}
-				breakdownMap.set(rate, entry)
-			}
-
-			entry.base_ht = round2(entry.base_ht + ht)
-			entry.vat = round2(entry.vat + vat)
-			entry.total_ttc = round2(entry.total_ttc + ttc)
-		}
-
-		// Convertir en tableau et trier par taux
-		const vatBreakdown = Array.from(breakdownMap.values()).sort(
-			(a, b) => a.rate - b.rate,
-		)
-
-		return {
-			ht: finalTotals.ht,
-			tva: finalTotals.tva,
-			ttc: finalTotals.ttc,
-			subTtc: subTotals.ttc,
-			lineDiscountTtc: subTotals.lineDiscountTtc,
-			cartDiscountTtc,
-			vatBreakdown,
-		}
-	}, [items, cartDiscountTtc, subTotals.ttc, subTotals.lineDiscountTtc])
+		return { invoiceItems, breakdown, finalTotals }
+	}, [items, cartDiscountTtc])
 
 	// =====================
 	// SUBMIT
 	// =====================
-
-	const handleSubmit = async (status: 'draft' | 'validated') => {
-		if (!activeCompanyId) {
-			toast.error('Aucune entreprise sélectionnée')
-			return
-		}
-		if (!selectedCustomer) {
-			toast.error('Veuillez sélectionner un client')
-			return
-		}
-		if (items.length === 0) {
-			toast.error('Veuillez ajouter au moins un produit')
-			return
-		}
-
-		try {
-			const normalized: UiInvoiceItem[] = items.map((it) => ({
-				...it,
-				...computeLineTotals(it),
-			}))
-			const withCartDiscount = applyCartDiscountProRata(
-				normalized,
-				cartDiscountTtc,
-			)
-
-			const invoiceItems: InvoiceItem[] = withCartDiscount.map(
-				({
-					id,
-					displayMode,
-					designation,
-					sku,
-					unit_price_ttc,
-					unitPriceRaw,
-					lineDiscountMode,
-					lineDiscountValue,
-					lineDiscountRaw,
-					...rest
-				}) => ({
-					...rest,
-					tva_rate: Number(rest.tva_rate ?? 20),
-					name: getDisplayText({
-						id,
-						displayMode,
-						designation,
-						sku,
-						unit_price_ttc,
-						...rest,
-					} as UiInvoiceItem),
-					line_discount_mode: lineDiscountMode,
-					line_discount_value: lineDiscountValue,
-					unit_price_ttc_before_discount: unit_price_ttc,
-				}),
-			)
-
-			const finalTotals = invoiceItems.reduce(
-				(acc, it) => ({
-					ht: round2(acc.ht + it.total_ht),
-					tva: round2(acc.tva + (it.total_ttc - it.total_ht)),
-					ttc: round2(acc.ttc + it.total_ttc),
-				}),
-				{ ht: 0, tva: 0, ttc: 0 },
-			)
-
-			const result = await createInvoice.mutateAsync({
-				invoice_type: 'invoice',
-				date: invoiceDate,
-				due_date: dueDate || undefined,
-				customer: selectedCustomer.id,
-				owner_company: activeCompanyId,
-				status,
-				items: invoiceItems,
-				total_ht: finalTotals.ht,
-				total_tva: finalTotals.tva,
-				total_ttc: finalTotals.ttc,
-				currency,
-				notes: notes || undefined,
-				cart_discount_mode: cartDiscountMode,
-				cart_discount_value: cartDiscountValue,
-				cart_discount_ttc: cartDiscountTtc,
-				line_discounts_total_ttc: subTotals.lineDiscountTtc,
-				// ✅ AJOUT: Ventilation TVA stockée en base
-				vat_breakdown: totals.vatBreakdown,
-			})
-			toast.success(`Facture ${result.number} créée avec succès`)
-			navigate({ to: '/connect/invoices' })
-		} catch (error) {
-			console.error('Erreur lors de la création de la facture', error)
-			toast.error('Erreur lors de la création de la facture')
-		}
-	}
 
 	const handleQuickCreateCustomer = async () => {
 		if (!customerSearch.trim() || !activeCompanyId) return
@@ -607,23 +606,83 @@ export function InvoiceCreatePage() {
 		}
 	}
 
+	const handleSubmit = async (status: QuoteStatus = 'draft') => {
+		if (!activeCompanyId) {
+			toast.error('Aucune entreprise sélectionnée')
+			return
+		}
+		if (!selectedCustomer) {
+			toast.error('Veuillez sélectionner un client')
+			return
+		}
+		if (items.length === 0) {
+			toast.error('Veuillez ajouter au moins un produit')
+			return
+		}
+
+		try {
+			await updateQuote.mutateAsync({
+				id: quoteId,
+				data: {
+					date: quoteDate,
+					valid_until: validUntil || undefined,
+					customer: selectedCustomer.id,
+					status,
+					items: vatContext.invoiceItems,
+					total_ht: vatContext.finalTotals.ht,
+					total_tva: vatContext.finalTotals.tva,
+					total_ttc: vatContext.finalTotals.ttc,
+					notes: notes || undefined,
+					cart_discount_mode: cartDiscountMode,
+					cart_discount_value: cartDiscountValue,
+					cart_discount_ttc: cartDiscountTtc,
+					line_discounts_total_ttc: subTotals.lineDiscountTtc,
+					vat_breakdown: vatContext.breakdown,
+				},
+			})
+			toast.success(`Devis ${quoteNumber} mis à jour`)
+			navigate({ to: '/connect/quotes/$quoteId', params: { quoteId } })
+		} catch (error) {
+			console.error('Erreur lors de la mise à jour du devis', error)
+			toast.error('Erreur lors de la mise à jour du devis')
+		}
+	}
+
+	if (isLoadingQuote) {
+		return (
+			<div className='flex h-96 items-center justify-center'>
+				<Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+			</div>
+		)
+	}
+
+	if (!quote) {
+		return (
+			<div className='container mx-auto px-6 py-8 max-w-6xl'>
+				<p className='text-muted-foreground'>Devis introuvable.</p>
+			</div>
+		)
+	}
+
 	return (
 		<div className='container mx-auto px-6 py-8 max-w-6xl'>
 			<div className='flex items-center gap-4 mb-6'>
 				<Button
 					variant='ghost'
 					size='icon'
-					onClick={() => navigate({ to: '/connect/invoices' })}
+					onClick={() =>
+						navigate({ to: '/connect/quotes/$quoteId', params: { quoteId } })
+					}
 				>
 					<ArrowLeft className='h-5 w-5' />
 				</Button>
 				<div className='flex-1'>
 					<h1 className='text-2xl font-bold flex items-center gap-2'>
 						<FileText className='h-6 w-6' />
-						Nouvelle facture
+						Modifier le devis {quoteNumber}
 					</h1>
 					<p className='text-muted-foreground'>
-						Le numéro sera attribué automatiquement
+						Modifiez les informations du devis
 					</p>
 				</div>
 			</div>
@@ -638,7 +697,7 @@ export function InvoiceCreatePage() {
 							<div>
 								<Label>Numéro</Label>
 								<Input
-									value='Auto-généré'
+									value={quoteNumber}
 									disabled
 									className='bg-muted text-muted-foreground'
 								/>
@@ -647,16 +706,16 @@ export function InvoiceCreatePage() {
 								<Label>Date</Label>
 								<Input
 									type='date'
-									value={invoiceDate}
-									onChange={(e) => setInvoiceDate(e.target.value)}
+									value={quoteDate}
+									onChange={(e) => setQuoteDate(e.target.value)}
 								/>
 							</div>
 							<div>
-								<Label>Échéance</Label>
+								<Label>Valide jusqu&apos;au</Label>
 								<Input
 									type='date'
-									value={dueDate}
-									onChange={(e) => setDueDate(e.target.value)}
+									value={validUntil}
+									onChange={(e) => setValidUntil(e.target.value)}
 								/>
 							</div>
 						</CardContent>
@@ -810,7 +869,6 @@ export function InvoiceCreatePage() {
 							</div>
 						</div>
 
-						{/* Promotion globale */}
 						<div className='space-y-2 pt-2 border-t'>
 							<div className='text-sm font-medium'>Promotion globale</div>
 							<div className='flex items-center gap-2'>
@@ -839,38 +897,30 @@ export function InvoiceCreatePage() {
 						<div className='border-t pt-3 space-y-2 text-sm'>
 							<div className='flex justify-between'>
 								<span className='text-muted-foreground'>Sous-total TTC</span>
-								<span>{totals.subTtc.toFixed(2)} €</span>
+								<span>{subTotals.ttc.toFixed(2)} €</span>
 							</div>
 							<div className='flex justify-between'>
 								<span className='text-muted-foreground'>Remises lignes</span>
-								<span>-{totals.lineDiscountTtc.toFixed(2)} €</span>
+								<span>-{subTotals.lineDiscountTtc.toFixed(2)} €</span>
 							</div>
 							<div className='flex justify-between'>
 								<span className='text-muted-foreground'>Remise globale</span>
-								<span>-{totals.cartDiscountTtc.toFixed(2)} €</span>
-							</div>
-							<div className='border-t pt-2 flex justify-between font-bold'>
-								<span>Total TTC</span>
-								<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
+								<span>-{cartDiscountTtc.toFixed(2)} €</span>
 							</div>
 
-							{/* ✅ VENTILATION TVA PAR TAUX */}
-							{totals.vatBreakdown.length > 0 && (
-								<div className='border-t pt-2 space-y-1'>
-									<div className='flex justify-between font-medium text-muted-foreground'>
-										<span>Total HT</span>
-										<span>{totals.ht.toFixed(2)} €</span>
-									</div>
-									<div className='flex justify-between font-medium text-muted-foreground'>
-										<span>Total TVA</span>
-										<span>{totals.tva.toFixed(2)} €</span>
-									</div>
-									<div className='pl-3 space-y-1 text-xs'>
-										{totals.vatBreakdown.map((vb) => (
-											<div
-												key={vb.rate}
-												className='flex justify-between text-muted-foreground'
-											>
+							<div className='pt-2 border-t space-y-1'>
+								<div className='flex justify-between'>
+									<span className='text-muted-foreground'>Total HT</span>
+									<span>{vatContext.finalTotals.ht.toFixed(2)} €</span>
+								</div>
+								<div className='flex justify-between'>
+									<span className='text-muted-foreground'>Total TVA</span>
+									<span>{vatContext.finalTotals.tva.toFixed(2)} €</span>
+								</div>
+								{vatContext.breakdown.length > 0 && (
+									<div className='pl-3 space-y-1 text-xs text-muted-foreground'>
+										{vatContext.breakdown.map((vb) => (
+											<div key={vb.rate} className='flex justify-between'>
 												<span>
 													TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
 												</span>
@@ -878,25 +928,49 @@ export function InvoiceCreatePage() {
 											</div>
 										))}
 									</div>
-								</div>
-							)}
+								)}
+							</div>
+
+							<div className='border-t pt-2 flex justify-between font-bold'>
+								<span>Total TTC</span>
+								<span className='text-lg'>
+									{vatContext.finalTotals.ttc.toFixed(2)} €
+								</span>
+							</div>
 						</div>
 
 						<div className='space-y-2 pt-2'>
 							<Button
 								className='w-full'
-								onClick={() => handleSubmit('validated')}
-								disabled={createInvoice.isPending}
+								onClick={() => handleSubmit(quote?.status)}
+								disabled={updateQuote.isPending}
 							>
-								Créer la facture
+								{updateQuote.isPending && (
+									<Loader2 className='h-4 w-4 animate-spin mr-2' />
+								)}
+								Enregistrer
 							</Button>
+							{quote?.status === 'draft' && (
+								<Button
+									variant='outline'
+									className='w-full'
+									onClick={() => handleSubmit('sent')}
+									disabled={updateQuote.isPending}
+								>
+									Enregistrer et envoyer
+								</Button>
+							)}
 							<Button
-								variant='outline'
+								variant='ghost'
 								className='w-full'
-								onClick={() => handleSubmit('draft')}
-								disabled={createInvoice.isPending}
+								onClick={() =>
+									navigate({
+										to: '/connect/quotes/$quoteId',
+										params: { quoteId },
+									})
+								}
 							>
-								Enregistrer en brouillon
+								Annuler
 							</Button>
 						</div>
 					</CardContent>
@@ -945,8 +1019,13 @@ export function InvoiceCreatePage() {
 											<TableRow key={item.id}>
 												<TableCell className='font-medium'>
 													<div className='flex items-center gap-2'>
-														<div className='min-w-0 flex-1 truncate'>
+														<div className='min-w-0 flex-1 break-words overflow-hidden'>
 															{getDisplayText(item)}
+															{item.brandName && (
+																<span className='text-muted-foreground text-xs ml-1'>
+																	{item.brandName}
+																</span>
+															)}
 														</div>
 														{showSelector && (
 															<Select
@@ -976,6 +1055,7 @@ export function InvoiceCreatePage() {
 														)}
 													</div>
 												</TableCell>
+
 												<TableCell>
 													<div className='flex items-center justify-center gap-1'>
 														<Button
@@ -999,6 +1079,7 @@ export function InvoiceCreatePage() {
 														</Button>
 													</div>
 												</TableCell>
+
 												<TableCell className='text-right'>
 													{/* ✅ FIX: Utilise unitPriceRaw au lieu de unit_price_ttc */}
 													<Input
@@ -1014,6 +1095,7 @@ export function InvoiceCreatePage() {
 														}
 													/>
 												</TableCell>
+
 												<TableCell>
 													<div className='flex items-center gap-2'>
 														<select
@@ -1046,12 +1128,15 @@ export function InvoiceCreatePage() {
 														/>
 													</div>
 												</TableCell>
+
 												<TableCell className='text-right'>
 													{item.tva_rate}%
 												</TableCell>
+
 												<TableCell className='text-right font-medium'>
 													{item.total_ttc.toFixed(2)} €
 												</TableCell>
+
 												<TableCell>
 													<Button
 														variant='ghost'
@@ -1067,44 +1152,103 @@ export function InvoiceCreatePage() {
 									})}
 								</TableBody>
 								<TableFooter>
-									{/* ✅ VENTILATION TVA DANS LE FOOTER DU TABLEAU */}
-									{totals.vatBreakdown.map((vb) => (
-										<TableRow key={vb.rate}>
-											<TableCell colSpan={5} className='text-right text-xs'>
-												Base HT TVA {vb.rate}%
+									{/* Sous-total avant remises (si des remises existent) */}
+									{(subTotals.lineDiscountTtc > 0 || cartDiscountTtc > 0) && (
+										<TableRow>
+											<TableCell
+												colSpan={5}
+												className='text-right text-muted-foreground'
+											>
+												Sous-total TTC
 											</TableCell>
-											<TableCell className='text-right text-xs'>
-												{vb.base_ht.toFixed(2)} €
+											<TableCell className='text-right'>
+												{subTotals.ttc.toFixed(2)} €
 											</TableCell>
 											<TableCell />
 										</TableRow>
-									))}
+									)}
+
+									{/* Remises lignes */}
+									{subTotals.lineDiscountTtc > 0 && (
+										<TableRow>
+											<TableCell
+												colSpan={5}
+												className='text-right text-green-600 italic'
+											>
+												Remises lignes
+											</TableCell>
+											<TableCell className='text-right text-green-600 italic'>
+												-{subTotals.lineDiscountTtc.toFixed(2)} €
+											</TableCell>
+											<TableCell />
+										</TableRow>
+									)}
+
+									{/* Remise globale */}
+									{cartDiscountTtc > 0 && (
+										<TableRow>
+											<TableCell
+												colSpan={5}
+												className='text-right text-green-600 italic'
+											>
+												Remise globale
+												{cartDiscountMode === 'percent' &&
+													cartDiscountValue > 0 &&
+													` (${cartDiscountValue}%)`}
+											</TableCell>
+											<TableCell className='text-right text-green-600 italic'>
+												-{cartDiscountTtc.toFixed(2)} €
+											</TableCell>
+											<TableCell />
+										</TableRow>
+									)}
+
+									{/* Total HT */}
 									<TableRow>
 										<TableCell colSpan={5} className='text-right'>
 											Total HT
 										</TableCell>
 										<TableCell className='text-right'>
-											{totals.ht.toFixed(2)} €
+											{vatContext.finalTotals.ht.toFixed(2)} €
 										</TableCell>
 										<TableCell />
 									</TableRow>
-									{totals.vatBreakdown.map((vb) => (
-										<TableRow key={`vat-${vb.rate}`}>
-											<TableCell colSpan={5} className='text-right text-xs'>
-												TVA {vb.rate}%
-											</TableCell>
-											<TableCell className='text-right text-xs'>
-												{vb.vat.toFixed(2)} €
-											</TableCell>
-											<TableCell />
-										</TableRow>
-									))}
-									<TableRow className='font-bold'>
+
+									{/* Total TVA avec ventilation */}
+									<TableRow>
+										<TableCell colSpan={5} className='text-right'>
+											Total TVA
+										</TableCell>
+										<TableCell className='text-right'>
+											{vatContext.finalTotals.tva.toFixed(2)} €
+										</TableCell>
+										<TableCell />
+									</TableRow>
+
+									{/* Ventilation TVA détaillée (si multi-taux) */}
+									{vatContext.breakdown.length > 1 &&
+										vatContext.breakdown.map((vb) => (
+											<TableRow key={vb.rate}>
+												<TableCell
+													colSpan={5}
+													className='text-right text-xs text-muted-foreground italic pl-8'
+												>
+													dont TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+												</TableCell>
+												<TableCell className='text-right text-xs text-muted-foreground italic'>
+													{vb.vat.toFixed(2)} €
+												</TableCell>
+												<TableCell />
+											</TableRow>
+										))}
+
+									{/* Total TTC Final */}
+									<TableRow className='font-bold border-t-2'>
 										<TableCell colSpan={5} className='text-right'>
 											Total TTC Final
 										</TableCell>
 										<TableCell className='text-right text-lg'>
-											{totals.ttc.toFixed(2)} €
+											{vatContext.finalTotals.ttc.toFixed(2)} €
 										</TableCell>
 										<TableCell />
 									</TableRow>
@@ -1133,6 +1277,7 @@ export function InvoiceCreatePage() {
 				open={newCustomerDialogOpen}
 				onOpenChange={setNewCustomerDialogOpen}
 			/>
+
 			<Dialog open={productPickerOpen} onOpenChange={setProductPickerOpen}>
 				<DialogContent className='max-w-lg'>
 					<DialogHeader>
@@ -1165,9 +1310,10 @@ export function InvoiceCreatePage() {
 											>
 												<div>
 													<p className='font-medium'>{product.name}</p>
-													{product.price_ttc != null && (
+													{(product as any).price_ttc != null && (
 														<p className='text-xs text-muted-foreground'>
-															{product.price_ttc.toFixed(2)} € TTC
+															{Number((product as any).price_ttc).toFixed(2)} €
+															TTC
 														</p>
 													)}
 												</div>

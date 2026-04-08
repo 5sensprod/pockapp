@@ -76,11 +76,11 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { formatCurrency, formatDate } from '../utils/formatters'
-import { toPngDataUrl } from '../utils/images' // Uniquement dans InvoicesPage (et QuotesPage si besoin)
-import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
-import { InvoicesTable } from './InvoicesTable'
-import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
+import { SendInvoiceEmailDialog } from '../../dialogs/SendInvoiceEmailDialog'
+import { InvoicesTable } from '../../features/invoices/InvoicesTable'
+import { type DepositPdfData, InvoicePdfDocument } from '../../pdf/InvoicePdf'
+import { formatCurrency, formatDate } from '../../utils/formatters'
+import { toPngDataUrl } from '../../utils/images' // Uniquement dans InvoicesPage (et QuotesPage si besoin)
 
 // ============================================================================
 // TYPES

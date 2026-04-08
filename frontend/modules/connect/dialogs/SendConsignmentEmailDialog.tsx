@@ -26,7 +26,7 @@ import { pdf } from '@react-pdf/renderer'
 import { AlertCircle, Loader2, Mail, Paperclip } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { ConsignmentPdfDocument } from './ConsignmentPdf'
+import { ConsignmentPdfDocument } from '../pdf/ConsignmentPdf'
 
 interface SendConsignmentEmailDialogProps {
 	open: boolean

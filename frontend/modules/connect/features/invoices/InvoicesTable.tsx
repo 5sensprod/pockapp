@@ -46,8 +46,8 @@ import {
 	XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatCurrency, formatDate } from '../utils/formatters'
-import { getPaginationRange } from '../utils/pagination'
+import { formatCurrency, formatDate } from '../../utils/formatters'
+import { getPaginationRange } from '../../utils/pagination'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

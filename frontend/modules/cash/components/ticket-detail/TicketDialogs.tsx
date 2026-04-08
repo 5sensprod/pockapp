@@ -7,7 +7,7 @@
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
 import { StockReclassificationDialog } from '@/modules/common/StockReclassificationDialog'
-import { SendInvoiceEmailDialog } from '@/modules/connect/components/SendInvoiceEmailDialog'
+import { SendInvoiceEmailDialog } from '@/modules/connect/dialogs/SendInvoiceEmailDialog'
 import type { TicketActionsState } from './useTicketActions'
 
 interface TicketDialogsProps {

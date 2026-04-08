@@ -19,7 +19,7 @@ import { usePocketBase } from '@/lib/use-pocketbase'
 import {
 	type DepositPdfData,
 	InvoicePdfDocument,
-} from '@/modules/connect/components/InvoicePdf'
+} from '@/modules/connect/pdf/InvoicePdf'
 import { toPngDataUrl } from '@/modules/connect/utils/images'
 import { pdf } from '@react-pdf/renderer'
 import { useMemo, useState } from 'react'

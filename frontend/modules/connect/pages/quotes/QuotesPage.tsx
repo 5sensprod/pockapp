@@ -43,10 +43,10 @@ import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { formatCurrency } from '../utils/formatters'
-import { QuotePdfDocument } from './QuotePdf'
-import { QuotesTable } from './QuotesTable'
-import { SendQuoteEmailDialog } from './SendQuoteEmailDialog'
+import { SendQuoteEmailDialog } from '../../dialogs/SendQuoteEmailDialog'
+import { QuotesTable } from '../../features/quotes/QuotesTable'
+import { QuotePdfDocument } from '../../pdf/QuotePdf'
+import { formatCurrency } from '../../utils/formatters'
 
 const PER_PAGE = 20
 

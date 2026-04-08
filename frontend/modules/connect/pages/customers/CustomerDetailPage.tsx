@@ -92,12 +92,14 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import * as z from 'zod'
-import { ConnectModuleShell } from '../ConnectModuleShell'
+import { ConnectModuleShell } from '../../ConnectModuleShell'
+import { SendConsignmentEmailDialog } from '../../dialogs/SendConsignmentEmailDialog'
+import { ConsignmentPdfDocument } from '../../pdf/ConsignmentPdf'
 import {
 	formatCurrency,
 	formatDate,
 	formatPaymentTerms,
-} from '../utils/formatters'
+} from '../../utils/formatters'
 import {
 	getConsignmentStatus,
 	getCustomerTypeDisplay,
@@ -105,9 +107,7 @@ import {
 	getQuoteStatus,
 	getTagClassName,
 	normalizeTags,
-} from '../utils/statusConfig'
-import { ConsignmentPdfDocument } from './ConsignmentPdf'
-import { SendConsignmentEmailDialog } from './SendConsignmentEmailDialog'
+} from '../../utils/statusConfig'
 
 // ============================================================================
 // SCHEMA — formulaire dépôt-vente (inchangé)

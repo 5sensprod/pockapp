@@ -8,9 +8,9 @@ import { EmptyState } from '@/components/module-ui'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
 import { Users } from 'lucide-react'
-import { ConnectModuleShell } from '../ConnectModuleShell'
-import { useConnectModule } from '../useConnectModule'
-import { CustomerTable } from './CustomerTable'
+import { ConnectModuleShell } from '../../ConnectModuleShell'
+import { CustomerTable } from '../../features/customers/CustomerTable'
+import { useConnectModule } from '../../useConnectModule'
 
 export function CustomersPage() {
 	const connect = useConnectModule()

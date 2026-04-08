@@ -24,7 +24,7 @@ import { pdf } from '@react-pdf/renderer'
 import { AlertCircle, Loader2, Mail, Paperclip } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { InvoicePdfDocument } from './InvoicePdf'
+import { InvoicePdfDocument } from '../pdf/InvoicePdf'
 
 interface SendInvoiceEmailDialogProps {
 	open: boolean

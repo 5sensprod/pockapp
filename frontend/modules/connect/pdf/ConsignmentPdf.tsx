@@ -370,8 +370,8 @@ export function ConsignmentPdfDocument({
 							<Image src={companyLogoUrl} style={styles.logo} />
 						)}
 						<Text style={styles.companyName}>{companyName}</Text>
-						{companyAddress.map((line, i) => (
-							<Text key={i} style={styles.companyLine}>
+						{companyAddress.map((line) => (
+							<Text key={line} style={styles.companyLine}>
 								{line}
 							</Text>
 						))}
@@ -418,8 +418,8 @@ export function ConsignmentPdfDocument({
 					<View style={styles.partyBox}>
 						<Text style={styles.partyLabel}>Dépositaire (magasin)</Text>
 						<Text style={styles.partyName}>{companyName}</Text>
-						{companyAddress.map((line, i) => (
-							<Text key={i} style={styles.partyLine}>
+						{companyAddress.map((line) => (
+							<Text key={line} style={styles.partyLine}>
 								{line}
 							</Text>
 						))}
@@ -532,7 +532,7 @@ export function ConsignmentPdfDocument({
 						`Le déposant peut récupérer son article à tout moment, sous réserve d'un préavis de 48 heures et hors période de négociation engagée avec un acheteur.`,
 						`Le présent contrat est soumis au droit français. En cas de litige, les parties s'engagent à rechercher une solution amiable avant toute action judiciaire.`,
 					].map((text, i) => (
-						<View key={i} style={styles.conditionItem}>
+						<View key={text} style={styles.conditionItem}>
 							<Text style={styles.conditionBullet}>{i + 1}.</Text>
 							<Text style={styles.conditionText}>{text}</Text>
 						</View>

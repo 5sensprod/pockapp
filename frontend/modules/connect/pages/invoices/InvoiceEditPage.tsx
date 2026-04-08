@@ -54,7 +54,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CustomerDialog } from './CustomerDialog'
+import { CustomerDialog } from '../../features/customers/CustomerDialog'
 
 // =====================
 // TYPES + HELPERS

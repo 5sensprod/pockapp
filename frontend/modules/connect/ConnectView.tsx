@@ -6,7 +6,7 @@
 import { EmptyState } from '@/components/module-ui'
 import { Input } from '@/components/ui/input'
 import { Search, Users } from 'lucide-react'
-import { CustomerTable } from './components/CustomerTable'
+import { CustomerTable } from './features/customers/CustomerTable'
 import type { ConnectModuleData } from './useConnectModule'
 
 type ConnectViewProps = ConnectModuleData

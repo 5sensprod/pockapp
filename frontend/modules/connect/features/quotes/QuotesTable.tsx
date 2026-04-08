@@ -40,8 +40,8 @@ import {
 	MoreHorizontal,
 	Trash2,
 } from 'lucide-react'
-import { formatCurrency, formatDate } from '../utils/formatters'
-import { getPaginationRange } from '../utils/pagination'
+import { formatCurrency, formatDate } from '../../utils/formatters'
+import { getPaginationRange } from '../../utils/pagination'
 
 function getQuoteStatusLabel(status: QuoteStatus) {
 	const map: Record<QuoteStatus, string> = {

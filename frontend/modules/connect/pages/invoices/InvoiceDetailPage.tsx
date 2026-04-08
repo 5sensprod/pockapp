@@ -52,8 +52,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { type DepositPdfData, InvoicePdfDocument } from './InvoicePdf'
-import { SendInvoiceEmailDialog } from './SendInvoiceEmailDialog'
+import { SendInvoiceEmailDialog } from '../../dialogs/SendInvoiceEmailDialog'
+import { type DepositPdfData, InvoicePdfDocument } from '../../pdf/InvoicePdf'
 
 // ============================================================================
 // HELPERS

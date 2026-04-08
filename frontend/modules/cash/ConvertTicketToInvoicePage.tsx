@@ -52,7 +52,7 @@ import {
 import { ClientResponseError } from 'pocketbase'
 import * as React from 'react'
 import { toast } from 'sonner'
-import { CustomerDialog } from '../connect/components/CustomerDialog'
+import { CustomerDialog } from '../connect/features/customers/CustomerDialog'
 import { CashModuleShell } from './CashModuleShell'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

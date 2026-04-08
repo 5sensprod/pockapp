@@ -1,4 +1,4 @@
-import { QuoteCreatePage } from '@/modules/connect/components/QuoteCreatePage'
+import { QuoteCreatePage } from '@/modules/connect/pages/quotes/QuoteCreatePage'
 // frontend/routes/connect/quotes/new.tsx
 import { createFileRoute } from '@tanstack/react-router'
 

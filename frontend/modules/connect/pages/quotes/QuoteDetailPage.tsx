@@ -34,8 +34,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { QuotePdfDocument } from './QuotePdf'
-import { SendQuoteEmailDialog } from './SendQuoteEmailDialog'
+import { SendQuoteEmailDialog } from '../../dialogs/SendQuoteEmailDialog'
+import { QuotePdfDocument } from '../../pdf/QuotePdf'
 
 function formatDate(dateStr?: string) {
 	if (!dateStr) return '-'

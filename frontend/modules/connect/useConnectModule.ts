@@ -5,7 +5,7 @@ import { useDebounce } from '@/lib/hooks/useDebounce'
 import { useCustomers } from '@/lib/queries/customers'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import type { Customer } from './components/CustomerDialog'
+import type { Customer } from './features/customers/CustomerDialog'
 
 const PER_PAGE = 20
 
