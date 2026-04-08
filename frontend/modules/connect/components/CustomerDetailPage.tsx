@@ -1,10 +1,18 @@
 // frontend/modules/connect/components/CustomerDetailPage.tsx
+//
+// Migré sur ConnectModuleShell — même pattern que les pages cash.
+//
+// Suppressions vs version précédente :
+//   ✗ formatDate / formatCurrency / getCustomerTypeDisplay / getPaymentTermsLabel
+//     → importés depuis utils/formatters et utils/statusConfig
+//   ✗ invoiceStatusConfig / quoteStatusConfig / consignmentStatusConfig
+//     → getInvoiceStatus / getQuoteStatus / getConsignmentStatus depuis statusConfig
+//   ✗ Header inline (H1, bouton retour, container mx-auto)
+//     → slots headerLeft / headerRight de ConnectModuleShell
+//   ✗ Guards de chargement avec container inline
+//     → EmptyState fullPage
 
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
-import * as z from 'zod'
-
+import { EmptyState } from '@/components/module-ui'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -59,17 +67,17 @@ import { useInvoices } from '@/lib/queries/invoices'
 import { useQuotes } from '@/lib/queries/quotes'
 import type { InvoiceResponse, QuoteResponse } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { PDFDownloadLink } from '@react-pdf/renderer'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	ArrowLeft,
-	Building2,
 	CheckCircle,
 	Clock,
 	FileDown,
 	FileText,
 	Guitar,
-	Landmark,
 	Mail,
 	MoreHorizontal,
 	Pencil,
@@ -78,111 +86,31 @@ import {
 	Receipt,
 	Trash2,
 	User,
-	Users,
 	XCircle,
 } from 'lucide-react'
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
+import * as z from 'zod'
+import { ConnectModuleShell } from '../ConnectModuleShell'
+import {
+	formatCurrency,
+	formatDate,
+	formatPaymentTerms,
+} from '../utils/formatters'
+import {
+	getConsignmentStatus,
+	getCustomerTypeDisplay,
+	getInvoiceStatus,
+	getQuoteStatus,
+	getTagClassName,
+	normalizeTags,
+} from '../utils/statusConfig'
 import { ConsignmentPdfDocument } from './ConsignmentPdf'
 import { SendConsignmentEmailDialog } from './SendConsignmentEmailDialog'
 
 // ============================================================================
-// HELPERS
-// ============================================================================
-
-const formatDate = (dateString?: string) => {
-	if (!dateString) return '-'
-	return new Date(dateString).toLocaleDateString('fr-FR', {
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-	})
-}
-
-const formatCurrency = (amount?: number) => {
-	if (amount === undefined || amount === null) return '-'
-	return new Intl.NumberFormat('fr-FR', {
-		style: 'currency',
-		currency: 'EUR',
-	}).format(amount)
-}
-
-const getCustomerTypeDisplay = (type?: string) => {
-	const typeMap: Record<
-		string,
-		{ label: string; className: string; icon: any }
-	> = {
-		individual: {
-			label: 'Particulier',
-			className: 'bg-blue-100 text-blue-800',
-			icon: User,
-		},
-		professional: {
-			label: 'Professionnel',
-			className: 'bg-purple-100 text-purple-800',
-			icon: Building2,
-		},
-		administration: {
-			label: 'Administration',
-			className: 'bg-green-100 text-green-800',
-			icon: Landmark,
-		},
-		association: {
-			label: 'Association',
-			className: 'bg-orange-100 text-orange-800',
-			icon: Users,
-		},
-	}
-	return typeMap[type || 'individual'] || typeMap.individual
-}
-
-const getPaymentTermsLabel = (terms?: string) => {
-	const termsMap: Record<string, string> = {
-		immediate: 'Immédiat',
-		'30_days': '30 jours',
-		'45_days': '45 jours',
-		'60_days': '60 jours',
-	}
-	return termsMap[terms || 'immediate'] || 'Immédiat'
-}
-
-const invoiceStatusConfig: Record<
-	string,
-	{
-		label: string
-		variant: 'default' | 'secondary' | 'destructive' | 'outline'
-	}
-> = {
-	draft: { label: 'Brouillon', variant: 'secondary' },
-	validated: { label: 'Validée', variant: 'default' },
-	sent: { label: 'Envoyée', variant: 'default' },
-	cancelled: { label: 'Annulée', variant: 'destructive' },
-}
-
-const quoteStatusConfig: Record<
-	string,
-	{
-		label: string
-		variant: 'default' | 'secondary' | 'destructive' | 'outline'
-	}
-> = {
-	draft: { label: 'Brouillon', variant: 'secondary' },
-	sent: { label: 'Envoyé', variant: 'default' },
-	accepted: { label: 'Accepté', variant: 'default' },
-	rejected: { label: 'Refusé', variant: 'destructive' },
-}
-
-const consignmentStatusConfig: Record<
-	string,
-	{ label: string; className: string }
-> = {
-	available: { label: 'Disponible', className: 'bg-green-100 text-green-800' },
-	sold: { label: 'Vendu', className: 'bg-blue-100 text-blue-800' },
-	returned: { label: 'Rendu', className: 'bg-gray-100 text-gray-800' },
-}
-
-// ============================================================================
-// SCHEMA — formulaire dépôt-vente
+// SCHEMA — formulaire dépôt-vente (inchangé)
 // ============================================================================
 
 const consignmentSchema = z.object({
@@ -202,7 +130,7 @@ const consignmentSchema = z.object({
 type ConsignmentFormValues = z.infer<typeof consignmentSchema>
 
 // ============================================================================
-// SUB-COMPONENT — onglet Produits d'occasion
+// SUB-COMPONENT — onglet Produits d'occasion (inchangé sauf statusConfig)
 // ============================================================================
 
 interface ConsignmentTabProps {
@@ -369,9 +297,7 @@ function ConsignmentTab({
 						</TableHeader>
 						<TableBody>
 							{items.map((item) => {
-								const statusInfo =
-									consignmentStatusConfig[item.status] ??
-									consignmentStatusConfig.available
+								const statusInfo = getConsignmentStatus(item.status)
 								return (
 									<TableRow key={item.id}>
 										<TableCell>
@@ -503,13 +429,11 @@ function ConsignmentTab({
 								: "Renseignez les informations de l'instrument déposé par ce client."}
 						</DialogDescription>
 					</DialogHeader>
-
 					<Form {...form}>
 						<form
 							onSubmit={form.handleSubmit(onSubmit)}
 							className='space-y-4 pt-2'
 						>
-							{/* Description */}
 							<FormField
 								control={form.control}
 								name='description'
@@ -527,8 +451,6 @@ function ConsignmentTab({
 									</FormItem>
 								)}
 							/>
-
-							{/* Prix */}
 							<div className='grid grid-cols-2 gap-4'>
 								<FormField
 									control={form.control}
@@ -569,8 +491,6 @@ function ConsignmentTab({
 									)}
 								/>
 							</div>
-
-							{/* Notes */}
 							<FormField
 								control={form.control}
 								name='notes'
@@ -588,7 +508,6 @@ function ConsignmentTab({
 									</FormItem>
 								)}
 							/>
-
 							<div className='flex justify-end gap-3 pt-2'>
 								<Button
 									type='button'
@@ -664,14 +583,13 @@ export function CustomerDetailPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
 
-	// Charger les donnees de l entreprise active pour le PDF
 	const { data: company } = useQuery({
 		queryKey: ['companies', activeCompanyId],
 		enabled: !!activeCompanyId,
-		queryFn: async () => {
-			const result = await pb.collection('companies').getOne(activeCompanyId)
-			return result as CompaniesResponse
-		},
+		queryFn: async () =>
+			(await pb
+				.collection('companies')
+				.getOne(activeCompanyId)) as CompaniesResponse,
 	})
 
 	const { data: customer, isLoading: isLoadingCustomer } =
@@ -716,49 +634,81 @@ export function CustomerDetailPage() {
 	const paymentTerms = (customer as any)?.payment_terms
 	const isIndividual = customerType === 'individual'
 
+	// ── Guards ── (dans le shell, pas de container inline)
+
 	if (isLoadingCustomer) {
 		return (
-			<div className='container mx-auto px-6 py-8'>
-				<p className='text-muted-foreground'>Chargement du client...</p>
-			</div>
+			<ConnectModuleShell
+				pageTitle='Fiche client'
+				headerLeft={
+					<Button
+						variant='ghost'
+						size='icon'
+						onClick={() => navigate({ to: '/connect/customers' })}
+					>
+						<ArrowLeft className='h-4 w-4' />
+					</Button>
+				}
+				primaryAction={null}
+				hideBadge
+			>
+				<EmptyState icon={User} title='Chargement...' fullPage />
+			</ConnectModuleShell>
 		)
 	}
 
 	if (!customer) {
 		return (
-			<div className='container mx-auto px-6 py-8'>
-				<p className='text-muted-foreground'>Client introuvable</p>
-				<Button
-					variant='outline'
-					className='mt-4'
-					onClick={() => navigate({ to: '/connect/customers' })}
-				>
-					<ArrowLeft className='h-4 w-4 mr-2' />
-					Retour aux clients
-				</Button>
-			</div>
+			<ConnectModuleShell
+				pageTitle='Fiche client'
+				headerLeft={
+					<Button
+						variant='ghost'
+						size='icon'
+						onClick={() => navigate({ to: '/connect/customers' })}
+					>
+						<ArrowLeft className='h-4 w-4' />
+					</Button>
+				}
+				primaryAction={null}
+				hideBadge
+			>
+				<EmptyState
+					icon={User}
+					title='Client introuvable'
+					description="Ce client n'existe pas ou a été supprimé."
+					actions={[
+						{
+							label: 'Retour aux clients',
+							onClick: () => navigate({ to: '/connect/customers' }),
+							variant: 'secondary',
+						},
+					]}
+					fullPage
+				/>
+			</ConnectModuleShell>
 		)
 	}
 
 	return (
-		<div className='container mx-auto px-6 py-8 max-w-5xl'>
-			{/* Header */}
-			<div className='flex items-center gap-4 mb-6'>
+		<ConnectModuleShell
+			// Titre contextuel = nom du client
+			pageTitle={customer.name}
+			pageIcon={TypeIcon}
+			// Bouton retour dans headerLeft
+			headerLeft={
 				<Button
 					variant='ghost'
 					size='icon'
 					onClick={() => navigate({ to: '/connect/customers' })}
 				>
-					<ArrowLeft className='h-5 w-5' />
+					<ArrowLeft className='h-4 w-4' />
 				</Button>
-				<div className='flex-1'>
-					<h1 className='text-2xl font-bold flex items-center gap-2'>
-						<TypeIcon className='h-6 w-6' />
-						{customer.name}
-					</h1>
-					<p className='text-muted-foreground'>Fiche détaillée du client</p>
-				</div>
+			}
+			// Bouton Modifier en CTA principal
+			primaryAction={
 				<Button
+					size='sm'
 					onClick={() =>
 						navigate({
 							to: '/connect/customers/$customerId/edit',
@@ -768,8 +718,9 @@ export function CustomerDetailPage() {
 				>
 					Modifier
 				</Button>
-			</div>
-
+			}
+			hideBadge
+		>
 			{/* Stats rapides */}
 			<div className='grid grid-cols-2 md:grid-cols-4 gap-4 mb-6'>
 				<Card>
@@ -886,7 +837,7 @@ export function CustomerDetailPage() {
 										Délai de paiement
 									</p>
 									<Badge variant='outline'>
-										{getPaymentTermsLabel(paymentTerms)}
+										{formatPaymentTerms(paymentTerms)}
 									</Badge>
 								</div>
 							)}
@@ -895,24 +846,13 @@ export function CustomerDetailPage() {
 								<p className='text-sm text-muted-foreground'>Tags</p>
 								<div className='flex gap-1 flex-wrap'>
 									{(() => {
-										const rawTags = (customer as any).tags
-										const tags: string[] = Array.isArray(rawTags)
-											? rawTags
-											: rawTags
-												? [rawTags as string]
-												: []
-										const tagColors: Record<string, string> = {
-											vip: 'bg-yellow-100 text-yellow-800',
-											prospect: 'bg-blue-100 text-blue-800',
-											actif: 'bg-green-100 text-green-800',
-											inactif: 'bg-gray-100 text-gray-800',
-										}
+										const tags = normalizeTags((customer as any).tags)
 										return tags.length > 0 ? (
 											tags.map((tag) => (
 												<Badge
 													key={tag}
 													variant='secondary'
-													className={tagColors[tag] || ''}
+													className={getTagClassName(tag)}
 												>
 													{tag}
 												</Badge>
@@ -989,9 +929,7 @@ export function CustomerDetailPage() {
 									</TableHeader>
 									<TableBody>
 										{invoices.map((invoice: InvoiceResponse) => {
-											const statusInfo =
-												invoiceStatusConfig[invoice.status] ||
-												invoiceStatusConfig.draft
+											const statusInfo = getInvoiceStatus(invoice.status)
 											return (
 												<TableRow
 													key={invoice.id}
@@ -1104,9 +1042,7 @@ export function CustomerDetailPage() {
 									</TableHeader>
 									<TableBody>
 										{quotes.map((quote: QuoteResponse) => {
-											const statusInfo =
-												quoteStatusConfig[quote.status] ||
-												quoteStatusConfig.draft
+											const statusInfo = getQuoteStatus(quote.status)
 											const isExpired =
 												quote.valid_until &&
 												new Date(quote.valid_until) < new Date() &&
@@ -1186,6 +1122,6 @@ export function CustomerDetailPage() {
 					/>
 				</TabsContent>
 			</Tabs>
-		</div>
+		</ConnectModuleShell>
 	)
 }
