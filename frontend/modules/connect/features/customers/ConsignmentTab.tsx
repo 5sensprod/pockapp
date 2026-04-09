@@ -100,6 +100,7 @@ export interface ConsignmentTabProps {
 	company?: CompaniesResponse
 	companyLogoUrl?: string | null
 	commissionRate?: number
+	tabsList?: React.ReactNode // 👈 L'interface accepte maintenant tabsList
 }
 
 // ============================================================================
@@ -113,10 +114,13 @@ export function ConsignmentTab({
 	company,
 	companyLogoUrl,
 	commissionRate = 20,
+	tabsList, // 👈 On récupère la prop ici
 }: ConsignmentTabProps) {
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [editItem, setEditItem] = useState<ConsignmentItemDto | null>(null)
-	const [deleteTarget, setDeleteTarget] = useState<ConsignmentItemDto | null>(null)
+	const [deleteTarget, setDeleteTarget] = useState<ConsignmentItemDto | null>(
+		null,
+	)
 	const [emailItem, setEmailItem] = useState<ConsignmentItemDto | null>(null)
 
 	const { data, isLoading } = useConsignmentItems(customerId)
@@ -214,18 +218,23 @@ export function ConsignmentTab({
 
 	return (
 		<Card>
-			<CardHeader className='flex flex-row items-center justify-between'>
-				<CardTitle className='flex items-center gap-2'>
-					<Guitar className='h-5 w-5' />
-					Produits d'occasion
-				</CardTitle>
+			{/* 🎯 Injection conditionnelle des onglets ou du titre classique */}
+			<CardHeader className='flex flex-row items-center justify-between pb-4 border-b border-border/40'>
+				{tabsList ? (
+					tabsList
+				) : (
+					<CardTitle className='flex items-center gap-2'>
+						<Guitar className='h-5 w-5' />
+						Produits d'occasion
+					</CardTitle>
+				)}
 				<Button size='sm' className='gap-2' onClick={openCreate}>
 					<Plus className='h-4 w-4' />
 					Ajouter un produit d'occasion
 				</Button>
 			</CardHeader>
 
-			<CardContent>
+			<CardContent className='pt-6'>
 				{isLoading ? (
 					<p className='text-muted-foreground py-4'>Chargement...</p>
 				) : items.length === 0 ? (
@@ -312,7 +321,9 @@ export function ConsignmentTab({
 																{({ loading }) => (
 																	<>
 																		<FileDown className='h-4 w-4 mr-2' />
-																		{loading ? 'Génération...' : 'Bordereau PDF'}
+																		{loading
+																			? 'Génération...'
+																			: 'Bordereau PDF'}
 																	</>
 																)}
 															</PDFDownloadLink>
@@ -331,7 +342,9 @@ export function ConsignmentTab({
 													<DropdownMenuSeparator />
 													{item.status !== 'available' && (
 														<DropdownMenuItem
-															onClick={() => handleChangeStatus(item, 'available')}
+															onClick={() =>
+																handleChangeStatus(item, 'available')
+															}
 														>
 															Marquer disponible
 														</DropdownMenuItem>
@@ -345,7 +358,9 @@ export function ConsignmentTab({
 													)}
 													{item.status !== 'returned' && (
 														<DropdownMenuItem
-															onClick={() => handleChangeStatus(item, 'returned')}
+															onClick={() =>
+																handleChangeStatus(item, 'returned')
+															}
 														>
 															Marquer rendu
 														</DropdownMenuItem>
@@ -375,7 +390,9 @@ export function ConsignmentTab({
 					<DialogHeader>
 						<DialogTitle className='flex items-center gap-2'>
 							<Guitar className='h-5 w-5' />
-							{editItem ? 'Modifier le produit' : "Ajouter un produit d'occasion"}
+							{editItem
+								? 'Modifier le produit'
+								: "Ajouter un produit d'occasion"}
 						</DialogTitle>
 						<DialogDescription>
 							{editItem
