@@ -7,6 +7,7 @@
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import type { InvoiceResponse, QuoteResponse } from '@/lib/types/invoice.types'
 import { pdf } from '@react-pdf/renderer'
+import type { ReactElement } from 'react'
 
 // ── Utilitaire logo ───────────────────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ export interface DownloadQuotePdfOptions {
 	quote: QuoteResponse
 	activeCompanyId: string
 	/** Composant react-pdf — importé par l'appelant pour éviter le couplage */
-	PdfDocument: (props: any) => JSX.Element
+	PdfDocument: (props: any) => ReactElement
 }
 
 export async function downloadQuotePdf({
@@ -152,7 +153,7 @@ export interface DownloadInvoicePdfOptions {
 	invoice: InvoiceResponse
 	activeCompanyId: string
 	cachedCompany?: CompaniesResponse | null
-	PdfDocument: (props: any) => JSX.Element
+	PdfDocument: (props: any) => ReactElement
 }
 
 export async function downloadInvoicePdf({
@@ -174,10 +175,13 @@ export async function downloadInvoicePdf({
 
 		const customer = (invoice as any).expand?.customer ?? null
 
-		// Facture d'acompte → récupérer la facture parente
-		let depositPdfData:
-			| { type: 'deposit'; parentInvoice: InvoiceResponse }
-			| undefined
+		// ── depositPdfData — 3 cas ───────────────────────────────────────────
+		//  1. deposit  : facture d'acompte → facture parente
+		//  2. balance  : facture de solde  → parente + liste acomptes
+		//  3. parent   : facture principale avec acomptes → liste acomptes
+
+		let depositPdfData: import('../pdf/InvoicePdf').DepositPdfData | undefined
+
 		if (invoice.invoice_type === 'deposit' && invoice.original_invoice_id) {
 			try {
 				const parent = (await pb
@@ -186,6 +190,36 @@ export async function downloadInvoicePdf({
 				depositPdfData = { type: 'deposit', parentInvoice: parent }
 			} catch (err) {
 				console.warn('Facture parente non trouvée:', err)
+			}
+		} else if (
+			invoice.invoice_type === 'invoice' &&
+			invoice.original_invoice_id
+		) {
+			try {
+				const parent = (await pb
+					.collection('invoices')
+					.getOne(invoice.original_invoice_id)) as InvoiceResponse
+				const deposits = (await pb.collection('invoices').getFullList({
+					filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.original_invoice_id}"`,
+					sort: '+created',
+				})) as InvoiceResponse[]
+				depositPdfData = { type: 'balance', parentInvoice: parent, deposits }
+			} catch (err) {
+				console.warn('Données solde non trouvées:', err)
+			}
+		} else if (
+			invoice.invoice_type === 'invoice' &&
+			!invoice.original_invoice_id &&
+			((invoice as any).deposits_total_ttc ?? 0) > 0
+		) {
+			try {
+				const deposits = (await pb.collection('invoices').getFullList({
+					filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.id}"`,
+					sort: '+created',
+				})) as InvoiceResponse[]
+				depositPdfData = { type: 'parent', deposits }
+			} catch (err) {
+				console.warn('Acomptes non trouvés:', err)
 			}
 		}
 

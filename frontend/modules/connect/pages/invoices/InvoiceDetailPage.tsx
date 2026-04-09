@@ -1,6 +1,6 @@
-// frontend/modules/connect/components/InvoiceDetailPage.tsx
-// ✅ AJOUT: affichage du vendeur/caissier dans "Détails généraux"
+// frontend/modules/connect/pages/invoices/InvoiceDetailPage.tsx
 
+import { EmptyState } from '@/components/module-ui'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,14 +27,12 @@ import {
 } from '@/lib/queries/deposits'
 import { useCreditNotesForInvoice, useInvoice } from '@/lib/queries/invoices'
 import {
-	type InvoiceResponse,
 	canCreateBalanceInvoice,
 	canCreateDeposit,
 	getDisplayStatus,
 	isOverdue,
 } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
-import { pdf } from '@react-pdf/renderer'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	AlertTriangle,
@@ -52,30 +50,18 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { SendInvoiceEmailDialog } from '../../dialogs/SendInvoiceEmailDialog'
-import { type DepositPdfData, InvoicePdfDocument } from '../../pdf/InvoicePdf'
+import { InvoicePdfDocument } from '../../pdf/InvoicePdf'
+import { downloadInvoicePdf } from '../../utils/downloadPdf'
+import {
+	formatCurrency,
+	formatDate,
+	formatPaymentMethod,
+	round2,
+} from '../../utils/formatters'
 
-// ============================================================================
-// HELPERS
-// ============================================================================
-
-function formatDate(dateStr?: string) {
-	if (!dateStr) return '-'
-	return new Date(dateStr).toLocaleDateString('fr-FR', {
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-	})
-}
-
-function formatCurrency(amount: number, currency = 'EUR') {
-	return new Intl.NumberFormat('fr-FR', {
-		style: 'currency',
-		currency,
-	}).format(amount)
-}
-
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+// ── Types locaux ─────────────────────────────────────────────────────────────
 
 type VatBreakdown = {
 	rate: number
@@ -84,49 +70,7 @@ type VatBreakdown = {
 	total_ttc: number
 }
 
-// Helper pour afficher le libellé du moyen de remboursement
-function getRefundMethodLabel(method?: string): string {
-	switch (method) {
-		case 'especes':
-			return 'Espèces'
-		case 'cb':
-			return 'Carte bancaire'
-		case 'cheque':
-			return 'Chèque'
-		case 'virement':
-			return 'Virement'
-		case 'autre':
-			return 'Autre'
-		default:
-			return method || '-'
-	}
-}
-
-async function toPngDataUrl(url: string): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const img = new Image()
-		img.crossOrigin = 'anonymous'
-		img.onload = () => {
-			try {
-				const canvas = document.createElement('canvas')
-				canvas.width = img.naturalWidth || img.width
-				canvas.height = img.naturalHeight || img.height
-				const ctx = canvas.getContext('2d')
-				if (!ctx) {
-					reject(new Error('Impossible de créer un contexte 2D'))
-					return
-				}
-				ctx.drawImage(img, 0, 0)
-				const dataUrl = canvas.toDataURL('image/png')
-				resolve(dataUrl)
-			} catch (err) {
-				reject(err)
-			}
-		}
-		img.onerror = (err) => reject(err)
-		img.src = url
-	})
-}
+// ── Helpers locaux (spécifiques à cette page) ────────────────────────────────
 
 function getLineDiscountLabel(item: any): {
 	label: string
@@ -142,7 +86,6 @@ function getLineDiscountLabel(item: any): {
 		return { label: `-${p}%`, hasDiscount: true }
 	}
 
-	// mode === 'amount'
 	const beforeUnitTtc = Number(item?.unit_price_ttc_before_discount)
 	const unitHt = Number(item?.unit_price_ht ?? 0)
 	const tvaRate = Number(item?.tva_rate ?? 20)
@@ -154,7 +97,6 @@ function getLineDiscountLabel(item: any): {
 		return { label: `-${diff.toFixed(2)} €/u`, hasDiscount: true }
 	}
 
-	// fallback: si pas de prix avant remise, essayer avec la valeur brute
 	const v = round2(Math.max(0, Number(value) || 0))
 	if (v <= 0) return { label: '-', hasDiscount: false }
 	return { label: `-${v.toFixed(2)} €`, hasDiscount: true }
@@ -170,29 +112,7 @@ function getSoldByLabel(invoice: any): string {
 	)
 }
 
-function getPaymentMethodLabel(invoice: any): string {
-	const label = (invoice?.payment_method_label || '').trim()
-	if (label) return label
-
-	switch (invoice?.payment_method) {
-		case 'especes':
-			return 'Espèces'
-		case 'cb':
-			return 'Carte bancaire'
-		case 'cheque':
-			return 'Chèque'
-		case 'virement':
-			return 'Virement'
-		case 'autre':
-			return 'Autre'
-		default:
-			return invoice?.payment_method || '-'
-	}
-}
-
-// ============================================================================
-// COMPONENT
-// ============================================================================
+// ── Composant ────────────────────────────────────────────────────────────────
 
 export function InvoiceDetailPage() {
 	const navigate = useNavigate()
@@ -202,17 +122,18 @@ export function InvoiceDetailPage() {
 
 	const { data: invoice, isLoading } = useInvoice(invoiceId)
 	const [company, setCompany] = useState<CompaniesResponse | null>(null)
-
 	const [isDownloading, setIsDownloading] = useState(false)
 	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 
-	// Déterminer si c'est un avoir
 	const isCreditNote = invoice?.invoice_type === 'credit_note'
-	const originalId = (invoice as any)?.original_invoice_id
 	const isDeposit = invoice?.invoice_type === 'deposit'
+	const originalId = (invoice as any)?.original_invoice_id
 
 	const { data: depositsData } = useDepositsForInvoice(
 		!isCreditNote && !isDeposit ? invoiceId : undefined,
+	)
+	const { data: linkedCreditNotes } = useCreditNotesForInvoice(
+		!isCreditNote ? invoiceId : undefined,
 	)
 
 	const createDeposit = useCreateDeposit()
@@ -225,19 +146,10 @@ export function InvoiceDetailPage() {
 	)
 	const [depositAmount, setDepositAmount] = useState<string>('')
 
-	// ✅ AJOUT: Récupérer les avoirs liés (uniquement si ce n'est PAS un avoir)
-	const { data: linkedCreditNotes } = useCreditNotesForInvoice(
-		!isCreditNote ? invoiceId : undefined,
-	)
-
-	// ✅ AJOUT: Récupérer le numéro du document original (pour les avoirs)
 	const originalDocument = (invoice as any)?.expand?.original_invoice_id
 	const originalNumber = originalDocument?.number
 
-	// ============================================================================
-	// LOAD COMPANY
-	// ============================================================================
-
+	// Charger l'entreprise au montage (nécessaire pour le PDF)
 	useEffect(() => {
 		const loadCompany = async () => {
 			if (!activeCompanyId) return
@@ -251,54 +163,37 @@ export function InvoiceDetailPage() {
 		void loadCompany()
 	}, [activeCompanyId, pb])
 
-	// ============================================================================
-	// COMPUTATIONS
-	// ============================================================================
+	// ── Calculs ───────────────────────────────────────────────────────────────
+
 	const vatBreakdown = useMemo<VatBreakdown[]>(() => {
 		const inv = invoice as any
 		const items = Array.isArray(inv?.items) ? inv.items : []
 		const map = new Map<number, VatBreakdown>()
-
 		for (const it of items) {
 			const rate = Number(it?.tva_rate ?? 20)
 			const ht = Number(it?.total_ht ?? 0)
 			const ttc = Number(it?.total_ttc ?? 0)
 			const vat = ttc - ht
-
 			let entry = map.get(rate)
 			if (!entry) {
 				entry = { rate, base_ht: 0, vat: 0, total_ttc: 0 }
 				map.set(rate, entry)
 			}
-
 			entry.base_ht = round2(entry.base_ht + ht)
 			entry.vat = round2(entry.vat + vat)
 			entry.total_ttc = round2(entry.total_ttc + ttc)
 		}
-
 		return Array.from(map.values()).sort((a, b) => a.rate - b.rate)
 	}, [invoice])
 
-	const customer = (invoice as any)?.expand?.customer ?? null
-	const displayStatus = invoice
-		? getDisplayStatus(invoice)
-		: { label: '', variant: 'outline', isPaid: false }
-	const badgeVariant = (displayStatus.variant ??
-		'outline') as BadgeProps['variant']
-	const overdue = invoice ? isOverdue(invoice) : false
-
 	const discounts = useMemo(() => {
 		const inv: any = invoice as any
-
 		const totalTtc = Number(inv?.total_ttc ?? 0)
 		const lineDiscountsTtc = Number(inv?.line_discounts_total_ttc ?? 0)
 		const cartDiscountTtc = Number(inv?.cart_discount_ttc ?? 0)
-
 		const subtotalAfterLine = round2(totalTtc + cartDiscountTtc)
 		const grandSubtotal = round2(subtotalAfterLine + lineDiscountsTtc)
-
 		const hasAnyDiscount = lineDiscountsTtc > 0 || cartDiscountTtc > 0
-
 		let cartDiscountLabel = ''
 		const mode = inv?.cart_discount_mode
 		const value = inv?.cart_discount_value
@@ -306,7 +201,6 @@ export function InvoiceDetailPage() {
 			if (mode === 'percent') cartDiscountLabel = `(${Number(value) || 0}%)`
 			else cartDiscountLabel = `(${round2(Number(value) || 0).toFixed(2)} €)`
 		}
-
 		return {
 			hasAnyDiscount,
 			totalTtc: round2(totalTtc),
@@ -317,144 +211,83 @@ export function InvoiceDetailPage() {
 		}
 	}, [invoice])
 
-	// ============================================================================
-	// GUARDS
-	// ============================================================================
+	// ── Guards ────────────────────────────────────────────────────────────────
+
+	const backButton = (
+		<Button
+			variant='ghost'
+			size='icon'
+			onClick={() => navigate({ to: '/connect/invoices' })}
+		>
+			<ArrowLeft className='h-4 w-4' />
+		</Button>
+	)
 
 	if (isLoading) {
 		return (
-			<div className='container mx-auto px-6 py-8 flex items-center justify-center'>
-				<Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
-			</div>
+			<ConnectModuleShell
+				pageTitle='Facture'
+				headerLeft={backButton}
+				primaryAction={null}
+				hideBadge
+			>
+				<EmptyState icon={FileText} title='Chargement...' fullPage />
+			</ConnectModuleShell>
 		)
 	}
 
 	if (!invoice) {
 		return (
-			<div className='container mx-auto px-6 py-8'>
-				<div className='text-muted-foreground'>Facture introuvable</div>
-				<Button
-					variant='outline'
-					className='mt-4'
-					onClick={() => navigate({ to: '/connect/invoices' })}
-				>
-					<ArrowLeft className='h-4 w-4 mr-2' />
-					Retour aux factures
-				</Button>
-			</div>
+			<ConnectModuleShell
+				pageTitle='Facture'
+				headerLeft={backButton}
+				primaryAction={null}
+				hideBadge
+			>
+				<EmptyState
+					icon={FileText}
+					title='Facture introuvable'
+					description="Cette facture n'existe pas ou a été supprimée."
+					actions={[
+						{
+							label: 'Retour aux factures',
+							onClick: () => navigate({ to: '/connect/invoices' }),
+							variant: 'secondary',
+						},
+					]}
+					fullPage
+				/>
+			</ConnectModuleShell>
 		)
 	}
 
-	// ============================================================================
-	// ACTIONS
-	// ============================================================================
+	// ── Données dérivées ──────────────────────────────────────────────────────
+
+	const customer = (invoice as any)?.expand?.customer ?? null
+	const displayStatus = getDisplayStatus(invoice)
+	const badgeVariant = (displayStatus.variant ??
+		'outline') as BadgeProps['variant']
+	const overdue = isOverdue(invoice)
+	const soldByLabel = getSoldByLabel(invoice as any)
+
+	// ── Actions ───────────────────────────────────────────────────────────────
 
 	const handleDownloadPdf = async () => {
-		if (!invoice) {
-			toast.error('Facture introuvable')
-			return
-		}
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
 			return
 		}
 		setIsDownloading(true)
-		try {
-			const customer = invoice.expand?.customer
-			let logoDataUrl: string | null = null
-			let currentCompany: CompaniesResponse | null = company
-			if (!currentCompany) {
-				try {
-					const result = await pb
-						.collection('companies')
-						.getOne(activeCompanyId)
-					currentCompany = result as CompaniesResponse
-					setCompany(currentCompany)
-				} catch (err) {
-					console.warn('Entreprise non trouvée:', err)
-				}
-			}
-			if (currentCompany && (currentCompany as any).logo) {
-				const fileUrl = pb.files.getUrl(
-					currentCompany,
-					(currentCompany as any).logo,
-				)
-				try {
-					logoDataUrl = await toPngDataUrl(fileUrl)
-				} catch (err) {
-					console.warn('Erreur conversion logo', err)
-				}
-			}
-
-			// 🆕 Fetch depositPdfData
-			let depositPdfData: DepositPdfData | undefined
-
-			if (invoice.invoice_type === 'deposit' && invoice.original_invoice_id) {
-				try {
-					const parent = (await pb
-						.collection('invoices')
-						.getOne(invoice.original_invoice_id)) as InvoiceResponse
-					depositPdfData = { type: 'deposit', parentInvoice: parent }
-				} catch (err) {
-					console.warn('Facture parente non trouvée:', err)
-				}
-			} else if (
-				invoice.invoice_type === 'invoice' &&
-				invoice.original_invoice_id
-			) {
-				try {
-					const parent = (await pb
-						.collection('invoices')
-						.getOne(invoice.original_invoice_id)) as InvoiceResponse
-					const deposits = (await pb.collection('invoices').getFullList({
-						filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.original_invoice_id}"`,
-						sort: '+created',
-					})) as InvoiceResponse[]
-					depositPdfData = { type: 'balance', parentInvoice: parent, deposits }
-				} catch (err) {
-					console.warn('Données solde non trouvées:', err)
-				}
-			} else if (
-				invoice.invoice_type === 'invoice' &&
-				!invoice.original_invoice_id &&
-				(invoice.deposits_total_ttc ?? 0) > 0
-			) {
-				try {
-					const deposits = (await pb.collection('invoices').getFullList({
-						filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.id}"`,
-						sort: '+created',
-					})) as InvoiceResponse[]
-					depositPdfData = { type: 'parent', deposits }
-				} catch (err) {
-					console.warn('Acomptes non trouvés:', err)
-				}
-			}
-
-			const blob = await pdf(
-				<InvoicePdfDocument
-					invoice={invoice as InvoiceResponse}
-					customer={customer as any}
-					company={currentCompany || undefined}
-					companyLogoUrl={logoDataUrl}
-					depositPdfData={depositPdfData}
-				/>,
-			).toBlob()
-
-			const url = URL.createObjectURL(blob)
-			const link = document.createElement('a')
-			link.href = url
-			link.download = `${invoice.number}.pdf`
-			document.body.appendChild(link)
-			link.click()
-			document.body.removeChild(link)
-			URL.revokeObjectURL(url)
-			toast.success('Facture téléchargée')
-		} catch (error) {
-			console.error('Erreur génération PDF:', error)
-			toast.error('Erreur lors de la génération du PDF')
-		} finally {
-			setIsDownloading(false)
-		}
+		const result = await downloadInvoicePdf({
+			pb,
+			invoice,
+			activeCompanyId,
+			cachedCompany: company,
+			PdfDocument: InvoicePdfDocument,
+		})
+		if (!result.ok) toast.error('Erreur lors de la génération du PDF')
+		else toast.success('Facture téléchargée')
+		setIsDownloading(false)
 	}
 
 	const handleCreateDeposit = async () => {
@@ -474,10 +307,7 @@ export function InvoiceDetailPage() {
 			percentage = depositPercentage
 		}
 		try {
-			await createDeposit.mutateAsync({
-				parentId: invoice.id,
-				percentage,
-			})
+			await createDeposit.mutateAsync({ parentId: invoice.id, percentage })
 			const label =
 				depositMode === 'amount'
 					? `${Number.parseFloat(depositAmount.replace(',', '.')).toFixed(2)} €`
@@ -502,11 +332,9 @@ export function InvoiceDetailPage() {
 		}
 	}
 
-	// ============================================================================
-	// Fonction pour rendre le badge de statut approprié
-	// ============================================================================
+	// ── Badge statut ──────────────────────────────────────────────────────────
+
 	const renderStatusBadges = () => {
-		// Pour les avoirs (credit_notes)
 		if (isCreditNote) {
 			return (
 				<>
@@ -518,7 +346,6 @@ export function InvoiceDetailPage() {
 				</>
 			)
 		}
-
 		if (isDeposit) {
 			return (
 				<>
@@ -538,14 +365,13 @@ export function InvoiceDetailPage() {
 				</>
 			)
 		}
-
-		const statusLabel = displayStatus.label
-		const showStatusBadge = statusLabel && statusLabel !== 'Payée'
-
+		const showStatusBadge =
+			displayStatus.label && displayStatus.label !== 'Payée'
 		return (
 			<>
-				{showStatusBadge && <Badge variant={badgeVariant}>{statusLabel}</Badge>}
-
+				{showStatusBadge && (
+					<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
+				)}
 				{invoice.is_paid || displayStatus.isPaid ? (
 					<Badge className='bg-emerald-600 hover:bg-emerald-600'>
 						<CheckCircle className='h-3 w-3 mr-1' />
@@ -563,60 +389,76 @@ export function InvoiceDetailPage() {
 		)
 	}
 
-	// ============================================================================
-	// UI
-	// ============================================================================
+	// ── Titre contextuel ──────────────────────────────────────────────────────
 
-	const soldByLabel = getSoldByLabel(invoice as any)
+	const pageTitle = isCreditNote
+		? `Avoir ${invoice.number || ''}`
+		: invoice.is_pos_ticket
+			? `Ticket ${invoice.number || ''}`
+			: `Facture ${invoice.number || ''}`
+
+	// ── Actions header droite ─────────────────────────────────────────────────
+
+	const headerActions = (
+		<div className='flex items-center gap-2'>
+			<Button
+				variant='outline'
+				size='sm'
+				onClick={() => setEmailDialogOpen(true)}
+			>
+				<Mail className='h-4 w-4 mr-2' />
+				Envoyer
+			</Button>
+			<Button
+				variant='outline'
+				size='sm'
+				onClick={handleDownloadPdf}
+				disabled={isDownloading}
+			>
+				{isDownloading ? (
+					<Loader2 className='h-4 w-4 animate-spin mr-2' />
+				) : (
+					<Download className='h-4 w-4 mr-2' />
+				)}
+				PDF
+			</Button>
+		</div>
+	)
 
 	return (
-		<div className='container mx-auto px-6 py-8'>
-			<div className='flex items-center justify-between gap-3 mb-6'>
+		<ConnectModuleShell
+			pageTitle={pageTitle}
+			pageIcon={FileText}
+			headerLeft={
 				<Button
 					variant='ghost'
+					size='icon'
 					onClick={() => navigate({ to: '/connect/invoices' })}
 				>
-					<ArrowLeft className='h-4 w-4 mr-2' />
-					Retour
+					<ArrowLeft className='h-4 w-4' />
 				</Button>
-
-				<div className='flex items-center gap-2'>
+			}
+			headerRight={headerActions}
+			primaryAction={
+				invoice.status === 'draft' ? (
 					<Button
-						variant='outline'
+						size='sm'
 						onClick={() =>
 							navigate({
 								to: '/connect/invoices/$invoiceId/edit',
 								params: { invoiceId },
 							})
 						}
-						disabled={invoice.status !== 'draft'}
-						title={
-							invoice.status !== 'draft'
-								? 'Seules les factures en brouillon peuvent être modifiées'
-								: 'Modifier'
-						}
 					>
-						<Pencil className='h-4 w-4 mr-2' />
+						<Pencil className='h-4 w-4 mr-1.5' />
 						Modifier
 					</Button>
-
-					<Button variant='outline' onClick={() => setEmailDialogOpen(true)}>
-						<Mail className='h-4 w-4 mr-2' />
-						Envoyer
-					</Button>
-
-					<Button onClick={handleDownloadPdf} disabled={isDownloading}>
-						{isDownloading ? (
-							<Loader2 className='h-4 w-4 animate-spin mr-2' />
-						) : (
-							<Download className='h-4 w-4 mr-2' />
-						)}
-						Télécharger
-					</Button>
-				</div>
-			</div>
-
+				) : null
+			}
+			hideBadge
+		>
 			<div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
+				{/* ── Colonne gauche : détails généraux ── */}
 				<Card className='lg:col-span-1'>
 					<CardHeader>
 						<CardTitle>
@@ -628,26 +470,21 @@ export function InvoiceDetailPage() {
 						</CardTitle>
 						<CardDescription>Détails généraux</CardDescription>
 					</CardHeader>
-
 					<CardContent className='space-y-4'>
 						<div>
 							<p className='text-sm text-muted-foreground'>Numéro</p>
 							<p className='font-medium'>{invoice.number || '-'}</p>
 						</div>
-
 						<div>
 							<p className='text-sm text-muted-foreground'>Date</p>
 							<p className='text-sm'>{formatDate(invoice.date)}</p>
 						</div>
-
 						{invoice.due_date && (
 							<div>
 								<p className='text-sm text-muted-foreground'>Échéance</p>
 								<p className='text-sm'>{formatDate(invoice.due_date)}</p>
 							</div>
 						)}
-
-						{/* ✅ AJOUT: vendeur/caissier */}
 						{!isCreditNote && (
 							<div>
 								<p className='text-sm text-muted-foreground'>
@@ -656,48 +493,41 @@ export function InvoiceDetailPage() {
 								<p className='text-sm font-medium'>{soldByLabel}</p>
 							</div>
 						)}
-
 						{!isCreditNote && invoice.is_paid && (
-							<div>
-								<p className='text-sm text-muted-foreground'>
-									Moyen de paiement
-								</p>
-								<p className='text-sm font-medium'>
-									{getPaymentMethodLabel(invoice as any)}
-								</p>
-							</div>
+							<>
+								<div>
+									<p className='text-sm text-muted-foreground'>
+										Moyen de paiement
+									</p>
+									<p className='text-sm font-medium'>
+										{formatPaymentMethod((invoice as any).payment_method)}
+									</p>
+								</div>
+								<div>
+									<p className='text-sm text-muted-foreground'>Payée le</p>
+									<p className='text-sm'>
+										{formatDate((invoice as any).paid_at)}
+									</p>
+								</div>
+							</>
 						)}
-						{!isCreditNote && invoice.is_paid && (
-							<div>
-								<p className='text-sm text-muted-foreground'>Payée le</p>
-								<p className='text-sm'>
-									{formatDate((invoice as any).paid_at)}
-								</p>
-							</div>
-						)}
-
-						<div className='flex items-center gap-2'>
+						<div className='flex items-center gap-2 flex-wrap'>
 							{renderStatusBadges()}
 						</div>
 
-						{/* ════════════════════════════════════════════════════════════════
-						    SECTION AVOIR: Infos de remboursement + document original
-						    ════════════════════════════════════════════════════════════════ */}
+						{/* ── Avoir : remboursement + document original ── */}
 						{isCreditNote && (
 							<>
-								{/* Moyen de remboursement */}
 								{(invoice as any).refund_method && (
 									<div>
 										<p className='text-sm text-muted-foreground'>
 											Moyen de remboursement
 										</p>
 										<p className='text-sm font-medium'>
-											{getRefundMethodLabel((invoice as any).refund_method)}
+											{formatPaymentMethod((invoice as any).refund_method)}
 										</p>
 									</div>
 								)}
-
-								{/* Motif du remboursement */}
 								{(invoice as any).cancellation_reason && (
 									<div>
 										<p className='text-sm text-muted-foreground'>
@@ -708,8 +538,6 @@ export function InvoiceDetailPage() {
 										</p>
 									</div>
 								)}
-
-								{/* ✅ Document original avec numéro affiché */}
 								{originalId && (
 									<div className='border-t pt-4'>
 										<p className='text-sm text-muted-foreground mb-2'>
@@ -725,12 +553,12 @@ export function InvoiceDetailPage() {
 											<Button
 												variant='outline'
 												size='sm'
-												onClick={() => {
+												onClick={() =>
 													navigate({
 														to: '/connect/invoices/$invoiceId',
 														params: { invoiceId: originalId },
 													})
-												}}
+												}
 											>
 												Voir
 											</Button>
@@ -740,9 +568,7 @@ export function InvoiceDetailPage() {
 							</>
 						)}
 
-						{/* ════════════════════════════════════════════════════════════════
-						    SECTION TICKET/FACTURE: Avoirs liés
-						    ════════════════════════════════════════════════════════════════ */}
+						{/* ── Avoirs liés (ticket/facture) ── */}
 						{!isCreditNote &&
 							linkedCreditNotes &&
 							linkedCreditNotes.length > 0 && (
@@ -773,12 +599,12 @@ export function InvoiceDetailPage() {
 												<Button
 													variant='outline'
 													size='sm'
-													onClick={() => {
+													onClick={() =>
 														navigate({
 															to: '/connect/invoices/$invoiceId',
 															params: { invoiceId: cn.id },
 														})
-													}}
+													}
 												>
 													Voir
 												</Button>
@@ -788,7 +614,7 @@ export function InvoiceDetailPage() {
 								</div>
 							)}
 
-						{/* Facture issue d'un ticket */}
+						{/* ── Ticket converti en facture ── */}
 						{invoice.is_pos_ticket &&
 							invoice.converted_to_invoice &&
 							invoice.converted_invoice_id && (
@@ -805,13 +631,12 @@ export function InvoiceDetailPage() {
 											variant='outline'
 											size='sm'
 											onClick={() => {
-												const facId = invoice.converted_invoice_id
-												if (facId) {
+												const id = invoice.converted_invoice_id
+												if (id)
 													navigate({
 														to: '/connect/invoices/$invoiceId',
-														params: { invoiceId: facId },
+														params: { invoiceId: id },
 													})
-												}
 											}}
 										>
 											Voir la facture
@@ -819,12 +644,10 @@ export function InvoiceDetailPage() {
 									</div>
 								</div>
 							)}
-						{/* ════════════════════════════════════════════════════════════════
-    SECTION ACOMPTES — Facture parente B2B
-    ════════════════════════════════════════════════════════════════ */}
+
+						{/* ── Acomptes (facture B2B) ── */}
 						{!isCreditNote && !isDeposit && !invoice.is_pos_ticket && (
 							<div className='border-t pt-4 space-y-3'>
-								{/* Récap financier si acomptes existants */}
 								{(invoice.deposits_total_ttc ?? 0) > 0 && (
 									<div className='space-y-1'>
 										<p className='text-sm font-medium text-muted-foreground'>
@@ -852,8 +675,6 @@ export function InvoiceDetailPage() {
 										</div>
 									</div>
 								)}
-
-								{/* Liste des acomptes */}
 								{depositsData && depositsData.depositsCount > 0 && (
 									<div className='space-y-2'>
 										{depositsData.deposits.map((dep) => (
@@ -894,8 +715,6 @@ export function InvoiceDetailPage() {
 												</Button>
 											</div>
 										))}
-
-										{/* Facture de solde si elle existe */}
 										{depositsData.balanceInvoice && (
 											<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3 border'>
 												<div className='flex items-center gap-2'>
@@ -913,14 +732,13 @@ export function InvoiceDetailPage() {
 													variant='outline'
 													size='sm'
 													onClick={() => {
-														if (depositsData.balanceInvoice) {
+														if (depositsData.balanceInvoice)
 															navigate({
 																to: '/connect/invoices/$invoiceId',
 																params: {
 																	invoiceId: depositsData.balanceInvoice.id,
 																},
 															})
-														}
 													}}
 												>
 													Voir
@@ -930,7 +748,7 @@ export function InvoiceDetailPage() {
 									</div>
 								)}
 
-								{/* Actions */}
+								{/* Créer un acompte */}
 								<div className='flex flex-col gap-2'>
 									{invoice &&
 										canCreateDeposit(invoice) &&
@@ -940,22 +758,14 @@ export function InvoiceDetailPage() {
 												<div className='flex rounded-md overflow-hidden border border-border text-xs font-medium'>
 													<button
 														type='button'
-														className={`flex-1 px-2 py-1.5 transition-colors ${
-															depositMode === 'percent'
-																? 'bg-primary text-primary-foreground'
-																: 'bg-background text-muted-foreground hover:bg-muted'
-														}`}
+														className={`flex-1 px-2 py-1.5 transition-colors ${depositMode === 'percent' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
 														onClick={() => setDepositMode('percent')}
 													>
 														%
 													</button>
 													<button
 														type='button'
-														className={`flex-1 px-2 py-1.5 transition-colors ${
-															depositMode === 'amount'
-																? 'bg-primary text-primary-foreground'
-																: 'bg-background text-muted-foreground hover:bg-muted'
-														}`}
+														className={`flex-1 px-2 py-1.5 transition-colors ${depositMode === 'amount' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
 														onClick={() => setDepositMode('amount')}
 													>
 														€
@@ -1060,50 +870,6 @@ export function InvoiceDetailPage() {
 											</Button>
 										))}
 
-									{/* Avoir lié si l'acompte a été remboursé */}
-									{(invoice as any).has_credit_note &&
-										linkedCreditNotes &&
-										linkedCreditNotes.length > 0 && (
-											<div className='mt-3'>
-												<p className='text-sm text-muted-foreground mb-2'>
-													Avoir associé
-												</p>
-												<div className='space-y-2'>
-													{linkedCreditNotes.map((cn) => (
-														<div
-															key={cn.id}
-															className='flex items-center justify-between bg-red-50 dark:bg-red-950/20 rounded-lg p-3 border border-red-200 dark:border-red-900'
-														>
-															<div className='flex items-center gap-2'>
-																<RefreshCcw className='h-4 w-4 text-red-600' />
-																<div className='flex flex-col'>
-																	<span className='font-medium text-sm text-red-700 dark:text-red-400'>
-																		{cn.number}
-																	</span>
-																	<span className='text-xs text-muted-foreground'>
-																		{formatDate(cn.date)} •{' '}
-																		{formatCurrency(cn.total_ttc)}
-																	</span>
-																</div>
-															</div>
-															<Button
-																variant='outline'
-																size='sm'
-																onClick={() =>
-																	navigate({
-																		to: '/connect/invoices/$invoiceId',
-																		params: { invoiceId: cn.id },
-																	})
-																}
-															>
-																Voir
-															</Button>
-														</div>
-													))}
-												</div>
-											</div>
-										)}
-
 									{invoice &&
 										canCreateBalanceInvoice(invoice) &&
 										!depositsData?.balanceInvoice &&
@@ -1127,9 +893,7 @@ export function InvoiceDetailPage() {
 							</div>
 						)}
 
-						{/* ════════════════════════════════════════════════════════════════
-    SECTION ACOMPTE — Lien retour vers la facture parente
-    ════════════════════════════════════════════════════════════════ */}
+						{/* ── Acompte : lien vers facture parente ── */}
 						{isDeposit && originalId && (
 							<div className='border-t pt-4'>
 								<p className='text-sm text-muted-foreground mb-2'>
@@ -1167,6 +931,7 @@ export function InvoiceDetailPage() {
 					</CardContent>
 				</Card>
 
+				{/* ── Client ── */}
 				<Card>
 					<CardHeader>
 						<CardTitle>Client</CardTitle>
@@ -1202,6 +967,7 @@ export function InvoiceDetailPage() {
 					</CardContent>
 				</Card>
 
+				{/* ── Articles ── */}
 				<Card className='lg:col-span-3'>
 					<CardHeader>
 						<CardTitle>Articles</CardTitle>
@@ -1214,7 +980,6 @@ export function InvoiceDetailPage() {
 									: 'cette facture'}
 						</CardDescription>
 					</CardHeader>
-
 					<CardContent>
 						<Table>
 							<TableHeader>
@@ -1227,7 +992,6 @@ export function InvoiceDetailPage() {
 									<TableHead className='text-right'>Total TTC</TableHead>
 								</TableRow>
 							</TableHeader>
-
 							<TableBody>
 								{invoice.items.map((item: any, idx: number) => {
 									const promo = getLineDiscountLabel(item)
@@ -1240,7 +1004,6 @@ export function InvoiceDetailPage() {
 									const unitTtcFromHt = round2(
 										Number(item?.unit_price_ht ?? 0) * coef,
 									)
-
 									return (
 										<TableRow key={`${item.name}-${idx}`}>
 											<TableCell className='font-medium'>
@@ -1256,23 +1019,18 @@ export function InvoiceDetailPage() {
 													)}
 												</div>
 											</TableCell>
-
 											<TableCell className='text-center'>
 												{item.quantity}
 											</TableCell>
-
 											<TableCell className='text-right'>
 												{Number(item.unit_price_ht ?? 0).toFixed(2)} €
 											</TableCell>
-
 											<TableCell className='text-right'>
 												{promo.label}
 											</TableCell>
-
 											<TableCell className='text-right'>
 												{item.tva_rate}%
 											</TableCell>
-
 											<TableCell className='text-right'>
 												{Number(item.total_ttc ?? 0).toFixed(2)} €
 											</TableCell>
@@ -1282,6 +1040,7 @@ export function InvoiceDetailPage() {
 							</TableBody>
 						</Table>
 
+						{/* Totaux */}
 						<div className='mt-6 flex justify-end'>
 							<div className='w-72 space-y-2 text-sm'>
 								{discounts.hasAnyDiscount && (
@@ -1297,7 +1056,6 @@ export function InvoiceDetailPage() {
 												)}
 											</span>
 										</div>
-
 										{discounts.lineDiscountsTtc > 0 && (
 											<div className='flex justify-between'>
 												<span className='text-muted-foreground'>
@@ -1312,7 +1070,6 @@ export function InvoiceDetailPage() {
 												</span>
 											</div>
 										)}
-
 										{discounts.cartDiscountTtc > 0 && (
 											<div className='flex justify-between'>
 												<span className='text-muted-foreground'>
@@ -1327,25 +1084,21 @@ export function InvoiceDetailPage() {
 												</span>
 											</div>
 										)}
-
 										<div className='border-t pt-2' />
 									</>
 								)}
-
 								<div className='flex justify-between'>
 									<span className='text-muted-foreground'>Total HT</span>
 									<span>
 										{formatCurrency(invoice.total_ht, invoice.currency)}
 									</span>
 								</div>
-
 								<div className='flex justify-between'>
 									<span className='text-muted-foreground'>TVA</span>
 									<span>
 										{formatCurrency(invoice.total_tva, invoice.currency)}
 									</span>
 								</div>
-
 								{vatBreakdown.length > 0 && (
 									<div className='pt-1'>
 										{vatBreakdown.map((vb) => (
@@ -1361,7 +1114,6 @@ export function InvoiceDetailPage() {
 										))}
 									</div>
 								)}
-
 								<div className='flex justify-between font-bold text-lg border-t pt-2'>
 									<span>Total TTC</span>
 									<span>
@@ -1380,6 +1132,6 @@ export function InvoiceDetailPage() {
 				invoice={invoice}
 				onSuccess={() => setEmailDialogOpen(false)}
 			/>
-		</div>
+		</ConnectModuleShell>
 	)
 }
