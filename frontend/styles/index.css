@@ -3,22 +3,14 @@
 @tailwind utilities;
 
 @layer base {
-  /* ═══════════════════════════════════════════════════════════════════════
-     STITCH LAYOUT TOKENS — variables CSS
-     Source unique de vérité pour toutes les dimensions structurelles.
-     ═══════════════════════════════════════════════════════════════════════ */
   :root {
-    /* ── Hauteurs ─────────────────────────────────────────────────────── */
-    --header-h: 56px; /* Header global (Layout > Header)            */
-    --subheader-h: 72px; /* Sub-header de page (ModulePageShell)       */
-    --bottom-nav-h: 56px; /* Bottom nav mobile (BottomNav)              */
+    --header-h: 56px;
+    --subheader-h: 72px;
+    --bottom-nav-h: 56px;
+    --rail-w: 3.5rem;
+    --panel-w: 16rem;
+    --sidebar-open-w: calc(var(--rail-w) + var(--panel-w));
 
-    /* ── Largeurs sidebar ─────────────────────────────────────────────── */
-    --rail-w: 3.5rem; /* Rail d'icônes (= 56px = w-14)             */
-    --panel-w: 16rem; /* Panneau déplié (= 256px = w-64)           */
-    --sidebar-open-w: calc(var(--rail-w) + var(--panel-w)); /* 312px        */
-
-    /* ── Stitch "Editorial Precision" design tokens ───────────────────── */
     --background: 240 100% 99.6%;
     --foreground: 220 57% 23%;
     --card: 0 0% 100%;
@@ -77,26 +69,21 @@
   }
   body {
     @apply bg-background text-foreground;
+    /*
+     * react-remove-scroll (Radix) injecte --removed-body-scroll-bar-size
+     * en style INLINE sur le body à l'ouverture d'un overlay, ce qui décale
+     * toute la page. !important sur body surpasse le style inline.
+     */
+    --removed-body-scroll-bar-size: 0px !important;
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   UTILITAIRE : pb-bottom-nav
-   Appliqué sur <main> uniquement sur mobile pour que le contenu ne soit
-   jamais masqué par la BottomNav fixe.
-   env(safe-area-inset-bottom) gère l'indicateur home iOS.
-   ═══════════════════════════════════════════════════════════════════════════ */
 @layer utilities {
   .pb-bottom-nav {
     padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom));
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   BRAND NAME — visible partout sauf < 360px (très petits mobiles)
-   Masqué sous 360px. Au-dessus, chaque élément reprend son display naturel
-   (flex pour les divs du subheader, inline pour le span du header).
-   ═══════════════════════════════════════════════════════════════════════════ */
 @layer utilities {
   .brand-visible {
     display: none;
@@ -111,9 +98,6 @@
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   GRID RESPONSIVE POS — 1 colonne sous 260px, 2 colonnes au-dessus
-   ═══════════════════════════════════════════════════════════════════════════ */
 @layer utilities {
   .grid-pos-products {
     grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -125,10 +109,6 @@
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   FIX SAFARI iOS — zoom automatique au focus sur input
-   Safari zoome si font-size < 16px. On force 16px minimum.
-   ═══════════════════════════════════════════════════════════════════════════ */
 @layer base {
   input:not([type="range"]),
   select,

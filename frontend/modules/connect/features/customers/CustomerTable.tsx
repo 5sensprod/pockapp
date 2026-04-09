@@ -1,4 +1,4 @@
-// frontend/modules/connect/components/CustomerTable.tsx
+// frontend/modules/connect/features/customers/CustomerTable.tsx
 
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
@@ -48,7 +48,6 @@ import {
 	Eye,
 	Landmark,
 	Mail,
-	MoreHorizontal,
 	Pencil,
 	Phone,
 	Trash2,
@@ -61,7 +60,6 @@ interface CustomerTableProps {
 	data: Customer[]
 	onEditCustomer: (customer: Customer) => void
 	isLoading?: boolean
-	// Pagination serveur
 	page: number
 	totalPages: number
 	totalItems: number
@@ -69,7 +67,6 @@ interface CustomerTableProps {
 	onPageChange: (page: number) => void
 }
 
-// Helper pour afficher le type de client
 const getCustomerTypeLabel = (type?: string) => {
 	switch (type) {
 		case 'individual':
@@ -126,7 +123,6 @@ export function CustomerTable({
 
 	const confirmDelete = async () => {
 		if (!customerToDelete) return
-
 		try {
 			await deleteCustomer.mutateAsync(customerToDelete.id)
 			toast.success(`Client "${customerToDelete.name}" supprimé avec succès`)
@@ -195,13 +191,10 @@ export function CustomerTable({
 			cell: ({ row }) => {
 				const email = row.getValue<string | undefined>('email')
 				return email ? (
-					<a
-						href={`mailto:${email}`}
-						className='text-blue-600 hover:underline flex items-center gap-1'
-					>
-						<Mail className='h-3 w-3' />
+					<span className='flex items-center gap-1 text-foreground'>
+						<Mail className='h-3 w-3 text-muted-foreground' />
 						{email}
-					</a>
+					</span>
 				) : (
 					<span className='text-muted-foreground'>-</span>
 				)
@@ -216,6 +209,7 @@ export function CustomerTable({
 					<a
 						href={`tel:${phone}`}
 						className='flex items-center gap-1 hover:underline'
+						onClick={(e) => e.stopPropagation()}
 					>
 						<Phone className='h-3 w-3' />
 						{phone}
@@ -235,7 +229,6 @@ export function CustomerTable({
 					: raw
 						? [raw as string]
 						: []
-
 				const tagColors: Record<string, string> = {
 					vip: 'bg-yellow-100 text-yellow-800',
 					prospect: 'bg-blue-100 text-blue-800',
@@ -257,55 +250,6 @@ export function CustomerTable({
 				)
 			},
 		},
-		{
-			id: 'actions',
-			cell: ({ row }) => {
-				const customer = row.original
-				return (
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button variant='ghost' className='h-8 w-8 p-0'>
-								<span className='sr-only'>Menu</span>
-								<MoreHorizontal className='h-4 w-4' />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align='end'>
-							<DropdownMenuLabel>Actions</DropdownMenuLabel>
-
-							{/* 🔵 Voir */}
-							<DropdownMenuItem
-								onClick={() =>
-									navigate({
-										to: '/connect/customers/$customerId',
-										params: () => ({ customerId: customer.id }),
-									})
-								}
-							>
-								<Eye className='h-4 w-4 mr-2' />
-								Voir
-							</DropdownMenuItem>
-
-							<DropdownMenuSeparator />
-
-							{/* ✏️ Modifier */}
-							<DropdownMenuItem onClick={() => onEditCustomer(customer)}>
-								<Pencil className='h-4 w-4 mr-2' />
-								Modifier
-							</DropdownMenuItem>
-
-							{/* 🗑️ Supprimer */}
-							<DropdownMenuItem
-								className='text-red-600'
-								onClick={() => askDelete(customer)}
-							>
-								<Trash2 className='h-4 w-4 mr-2' />
-								Supprimer
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				)
-			},
-		},
 	]
 
 	const table = useReactTable({
@@ -316,13 +260,9 @@ export function CustomerTable({
 		getFilteredRowModel: getFilteredRowModel(),
 		onSortingChange: setSorting,
 		onColumnFiltersChange: setColumnFilters,
-		state: {
-			sorting,
-			columnFilters,
-		},
+		state: { sorting, columnFilters },
 	})
 
-	// Calcul de la plage affichée (ex: "21–40 sur 87")
 	const rangeStart = totalItems === 0 ? 0 : (page - 1) * perPage + 1
 	const rangeEnd = Math.min(page * perPage, totalItems)
 
@@ -359,21 +299,59 @@ export function CustomerTable({
 								</TableCell>
 							</TableRow>
 						) : table.getRowModel().rows?.length ? (
-							table.getRowModel().rows.map((row) => (
-								<TableRow
-									key={row.id}
-									data-state={row.getIsSelected() && 'selected'}
-								>
-									{row.getVisibleCells().map((cell) => (
-										<TableCell key={cell.id}>
-											{flexRender(
-												cell.column.columnDef.cell,
-												cell.getContext(),
-											)}
-										</TableCell>
-									))}
-								</TableRow>
-							))
+							table.getRowModel().rows.map((row) => {
+								const customer = row.original
+								return (
+									<DropdownMenu key={row.id} modal={false}>
+										<DropdownMenuTrigger asChild>
+											<TableRow className='cursor-pointer hover:bg-muted/50 data-[state=open]:bg-muted transition-colors'>
+												{row.getVisibleCells().map((cell) => (
+													<TableCell key={cell.id}>
+														{flexRender(
+															cell.column.columnDef.cell,
+															cell.getContext(),
+														)}
+													</TableCell>
+												))}
+											</TableRow>
+										</DropdownMenuTrigger>
+
+										<DropdownMenuContent align='center' className='w-48'>
+											<DropdownMenuLabel>{customer.name}</DropdownMenuLabel>
+											<DropdownMenuSeparator />
+
+											<DropdownMenuItem
+												onClick={() =>
+													navigate({
+														to: '/connect/customers/$customerId',
+														params: { customerId: customer.id },
+													})
+												}
+											>
+												<Eye className='h-4 w-4 mr-2' />
+												Voir
+											</DropdownMenuItem>
+
+											<DropdownMenuItem
+												onClick={() => onEditCustomer(customer)}
+											>
+												<Pencil className='h-4 w-4 mr-2' />
+												Modifier
+											</DropdownMenuItem>
+
+											<DropdownMenuSeparator />
+
+											<DropdownMenuItem
+												className='text-red-600 focus:text-red-700'
+												onClick={() => askDelete(customer)}
+											>
+												<Trash2 className='h-4 w-4 mr-2' />
+												Supprimer
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
+								)
+							})
 						) : (
 							<TableRow>
 								<TableCell
@@ -420,7 +398,7 @@ export function CustomerTable({
 				</div>
 			</div>
 
-			{/* ── Boîte de dialogue de confirmation de suppression ────────── */}
+			{/* ── Dialog confirmation suppression ─────────────────────────── */}
 			<Dialog
 				open={confirmOpen}
 				onOpenChange={(open) => {
@@ -437,7 +415,6 @@ export function CustomerTable({
 								: 'Vous êtes sur le point de supprimer ce client.'}
 						</DialogDescription>
 					</DialogHeader>
-
 					<div className='flex justify-end gap-2 pt-4'>
 						<Button
 							variant='outline'

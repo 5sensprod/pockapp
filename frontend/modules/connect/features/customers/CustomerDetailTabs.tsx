@@ -137,13 +137,10 @@ export function CustomerDetailTabs({
 							<div className='space-y-1'>
 								<p className='text-sm text-muted-foreground'>Email</p>
 								{customer.email ? (
-									<a
-										href={`mailto:${customer.email}`}
-										className='flex items-center gap-2 text-blue-600 hover:underline'
-									>
+									<span>
 										<Mail className='h-4 w-4' />
 										{customer.email}
-									</a>
+									</span>
 								) : (
 									<p className='text-muted-foreground'>-</p>
 								)}
@@ -296,7 +293,13 @@ export function CustomerDetailTabs({
 													</Badge>
 												</TableCell>
 												<TableCell>
-													{invoice.is_paid ? (
+													{/* Vérification si c'est un avoir (ajuste 'invoice_type' selon ta base de données) */}
+													{invoice.invoice_type === 'credit_note' ? (
+														<span className='flex items-center gap-1 text-purple-600'>
+															<CheckCircle className='h-4 w-4' />
+															Avoir
+														</span>
+													) : invoice.is_paid ? (
 														<span className='flex items-center gap-1 text-green-600'>
 															<CheckCircle className='h-4 w-4' />
 															Payé

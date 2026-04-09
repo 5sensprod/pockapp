@@ -317,7 +317,7 @@ export function TicketsPage() {
 													(ticket.credit_notes_total ?? 0)
 
 										return (
-											<DropdownMenu key={ticket.id}>
+											<DropdownMenu key={ticket.id} modal={false}>
 												<DropdownMenuTrigger asChild>
 													<TableRow className='cursor-pointer hover:bg-muted/50 data-[state=open]:bg-muted transition-colors'>
 														<TableCell>

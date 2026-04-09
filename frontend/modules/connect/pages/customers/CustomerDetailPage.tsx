@@ -89,17 +89,28 @@ export function CustomerDetailPage() {
 		return (
 			<ConnectModuleShell
 				pageTitle='Fiche client'
+				hideTitle
+				hideIcon
+				hideBadge
 				headerLeft={
-					<Button
-						variant='ghost'
-						size='icon'
-						onClick={() => navigate({ to: '/connect/customers' })}
-					>
-						<ArrowLeft className='h-4 w-4' />
-					</Button>
+					<div className='flex items-center gap-2'>
+						<Button
+							variant='ghost'
+							size='icon'
+							className='-ml-2 text-muted-foreground hover:text-foreground'
+							onClick={() => navigate({ to: '/connect/customers' })}
+						>
+							<ArrowLeft className='h-4 w-4' />
+						</Button>
+						<div className='flex items-center gap-2'>
+							<User className='h-5 w-5 text-muted-foreground' />
+							<h1 className='text-lg font-semibold tracking-tight'>
+								Chargement...
+							</h1>
+						</div>
+					</div>
 				}
 				primaryAction={null}
-				hideBadge
 			>
 				<EmptyState icon={User} title='Chargement...' fullPage />
 			</ConnectModuleShell>
@@ -110,17 +121,28 @@ export function CustomerDetailPage() {
 		return (
 			<ConnectModuleShell
 				pageTitle='Fiche client'
+				hideTitle
+				hideIcon
+				hideBadge
 				headerLeft={
-					<Button
-						variant='ghost'
-						size='icon'
-						onClick={() => navigate({ to: '/connect/customers' })}
-					>
-						<ArrowLeft className='h-4 w-4' />
-					</Button>
+					<div className='flex items-center gap-2'>
+						<Button
+							variant='ghost'
+							size='icon'
+							className='-ml-2 text-muted-foreground hover:text-foreground'
+							onClick={() => navigate({ to: '/connect/customers' })}
+						>
+							<ArrowLeft className='h-4 w-4' />
+						</Button>
+						<div className='flex items-center gap-2'>
+							<User className='h-5 w-5 text-muted-foreground' />
+							<h1 className='text-lg font-semibold tracking-tight'>
+								Fiche client
+							</h1>
+						</div>
+					</div>
 				}
 				primaryAction={null}
-				hideBadge
 			>
 				<EmptyState
 					icon={User}
@@ -143,14 +165,26 @@ export function CustomerDetailPage() {
 		<ConnectModuleShell
 			pageTitle={customer.name}
 			pageIcon={TypeIcon}
+			hideTitle
+			hideIcon
+			hideBadge
 			headerLeft={
-				<Button
-					variant='ghost'
-					size='icon'
-					onClick={() => navigate({ to: '/connect/customers' })}
-				>
-					<ArrowLeft className='h-4 w-4' />
-				</Button>
+				<div className='flex items-center gap-2'>
+					<Button
+						variant='ghost'
+						size='icon'
+						className='-ml-2 text-muted-foreground hover:text-foreground'
+						onClick={() => navigate({ to: '/connect/customers' })}
+					>
+						<ArrowLeft className='h-4 w-4' />
+					</Button>
+					<div className='flex items-center gap-2'>
+						<TypeIcon className='h-5 w-5 text-muted-foreground' />
+						<h1 className='text-lg font-semibold tracking-tight'>
+							{customer.name}
+						</h1>
+					</div>
+				</div>
 			}
 			primaryAction={
 				<Button
@@ -165,7 +199,6 @@ export function CustomerDetailPage() {
 					Modifier
 				</Button>
 			}
-			hideBadge
 		>
 			{/* Stats rapides */}
 			<div className='grid grid-cols-2 md:grid-cols-4 gap-4 mb-6'>
