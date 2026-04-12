@@ -18,111 +18,55 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useOrders } from '@/lib/queries/orders'
+import type { OrderStatus } from '@/lib/queries/orders'
 import { useNavigate } from '@tanstack/react-router'
-import { ClipboardList, FilePen, Plus, Search } from 'lucide-react'
+import { ClipboardList, FilePen, Loader2, Plus, Search } from 'lucide-react'
 import { useState } from 'react'
 import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
 import { manifest } from '../../manifest'
-import {
-	ORDER_STATUS_LABELS,
-	type Order,
-	type OrderStatus,
-} from '../../types/order'
+import { ORDER_STATUS_LABELS } from '../../types/order'
 
-// ── Données de démonstration ─────────────────────────────────────────────────
-// À remplacer par un hook useOrders() connecté à ton backend
-const DEMO_ORDERS: Order[] = [
-	{
-		id: 'order-1',
-		reference: 'BC-2024-0001',
-		customerId: 'cust-1',
-		customerName: 'Atelier Dupont SARL',
-		status: 'confirmed',
-		lines: [],
-		totalHT: 1500,
-		totalTVA: 300,
-		totalTTC: 1800,
-		paymentConditions: '30 jours net',
-		createdAt: '2024-11-15T10:00:00Z',
-		confirmedAt: '2024-11-16T09:30:00Z',
-		updatedAt: '2024-11-16T09:30:00Z',
-	},
-	{
-		id: 'order-2',
-		reference: 'BC-2024-0002',
-		customerId: 'cust-2',
-		customerName: 'Martin & Associés',
-		status: 'in_progress',
-		lines: [],
-		totalHT: 3200,
-		totalTVA: 640,
-		totalTTC: 3840,
-		sourceQuoteId: 'quote-7',
-		createdAt: '2024-11-20T14:00:00Z',
-		confirmedAt: '2024-11-21T10:00:00Z',
-		updatedAt: '2024-11-22T08:00:00Z',
-	},
-	{
-		id: 'order-3',
-		reference: 'BC-2024-0003',
-		customerId: 'cust-1',
-		customerName: 'Atelier Dupont SARL',
-		status: 'billed',
-		lines: [],
-		totalHT: 800,
-		totalTVA: 160,
-		totalTTC: 960,
-		invoiceId: 'inv-12',
-		createdAt: '2024-10-01T09:00:00Z',
-		confirmedAt: '2024-10-02T10:00:00Z',
-		billedAt: '2024-10-20T11:00:00Z',
-		updatedAt: '2024-10-20T11:00:00Z',
-	},
-	{
-		id: 'order-4',
-		reference: 'BC-2024-0004',
-		customerId: 'cust-3',
-		customerName: 'Tech Solutions SAS',
-		status: 'draft',
-		lines: [],
-		totalHT: 5500,
-		totalTVA: 1100,
-		totalTTC: 6600,
-		createdAt: '2024-12-01T16:00:00Z',
-		updatedAt: '2024-12-01T16:00:00Z',
-	},
-]
+// TODO: récupérer depuis le contexte auth (même pattern que le reste de l'app)
+const COMPANY_ID = '' // useCompany().id
 
 const ALL_STATUSES = Object.entries(ORDER_STATUS_LABELS) as [
 	OrderStatus,
 	string,
 ][]
 
+const formatAmount = (amount: number) =>
+	new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(
+		amount,
+	)
+
+const formatDate = (iso: string) =>
+	new Intl.DateTimeFormat('fr-FR', {
+		day: '2-digit',
+		month: '2-digit',
+		year: 'numeric',
+	}).format(new Date(iso))
+
 export function OrdersPage() {
 	const navigate = useNavigate()
 	const [search, setSearch] = useState('')
 	const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
 
-	const filtered = DEMO_ORDERS.filter((o) => {
-		const matchSearch =
-			o.reference.toLowerCase().includes(search.toLowerCase()) ||
-			o.customerName.toLowerCase().includes(search.toLowerCase())
-		const matchStatus = statusFilter === 'all' || o.status === statusFilter
-		return matchSearch && matchStatus
+	const { data, isLoading } = useOrders({
+		companyId: COMPANY_ID,
+		status: statusFilter === 'all' ? undefined : statusFilter,
 	})
 
-	const formatAmount = (amount: number) =>
-		new Intl.NumberFormat('fr-FR', {
-			style: 'currency',
-			currency: 'EUR',
-		}).format(amount)
+	const orders = data?.items ?? []
 
-	const formatDate = (iso: string) =>
-		new Intl.DateTimeFormat('fr-FR', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric',
-		}).format(new Date(iso))
+	// Filtre local sur la recherche texte (référence / nom client)
+	const filtered = orders.filter((o) => {
+		const q = search.toLowerCase()
+		return (
+			o.number.toLowerCase().includes(q) ||
+			o.customer_name.toLowerCase().includes(q)
+		)
+	})
 
 	return (
 		<ModulePageShell
@@ -167,9 +111,15 @@ export function OrdersPage() {
 					</Select>
 				</div>
 
-				{/* ── Tableau ────────────────────────────────────────────────── */}
-				{filtered.length === 0 ? (
-					<EmptyState onNew={() => navigate({ to: '/connect/orders/new' })} />
+				{/* ── Contenu ────────────────────────────────────────────────── */}
+				{isLoading ? (
+					<div className='flex justify-center py-16'>
+						<Loader2 className='h-6 w-6 animate-spin text-muted-foreground' />
+					</div>
+				) : filtered.length === 0 ? (
+					<EmptyOrdersState
+						onNew={() => navigate({ to: '/connect/orders/new' })}
+					/>
 				) : (
 					<div className='rounded-lg border bg-card overflow-hidden'>
 						<Table>
@@ -198,20 +148,20 @@ export function OrdersPage() {
 										}
 									>
 										<TableCell className='font-mono text-sm font-medium'>
-											{order.reference}
+											{order.number}
 										</TableCell>
-										<TableCell>{order.customerName}</TableCell>
+										<TableCell>{order.customer_name}</TableCell>
 										<TableCell>
 											<OrderStatusBadge status={order.status} />
 										</TableCell>
 										<TableCell className='text-right font-medium'>
-											{formatAmount(order.totalTTC)}
+											{formatAmount(order.total_ttc)}
 										</TableCell>
 										<TableCell className='text-muted-foreground text-sm'>
-											{formatDate(order.createdAt)}
+											{formatDate(order.created)}
 										</TableCell>
 										<TableCell>
-											{order.sourceQuoteId ? (
+											{order.source_quote_id ? (
 												<span className='inline-flex items-center gap-1 text-xs text-muted-foreground'>
 													<FilePen className='h-3 w-3' />
 													Depuis devis
@@ -233,7 +183,7 @@ export function OrdersPage() {
 	)
 }
 
-function EmptyState({ onNew }: { onNew: () => void }) {
+function EmptyOrdersState({ onNew }: { onNew: () => void }) {
 	return (
 		<div className='flex flex-col items-center justify-center py-16 text-center gap-4'>
 			<div className='w-14 h-14 rounded-2xl bg-muted flex items-center justify-center'>

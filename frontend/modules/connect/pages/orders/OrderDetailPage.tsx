@@ -12,6 +12,8 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useOrder, usePatchOrderStatus } from '@/lib/queries/orders'
+import type { OrderStatus } from '@/lib/queries/orders'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	ArrowLeft,
@@ -27,49 +29,8 @@ import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
 import {
 	ORDER_STATUS_LABELS,
 	ORDER_STATUS_TRANSITIONS,
-	type Order,
-	type OrderStatus,
 } from '../../types/order'
 import { formatCurrency, formatDate } from '../../utils/formatters'
-
-// ── Données de démo ──────────────────────────────────────────────────────────
-// À remplacer par : const { data: order, isLoading } = useOrder(orderId)
-const DEMO_ORDER: Order = {
-	id: 'order-2',
-	reference: 'BC-2024-0002',
-	customerId: 'cust-2',
-	customerName: 'Martin & Associés',
-	status: 'confirmed',
-	lines: [
-		{
-			id: 'l1',
-			description: 'Développement interface React',
-			quantity: 5,
-			unitPrice: 400,
-			vatRate: 0.2,
-			totalHT: 2000,
-			totalTTC: 2400,
-		},
-		{
-			id: 'l2',
-			description: 'Intégration API REST',
-			quantity: 3,
-			unitPrice: 400,
-			vatRate: 0.2,
-			totalHT: 1200,
-			totalTTC: 1440,
-		},
-	],
-	totalHT: 3200,
-	totalTVA: 640,
-	totalTTC: 3840,
-	paymentConditions: '30 jours net',
-	deliveryConditions: 'Livraison sur site client',
-	sourceQuoteId: 'quote-7',
-	createdAt: '2024-11-20T14:00:00Z',
-	confirmedAt: '2024-11-21T10:00:00Z',
-	updatedAt: '2024-11-22T08:00:00Z',
-}
 
 const TRANSITION_ICONS: Partial<
 	Record<OrderStatus, React.FC<{ className?: string }>>
@@ -82,11 +43,13 @@ const TRANSITION_ICONS: Partial<
 
 export function OrderDetailPage() {
 	const navigate = useNavigate()
-	const { orderId: _orderId } = useParams({ from: '/connect/orders/$orderId/' })
-	// TODO: const { data: order, isLoading } = useOrder(_orderId)
-	const isLoading = false
-	const order = DEMO_ORDER
+	const { orderId } = useParams({ from: '/connect/orders/$orderId/' })
 
+	const { data: order, isLoading } = useOrder(orderId)
+	const { mutateAsync: patchStatus, isPending: isPatching } =
+		usePatchOrderStatus()
+
+	// ── Loading ───────────────────────────────────────────────────────────
 	if (isLoading) {
 		return (
 			<ConnectModuleShell
@@ -108,6 +71,7 @@ export function OrderDetailPage() {
 		)
 	}
 
+	// ── Not found ─────────────────────────────────────────────────────────
 	if (!order) {
 		return (
 			<ConnectModuleShell
@@ -145,13 +109,17 @@ export function OrderDetailPage() {
 	const isTerminal = allowedTransitions.length === 0
 
 	const handleTransition = async (next: OrderStatus) => {
-		// TODO: appel API patchOrderStatus(order.id, next)
-		console.log('Transition vers', next)
+		try {
+			await patchStatus({ id: order.id, status: next })
+		} catch (err) {
+			console.error('Erreur transition statut:', err)
+			// TODO: toast d'erreur
+		}
 	}
 
 	return (
 		<ConnectModuleShell
-			pageTitle={`Commande ${order.reference}`}
+			pageTitle={`Commande ${order.number}`}
 			pageIcon={ClipboardList}
 			headerLeft={
 				<Button
@@ -165,7 +133,6 @@ export function OrderDetailPage() {
 			headerRight={
 				<div className='flex items-center gap-2'>
 					<OrderStatusBadge status={order.status} />
-					{/* Boutons de transition */}
 					{!isTerminal &&
 						allowedTransitions.map((next) => {
 							const Icon = TRANSITION_ICONS[next]
@@ -176,6 +143,7 @@ export function OrderDetailPage() {
 									size='sm'
 									variant={isDanger ? 'destructive' : 'outline'}
 									onClick={() => handleTransition(next)}
+									disabled={isPatching}
 								>
 									{Icon && <Icon className='h-4 w-4 mr-1.5' />}
 									{ORDER_STATUS_LABELS[next]}
@@ -212,37 +180,49 @@ export function OrderDetailPage() {
 						<div className='grid grid-cols-2 gap-4'>
 							<div>
 								<p className='text-sm text-muted-foreground'>Référence</p>
-								<p className='font-mono font-medium'>{order.reference}</p>
+								<p className='font-mono font-medium'>{order.number}</p>
 							</div>
 							<div>
 								<p className='text-sm text-muted-foreground'>
 									Date de création
 								</p>
-								<p className='font-medium'>{formatDate(order.createdAt)}</p>
+								<p className='font-medium'>{formatDate(order.created)}</p>
 							</div>
-							{order.confirmedAt && (
+							{order.confirmed_at && (
 								<div>
 									<p className='text-sm text-muted-foreground'>Confirmé le</p>
-									<p className='font-medium'>{formatDate(order.confirmedAt)}</p>
+									<p className='font-medium'>
+										{formatDate(order.confirmed_at)}
+									</p>
 								</div>
 							)}
-							{order.paymentConditions && (
+							{order.payment_conditions && (
 								<div>
 									<p className='text-sm text-muted-foreground'>
 										Conditions de paiement
 									</p>
-									<p className='font-medium'>{order.paymentConditions}</p>
+									<p className='font-medium'>{order.payment_conditions}</p>
 								</div>
 							)}
-							{order.deliveryConditions && (
+							{order.delivery_conditions && (
 								<div>
 									<p className='text-sm text-muted-foreground'>
 										Conditions de livraison
 									</p>
-									<p className='font-medium'>{order.deliveryConditions}</p>
+									<p className='font-medium'>{order.delivery_conditions}</p>
 								</div>
 							)}
-							{order.sourceQuoteId && (
+							{order.cancellation_reason && (
+								<div className='col-span-2'>
+									<p className='text-sm text-muted-foreground'>
+										Motif d'annulation
+									</p>
+									<p className='font-medium text-destructive'>
+										{order.cancellation_reason}
+									</p>
+								</div>
+							)}
+							{order.source_quote_id && (
 								<div>
 									<p className='text-sm text-muted-foreground'>
 										Devis d'origine
@@ -251,7 +231,7 @@ export function OrderDetailPage() {
 										type='button'
 										className='font-medium text-primary hover:underline'
 										onClick={() => {
-											const quoteId = order.sourceQuoteId
+											const quoteId = order.source_quote_id
 											if (quoteId)
 												navigate({
 													to: '/connect/quotes/$quoteId',
@@ -279,11 +259,11 @@ export function OrderDetailPage() {
 							onClick={() =>
 								navigate({
 									to: '/connect/customers/$customerId',
-									params: { customerId: order.customerId },
+									params: { customerId: order.customer },
 								})
 							}
 						>
-							{order.customerName}
+							{order.customer_name}
 						</button>
 					</CardContent>
 				</Card>
@@ -306,46 +286,45 @@ export function OrderDetailPage() {
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{order.lines.map((line) => (
-									<TableRow key={line.id}>
+								{order.items.map((item) => (
+									<TableRow key={item.id}>
 										<TableCell className='font-medium'>
-											{line.description}
+											{item.description}
 										</TableCell>
 										<TableCell className='text-right'>
-											{line.quantity}
+											{item.quantity}
 										</TableCell>
 										<TableCell className='text-right'>
-											{formatCurrency(line.unitPrice)}
+											{formatCurrency(item.unit_price_ht)}
 										</TableCell>
 										<TableCell className='text-right'>
-											{(line.vatRate * 100).toFixed(0)} %
+											{(item.vat_rate * 100).toFixed(0)} %
 										</TableCell>
 										<TableCell className='text-right'>
-											{formatCurrency(line.totalHT)}
+											{formatCurrency(item.total_ht)}
 										</TableCell>
 										<TableCell className='text-right'>
-											{formatCurrency(line.totalTTC)}
+											{formatCurrency(item.total_ttc)}
 										</TableCell>
 									</TableRow>
 								))}
 							</TableBody>
 						</Table>
 
-						{/* Totaux */}
 						<div className='mt-6 flex justify-end'>
 							<div className='w-72 space-y-2'>
 								<div className='flex justify-between'>
 									<span className='text-muted-foreground'>Total HT</span>
-									<span>{formatCurrency(order.totalHT)}</span>
+									<span>{formatCurrency(order.total_ht)}</span>
 								</div>
 								<div className='flex justify-between'>
 									<span className='text-muted-foreground'>TVA</span>
-									<span>{formatCurrency(order.totalTVA)}</span>
+									<span>{formatCurrency(order.total_tva)}</span>
 								</div>
 								<Separator />
 								<div className='flex justify-between font-bold text-lg'>
 									<span>Total TTC</span>
-									<span>{formatCurrency(order.totalTTC)}</span>
+									<span>{formatCurrency(order.total_ttc)}</span>
 								</div>
 							</div>
 						</div>

@@ -27,6 +27,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// 4. Documents commerciaux (dépend de companies + customers)
 		ensureInvoicesCollection,
 		ensureQuotesCollection,
+		ensureOrdersCollection,
 
 		// 5. Clôtures et audit (dépend de companies + invoices)
 		ensureClosuresCollection,

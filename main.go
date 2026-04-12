@@ -94,6 +94,7 @@ func main() {
 
 	// Enregistre les hooks personnalisés sur PocketBase
 	hooks.RegisterAllHooks(pb)
+	hooks.RegisterOrderHooks(pb)
 
 	hooks.RegisterCompanyHooks(pb)
 

@@ -1,51 +1,24 @@
 // frontend/modules/connect/types/order.ts
+//
+// Source de vérité UI pour les bons de commande.
+// Les types (OrderItem, OrderResponse) sont en snake_case pour coller
+// exactement aux champs PocketBase retournés par le backend.
+// Le numéro BC-YYYY-XXXX est généré par le hook OnRecordBeforeCreate côté Go.
 
-export type OrderStatus =
-	| 'draft' // brouillon
-	| 'confirmed' // bon de commande confirmé (contrat formé)
-	| 'in_progress' // en cours d'exécution
-	| 'delivered' // livré / prestation réalisée
-	| 'billed' // facturé
-	| 'cancelled' // annulé (avec motif)
-
-export interface OrderLine {
-	id: string
-	description: string
-	quantity: number
-	unitPrice: number // HT
-	vatRate: number // ex: 0.20 pour 20%
-	totalHT: number
-	totalTTC: number
-}
-
-export interface Order {
-	id: string
-	reference: string // ex: "BC-2024-0042"
-	customerId: string
-	customerName: string // snapshot contractuel
-	status: OrderStatus
-	lines: OrderLine[]
-	totalHT: number
-	totalTVA: number
-	totalTTC: number
-	paymentConditions?: string
-	deliveryConditions?: string
-	notes?: string
-
-	// Traçabilité
-	sourceQuoteId?: string // si généré depuis un devis
-	invoiceId?: string // si déjà facturé
-	cancellationReason?: string
-
-	createdAt: string // ISO 8601
-	confirmedAt?: string
-	deliveredAt?: string
-	billedAt?: string
-	cancelledAt?: string
-	updatedAt: string
-}
+// ── Ré-export depuis les hooks pour éviter les imports multiples ────────────
+// Les composants importent OrderStatus / OrderItem / OrderResponse depuis ici.
+export type {
+	OrderStatus,
+	OrderItem,
+	OrderResponse,
+	OrderCreateDto,
+	OrdersListOptions,
+	PatchOrderStatusDto,
+} from '@/lib/queries/orders'
 
 // ── Labels UI ──────────────────────────────────────────────────────────────
+import type { OrderStatus } from '@/lib/queries/orders'
+
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 	draft: 'Brouillon',
 	confirmed: 'Confirmé',
@@ -101,22 +74,48 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 	cancelled: [],
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-export function computeOrderTotals(lines: OrderLine[]): {
-	totalHT: number
-	totalTVA: number
-	totalTTC: number
+// ── Helpers de calcul ─────────────────────────────────────────────────────
+// Utilisé dans OrderCreatePage / OrderEditPage pour recalculer les totaux
+// à partir des lignes saisies dans le formulaire.
+import type { OrderItem } from '@/lib/queries/orders'
+
+export function computeOrderTotals(items: OrderItem[]): {
+	total_ht: number
+	total_tva: number
+	total_ttc: number
 } {
-	const totalHT = lines.reduce((s, l) => s + l.totalHT, 0)
-	const totalTVA = lines.reduce((s, l) => s + l.totalHT * l.vatRate, 0)
+	const total_ht = items.reduce((s, i) => s + i.total_ht, 0)
+	const total_tva = items.reduce((s, i) => s + i.total_ht * i.vat_rate, 0)
 	return {
-		totalHT,
-		totalTVA,
-		totalTTC: totalHT + totalTVA,
+		total_ht,
+		total_tva,
+		total_ttc: total_ht + total_tva,
 	}
 }
 
-export function generateOrderReference(sequence: number): string {
-	const year = new Date().getFullYear()
-	return `BC-${year}-${String(sequence).padStart(4, '0')}`
+// computeItem : recalcule total_ht et total_ttc d'une ligne à partir
+// de quantity / unit_price_ht / vat_rate.
+// Utilisé dans OrderCreatePage quand l'utilisateur modifie un champ.
+export function computeItem(
+	item: Omit<OrderItem, 'total_ht' | 'total_ttc'>,
+): OrderItem {
+	const total_ht = item.quantity * item.unit_price_ht
+	return {
+		...item,
+		total_ht,
+		total_ttc: total_ht * (1 + item.vat_rate),
+	}
+}
+
+// emptyItem : ligne vide par défaut pour le formulaire de création.
+export function emptyItem(): OrderItem {
+	return {
+		id: crypto.randomUUID(),
+		description: '',
+		quantity: 1,
+		unit_price_ht: 0,
+		vat_rate: 0.2,
+		total_ht: 0,
+		total_ttc: 0,
+	}
 }
