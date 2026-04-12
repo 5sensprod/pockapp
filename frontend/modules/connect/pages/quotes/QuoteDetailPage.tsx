@@ -34,6 +34,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { SendQuoteEmailDialog } from '../../dialogs/SendQuoteEmailDialog'
+import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 import { QuotePdfDocument } from '../../pdf/QuotePdf'
 import { downloadQuotePdf } from '../../utils/downloadPdf'
 import { formatCurrency, formatDate } from '../../utils/formatters'
@@ -42,6 +43,7 @@ import { getQuoteStatus } from '../../utils/statusConfig'
 export function QuoteDetailPage() {
 	const navigate = useNavigate()
 	const { quoteId } = useParams({ from: '/connect/quotes/$quoteId/' })
+	const { goBack } = useDocumentNavigation('quote') // ← correct
 	const { data: quote, isLoading } = useQuote(quoteId)
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
@@ -66,23 +68,33 @@ export function QuoteDetailPage() {
 		setIsDownloading(false)
 	}
 
-	// ── Guards ───────────────────────────────────────────────────────────────
+	// ── Header gauche ─────────────────────────────────────────────────────
+	const makeHeaderLeft = (title: string) => (
+		<div className='flex items-center gap-3'>
+			<Button
+				variant='ghost'
+				size='icon'
+				className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
+				onClick={goBack}
+			>
+				<ArrowLeft className='h-4 w-4' />
+			</Button>
+			<div className='flex items-center gap-2'>
+				<FileText className='h-5 w-5 text-muted-foreground' />
+				<h1 className='text-xl font-bold tracking-tight'>{title}</h1>
+			</div>
+		</div>
+	)
 
+	// ── Guards ────────────────────────────────────────────────────────────
 	if (isLoading) {
 		return (
 			<ConnectModuleShell
-				pageTitle='Devis'
-				headerLeft={
-					<Button
-						variant='ghost'
-						size='icon'
-						onClick={() => navigate({ to: '/connect/quotes' })}
-					>
-						<ArrowLeft className='h-4 w-4' />
-					</Button>
-				}
-				primaryAction={null}
+				hideTitle
+				hideIcon
 				hideBadge
+				headerLeft={makeHeaderLeft('Devis')}
+				primaryAction={null}
 			>
 				<EmptyState icon={FileText} title='Chargement...' fullPage />
 			</ConnectModuleShell>
@@ -92,18 +104,11 @@ export function QuoteDetailPage() {
 	if (!quote) {
 		return (
 			<ConnectModuleShell
-				pageTitle='Devis'
-				headerLeft={
-					<Button
-						variant='ghost'
-						size='icon'
-						onClick={() => navigate({ to: '/connect/quotes' })}
-					>
-						<ArrowLeft className='h-4 w-4' />
-					</Button>
-				}
-				primaryAction={null}
+				hideTitle
+				hideIcon
 				hideBadge
+				headerLeft={makeHeaderLeft('Devis introuvable')}
+				primaryAction={null}
 			>
 				<EmptyState
 					icon={FileText}
@@ -112,7 +117,7 @@ export function QuoteDetailPage() {
 					actions={[
 						{
 							label: 'Retour aux devis',
-							onClick: () => navigate({ to: '/connect/quotes' }),
+							onClick: goBack,
 							variant: 'secondary',
 						},
 					]}
@@ -122,8 +127,7 @@ export function QuoteDetailPage() {
 		)
 	}
 
-	// ── Données dérivées ──────────────────────────────────────────────────────
-
+	// ── Données dérivées ──────────────────────────────────────────────────
 	const customer = quote.expand?.customer
 	const issuedBy = (quote as any).expand?.issued_by
 	const sellerName =
@@ -143,52 +147,55 @@ export function QuoteDetailPage() {
 
 	const statusInfo = getQuoteStatus(quote.status)
 
-	// ── Actions header ────────────────────────────────────────────────────────
-
-	const headerActions = (
-		<div className='flex items-center gap-2'>
-			<Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
-
-			<Button
-				variant='outline'
-				size='sm'
-				onClick={handleDownloadPdf}
-				disabled={isDownloading}
-			>
-				{isDownloading ? (
-					<Loader2 className='h-4 w-4 animate-spin mr-2' />
-				) : (
-					<Download className='h-4 w-4 mr-2' />
-				)}
-				PDF
-			</Button>
-
-			<Button
-				variant='outline'
-				size='sm'
-				onClick={() => setEmailDialogOpen(true)}
-			>
-				<Mail className='h-4 w-4 mr-2' />
-				Envoyer
-			</Button>
-		</div>
-	)
-
 	return (
 		<ConnectModuleShell
-			pageTitle={`Devis ${quote.number}`}
-			pageIcon={FileText}
+			hideTitle
+			hideIcon
+			hideBadge
 			headerLeft={
-				<Button
-					variant='ghost'
-					size='icon'
-					onClick={() => navigate({ to: '/connect/quotes' })}
-				>
-					<ArrowLeft className='h-4 w-4' />
-				</Button>
+				<div className='flex items-center gap-3'>
+					<Button
+						variant='ghost'
+						size='icon'
+						className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
+						onClick={goBack}
+					>
+						<ArrowLeft className='h-4 w-4' />
+					</Button>
+					<div className='flex items-center gap-2'>
+						<FileText className='h-5 w-5 text-muted-foreground' />
+						<h1 className='text-xl font-bold tracking-tight'>
+							Devis {quote.number}
+						</h1>
+						<Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+					</div>
+				</div>
 			}
-			headerRight={headerActions}
-			// Bouton Modifier — uniquement si brouillon
+			headerRight={
+				<div className='flex items-center gap-2'>
+					<Button
+						variant='outline'
+						size='sm'
+						onClick={handleDownloadPdf}
+						disabled={isDownloading}
+					>
+						{isDownloading ? (
+							<Loader2 className='h-4 w-4 animate-spin mr-2' />
+						) : (
+							<Download className='h-4 w-4 mr-2' />
+						)}
+						PDF
+					</Button>
+					<Button
+						variant='outline'
+						size='sm'
+						onClick={() => setEmailDialogOpen(true)}
+					>
+						<Mail className='h-4 w-4 mr-2' />
+						Envoyer
+					</Button>
+				</div>
+			}
 			primaryAction={
 				quote.status === 'draft' ? (
 					<Button
@@ -205,7 +212,6 @@ export function QuoteDetailPage() {
 					</Button>
 				) : null
 			}
-			hideBadge
 		>
 			<div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
 				{/* Détails */}
@@ -304,7 +310,6 @@ export function QuoteDetailPage() {
 										lineDiscountValue > 0
 											? `${lineDiscountValue.toFixed(2)}${lineDiscountMode === 'percent' ? '%' : '€'}`
 											: '-'
-
 									return (
 										// biome-ignore lint/suspicious/noArrayIndexKey: liste statique en lecture seule
 										<TableRow key={index}>

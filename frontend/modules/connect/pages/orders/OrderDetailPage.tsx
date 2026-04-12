@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table'
 import { useOrder, usePatchOrderStatus } from '@/lib/queries/orders'
 import type { OrderStatus } from '@/lib/queries/orders'
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	ArrowLeft,
 	CheckCircle2,
@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
+import { useOrderNavigation } from '../../hooks/useOrderNavigation'
 import {
 	ORDER_STATUS_LABELS,
 	ORDER_STATUS_TRANSITIONS,
@@ -44,38 +45,39 @@ const TRANSITION_ICONS: Partial<
 export function OrderDetailPage() {
 	const navigate = useNavigate()
 	const { orderId } = useParams({ from: '/connect/orders/$orderId/' })
-	const search = useSearch({ strict: false }) as {
-		from?: string
-		customerId?: string
-	}
+	const { goBack } = useOrderNavigation()
 
-	const handleBack = () => {
-		if (search.from === 'customer' && search.customerId) {
-			navigate({
-				to: '/connect/customers/$customerId',
-				params: { customerId: search.customerId },
-				search: { tab: 'orders' }, // ← manquait
-			})
-		} else {
-			navigate({ to: '/connect/orders' })
-		}
-	}
 	const { data: order, isLoading } = useOrder(orderId)
 	const { mutateAsync: patchStatus, isPending: isPatching } =
 		usePatchOrderStatus()
+
+	// ── Header gauche partagé ─────────────────────────────────────────────
+	const headerLeft = (title: string) => (
+		<div className='flex items-center gap-3'>
+			<Button
+				variant='ghost'
+				size='icon'
+				className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
+				onClick={goBack}
+			>
+				<ArrowLeft className='h-4 w-4' />
+			</Button>
+			<div className='flex items-center gap-2'>
+				<ClipboardList className='h-5 w-5 text-muted-foreground' />
+				<h1 className='text-xl font-bold tracking-tight'>{title}</h1>
+			</div>
+		</div>
+	)
 
 	// ── Loading ───────────────────────────────────────────────────────────
 	if (isLoading) {
 		return (
 			<ConnectModuleShell
-				pageTitle='Bon de commande'
-				headerLeft={
-					<Button variant='ghost' size='icon' onClick={handleBack}>
-						<ArrowLeft className='h-4 w-4' />
-					</Button>
-				}
-				primaryAction={null}
+				hideTitle
+				hideIcon
 				hideBadge
+				headerLeft={headerLeft('Bon de commande')}
+				primaryAction={null}
 			>
 				<EmptyState icon={ClipboardList} title='Chargement...' fullPage />
 			</ConnectModuleShell>
@@ -86,14 +88,11 @@ export function OrderDetailPage() {
 	if (!order) {
 		return (
 			<ConnectModuleShell
-				pageTitle='Bon de commande'
-				headerLeft={
-					<Button variant='ghost' size='icon' onClick={handleBack}>
-						<ArrowLeft className='h-4 w-4' />
-					</Button>
-				}
-				primaryAction={null}
+				hideTitle
+				hideIcon
 				hideBadge
+				headerLeft={headerLeft('Bon de commande introuvable')}
+				primaryAction={null}
 			>
 				<EmptyState
 					icon={ClipboardList}
@@ -120,24 +119,35 @@ export function OrderDetailPage() {
 			await patchStatus({ id: order.id, status: next })
 		} catch (err) {
 			console.error('Erreur transition statut:', err)
-			// TODO: toast d'erreur
 		}
 	}
 
 	return (
 		<ConnectModuleShell
-			pageTitle={`Commande ${order.number}`}
-			pageIcon={ClipboardList}
+			hideTitle
+			hideIcon
+			hideBadge
 			headerLeft={
-				<Button variant='ghost' size='icon' onClick={handleBack}>
-					<ArrowLeft className='h-4 w-4' />
-				</Button>
+				<div className='flex items-center gap-3'>
+					<Button
+						variant='ghost'
+						size='icon'
+						className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
+						onClick={goBack}
+					>
+						<ArrowLeft className='h-4 w-4' />
+					</Button>
+					<div className='flex items-center gap-2'>
+						<ClipboardList className='h-5 w-5 text-muted-foreground' />
+						<h1 className='text-xl font-bold tracking-tight'>{order.number}</h1>
+						<OrderStatusBadge status={order.status} />
+					</div>
+				</div>
 			}
 			headerRight={
-				<div className='flex items-center gap-2'>
-					<OrderStatusBadge status={order.status} />
-					{!isTerminal &&
-						allowedTransitions.map((next) => {
+				!isTerminal ? (
+					<div className='flex items-center gap-2'>
+						{allowedTransitions.map((next) => {
 							const Icon = TRANSITION_ICONS[next]
 							const isDanger = next === 'cancelled'
 							return (
@@ -153,7 +163,8 @@ export function OrderDetailPage() {
 								</Button>
 							)
 						})}
-				</div>
+					</div>
+				) : null
 			}
 			primaryAction={
 				order.status === 'draft' ? (
@@ -171,7 +182,6 @@ export function OrderDetailPage() {
 					</Button>
 				) : null
 			}
-			hideBadge
 		>
 			<div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
 				{/* ── Infos générales ─────────────────────────────────────────── */}

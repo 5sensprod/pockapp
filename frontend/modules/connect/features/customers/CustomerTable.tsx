@@ -1,6 +1,5 @@
 // frontend/modules/connect/features/customers/CustomerTable.tsx
 
-import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -14,14 +13,6 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
 	Table,
 	TableBody,
 	TableCell,
@@ -30,6 +21,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useDeleteCustomer } from '@/lib/queries/customers'
+import { useNavigate } from '@tanstack/react-router'
 import {
 	type ColumnDef,
 	type ColumnFiltersState,
@@ -45,12 +37,9 @@ import {
 	Building2,
 	ChevronLeft,
 	ChevronRight,
-	Eye,
 	Landmark,
 	Mail,
-	Pencil,
 	Phone,
-	Trash2,
 	User,
 	Users,
 } from 'lucide-react'
@@ -97,7 +86,7 @@ const getCustomerTypeIcon = (type?: string) => {
 
 export function CustomerTable({
 	data,
-	onEditCustomer,
+
 	isLoading = false,
 	page,
 	totalPages,
@@ -110,16 +99,10 @@ export function CustomerTable({
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
 	const deleteCustomer = useDeleteCustomer()
-
 	const [confirmOpen, setConfirmOpen] = useState(false)
 	const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(
 		null,
 	)
-
-	const askDelete = (customer: Customer) => {
-		setCustomerToDelete(customer)
-		setConfirmOpen(true)
-	}
 
 	const confirmDelete = async () => {
 		if (!customerToDelete) return
@@ -302,54 +285,25 @@ export function CustomerTable({
 							table.getRowModel().rows.map((row) => {
 								const customer = row.original
 								return (
-									<DropdownMenu key={row.id} modal={false}>
-										<DropdownMenuTrigger asChild>
-											<TableRow className='cursor-pointer hover:bg-muted/50 data-[state=open]:bg-muted transition-colors'>
-												{row.getVisibleCells().map((cell) => (
-													<TableCell key={cell.id}>
-														{flexRender(
-															cell.column.columnDef.cell,
-															cell.getContext(),
-														)}
-													</TableCell>
-												))}
-											</TableRow>
-										</DropdownMenuTrigger>
-
-										<DropdownMenuContent align='center' className='w-48'>
-											<DropdownMenuLabel>{customer.name}</DropdownMenuLabel>
-											<DropdownMenuSeparator />
-
-											<DropdownMenuItem
-												onClick={() =>
-													navigate({
-														to: '/connect/customers/$customerId',
-														params: { customerId: customer.id },
-													})
-												}
-											>
-												<Eye className='h-4 w-4 mr-2' />
-												Voir
-											</DropdownMenuItem>
-
-											<DropdownMenuItem
-												onClick={() => onEditCustomer(customer)}
-											>
-												<Pencil className='h-4 w-4 mr-2' />
-												Modifier
-											</DropdownMenuItem>
-
-											<DropdownMenuSeparator />
-
-											<DropdownMenuItem
-												className='text-red-600 focus:text-red-700'
-												onClick={() => askDelete(customer)}
-											>
-												<Trash2 className='h-4 w-4 mr-2' />
-												Supprimer
-											</DropdownMenuItem>
-										</DropdownMenuContent>
-									</DropdownMenu>
+									<TableRow
+										key={row.id}
+										className='cursor-pointer hover:bg-muted/50 transition-colors'
+										onClick={() =>
+											navigate({
+												to: '/connect/customers/$customerId',
+												params: { customerId: customer.id },
+											})
+										}
+									>
+										{row.getVisibleCells().map((cell) => (
+											<TableCell key={cell.id}>
+												{flexRender(
+													cell.column.columnDef.cell,
+													cell.getContext(),
+												)}
+											</TableCell>
+										))}
+									</TableRow>
 								)
 							})
 						) : (

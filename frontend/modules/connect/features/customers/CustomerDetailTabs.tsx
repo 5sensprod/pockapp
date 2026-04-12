@@ -2,18 +2,11 @@
 //
 // Tabs extraites de CustomerDetailPage.
 // Contient : Factures | Devis | Bons de commande | Produits d'occasion
+// Clic sur une ligne → navigation directe vers le détail avec contexte from=customer
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
 	Table,
 	TableBody,
@@ -28,18 +21,17 @@ import type {
 	CustomersResponse,
 } from '@/lib/pocketbase-types'
 import type { InvoiceResponse, QuoteResponse } from '@/lib/types/invoice.types'
-import { useNavigate } from '@tanstack/react-router'
 import {
 	CheckCircle,
 	ClipboardList,
 	Clock,
-	Eye,
 	FileText,
 	Guitar,
 	Plus,
 	Receipt,
 	XCircle,
 } from 'lucide-react'
+import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { getInvoiceStatus, getQuoteStatus } from '../../utils/statusConfig'
 import { ConsignmentTab } from './ConsignmentTab'
@@ -67,7 +59,7 @@ interface CustomerDetailTabsProps {
 		unpaidCount: number
 		acceptedQuotes: number
 	}
-	defaultTab?: string // ← ajoute
+	defaultTab?: string
 }
 
 // ============================================================================
@@ -87,9 +79,11 @@ export function CustomerDetailTabs({
 	stats,
 	defaultTab = 'invoices',
 }: CustomerDetailTabsProps) {
-	const navigate = useNavigate()
+	const { goToDetail: goToInvoice } = useDocumentNavigation('invoice')
+	const { goToDetail: goToQuote } = useDocumentNavigation('quote')
+	const { goToDetail: goToOrder } = useDocumentNavigation('order')
 
-	// ── DESIGN DES ONGLETS (Style Titre / Sans bord / Séparateurs) ──────────
+	// ── DESIGN DES ONGLETS ───────────────────────────────────────────────────
 	const sharedTabsList = (
 		<TabsList className='bg-transparent h-auto p-0 flex items-center justify-start gap-3 sm:gap-5'>
 			<TabsTrigger
@@ -145,7 +139,7 @@ export function CustomerDetailTabs({
 						<Button
 							size='sm'
 							className='gap-2'
-							onClick={() => navigate({ to: '/connect/invoices/new' })}
+							onClick={() => goToInvoice('new', customerId)}
 						>
 							<Plus className='h-4 w-4' />
 							Nouvelle facture
@@ -162,7 +156,7 @@ export function CustomerDetailTabs({
 									variant='outline'
 									size='sm'
 									className='mt-4 gap-2'
-									onClick={() => navigate({ to: '/connect/invoices/new' })}
+									onClick={() => goToInvoice('new', customerId)}
 								>
 									<Plus className='h-4 w-4' />
 									Créer une facture
@@ -182,92 +176,63 @@ export function CustomerDetailTabs({
 								<TableBody>
 									{invoices.map((invoice: InvoiceResponse) => {
 										const statusInfo = getInvoiceStatus(invoice.status)
-
 										const isCreditNote = invoice.invoice_type === 'credit_note'
 										const totalTtc = invoice.total_ttc ?? 0
 										const creditNotesTotal = invoice.credit_notes_total ?? 0
 										const isFullyCancelled =
 											totalTtc > 0 && creditNotesTotal >= totalTtc
 
-										let docTypeLabel = 'Facture'
-										let docActionLabel = 'Voir la facture'
-										if (invoice.invoice_type === 'credit_note') {
-											docTypeLabel = 'Avoir'
-											docActionLabel = "Voir l'avoir"
-										} else if (invoice.invoice_type === 'deposit') {
-											docTypeLabel = 'Acompte'
-											docActionLabel = "Voir l'acompte"
-										}
-
 										return (
-											<DropdownMenu key={invoice.id} modal={false}>
-												<DropdownMenuTrigger asChild>
-													<TableRow className='cursor-pointer hover:bg-muted/50 data-[state=open]:bg-muted transition-colors'>
-														<TableCell className='font-medium'>
-															{invoice.number || '-'}
-														</TableCell>
-														<TableCell>{formatDate(invoice.date)}</TableCell>
-														<TableCell className='font-medium'>
-															{formatCurrency(invoice.total_ttc)}
-														</TableCell>
-														<TableCell>
-															<Badge variant={statusInfo.variant}>
-																{statusInfo.label}
-															</Badge>
-														</TableCell>
-														<TableCell>
-															{isCreditNote ? (
-																<span className='flex items-center gap-1 text-purple-600'>
-																	<CheckCircle className='h-4 w-4' />
-																	Avoir
-																</span>
-															) : isFullyCancelled ? (
-																invoice.is_paid ? (
-																	<span className='flex items-center gap-1 text-orange-600'>
-																		<CheckCircle className='h-4 w-4' />
-																		Remboursé
-																	</span>
-																) : (
-																	<span className='flex items-center gap-1 text-gray-500'>
-																		<XCircle className='h-4 w-4' />
-																		Abandonné
-																	</span>
-																)
-															) : invoice.is_paid ? (
-																<span className='flex items-center gap-1 text-green-600'>
-																	<CheckCircle className='h-4 w-4' />
-																	Payé
-																</span>
-															) : invoice.status !== 'draft' ? (
-																<span className='flex items-center gap-1 text-orange-600'>
-																	<Clock className='h-4 w-4' />
-																	En attente
-																</span>
-															) : (
-																<span className='text-muted-foreground'>-</span>
-															)}
-														</TableCell>
-													</TableRow>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align='center' className='w-48'>
-													<DropdownMenuLabel>
-														{docTypeLabel} {invoice.number || ''}
-													</DropdownMenuLabel>
-													<DropdownMenuSeparator />
-													<DropdownMenuItem
-														onClick={() =>
-															navigate({
-																to: '/connect/invoices/$invoiceId',
-																params: { invoiceId: invoice.id },
-																search: { tab: 'orders' },
-															})
-														}
-													>
-														<Eye className='h-4 w-4 mr-2' />
-														{docActionLabel}
-													</DropdownMenuItem>
-												</DropdownMenuContent>
-											</DropdownMenu>
+											<TableRow
+												key={invoice.id}
+												className='cursor-pointer hover:bg-muted/50 transition-colors'
+												onClick={() => goToInvoice(invoice.id, customerId)}
+											>
+												<TableCell className='font-medium'>
+													{invoice.number || '-'}
+												</TableCell>
+												<TableCell>{formatDate(invoice.date)}</TableCell>
+												<TableCell className='font-medium'>
+													{formatCurrency(invoice.total_ttc)}
+												</TableCell>
+												<TableCell>
+													<Badge variant={statusInfo.variant}>
+														{statusInfo.label}
+													</Badge>
+												</TableCell>
+												<TableCell>
+													{isCreditNote ? (
+														<span className='flex items-center gap-1 text-purple-600'>
+															<CheckCircle className='h-4 w-4' />
+															Avoir
+														</span>
+													) : isFullyCancelled ? (
+														invoice.is_paid ? (
+															<span className='flex items-center gap-1 text-orange-600'>
+																<CheckCircle className='h-4 w-4' />
+																Remboursé
+															</span>
+														) : (
+															<span className='flex items-center gap-1 text-gray-500'>
+																<XCircle className='h-4 w-4' />
+																Abandonné
+															</span>
+														)
+													) : invoice.is_paid ? (
+														<span className='flex items-center gap-1 text-green-600'>
+															<CheckCircle className='h-4 w-4' />
+															Payé
+														</span>
+													) : invoice.status !== 'draft' ? (
+														<span className='flex items-center gap-1 text-orange-600'>
+															<Clock className='h-4 w-4' />
+															En attente
+														</span>
+													) : (
+														<span className='text-muted-foreground'>-</span>
+													)}
+												</TableCell>
+											</TableRow>
 										)
 									})}
 								</TableBody>
@@ -285,7 +250,7 @@ export function CustomerDetailTabs({
 						<Button
 							size='sm'
 							className='gap-2'
-							onClick={() => navigate({ to: '/connect/quotes/new' })}
+							onClick={() => goToQuote('new', customerId)}
 						>
 							<Plus className='h-4 w-4' />
 							Nouveau devis
@@ -302,7 +267,7 @@ export function CustomerDetailTabs({
 									variant='outline'
 									size='sm'
 									className='mt-4 gap-2'
-									onClick={() => navigate({ to: '/connect/quotes/new' })}
+									onClick={() => goToQuote('new', customerId)}
 								>
 									<Plus className='h-4 w-4' />
 									Créer un devis
@@ -328,77 +293,39 @@ export function CustomerDetailTabs({
 											quote.status !== 'accepted'
 
 										return (
-											<DropdownMenu key={quote.id} modal={false}>
-												<DropdownMenuTrigger asChild>
-													<TableRow className='cursor-pointer hover:bg-muted/50 data-[state=open]:bg-muted transition-colors'>
-														<TableCell className='font-medium'>
-															{quote.number || '-'}
-														</TableCell>
-														<TableCell>{formatDate(quote.date)}</TableCell>
-														<TableCell>
-															{isExpired ? (
-																<span className='flex items-center gap-1 text-red-600'>
-																	<XCircle className='h-4 w-4' />
-																	Expiré
-																</span>
-															) : (
-																formatDate(quote.valid_until)
-															)}
-														</TableCell>
-														<TableCell className='font-medium'>
-															{formatCurrency(quote.total_ttc)}
-														</TableCell>
-														<TableCell>
-															<Badge variant={statusInfo.variant}>
-																{statusInfo.label}
-															</Badge>
-															{quote.generated_invoice_id && (
-																<Badge variant='outline' className='ml-1'>
-																	Facturé
-																</Badge>
-															)}
-														</TableCell>
-													</TableRow>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align='center' className='w-48'>
-													<DropdownMenuLabel>
-														Devis {quote.number || ''}
-													</DropdownMenuLabel>
-													<DropdownMenuSeparator />
-													<DropdownMenuItem
-														onClick={() =>
-															navigate({
-																to: '/connect/quotes/$quoteId',
-																params: { quoteId: quote.id },
-															})
-														}
-													>
-														<Eye className='h-4 w-4 mr-2' />
-														Voir le devis
-													</DropdownMenuItem>
-													{/* Convertir en bon de commande si devis accepté */}
-													{quote.status === 'accepted' &&
-														!quote.generated_invoice_id && (
-															<>
-																<DropdownMenuSeparator />
-																<DropdownMenuItem
-																	onClick={() =>
-																		navigate({
-																			to: '/connect/orders/new',
-																			search: {
-																				sourceQuoteId: quote.id,
-																				customerId,
-																			},
-																		})
-																	}
-																>
-																	<ClipboardList className='h-4 w-4 mr-2' />
-																	Créer un bon de commande
-																</DropdownMenuItem>
-															</>
-														)}
-												</DropdownMenuContent>
-											</DropdownMenu>
+											<TableRow
+												key={quote.id}
+												className='cursor-pointer hover:bg-muted/50 transition-colors'
+												onClick={() => goToQuote(quote.id, customerId)}
+											>
+												<TableCell className='font-medium'>
+													{quote.number || '-'}
+												</TableCell>
+												<TableCell>{formatDate(quote.date)}</TableCell>
+												<TableCell>
+													{isExpired ? (
+														<span className='flex items-center gap-1 text-red-600'>
+															<XCircle className='h-4 w-4' />
+															Expiré
+														</span>
+													) : (
+														formatDate(quote.valid_until)
+													)}
+												</TableCell>
+												<TableCell className='font-medium'>
+													{formatCurrency(quote.total_ttc)}
+												</TableCell>
+												<TableCell>
+													<Badge variant={statusInfo.variant}>
+														{statusInfo.label}
+													</Badge>
+													{quote.generated_invoice_id && (
+														<Badge variant='outline' className='ml-1'>
+															Facturé
+														</Badge>
+													)}
+												</TableCell>
+											</TableRow>
 										)
 									})}
 								</TableBody>
@@ -416,12 +343,7 @@ export function CustomerDetailTabs({
 						<Button
 							size='sm'
 							className='gap-2'
-							onClick={() =>
-								navigate({
-									to: '/connect/orders/new',
-									search: { customerId },
-								})
-							}
+							onClick={() => goToOrder('new', customerId)}
 						>
 							<Plus className='h-4 w-4' />
 							Nouveau bon

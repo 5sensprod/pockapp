@@ -52,6 +52,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { SendInvoiceEmailDialog } from '../../dialogs/SendInvoiceEmailDialog'
+import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 import { InvoicePdfDocument } from '../../pdf/InvoicePdf'
 import { downloadInvoicePdf } from '../../utils/downloadPdf'
 import {
@@ -116,6 +117,7 @@ function getSoldByLabel(invoice: any): string {
 
 export function InvoiceDetailPage() {
 	const navigate = useNavigate()
+	const { goBack } = useDocumentNavigation('invoice') // ← correct
 	const { invoiceId } = useParams({ from: '/connect/invoices/$invoiceId/' })
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
@@ -214,19 +216,28 @@ export function InvoiceDetailPage() {
 	// ── Guards ────────────────────────────────────────────────────────────────
 
 	const backButton = (
-		<Button
-			variant='ghost'
-			size='icon'
-			onClick={() => navigate({ to: '/connect/invoices' })}
-		>
-			<ArrowLeft className='h-4 w-4' />
-		</Button>
+		<div className='flex items-center gap-3'>
+			<Button
+				variant='ghost'
+				size='icon'
+				className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
+				onClick={goBack}
+			>
+				<ArrowLeft className='h-4 w-4' />
+			</Button>
+			<div className='flex items-center gap-2'>
+				<FileText className='h-5 w-5 text-muted-foreground' />
+				<h1 className='text-xl font-bold tracking-tight'>Facture</h1>
+			</div>
+		</div>
 	)
 
 	if (isLoading) {
 		return (
 			<ConnectModuleShell
 				pageTitle='Facture'
+				hideTitle
+				hideIcon
 				headerLeft={backButton}
 				primaryAction={null}
 				hideBadge
@@ -239,6 +250,8 @@ export function InvoiceDetailPage() {
 	if (!invoice) {
 		return (
 			<ConnectModuleShell
+				hideTitle
+				hideIcon
 				pageTitle='Facture'
 				headerLeft={backButton}
 				primaryAction={null}
@@ -427,16 +440,24 @@ export function InvoiceDetailPage() {
 
 	return (
 		<ConnectModuleShell
-			pageTitle={pageTitle}
-			pageIcon={FileText}
+			hideTitle
+			hideIcon
 			headerLeft={
-				<Button
-					variant='ghost'
-					size='icon'
-					onClick={() => navigate({ to: '/connect/invoices' })}
-				>
-					<ArrowLeft className='h-4 w-4' />
-				</Button>
+				<div className='flex items-center gap-3'>
+					<Button
+						variant='ghost'
+						size='icon'
+						className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
+						onClick={goBack}
+					>
+						<ArrowLeft className='h-4 w-4' />
+					</Button>
+					<div className='flex items-center gap-2'>
+						<FileText className='h-5 w-5 text-muted-foreground' />
+						<h1 className='text-xl font-bold tracking-tight'>{pageTitle}</h1>
+						{renderStatusBadges()}
+					</div>
+				</div>
 			}
 			headerRight={headerActions}
 			primaryAction={

@@ -1,18 +1,10 @@
 // frontend/modules/connect/components/QuotesTable.tsx
 //
 // Composant PRESENTATIONAL — table des devis + pagination serveur.
-// Toute la logique métier reste dans QuotesPage.
+// Clic sur une ligne → navigation vers le détail du devis.
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
 	Table,
 	TableBody,
@@ -26,20 +18,8 @@ import type {
 	QuoteResponse,
 	QuoteStatus,
 } from '@/lib/types/invoice.types'
-import { useNavigate } from '@tanstack/react-router'
-import {
-	ArrowRight,
-	CheckCircle,
-	ChevronLeft,
-	ChevronRight,
-	Download,
-	Edit,
-	Eye,
-	Loader2,
-	Mail,
-	MoreHorizontal,
-	Trash2,
-} from 'lucide-react'
+import { CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { getPaginationRange } from '../../utils/pagination'
 
@@ -68,45 +48,34 @@ function getQuoteStatusVariant(
 	}
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 export interface QuotesTableProps {
 	quotes: QuoteResponse[]
 	isLoading?: boolean
-	downloadingQuoteId: string | null
 	// Pagination serveur
 	page: number
 	totalPages: number
 	totalItems: number
 	perPage: number
 	onPageChange: (page: number) => void
-	// Handlers
-	onDownloadPdf: (quote: QuoteResponse) => void
-	onOpenEmail: (quote: QuoteResponse) => void
-	onOpenConvert: (quote: QuoteResponse) => void
-	onOpenDelete: (quote: QuoteResponse) => void
-	convertIsPending: boolean
+	// Props conservées pour compatibilité avec QuotesPage
+	downloadingQuoteId?: string | null
+	onDownloadPdf?: (quote: QuoteResponse) => void
+	onOpenEmail?: (quote: QuoteResponse) => void
+	onOpenConvert?: (quote: QuoteResponse) => void
+	onOpenDelete?: (quote: QuoteResponse) => void
+	convertIsPending?: boolean
 }
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export function QuotesTable({
 	quotes,
 	isLoading = false,
-	downloadingQuoteId,
 	page,
 	totalPages,
 	totalItems,
 	perPage,
 	onPageChange,
-	onDownloadPdf,
-	onOpenEmail,
-	onOpenConvert,
-	onOpenDelete,
-	convertIsPending,
 }: QuotesTableProps) {
-	const navigate = useNavigate()
-
+	const { goToDetail } = useDocumentNavigation('quote')
 	const { rangeStart, rangeEnd } = getPaginationRange(page, perPage, totalItems)
 
 	return (
@@ -119,10 +88,10 @@ export function QuotesTable({
 							<TableHead>Vendeur</TableHead>
 							<TableHead>Client</TableHead>
 							<TableHead>Date</TableHead>
+							<TableHead>Validité</TableHead>
 							<TableHead>Montant TTC</TableHead>
 							<TableHead>Statut</TableHead>
 							<TableHead>Facture liée</TableHead>
-							<TableHead className='w-10' />
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -149,8 +118,6 @@ export function QuotesTable({
 								const linkedInvoice = quote.expand?.generated_invoice_id as
 									| InvoiceResponse
 									| undefined
-								const isDownloading = downloadingQuoteId === quote.id
-
 								const issuedBy = (quote as any).expand?.issued_by
 								const sellerName =
 									issuedBy?.name ||
@@ -160,7 +127,11 @@ export function QuotesTable({
 									'—'
 
 								return (
-									<TableRow key={quote.id}>
+									<TableRow
+										key={quote.id}
+										className='cursor-pointer hover:bg-muted/50 transition-colors'
+										onClick={() => goToDetail(quote.id)}
+									>
 										<TableCell className='font-mono font-medium'>
 											{quote.number}
 										</TableCell>
@@ -180,6 +151,9 @@ export function QuotesTable({
 											</div>
 										</TableCell>
 										<TableCell>{formatDate(quote.date)}</TableCell>
+										<TableCell>
+											{quote.valid_until ? formatDate(quote.valid_until) : '-'}
+										</TableCell>
 										<TableCell className='font-medium'>
 											{formatCurrency(quote.total_ttc, quote.currency)}
 										</TableCell>
@@ -195,85 +169,8 @@ export function QuotesTable({
 													<span>Facture {linkedInvoice.number}</span>
 												</div>
 											) : (
-												<span className='text-xs text-muted-foreground'>
-													Pas encore transformé
-												</span>
+												<span className='text-xs text-muted-foreground'>—</span>
 											)}
-										</TableCell>
-										<TableCell>
-											<DropdownMenu>
-												<DropdownMenuTrigger asChild>
-													<Button variant='ghost' className='h-8 w-8 p-0'>
-														<MoreHorizontal className='h-4 w-4' />
-													</Button>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align='end'>
-													<DropdownMenuLabel>Actions</DropdownMenuLabel>
-
-													<DropdownMenuItem
-														onClick={() =>
-															navigate({
-																to: '/connect/quotes/$quoteId',
-																params: { quoteId: quote.id },
-															})
-														}
-													>
-														<Eye className='h-4 w-4 mr-2' />
-														Voir
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														onClick={() =>
-															navigate({
-																to: '/connect/quotes/$quoteId/edit',
-																params: { quoteId: quote.id },
-															})
-														}
-													>
-														<Edit className='h-4 w-4 mr-2' />
-														Modifier
-													</DropdownMenuItem>
-
-													<DropdownMenuSeparator />
-
-													<DropdownMenuItem
-														onClick={() => onDownloadPdf(quote)}
-														disabled={isDownloading}
-													>
-														{isDownloading ? (
-															<Loader2 className='h-4 w-4 mr-2 animate-spin' />
-														) : (
-															<Download className='h-4 w-4 mr-2' />
-														)}
-														Télécharger PDF
-													</DropdownMenuItem>
-
-													<DropdownMenuItem onClick={() => onOpenEmail(quote)}>
-														<Mail className='h-4 w-4 mr-2' />
-														Envoyer par email
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														disabled={
-															!!quote.generated_invoice_id || convertIsPending
-														}
-														onClick={() => onOpenConvert(quote)}
-													>
-														<ArrowRight className='h-4 w-4 mr-2' />
-														Transformer en facture
-													</DropdownMenuItem>
-
-													<DropdownMenuSeparator />
-
-													<DropdownMenuItem
-														onClick={() => onOpenDelete(quote)}
-														className='text-red-600'
-													>
-														<Trash2 className='h-4 w-4 mr-2' />
-														Supprimer
-													</DropdownMenuItem>
-												</DropdownMenuContent>
-											</DropdownMenu>
 										</TableCell>
 									</TableRow>
 								)
