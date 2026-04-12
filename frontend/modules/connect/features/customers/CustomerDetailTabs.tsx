@@ -1,7 +1,7 @@
 // frontend/modules/connect/pages/customers/CustomerDetailTabs.tsx
 //
 // Tabs extraites de CustomerDetailPage.
-// Contient : Factures | Devis | Produits d'occasion (L'onglet Info a été déplacé dans le header)
+// Contient : Factures | Devis | Bons de commande | Produits d'occasion
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ import type { InvoiceResponse, QuoteResponse } from '@/lib/types/invoice.types'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	CheckCircle,
+	ClipboardList,
 	Clock,
 	Eye,
 	FileText,
@@ -42,6 +43,7 @@ import {
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { getInvoiceStatus, getQuoteStatus } from '../../utils/statusConfig'
 import { ConsignmentTab } from './ConsignmentTab'
+import { CustomerOrdersTab } from './CustomerOrdersTab'
 
 // ============================================================================
 // PROPS
@@ -85,7 +87,7 @@ export function CustomerDetailTabs({
 }: CustomerDetailTabsProps) {
 	const navigate = useNavigate()
 
-	// ── NOUVEAU DESIGN DES ONGLETS (Style Titre / Sans bord / Séparateurs) ──
+	// ── DESIGN DES ONGLETS (Style Titre / Sans bord / Séparateurs) ──────────
 	const sharedTabsList = (
 		<TabsList className='bg-transparent h-auto p-0 flex items-center justify-start gap-3 sm:gap-5'>
 			<TabsTrigger
@@ -96,7 +98,6 @@ export function CustomerDetailTabs({
 				Factures ({stats.totalInvoices})
 			</TabsTrigger>
 
-			{/* Barre fine de séparation */}
 			{/* biome-ignore lint/a11y/useFocusableInteractive: <explanation> */}
 			<div role='separator' className='h-5 w-px bg-border' />
 
@@ -108,7 +109,17 @@ export function CustomerDetailTabs({
 				Devis ({stats.totalQuotes})
 			</TabsTrigger>
 
-			{/* Barre fine de séparation */}
+			{/* biome-ignore lint/a11y/useFocusableInteractive: <explanation> */}
+			<div role='separator' className='h-5 w-px bg-border' />
+
+			<TabsTrigger
+				value='orders'
+				className='p-0 gap-2 text-base sm:text-lg font-semibold tracking-tight text-muted-foreground hover:text-foreground data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none transition-colors'
+			>
+				<ClipboardList className='h-5 w-5' />
+				Commandes
+			</TabsTrigger>
+
 			{/* biome-ignore lint/a11y/useFocusableInteractive: <explanation> */}
 			<div role='separator' className='h-5 w-px bg-border' />
 
@@ -124,13 +135,11 @@ export function CustomerDetailTabs({
 
 	return (
 		<Tabs defaultValue='invoices' className='space-y-4'>
-			{/* ── Tab Factures ── */}
+			{/* ── Tab Factures ─────────────────────────────────────────────────── */}
 			<TabsContent value='invoices' className='mt-0'>
 				<Card>
 					<CardHeader className='flex flex-row items-center justify-between pb-4 border-b border-border/40'>
-						{/* Injection des onglets à la place du titre */}
 						{sharedTabsList}
-
 						<Button
 							size='sm'
 							className='gap-2'
@@ -172,18 +181,14 @@ export function CustomerDetailTabs({
 									{invoices.map((invoice: InvoiceResponse) => {
 										const statusInfo = getInvoiceStatus(invoice.status)
 
-										// --- LOGIQUE D'ÉTAT ---
 										const isCreditNote = invoice.invoice_type === 'credit_note'
 										const totalTtc = invoice.total_ttc ?? 0
 										const creditNotesTotal = invoice.credit_notes_total ?? 0
 										const isFullyCancelled =
 											totalTtc > 0 && creditNotesTotal >= totalTtc
-										// ----------------------
 
-										// --- LIBELLÉS DYNAMIQUES ---
 										let docTypeLabel = 'Facture'
 										let docActionLabel = 'Voir la facture'
-
 										if (invoice.invoice_type === 'credit_note') {
 											docTypeLabel = 'Avoir'
 											docActionLabel = "Voir l'avoir"
@@ -191,7 +196,6 @@ export function CustomerDetailTabs({
 											docTypeLabel = 'Acompte'
 											docActionLabel = "Voir l'acompte"
 										}
-										// ---------------------------
 
 										return (
 											<DropdownMenu key={invoice.id} modal={false}>
@@ -270,13 +274,11 @@ export function CustomerDetailTabs({
 				</Card>
 			</TabsContent>
 
-			{/* ── Tab Devis ── */}
+			{/* ── Tab Devis ─────────────────────────────────────────────────────── */}
 			<TabsContent value='quotes' className='mt-0'>
 				<Card>
 					<CardHeader className='flex flex-row items-center justify-between pb-4 border-b border-border/40'>
-						{/* Injection des onglets à la place du titre */}
 						{sharedTabsList}
-
 						<Button
 							size='sm'
 							className='gap-2'
@@ -371,6 +373,27 @@ export function CustomerDetailTabs({
 														<Eye className='h-4 w-4 mr-2' />
 														Voir le devis
 													</DropdownMenuItem>
+													{/* Convertir en bon de commande si devis accepté */}
+													{quote.status === 'accepted' &&
+														!quote.generated_invoice_id && (
+															<>
+																<DropdownMenuSeparator />
+																<DropdownMenuItem
+																	onClick={() =>
+																		navigate({
+																			to: '/connect/orders/new',
+																			search: {
+																				sourceQuoteId: quote.id,
+																				customerId,
+																			},
+																		})
+																	}
+																>
+																	<ClipboardList className='h-4 w-4 mr-2' />
+																	Créer un bon de commande
+																</DropdownMenuItem>
+															</>
+														)}
 												</DropdownMenuContent>
 											</DropdownMenu>
 										)
@@ -382,7 +405,32 @@ export function CustomerDetailTabs({
 				</Card>
 			</TabsContent>
 
-			{/* ── Tab Produits d'occasion ── */}
+			{/* ── Tab Bons de commande ─────────────────────────────────────────── */}
+			<TabsContent value='orders' className='mt-0'>
+				<Card>
+					<CardHeader className='flex flex-row items-center justify-between pb-4 border-b border-border/40'>
+						{sharedTabsList}
+						<Button
+							size='sm'
+							className='gap-2'
+							onClick={() =>
+								navigate({
+									to: '/connect/orders/new',
+									search: { customerId },
+								})
+							}
+						>
+							<Plus className='h-4 w-4' />
+							Nouveau bon
+						</Button>
+					</CardHeader>
+					<CardContent className='pt-6'>
+						<CustomerOrdersTab customerId={customerId} />
+					</CardContent>
+				</Card>
+			</TabsContent>
+
+			{/* ── Tab Produits d'occasion ──────────────────────────────────────── */}
 			<TabsContent value='consignment' className='mt-0'>
 				<ConsignmentTab
 					customerId={customerId}

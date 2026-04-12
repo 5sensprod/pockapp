@@ -28,6 +28,7 @@ import { Route as SettingsSecretsImport } from './routes/settings/secrets'
 import { Route as SettingsCompaniesImport } from './routes/settings/companies'
 import { Route as CashConfigImport } from './routes/cash/config'
 import { Route as ConnectQuotesIndexImport } from './routes/connect/quotes/index'
+import { Route as ConnectOrdersIndexImport } from './routes/connect/orders/index'
 import { Route as ConnectInvoicesIndexImport } from './routes/connect/invoices/index'
 import { Route as ConnectCustomersIndexImport } from './routes/connect/customers/index'
 import { Route as CashTicketsIndexImport } from './routes/cash/tickets/index'
@@ -35,15 +36,18 @@ import { Route as CashTerminalIndexImport } from './routes/cash/terminal/index'
 import { Route as CashRapportZIndexImport } from './routes/cash/rapport-z/index'
 import { Route as CashProductsIndexImport } from './routes/cash/products/index'
 import { Route as ConnectQuotesNewImport } from './routes/connect/quotes/new'
+import { Route as ConnectOrdersNewImport } from './routes/connect/orders/new'
 import { Route as ConnectInvoicesNewImport } from './routes/connect/invoices/new'
 import { Route as ConnectCustomersNewImport } from './routes/connect/customers/new'
 import { Route as ConnectQuotesQuoteIdIndexImport } from './routes/connect/quotes/$quoteId/index'
+import { Route as ConnectOrdersOrderIdIndexImport } from './routes/connect/orders/$orderId/index'
 import { Route as ConnectInvoicesInvoiceIdIndexImport } from './routes/connect/invoices/$invoiceId/index'
 import { Route as ConnectCustomersCustomerIdIndexImport } from './routes/connect/customers/$customerId/index'
 import { Route as CashTicketsTicketIdIndexImport } from './routes/cash/tickets/$ticketId/index'
 import { Route as CashTerminalCashRegisterIdIndexImport } from './routes/cash/terminal/$cashRegisterId/index'
 import { Route as CashConvertToInvoiceTicketIdIndexImport } from './routes/cash/convert-to-invoice/$ticketId/index'
 import { Route as ConnectQuotesQuoteIdEditImport } from './routes/connect/quotes/$quoteId/edit'
+import { Route as ConnectOrdersOrderIdEditImport } from './routes/connect/orders/$orderId/edit'
 import { Route as ConnectInvoicesInvoiceIdEditImport } from './routes/connect/invoices/$invoiceId/edit'
 import { Route as ConnectCustomersCustomerIdEditImport } from './routes/connect/customers/$customerId/edit'
 
@@ -151,6 +155,12 @@ const ConnectQuotesIndexRoute = ConnectQuotesIndexImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
+const ConnectOrdersIndexRoute = ConnectOrdersIndexImport.update({
+  id: '/connect/orders/',
+  path: '/connect/orders/',
+  getParentRoute: () => rootRoute,
+} as any)
+
 const ConnectInvoicesIndexRoute = ConnectInvoicesIndexImport.update({
   id: '/connect/invoices/',
   path: '/connect/invoices/',
@@ -193,6 +203,12 @@ const ConnectQuotesNewRoute = ConnectQuotesNewImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
+const ConnectOrdersNewRoute = ConnectOrdersNewImport.update({
+  id: '/connect/orders/new',
+  path: '/connect/orders/new',
+  getParentRoute: () => rootRoute,
+} as any)
+
 const ConnectInvoicesNewRoute = ConnectInvoicesNewImport.update({
   id: '/connect/invoices/new',
   path: '/connect/invoices/new',
@@ -208,6 +224,12 @@ const ConnectCustomersNewRoute = ConnectCustomersNewImport.update({
 const ConnectQuotesQuoteIdIndexRoute = ConnectQuotesQuoteIdIndexImport.update({
   id: '/connect/quotes/$quoteId/',
   path: '/connect/quotes/$quoteId/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const ConnectOrdersOrderIdIndexRoute = ConnectOrdersOrderIdIndexImport.update({
+  id: '/connect/orders/$orderId/',
+  path: '/connect/orders/$orderId/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -248,6 +270,12 @@ const CashConvertToInvoiceTicketIdIndexRoute =
 const ConnectQuotesQuoteIdEditRoute = ConnectQuotesQuoteIdEditImport.update({
   id: '/connect/quotes/$quoteId/edit',
   path: '/connect/quotes/$quoteId/edit',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const ConnectOrdersOrderIdEditRoute = ConnectOrdersOrderIdEditImport.update({
+  id: '/connect/orders/$orderId/edit',
+  path: '/connect/orders/$orderId/edit',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -395,6 +423,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectInvoicesNewImport
       parentRoute: typeof rootRoute
     }
+    '/connect/orders/new': {
+      id: '/connect/orders/new'
+      path: '/connect/orders/new'
+      fullPath: '/connect/orders/new'
+      preLoaderRoute: typeof ConnectOrdersNewImport
+      parentRoute: typeof rootRoute
+    }
     '/connect/quotes/new': {
       id: '/connect/quotes/new'
       path: '/connect/quotes/new'
@@ -444,6 +479,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectInvoicesIndexImport
       parentRoute: typeof rootRoute
     }
+    '/connect/orders/': {
+      id: '/connect/orders/'
+      path: '/connect/orders'
+      fullPath: '/connect/orders'
+      preLoaderRoute: typeof ConnectOrdersIndexImport
+      parentRoute: typeof rootRoute
+    }
     '/connect/quotes/': {
       id: '/connect/quotes/'
       path: '/connect/quotes'
@@ -463,6 +505,13 @@ declare module '@tanstack/react-router' {
       path: '/connect/invoices/$invoiceId/edit'
       fullPath: '/connect/invoices/$invoiceId/edit'
       preLoaderRoute: typeof ConnectInvoicesInvoiceIdEditImport
+      parentRoute: typeof rootRoute
+    }
+    '/connect/orders/$orderId/edit': {
+      id: '/connect/orders/$orderId/edit'
+      path: '/connect/orders/$orderId/edit'
+      fullPath: '/connect/orders/$orderId/edit'
+      preLoaderRoute: typeof ConnectOrdersOrderIdEditImport
       parentRoute: typeof rootRoute
     }
     '/connect/quotes/$quoteId/edit': {
@@ -507,6 +556,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectInvoicesInvoiceIdIndexImport
       parentRoute: typeof rootRoute
     }
+    '/connect/orders/$orderId/': {
+      id: '/connect/orders/$orderId/'
+      path: '/connect/orders/$orderId'
+      fullPath: '/connect/orders/$orderId'
+      preLoaderRoute: typeof ConnectOrdersOrderIdIndexImport
+      parentRoute: typeof rootRoute
+    }
     '/connect/quotes/$quoteId/': {
       id: '/connect/quotes/$quoteId/'
       path: '/connect/quotes/$quoteId'
@@ -538,6 +594,7 @@ export interface FileRoutesByFullPath {
   '/stock': typeof StockIndexRoute
   '/connect/customers/new': typeof ConnectCustomersNewRoute
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
+  '/connect/orders/new': typeof ConnectOrdersNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
   '/cash/products': typeof CashProductsIndexRoute
   '/cash/rapport-z': typeof CashRapportZIndexRoute
@@ -545,15 +602,18 @@ export interface FileRoutesByFullPath {
   '/cash/tickets': typeof CashTicketsIndexRoute
   '/connect/customers': typeof ConnectCustomersIndexRoute
   '/connect/invoices': typeof ConnectInvoicesIndexRoute
+  '/connect/orders': typeof ConnectOrdersIndexRoute
   '/connect/quotes': typeof ConnectQuotesIndexRoute
   '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
   '/connect/invoices/$invoiceId/edit': typeof ConnectInvoicesInvoiceIdEditRoute
+  '/connect/orders/$orderId/edit': typeof ConnectOrdersOrderIdEditRoute
   '/connect/quotes/$quoteId/edit': typeof ConnectQuotesQuoteIdEditRoute
   '/cash/convert-to-invoice/$ticketId': typeof CashConvertToInvoiceTicketIdIndexRoute
   '/cash/terminal/$cashRegisterId': typeof CashTerminalCashRegisterIdIndexRoute
   '/cash/tickets/$ticketId': typeof CashTicketsTicketIdIndexRoute
   '/connect/customers/$customerId': typeof ConnectCustomersCustomerIdIndexRoute
   '/connect/invoices/$invoiceId': typeof ConnectInvoicesInvoiceIdIndexRoute
+  '/connect/orders/$orderId': typeof ConnectOrdersOrderIdIndexRoute
   '/connect/quotes/$quoteId': typeof ConnectQuotesQuoteIdIndexRoute
 }
 
@@ -576,6 +636,7 @@ export interface FileRoutesByTo {
   '/stock': typeof StockIndexRoute
   '/connect/customers/new': typeof ConnectCustomersNewRoute
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
+  '/connect/orders/new': typeof ConnectOrdersNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
   '/cash/products': typeof CashProductsIndexRoute
   '/cash/rapport-z': typeof CashRapportZIndexRoute
@@ -583,15 +644,18 @@ export interface FileRoutesByTo {
   '/cash/tickets': typeof CashTicketsIndexRoute
   '/connect/customers': typeof ConnectCustomersIndexRoute
   '/connect/invoices': typeof ConnectInvoicesIndexRoute
+  '/connect/orders': typeof ConnectOrdersIndexRoute
   '/connect/quotes': typeof ConnectQuotesIndexRoute
   '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
   '/connect/invoices/$invoiceId/edit': typeof ConnectInvoicesInvoiceIdEditRoute
+  '/connect/orders/$orderId/edit': typeof ConnectOrdersOrderIdEditRoute
   '/connect/quotes/$quoteId/edit': typeof ConnectQuotesQuoteIdEditRoute
   '/cash/convert-to-invoice/$ticketId': typeof CashConvertToInvoiceTicketIdIndexRoute
   '/cash/terminal/$cashRegisterId': typeof CashTerminalCashRegisterIdIndexRoute
   '/cash/tickets/$ticketId': typeof CashTicketsTicketIdIndexRoute
   '/connect/customers/$customerId': typeof ConnectCustomersCustomerIdIndexRoute
   '/connect/invoices/$invoiceId': typeof ConnectInvoicesInvoiceIdIndexRoute
+  '/connect/orders/$orderId': typeof ConnectOrdersOrderIdIndexRoute
   '/connect/quotes/$quoteId': typeof ConnectQuotesQuoteIdIndexRoute
 }
 
@@ -615,6 +679,7 @@ export interface FileRoutesById {
   '/stock/': typeof StockIndexRoute
   '/connect/customers/new': typeof ConnectCustomersNewRoute
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
+  '/connect/orders/new': typeof ConnectOrdersNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
   '/cash/products/': typeof CashProductsIndexRoute
   '/cash/rapport-z/': typeof CashRapportZIndexRoute
@@ -622,15 +687,18 @@ export interface FileRoutesById {
   '/cash/tickets/': typeof CashTicketsIndexRoute
   '/connect/customers/': typeof ConnectCustomersIndexRoute
   '/connect/invoices/': typeof ConnectInvoicesIndexRoute
+  '/connect/orders/': typeof ConnectOrdersIndexRoute
   '/connect/quotes/': typeof ConnectQuotesIndexRoute
   '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
   '/connect/invoices/$invoiceId/edit': typeof ConnectInvoicesInvoiceIdEditRoute
+  '/connect/orders/$orderId/edit': typeof ConnectOrdersOrderIdEditRoute
   '/connect/quotes/$quoteId/edit': typeof ConnectQuotesQuoteIdEditRoute
   '/cash/convert-to-invoice/$ticketId/': typeof CashConvertToInvoiceTicketIdIndexRoute
   '/cash/terminal/$cashRegisterId/': typeof CashTerminalCashRegisterIdIndexRoute
   '/cash/tickets/$ticketId/': typeof CashTicketsTicketIdIndexRoute
   '/connect/customers/$customerId/': typeof ConnectCustomersCustomerIdIndexRoute
   '/connect/invoices/$invoiceId/': typeof ConnectInvoicesInvoiceIdIndexRoute
+  '/connect/orders/$orderId/': typeof ConnectOrdersOrderIdIndexRoute
   '/connect/quotes/$quoteId/': typeof ConnectQuotesQuoteIdIndexRoute
 }
 
@@ -655,6 +723,7 @@ export interface FileRouteTypes {
     | '/stock'
     | '/connect/customers/new'
     | '/connect/invoices/new'
+    | '/connect/orders/new'
     | '/connect/quotes/new'
     | '/cash/products'
     | '/cash/rapport-z'
@@ -662,15 +731,18 @@ export interface FileRouteTypes {
     | '/cash/tickets'
     | '/connect/customers'
     | '/connect/invoices'
+    | '/connect/orders'
     | '/connect/quotes'
     | '/connect/customers/$customerId/edit'
     | '/connect/invoices/$invoiceId/edit'
+    | '/connect/orders/$orderId/edit'
     | '/connect/quotes/$quoteId/edit'
     | '/cash/convert-to-invoice/$ticketId'
     | '/cash/terminal/$cashRegisterId'
     | '/cash/tickets/$ticketId'
     | '/connect/customers/$customerId'
     | '/connect/invoices/$invoiceId'
+    | '/connect/orders/$orderId'
     | '/connect/quotes/$quoteId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -692,6 +764,7 @@ export interface FileRouteTypes {
     | '/stock'
     | '/connect/customers/new'
     | '/connect/invoices/new'
+    | '/connect/orders/new'
     | '/connect/quotes/new'
     | '/cash/products'
     | '/cash/rapport-z'
@@ -699,15 +772,18 @@ export interface FileRouteTypes {
     | '/cash/tickets'
     | '/connect/customers'
     | '/connect/invoices'
+    | '/connect/orders'
     | '/connect/quotes'
     | '/connect/customers/$customerId/edit'
     | '/connect/invoices/$invoiceId/edit'
+    | '/connect/orders/$orderId/edit'
     | '/connect/quotes/$quoteId/edit'
     | '/cash/convert-to-invoice/$ticketId'
     | '/cash/terminal/$cashRegisterId'
     | '/cash/tickets/$ticketId'
     | '/connect/customers/$customerId'
     | '/connect/invoices/$invoiceId'
+    | '/connect/orders/$orderId'
     | '/connect/quotes/$quoteId'
   id:
     | '__root__'
@@ -729,6 +805,7 @@ export interface FileRouteTypes {
     | '/stock/'
     | '/connect/customers/new'
     | '/connect/invoices/new'
+    | '/connect/orders/new'
     | '/connect/quotes/new'
     | '/cash/products/'
     | '/cash/rapport-z/'
@@ -736,15 +813,18 @@ export interface FileRouteTypes {
     | '/cash/tickets/'
     | '/connect/customers/'
     | '/connect/invoices/'
+    | '/connect/orders/'
     | '/connect/quotes/'
     | '/connect/customers/$customerId/edit'
     | '/connect/invoices/$invoiceId/edit'
+    | '/connect/orders/$orderId/edit'
     | '/connect/quotes/$quoteId/edit'
     | '/cash/convert-to-invoice/$ticketId/'
     | '/cash/terminal/$cashRegisterId/'
     | '/cash/tickets/$ticketId/'
     | '/connect/customers/$customerId/'
     | '/connect/invoices/$invoiceId/'
+    | '/connect/orders/$orderId/'
     | '/connect/quotes/$quoteId/'
   fileRoutesById: FileRoutesById
 }
@@ -768,6 +848,7 @@ export interface RootRouteChildren {
   StockIndexRoute: typeof StockIndexRoute
   ConnectCustomersNewRoute: typeof ConnectCustomersNewRoute
   ConnectInvoicesNewRoute: typeof ConnectInvoicesNewRoute
+  ConnectOrdersNewRoute: typeof ConnectOrdersNewRoute
   ConnectQuotesNewRoute: typeof ConnectQuotesNewRoute
   CashProductsIndexRoute: typeof CashProductsIndexRoute
   CashRapportZIndexRoute: typeof CashRapportZIndexRoute
@@ -775,15 +856,18 @@ export interface RootRouteChildren {
   CashTicketsIndexRoute: typeof CashTicketsIndexRoute
   ConnectCustomersIndexRoute: typeof ConnectCustomersIndexRoute
   ConnectInvoicesIndexRoute: typeof ConnectInvoicesIndexRoute
+  ConnectOrdersIndexRoute: typeof ConnectOrdersIndexRoute
   ConnectQuotesIndexRoute: typeof ConnectQuotesIndexRoute
   ConnectCustomersCustomerIdEditRoute: typeof ConnectCustomersCustomerIdEditRoute
   ConnectInvoicesInvoiceIdEditRoute: typeof ConnectInvoicesInvoiceIdEditRoute
+  ConnectOrdersOrderIdEditRoute: typeof ConnectOrdersOrderIdEditRoute
   ConnectQuotesQuoteIdEditRoute: typeof ConnectQuotesQuoteIdEditRoute
   CashConvertToInvoiceTicketIdIndexRoute: typeof CashConvertToInvoiceTicketIdIndexRoute
   CashTerminalCashRegisterIdIndexRoute: typeof CashTerminalCashRegisterIdIndexRoute
   CashTicketsTicketIdIndexRoute: typeof CashTicketsTicketIdIndexRoute
   ConnectCustomersCustomerIdIndexRoute: typeof ConnectCustomersCustomerIdIndexRoute
   ConnectInvoicesInvoiceIdIndexRoute: typeof ConnectInvoicesInvoiceIdIndexRoute
+  ConnectOrdersOrderIdIndexRoute: typeof ConnectOrdersOrderIdIndexRoute
   ConnectQuotesQuoteIdIndexRoute: typeof ConnectQuotesQuoteIdIndexRoute
 }
 
@@ -806,6 +890,7 @@ const rootRouteChildren: RootRouteChildren = {
   StockIndexRoute: StockIndexRoute,
   ConnectCustomersNewRoute: ConnectCustomersNewRoute,
   ConnectInvoicesNewRoute: ConnectInvoicesNewRoute,
+  ConnectOrdersNewRoute: ConnectOrdersNewRoute,
   ConnectQuotesNewRoute: ConnectQuotesNewRoute,
   CashProductsIndexRoute: CashProductsIndexRoute,
   CashRapportZIndexRoute: CashRapportZIndexRoute,
@@ -813,9 +898,11 @@ const rootRouteChildren: RootRouteChildren = {
   CashTicketsIndexRoute: CashTicketsIndexRoute,
   ConnectCustomersIndexRoute: ConnectCustomersIndexRoute,
   ConnectInvoicesIndexRoute: ConnectInvoicesIndexRoute,
+  ConnectOrdersIndexRoute: ConnectOrdersIndexRoute,
   ConnectQuotesIndexRoute: ConnectQuotesIndexRoute,
   ConnectCustomersCustomerIdEditRoute: ConnectCustomersCustomerIdEditRoute,
   ConnectInvoicesInvoiceIdEditRoute: ConnectInvoicesInvoiceIdEditRoute,
+  ConnectOrdersOrderIdEditRoute: ConnectOrdersOrderIdEditRoute,
   ConnectQuotesQuoteIdEditRoute: ConnectQuotesQuoteIdEditRoute,
   CashConvertToInvoiceTicketIdIndexRoute:
     CashConvertToInvoiceTicketIdIndexRoute,
@@ -823,6 +910,7 @@ const rootRouteChildren: RootRouteChildren = {
   CashTicketsTicketIdIndexRoute: CashTicketsTicketIdIndexRoute,
   ConnectCustomersCustomerIdIndexRoute: ConnectCustomersCustomerIdIndexRoute,
   ConnectInvoicesInvoiceIdIndexRoute: ConnectInvoicesInvoiceIdIndexRoute,
+  ConnectOrdersOrderIdIndexRoute: ConnectOrdersOrderIdIndexRoute,
   ConnectQuotesQuoteIdIndexRoute: ConnectQuotesQuoteIdIndexRoute,
 }
 
@@ -856,6 +944,7 @@ export const routeTree = rootRoute
         "/stock/",
         "/connect/customers/new",
         "/connect/invoices/new",
+        "/connect/orders/new",
         "/connect/quotes/new",
         "/cash/products/",
         "/cash/rapport-z/",
@@ -863,15 +952,18 @@ export const routeTree = rootRoute
         "/cash/tickets/",
         "/connect/customers/",
         "/connect/invoices/",
+        "/connect/orders/",
         "/connect/quotes/",
         "/connect/customers/$customerId/edit",
         "/connect/invoices/$invoiceId/edit",
+        "/connect/orders/$orderId/edit",
         "/connect/quotes/$quoteId/edit",
         "/cash/convert-to-invoice/$ticketId/",
         "/cash/terminal/$cashRegisterId/",
         "/cash/tickets/$ticketId/",
         "/connect/customers/$customerId/",
         "/connect/invoices/$invoiceId/",
+        "/connect/orders/$orderId/",
         "/connect/quotes/$quoteId/"
       ]
     },
@@ -929,6 +1021,9 @@ export const routeTree = rootRoute
     "/connect/invoices/new": {
       "filePath": "connect/invoices/new.tsx"
     },
+    "/connect/orders/new": {
+      "filePath": "connect/orders/new.tsx"
+    },
     "/connect/quotes/new": {
       "filePath": "connect/quotes/new.tsx"
     },
@@ -950,6 +1045,9 @@ export const routeTree = rootRoute
     "/connect/invoices/": {
       "filePath": "connect/invoices/index.tsx"
     },
+    "/connect/orders/": {
+      "filePath": "connect/orders/index.tsx"
+    },
     "/connect/quotes/": {
       "filePath": "connect/quotes/index.tsx"
     },
@@ -958,6 +1056,9 @@ export const routeTree = rootRoute
     },
     "/connect/invoices/$invoiceId/edit": {
       "filePath": "connect/invoices/$invoiceId/edit.tsx"
+    },
+    "/connect/orders/$orderId/edit": {
+      "filePath": "connect/orders/$orderId/edit.tsx"
     },
     "/connect/quotes/$quoteId/edit": {
       "filePath": "connect/quotes/$quoteId/edit.tsx"
@@ -976,6 +1077,9 @@ export const routeTree = rootRoute
     },
     "/connect/invoices/$invoiceId/": {
       "filePath": "connect/invoices/$invoiceId/index.tsx"
+    },
+    "/connect/orders/$orderId/": {
+      "filePath": "connect/orders/$orderId/index.tsx"
     },
     "/connect/quotes/$quoteId/": {
       "filePath": "connect/quotes/$quoteId/index.tsx"

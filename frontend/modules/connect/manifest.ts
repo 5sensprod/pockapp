@@ -5,7 +5,7 @@
 //
 // Même pattern que frontend/modules/cash/manifest.ts
 
-import { FilePen, Receipt, Users } from 'lucide-react'
+import { ClipboardList, FilePen, Receipt, Users } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
 
 export const manifest: ModuleManifest = {
@@ -33,6 +33,18 @@ export const manifest: ModuleManifest = {
 			label: 'Devis',
 			icon: FilePen,
 			items: [{ label: 'Devis', to: '/connect/quotes/', icon: FilePen }],
+		},
+		{
+			id: 'orders',
+			label: 'Commandes',
+			icon: ClipboardList,
+			items: [
+				{
+					label: 'Bons de commande',
+					to: '/connect/orders/',
+					icon: ClipboardList,
+				},
+			],
 		},
 		{
 			id: 'invoices',
