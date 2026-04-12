@@ -18,6 +18,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useOrders } from '@/lib/queries/orders'
 import type { OrderStatus } from '@/lib/queries/orders'
 import { useNavigate } from '@tanstack/react-router'
@@ -26,9 +27,6 @@ import { useState } from 'react'
 import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
 import { manifest } from '../../manifest'
 import { ORDER_STATUS_LABELS } from '../../types/order'
-
-// TODO: récupérer depuis le contexte auth (même pattern que le reste de l'app)
-const COMPANY_ID = '' // useCompany().id
 
 const ALL_STATUSES = Object.entries(ORDER_STATUS_LABELS) as [
 	OrderStatus,
@@ -49,11 +47,12 @@ const formatDate = (iso: string) =>
 
 export function OrdersPage() {
 	const navigate = useNavigate()
+	const { activeCompanyId } = useActiveCompany()
 	const [search, setSearch] = useState('')
 	const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
 
 	const { data, isLoading } = useOrders({
-		companyId: COMPANY_ID,
+		companyId: activeCompanyId ?? undefined,
 		status: statusFilter === 'all' ? undefined : statusFilter,
 	})
 

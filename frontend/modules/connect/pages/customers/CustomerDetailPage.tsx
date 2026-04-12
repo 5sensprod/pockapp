@@ -21,7 +21,7 @@ import { useInvoices } from '@/lib/queries/invoices'
 import { useQuotes } from '@/lib/queries/quotes'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import {
 	ArrowLeft,
 	CreditCard,
@@ -72,7 +72,7 @@ export function CustomerDetailPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
-
+	const search = useSearch({ strict: false }) as { tab?: string }
 	const { data: company } = useQuery({
 		queryKey: ['companies', activeCompanyId],
 		enabled: !!activeCompanyId,
@@ -445,6 +445,7 @@ export function CustomerDetailPage() {
 				isLoadingInvoices={isLoadingInvoices}
 				isLoadingQuotes={isLoadingQuotes}
 				stats={stats}
+				defaultTab={search.tab ?? 'invoices'}
 			/>
 		</ConnectModuleShell>
 	)

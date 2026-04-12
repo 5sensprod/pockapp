@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table'
 import { useOrder, usePatchOrderStatus } from '@/lib/queries/orders'
 import type { OrderStatus } from '@/lib/queries/orders'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import {
 	ArrowLeft,
 	CheckCircle2,
@@ -44,7 +44,22 @@ const TRANSITION_ICONS: Partial<
 export function OrderDetailPage() {
 	const navigate = useNavigate()
 	const { orderId } = useParams({ from: '/connect/orders/$orderId/' })
+	const search = useSearch({ strict: false }) as {
+		from?: string
+		customerId?: string
+	}
 
+	const handleBack = () => {
+		if (search.from === 'customer' && search.customerId) {
+			navigate({
+				to: '/connect/customers/$customerId',
+				params: { customerId: search.customerId },
+				search: { tab: 'orders' }, // ← manquait
+			})
+		} else {
+			navigate({ to: '/connect/orders' })
+		}
+	}
 	const { data: order, isLoading } = useOrder(orderId)
 	const { mutateAsync: patchStatus, isPending: isPatching } =
 		usePatchOrderStatus()
@@ -55,11 +70,7 @@ export function OrderDetailPage() {
 			<ConnectModuleShell
 				pageTitle='Bon de commande'
 				headerLeft={
-					<Button
-						variant='ghost'
-						size='icon'
-						onClick={() => navigate({ to: '/connect/orders' })}
-					>
+					<Button variant='ghost' size='icon' onClick={handleBack}>
 						<ArrowLeft className='h-4 w-4' />
 					</Button>
 				}
@@ -77,11 +88,7 @@ export function OrderDetailPage() {
 			<ConnectModuleShell
 				pageTitle='Bon de commande'
 				headerLeft={
-					<Button
-						variant='ghost'
-						size='icon'
-						onClick={() => navigate({ to: '/connect/orders' })}
-					>
+					<Button variant='ghost' size='icon' onClick={handleBack}>
 						<ArrowLeft className='h-4 w-4' />
 					</Button>
 				}
@@ -122,11 +129,7 @@ export function OrderDetailPage() {
 			pageTitle={`Commande ${order.number}`}
 			pageIcon={ClipboardList}
 			headerLeft={
-				<Button
-					variant='ghost'
-					size='icon'
-					onClick={() => navigate({ to: '/connect/orders' })}
-				>
+				<Button variant='ghost' size='icon' onClick={handleBack}>
 					<ArrowLeft className='h-4 w-4' />
 				</Button>
 			}

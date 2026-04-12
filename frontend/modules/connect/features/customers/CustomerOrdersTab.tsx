@@ -82,6 +82,7 @@ export function CustomerOrdersTab({ customerId }: CustomerOrdersTabProps) {
 							navigate({
 								to: '/connect/orders/$orderId',
 								params: { orderId: order.id },
+								search: { from: 'customer', customerId },
 							})
 						}
 					>

@@ -67,6 +67,7 @@ interface CustomerDetailTabsProps {
 		unpaidCount: number
 		acceptedQuotes: number
 	}
+	defaultTab?: string // ← ajoute
 }
 
 // ============================================================================
@@ -84,6 +85,7 @@ export function CustomerDetailTabs({
 	isLoadingInvoices,
 	isLoadingQuotes,
 	stats,
+	defaultTab = 'invoices',
 }: CustomerDetailTabsProps) {
 	const navigate = useNavigate()
 
@@ -134,7 +136,7 @@ export function CustomerDetailTabs({
 	)
 
 	return (
-		<Tabs defaultValue='invoices' className='space-y-4'>
+		<Tabs defaultValue={defaultTab} className='space-y-4'>
 			{/* ── Tab Factures ─────────────────────────────────────────────────── */}
 			<TabsContent value='invoices' className='mt-0'>
 				<Card>
@@ -257,6 +259,7 @@ export function CustomerDetailTabs({
 															navigate({
 																to: '/connect/invoices/$invoiceId',
 																params: { invoiceId: invoice.id },
+																search: { tab: 'orders' },
 															})
 														}
 													>
