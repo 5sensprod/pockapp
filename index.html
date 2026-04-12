@@ -5,13 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/icon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pocket App</title>
-    <style>
-      /* Empêche tout débordement horizontal sur mobile (iPhone Safari) */
-      html, body, #root {
-        max-width: 100%;
-        overflow-x: hidden;
-      }
-    </style>
+<style>
+  html, body, #root {
+    max-width: 100%;
+  }
+  /* Contenir le overflow-x sans casser sticky */
+  body {
+    overflow-x: clip; /* clip ne crée PAS de contexte de scroll, hidden oui */
+  }
+</style>
   </head>
   <body>
     <div id="root"></div>
