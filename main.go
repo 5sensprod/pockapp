@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	hashpkg "pocket-react/backend/hash"
 	"time"
 
 	"pocket-react/backend"
@@ -166,6 +167,12 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 
 		migrations.MigrateAuditLogsAddTicketEntityType(pb)
 
+		if err := hashpkg.RunFullChainMigration(pb); err != nil {
+			log.Println("Hash migration ERROR:", err)
+		}
+		if err := hashpkg.RunTicketsMigration(pb, false); err != nil {
+			log.Println("Tickets migration ERROR:", err)
+		}
 		// API routes
 		e.Router.GET("/api/health", func(c echo.Context) error {
 			return c.JSON(200, map[string]string{"status": "ok"})
