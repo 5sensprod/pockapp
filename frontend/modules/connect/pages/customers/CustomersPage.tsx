@@ -6,14 +6,18 @@
 
 import { EmptyState } from '@/components/module-ui'
 import { Input } from '@/components/ui/input'
+import { navigationActions } from '@/lib/stores/navigationStore'
 import { Search } from 'lucide-react'
 import { Users } from 'lucide-react'
+import { useEffect } from 'react'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { CustomerTable } from '../../features/customers/CustomerTable'
 import { useConnectModule } from '../../useConnectModule'
-
 export function CustomersPage() {
 	const connect = useConnectModule()
+	useEffect(() => {
+		navigationActions.clear()
+	}, [])
 
 	return (
 		<ConnectModuleShell

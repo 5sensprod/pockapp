@@ -9,6 +9,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { navigationActions } from '@/lib/stores/navigationStore'
 
 import { decrementAppPosProductsStock, getAppPosToken } from '@/lib/apppos'
 
@@ -258,6 +259,10 @@ export function InvoicesPage() {
 	if (statusFilter === 'overdue') {
 		invoices = invoices.filter((inv) => isOverdue(inv))
 	}
+
+	useEffect(() => {
+		navigationActions.clear()
+	}, [])
 
 	// Charger la société active
 	useEffect(() => {

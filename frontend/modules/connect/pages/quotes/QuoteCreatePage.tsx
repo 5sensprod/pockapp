@@ -45,7 +45,7 @@ import type {
 	QuoteResponse,
 	QuoteStatus,
 } from '@/lib/types/invoice.types'
-import { useNavigate } from '@tanstack/react-router'
+
 import {
 	ArrowLeft,
 	ChevronsUpDown,
@@ -196,8 +196,6 @@ const applyCartDiscountProRata = (
 // ============================================================================
 
 export function QuoteCreatePage() {
-	const navigate = useNavigate()
-	// const { goBack } = useDocumentNavigation('quote')
 	const { activeCompanyId } = useActiveCompany()
 
 	// États généraux
@@ -670,13 +668,13 @@ export function QuoteCreatePage() {
 	}
 
 	const handleEmailSent = () => {
-		navigate({ to: '/connect/quotes' })
+		goBack()
 	}
 
 	const handleEmailDialogClose = (open: boolean) => {
 		setEmailDialogOpen(open)
 		if (!open) {
-			navigate({ to: '/connect/quotes' })
+			goBack()
 		}
 	}
 

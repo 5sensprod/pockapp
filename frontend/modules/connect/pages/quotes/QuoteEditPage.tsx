@@ -42,7 +42,7 @@ import type {
 import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
 import { useQuote, useUpdateQuote } from '@/lib/queries/quotes'
 import type { InvoiceItem, QuoteStatus } from '@/lib/types/invoice.types'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import {
 	ArrowLeft,
 	ChevronsUpDown,
@@ -207,6 +207,10 @@ const computeVatBreakdownFromItems = (lines: InvoiceItem[]): VatBreakdown[] => {
 }
 
 export function QuoteEditPage() {
+	const editSearch = useSearch({ strict: false }) as {
+		from?: string
+		customerId?: string
+	}
 	const navigate = useNavigate()
 	const { quoteId } = useParams({ from: '/connect/quotes/$quoteId/edit' })
 	const { activeCompanyId } = useActiveCompany()
@@ -363,12 +367,9 @@ export function QuoteEditPage() {
 	}
 
 	const addProduct = (product: QuoteProduct) => {
-		console.log('product complet:', JSON.stringify(product, null, 2))
 		const tvaRate = product.tva_rate ?? 20
 		const coef = 1 + tvaRate / 100
 		const p = product as unknown as ProductWithRefs
-
-		console.log('brandName:', p.expand?.brand?.name) // doit afficher "MAGRABO"
 
 		let unitTtc = 0
 		if (typeof product.price_ttc === 'number') unitTtc = product.price_ttc
@@ -641,7 +642,11 @@ export function QuoteEditPage() {
 				},
 			})
 			toast.success(`Devis ${quoteNumber} mis à jour`)
-			navigate({ to: '/connect/quotes/$quoteId', params: { quoteId } })
+			navigate({
+				to: '/connect/quotes/$quoteId',
+				params: { quoteId },
+				search: editSearch.from ? (editSearch as any) : undefined,
+			})
 		} catch (error) {
 			console.error('Erreur lors de la mise à jour du devis', error)
 			toast.error('Erreur lors de la mise à jour du devis')
@@ -671,7 +676,11 @@ export function QuoteEditPage() {
 					variant='ghost'
 					size='icon'
 					onClick={() =>
-						navigate({ to: '/connect/quotes/$quoteId', params: { quoteId } })
+						navigate({
+							to: '/connect/quotes/$quoteId',
+							params: { quoteId },
+							search: editSearch.from ? (editSearch as any) : undefined,
+						})
 					}
 				>
 					<ArrowLeft className='h-5 w-5' />
@@ -967,6 +976,7 @@ export function QuoteEditPage() {
 									navigate({
 										to: '/connect/quotes/$quoteId',
 										params: { quoteId },
+										search: editSearch.from ? (editSearch as any) : undefined,
 									})
 								}
 							>

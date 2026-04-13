@@ -40,7 +40,7 @@ import type {
 import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
 import { useInvoice, useUpdateInvoice } from '@/lib/queries/invoices'
 import type { InvoiceItem } from '@/lib/types/invoice.types'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import {
 	ArrowLeft,
 	ChevronsUpDown,
@@ -208,6 +208,10 @@ const computeVatBreakdownFromItems = (lines: InvoiceItem[]): VatBreakdown[] => {
 }
 
 export function InvoiceEditPage() {
+	const editSearch = useSearch({ strict: false }) as {
+		from?: string
+		customerId?: string
+	}
 	const navigate = useNavigate()
 	const { invoiceId } = useParams({
 		from: '/connect/invoices/$invoiceId/edit',
@@ -630,6 +634,7 @@ export function InvoiceEditPage() {
 			navigate({
 				to: '/connect/invoices/$invoiceId',
 				params: { invoiceId },
+				search: editSearch.from ? (editSearch as any) : undefined,
 			})
 		} catch (error) {
 			console.error('Erreur lors de la mise à jour de la facture', error)
@@ -680,6 +685,7 @@ export function InvoiceEditPage() {
 						navigate({
 							to: '/connect/invoices/$invoiceId',
 							params: { invoiceId },
+							search: editSearch.from ? (editSearch as any) : undefined,
 						})
 					}
 				>
@@ -967,6 +973,7 @@ export function InvoiceEditPage() {
 									navigate({
 										to: '/connect/invoices/$invoiceId',
 										params: { invoiceId },
+										search: editSearch.from ? (editSearch as any) : undefined,
 									})
 								}
 							>

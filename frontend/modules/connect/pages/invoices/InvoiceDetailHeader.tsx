@@ -50,6 +50,7 @@ interface InvoiceDetailHeaderProps {
 	isTicket: boolean
 	remainingAmount: number
 	hasCancellationCreditNote: boolean
+	search: Record<string, string>
 }
 
 interface HeaderSlots {
@@ -67,6 +68,7 @@ export function useInvoiceDetailHeader({
 	isTicket,
 	remainingAmount,
 	hasCancellationCreditNote,
+	search,
 }: InvoiceDetailHeaderProps): HeaderSlots {
 	const navigate = useNavigate()
 
@@ -199,6 +201,7 @@ export function useInvoiceDetailHeader({
 					navigate({
 						to: '/connect/invoices/$invoiceId/edit',
 						params: { invoiceId },
+						search: search,
 					})
 				}
 			>

@@ -42,6 +42,7 @@ import {
 	useDepositsForInvoice,
 } from '@/lib/queries/deposits'
 import { useCreditNotesForInvoice, useInvoice } from '@/lib/queries/invoices'
+import { navigationActions } from '@/lib/stores/navigationStore'
 import {
 	canCreateBalanceInvoice,
 	canCreateDeposit,
@@ -128,7 +129,7 @@ function getSoldByLabel(invoice: any): string {
 
 export function InvoiceDetailPage() {
 	const navigate = useNavigate()
-	const { goBack } = useDocumentNavigation('invoice')
+	const { goBack, search } = useDocumentNavigation('invoice')
 	const { invoiceId } = useParams({ from: '/connect/invoices/$invoiceId/' })
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
@@ -248,7 +249,23 @@ export function InvoiceDetailPage() {
 		isTicket: !!(invoice?.is_pos_ticket || invoice?.number?.startsWith('TIK-')),
 		remainingAmount,
 		hasCancellationCreditNote,
+		search: search as Record<string, string>,
 	})
+
+	// ── Helper : push courant dans le store avec préservation du contexte ─────
+	// Capture les search params actuels pour que le retour depuis le doc cible
+	// puisse remonter jusqu'au client si on est arrivé depuis une fiche client.
+	const pushCurrentToStore = (label: string) => {
+		navigationActions.push({
+			path: `/connect/invoices/${invoiceId}`,
+			label,
+			params: { invoiceId },
+			search:
+				Object.keys(search).length > 0
+					? (search as Record<string, string>)
+					: undefined,
+		})
+	}
 
 	// ── Acompte inline ────────────────────────────────────────────────────────
 
@@ -443,12 +460,13 @@ export function InvoiceDetailPage() {
 											<Button
 												variant='outline'
 												size='sm'
-												onClick={() =>
+												onClick={() => {
+													pushCurrentToStore(`Avoir ${invoice.number}`)
 													navigate({
 														to: '/connect/invoices/$invoiceId',
 														params: { invoiceId: originalId },
 													})
-												}
+												}}
 											>
 												Voir
 											</Button>
@@ -489,12 +507,13 @@ export function InvoiceDetailPage() {
 												<Button
 													variant='outline'
 													size='sm'
-													onClick={() =>
+													onClick={() => {
+														pushCurrentToStore(`Facture ${invoice.number}`)
 														navigate({
 															to: '/connect/invoices/$invoiceId',
 															params: { invoiceId: cn.id },
 														})
-													}
+													}}
 												>
 													Voir
 												</Button>
@@ -594,12 +613,13 @@ export function InvoiceDetailPage() {
 												<Button
 													variant='outline'
 													size='sm'
-													onClick={() =>
+													onClick={() => {
+														pushCurrentToStore(`Facture ${invoice.number}`)
 														navigate({
 															to: '/connect/invoices/$invoiceId',
 															params: { invoiceId: dep.id },
 														})
-													}
+													}}
 												>
 													Voir
 												</Button>
@@ -622,13 +642,15 @@ export function InvoiceDetailPage() {
 													variant='outline'
 													size='sm'
 													onClick={() => {
-														if (depositsData.balanceInvoice)
+														if (depositsData.balanceInvoice) {
+															pushCurrentToStore(`Facture ${invoice.number}`)
 															navigate({
 																to: '/connect/invoices/$invoiceId',
 																params: {
 																	invoiceId: depositsData.balanceInvoice.id,
 																},
 															})
+														}
 													}}
 												>
 													Voir
@@ -776,12 +798,13 @@ export function InvoiceDetailPage() {
 									<Button
 										variant='outline'
 										size='sm'
-										onClick={() =>
+										onClick={() => {
+											pushCurrentToStore(`Acompte ${invoice.number}`)
 											navigate({
 												to: '/connect/invoices/$invoiceId',
 												params: { invoiceId: originalId },
 											})
-										}
+										}}
 									>
 										Voir
 									</Button>

@@ -34,6 +34,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useQuote } from '@/lib/queries/quotes'
+import { navigationActions } from '@/lib/stores/navigationStore'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	ArrowLeft,
@@ -56,7 +57,7 @@ import { getQuoteStatus } from '../../utils/statusConfig'
 export function QuoteDetailPage() {
 	const navigate = useNavigate()
 	const { quoteId } = useParams({ from: '/connect/quotes/$quoteId/' })
-	const { goBack } = useDocumentNavigation('quote')
+	const { goBack, search } = useDocumentNavigation('quote')
 	const { data: quote, isLoading } = useQuote(quoteId)
 
 	const actions = useQuoteActions(quote)
@@ -163,6 +164,8 @@ export function QuoteDetailPage() {
 					navigate({
 						to: '/connect/quotes/$quoteId/edit',
 						params: { quoteId: quote.id },
+						search:
+							Object.keys(search).length > 0 ? (search as any) : undefined,
 					})
 				}
 			>
@@ -282,6 +285,44 @@ export function QuoteDetailPage() {
 							<div>
 								<p className='text-sm text-muted-foreground'>Notes</p>
 								<p className='text-sm'>{quote.notes}</p>
+							</div>
+						)}
+
+						{/* Facture générée */}
+						{alreadyConverted && quote.generated_invoice_id && (
+							<div className='border-t pt-4'>
+								<p className='text-sm text-muted-foreground mb-2'>
+									Facture générée
+								</p>
+								<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
+									<div className='flex items-center gap-2'>
+										<FileText className='h-4 w-4 text-muted-foreground' />
+										<span className='font-medium text-sm'>
+											Voir la facture associée
+										</span>
+									</div>
+									<Button
+										variant='outline'
+										size='sm'
+										onClick={() => {
+											navigationActions.push({
+												path: `/connect/quotes/${quoteId}`,
+												label: `Devis ${quote.number}`,
+												params: { quoteId },
+												search:
+													Object.keys(search).length > 0
+														? (search as Record<string, string>)
+														: undefined,
+											})
+											navigate({
+												to: '/connect/invoices/$invoiceId',
+												params: { invoiceId: quote.generated_invoice_id ?? '' },
+											})
+										}}
+									>
+										Voir
+									</Button>
+								</div>
 							</div>
 						)}
 					</CardContent>

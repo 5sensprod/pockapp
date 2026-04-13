@@ -6,6 +6,7 @@
 //
 // Remplace useOrderNavigation — ce hook est compatible avec les 3 types.
 
+import { navigationActions } from '@/lib/stores/navigationStore'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
 export type DocumentType = 'order' | 'quote' | 'invoice'
@@ -38,17 +39,32 @@ export function useDocumentNavigation(type: DocumentType) {
 	const navigate = useNavigate()
 	const search = useSearch({ strict: false }) as NavigationSearch
 
-	// Retour intelligent : liste ou fiche client avec bon onglet
+	// Retour intelligent : store → search params → liste
 	const goBack = () => {
+		// Priorité 1 : store (navigation croisée inter-documents)
+		const previous = navigationActions.peek()
+		if (previous) {
+			navigationActions.pop()
+			navigate({
+				to: previous.path as any,
+				params: previous.params as any,
+				search: previous.search as any,
+			})
+			return
+		}
+
+		// Priorité 2 : search params URL (compat — navigation depuis CustomerDetailPage)
 		if (search.from === 'customer' && search.customerId) {
 			navigate({
 				to: '/connect/customers/$customerId',
 				params: { customerId: search.customerId },
 				search: { tab: `${type}s` }, // 'orders' | 'quotes' | 'invoices'
 			})
-		} else {
-			navigate({ to: ROUTES[type].list })
+			return
 		}
+
+		// Fallback : liste du type courant
+		navigate({ to: ROUTES[type].list })
 	}
 
 	// Navigation vers le détail avec contexte d'origine (depuis fiche client)
@@ -92,5 +108,12 @@ export function useDocumentNavigation(type: DocumentType) {
 		}
 	}
 
-	return { goBack, goToDetail, goToNew, search }
+	return {
+		goBack,
+		goToDetail,
+		goToNew,
+		search,
+		// Exposé pour que les pages puissent pousser dans la pile avant une navigation croisée
+		push: navigationActions.push,
+	}
 }
