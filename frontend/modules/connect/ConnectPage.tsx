@@ -8,7 +8,7 @@ export function ConnectPage() {
 	const connect = useConnectModule()
 
 	return (
-		<ConnectModuleShell>
+		<ConnectModuleShell hideBadge>
 			<ConnectView {...connect} />
 		</ConnectModuleShell>
 	)

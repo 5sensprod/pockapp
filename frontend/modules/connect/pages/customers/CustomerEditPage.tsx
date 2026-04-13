@@ -88,6 +88,12 @@ export function CustomerEditPage() {
 	const { data: customer, isLoading } = useCustomer(customerId)
 	const updateCustomer = useUpdateCustomer()
 
+	const goToDetail = () =>
+		navigate({
+			to: '/connect/customers/$customerId',
+			params: { customerId },
+		})
+
 	const form = useForm<CustomerFormValues>({
 		resolver: zodResolver(customerSchema),
 		defaultValues: {
@@ -148,7 +154,7 @@ export function CustomerEditPage() {
 
 			await updateCustomer.mutateAsync({ id: customer.id, data: payload })
 			toast.success('Client modifié avec succès')
-			navigate({ to: '/connect/customers' })
+			goToDetail()
 		} catch (error) {
 			console.error(error)
 			toast.error('Une erreur est survenue lors de la modification du client')
@@ -167,13 +173,9 @@ export function CustomerEditPage() {
 		return (
 			<div className='container mx-auto px-6 py-8'>
 				<p className='text-muted-foreground'>Client introuvable</p>
-				<Button
-					variant='outline'
-					className='mt-4'
-					onClick={() => navigate({ to: '/connect/customers' })}
-				>
+				<Button variant='outline' className='mt-4' onClick={goToDetail}>
 					<ArrowLeft className='h-4 w-4 mr-2' />
-					Retour aux clients
+					Retour au client
 				</Button>
 			</div>
 		)
@@ -183,11 +185,7 @@ export function CustomerEditPage() {
 		<div className='container mx-auto px-6 py-8 max-w-3xl'>
 			{/* Header */}
 			<div className='flex items-center gap-4 mb-6'>
-				<Button
-					variant='ghost'
-					size='icon'
-					onClick={() => navigate({ to: '/connect/customers' })}
-				>
+				<Button variant='ghost' size='icon' onClick={goToDetail}>
 					<ArrowLeft className='h-5 w-5' />
 				</Button>
 				<div className='flex-1'>
@@ -418,11 +416,7 @@ export function CustomerEditPage() {
 
 							{/* Actions */}
 							<div className='flex justify-end gap-3 pt-4'>
-								<Button
-									type='button'
-									variant='outline'
-									onClick={() => navigate({ to: '/connect/customers' })}
-								>
+								<Button type='button' variant='outline' onClick={goToDetail}>
 									Annuler
 								</Button>
 								<Button type='submit' disabled={updateCustomer.isPending}>

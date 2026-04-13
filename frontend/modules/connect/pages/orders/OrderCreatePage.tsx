@@ -18,7 +18,7 @@ import type { ProductsResponse } from '@/lib/pocketbase-types'
 import { useAllCustomers } from '@/lib/queries/customers'
 import { useCreateOrder } from '@/lib/queries/orders'
 import type { OrderItem } from '@/lib/queries/orders'
-import { useNavigate, useSearch } from '@tanstack/react-router'
+import { useSearch } from '@tanstack/react-router'
 import {
 	ArrowLeft,
 	ChevronsUpDown,
@@ -31,6 +31,7 @@ import {
 	Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useOrderNavigation } from '../../hooks/useOrderNavigation'
 import { manifest } from '../../manifest'
 import { computeItem, computeOrderTotals } from '../../types/order'
 
@@ -48,7 +49,7 @@ interface SelectedCustomer {
 }
 
 export function OrderCreatePage() {
-	const navigate = useNavigate()
+	const { goBack } = useOrderNavigation()
 	const { activeCompanyId } = useActiveCompany()
 	const search = useSearch({ strict: false }) as {
 		sourceQuoteId?: string
@@ -217,7 +218,7 @@ export function OrderCreatePage() {
 				notes: notes || undefined,
 				source_quote_id: search.sourceQuoteId,
 			})
-			navigate({ to: '/connect/orders' })
+			goBack()
 		} catch (err) {
 			console.error('Erreur création BC:', err)
 		}
@@ -232,11 +233,7 @@ export function OrderCreatePage() {
 		<ModulePageShell
 			manifest={manifest}
 			headerLeft={
-				<Button
-					variant='ghost'
-					size='sm'
-					onClick={() => navigate({ to: '/connect/orders' })}
-				>
+				<Button variant='ghost' size='sm' onClick={goBack}>
 					<ArrowLeft className='h-4 w-4 mr-1.5' />
 					Bons de commande
 				</Button>

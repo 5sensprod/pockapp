@@ -37,7 +37,7 @@ import type { ProductsResponse } from '@/lib/pocketbase-types'
 import { useAllCustomers, useCreateCustomer } from '@/lib/queries/customers'
 import { useCreateInvoice } from '@/lib/queries/invoices'
 import type { InvoiceItem } from '@/lib/types/invoice.types'
-import { useNavigate } from '@tanstack/react-router'
+
 import {
 	ArrowLeft,
 	ChevronsUpDown,
@@ -48,9 +48,10 @@ import {
 	Trash2,
 	UserPlus,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { CustomerDialog } from '../../features/customers/CustomerDialog'
+import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 
 // =====================
 // TYPES + HELPERS
@@ -181,13 +182,13 @@ const applyCartDiscountProRata = (
 }
 
 export function InvoiceCreatePage() {
-	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 
 	// States de base
 	const [invoiceDate, setInvoiceDate] = useState(
 		new Date().toISOString().split('T')[0],
 	)
+	const { goBack, search } = useDocumentNavigation('invoice')
 	const [dueDate, setDueDate] = useState('')
 	const [selectedCustomer, setSelectedCustomer] =
 		useState<SelectedCustomer | null>(null)
@@ -224,6 +225,26 @@ export function InvoiceCreatePage() {
 
 	// ✅ Remplace l'ancien
 	const { data: customers = [] } = useAllCustomers(activeCompanyId ?? undefined)
+	const incomingCustomerId = (search as any).customerId
+	const hasPrefilledCustomer = useRef(false)
+
+	useEffect(() => {
+		if (incomingCustomerId && !hasPrefilledCustomer.current) {
+			const found = customers.find((c) => c.id === incomingCustomerId)
+			if (found) {
+				hasPrefilledCustomer.current = true
+				setSelectedCustomer({
+					id: found.id,
+					name: found.name,
+					email: found.email ?? undefined,
+					phone: found.phone ?? undefined,
+					address: found.address ?? undefined,
+					company: (found as any).company ?? undefined,
+				})
+			}
+		}
+	}, [incomingCustomerId, customers])
+
 	const products = (productsData?.items ?? []) as InvoiceProduct[]
 
 	const filteredCustomers = customers.filter((c) => {
@@ -583,7 +604,7 @@ export function InvoiceCreatePage() {
 				vat_breakdown: totals.vatBreakdown,
 			})
 			toast.success(`Facture ${result.number} créée avec succès`)
-			navigate({ to: '/connect/invoices' })
+			goBack()
 		} catch (error) {
 			console.error('Erreur lors de la création de la facture', error)
 			toast.error('Erreur lors de la création de la facture')
@@ -610,11 +631,7 @@ export function InvoiceCreatePage() {
 	return (
 		<div className='container mx-auto px-6 py-8 max-w-6xl'>
 			<div className='flex items-center gap-4 mb-6'>
-				<Button
-					variant='ghost'
-					size='icon'
-					onClick={() => navigate({ to: '/connect/invoices' })}
-				>
+				<Button variant='ghost' size='icon' onClick={goBack}>
 					<ArrowLeft className='h-5 w-5' />
 				</Button>
 				<div className='flex-1'>

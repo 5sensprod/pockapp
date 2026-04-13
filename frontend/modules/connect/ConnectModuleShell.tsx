@@ -80,12 +80,10 @@ export function ConnectModuleShell({
 	// Bloc actions droite
 	const actions = (
 		<div className='flex items-center gap-2'>
-			{/* Actions contextuelles injectées par la page */}
 			{headerRight}
 
-			{/* CTA principal — "Nouveau client" par défaut, overridable par page */}
-			{primaryAction !== null && primaryAction !== undefined
-				? primaryAction
+			{primaryAction !== undefined
+				? primaryAction // null = masqué, JSX = affiché
 				: shell.defaultPrimaryAction}
 		</div>
 	)

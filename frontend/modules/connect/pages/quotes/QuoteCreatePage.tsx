@@ -57,10 +57,11 @@ import {
 	Trash2,
 	UserPlus,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { SendQuoteEmailDialog } from '../../dialogs/SendQuoteEmailDialog'
 import { CustomerDialog } from '../../features/customers/CustomerDialog'
+import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 
 // ============================================================================
 // TYPES + HELPERS (Identiques à InvoiceCreatePage)
@@ -196,6 +197,7 @@ const applyCartDiscountProRata = (
 
 export function QuoteCreatePage() {
 	const navigate = useNavigate()
+	// const { goBack } = useDocumentNavigation('quote')
 	const { activeCompanyId } = useActiveCompany()
 
 	// États généraux
@@ -243,6 +245,27 @@ export function QuoteCreatePage() {
 	const customers: QuoteCustomer[] = (useAllCustomers(
 		activeCompanyId ?? undefined,
 	).data ?? []) as QuoteCustomer[]
+
+	const { goBack, search } = useDocumentNavigation('quote') // remplace le goBack ligne 200
+	const incomingCustomerId = (search as any).customerId
+	const hasPrefilledCustomer = useRef(false)
+
+	useEffect(() => {
+		if (incomingCustomerId && !hasPrefilledCustomer.current) {
+			const found = customers.find((c) => c.id === incomingCustomerId)
+			if (found) {
+				hasPrefilledCustomer.current = true
+				setSelectedCustomer({
+					id: found.id,
+					name: found.name,
+					email: found.email ?? undefined,
+					phone: found.phone ?? undefined,
+					address: found.address ?? undefined,
+					company: (found as any).company ?? undefined,
+				})
+			}
+		}
+	}, [incomingCustomerId, customers])
 
 	const products: QuoteProduct[] = (productsData?.items ?? []) as QuoteProduct[]
 
@@ -638,7 +661,7 @@ export function QuoteCreatePage() {
 						? `Brouillon ${newQuote.number} enregistré`
 						: `Devis ${newQuote.number} créé avec succès`,
 				)
-				navigate({ to: '/connect/quotes' })
+				goBack()
 			}
 		} catch (error) {
 			console.error('Erreur lors de la création du devis', error)
@@ -661,11 +684,7 @@ export function QuoteCreatePage() {
 		<div className='container mx-auto px-6 py-8 max-w-6xl'>
 			{/* Header */}
 			<div className='flex items-center gap-4 mb-6'>
-				<Button
-					variant='ghost'
-					size='icon'
-					onClick={() => navigate({ to: '/connect/quotes' })}
-				>
+				<Button variant='ghost' size='icon' onClick={goBack}>
 					<ArrowLeft className='h-5 w-5' />
 				</Button>
 				<div className='flex-1'>

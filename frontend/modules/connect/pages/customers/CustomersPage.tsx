@@ -18,6 +18,7 @@ export function CustomersPage() {
 	return (
 		<ConnectModuleShell
 			pageTitle='Clients'
+			hideBadge
 			// Barre de recherche dans la zone centre du subheader
 			headerCenter={
 				<div className='relative w-full max-w-sm'>

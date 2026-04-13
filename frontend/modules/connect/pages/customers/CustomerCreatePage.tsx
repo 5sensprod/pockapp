@@ -120,9 +120,12 @@ export function CustomerCreatePage() {
 				payment_terms: isIndividual ? undefined : data.payment_terms,
 			}
 
-			await createCustomer.mutateAsync(payload)
+			const result = await createCustomer.mutateAsync(payload)
 			toast.success('Client créé avec succès')
-			navigate({ to: '/connect/customers' })
+			navigate({
+				to: '/connect/customers/$customerId',
+				params: { customerId: result.id },
+			})
 		} catch (error) {
 			console.error(error)
 			toast.error('Une erreur est survenue lors de la création du client')

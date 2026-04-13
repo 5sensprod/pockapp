@@ -24,6 +24,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import {
 	ArrowLeft,
+	ClipboardList,
 	CreditCard,
 	FileText,
 	Guitar,
@@ -290,9 +291,8 @@ export function CustomerDetailPage() {
 
 					<DropdownMenu modal={false}>
 						<DropdownMenuTrigger asChild>
-							<Button size='sm' className='gap-2'>
+							<Button size='icon'>
 								<Plus className='h-4 w-4' />
-								Nouveau
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align='end' className='w-48'>
@@ -300,6 +300,7 @@ export function CustomerDetailPage() {
 								onClick={() =>
 									navigate({
 										to: '/connect/invoices/new',
+										search: { from: 'customer', customerId },
 									})
 								}
 							>
@@ -310,11 +311,23 @@ export function CustomerDetailPage() {
 								onClick={() =>
 									navigate({
 										to: '/connect/quotes/new',
+										search: { from: 'customer', customerId },
 									})
 								}
 							>
 								<FileText className='h-4 w-4 mr-2' />
 								Devis
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								onClick={() =>
+									navigate({
+										to: '/connect/orders/new',
+										search: { from: 'customer', customerId },
+									})
+								}
+							>
+								<ClipboardList className='h-4 w-4 mr-2' />
+								Commande
 							</DropdownMenuItem>
 							<DropdownMenuItem
 								onClick={() => {
