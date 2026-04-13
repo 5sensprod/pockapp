@@ -1,7 +1,6 @@
 // frontend/modules/connect/pages/invoices/InvoiceDetailPage.tsx
 
 import { EmptyState } from '@/components/module-ui'
-
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -18,7 +17,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-
 import { Label } from '@/components/ui/label'
 import {
 	Select,
@@ -54,7 +52,6 @@ import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
 import { StockReclassificationDialog } from '@/modules/common/StockReclassificationDialog'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
-	ArrowLeft,
 	Banknote,
 	CreditCard,
 	FileText,
@@ -156,7 +153,7 @@ export function InvoiceDetailPage() {
 	// ── Actions centralisées ──────────────────────────────────────────────────
 	const actions = useInvoiceActions(invoice, company)
 
-	// ── Données dérivées locales (acompte inline) ─────────────────────────────
+	// ── Données dérivées ──────────────────────────────────────────────────────
 	const [depositDialogOpen, setDepositDialogOpen] = useState(false)
 	const [depositMode, setDepositMode] = useState<'percent' | 'amount'>(
 		'percent',
@@ -240,83 +237,15 @@ export function InvoiceDetailPage() {
 		}
 	}, [invoice])
 
-	// ── Header (loading/not found) ────────────────────────────────────────────
-
-	const backButton = (
-		<div className='flex items-center gap-3'>
-			<Button
-				variant='ghost'
-				size='icon'
-				className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
-				onClick={goBack}
-			>
-				<ArrowLeft className='h-4 w-4' />
-			</Button>
-			<div className='flex items-center gap-2'>
-				<FileText className='h-5 w-5 text-muted-foreground' />
-				<h1 className='text-xl font-bold tracking-tight'>Facture</h1>
-			</div>
-		</div>
-	)
-
-	if (isLoading) {
-		return (
-			<ConnectModuleShell
-				pageTitle='Facture'
-				hideTitle
-				hideIcon
-				headerLeft={backButton}
-				primaryAction={null}
-				hideBadge
-			>
-				<EmptyState icon={FileText} title='Chargement...' fullPage />
-			</ConnectModuleShell>
-		)
-	}
-
-	if (!invoice) {
-		return (
-			<ConnectModuleShell
-				hideTitle
-				hideIcon
-				pageTitle='Facture'
-				headerLeft={backButton}
-				primaryAction={null}
-				hideBadge
-			>
-				<EmptyState
-					icon={FileText}
-					title='Facture introuvable'
-					description="Cette facture n'existe pas ou a été supprimée."
-					actions={[
-						{
-							label: 'Retour aux factures',
-							onClick: () => navigate({ to: '/connect/invoices' }),
-							variant: 'secondary',
-						},
-					]}
-					fullPage
-				/>
-			</ConnectModuleShell>
-		)
-	}
-
-	// ── Données dérivées ──────────────────────────────────────────────────────
-
-	const customer = (invoice as any)?.expand?.customer ?? null
-
-	const soldByLabel = getSoldByLabel(invoice as any)
-
-	// ── Header slots via hook ─────────────────────────────────────────────────
-
+	// ── Header slots — AVANT les guards ──────────────────────────────────────
 	const { headerLeft, headerRight } = useInvoiceDetailHeader({
 		invoice,
 		invoiceId,
 		actions,
 		goBack,
-		isCreditNote,
-		isDeposit,
-		isTicket,
+		isCreditNote: invoice?.invoice_type === 'credit_note',
+		isDeposit: invoice?.invoice_type === 'deposit',
+		isTicket: !!(invoice?.is_pos_ticket || invoice?.number?.startsWith('TIK-')),
 		remainingAmount,
 		hasCancellationCreditNote,
 	})
@@ -366,6 +295,55 @@ export function InvoiceDetailPage() {
 			)
 		}
 	}
+
+	// ── Guards ────────────────────────────────────────────────────────────────
+
+	if (isLoading) {
+		return (
+			<ConnectModuleShell
+				pageTitle='Facture'
+				hideTitle
+				hideIcon
+				headerLeft={headerLeft}
+				primaryAction={null}
+				hideBadge
+			>
+				<EmptyState icon={FileText} title='Chargement...' fullPage />
+			</ConnectModuleShell>
+		)
+	}
+
+	if (!invoice) {
+		return (
+			<ConnectModuleShell
+				hideTitle
+				hideIcon
+				pageTitle='Facture'
+				headerLeft={headerLeft}
+				primaryAction={null}
+				hideBadge
+			>
+				<EmptyState
+					icon={FileText}
+					title='Facture introuvable'
+					description="Cette facture n'existe pas ou a été supprimée."
+					actions={[
+						{
+							label: 'Retour aux factures',
+							onClick: () => navigate({ to: '/connect/invoices' }),
+							variant: 'secondary',
+						},
+					]}
+					fullPage
+				/>
+			</ConnectModuleShell>
+		)
+	}
+
+	// ── Données dérivées (post-guard) ─────────────────────────────────────────
+
+	const customer = (invoice as any)?.expand?.customer ?? null
+	const soldByLabel = getSoldByLabel(invoice as any)
 
 	return (
 		<ConnectModuleShell
@@ -714,22 +692,18 @@ export function InvoiceDetailPage() {
 														</p>
 													</>
 												) : (
-													<>
-														<div className='flex items-center gap-2'>
-															<input
-																type='number'
-																min={0.01}
-																step={0.01}
-																placeholder='Montant en €'
-																value={depositAmount}
-																onChange={(e) =>
-																	setDepositAmount(e.target.value)
-																}
-																className='flex-1 text-sm border border-border rounded-md px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring'
-															/>
-															<span className='text-sm font-semibold'>€</span>
-														</div>
-													</>
+													<div className='flex items-center gap-2'>
+														<input
+															type='number'
+															min={0.01}
+															step={0.01}
+															placeholder='Montant en €'
+															value={depositAmount}
+															onChange={(e) => setDepositAmount(e.target.value)}
+															className='flex-1 text-sm border border-border rounded-md px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring'
+														/>
+														<span className='text-sm font-semibold'>€</span>
+													</div>
 												)}
 												<div className='flex gap-2'>
 													<Button
@@ -1021,7 +995,6 @@ export function InvoiceDetailPage() {
 
 			{/* ── Dialogs ──────────────────────────────────────────────────────── */}
 
-			{/* Email */}
 			<SendInvoiceEmailDialog
 				open={actions.emailDialogOpen}
 				onOpenChange={actions.setEmailDialogOpen}
@@ -1029,7 +1002,6 @@ export function InvoiceDetailPage() {
 				onSuccess={() => actions.setEmailDialogOpen(false)}
 			/>
 
-			{/* Créer avoir */}
 			<Dialog
 				open={actions.cancelDialogOpen}
 				onOpenChange={actions.setCancelDialogOpen}
@@ -1069,7 +1041,6 @@ export function InvoiceDetailPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Paiement */}
 			<Dialog
 				open={actions.paymentDialogOpen}
 				onOpenChange={actions.setPaymentDialogOpen}
@@ -1180,7 +1151,6 @@ export function InvoiceDetailPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Suppression brouillon */}
 			<Dialog
 				open={actions.deleteDraftDialogOpen}
 				onOpenChange={actions.setDeleteDraftDialogOpen}
@@ -1214,7 +1184,6 @@ export function InvoiceDetailPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Rembourser acompte */}
 			<Dialog
 				open={actions.refundDepositOpen}
 				onOpenChange={actions.setRefundDepositOpen}
@@ -1261,7 +1230,6 @@ export function InvoiceDetailPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Rembourser ticket */}
 			<RefundTicketDialog
 				open={actions.refundTicketDialogOpen}
 				onOpenChange={(o) => {
@@ -1279,7 +1247,6 @@ export function InvoiceDetailPage() {
 				}}
 			/>
 
-			{/* Rembourser facture */}
 			<RefundInvoiceDialog
 				open={actions.refundInvoiceOpen}
 				invoice={invoice}
@@ -1293,7 +1260,6 @@ export function InvoiceDetailPage() {
 				}}
 			/>
 
-			{/* Stock reclassification */}
 			<StockReclassificationDialog
 				open={actions.stockReclassifyOpen}
 				onOpenChange={actions.setStockReclassifyOpen}

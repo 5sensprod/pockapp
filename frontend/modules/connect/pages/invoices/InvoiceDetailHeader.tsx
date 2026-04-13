@@ -3,9 +3,9 @@
 // Retourne headerLeft + headerRight pour ConnectModuleShell.
 // Pattern identique à TicketDetailHeader.
 //
-// headerLeft  — bouton retour + titre + badges statut
-// headerRight — boutons contextuels + dropdown Actions
+// invoice est optionnel — le hook est appelé avant les guards dans InvoiceDetailPage.
 
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
 	DropdownMenu,
@@ -23,6 +23,7 @@ import {
 } from '@/lib/types/invoice.types'
 import { useNavigate } from '@tanstack/react-router'
 import {
+	AlertTriangle,
 	ArrowLeft,
 	CheckCircle,
 	ChevronDown,
@@ -32,21 +33,18 @@ import {
 	Loader2,
 	Mail,
 	Receipt,
+	RefreshCcw,
 	RotateCcw,
 	Send,
 	XCircle,
 } from 'lucide-react'
 import type { InvoiceActionsState } from '../../hooks/useInvoiceActions'
-import type { BadgeProps } from '@/components/ui/badge'
-import { Badge } from '@/components/ui/badge'
-import { AlertTriangle, RefreshCcw } from 'lucide-react'
 
 interface InvoiceDetailHeaderProps {
-	invoice: InvoiceResponse
+	invoice: InvoiceResponse | undefined
 	invoiceId: string
 	actions: InvoiceActionsState
 	goBack: () => void
-	// Pour les badges statut
 	isCreditNote: boolean
 	isDeposit: boolean
 	isTicket: boolean
@@ -72,18 +70,40 @@ export function useInvoiceDetailHeader({
 }: InvoiceDetailHeaderProps): HeaderSlots {
 	const navigate = useNavigate()
 
+	// ── Guard ────────────────────────────────────────────────────────────────────
+	if (!invoice) {
+		return {
+			headerLeft: (
+				<div className='flex items-center gap-3'>
+					<Button
+						variant='ghost'
+						size='icon'
+						className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
+						onClick={goBack}
+					>
+						<ArrowLeft className='h-4 w-4' />
+					</Button>
+					<div className='flex items-center gap-2'>
+						<FileText className='h-5 w-5 text-muted-foreground' />
+						<h1 className='text-xl font-bold tracking-tight'>Facture</h1>
+					</div>
+				</div>
+			),
+			headerRight: null,
+		}
+	}
+
 	const displayStatus = getDisplayStatus(invoice)
-	const badgeVariant = (displayStatus.variant ?? 'outline') as BadgeProps['variant']
+	const badgeVariant = (displayStatus.variant ??
+		'outline') as BadgeProps['variant']
 	const overdue = isOverdue(invoice)
 
-	// ── Titre contextuel ────────────────────────────────────────────────────────
 	const pageTitle = isCreditNote
 		? `Avoir ${invoice.number || ''}`
 		: isTicket
 			? `Ticket ${invoice.number || ''}`
 			: `Facture ${invoice.number || ''}`
 
-	// ── Badges statut ───────────────────────────────────────────────────────────
 	const statusBadges = isCreditNote ? (
 		<>
 			<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
@@ -129,7 +149,6 @@ export function useInvoiceDetailHeader({
 		</>
 	)
 
-	// ── headerLeft ──────────────────────────────────────────────────────────────
 	const headerLeft = (
 		<div className='flex items-center gap-3 min-w-0'>
 			<Button
@@ -142,16 +161,16 @@ export function useInvoiceDetailHeader({
 			</Button>
 			<div className='flex items-center gap-2 min-w-0'>
 				<FileText className='h-5 w-5 text-muted-foreground shrink-0' />
-				<h1 className='text-xl font-bold tracking-tight truncate'>{pageTitle}</h1>
+				<h1 className='text-xl font-bold tracking-tight truncate'>
+					{pageTitle}
+				</h1>
 				{statusBadges}
 			</div>
 		</div>
 	)
 
-	// ── Items dropdown Actions ──────────────────────────────────────────────────
 	const dropdownItems: React.ReactNode[] = []
 
-	// Envoyer email
 	dropdownItems.push(
 		<DropdownMenuItem
 			key='email'
@@ -162,7 +181,6 @@ export function useInvoiceDetailHeader({
 		</DropdownMenuItem>,
 	)
 
-	// Marquer envoyée
 	if (canTransitionTo(invoice.status, 'sent')) {
 		dropdownItems.push(
 			<DropdownMenuItem key='sent' onClick={actions.handleMarkAsSent}>
@@ -172,7 +190,6 @@ export function useInvoiceDetailHeader({
 		)
 	}
 
-	// Séparateur + actions brouillon
 	if (invoice.status === 'draft' && !isCreditNote) {
 		dropdownItems.push(<DropdownMenuSeparator key='sep-draft' />)
 		dropdownItems.push(
@@ -211,7 +228,6 @@ export function useInvoiceDetailHeader({
 		)
 	}
 
-	// Convertir ticket → facture
 	if (isTicket && !invoice.converted_to_invoice) {
 		dropdownItems.push(<DropdownMenuSeparator key='sep-convert' />)
 		dropdownItems.push(
@@ -230,21 +246,16 @@ export function useInvoiceDetailHeader({
 		)
 	}
 
-	// Paiement
 	if (canMarkAsPaid(invoice) && !hasCancellationCreditNote) {
 		dropdownItems.push(<DropdownMenuSeparator key='sep-pay' />)
 		dropdownItems.push(
-			<DropdownMenuItem
-				key='payment'
-				onClick={actions.handleOpenPaymentDialog}
-			>
+			<DropdownMenuItem key='payment' onClick={actions.handleOpenPaymentDialog}>
 				<CheckCircle className='h-4 w-4 mr-2 text-green-600' />
 				Enregistrer paiement
 			</DropdownMenuItem>,
 		)
 	}
 
-	// Créer avoir
 	if (
 		invoice.invoice_type === 'invoice' &&
 		!isTicket &&
@@ -265,7 +276,6 @@ export function useInvoiceDetailHeader({
 		)
 	}
 
-	// Rembourser facture
 	if (
 		invoice.invoice_type === 'invoice' &&
 		(displayStatus.isPaid || invoice.is_paid) &&
@@ -284,7 +294,6 @@ export function useInvoiceDetailHeader({
 		)
 	}
 
-	// Rembourser ticket
 	if (
 		isTicket &&
 		invoice.invoice_type === 'invoice' &&
@@ -303,7 +312,6 @@ export function useInvoiceDetailHeader({
 		)
 	}
 
-	// Rembourser acompte
 	if (
 		invoice.invoice_type === 'deposit' &&
 		invoice.is_paid &&
@@ -326,10 +334,8 @@ export function useInvoiceDetailHeader({
 		)
 	}
 
-	// ── headerRight ─────────────────────────────────────────────────────────────
 	const headerRight = (
 		<div className='flex items-center gap-1.5'>
-			{/* Dropdown Actions */}
 			{dropdownItems.length > 0 && (
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
@@ -343,8 +349,6 @@ export function useInvoiceDetailHeader({
 					</DropdownMenuContent>
 				</DropdownMenu>
 			)}
-
-			{/* Télécharger PDF */}
 			<Button
 				size='sm'
 				onClick={actions.handleDownloadPdf}
