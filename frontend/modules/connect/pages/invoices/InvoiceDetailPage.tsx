@@ -1,7 +1,7 @@
 // frontend/modules/connect/pages/invoices/InvoiceDetailPage.tsx
 
 import { EmptyState } from '@/components/module-ui'
-import { Badge, type BadgeProps } from '@/components/ui/badge'
+
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -11,6 +11,23 @@ import {
 	CardTitle,
 } from '@/components/ui/card'
 import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
+
+import { Label } from '@/components/ui/label'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -18,6 +35,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import {
@@ -29,22 +47,18 @@ import { useCreditNotesForInvoice, useInvoice } from '@/lib/queries/invoices'
 import {
 	canCreateBalanceInvoice,
 	canCreateDeposit,
-	getDisplayStatus,
-	isOverdue,
 } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
+import { RefundInvoiceDialog } from '@/modules/common/RefundInvoiceDialog'
+import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
+import { StockReclassificationDialog } from '@/modules/common/StockReclassificationDialog'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
-	AlertTriangle,
 	ArrowLeft,
 	Banknote,
-	CheckCircle,
 	CreditCard,
-	Download,
 	FileText,
 	Loader2,
-	Mail,
-	Pencil,
 	Plus,
 	RefreshCcw,
 } from 'lucide-react'
@@ -53,14 +67,14 @@ import { toast } from 'sonner'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { SendInvoiceEmailDialog } from '../../dialogs/SendInvoiceEmailDialog'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
-import { InvoicePdfDocument } from '../../pdf/InvoicePdf'
-import { downloadInvoicePdf } from '../../utils/downloadPdf'
+import { useInvoiceActions } from '../../hooks/useInvoiceActions'
 import {
 	formatCurrency,
 	formatDate,
 	formatPaymentMethod,
 	round2,
 } from '../../utils/formatters'
+import { useInvoiceDetailHeader } from './InvoiceDetailHeader'
 
 // ── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -71,7 +85,7 @@ type VatBreakdown = {
 	total_ttc: number
 }
 
-// ── Helpers locaux (spécifiques à cette page) ────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getLineDiscountLabel(item: any): {
 	label: string
@@ -113,22 +127,23 @@ function getSoldByLabel(invoice: any): string {
 	)
 }
 
-// ── Composant ────────────────────────────────────────────────────────────────
+// ── Composant ─────────────────────────────────────────────────────────────────
 
 export function InvoiceDetailPage() {
 	const navigate = useNavigate()
-	const { goBack } = useDocumentNavigation('invoice') // ← correct
+	const { goBack } = useDocumentNavigation('invoice')
 	const { invoiceId } = useParams({ from: '/connect/invoices/$invoiceId/' })
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
 
 	const { data: invoice, isLoading } = useInvoice(invoiceId)
 	const [company, setCompany] = useState<CompaniesResponse | null>(null)
-	const [isDownloading, setIsDownloading] = useState(false)
-	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 
 	const isCreditNote = invoice?.invoice_type === 'credit_note'
 	const isDeposit = invoice?.invoice_type === 'deposit'
+	const isTicket = !!(
+		invoice?.is_pos_ticket || invoice?.number?.startsWith('TIK-')
+	)
 	const originalId = (invoice as any)?.original_invoice_id
 
 	const { data: depositsData } = useDepositsForInvoice(
@@ -138,20 +153,32 @@ export function InvoiceDetailPage() {
 		!isCreditNote ? invoiceId : undefined,
 	)
 
-	const createDeposit = useCreateDeposit()
-	const createBalanceInvoice = useCreateBalanceInvoice()
+	// ── Actions centralisées ──────────────────────────────────────────────────
+	const actions = useInvoiceActions(invoice, company)
 
+	// ── Données dérivées locales (acompte inline) ─────────────────────────────
 	const [depositDialogOpen, setDepositDialogOpen] = useState(false)
-	const [depositPercentage, setDepositPercentage] = useState<number>(30)
 	const [depositMode, setDepositMode] = useState<'percent' | 'amount'>(
 		'percent',
 	)
-	const [depositAmount, setDepositAmount] = useState<string>('')
+	const [depositPercentage, setDepositPercentage] = useState(30)
+	const [depositAmount, setDepositAmount] = useState('')
+	const createDeposit = useCreateDeposit()
+	const createBalanceInvoice = useCreateBalanceInvoice()
 
 	const originalDocument = (invoice as any)?.expand?.original_invoice_id
 	const originalNumber = originalDocument?.number
 
-	// Charger l'entreprise au montage (nécessaire pour le PDF)
+	const remainingAmount =
+		typeof (invoice as any)?.remaining_amount === 'number'
+			? (invoice as any).remaining_amount
+			: (invoice?.total_ttc ?? 0) - ((invoice as any)?.credit_notes_total ?? 0)
+
+	const hasCancellationCreditNote = !!(
+		linkedCreditNotes && linkedCreditNotes.length > 0
+	)
+
+	// Charger l'entreprise
 	useEffect(() => {
 		const loadCompany = async () => {
 			if (!activeCompanyId) return
@@ -213,7 +240,7 @@ export function InvoiceDetailPage() {
 		}
 	}, [invoice])
 
-	// ── Guards ────────────────────────────────────────────────────────────────
+	// ── Header (loading/not found) ────────────────────────────────────────────
 
 	const backButton = (
 		<div className='flex items-center gap-3'>
@@ -277,37 +304,31 @@ export function InvoiceDetailPage() {
 	// ── Données dérivées ──────────────────────────────────────────────────────
 
 	const customer = (invoice as any)?.expand?.customer ?? null
-	const displayStatus = getDisplayStatus(invoice)
-	const badgeVariant = (displayStatus.variant ??
-		'outline') as BadgeProps['variant']
-	const overdue = isOverdue(invoice)
+
 	const soldByLabel = getSoldByLabel(invoice as any)
 
-	// ── Actions ───────────────────────────────────────────────────────────────
+	// ── Header slots via hook ─────────────────────────────────────────────────
 
-	const handleDownloadPdf = async () => {
-		if (!activeCompanyId) {
-			toast.error('Aucune entreprise sélectionnée')
-			return
-		}
-		setIsDownloading(true)
-		const result = await downloadInvoicePdf({
-			pb,
-			invoice,
-			activeCompanyId,
-			cachedCompany: company,
-			PdfDocument: InvoicePdfDocument,
-		})
-		if (!result.ok) toast.error('Erreur lors de la génération du PDF')
-		else toast.success('Facture téléchargée')
-		setIsDownloading(false)
-	}
+	const { headerLeft, headerRight } = useInvoiceDetailHeader({
+		invoice,
+		invoiceId,
+		actions,
+		goBack,
+		isCreditNote,
+		isDeposit,
+		isTicket,
+		remainingAmount,
+		hasCancellationCreditNote,
+	})
+
+	// ── Acompte inline ────────────────────────────────────────────────────────
 
 	const handleCreateDeposit = async () => {
 		if (!invoice) return
 		const baseAmount = invoice.deposits_total_ttc
 			? (invoice.balance_due ?? invoice.total_ttc)
 			: invoice.total_ttc
+
 		let percentage: number
 		if (depositMode === 'amount') {
 			const amountVal = Number.parseFloat(depositAmount.replace(',', '.'))
@@ -319,6 +340,7 @@ export function InvoiceDetailPage() {
 		} else {
 			percentage = depositPercentage
 		}
+
 		try {
 			await createDeposit.mutateAsync({ parentId: invoice.id, percentage })
 			const label =
@@ -345,149 +367,21 @@ export function InvoiceDetailPage() {
 		}
 	}
 
-	// ── Badge statut ──────────────────────────────────────────────────────────
-
-	const renderStatusBadges = () => {
-		if (isCreditNote) {
-			return (
-				<>
-					<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
-					<Badge className='bg-blue-600 hover:bg-blue-600'>
-						<RefreshCcw className='h-3 w-3 mr-1' />
-						Remboursé
-					</Badge>
-				</>
-			)
-		}
-		if (isDeposit) {
-			return (
-				<>
-					<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
-					{invoice.is_paid && (
-						<Badge className='bg-emerald-600 hover:bg-emerald-600'>
-							<CheckCircle className='h-3 w-3 mr-1' />
-							Réglé
-						</Badge>
-					)}
-					{(invoice as any).has_credit_note && (
-						<Badge className='bg-red-600 hover:bg-red-600'>
-							<RefreshCcw className='h-3 w-3 mr-1' />
-							Remboursé
-						</Badge>
-					)}
-				</>
-			)
-		}
-		const showStatusBadge =
-			displayStatus.label && displayStatus.label !== 'Payée'
-		return (
-			<>
-				{showStatusBadge && (
-					<Badge variant={badgeVariant}>{displayStatus.label}</Badge>
-				)}
-				{invoice.is_paid || displayStatus.isPaid ? (
-					<Badge className='bg-emerald-600 hover:bg-emerald-600'>
-						<CheckCircle className='h-3 w-3 mr-1' />
-						Payée
-					</Badge>
-				) : overdue ? (
-					<Badge className='bg-amber-600 hover:bg-amber-600'>
-						<AlertTriangle className='h-3 w-3 mr-1' />
-						En retard
-					</Badge>
-				) : (
-					<Badge variant='secondary'>Non payée</Badge>
-				)}
-			</>
-		)
-	}
-
-	// ── Titre contextuel ──────────────────────────────────────────────────────
-
-	const pageTitle = isCreditNote
-		? `Avoir ${invoice.number || ''}`
-		: invoice.is_pos_ticket
-			? `Ticket ${invoice.number || ''}`
-			: `Facture ${invoice.number || ''}`
-
-	// ── Actions header droite ─────────────────────────────────────────────────
-
-	const headerActions = (
-		<div className='flex items-center gap-2'>
-			<Button
-				variant='outline'
-				size='sm'
-				onClick={() => setEmailDialogOpen(true)}
-			>
-				<Mail className='h-4 w-4 mr-2' />
-				Envoyer
-			</Button>
-			<Button
-				variant='outline'
-				size='sm'
-				onClick={handleDownloadPdf}
-				disabled={isDownloading}
-			>
-				{isDownloading ? (
-					<Loader2 className='h-4 w-4 animate-spin mr-2' />
-				) : (
-					<Download className='h-4 w-4 mr-2' />
-				)}
-				PDF
-			</Button>
-		</div>
-	)
-
 	return (
 		<ConnectModuleShell
 			hideTitle
 			hideIcon
-			headerLeft={
-				<div className='flex items-center gap-3'>
-					<Button
-						variant='ghost'
-						size='icon'
-						className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
-						onClick={goBack}
-					>
-						<ArrowLeft className='h-4 w-4' />
-					</Button>
-					<div className='flex items-center gap-2'>
-						<FileText className='h-5 w-5 text-muted-foreground' />
-						<h1 className='text-xl font-bold tracking-tight'>{pageTitle}</h1>
-						{renderStatusBadges()}
-					</div>
-				</div>
-			}
-			headerRight={headerActions}
-			primaryAction={
-				invoice.status === 'draft' ? (
-					<Button
-						size='sm'
-						onClick={() =>
-							navigate({
-								to: '/connect/invoices/$invoiceId/edit',
-								params: { invoiceId },
-							})
-						}
-					>
-						<Pencil className='h-4 w-4 mr-1.5' />
-						Modifier
-					</Button>
-				) : null
-			}
 			hideBadge
+			headerLeft={headerLeft}
+			headerRight={headerRight}
+			primaryAction={null}
 		>
 			<div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
 				{/* ── Colonne gauche : détails généraux ── */}
 				<Card className='lg:col-span-1'>
 					<CardHeader>
 						<CardTitle>
-							{isCreditNote
-								? 'Avoir'
-								: invoice.is_pos_ticket
-									? 'Ticket'
-									: 'Facture'}
+							{isCreditNote ? 'Avoir' : isTicket ? 'Ticket' : 'Facture'}
 						</CardTitle>
 						<CardDescription>Détails généraux</CardDescription>
 					</CardHeader>
@@ -509,7 +403,7 @@ export function InvoiceDetailPage() {
 						{!isCreditNote && (
 							<div>
 								<p className='text-sm text-muted-foreground'>
-									{invoice.is_pos_ticket ? 'Vendeur / Caissier' : 'Vendeur'}
+									{isTicket ? 'Vendeur / Caissier' : 'Vendeur'}
 								</p>
 								<p className='text-sm font-medium'>{soldByLabel}</p>
 							</div>
@@ -532,11 +426,8 @@ export function InvoiceDetailPage() {
 								</div>
 							</>
 						)}
-						<div className='flex items-center gap-2 flex-wrap'>
-							{renderStatusBadges()}
-						</div>
 
-						{/* ── Avoir : remboursement + document original ── */}
+						{/* Avoir */}
 						{isCreditNote && (
 							<>
 								{(invoice as any).refund_method && (
@@ -589,7 +480,7 @@ export function InvoiceDetailPage() {
 							</>
 						)}
 
-						{/* ── Avoirs liés (ticket/facture) ── */}
+						{/* Avoirs liés */}
 						{!isCreditNote &&
 							linkedCreditNotes &&
 							linkedCreditNotes.length > 0 && (
@@ -635,8 +526,8 @@ export function InvoiceDetailPage() {
 								</div>
 							)}
 
-						{/* ── Ticket converti en facture ── */}
-						{invoice.is_pos_ticket &&
+						{/* Ticket converti */}
+						{isTicket &&
 							invoice.converted_to_invoice &&
 							invoice.converted_invoice_id && (
 								<div className='border-t pt-4'>
@@ -666,8 +557,8 @@ export function InvoiceDetailPage() {
 								</div>
 							)}
 
-						{/* ── Acomptes (facture B2B) ── */}
-						{!isCreditNote && !isDeposit && !invoice.is_pos_ticket && (
+						{/* Acomptes (facture B2B) */}
+						{!isCreditNote && !isDeposit && !isTicket && (
 							<div className='border-t pt-4 space-y-3'>
 								{(invoice.deposits_total_ttc ?? 0) > 0 && (
 									<div className='space-y-1'>
@@ -769,7 +660,7 @@ export function InvoiceDetailPage() {
 									</div>
 								)}
 
-								{/* Créer un acompte */}
+								{/* Créer un acompte inline */}
 								<div className='flex flex-col gap-2'>
 									{invoice &&
 										canCreateDeposit(invoice) &&
@@ -838,25 +729,6 @@ export function InvoiceDetailPage() {
 															/>
 															<span className='text-sm font-semibold'>€</span>
 														</div>
-														{depositAmount &&
-															Number.parseFloat(
-																depositAmount.replace(',', '.'),
-															) > 0 && (
-																<p className='text-xs text-muted-foreground'>
-																	≈{' '}
-																	{round2(
-																		(Number.parseFloat(
-																			depositAmount.replace(',', '.'),
-																		) /
-																			(invoice.deposits_total_ttc
-																				? (invoice.balance_due ??
-																					invoice.total_ttc)
-																				: invoice.total_ttc)) *
-																			100,
-																	).toFixed(1)}
-																	% du total
-																</p>
-															)}
 													</>
 												)}
 												<div className='flex gap-2'>
@@ -914,7 +786,7 @@ export function InvoiceDetailPage() {
 							</div>
 						)}
 
-						{/* ── Acompte : lien vers facture parente ── */}
+						{/* Acompte : lien vers facture parente */}
 						{isDeposit && originalId && (
 							<div className='border-t pt-4'>
 								<p className='text-sm text-muted-foreground mb-2'>
@@ -996,7 +868,7 @@ export function InvoiceDetailPage() {
 							{invoice.items.length} ligne(s) dans{' '}
 							{isCreditNote
 								? 'cet avoir'
-								: invoice.is_pos_ticket
+								: isTicket
 									? 'ce ticket'
 									: 'cette facture'}
 						</CardDescription>
@@ -1147,11 +1019,291 @@ export function InvoiceDetailPage() {
 				</Card>
 			</div>
 
+			{/* ── Dialogs ──────────────────────────────────────────────────────── */}
+
+			{/* Email */}
 			<SendInvoiceEmailDialog
-				open={emailDialogOpen}
-				onOpenChange={setEmailDialogOpen}
+				open={actions.emailDialogOpen}
+				onOpenChange={actions.setEmailDialogOpen}
 				invoice={invoice}
-				onSuccess={() => setEmailDialogOpen(false)}
+				onSuccess={() => actions.setEmailDialogOpen(false)}
+			/>
+
+			{/* Créer avoir */}
+			<Dialog
+				open={actions.cancelDialogOpen}
+				onOpenChange={actions.setCancelDialogOpen}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Créer un avoir</DialogTitle>
+						<DialogDescription>
+							Un avoir sera créé pour annuler la facture{' '}
+							<strong>{invoice.number}</strong>.
+						</DialogDescription>
+					</DialogHeader>
+					<div className='space-y-2 py-4'>
+						<Label>Motif d'annulation *</Label>
+						<Textarea
+							value={actions.cancelReason}
+							onChange={(e) => actions.setCancelReason(e.target.value)}
+							placeholder='Ex: Erreur de facturation, retour client...'
+							rows={3}
+						/>
+					</div>
+					<DialogFooter>
+						<Button
+							variant='outline'
+							onClick={() => actions.setCancelDialogOpen(false)}
+						>
+							Annuler
+						</Button>
+						<Button
+							variant='destructive'
+							disabled={!actions.cancelReason.trim() || actions.isCancelling}
+							onClick={actions.handleCancelInvoice}
+						>
+							{actions.isCancelling ? 'Création...' : "Créer l'avoir"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Paiement */}
+			<Dialog
+				open={actions.paymentDialogOpen}
+				onOpenChange={actions.setPaymentDialogOpen}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Enregistrer un paiement</DialogTitle>
+						<DialogDescription>
+							Facture <strong>{invoice.number}</strong> —{' '}
+							{formatCurrency(invoice.total_ttc, invoice.currency)}
+						</DialogDescription>
+					</DialogHeader>
+					<div className='space-y-4 py-4'>
+						<div className='space-y-2'>
+							<Label>Mode</Label>
+							<div className='flex gap-2'>
+								<Button
+									size='sm'
+									variant={
+										actions.paymentMode === 'full' ? 'default' : 'outline'
+									}
+									onClick={() => actions.setPaymentMode('full')}
+								>
+									Paiement complet
+								</Button>
+								<Button
+									size='sm'
+									variant={
+										actions.paymentMode === 'deposit' ? 'default' : 'outline'
+									}
+									onClick={() => actions.setPaymentMode('deposit')}
+								>
+									Acompte
+								</Button>
+							</div>
+						</div>
+						{actions.paymentMode === 'full' && (
+							<div className='space-y-2'>
+								<Label>Moyen de paiement *</Label>
+								<Select
+									value={actions.selectedMethodId}
+									onValueChange={actions.setSelectedMethodId}
+								>
+									<SelectTrigger>
+										<SelectValue placeholder='Sélectionner...' />
+									</SelectTrigger>
+									<SelectContent>
+										{actions.enabledMethods.map((m) => (
+											<SelectItem key={m.id} value={m.id}>
+												{m.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+						)}
+						{actions.paymentMode === 'deposit' && (
+							<div className='space-y-2'>
+								<Label>Pourcentage acompte</Label>
+								<div className='flex items-center gap-2'>
+									<input
+										type='range'
+										min={10}
+										max={90}
+										step={5}
+										value={actions.depositPercentage}
+										onChange={(e) =>
+											actions.setDepositPercentage(Number(e.target.value))
+										}
+										className='flex-1'
+									/>
+									<span className='w-10 text-sm font-semibold'>
+										{actions.depositPercentage}%
+									</span>
+								</div>
+							</div>
+						)}
+					</div>
+					<DialogFooter>
+						<Button
+							variant='outline'
+							onClick={() => actions.setPaymentDialogOpen(false)}
+						>
+							Annuler
+						</Button>
+						<Button
+							onClick={actions.handleRecordPayment}
+							disabled={
+								actions.paymentMode === 'full'
+									? !actions.selectedMethodId || actions.isRecordingPayment
+									: actions.isCreatingDeposit
+							}
+							className={
+								actions.paymentMode === 'full'
+									? 'bg-green-600 hover:bg-green-700'
+									: ''
+							}
+						>
+							{actions.paymentMode === 'full'
+								? actions.isRecordingPayment
+									? 'Enregistrement...'
+									: 'Confirmer le paiement'
+								: actions.isCreatingDeposit
+									? 'Création...'
+									: `Créer l'acompte ${actions.depositPercentage}%`}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Suppression brouillon */}
+			<Dialog
+				open={actions.deleteDraftDialogOpen}
+				onOpenChange={actions.setDeleteDraftDialogOpen}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Supprimer le brouillon</DialogTitle>
+						<DialogDescription>
+							Cette action va <strong>supprimer définitivement</strong> le
+							brouillon <strong>{invoice.number}</strong>. Cette opération est
+							irréversible.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							variant='outline'
+							onClick={() => actions.setDeleteDraftDialogOpen(false)}
+						>
+							Annuler
+						</Button>
+						<Button
+							variant='destructive'
+							onClick={actions.handleConfirmDeleteDraft}
+							disabled={actions.isDeletingDraft}
+						>
+							{actions.isDeletingDraft
+								? 'Suppression...'
+								: 'Supprimer le brouillon'}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Rembourser acompte */}
+			<Dialog
+				open={actions.refundDepositOpen}
+				onOpenChange={actions.setRefundDepositOpen}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Rembourser l'acompte</DialogTitle>
+						<DialogDescription>
+							Un avoir sera créé pour annuler l'acompte{' '}
+							<strong>{invoice.number}</strong> de{' '}
+							<strong>{formatCurrency(invoice.total_ttc)}</strong>.
+						</DialogDescription>
+					</DialogHeader>
+					<div className='space-y-2 py-4'>
+						<Label>Motif du remboursement *</Label>
+						<Textarea
+							value={actions.refundDepositReason}
+							onChange={(e) => actions.setRefundDepositReason(e.target.value)}
+							placeholder='Ex: Annulation de commande, litige client...'
+							rows={3}
+						/>
+					</div>
+					<DialogFooter>
+						<Button
+							variant='outline'
+							onClick={() => {
+								actions.setRefundDepositOpen(false)
+								actions.setRefundDepositReason('')
+							}}
+						>
+							Annuler
+						</Button>
+						<Button
+							variant='destructive'
+							disabled={
+								!actions.refundDepositReason.trim() ||
+								actions.isRefundingDeposit
+							}
+							onClick={actions.handleRefundDeposit}
+						>
+							{actions.isRefundingDeposit ? 'Création...' : "Créer l'avoir"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Rembourser ticket */}
+			<RefundTicketDialog
+				open={actions.refundTicketDialogOpen}
+				onOpenChange={(o) => {
+					if (!o) actions.setRefundTicketDialogOpen(false)
+					else actions.setRefundTicketDialogOpen(true)
+				}}
+				ticket={invoice}
+				onSuccess={(stockItems) => {
+					actions.setRefundTicketDialogOpen(false)
+					if (stockItems && stockItems.length > 0) {
+						actions.setStockItemsToReclassify(stockItems)
+						actions.setStockDocumentNumber(invoice.number)
+						actions.setStockReclassifyOpen(true)
+					}
+				}}
+			/>
+
+			{/* Rembourser facture */}
+			<RefundInvoiceDialog
+				open={actions.refundInvoiceOpen}
+				invoice={invoice}
+				onClose={() => actions.setRefundInvoiceOpen(false)}
+				onSuccess={(stockItems) => {
+					if (stockItems && stockItems.length > 0) {
+						actions.setStockItemsToReclassify(stockItems)
+						actions.setStockDocumentNumber(invoice.number)
+						actions.setStockReclassifyOpen(true)
+					}
+				}}
+			/>
+
+			{/* Stock reclassification */}
+			<StockReclassificationDialog
+				open={actions.stockReclassifyOpen}
+				onOpenChange={actions.setStockReclassifyOpen}
+				items={actions.stockItemsToReclassify}
+				documentNumber={actions.stockDocumentNumber}
+				onComplete={() => {
+					actions.setStockReclassifyOpen(false)
+					actions.setStockItemsToReclassify([])
+					actions.setStockDocumentNumber(undefined)
+				}}
 			/>
 		</ConnectModuleShell>
 	)

@@ -11,6 +11,21 @@ import {
 	CardTitle,
 } from '@/components/ui/card'
 import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -18,58 +33,36 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useQuote } from '@/lib/queries/quotes'
-import { usePocketBase } from '@/lib/use-pocketbase'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	ArrowLeft,
+	ArrowRight,
+	ChevronDown,
 	Download,
 	Edit,
 	FileText,
 	Loader2,
 	Mail,
+	Trash2,
 } from 'lucide-react'
-import { useState } from 'react'
-import { toast } from 'sonner'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { SendQuoteEmailDialog } from '../../dialogs/SendQuoteEmailDialog'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
-import { QuotePdfDocument } from '../../pdf/QuotePdf'
-import { downloadQuotePdf } from '../../utils/downloadPdf'
+import { useQuoteActions } from '../../hooks/useQuoteActions'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { getQuoteStatus } from '../../utils/statusConfig'
 
 export function QuoteDetailPage() {
 	const navigate = useNavigate()
 	const { quoteId } = useParams({ from: '/connect/quotes/$quoteId/' })
-	const { goBack } = useDocumentNavigation('quote') // ← correct
+	const { goBack } = useDocumentNavigation('quote')
 	const { data: quote, isLoading } = useQuote(quoteId)
-	const { activeCompanyId } = useActiveCompany()
-	const pb = usePocketBase() as any
 
-	const [isDownloading, setIsDownloading] = useState(false)
-	const [emailDialogOpen, setEmailDialogOpen] = useState(false)
-
-	const handleDownloadPdf = async () => {
-		if (!quote || !activeCompanyId) {
-			toast.error('Données manquantes')
-			return
-		}
-		setIsDownloading(true)
-		const result = await downloadQuotePdf({
-			pb,
-			quote,
-			activeCompanyId,
-			PdfDocument: QuotePdfDocument,
-		})
-		if (!result.ok) toast.error('Erreur lors de la génération du PDF')
-		else toast.success('Devis téléchargé')
-		setIsDownloading(false)
-	}
+	const actions = useQuoteActions(quote)
 
 	// ── Header gauche ─────────────────────────────────────────────────────
-	const makeHeaderLeft = (title: string) => (
+	const backButton = (title: string) => (
 		<div className='flex items-center gap-3'>
 			<Button
 				variant='ghost'
@@ -93,7 +86,7 @@ export function QuoteDetailPage() {
 				hideTitle
 				hideIcon
 				hideBadge
-				headerLeft={makeHeaderLeft('Devis')}
+				headerLeft={backButton('Devis')}
 				primaryAction={null}
 			>
 				<EmptyState icon={FileText} title='Chargement...' fullPage />
@@ -107,7 +100,7 @@ export function QuoteDetailPage() {
 				hideTitle
 				hideIcon
 				hideBadge
-				headerLeft={makeHeaderLeft('Devis introuvable')}
+				headerLeft={backButton('Devis introuvable')}
 				primaryAction={null}
 			>
 				<EmptyState
@@ -144,8 +137,68 @@ export function QuoteDetailPage() {
 		quote.total_ttc + cartDiscountTtc + lineDiscountsTotalTtc
 	const cartDiscountMode = (quote as any).cart_discount_mode || 'percent'
 	const cartDiscountValue = (quote as any).cart_discount_value || 0
-
 	const statusInfo = getQuoteStatus(quote.status)
+	const alreadyConverted = !!quote.generated_invoice_id
+
+	// ── Dropdown Actions ──────────────────────────────────────────────────
+	const dropdownItems: React.ReactNode[] = []
+
+	// Email
+	dropdownItems.push(
+		<DropdownMenuItem
+			key='email'
+			onClick={() => actions.setEmailDialogOpen(true)}
+		>
+			<Mail className='h-4 w-4 mr-2' />
+			Envoyer par email
+		</DropdownMenuItem>,
+	)
+
+	// Modifier (brouillon ou envoyé)
+	if (quote.status === 'draft' || quote.status === 'sent') {
+		dropdownItems.push(
+			<DropdownMenuItem
+				key='modifier'
+				onClick={() =>
+					navigate({
+						to: '/connect/quotes/$quoteId/edit',
+						params: { quoteId: quote.id },
+					})
+				}
+			>
+				<Edit className='h-4 w-4 mr-2' />
+				Modifier
+			</DropdownMenuItem>,
+		)
+	}
+
+	// Transformer en facture
+	dropdownItems.push(<DropdownMenuSeparator key='sep-convert' />)
+	dropdownItems.push(
+		<DropdownMenuItem
+			key='convert'
+			onClick={actions.handleOpenConvert}
+			disabled={alreadyConverted || actions.isConverting}
+		>
+			<ArrowRight className='h-4 w-4 mr-2' />
+			{alreadyConverted
+				? 'Déjà transformé en facture'
+				: 'Transformer en facture'}
+		</DropdownMenuItem>,
+	)
+
+	// Supprimer
+	dropdownItems.push(<DropdownMenuSeparator key='sep-delete' />)
+	dropdownItems.push(
+		<DropdownMenuItem
+			key='delete'
+			onClick={actions.handleOpenDelete}
+			className='text-red-600'
+		>
+			<Trash2 className='h-4 w-4 mr-2' />
+			Supprimer
+		</DropdownMenuItem>,
+	)
 
 	return (
 		<ConnectModuleShell
@@ -172,46 +225,37 @@ export function QuoteDetailPage() {
 				</div>
 			}
 			headerRight={
-				<div className='flex items-center gap-2'>
+				<div className='flex items-center gap-1.5'>
+					{/* Dropdown Actions */}
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button variant='outline' size='sm' className='gap-1.5'>
+								<ChevronDown className='h-4 w-4 shrink-0' />
+								<span className='hidden lg:inline'>Actions</span>
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align='end' className='w-52'>
+							{dropdownItems}
+						</DropdownMenuContent>
+					</DropdownMenu>
+
+					{/* PDF */}
 					<Button
-						variant='outline'
 						size='sm'
-						onClick={handleDownloadPdf}
-						disabled={isDownloading}
+						onClick={actions.handleDownloadPdf}
+						disabled={actions.isDownloading}
+						className='gap-1.5'
 					>
-						{isDownloading ? (
-							<Loader2 className='h-4 w-4 animate-spin mr-2' />
+						{actions.isDownloading ? (
+							<Loader2 className='h-4 w-4 animate-spin shrink-0' />
 						) : (
-							<Download className='h-4 w-4 mr-2' />
+							<Download className='h-4 w-4 shrink-0' />
 						)}
-						PDF
-					</Button>
-					<Button
-						variant='outline'
-						size='sm'
-						onClick={() => setEmailDialogOpen(true)}
-					>
-						<Mail className='h-4 w-4 mr-2' />
-						Envoyer
+						<span className='hidden lg:inline'>PDF</span>
 					</Button>
 				</div>
 			}
-			primaryAction={
-				quote.status === 'draft' ? (
-					<Button
-						size='sm'
-						onClick={() =>
-							navigate({
-								to: '/connect/quotes/$quoteId/edit',
-								params: { quoteId: quote.id },
-							})
-						}
-					>
-						<Edit className='h-4 w-4 mr-1.5' />
-						Modifier
-					</Button>
-				) : null
-			}
+			primaryAction={null}
 		>
 			<div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
 				{/* Détails */}
@@ -395,12 +439,88 @@ export function QuoteDetailPage() {
 				</Card>
 			</div>
 
+			{/* ── Dialogs ──────────────────────────────────────────────────────── */}
+
+			{/* Email */}
 			<SendQuoteEmailDialog
-				open={emailDialogOpen}
-				onOpenChange={setEmailDialogOpen}
+				open={actions.emailDialogOpen}
+				onOpenChange={actions.setEmailDialogOpen}
 				quote={quote}
-				onSuccess={() => setEmailDialogOpen(false)}
+				onSuccess={() => actions.setEmailDialogOpen(false)}
 			/>
+
+			{/* Transformer en facture */}
+			<Dialog
+				open={actions.convertDialogOpen}
+				onOpenChange={actions.setConvertDialogOpen}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Transformer en facture</DialogTitle>
+						<DialogDescription>
+							Vous allez créer une facture officielle à partir du devis{' '}
+							<strong>{quote.number}</strong>. La facture sera numérotée,
+							chaînée et ne pourra plus être supprimée.
+						</DialogDescription>
+					</DialogHeader>
+					<div className='mt-4 space-y-1 text-sm'>
+						<p>
+							<strong>Client :</strong> {customer?.name}
+						</p>
+						<p>
+							<strong>Montant TTC :</strong>{' '}
+							{formatCurrency(quote.total_ttc, quote.currency)}
+						</p>
+					</div>
+					<DialogFooter className='mt-4'>
+						<Button
+							variant='outline'
+							onClick={() => actions.setConvertDialogOpen(false)}
+							disabled={actions.isConverting}
+						>
+							Annuler
+						</Button>
+						<Button
+							onClick={actions.handleConfirmConvert}
+							disabled={actions.isConverting}
+						>
+							{actions.isConverting ? 'Création...' : 'Créer la facture'}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Supprimer */}
+			<Dialog
+				open={actions.deleteDialogOpen}
+				onOpenChange={actions.setDeleteDialogOpen}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Supprimer ce devis ?</DialogTitle>
+						<DialogDescription>
+							Cette action est irréversible. Le devis{' '}
+							<strong>{quote.number}</strong> sera définitivement supprimé.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							variant='outline'
+							onClick={() => actions.setDeleteDialogOpen(false)}
+							disabled={actions.isDeleting}
+						>
+							Annuler
+						</Button>
+						<Button
+							variant='destructive'
+							onClick={actions.handleConfirmDelete}
+							disabled={actions.isDeleting}
+						>
+							{actions.isDeleting ? 'Suppression...' : 'Supprimer'}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</ConnectModuleShell>
 	)
 }
