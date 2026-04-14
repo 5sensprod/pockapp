@@ -107,6 +107,19 @@ export function Sidebar({
 		navigate({ to: itemTo as any })
 	}
 
+	// Navigue depuis le HomePanel — pas de currentModule disponible,
+	// donc on cherche le moduleId depuis l'itemTo directement.
+	const handleHomeSectionNavigate = (itemTo: string, moduleId: string) => {
+		navigationActions.clear()
+		const sectionKey = `${moduleId}:${normalizePath(itemTo)}`
+		const lastRoute = getLastRouteForModule(sectionKey)
+		if (lastRoute?.startsWith(normalizePath(itemTo))) {
+			router.navigate({ to: lastRoute as any })
+			return
+		}
+		navigate({ to: itemTo as any })
+	}
+
 	const handleGroupClick = (group: SidebarGroup) => {
 		setHomePanelWithNotify(false)
 		onToggleGroup(group.id)
@@ -236,6 +249,10 @@ export function Sidebar({
 							navigationActions.clear()
 							setHomePanelWithNotify(false)
 						}}
+						onSectionNavigate={(itemTo, moduleId) => {
+							setHomePanelWithNotify(false)
+							handleHomeSectionNavigate(itemTo, moduleId)
+						}}
 					/>
 				)}
 			</div>
@@ -313,11 +330,13 @@ function HomePanel({
 	normPath,
 	onClose,
 	onNavigate,
+	onSectionNavigate,
 }: {
 	groups: SidebarGroup[]
 	normPath: string
 	onClose: () => void
 	onNavigate: () => void
+	onSectionNavigate: (itemTo: string, moduleId: string) => void
 }) {
 	return (
 		<div className='w-panel bg-panel flex flex-col shadow-2xl'>
@@ -347,6 +366,7 @@ function HomePanel({
 
 					return (
 						<div key={group.id} className='mb-1'>
+							{/* Lien principal du module → liste racine, pas de restauration */}
 							<Link
 								to={mainRoute as any}
 								onClick={onNavigate}
@@ -366,6 +386,7 @@ function HomePanel({
 								<span>{group.label}</span>
 							</Link>
 
+							{/* Sous-items → restauration par section */}
 							{group.items && group.items.length > 1 && (
 								<div className='ml-4 mt-0.5 mb-1 border-l border-panel-item-divider pl-3 flex flex-col gap-0.5'>
 									{group.items.map((item) => {
@@ -373,12 +394,12 @@ function HomePanel({
 										const t = normalizePath(item.to)
 										const isActive = normPath === t || normPath.startsWith(t)
 										return (
-											<Link
+											<button
 												key={item.to}
-												to={item.to as any}
-												onClick={onNavigate}
+												type='button'
+												onClick={() => onSectionNavigate(item.to, group.id)}
 												className={cn(
-													'flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors',
+													'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors',
 													isActive
 														? 'bg-panel-item-active text-foreground font-semibold'
 														: 'text-panel-item-icon hover:bg-panel-header hover:text-panel-item-text',
@@ -388,7 +409,7 @@ function HomePanel({
 													<ItemIcon className='h-3.5 w-3.5 shrink-0' />
 												)}
 												<span>{item.label}</span>
-											</Link>
+											</button>
 										)
 									})}
 								</div>
