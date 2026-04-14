@@ -9,7 +9,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { navigationActions } from '@/lib/stores/navigationStore'
+// import { navigationActions } from '@/lib/stores/navigationStore'
 
 import { decrementAppPosProductsStock, getAppPosToken } from '@/lib/apppos'
 
@@ -260,9 +260,9 @@ export function InvoicesPage() {
 		invoices = invoices.filter((inv) => isOverdue(inv))
 	}
 
-	useEffect(() => {
-		navigationActions.clear()
-	}, [])
+	// useEffect(() => {
+	// 	navigationActions.clear()
+	// }, [])
 
 	// Charger la société active
 	useEffect(() => {

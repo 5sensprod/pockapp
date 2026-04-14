@@ -36,9 +36,9 @@ import {
 	useQuotes,
 } from '@/lib/queries/quotes'
 
-import { useEffect } from 'react'
+// import { useEffect } from 'react'
 
-import { navigationActions } from '@/lib/stores/navigationStore'
+// import { navigationActions } from '@/lib/stores/navigationStore'
 import type { QuoteResponse, QuoteStatus } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { pdf } from '@react-pdf/renderer'
@@ -236,9 +236,9 @@ export function QuotesPage() {
 		}
 	}
 
-	useEffect(() => {
-		navigationActions.clear()
-	}, [])
+	// useEffect(() => {
+	// 	navigationActions.clear()
+	// }, [])
 
 	return (
 		<div className='container mx-auto py-6 space-y-6'>

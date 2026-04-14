@@ -25,10 +25,17 @@
 //   currentModule, activeGroup, onToggleGroup, onClosePanel, onHomePanelChange
 
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
+import { getLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
+import { navigationActions } from '@/lib/stores/navigationStore'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest, SidebarGroup } from '@/modules/_registry'
 import { homeDashboardManifest } from '@/modules/home'
-import { Link, useLocation, useNavigate } from '@tanstack/react-router'
+import {
+	Link,
+	useLocation,
+	useNavigate,
+	useRouter,
+} from '@tanstack/react-router'
 import { LayoutDashboard, X } from 'lucide-react'
 import * as React from 'react'
 
@@ -51,6 +58,7 @@ export function Sidebar({
 }: SidebarProps) {
 	const { pathname } = useLocation()
 	const navigate = useNavigate()
+	const router = useRouter()
 	const { isMobile, isTablet } = useBreakpoint()
 
 	const [homePanel, setHomePanel] = React.useState(false)
@@ -82,11 +90,28 @@ export function Sidebar({
 			return normPath === t || normPath.startsWith(t)
 		})
 
+	// Navigue vers un item de la sidebar.
+	// Consulte la clé de section (moduleId:sectionPath) pour restaurer
+	// la dernière page visitée dans cette section (ex: fiche client).
+	// Si aucune lastRoute pour cette section → navigue vers la liste (itemTo).
+	const handleSidebarNavigate = (itemTo: string) => {
+		navigationActions.clear()
+		if (currentModule?.id) {
+			const sectionKey = `${currentModule.id}:${normalizePath(itemTo)}`
+			const lastRoute = getLastRouteForModule(sectionKey)
+			if (lastRoute?.startsWith(normalizePath(itemTo))) {
+				router.navigate({ to: lastRoute as any })
+				return
+			}
+		}
+		navigate({ to: itemTo as any })
+	}
+
 	const handleGroupClick = (group: SidebarGroup) => {
 		setHomePanelWithNotify(false)
 		onToggleGroup(group.id)
 		if (group.items?.length === 1) {
-			navigate({ to: group.items[0].to as any })
+			handleSidebarNavigate(group.items[0].to)
 		}
 	}
 
@@ -101,9 +126,12 @@ export function Sidebar({
 		activeGroupData !== null &&
 		(activeGroupData.items?.length ?? 0) > 1
 
-	// Sur tablet : le panel est un overlay (avec backdrop)
-	// Sur desktop : le panel pousse le contenu (géré par Layout via isPanelOpen)
 	const panelIsOverlay = isTablet
+
+	const handleClose = () => {
+		onClosePanel()
+		setHomePanelWithNotify(false)
+	}
 
 	return (
 		<>
@@ -112,9 +140,12 @@ export function Sidebar({
 				<div
 					className='fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]'
 					style={{ top: 'var(--header-h)' }}
-					onClick={() => {
-						onClosePanel()
-						setHomePanelWithNotify(false)
+					onClick={handleClose}
+					onKeyDown={(e) => {
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault()
+							handleClose()
+						}
 					}}
 					aria-hidden='true'
 				/>
@@ -124,9 +155,7 @@ export function Sidebar({
 				className='fixed left-0 bottom-0 flex z-50'
 				style={{ top: 'var(--header-h)' }}
 			>
-				{/* ── Rail ─────────────────────────────────────────────────────────
-            Utilise les tokens bg-rail, text-rail-icon*, w-rail
-        ─────────────────────────────────────────────────────────────────── */}
+				{/* ── Rail ───────────────────────────────────────────────────────── */}
 				<div className='w-rail bg-rail flex flex-col items-center py-3 shrink-0'>
 					{/* Icône home — hors home page */}
 					{!isHomePage && (
@@ -191,7 +220,9 @@ export function Sidebar({
 					<ModulePanel
 						group={activeGroupData}
 						normPath={normPath}
+						moduleId={currentModule?.id}
 						onClose={onClosePanel}
+						onNavigate={handleSidebarNavigate}
 					/>
 				)}
 
@@ -201,7 +232,10 @@ export function Sidebar({
 						groups={homeSidebarMenu}
 						normPath={normPath}
 						onClose={() => setHomePanelWithNotify(false)}
-						onNavigate={() => setHomePanelWithNotify(false)}
+						onNavigate={() => {
+							navigationActions.clear()
+							setHomePanelWithNotify(false)
+						}}
 					/>
 				)}
 			</div>
@@ -213,11 +247,15 @@ export function Sidebar({
 function ModulePanel({
 	group,
 	normPath,
+	// moduleId,
 	onClose,
+	onNavigate,
 }: {
 	group: SidebarGroup
 	normPath: string
+	moduleId: string | undefined
 	onClose: () => void
+	onNavigate: (itemTo: string) => void
 }) {
 	return (
 		<div className='w-panel bg-panel flex flex-col shadow-2xl'>
@@ -241,11 +279,12 @@ function ModulePanel({
 					const t = normalizePath(item.to)
 					const isActive = normPath === t || normPath.startsWith(t)
 					return (
-						<Link
+						<button
 							key={item.to}
-							to={item.to as any}
+							type='button'
+							onClick={() => onNavigate(item.to)}
 							className={cn(
-								'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+								'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
 								isActive
 									? 'bg-panel-item-active text-foreground font-semibold'
 									: 'text-panel-item-text hover:bg-panel-header',
@@ -260,7 +299,7 @@ function ModulePanel({
 								/>
 							)}
 							<span>{item.label}</span>
-						</Link>
+						</button>
 					)
 				})}
 			</nav>
