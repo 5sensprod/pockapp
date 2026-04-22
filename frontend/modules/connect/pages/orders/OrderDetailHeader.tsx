@@ -19,7 +19,6 @@ import {
 	ChevronDown,
 	ClipboardList,
 	Download,
-	FileText,
 	Loader2,
 	Mail,
 	Receipt,
@@ -32,6 +31,7 @@ import type { OrderActionsState } from '../../hooks/useOrderActions'
 import {
 	ORDER_STATUS_LABELS,
 	ORDER_STATUS_TRANSITIONS,
+	type OrderPaymentStatus,
 	type OrderStatus,
 } from '../../types/order'
 
@@ -40,14 +40,16 @@ const TRANSITION_ICONS: Partial<
 > = {
 	in_progress: Truck,
 	delivered: CheckCircle2,
-	billed: FileText,
 	cancelled: XCircle,
+	// "billed" retiré — n'apparaît plus comme transition manuelle
 }
 
 interface OrderDetailHeaderProps {
 	order: any | undefined
 	actions: OrderActionsState
 	goBack: () => void
+	// État paiement calculé depuis la facture liée
+	paymentStatus?: OrderPaymentStatus
 }
 
 interface HeaderSlots {
@@ -59,6 +61,7 @@ export function useOrderDetailHeader({
 	order,
 	actions,
 	goBack,
+	paymentStatus,
 }: OrderDetailHeaderProps): HeaderSlots {
 	// ── Guard ─────────────────────────────────────────────────────────────────
 	if (!order) {
@@ -89,7 +92,7 @@ export function useOrderDetailHeader({
 	const allowedTransitions =
 		ORDER_STATUS_TRANSITIONS[order.status as OrderStatus] ?? []
 	const isTerminal = allowedTransitions.length === 0
-	// const isBilled = order.status === 'billed'
+	const alreadyConverted = !!(order as any).invoice_id
 
 	// ── Header gauche ─────────────────────────────────────────────────────────
 	const headerLeft = (
@@ -107,7 +110,8 @@ export function useOrderDetailHeader({
 				<h1 className='text-xl font-bold tracking-tight truncate'>
 					{order.number}
 				</h1>
-				<OrderStatusBadge status={order.status} />
+				{/* Deux badges séparés : état commande + état paiement */}
+				<OrderStatusBadge status={order.status} paymentStatus={paymentStatus} />
 			</div>
 		</div>
 	)
@@ -127,12 +131,8 @@ export function useOrderDetailHeader({
 	)
 
 	// Générer la facture — dès confirmed, non-annulé, non-déjà-facturé
-	const alreadyConverted = !!(order as any).invoice_id
 	const canGenerateInvoice =
-		!isDraft &&
-		order.status !== 'cancelled' &&
-		order.status !== 'draft' &&
-		!alreadyConverted
+		!isDraft && order.status !== 'cancelled' && !alreadyConverted
 	if (canGenerateInvoice || alreadyConverted) {
 		dropdownItems.push(<DropdownMenuSeparator key='sep-convert' />)
 		dropdownItems.push(
@@ -173,7 +173,8 @@ export function useOrderDetailHeader({
 		)
 	}
 
-	// Transitions statut (non-draft, non-terminal)
+	// Transitions état commande (non-draft, non-terminal)
+	// "billed" n'apparaît plus ici — géré automatiquement via la facturation
 	if (!isDraft && !isTerminal) {
 		dropdownItems.push(<DropdownMenuSeparator key='sep-transitions' />)
 		for (const next of allowedTransitions) {

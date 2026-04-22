@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
 import type { ProductsResponse } from '@/lib/pocketbase-types'
 import { useDepositsForInvoice } from '@/lib/queries/deposits'
+import { useInvoice } from '@/lib/queries/invoices'
 import { useOrder, useUpdateOrder } from '@/lib/queries/orders'
 import type { OrderItem } from '@/lib/queries/orders'
 import { navigationActions } from '@/lib/stores/navigationStore'
@@ -50,7 +51,11 @@ import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { SendOrderEmailDialog } from '../../components/SendOrderEmailDialog'
 import { useOrderActions } from '../../hooks/useOrderActions'
 import { useOrderNavigation } from '../../hooks/useOrderNavigation'
-import { computeItem, computeOrderTotals } from '../../types/order'
+import {
+	type OrderPaymentStatus,
+	computeItem,
+	computeOrderTotals,
+} from '../../types/order'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { useOrderDetailHeader } from './OrderDetailHeader'
 
@@ -66,7 +71,7 @@ export function OrderDetailPage() {
 	const { data: order, isLoading } = useOrder(orderId)
 	const { mutateAsync: updateOrder, isPending: isUpdating } = useUpdateOrder()
 
-	// ── Actions & Header Hooks ─────────────────────────────────────────────────
+	// ── Actions ───────────────────────────────────────────────────────────────
 	const actions = useOrderActions(order, goBack)
 
 	const {
@@ -82,10 +87,31 @@ export function OrderDetailPage() {
 		setValidateDialogOpen,
 	} = actions
 
+	// ── Données liées à la facture — AVANT les guards ─────────────────────────
+	// Ces hooks doivent être appelés inconditionnellement (règles des hooks React).
+	// React Query les désactive automatiquement si invoice_id est undefined.
+	const { data: linkedInvoice } = useInvoice(order?.invoice_id ?? undefined)
+	const { data: orderInvoiceDeposits } = useDepositsForInvoice(
+		order?.invoice_id ?? undefined,
+	)
+
+	// ── État paiement calculé — AVANT les guards ──────────────────────────────
+	// Dérivé depuis la facture liée et ses acomptes.
+	// Non stocké dans PocketBase — 100% calculé côté UI.
+	const paymentStatus: OrderPaymentStatus | undefined = order?.invoice_id
+		? linkedInvoice?.is_paid
+			? 'paid'
+			: (orderInvoiceDeposits?.depositsTotal ?? 0) > 0
+				? 'partial'
+				: 'unpaid'
+		: undefined
+
+	// ── Header — AVANT les guards ─────────────────────────────────────────────
 	const { headerLeft, headerRight } = useOrderDetailHeader({
 		order,
 		actions,
 		goBack,
+		paymentStatus,
 	})
 
 	// ── État édition lignes (draft seulement) ─────────────────────────────────
@@ -93,7 +119,6 @@ export function OrderDetailPage() {
 	const [saveTimeout, setSaveTimeout] = useState<ReturnType<
 		typeof setTimeout
 	> | null>(null)
-	// Ref pour tracker l'id déjà initialisé et éviter de réinitialiser les items locaux à chaque refetch
 	const initializedOrderId = useRef<string | null>(null)
 
 	useEffect(() => {
@@ -237,7 +262,7 @@ export function OrderDetailPage() {
 		setProductPickerOpen(true)
 	}
 
-	// ── Loading / Not found ───────────────────────────────────────────────────
+	// ── Guards ────────────────────────────────────────────────────────────────
 	if (isLoading) {
 		return (
 			<ConnectModuleShell
@@ -252,6 +277,7 @@ export function OrderDetailPage() {
 			</ConnectModuleShell>
 		)
 	}
+
 	if (!order) {
 		return (
 			<ConnectModuleShell
@@ -279,10 +305,8 @@ export function OrderDetailPage() {
 		)
 	}
 
+	// ── Données dérivées (post-guard) ─────────────────────────────────────────
 	const isDraft = order.status === 'draft'
-	const { data: orderInvoiceDeposits } = useDepositsForInvoice(
-		order?.invoice_id ?? undefined,
-	)
 	const displayTotals = isDraft
 		? computeOrderTotals(draftItems)
 		: {
@@ -368,6 +392,8 @@ export function OrderDetailPage() {
 									</div>
 								)}
 							</div>
+
+							{/* ── Facturation ───────────────────────────────────────── */}
 							{order.invoice_id && (
 								<div className='border-t pt-4 space-y-2'>
 									<p className='text-sm text-muted-foreground mb-2'>
@@ -541,7 +567,6 @@ export function OrderDetailPage() {
 								</div>
 							)}
 							{isDraft ? (
-								/* Mode édition */
 								draftItems.length === 0 ? (
 									<div className='flex flex-col items-center justify-center py-8 gap-3 text-muted-foreground border-2 border-dashed rounded-lg'>
 										<Plus className='h-8 w-8 opacity-30' />
@@ -655,7 +680,6 @@ export function OrderDetailPage() {
 									</div>
 								)
 							) : (
-								/* Mode lecture */
 								<Table>
 									<TableHeader>
 										<TableRow>
@@ -828,33 +852,28 @@ export function OrderDetailPage() {
 				</DialogContent>
 			</Dialog>
 
+			{/* ── Dialog générer la facture ─────────────────────────────────── */}
 			<Dialog
 				open={actions.convertDialogOpen}
 				onOpenChange={actions.setConvertDialogOpen}
 			>
 				<DialogContent className='sm:max-w-md'>
 					<DialogHeader>
-						<DialogTitle>Convertir en facture</DialogTitle>
+						<DialogTitle>Générer la facture</DialogTitle>
 						<DialogDescription>
-							Vous allez créer une facture à partir du bon de commande{' '}
-							<strong>{order?.number}</strong>. Le bon passera en statut
-							"Facturé".
+							Une facture sera créée à partir du bon de commande{' '}
+							<strong>{order.number}</strong>. Vous pourrez ensuite créer des
+							acomptes et générer la facture de solde depuis la facture.
 						</DialogDescription>
 					</DialogHeader>
-					{order && (
-						<div className='mt-2 space-y-1 text-sm'>
-							<p>
-								<strong>Client :</strong> {order.customer_name}
-							</p>
-							<p>
-								<strong>Montant TTC :</strong>{' '}
-								{new Intl.NumberFormat('fr-FR', {
-									style: 'currency',
-									currency: 'EUR',
-								}).format(order.total_ttc)}
-							</p>
-						</div>
-					)}
+					<div className='mt-2 space-y-1 text-sm'>
+						<p>
+							<strong>Client :</strong> {order.customer_name}
+						</p>
+						<p>
+							<strong>Montant TTC :</strong> {formatCurrency(order.total_ttc)}
+						</p>
+					</div>
 					<DialogFooter className='gap-2 mt-4'>
 						<Button
 							variant='outline'
@@ -875,7 +894,7 @@ export function OrderDetailPage() {
 							) : (
 								<>
 									<Receipt className='h-4 w-4 mr-1.5' />
-									Créer la facture
+									Générer la facture
 								</>
 							)}
 						</Button>

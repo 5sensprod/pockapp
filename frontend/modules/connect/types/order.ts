@@ -1,12 +1,5 @@
 // frontend/modules/connect/types/order.ts
-//
-// Source de vérité UI pour les bons de commande.
-// Les types (OrderItem, OrderResponse) sont en snake_case pour coller
-// exactement aux champs PocketBase retournés par le backend.
-// Le numéro BC-YYYY-XXXX est généré par le hook OnRecordBeforeCreate côté Go.
 
-// ── Ré-export depuis les hooks pour éviter les imports multiples ────────────
-// Les composants importent OrderStatus / OrderItem / OrderResponse depuis ici.
 export type {
 	OrderStatus,
 	OrderItem,
@@ -16,15 +9,15 @@ export type {
 	PatchOrderStatusDto,
 } from '@/lib/queries/orders'
 
-// ── Labels UI ──────────────────────────────────────────────────────────────
 import type { OrderStatus } from '@/lib/queries/orders'
 
+// Labels UI — billed conservé pour compat PocketBase mais masqué dans l'UI
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 	draft: 'Brouillon',
 	confirmed: 'Confirmé',
 	in_progress: 'En cours',
 	delivered: 'Livré',
-	billed: 'Facturé',
+	billed: 'Facturé', // conservé pour compat, non affiché comme transition
 	cancelled: 'Annulé',
 }
 
@@ -53,9 +46,10 @@ export const ORDER_STATUS_COLORS: Record<
 		border: 'border-emerald-200',
 	},
 	billed: {
-		bg: 'bg-purple-50',
-		text: 'text-purple-700',
-		border: 'border-purple-200',
+		// même couleur que delivered — état transparent pour l'utilisateur
+		bg: 'bg-emerald-50',
+		text: 'text-emerald-700',
+		border: 'border-emerald-200',
 	},
 	cancelled: {
 		bg: 'bg-red-50',
@@ -64,19 +58,49 @@ export const ORDER_STATUS_COLORS: Record<
 	},
 }
 
-// ── Transitions d'état autorisées ─────────────────────────────────────────
+// ── État paiement (calculé depuis la facture liée) ─────────────────────────
+// Non stocké dans PocketBase — dérivé côté UI.
+export type OrderPaymentStatus = 'unpaid' | 'partial' | 'paid'
+
+export const ORDER_PAYMENT_STATUS_LABELS: Record<OrderPaymentStatus, string> = {
+	unpaid: 'Non réglé',
+	partial: 'Acompte versé',
+	paid: 'Réglé',
+}
+
+export const ORDER_PAYMENT_STATUS_COLORS: Record<
+	OrderPaymentStatus,
+	{ bg: string; text: string; border: string }
+> = {
+	unpaid: {
+		bg: 'bg-slate-50',
+		text: 'text-slate-600',
+		border: 'border-slate-200',
+	},
+	partial: {
+		bg: 'bg-blue-50',
+		text: 'text-blue-700',
+		border: 'border-blue-200',
+	},
+	paid: {
+		bg: 'bg-emerald-100',
+		text: 'text-emerald-800',
+		border: 'border-emerald-300',
+	},
+}
+
+// ── Transitions manuelles (état commande uniquement) ───────────────────────
+// billed n'apparaît plus comme transition manuelle.
+// delivered est terminal côté commande — la facturation est gérée ailleurs.
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 	draft: ['confirmed', 'cancelled'],
 	confirmed: ['in_progress', 'cancelled'],
 	in_progress: ['delivered', 'cancelled'],
-	delivered: ['billed'],
-	billed: [],
+	delivered: ['cancelled'], // terminal côté commande, plus de "billed" ici
+	billed: [], // conservé pour compat PocketBase
 	cancelled: [],
 }
 
-// ── Helpers de calcul ─────────────────────────────────────────────────────
-// Utilisé dans OrderCreatePage / OrderEditPage pour recalculer les totaux
-// à partir des lignes saisies dans le formulaire.
 import type { OrderItem } from '@/lib/queries/orders'
 
 export function computeOrderTotals(items: OrderItem[]): {
@@ -93,9 +117,6 @@ export function computeOrderTotals(items: OrderItem[]): {
 	}
 }
 
-// computeItem : recalcule total_ht et total_ttc d'une ligne à partir
-// de quantity / unit_price_ht / vat_rate.
-// Utilisé dans OrderCreatePage quand l'utilisateur modifie un champ.
 export function computeItem(
 	item: Omit<OrderItem, 'total_ht' | 'total_ttc'>,
 ): OrderItem {
@@ -107,7 +128,6 @@ export function computeItem(
 	}
 }
 
-// emptyItem : ligne vide par défaut pour le formulaire de création.
 export function emptyItem(): OrderItem {
 	return {
 		id: crypto.randomUUID(),

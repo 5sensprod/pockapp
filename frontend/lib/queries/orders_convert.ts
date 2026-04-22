@@ -56,9 +56,9 @@ export function useConvertOrderToInvoice() {
 
 			const invoice = await pb.collection('invoices').create(invoiceData)
 
-			// 3. Lier la facture à l'order — on ne passe PAS en billed automatiquement.
-			// Le statut billed sera mis à jour manuellement (livraison confirmée)
-			// ou via un webhook quand la facture est payée.
+			// 3. Lier la facture à l'order — ne pas toucher au statut commande.
+			// L'état commande (confirmed / in_progress / delivered) est géré
+			// manuellement par l'utilisateur et est indépendant de la facturation.
 			await pb.collection('orders').update(orderId, {
 				invoice_id: invoice.id,
 			})
