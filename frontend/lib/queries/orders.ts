@@ -228,8 +228,12 @@ export function useCreateOrder() {
 
 	return useMutation({
 		mutationFn: async (data: OrderCreateDto) => {
-			// Pas de `number` dans le payload — généré par OnRecordBeforeCreate
-			const result = await pb.collection('orders').create(data)
+			// PocketBase attend les champs JSON (items) sérialisés en string
+			const payload = {
+				...data,
+				items: JSON.stringify(data.items ?? []),
+			}
+			const result = await pb.collection('orders').create(payload)
 			return result as unknown as OrderResponse
 		},
 		onSuccess: () => {
@@ -253,7 +257,11 @@ export function useUpdateOrder() {
 			id: string
 			data: Partial<OrderCreateDto>
 		}) => {
-			const result = await pb.collection('orders').update(id, data)
+			const payload = {
+				...data,
+				...(data.items !== undefined && { items: JSON.stringify(data.items) }),
+			}
+			const result = await pb.collection('orders').update(id, payload)
 			return result as unknown as OrderResponse
 		},
 		onSuccess: (_, variables) => {

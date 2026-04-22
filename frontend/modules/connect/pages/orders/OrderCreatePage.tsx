@@ -1,6 +1,5 @@
 // frontend/modules/connect/pages/orders/OrderCreatePage.tsx
 
-import { ModulePageShell } from '@/components/module-ui/ModulePageShell'
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -31,8 +30,8 @@ import {
 	Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { useOrderNavigation } from '../../hooks/useOrderNavigation'
-import { manifest } from '../../manifest'
 import { computeItem, computeOrderTotals } from '../../types/order'
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
@@ -46,6 +45,7 @@ interface SelectedCustomer {
 	id: string
 	name: string
 	company?: string
+	email?: string
 }
 
 export function OrderCreatePage() {
@@ -69,7 +69,12 @@ export function OrderCreatePage() {
 			if (search.customerId) {
 				const found = allCustomers.find((c) => c.id === search.customerId)
 				if (found)
-					return { id: found.id, name: found.name, company: found.company }
+					return {
+						id: found.id,
+						name: found.name,
+						company: found.company,
+						email: found.email,
+					}
 			}
 			return null
 		})
@@ -230,103 +235,131 @@ export function OrderCreatePage() {
 	}
 
 	return (
-		<ModulePageShell
-			manifest={manifest}
+		<ConnectModuleShell
+			hideTitle
+			hideIcon
+			hideBadge
 			headerLeft={
-				<Button variant='ghost' size='sm' onClick={goBack}>
-					<ArrowLeft className='h-4 w-4 mr-1.5' />
-					Bons de commande
-				</Button>
-			}
-		>
-			<div className='max-w-4xl mx-auto space-y-6'>
-				<div>
-					<h2 className='text-lg font-semibold'>Nouveau bon de commande</h2>
-					<p className='text-sm text-muted-foreground mt-0.5'>
-						La référence sera générée automatiquement à la création.
+				<div className='flex items-center gap-3'>
+					<Button
+						variant='ghost'
+						size='icon'
+						className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
+						onClick={goBack}
+					>
+						<ArrowLeft className='h-4 w-4' />
+					</Button>
+					<div className='flex items-center gap-2'>
+						<h1 className='text-xl font-bold tracking-tight'>
+							Nouveau bon de commande
+						</h1>
 						{isFromQuote && (
-							<span className='ml-2 text-blue-600'>
+							<span className='text-sm text-blue-600 font-normal'>
 								· Depuis devis #{search.sourceQuoteId}
 							</span>
 						)}
-					</p>
+					</div>
 				</div>
-
+			}
+			primaryAction={null}
+		>
+			<div className='max-w-4xl mx-auto space-y-6'>
 				<div className='rounded-lg border bg-card divide-y'>
 					{/* ── Client ──────────────────────────────────────────── */}
-					<section className='p-5 space-y-3'>
+					<section className='p-5 space-y-2'>
 						<h3 className='text-sm font-semibold'>Client</h3>
-						<div className='space-y-1.5'>
-							<Label>Client *</Label>
-							<Button
-								type='button'
-								variant='outline'
-								className='w-full sm:w-80 justify-between font-normal'
-								onClick={() => setCustomerPickerOpen((v) => !v)}
-							>
-								<span
-									className={
-										selectedCustomer
-											? 'text-foreground'
-											: 'text-muted-foreground'
-									}
-								>
-									{selectedCustomer
-										? selectedCustomer.company
-											? `${selectedCustomer.name} — ${selectedCustomer.company}`
-											: selectedCustomer.name
-										: 'Sélectionner un client…'}
-								</span>
-								<ChevronsUpDown className='h-4 w-4 opacity-50' />
-							</Button>
 
-							{customerPickerOpen && (
-								<div className='w-full sm:w-80 border rounded-md bg-popover shadow-md'>
-									<div className='flex items-center gap-2 px-3 py-2 border-b'>
-										<Search className='h-4 w-4 text-muted-foreground shrink-0' />
-										<input
-											ref={customerSearchRef}
-											className='flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground'
-											placeholder='Rechercher…'
-											value={customerSearch}
-											onChange={(e) => setCustomerSearch(e.target.value)}
-										/>
-									</div>
-									<ul className='max-h-52 overflow-y-auto divide-y'>
-										{filteredCustomers.length === 0 ? (
-											<li className='px-3 py-4 text-sm text-center text-muted-foreground'>
-												Aucun client trouvé
-											</li>
-										) : (
-											filteredCustomers.slice(0, 20).map((c) => (
-												<li key={c.id}>
-													<button
-														type='button'
-														className='w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors'
-														onClick={() => {
-															setSelectedCustomer({
-																id: c.id,
-																name: c.name,
-																company: c.company,
-															})
-															setCustomerPickerOpen(false)
-															setCustomerSearch('')
-														}}
-													>
-														<p className='font-medium'>{c.name}</p>
-														{c.company && (
-															<p className='text-xs text-muted-foreground'>
-																{c.company}
-															</p>
-														)}
-													</button>
+						{/* Provenance fiche client → affichage statique */}
+						{search.customerId ? (
+							<div>
+								<p className='font-semibold text-foreground'>
+									{selectedCustomer?.name ?? '…'}
+								</p>
+								{selectedCustomer?.company && (
+									<p className='text-sm text-muted-foreground'>
+										{selectedCustomer.company}
+									</p>
+								)}
+								{selectedCustomer?.email && (
+									<p className='text-sm text-muted-foreground'>
+										{selectedCustomer.email}
+									</p>
+								)}
+							</div>
+						) : (
+							<div className='space-y-1.5'>
+								{/* Picker dropdown */}
+								<Button
+									type='button'
+									variant='outline'
+									className='w-full sm:w-80 justify-between font-normal'
+									onClick={() => setCustomerPickerOpen((v) => !v)}
+								>
+									<span
+										className={
+											selectedCustomer
+												? 'text-foreground'
+												: 'text-muted-foreground'
+										}
+									>
+										{selectedCustomer
+											? selectedCustomer.company
+												? `${selectedCustomer.name} — ${selectedCustomer.company}`
+												: selectedCustomer.name
+											: 'Sélectionner un client…'}
+									</span>
+									<ChevronsUpDown className='h-4 w-4 opacity-50' />
+								</Button>
+
+								{customerPickerOpen && (
+									<div className='w-full sm:w-80 border rounded-md bg-popover shadow-md'>
+										<div className='flex items-center gap-2 px-3 py-2 border-b'>
+											<Search className='h-4 w-4 text-muted-foreground shrink-0' />
+											<input
+												ref={customerSearchRef}
+												className='flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground'
+												placeholder='Rechercher…'
+												value={customerSearch}
+												onChange={(e) => setCustomerSearch(e.target.value)}
+											/>
+										</div>
+										<ul className='max-h-52 overflow-y-auto divide-y'>
+											{filteredCustomers.length === 0 ? (
+												<li className='px-3 py-4 text-sm text-center text-muted-foreground'>
+													Aucun client trouvé
 												</li>
-											))
-										)}
-									</ul>
-								</div>
-							)}
-						</div>
+											) : (
+												filteredCustomers.slice(0, 20).map((c) => (
+													<li key={c.id}>
+														<button
+															type='button'
+															className='w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors'
+															onClick={() => {
+																setSelectedCustomer({
+																	id: c.id,
+																	name: c.name,
+																	company: c.company,
+																	email: c.email,
+																})
+																setCustomerPickerOpen(false)
+																setCustomerSearch('')
+															}}
+														>
+															<p className='font-medium'>{c.name}</p>
+															{c.company && (
+																<p className='text-xs text-muted-foreground'>
+																	{c.company}
+																</p>
+															)}
+														</button>
+													</li>
+												))
+											)}
+										</ul>
+									</div>
+								)}
+							</div>
+						)}
 					</section>
 
 					{/* ── Lignes ─────────────────────────────────────────── */}
@@ -523,7 +556,7 @@ export function OrderCreatePage() {
 
 			{/* ── Dialog ajout de ligne ────────────────────────────────── */}
 			<Dialog open={productPickerOpen} onOpenChange={setProductPickerOpen}>
-				<DialogContent className='max-w-lg'>
+				<DialogContent className='sm:max-w-2xl'>
 					<DialogHeader>
 						<DialogTitle>Ajouter une ligne</DialogTitle>
 					</DialogHeader>
@@ -700,6 +733,6 @@ export function OrderCreatePage() {
 					)}
 				</DialogContent>
 			</Dialog>
-		</ModulePageShell>
+		</ConnectModuleShell>
 	)
 }
