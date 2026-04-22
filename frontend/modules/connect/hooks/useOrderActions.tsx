@@ -192,7 +192,9 @@ export function useOrderActions(
 		if (!order) return
 		try {
 			const invoice = await convertOrderToInvoice.mutateAsync(order.id)
-			toast.success(`Facture créée à partir du bon de commande ${order.number}`)
+			toast.success(
+				`Facture générée pour le bon de commande ${order.number}. Vous pouvez maintenant créer des acomptes depuis la facture.`,
+			)
 			setConvertDialogOpen(false)
 
 			// Si on vient d'une fiche client → y retourner avec l'onglet Factures actif

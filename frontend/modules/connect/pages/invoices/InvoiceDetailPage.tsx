@@ -249,6 +249,8 @@ export function InvoiceDetailPage() {
 		actions,
 		goBack,
 		isCreditNote: invoice?.invoice_type === 'credit_note',
+		depositsTotal: depositsData?.depositsTotal,
+		balanceDue: depositsData?.balanceDue,
 		isDeposit: invoice?.invoice_type === 'deposit',
 		isTicket: !!(invoice?.is_pos_ticket || invoice?.number?.startsWith('TIK-')),
 		remainingAmount,

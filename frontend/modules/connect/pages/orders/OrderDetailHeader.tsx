@@ -89,7 +89,7 @@ export function useOrderDetailHeader({
 	const allowedTransitions =
 		ORDER_STATUS_TRANSITIONS[order.status as OrderStatus] ?? []
 	const isTerminal = allowedTransitions.length === 0
-	const isBilled = order.status === 'billed'
+	// const isBilled = order.status === 'billed'
 
 	// ── Header gauche ─────────────────────────────────────────────────────────
 	const headerLeft = (
@@ -126,18 +126,23 @@ export function useOrderDetailHeader({
 		</DropdownMenuItem>,
 	)
 
-	// Convertir en facture — non-draft, non-annulé, non-déjà-facturé
+	// Générer la facture — dès confirmed, non-annulé, non-déjà-facturé
 	const alreadyConverted = !!(order as any).invoice_id
-	if (!isDraft && order.status !== 'cancelled' && !alreadyConverted) {
+	const canGenerateInvoice =
+		!isDraft &&
+		order.status !== 'cancelled' &&
+		order.status !== 'draft' &&
+		!alreadyConverted
+	if (canGenerateInvoice || alreadyConverted) {
 		dropdownItems.push(<DropdownMenuSeparator key='sep-convert' />)
 		dropdownItems.push(
 			<DropdownMenuItem
 				key='convert'
 				onClick={actions.handleOpenConvert}
-				disabled={actions.isConverting || isBilled}
+				disabled={actions.isConverting || alreadyConverted}
 			>
 				<Receipt className='h-4 w-4 mr-2' />
-				{isBilled ? 'Déjà converti en facture' : 'Convertir en facture'}
+				{alreadyConverted ? 'Facture déjà générée' : 'Générer la facture'}
 			</DropdownMenuItem>,
 		)
 	}

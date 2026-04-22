@@ -25,6 +25,7 @@ import { useNavigate } from '@tanstack/react-router'
 import {
 	AlertTriangle,
 	ArrowLeft,
+	Banknote,
 	CheckCircle,
 	ChevronDown,
 	Download,
@@ -51,6 +52,8 @@ interface InvoiceDetailHeaderProps {
 	remainingAmount: number
 	hasCancellationCreditNote: boolean
 	search: Record<string, string>
+	depositsTotal?: number
+	balanceDue?: number
 }
 
 interface HeaderSlots {
@@ -69,6 +72,8 @@ export function useInvoiceDetailHeader({
 	remainingAmount,
 	hasCancellationCreditNote,
 	search,
+	depositsTotal, // 👈
+	balanceDue, // 👈
 }: InvoiceDetailHeaderProps): HeaderSlots {
 	const navigate = useNavigate()
 
@@ -147,6 +152,15 @@ export function useInvoiceDetailHeader({
 				</Badge>
 			) : (
 				<Badge variant='secondary'>Non payée</Badge>
+			)}
+			{(depositsTotal ?? 0) > 0 && (
+				<Badge
+					variant='outline'
+					className='text-blue-700 border-blue-300 bg-blue-50 hidden sm:flex'
+				>
+					<Banknote className='h-3 w-3 mr-1' />
+					{`Acompte ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(depositsTotal ?? 0)} · Solde ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(balanceDue ?? 0)}`}
+				</Badge>
 			)}
 		</>
 	)

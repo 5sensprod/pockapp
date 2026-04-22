@@ -2,7 +2,7 @@
 
 import { EmptyState } from '@/components/module-ui'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
 	Dialog,
 	DialogContent,
@@ -24,13 +24,16 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
 import type { ProductsResponse } from '@/lib/pocketbase-types'
+import { useDepositsForInvoice } from '@/lib/queries/deposits'
 import { useOrder, useUpdateOrder } from '@/lib/queries/orders'
 import type { OrderItem } from '@/lib/queries/orders'
 import { navigationActions } from '@/lib/stores/navigationStore'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
+	Banknote,
 	CheckCircle2,
 	ClipboardList,
+	CreditCard,
 	FileText,
 	Loader2,
 	Package,
@@ -277,6 +280,9 @@ export function OrderDetailPage() {
 	}
 
 	const isDraft = order.status === 'draft'
+	const { data: orderInvoiceDeposits } = useDepositsForInvoice(
+		order?.invoice_id ?? undefined,
+	)
 	const displayTotals = isDraft
 		? computeOrderTotals(draftItems)
 		: {
@@ -298,15 +304,8 @@ export function OrderDetailPage() {
 				<div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
 					{/* ── Infos générales ───────────────────────────────────────── */}
 					<Card className='lg:col-span-2'>
-						<CardHeader>
-							<CardTitle>Détails</CardTitle>
-						</CardHeader>
-						<CardContent className='space-y-4'>
+						<CardContent className='p-6 space-y-4'>
 							<div className='grid grid-cols-2 gap-4'>
-								<div>
-									<p className='text-sm text-muted-foreground'>Référence</p>
-									<p className='font-mono font-medium'>{order.number}</p>
-								</div>
 								<div>
 									<p className='text-sm text-muted-foreground'>
 										Date de création
@@ -370,15 +369,19 @@ export function OrderDetailPage() {
 								)}
 							</div>
 							{order.invoice_id && (
-								<div className='border-t pt-4'>
+								<div className='border-t pt-4 space-y-2'>
 									<p className='text-sm text-muted-foreground mb-2'>
-										Facture associée
+										Facturation
 									</p>
+
+									{/* Facture principale */}
 									<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
 										<div className='flex items-center gap-2'>
 											<FileText className='h-4 w-4 text-muted-foreground' />
 											<span className='font-medium text-sm'>
-												Facture générée
+												{orderInvoiceDeposits?.deposits.length
+													? `Facture — ${formatCurrency(order.total_ttc)}`
+													: `Facture générée — ${formatCurrency(order.total_ttc)}`}
 											</span>
 										</div>
 										<Button
@@ -400,9 +403,96 @@ export function OrderDetailPage() {
 												})
 											}}
 										>
-											Voir la facture
+											Voir
 										</Button>
 									</div>
+
+									{/* Acomptes liés */}
+									{orderInvoiceDeposits?.deposits.map((dep) => (
+										<div
+											key={dep.id}
+											className='flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200 dark:border-blue-900'
+										>
+											<div className='flex items-center gap-2'>
+												<Banknote className='h-4 w-4 text-blue-600' />
+												<div className='flex flex-col'>
+													<span className='font-medium text-sm text-blue-700 dark:text-blue-400'>
+														Acompte
+													</span>
+													<span className='text-xs text-muted-foreground'>
+														{formatCurrency(dep.total_ttc)} •{' '}
+														{dep.is_paid ? (
+															<span className='text-emerald-600'>Réglé</span>
+														) : (
+															<span className='text-amber-600'>En attente</span>
+														)}
+													</span>
+												</div>
+											</div>
+											<Button
+												variant='outline'
+												size='sm'
+												onClick={() => {
+													navigationActions.push({
+														path: `/connect/orders/${order.id}`,
+														label: `Bon de commande ${order.number}`,
+														params: { orderId: order.id },
+														search:
+															Object.keys(search).length > 0
+																? (search as Record<string, string>)
+																: undefined,
+													})
+													navigate({
+														to: '/connect/invoices/$invoiceId',
+														params: { invoiceId: dep.id },
+													})
+												}}
+											>
+												Voir
+											</Button>
+										</div>
+									))}
+
+									{/* Facture de solde */}
+									{orderInvoiceDeposits?.balanceInvoice && (
+										<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3 border'>
+											<div className='flex items-center gap-2'>
+												<CreditCard className='h-4 w-4 text-muted-foreground' />
+												<div className='flex flex-col'>
+													<span className='font-medium text-sm'>
+														{orderInvoiceDeposits.balanceInvoice.number}
+													</span>
+													<span className='text-xs text-muted-foreground'>
+														Facture de solde
+													</span>
+												</div>
+											</div>
+											<Button
+												variant='outline'
+												size='sm'
+												onClick={() => {
+													navigationActions.push({
+														path: `/connect/orders/${order.id}`,
+														label: `Bon de commande ${order.number}`,
+														params: { orderId: order.id },
+														search:
+															Object.keys(search).length > 0
+																? (search as Record<string, string>)
+																: undefined,
+													})
+													navigate({
+														to: '/connect/invoices/$invoiceId',
+														params: {
+															invoiceId:
+																orderInvoiceDeposits.balanceInvoice?.id ?? '',
+														},
+													})
+												}}
+											>
+												Voir
+											</Button>
+										</div>
+									)}
 								</div>
 							)}
 						</CardContent>
@@ -410,10 +500,7 @@ export function OrderDetailPage() {
 
 					{/* ── Client ────────────────────────────────────────────────── */}
 					<Card>
-						<CardHeader>
-							<CardTitle>Client</CardTitle>
-						</CardHeader>
-						<CardContent>
+						<CardContent className='p-6'>
 							<button
 								type='button'
 								className='font-semibold text-foreground hover:text-primary hover:underline text-left'
@@ -431,27 +518,28 @@ export function OrderDetailPage() {
 
 					{/* ── Lignes ────────────────────────────────────────────────── */}
 					<Card className='lg:col-span-3'>
-						<CardHeader className='flex flex-row items-center justify-between'>
-							<CardTitle className='flex items-center gap-2'>
-								Lignes
-								{isUpdating && (
-									<span className='text-xs text-muted-foreground font-normal animate-pulse'>
-										Sauvegarde…
-									</span>
-								)}
-							</CardTitle>
-							{isDraft && (
-								<Button
-									variant='outline'
-									size='sm'
-									onClick={() => openPicker('catalogue')}
-								>
-									<Plus className='h-4 w-4 mr-1.5' />
-									Ajouter une ligne
-								</Button>
+						<CardContent className='p-6'>
+							{(isUpdating || isDraft) && (
+								<div className='flex items-center justify-between mb-4'>
+									<div>
+										{isUpdating && (
+											<span className='text-xs text-muted-foreground font-normal animate-pulse'>
+												Sauvegarde…
+											</span>
+										)}
+									</div>
+									{isDraft && (
+										<Button
+											variant='outline'
+											size='sm'
+											onClick={() => openPicker('catalogue')}
+										>
+											<Plus className='h-4 w-4 mr-1.5' />
+											Ajouter une ligne
+										</Button>
+									)}
+								</div>
 							)}
-						</CardHeader>
-						<CardContent>
 							{isDraft ? (
 								/* Mode édition */
 								draftItems.length === 0 ? (

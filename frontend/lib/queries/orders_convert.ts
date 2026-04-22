@@ -27,7 +27,7 @@ export function useConvertOrderToInvoice() {
 					"Veuillez d'abord valider le bon de commande avant de le convertir.",
 				)
 			}
-			if (order.status === 'billed' || order.invoice_id) {
+			if (order.invoice_id) {
 				throw new Error('Ce bon de commande a déjà été converti en facture.')
 			}
 
@@ -56,11 +56,11 @@ export function useConvertOrderToInvoice() {
 
 			const invoice = await pb.collection('invoices').create(invoiceData)
 
-			// 3. Marquer l'order comme facturé
+			// 3. Lier la facture à l'order — on ne passe PAS en billed automatiquement.
+			// Le statut billed sera mis à jour manuellement (livraison confirmée)
+			// ou via un webhook quand la facture est payée.
 			await pb.collection('orders').update(orderId, {
-				status: 'billed',
 				invoice_id: invoice.id,
-				billed_at: new Date().toISOString(),
 			})
 
 			return invoice
