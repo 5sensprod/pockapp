@@ -64,20 +64,24 @@ export function OrderCreatePage() {
 	)
 	const [customerPickerOpen, setCustomerPickerOpen] = useState(false)
 	const [customerSearch, setCustomerSearch] = useState('')
+	const hasPrefilledCustomer = useRef(false)
 	const [selectedCustomer, setSelectedCustomer] =
-		useState<SelectedCustomer | null>(() => {
-			if (search.customerId) {
-				const found = allCustomers.find((c) => c.id === search.customerId)
-				if (found)
-					return {
-						id: found.id,
-						name: found.name,
-						company: found.company,
-						email: found.email,
-					}
+		useState<SelectedCustomer | null>(null)
+
+	useEffect(() => {
+		if (search.customerId && !hasPrefilledCustomer.current) {
+			const found = allCustomers.find((c) => c.id === search.customerId)
+			if (found) {
+				hasPrefilledCustomer.current = true
+				setSelectedCustomer({
+					id: found.id,
+					name: found.name,
+					company: found.company,
+					email: found.email,
+				})
 			}
-			return null
-		})
+		}
+	}, [search.customerId, allCustomers])
 
 	const filteredCustomers = allCustomers.filter((c) => {
 		const term = customerSearch.toLowerCase()
