@@ -10,11 +10,12 @@ import {
 	useDeleteDraftOrder,
 	usePatchOrderStatus,
 } from '@/lib/queries/orders'
+import { useConvertOrderToInvoice } from '@/lib/queries/orders_convert'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { OrderPdfDocument } from '@/modules/connect/pdf/OrderPdf'
 import { toPngDataUrl } from '@/modules/connect/utils/images'
 import { pdf } from '@react-pdf/renderer'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -34,17 +35,27 @@ export interface OrderActionsState {
 	validateDialogOpen: boolean
 	setValidateDialogOpen: (v: boolean) => void
 
+	convertDialogOpen: boolean
+	setConvertDialogOpen: (v: boolean) => void
+
 	// ── États async ────────────────────────────────────────────────────────────
 	isDownloading: boolean
 	isPatching: boolean
 	isDeleting: boolean
+	isConverting: boolean
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	handleDownloadPdf: () => Promise<void>
 	handleTransition: (next: OrderStatus) => Promise<void>
 	handleConfirmCancel: () => Promise<void>
 	handleDelete: () => Promise<void>
-	handleConvertToInvoice: () => void
+	handleOpenConvert: () => void
+	handleConfirmConvert: () => Promise<void>
+}
+
+interface NavigationSearch {
+	from?: string
+	customerId?: string
 }
 
 export function useOrderActions(
@@ -54,6 +65,7 @@ export function useOrderActions(
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
 	const navigate = useNavigate()
+	const search = useSearch({ strict: false }) as NavigationSearch
 
 	// ── États ──────────────────────────────────────────────────────────────────
 	const [isDownloading, setIsDownloading] = useState(false)
@@ -62,12 +74,14 @@ export function useOrderActions(
 	const [cancellationReason, setCancellationReason] = useState('')
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [validateDialogOpen, setValidateDialogOpen] = useState(false)
+	const [convertDialogOpen, setConvertDialogOpen] = useState(false)
 
 	// ── Mutations ──────────────────────────────────────────────────────────────
 	const { mutateAsync: patchStatus, isPending: isPatching } =
 		usePatchOrderStatus()
 	const { mutateAsync: deleteDraft, isPending: isDeleting } =
 		useDeleteDraftOrder()
+	const convertOrderToInvoice = useConvertOrderToInvoice()
 
 	// ── PDF ────────────────────────────────────────────────────────────────────
 	const handleDownloadPdf = async () => {
@@ -172,13 +186,32 @@ export function useOrderActions(
 	}
 
 	// ── Conversion en facture ──────────────────────────────────────────────────
-	// Adapte la route selon ta structure — ex: /connect/invoices/new?fromOrderId=xxx
-	const handleConvertToInvoice = () => {
+	const handleOpenConvert = () => setConvertDialogOpen(true)
+
+	const handleConfirmConvert = async () => {
 		if (!order) return
-		navigate({
-			to: '/connect/invoices/new',
-			search: { fromOrderId: order.id },
-		})
+		try {
+			const invoice = await convertOrderToInvoice.mutateAsync(order.id)
+			toast.success(`Facture créée à partir du bon de commande ${order.number}`)
+			setConvertDialogOpen(false)
+
+			// Si on vient d'une fiche client → y retourner avec l'onglet Factures actif
+			if (search.from === 'customer' && search.customerId) {
+				navigate({
+					to: '/connect/customers/$customerId',
+					params: { customerId: search.customerId },
+					search: { tab: 'invoices' },
+				})
+			} else {
+				// Sinon → détail de la facture créée
+				navigate({
+					to: '/connect/invoices/$invoiceId',
+					params: { invoiceId: invoice.id },
+				})
+			}
+		} catch (error: any) {
+			toast.error(error?.message || 'Erreur lors de la création de la facture')
+		}
 	}
 
 	return {
@@ -193,15 +226,19 @@ export function useOrderActions(
 		setDeleteDialogOpen,
 		validateDialogOpen,
 		setValidateDialogOpen,
+		convertDialogOpen,
+		setConvertDialogOpen,
 		// async
 		isDownloading,
 		isPatching,
 		isDeleting,
+		isConverting: convertOrderToInvoice.isPending,
 		// handlers
 		handleDownloadPdf,
 		handleTransition,
 		handleConfirmCancel,
 		handleDelete,
-		handleConvertToInvoice,
+		handleOpenConvert,
+		handleConfirmConvert,
 	}
 }

@@ -30,9 +30,11 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	CheckCircle2,
 	ClipboardList,
+	Loader2,
 	Package,
 	PenLine,
 	Plus,
+	Receipt,
 	Search,
 	Trash2,
 	XCircle,
@@ -695,6 +697,61 @@ export function OrderDetailPage() {
 						>
 							<XCircle className='h-4 w-4 mr-1.5' />
 							Confirmer l'annulation
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog
+				open={actions.convertDialogOpen}
+				onOpenChange={actions.setConvertDialogOpen}
+			>
+				<DialogContent className='sm:max-w-md'>
+					<DialogHeader>
+						<DialogTitle>Convertir en facture</DialogTitle>
+						<DialogDescription>
+							Vous allez créer une facture à partir du bon de commande{' '}
+							<strong>{order?.number}</strong>. Le bon passera en statut
+							"Facturé".
+						</DialogDescription>
+					</DialogHeader>
+					{order && (
+						<div className='mt-2 space-y-1 text-sm'>
+							<p>
+								<strong>Client :</strong> {order.customer_name}
+							</p>
+							<p>
+								<strong>Montant TTC :</strong>{' '}
+								{new Intl.NumberFormat('fr-FR', {
+									style: 'currency',
+									currency: 'EUR',
+								}).format(order.total_ttc)}
+							</p>
+						</div>
+					)}
+					<DialogFooter className='gap-2 mt-4'>
+						<Button
+							variant='outline'
+							onClick={() => actions.setConvertDialogOpen(false)}
+							disabled={actions.isConverting}
+						>
+							Annuler
+						</Button>
+						<Button
+							onClick={actions.handleConfirmConvert}
+							disabled={actions.isConverting}
+						>
+							{actions.isConverting ? (
+								<>
+									<Loader2 className='h-4 w-4 animate-spin mr-1.5' />
+									Création...
+								</>
+							) : (
+								<>
+									<Receipt className='h-4 w-4 mr-1.5' />
+									Créer la facture
+								</>
+							)}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
