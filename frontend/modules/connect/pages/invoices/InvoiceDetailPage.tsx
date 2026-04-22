@@ -42,6 +42,7 @@ import {
 	useDepositsForInvoice,
 } from '@/lib/queries/deposits'
 import { useCreditNotesForInvoice, useInvoice } from '@/lib/queries/invoices'
+import { useOrder } from '@/lib/queries/orders'
 import { navigationActions } from '@/lib/stores/navigationStore'
 import {
 	canCreateBalanceInvoice,
@@ -54,6 +55,7 @@ import { StockReclassificationDialog } from '@/modules/common/StockReclassificat
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	Banknote,
+	ClipboardList,
 	CreditCard,
 	FileText,
 	Loader2,
@@ -175,6 +177,8 @@ export function InvoiceDetailPage() {
 	const hasCancellationCreditNote = !!(
 		linkedCreditNotes && linkedCreditNotes.length > 0
 	)
+	const sourceOrderId = (invoice as any)?.source_order_id ?? null
+	const { data: sourceOrder } = useOrder(sourceOrderId ?? undefined)
 
 	// Charger l'entreprise
 	useEffect(() => {
@@ -803,6 +807,39 @@ export function InvoiceDetailPage() {
 											navigate({
 												to: '/connect/invoices/$invoiceId',
 												params: { invoiceId: originalId },
+											})
+										}}
+									>
+										Voir
+									</Button>
+								</div>
+							</div>
+						)}
+
+						{sourceOrderId && (
+							<div className='border-t pt-4'>
+								<p className='text-sm text-muted-foreground mb-2'>
+									Bon de commande source
+								</p>
+								<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
+									<div className='flex items-center gap-2'>
+										<ClipboardList className='h-4 w-4 text-muted-foreground' />
+										<span className='font-medium text-sm'>
+											{sourceOrder?.number ?? '…'}
+										</span>
+									</div>
+									<Button
+										variant='outline'
+										size='sm'
+										onClick={() => {
+											pushCurrentToStore(`Facture ${invoice.number}`)
+											navigate({
+												to: '/connect/orders/$orderId',
+												params: { orderId: sourceOrderId },
+												search:
+													Object.keys(search).length > 0
+														? (search as Record<string, string>)
+														: undefined,
 											})
 										}}
 									>

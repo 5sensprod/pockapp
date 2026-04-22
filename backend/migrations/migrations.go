@@ -29,6 +29,8 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		ensureQuotesCollection,
 		ensureOrdersCollection,
 
+		AddSourceOrderIdToInvoices,
+
 		// 5. Clôtures et audit (dépend de companies + invoices)
 		ensureClosuresCollection,
 		ensureAuditLogsCollection,

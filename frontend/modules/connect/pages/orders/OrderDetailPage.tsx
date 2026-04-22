@@ -26,10 +26,12 @@ import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
 import type { ProductsResponse } from '@/lib/pocketbase-types'
 import { useOrder, useUpdateOrder } from '@/lib/queries/orders'
 import type { OrderItem } from '@/lib/queries/orders'
+import { navigationActions } from '@/lib/stores/navigationStore'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
 	CheckCircle2,
 	ClipboardList,
+	FileText,
 	Loader2,
 	Package,
 	PenLine,
@@ -56,7 +58,7 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 export function OrderDetailPage() {
 	const navigate = useNavigate()
 	const { orderId } = useParams({ from: '/connect/orders/$orderId/' })
-	const { goBack } = useOrderNavigation()
+	const { goBack, search } = useOrderNavigation()
 
 	const { data: order, isLoading } = useOrder(orderId)
 	const { mutateAsync: updateOrder, isPending: isUpdating } = useUpdateOrder()
@@ -367,6 +369,42 @@ export function OrderDetailPage() {
 									</div>
 								)}
 							</div>
+							{order.invoice_id && (
+								<div className='border-t pt-4'>
+									<p className='text-sm text-muted-foreground mb-2'>
+										Facture associée
+									</p>
+									<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
+										<div className='flex items-center gap-2'>
+											<FileText className='h-4 w-4 text-muted-foreground' />
+											<span className='font-medium text-sm'>
+												Facture générée
+											</span>
+										</div>
+										<Button
+											variant='outline'
+											size='sm'
+											onClick={() => {
+												navigationActions.push({
+													path: `/connect/orders/${order.id}`,
+													label: `Bon de commande ${order.number}`,
+													params: { orderId: order.id },
+													search:
+														Object.keys(search).length > 0
+															? (search as Record<string, string>)
+															: undefined,
+												})
+												navigate({
+													to: '/connect/invoices/$invoiceId',
+													params: { invoiceId: order.invoice_id as string },
+												})
+											}}
+										>
+											Voir la facture
+										</Button>
+									</div>
+								</div>
+							)}
 						</CardContent>
 					</Card>
 
