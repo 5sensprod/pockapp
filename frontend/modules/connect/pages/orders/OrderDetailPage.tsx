@@ -24,51 +24,31 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
 import type { ProductsResponse } from '@/lib/pocketbase-types'
-import {
-	useDeleteDraftOrder,
-	useOrder,
-	usePatchOrderStatus,
-	useUpdateOrder,
-} from '@/lib/queries/orders'
-import type { OrderItem, OrderStatus } from '@/lib/queries/orders'
+import { useOrder, useUpdateOrder } from '@/lib/queries/orders'
+import type { OrderItem } from '@/lib/queries/orders'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
-	ArrowLeft,
 	CheckCircle2,
 	ClipboardList,
-	FileText,
 	Package,
 	PenLine,
 	Plus,
 	Search,
 	Trash2,
-	Truck,
 	XCircle,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
-import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
+import { SendOrderEmailDialog } from '../../components/SendOrderEmailDialog'
+import { useOrderActions } from '../../hooks/useOrderActions'
 import { useOrderNavigation } from '../../hooks/useOrderNavigation'
-import {
-	ORDER_STATUS_LABELS,
-	ORDER_STATUS_TRANSITIONS,
-	computeItem,
-	computeOrderTotals,
-} from '../../types/order'
+import { computeItem, computeOrderTotals } from '../../types/order'
 import { formatCurrency, formatDate } from '../../utils/formatters'
+import { useOrderDetailHeader } from './OrderDetailHeader'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
-
-const TRANSITION_ICONS: Partial<
-	Record<OrderStatus, React.FC<{ className?: string }>>
-> = {
-	in_progress: Truck,
-	delivered: CheckCircle2,
-	billed: FileText,
-	cancelled: XCircle,
-}
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 export function OrderDetailPage() {
@@ -77,11 +57,29 @@ export function OrderDetailPage() {
 	const { goBack } = useOrderNavigation()
 
 	const { data: order, isLoading } = useOrder(orderId)
-	const { mutateAsync: patchStatus, isPending: isPatching } =
-		usePatchOrderStatus()
 	const { mutateAsync: updateOrder, isPending: isUpdating } = useUpdateOrder()
-	const { mutateAsync: deleteDraft, isPending: isDeleting } =
-		useDeleteDraftOrder()
+
+	// ── Actions & Header Hooks ─────────────────────────────────────────────────
+	const actions = useOrderActions(order, goBack)
+
+	const {
+		isPatching,
+		isDeleting,
+		cancelDialogOpen,
+		setCancelDialogOpen,
+		cancellationReason,
+		setCancellationReason,
+		deleteDialogOpen,
+		setDeleteDialogOpen,
+		validateDialogOpen,
+		setValidateDialogOpen,
+	} = actions
+
+	const { headerLeft, headerRight } = useOrderDetailHeader({
+		order,
+		actions,
+		goBack,
+	})
 
 	// ── État édition lignes (draft seulement) ─────────────────────────────────
 	const [draftItems, setDraftItems] = useState<OrderItem[]>([])
@@ -97,12 +95,6 @@ export function OrderDetailPage() {
 			setDraftItems(order.items ?? [])
 		}
 	}, [order])
-
-	// ── Dialogs ───────────────────────────────────────────────────────────────
-	const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
-	const [cancellationReason, setCancellationReason] = useState('')
-	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-	const [validateDialogOpen, setValidateDialogOpen] = useState(false)
 
 	// ── Picker produits ───────────────────────────────────────────────────────
 	const [productPickerOpen, setProductPickerOpen] = useState(false)
@@ -238,65 +230,6 @@ export function OrderDetailPage() {
 		setProductPickerOpen(true)
 	}
 
-	// ── Transitions statut ────────────────────────────────────────────────────
-	const handleTransition = async (next: OrderStatus) => {
-		if (next === 'cancelled') {
-			setCancelDialogOpen(true)
-			return
-		}
-		try {
-			if (!order) return
-			await patchStatus({ id: order.id, status: next })
-		} catch (err) {
-			console.error('Erreur transition statut:', err)
-		}
-	}
-
-	const handleConfirmCancel = async () => {
-		if (!cancellationReason.trim()) return
-		try {
-			if (!order) return
-			await patchStatus({
-				id: order.id,
-				status: 'cancelled',
-				cancellation_reason: cancellationReason.trim(),
-			})
-			setCancelDialogOpen(false)
-			setCancellationReason('')
-		} catch (err) {
-			console.error('Erreur annulation:', err)
-		}
-	}
-
-	const handleDelete = async () => {
-		try {
-			if (!order) return
-			await deleteDraft(order.id)
-			goBack()
-		} catch (err) {
-			console.error('Erreur suppression:', err)
-		}
-	}
-
-	// ── Header gauche ─────────────────────────────────────────────────────────
-	const headerLeft = (title: string, badge?: React.ReactNode) => (
-		<div className='flex items-center gap-3'>
-			<Button
-				variant='ghost'
-				size='icon'
-				className='-ml-2 text-muted-foreground hover:text-foreground shrink-0'
-				onClick={goBack}
-			>
-				<ArrowLeft className='h-4 w-4' />
-			</Button>
-			<div className='flex items-center gap-2'>
-				<ClipboardList className='h-5 w-5 text-muted-foreground' />
-				<h1 className='text-xl font-bold tracking-tight'>{title}</h1>
-				{badge}
-			</div>
-		</div>
-	)
-
 	// ── Loading / Not found ───────────────────────────────────────────────────
 	if (isLoading) {
 		return (
@@ -304,7 +237,8 @@ export function OrderDetailPage() {
 				hideTitle
 				hideIcon
 				hideBadge
-				headerLeft={headerLeft('Bon de commande')}
+				headerLeft={headerLeft}
+				headerRight={headerRight}
 				primaryAction={null}
 			>
 				<EmptyState icon={ClipboardList} title='Chargement...' fullPage />
@@ -317,7 +251,8 @@ export function OrderDetailPage() {
 				hideTitle
 				hideIcon
 				hideBadge
-				headerLeft={headerLeft('Bon de commande introuvable')}
+				headerLeft={headerLeft}
+				headerRight={headerRight}
 				primaryAction={null}
 			>
 				<EmptyState
@@ -338,8 +273,6 @@ export function OrderDetailPage() {
 	}
 
 	const isDraft = order.status === 'draft'
-	const allowedTransitions = ORDER_STATUS_TRANSITIONS[order.status]
-	const isTerminal = allowedTransitions.length === 0
 	const displayTotals = isDraft
 		? computeOrderTotals(draftItems)
 		: {
@@ -354,52 +287,8 @@ export function OrderDetailPage() {
 				hideTitle
 				hideIcon
 				hideBadge
-				headerLeft={headerLeft(
-					order.number,
-					<OrderStatusBadge status={order.status} />,
-				)}
-				headerRight={
-					isDraft ? (
-						<div className='flex items-center gap-2'>
-							<Button
-								size='sm'
-								variant='destructive'
-								onClick={() => setDeleteDialogOpen(true)}
-								disabled={isDeleting}
-							>
-								<Trash2 className='h-4 w-4 mr-1.5' />
-								Supprimer
-							</Button>
-							<Button
-								size='sm'
-								onClick={() => setValidateDialogOpen(true)}
-								disabled={isPatching || draftItems.length === 0}
-							>
-								<CheckCircle2 className='h-4 w-4 mr-1.5' />
-								Valider
-							</Button>
-						</div>
-					) : !isTerminal ? (
-						<div className='flex items-center gap-2'>
-							{allowedTransitions.map((next) => {
-								const Icon = TRANSITION_ICONS[next]
-								const isDanger = next === 'cancelled'
-								return (
-									<Button
-										key={next}
-										size='sm'
-										variant={isDanger ? 'destructive' : 'outline'}
-										onClick={() => handleTransition(next)}
-										disabled={isPatching}
-									>
-										{Icon && <Icon className='h-4 w-4 mr-1.5' />}
-										{ORDER_STATUS_LABELS[next]}
-									</Button>
-								)
-							})}
-						</div>
-					) : null
-				}
+				headerLeft={headerLeft}
+				headerRight={headerRight}
 				primaryAction={null}
 			>
 				<div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
@@ -723,7 +612,7 @@ export function OrderDetailPage() {
 						<Button
 							onClick={async () => {
 								setValidateDialogOpen(false)
-								await handleTransition('confirmed')
+								await actions.handleTransition('confirmed')
 							}}
 							disabled={isPatching}
 						>
@@ -755,7 +644,7 @@ export function OrderDetailPage() {
 						</Button>
 						<Button
 							variant='destructive'
-							onClick={handleDelete}
+							onClick={actions.handleDelete}
 							disabled={isDeleting}
 						>
 							<Trash2 className='h-4 w-4 mr-1.5' />
@@ -801,7 +690,7 @@ export function OrderDetailPage() {
 						</Button>
 						<Button
 							variant='destructive'
-							onClick={handleConfirmCancel}
+							onClick={actions.handleConfirmCancel}
 							disabled={!cancellationReason.trim() || isPatching}
 						>
 							<XCircle className='h-4 w-4 mr-1.5' />
@@ -1004,6 +893,12 @@ export function OrderDetailPage() {
 					)}
 				</DialogContent>
 			</Dialog>
+
+			<SendOrderEmailDialog
+				open={actions.emailDialogOpen}
+				onOpenChange={actions.setEmailDialogOpen}
+				order={order ?? null}
+			/>
 		</>
 	)
 }

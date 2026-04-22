@@ -213,6 +213,7 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterInvoicePayRoutes(pb, e.Router) // ✅ Paiement + stats factures
 
 		routes.RegisterConsignmentEmailRoutes(pb, e.Router) // ✅ Envoi de bordereaux de dépôt-vente par email
+		routes.RegisterOrderEmailRoutes(pb, e.Router)       // ✅ Envoi de bons de commande par email
 
 		routes.RegisterDepositRoutes(pb, e.Router)
 
