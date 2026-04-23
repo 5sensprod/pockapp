@@ -133,19 +133,19 @@ export function useOrderDetailHeader({
 	// Générer la facture — dès confirmed, non-annulé, non-déjà-facturé
 	const canGenerateInvoice =
 		!isDraft && order.status !== 'cancelled' && !alreadyConverted
-	if (canGenerateInvoice || alreadyConverted) {
-		dropdownItems.push(<DropdownMenuSeparator key='sep-convert' />)
-		dropdownItems.push(
-			<DropdownMenuItem
-				key='convert'
-				onClick={actions.handleOpenConvert}
-				disabled={actions.isConverting || alreadyConverted}
-			>
-				<Receipt className='h-4 w-4 mr-2' />
-				{alreadyConverted ? 'Facture déjà générée' : 'Générer la facture'}
-			</DropdownMenuItem>,
-		)
-	}
+	// if (canGenerateInvoice || alreadyConverted) {
+	// 	dropdownItems.push(<DropdownMenuSeparator key='sep-convert' />)
+	// 	dropdownItems.push(
+	// 		<DropdownMenuItem
+	// 			key='convert'
+	// 			onClick={actions.handleOpenConvert}
+	// 			disabled={actions.isConverting || alreadyConverted}
+	// 		>
+	// 			<Receipt className='h-4 w-4 mr-2' />
+	// 			{alreadyConverted ? 'Facture déjà générée' : 'Générer la facture'}
+	// 		</DropdownMenuItem>,
+	// 	)
+	// }
 
 	// Actions brouillon
 	if (isDraft) {
@@ -197,6 +197,22 @@ export function useOrderDetailHeader({
 	// ── Header droit ──────────────────────────────────────────────────────────
 	const headerRight = (
 		<div className='flex items-center gap-1.5'>
+			{/* NOUVEAU : Bouton Facturer placé avant le menu déroulant */}
+			{(canGenerateInvoice || alreadyConverted) && (
+				<Button
+					size='sm'
+					variant={alreadyConverted ? 'secondary' : 'default'}
+					onClick={actions.handleOpenConvert}
+					disabled={actions.isConverting || alreadyConverted}
+					className='gap-1.5'
+				>
+					<Receipt className='h-4 w-4 shrink-0' />
+					<span className='hidden lg:inline'>
+						{alreadyConverted ? 'Facture générée' : 'Facturer'}
+					</span>
+				</Button>
+			)}
+
 			{dropdownItems.length > 0 && (
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>

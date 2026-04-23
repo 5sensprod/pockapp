@@ -859,11 +859,11 @@ export function OrderDetailPage() {
 			>
 				<DialogContent className='sm:max-w-md'>
 					<DialogHeader>
-						<DialogTitle>Générer la facture</DialogTitle>
+						<DialogTitle>Créer la facture</DialogTitle>
 						<DialogDescription>
 							Une facture sera créée à partir du bon de commande{' '}
-							<strong>{order.number}</strong>. Vous pourrez ensuite créer des
-							acomptes et générer la facture de solde depuis la facture.
+							<strong>{order.number}</strong>. Vous pourrez ensuite gérer
+							l'ensemble des paiements depuis la facture.
 						</DialogDescription>
 					</DialogHeader>
 					<div className='mt-2 space-y-1 text-sm'>
@@ -894,7 +894,7 @@ export function OrderDetailPage() {
 							) : (
 								<>
 									<Receipt className='h-4 w-4 mr-1.5' />
-									Générer la facture
+									Créer la facture
 								</>
 							)}
 						</Button>
