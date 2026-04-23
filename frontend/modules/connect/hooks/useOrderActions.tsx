@@ -20,6 +20,8 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 export interface OrderActionsState {
+	/** Retour contextuel : fiche client si from=customer, sinon liste des bons */
+	goBackToContext: (tab?: string) => void
 	// ── États dialogs ──────────────────────────────────────────────────────────
 	emailDialogOpen: boolean
 	setEmailDialogOpen: (v: boolean) => void
@@ -66,6 +68,19 @@ export function useOrderActions(
 	const pb = usePocketBase() as any
 	const navigate = useNavigate()
 	const search = useSearch({ strict: false }) as NavigationSearch
+
+	// Retour contextuel : fiche client si from=customer, sinon liste des bons
+	const goBackToContext = (tab = 'orders') => {
+		if (search.from === 'customer' && search.customerId) {
+			navigate({
+				to: '/connect/customers/$customerId',
+				params: { customerId: search.customerId },
+				search: { tab },
+			})
+		} else {
+			navigate({ to: '/connect/orders' })
+		}
+	}
 
 	// ── États ──────────────────────────────────────────────────────────────────
 	const [isDownloading, setIsDownloading] = useState(false)
@@ -178,7 +193,12 @@ export function useOrderActions(
 		if (!order) return
 		try {
 			await deleteDraft(order.id)
-			onDeleteSuccess()
+			// Si contexte customer → retour fiche client onglet commandes
+			if (search.from === 'customer' && search.customerId) {
+				goBackToContext('orders')
+			} else {
+				onDeleteSuccess()
+			}
 		} catch (err) {
 			console.error('Erreur suppression:', err)
 			toast.error('Erreur lors de la suppression')
@@ -197,26 +217,24 @@ export function useOrderActions(
 			)
 			setConvertDialogOpen(false)
 
-			// Si on vient d'une fiche client → y retourner avec l'onglet Factures actif
-			if (search.from === 'customer' && search.customerId) {
-				navigate({
-					to: '/connect/customers/$customerId',
-					params: { customerId: search.customerId },
-					search: { tab: 'invoices' },
-				})
-			} else {
-				// Sinon → détail de la facture créée
-				navigate({
-					to: '/connect/invoices/$invoiceId',
-					params: { invoiceId: invoice.id },
-				})
-			}
+			// Toujours atterrir sur la facture créée.
+			// Si on vient d'une fiche client, passer le contexte pour que
+			// le ← de InvoiceDetailPage sache où retourner.
+			navigate({
+				to: '/connect/invoices/$invoiceId',
+				params: { invoiceId: invoice.id },
+				search:
+					search.from === 'customer' && search.customerId
+						? { from: 'customer', customerId: search.customerId }
+						: {},
+			})
 		} catch (error: any) {
 			toast.error(error?.message || 'Erreur lors de la création de la facture')
 		}
 	}
 
 	return {
+		goBackToContext,
 		// dialogs
 		emailDialogOpen,
 		setEmailDialogOpen,
