@@ -61,6 +61,8 @@ interface CustomerDetailTabsProps {
 		depositsByParent: Record<string, number>
 	}
 	defaultTab?: string
+	/** Déclenche la vue inline de création de bon de commande */
+	onNewOrder?: () => void
 }
 
 // ============================================================================
@@ -79,10 +81,10 @@ export function CustomerDetailTabs({
 	isLoadingQuotes,
 	stats,
 	defaultTab = 'invoices',
+	onNewOrder,
 }: CustomerDetailTabsProps) {
 	const { goToDetail: goToInvoice } = useDocumentNavigation('invoice')
 	const { goToDetail: goToQuote } = useDocumentNavigation('quote')
-	const { goToDetail: goToOrder } = useDocumentNavigation('order')
 
 	// ── DESIGN DES ONGLETS ───────────────────────────────────────────────────
 	const sharedTabsList = (
@@ -382,11 +384,7 @@ export function CustomerDetailTabs({
 				<Card>
 					<CardHeader className='flex flex-row items-center justify-between pb-4 border-b border-border/40'>
 						{sharedTabsList}
-						<Button
-							size='sm'
-							className='gap-2'
-							onClick={() => goToOrder('new', customerId)}
-						>
+						<Button size='sm' className='gap-2' onClick={() => onNewOrder?.()}>
 							<Plus className='h-4 w-4' />
 							Nouveau bon
 						</Button>
