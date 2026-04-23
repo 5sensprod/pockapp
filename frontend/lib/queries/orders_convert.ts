@@ -32,9 +32,21 @@ export function useConvertOrderToInvoice() {
 			}
 
 			// 2. Creer la facture
-			// items : invoices.items est FieldTypeJson → PocketBase accepte l'objet directement
-			// currency : champ requis sur invoices
-			// source_order_id : lien structuré vers l'order (champ ajouté via migration)
+			// Mapper OrderItem → InvoiceItem :
+			//   description → name
+			//   vat_rate (décimal 0.20) → tva_rate (pourcentage 20)
+			const invoiceItems = (order.items ?? []).map((item: any) => ({
+				name: item.description ?? item.name ?? '',
+				quantity: item.quantity,
+				unit_price_ht: item.unit_price_ht,
+				tva_rate:
+					item.vat_rate != null
+						? Math.round(item.vat_rate * 100) // 0.20 → 20
+						: (item.tva_rate ?? 20),
+				total_ht: item.total_ht,
+				total_ttc: item.total_ttc,
+			}))
+
 			const invoiceData = {
 				invoice_type: 'invoice' as const,
 				date: new Date().toISOString(),
@@ -43,7 +55,7 @@ export function useConvertOrderToInvoice() {
 				issued_by: order.issued_by ?? undefined,
 				status: 'validated' as const,
 				is_paid: false,
-				items: order.items ?? [],
+				items: invoiceItems,
 				total_ht: order.total_ht,
 				total_tva: order.total_tva,
 				total_ttc: order.total_ttc,

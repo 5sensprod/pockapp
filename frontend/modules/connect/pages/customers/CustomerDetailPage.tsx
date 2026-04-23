@@ -106,30 +106,68 @@ export function CustomerDetailPage() {
 	const quotes = quotesData?.items ?? []
 	const consignmentCount = consignmentData?.items?.length ?? 0
 
+	// Précalcule les avoirs par original_invoice_id (sans non-null assertion)
+	const creditNotesByOriginal = invoices
+		.filter(
+			(inv) =>
+				inv.invoice_type === 'credit_note' &&
+				inv.original_invoice_id != null &&
+				inv.original_invoice_id !== '',
+		)
+		.reduce(
+			(acc, inv) => {
+				const origId = inv.original_invoice_id as string
+				acc[origId] = (acc[origId] ?? 0) + Math.abs(inv.total_ttc ?? 0)
+				return acc
+			},
+			{} as Record<string, number>,
+		)
+
+	// Précalcule les acomptes nets (payés et non remboursés) par facture parente
+	const depositsByParent = invoices
+		.filter((inv) => inv.invoice_type === 'deposit' && inv.is_paid)
+		.reduce(
+			(acc, inv) => {
+				const parentId = inv.original_invoice_id
+				if (!parentId) return acc
+				const depositTtc = Math.abs(inv.total_ttc ?? 0)
+				const refunded = creditNotesByOriginal[inv.id] ?? 0
+				const net = Math.max(0, depositTtc - refunded)
+				acc[parentId] = (acc[parentId] ?? 0) + net
+				return acc
+			},
+			{} as Record<string, number>,
+		)
+
 	const stats = {
 		totalInvoices: invoices.length,
 		totalQuotes: quotes.length,
-		totalInvoiced: invoices.reduce((sum, inv) => sum + (inv.total_ttc || 0), 0),
-		// Total encaissé net (Payé - Remboursé)
+		totalInvoiced: invoices.reduce((sum, inv) => sum + (inv.total_ttc ?? 0), 0),
+		// Total encaissé net : deposits nets + factures payées nettes
 		totalPaid: invoices
 			.filter((inv) => inv.is_paid && inv.invoice_type !== 'credit_note')
 			.reduce((sum, inv) => {
-				const total = inv.total_ttc || 0
-				const refunded = (inv as any).credit_notes_total || 0
+				const total = inv.total_ttc ?? 0
+				const refunded =
+					inv.invoice_type === 'deposit'
+						? (creditNotesByOriginal[inv.id] ?? 0)
+						: ((inv as any).credit_notes_total ?? 0)
 				return sum + Math.max(0, total - refunded)
 			}, 0),
 		// Comptage "En attente" (exclut Avoirs et Abandonnées)
 		unpaidCount: invoices.filter((inv) => {
 			if (inv.status === 'draft') return false
 			if (inv.invoice_type === 'credit_note') return false
+			if (inv.invoice_type === 'deposit') return false
 			if (inv.is_paid) return false
-
-			const total = inv.total_ttc || 0
-			const refunded = (inv as any).credit_notes_total || 0
+			const total = inv.total_ttc ?? 0
+			const refunded = (inv as any).credit_notes_total ?? 0
 			const isAbandoned = total > 0 && refunded >= total
 			return !isAbandoned
 		}).length,
 		acceptedQuotes: quotes.filter((q) => q.status === 'accepted').length,
+		// Acomptes nets encaissés par facture parente (pour affichage dans la table)
+		depositsByParent,
 	}
 
 	const customerType = (customer as any)?.customer_type || 'individual'

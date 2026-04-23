@@ -33,7 +33,7 @@ import {
 } from 'lucide-react'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 import { formatCurrency, formatDate } from '../../utils/formatters'
-import { getInvoiceStatus, getQuoteStatus } from '../../utils/statusConfig'
+import { getQuoteStatus } from '../../utils/statusConfig'
 import { ConsignmentTab } from './ConsignmentTab'
 import { CustomerOrdersTab } from './CustomerOrdersTab'
 
@@ -58,6 +58,7 @@ interface CustomerDetailTabsProps {
 		totalPaid: number
 		unpaidCount: number
 		acceptedQuotes: number
+		depositsByParent: Record<string, number>
 	}
 	defaultTab?: string
 }
@@ -169,18 +170,49 @@ export function CustomerDetailTabs({
 										<TableHead>Numéro</TableHead>
 										<TableHead>Date</TableHead>
 										<TableHead>Montant TTC</TableHead>
-										<TableHead>Statut</TableHead>
 										<TableHead>Paiement</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
 									{invoices.map((invoice: InvoiceResponse) => {
-										const statusInfo = getInvoiceStatus(invoice.status)
 										const isCreditNote = invoice.invoice_type === 'credit_note'
+										const isDeposit = invoice.invoice_type === 'deposit'
 										const totalTtc = invoice.total_ttc ?? 0
 										const creditNotesTotal = invoice.credit_notes_total ?? 0
 										const isFullyCancelled =
 											totalTtc > 0 && creditNotesTotal >= totalTtc
+
+										// Acompte remboursé : cherche un avoir lié dans la liste locale
+										const depositRefundedAmount = isDeposit
+											? invoices
+													.filter(
+														(inv) =>
+															inv.invoice_type === 'credit_note' &&
+															inv.original_invoice_id != null &&
+															inv.original_invoice_id === invoice.id,
+													)
+													.reduce(
+														(sum, inv) => sum + Math.abs(inv.total_ttc ?? 0),
+														0,
+													)
+											: 0
+										const isDepositRefunded =
+											isDeposit && depositRefundedAmount >= totalTtc - 0.01
+
+										// Avoir sur acompte : cet avoir porte sur un deposit
+										const isDepositCreditNote =
+											isCreditNote &&
+											invoices.some(
+												(inv) =>
+													inv.id === invoice.original_invoice_id &&
+													inv.invoice_type === 'deposit',
+											)
+
+										// Facture parente avec acompte(s) partiellement encaissé(s)
+										const partialDepositAmount =
+											!isCreditNote && !isDeposit && !invoice.is_paid
+												? (stats.depositsByParent[invoice.id] ?? 0)
+												: 0
 
 										return (
 											<TableRow
@@ -196,15 +228,17 @@ export function CustomerDetailTabs({
 													{formatCurrency(invoice.total_ttc)}
 												</TableCell>
 												<TableCell>
-													<Badge variant={statusInfo.variant}>
-														{statusInfo.label}
-													</Badge>
-												</TableCell>
-												<TableCell>
 													{isCreditNote ? (
 														<span className='flex items-center gap-1 text-purple-600'>
 															<CheckCircle className='h-4 w-4' />
-															Avoir
+															{isDepositCreditNote
+																? 'Avoir sur acompte'
+																: 'Avoir'}
+														</span>
+													) : isDepositRefunded ? (
+														<span className='flex items-center gap-1 text-orange-600'>
+															<XCircle className='h-4 w-4' />
+															Acompte remboursé
 														</span>
 													) : isFullyCancelled ? (
 														invoice.is_paid ? (
@@ -221,13 +255,21 @@ export function CustomerDetailTabs({
 													) : invoice.is_paid ? (
 														<span className='flex items-center gap-1 text-green-600'>
 															<CheckCircle className='h-4 w-4' />
-															Payé
+															{isDeposit ? 'Acompte encaissé' : 'Payé'}
 														</span>
 													) : invoice.status !== 'draft' ? (
-														<span className='flex items-center gap-1 text-orange-600'>
-															<Clock className='h-4 w-4' />
-															En attente
-														</span>
+														partialDepositAmount > 0 ? (
+															<span className='flex items-center gap-1 text-blue-600'>
+																<Clock className='h-4 w-4' />
+																Acompte {formatCurrency(partialDepositAmount)}{' '}
+																encaissé
+															</span>
+														) : (
+															<span className='flex items-center gap-1 text-orange-600'>
+																<Clock className='h-4 w-4' />
+																En attente
+															</span>
+														)
 													) : (
 														<span className='text-muted-foreground'>-</span>
 													)}

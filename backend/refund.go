@@ -45,6 +45,9 @@ type RefundResult struct {
 	OriginalUpdated *models.Record   `json:"original_updated"`
 	CashMovement    *models.Record   `json:"cash_movement,omitempty"`
 	RefundableItems []map[string]any `json:"refundable_items"`
+	// Facture parente mise à jour si l'avoir porte sur un acompte (deposit)
+	// nil si le document remboursé n'est pas un deposit
+	ParentUpdated *models.Record `json:"parent_updated,omitempty"`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -211,11 +214,91 @@ func CreateCreditNote(dao *daos.Dao, input RefundInput, soldByUserID string) (*R
 	// 9) Calculer les items encore remboursables
 	refundableItems := GetRefundableItems(dao, origUpdated)
 
-	return &RefundResult{
+	result := &RefundResult{
 		CreditNote:      credit,
 		OriginalUpdated: origUpdated,
 		RefundableItems: refundableItems,
-	}, nil
+	}
+
+	// 10) Si l'avoir porte sur un acompte (deposit), recalculer la facture parente.
+	//     Un deposit a invoice_type="deposit" ET original_invoice_id → facture générale.
+	//     On recalcule deposits_total_ttc et balance_due sur la parente pour que
+	//     l'état reste cohérent (ex: vente abandonnée après acompte remboursé).
+	if orig.GetString("invoice_type") == "deposit" {
+		parentID := orig.GetString("original_invoice_id")
+		if parentID != "" {
+			parent, err := dao.FindRecordById("invoices", parentID)
+			if err != nil || parent == nil {
+				log.Printf("⚠️ Facture parente introuvable pour le deposit %s (original_invoice_id=%s): %v",
+					orig.GetString("number"), parentID, err)
+			} else {
+				// Recalculer la somme nette des acomptes encore valides :
+				// = somme des deposits payés - somme des avoirs sur ces deposits
+				newDepositsTotal := computeNetDepositsTotal(dao, parentID)
+
+				parentTotal := roundAmount(math.Abs(parent.GetFloat("total_ttc")))
+				newBalanceDue := roundAmount(parentTotal - newDepositsTotal)
+				if newBalanceDue < 0 {
+					newBalanceDue = 0
+				}
+
+				parent.Set("deposits_total_ttc", newDepositsTotal)
+				parent.Set("balance_due", newBalanceDue)
+
+				// Si tous les acomptes ont été remboursés et que la parente
+				// avait été marquée payée par erreur, on retire le flag.
+				if newDepositsTotal == 0 && parent.GetBool("is_paid") {
+					parent.Set("is_paid", false)
+					parent.Set("paid_at", "")
+					log.Printf("⚠️ Facture parente %s dé-marquée payée (tous les acomptes remboursés)",
+						parent.GetString("number"))
+				}
+
+				if err := dao.SaveRecord(parent); err != nil {
+					log.Printf("⚠️ Erreur mise à jour facture parente %s: %v",
+						parent.GetString("number"), err)
+				} else {
+					log.Printf("✅ Facture parente %s recalculée: deposits_total=%.2f€, balance_due=%.2f€",
+						parent.GetString("number"), newDepositsTotal, newBalanceDue)
+					parentUpdated, _ := dao.FindRecordById("invoices", parentID)
+					result.ParentUpdated = parentUpdated
+				}
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// computeNetDepositsTotal calcule la somme nette des acomptes d'une facture parente.
+// Pour chaque deposit lié à la parente, on déduit les avoirs éventuels qui le couvrent.
+// Seuls les deposits effectivement payés (is_paid=true) entrent dans le calcul.
+func computeNetDepositsTotal(dao *daos.Dao, parentID string) float64 {
+	deposits, err := dao.FindRecordsByFilter(
+		"invoices",
+		fmt.Sprintf("invoice_type = 'deposit' && original_invoice_id = '%s'", parentID),
+		"",
+		500,
+		0,
+	)
+	if err != nil {
+		return 0
+	}
+
+	total := 0.0
+	for _, d := range deposits {
+		if !d.GetBool("is_paid") {
+			continue // acompte non encore encaissé → on ne compte pas
+		}
+		depositTTC := roundAmount(math.Abs(d.GetFloat("total_ttc")))
+		// Soustraire les avoirs qui portent sur cet acompte
+		creditNotes := sumCreditNotesForDocument(dao, d.Id)
+		net := roundAmount(depositTTC - creditNotes)
+		if net > 0 {
+			total += net
+		}
+	}
+	return roundAmount(total)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

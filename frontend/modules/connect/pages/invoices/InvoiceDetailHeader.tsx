@@ -1,9 +1,4 @@
 // frontend/modules/connect/pages/invoices/InvoiceDetailHeader.tsx
-//
-// Retourne headerLeft + headerRight pour ConnectModuleShell.
-// Pattern identique à TicketDetailHeader.
-//
-// invoice est optionnel — le hook est appelé avant les guards dans InvoiceDetailPage.
 
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,11 +23,13 @@ import {
 	Banknote,
 	CheckCircle,
 	ChevronDown,
+	CreditCard,
 	Download,
 	Edit,
 	FileText,
 	Loader2,
 	Mail,
+	Plus,
 	Receipt,
 	RefreshCcw,
 	RotateCcw,
@@ -54,6 +51,8 @@ interface InvoiceDetailHeaderProps {
 	search: Record<string, string>
 	depositsTotal?: number
 	balanceDue?: number
+	canGenerateDeposit?: boolean
+	canGenerateBalance?: boolean
 }
 
 interface HeaderSlots {
@@ -72,8 +71,10 @@ export function useInvoiceDetailHeader({
 	remainingAmount,
 	hasCancellationCreditNote,
 	search,
-	depositsTotal, // 👈
-	balanceDue, // 👈
+	depositsTotal,
+	balanceDue,
+	canGenerateDeposit,
+	canGenerateBalance,
 }: InvoiceDetailHeaderProps): HeaderSlots {
 	const navigate = useNavigate()
 
@@ -271,6 +272,34 @@ export function useInvoiceDetailHeader({
 				Enregistrer paiement
 			</DropdownMenuItem>,
 		)
+	}
+
+	// ── Actions Acomptes & Solde ──
+	if (canGenerateDeposit || canGenerateBalance) {
+		dropdownItems.push(<DropdownMenuSeparator key='sep-deposits' />)
+		if (canGenerateDeposit) {
+			dropdownItems.push(
+				<DropdownMenuItem
+					key='create-deposit'
+					onClick={() => actions.setDepositDialogOpen(true)}
+				>
+					<Plus className='h-4 w-4 mr-2' />
+					Demander un acompte
+				</DropdownMenuItem>,
+			)
+		}
+		if (canGenerateBalance) {
+			dropdownItems.push(
+				<DropdownMenuItem
+					key='create-balance'
+					onClick={actions.handleCreateBalanceInvoice}
+					disabled={actions.isCreatingBalanceInvoice}
+				>
+					<CreditCard className='h-4 w-4 mr-2' />
+					Générer la facture de solde
+				</DropdownMenuItem>,
+			)
+		}
 	}
 
 	if (
