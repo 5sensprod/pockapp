@@ -172,6 +172,7 @@ export function CustomerDetailPage() {
 	}
 
 	const [view, setView] = useState<'tabs' | 'new-order'>('tabs')
+	const [activeTab, setActiveTab] = useState(search.tab ?? 'invoices')
 
 	const customerType = (customer as any)?.customer_type || 'individual'
 	const typeDisplay = getCustomerTypeDisplay(customerType)
@@ -504,7 +505,10 @@ export function CustomerDetailPage() {
 				<OrderCreateInline
 					customerId={customerId}
 					customerName={customer.name}
-					onDone={() => setView('tabs')}
+					onDone={(tab) => {
+						if (tab) setActiveTab(tab)
+						setView('tabs')
+					}}
 				/>
 			) : (
 				<CustomerDetailTabs
@@ -518,7 +522,8 @@ export function CustomerDetailPage() {
 					isLoadingInvoices={isLoadingInvoices}
 					isLoadingQuotes={isLoadingQuotes}
 					stats={stats}
-					defaultTab={search.tab ?? 'invoices'}
+					activeTab={activeTab}
+					onTabChange={setActiveTab}
 					onNewOrder={() => setView('new-order')}
 				/>
 			)}

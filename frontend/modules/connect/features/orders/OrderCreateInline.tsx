@@ -51,8 +51,9 @@ const fmt = (amount: number) =>
 interface OrderCreateInlineProps {
 	customerId: string
 	customerName: string
-	/** Appelé après annulation ou création réussie */
-	onDone: () => void
+	/** Appelé après annulation ou création réussie.
+	 *  tab : onglet à activer au retour (ex: 'orders') */
+	onDone: (tab?: string) => void
 }
 
 // ============================================================================
@@ -197,6 +198,7 @@ export function OrderCreateInline({
 		setProductPickerOpen(false)
 		setProductSearch('')
 	}
+
 	const addFreeLine = () => {
 		if (!freeLineDescription.trim()) return
 		setItems((prev) => [
@@ -266,11 +268,10 @@ export function OrderCreateInline({
 				delivery_conditions: deliveryConditions || undefined,
 				notes: notes || undefined,
 			})
-			// Naviguer vers le détail du bon — si confirmé, ouvrir le dialog paiement
 			navigate({
 				to: '/connect/orders/$orderId',
 				params: { orderId: order.id },
-				search: { action: asDraft ? undefined : 'payment' },
+				search: { from: 'customer', customerId },
 			})
 		} catch (err) {
 			console.error('Erreur création BC:', err)
@@ -459,7 +460,11 @@ export function OrderCreateInline({
 
 					{/* ── Actions — dans la card, en bas ───────────────────── */}
 					<section className='p-5 flex items-center justify-end gap-3'>
-						<Button variant='outline' onClick={onDone} disabled={isPending}>
+						<Button
+							variant='outline'
+							onClick={() => onDone()}
+							disabled={isPending}
+						>
 							Annuler
 						</Button>
 						<Button

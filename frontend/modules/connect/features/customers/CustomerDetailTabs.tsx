@@ -60,7 +60,8 @@ interface CustomerDetailTabsProps {
 		acceptedQuotes: number
 		depositsByParent: Record<string, number>
 	}
-	defaultTab?: string
+	activeTab?: string
+	onTabChange?: (tab: string) => void
 	/** Déclenche la vue inline de création de bon de commande */
 	onNewOrder?: () => void
 }
@@ -80,7 +81,8 @@ export function CustomerDetailTabs({
 	isLoadingInvoices,
 	isLoadingQuotes,
 	stats,
-	defaultTab = 'invoices',
+	activeTab = 'invoices',
+	onTabChange,
 	onNewOrder,
 }: CustomerDetailTabsProps) {
 	const { goToDetail: goToInvoice } = useDocumentNavigation('invoice')
@@ -133,7 +135,7 @@ export function CustomerDetailTabs({
 	)
 
 	return (
-		<Tabs defaultValue={defaultTab} className='space-y-4'>
+		<Tabs value={activeTab} onValueChange={onTabChange} className='space-y-4'>
 			{/* ── Tab Factures ─────────────────────────────────────────────────── */}
 			<TabsContent value='invoices' className='mt-0'>
 				<Card>
