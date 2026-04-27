@@ -1015,69 +1015,23 @@ export function InvoiceDetailPage() {
 					</DialogHeader>
 					<div className='space-y-4 py-4'>
 						<div className='space-y-2'>
-							<Label>Mode</Label>
-							<div className='flex gap-2'>
-								<Button
-									size='sm'
-									variant={
-										actions.paymentMode === 'full' ? 'default' : 'outline'
-									}
-									onClick={() => actions.setPaymentMode('full')}
-								>
-									Paiement complet
-								</Button>
-								<Button
-									size='sm'
-									variant={
-										actions.paymentMode === 'deposit' ? 'default' : 'outline'
-									}
-									onClick={() => actions.setPaymentMode('deposit')}
-								>
-									Acompte
-								</Button>
-							</div>
+							<Label>Moyen de paiement *</Label>
+							<Select
+								value={actions.selectedMethodId}
+								onValueChange={actions.setSelectedMethodId}
+							>
+								<SelectTrigger>
+									<SelectValue placeholder='Sélectionner...' />
+								</SelectTrigger>
+								<SelectContent>
+									{actions.enabledMethods.map((m) => (
+										<SelectItem key={m.id} value={m.id}>
+											{m.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 						</div>
-						{actions.paymentMode === 'full' && (
-							<div className='space-y-2'>
-								<Label>Moyen de paiement *</Label>
-								<Select
-									value={actions.selectedMethodId}
-									onValueChange={actions.setSelectedMethodId}
-								>
-									<SelectTrigger>
-										<SelectValue placeholder='Sélectionner...' />
-									</SelectTrigger>
-									<SelectContent>
-										{actions.enabledMethods.map((m) => (
-											<SelectItem key={m.id} value={m.id}>
-												{m.name}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-						)}
-						{actions.paymentMode === 'deposit' && (
-							<div className='space-y-2'>
-								<Label>Pourcentage acompte</Label>
-								<div className='flex items-center gap-2'>
-									<input
-										type='range'
-										min={10}
-										max={90}
-										step={5}
-										value={actions.depositPercentage}
-										onChange={(e) =>
-											actions.setDepositPercentage(Number(e.target.value))
-										}
-										className='flex-1'
-									/>
-									<span className='w-10 text-sm font-semibold'>
-										{actions.depositPercentage}%
-									</span>
-								</div>
-							</div>
-						)}
 					</div>
 					<DialogFooter>
 						<Button
@@ -1088,24 +1042,12 @@ export function InvoiceDetailPage() {
 						</Button>
 						<Button
 							onClick={actions.handleRecordPayment}
-							disabled={
-								actions.paymentMode === 'full'
-									? !actions.selectedMethodId || actions.isRecordingPayment
-									: actions.isCreatingDeposit
-							}
-							className={
-								actions.paymentMode === 'full'
-									? 'bg-green-600 hover:bg-green-700'
-									: ''
-							}
+							disabled={!actions.selectedMethodId || actions.isRecordingPayment}
+							className='bg-green-600 hover:bg-green-700'
 						>
-							{actions.paymentMode === 'full'
-								? actions.isRecordingPayment
-									? 'Enregistrement...'
-									: 'Confirmer le paiement'
-								: actions.isCreatingDeposit
-									? 'Création...'
-									: `Créer l'acompte ${actions.depositPercentage}%`}
+							{actions.isRecordingPayment
+								? 'Enregistrement...'
+								: 'Confirmer le paiement'}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
