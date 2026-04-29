@@ -49,7 +49,9 @@ import {
 	ClipboardList,
 	CreditCard,
 	FileText,
+	PlusCircle,
 	RefreshCcw,
+	Trash2,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
@@ -110,6 +112,244 @@ function getSoldByLabel(invoice: any): string {
 		soldBy?.username ||
 		soldBy?.email ||
 		(invoice?.sold_by ? String(invoice.sold_by) : '-')
+	)
+}
+
+// ── PaymentDialogBody — Split paiement ───────────────────────────────────────
+type SplitLine = { id: string; methodId: string; amount: string }
+
+const METHOD_MAPPING: Record<string, string> = {
+	card: 'cb',
+	cash: 'especes',
+	check: 'cheque',
+	transfer: 'virement',
+}
+
+function newLine(): SplitLine {
+	return { id: crypto.randomUUID(), methodId: '', amount: '' }
+}
+
+function PaymentDialogBody({
+	invoice,
+	actions,
+}: {
+	invoice: any
+	actions: any
+}) {
+	const totalTtc: number =
+		invoice.invoice_type === 'deposit'
+			? invoice.total_ttc
+			: invoice.deposits_total_ttc
+				? (invoice.balance_due ?? invoice.total_ttc)
+				: invoice.total_ttc
+
+	const [isSplit, setIsSplit] = useState(false)
+	const [lines, setLines] = useState<SplitLine[]>([newLine(), newLine()])
+	const [isSubmitting, setIsSubmitting] = useState(false)
+
+	// Calculs split
+	const allocatedTotal = lines.reduce(
+		(sum, l) => sum + (Number.parseFloat(l.amount) || 0),
+		0,
+	)
+	const remaining = round2(totalTtc - allocatedTotal)
+	const splitValid =
+		lines.every((l) => l.methodId && Number.parseFloat(l.amount) > 0) &&
+		Math.abs(remaining) < 0.01
+
+	const addLine = () => setLines((prev) => [...prev, newLine()])
+
+	const removeLine = (id: string) =>
+		setLines((prev) => prev.filter((l) => l.id !== id))
+
+	const updateLine = (
+		id: string,
+		field: 'methodId' | 'amount',
+		value: string,
+	) =>
+		setLines((prev) =>
+			prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)),
+		)
+
+	// Auto-remplir le dernier montant au blur si reste > 0
+	const handleAmountBlur = (id: string) => {
+		const idx = lines.findIndex((l) => l.id === id)
+		if (idx === lines.length - 1 && remaining > 0) {
+			updateLine(id, 'amount', String(remaining))
+		}
+	}
+
+	const buildSplitPayments = () =>
+		lines.map((l) => {
+			const m = actions.enabledMethods.find((m: any) => m.id === l.methodId)
+			const code =
+				m?.type === 'default' ? METHOD_MAPPING[m.code] || m.code : 'autre'
+			const method_label = m?.type === 'custom' ? m.name : undefined
+			return {
+				method: code,
+				...(method_label && { method_label }),
+				amount: Number.parseFloat(l.amount),
+			}
+		})
+
+	const handleConfirm = async () => {
+		if (isSubmitting) return
+		setIsSubmitting(true)
+		try {
+			if (isSplit) {
+				if (!splitValid) return
+				// Appel direct à recordPayment avec payment_method="multi"
+				await actions.handleRecordPaymentSplit(buildSplitPayments())
+			} else {
+				await actions.handleRecordPayment()
+			}
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const isPending = isSubmitting || actions.isRecordingPayment
+
+	return (
+		<>
+			<div className='space-y-4 py-4'>
+				{/* Toggle simple / split */}
+				<div className='flex rounded-md overflow-hidden border border-border text-xs font-medium'>
+					<button
+						type='button'
+						className={`flex-1 px-3 py-2 transition-colors ${!isSplit ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+						onClick={() => setIsSplit(false)}
+					>
+						Paiement simple
+					</button>
+					<button
+						type='button'
+						className={`flex-1 px-3 py-2 transition-colors ${isSplit ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+						onClick={() => setIsSplit(true)}
+					>
+						Paiement fractionné
+					</button>
+				</div>
+
+				{!isSplit ? (
+					/* ── Mode simple ─────────────────────────────── */
+					<div className='space-y-2'>
+						<Label>Moyen de paiement *</Label>
+						<Select
+							value={actions.selectedMethodId}
+							onValueChange={actions.setSelectedMethodId}
+						>
+							<SelectTrigger>
+								<SelectValue placeholder='Sélectionner...' />
+							</SelectTrigger>
+							<SelectContent>
+								{actions.enabledMethods.map((m: any) => (
+									<SelectItem key={m.id} value={m.id}>
+										{m.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+				) : (
+					/* ── Mode split ──────────────────────────────── */
+					<div className='space-y-3'>
+						<div className='flex items-center justify-between'>
+							<Label>Répartition du paiement</Label>
+							<span
+								className={`text-xs font-semibold ${Math.abs(remaining) < 0.01 ? 'text-emerald-600' : remaining < 0 ? 'text-destructive' : 'text-amber-600'}`}
+							>
+								{Math.abs(remaining) < 0.01
+									? '✓ Soldé'
+									: remaining > 0
+										? `Reste ${formatCurrency(remaining)}`
+										: `Dépassement ${formatCurrency(Math.abs(remaining))}`}
+							</span>
+						</div>
+
+						<div className='space-y-2'>
+							{lines.map((line) => (
+								<div key={line.id} className='flex gap-2 items-center'>
+									<Select
+										value={line.methodId}
+										onValueChange={(v) => updateLine(line.id, 'methodId', v)}
+									>
+										<SelectTrigger className='flex-1 h-9'>
+											<SelectValue placeholder='Moyen...' />
+										</SelectTrigger>
+										<SelectContent>
+											{actions.enabledMethods.map((m: any) => (
+												<SelectItem key={m.id} value={m.id}>
+													{m.name}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+									<Input
+										type='number'
+										min={0.01}
+										step={0.01}
+										placeholder='0.00'
+										value={line.amount}
+										onChange={(e) =>
+											updateLine(line.id, 'amount', e.target.value)
+										}
+										onBlur={() => handleAmountBlur(line.id)}
+										className='w-28 h-9 text-right'
+									/>
+									<span className='text-sm text-muted-foreground'>€</span>
+									{lines.length > 2 && (
+										<button
+											type='button'
+											onClick={() => removeLine(line.id)}
+											className='text-muted-foreground hover:text-destructive transition-colors'
+										>
+											<Trash2 className='h-4 w-4' />
+										</button>
+									)}
+								</div>
+							))}
+						</div>
+
+						<button
+							type='button'
+							onClick={addLine}
+							className='flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors'
+						>
+							<PlusCircle className='h-3.5 w-3.5' />
+							Ajouter un moyen de paiement
+						</button>
+
+						{/* Récap total */}
+						<div className='bg-muted/50 rounded-lg p-3 text-sm flex justify-between'>
+							<span className='text-muted-foreground'>Total facture</span>
+							<span className='font-semibold'>
+								{formatCurrency(totalTtc, invoice.currency)}
+							</span>
+						</div>
+					</div>
+				)}
+			</div>
+
+			<DialogFooter>
+				<Button
+					variant='outline'
+					onClick={() => actions.setPaymentDialogOpen(false)}
+					disabled={isPending}
+				>
+					Annuler
+				</Button>
+				<Button
+					onClick={handleConfirm}
+					disabled={
+						isPending || (isSplit ? !splitValid : !actions.selectedMethodId)
+					}
+					className='bg-green-600 hover:bg-green-700'
+				>
+					{isPending ? 'Enregistrement...' : 'Confirmer le paiement'}
+				</Button>
+			</DialogFooter>
+		</>
 	)
 }
 
@@ -339,9 +579,32 @@ export function InvoiceDetailPage() {
 											<p className='text-sm text-muted-foreground'>
 												Moyen de paiement
 											</p>
-											<p className='font-medium'>
-												{formatPaymentMethod((invoice as any).payment_method)}
-											</p>
+											{(invoice as any).payment_method === 'multi' &&
+											Array.isArray((invoice as any).split_payments) &&
+											(invoice as any).split_payments.length > 0 ? (
+												<div className='space-y-0.5'>
+													{(
+														(invoice as any).split_payments as {
+															method: string
+															method_label?: string
+															amount: number
+														}[]
+													).map((sp, i) => (
+														<p
+															key={`${sp.method}-${i}`}
+															className='font-medium text-sm'
+														>
+															{sp.method_label ??
+																formatPaymentMethod(sp.method as any)}{' '}
+															— {sp.amount.toFixed(2)} €
+														</p>
+													))}
+												</div>
+											) : (
+												<p className='font-medium'>
+													{formatPaymentMethod((invoice as any).payment_method)}
+												</p>
+											)}
 										</div>
 										<div>
 											<p className='text-sm text-muted-foreground'>Payée le</p>
@@ -1005,7 +1268,7 @@ export function InvoiceDetailPage() {
 				open={actions.paymentDialogOpen}
 				onOpenChange={actions.setPaymentDialogOpen}
 			>
-				<DialogContent>
+				<DialogContent className='sm:max-w-lg'>
 					<DialogHeader>
 						<DialogTitle>Enregistrer un paiement</DialogTitle>
 						<DialogDescription>
@@ -1013,43 +1276,7 @@ export function InvoiceDetailPage() {
 							{formatCurrency(invoice.total_ttc, invoice.currency)}
 						</DialogDescription>
 					</DialogHeader>
-					<div className='space-y-4 py-4'>
-						<div className='space-y-2'>
-							<Label>Moyen de paiement *</Label>
-							<Select
-								value={actions.selectedMethodId}
-								onValueChange={actions.setSelectedMethodId}
-							>
-								<SelectTrigger>
-									<SelectValue placeholder='Sélectionner...' />
-								</SelectTrigger>
-								<SelectContent>
-									{actions.enabledMethods.map((m) => (
-										<SelectItem key={m.id} value={m.id}>
-											{m.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-					</div>
-					<DialogFooter>
-						<Button
-							variant='outline'
-							onClick={() => actions.setPaymentDialogOpen(false)}
-						>
-							Annuler
-						</Button>
-						<Button
-							onClick={actions.handleRecordPayment}
-							disabled={!actions.selectedMethodId || actions.isRecordingPayment}
-							className='bg-green-600 hover:bg-green-700'
-						>
-							{actions.isRecordingPayment
-								? 'Enregistrement...'
-								: 'Confirmer le paiement'}
-						</Button>
-					</DialogFooter>
+					<PaymentDialogBody invoice={invoice} actions={actions} />
 				</DialogContent>
 			</Dialog>
 

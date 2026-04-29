@@ -898,49 +898,92 @@ export function InvoicePdfDocument({
 					</View>
 				)}
 
-				{invoice.is_paid && invoice.payment_method && (
-					<View
-						style={{
-							marginTop: 12,
-							padding: 8,
-							borderWidth: 0.5,
-							borderColor: '#ddd',
-							borderStyle: 'solid',
-							borderRadius: 4,
-							flexDirection: 'row',
-							alignItems: 'center',
-							gap: 8,
-						}}
-					>
-						<Text style={{ fontSize: 10, fontWeight: 'bold' }}>
-							Mode de règlement :
-						</Text>
-						<Text style={{ fontSize: 10 }}>
-							{(() => {
-								if (invoice.payment_method === 'autre') {
-									return (invoice as any).payment_method_label || 'Autre'
-								}
-								const labels: Record<string, string> = {
-									virement: 'Virement bancaire',
-									cb: 'Carte bancaire',
-									especes: 'Espèces',
-									cheque: 'Chèque',
-								}
-								return labels[invoice.payment_method] ?? invoice.payment_method
-							})()}
-						</Text>
-						{invoice.paid_at && (
-							<Text style={{ fontSize: 10, color: '#666' }}>
-								— le{' '}
-								{new Date(invoice.paid_at).toLocaleDateString('fr-FR', {
+				{invoice.is_paid &&
+					invoice.payment_method &&
+					(() => {
+						const PAYMENT_LABELS: Record<string, string> = {
+							virement: 'Virement bancaire',
+							cb: 'Carte bancaire',
+							especes: 'Espèces',
+							cheque: 'Chèque',
+							autre: 'Autre',
+						}
+						const formatMethod = (method: string, label?: string) => {
+							if (label) return label
+							if (method === 'autre') return 'Autre'
+							return PAYMENT_LABELS[method] ?? method
+						}
+						const paidAtLabel = invoice.paid_at
+							? new Date(invoice.paid_at).toLocaleDateString('fr-FR', {
 									day: '2-digit',
 									month: '2-digit',
 									year: 'numeric',
-								})}
-							</Text>
-						)}
-					</View>
-				)}
+								})
+							: null
+						const splitPayments: {
+							method: string
+							method_label?: string
+							amount: number
+						}[] = (invoice as any).split_payments ?? []
+						const paymentMethodRaw = invoice.payment_method as string
+						const isSplit =
+							paymentMethodRaw === 'multi' && splitPayments.length > 0
+
+						return (
+							<View
+								style={{
+									marginTop: 12,
+									padding: 8,
+									borderWidth: 0.5,
+									borderColor: '#ddd',
+									borderStyle: 'solid',
+									borderRadius: 4,
+									gap: 4,
+								}}
+							>
+								<View
+									style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+								>
+									<Text style={{ fontSize: 10, fontWeight: 'bold' }}>
+										Mode de règlement :
+									</Text>
+									{!isSplit && (
+										<Text style={{ fontSize: 10 }}>
+											{formatMethod(
+												invoice.payment_method,
+												(invoice as any).payment_method_label,
+											)}
+										</Text>
+									)}
+									{paidAtLabel && (
+										<Text style={{ fontSize: 10, color: '#666' }}>
+											— le {paidAtLabel}
+										</Text>
+									)}
+								</View>
+
+								{isSplit &&
+									splitPayments.map((sp, idx) => (
+										<View
+											key={`${sp.method}-${sp.method_label ?? ''}-${idx}`}
+											style={{
+												flexDirection: 'row',
+												justifyContent: 'space-between',
+												paddingLeft: 8,
+												paddingTop: idx === 0 ? 2 : 0,
+											}}
+										>
+											<Text style={{ fontSize: 10, color: '#444' }}>
+												{formatMethod(sp.method, sp.method_label)}
+											</Text>
+											<Text style={{ fontSize: 10, fontWeight: 'bold' }}>
+												{sp.amount.toFixed(2)} €
+											</Text>
+										</View>
+									))}
+							</View>
+						)
+					})()}
 
 				{(company?.iban || company?.bic || company?.bank_name) && (
 					<View style={styles.bankBlock}>

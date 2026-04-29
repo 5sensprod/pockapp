@@ -107,6 +107,9 @@ export interface InvoiceActionsState {
 	handleMarkAsSent: () => Promise<void>
 	handleOpenPaymentDialog: () => void
 	handleRecordPayment: () => Promise<void>
+	handleRecordPaymentSplit: (
+		splitPayments: { method: string; methodLabel?: string; amount: number }[],
+	) => Promise<void>
 	handleOpenCancelDialog: () => void
 	handleCancelInvoice: () => Promise<void>
 	handleOpenDeleteDraft: () => void
@@ -377,6 +380,38 @@ export function useInvoiceActions(
 		}
 	}
 
+	// ── Paiement fractionné (split) ────────────────────────────────────────────
+	const handleRecordPaymentSplit = async (
+		splitPayments: { method: string; methodLabel?: string; amount: number }[],
+	) => {
+		if (!invoice) return
+		try {
+			await recordPayment.mutateAsync({
+				invoiceId: invoice.id,
+				splitPayments,
+			})
+			setPaymentDialogOpen(false)
+			toast.success('Paiement fractionné enregistré')
+
+			if (getAppPosToken() && invoice.items?.length) {
+				const stockItems = buildStockItems(invoice.items)
+				if (stockItems.length > 0) {
+					try {
+						await decrementAppPosProductsStock(stockItems)
+						toast.success('Stock synchronisé')
+					} catch (err) {
+						console.error('Erreur synchro stock AppPOS:', err)
+						toast.warning(
+							'Paiement enregistré mais erreur de synchronisation du stock',
+						)
+					}
+				}
+			}
+		} catch (err: any) {
+			toast.error(err?.message || "Erreur lors de l'enregistrement du paiement")
+		}
+	}
+
 	// ── Avoir / annulation ─────────────────────────────────────────────────────
 	const handleOpenCancelDialog = () => {
 		setCancelReason('')
@@ -550,6 +585,7 @@ export function useInvoiceActions(
 		handleMarkAsSent,
 		handleOpenPaymentDialog,
 		handleRecordPayment,
+		handleRecordPaymentSplit,
 		handleOpenCancelDialog,
 		handleCancelInvoice,
 		handleOpenDeleteDraft,

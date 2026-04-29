@@ -21,10 +21,17 @@ import (
 // TYPES
 // ============================================================================
 
+type SplitPayment struct {
+	Method      string  `json:"method"`
+	MethodLabel string  `json:"method_label,omitempty"`
+	Amount      float64 `json:"amount"`
+}
+
 type PayInvoiceInput struct {
-	PaymentMethod      string // "card", "cash", "check", "transfer", "autre"
-	PaymentMethodLabel string // Libellé custom si PaymentMethod == "autre"
-	PaidAt             string // ISO8601 optionnel — défaut: maintenant
+	PaymentMethod      string         // "card", "cash", "check", "transfer", "autre", "multi"
+	PaymentMethodLabel string         // Libellé custom si PaymentMethod == "autre"
+	PaidAt             string         // ISO8601 optionnel — défaut: maintenant
+	SplitPayments      []SplitPayment // Renseigné si PaymentMethod == "multi"
 }
 
 type PayInvoiceResult struct {
@@ -89,6 +96,9 @@ func RecordPayment(dao *daos.Dao, invoiceID string, input PayInvoiceInput, soldB
 	}
 	if input.PaymentMethodLabel != "" {
 		invoice.Set("payment_method_label", input.PaymentMethodLabel)
+	}
+	if len(input.SplitPayments) > 0 {
+		invoice.Set("split_payments", input.SplitPayments)
 	}
 
 	if err := dao.SaveRecord(invoice); err != nil {

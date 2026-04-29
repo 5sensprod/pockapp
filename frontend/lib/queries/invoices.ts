@@ -611,12 +611,15 @@ export function useRecordPayment() {
 			paymentMethod,
 			paymentMethodLabel,
 			paidAt,
+			splitPayments,
 		}: {
 			invoiceId: string
 			paymentMethod?: string
 			paymentMethodLabel?: string
 			paidAt?: string
+			splitPayments?: { method: string; methodLabel?: string; amount: number }[]
 		}) => {
+			const isSplit = splitPayments && splitPayments.length > 1
 			const response = await fetch(`/api/invoices/${invoiceId}/pay`, {
 				method: 'POST',
 				headers: {
@@ -624,9 +627,10 @@ export function useRecordPayment() {
 					Authorization: pb.authStore.token,
 				},
 				body: JSON.stringify({
-					payment_method: paymentMethod || 'autre',
-					payment_method_label: paymentMethodLabel || '',
+					payment_method: isSplit ? 'multi' : paymentMethod || 'autre',
+					payment_method_label: isSplit ? '' : paymentMethodLabel || '',
 					paid_at: paidAt || '',
+					...(isSplit && { split_payments: splitPayments }),
 				}),
 			})
 

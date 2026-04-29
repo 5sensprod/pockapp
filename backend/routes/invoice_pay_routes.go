@@ -22,9 +22,16 @@ import (
 // ============================================================================
 
 type PayInvoiceInput struct {
-	PaymentMethod      string `json:"payment_method"`
-	PaymentMethodLabel string `json:"payment_method_label"`
-	PaidAt             string `json:"paid_at"` // ISO8601 optionnel
+	PaymentMethod      string              `json:"payment_method"`
+	PaymentMethodLabel string              `json:"payment_method_label"`
+	PaidAt             string              `json:"paid_at"` // ISO8601 optionnel
+	SplitPayments      []SplitPaymentInput `json:"split_payments"`
+}
+
+type SplitPaymentInput struct {
+	Method      string  `json:"method"`
+	MethodLabel string  `json:"method_label"`
+	Amount      float64 `json:"amount"`
 }
 
 // ============================================================================
@@ -69,6 +76,7 @@ func RegisterInvoicePayRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			PaymentMethod:      payload.PaymentMethod,
 			PaymentMethodLabel: payload.PaymentMethodLabel,
 			PaidAt:             payload.PaidAt,
+			SplitPayments:      toBackendSplitPayments(payload.SplitPayments),
 		}, soldByID)
 
 		if err != nil {
@@ -137,4 +145,20 @@ func RegisterInvoicePayRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 
 		return c.JSON(http.StatusOK, stats)
 	}, apis.RequireRecordAuth())
+}
+
+// toBackendSplitPayments convertit les DTOs de la route vers le type backend
+func toBackendSplitPayments(inputs []SplitPaymentInput) []backend.SplitPayment {
+	if len(inputs) == 0 {
+		return nil
+	}
+	result := make([]backend.SplitPayment, len(inputs))
+	for i, sp := range inputs {
+		result[i] = backend.SplitPayment{
+			Method:      sp.Method,
+			MethodLabel: sp.MethodLabel,
+			Amount:      sp.Amount,
+		}
+	}
+	return result
 }

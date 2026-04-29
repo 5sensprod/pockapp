@@ -131,6 +131,11 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 						Values: []string{"virement", "cb", "especes", "cheque", "autre", "multi"},
 					},
 				},
+				&schema.SchemaField{
+					Name:    "split_payments",
+					Type:    schema.FieldTypeJson,
+					Options: &schema.JsonOptions{MaxSize: 65536},
+				},
 
 				// === Contenu ===
 				&schema.SchemaField{
@@ -376,6 +381,17 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 				log.Println("🛠 Fix payment_method: ajout de la valeur multi (split payment)")
 			}
 		}
+	}
+
+	// 🆕 Champ split_payments (JSON) — détail des lignes pour payment_method = "multi"
+	if f := collection.Schema.GetFieldByName("split_payments"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:    "split_payments",
+			Type:    schema.FieldTypeJson,
+			Options: &schema.JsonOptions{MaxSize: 65536},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ split_payments (JSON)")
 	}
 
 	// 1) Fixer la self-relation original_invoice_id → invoices
