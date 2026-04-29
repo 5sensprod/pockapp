@@ -439,12 +439,12 @@ export function useInventorySessionDetail(sessionId: string | undefined) {
 // ============================================================================
 // HOOK: Historique des sessions
 // ============================================================================
-export function useInventoryHistory() {
+export function useInventoryHistory(page = 1) {
 	const pb = usePocketBase()
 
 	return useQuery({
-		queryKey: [...inventoryKeys.all, 'history'],
-		queryFn: () => getInventorySessionHistory(pb),
+		queryKey: [...inventoryKeys.all, 'history', page],
+		queryFn: () => getInventorySessionHistory(pb, page, 20),
 		staleTime: 30 * 1000,
 		refetchOnWindowFocus: false,
 	})

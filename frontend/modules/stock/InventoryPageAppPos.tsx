@@ -1119,8 +1119,11 @@ function SessionDetailView({
 }
 
 function InventoryHistoryView({ onBack }: { onBack: () => void }) {
-	const { data, isLoading } = useInventoryHistory()
+	const [page, setPage] = useState(1)
+	const { data, isLoading } = useInventoryHistory(page)
+
 	const sessions = data?.items ?? []
+	const totalPages = data?.totalPages ?? 1
 	const [selectedSession, setSelectedSession] = useState<{
 		id: string
 		date: string
@@ -1319,6 +1322,33 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 					</div>
 				)}
 			</div>
+
+			{/* --- NOUVEAU : Contrôles de pagination --- */}
+			{totalPages > 1 && (
+				<div className='flex items-center justify-between px-6 py-4 border-t'>
+					<Button
+						variant='outline'
+						size='sm'
+						onClick={() => setPage((p) => Math.max(1, p - 1))}
+						disabled={page === 1 || isLoading}
+					>
+						Précédent
+					</Button>
+
+					<span className='text-sm text-muted-foreground'>
+						Page {page} sur {totalPages}
+					</span>
+
+					<Button
+						variant='outline'
+						size='sm'
+						onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+						disabled={page === totalPages || isLoading}
+					>
+						Suivant
+					</Button>
+				</div>
+			)}
 		</div>
 	)
 }
