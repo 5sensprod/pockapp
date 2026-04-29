@@ -264,7 +264,18 @@ export function useInventorySession(sessionId: string | undefined) {
 	const cancelSession = useMutation({
 		mutationFn: () => {
 			if (!sessionId) throw new Error('Pas de session active')
-			return cancelInventorySession(pb, sessionId)
+			if (!summary) throw new Error('Résumé de session indisponible')
+
+			const categoryNames = [
+				...new Set(entries.map((e) => e.category_name).filter(Boolean)),
+			].sort()
+
+			return cancelInventorySession(pb, sessionId, {
+				totalProducts: summary.totalProducts,
+				countedProducts: summary.countedProducts,
+				totalGaps: summary.totalGaps.length,
+				categoryNames,
+			})
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: inventoryKeys.all })

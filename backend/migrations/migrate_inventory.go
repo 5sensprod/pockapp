@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
@@ -291,5 +292,100 @@ func ensureInventoryEntriesCollection(app *pocketbase.PocketBase) error {
 	}
 
 	log.Printf("✅ Collection %s créée avec succès", collectionName)
+	return nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// backfillInventoryStats
+// Parcourt les sessions dont les stats sont à 0 et les recalcule en lisant
+// les produits dans inventory_entries.
+// ─────────────────────────────────────────────────────────────────────────────
+func backfillInventoryStats(app *pocketbase.PocketBase) error {
+	log.Println("🔄 Démarrage du rattrapage des statistiques d'inventaire...")
+
+	// 1. Récupérer les sessions (cancelled ou completed) avec 0 produit dans les stats
+	var sessions []*models.Record
+	err := app.Dao().RecordQuery("inventory_sessions").
+		AndWhere(dbx.In("status", "cancelled", "completed")).
+		AndWhere(dbx.NewExp("stats_total_products = 0 OR stats_total_products IS NULL")).
+		All(&sessions)
+
+	if err != nil {
+		return err
+	}
+
+	if len(sessions) == 0 {
+		log.Println("✅ Aucune session à rattraper.")
+		return nil
+	}
+
+	log.Printf("🛠️ %d session(s) à mettre à jour...", len(sessions))
+
+	// 2. Pour chaque session, calculer les vraies statistiques
+	for _, session := range sessions {
+		sessionID := session.Id
+
+		// Récupérer toutes les entrées de cette session
+		var entries []*models.Record
+		err := app.Dao().RecordQuery("inventory_entries").
+			AndWhere(dbx.HashExp{"session_id": sessionID}).
+			All(&entries)
+
+		if err != nil {
+			log.Printf("❌ Erreur lecture entrées pour session %s: %v", sessionID, err)
+			continue
+		}
+
+		totalProducts := len(entries)
+		if totalProducts == 0 {
+			continue // La session est vraiment vide, on l'ignore
+		}
+
+		countedProducts := 0
+		gapsCount := 0
+		categoryMap := make(map[string]bool)
+
+		// Parcourir les produits pour faire les comptes
+		for _, entry := range entries {
+			// Lister les catégories uniques
+			catName := entry.GetString("category_name")
+			if catName != "" {
+				categoryMap[catName] = true
+			}
+
+			// Vérifier les produits comptés et les écarts
+			if entry.GetString("status") == "counted" {
+				countedProducts++
+
+				// PocketBase stocke les nombres en float64
+				stockTheorique := entry.GetFloat("stock_theorique")
+				stockCompte := entry.GetFloat("stock_compte")
+
+				if stockCompte != stockTheorique {
+					gapsCount++
+				}
+			}
+		}
+
+		// Convertir la map de catégories en tableau de strings
+		var categoryNames []string
+		for cat := range categoryMap {
+			categoryNames = append(categoryNames, cat)
+		}
+
+		// 3. Sauvegarder les bons chiffres dans la session
+		session.Set("stats_total_products", totalProducts)
+		session.Set("stats_counted_products", countedProducts)
+		session.Set("stats_total_gaps", gapsCount)
+		session.Set("stats_category_names", categoryNames)
+
+		if err := app.Dao().SaveRecord(session); err != nil {
+			log.Printf("❌ Erreur sauvegarde session %s: %v", sessionID, err)
+		} else {
+			log.Printf("✅ Session %s réparée : %d produits trouvés", sessionID, totalProducts)
+		}
+	}
+
+	log.Println("🎉 Rattrapage terminé !")
 	return nil
 }

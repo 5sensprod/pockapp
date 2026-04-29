@@ -1236,7 +1236,9 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 														: 'bg-muted text-muted-foreground',
 												)}
 											>
-												{session.status === 'completed' ? 'Complété' : 'Annulé'}
+												{session.status === 'completed'
+													? 'Complété'
+													: `Interrompu (${progressPct}% fait)`}
 											</span>
 										</div>
 

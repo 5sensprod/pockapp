@@ -63,6 +63,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// sessions d'abord — entries dépend de son ID via RelationField
 		ensureInventorySessionsCollection,
 		ensureInventoryEntriesCollection,
+		backfillInventoryStats,
 
 		FixInventoryCollectionFields,
 		AddDepositFieldsToInvoices,

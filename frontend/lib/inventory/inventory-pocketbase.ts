@@ -181,15 +181,24 @@ export async function completeInventorySessionWithStats(
 export async function cancelInventorySession(
 	pb: PocketBase,
 	sessionId: string,
+	stats: {
+		totalProducts: number
+		countedProducts: number
+		totalGaps: number
+		categoryNames: string[]
+	},
 ): Promise<InventorySession> {
 	return pb
 		.collection(INVENTORY_SESSIONS_COLLECTION)
 		.update<InventorySession>(sessionId, {
 			status: 'cancelled',
 			completed_at: new Date().toISOString(),
+			stats_total_products: stats.totalProducts,
+			stats_counted_products: stats.countedProducts,
+			stats_total_gaps: stats.totalGaps,
+			stats_category_names: stats.categoryNames,
 		})
 }
-
 // ============================================================================
 // ENTRÉES
 // ============================================================================
