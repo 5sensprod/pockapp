@@ -469,6 +469,7 @@ function SessionOverviewView({
 	onSelectCategory,
 	onComplete,
 	onCancel,
+	onBack,
 	isCompleting,
 	isCancelling,
 }: {
@@ -479,6 +480,7 @@ function SessionOverviewView({
 	onCancel: () => void
 	isCompleting: boolean
 	isCancelling: boolean
+	onBack: () => void
 }) {
 	const isValidated = (catId: string) =>
 		session.validated_category_ids?.includes(catId) ?? false
@@ -491,6 +493,17 @@ function SessionOverviewView({
 	return (
 		<div className='flex flex-col h-full'>
 			<div className='px-6 py-4 border-b'>
+				<div className='flex items-center gap-3 mb-3'>
+					<Button
+						variant='ghost'
+						size='sm'
+						onClick={onBack}
+						className='gap-1.5 shrink-0'
+					>
+						<ArrowLeft className='h-4 w-4' />
+						Sessions
+					</Button>
+				</div>
 				<div className='flex items-center justify-between'>
 					<div>
 						<div className='flex items-center gap-2 mb-0.5'>
@@ -1816,6 +1829,7 @@ export function InventoryPageAppPos() {
 								}}
 								onComplete={handleCompleteSession}
 								onCancel={handleCancelSession}
+								onBack={() => setView('home')}
 								isCompleting={isCompletingSession}
 								isCancelling={isCancellingSession}
 							/>
