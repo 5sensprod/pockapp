@@ -64,7 +64,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		ensureInventorySessionsCollection,
 		ensureInventoryEntriesCollection,
 		backfillInventoryStats,
-
+		purgeEmptyInventorySessions,
 		FixInventoryCollectionFields,
 		AddDepositFieldsToInvoices,
 

@@ -389,3 +389,124 @@ func backfillInventoryStats(app *pocketbase.PocketBase) error {
 	log.Println("🎉 Rattrapage terminé !")
 	return nil
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// purgeEmptyInventorySessions
+//
+// Supprime toutes les sessions d'inventaire dont AUCUN produit n'a été compté.
+//
+// Critères de suppression :
+//   - Sessions "completed" ou "cancelled" avec stats_counted_products = 0
+//   - Sessions "draft" ou "in_progress" sans aucune entrée au status "counted"
+//     (vérification directe dans inventory_entries car les stats ne sont pas
+//     encore écrites pour ces statuts)
+//
+// Grâce au CascadeDelete sur session_id dans inventory_entries,
+// supprimer la session suffit — les entrées sont supprimées automatiquement.
+//
+// ✅ Idempotent — peut être relancé sans risque.
+// ⚠️  Irréversible — faire un backup PocketBase avant en production.
+// ─────────────────────────────────────────────────────────────────────────────
+func purgeEmptyInventorySessions(app *pocketbase.PocketBase) error {
+	log.Println("🧹 Démarrage de la purge des sessions d'inventaire vides...")
+
+	totalDeleted := 0
+
+	// ── 1. Sessions clôturées (completed / cancelled) sans aucun comptage ────
+	// Les stats sont dénormalisées à la clôture → on peut filtrer directement.
+	var closedSessions []*models.Record
+	err := app.Dao().RecordQuery("inventory_sessions").
+		AndWhere(dbx.In("status", "completed", "cancelled")).
+		AndWhere(dbx.NewExp("stats_counted_products = 0 OR stats_counted_products IS NULL")).
+		All(&closedSessions)
+
+	if err != nil {
+		log.Printf("❌ Erreur lecture sessions clôturées : %v", err)
+		return err
+	}
+
+	log.Printf("🔍 %d session(s) clôturée(s) sans comptage trouvée(s)", len(closedSessions))
+
+	for _, session := range closedSessions {
+		sessionID := session.Id
+		operator := session.GetString("operator")
+		status := session.GetString("status")
+		startedAt := session.GetString("started_at")
+
+		log.Printf(
+			"🗑️  Suppression session clôturée [%s] status=%s opérateur=%s démarrée=%s",
+			sessionID, status, operator, startedAt,
+		)
+
+		if err := app.Dao().DeleteRecord(session); err != nil {
+			log.Printf("❌ Erreur suppression session %s : %v", sessionID, err)
+			// On continue — une erreur sur une session ne bloque pas les autres
+			continue
+		}
+
+		totalDeleted++
+	}
+
+	// ── 2. Sessions actives (draft / in_progress) sans aucune entrée comptée ─
+	// Les stats ne sont pas encore écrites → on doit requêter inventory_entries.
+	var activeSessions []*models.Record
+	err = app.Dao().RecordQuery("inventory_sessions").
+		AndWhere(dbx.In("status", "draft", "in_progress")).
+		All(&activeSessions)
+
+	if err != nil {
+		log.Printf("❌ Erreur lecture sessions actives : %v", err)
+		return err
+	}
+
+	log.Printf("🔍 %d session(s) active(s) à vérifier", len(activeSessions))
+
+	for _, session := range activeSessions {
+		sessionID := session.Id
+		operator := session.GetString("operator")
+		status := session.GetString("status")
+
+		// Compter les entrées "counted" pour cette session
+		var countedEntries []*models.Record
+		err := app.Dao().RecordQuery("inventory_entries").
+			AndWhere(dbx.HashExp{"session_id": sessionID}).
+			AndWhere(dbx.HashExp{"status": "counted"}).
+			All(&countedEntries)
+
+		if err != nil {
+			log.Printf("❌ Erreur lecture entrées session %s : %v", sessionID, err)
+			continue
+		}
+
+		if len(countedEntries) > 0 {
+			// Au moins un produit compté → on garde la session
+			log.Printf(
+				"✅ Session active [%s] conservée (%d produits comptés)",
+				sessionID, len(countedEntries),
+			)
+			continue
+		}
+
+		// Aucun comptage → suppression
+		log.Printf(
+			"🗑️  Suppression session active [%s] status=%s opérateur=%s (0 produit compté)",
+			sessionID, status, operator,
+		)
+
+		if err := app.Dao().DeleteRecord(session); err != nil {
+			log.Printf("❌ Erreur suppression session %s : %v", sessionID, err)
+			continue
+		}
+
+		totalDeleted++
+	}
+
+	// ── Résumé ───────────────────────────────────────────────────────────────
+	if totalDeleted == 0 {
+		log.Println("✅ Aucune session vide à supprimer.")
+	} else {
+		log.Printf("🎉 Purge terminée : %d session(s) supprimée(s) (entries supprimées par cascade).", totalDeleted)
+	}
+
+	return nil
+}
