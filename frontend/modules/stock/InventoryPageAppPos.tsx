@@ -79,6 +79,294 @@ const inventoryManifest = {
 // ============================================================================
 type PageView = 'home' | 'overview' | 'counting' | 'history'
 
+function formatInventoryDateTime(value: string | Date) {
+	const date = new Date(value)
+	const now = new Date()
+
+	const isSameDay =
+		date.getFullYear() === now.getFullYear() &&
+		date.getMonth() === now.getMonth() &&
+		date.getDate() === now.getDate()
+
+	const time = date.toLocaleTimeString('fr-FR', {
+		hour: '2-digit',
+		minute: '2-digit',
+	})
+
+	if (isSameDay) return `Aujourd'hui · ${time}`
+
+	return `${date.toLocaleDateString('fr-FR', {
+		weekday: 'short',
+		day: '2-digit',
+		month: '2-digit',
+		year: 'numeric',
+	})} · ${time}`
+}
+
+function getInventoryStatusLabel(status: InventorySession['status']) {
+	return status === 'in_progress' ? 'En cours' : 'Brouillon'
+}
+
+function getPrimaryCategoryLabel(categoryNames: string[]) {
+	if (categoryNames.length === 0) return 'Inventaire'
+	if (categoryNames.length === 1) return categoryNames[0]
+	return `${categoryNames[0]} +${categoryNames.length - 1}`
+}
+
+function getLastCountedAt(entries: InventoryEntry[]) {
+	const timestamps = entries
+		.map((entry) => entry.counted_at)
+		.filter(Boolean)
+		.map((value) => new Date(value as string).getTime())
+		.filter((value) => !Number.isNaN(value))
+
+	if (timestamps.length === 0) return null
+
+	return new Date(Math.max(...timestamps)).toISOString()
+}
+
+function formatInventoryActivityLabel(
+	startedAt: string | Date,
+	lastCountedAt?: string | null,
+) {
+	return lastCountedAt
+		? `Dernier comptage · ${formatInventoryDateTime(lastCountedAt)}`
+		: `Créée · ${formatInventoryDateTime(startedAt)}`
+}
+
+function InventoryCapitalStats({
+	totalProducts,
+	countedProducts,
+	label = 'Vision stock',
+}: {
+	totalProducts: number
+	countedProducts: number
+	label?: string
+}) {
+	const remainingProducts = Math.max(totalProducts - countedProducts, 0)
+	const progress =
+		totalProducts > 0 ? Math.round((countedProducts / totalProducts) * 100) : 0
+
+	return (
+		<div className='rounded-2xl border border-orange-200/80 bg-orange-50/60 p-4 shadow-sm dark:border-orange-900/50 dark:bg-orange-950/10'>
+			<div className='mb-3 flex items-start justify-between gap-3'>
+				<div>
+					<p className='text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300'>
+						{label}
+					</p>
+					<h3 className='mt-1 text-lg font-bold text-foreground'>
+						Stock à saisir
+					</h3>
+				</div>
+
+				<div className='rounded-full bg-orange-500 px-3 py-1 text-sm font-bold text-white'>
+					{progress}%
+				</div>
+			</div>
+
+			<div className='grid grid-cols-3 gap-2'>
+				<div className='rounded-xl bg-background/85 px-3 py-2'>
+					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+						Total
+					</div>
+					<div className='mt-1 text-2xl font-black text-foreground'>
+						{totalProducts}
+					</div>
+				</div>
+
+				<div className='rounded-xl bg-background/85 px-3 py-2'>
+					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+						Comptés
+					</div>
+					<div className='mt-1 text-2xl font-black text-green-700 dark:text-green-300'>
+						{countedProducts}
+					</div>
+				</div>
+
+				<div className='rounded-xl bg-background/85 px-3 py-2'>
+					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+						Restants
+					</div>
+					<div className='mt-1 text-2xl font-black text-amber-700 dark:text-amber-300'>
+						{remainingProducts}
+					</div>
+				</div>
+			</div>
+
+			<div className='mt-3'>
+				<div className='mb-1 flex items-center justify-between text-xs text-muted-foreground'>
+					<span>
+						{countedProducts} / {totalProducts} produits entrés
+					</span>
+					<span className='font-semibold text-foreground'>
+						{remainingProducts} à faire
+					</span>
+				</div>
+				<Progress value={progress} className='h-2' />
+			</div>
+		</div>
+	)
+}
+
+function CreateSessionStockStats({
+	totalProducts,
+	countedProducts,
+	isLoading = false,
+}: {
+	totalProducts: number
+	countedProducts: number
+	isLoading?: boolean
+}) {
+	const remainingProducts = Math.max(totalProducts - countedProducts, 0)
+	const countedPercent =
+		totalProducts > 0 ? Math.round((countedProducts / totalProducts) * 100) : 0
+
+	return (
+		<div className='rounded-2xl border border-orange-200/80 bg-orange-50/60 p-4 shadow-sm dark:border-orange-900/50 dark:bg-orange-950/10'>
+			<div className='mb-3 flex items-start justify-between gap-3'>
+				<div>
+					<p className='text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300'>
+						Stock global
+					</p>
+					<h3 className='mt-1 text-base font-bold text-foreground'>
+						Avancement inventaire
+					</h3>
+				</div>
+
+				<div className='rounded-full bg-orange-500 px-3 py-1 text-sm font-bold text-white'>
+					{countedPercent}%
+				</div>
+			</div>
+
+			<div className='grid grid-cols-3 gap-2'>
+				<div className='rounded-xl bg-background/85 px-3 py-2'>
+					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+						Total
+					</div>
+					<div className='mt-1 text-2xl font-black text-foreground'>
+						{isLoading ? '…' : totalProducts}
+					</div>
+				</div>
+
+				<div className='rounded-xl bg-background/85 px-3 py-2'>
+					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+						Comptés
+					</div>
+					<div className='mt-1 text-2xl font-black text-green-700 dark:text-green-300'>
+						{countedProducts}
+					</div>
+				</div>
+
+				<div className='rounded-xl bg-background/85 px-3 py-2'>
+					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+						À compter
+					</div>
+					<div className='mt-1 text-2xl font-black text-amber-700 dark:text-amber-300'>
+						{isLoading ? '…' : remainingProducts}
+					</div>
+				</div>
+			</div>
+
+			<div className='mt-3'>
+				<div className='mb-1 flex items-center justify-between text-xs text-muted-foreground'>
+					<span>
+						{countedProducts} / {isLoading ? '…' : totalProducts} produits
+						comptés
+					</span>
+					<span className='font-semibold text-foreground'>
+						{isLoading ? '…' : remainingProducts} à faire
+					</span>
+				</div>
+				<Progress value={countedPercent} className='h-2' />
+			</div>
+		</div>
+	)
+}
+
+function SessionProgressReporter({
+	sessionId,
+	onChange,
+}: {
+	sessionId: string
+	onChange: (
+		sessionId: string,
+		value: { total: number; counted: number },
+	) => void
+}) {
+	const { data: progress } = useSessionProgress(sessionId)
+
+	useEffect(() => {
+		onChange(sessionId, {
+			total: progress?.total ?? 0,
+			counted: progress?.counted ?? 0,
+		})
+	}, [sessionId, progress?.total, progress?.counted, onChange])
+
+	return null
+}
+
+function ActiveSessionsCapitalStats({
+	sessions,
+}: {
+	sessions: InventorySession[]
+}) {
+	const [progressBySession, setProgressBySession] = useState<
+		Record<string, { total: number; counted: number }>
+	>({})
+
+	const handleProgressChange = (
+		sessionId: string,
+		value: { total: number; counted: number },
+	) => {
+		setProgressBySession((current) => {
+			const previous = current[sessionId]
+			if (
+				previous?.total === value.total &&
+				previous?.counted === value.counted
+			) {
+				return current
+			}
+
+			return {
+				...current,
+				[sessionId]: value,
+			}
+		})
+	}
+
+	const totals = sessions.reduce(
+		(acc, session) => {
+			const progress = progressBySession[session.id]
+			const total = progress?.total ?? session.stats_total_products ?? 0
+			const counted = progress?.counted ?? session.stats_counted_products ?? 0
+
+			return {
+				total: acc.total + total,
+				counted: acc.counted + counted,
+			}
+		},
+		{ total: 0, counted: 0 },
+	)
+
+	return (
+		<>
+			{sessions.map((session) => (
+				<SessionProgressReporter
+					key={session.id}
+					sessionId={session.id}
+					onChange={handleProgressChange}
+				/>
+			))}
+
+			<InventoryCapitalStats
+				totalProducts={totals.total}
+				countedProducts={totals.counted}
+				label='Sessions en cours'
+			/>
+		</>
+	)
+}
+
 // ============================================================================
 // IMAGE PRODUIT — résolue dynamiquement via le catalogue AppPOS caché
 // (le snapshot d'inventaire ne stocke plus l'URL : on la récupère par product_id)
@@ -222,6 +510,22 @@ function CreateSessionDialog({
 	const { data: categoriesRaw = [] } = useAppPosCategoriesWithCounts()
 	const { data: history } = useInventoryHistory()
 
+	// Catalogue complet AppPOS : source fiable pour le total global produits.
+	// Les compteurs de catégories peuvent compter des regroupements / sous-rayons,
+	// donc ils ne doivent pas servir au total global catalogue.
+	const { data: catalogProducts = [], isLoading: catalogLoading } = useQuery({
+		queryKey: ['apppos', 'products', 'catalog'],
+		queryFn: async () => {
+			const products = await appPosApi.getProducts()
+			return appPosTransformers.products(products)
+		},
+		staleTime: 10 * 60 * 1000,
+		gcTime: 60 * 60 * 1000,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+	})
+
 	const categories = useMemo(() => {
 		const flatten = (cats: any[], parentId: string | null = null): any[] =>
 			cats.flatMap((cat) => [
@@ -248,6 +552,58 @@ function CreateSessionDialog({
 		walk(categoriesRaw)
 		return map
 	}, [categoriesRaw])
+
+	const globalProductTotal = catalogProducts.length
+
+	const globalCountedProductTotal = useMemo(() => {
+		const countedProductIds = new Set<string>()
+
+		for (const session of activeSessions) {
+			for (const entry of (session as any).entries ?? []) {
+				if (entry.status === 'counted' || entry.stock_compte !== null) {
+					countedProductIds.add(entry.product_id)
+				}
+			}
+		}
+
+		for (const session of history?.items ?? []) {
+			if (session.status !== 'completed') continue
+
+			for (const entry of (session as any).entries ?? []) {
+				if (entry.status === 'counted' || entry.stock_compte !== null) {
+					countedProductIds.add(entry.product_id)
+				}
+			}
+
+			// Fallback si l'historique ne renvoie que les stats agrégées.
+			if (((session as any).entries ?? []).length === 0) {
+				return Math.max(
+					0,
+					Math.min(
+						globalProductTotal,
+						(history?.items ?? [])
+							.filter((item) => item.status === 'completed')
+							.reduce(
+								(total, item) => total + (item.stats_counted_products ?? 0),
+								0,
+							),
+					),
+				)
+			}
+		}
+
+		return countedProductIds.size
+	}, [activeSessions, history, globalProductTotal])
+
+	const selectedProductTotal = useMemo(
+		() =>
+			selectedCategoryIds.reduce(
+				(total, categoryId) =>
+					total + (countMap.get(categoryId)?.productCount ?? 0),
+				0,
+			),
+		[selectedCategoryIds, countMap],
+	)
 
 	useEffect(() => {
 		if (open) {
@@ -503,6 +859,12 @@ function CreateSessionDialog({
 						/>
 					</div>
 
+					<CreateSessionStockStats
+						totalProducts={globalProductTotal}
+						countedProducts={globalCountedProductTotal}
+						isLoading={catalogLoading}
+					/>
+
 					<Separator />
 
 					{/* Sélection catégories */}
@@ -715,6 +1077,9 @@ function CreateSessionDialog({
 					>
 						{isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
 						Démarrer le comptage
+						{selectedProductTotal > 0 && (
+							<span className='ml-1 opacity-80'>({selectedProductTotal})</span>
+						)}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -728,6 +1093,7 @@ function CreateSessionDialog({
 function SessionOverviewView({
 	session,
 	summary,
+	lastCountedAt,
 	onSelectCategory,
 	onComplete,
 	onCancel,
@@ -737,6 +1103,7 @@ function SessionOverviewView({
 }: {
 	session: InventorySession
 	summary: NonNullable<ReturnType<typeof useInventorySession>['summary']>
+	lastCountedAt?: string | null
 	onSelectCategory: (categoryId: string) => void
 	onComplete: () => void
 	onCancel: () => void
@@ -764,8 +1131,8 @@ function SessionOverviewView({
 	return (
 		<div className='flex flex-col h-full'>
 			{/* ── Header ──────────────────────────────────────────────────────── */}
-			<div className='px-6 py-4 border-b'>
-				<div className='flex items-center gap-3 mb-3'>
+			<div className='border-b bg-background/95 px-6 py-4'>
+				<div className='mb-4 flex items-center justify-between gap-3'>
 					<Button
 						variant='ghost'
 						size='sm'
@@ -775,29 +1142,7 @@ function SessionOverviewView({
 						<ArrowLeft className='h-4 w-4' />
 						Sessions
 					</Button>
-				</div>
-				<div className='flex items-center justify-between'>
-					<div>
-						<div className='flex items-center gap-2 mb-0.5'>
-							<h2 className='text-lg font-semibold'>
-								Inventaire du{' '}
-								{new Date(session.started_at).toLocaleDateString('fr-FR', {
-									day: '2-digit',
-									month: '2-digit',
-									year: 'numeric',
-								})}
-							</h2>
-							<Badge
-								variant='outline'
-								className='text-orange-600 border-orange-300 text-xs'
-							>
-								En cours
-							</Badge>
-						</div>
-						<p className='text-sm text-muted-foreground'>
-							Opérateur : {session.operator}
-						</p>
-					</div>
+
 					<div className='flex items-center gap-2'>
 						<Button
 							variant='ghost'
@@ -824,148 +1169,176 @@ function SessionOverviewView({
 							) : (
 								<CheckCircle2 className='h-3.5 w-3.5' />
 							)}
-							Clôturer l'inventaire
+							Clôturer
 						</Button>
 					</div>
 				</div>
 
-				{/* Barre de progression globale */}
-				<div className='mt-4'>
-					<div className='flex justify-between text-xs text-muted-foreground mb-1.5'>
-						<span>
-							{summary.countedProducts} / {summary.totalProducts} produits
-							comptés
-						</span>
-						<span className='font-medium text-foreground'>
-							{summary.progressPercent}%
-						</span>
-					</div>
-					<Progress value={summary.progressPercent} className='h-2' />
-				</div>
+				<div className='rounded-2xl border bg-card p-4 shadow-sm'>
+					<div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
+						<div className='min-w-0'>
+							<div className='mb-2 flex flex-wrap items-center gap-2'>
+								<h2 className='truncate text-2xl font-bold text-foreground'>
+									{getPrimaryCategoryLabel(
+										summary.categories.map((c) => c.categoryName),
+									)}
+								</h2>
+								<Badge
+									variant='outline'
+									className='border-orange-300 text-orange-600'
+								>
+									En cours
+								</Badge>
+							</div>
 
-				{/* ── Dashboard "que reste-t-il" ─────────────────────────────── */}
-				<div className='grid grid-cols-3 gap-3 mt-4'>
-					{/* Restant */}
-					<div className='rounded-lg border bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800 px-3 py-2.5'>
-						<div className='flex items-center gap-1.5 mb-0.5'>
-							<Clock className='h-3.5 w-3.5 text-amber-500' />
-							<span className='text-xs font-medium text-amber-700 dark:text-amber-400'>
+							<div className='flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground'>
+								<span className='inline-flex items-center gap-1.5'>
+									<Clock className='h-4 w-4' />
+									{formatInventoryActivityLabel(
+										session.started_at,
+										lastCountedAt,
+									)}
+								</span>
+								<span>Opérateur : {session.operator}</span>
+							</div>
+						</div>
+
+						<div className='w-full lg:w-72'>
+							<div className='mb-1.5 flex items-center justify-between text-xs'>
+								<span className='font-medium text-muted-foreground'>
+									Progression globale
+								</span>
+								<span className='font-bold text-foreground'>
+									{summary.progressPercent}%
+								</span>
+							</div>
+							<Progress value={summary.progressPercent} className='h-2' />
+							<div className='mt-1 text-xs text-muted-foreground'>
+								{summary.countedProducts} / {summary.totalProducts} produits
+								comptés
+							</div>
+						</div>
+					</div>
+
+					<div className='mt-4'>
+						<InventoryCapitalStats
+							totalProducts={summary.totalProducts}
+							countedProducts={summary.countedProducts}
+						/>
+					</div>
+
+					{inProgress.length > 0 && (
+						<div className='mt-4 rounded-2xl border border-blue-200 bg-blue-50/60 px-3 py-3 dark:border-blue-800 dark:bg-blue-900/10'>
+							<div className='mb-3 flex items-center justify-between gap-3'>
+								<div>
+									<p className='text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300'>
+										Continuer la session
+									</p>
+									<p className='text-sm text-blue-700/80 dark:text-blue-300/80'>
+										Reprenez d'abord les rayons déjà commencés.
+									</p>
+								</div>
+							</div>
+
+							<div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+								{inProgress.map((cat) => (
+									<button
+										key={cat.categoryId}
+										type='button'
+										onClick={() => onSelectCategory(cat.categoryId)}
+										className='rounded-xl border border-blue-100 bg-background/90 px-3 py-3 text-left shadow-sm transition hover:border-blue-200 hover:bg-background dark:border-blue-900/40'
+									>
+										<div className='mb-2 flex items-center justify-between gap-3'>
+											<div className='min-w-0'>
+												<div className='truncate text-sm font-bold text-foreground'>
+													{cat.categoryName}
+												</div>
+												<div className='text-xs text-muted-foreground'>
+													{cat.countedProducts}/{cat.totalProducts} produits
+												</div>
+											</div>
+											<div className='rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'>
+												Continuer
+											</div>
+										</div>
+										<Progress
+											value={
+												cat.totalProducts > 0
+													? (cat.countedProducts / cat.totalProducts) * 100
+													: 0
+											}
+											className='h-2'
+										/>
+									</button>
+								))}
+							</div>
+						</div>
+					)}
+
+					<div className='mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'>
+						<div className='rounded-xl border border-amber-200/80 bg-amber-50/50 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/10'>
+							<div className='flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300'>
+								<Clock className='h-3.5 w-3.5' />
 								Restant
-							</span>
+							</div>
+							<div className='mt-1 text-3xl font-black text-amber-700 dark:text-amber-300'>
+								{summary.pendingProducts}
+							</div>
+							<div className='text-xs text-amber-700/70 dark:text-amber-300/70'>
+								{todo.length + inProgress.length} rayon
+								{todo.length + inProgress.length > 1 ? 's' : ''} à finir
+							</div>
 						</div>
-						<div className='text-2xl font-bold text-amber-700 dark:text-amber-300'>
-							{summary.pendingProducts}
-						</div>
-						<div className='text-xs text-amber-600/70 dark:text-amber-500'>
-							{todo.length + inProgress.length} zone
-							{todo.length + inProgress.length > 1 ? 's' : ''}
-						</div>
-					</div>
 
-					{/* Compté */}
-					<div className='rounded-lg border bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800 px-3 py-2.5'>
-						<div className='flex items-center gap-1.5 mb-0.5'>
-							<CheckCircle2 className='h-3.5 w-3.5 text-green-500' />
-							<span className='text-xs font-medium text-green-700 dark:text-green-400'>
+						<div className='rounded-xl border border-green-200/80 bg-green-50/50 px-4 py-3 dark:border-green-800 dark:bg-green-900/10'>
+							<div className='flex items-center gap-1.5 text-xs font-semibold text-green-700 dark:text-green-300'>
+								<CheckCircle2 className='h-3.5 w-3.5' />
 								Compté
-							</span>
+							</div>
+							<div className='mt-1 text-3xl font-black text-green-700 dark:text-green-300'>
+								{summary.countedProducts}
+							</div>
+							<div className='text-xs text-green-700/70 dark:text-green-300/70'>
+								{done.length} rayon{done.length > 1 ? 's' : ''} terminé
+								{done.length > 1 ? 's' : ''}
+							</div>
 						</div>
-						<div className='text-2xl font-bold text-green-700 dark:text-green-300'>
-							{summary.countedProducts}
-						</div>
-						<div className='text-xs text-green-600/70 dark:text-green-500'>
-							{done.length} zone{done.length > 1 ? 's' : ''} terminée
-							{done.length > 1 ? 's' : ''}
-						</div>
-					</div>
 
-					{/* Écarts */}
-					<div
-						className={cn(
-							'rounded-lg border px-3 py-2.5',
-							summary.totalGaps.length > 0
-								? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
-								: 'bg-muted/40 border-border',
-						)}
-					>
-						<div className='flex items-center gap-1.5 mb-0.5'>
-							<AlertTriangle
+						<div
+							className={cn(
+								'rounded-xl border px-4 py-3',
+								summary.totalGaps.length > 0
+									? 'border-red-200/80 bg-red-50/50 dark:border-red-800 dark:bg-red-900/10'
+									: 'border-border bg-muted/20',
+							)}
+						>
+							<div
 								className={cn(
-									'h-3.5 w-3.5',
+									'flex items-center gap-1.5 text-xs font-semibold',
 									summary.totalGaps.length > 0
-										? 'text-red-500'
-										: 'text-muted-foreground',
-								)}
-							/>
-							<span
-								className={cn(
-									'text-xs font-medium',
-									summary.totalGaps.length > 0
-										? 'text-red-700 dark:text-red-400'
+										? 'text-red-700 dark:text-red-300'
 										: 'text-muted-foreground',
 								)}
 							>
+								<AlertTriangle className='h-3.5 w-3.5' />
 								Écarts
-							</span>
-						</div>
-						<div
-							className={cn(
-								'text-2xl font-bold',
-								summary.totalGaps.length > 0
-									? 'text-red-700 dark:text-red-300'
-									: 'text-muted-foreground',
-							)}
-						>
-							{summary.totalGaps.length}
-						</div>
-						<div
-							className={cn(
-								'text-xs',
-								summary.totalGaps.length > 0
-									? 'text-red-600/70 dark:text-red-500'
-									: 'text-muted-foreground/60',
-							)}
-						>
-							{summary.totalGaps.length === 0 ? 'aucun écart' : 'à vérifier'}
+							</div>
+							<div
+								className={cn(
+									'mt-1 text-3xl font-black',
+									summary.totalGaps.length > 0
+										? 'text-red-700 dark:text-red-300'
+										: 'text-muted-foreground',
+								)}
+							>
+								{summary.totalGaps.length}
+							</div>
+							<div className='text-xs text-muted-foreground'>
+								{summary.totalGaps.length === 0 ? 'aucun écart' : 'à vérifier'}
+							</div>
 						</div>
 					</div>
 				</div>
-
-				{/* Zones en cours — mise en avant si partiellement comptées */}
-				{inProgress.length > 0 && (
-					<div className='mt-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10 px-3 py-2'>
-						<p className='text-xs font-medium text-blue-700 dark:text-blue-400 mb-1.5'>
-							En cours de comptage
-						</p>
-						<div className='space-y-1.5'>
-							{inProgress.map((cat) => (
-								<button
-									key={cat.categoryId}
-									type='button'
-									onClick={() => onSelectCategory(cat.categoryId)}
-									className='w-full flex items-center gap-2 text-left hover:opacity-80 transition-opacity'
-								>
-									<span className='text-xs text-blue-700 dark:text-blue-300 flex-1 truncate font-medium'>
-										{cat.categoryName}
-									</span>
-									<span className='text-xs text-blue-600/70 dark:text-blue-400 shrink-0'>
-										{cat.countedProducts}/{cat.totalProducts}
-									</span>
-									<div className='w-16 shrink-0'>
-										<div className='h-1 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden'>
-											<div
-												className='h-full bg-blue-500 rounded-full'
-												style={{
-													width: `${cat.totalProducts > 0 ? (cat.countedProducts / cat.totalProducts) * 100 : 0}%`,
-												}}
-											/>
-										</div>
-									</div>
-								</button>
-							))}
-						</div>
-					</div>
-				)}
 			</div>
 
 			{/* ── Liste catégories ──────────────────────────────────────────── */}
@@ -1036,52 +1409,55 @@ function CategoryRow({
 	onSelectCategory: (id: string) => void
 	validated?: boolean
 }) {
+	const progress =
+		cat.totalProducts > 0 ? (cat.countedProducts / cat.totalProducts) * 100 : 0
+
 	return (
 		<button
 			type='button'
 			disabled={validated}
 			onClick={() => !validated && onSelectCategory(cat.categoryId)}
 			className={cn(
-				'w-full flex items-center gap-4 px-6 py-4 text-left transition-colors',
+				'w-full px-6 py-3 text-left transition-colors',
 				validated
 					? 'opacity-60 cursor-default'
 					: 'hover:bg-muted/50 cursor-pointer',
 			)}
 		>
-			<CategoryStatusIcon status={cat.status} />
-			<div className='flex-1 min-w-0'>
-				<div className='flex items-center gap-2 mb-0.5'>
-					<span className='font-medium text-sm'>{cat.categoryName}</span>
-					{cat.totalGapCount > 0 && (
-						<span className='flex items-center gap-0.5 text-xs font-medium text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded-full'>
-							<AlertTriangle className='h-3 w-3' />
-							{cat.totalGapCount} écart{cat.totalGapCount > 1 ? 's' : ''}
+			<div className='flex items-center gap-4 rounded-xl border border-transparent p-3'>
+				<CategoryStatusIcon status={cat.status} />
+
+				<div className='min-w-0 flex-1'>
+					<div className='flex flex-wrap items-center gap-2'>
+						<span className='truncate text-base font-bold text-foreground'>
+							{cat.categoryName}
 						</span>
-					)}
+						<CategoryStatusBadge status={cat.status} />
+						{cat.totalGapCount > 0 && (
+							<span className='inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'>
+								<AlertTriangle className='h-3 w-3' />
+								{cat.totalGapCount} écart{cat.totalGapCount > 1 ? 's' : ''}
+							</span>
+						)}
+					</div>
+
+					<div className='mt-1 text-sm text-muted-foreground'>
+						{cat.countedProducts}/{cat.totalProducts} produits
+					</div>
+
+					<div className='mt-2 max-w-xl'>
+						<Progress value={progress} className='h-1.5' />
+					</div>
 				</div>
-				<div className='text-xs text-muted-foreground'>
-					{cat.countedProducts}/{cat.totalProducts} produits
-				</div>
-			</div>
-			<div className='flex items-center gap-3'>
-				<div className='w-24 hidden sm:block'>
-					<Progress
-						value={
-							cat.totalProducts > 0
-								? (cat.countedProducts / cat.totalProducts) * 100
-								: 0
-						}
-						className='h-1.5'
-					/>
-				</div>
-				<CategoryStatusBadge status={cat.status} />
+
 				{!validated && (
-					<ChevronRight className='h-4 w-4 text-muted-foreground' />
+					<ChevronRight className='h-4 w-4 shrink-0 text-muted-foreground' />
 				)}
 			</div>
 		</button>
 	)
 }
+
 function CountingRow({
 	entry,
 	isValidated,
@@ -1102,6 +1478,7 @@ function CountingRow({
 	)
 
 	const isCounted = entry.status === 'counted'
+	const isAdjusted = entry.adjusted
 	const ecart =
 		isCounted && entry.stock_compte !== null
 			? entry.stock_compte - entry.stock_theorique
@@ -1119,8 +1496,6 @@ function CountingRow({
 			setLocalValue(String(entry.stock_compte))
 		}
 	}, [entry.status, entry.stock_compte])
-
-	const isAdjusted = entry.adjusted
 
 	return (
 		<tr
@@ -1155,12 +1530,17 @@ function CountingRow({
 						</div>
 						{entry.product_sku && (
 							<div className='text-xs text-muted-foreground'>
-								{entry.product_sku}
+								SKU {entry.product_sku}
 							</div>
 						)}
 						{entry.product_barcode && (
 							<div className='text-xs text-muted-foreground font-mono tracking-wider'>
 								{entry.product_barcode}
+							</div>
+						)}
+						{entry.counted_at && (
+							<div className='text-xs text-muted-foreground'>
+								Compté le {formatInventoryDateTime(entry.counted_at)}
 							</div>
 						)}
 						{isAdjusted && (
@@ -1171,11 +1551,13 @@ function CountingRow({
 					</div>
 				</div>
 			</td>
+
 			<td className='px-3 py-3 text-center'>
 				<span className='text-muted-foreground font-mono'>
 					{entry.stock_theorique}
 				</span>
 			</td>
+
 			<td className='px-3 py-3 text-center'>
 				{isValidated ? (
 					<span className='font-mono font-medium'>
@@ -1194,14 +1576,14 @@ function CountingRow({
 						onBlur={handleSave}
 						className={cn(
 							'w-20 h-8 text-center font-mono text-sm',
-							isCounted
-								? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-								: '',
+							isCounted &&
+								'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800',
 						)}
 						disabled={isCountingProduct}
 					/>
 				)}
 			</td>
+
 			<td className='px-3 py-3 text-center'>
 				{ecart !== null ? (
 					<EcartBadge ecart={ecart} />
@@ -1209,6 +1591,7 @@ function CountingRow({
 					<span className='text-muted-foreground/40 text-sm'>…</span>
 				)}
 			</td>
+
 			{!isValidated && (
 				<td className='px-3 py-3 text-center'>
 					{isCounted && (
@@ -1843,10 +2226,34 @@ function InventoryHomeView({
 		<div className='flex flex-col h-full overflow-y-auto'>
 			{activeSessions.length > 0 && (
 				<div className='px-6 pt-6 pb-4'>
-					<h2 className='text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3'>
-						Sessions en cours ({activeSessions.length})
-					</h2>
-					<div className='flex flex-col gap-3'>
+					<div className='mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
+						<div>
+							<h2 className='text-sm font-semibold text-muted-foreground uppercase tracking-wider'>
+								Reprendre une session ({activeSessions.length})
+							</h2>
+							<p className='mt-1 text-sm text-muted-foreground'>
+								L'action principale est de continuer le comptage là où il s'est
+								arrêté.
+							</p>
+						</div>
+
+						<Button
+							variant='outline'
+							onClick={() =>
+								activeSessions[0] && onSelectSession(activeSessions[0])
+							}
+							className='gap-2 self-start border-orange-200 text-orange-600 hover:bg-orange-50 hover:text-orange-700'
+						>
+							<Clock className='h-4 w-4' />
+							Continuer la plus récente
+						</Button>
+					</div>
+
+					<div className='mb-4'>
+						<ActiveSessionsCapitalStats sessions={activeSessions} />
+					</div>
+
+					<div className='grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3'>
 						{activeSessions.map((session) => (
 							<SessionCard
 								key={session.id}
@@ -1924,84 +2331,109 @@ function SessionCard({
 	onSelect: () => void
 }) {
 	const { data: progress } = useSessionProgress(session.id)
-	const date = new Date(session.started_at).toLocaleDateString('fr-FR', {
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-	})
+	const { entries } = useInventorySession(session.id)
+	const lastCountedAt = useMemo(() => getLastCountedAt(entries), [entries])
+
 	const total = progress?.total ?? 0
 	const counted = progress?.counted ?? 0
+	const pending = Math.max(total - counted, 0)
 	const percent = total > 0 ? Math.round((counted / total) * 100) : 0
 	const categoryNames = progress?.categoryNames ?? []
+	const primaryCategory = getPrimaryCategoryLabel(categoryNames)
 
 	return (
 		<button
 			type='button'
 			onClick={onSelect}
-			className='flex items-start gap-4 p-4 rounded-xl border border-border bg-card hover:bg-accent hover:border-orange-300 transition-all text-left group w-full'
+			className='group w-full rounded-2xl border border-border bg-card px-4 py-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-md'
 		>
-			<div className='w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0 mt-0.5'>
-				<ClipboardList className='h-5 w-5 text-orange-500' />
-			</div>
-
-			<div className='flex-1 min-w-0'>
-				<div className='flex items-center gap-2 mb-1'>
-					<span className='font-semibold text-sm'>Inventaire du {date}</span>
-					<span
-						className={cn(
-							'text-xs font-medium px-2 py-0.5 rounded-full',
-							session.status === 'in_progress'
-								? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-								: 'bg-muted/50 text-muted-foreground',
-						)}
-					>
-						{session.status === 'in_progress' ? 'En cours' : 'Brouillon'}
-					</span>
+			<div className='flex items-start gap-4'>
+				<div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500'>
+					<ClipboardList className='h-5 w-5' />
 				</div>
 
-				<div className='text-xs text-muted-foreground mb-2'>
-					Opérateur : {session.operator}
-				</div>
-
-				{categoryNames.length > 0 && (
-					<div className='flex flex-wrap gap-1 mb-2'>
-						{categoryNames.slice(0, 4).map((name) => (
-							<span
-								key={name}
-								className='text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground'
-							>
-								{name}
-							</span>
-						))}
-						{categoryNames.length > 4 && (
-							<span className='text-xs text-muted-foreground px-1 self-center'>
-								+{categoryNames.length - 4}
-							</span>
-						)}
+				<div className='min-w-0 flex-1'>
+					<div className='flex flex-wrap items-center gap-2'>
+						<h3 className='truncate text-base font-bold text-foreground'>
+							{primaryCategory}
+						</h3>
+						<span
+							className={cn(
+								'rounded-full px-2 py-0.5 text-xs font-semibold',
+								session.status === 'in_progress'
+									? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+									: 'bg-muted text-muted-foreground',
+							)}
+						>
+							{getInventoryStatusLabel(session.status)}
+						</span>
 					</div>
-				)}
 
-				{total > 0 && (
-					<div className='space-y-1'>
-						<div className='flex items-center justify-between'>
-							<span className='text-xs text-muted-foreground'>
-								{counted} / {total} produits comptés
-							</span>
-							<span className='text-xs font-semibold text-orange-500'>
+					<div className='mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground'>
+						<span className='inline-flex items-center gap-1'>
+							<Clock className='h-3.5 w-3.5' />
+							{formatInventoryActivityLabel(session.started_at, lastCountedAt)}
+						</span>
+						<span>Opérateur : {session.operator}</span>
+					</div>
+
+					<div className='mt-3 grid grid-cols-2 gap-2'>
+						<div className='rounded-xl border border-border/70 bg-muted/30 px-3 py-2'>
+							<div className='text-[11px] uppercase tracking-wide text-muted-foreground'>
+								Progression
+							</div>
+							<div className='mt-0.5 text-lg font-bold text-foreground'>
 								{percent}%
-							</span>
+							</div>
+							<div className='mt-2 h-1.5 overflow-hidden rounded-full bg-muted'>
+								<div
+									className='h-full rounded-full bg-orange-500 transition-all duration-500'
+									style={{ width: `${percent}%` }}
+								/>
+							</div>
 						</div>
-						<div className='h-1.5 bg-muted rounded-full overflow-hidden'>
-							<div
-								className='h-full bg-orange-500 rounded-full transition-all duration-500'
-								style={{ width: `${percent}%` }}
-							/>
+
+						<div className='rounded-xl border border-border/70 bg-muted/30 px-3 py-2'>
+							<div className='text-[11px] uppercase tracking-wide text-muted-foreground'>
+								À compter
+							</div>
+							<div className='mt-0.5 text-lg font-bold text-foreground'>
+								{pending}
+							</div>
+							<div className='text-xs text-muted-foreground'>
+								{counted} / {total} produits
+							</div>
 						</div>
 					</div>
-				)}
-			</div>
 
-			<ChevronRight className='h-4 w-4 text-muted-foreground shrink-0 group-hover:text-orange-500 transition-colors mt-1' />
+					<div className='mt-3 flex items-center justify-between gap-3'>
+						<div className='min-w-0 flex-1'>
+							{categoryNames.length > 1 && (
+								<div className='flex flex-wrap gap-1.5'>
+									{categoryNames.slice(0, 3).map((name) => (
+										<span
+											key={name}
+											className='rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
+										>
+											{name}
+										</span>
+									))}
+									{categoryNames.length > 3 && (
+										<span className='px-1 text-xs text-muted-foreground'>
+											+{categoryNames.length - 3}
+										</span>
+									)}
+								</div>
+							)}
+						</div>
+
+						<div className='inline-flex items-center gap-2 rounded-full bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white'>
+							Continuer
+							<ChevronRight className='h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5' />
+						</div>
+					</div>
+				</div>
+			</div>
 		</button>
 	)
 }
@@ -2054,12 +2486,18 @@ export function InventoryPageAppPos() {
 
 	const {
 		summary,
+		entries,
 		entriesLoading,
 		completeSession,
 		cancelSession,
 		isCompletingSession,
 		isCancellingSession,
 	} = useInventorySession(selectedSessionId ?? undefined)
+
+	const currentSessionLastCountedAt = useMemo(
+		() => getLastCountedAt(entries),
+		[entries],
+	)
 
 	useEffect(() => {
 		if (
@@ -2271,6 +2709,7 @@ export function InventoryPageAppPos() {
 							<SessionOverviewView
 								session={currentSession}
 								summary={summary}
+								lastCountedAt={currentSessionLastCountedAt}
 								onSelectCategory={(catId) => {
 									const cat = summary.categories.find(
 										(c) => c.categoryId === catId,
