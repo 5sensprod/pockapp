@@ -349,6 +349,15 @@ export async function getAppPosCategory(id: string): Promise<AppPosCategory> {
 	return response.data
 }
 
+export async function getAppPosCategoriesHierarchical(): Promise<
+	AppPosCategory[]
+> {
+	const response = await fetchAppPos<AppPosApiResponse<AppPosCategory[]>>(
+		'/categories/hierarchical',
+	)
+	return response.data || []
+}
+
 // ============================================================================
 // BRANDS
 // ============================================================================
@@ -404,7 +413,7 @@ export const appPosApi = {
 	// Categories
 	getCategories: getAppPosCategories,
 	getCategory: getAppPosCategory,
-
+	getAppPosCategoriesHierarchical,
 	// Brands
 	getBrands: getAppPosBrands,
 	getBrand: getAppPosBrand,
@@ -412,6 +421,7 @@ export const appPosApi = {
 	// Suppliers
 	getSuppliers: getAppPosSuppliers,
 	getSupplier: getAppPosSupplier,
+	getCategoriesHierarchical: getAppPosCategoriesHierarchical,
 }
 
 export default appPosApi

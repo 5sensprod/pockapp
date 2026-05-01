@@ -4,9 +4,12 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { appPosApi } from './apppos-api'
+import { appPosApi, getAppPosCategoriesHierarchical } from './apppos-api'
 import { appPosTransformers } from './apppos-transformers'
-import type { CreateAppPosProductInput } from './apppos-types'
+import type {
+	AppPosCategoryWithCounts,
+	CreateAppPosProductInput,
+} from './apppos-types'
 
 // ============================================================================
 // PRODUCTS
@@ -206,6 +209,24 @@ export function useAppPosCategories(options: UseAppPosCategoriesOptions = {}) {
 		refetchOnMount: false,
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false,
+		retry: 1,
+	})
+}
+
+export function useAppPosCategoriesWithCounts(
+	options: UseAppPosCategoriesOptions = {},
+) {
+	const { enabled = true } = options
+
+	return useQuery<AppPosCategoryWithCounts[]>({
+		queryKey: ['apppos', 'categories', 'hierarchical'],
+		queryFn: () =>
+			getAppPosCategoriesHierarchical() as Promise<AppPosCategoryWithCounts[]>,
+		enabled,
+		staleTime: 5 * 60 * 1000,
+		gcTime: 60 * 60 * 1000,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
 		retry: 1,
 	})
 }

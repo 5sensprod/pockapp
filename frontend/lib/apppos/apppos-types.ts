@@ -133,6 +133,12 @@ export interface AppPosCategory {
 	slug?: string
 }
 
+export interface AppPosCategoryWithCounts extends AppPosCategory {
+	children: AppPosCategoryWithCounts[]
+	productCount: number
+	totalProductCount: number
+}
+
 // ============================================================================
 // BRANDS
 // ============================================================================

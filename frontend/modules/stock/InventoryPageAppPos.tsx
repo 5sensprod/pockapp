@@ -21,9 +21,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
-import { useAppPosCategories } from '@/lib/apppos'
 import { getAppPosToken, loginToAppPos } from '@/lib/apppos'
+import { useAppPosCategoriesWithCounts } from '@/lib/apppos/apppos-hooks'
 import type {
+	CategoryInventoryStatus,
 	CategoryInventorySummary,
 	InventoryEntry,
 	InventorySession,
@@ -160,8 +161,35 @@ function CreateSessionDialog({
 	const [search, setSearch] = useState('')
 	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-	const { data: categories = [] } = useAppPosCategories()
+	const { data: categoriesRaw = [] } = useAppPosCategoriesWithCounts()
 	const { data: history } = useInventoryHistory()
+
+	const categories = useMemo(() => {
+		const flatten = (cats: any[], parentId: string | null = null): any[] =>
+			cats.flatMap((cat) => [
+				{ ...cat, id: cat._id, parent: parentId },
+				...flatten(cat.children || [], cat._id),
+			])
+		return flatten(categoriesRaw)
+	}, [categoriesRaw])
+
+	const countMap = useMemo(() => {
+		const map = new Map<
+			string,
+			{ productCount: number; totalProductCount: number }
+		>()
+		const walk = (cats: any[]) => {
+			for (const cat of cats) {
+				map.set(cat._id, {
+					productCount: cat.productCount ?? 0,
+					totalProductCount: cat.totalProductCount ?? cat.productCount ?? 0,
+				})
+				if (cat.children?.length) walk(cat.children)
+			}
+		}
+		walk(categoriesRaw)
+		return map
+	}, [categoriesRaw])
 
 	useEffect(() => {
 		if (open) {
@@ -172,17 +200,31 @@ function CreateSessionDialog({
 		}
 	}, [open, defaultOperator])
 
+	// ── Type tag enrichi ──────────────────────────────────────────────────
+	type CategoryTag =
+		| { type: 'active'; sessionOperator: string }
+		| {
+				type: 'done'
+				date: string
+				operator: string
+				countedProducts: number | null
+				totalProducts: number | null
+		  }
+
 	const categoryTags = useMemo(() => {
-		const tags = new Map<
-			string,
-			| { type: 'active'; sessionOperator: string }
-			| { type: 'done'; date: string; operator: string }
-		>()
+		const tags = new Map<string, CategoryTag>()
+
+		// Sessions actives — priorité absolue
 		for (const session of activeSessions) {
 			for (const catId of session.scope_category_ids ?? []) {
-				tags.set(catId, { type: 'active', sessionOperator: session.operator })
+				tags.set(catId, {
+					type: 'active',
+					sessionOperator: session.operator,
+				})
 			}
 		}
+
+		// Historique — seulement si pas déjà tagué "active"
 		for (const session of history?.items ?? []) {
 			if (session.status !== 'completed') continue
 			const dateStr = session.completed_at
@@ -192,44 +234,60 @@ function CreateSessionDialog({
 						year: 'numeric',
 					})
 				: ''
+
 			for (const catId of session.scope_category_ids ?? []) {
 				if (!tags.has(catId)) {
 					tags.set(catId, {
 						type: 'done',
 						date: dateStr,
 						operator: session.operator,
+						countedProducts: session.stats_counted_products ?? null,
+						totalProducts: session.stats_total_products ?? null,
 					})
 				}
 			}
 		}
+
 		return tags
 	}, [activeSessions, history])
 
 	const grouped = useMemo(() => {
 		const byId = new Map(categories.map((c) => [c.id, c]))
-		const roots = categories.filter((c) => !(c as any).parent)
+
+		const roots = categories
+			.filter((c) => !c.parent)
+			.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+
 		const groups: Array<{
 			parent: (typeof categories)[0] | null
 			children: typeof categories
 		}> = []
+
 		for (const root of roots) {
-			const children = categories.filter((c) => (c as any).parent === root.id)
+			const children = categories
+				.filter((c) => c.parent === root.id)
+				.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+
 			if (children.length > 0) {
 				groups.push({ parent: root, children })
 			} else {
 				groups.push({ parent: null, children: [root] })
 			}
 		}
-		const orphans = categories.filter(
-			(c) => (c as any).parent && !byId.has((c as any).parent),
-		)
+
+		const orphans = categories
+			.filter((c) => c.parent && !byId.has(c.parent))
+			.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+
 		if (orphans.length > 0) {
 			groups.push({ parent: null, children: orphans })
 		}
+
 		return groups
 	}, [categories])
 
 	const searchLower = search.trim().toLowerCase()
+
 	const filteredGrouped = useMemo(() => {
 		if (!searchLower) return grouped
 		return grouped
@@ -277,8 +335,89 @@ function CreateSessionDialog({
 		)
 	}
 
+	// ── Stats résumées pour la ligne parente ──────────────────────────────
+	const getGroupStats = (childIds: string[]) => {
+		const selectedCount = childIds.filter((id) =>
+			selectedCategoryIds.includes(id),
+		).length
+		const activeCount = childIds.filter(
+			(id) => categoryTags.get(id)?.type === 'active',
+		).length
+		const doneCount = childIds.filter(
+			(id) => categoryTags.get(id)?.type === 'done',
+		).length
+		const firstDoneTag = childIds
+			.map((id) => categoryTags.get(id))
+			.find(
+				(t): t is Extract<CategoryTag, { type: 'done' }> => t?.type === 'done',
+			)
+		return { selectedCount, activeCount, doneCount, firstDoneTag }
+	}
+
+	// ── Rendu tag pour une sous-catégorie ────────────────────────────────
+	const renderTag = (tag: CategoryTag | undefined) => {
+		if (!tag) return null
+
+		if (tag.type === 'active') {
+			return (
+				<span className='text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 shrink-0 whitespace-nowrap'>
+					En cours
+				</span>
+			)
+		}
+
+		return (
+			<div className='flex flex-col items-end gap-0 shrink-0'>
+				<span className='text-xs text-muted-foreground whitespace-nowrap'>
+					{tag.date}
+				</span>
+				{tag.countedProducts !== null && tag.totalProducts !== null && (
+					<span className='text-xs text-green-600 dark:text-green-400 font-medium whitespace-nowrap'>
+						{tag.countedProducts}/{tag.totalProducts} comptés
+					</span>
+				)}
+			</div>
+		)
+	}
+
+	// ── Rendu tag résumé pour la ligne parente ────────────────────────────
+	const renderGroupTag = (
+		childIds: string[],
+		stats: ReturnType<typeof getGroupStats>,
+	) => {
+		const { activeCount, doneCount, firstDoneTag } = stats
+
+		if (activeCount > 0) {
+			return (
+				<span className='text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 shrink-0 whitespace-nowrap'>
+					{activeCount} en cours
+				</span>
+			)
+		}
+
+		if (doneCount > 0 && firstDoneTag) {
+			return (
+				<div className='flex flex-col items-end gap-0 shrink-0'>
+					<span className='text-xs text-muted-foreground whitespace-nowrap'>
+						{firstDoneTag.date} · {doneCount}/{childIds.length} cat.
+					</span>
+					{firstDoneTag.countedProducts !== null &&
+						firstDoneTag.totalProducts !== null && (
+							<span className='text-xs text-green-600 dark:text-green-400 font-medium whitespace-nowrap'>
+								{firstDoneTag.countedProducts}/{firstDoneTag.totalProducts}{' '}
+								comptés
+							</span>
+						)}
+				</div>
+			)
+		}
+
+		return null
+	}
+
 	const canConfirm =
 		operator.trim().length > 0 && selectedCategoryIds.length > 0
+
 	const handleConfirm = () => {
 		if (!canConfirm) return
 		onConfirm(operator.trim(), 'selection', selectedCategoryIds)
@@ -295,6 +434,7 @@ function CreateSessionDialog({
 				</DialogHeader>
 
 				<div className='flex-1 overflow-y-auto space-y-5 py-2'>
+					{/* Opérateur */}
 					<div className='space-y-1.5'>
 						<Label>Opérateur</Label>
 						<Input
@@ -307,6 +447,7 @@ function CreateSessionDialog({
 
 					<Separator />
 
+					{/* Sélection catégories */}
 					<div className='space-y-2'>
 						<div className='flex items-center justify-between'>
 							<Label>Catégories à inventorier</Label>
@@ -328,7 +469,7 @@ function CreateSessionDialog({
 							/>
 						</div>
 
-						<div className='border rounded-lg overflow-y-auto max-h-64'>
+						<div className='border rounded-lg overflow-y-auto max-h-72'>
 							{categories.length === 0 && (
 								<div className='px-3 py-4 text-sm text-muted-foreground text-center'>
 									<Loader2 className='h-4 w-4 animate-spin mx-auto mb-1' />
@@ -340,6 +481,7 @@ function CreateSessionDialog({
 									Aucune catégorie trouvée
 								</div>
 							)}
+
 							{filteredGrouped.map((group, gi) => {
 								const childIds = group.children.map((c) => c.id)
 								const allSelected = childIds.every((id) =>
@@ -352,17 +494,19 @@ function CreateSessionDialog({
 								const expanded = group.parent
 									? isGroupExpanded(group.parent.id)
 									: true
+								const groupStats = getGroupStats(childIds)
 
 								return (
 									<div key={groupKey}>
-										{group.parent && (
+										{group.parent ? (
+											// ── Groupe avec enfants ──────────────────────────────
 											<div className='flex items-center border-b bg-muted/60 hover:bg-muted transition-colors'>
 												<button
 													type='button'
 													onClick={() =>
 														group.parent && toggleExpand(group.parent.id)
 													}
-													className='flex items-center gap-2 flex-1 px-3 py-2 text-left'
+													className='flex items-center gap-2 flex-1 px-3 py-2 text-left min-w-0'
 												>
 													<ChevronDown
 														className={cn(
@@ -370,68 +514,114 @@ function CreateSessionDialog({
 															!expanded && '-rotate-90',
 														)}
 													/>
-													<span className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+													<span className='text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate'>
 														{group.parent.name}
 													</span>
+													{/* Nombre total produits du groupe */}
+													{(() => {
+														const counts = countMap.get(group.parent.id)
+														const total = counts?.totalProductCount ?? 0
+														return total > 0 ? (
+															<span className='text-xs text-muted-foreground font-normal normal-case shrink-0'>
+																({total} réf.)
+															</span>
+														) : null
+													})()}
+													{/* Sélection partielle */}
 													{someSelected && (
-														<span className='text-xs text-orange-500 font-medium ml-1'>
-															(
-															{
-																childIds.filter((id) =>
-																	selectedCategoryIds.includes(id),
-																).length
-															}
-															/{childIds.length})
+														<span className='text-xs text-orange-500 font-medium ml-auto shrink-0'>
+															{groupStats.selectedCount}/{childIds.length}
 														</span>
 													)}
 												</button>
-												<button
-													type='button'
-													onClick={() => toggleGroup(childIds)}
-													className={cn(
-														'text-xs px-2 py-1 mr-2 rounded font-medium transition-colors hover:bg-background',
-														allSelected
-															? 'text-orange-500'
-															: 'text-muted-foreground',
-													)}
-												>
-													{allSelected ? 'Tout ôter' : 'Tout'}
-												</button>
+
+												{/* Tag résumé + bouton Tout */}
+												<div className='flex items-center gap-2 pr-2 shrink-0'>
+													{!someSelected &&
+														renderGroupTag(childIds, groupStats)}
+													<button
+														type='button'
+														onClick={() => toggleGroup(childIds)}
+														className={cn(
+															'text-xs px-2 py-1 rounded font-medium transition-colors hover:bg-background shrink-0',
+															allSelected
+																? 'text-orange-500'
+																: 'text-muted-foreground',
+														)}
+													>
+														{allSelected ? 'Tout ôter' : 'Tout'}
+													</button>
+												</div>
 											</div>
+										) : (
+											// ── Catégorie racine sans enfants ────────────────────
+											<label className='flex items-center border-b bg-muted/60 hover:bg-muted transition-colors cursor-pointer'>
+												<div className='flex items-center gap-2 flex-1 px-3 py-2 min-w-0'>
+													<input
+														type='checkbox'
+														checked={selectedCategoryIds.includes(
+															group.children[0].id,
+														)}
+														onChange={() =>
+															toggleCategory(group.children[0].id)
+														}
+														className='rounded accent-orange-500 shrink-0'
+													/>
+													<span className='text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate'>
+														{group.children[0].name}
+													</span>
+													{(() => {
+														const counts = countMap.get(group.children[0].id)
+														const total = counts?.productCount ?? 0
+														return total > 0 ? (
+															<span className='text-xs text-muted-foreground font-normal normal-case shrink-0'>
+																({total} réf.)
+															</span>
+														) : null
+													})()}
+												</div>
+												<div className='pr-3 shrink-0'>
+													{renderTag(categoryTags.get(group.children[0].id))}
+												</div>
+											</label>
 										)}
 
-										{expanded &&
+										{/* Sous-catégories — visibles si groupe expandé */}
+										{group.parent &&
+											expanded &&
 											group.children.map((cat, ci) => {
 												const tag = categoryTags.get(cat.id)
+												const counts = countMap.get(cat.id)
+												const productCount = counts?.productCount ?? 0
+												const isChecked = selectedCategoryIds.includes(cat.id)
+
 												return (
 													<label
 														key={cat.id}
 														className={cn(
-															'flex items-center gap-3 px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors',
-															group.parent ? 'pl-6' : '',
+															'flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors pl-6',
 															ci < group.children.length - 1 ? 'border-b' : '',
+															isChecked &&
+																'bg-orange-50/50 dark:bg-orange-900/5',
 														)}
 													>
 														<input
 															type='checkbox'
-															checked={selectedCategoryIds.includes(cat.id)}
+															checked={isChecked}
 															onChange={() => toggleCategory(cat.id)}
 															className='rounded accent-orange-500 shrink-0'
 														/>
-														<span className='text-sm flex-1'>{cat.name}</span>
-														{tag?.type === 'active' && (
-															<span className='text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 shrink-0 whitespace-nowrap'>
-																En cours
+														<span className='text-sm flex-1 min-w-0 truncate'>
+															{cat.name}
+														</span>
+														{/* Nb références */}
+														{productCount > 0 && (
+															<span className='text-xs text-muted-foreground shrink-0'>
+																{productCount} réf.
 															</span>
 														)}
-														{tag?.type === 'done' && (
-															<span
-																className='text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 whitespace-nowrap'
-																title={`Par ${tag.operator}`}
-															>
-																{tag.date}
-															</span>
-														)}
+														{/* Tag historique / en cours */}
+														<div className='shrink-0'>{renderTag(tag)}</div>
 													</label>
 												)
 											})}
@@ -439,6 +629,20 @@ function CreateSessionDialog({
 								)
 							})}
 						</div>
+
+						{/* Légende */}
+						{categoryTags.size > 0 && (
+							<div className='flex items-center gap-4 text-xs text-muted-foreground'>
+								<div className='flex items-center gap-1.5'>
+									<span className='w-2 h-2 rounded-full bg-blue-400 shrink-0' />
+									En cours dans une autre session
+								</div>
+								<div className='flex items-center gap-1.5'>
+									<span className='w-2 h-2 rounded-full bg-green-400 shrink-0' />
+									Déjà inventorié
+								</div>
+							</div>
+						)}
 					</div>
 				</div>
 
@@ -490,8 +694,18 @@ function SessionOverviewView({
 		status: isValidated(c.categoryId) ? ('validated' as const) : c.status,
 	}))
 
+	// ── Blocs "que reste-t-il" ────────────────────────────────────────────────
+	const todo = categoriesWithValidation.filter((c) => c.status === 'todo')
+	const inProgress = categoriesWithValidation.filter(
+		(c) => c.status === 'in_progress',
+	)
+	const done = categoriesWithValidation.filter(
+		(c) => c.status === 'counted' || c.status === 'validated',
+	)
+
 	return (
 		<div className='flex flex-col h-full'>
+			{/* ── Header ──────────────────────────────────────────────────────── */}
 			<div className='px-6 py-4 border-b'>
 				<div className='flex items-center gap-3 mb-3'>
 					<Button
@@ -557,6 +771,7 @@ function SessionOverviewView({
 					</div>
 				</div>
 
+				{/* Barre de progression globale */}
 				<div className='mt-4'>
 					<div className='flex justify-between text-xs text-muted-foreground mb-1.5'>
 						<span>
@@ -570,84 +785,245 @@ function SessionOverviewView({
 					<Progress value={summary.progressPercent} className='h-2' />
 				</div>
 
-				<div className='flex gap-4 mt-3 text-sm'>
-					<div className='flex items-center gap-1.5 text-muted-foreground'>
-						<CheckCircle2 className='h-3.5 w-3.5 text-green-500' />
-						{summary.validatedCategories} validée
-						{summary.validatedCategories > 1 ? 's' : ''}
+				{/* ── Dashboard "que reste-t-il" ─────────────────────────────── */}
+				<div className='grid grid-cols-3 gap-3 mt-4'>
+					{/* Restant */}
+					<div className='rounded-lg border bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800 px-3 py-2.5'>
+						<div className='flex items-center gap-1.5 mb-0.5'>
+							<Clock className='h-3.5 w-3.5 text-amber-500' />
+							<span className='text-xs font-medium text-amber-700 dark:text-amber-400'>
+								Restant
+							</span>
+						</div>
+						<div className='text-2xl font-bold text-amber-700 dark:text-amber-300'>
+							{summary.pendingProducts}
+						</div>
+						<div className='text-xs text-amber-600/70 dark:text-amber-500'>
+							{todo.length + inProgress.length} zone
+							{todo.length + inProgress.length > 1 ? 's' : ''}
+						</div>
 					</div>
-					<div className='flex items-center gap-1.5 text-muted-foreground'>
-						<AlertTriangle className='h-3.5 w-3.5 text-amber-500' />
-						{summary.totalGaps.length} écart
-						{summary.totalGaps.length > 1 ? 's' : ''} détecté
-						{summary.totalGaps.length > 1 ? 's' : ''}
-					</div>
-					<div className='flex items-center gap-1.5 text-muted-foreground'>
-						<Clock className='h-3.5 w-3.5' />
-						{summary.pendingProducts} restant
-						{summary.pendingProducts > 1 ? 's' : ''}
-					</div>
-				</div>
-			</div>
 
-			<div className='flex-1 overflow-y-auto divide-y'>
-				{categoriesWithValidation.map((cat) => {
-					const validated = cat.status === 'validated'
-					return (
-						<button
-							key={cat.categoryId}
-							type='button'
-							disabled={validated}
-							onClick={() => !validated && onSelectCategory(cat.categoryId)}
+					{/* Compté */}
+					<div className='rounded-lg border bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800 px-3 py-2.5'>
+						<div className='flex items-center gap-1.5 mb-0.5'>
+							<CheckCircle2 className='h-3.5 w-3.5 text-green-500' />
+							<span className='text-xs font-medium text-green-700 dark:text-green-400'>
+								Compté
+							</span>
+						</div>
+						<div className='text-2xl font-bold text-green-700 dark:text-green-300'>
+							{summary.countedProducts}
+						</div>
+						<div className='text-xs text-green-600/70 dark:text-green-500'>
+							{done.length} zone{done.length > 1 ? 's' : ''} terminée
+							{done.length > 1 ? 's' : ''}
+						</div>
+					</div>
+
+					{/* Écarts */}
+					<div
+						className={cn(
+							'rounded-lg border px-3 py-2.5',
+							summary.totalGaps.length > 0
+								? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
+								: 'bg-muted/40 border-border',
+						)}
+					>
+						<div className='flex items-center gap-1.5 mb-0.5'>
+							<AlertTriangle
+								className={cn(
+									'h-3.5 w-3.5',
+									summary.totalGaps.length > 0
+										? 'text-red-500'
+										: 'text-muted-foreground',
+								)}
+							/>
+							<span
+								className={cn(
+									'text-xs font-medium',
+									summary.totalGaps.length > 0
+										? 'text-red-700 dark:text-red-400'
+										: 'text-muted-foreground',
+								)}
+							>
+								Écarts
+							</span>
+						</div>
+						<div
 							className={cn(
-								'w-full flex items-center gap-4 px-6 py-4 text-left transition-colors',
-								validated
-									? 'opacity-60 cursor-default'
-									: 'hover:bg-muted/50 cursor-pointer',
+								'text-2xl font-bold',
+								summary.totalGaps.length > 0
+									? 'text-red-700 dark:text-red-300'
+									: 'text-muted-foreground',
 							)}
 						>
-							<CategoryStatusIcon status={cat.status} />
-							<div className='flex-1 min-w-0'>
-								<div className='flex items-center gap-2 mb-0.5'>
-									<span className='font-medium text-sm'>
+							{summary.totalGaps.length}
+						</div>
+						<div
+							className={cn(
+								'text-xs',
+								summary.totalGaps.length > 0
+									? 'text-red-600/70 dark:text-red-500'
+									: 'text-muted-foreground/60',
+							)}
+						>
+							{summary.totalGaps.length === 0 ? 'aucun écart' : 'à vérifier'}
+						</div>
+					</div>
+				</div>
+
+				{/* Zones en cours — mise en avant si partiellement comptées */}
+				{inProgress.length > 0 && (
+					<div className='mt-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10 px-3 py-2'>
+						<p className='text-xs font-medium text-blue-700 dark:text-blue-400 mb-1.5'>
+							En cours de comptage
+						</p>
+						<div className='space-y-1.5'>
+							{inProgress.map((cat) => (
+								<button
+									key={cat.categoryId}
+									type='button'
+									onClick={() => onSelectCategory(cat.categoryId)}
+									className='w-full flex items-center gap-2 text-left hover:opacity-80 transition-opacity'
+								>
+									<span className='text-xs text-blue-700 dark:text-blue-300 flex-1 truncate font-medium'>
 										{cat.categoryName}
 									</span>
-									{cat.totalGapCount > 0 && (
-										<span className='flex items-center gap-0.5 text-xs font-medium text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded-full'>
-											<AlertTriangle className='h-3 w-3' />
-											{cat.totalGapCount} écart
-											{cat.totalGapCount > 1 ? 's' : ''}
-										</span>
-									)}
-								</div>
-								<div className='text-xs text-muted-foreground'>
-									{cat.countedProducts}/{cat.totalProducts} produits
-								</div>
-							</div>
-							<div className='flex items-center gap-3'>
-								<div className='w-24 hidden sm:block'>
-									<Progress
-										value={
-											cat.totalProducts > 0
-												? (cat.countedProducts / cat.totalProducts) * 100
-												: 0
-										}
-										className='h-1.5'
-									/>
-								</div>
-								<CategoryStatusBadge status={cat.status} />
-								{!validated && (
-									<ChevronRight className='h-4 w-4 text-muted-foreground' />
-								)}
-							</div>
-						</button>
-					)
-				})}
+									<span className='text-xs text-blue-600/70 dark:text-blue-400 shrink-0'>
+										{cat.countedProducts}/{cat.totalProducts}
+									</span>
+									<div className='w-16 shrink-0'>
+										<div className='h-1 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden'>
+											<div
+												className='h-full bg-blue-500 rounded-full'
+												style={{
+													width: `${cat.totalProducts > 0 ? (cat.countedProducts / cat.totalProducts) * 100 : 0}%`,
+												}}
+											/>
+										</div>
+									</div>
+								</button>
+							))}
+						</div>
+					</div>
+				)}
+			</div>
+
+			{/* ── Liste catégories ──────────────────────────────────────────── */}
+			<div className='flex-1 overflow-y-auto divide-y'>
+				{/* Pas encore commencées — en premier si todo > 0 */}
+				{todo.length > 0 && (
+					<div className='px-6 pt-3 pb-1'>
+						<p className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+							À compter — {todo.reduce((acc, c) => acc + c.pendingProducts, 0)}{' '}
+							produits
+						</p>
+					</div>
+				)}
+				{todo.map((cat) => (
+					<CategoryRow
+						key={cat.categoryId}
+						cat={cat}
+						onSelectCategory={onSelectCategory}
+					/>
+				))}
+
+				{/* En cours */}
+				{inProgress.length > 0 && (
+					<div className='px-6 pt-3 pb-1'>
+						<p className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+							En cours
+						</p>
+					</div>
+				)}
+				{inProgress.map((cat) => (
+					<CategoryRow
+						key={cat.categoryId}
+						cat={cat}
+						onSelectCategory={onSelectCategory}
+					/>
+				))}
+
+				{/* Terminées */}
+				{done.length > 0 && (
+					<div className='px-6 pt-3 pb-1'>
+						<p className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+							Terminées
+						</p>
+					</div>
+				)}
+				{done.map((cat) => (
+					<CategoryRow
+						key={cat.categoryId}
+						cat={cat}
+						onSelectCategory={onSelectCategory}
+						validated={cat.status === 'validated'}
+					/>
+				))}
 			</div>
 		</div>
 	)
 }
 
+// Composant ligne catégorie extrait pour éviter la répétition
+function CategoryRow({
+	cat,
+	onSelectCategory,
+	validated = false,
+}: {
+	cat: CategoryInventorySummary & {
+		status: CategoryInventoryStatus | 'validated'
+	}
+	onSelectCategory: (id: string) => void
+	validated?: boolean
+}) {
+	return (
+		<button
+			type='button'
+			disabled={validated}
+			onClick={() => !validated && onSelectCategory(cat.categoryId)}
+			className={cn(
+				'w-full flex items-center gap-4 px-6 py-4 text-left transition-colors',
+				validated
+					? 'opacity-60 cursor-default'
+					: 'hover:bg-muted/50 cursor-pointer',
+			)}
+		>
+			<CategoryStatusIcon status={cat.status} />
+			<div className='flex-1 min-w-0'>
+				<div className='flex items-center gap-2 mb-0.5'>
+					<span className='font-medium text-sm'>{cat.categoryName}</span>
+					{cat.totalGapCount > 0 && (
+						<span className='flex items-center gap-0.5 text-xs font-medium text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded-full'>
+							<AlertTriangle className='h-3 w-3' />
+							{cat.totalGapCount} écart{cat.totalGapCount > 1 ? 's' : ''}
+						</span>
+					)}
+				</div>
+				<div className='text-xs text-muted-foreground'>
+					{cat.countedProducts}/{cat.totalProducts} produits
+				</div>
+			</div>
+			<div className='flex items-center gap-3'>
+				<div className='w-24 hidden sm:block'>
+					<Progress
+						value={
+							cat.totalProducts > 0
+								? (cat.countedProducts / cat.totalProducts) * 100
+								: 0
+						}
+						className='h-1.5'
+					/>
+				</div>
+				<CategoryStatusBadge status={cat.status} />
+				{!validated && (
+					<ChevronRight className='h-4 w-4 text-muted-foreground' />
+				)}
+			</div>
+		</button>
+	)
+}
 function CountingRow({
 	entry,
 	isValidated,
@@ -1089,6 +1465,25 @@ function SessionDetailView({
 																)}
 																{entry.product_barcode && (
 																	<span>{entry.product_barcode}</span>
+																)}
+																{/* ✅ Date de comptage */}
+																{entry.counted_at && (
+																	<>
+																		{(entry.product_sku ||
+																			entry.product_barcode) && (
+																			<span className='mx-1'>·</span>
+																		)}
+																		<span>
+																			{new Date(
+																				entry.counted_at,
+																			).toLocaleString('fr-FR', {
+																				day: '2-digit',
+																				month: '2-digit',
+																				hour: '2-digit',
+																				minute: '2-digit',
+																			})}
+																		</span>
+																	</>
 																)}
 															</p>
 														</div>
