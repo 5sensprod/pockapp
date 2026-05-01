@@ -134,15 +134,63 @@ function formatInventoryActivityLabel(
 		: `Créée · ${formatInventoryDateTime(startedAt)}`
 }
 
-function InventoryCapitalStats({
-	totalProducts,
-	countedProducts,
-	label = 'Vision stock',
+function GlobalInventoryCapitalStats({
+	activeSessions,
 }: {
-	totalProducts: number
-	countedProducts: number
-	label?: string
+	activeSessions: InventorySession[]
 }) {
+	const { data: history } = useInventoryHistory()
+
+	const { data: catalogProducts = [], isLoading: catalogLoading } = useQuery({
+		queryKey: ['apppos', 'products', 'catalog'],
+		queryFn: async () => {
+			const products = await appPosApi.getProducts()
+			return appPosTransformers.products(products)
+		},
+		staleTime: 10 * 60 * 1000,
+		gcTime: 60 * 60 * 1000,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+	})
+
+	const countedProducts = useMemo(() => {
+		const countedProductIds = new Set<string>()
+		let fallbackCount = 0
+
+		for (const session of activeSessions) {
+			for (const entry of (session as any).entries ?? []) {
+				if (entry.status === 'counted' || entry.stock_compte !== null) {
+					countedProductIds.add(entry.product_id)
+				}
+			}
+
+			if (((session as any).entries ?? []).length === 0) {
+				fallbackCount += session.stats_counted_products ?? 0
+			}
+		}
+
+		for (const session of history?.items ?? []) {
+			if (session.status !== 'completed') continue
+
+			const entries = (session as any).entries ?? []
+
+			if (entries.length === 0) {
+				fallbackCount += session.stats_counted_products ?? 0
+				continue
+			}
+
+			for (const entry of entries) {
+				if (entry.status === 'counted' || entry.stock_compte !== null) {
+					countedProductIds.add(entry.product_id)
+				}
+			}
+		}
+
+		return countedProductIds.size > 0 ? countedProductIds.size : fallbackCount
+	}, [activeSessions, history])
+
+	const totalProducts = catalogProducts.length
 	const remainingProducts = Math.max(totalProducts - countedProducts, 0)
 	const progress =
 		totalProducts > 0 ? Math.round((countedProducts / totalProducts) * 100) : 0
@@ -152,10 +200,10 @@ function InventoryCapitalStats({
 			<div className='mb-3 flex items-start justify-between gap-3'>
 				<div>
 					<p className='text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300'>
-						{label}
+						Stock global
 					</p>
 					<h3 className='mt-1 text-lg font-bold text-foreground'>
-						Stock à saisir
+						Avancement inventaire
 					</h3>
 				</div>
 
@@ -170,81 +218,7 @@ function InventoryCapitalStats({
 						Total
 					</div>
 					<div className='mt-1 text-2xl font-black text-foreground'>
-						{totalProducts}
-					</div>
-				</div>
-
-				<div className='rounded-xl bg-background/85 px-3 py-2'>
-					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
-						Comptés
-					</div>
-					<div className='mt-1 text-2xl font-black text-green-700 dark:text-green-300'>
-						{countedProducts}
-					</div>
-				</div>
-
-				<div className='rounded-xl bg-background/85 px-3 py-2'>
-					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
-						Restants
-					</div>
-					<div className='mt-1 text-2xl font-black text-amber-700 dark:text-amber-300'>
-						{remainingProducts}
-					</div>
-				</div>
-			</div>
-
-			<div className='mt-3'>
-				<div className='mb-1 flex items-center justify-between text-xs text-muted-foreground'>
-					<span>
-						{countedProducts} / {totalProducts} produits entrés
-					</span>
-					<span className='font-semibold text-foreground'>
-						{remainingProducts} à faire
-					</span>
-				</div>
-				<Progress value={progress} className='h-2' />
-			</div>
-		</div>
-	)
-}
-
-function CreateSessionStockStats({
-	totalProducts,
-	countedProducts,
-	isLoading = false,
-}: {
-	totalProducts: number
-	countedProducts: number
-	isLoading?: boolean
-}) {
-	const remainingProducts = Math.max(totalProducts - countedProducts, 0)
-	const countedPercent =
-		totalProducts > 0 ? Math.round((countedProducts / totalProducts) * 100) : 0
-
-	return (
-		<div className='rounded-2xl border border-orange-200/80 bg-orange-50/60 p-4 shadow-sm dark:border-orange-900/50 dark:bg-orange-950/10'>
-			<div className='mb-3 flex items-start justify-between gap-3'>
-				<div>
-					<p className='text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300'>
-						Stock global
-					</p>
-					<h3 className='mt-1 text-base font-bold text-foreground'>
-						Avancement inventaire
-					</h3>
-				</div>
-
-				<div className='rounded-full bg-orange-500 px-3 py-1 text-sm font-bold text-white'>
-					{countedPercent}%
-				</div>
-			</div>
-
-			<div className='grid grid-cols-3 gap-2'>
-				<div className='rounded-xl bg-background/85 px-3 py-2'>
-					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
-						Total
-					</div>
-					<div className='mt-1 text-2xl font-black text-foreground'>
-						{isLoading ? '…' : totalProducts}
+						{catalogLoading ? '…' : totalProducts}
 					</div>
 				</div>
 
@@ -262,7 +236,7 @@ function CreateSessionStockStats({
 						À compter
 					</div>
 					<div className='mt-1 text-2xl font-black text-amber-700 dark:text-amber-300'>
-						{isLoading ? '…' : remainingProducts}
+						{catalogLoading ? '…' : remainingProducts}
 					</div>
 				</div>
 			</div>
@@ -270,100 +244,16 @@ function CreateSessionStockStats({
 			<div className='mt-3'>
 				<div className='mb-1 flex items-center justify-between text-xs text-muted-foreground'>
 					<span>
-						{countedProducts} / {isLoading ? '…' : totalProducts} produits
+						{countedProducts} / {catalogLoading ? '…' : totalProducts} produits
 						comptés
 					</span>
 					<span className='font-semibold text-foreground'>
-						{isLoading ? '…' : remainingProducts} à faire
+						{catalogLoading ? '…' : remainingProducts} à faire
 					</span>
 				</div>
-				<Progress value={countedPercent} className='h-2' />
+				<Progress value={progress} className='h-2' />
 			</div>
 		</div>
-	)
-}
-
-function SessionProgressReporter({
-	sessionId,
-	onChange,
-}: {
-	sessionId: string
-	onChange: (
-		sessionId: string,
-		value: { total: number; counted: number },
-	) => void
-}) {
-	const { data: progress } = useSessionProgress(sessionId)
-
-	useEffect(() => {
-		onChange(sessionId, {
-			total: progress?.total ?? 0,
-			counted: progress?.counted ?? 0,
-		})
-	}, [sessionId, progress?.total, progress?.counted, onChange])
-
-	return null
-}
-
-function ActiveSessionsCapitalStats({
-	sessions,
-}: {
-	sessions: InventorySession[]
-}) {
-	const [progressBySession, setProgressBySession] = useState<
-		Record<string, { total: number; counted: number }>
-	>({})
-
-	const handleProgressChange = (
-		sessionId: string,
-		value: { total: number; counted: number },
-	) => {
-		setProgressBySession((current) => {
-			const previous = current[sessionId]
-			if (
-				previous?.total === value.total &&
-				previous?.counted === value.counted
-			) {
-				return current
-			}
-
-			return {
-				...current,
-				[sessionId]: value,
-			}
-		})
-	}
-
-	const totals = sessions.reduce(
-		(acc, session) => {
-			const progress = progressBySession[session.id]
-			const total = progress?.total ?? session.stats_total_products ?? 0
-			const counted = progress?.counted ?? session.stats_counted_products ?? 0
-
-			return {
-				total: acc.total + total,
-				counted: acc.counted + counted,
-			}
-		},
-		{ total: 0, counted: 0 },
-	)
-
-	return (
-		<>
-			{sessions.map((session) => (
-				<SessionProgressReporter
-					key={session.id}
-					sessionId={session.id}
-					onChange={handleProgressChange}
-				/>
-			))}
-
-			<InventoryCapitalStats
-				totalProducts={totals.total}
-				countedProducts={totals.counted}
-				label='Sessions en cours'
-			/>
-		</>
 	)
 }
 
@@ -510,28 +400,13 @@ function CreateSessionDialog({
 	const { data: categoriesRaw = [] } = useAppPosCategoriesWithCounts()
 	const { data: history } = useInventoryHistory()
 
-	// Catalogue complet AppPOS : source fiable pour le total global produits.
-	// Les compteurs de catégories peuvent compter des regroupements / sous-rayons,
-	// donc ils ne doivent pas servir au total global catalogue.
-	const { data: catalogProducts = [], isLoading: catalogLoading } = useQuery({
-		queryKey: ['apppos', 'products', 'catalog'],
-		queryFn: async () => {
-			const products = await appPosApi.getProducts()
-			return appPosTransformers.products(products)
-		},
-		staleTime: 10 * 60 * 1000,
-		gcTime: 60 * 60 * 1000,
-		refetchOnMount: false,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
-	})
-
 	const categories = useMemo(() => {
 		const flatten = (cats: any[], parentId: string | null = null): any[] =>
 			cats.flatMap((cat) => [
 				{ ...cat, id: cat._id, parent: parentId },
 				...flatten(cat.children || [], cat._id),
 			])
+
 		return flatten(categoriesRaw)
 	}, [categoriesRaw])
 
@@ -540,60 +415,21 @@ function CreateSessionDialog({
 			string,
 			{ productCount: number; totalProductCount: number }
 		>()
+
 		const walk = (cats: any[]) => {
 			for (const cat of cats) {
 				map.set(cat._id, {
 					productCount: cat.productCount ?? 0,
 					totalProductCount: cat.totalProductCount ?? cat.productCount ?? 0,
 				})
+
 				if (cat.children?.length) walk(cat.children)
 			}
 		}
+
 		walk(categoriesRaw)
 		return map
 	}, [categoriesRaw])
-
-	const globalProductTotal = catalogProducts.length
-
-	const globalCountedProductTotal = useMemo(() => {
-		const countedProductIds = new Set<string>()
-
-		for (const session of activeSessions) {
-			for (const entry of (session as any).entries ?? []) {
-				if (entry.status === 'counted' || entry.stock_compte !== null) {
-					countedProductIds.add(entry.product_id)
-				}
-			}
-		}
-
-		for (const session of history?.items ?? []) {
-			if (session.status !== 'completed') continue
-
-			for (const entry of (session as any).entries ?? []) {
-				if (entry.status === 'counted' || entry.stock_compte !== null) {
-					countedProductIds.add(entry.product_id)
-				}
-			}
-
-			// Fallback si l'historique ne renvoie que les stats agrégées.
-			if (((session as any).entries ?? []).length === 0) {
-				return Math.max(
-					0,
-					Math.min(
-						globalProductTotal,
-						(history?.items ?? [])
-							.filter((item) => item.status === 'completed')
-							.reduce(
-								(total, item) => total + (item.stats_counted_products ?? 0),
-								0,
-							),
-					),
-				)
-			}
-		}
-
-		return countedProductIds.size
-	}, [activeSessions, history, globalProductTotal])
 
 	const selectedProductTotal = useMemo(
 		() =>
@@ -614,7 +450,6 @@ function CreateSessionDialog({
 		}
 	}, [open, defaultOperator])
 
-	// ── Type tag enrichi ──────────────────────────────────────────────────
 	type CategoryTag =
 		| { type: 'active'; sessionOperator: string }
 		| {
@@ -628,7 +463,6 @@ function CreateSessionDialog({
 	const categoryTags = useMemo(() => {
 		const tags = new Map<string, CategoryTag>()
 
-		// Sessions actives — priorité absolue
 		for (const session of activeSessions) {
 			for (const catId of session.scope_category_ids ?? []) {
 				tags.set(catId, {
@@ -638,9 +472,9 @@ function CreateSessionDialog({
 			}
 		}
 
-		// Historique — seulement si pas déjà tagué "active"
 		for (const session of history?.items ?? []) {
 			if (session.status !== 'completed') continue
+
 			const dateStr = session.completed_at
 				? new Date(session.completed_at).toLocaleDateString('fr-FR', {
 						day: '2-digit',
@@ -655,8 +489,8 @@ function CreateSessionDialog({
 						type: 'done',
 						date: dateStr,
 						operator: session.operator,
-						countedProducts: session.stats_counted_products ?? null,
-						totalProducts: session.stats_total_products ?? null,
+						countedProducts: null,
+						totalProducts: null,
 					})
 				}
 			}
@@ -704,6 +538,7 @@ function CreateSessionDialog({
 
 	const filteredGrouped = useMemo(() => {
 		if (!searchLower) return grouped
+
 		return grouped
 			.map((group) => ({
 				...group,
@@ -716,6 +551,7 @@ function CreateSessionDialog({
 
 	const searchExpandedIds = useMemo(() => {
 		if (!searchLower) return new Set<string>()
+
 		return new Set(
 			filteredGrouped
 				.filter((g) => g.parent)
@@ -726,6 +562,15 @@ function CreateSessionDialog({
 	const isGroupExpanded = (groupId: string) =>
 		searchLower ? searchExpandedIds.has(groupId) : expandedGroups.has(groupId)
 
+	const getCategoryProductCount = (categoryId: string) =>
+		countMap.get(categoryId)?.productCount ?? 0
+
+	const isEmptyCategory = (categoryId: string) =>
+		getCategoryProductCount(categoryId) === 0
+
+	const isSelectableCategory = (categoryId: string) =>
+		!isEmptyCategory(categoryId)
+
 	const toggleExpand = (groupId: string) => {
 		setExpandedGroups((prev) => {
 			const next = new Set(prev)
@@ -735,98 +580,134 @@ function CreateSessionDialog({
 	}
 
 	const toggleCategory = (id: string) => {
+		if (!isSelectableCategory(id)) return
+
 		setSelectedCategoryIds((prev) =>
 			prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
 		)
 	}
 
 	const toggleGroup = (ids: string[]) => {
-		const allSelected = ids.every((id) => selectedCategoryIds.includes(id))
+		const selectableIds = ids.filter(isSelectableCategory)
+
+		if (selectableIds.length === 0) return
+
+		const allSelected = selectableIds.every((id) =>
+			selectedCategoryIds.includes(id),
+		)
+
 		setSelectedCategoryIds((prev) =>
 			allSelected
-				? prev.filter((id) => !ids.includes(id))
-				: [...prev, ...ids.filter((id) => !prev.includes(id))],
+				? prev.filter((id) => !selectableIds.includes(id))
+				: [...prev, ...selectableIds.filter((id) => !prev.includes(id))],
 		)
 	}
 
-	// ── Stats résumées pour la ligne parente ──────────────────────────────
 	const getGroupStats = (childIds: string[]) => {
 		const selectedCount = childIds.filter((id) =>
 			selectedCategoryIds.includes(id),
 		).length
+
 		const activeCount = childIds.filter(
 			(id) => categoryTags.get(id)?.type === 'active',
 		).length
+
 		const doneCount = childIds.filter(
 			(id) => categoryTags.get(id)?.type === 'done',
 		).length
-		const firstDoneTag = childIds
-			.map((id) => categoryTags.get(id))
-			.find(
-				(t): t is Extract<CategoryTag, { type: 'done' }> => t?.type === 'done',
-			)
-		return { selectedCount, activeCount, doneCount, firstDoneTag }
+
+		const totalProducts = childIds.reduce(
+			(total, id) => total + getCategoryProductCount(id),
+			0,
+		)
+
+		const countedProducts = childIds.reduce((total, id) => {
+			const tag = categoryTags.get(id)
+
+			if (tag?.type !== 'done') return total
+
+			return total + getCategoryProductCount(id)
+		}, 0)
+
+		const progressPercent =
+			totalProducts > 0
+				? Math.round((countedProducts / totalProducts) * 100)
+				: 0
+
+		return {
+			selectedCount,
+			activeCount,
+			doneCount,
+			totalProducts,
+			countedProducts,
+			progressPercent,
+		}
 	}
 
-	// ── Rendu tag pour une sous-catégorie ────────────────────────────────
-	const renderTag = (tag: CategoryTag | undefined) => {
-		if (!tag) return null
+	const renderStatusTag = (categoryId: string) => {
+		const tag = categoryTags.get(categoryId)
+		const productCount = getCategoryProductCount(categoryId)
 
-		if (tag.type === 'active') {
+		if (tag?.type === 'active') {
 			return (
-				<span className='text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 shrink-0 whitespace-nowrap'>
+				<span className='rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'>
 					En cours
 				</span>
 			)
 		}
 
-		return (
-			<div className='flex flex-col items-end gap-0 shrink-0'>
-				<span className='text-xs text-muted-foreground whitespace-nowrap'>
-					{tag.date}
-				</span>
-				{tag.countedProducts !== null && tag.totalProducts !== null && (
-					<span className='text-xs text-green-600 dark:text-green-400 font-medium whitespace-nowrap'>
-						{tag.countedProducts}/{tag.totalProducts} comptés
-					</span>
-				)}
-			</div>
-		)
-	}
-
-	// ── Rendu tag résumé pour la ligne parente ────────────────────────────
-	const renderGroupTag = (
-		childIds: string[],
-		stats: ReturnType<typeof getGroupStats>,
-	) => {
-		const { activeCount, doneCount, firstDoneTag } = stats
-
-		if (activeCount > 0) {
+		if (tag?.type === 'done' && productCount > 0) {
 			return (
-				<span className='text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 shrink-0 whitespace-nowrap'>
-					{activeCount} en cours
+				<span className='rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300'>
+					Fait le {tag.date}
 				</span>
-			)
-		}
-
-		if (doneCount > 0 && firstDoneTag) {
-			return (
-				<div className='flex flex-col items-end gap-0 shrink-0'>
-					<span className='text-xs text-muted-foreground whitespace-nowrap'>
-						{firstDoneTag.date} · {doneCount}/{childIds.length} cat.
-					</span>
-					{firstDoneTag.countedProducts !== null &&
-						firstDoneTag.totalProducts !== null && (
-							<span className='text-xs text-green-600 dark:text-green-400 font-medium whitespace-nowrap'>
-								{firstDoneTag.countedProducts}/{firstDoneTag.totalProducts}{' '}
-								comptés
-							</span>
-						)}
-				</div>
 			)
 		}
 
 		return null
+	}
+
+	const renderGroupProgress = (
+		childIds: string[],
+		stats: ReturnType<typeof getGroupStats>,
+	) => {
+		const hasProgress = stats.countedProducts > 0 || stats.activeCount > 0
+
+		if (!hasProgress && stats.selectedCount === 0) return null
+
+		return (
+			<div className='hidden min-w-[220px] shrink-0 md:block'>
+				<div className='mb-1 flex items-center justify-between gap-2 text-[11px]'>
+					<span className='text-muted-foreground'>
+						{stats.countedProducts > 0
+							? `${stats.progressPercent}% réalisé`
+							: stats.activeCount > 0
+								? `${stats.activeCount} en cours`
+								: `${stats.selectedCount}/${childIds.length} sélection.`}
+					</span>
+
+					{stats.countedProducts > 0 && (
+						<span className='font-medium text-green-700 dark:text-green-300'>
+							{stats.countedProducts}/{stats.totalProducts}
+						</span>
+					)}
+				</div>
+
+				<div className='h-1.5 overflow-hidden rounded-full bg-muted'>
+					<div
+						className={cn(
+							'h-full rounded-full transition-all',
+							stats.countedProducts > 0 ? 'bg-green-500' : 'bg-blue-500',
+						)}
+						style={{
+							width: `${
+								stats.countedProducts > 0 ? stats.progressPercent : 8
+							}%`,
+						}}
+					/>
+				</div>
+			</div>
+		)
 	}
 
 	const canConfirm =
@@ -839,17 +720,16 @@ function CreateSessionDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className='max-w-lg max-h-[85vh] flex flex-col'>
-				<DialogHeader>
-					<DialogTitle className='flex items-center gap-2'>
+			<DialogContent className='flex h-[min(92vh,820px)] w-[min(96vw,980px)] max-w-5xl flex-col overflow-hidden p-0'>
+				<DialogHeader className='shrink-0 border-b px-8 py-5'>
+					<DialogTitle className='flex items-center gap-2 text-xl'>
 						<ClipboardList className='h-5 w-5 text-orange-500' />
 						Nouvel inventaire
 					</DialogTitle>
 				</DialogHeader>
 
-				<div className='flex-1 overflow-y-auto space-y-5 py-2'>
-					{/* Opérateur */}
-					<div className='space-y-1.5'>
+				<div className='min-h-0 flex-1 overflow-y-auto px-8 py-5'>
+					<div className='mb-5 max-w-md space-y-1.5'>
 						<Label>Opérateur</Label>
 						<Input
 							placeholder='Votre nom...'
@@ -859,57 +739,54 @@ function CreateSessionDialog({
 						/>
 					</div>
 
-					<CreateSessionStockStats
-						totalProducts={globalProductTotal}
-						countedProducts={globalCountedProductTotal}
-						isLoading={catalogLoading}
-					/>
+					<Separator className='mb-5' />
 
-					<Separator />
-
-					{/* Sélection catégories */}
-					<div className='space-y-2'>
-						<div className='flex items-center justify-between'>
+					<div className='flex min-h-0 flex-col space-y-3'>
+						<div className='flex items-center justify-between gap-3'>
 							<Label>Catégories à inventorier</Label>
+
 							{selectedCategoryIds.length > 0 && (
-								<span className='text-xs text-orange-500 font-medium'>
-									{selectedCategoryIds.length} sélectionnée
-									{selectedCategoryIds.length > 1 ? 's' : ''}
+								<span className='rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'>
+									{selectedCategoryIds.length} rayon
+									{selectedCategoryIds.length > 1 ? 's' : ''} ·{' '}
+									{selectedProductTotal} produit
+									{selectedProductTotal > 1 ? 's' : ''}
 								</span>
 							)}
 						</div>
 
 						<div className='relative'>
-							<Search className='absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none' />
+							<Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
 							<Input
 								placeholder='Rechercher une catégorie...'
 								value={search}
 								onChange={(e) => setSearch(e.target.value)}
-								className='pl-8 h-8 text-sm'
+								className='h-10 pl-9 text-sm'
 							/>
 						</div>
 
-						<div className='border rounded-lg overflow-y-auto max-h-72'>
+						<div className='h-[460px] overflow-y-auto rounded-xl border'>
 							{categories.length === 0 && (
-								<div className='px-3 py-4 text-sm text-muted-foreground text-center'>
-									<Loader2 className='h-4 w-4 animate-spin mx-auto mb-1' />
+								<div className='px-3 py-8 text-center text-sm text-muted-foreground'>
+									<Loader2 className='mx-auto mb-2 h-4 w-4 animate-spin' />
 									Chargement des catégories...
 								</div>
 							)}
+
 							{filteredGrouped.length === 0 && categories.length > 0 && (
-								<div className='px-3 py-4 text-sm text-muted-foreground text-center'>
+								<div className='px-3 py-8 text-center text-sm text-muted-foreground'>
 									Aucune catégorie trouvée
 								</div>
 							)}
 
 							{filteredGrouped.map((group, gi) => {
 								const childIds = group.children.map((c) => c.id)
-								const allSelected = childIds.every((id) =>
-									selectedCategoryIds.includes(id),
-								)
-								const someSelected = childIds.some((id) =>
-									selectedCategoryIds.includes(id),
-								)
+								const selectableChildIds = childIds.filter(isSelectableCategory)
+								const allSelected =
+									selectableChildIds.length > 0 &&
+									selectableChildIds.every((id) =>
+										selectedCategoryIds.includes(id),
+									)
 								const groupKey = group.parent?.id ?? `orphan-${gi}`
 								const expanded = group.parent
 									? isGroupExpanded(group.parent.id)
@@ -919,129 +796,131 @@ function CreateSessionDialog({
 								return (
 									<div key={groupKey}>
 										{group.parent ? (
-											// ── Groupe avec enfants ──────────────────────────────
-											<div className='flex items-center border-b bg-muted/60 hover:bg-muted transition-colors'>
+											<div className='flex items-center gap-3 border-b bg-muted/50 px-3 py-2.5 transition-colors hover:bg-muted'>
 												<button
 													type='button'
 													onClick={() =>
 														group.parent && toggleExpand(group.parent.id)
 													}
-													className='flex items-center gap-2 flex-1 px-3 py-2 text-left min-w-0'
+													className='flex min-w-0 flex-1 items-center gap-2 text-left'
 												>
 													<ChevronDown
 														className={cn(
-															'h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 shrink-0',
+															'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150',
 															!expanded && '-rotate-90',
 														)}
 													/>
-													<span className='text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate'>
-														{group.parent.name}
-													</span>
-													{/* Nombre total produits du groupe */}
-													{(() => {
-														const counts = countMap.get(group.parent.id)
-														const total = counts?.totalProductCount ?? 0
-														return total > 0 ? (
-															<span className='text-xs text-muted-foreground font-normal normal-case shrink-0'>
-																({total} réf.)
+
+													<div className='min-w-0 flex-1'>
+														<div className='flex min-w-0 items-center gap-2'>
+															<span className='truncate text-sm font-bold uppercase tracking-wide text-foreground/80'>
+																{group.parent.name}
 															</span>
-														) : null
-													})()}
-													{/* Sélection partielle */}
-													{someSelected && (
-														<span className='text-xs text-orange-500 font-medium ml-auto shrink-0'>
-															{groupStats.selectedCount}/{childIds.length}
-														</span>
-													)}
+
+															<span className='shrink-0 text-xs text-muted-foreground'>
+																{groupStats.totalProducts} réf.
+															</span>
+														</div>
+													</div>
 												</button>
 
-												{/* Tag résumé + bouton Tout */}
-												<div className='flex items-center gap-2 pr-2 shrink-0'>
-													{!someSelected &&
-														renderGroupTag(childIds, groupStats)}
-													<button
-														type='button'
-														onClick={() => toggleGroup(childIds)}
-														className={cn(
-															'text-xs px-2 py-1 rounded font-medium transition-colors hover:bg-background shrink-0',
-															allSelected
-																? 'text-orange-500'
-																: 'text-muted-foreground',
-														)}
-													>
-														{allSelected ? 'Tout ôter' : 'Tout'}
-													</button>
-												</div>
+												{renderGroupProgress(childIds, groupStats)}
+
+												<Button
+													type='button'
+													variant='ghost'
+													size='sm'
+													onClick={() => toggleGroup(childIds)}
+													disabled={selectableChildIds.length === 0}
+													className={cn(
+														'h-8 shrink-0 px-3 text-xs font-semibold',
+														allSelected
+															? 'text-orange-600'
+															: 'text-muted-foreground',
+													)}
+												>
+													{allSelected ? 'Retirer' : 'Tout'}
+												</Button>
 											</div>
 										) : (
-											// ── Catégorie racine sans enfants ────────────────────
-											<label className='flex items-center border-b bg-muted/60 hover:bg-muted transition-colors cursor-pointer'>
-												<div className='flex items-center gap-2 flex-1 px-3 py-2 min-w-0'>
-													<input
-														type='checkbox'
-														checked={selectedCategoryIds.includes(
-															group.children[0].id,
-														)}
-														onChange={() =>
-															toggleCategory(group.children[0].id)
-														}
-														className='rounded accent-orange-500 shrink-0'
-													/>
-													<span className='text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate'>
-														{group.children[0].name}
-													</span>
-													{(() => {
-														const counts = countMap.get(group.children[0].id)
-														const total = counts?.productCount ?? 0
-														return total > 0 ? (
-															<span className='text-xs text-muted-foreground font-normal normal-case shrink-0'>
-																({total} réf.)
-															</span>
-														) : null
-													})()}
-												</div>
-												<div className='pr-3 shrink-0'>
-													{renderTag(categoryTags.get(group.children[0].id))}
-												</div>
-											</label>
-										)}
-
-										{/* Sous-catégories — visibles si groupe expandé */}
-										{group.parent &&
-											expanded &&
-											group.children.map((cat, ci) => {
-												const tag = categoryTags.get(cat.id)
-												const counts = countMap.get(cat.id)
-												const productCount = counts?.productCount ?? 0
-												const isChecked = selectedCategoryIds.includes(cat.id)
+											(() => {
+												const root = group.children[0]
+												const productCount = getCategoryProductCount(root.id)
+												const isChecked = selectedCategoryIds.includes(root.id)
+												const isDisabled = productCount === 0
 
 												return (
 													<label
-														key={cat.id}
 														className={cn(
-															'flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors pl-6',
-															ci < group.children.length - 1 ? 'border-b' : '',
-															isChecked &&
-																'bg-orange-50/50 dark:bg-orange-900/5',
+															'flex cursor-pointer items-center gap-3 border-b bg-muted/50 px-3 py-2.5 transition-colors hover:bg-muted',
+															isDisabled &&
+																'cursor-not-allowed opacity-45 hover:bg-muted/50',
 														)}
 													>
 														<input
 															type='checkbox'
 															checked={isChecked}
-															onChange={() => toggleCategory(cat.id)}
-															className='rounded accent-orange-500 shrink-0'
+															disabled={isDisabled}
+															onChange={() => toggleCategory(root.id)}
+															className='shrink-0 rounded accent-orange-500 disabled:cursor-not-allowed'
 														/>
-														<span className='text-sm flex-1 min-w-0 truncate'>
+
+														<div className='min-w-0 flex-1'>
+															<div className='flex min-w-0 items-center gap-2'>
+																<span className='truncate text-sm font-bold uppercase tracking-wide text-foreground/80'>
+																	{root.name}
+																</span>
+
+																<span className='shrink-0 text-xs text-muted-foreground'>
+																	{productCount} réf.
+																</span>
+															</div>
+														</div>
+
+														{renderStatusTag(root.id)}
+													</label>
+												)
+											})()
+										)}
+
+										{group.parent &&
+											expanded &&
+											group.children.map((cat, ci, visibleChildren) => {
+												const productCount = getCategoryProductCount(cat.id)
+												const isChecked = selectedCategoryIds.includes(cat.id)
+												const isDisabled = productCount === 0
+
+												return (
+													<label
+														key={cat.id}
+														className={cn(
+															'flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50',
+															ci < visibleChildren.length - 1 && 'border-b',
+															isChecked &&
+																'bg-orange-50/50 dark:bg-orange-900/5',
+															isDisabled &&
+																'cursor-not-allowed opacity-45 hover:bg-transparent',
+														)}
+													>
+														<input
+															type='checkbox'
+															checked={isChecked}
+															disabled={isDisabled}
+															onChange={() => toggleCategory(cat.id)}
+															className='shrink-0 rounded accent-orange-500 disabled:cursor-not-allowed'
+														/>
+
+														<span className='min-w-0 flex-1 truncate text-sm'>
 															{cat.name}
 														</span>
-														{/* Nb références */}
-														{productCount > 0 && (
-															<span className='text-xs text-muted-foreground shrink-0'>
-																{productCount} réf.
-															</span>
-														)}
-														{/* Tag historique / en cours */}
-														<div className='shrink-0'>{renderTag(tag)}</div>
+
+														<span className='shrink-0 text-xs text-muted-foreground'>
+															{productCount} réf.
+														</span>
+
+														<div className='shrink-0'>
+															{renderStatusTag(cat.id)}
+														</div>
 													</label>
 												)
 											})}
@@ -1049,31 +928,18 @@ function CreateSessionDialog({
 								)
 							})}
 						</div>
-
-						{/* Légende */}
-						{categoryTags.size > 0 && (
-							<div className='flex items-center gap-4 text-xs text-muted-foreground'>
-								<div className='flex items-center gap-1.5'>
-									<span className='w-2 h-2 rounded-full bg-blue-400 shrink-0' />
-									En cours dans une autre session
-								</div>
-								<div className='flex items-center gap-1.5'>
-									<span className='w-2 h-2 rounded-full bg-green-400 shrink-0' />
-									Déjà inventorié
-								</div>
-							</div>
-						)}
 					</div>
 				</div>
 
-				<DialogFooter className='pt-2'>
+				<DialogFooter className='shrink-0 border-t px-8 py-5'>
 					<Button variant='ghost' onClick={onClose} disabled={isLoading}>
 						Annuler
 					</Button>
+
 					<Button
 						onClick={handleConfirm}
 						disabled={!canConfirm || isLoading}
-						className='bg-orange-500 hover:bg-orange-600 text-white gap-2'
+						className='gap-2 bg-orange-500 text-white hover:bg-orange-600'
 					>
 						{isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
 						Démarrer le comptage
@@ -1218,13 +1084,6 @@ function SessionOverviewView({
 								comptés
 							</div>
 						</div>
-					</div>
-
-					<div className='mt-4'>
-						<InventoryCapitalStats
-							totalProducts={summary.totalProducts}
-							countedProducts={summary.countedProducts}
-						/>
 					</div>
 
 					{inProgress.length > 0 && (
@@ -2226,10 +2085,14 @@ function InventoryHomeView({
 		<div className='flex flex-col h-full overflow-y-auto'>
 			{activeSessions.length > 0 && (
 				<div className='px-6 pt-6 pb-4'>
+					<div className='mb-4'>
+						<GlobalInventoryCapitalStats activeSessions={activeSessions} />
+					</div>
+
 					<div className='mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
 						<div>
 							<h2 className='text-sm font-semibold text-muted-foreground uppercase tracking-wider'>
-								Reprendre une session ({activeSessions.length})
+								Sessions en cours ({activeSessions.length})
 							</h2>
 							<p className='mt-1 text-sm text-muted-foreground'>
 								L'action principale est de continuer le comptage là où il s'est
@@ -2247,10 +2110,6 @@ function InventoryHomeView({
 							<Clock className='h-4 w-4' />
 							Continuer la plus récente
 						</Button>
-					</div>
-
-					<div className='mb-4'>
-						<ActiveSessionsCapitalStats sessions={activeSessions} />
 					</div>
 
 					<div className='grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3'>
