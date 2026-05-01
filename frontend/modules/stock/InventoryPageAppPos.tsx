@@ -22,7 +22,10 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { getAppPosToken, loginToAppPos } from '@/lib/apppos'
+import { appPosApi } from '@/lib/apppos/apppos-api'
+import { getAppPosImageUrl } from '@/lib/apppos/apppos-config'
 import { useAppPosCategoriesWithCounts } from '@/lib/apppos/apppos-hooks'
+import { appPosTransformers } from '@/lib/apppos/apppos-transformers'
 import type {
 	CategoryInventoryStatus,
 	CategoryInventorySummary,
@@ -40,6 +43,7 @@ import {
 import { useScanner } from '@/lib/pos/scanner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/modules/auth/AuthProvider'
+import { useQuery } from '@tanstack/react-query'
 import {
 	AlertTriangle,
 	ArrowLeft,
@@ -74,6 +78,60 @@ const inventoryManifest = {
 // TYPES LOCAUX
 // ============================================================================
 type PageView = 'home' | 'overview' | 'counting' | 'history'
+
+// ============================================================================
+// IMAGE PRODUIT — résolue dynamiquement via le catalogue AppPOS caché
+// (le snapshot d'inventaire ne stocke plus l'URL : on la récupère par product_id)
+// ============================================================================
+function ProductImageById({
+	productId,
+	productName,
+}: { productId: string; productName: string }) {
+	// On consomme exactement la même queryKey que useAppPosProducts() dans apppos-hooks.
+	// Avantages :
+	//   1. React Query déduplique → une seule requête réseau pour toute l'app
+	//      (partagée avec ProductsPanel, etc.)
+	//   2. On obtient le CATALOGUE COMPLET non paginé
+	//      (useAppPosProducts retourne un résultat paginé limit=50, donc inutilisable ici)
+	//   3. Le composant re-render automatiquement quand les données arrivent
+	const { data: catalog } = useQuery({
+		queryKey: ['apppos', 'products', 'catalog'],
+		queryFn: async () => {
+			const products = await appPosApi.getProducts()
+			return appPosTransformers.products(products)
+		},
+		staleTime: 10 * 60 * 1000,
+		gcTime: 60 * 60 * 1000,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+	})
+
+	const [errored, setErrored] = useState(false)
+
+	const src = useMemo(() => {
+		const match = catalog?.find((p: any) => p.id === productId)
+		const rawPath = (match as any)?.images || ''
+		// Préfixe vers l'origine AppPOS (sinon /uploads/... tape sur le frontend → 404).
+		return getAppPosImageUrl(rawPath)
+	}, [catalog, productId])
+
+	if (src && !errored) {
+		return (
+			<img
+				src={src}
+				alt={productName}
+				className='w-12 h-12 rounded object-cover shrink-0 border bg-muted'
+				onError={() => setErrored(true)}
+			/>
+		)
+	}
+	return (
+		<div className='w-12 h-12 rounded bg-muted flex items-center justify-center shrink-0'>
+			<ClipboardList className='h-5 w-5 text-muted-foreground/50' />
+		</div>
+	)
+}
 
 // ============================================================================
 // HELPERS VISUELS — inchangés
@@ -1075,7 +1133,7 @@ function CountingRow({
 						: 'hover:bg-muted/30',
 			)}
 		>
-			<td className='px-6 py-3'>
+			<td className='px-2 py-1'>
 				<div className='flex items-center gap-2.5'>
 					<div
 						className={cn(
@@ -1086,6 +1144,10 @@ function CountingRow({
 									? 'bg-green-500'
 									: 'bg-muted-foreground/30',
 						)}
+					/>
+					<ProductImageById
+						productId={entry.product_id}
+						productName={entry.product_name}
 					/>
 					<div className='min-w-0'>
 						<div className='font-medium truncate max-w-xs'>
@@ -1437,21 +1499,14 @@ function SessionDetailView({
 													<div
 														key={entry.id}
 														className={cn(
-															'flex items-center gap-3 px-6 py-2.5 border-b border-border/50 last:border-0',
+															'flex items-center gap-3 px-2 py-1 border-b border-border/50 last:border-0',
 															hasGap && 'bg-orange-500/5',
 														)}
 													>
-														{entry.product_image ? (
-															<img
-																src={entry.product_image}
-																alt={entry.product_name}
-																className='w-8 h-8 rounded object-cover shrink-0 border bg-muted'
-															/>
-														) : (
-															<div className='w-8 h-8 rounded bg-muted flex items-center justify-center shrink-0'>
-																<ClipboardList className='h-3.5 w-3.5 text-muted-foreground/50' />
-															</div>
-														)}
+														<ProductImageById
+															productId={entry.product_id}
+															productName={entry.product_name}
+														/>
 														<div className='flex-1 min-w-0'>
 															<p className='text-sm font-medium truncate'>
 																{entry.product_name}
