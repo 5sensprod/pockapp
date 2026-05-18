@@ -143,11 +143,16 @@ const styles = StyleSheet.create({
 	footerText: { fontSize: 8, color: '#999', textAlign: 'center' },
 })
 
-const fmt = (n: number) =>
-	new Intl.NumberFormat('fr-FR', {
-		style: 'currency',
-		currency: 'EUR',
-	}).format(n)
+const fmt = (amount: number | string) => {
+	const num = typeof amount === 'string' ? Number.parseFloat(amount) : amount
+	if (!Number.isFinite(num)) return '0,00 €'
+
+	const fixed = Math.abs(num).toFixed(2)
+	const [intPart, decPart] = fixed.split('.')
+	const intWithSpaces = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')
+	const sign = num < 0 ? '-' : ''
+	return `${sign}${intWithSpaces},${decPart} €`
+}
 
 const fmtDate = (iso: string) =>
 	new Intl.DateTimeFormat('fr-FR', {
@@ -232,14 +237,10 @@ export function OrderPdfDocument({
 							</Text>
 						)}
 						{(customer as any)?.email && (
-							<Text style={styles.customerLine}>
-								{(customer as any).email}
-							</Text>
+							<Text style={styles.customerLine}>{(customer as any).email}</Text>
 						)}
 						{(customer as any)?.phone && (
-							<Text style={styles.customerLine}>
-								{(customer as any).phone}
-							</Text>
+							<Text style={styles.customerLine}>{(customer as any).phone}</Text>
 						)}
 					</View>
 				)}

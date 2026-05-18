@@ -326,12 +326,16 @@ export function QuotePdfDocument({
 	company,
 	companyLogoUrl,
 }: QuotePdfProps) {
-	const formatCurrency = (amount: number) =>
-		new Intl.NumberFormat('fr-FR', {
-			style: 'currency',
-			currency: quote.currency || 'EUR',
-			useGrouping: false, // ✅ supprime le séparateur de milliers
-		}).format(amount)
+	const formatCurrency = (amount: number | string) => {
+		const num = typeof amount === 'string' ? Number.parseFloat(amount) : amount
+		if (!Number.isFinite(num)) return '0,00 €'
+
+		const fixed = Math.abs(num).toFixed(2)
+		const [intPart, decPart] = fixed.split('.')
+		const intWithSpaces = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')
+		const sign = num < 0 ? '-' : ''
+		return `${sign}${intWithSpaces},${decPart} €`
+	}
 
 	const formatDate = (dateStr?: string) =>
 		dateStr
@@ -358,10 +362,9 @@ export function QuotePdfDocument({
 	const legalLines: string[] = []
 	if (company?.legal_form) legalLines.push(company.legal_form)
 	if (typeof company?.share_capital === 'number' && company.share_capital > 0) {
-		const capitalStr = company.share_capital.toLocaleString('fr-FR', {
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-		})
+		const capitalStr = company.share_capital
+			.toFixed(0)
+			.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')
 		legalLines.push(`Capital social : ${capitalStr} €`)
 	}
 	if (company?.siren) legalLines.push(`SIREN : ${company.siren}`)
