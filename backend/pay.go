@@ -111,6 +111,25 @@ func RecordPayment(dao *daos.Dao, invoiceID string, input PayInvoiceInput, soldB
 		input.PaymentMethod,
 	)
 
+	// ─────────────────────────────────────────────────────────────────────────
+	// 3b. Créer un mouvement de caisse si paiement en espèces
+	// ─────────────────────────────────────────────────────────────────────────
+	ownerCompany := invoice.GetString("owner_company")
+	CreateCashMovementIfEspeces(dao, input.PaymentMethod, CashMovementParams{
+		OwnerCompany:   ownerCompany,
+		MovementType:   "cash_in",
+		Amount:         math.Abs(invoice.GetFloat("total_ttc")),
+		Reason:         fmt.Sprintf("Paiement facture %s", invoice.GetString("number")),
+		RelatedInvoice: invoice.Id,
+		CreatedBy:      soldByID,
+		Meta: map[string]any{
+			"source":         "b2b_payment",
+			"invoice_id":     invoice.Id,
+			"invoice_number": invoice.GetString("number"),
+			"invoice_type":   invoiceType,
+		},
+	})
+
 	result := &PayInvoiceResult{
 		Invoice: invoice,
 	}

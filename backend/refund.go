@@ -267,6 +267,29 @@ func CreateCreditNote(dao *daos.Dao, input RefundInput, soldByUserID string) (*R
 		}
 	}
 
+	// ─── Cash movement refund_out si remboursement en especes ──────────────────
+	// Uniquement pour les avoirs B2B (is_pos_ticket = false).
+	// Les avoirs POS sont geres par la route /api/pos/refund dans cash_routes.go.
+	if !input.IsPosTicket {
+		ownerCompany := credit.GetString("owner_company")
+		amt := absFloat(credit.GetFloat("total_ttc"))
+		avoNum := credit.GetString("number")
+		CreateCashMovementIfEspeces(dao, input.RefundMethod, CashMovementParams{
+			OwnerCompany:   ownerCompany,
+			MovementType:   "refund_out",
+			Amount:         amt,
+			Reason:         fmt.Sprintf("Remboursement %s", avoNum),
+			RelatedInvoice: credit.Id,
+			CreatedBy:      soldByUserID,
+			Meta: map[string]any{
+				"source":           "b2b_refund",
+				"credit_note_id":   credit.Id,
+				"credit_note_num":  avoNum,
+				"original_invoice": input.OriginalDocumentID,
+			},
+		})
+	}
+
 	return result, nil
 }
 

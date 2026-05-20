@@ -260,6 +260,25 @@ func CreateDepositInvoice(dao *daos.Dao, input DepositInput, soldByID string) (*
 		depositNumber, depositAmountTTC, depositPercentage, parentNumber)
 
 	// ─────────────────────────────────────────────────────────────────────────
+	// Créer un mouvement de caisse si acompte payé en espèces
+	// ─────────────────────────────────────────────────────────────────────────
+	CreateCashMovementIfEspeces(dao, input.PaymentMethod, CashMovementParams{
+		OwnerCompany:   deposit.GetString("owner_company"),
+		MovementType:   "cash_in",
+		Amount:         depositAmountTTC,
+		Reason:         fmt.Sprintf("Acompte %s (facture %s)", depositNumber, parentNumber),
+		RelatedInvoice: deposit.Id,
+		CreatedBy:      soldByID,
+		Meta: map[string]any{
+			"source":         "b2b_deposit",
+			"deposit_id":     deposit.Id,
+			"deposit_number": depositNumber,
+			"parent_invoice": input.ParentID,
+			"parent_number":  parentNumber,
+		},
+	})
+
+	// ─────────────────────────────────────────────────────────────────────────
 	// 8. Mettre à jour la facture parente
 	// ─────────────────────────────────────────────────────────────────────────
 	newDepositsTotal := math.Round((existingDepositsTotal+depositAmountTTC)*100) / 100

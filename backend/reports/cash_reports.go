@@ -152,20 +152,56 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		return nil, fmt.Errorf("session introuvable: %w", err)
 	}
 
-	if session.GetString("status") != "open" {
-		return nil, fmt.Errorf("le rapport X est uniquement pour les sessions ouvertes")
+	// Le X accepte les sessions ouvertes ET fermées (lecture à tout moment)
+	sessionStatus := session.GetString("status")
+	sessionOpenedAt := session.GetString("opened_at")
+
+	// Borne de fin : closed_at si fermée, sinon maintenant
+	sessionClosedAt := session.GetString("closed_at")
+	endStr := sessionClosedAt
+	if endStr == "" || sessionStatus == "open" {
+		endStr = time.Now().UTC().Format("2006-01-02 15:04:05")
 	}
 
-	invoices, err := dao.FindRecordsByFilter(
+	// ─── 1. Tickets POS de la session ───────────────────────────────────────────
+	posInvoices, err := dao.FindRecordsByFilter(
 		"invoices",
 		fmt.Sprintf("session = '%s' && is_pos_ticket = true && status != 'draft'", sessionID),
-		"",
-		0,
-		0,
+		"", 0, 0,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("erreur chargement factures: %w", err)
+		return nil, fmt.Errorf("erreur chargement tickets POS: %w", err)
 	}
+
+	// ─── 2. Factures B2B strictement dans la fenetre [opened_at, endStr] ─────────
+	ownerCompany := ""
+	if cashReg, err2 := dao.FindRecordById("cash_registers", session.GetString("cash_register")); err2 == nil {
+		ownerCompany = cashReg.GetString("owner_company")
+	}
+
+	var b2bInvoices []*models.Record
+	if ownerCompany != "" {
+		// Factures et acomptes B2B encaisses dans la fenetre de session
+		b2bFilter := fmt.Sprintf(
+			"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at <= '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit')",
+			ownerCompany, sessionOpenedAt, endStr,
+		)
+		invoicesB2B, _ := dao.FindRecordsByFilter("invoices", b2bFilter, "paid_at", 0, 0)
+
+		// Avoirs B2B emis dans la fenetre de session
+		creditB2BFilter := fmt.Sprintf(
+			"owner_company = '%s' && is_pos_ticket = false && invoice_type = 'credit_note' && created >= '%s' && created <= '%s' && status != 'draft'",
+			ownerCompany, sessionOpenedAt, endStr,
+		)
+		creditsB2B, _ := dao.FindRecordsByFilter("invoices", creditB2BFilter, "created", 0, 0)
+
+		b2bInvoices = append(invoicesB2B, creditsB2B...)
+		fmt.Printf("Rapport X — B2B [%s → %s]: %d factures/acomptes, %d avoirs\n",
+			sessionOpenedAt[:10], endStr[:10], len(invoicesB2B), len(creditsB2B))
+	}
+
+	// Fusionner POS + B2B
+	allInvoices := append(posInvoices, b2bInvoices...)
 
 	// --- SALES (invoices) ---
 	var invoiceCount int
@@ -179,7 +215,7 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	var refundsTotalTTC float64
 	refundsByMethod := make(map[string]float64)
 
-	for _, inv := range invoices {
+	for _, inv := range allInvoices {
 		invType := inv.GetString("invoice_type")
 		ht := inv.GetFloat("total_ht")
 		tva := inv.GetFloat("total_tva")
@@ -187,13 +223,11 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 
 		if invType == "credit_note" {
 			creditNotesCount++
-
-			amt := inv.GetFloat("total_ttc")
+			amt := ttc
 			if amt < 0 {
 				amt = -amt
 			}
-
-			refundsTotalTTC += amt // ✅
+			refundsTotalTTC += amt
 			rm := inv.GetString("payment_method_label")
 			if rm == "" {
 				rm = inv.GetString("refund_method")
@@ -201,14 +235,11 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 					rm = "autre"
 				}
 			}
-			sessionRefundsByMethod := make(map[string]float64)
-			sessionRefundsByMethod[rm] += amt
 			refundsByMethod[rm] += amt
-
 			continue
 		}
-		// Par défaut, on considère que c’est une vente (invoice)
-		if invType != "" && invType != "invoice" {
+
+		if invType != "" && invType != "invoice" && invType != "deposit" {
 			continue
 		}
 
@@ -221,7 +252,6 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		if method == "" {
 			method = inv.GetString("payment_method")
 		}
-
 		if method != "" {
 			totalsByMethod[method] += ttc
 			if method == "especes" {
@@ -236,7 +266,6 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			aggregateVATFromItems(inv.Get("items"), vatByRate)
 		}
 	}
-
 	// Net by method = sales - refunds (affichage)
 	netByMethod := make(map[string]float64)
 	for m, v := range totalsByMethod {
@@ -375,33 +404,41 @@ func roundAmount(val float64) float64 {
 }
 
 // ============================================================================
-// loadB2BInvoicesForDay charge les factures B2B payées dans la journée.
-// Ces factures n'ont PAS de session caisse — elles sont identifiées par :
-//   - is_pos_ticket = false (ou absent)
-//   - is_paid = true
-//   - paid_at dans la plage [dateStartStr, dateEndStr[
-//   - invoice_type = 'invoice' ou 'deposit' (pas credit_note, pas devis)
-//   - status != 'draft'
-//   - owner_company = ownerCompany
+// loadB2BDocumentsForDay charge les factures B2B payées ET les avoirs B2B émis
+// dans la journée. Ces documents n'ont PAS de session caisse.
 //
+// Factures/acomptes : filtrés par is_paid = true && paid_at dans la plage
+// Avoirs B2B        : filtrés par date dans la plage (un avoir est émis, pas "payé")
 // ============================================================================
 func loadB2BInvoicesForDay(app *pocketbase.PocketBase, ownerCompany, dateStartStr, dateEndStr string) ([]*models.Record, error) {
 	dao := app.Dao()
 
-	filter := fmt.Sprintf(
+	// 1. Factures et acomptes B2B encaissés ce jour
+	invoiceFilter := fmt.Sprintf(
 		"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at < '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit')",
-		ownerCompany,
-		dateStartStr,
-		dateEndStr,
+		ownerCompany, dateStartStr, dateEndStr,
 	)
-
-	records, err := dao.FindRecordsByFilter("invoices", filter, "paid_at", 0, 0)
+	invoices, err := dao.FindRecordsByFilter("invoices", invoiceFilter, "paid_at", 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("erreur chargement factures B2B: %w", err)
 	}
 
-	fmt.Printf("💼 Factures B2B payées le %s: %d\n", dateStartStr[:10], len(records))
-	return records, nil
+	// 2. Avoirs B2B émis ce jour (is_pos_ticket = false, invoice_type = credit_note)
+	creditFilter := fmt.Sprintf(
+		"owner_company = '%s' && is_pos_ticket = false && invoice_type = 'credit_note' && date >= '%s' && date < '%s' && status != 'draft'",
+		ownerCompany, dateStartStr[:10], dateEndStr[:10],
+	)
+	credits, err := dao.FindRecordsByFilter("invoices", creditFilter, "date", 0, 0)
+	if err != nil {
+		// Non-fatal
+		fmt.Printf("⚠️ Erreur chargement avoirs B2B (non-fatal): %v\n", err)
+		credits = nil
+	}
+
+	all := append(invoices, credits...)
+	fmt.Printf("💼 B2B jour %s: %d factures/acomptes encaissés, %d avoirs\n",
+		dateStartStr[:10], len(invoices), len(credits))
+	return all, nil
 }
 
 // aggregateInvoiceIntoTotals agrège une facture (POS ou B2B) dans les accumulateurs.
@@ -809,15 +846,20 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 	for _, inv := range b2bInvoices {
 		invType := inv.GetString("invoice_type")
 
-		// Avoirs B2B remboursés
+		// Avoirs B2B : montant négatif → déduire des totaux
 		if invType == "credit_note" {
 			b2bCreditNotesCount++
-			amt := inv.GetFloat("total_ttc")
+			amt := inv.GetFloat("total_ttc") // négatif en BDD
 			if amt < 0 {
-				amt = -amt
+				amt = -amt // stocker en positif pour l'affichage
 			}
 			b2bCreditNotesTotal += amt
-			rm := inv.GetString("payment_method")
+
+			// Moyen de remboursement
+			rm := inv.GetString("refund_method")
+			if rm == "" {
+				rm = inv.GetString("payment_method")
+			}
 			if rm == "" {
 				rm = "autre"
 			}
