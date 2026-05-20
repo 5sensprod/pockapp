@@ -102,7 +102,7 @@ type RapportX struct {
 	OpeningFloat float64             `json:"opening_float"`
 	Sales        SalesSummaryX       `json:"sales"`
 	Refunds      RefundsSummaryX     `json:"refunds"`
-	Movements    MovementsSummary    `json:"movements"`
+	Movements    MovementsSummaryX   `json:"movements"`
 	ExpectedCash ExpectedCashSummary `json:"expected_cash"`
 	Note         string              `json:"note"`
 }
@@ -115,13 +115,17 @@ type SessionInfo struct {
 }
 
 type SalesSummaryX struct {
-	InvoiceCount int                  `json:"invoice_count"`
-	TotalHT      float64              `json:"total_ht"`
-	TotalTVA     float64              `json:"total_tva"`
-	TotalTTC     float64              `json:"total_ttc"`
-	ByMethod     map[string]float64   `json:"by_method"`
-	VATByRate    map[string]VATDetail `json:"vat_by_rate"`
-	NetByMethod  map[string]float64   `json:"net_by_method"`
+	InvoiceCount   int                             `json:"invoice_count"`
+	TotalHT        float64                         `json:"total_ht"`
+	TotalTVA       float64                         `json:"total_tva"`
+	TotalTTC       float64                         `json:"total_ttc"`
+	ByMethod       map[string]float64              `json:"by_method"`
+	VATByRate      map[string]VATDetail            `json:"vat_by_rate"`
+	NetByMethod    map[string]float64              `json:"net_by_method"`
+	NetTTC         float64                         `json:"net_ttc"`
+	ByCustomerType map[string]*CustomerTypeSummary `json:"by_customer_type"`
+	DepositsCount  int                             `json:"deposits_count"`
+	DepositsTTC    float64                         `json:"deposits_ttc"`
 }
 
 type MovementsSummary struct {
@@ -140,8 +144,36 @@ type ExpectedCashSummary struct {
 
 type RefundsSummaryX struct {
 	CreditNotesCount int                `json:"credit_notes_count"`
-	TotalTTC         float64            `json:"total_ttc"` // ✅ en POSITIF (abs)
-	ByMethod         map[string]float64 `json:"by_method"` // ✅ en POSITIF (abs)
+	TotalTTC         float64            `json:"total_ttc"`
+	ByMethod         map[string]float64 `json:"by_method"`
+}
+
+// CustomerTypeSummary ventile les ventes par type de client (e-reporting)
+type CustomerTypeSummary struct {
+	Count    int     `json:"count"`
+	TotalHT  float64 `json:"total_ht"`
+	TotalTVA float64 `json:"total_tva"`
+	TotalTTC float64 `json:"total_ttc"`
+}
+
+// MovementDetail est un mouvement de caisse individuel (pour le journal ligne par ligne)
+type MovementDetail struct {
+	ID           string    `json:"id"`
+	MovementType string    `json:"movement_type"`
+	Amount       float64   `json:"amount"`
+	Reason       string    `json:"reason"`
+	CreatedAt    time.Time `json:"created_at"`
+	RelatedDoc   string    `json:"related_doc,omitempty"`
+	CreatedBy    string    `json:"created_by,omitempty"`
+}
+
+// MovementsSummaryX etend MovementsSummary avec le journal detaille
+type MovementsSummaryX struct {
+	CashIn   float64          `json:"cash_in"`
+	CashOut  float64          `json:"cash_out"`
+	SafeDrop float64          `json:"safe_drop"`
+	Total    float64          `json:"total"`
+	Details  []MovementDetail `json:"details"`
 }
 
 func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, error) {
@@ -215,6 +247,38 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	var refundsTotalTTC float64
 	refundsByMethod := make(map[string]float64)
 
+	// Cache des customer_type pour eviter les requetes dupliquees
+	customerTypeCache := make(map[string]string)
+	getCustomerType := func(customerID string) string {
+		if customerID == "" {
+			return "individual"
+		}
+		if ct, ok := customerTypeCache[customerID]; ok {
+			return ct
+		}
+		cust, err := dao.FindRecordById("customers", customerID)
+		if err != nil || cust == nil {
+			customerTypeCache[customerID] = "individual"
+			return "individual"
+		}
+		ct := cust.GetString("customer_type")
+		if ct == "" {
+			ct = "individual"
+		}
+		customerTypeCache[customerID] = ct
+		return ct
+	}
+
+	byCustomerType := make(map[string]*CustomerTypeSummary)
+	ensureCustomerType := func(ct string) {
+		if _, ok := byCustomerType[ct]; !ok {
+			byCustomerType[ct] = &CustomerTypeSummary{}
+		}
+	}
+
+	var depositsCount int
+	var depositsTTC float64
+
 	for _, inv := range allInvoices {
 		invType := inv.GetString("invoice_type")
 		ht := inv.GetFloat("total_ht")
@@ -243,10 +307,29 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			continue
 		}
 
+		// Acomptes separes
+		if invType == "deposit" {
+			depositsCount++
+			depositsTTC += ttc
+		}
+
 		invoiceCount++
 		totalHT += ht
 		totalTVA += tva
 		totalTTC += ttc
+
+		// Ventilation par customer_type
+		custID := inv.GetString("customer")
+		ct := getCustomerType(custID)
+		// Tickets POS sans customer explicite → individual par defaut
+		if inv.GetBool("is_pos_ticket") && custID == "" {
+			ct = "individual"
+		}
+		ensureCustomerType(ct)
+		byCustomerType[ct].Count++
+		byCustomerType[ct].TotalHT += ht
+		byCustomerType[ct].TotalTVA += tva
+		byCustomerType[ct].TotalTTC += ttc
 
 		method := inv.GetString("payment_method_label")
 		if method == "" {
@@ -266,7 +349,8 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			aggregateVATFromItems(inv.Get("items"), vatByRate)
 		}
 	}
-	// Net by method = sales - refunds (affichage)
+
+	// Net by method = sales - refunds
 	netByMethod := make(map[string]float64)
 	for m, v := range totalsByMethod {
 		netByMethod[m] = v
@@ -274,12 +358,20 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	for m, r := range refundsByMethod {
 		netByMethod[m] -= r
 	}
+	netTTC := roundAmount(totalTTC - refundsTotalTTC)
 
-	// --- CASH MOVEMENTS ---
+	// Arrondir byCustomerType
+	for _, s := range byCustomerType {
+		s.TotalHT = roundAmount(s.TotalHT)
+		s.TotalTVA = roundAmount(s.TotalTVA)
+		s.TotalTTC = roundAmount(s.TotalTTC)
+	}
+
+	// --- CASH MOVEMENTS (journal ligne par ligne) ---
 	movements, err := dao.FindRecordsByFilter(
 		"cash_movements",
 		fmt.Sprintf("session = '%s'", sessionID),
-		"",
+		"created",
 		0,
 		0,
 	)
@@ -288,6 +380,7 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	}
 
 	var cashIn, cashOut, safeDrop float64
+	var movDetails []MovementDetail
 
 	for _, mov := range movements {
 		movType := mov.GetString("movement_type")
@@ -296,29 +389,31 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		switch movType {
 		case "cash_in":
 			cashIn += amount
-
 		case "cash_out":
 			cashOut += amount
-
 		case "refund_out":
-			// remboursement espèces = sortie caisse
 			cashOut += amount
-
 		case "safe_drop":
 			safeDrop += amount
 		}
+
+		movDetails = append(movDetails, MovementDetail{
+			ID:           mov.Id,
+			MovementType: movType,
+			Amount:       roundAmount(amount),
+			Reason:       mov.GetString("reason"),
+			CreatedAt:    parsePocketBaseDate(mov.GetString("created")),
+			RelatedDoc:   mov.GetString("related_invoice"),
+			CreatedBy:    mov.GetString("created_by"),
+		})
 	}
 
-	// ✅ Modèle B : la caisse est pilotée par cash_movements
 	movementsTotal := cashIn - cashOut - safeDrop
-
 	openingFloat := session.GetFloat("opening_float")
-
 	expectedCash := openingFloat + movementsTotal
-
 	openedAt := parsePocketBaseDate(session.GetString("opened_at"))
 
-	// ✅ FIX: Arrondir tous les montants à 2 décimales
+	// Arrondi final
 	totalHT = roundAmount(totalHT)
 	totalTVA = roundAmount(totalTVA)
 	totalTTC = roundAmount(totalTTC)
@@ -330,8 +425,8 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	expectedCash = roundAmount(expectedCash)
 	cashFromSales = roundAmount(cashFromSales)
 	openingFloat = roundAmount(openingFloat)
+	depositsTTC = roundAmount(depositsTTC)
 
-	// Arrondir les montants dans les maps
 	for k, v := range totalsByMethod {
 		totalsByMethod[k] = roundAmount(v)
 	}
@@ -355,36 +450,41 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			ID:           session.Id,
 			CashRegister: session.GetString("cash_register"),
 			OpenedAt:     openedAt,
-			Status:       "open",
+			Status:       sessionStatus,
 		},
 		OpeningFloat: openingFloat,
 		Sales: SalesSummaryX{
-			InvoiceCount: invoiceCount,
-			TotalHT:      totalHT,
-			TotalTVA:     totalTVA,
-			TotalTTC:     totalTTC,
-			ByMethod:     totalsByMethod,
-			VATByRate:    vatByRate,
-			NetByMethod:  netByMethod,
+			InvoiceCount:   invoiceCount,
+			TotalHT:        totalHT,
+			TotalTVA:       totalTVA,
+			TotalTTC:       totalTTC,
+			ByMethod:       totalsByMethod,
+			VATByRate:      vatByRate,
+			NetByMethod:    netByMethod,
+			NetTTC:         netTTC,
+			ByCustomerType: byCustomerType,
+			DepositsCount:  depositsCount,
+			DepositsTTC:    depositsTTC,
 		},
 		Refunds: RefundsSummaryX{
 			CreditNotesCount: creditNotesCount,
 			TotalTTC:         refundsTotalTTC,
 			ByMethod:         refundsByMethod,
 		},
-		Movements: MovementsSummary{
+		Movements: MovementsSummaryX{
 			CashIn:   cashIn,
 			CashOut:  cashOut,
 			SafeDrop: safeDrop,
 			Total:    movementsTotal,
+			Details:  movDetails,
 		},
 		ExpectedCash: ExpectedCashSummary{
 			OpeningFloat: openingFloat,
-			SalesCash:    cashFromSales, // info UI uniquement
+			SalesCash:    cashFromSales,
 			Movements:    movementsTotal,
 			Total:        expectedCash,
 		},
-		Note: "Lecture intermédiaire - La caisse reste ouverte",
+		Note: "Lecture intermediaire - La caisse reste ouverte",
 	}
 
 	return rapport, nil
@@ -526,21 +626,23 @@ type SessionSummary struct {
 }
 
 type DailyTotalsSummary struct {
-	SessionsCount       int                  `json:"sessions_count"`
-	InvoiceCount        int                  `json:"invoice_count"`
-	TotalHT             float64              `json:"total_ht"`  // 🆕
-	TotalTVA            float64              `json:"total_tva"` // 🆕
-	TotalTTC            float64              `json:"total_ttc"`
-	ByMethod            map[string]float64   `json:"by_method"`
-	VATByRate           map[string]VATDetail `json:"vat_by_rate"`         // 🆕
-	TotalCashExpected   float64              `json:"total_cash_expected"` // 🆕
-	TotalCashCounted    float64              `json:"total_cash_counted"`  // 🆕
-	TotalCashDifference float64              `json:"total_cash_difference"`
-	TotalDiscounts      float64              `json:"total_discounts"`    // 🆕
-	CreditNotesCount    int                  `json:"credit_notes_count"` // 🆕
-	CreditNotesTotal    float64              `json:"credit_notes_total"` // 🆕
-	RefundsByMethod     map[string]float64   `json:"refunds_by_method"`
-	NetByMethod         map[string]float64   `json:"net_by_method"`
+	SessionsCount       int                             `json:"sessions_count"`
+	InvoiceCount        int                             `json:"invoice_count"`
+	TotalHT             float64                         `json:"total_ht"`
+	TotalTVA            float64                         `json:"total_tva"`
+	TotalTTC            float64                         `json:"total_ttc"`
+	NetTTC              float64                         `json:"net_ttc"`
+	ByMethod            map[string]float64              `json:"by_method"`
+	VATByRate           map[string]VATDetail            `json:"vat_by_rate"`
+	TotalCashExpected   float64                         `json:"total_cash_expected"`
+	TotalCashCounted    float64                         `json:"total_cash_counted"`
+	TotalCashDifference float64                         `json:"total_cash_difference"`
+	TotalDiscounts      float64                         `json:"total_discounts"`
+	CreditNotesCount    int                             `json:"credit_notes_count"`
+	CreditNotesTotal    float64                         `json:"credit_notes_total"`
+	RefundsByMethod     map[string]float64              `json:"refunds_by_method"`
+	NetByMethod         map[string]float64              `json:"net_by_method"`
+	ByCustomerType      map[string]*CustomerTypeSummary `json:"by_customer_type"`
 }
 
 // GenerateRapportZ génère ET sauvegarde un rapport Z
@@ -634,6 +736,34 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 	refundsByMethod := make(map[string]float64)
 	globalVATByRate := make(map[string]VATDetail)
 
+	// Cache customer_type pour la ventilation e-reporting (Z)
+	customerTypeCacheZ := make(map[string]string)
+	getCustomerTypeZ := func(customerID string) string {
+		if customerID == "" {
+			return "individual"
+		}
+		if ct, ok := customerTypeCacheZ[customerID]; ok {
+			return ct
+		}
+		cust, err := dao.FindRecordById("customers", customerID)
+		if err != nil || cust == nil {
+			customerTypeCacheZ[customerID] = "individual"
+			return "individual"
+		}
+		ct := cust.GetString("customer_type")
+		if ct == "" {
+			ct = "individual"
+		}
+		customerTypeCacheZ[customerID] = ct
+		return ct
+	}
+	globalByCustomerType := make(map[string]*CustomerTypeSummary)
+	ensureGlobalCustomerType := func(ct string) {
+		if _, ok := globalByCustomerType[ct]; !ok {
+			globalByCustomerType[ct] = &CustomerTypeSummary{}
+		}
+	}
+
 	for _, session := range sessions {
 		sessionId := session.Id
 		sessionIds = append(sessionIds, sessionId)
@@ -726,6 +856,18 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 					globalVATByRate,
 					&totalDiscounts,
 				)
+
+				// Ventilation par customer_type (e-reporting)
+				// Tickets POS : customer peut etre vide → individual par defaut
+				ctZ := "individual"
+				if custID := inv.GetString("customer"); custID != "" {
+					ctZ = getCustomerTypeZ(custID)
+				}
+				ensureGlobalCustomerType(ctZ)
+				globalByCustomerType[ctZ].Count++
+				globalByCustomerType[ctZ].TotalHT += inv.GetFloat("total_ht")
+				globalByCustomerType[ctZ].TotalTVA += inv.GetFloat("total_tva")
+				globalByCustomerType[ctZ].TotalTTC += inv.GetFloat("total_ttc")
 			}
 		}
 
@@ -875,6 +1017,14 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 			globalVATByRate,
 			&totalDiscounts,
 		)
+
+		// Ventilation customer_type (e-reporting) pour les B2B
+		ctB2B := getCustomerTypeZ(inv.GetString("customer"))
+		ensureGlobalCustomerType(ctB2B)
+		globalByCustomerType[ctB2B].Count++
+		globalByCustomerType[ctB2B].TotalHT += inv.GetFloat("total_ht")
+		globalByCustomerType[ctB2B].TotalTVA += inv.GetFloat("total_tva")
+		globalByCustomerType[ctB2B].TotalTTC += inv.GetFloat("total_ttc")
 	}
 
 	// Fusionner dans les compteurs globaux
@@ -889,6 +1039,13 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 	for rate, detail := range globalVATByRate {
 		fmt.Printf("   - Taux %s%%: Base HT=%.2f€, TVA=%.2f€, TTC=%.2f€\n",
 			rate, detail.BaseHT, detail.VATAmount, detail.TotalTTC)
+	}
+
+	// Arrondir globalByCustomerType
+	for _, s := range globalByCustomerType {
+		s.TotalHT = roundAmount(s.TotalHT)
+		s.TotalTVA = roundAmount(s.TotalTVA)
+		s.TotalTTC = roundAmount(s.TotalTTC)
 	}
 
 	// ═══════════════════════════════════════════════════════════════════════
@@ -950,6 +1107,7 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 			TotalHT:             totalHT,
 			TotalTVA:            totalTVA,
 			TotalTTC:            totalTTC,
+			NetTTC:              roundAmount(totalTTC - creditNotesTotal),
 			ByMethod:            totalsByMethod,
 			VATByRate:           globalVATByRate,
 			TotalCashExpected:   totalCashExpected,
@@ -958,8 +1116,8 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 			TotalDiscounts:      totalDiscounts,
 			CreditNotesCount:    creditNotesCount,
 			CreditNotesTotal:    creditNotesTotal,
-
-			RefundsByMethod: refundsByMethod,
+			RefundsByMethod:     refundsByMethod,
+			ByCustomerType:      globalByCustomerType,
 		},
 		Note:     "Rapport Z - Document inaltérable",
 		IsLocked: true,

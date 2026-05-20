@@ -91,6 +91,71 @@ export interface VATDetail {
 
 export type VATByRate = Record<string, VATDetail> // Clé = "20.0", "10.0", etc.
 
+// NOUVEAUX TYPES — RAPPORT X ENRICHI
+// ============================================================================
+
+// Ventilation par type de client (e-reporting)
+export type CustomerType =
+	| 'individual'
+	| 'professional'
+	| 'administration'
+	| 'association'
+
+export interface CustomerTypeSummary {
+	count: number
+	total_ht: number
+	total_tva: number
+	total_ttc: number
+}
+
+// Journal de caisse ligne par ligne
+export interface MovementDetail {
+	id: string
+	movement_type:
+		| 'cash_in'
+		| 'cash_out'
+		| 'refund_out'
+		| 'safe_drop'
+		| 'adjustment'
+	amount: number
+	reason: string
+	created_at: string
+	related_doc?: string // ID facture ou avoir lié
+	created_by?: string // ID utilisateur
+}
+
+// Mouvements avec journal détaillé
+export interface MovementsSummaryX {
+	cash_in: number
+	cash_out: number
+	safe_drop: number
+	total: number
+	details: MovementDetail[]
+}
+
+// Ventes enrichies
+export interface SalesSummaryX {
+	invoice_count: number
+	total_ht: number
+	total_tva: number
+	total_ttc: number
+	net_ttc: number // total_ttc - avoirs
+	by_method: Record<string, number>
+	vat_by_rate: Record<string, any>
+	net_by_method: Record<string, number>
+	by_customer_type: Record<CustomerType, CustomerTypeSummary> // ventilation e-reporting
+	deposits_count: number
+	deposits_ttc: number
+	by_method_labels?: Record<string, string>
+}
+
+export interface RefundsSummaryX {
+	credit_notes_count: number
+	total_ttc: number
+	by_method: Record<string, number>
+	by_method_labels?: Record<string, string>
+}
+
 // ============================================================================
 // RAPPORT X (Lecture intermédiaire)
 // ============================================================================
@@ -102,31 +167,12 @@ export interface RapportX {
 		id: string
 		cash_register: string
 		opened_at: string
-		status: 'open'
+		status: 'open' | 'closed'
 	}
 	opening_float: number
-	sales: {
-		invoice_count: number
-		total_ht: number
-		total_tva: number
-		total_ttc: number
-		by_method: Record<string, number>
-		vat_by_rate: Record<string, any>
-		net_by_method?: Record<string, number>
-		by_method_labels?: Record<string, string>
-	}
-	refunds: {
-		credit_notes_count: number
-		total_ttc: number
-		by_method: Record<string, number>
-		by_method_labels?: Record<string, string>
-	}
-	movements: {
-		cash_in: number
-		cash_out: number
-		safe_drop: number
-		total: number
-	}
+	sales: SalesSummaryX
+	refunds: RefundsSummaryX
+	movements: MovementsSummaryX // remplace l'ancien MovementsSummary
 	expected_cash: {
 		opening_float: number
 		sales_cash: number
@@ -291,4 +337,57 @@ export function getVATRateLabel(rate: string): string {
 
 export function getPaymentMethodLabel(method: string): string {
 	return PAYMENT_METHOD_LABELS[method] || method
+}
+
+export const CUSTOMER_TYPE_LABELS: Record<CustomerType, string> = {
+	individual: 'Particuliers (B2C)',
+	professional: 'Professionnels (B2B)',
+	administration: 'Administrations (B2B)',
+	association: 'Associations (B2B)',
+}
+
+export const CUSTOMER_TYPE_EREPORTING: Record<CustomerType, 'B2C' | 'B2B'> = {
+	individual: 'B2C',
+	professional: 'B2B',
+	administration: 'B2B',
+	association: 'B2B',
+}
+
+export function getCustomerTypeLabel(type: CustomerType): string {
+	return CUSTOMER_TYPE_LABELS[type] ?? type
+}
+
+export function isB2C(type: CustomerType): boolean {
+	return CUSTOMER_TYPE_EREPORTING[type] === 'B2C'
+}
+
+// Agrège les totaux B2C et B2B depuis by_customer_type
+export function aggregateEreporting(
+	byCustomerType: Record<string, CustomerTypeSummary>,
+): {
+	b2c: CustomerTypeSummary
+	b2b: CustomerTypeSummary
+} {
+	const b2c: CustomerTypeSummary = {
+		count: 0,
+		total_ht: 0,
+		total_tva: 0,
+		total_ttc: 0,
+	}
+	const b2b: CustomerTypeSummary = {
+		count: 0,
+		total_ht: 0,
+		total_tva: 0,
+		total_ttc: 0,
+	}
+
+	for (const [type, summary] of Object.entries(byCustomerType)) {
+		const target = isB2C(type as CustomerType) ? b2c : b2b
+		target.count += summary.count
+		target.total_ht += summary.total_ht
+		target.total_tva += summary.total_tva
+		target.total_ttc += summary.total_ttc
+	}
+
+	return { b2c, b2b }
 }

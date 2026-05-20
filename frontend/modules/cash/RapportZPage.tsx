@@ -23,7 +23,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { RapportZ } from '@/lib/types/cash.types'
-import { getPaymentMethodLabel } from '@/lib/types/cash.types'
+import {
+	CUSTOMER_TYPE_EREPORTING,
+	CUSTOMER_TYPE_LABELS,
+	type CustomerType,
+	type CustomerTypeSummary,
+	aggregateEreporting,
+	getPaymentMethodLabel,
+} from '@/lib/types/cash.types'
 import {
 	AlertCircle,
 	BarChart2,
@@ -48,6 +55,13 @@ import {
 	useZReportGenerator,
 } from './components/reports/index'
 
+const CUSTOMER_TYPE_ORDER: CustomerType[] = [
+	'individual',
+	'professional',
+	'administration',
+	'association',
+]
+
 export function RapportZPage() {
 	const { activeCompanyId } = useActiveCompany()
 
@@ -56,16 +70,13 @@ export function RapportZPage() {
 	)
 	const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate')
 
-	// Gestion des caisses
 	const {
 		registers,
 		isRegistersLoading,
 		selectedRegisterId,
 		setSelectedRegisterId,
-		// registerStatusLabel,
 	} = useRegisterManager({ ownerCompanyId: activeCompanyId ?? undefined })
 
-	// Gestion du rapport Z
 	const {
 		rapportZ,
 		isLoadingRapport,
@@ -81,7 +92,6 @@ export function RapportZPage() {
 		selectedDate,
 	})
 
-	// Actions d'impression/export
 	const { handlePrint, handleExport } = usePrintReport()
 	const handleExportWithRapport = useCallback(() => {
 		handleExport(rapportZ)
@@ -109,7 +119,10 @@ export function RapportZPage() {
 			}
 		>
 			<div className='container mx-auto px-6 py-8'>
-				<Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+				<Tabs
+					value={activeTab}
+					onValueChange={(v) => setActiveTab(v as 'generate' | 'history')}
+				>
 					<TabsList className='mb-6'>
 						<TabsTrigger value='generate'>
 							<FileText className='h-4 w-4 mr-2' />
@@ -121,11 +134,8 @@ export function RapportZPage() {
 						</TabsTrigger>
 					</TabsList>
 
-					{/* ═══════════════════════════════════════════════════════════════════ */}
 					{/* TAB: GÉNÉRER */}
-					{/* ═══════════════════════════════════════════════════════════════════ */}
 					<TabsContent value='generate'>
-						{/* Sélection */}
 						<Card className='mb-6'>
 							<CardHeader>
 								<CardTitle className='text-base'>Sélection</CardTitle>
@@ -224,7 +234,6 @@ export function RapportZPage() {
 							</CardContent>
 						</Card>
 
-						{/* Erreur */}
 						{isError && (
 							<Card className='border-destructive mb-6'>
 								<CardContent className='pt-6'>
@@ -236,13 +245,10 @@ export function RapportZPage() {
 							</Card>
 						)}
 
-						{/* Rapport Z */}
 						{rapportZ && <RapportZDisplay rapport={rapportZ} />}
 					</TabsContent>
 
-					{/* ═══════════════════════════════════════════════════════════════════ */}
 					{/* TAB: HISTORIQUE */}
-					{/* ═══════════════════════════════════════════════════════════════════ */}
 					<TabsContent value='history'>
 						<Card>
 							<CardHeader>
@@ -323,10 +329,32 @@ export function RapportZPage() {
 // COMPOSANT D'AFFICHAGE DU RAPPORT Z
 // ============================================================================
 
+// Type étendu local pour les nouvelles données Go (optionnelles pour rétrocompat)
+type DailyTotalsExtended = RapportZ['daily_totals'] & {
+	by_customer_type?: Record<string, CustomerTypeSummary>
+	net_ttc?: number
+}
+
 function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
+	const totals = rapport.daily_totals as DailyTotalsExtended
+	const byCustomerType = totals.by_customer_type
+	const hasCustomerTypes =
+		byCustomerType && Object.keys(byCustomerType).length > 0
+	const ereporting = hasCustomerTypes
+		? aggregateEreporting(byCustomerType)
+		: null
+
+	const salesByMethod = totals.by_method ?? {}
+	const refundsByMethod = totals.refunds_by_method
+	const netByMethod =
+		totals.net_by_method ??
+		(refundsByMethod
+			? computeNetByMethod(salesByMethod, refundsByMethod)
+			: undefined)
+
 	return (
 		<div className='space-y-6 print:space-y-4'>
-			{/* Entête avec numéro et hash */}
+			{/* En-tête */}
 			<Card>
 				<CardHeader>
 					<div className='flex items-center justify-between'>
@@ -340,7 +368,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 							</div>
 							<CardDescription>
 								{rapport.cash_register.code && (
-									<span>Caisse: {rapport.cash_register.code} — </span>
+									<span>Caisse : {rapport.cash_register.code} — </span>
 								)}
 								{rapport.cash_register.name} •{' '}
 								{new Date(rapport.date).toLocaleDateString('fr-FR', {
@@ -377,135 +405,173 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 					<div className='grid grid-cols-5 gap-4'>
 						<div>
 							<div className='text-xs text-muted-foreground'>Sessions</div>
-							<div className='text-2xl font-bold'>
-								{rapport.daily_totals.sessions_count}
-							</div>
+							<div className='text-2xl font-bold'>{totals.sessions_count}</div>
 						</div>
 						<div>
-							<div className='text-xs text-muted-foreground'>Tickets</div>
-							<div className='text-2xl font-bold'>
-								{rapport.daily_totals.invoice_count}
+							<div className='text-xs text-muted-foreground'>
+								Tickets / factures
 							</div>
+							<div className='text-2xl font-bold'>{totals.invoice_count}</div>
 						</div>
 						<div>
 							<div className='text-xs text-muted-foreground'>Total HT</div>
 							<div className='text-2xl font-bold'>
-								{formatCurrency(rapport.daily_totals.total_ht)}
+								{formatCurrency(totals.total_ht)}
 							</div>
 						</div>
 						<div>
 							<div className='text-xs text-muted-foreground'>Total TVA</div>
 							<div className='text-2xl font-bold text-blue-600'>
-								{formatCurrency(rapport.daily_totals.total_tva)}
+								{formatCurrency(totals.total_tva)}
 							</div>
 						</div>
 						<div>
 							<div className='text-xs text-muted-foreground'>Total TTC</div>
 							<div className='text-2xl font-bold text-emerald-600'>
-								{formatCurrency(rapport.daily_totals.total_ttc)}
+								{formatCurrency(totals.total_ttc)}
 							</div>
 						</div>
 					</div>
 
+					{/* Net après avoirs */}
+					{totals.net_ttc !== undefined &&
+						totals.net_ttc !== totals.total_ttc && (
+							<div className='flex justify-between text-sm px-1'>
+								<span className='text-muted-foreground'>
+									Net après avoirs :
+								</span>
+								<span className='font-semibold text-emerald-700'>
+									{formatCurrency(totals.net_ttc)}
+								</span>
+							</div>
+						)}
+
 					<Separator />
+
+					{/* Ventilation par nature (e-reporting) */}
+					{hasCustomerTypes && (
+						<>
+							<div>
+								<div className='text-sm font-medium mb-3'>
+									Ventes par nature (e-reporting)
+								</div>
+								<div className='space-y-1'>
+									{CUSTOMER_TYPE_ORDER.filter((ct) => byCustomerType[ct]).map(
+										(ct) => {
+											const summary = byCustomerType[ct]
+											const tag = CUSTOMER_TYPE_EREPORTING[ct]
+											return (
+												<div
+													key={ct}
+													className='flex items-center justify-between text-sm py-1 border-b border-border/40 last:border-0'
+												>
+													<div className='flex items-center gap-2'>
+														<Badge
+															variant='outline'
+															className={
+																tag === 'B2C'
+																	? 'text-xs px-1.5 py-0 text-blue-700 border-blue-200'
+																	: 'text-xs px-1.5 py-0 text-violet-700 border-violet-200'
+															}
+														>
+															{tag}
+														</Badge>
+														<span className='text-muted-foreground'>
+															{CUSTOMER_TYPE_LABELS[ct]}
+														</span>
+													</div>
+													<div className='flex items-center gap-4'>
+														<span className='text-xs text-muted-foreground'>
+															{summary.count} doc.
+														</span>
+														<span className='font-medium w-24 text-right'>
+															{formatCurrency(summary.total_ttc)}
+														</span>
+													</div>
+												</div>
+											)
+										},
+									)}
+								</div>
+							</div>
+							<Separator />
+						</>
+					)}
 
 					{/* TVA ventilée */}
 					<div>
 						<div className='text-sm font-medium mb-3'>
 							Ventilation de la TVA collectée
 						</div>
-						<VATBreakdownTable vatByRate={rapport.daily_totals.vat_by_rate} />
+						<VATBreakdownTable vatByRate={totals.vat_by_rate} />
 					</div>
 
 					<Separator />
 
-					{/* Encaissements / Remboursements / Net par moyen */}
-					{(() => {
-						const salesByMethod = rapport.daily_totals.by_method ?? {}
-						const refundsByMethod = rapport.daily_totals.refunds_by_method
-						const netByMethod =
-							rapport.daily_totals.net_by_method ??
-							(refundsByMethod
-								? computeNetByMethod(salesByMethod, refundsByMethod)
-								: undefined)
-
-						return (
-							<div className='space-y-4'>
-								{/* Encaissements (ventes) */}
-								<div>
-									<div className='text-sm font-medium mb-2'>
-										Encaissements (ventes) par moyen
-									</div>
-									<PaymentMethodBreakdown byMethod={salesByMethod} label='' />
-								</div>
-
-								{/* Remboursements */}
-								{refundsByMethod && Object.keys(refundsByMethod).length > 0 && (
-									<div>
-										<div className='text-sm font-medium mb-2'>
-											Remboursements par moyen
-										</div>
-										<div className='space-y-2'>
-											{Object.entries(refundsByMethod).map(
-												([method, amount]) => (
-													<div
-														key={method}
-														className='flex justify-between text-sm'
-													>
-														<span className='text-muted-foreground capitalize'>
-															{getPaymentMethodLabel(method)}
-														</span>
-														<span className='font-medium text-red-600'>
-															-{formatCurrency(Math.abs(amount))}
-														</span>
-													</div>
-												),
-											)}
-										</div>
-									</div>
-								)}
-
-								{/* Net */}
-								{netByMethod && Object.keys(netByMethod).length > 0 && (
-									<div>
-										<div className='text-sm font-medium mb-2'>
-											Net par moyen (ventes - remboursements)
-										</div>
-										<div className='space-y-2'>
-											{Object.entries(netByMethod).map(([method, amount]) => (
-												<div
-													key={method}
-													className='flex justify-between text-sm'
-												>
-													<span className='text-muted-foreground capitalize'>
-														{getPaymentMethodLabel(method)}
-													</span>
-													<span
-														className={`font-medium ${
-															amount < 0 ? 'text-red-600' : 'text-emerald-700'
-														}`}
-													>
-														{formatCurrency(amount)}
-													</span>
-												</div>
-											))}
-										</div>
-									</div>
-								)}
+					{/* Encaissements / Remboursements / Net */}
+					<div className='space-y-4'>
+						<div>
+							<div className='text-sm font-medium mb-2'>
+								Encaissements par moyen
 							</div>
-						)
-					})()}
+							<PaymentMethodBreakdown byMethod={salesByMethod} label='' />
+						</div>
+
+						{refundsByMethod && Object.keys(refundsByMethod).length > 0 && (
+							<div>
+								<div className='text-sm font-medium mb-2'>
+									Remboursements par moyen
+								</div>
+								<div className='space-y-2'>
+									{Object.entries(refundsByMethod).map(([method, amount]) => (
+										<div key={method} className='flex justify-between text-sm'>
+											<span className='text-muted-foreground capitalize'>
+												{getPaymentMethodLabel(method)}
+											</span>
+											<span className='font-medium text-red-600'>
+												-{formatCurrency(Math.abs(amount))}
+											</span>
+										</div>
+									))}
+								</div>
+							</div>
+						)}
+
+						{netByMethod && Object.keys(netByMethod).length > 0 && (
+							<div>
+								<div className='text-sm font-medium mb-2'>
+									Net par moyen (ventes - remboursements)
+								</div>
+								<div className='space-y-2'>
+									{Object.entries(netByMethod).map(([method, amount]) => (
+										<div key={method} className='flex justify-between text-sm'>
+											<span className='text-muted-foreground capitalize'>
+												{getPaymentMethodLabel(method)}
+											</span>
+											<span
+												className={`font-medium ${
+													amount < 0 ? 'text-red-600' : 'text-emerald-700'
+												}`}
+											>
+												{formatCurrency(amount)}
+											</span>
+										</div>
+									))}
+								</div>
+							</div>
+						)}
+					</div>
 
 					<Separator />
 
-					{/* Écart de caisse */}
+					{/* Espèces */}
 					<div className='grid grid-cols-4 gap-4'>
 						<div>
 							<div className='text-xs text-muted-foreground'>
 								Espèces attendues
 							</div>
 							<div className='text-lg font-medium'>
-								{formatCurrency(rapport.daily_totals.total_cash_expected)}
+								{formatCurrency(totals.total_cash_expected)}
 							</div>
 						</div>
 						<div>
@@ -513,33 +579,31 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 								Espèces comptées
 							</div>
 							<div className='text-lg font-medium'>
-								{formatCurrency(rapport.daily_totals.total_cash_counted)}
+								{formatCurrency(totals.total_cash_counted)}
 							</div>
 						</div>
 						<div>
 							<div className='text-xs text-muted-foreground'>Écart total</div>
 							<div
 								className={`text-lg font-bold ${
-									isCashDifferenceSignificant(
-										rapport.daily_totals.total_cash_difference,
-									)
+									isCashDifferenceSignificant(totals.total_cash_difference)
 										? 'text-destructive'
 										: 'text-emerald-600'
 								}`}
 							>
-								{formatCurrency(rapport.daily_totals.total_cash_difference)}
+								{formatCurrency(totals.total_cash_difference)}
 							</div>
 						</div>
 						<div>
 							<div className='text-xs text-muted-foreground'>Remises</div>
 							<div className='text-lg font-medium text-amber-600'>
-								{formatCurrency(rapport.daily_totals.total_discounts)}
+								{formatCurrency(totals.total_discounts)}
 							</div>
 						</div>
 					</div>
 
-					{/* Avoirs si présents */}
-					{rapport.daily_totals.credit_notes_count > 0 && (
+					{/* Avoirs */}
+					{totals.credit_notes_count > 0 && (
 						<>
 							<Separator />
 							<div className='flex items-center gap-4 p-3 bg-red-50 rounded'>
@@ -548,7 +612,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 										Avoirs émis
 									</div>
 									<div className='text-lg font-medium text-red-600'>
-										{rapport.daily_totals.credit_notes_count} avoir(s)
+										{totals.credit_notes_count} avoir(s)
 									</div>
 								</div>
 								<div>
@@ -556,7 +620,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 										Montant total
 									</div>
 									<div className='text-lg font-medium text-red-600'>
-										-{formatCurrency(rapport.daily_totals.credit_notes_total)}
+										-{formatCurrency(totals.credit_notes_total)}
 									</div>
 								</div>
 							</div>
@@ -564,6 +628,70 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 					)}
 				</CardContent>
 			</Card>
+
+			{/* Bloc e-reporting */}
+			{ereporting && (ereporting.b2c.count > 0 || ereporting.b2b.count > 0) && (
+				<Card className='border-blue-200 bg-blue-50'>
+					<CardContent className='pt-6'>
+						<div className='flex items-center gap-2 mb-4'>
+							<FileText className='h-4 w-4 text-blue-600' />
+							<p className='text-sm font-medium text-blue-900'>
+								Données e-reporting — obligatoire sept. 2027 (DGFiP)
+							</p>
+						</div>
+						<div className='grid grid-cols-2 gap-3'>
+							{ereporting.b2c.count > 0 && (
+								<div className='bg-white rounded-md p-3 border border-blue-100'>
+									<div className='flex items-center gap-1.5 mb-2'>
+										<Badge
+											variant='outline'
+											className='text-xs px-1.5 py-0 text-blue-700 border-blue-200'
+										>
+											B2C
+										</Badge>
+										<span className='text-xs text-muted-foreground'>
+											Particuliers
+										</span>
+									</div>
+									<p className='text-lg font-semibold'>
+										{formatCurrency(ereporting.b2c.total_ttc)}
+									</p>
+									<p className='text-xs text-muted-foreground'>
+										TVA : {formatCurrency(ereporting.b2c.total_tva)} ·{' '}
+										{ereporting.b2c.count} doc.
+									</p>
+								</div>
+							)}
+							{ereporting.b2b.count > 0 && (
+								<div className='bg-white rounded-md p-3 border border-blue-100'>
+									<div className='flex items-center gap-1.5 mb-2'>
+										<Badge
+											variant='outline'
+											className='text-xs px-1.5 py-0 text-violet-700 border-violet-200'
+										>
+											B2B
+										</Badge>
+										<span className='text-xs text-muted-foreground'>
+											Professionnels / Associations
+										</span>
+									</div>
+									<p className='text-lg font-semibold'>
+										{formatCurrency(ereporting.b2b.total_ttc)}
+									</p>
+									<p className='text-xs text-muted-foreground'>
+										TVA : {formatCurrency(ereporting.b2b.total_tva)} ·{' '}
+										{ereporting.b2b.count} doc.
+									</p>
+								</div>
+							)}
+						</div>
+						<p className='text-xs text-blue-700 mt-3'>
+							Ces données sont à transmettre à votre Plateforme de
+							Dématérialisation Partenaire (PDP).
+						</p>
+					</CardContent>
+				</Card>
+			)}
 
 			{/* Détail des sessions */}
 			<Card>
@@ -576,7 +704,6 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 					<div className='space-y-4'>
 						{rapport.sessions.map((session, index) => (
 							<div key={session.id} className='p-4 border rounded-lg space-y-3'>
-								{/* En-tête session */}
 								<div className='flex items-center justify-between'>
 									<div>
 										<div className='font-medium'>Session #{index + 1}</div>
@@ -588,7 +715,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 											{session.opened_by_name && (
 												<div className='flex items-center gap-1 text-xs text-muted-foreground'>
 													<User className='h-3 w-3' />
-													<span>Ouvert: </span>
+													<span>Ouvert : </span>
 													<span className='font-medium text-foreground'>
 														{session.opened_by_name}
 													</span>
@@ -597,7 +724,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 											{session.closed_by_name && (
 												<div className='flex items-center gap-1 text-xs text-muted-foreground'>
 													<User className='h-3 w-3' />
-													<span>Fermé: </span>
+													<span>Fermé : </span>
 													<span className='font-medium text-foreground'>
 														{session.closed_by_name}
 													</span>
@@ -610,7 +737,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 											{session.invoice_count} tickets
 										</div>
 										<div className='text-xs text-muted-foreground'>
-											HT: {formatCurrency(session.total_ht)} • TVA:{' '}
+											HT : {formatCurrency(session.total_ht)} · TVA :{' '}
 											{formatCurrency(session.total_tva)}
 										</div>
 										<div className='text-lg font-bold text-emerald-600'>
@@ -619,7 +746,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 									</div>
 								</div>
 
-								{/* Espèces */}
+								{/* Espèces session */}
 								<div className='grid grid-cols-4 gap-3 text-sm bg-slate-50 p-3 rounded'>
 									<div>
 										<div className='text-xs text-muted-foreground'>
@@ -659,7 +786,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 									</div>
 								</div>
 
-								{/* TVA de la session */}
+								{/* TVA session */}
 								{session.vat_by_rate &&
 									Object.keys(session.vat_by_rate).length > 0 && (
 										<div className='text-sm'>
@@ -683,7 +810,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 										</div>
 									)}
 
-								{/* Moyens de paiement */}
+								{/* Moyens de paiement session */}
 								{session.totals_by_method &&
 									Object.keys(session.totals_by_method).length > 0 && (
 										<div className='text-sm'>
@@ -713,7 +840,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 								ne peut être ni modifié ni supprimé (conformité NF525).
 							</p>
 							<p className='text-xs text-amber-700 mt-1 font-mono'>
-								Hash de vérification: {rapport.hash.substring(0, 16)}...
+								Hash de vérification : {rapport.hash.substring(0, 16)}...
 							</p>
 						</div>
 					</div>
