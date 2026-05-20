@@ -375,6 +375,73 @@ func roundAmount(val float64) float64 {
 }
 
 // ============================================================================
+// loadB2BInvoicesForDay charge les factures B2B payées dans la journée.
+// Ces factures n'ont PAS de session caisse — elles sont identifiées par :
+//   - is_pos_ticket = false (ou absent)
+//   - is_paid = true
+//   - paid_at dans la plage [dateStartStr, dateEndStr[
+//   - invoice_type = 'invoice' ou 'deposit' (pas credit_note, pas devis)
+//   - status != 'draft'
+//   - owner_company = ownerCompany
+//
+// ============================================================================
+func loadB2BInvoicesForDay(app *pocketbase.PocketBase, ownerCompany, dateStartStr, dateEndStr string) ([]*models.Record, error) {
+	dao := app.Dao()
+
+	filter := fmt.Sprintf(
+		"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at < '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit')",
+		ownerCompany,
+		dateStartStr,
+		dateEndStr,
+	)
+
+	records, err := dao.FindRecordsByFilter("invoices", filter, "paid_at", 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("erreur chargement factures B2B: %w", err)
+	}
+
+	fmt.Printf("💼 Factures B2B payées le %s: %d\n", dateStartStr[:10], len(records))
+	return records, nil
+}
+
+// aggregateInvoiceIntoTotals agrège une facture (POS ou B2B) dans les accumulateurs.
+// Centralise la logique partagée entre le bloc session et le bloc B2B.
+func aggregateInvoiceIntoTotals(
+	inv *models.Record,
+	totalHT, totalTVA, totalTTC *float64,
+	totalsByMethod map[string]float64,
+	globalVATByRate map[string]VATDetail,
+	totalDiscounts *float64,
+) {
+	ht := inv.GetFloat("total_ht")
+	tva := inv.GetFloat("total_tva")
+	ttc := inv.GetFloat("total_ttc")
+
+	*totalHT += ht
+	*totalTVA += tva
+	*totalTTC += ttc
+
+	method := inv.GetString("payment_method_label")
+	if method == "" {
+		method = inv.GetString("payment_method")
+	}
+	if method != "" {
+		totalsByMethod[method] += ttc
+	}
+
+	vatBreakdown := inv.Get("vat_breakdown")
+	if isVATBreakdownValid(vatBreakdown) {
+		aggregateVATBreakdown(vatBreakdown, globalVATByRate)
+	} else {
+		aggregateVATFromItems(inv.Get("items"), globalVATByRate)
+	}
+
+	cartDiscount := inv.GetFloat("cart_discount_ttc")
+	lineDiscounts := inv.GetFloat("line_discounts_total_ttc")
+	*totalDiscounts += cartDiscount + lineDiscounts
+}
+
+// ============================================================================
 // RAPPORT Z - VERSION AMÉLIORÉE
 // ============================================================================
 
@@ -595,34 +662,33 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 				sessionTVA += tva
 				sessionTTC += ttc
 
+				// Agréger la TVA pour le détail de session uniquement
+				vatBreakdown := inv.Get("vat_breakdown")
+				if isVATBreakdownValid(vatBreakdown) {
+					aggregateVATBreakdown(vatBreakdown, sessionVATByRate)
+				} else {
+					aggregateVATFromItems(inv.Get("items"), sessionVATByRate)
+				}
+
 				method := inv.GetString("payment_method_label")
 				if method == "" {
 					method = inv.GetString("payment_method")
 				}
 				if method != "" {
 					sessionMethodTotals[method] += ttc
-					totalsByMethod[method] += ttc
-
 					if method == "especes" {
 						cashFromSales += ttc
 					}
 				}
 
-				// Agréger la TVA par taux (utiliser items si vat_breakdown est null ou vide)
-				vatBreakdown := inv.Get("vat_breakdown")
-				if isVATBreakdownValid(vatBreakdown) {
-					aggregateVATBreakdown(vatBreakdown, sessionVATByRate)
-					aggregateVATBreakdown(vatBreakdown, globalVATByRate)
-				} else {
-					// Fallback: calculer depuis items
-					aggregateVATFromItems(inv.Get("items"), sessionVATByRate)
-					aggregateVATFromItems(inv.Get("items"), globalVATByRate)
-				}
-
-				// Remises
-				cartDiscount := inv.GetFloat("cart_discount_ttc")
-				lineDiscounts := inv.GetFloat("line_discounts_total_ttc")
-				totalDiscounts += cartDiscount + lineDiscounts
+				// Déléguer l'agrégation globale (totaux, VAT global, remises, moyens)
+				aggregateInvoiceIntoTotals(
+					inv,
+					&totalHT, &totalTVA, &totalTTC,
+					totalsByMethod,
+					globalVATByRate,
+					&totalDiscounts,
+				)
 			}
 		}
 
@@ -722,6 +788,59 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		fmt.Printf("📊 Session %s: %d tickets, %.2f € HT, %.2f € TVA, %.2f € TTC\n",
 			sessionId, invoiceCount, sessionHT, sessionTVA, sessionTTC)
 	}
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// 4b. AGRÉGER LES FACTURES B2B PAYÉES CE JOUR
+	// Ces factures ne sont pas liées à une session caisse.
+	// Elles contribuent uniquement aux totaux journaliers (DailyTotals).
+	// ═══════════════════════════════════════════════════════════════════════
+
+	b2bInvoices, err := loadB2BInvoicesForDay(app, ownerCompany, dateStartStr, dateEndStr)
+	if err != nil {
+		// Non-fatal : on logue mais on ne bloque pas la génération du Z
+		fmt.Printf("⚠️ Erreur chargement factures B2B (non-fatal): %v\n", err)
+		b2bInvoices = nil
+	}
+
+	var b2bInvoiceCount int
+	var b2bCreditNotesCount int
+	var b2bCreditNotesTotal float64
+
+	for _, inv := range b2bInvoices {
+		invType := inv.GetString("invoice_type")
+
+		// Avoirs B2B remboursés
+		if invType == "credit_note" {
+			b2bCreditNotesCount++
+			amt := inv.GetFloat("total_ttc")
+			if amt < 0 {
+				amt = -amt
+			}
+			b2bCreditNotesTotal += amt
+			rm := inv.GetString("payment_method")
+			if rm == "" {
+				rm = "autre"
+			}
+			refundsByMethod[rm] += amt
+			continue
+		}
+
+		b2bInvoiceCount++
+		aggregateInvoiceIntoTotals(
+			inv,
+			&totalHT, &totalTVA, &totalTTC,
+			totalsByMethod,
+			globalVATByRate,
+			&totalDiscounts,
+		)
+	}
+
+	// Fusionner dans les compteurs globaux
+	totalInvoiceCount += b2bInvoiceCount
+	creditNotesCount += b2bCreditNotesCount
+	creditNotesTotal += b2bCreditNotesTotal
+
+	fmt.Printf("💼 B2B agrégé: %d factures payées, HT/TVA/TTC mis à jour\n", b2bInvoiceCount)
 
 	// 🔍 DEBUG: Afficher la TVA agrégée
 	fmt.Printf("🧾 TVA agrégée globalVATByRate: %+v\n", globalVATByRate)
