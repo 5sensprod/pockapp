@@ -183,7 +183,7 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	if ownerCompany != "" {
 		// Factures et acomptes B2B encaisses dans la fenetre de session
 		b2bFilter := fmt.Sprintf(
-			"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at <= '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit')",
+			"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at <= '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit') && original_invoice_id = ''",
 			ownerCompany, sessionOpenedAt, endStr,
 		)
 		invoicesB2B, _ := dao.FindRecordsByFilter("invoices", b2bFilter, "paid_at", 0, 0)
@@ -415,7 +415,7 @@ func loadB2BInvoicesForDay(app *pocketbase.PocketBase, ownerCompany, dateStartSt
 
 	// 1. Factures et acomptes B2B encaissés ce jour
 	invoiceFilter := fmt.Sprintf(
-		"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at < '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit')",
+		"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at < '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit') && original_invoice_id = ''",
 		ownerCompany, dateStartStr, dateEndStr,
 	)
 	invoices, err := dao.FindRecordsByFilter("invoices", invoiceFilter, "paid_at", 0, 0)
