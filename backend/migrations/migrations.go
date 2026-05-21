@@ -70,6 +70,9 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 
 		// 9. 🆕 Dépôt-vente instruments d'occasion (dépend de customers + companies)
 		EnsureConsignmentItemsCollection,
+
+		// 10. 🆕 Garanties (dépend de companies)
+		AddWarrantiesToCompanies,
 	}
 
 	for _, migrate := range migrations {

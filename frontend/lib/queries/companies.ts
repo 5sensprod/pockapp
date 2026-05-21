@@ -34,6 +34,7 @@ export interface Company {
 	default_payment_method?: 'virement' | 'cb' | 'especes' | 'cheque' | 'autre'
 	invoice_footer?: string
 	invoice_prefix?: string
+	warranties_text?: string
 	created?: string
 	updated?: string
 	is_first?: boolean
@@ -67,6 +68,7 @@ export interface CompanyDto {
 	default_payment_method?: 'virement' | 'cb' | 'especes' | 'cheque' | 'autre'
 	invoice_footer?: string
 	invoice_prefix?: string
+	warranties_text?: string
 }
 
 // 📋 Liste des entreprises
@@ -174,9 +176,15 @@ export function useUpdateCompany() {
 
 			return await pb.collection('companies').update<Company>(id, formData)
 		},
-		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: ['companies'] })
-			queryClient.invalidateQueries({ queryKey: ['companies', variables.id] })
+		onSuccess: (updatedRecord, variables) => {
+			// Met à jour immédiatement l'entrée dans le cache liste
+			// pour que handleEdit lise les données fraîches dès la réouverture du dialog
+			queryClient.setQueryData<Company[]>(['companies'], (old) =>
+				old?.map((c) =>
+					c.id === variables.id ? { ...c, ...updatedRecord } : c,
+				),
+			)
+			queryClient.setQueryData(['companies', variables.id], updatedRecord)
 		},
 	})
 }

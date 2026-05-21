@@ -60,6 +60,7 @@ interface FormDataWithLogo extends CompanyDto {
 	logoPreview?: string | null
 	removeLogo?: boolean
 	existingLogo?: string
+	warranties_text?: string
 }
 
 const emptyFormData: FormDataWithLogo = {
@@ -90,6 +91,7 @@ const emptyFormData: FormDataWithLogo = {
 	default_payment_method: 'virement',
 	invoice_footer: '',
 	invoice_prefix: '',
+	warranties_text: '',
 	logoFile: null,
 	logoPreview: null,
 	removeLogo: false,
@@ -207,6 +209,7 @@ export default function CompanyManagement() {
 			default_payment_method: company.default_payment_method || 'virement',
 			invoice_footer: company.invoice_footer || '',
 			invoice_prefix: company.invoice_prefix || '',
+			warranties_text: company.warranties_text || '',
 			logoFile: null,
 			logoPreview: null,
 			removeLogo: false,
@@ -917,6 +920,29 @@ export default function CompanyManagement() {
 									placeholder='Mentions légales, conditions de paiement...'
 									rows={4}
 								/>
+							</div>
+
+							<div className='space-y-2'>
+								<div className='flex items-center gap-2'>
+									<ShieldAlert className='h-4 w-4 text-muted-foreground' />
+									<Label htmlFor='warranties_text'>Garanties</Label>
+								</div>
+								<Textarea
+									id='warranties_text'
+									value={formData.warranties_text ?? ''}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											warranties_text: e.target.value,
+										})
+									}
+									placeholder="Ex : Satisfait ou remboursé 30 jours · Garantie pièces et main d'œuvre 2 ans · SAV disponible 6j/7"
+									rows={3}
+								/>
+								<p className='text-xs text-muted-foreground'>
+									Affiché en petits caractères sous la facture. Séparez vos
+									mentions par · ou un retour à la ligne.
+								</p>
 							</div>
 						</TabsContent>
 					</Tabs>

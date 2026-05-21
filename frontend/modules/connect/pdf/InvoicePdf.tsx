@@ -224,6 +224,16 @@ const styles = StyleSheet.create({
 		borderTopStyle: 'solid',
 		paddingTop: 8,
 	},
+	warranties: {
+		marginTop: 10,
+		fontSize: 8,
+		color: '#888',
+		textAlign: 'center',
+		paddingTop: 6,
+		borderTopWidth: 0.5,
+		borderTopColor: '#eee',
+		borderTopStyle: 'solid',
+	},
 
 	bankBlock: {
 		marginTop: 16,
@@ -1018,6 +1028,13 @@ export function InvoicePdfDocument({
 					<View style={styles.footerLegal}>
 						{paymentTermsText && <Text>{paymentTermsText}</Text>}
 						{company?.invoice_footer && <Text>{company.invoice_footer}</Text>}
+					</View>
+				)}
+
+				{/* ✅ GARANTIES - Affichées en petits caractères sous tout le reste */}
+				{(company as any)?.warranties_text && (
+					<View style={styles.warranties}>
+						<Text>{(company as any).warranties_text}</Text>
 					</View>
 				)}
 			</Page>
