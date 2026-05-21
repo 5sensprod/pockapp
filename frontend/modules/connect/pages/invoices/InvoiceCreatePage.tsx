@@ -38,6 +38,7 @@ import { useAllCustomers, useCreateCustomer } from '@/lib/queries/customers'
 import { useCreateInvoice } from '@/lib/queries/invoices'
 import type { InvoiceItem } from '@/lib/types/invoice.types'
 
+import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import {
 	ArrowLeft,
 	ChevronsUpDown,
@@ -50,6 +51,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { InvoicePaymentDialog } from '../../components/InvoicePaymentDialog'
 import { CustomerDialog } from '../../features/customers/CustomerDialog'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 
@@ -188,7 +190,11 @@ export function InvoiceCreatePage() {
 	const [invoiceDate, setInvoiceDate] = useState(
 		new Date().toISOString().split('T')[0],
 	)
-	const { goBack, search } = useDocumentNavigation('invoice')
+	const { goBack, goToDetail, search } = useDocumentNavigation('invoice')
+	const [showPaymentDialog, setShowPaymentDialog] = useState(false)
+	const [createdInvoice, setCreatedInvoice] = useState<InvoiceResponse | null>(
+		null,
+	)
 	const [dueDate, setDueDate] = useState('')
 	const [selectedCustomer, setSelectedCustomer] =
 		useState<SelectedCustomer | null>(null)
@@ -603,8 +609,15 @@ export function InvoiceCreatePage() {
 				// ✅ AJOUT: Ventilation TVA stockée en base
 				vat_breakdown: totals.vatBreakdown,
 			})
-			toast.success(`Facture ${result.number} créée avec succès`)
-			goBack()
+			toast.success(`Facture ${result.number} créée`)
+			if (status === 'validated') {
+				// Ouvrir le dialog de paiement directement après création
+				setCreatedInvoice(result as unknown as InvoiceResponse)
+				setShowPaymentDialog(true)
+			} else {
+				// Brouillon → retour à la liste
+				goBack()
+			}
 		} catch (error) {
 			console.error('Erreur lors de la création de la facture', error)
 			toast.error('Erreur lors de la création de la facture')
@@ -629,574 +642,596 @@ export function InvoiceCreatePage() {
 	}
 
 	return (
-		<div className='container mx-auto px-6 py-8 max-w-6xl'>
-			<div className='flex items-center gap-4 mb-6'>
-				<Button variant='ghost' size='icon' onClick={goBack}>
-					<ArrowLeft className='h-5 w-5' />
-				</Button>
-				<div className='flex-1'>
-					<h1 className='text-2xl font-bold flex items-center gap-2'>
-						<FileText className='h-6 w-6' />
-						Nouvelle facture
-					</h1>
-					<p className='text-muted-foreground'>
-						Le numéro sera attribué automatiquement
-					</p>
+		<>
+			<div className='container mx-auto px-6 py-8 max-w-6xl'>
+				<div className='flex items-center gap-4 mb-6'>
+					<Button variant='ghost' size='icon' onClick={goBack}>
+						<ArrowLeft className='h-5 w-5' />
+					</Button>
+					<div className='flex-1'>
+						<h1 className='text-2xl font-bold flex items-center gap-2'>
+							<FileText className='h-6 w-6' />
+							Nouvelle facture
+						</h1>
+						<p className='text-muted-foreground'>
+							Le numéro sera attribué automatiquement
+						</p>
+					</div>
 				</div>
-			</div>
 
-			<div className='grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] items-stretch'>
-				<div className='grid gap-6 grid-rows-[auto_auto]'>
-					<Card>
-						<CardHeader className='pb-3'>
-							<CardTitle className='text-lg'>Informations</CardTitle>
-						</CardHeader>
-						<CardContent className='grid grid-cols-3 gap-4'>
-							<div>
-								<Label>Numéro</Label>
-								<Input
-									value='Auto-généré'
-									disabled
-									className='bg-muted text-muted-foreground'
-								/>
-							</div>
-							<div>
-								<Label>Date</Label>
-								<Input
-									type='date'
-									value={invoiceDate}
-									onChange={(e) => setInvoiceDate(e.target.value)}
-								/>
-							</div>
-							<div>
-								<Label>Échéance</Label>
-								<Input
-									type='date'
-									value={dueDate}
-									onChange={(e) => setDueDate(e.target.value)}
-								/>
-							</div>
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardHeader className='pb-3'>
-							<CardTitle className='text-lg'>Client</CardTitle>
-						</CardHeader>
-						<CardContent className='space-y-3'>
-							{selectedCustomer ? (
-								<div className='flex items-start justify-between gap-4 p-3 border rounded-lg bg-muted/30'>
-									<div className='min-w-0'>
-										<p className='font-medium truncate'>
-											{selectedCustomer.name}
-										</p>
-										{selectedCustomer.email && (
-											<p className='text-sm text-muted-foreground truncate'>
-												{selectedCustomer.email}
-											</p>
-										)}
-										{selectedCustomer.address && (
-											<p className='text-sm text-muted-foreground line-clamp-2'>
-												{selectedCustomer.address}
-											</p>
-										)}
-									</div>
-									<Button
-										variant='outline'
-										size='sm'
-										onClick={() => setSelectedCustomer(null)}
-									>
-										Changer
-									</Button>
+				<div className='grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] items-stretch'>
+					<div className='grid gap-6 grid-rows-[auto_auto]'>
+						<Card>
+							<CardHeader className='pb-3'>
+								<CardTitle className='text-lg'>Informations</CardTitle>
+							</CardHeader>
+							<CardContent className='grid grid-cols-3 gap-4'>
+								<div>
+									<Label>Numéro</Label>
+									<Input
+										value='Auto-généré'
+										disabled
+										className='bg-muted text-muted-foreground'
+									/>
 								</div>
-							) : (
-								<>
-									<Button
-										variant='outline'
-										className='w-full justify-between'
-										onClick={() => setCustomerPickerOpen(true)}
-									>
-										Sélectionner un client
-										<ChevronsUpDown className='ml-2 h-4 w-4 opacity-50' />
-									</Button>
-									<Dialog
-										open={customerPickerOpen}
-										onOpenChange={setCustomerPickerOpen}
-									>
-										<DialogContent className='max-w-lg'>
-											<DialogHeader>
-												<DialogTitle>Choisir un client</DialogTitle>
-												<DialogDescription>
-													Recherchez un client ou créez-en un nouveau.
-												</DialogDescription>
-											</DialogHeader>
-											<div className='space-y-3'>
-												<Input
-													placeholder='Rechercher un client...'
-													value={customerSearch}
-													onChange={(e) => setCustomerSearch(e.target.value)}
-												/>
-												<div className='max-h-64 overflow-y-auto border rounded-md'>
-													{filteredCustomers.length === 0 ? (
-														<div className='p-4 text-center text-sm text-muted-foreground'>
-															<p className='mb-3'>Aucun client trouvé</p>
-															{customerSearch && (
-																<Button
-																	size='sm'
-																	onClick={handleQuickCreateCustomer}
-																	className='gap-2'
-																>
-																	<UserPlus className='h-4 w-4' />
-																	Créer &quot;{customerSearch}&quot;
-																</Button>
-															)}
-														</div>
-													) : (
-														<ul className='divide-y'>
-															{filteredCustomers.map((customer) => (
-																<li key={customer.id}>
-																	<button
-																		type='button'
-																		className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
-																		onClick={() => {
-																			setSelectedCustomer({
-																				id: customer.id,
-																				name: customer.name,
-																				email: customer.email,
-																				phone: customer.phone,
-																				address: customer.address,
-																				company: customer.company,
-																			})
-																			setCustomerPickerOpen(false)
-																		}}
+								<div>
+									<Label>Date</Label>
+									<Input
+										type='date'
+										value={invoiceDate}
+										onChange={(e) => setInvoiceDate(e.target.value)}
+									/>
+								</div>
+								<div>
+									<Label>Échéance</Label>
+									<Input
+										type='date'
+										value={dueDate}
+										onChange={(e) => setDueDate(e.target.value)}
+									/>
+								</div>
+							</CardContent>
+						</Card>
+
+						<Card>
+							<CardHeader className='pb-3'>
+								<CardTitle className='text-lg'>Client</CardTitle>
+							</CardHeader>
+							<CardContent className='space-y-3'>
+								{selectedCustomer ? (
+									<div className='flex items-start justify-between gap-4 p-3 border rounded-lg bg-muted/30'>
+										<div className='min-w-0'>
+											<p className='font-medium truncate'>
+												{selectedCustomer.name}
+											</p>
+											{selectedCustomer.email && (
+												<p className='text-sm text-muted-foreground truncate'>
+													{selectedCustomer.email}
+												</p>
+											)}
+											{selectedCustomer.address && (
+												<p className='text-sm text-muted-foreground line-clamp-2'>
+													{selectedCustomer.address}
+												</p>
+											)}
+										</div>
+										<Button
+											variant='outline'
+											size='sm'
+											onClick={() => setSelectedCustomer(null)}
+										>
+											Changer
+										</Button>
+									</div>
+								) : (
+									<>
+										<Button
+											variant='outline'
+											className='w-full justify-between'
+											onClick={() => setCustomerPickerOpen(true)}
+										>
+											Sélectionner un client
+											<ChevronsUpDown className='ml-2 h-4 w-4 opacity-50' />
+										</Button>
+										<Dialog
+											open={customerPickerOpen}
+											onOpenChange={setCustomerPickerOpen}
+										>
+											<DialogContent className='max-w-lg'>
+												<DialogHeader>
+													<DialogTitle>Choisir un client</DialogTitle>
+													<DialogDescription>
+														Recherchez un client ou créez-en un nouveau.
+													</DialogDescription>
+												</DialogHeader>
+												<div className='space-y-3'>
+													<Input
+														placeholder='Rechercher un client...'
+														value={customerSearch}
+														onChange={(e) => setCustomerSearch(e.target.value)}
+													/>
+													<div className='max-h-64 overflow-y-auto border rounded-md'>
+														{filteredCustomers.length === 0 ? (
+															<div className='p-4 text-center text-sm text-muted-foreground'>
+																<p className='mb-3'>Aucun client trouvé</p>
+																{customerSearch && (
+																	<Button
+																		size='sm'
+																		onClick={handleQuickCreateCustomer}
+																		className='gap-2'
 																	>
-																		<div className='min-w-0'>
-																			<p className='font-medium truncate'>
-																				{customer.name}
-																			</p>
-																			{customer.email && (
-																				<p className='text-xs text-muted-foreground truncate'>
-																					{customer.email}
+																		<UserPlus className='h-4 w-4' />
+																		Créer &quot;{customerSearch}&quot;
+																	</Button>
+																)}
+															</div>
+														) : (
+															<ul className='divide-y'>
+																{filteredCustomers.map((customer) => (
+																	<li key={customer.id}>
+																		<button
+																			type='button'
+																			className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
+																			onClick={() => {
+																				setSelectedCustomer({
+																					id: customer.id,
+																					name: customer.name,
+																					email: customer.email,
+																					phone: customer.phone,
+																					address: customer.address,
+																					company: customer.company,
+																				})
+																				setCustomerPickerOpen(false)
+																			}}
+																		>
+																			<div className='min-w-0'>
+																				<p className='font-medium truncate'>
+																					{customer.name}
 																				</p>
-																			)}
-																		</div>
-																	</button>
-																</li>
-															))}
-														</ul>
-													)}
-												</div>
-												<div className='pt-2 border-t'>
-													<Button
-														variant='ghost'
-														size='sm'
-														className='w-full gap-2'
-														onClick={() => {
-															setCustomerPickerOpen(false)
-															setNewCustomerDialogOpen(true)
-														}}
-													>
-														<UserPlus className='h-4 w-4' />
-														Nouveau client complet
-													</Button>
-												</div>
-											</div>
-										</DialogContent>
-									</Dialog>
-								</>
-							)}
-						</CardContent>
-					</Card>
-				</div>
-
-				<Card className='h-full'>
-					<CardHeader>
-						<CardTitle className='text-lg'>Récapitulatif</CardTitle>
-					</CardHeader>
-					<CardContent className='space-y-4'>
-						<div className='space-y-2'>
-							<div className='flex justify-between text-sm'>
-								<span className='text-muted-foreground'>Client</span>
-								<span className='font-medium'>
-									{selectedCustomer?.name || '-'}
-								</span>
-							</div>
-							<div className='flex justify-between text-sm'>
-								<span className='text-muted-foreground'>Articles</span>
-								<span className='font-medium'>{items.length}</span>
-							</div>
-						</div>
-
-						{/* Promotion globale */}
-						<div className='space-y-2 pt-2 border-t'>
-							<div className='text-sm font-medium'>Promotion globale</div>
-							<div className='flex items-center gap-2'>
-								<select
-									className='h-9 rounded-md border bg-white px-2 text-sm'
-									value={cartDiscountMode}
-									onChange={(e) =>
-										setCartDiscountMode(e.target.value as DiscountMode)
-									}
-								>
-									<option value='percent'>%</option>
-									<option value='amount'>€</option>
-								</select>
-								{/* ✅ FIX: Utilise cartDiscountRaw au lieu de cartDiscountValue */}
-								<Input
-									type='text'
-									inputMode='decimal'
-									className='h-9'
-									placeholder='0'
-									value={cartDiscountRaw}
-									onChange={(e) => handleCartDiscountChange(e.target.value)}
-								/>
-							</div>
-						</div>
-
-						<div className='border-t pt-3 space-y-2 text-sm'>
-							<div className='flex justify-between'>
-								<span className='text-muted-foreground'>Sous-total TTC</span>
-								<span>{totals.subTtc.toFixed(2)} €</span>
-							</div>
-							<div className='flex justify-between'>
-								<span className='text-muted-foreground'>Remises lignes</span>
-								<span>-{totals.lineDiscountTtc.toFixed(2)} €</span>
-							</div>
-							<div className='flex justify-between'>
-								<span className='text-muted-foreground'>Remise globale</span>
-								<span>-{totals.cartDiscountTtc.toFixed(2)} €</span>
-							</div>
-							<div className='border-t pt-2 flex justify-between font-bold'>
-								<span>Total TTC</span>
-								<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
-							</div>
-
-							{/* ✅ VENTILATION TVA PAR TAUX */}
-							{totals.vatBreakdown.length > 0 && (
-								<div className='border-t pt-2 space-y-1'>
-									<div className='flex justify-between font-medium text-muted-foreground'>
-										<span>Total HT</span>
-										<span>{totals.ht.toFixed(2)} €</span>
-									</div>
-									<div className='flex justify-between font-medium text-muted-foreground'>
-										<span>Total TVA</span>
-										<span>{totals.tva.toFixed(2)} €</span>
-									</div>
-									<div className='pl-3 space-y-1 text-xs'>
-										{totals.vatBreakdown.map((vb) => (
-											<div
-												key={vb.rate}
-												className='flex justify-between text-muted-foreground'
-											>
-												<span>
-													TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
-												</span>
-												<span>{vb.vat.toFixed(2)} €</span>
-											</div>
-										))}
-									</div>
-								</div>
-							)}
-						</div>
-
-						<div className='space-y-2 pt-2'>
-							<Button
-								className='w-full'
-								onClick={() => handleSubmit('validated')}
-								disabled={createInvoice.isPending}
-							>
-								Créer la facture
-							</Button>
-							<Button
-								variant='outline'
-								className='w-full'
-								onClick={() => handleSubmit('draft')}
-								disabled={createInvoice.isPending}
-							>
-								Enregistrer en brouillon
-							</Button>
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-
-			<div className='mt-6 space-y-6'>
-				<Card>
-					<CardHeader className='flex flex-row items-center justify-between'>
-						<CardTitle className='text-lg'>Produits</CardTitle>
-						<Button
-							size='sm'
-							className='gap-2'
-							onClick={() => setProductPickerOpen(true)}
-						>
-							<Plus className='h-4 w-4' />
-							Ajouter
-						</Button>
-					</CardHeader>
-					<CardContent>
-						{items.length === 0 ? (
-							<div className='text-center py-8 text-muted-foreground'>
-								<Search className='h-8 w-8 mx-auto mb-2 opacity-50' />
-								<p>Aucun produit ajouté</p>
-							</div>
-						) : (
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Produit</TableHead>
-										<TableHead className='text-center w-32'>Qté</TableHead>
-										<TableHead className='text-right w-40'>P.U. TTC</TableHead>
-										<TableHead className='w-52'>Promo</TableHead>
-										<TableHead className='text-right'>TVA</TableHead>
-										<TableHead className='text-right'>Total TTC</TableHead>
-										<TableHead className='w-10' />
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{items.map((item) => {
-										const currentDisplayMode = item.displayMode ?? 'name'
-										const showSelector =
-											isDisplayModeAvailable(item, 'designation') ||
-											isDisplayModeAvailable(item, 'sku')
-										return (
-											<TableRow key={item.id}>
-												<TableCell className='font-medium'>
-													<div className='flex items-center gap-2'>
-														<div className='min-w-0 flex-1 truncate'>
-															{getDisplayText(item)}
-														</div>
-														{showSelector && (
-															<Select
-																value={currentDisplayMode}
-																onValueChange={(v) =>
-																	setLineDisplayMode(item.id, v as DisplayMode)
-																}
-															>
-																<SelectTrigger className='h-7 w-[110px] text-xs flex-shrink-0'>
-																	<SelectValue />
-																</SelectTrigger>
-																<SelectContent>
-																	<SelectItem value='name'>Nom</SelectItem>
-																	{isDisplayModeAvailable(
-																		item,
-																		'designation',
-																	) && (
-																		<SelectItem value='designation'>
-																			Désignation
-																		</SelectItem>
-																	)}
-																	{isDisplayModeAvailable(item, 'sku') && (
-																		<SelectItem value='sku'>SKU</SelectItem>
-																	)}
-																</SelectContent>
-															</Select>
+																				{customer.email && (
+																					<p className='text-xs text-muted-foreground truncate'>
+																						{customer.email}
+																					</p>
+																				)}
+																			</div>
+																		</button>
+																	</li>
+																))}
+															</ul>
 														)}
 													</div>
-												</TableCell>
-												<TableCell>
-													<div className='flex items-center justify-center gap-1'>
+													<div className='pt-2 border-t'>
 														<Button
-															variant='outline'
-															size='icon'
-															className='h-7 w-7'
-															onClick={() => updateQuantity(item.id, -1)}
+															variant='ghost'
+															size='sm'
+															className='w-full gap-2'
+															onClick={() => {
+																setCustomerPickerOpen(false)
+																setNewCustomerDialogOpen(true)
+															}}
 														>
-															<Minus className='h-3 w-3' />
-														</Button>
-														<span className='w-8 text-center'>
-															{item.quantity}
-														</span>
-														<Button
-															variant='outline'
-															size='icon'
-															className='h-7 w-7'
-															onClick={() => updateQuantity(item.id, 1)}
-														>
-															<Plus className='h-3 w-3' />
+															<UserPlus className='h-4 w-4' />
+															Nouveau client complet
 														</Button>
 													</div>
-												</TableCell>
-												<TableCell className='text-right'>
-													{/* ✅ FIX: Utilise unitPriceRaw au lieu de unit_price_ttc */}
-													<Input
-														type='text'
-														inputMode='decimal'
-														className='h-8 w-28 ml-auto text-right'
-														value={
-															item.unitPriceRaw ??
-															item.unit_price_ttc.toString()
-														}
-														onChange={(e) =>
-															handleUnitPriceChange(item.id, e.target.value)
-														}
-													/>
-												</TableCell>
-												<TableCell>
-													<div className='flex items-center gap-2'>
-														<select
-															className='h-8 rounded-md border bg-white px-1 text-xs'
-															value={item.lineDiscountMode ?? 'percent'}
-															onChange={(e) =>
-																setLineDiscountMode(
-																	item.id,
-																	e.target.value as DiscountMode,
-																)
-															}
-														>
-															<option value='percent'>%</option>
-															<option value='amount'>€</option>
-														</select>
-														{/* ✅ FIX: Utilise lineDiscountRaw au lieu de lineDiscountValue */}
+												</div>
+											</DialogContent>
+										</Dialog>
+									</>
+								)}
+							</CardContent>
+						</Card>
+					</div>
+
+					<Card className='h-full'>
+						<CardHeader>
+							<CardTitle className='text-lg'>Récapitulatif</CardTitle>
+						</CardHeader>
+						<CardContent className='space-y-4'>
+							<div className='space-y-2'>
+								<div className='flex justify-between text-sm'>
+									<span className='text-muted-foreground'>Client</span>
+									<span className='font-medium'>
+										{selectedCustomer?.name || '-'}
+									</span>
+								</div>
+								<div className='flex justify-between text-sm'>
+									<span className='text-muted-foreground'>Articles</span>
+									<span className='font-medium'>{items.length}</span>
+								</div>
+							</div>
+
+							{/* Promotion globale */}
+							<div className='space-y-2 pt-2 border-t'>
+								<div className='text-sm font-medium'>Promotion globale</div>
+								<div className='flex items-center gap-2'>
+									<select
+										className='h-9 rounded-md border bg-white px-2 text-sm'
+										value={cartDiscountMode}
+										onChange={(e) =>
+											setCartDiscountMode(e.target.value as DiscountMode)
+										}
+									>
+										<option value='percent'>%</option>
+										<option value='amount'>€</option>
+									</select>
+									{/* ✅ FIX: Utilise cartDiscountRaw au lieu de cartDiscountValue */}
+									<Input
+										type='text'
+										inputMode='decimal'
+										className='h-9'
+										placeholder='0'
+										value={cartDiscountRaw}
+										onChange={(e) => handleCartDiscountChange(e.target.value)}
+									/>
+								</div>
+							</div>
+
+							<div className='border-t pt-3 space-y-2 text-sm'>
+								<div className='flex justify-between'>
+									<span className='text-muted-foreground'>Sous-total TTC</span>
+									<span>{totals.subTtc.toFixed(2)} €</span>
+								</div>
+								<div className='flex justify-between'>
+									<span className='text-muted-foreground'>Remises lignes</span>
+									<span>-{totals.lineDiscountTtc.toFixed(2)} €</span>
+								</div>
+								<div className='flex justify-between'>
+									<span className='text-muted-foreground'>Remise globale</span>
+									<span>-{totals.cartDiscountTtc.toFixed(2)} €</span>
+								</div>
+								<div className='border-t pt-2 flex justify-between font-bold'>
+									<span>Total TTC</span>
+									<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
+								</div>
+
+								{/* ✅ VENTILATION TVA PAR TAUX */}
+								{totals.vatBreakdown.length > 0 && (
+									<div className='border-t pt-2 space-y-1'>
+										<div className='flex justify-between font-medium text-muted-foreground'>
+											<span>Total HT</span>
+											<span>{totals.ht.toFixed(2)} €</span>
+										</div>
+										<div className='flex justify-between font-medium text-muted-foreground'>
+											<span>Total TVA</span>
+											<span>{totals.tva.toFixed(2)} €</span>
+										</div>
+										<div className='pl-3 space-y-1 text-xs'>
+											{totals.vatBreakdown.map((vb) => (
+												<div
+													key={vb.rate}
+													className='flex justify-between text-muted-foreground'
+												>
+													<span>
+														TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+													</span>
+													<span>{vb.vat.toFixed(2)} €</span>
+												</div>
+											))}
+										</div>
+									</div>
+								)}
+							</div>
+
+							<div className='space-y-2 pt-2'>
+								<Button
+									className='w-full'
+									onClick={() => handleSubmit('validated')}
+									disabled={createInvoice.isPending}
+								>
+									Créer la facture
+								</Button>
+								<Button
+									variant='outline'
+									className='w-full'
+									onClick={() => handleSubmit('draft')}
+									disabled={createInvoice.isPending}
+								>
+									Enregistrer en brouillon
+								</Button>
+							</div>
+						</CardContent>
+					</Card>
+				</div>
+
+				<div className='mt-6 space-y-6'>
+					<Card>
+						<CardHeader className='flex flex-row items-center justify-between'>
+							<CardTitle className='text-lg'>Produits</CardTitle>
+							<Button
+								size='sm'
+								className='gap-2'
+								onClick={() => setProductPickerOpen(true)}
+							>
+								<Plus className='h-4 w-4' />
+								Ajouter
+							</Button>
+						</CardHeader>
+						<CardContent>
+							{items.length === 0 ? (
+								<div className='text-center py-8 text-muted-foreground'>
+									<Search className='h-8 w-8 mx-auto mb-2 opacity-50' />
+									<p>Aucun produit ajouté</p>
+								</div>
+							) : (
+								<Table>
+									<TableHeader>
+										<TableRow>
+											<TableHead>Produit</TableHead>
+											<TableHead className='text-center w-32'>Qté</TableHead>
+											<TableHead className='text-right w-40'>
+												P.U. TTC
+											</TableHead>
+											<TableHead className='w-52'>Promo</TableHead>
+											<TableHead className='text-right'>TVA</TableHead>
+											<TableHead className='text-right'>Total TTC</TableHead>
+											<TableHead className='w-10' />
+										</TableRow>
+									</TableHeader>
+									<TableBody>
+										{items.map((item) => {
+											const currentDisplayMode = item.displayMode ?? 'name'
+											const showSelector =
+												isDisplayModeAvailable(item, 'designation') ||
+												isDisplayModeAvailable(item, 'sku')
+											return (
+												<TableRow key={item.id}>
+													<TableCell className='font-medium'>
+														<div className='flex items-center gap-2'>
+															<div className='min-w-0 flex-1 truncate'>
+																{getDisplayText(item)}
+															</div>
+															{showSelector && (
+																<Select
+																	value={currentDisplayMode}
+																	onValueChange={(v) =>
+																		setLineDisplayMode(
+																			item.id,
+																			v as DisplayMode,
+																		)
+																	}
+																>
+																	<SelectTrigger className='h-7 w-[110px] text-xs flex-shrink-0'>
+																		<SelectValue />
+																	</SelectTrigger>
+																	<SelectContent>
+																		<SelectItem value='name'>Nom</SelectItem>
+																		{isDisplayModeAvailable(
+																			item,
+																			'designation',
+																		) && (
+																			<SelectItem value='designation'>
+																				Désignation
+																			</SelectItem>
+																		)}
+																		{isDisplayModeAvailable(item, 'sku') && (
+																			<SelectItem value='sku'>SKU</SelectItem>
+																		)}
+																	</SelectContent>
+																</Select>
+															)}
+														</div>
+													</TableCell>
+													<TableCell>
+														<div className='flex items-center justify-center gap-1'>
+															<Button
+																variant='outline'
+																size='icon'
+																className='h-7 w-7'
+																onClick={() => updateQuantity(item.id, -1)}
+															>
+																<Minus className='h-3 w-3' />
+															</Button>
+															<span className='w-8 text-center'>
+																{item.quantity}
+															</span>
+															<Button
+																variant='outline'
+																size='icon'
+																className='h-7 w-7'
+																onClick={() => updateQuantity(item.id, 1)}
+															>
+																<Plus className='h-3 w-3' />
+															</Button>
+														</div>
+													</TableCell>
+													<TableCell className='text-right'>
+														{/* ✅ FIX: Utilise unitPriceRaw au lieu de unit_price_ttc */}
 														<Input
 															type='text'
 															inputMode='decimal'
-															className='h-8 w-20'
-															placeholder='0'
-															value={item.lineDiscountRaw ?? ''}
+															className='h-8 w-28 ml-auto text-right'
+															value={
+																item.unitPriceRaw ??
+																item.unit_price_ttc.toString()
+															}
 															onChange={(e) =>
-																updateLineDiscount(
-																	item.id,
-																	item.lineDiscountMode ?? 'percent',
-																	e.target.value,
-																)
+																handleUnitPriceChange(item.id, e.target.value)
 															}
 														/>
-													</div>
+													</TableCell>
+													<TableCell>
+														<div className='flex items-center gap-2'>
+															<select
+																className='h-8 rounded-md border bg-white px-1 text-xs'
+																value={item.lineDiscountMode ?? 'percent'}
+																onChange={(e) =>
+																	setLineDiscountMode(
+																		item.id,
+																		e.target.value as DiscountMode,
+																	)
+																}
+															>
+																<option value='percent'>%</option>
+																<option value='amount'>€</option>
+															</select>
+															{/* ✅ FIX: Utilise lineDiscountRaw au lieu de lineDiscountValue */}
+															<Input
+																type='text'
+																inputMode='decimal'
+																className='h-8 w-20'
+																placeholder='0'
+																value={item.lineDiscountRaw ?? ''}
+																onChange={(e) =>
+																	updateLineDiscount(
+																		item.id,
+																		item.lineDiscountMode ?? 'percent',
+																		e.target.value,
+																	)
+																}
+															/>
+														</div>
+													</TableCell>
+													<TableCell className='text-right'>
+														{item.tva_rate}%
+													</TableCell>
+													<TableCell className='text-right font-medium'>
+														{item.total_ttc.toFixed(2)} €
+													</TableCell>
+													<TableCell>
+														<Button
+															variant='ghost'
+															size='icon'
+															className='h-7 w-7 text-red-500'
+															onClick={() => removeItem(item.id)}
+														>
+															<Trash2 className='h-4 w-4' />
+														</Button>
+													</TableCell>
+												</TableRow>
+											)
+										})}
+									</TableBody>
+									<TableFooter>
+										{/* ✅ VENTILATION TVA DANS LE FOOTER DU TABLEAU */}
+										{totals.vatBreakdown.map((vb) => (
+											<TableRow key={vb.rate}>
+												<TableCell colSpan={5} className='text-right text-xs'>
+													Base HT TVA {vb.rate}%
 												</TableCell>
-												<TableCell className='text-right'>
-													{item.tva_rate}%
+												<TableCell className='text-right text-xs'>
+													{vb.base_ht.toFixed(2)} €
 												</TableCell>
-												<TableCell className='text-right font-medium'>
-													{item.total_ttc.toFixed(2)} €
-												</TableCell>
-												<TableCell>
-													<Button
-														variant='ghost'
-														size='icon'
-														className='h-7 w-7 text-red-500'
-														onClick={() => removeItem(item.id)}
-													>
-														<Trash2 className='h-4 w-4' />
-													</Button>
-												</TableCell>
+												<TableCell />
 											</TableRow>
-										)
-									})}
-								</TableBody>
-								<TableFooter>
-									{/* ✅ VENTILATION TVA DANS LE FOOTER DU TABLEAU */}
-									{totals.vatBreakdown.map((vb) => (
-										<TableRow key={vb.rate}>
-											<TableCell colSpan={5} className='text-right text-xs'>
-												Base HT TVA {vb.rate}%
+										))}
+										<TableRow>
+											<TableCell colSpan={5} className='text-right'>
+												Total HT
 											</TableCell>
-											<TableCell className='text-right text-xs'>
-												{vb.base_ht.toFixed(2)} €
+											<TableCell className='text-right'>
+												{totals.ht.toFixed(2)} €
 											</TableCell>
 											<TableCell />
 										</TableRow>
-									))}
-									<TableRow>
-										<TableCell colSpan={5} className='text-right'>
-											Total HT
-										</TableCell>
-										<TableCell className='text-right'>
-											{totals.ht.toFixed(2)} €
-										</TableCell>
-										<TableCell />
-									</TableRow>
-									{totals.vatBreakdown.map((vb) => (
-										<TableRow key={`vat-${vb.rate}`}>
-											<TableCell colSpan={5} className='text-right text-xs'>
-												TVA {vb.rate}%
+										{totals.vatBreakdown.map((vb) => (
+											<TableRow key={`vat-${vb.rate}`}>
+												<TableCell colSpan={5} className='text-right text-xs'>
+													TVA {vb.rate}%
+												</TableCell>
+												<TableCell className='text-right text-xs'>
+													{vb.vat.toFixed(2)} €
+												</TableCell>
+												<TableCell />
+											</TableRow>
+										))}
+										<TableRow className='font-bold'>
+											<TableCell colSpan={5} className='text-right'>
+												Total TTC Final
 											</TableCell>
-											<TableCell className='text-right text-xs'>
-												{vb.vat.toFixed(2)} €
+											<TableCell className='text-right text-lg'>
+												{totals.ttc.toFixed(2)} €
 											</TableCell>
 											<TableCell />
 										</TableRow>
-									))}
-									<TableRow className='font-bold'>
-										<TableCell colSpan={5} className='text-right'>
-											Total TTC Final
-										</TableCell>
-										<TableCell className='text-right text-lg'>
-											{totals.ttc.toFixed(2)} €
-										</TableCell>
-										<TableCell />
-									</TableRow>
-								</TableFooter>
-							</Table>
-						)}
-					</CardContent>
-				</Card>
+									</TableFooter>
+								</Table>
+							)}
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader>
-						<CardTitle className='text-lg'>Notes</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<Textarea
-							placeholder='Notes ou conditions particulières...'
-							value={notes}
-							onChange={(e) => setNotes(e.target.value)}
-							rows={3}
-						/>
-					</CardContent>
-				</Card>
+					<Card>
+						<CardHeader>
+							<CardTitle className='text-lg'>Notes</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<Textarea
+								placeholder='Notes ou conditions particulières...'
+								value={notes}
+								onChange={(e) => setNotes(e.target.value)}
+								rows={3}
+							/>
+						</CardContent>
+					</Card>
+				</div>
+
+				<CustomerDialog
+					open={newCustomerDialogOpen}
+					onOpenChange={setNewCustomerDialogOpen}
+				/>
+				<Dialog open={productPickerOpen} onOpenChange={setProductPickerOpen}>
+					<DialogContent className='max-w-lg'>
+						<DialogHeader>
+							<DialogTitle>Ajouter un produit</DialogTitle>
+							<DialogDescription>
+								Recherchez un produit à partir d&apos;AppPOS.
+							</DialogDescription>
+						</DialogHeader>
+						<div className='space-y-3'>
+							<Input
+								placeholder='Rechercher un produit...'
+								value={productSearch}
+								onChange={(e) => setProductSearch(e.target.value)}
+							/>
+							<div className='max-h-64 overflow-y-auto border rounded-md'>
+								{products.length === 0 ? (
+									<div className='p-4 text-center text-sm text-muted-foreground'>
+										{isAppPosConnected
+											? 'Aucun produit trouvé'
+											: 'Connexion à AppPOS...'}
+									</div>
+								) : (
+									<ul className='divide-y'>
+										{products.slice(0, 20).map((product) => (
+											<li key={product.id}>
+												<button
+													type='button'
+													className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between'
+													onClick={() => addProduct(product)}
+												>
+													<div>
+														<p className='font-medium'>{product.name}</p>
+														{product.price_ttc != null && (
+															<p className='text-xs text-muted-foreground'>
+																{product.price_ttc.toFixed(2)} € TTC
+															</p>
+														)}
+													</div>
+												</button>
+											</li>
+										))}
+									</ul>
+								)}
+							</div>
+						</div>
+					</DialogContent>
+				</Dialog>
 			</div>
 
-			<CustomerDialog
-				open={newCustomerDialogOpen}
-				onOpenChange={setNewCustomerDialogOpen}
+			{/* Dialog de paiement — s'ouvre automatiquement après création d'une facture validée */}
+			<InvoicePaymentDialog
+				invoice={createdInvoice}
+				open={showPaymentDialog}
+				onOpenChange={setShowPaymentDialog}
+				onPaid={(paid) => {
+					setShowPaymentDialog(false)
+					goToDetail(paid.id)
+				}}
+				onSkip={() => {
+					setShowPaymentDialog(false)
+					goBack()
+				}}
 			/>
-			<Dialog open={productPickerOpen} onOpenChange={setProductPickerOpen}>
-				<DialogContent className='max-w-lg'>
-					<DialogHeader>
-						<DialogTitle>Ajouter un produit</DialogTitle>
-						<DialogDescription>
-							Recherchez un produit à partir d&apos;AppPOS.
-						</DialogDescription>
-					</DialogHeader>
-					<div className='space-y-3'>
-						<Input
-							placeholder='Rechercher un produit...'
-							value={productSearch}
-							onChange={(e) => setProductSearch(e.target.value)}
-						/>
-						<div className='max-h-64 overflow-y-auto border rounded-md'>
-							{products.length === 0 ? (
-								<div className='p-4 text-center text-sm text-muted-foreground'>
-									{isAppPosConnected
-										? 'Aucun produit trouvé'
-										: 'Connexion à AppPOS...'}
-								</div>
-							) : (
-								<ul className='divide-y'>
-									{products.slice(0, 20).map((product) => (
-										<li key={product.id}>
-											<button
-												type='button'
-												className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between'
-												onClick={() => addProduct(product)}
-											>
-												<div>
-													<p className='font-medium'>{product.name}</p>
-													{product.price_ttc != null && (
-														<p className='text-xs text-muted-foreground'>
-															{product.price_ttc.toFixed(2)} € TTC
-														</p>
-													)}
-												</div>
-											</button>
-										</li>
-									))}
-								</ul>
-							)}
-						</div>
-					</div>
-				</DialogContent>
-			</Dialog>
-		</div>
+		</>
 	)
 }
