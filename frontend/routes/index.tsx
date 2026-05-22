@@ -3,6 +3,7 @@ import { ModulePageShell } from '@/components/module-ui'
 import { poles } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import { homeDashboardManifest } from '@/modules/home'
+import { ConnectedClients } from '@/modules/home/components/ConnectedClients'
 import { GetNetworkInfo } from '@/wailsjs/go/main/App'
 import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
@@ -46,6 +47,7 @@ function Dashboard() {
 	return (
 		<ModulePageShell manifest={homeDashboardManifest} actions={wailsActions}>
 			<div className='space-y-10'>
+				<ConnectedClients />
 				{visiblePoles.map((pole) => (
 					<section key={pole.id}>
 						<div className='mb-4'>

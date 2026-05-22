@@ -1,4 +1,5 @@
 import type { UsersResponse } from '@/lib/pocketbase-types'
+import { usePresencePing } from '@/lib/presence/use-presence'
 import { usePocketBase } from '@/lib/use-pocketbase'
 // frontend/modules/auth/AuthProvider.tsx
 import {
@@ -96,6 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		}),
 		[user, loading, login, logout],
 	)
+
+	usePresencePing()
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
