@@ -153,25 +153,20 @@ export function InvoicePaymentDialog({
 				splitPayments,
 			})
 
-			// Tiroir-caisse si espèces
-			const hasCash = entries.some(
-				(e) => e.method.accounting_category === 'cash',
-			)
-			if (hasCash) {
-				const printerSettings = loadPosPrinterSettings()
-				if (
-					printerSettings.enabled &&
-					printerSettings.printerName &&
-					printerSettings.autoOpenDrawer
-				) {
-					try {
-						await openCashDrawer({
-							printerName: printerSettings.printerName,
-							width: printerSettings.width,
-						})
-					} catch {
-						/* non-fatal */
-					}
+			// Tiroir-caisse — ouverture auto si activé (tous moyens de paiement)
+			const printerSettings = loadPosPrinterSettings()
+			if (
+				printerSettings.enabled &&
+				printerSettings.printerName &&
+				printerSettings.autoOpenDrawer
+			) {
+				try {
+					await openCashDrawer({
+						printerName: printerSettings.printerName,
+						width: printerSettings.width,
+					})
+				} catch {
+					/* non-fatal */
 				}
 			}
 

@@ -554,10 +554,8 @@ export function CashTerminalPage() {
 							receipt: receiptPayload,
 						})
 					}
-					if (
-						printerSettings.autoOpenDrawer &&
-						entries.some((e) => e.method.accounting_category === 'cash')
-					) {
+					// Tiroir-caisse — ouverture auto si activé (tous moyens de paiement)
+					if (printerSettings.autoOpenDrawer) {
 						await openCashDrawer({
 							printerName: printerSettings.printerName,
 							width: printerSettings.width,
