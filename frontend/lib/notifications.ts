@@ -77,11 +77,21 @@ export function useNotifications(opts?: { enabled?: boolean }) {
 
 	useEffect(() => {
 		if (!enabled) return
+
+		// StorageEvent : sync entre onglets navigateur
 		const onStorage = (e: StorageEvent) => {
 			if (e.key === STORAGE_KEY) setItems(loadNotifications())
 		}
 		window.addEventListener('storage', onStorage)
-		return () => window.removeEventListener('storage', onStorage)
+
+		// CustomEvent app:notification : sync dans le même onglet (Wails)
+		const onAppNotif = () => setItems(loadNotifications())
+		window.addEventListener('app:notification', onAppNotif)
+
+		return () => {
+			window.removeEventListener('storage', onStorage)
+			window.removeEventListener('app:notification', onAppNotif)
+		}
 	}, [enabled])
 
 	useEffect(() => {
@@ -196,6 +206,13 @@ export function useNotifications(opts?: { enabled?: boolean }) {
 		() => ({
 			items,
 			unreadCount,
+			/** Ajoute ou met à jour une notification directement dans le state + localStorage */
+			upsert: (n: AppNotification) => {
+				const current = loadNotifications()
+				const next = upsert(current, n)
+				saveNotifications(next)
+				setItems(next)
+			},
 			markAllRead: () => {
 				const current = loadNotifications()
 

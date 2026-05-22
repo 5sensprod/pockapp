@@ -19,7 +19,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 
-import { useNotifications } from '@/lib/notifications'
+// import { useNotifications } from '@/lib/notifications'
 import { isWails } from '@/lib/wails-bridge'
 import PocketBase from 'pocketbase'
 
@@ -80,20 +80,20 @@ export interface SSEInvalidatePayload {
 interface UsePresenceEventsOptions {
 	/** Activer le hook (false pendant le setup, logout, etc.) */
 	enabled?: boolean
+	/** Callback appelé quand une notification SSE arrive — pour upsert dans le state React */
+	onNotification?: (notif: AppNotification) => void
 }
 
 export function usePresenceEvents({
 	enabled = true,
+	onNotification,
 }: UsePresenceEventsOptions = {}) {
 	const queryClient = useQueryClient()
-	const { items, markAllRead, markRead } = useNotifications({ enabled })
 
-	// On a besoin de l'API notifications sans provoquer de re-render en boucle
-	// → on passe par une ref pour les callbacks
-	const notifRef = useRef({ items, markAllRead, markRead })
+	const onNotifRef = useRef(onNotification)
 	useEffect(() => {
-		notifRef.current = { items, markAllRead, markRead }
-	})
+		onNotifRef.current = onNotification
+	}, [onNotification])
 
 	const retryDelay = useRef(1000)
 	const esRef = useRef<EventSource | null>(null)
@@ -141,19 +141,24 @@ export function usePresenceEvents({
 						createdAt: Date.now(),
 						meta: { from: data.from },
 					}
-					// Accès direct au localStorage pour éviter la dépendance circulaire
-					const STORAGE_KEY = 'app_notifications_v1'
-					const current = safeParseNotifications(
-						localStorage.getItem(STORAGE_KEY),
-					)
-					const next = [notif, ...current]
-					localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-					// Forcer le re-render du Header via StorageEvent
-					window.dispatchEvent(
-						new StorageEvent('storage', { key: STORAGE_KEY }),
-					)
+					// Upsert direct via callback (Layout → useNotifications)
+					if (onNotifRef.current) {
+						onNotifRef.current(notif)
+					} else {
+						// Fallback : localStorage + events
+						const STORAGE_KEY = 'app_notifications_v1'
+						const cur = safeParseNotifications(
+							localStorage.getItem(STORAGE_KEY),
+						)
+						localStorage.setItem(STORAGE_KEY, JSON.stringify([notif, ...cur]))
+						window.dispatchEvent(
+							new CustomEvent('app:notification', { detail: notif }),
+						)
+						window.dispatchEvent(
+							new StorageEvent('storage', { key: STORAGE_KEY }),
+						)
+					}
 
-					// 2. Toast visible immédiatement
 					toast.info(`💬 ${data.from?.name ?? "Quelqu'un"}`, {
 						description: data.payload?.text,
 						duration: 6000,

@@ -13,6 +13,7 @@ import { BottomNav } from '@/components/layout/BottomNav'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import { useSetupCheck } from '@/lib/hooks/useSetupCheck'
+import { useNotifications } from '@/lib/notifications'
 import { usePresenceEvents } from '@/lib/presence/use-presence-events'
 import { isWails, tryWailsSub, tryWailsVoid } from '@/lib/wails-bridge'
 import { poles } from '@/modules/_registry'
@@ -73,9 +74,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		isLoading: companiesLoading,
 	} = useActiveCompany()
 
-	// ── SSE temps réel ──────────────────────────────────────────────────
+	// ── Notifications : state centralisé ici pour recevoir les push SSE ──
+	const { upsert: upsertNotification } = useNotifications({
+		enabled: !!isAuthenticated && !needsSetup && !setupLoading,
+	})
+
+	// ── SSE temps réel ────────────────────────────────────────────────────
 	usePresenceEvents({
-		enabled: !setupLoading && !needsSetup && isAuthenticated,
+		enabled: !setupLoading && !needsSetup && !!isAuthenticated,
+		onNotification: upsertNotification,
 	})
 
 	// ── Sync activeGroup avec l'URL ─────────────────────────────────────────
