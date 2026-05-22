@@ -17,15 +17,16 @@ import (
 // ═══════════════════════════════════════════════════════════════
 
 type PresenceSession struct {
-	SessionID string    `json:"sessionId"`
-	UserID    string    `json:"userId"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	IP        string    `json:"ip"`
-	UserAgent string    `json:"userAgent"`
-	LastSeen  time.Time `json:"lastSeen"`
+	SessionID   string    `json:"sessionId"`
+	UserID      string    `json:"userId"`
+	Name        string    `json:"name"`
+	Email       string    `json:"email"`
+	Role        string    `json:"role"`
+	IP          string    `json:"ip"`
+	UserAgent   string    `json:"userAgent"`
+	LastSeen    time.Time `json:"lastSeen"`
 	ConnectedAt time.Time `json:"connectedAt"`
+	IsDesktop   bool      `json:"isDesktop"`
 }
 
 type presenceStore struct {
@@ -135,7 +136,8 @@ func RegisterPresenceRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 
 		var body struct {
 			SessionID string `json:"sessionId"`
-			Label     string `json:"label"` // ex: "Caisse 1", optionnel
+			Label     string `json:"label"`
+			IsDesktop bool   `json:"isDesktop"`
 		}
 		if err := c.Bind(&body); err != nil || body.SessionID == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "sessionId requis"})
@@ -171,6 +173,7 @@ func RegisterPresenceRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 			IP:        getClientIP(c.Request()),
 			UserAgent: c.Request().Header.Get("User-Agent"),
 			LastSeen:  time.Now(),
+			IsDesktop: body.IsDesktop,
 		})
 
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
@@ -217,6 +220,7 @@ func RegisterPresenceRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 			LastSeen    string `json:"lastSeen"`
 			ConnectedAt string `json:"connectedAt"`
 			SecondsAgo  int    `json:"secondsAgo"`
+			IsDesktop   bool   `json:"isDesktop"`
 		}
 
 		result := make([]SessionDTO, len(sessions))
@@ -232,6 +236,7 @@ func RegisterPresenceRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 				LastSeen:    s.LastSeen.Format(time.RFC3339),
 				ConnectedAt: s.ConnectedAt.Format(time.RFC3339),
 				SecondsAgo:  int(time.Since(s.LastSeen).Seconds()),
+				IsDesktop:   s.IsDesktop,
 			}
 		}
 

@@ -23,6 +23,7 @@ function getOrCreateSessionId(): string {
 export function usePresencePing() {
 	const pb = usePocketBase()
 	const sessionId = getOrCreateSessionId()
+	const isDesktop = typeof (window as any).runtime !== 'undefined'
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
 	const ping = useCallback(async () => {
@@ -34,7 +35,7 @@ export function usePresencePing() {
 					'Content-Type': 'application/json',
 					Authorization: pb.authStore.token,
 				},
-				body: JSON.stringify({ sessionId }),
+				body: JSON.stringify({ sessionId, isDesktop }),
 			})
 		} catch {
 			// silencieux — non bloquant
@@ -103,6 +104,7 @@ export interface PresenceSession {
 	lastSeen: string
 	connectedAt: string
 	secondsAgo: number
+	isDesktop: boolean
 }
 
 export function usePresenceSessions(enabled: boolean) {

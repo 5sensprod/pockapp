@@ -8,6 +8,7 @@ import {
 	ChevronUp,
 	Circle,
 	Clock,
+	Globe,
 	Monitor,
 	Package,
 	RefreshCw,
@@ -163,6 +164,17 @@ function SessionCard({
 						depuis {formatConnectedSince(session.connectedAt)}
 					</span>
 					<span className='text-slate-200'>·</span>
+					{session.isDesktop ? (
+						<span className='flex items-center gap-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600'>
+							<Monitor className='h-2.5 w-2.5' />
+							App
+						</span>
+					) : (
+						<span className='flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-500'>
+							<Globe className='h-2.5 w-2.5' />
+							Navigateur
+						</span>
+					)}
 					<span className='truncate font-mono'>
 						{session.ip.replace(/:\d+$/, '')}
 					</span>
