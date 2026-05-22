@@ -48,6 +48,11 @@ export const manifest: ModuleManifest = {
 			items: [
 				{ label: 'Clients', to: '/connect/customers/', icon: Users },
 				{ label: 'Devis', to: '/connect/quotes/', icon: FilePen },
+				{
+					label: 'Bons de commande',
+					to: '/connect/orders/',
+					icon: ClipboardList,
+				}, // ← ajouter
 				{ label: 'Factures', to: '/connect/invoices/', icon: Receipt },
 			],
 		},

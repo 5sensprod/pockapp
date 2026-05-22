@@ -126,11 +126,13 @@ export function CashModuleShell({
 						</select>
 					)}
 
-					{/* Fond — visible uniquement ≥ desktop */}
+					{/* Espèces en caisse — valeur temps réel depuis rapport X */}
 					<span className='hidden desktop:inline text-[11px] text-muted-foreground border-l pl-2 shrink-0'>
-						Fond{' '}
+						Caisse{' '}
 						<span className='font-medium text-foreground'>
-							{cash.activeSession?.opening_float?.toFixed(2) ?? '—'} €
+							{cash.cashInDrawer != null
+								? `${cash.cashInDrawer.toFixed(2)} €`
+								: '—'}
 						</span>
 					</span>
 
@@ -167,12 +169,12 @@ export function CashModuleShell({
 									</Button>
 								</DropdownMenuTrigger>
 								<DropdownMenuContent align='end'>
-									{cash.activeSession?.opening_float != null && (
+									{cash.cashInDrawer != null && (
 										<>
 											<div className='px-3 py-1.5 text-[11px] text-muted-foreground'>
-												Fond :{' '}
+												Caisse :{' '}
 												<span className='font-medium text-foreground'>
-													{cash.activeSession.opening_float.toFixed(2)} €
+													{cash.cashInDrawer.toFixed(2)} €
 												</span>
 											</div>
 											<DropdownMenuSeparator />
