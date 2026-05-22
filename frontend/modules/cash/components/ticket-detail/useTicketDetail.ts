@@ -15,6 +15,41 @@ import {
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useEffect, useMemo, useState } from 'react'
 
+// Résout le nom d'un user depuis l'expand PocketBase.
+// Si l'expand est absent (ancien ticket sans cashier_id), fait un getOne en fallback.
+function useResolvedUserLabel(invoice: any): string {
+	const pb = usePocketBase() as any
+	const [fallbackName, setFallbackName] = useState<string>('')
+
+	// Priorité : cashier_id expandé > sold_by expandé
+	const cashier = invoice?.expand?.cashier_id
+	const soldBy = invoice?.expand?.sold_by
+	const expandedUser = cashier ?? soldBy
+
+	// ID brut à résoudre si expand absent
+	const rawId: string =
+		!expandedUser && (invoice?.cashier_id || invoice?.sold_by)
+			? String(invoice?.cashier_id || invoice?.sold_by)
+			: ''
+
+	useEffect(() => {
+		if (!rawId) return
+		pb.collection('users')
+			.getOne(rawId, { fields: 'id,name,username,email' })
+			.then((u: any) => {
+				setFallbackName(u?.name || u?.username || u?.email || rawId)
+			})
+			.catch(() => setFallbackName(rawId))
+	}, [rawId, pb])
+
+	if (expandedUser) {
+		return (
+			expandedUser.name || expandedUser.username || expandedUser.email || '-'
+		)
+	}
+	return fallbackName || rawId || '-'
+}
+
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 export type VatBreakdown = {
@@ -65,22 +100,14 @@ export interface TicketDetailData {
 	soldByLabel: string
 }
 
-function getSoldByLabel(invoice: any): string {
-	const soldBy = invoice?.expand?.sold_by
-	return (
-		soldBy?.name ||
-		soldBy?.username ||
-		soldBy?.email ||
-		(invoice?.sold_by ? String(invoice.sold_by) : '-')
-	)
-}
-
 export function useTicketDetail(invoiceId: string): TicketDetailData {
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
 
 	const { data: invoice, isLoading } = useInvoice(invoiceId)
 	const [company, setCompany] = useState<CompaniesResponse | null>(null)
+
+	const soldByLabel = useResolvedUserLabel(invoice)
 
 	const isCreditNote = invoice?.invoice_type === 'credit_note'
 	const isDeposit = invoice?.invoice_type === 'deposit'
@@ -193,6 +220,6 @@ export function useTicketDetail(invoiceId: string): TicketDetailData {
 		customer,
 		originalId,
 		originalNumber: originalDocument?.number,
-		soldByLabel: invoice ? getSoldByLabel(invoice) : '-',
+		soldByLabel,
 	}
 }

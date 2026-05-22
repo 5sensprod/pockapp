@@ -386,7 +386,7 @@ export function useInvoice(invoiceId?: string) {
 		queryFn: async () => {
 			if (!invoiceId) throw new Error('invoiceId is required')
 			const result = await pb.collection('invoices').getOne(invoiceId, {
-				expand: 'customer,original_invoice_id,sold_by',
+				expand: 'customer,original_invoice_id,sold_by,cashier_id',
 			})
 			return result as unknown as InvoiceResponse
 		},

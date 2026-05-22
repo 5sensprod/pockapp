@@ -100,6 +100,10 @@ func RecordPayment(dao *daos.Dao, invoiceID string, input PayInvoiceInput, soldB
 	if len(input.SplitPayments) > 0 {
 		invoice.Set("split_payments", input.SplitPayments)
 	}
+	// cashier_id = qui a encaissé (JWT de la requête), distinct du responsable de session.
+	if soldByID != "" {
+		invoice.Set("cashier_id", soldByID)
+	}
 
 	if err := dao.SaveRecord(invoice); err != nil {
 		return nil, fmt.Errorf("erreur sauvegarde paiement: %w", err)

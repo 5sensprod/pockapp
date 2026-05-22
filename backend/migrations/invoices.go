@@ -323,6 +323,19 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 					},
 				},
 
+				// cashier_id = utilisateur actif au moment de la transaction (JWT)
+				// Distinct de session.opened_by qui est le responsable de caisse.
+				// Utilisé pour les stats individuelles par caissier.
+				&schema.SchemaField{
+					Name: "cashier_id",
+					Type: schema.FieldTypeRelation,
+					Options: &schema.RelationOptions{
+						CollectionId:  "_pb_users_auth_",
+						MaxSelect:     types.Pointer(1),
+						CascadeDelete: false,
+					},
+				},
+
 				// === 🆕 Conversion TIK → Facture ===
 				&schema.SchemaField{
 					Name: "converted_to_invoice",
@@ -530,6 +543,23 @@ func ensureInvoicesCollection(app *pocketbase.PocketBase) error {
 		})
 		changed = true
 		log.Println("🛠 Ajout du champ sold_by -> users")
+	}
+
+	// 5ter) cashier_id -> users
+	// Caissier actif au moment de la transaction (extrait du JWT).
+	// Distinct de session.opened_by (responsable de caisse).
+	if f := collection.Schema.GetFieldByName("cashier_id"); f == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name: "cashier_id",
+			Type: schema.FieldTypeRelation,
+			Options: &schema.RelationOptions{
+				CollectionId:  "_pb_users_auth_",
+				MaxSelect:     types.Pointer(1),
+				CascadeDelete: false,
+			},
+		})
+		changed = true
+		log.Println("🛠 Ajout du champ cashier_id -> users (caissier actif)")
 	}
 
 	// ═══════════════════════════════════════════════════════════════════════════

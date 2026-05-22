@@ -373,6 +373,9 @@ func RegisterPosRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		// Vendeur
 		if info.AuthRecord != nil {
 			ticket.Set("sold_by", info.AuthRecord.Id)
+			// cashier_id = utilisateur actif au moment de la vente (JWT),
+			// distinct de session.opened_by qui est le responsable de caisse.
+			ticket.Set("cashier_id", info.AuthRecord.Id)
 		}
 
 		// Hash
