@@ -13,6 +13,7 @@ import { BottomNav } from '@/components/layout/BottomNav'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import { useSetupCheck } from '@/lib/hooks/useSetupCheck'
+import { usePresenceEvents } from '@/lib/presence/use-presence-events'
 import { isWails, tryWailsSub, tryWailsVoid } from '@/lib/wails-bridge'
 import { poles } from '@/modules/_registry'
 import type { ModuleManifest } from '@/modules/_registry'
@@ -71,6 +72,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		companies,
 		isLoading: companiesLoading,
 	} = useActiveCompany()
+
+	// ── SSE temps réel ──────────────────────────────────────────────────
+	usePresenceEvents({
+		enabled: !setupLoading && !needsSetup && isAuthenticated,
+	})
 
 	// ── Sync activeGroup avec l'URL ─────────────────────────────────────────
 	useEffect(() => {

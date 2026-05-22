@@ -13,7 +13,7 @@ import (
 	"pocket-react/backend"
 	"pocket-react/backend/hooks"
 	"pocket-react/backend/migrations"
-	"pocket-react/backend/routes" // ✅ NOUVEAU : import du package routes
+	"pocket-react/backend/routes"
 
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v5"
@@ -47,13 +47,10 @@ func initLogging(baseDir string) {
 }
 
 func loadEnvFile(baseDir string) {
-	// Essaie de charger .env depuis plusieurs emplacements
-	// Note: Le .env n'est plus nécessaire pour SMTP (configuré via l'interface)
 	envPaths := []string{
 		filepath.Join(baseDir, ".env"),
 		".env",
 	}
-
 	for _, path := range envPaths {
 		if err := godotenv.Load(path); err == nil {
 			log.Println("Loaded .env from:", path)
@@ -64,20 +61,15 @@ func loadEnvFile(baseDir string) {
 }
 
 func main() {
-	// On se place dans le dossier de l'exécutable
 	exe, _ := os.Executable()
 	baseDir := filepath.Dir(exe)
 	_ = os.Chdir(baseDir)
 
-	// Charge le fichier .env (optionnel maintenant)
 	loadEnvFile(baseDir)
-
 	initLogging(baseDir)
 
-	// Répertoire de données PocketBase (dans %LOCALAPPDATA%/PocketReact/pb_data)
 	appDataDir := os.Getenv("LOCALAPPDATA")
 	if appDataDir == "" {
-		// fallback simple pour éviter un chemin vide sur d'autres OS
 		appDataDir = "."
 	}
 	dataDir := filepath.Join(appDataDir, "PocketReact", "pb_data")
@@ -87,32 +79,24 @@ func main() {
 		log.Println("MkdirAll error:", err)
 	}
 
-	// Instance PocketBase
 	pb := pocketbase.NewWithConfig(pocketbase.Config{
 		DefaultDataDir: dataDir,
 	})
 
-	// Enregistre les hooks personnalisés sur PocketBase
 	hooks.RegisterAllHooks(pb)
 	hooks.RegisterOrderHooks(pb)
-
 	hooks.RegisterCompanyHooks(pb)
 
-	// Wrapper Wails qui utilise pb
 	app := NewApp(pb)
 
-	// Lance PocketBase (bootstrap + migrations + routes + HTTP) dans une goroutine
 	go startPocketBaseNoCobra(pb, assets)
 
-	// Attend que l'API PocketBase réponde sur /api/health
 	waitForPocketBase()
 
-	// mDNS pour découvrir l'app sur le réseau local (optionnel)
 	if err := backend.StartMDNS(appPort, serviceName); err != nil {
 		log.Println("mDNS error:", err)
 	}
 
-	// Lancement de l'UI Wails
 	wails.Run(&options.App{
 		Title:  "Pocket App",
 		Width:  1280,
@@ -143,17 +127,12 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 	}
 	log.Println("Bootstrap OK, DataDir:", pb.DataDir())
 
-	// SMTP est maintenant configuré via l'interface utilisateur
-	// Les settings sont stockés dans PocketBase (pb_data/data.db)
 	logSmtpStatus(pb)
 
-	// Exécuter les migrations pour créer les collections
 	if err := migrations.RunMigrations(pb); err != nil {
 		log.Println("Migrations ERROR:", err)
-		// On continue quand même, l'erreur n'est pas fatale
 	}
 
-	// Extraire le sous-dossier "dist" de l'embed
 	distFS, err := fs.Sub(embeddedAssets, "dist")
 	if err != nil {
 		log.Println("fs.Sub error:", err)
@@ -163,9 +142,6 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 	pb.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		log.Println("OnBeforeServe called")
 
-		// ✅ Migration pour ajouter le champ role
-		// migrations.AddRoleToUsers(pb)
-
 		migrations.MigrateAuditLogsAddTicketEntityType(pb)
 
 		if err := hashpkg.RunFullChainMigration(pb); err != nil {
@@ -174,7 +150,8 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		if err := hashpkg.RunTicketsMigration(pb, false); err != nil {
 			log.Println("Tickets migration ERROR:", err)
 		}
-		// API routes
+
+		// ── Routes API ────────────────────────────────────────────────────
 		e.Router.GET("/api/health", func(c echo.Context) error {
 			return c.JSON(200, map[string]string{"status": "ok"})
 		})
@@ -199,25 +176,16 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterScannerRoutes(pb, e.Router)
 		routes.RegisterDisplayRoutes(pb, e.Router)
 		routes.RegisterCompanyManagementRoutes(pb, e.Router)
-
-		// ✅ Routes de gestion des utilisateurs
 		routes.RegisterUserManagementRoutes(pb, e.Router)
-
 		routes.RegisterPaymentMethodsRoutes(pb, e.Router)
-
-		// ✅ NOUVEAU : Routes de gestion des secrets
 		routes.RegisterSecretsRoutes(pb, e.Router)
 		routes.InitSecretManager(pb)
-
 		routes.RegisterDepositRoutes(pb, e.Router)
-		routes.RegisterInvoicePayRoutes(pb, e.Router) // ✅ Paiement + stats factures
-
-		routes.RegisterConsignmentEmailRoutes(pb, e.Router) // ✅ Envoi de bordereaux de dépôt-vente par email
-		routes.RegisterOrderEmailRoutes(pb, e.Router)       // ✅ Envoi de bons de commande par email
-
-		routes.RegisterDepositRoutes(pb, e.Router)
-
+		routes.RegisterInvoicePayRoutes(pb, e.Router)
+		routes.RegisterConsignmentEmailRoutes(pb, e.Router)
+		routes.RegisterOrderEmailRoutes(pb, e.Router)
 		routes.RegisterPresenceRoutes(pb, e.Router)
+		routes.RegisterSSERoutes(pb, e.Router) // ← AJOUT SSE
 
 		// SPA handler (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
@@ -235,7 +203,6 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 	}
 }
 
-// logSmtpStatus affiche le statut SMTP dans les logs (sans révéler le password)
 func logSmtpStatus(pb *pocketbase.PocketBase) {
 	settings := pb.Settings()
 	if settings.Smtp.Enabled && settings.Smtp.Host != "" {
@@ -248,7 +215,6 @@ func logSmtpStatus(pb *pocketbase.PocketBase) {
 	}
 }
 
-// StaticSPAHandler sert les fichiers statiques avec fallback SPA vers index.html
 func StaticSPAHandler(fsys fs.FS) echo.HandlerFunc {
 	fileServer := http.FileServer(http.FS(fsys))
 
@@ -258,10 +224,8 @@ func StaticSPAHandler(fsys fs.FS) echo.HandlerFunc {
 			path = "/index.html"
 		}
 
-		// Essaie d'ouvrir le fichier
-		f, err := fsys.Open(path[1:]) // Enlève le "/" initial
+		f, err := fsys.Open(path[1:])
 		if err != nil {
-			// Fichier non trouvé → SPA fallback vers index.html
 			f, err = fsys.Open("index.html")
 			if err != nil {
 				return c.String(404, "Not found")

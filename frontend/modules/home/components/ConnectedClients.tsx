@@ -1,3 +1,4 @@
+import { broadcastMessage, broadcastTask } from '@/lib/presence/broadcast'
 import { usePresenceSessions } from '@/lib/presence/use-presence'
 import type { PresenceSession } from '@/lib/presence/use-presence'
 // frontend/modules/home/components/ConnectedClients.tsx
@@ -20,6 +21,7 @@ import {
 	WifiOff,
 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -237,17 +239,28 @@ function ActionModal({
 }) {
 	const [text, setText] = useState('')
 	const [sent, setSent] = useState(false)
+	const [isSending, setIsSending] = useState(false)
 
-	const handleSend = () => {
+	const handleSend = async () => {
 		if (!text.trim()) return
-		console.log(`[${mode}] → ${session.userId}:`, text)
-		setSent(true)
-		setTimeout(onClose, 1200)
+		setIsSending(true)
+		try {
+			if (mode === 'task') {
+				await broadcastTask(text.trim(), { targetUserId: session.userId })
+			} else {
+				await broadcastMessage(text.trim(), { targetUserId: session.userId })
+			}
+			setSent(true)
+			setTimeout(onClose, 1200)
+		} catch {
+			toast.error("Échec de l'envoi")
+		} finally {
+			setIsSending(false)
+		}
 	}
 
 	return (
 		<div className='fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm'>
-			{/* Overlay cliquable / accessible */}
 			<div
 				role='button'
 				tabIndex={0}
@@ -256,7 +269,6 @@ function ActionModal({
 				onClick={onClose}
 				onKeyDown={(e) => e.key === 'Escape' && onClose()}
 			/>
-			{/* Carte modale */}
 			<div className='relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl'>
 				<div className='mb-4 flex items-center gap-3'>
 					<div
@@ -295,6 +307,9 @@ function ActionModal({
 							}
 							className='w-full resize-none rounded-lg border border-slate-200 p-3 text-sm text-slate-700 outline-none placeholder:text-slate-300 focus:border-slate-400 focus:ring-0'
 							rows={3}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend()
+							}}
 						/>
 						<div className='mt-3 flex gap-2'>
 							<button
@@ -307,10 +322,14 @@ function ActionModal({
 							<button
 								type='button'
 								onClick={handleSend}
-								disabled={!text.trim()}
+								disabled={!text.trim() || isSending}
 								className='flex-1 rounded-lg bg-slate-900 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:opacity-40'
 							>
-								{mode === 'message' ? 'Envoyer' : 'Assigner'}
+								{isSending
+									? 'Envoi…'
+									: mode === 'message'
+										? 'Envoyer'
+										: 'Assigner'}
 							</button>
 						</div>
 					</>
