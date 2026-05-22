@@ -17,7 +17,6 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useClock } from '@/hooks/useClock'
@@ -111,30 +110,28 @@ export function CashModuleShell({
 			{/* Bloc session — masqué sur les pages détail/rapport */}
 			{!hideSessionActions && (
 				<>
-					{/* Sélecteur de caisse — toujours visible */}
-					{cash.registers && cash.registers.length > 0 && (
-						<select
-							className='h-7 rounded-md border bg-card px-2 text-[11px]'
-							value={cash.selectedRegisterId ?? ''}
-							onChange={(e) => cash.setSelectedRegisterId(e.target.value)}
-						>
-							{cash.registers.map((reg) => (
-								<option key={reg.id} value={reg.id}>
-									{reg.name}
-								</option>
-							))}
-						</select>
-					)}
-
-					{/* Espèces en caisse — valeur temps réel depuis rapport X */}
-					<span className='hidden desktop:inline text-[11px] text-muted-foreground border-l pl-2 shrink-0'>
-						Caisse{' '}
-						<span className='font-medium text-foreground'>
-							{cash.cashInDrawer != null
-								? `${cash.cashInDrawer.toFixed(2)} €`
-								: '—'}
+					{/* Espèces + CA — deux lignes, toujours visible */}
+					<div className='flex flex-col items-end border-l pl-2 shrink-0 gap-0'>
+						<span className='text-[11px] text-muted-foreground leading-tight'>
+							Caisse{' '}
+							<span className='font-medium text-foreground'>
+								{cash.cashInDrawer != null
+									? `${cash.cashInDrawer.toFixed(2)} €`
+									: '—'}
+							</span>
 						</span>
-					</span>
+						{cash.isSessionOpen && cash.caNet != null && (
+							<span className='text-[11px] text-muted-foreground leading-tight'>
+								CA{' '}
+								<span className='font-medium text-foreground'>
+									{cash.caNet.toLocaleString('fr-FR', {
+										style: 'currency',
+										currency: 'EUR',
+									})}
+								</span>
+							</span>
+						)}
+					</div>
 
 					{cash.isSessionOpen && (
 						<>
@@ -169,16 +166,23 @@ export function CashModuleShell({
 									</Button>
 								</DropdownMenuTrigger>
 								<DropdownMenuContent align='end'>
-									{cash.cashInDrawer != null && (
-										<>
-											<div className='px-3 py-1.5 text-[11px] text-muted-foreground'>
-												Caisse :{' '}
-												<span className='font-medium text-foreground'>
-													{cash.cashInDrawer.toFixed(2)} €
-												</span>
-											</div>
-											<DropdownMenuSeparator />
-										</>
+									{/* Sélecteur de caisse dans le dropdown */}
+									{cash.registers && cash.registers.length > 1 && (
+										<div className='px-3 py-1.5'>
+											<select
+												className='w-full h-7 rounded-md border bg-card px-2 text-[11px]'
+												value={cash.selectedRegisterId ?? ''}
+												onChange={(e) =>
+													cash.setSelectedRegisterId(e.target.value)
+												}
+											>
+												{cash.registers.map((reg) => (
+													<option key={reg.id} value={reg.id}>
+														{reg.name}
+													</option>
+												))}
+											</select>
+										</div>
 									)}
 									<DropdownMenuItem onClick={cash.handleShowRapportX}>
 										Rapport X

@@ -85,6 +85,10 @@ export function useCashModule() {
 		sessionManager.activeSession?.opening_float ??
 		null
 
+	// CA net de la session (ventes - avoirs) — depuis rapport X
+	const caNet: number | null =
+		(rapportX?.sales as any)?.net_ttc ?? rapportX?.sales?.total_ttc ?? null
+
 	// ── Valeur retournée (interface plate, consommée par CashView) ────────────
 	return {
 		// Registres
@@ -128,6 +132,7 @@ export function useCashModule() {
 		// Data
 		rapportX,
 		cashInDrawer,
+		caNet,
 		selectedStore,
 		today,
 	}

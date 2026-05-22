@@ -46,6 +46,8 @@ interface StatusBadgeProps {
 	variant: StatusVariant
 	/** Ligne secondaire optionnelle (ex : date du jour) */
 	sublabel?: string
+	/** Troisième ligne optionnelle (ex : CA de la session) */
+	sublabel2?: string
 	className?: string
 }
 
@@ -53,6 +55,7 @@ export function StatusBadge({
 	label,
 	variant,
 	sublabel,
+	sublabel2,
 	className,
 }: StatusBadgeProps) {
 	const styles = variantStyles[variant]
@@ -77,6 +80,12 @@ export function StatusBadge({
 				<span className='text-xs text-muted-foreground whitespace-nowrap'>
 					{sublabel}
 				</span>
+
+				{sublabel2 && (
+					<span className='text-xs text-muted-foreground whitespace-nowrap'>
+						{sublabel2}
+					</span>
+				)}
 			</div>
 		)
 	}
