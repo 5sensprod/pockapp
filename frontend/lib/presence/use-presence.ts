@@ -1,19 +1,23 @@
-import { usePocketBase } from '@/lib/use-pocketbase'
 import { useQuery } from '@tanstack/react-query'
-// frontend/lib/presence/use-presence.ts
 import { useCallback, useEffect, useRef } from 'react'
+
+import { usePocketBase } from '@/lib/use-pocketbase'
 
 function generateId(): string {
 	// N'utilise PAS crypto.randomUUID() — indisponible sur HTTP en réseau local
 	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`
 }
 
-function getOrCreateSessionId(): string {
+function getOrCreateSessionId(): string | null {
+	if (typeof window === 'undefined') return null
+
 	let id = sessionStorage.getItem('presence_session_id')
+
 	if (!id) {
 		id = generateId()
 		sessionStorage.setItem('presence_session_id', id)
 	}
+
 	return id
 }
 
@@ -22,12 +26,26 @@ function getOrCreateSessionId(): string {
 //    On lit pb.authStore directement.
 export function usePresencePing() {
 	const pb = usePocketBase()
-	const sessionId = getOrCreateSessionId()
-	const isDesktop = typeof (window as any).runtime !== 'undefined'
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+	const sessionIdRef = useRef<string | null>(null)
+
+	const getSessionId = useCallback(() => {
+		if (!sessionIdRef.current) {
+			sessionIdRef.current = getOrCreateSessionId()
+		}
+
+		return sessionIdRef.current
+	}, [])
+
+	const isDesktop =
+		typeof window !== 'undefined' &&
+		typeof (window as any).runtime !== 'undefined'
 
 	const ping = useCallback(async () => {
-		if (!pb.authStore.isValid) return
+		const sessionId = getSessionId()
+
+		if (!sessionId || !pb.authStore.isValid) return
+
 		try {
 			await fetch('/api/presence/ping', {
 				method: 'POST',
@@ -40,10 +58,13 @@ export function usePresencePing() {
 		} catch {
 			// silencieux — non bloquant
 		}
-	}, [pb, sessionId])
+	}, [pb, getSessionId, isDesktop])
 
 	const leave = useCallback(async () => {
-		if (!pb.authStore.token) return
+		const sessionId = getSessionId()
+
+		if (!sessionId || !pb.authStore.token) return
+
 		try {
 			await fetch('/api/presence/ping', {
 				method: 'DELETE',
@@ -56,40 +77,46 @@ export function usePresencePing() {
 		} catch {
 			// silencieux
 		}
-	}, [pb, sessionId])
+	}, [pb, getSessionId])
 
 	useEffect(() => {
-		// S'abonner aux changements d'auth — démarre/arrête le ping selon l'état
-		const unsubscribe = pb.authStore.onChange((_token: string, model: any) => {
+		const clearPingInterval = () => {
 			if (intervalRef.current) {
 				clearInterval(intervalRef.current)
 				intervalRef.current = null
 			}
+		}
 
+		const startPingInterval = () => {
+			clearPingInterval()
+
+			void ping()
+			intervalRef.current = setInterval(() => {
+				void ping()
+			}, 30_000)
+		}
+
+		const unsubscribe = pb.authStore.onChange((_token: string, model: any) => {
 			if (model) {
-				// Vient de se connecter → ping immédiat + interval
-				ping()
-				intervalRef.current = setInterval(ping, 30_000)
+				startPingInterval()
 			} else {
-				// Vient de se déconnecter → retrait immédiat
-				leave()
+				clearPingInterval()
+				void leave()
 			}
 		})
 
-		// Si déjà authentifié au montage (token persisté)
 		if (pb.authStore.isValid) {
-			ping()
-			intervalRef.current = setInterval(ping, 30_000)
+			startPingInterval()
 		}
 
 		window.addEventListener('beforeunload', leave)
 
 		return () => {
 			unsubscribe()
-			if (intervalRef.current) clearInterval(intervalRef.current)
+			clearPingInterval()
 			window.removeEventListener('beforeunload', leave)
 		}
-	}, [ping, leave, pb])
+	}, [pb, ping, leave])
 }
 
 // ── Hook admin : lit la liste des sessions ──────────────────────────────────
@@ -116,7 +143,9 @@ export function usePresenceSessions(enabled: boolean) {
 			const res = await fetch('/api/presence/sessions', {
 				headers: { Authorization: pb.authStore.token },
 			})
+
 			if (!res.ok) throw new Error('Erreur récupération présence')
+
 			return res.json()
 		},
 		enabled,
