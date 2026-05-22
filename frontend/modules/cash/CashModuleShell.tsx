@@ -110,28 +110,30 @@ export function CashModuleShell({
 			{/* Bloc session — masqué sur les pages détail/rapport */}
 			{!hideSessionActions && (
 				<>
-					{/* Espèces + CA — deux lignes, toujours visible */}
-					<div className='flex flex-col items-end border-l pl-2 shrink-0 gap-0'>
-						<span className='text-[11px] text-muted-foreground leading-tight'>
-							Caisse{' '}
-							<span className='font-medium text-foreground'>
-								{cash.cashInDrawer != null
-									? `${cash.cashInDrawer.toFixed(2)} €`
-									: '—'}
-							</span>
-						</span>
-						{cash.isSessionOpen && cash.caNet != null && (
+					{/* Espèces + CA — visible uniquement si session ouverte */}
+					{cash.isSessionOpen && (
+						<div className='flex flex-col items-end border-l pl-2 shrink-0 gap-0'>
 							<span className='text-[11px] text-muted-foreground leading-tight'>
-								CA{' '}
+								Caisse{' '}
 								<span className='font-medium text-foreground'>
-									{cash.caNet.toLocaleString('fr-FR', {
-										style: 'currency',
-										currency: 'EUR',
-									})}
+									{cash.cashInDrawer != null
+										? `${cash.cashInDrawer.toFixed(2)} €`
+										: '—'}
 								</span>
 							</span>
-						)}
-					</div>
+							{cash.isSessionOpen && cash.caNet != null && (
+								<span className='text-[11px] text-muted-foreground leading-tight'>
+									CA{' '}
+									<span className='font-medium text-foreground'>
+										{cash.caNet.toLocaleString('fr-FR', {
+											style: 'currency',
+											currency: 'EUR',
+										})}
+									</span>
+								</span>
+							)}
+						</div>
+					)}
 
 					{cash.isSessionOpen && (
 						<>
