@@ -196,12 +196,9 @@ func RegisterPresenceRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 	// Réservé aux admins — retourne les sessions actives
 	router.GET("/api/presence/sessions", func(c echo.Context) error {
 		token := c.Request().Header.Get("Authorization")
-		userID, role, err := parseUserFromToken(pb, token)
+		userID, _, err := parseUserFromToken(pb, token)
 		if err != nil || userID == "" {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Non authentifié"})
-		}
-		if role != "admin" {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": "Réservé aux admins"})
 		}
 
 		// Purger avant de lister

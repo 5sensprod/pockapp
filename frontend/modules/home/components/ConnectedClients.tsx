@@ -19,7 +19,7 @@ import {
 	Wifi,
 	WifiOff,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -112,10 +112,14 @@ function isStale(secondsAgo: number) {
 
 function SessionCard({
 	session,
+	isCurrentUser,
+	canAssignTask,
 	onMessage,
 	onTask,
 }: {
 	session: PresenceSession
+	isCurrentUser: boolean
+	canAssignTask: boolean
 	onMessage: (s: PresenceSession) => void
 	onTask: (s: PresenceSession) => void
 }) {
@@ -129,6 +133,7 @@ function SessionCard({
         group relative flex items-center gap-3 rounded-xl border bg-white px-4 py-3
         shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-px
         ${stale ? 'opacity-60' : ''}
+        ${isCurrentUser ? 'ring-1 ring-slate-300' : ''}
         ${colors.border}
       `}
 		>
@@ -182,25 +187,38 @@ function SessionCard({
 			</div>
 
 			{/* Actions — visibles au hover */}
-			<div className='flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
-				<button
-					type='button'
-					onClick={() => onMessage(session)}
-					onKeyDown={(e) => e.key === 'Enter' && onMessage(session)}
-					className='flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600'
-					title='Envoyer un message'
-				>
-					<Send className='h-3.5 w-3.5' />
-				</button>
-				<button
-					type='button'
-					onClick={() => onTask(session)}
-					onKeyDown={(e) => e.key === 'Enter' && onTask(session)}
-					className='flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-violet-50 hover:text-violet-600'
-					title='Assigner une tâche'
-				>
-					<CheckSquare className='h-3.5 w-3.5' />
-				</button>
+			<div className='flex shrink-0 items-center gap-2'>
+				{/* Badge "Vous" */}
+				{isCurrentUser && (
+					<span className='rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500'>
+						Vous
+					</span>
+				)}
+				{/* Actions — visibles au hover, masquées sur sa propre carte */}
+				{!isCurrentUser && (
+					<div className='flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+						<button
+							type='button'
+							onClick={() => onMessage(session)}
+							onKeyDown={(e) => e.key === 'Enter' && onMessage(session)}
+							className='flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600'
+							title='Envoyer un message'
+						>
+							<Send className='h-3.5 w-3.5' />
+						</button>
+						{canAssignTask && (
+							<button
+								type='button'
+								onClick={() => onTask(session)}
+								onKeyDown={(e) => e.key === 'Enter' && onTask(session)}
+								className='flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-violet-50 hover:text-violet-600'
+								title='Assigner une tâche'
+							>
+								<CheckSquare className='h-3.5 w-3.5' />
+							</button>
+						)}
+					</div>
+				)}
 			</div>
 		</div>
 	)
@@ -306,7 +324,10 @@ function ActionModal({
 
 export function ConnectedClients() {
 	const pb = usePocketBase()
-	const isAdmin = (pb.authStore.model as any)?.role === 'admin'
+	const currentUserId = (pb.authStore.model as any)?.id as string | undefined
+	const currentRole = (pb.authStore.model as any)?.role as string | undefined
+	const canAssignTask = currentRole === 'admin' || currentRole === 'manager'
+	const isAuthenticated = pb.authStore.isValid
 
 	const {
 		data: sessions = [],
@@ -314,7 +335,7 @@ export function ConnectedClients() {
 		dataUpdatedAt,
 		refetch,
 		isFetching,
-	} = usePresenceSessions(isAdmin)
+	} = usePresenceSessions(isAuthenticated)
 
 	const [collapsed, setCollapsed] = useState(false)
 	const [action, setAction] = useState<{
@@ -322,10 +343,39 @@ export function ConnectedClients() {
 		mode: 'message' | 'task'
 	} | null>(null)
 
-	if (!isAdmin) return null
+	if (!isAuthenticated) return null
 
-	const online = sessions.filter((s: PresenceSession) => !isStale(s.secondsAgo))
-	const stale = sessions.filter((s: PresenceSession) => isStale(s.secondsAgo))
+	// Ordre stable : "Vous" en premier, puis ordre d'arrivée fixé à la première apparition
+	const orderRef = useRef<string[]>([])
+
+	const sortedSessions = useMemo(() => {
+		// Enregistrer les nouveaux venus à la fin (sans déplacer les existants)
+		for (const s of sessions) {
+			if (!orderRef.current.includes(s.sessionId)) {
+				orderRef.current.push(s.sessionId)
+			}
+		}
+		// Supprimer ceux qui ont disparu
+		const activeIds = new Set(sessions.map((s: PresenceSession) => s.sessionId))
+		orderRef.current = orderRef.current.filter((id) => activeIds.has(id))
+
+		// Trier : "Vous" en tête, puis ordre stable
+		return [...sessions].sort((a, b) => {
+			if (a.userId === currentUserId) return -1
+			if (b.userId === currentUserId) return 1
+			return (
+				orderRef.current.indexOf(a.sessionId) -
+				orderRef.current.indexOf(b.sessionId)
+			)
+		})
+	}, [sessions, currentUserId])
+
+	const online = sortedSessions.filter(
+		(s: PresenceSession) => !isStale(s.secondsAgo),
+	)
+	const stale = sortedSessions.filter((s: PresenceSession) =>
+		isStale(s.secondsAgo),
+	)
 
 	const byRole = sessions.reduce<Record<string, number>>(
 		(acc: Record<string, number>, s: PresenceSession) => {
@@ -440,6 +490,8 @@ export function ConnectedClients() {
 									<SessionCard
 										key={s.sessionId}
 										session={s}
+										isCurrentUser={s.userId === currentUserId}
+										canAssignTask={canAssignTask}
 										onMessage={(sess) =>
 											setAction({ session: sess, mode: 'message' })
 										}
@@ -458,6 +510,8 @@ export function ConnectedClients() {
 											<SessionCard
 												key={s.sessionId}
 												session={s}
+												isCurrentUser={s.userId === currentUserId}
+												canAssignTask={canAssignTask}
 												onMessage={(sess) =>
 													setAction({ session: sess, mode: 'message' })
 												}
