@@ -74,8 +74,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		isLoading: companiesLoading,
 	} = useActiveCompany()
 
-	// ── Notifications : state centralisé ici pour recevoir les push SSE ──
-	const { upsert: upsertNotification } = useNotifications({
+	// ── Notifications : state centralisé ici — partagé avec Header via props ──
+	const {
+		upsert: upsertNotification,
+		items: notifications,
+		unreadCount,
+		markAllRead,
+		markRead,
+		deleteNotification,
+	} = useNotifications({
 		enabled: !!isAuthenticated && !needsSetup && !setupLoading,
 	})
 
@@ -221,7 +228,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 	return (
 		<div className='min-h-screen flex flex-col bg-background'>
-			<Header currentModule={currentModule} isHomePage={isHomePage} />
+			<Header
+				currentModule={currentModule}
+				isHomePage={isHomePage}
+				notifications={notifications}
+				unreadCount={unreadCount}
+				markAllRead={markAllRead}
+				markRead={markRead}
+				deleteNotification={deleteNotification}
+			/>
 
 			{/* Sidebar desktop/tablet — nulle sur mobile (géré en interne) */}
 			{hasSidebar && (

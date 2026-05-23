@@ -213,6 +213,11 @@ export function useNotifications(opts?: { enabled?: boolean }) {
 				saveNotifications(next)
 				setItems(next)
 			},
+			deleteNotification: (id: string) => {
+				const next = loadNotifications().filter((n) => n.id !== id)
+				saveNotifications(next)
+				setItems(next)
+			},
 			markAllRead: () => {
 				const current = loadNotifications()
 

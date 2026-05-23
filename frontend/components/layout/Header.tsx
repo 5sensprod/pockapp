@@ -23,6 +23,7 @@ import {
 	LogOut,
 	RefreshCw,
 	Settings,
+	Trash2,
 	User,
 	Wallet,
 } from 'lucide-react'
@@ -41,7 +42,6 @@ import {
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { usePocketAppCredits } from '@/lib/credits'
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
-import { useNotifications } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
@@ -55,9 +55,16 @@ type CompanyItem = {
 	active?: boolean
 }
 
+import type { AppNotification } from '@/lib/notifications'
+
 interface HeaderProps {
 	currentModule: ModuleManifest | null
 	isHomePage: boolean
+	notifications: AppNotification[]
+	unreadCount: number
+	markAllRead: () => void
+	markRead: (id: string) => void
+	deleteNotification: (id: string) => void
 }
 
 function getModuleHomeRoute(module: ModuleManifest): string {
@@ -70,10 +77,31 @@ function getModuleHomeRoute(module: ModuleManifest): string {
 	return firstItem?.to ?? module.route
 }
 
-export function Header({ currentModule, isHomePage }: HeaderProps) {
+function formatNotifTime(ts: number): string {
+	if (!ts) return ''
+	const now = Date.now()
+	const diff = Math.floor((now - ts) / 1000)
+	if (diff < 60) return "À l'instant"
+	if (diff < 3600) return `Il y a ${Math.floor(diff / 60)} min`
+	if (diff < 86400) return `Il y a ${Math.floor(diff / 3600)} h`
+	return new Date(ts).toLocaleDateString('fr-FR', {
+		day: 'numeric',
+		month: 'short',
+	})
+}
+
+export function Header({
+	currentModule,
+	isHomePage,
+	notifications,
+	unreadCount,
+	markAllRead,
+	markRead,
+	deleteNotification,
+}: HeaderProps) {
 	const navigate = useNavigate()
 	const { isMobile, isDesktop } = useBreakpoint()
-	const { user, logout, isAuthenticated } = useAuth()
+	const { user, logout } = useAuth()
 	const { companies, activeCompanyId, setActiveCompanyId } = useActiveCompany()
 
 	const brand = currentModule?.name ?? 'PocketApp'
@@ -89,13 +117,6 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 	const userRole = (user as any)?.role || 'user'
 	const isAdmin = userRole === 'admin'
 	const isUtilisateur = userRole === 'user'
-
-	const {
-		items: notifications,
-		unreadCount,
-		markAllRead,
-		markRead,
-	} = useNotifications({ enabled: !!isAuthenticated })
 
 	const {
 		balanceEur,
@@ -418,7 +439,7 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 								notifications.slice(0, 8).map((notif) => (
 									<DropdownMenuItem
 										key={notif.id}
-										className='py-3'
+										className='py-3 group'
 										onClick={() => {
 											markRead(notif.id)
 											if (notif.type === 'update') {
@@ -446,7 +467,21 @@ export function Header({ currentModule, isHomePage }: HeaderProps) {
 												<div className='text-sm text-muted-foreground'>
 													{notif.text}
 												</div>
+												<div className='text-xs text-muted-foreground/60 mt-0.5'>
+													{formatNotifTime(notif.createdAt)}
+												</div>
 											</div>
+											{/* Corbeille — visible au survol uniquement */}
+											<button
+												type='button'
+												className='opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0 rounded p-1 hover:bg-destructive/10 hover:text-destructive'
+												onClick={(e) => {
+													e.stopPropagation()
+													deleteNotification(notif.id)
+												}}
+											>
+												<Trash2 className='h-3.5 w-3.5' />
+											</button>
 										</div>
 									</DropdownMenuItem>
 								))
