@@ -103,6 +103,12 @@ export function useStockModule() {
 	useAppPosStockUpdates({ enabled: isAppPosConnected })
 
 	// ── Normalisation produits ────────────────────────────────────────────────
+	// Le transformer appPosTransformers.product() a déjà produit :
+	//   p.expand.brand       ← depuis product.brand_ref
+	//   p.expand.supplier    ← depuis product.supplier_ref
+	//   p.expand.categories  ← depuis product.category_info.refs
+	// On conserve p.expand tel quel — on ne le reconstruit plus depuis
+	// p.brand_ref/p.supplier_ref qui n'existent plus sur le produit transformé.
 	const allProducts = useMemo(
 		() =>
 			(productsData?.items ?? []).map((p: any) => ({
@@ -114,16 +120,9 @@ export function useStockModule() {
 				stock_quantity: p.stock_quantity ?? p.stock ?? null,
 				active: p.active ?? (p.status ? p.status !== 'draft' : true),
 				images: p.images ?? p.image?.src ?? p.image?.url ?? null,
+				// expand est déjà peuplé par le transformer — on préserve et on complète
 				expand: {
-					brand: p.brand_ref
-						? { id: p.brand_ref.id, name: p.brand_ref.name }
-						: undefined,
-					supplier: p.supplier_ref
-						? { id: p.supplier_ref.id, name: p.supplier_ref.name }
-						: undefined,
-					categories:
-						p.categories_refs?.map((c: any) => ({ id: c.id, name: c.name })) ??
-						[],
+					...p.expand,
 				},
 			})) as ProductWithExpand[],
 		[productsData],

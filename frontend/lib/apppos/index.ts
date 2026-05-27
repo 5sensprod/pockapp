@@ -76,4 +76,8 @@ export type {
 	AppPosWebSocketEvent,
 	AppPosWebSocketCallback,
 } from './apppos-websocket'
-export { useAppPosStockUpdates } from './apppos-hooks-websocket'
+export {
+	useAppPosStockUpdates,
+	useAppPosProductUpdates,
+} from './apppos-hooks-websocket'
+export type { UseAppPosProductUpdatesOptions } from './apppos-hooks-websocket'
