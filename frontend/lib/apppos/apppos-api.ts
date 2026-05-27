@@ -219,6 +219,80 @@ export async function createAppPosProduct(
 }
 
 // ============================================================================
+// 🆕 UPDATE PRODUCT (champs métier complets depuis ProductDialog)
+// ============================================================================
+
+export interface UpdateAppPosProductInput {
+	name?: string
+	price_ttc?: number
+	cost_price?: number
+	stock_quantity?: number
+	barcode?: string
+	sku?: string
+	description?: string
+	tva_rate?: number
+	category_ids?: string[]
+	brand_id?: string
+	supplier_id?: string
+	active?: boolean
+}
+
+/**
+ * Met à jour les champs métier d'un produit AppPOS.
+ * Stratégie : GET du produit complet → merge des champs modifiés → PUT.
+ * Préserve tous les champs non touchés (images, stats, refs...).
+ */
+export async function updateAppPosProduct(
+	productId: string,
+	input: UpdateAppPosProductInput,
+): Promise<AppPosProduct> {
+	// 1. Récupérer le produit complet pour préserver tous les champs
+	const current = await getAppPosProduct(productId)
+
+	// 2. Merger uniquement les champs fournis
+	const updated: any = { ...current }
+
+	if (input.name !== undefined) updated.name = input.name
+	if (input.price_ttc !== undefined) updated.price = input.price_ttc
+	if (input.cost_price !== undefined) updated.purchase_price = input.cost_price
+	if (input.stock_quantity !== undefined) updated.stock = input.stock_quantity
+	if (input.tva_rate !== undefined) updated.tax_rate = input.tva_rate
+	if (input.sku !== undefined) updated.sku = input.sku
+	if (input.description !== undefined) updated.description = input.description
+	if (input.brand_id !== undefined) updated.brand_id = input.brand_id
+	if (input.supplier_id !== undefined) updated.supplier_id = input.supplier_id
+	if (input.category_ids !== undefined) {
+		updated.categories = input.category_ids
+		updated.category_id = input.category_ids[0] ?? ''
+	}
+	if (input.active !== undefined) {
+		updated.status = input.active ? 'publish' : 'draft'
+	}
+
+	// Barcode → meta_data (même logique que createAppPosProduct)
+	if (input.barcode !== undefined) {
+		const existingMeta = (current.meta_data ?? []).filter(
+			(m) => m.key !== 'barcode' && m.key !== 'ean',
+		)
+		updated.meta_data = input.barcode
+			? [...existingMeta, { key: 'barcode', value: input.barcode }]
+			: existingMeta
+	}
+
+	console.log('📤 [updateAppPosProduct] PUT', productId, updated)
+
+	const response = await fetchAppPos<AppPosApiResponse<AppPosProduct>>(
+		`/products/${productId}`,
+		{
+			method: 'PUT',
+			body: JSON.stringify(updated),
+		},
+	)
+
+	return response.data
+}
+
+// ============================================================================
 // 🆕 UPDATE PRODUCT STOCK
 // ============================================================================
 
@@ -404,6 +478,7 @@ export const appPosApi = {
 	getProducts: getAppPosProducts,
 	getProduct: getAppPosProduct,
 	createProduct: createAppPosProduct,
+	updateProduct: updateAppPosProduct, // 🆕
 	updateProductStock: updateAppPosProductStock, // 🆕
 	decrementProductsStock: decrementAppPosProductsStock, // 🆕
 	incrementProductsStock: incrementAppPosProductsStock,

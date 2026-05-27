@@ -1,3 +1,7 @@
+import { updateAppPosProduct } from '@/lib/apppos'
+import type { UpdateAppPosProductInput } from '@/lib/apppos'
+import type { ProductWithRefs } from '@/lib/apppos/apppos-transformers'
+import { appPosTransformers } from '@/lib/apppos/apppos-transformers'
 import type { ProductsRecord, ProductsResponse } from '@/lib/pocketbase-types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -19,12 +23,10 @@ export function useProducts(options: ProductsListOptions = {}) {
 		queryFn: async () => {
 			const filters: string[] = []
 
-			// Filtrer par entreprise si un companyId est fourni
 			if (companyId) {
 				filters.push(`company = "${companyId}"`)
 			}
 
-			// Ajouter les autres filtres s'ils existent
 			if (filter) {
 				filters.push(filter)
 			}
@@ -104,7 +106,7 @@ export function useCreateProduct() {
 	})
 }
 
-// ✏️ Modifier un produit
+// ✏️ Modifier un produit PocketBase
 export function useUpdateProduct() {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
@@ -134,6 +136,81 @@ export function useDeleteProduct() {
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['products'] })
+		},
+	})
+}
+
+// ✏️ Modifier un produit AppPOS (patch chirurgical du cache catalogue)
+export function useUpdateAppPosProduct() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async ({
+			id,
+			data,
+		}: {
+			id: string
+			data: UpdateAppPosProductInput
+		}) => {
+			const raw = await updateAppPosProduct(id, data)
+			return appPosTransformers.product(raw)
+		},
+		onSuccess: (updated, variables) => {
+			queryClient.setQueryData<{ items: ProductWithRefs[] }>(
+				['apppos', 'products', 'catalog'],
+				(old) => {
+					if (!old) return old
+					return {
+						...old,
+						items: old.items.map((p) =>
+							p.id === variables.id ? { ...p, ...updated } : p,
+						),
+					}
+				},
+			)
+			queryClient.invalidateQueries({
+				queryKey: ['apppos', 'products', variables.id],
+			})
+		},
+	})
+}
+
+// ✏️ Modifier un produit — routage automatique AppPOS vs PocketBase
+// Détecte la source via collectionId ('apppos_products' = AppPOS, autre = PocketBase)
+export function useUpdateProductUniversal() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async ({
+			id,
+			data,
+			source,
+		}: {
+			id: string
+			data: Partial<ProductsRecord> & UpdateAppPosProductInput
+			source?: string
+		}) => {
+			if (source === 'apppos_products') {
+				const raw = await updateAppPosProduct(
+					id,
+					data as UpdateAppPosProductInput,
+				)
+				return appPosTransformers.product(raw)
+			}
+			return await pb
+				.collection('products')
+				.update<ProductsResponse>(id, data as Partial<ProductsRecord>)
+		},
+		onSuccess: (_, variables) => {
+			if (variables.source === 'apppos_products') {
+				queryClient.invalidateQueries({
+					queryKey: ['apppos', 'products', 'catalog'],
+				})
+			} else {
+				queryClient.invalidateQueries({ queryKey: ['products'] })
+				queryClient.invalidateQueries({ queryKey: ['products', variables.id] })
+			}
 		},
 	})
 }

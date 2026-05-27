@@ -9,10 +9,13 @@ export {
 	loginToAppPos,
 	setAppPosToken,
 	createAppPosProduct,
+	updateAppPosProduct,
 	updateAppPosProductStock, // 🆕
 	decrementAppPosProductsStock, // 🆕
 	incrementAppPosProductsStock,
 } from './apppos-api'
+
+export type { UpdateAppPosProductInput } from './apppos-api'
 
 // Types
 export type {

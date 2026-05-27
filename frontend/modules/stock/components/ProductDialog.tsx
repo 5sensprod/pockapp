@@ -27,15 +27,25 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
+// import { Switch } from '@/components/ui/switch'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import {
+	useAppPosBrands,
+	useAppPosCategories,
+	useAppPosSuppliers,
+} from '@/lib/apppos'
+import type { ProductWithRefs } from '@/lib/apppos/apppos-transformers'
 import type { ProductsResponse } from '@/lib/pocketbase-types'
 import { useBrands } from '@/lib/queries/brands'
-import { useCreateProduct, useUpdateProduct } from '@/lib/queries/products'
+import {
+	useCreateProduct,
+	useUpdateProductUniversal,
+} from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { toast } from 'sonner'
 import { CategoryPicker } from './CategoryPicker'
+import { CategoryPickerAppPos } from './CategoryPickerAppPos'
 
 const productSchema = z.object({
 	name: z.string().min(1, 'Le nom est requis').max(200),
@@ -54,7 +64,7 @@ type ProductFormValues = z.infer<typeof productSchema>
 interface ProductDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
-	product?: ProductsResponse | null
+	product?: (ProductsResponse | ProductWithRefs) | null
 	defaultCategoryId?: string
 }
 
@@ -65,20 +75,34 @@ export function ProductDialog({
 	defaultCategoryId,
 }: ProductDialogProps) {
 	const isEdit = !!product
-	const createProduct = useCreateProduct()
-	const updateProduct = useUpdateProduct()
+	const isAppPos = (product as any)?.collectionId === 'apppos_products'
 
-	// ⭐ Récupérer l'entreprise active
+	const createProduct = useCreateProduct()
+	const updateProduct = useUpdateProductUniversal()
 	const { activeCompanyId } = useActiveCompany()
 
-	// ⭐ Filtrer marques et fournisseurs par entreprise
-	const { data: brands } = useBrands({
+	// ── Données PocketBase (produits PB uniquement) ───────────────────────────
+	const { data: pbBrands } = useBrands({
 		companyId: activeCompanyId ?? undefined,
-	})
+		enabled: !isAppPos,
+	} as any)
+	const { data: pbSuppliers } = useSuppliers({
+		companyId: activeCompanyId ?? undefined,
+		enabled: !isAppPos,
+	} as any)
 
-	const { data: suppliers } = useSuppliers({
-		companyId: activeCompanyId ?? undefined,
-	})
+	// ── Données AppPOS (produits AppPOS uniquement) ───────────────────────────
+	const { data: appPosBrands } = useAppPosBrands({ enabled: isAppPos })
+	const { data: appPosSuppliers } = useAppPosSuppliers({ enabled: isAppPos })
+	const { data: appPosCategories } = useAppPosCategories({ enabled: isAppPos })
+
+	// Sélection de la source selon le type de produit, triée alpha
+	const brands = (isAppPos ? (appPosBrands ?? []) : (pbBrands ?? []))
+		.slice()
+		.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+	const suppliers = (isAppPos ? (appPosSuppliers ?? []) : (pbSuppliers ?? []))
+		.slice()
+		.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
 
 	const form = useForm<ProductFormValues>({
 		resolver: zodResolver(productSchema),
@@ -98,7 +122,7 @@ export function ProductDialog({
 	useEffect(() => {
 		if (open) {
 			const defaultCategories = product?.categories?.length
-				? product.categories
+				? (product.categories as string[])
 				: defaultCategoryId
 					? [defaultCategoryId]
 					: []
@@ -110,16 +134,15 @@ export function ProductDialog({
 				cost: product?.cost_price ?? 0,
 				stock: product?.stock_quantity ?? 0,
 				categories: defaultCategories,
-				brand: product?.brand ?? '',
-				supplier: product?.supplier ?? '',
+				brand: (product?.brand as string) ?? '',
+				supplier: (product?.supplier as string) ?? '',
 				active: product?.active ?? true,
 			})
 		}
 	}, [open, product, defaultCategoryId, form])
 
 	const onSubmit = async (data: ProductFormValues) => {
-		// ⭐ Vérifier qu'on a bien une entreprise active
-		if (!activeCompanyId) {
+		if (!isAppPos && !activeCompanyId) {
 			toast.error('Aucune entreprise active')
 			return
 		}
@@ -128,21 +151,39 @@ export function ProductDialog({
 			const payload = {
 				name: data.name,
 				price_ttc: data.price,
-				company: activeCompanyId, // ⭐ Ajouter l'ID de l'entreprise active
+				...(isAppPos ? {} : { company: activeCompanyId }),
 				barcode: data.barcode || undefined,
 				cost_price: data.cost ?? undefined,
 				stock_quantity: data.stock ?? undefined,
-				categories: data.categories?.length ? data.categories : undefined,
-				brand: data.brand || undefined,
-				supplier: data.supplier || undefined,
+				// Pour AppPOS : category_ids. Pour PocketBase : categories.
+				...(isAppPos
+					? { category_ids: data.categories?.length ? data.categories : [] }
+					: {
+							categories: data.categories?.length ? data.categories : undefined,
+						}),
+				// Pour AppPOS : brand_id / supplier_id. Pour PocketBase : brand / supplier.
+				...(isAppPos
+					? {
+							brand_id: data.brand || undefined,
+							supplier_id: data.supplier || undefined,
+						}
+					: {
+							brand: data.brand || undefined,
+							supplier: data.supplier || undefined,
+						}),
 				active: data.active,
 			}
 
 			if (isEdit && product) {
-				await updateProduct.mutateAsync({ id: product.id, data: payload })
+				await updateProduct.mutateAsync({
+					id: product.id,
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					data: payload as any,
+					source: (product as any).collectionId,
+				})
 				toast.success('Produit modifié avec succès')
 			} else {
-				await createProduct.mutateAsync(payload)
+				await createProduct.mutateAsync(payload as any)
 				toast.success('Produit créé avec succès')
 			}
 			onOpenChange(false)
@@ -152,8 +193,7 @@ export function ProductDialog({
 		}
 	}
 
-	// ⭐ Empêcher l'ouverture si aucune entreprise n'est active
-	if (open && !activeCompanyId) {
+	if (open && !isAppPos && !activeCompanyId) {
 		return (
 			<Dialog open={open} onOpenChange={onOpenChange}>
 				<DialogContent className='max-w-md'>
@@ -221,7 +261,6 @@ export function ProductDialog({
 									</FormItem>
 								)}
 							/>
-
 							<FormField
 								control={form.control}
 								name='cost'
@@ -262,7 +301,6 @@ export function ProductDialog({
 									</FormItem>
 								)}
 							/>
-
 							<FormField
 								control={form.control}
 								name='barcode'
@@ -278,22 +316,30 @@ export function ProductDialog({
 							/>
 						</div>
 
-						{/* Catégories avec le nouveau picker */}
+						{/* Catégories — picker adapté selon la source */}
 						<FormField
 							control={form.control}
 							name='categories'
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel>Catégories</FormLabel>
-									<CategoryPicker
-										value={field.value ?? []}
-										onChange={(val) => field.onChange(val)}
-										multiple={true}
-										showNone={false}
-										searchPlaceholder='Rechercher une catégorie...'
-										maxHeight='180px'
-										companyId={activeCompanyId ?? undefined}
-									/>
+									{isAppPos ? (
+										<CategoryPickerAppPos
+											categories={appPosCategories ?? []}
+											value={field.value ?? []}
+											onChange={field.onChange}
+										/>
+									) : (
+										<CategoryPicker
+											value={field.value ?? []}
+											onChange={(val) => field.onChange(val)}
+											multiple={true}
+											showNone={false}
+											searchPlaceholder='Rechercher une catégorie...'
+											maxHeight='180px'
+											companyId={activeCompanyId ?? undefined}
+										/>
+									)}
 									<FormMessage />
 								</FormItem>
 							)}
@@ -319,7 +365,7 @@ export function ProductDialog({
 										</FormControl>
 										<SelectContent>
 											<SelectItem value='_none_'>Aucune</SelectItem>
-											{brands?.map((brand) => (
+											{brands.map((brand) => (
 												<SelectItem key={brand.id} value={brand.id}>
 													{brand.name}
 												</SelectItem>
@@ -351,7 +397,7 @@ export function ProductDialog({
 										</FormControl>
 										<SelectContent>
 											<SelectItem value='_none_'>Aucun</SelectItem>
-											{suppliers?.map((supplier) => (
+											{suppliers.map((supplier) => (
 												<SelectItem key={supplier.id} value={supplier.id}>
 													{supplier.name}
 												</SelectItem>
@@ -362,7 +408,7 @@ export function ProductDialog({
 								</FormItem>
 							)}
 						/>
-
+						{/* 
 						<FormField
 							control={form.control}
 							name='active'
@@ -382,7 +428,7 @@ export function ProductDialog({
 									</FormControl>
 								</FormItem>
 							)}
-						/>
+						/> */}
 
 						<div className='flex justify-end gap-3 pt-4'>
 							<Button
