@@ -74,7 +74,6 @@ export function useStockModule() {
 	const {
 		data: productsData,
 		isLoading: productsLoading,
-		refetch: refetchProducts,
 		error: productsError,
 	} = useAppPosProducts({
 		enabled: isAppPosConnected,
@@ -82,23 +81,15 @@ export function useStockModule() {
 		// Pas de limit → retourne tout le catalogue filtré (TanStack Table gère la pagination)
 	})
 
-	const {
-		data: categories,
-		isLoading: categoriesLoading,
-		refetch: refetchCategories,
-	} = useAppPosCategories({ enabled: isAppPosConnected })
+	const { data: categories, isLoading: categoriesLoading } =
+		useAppPosCategories({ enabled: isAppPosConnected })
 
-	const {
-		data: brandsData,
-		isLoading: brandsLoading,
-		refetch: refetchBrands,
-	} = useAppPosBrands({ enabled: isAppPosConnected })
+	const { data: brandsData, isLoading: brandsLoading } = useAppPosBrands({
+		enabled: isAppPosConnected,
+	})
 
-	const {
-		data: suppliersData,
-		isLoading: suppliersLoading,
-		refetch: refetchSuppliers,
-	} = useAppPosSuppliers({ enabled: isAppPosConnected })
+	const { data: suppliersData, isLoading: suppliersLoading } =
+		useAppPosSuppliers({ enabled: isAppPosConnected })
 
 	useAppPosStockUpdates({ enabled: isAppPosConnected })
 
@@ -191,13 +182,6 @@ export function useStockModule() {
 	)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
-	const handleRefresh = () => {
-		refetchProducts()
-		refetchCategories()
-		refetchBrands()
-		refetchSuppliers()
-	}
-
 	const handleRetryConnection = async () => {
 		setIsConnecting(true)
 		setConnectionError(null)
@@ -259,9 +243,6 @@ export function useStockModule() {
 		brandsLoading,
 		suppliersData,
 		suppliersLoading,
-
-		// Actions
-		handleRefresh,
 
 		// Pagination reset key
 		filterKey,

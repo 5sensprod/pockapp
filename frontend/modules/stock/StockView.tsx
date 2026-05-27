@@ -1,9 +1,6 @@
 // frontend/modules/stock/StockView.tsx
 //
 // Composant PRESENTATIONAL — zéro logique métier, zéro hook.
-// Le bouton Inventaire a été retiré → il est dans le sidebarMenu (index.ts).
-// Le header module est géré par ModulePageShell.
-// Les états de connexion sont gérés ici car ils font partie de la vue.
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -60,10 +57,9 @@ export function StockView({
 	suppliersData,
 	suppliersLoading,
 
-	// Actions
-	handleRefresh,
+	// filterKey pour reset pagination TanStack Table
+	filterKey,
 }: StockViewProps) {
-
 	// ── État : connexion en cours ────────────────────────────────────────────
 	if (isConnecting) {
 		return (
@@ -71,7 +67,9 @@ export function StockView({
 				<div className='text-center'>
 					<RefreshCw className='h-8 w-8 animate-spin mx-auto mb-4 text-orange-500' />
 					<h2 className='text-base font-medium'>Connexion à AppPOS...</h2>
-					<p className='text-sm text-muted-foreground mt-1'>http://localhost:3000</p>
+					<p className='text-sm text-muted-foreground mt-1'>
+						http://localhost:3000
+					</p>
 				</div>
 			</div>
 		)
@@ -100,7 +98,7 @@ export function StockView({
 		)
 	}
 
-	// ── Items du rail interne (catégories / marques / fournisseurs) ──────────
+	// ── Items du rail interne ────────────────────────────────────────────────
 	const railItems: {
 		id: PanelType
 		icon: React.ReactNode
@@ -130,8 +128,7 @@ export function StockView({
 	// ── Vue principale ───────────────────────────────────────────────────────
 	return (
 		<div className='flex h-full min-h-0 overflow-hidden -m-6'>
-
-			{/* Rail filtres interne — distinct du rail Sidebar global */}
+			{/* Rail filtres interne */}
 			<div className='w-14 bg-muted flex flex-col items-center py-4 gap-2 shrink-0'>
 				{railItems.map((item) => (
 					<div key={item.id} className='relative'>
@@ -139,9 +136,10 @@ export function StockView({
 							type='button'
 							onClick={() => togglePanel(item.id)}
 							className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors
-								${activePanel === item.id
-									? 'bg-primary/15 text-primary'
-									: 'text-muted-foreground hover:bg-accent hover:text-foreground'
+								${
+									activePanel === item.id
+										? 'bg-primary/15 text-primary'
+										: 'text-muted-foreground hover:bg-accent hover:text-foreground'
 								}`}
 							title={item.label}
 						>
@@ -194,7 +192,6 @@ export function StockView({
 			{/* Contenu principal */}
 			<div className='flex-1 overflow-auto'>
 				<div className='px-6 py-6 flex flex-col gap-4'>
-
 					{/* Erreur produits */}
 					{productsError && (
 						<div className='bg-destructive/10 border border-destructive/20 rounded-lg p-4'>
@@ -204,7 +201,7 @@ export function StockView({
 						</div>
 					)}
 
-					{/* Barre de recherche + compteur + rafraîchir */}
+					{/* Barre de recherche + compteur */}
 					<div className='flex items-center gap-3'>
 						<div className='flex-1 max-w-md'>
 							<Input
@@ -215,17 +212,9 @@ export function StockView({
 						</div>
 						<Badge variant='secondary' className='shrink-0'>
 							<Package className='h-3.5 w-3.5 mr-1' />
-							{filteredProducts.length} produit{filteredProducts.length > 1 ? 's' : ''}
+							{filteredProducts.length} produit
+							{filteredProducts.length > 1 ? 's' : ''}
 						</Badge>
-						<Button
-							variant='outline'
-							size='sm'
-							onClick={handleRefresh}
-							className='gap-2 shrink-0'
-						>
-							<RefreshCw className='h-4 w-4' />
-							Rafraîchir
-						</Button>
 					</div>
 
 					{/* Tags filtres actifs */}
@@ -286,7 +275,7 @@ export function StockView({
 							)}
 						</div>
 					) : (
-						<ProductTable data={filteredProducts} />
+						<ProductTable key={filterKey} data={filteredProducts} />
 					)}
 				</div>
 			</div>

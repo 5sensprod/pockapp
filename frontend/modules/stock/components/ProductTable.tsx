@@ -454,7 +454,7 @@ export function ProductTable({ data }: ProductTableProps) {
 		onPaginationChange: setPagination,
 		state: { sorting, columnFilters, pagination },
 	})
-
+	console.log('expand[0]:', JSON.stringify(data[0]?.expand))
 	return (
 		<div className='space-y-4'>
 			<div className='rounded-md border'>
