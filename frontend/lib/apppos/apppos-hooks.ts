@@ -20,7 +20,18 @@ export interface UseAppPosProductsOptions {
 	filter?: string
 	searchTerm?: string
 	categoryId?: string
+	/**
+	 * Page courante (base 1). Ignoré si `limit` vaut `Infinity`.
+	 * @default 1
+	 */
 	page?: number
+	/**
+	 * Nombre de produits par page.
+	 * Passer `Infinity` (ou ne pas passer cette option depuis un composant
+	 * qui gère sa propre pagination, e.g. TanStack Table) pour récupérer
+	 * l'intégralité du catalogue filtré sans découpage.
+	 * @default Infinity  ← le découpage est délégué à la couche UI
+	 */
 	limit?: number
 }
 
@@ -41,7 +52,7 @@ export function useAppPosProducts(options: UseAppPosProductsOptions = {}) {
 		searchTerm,
 		categoryId,
 		page = 1,
-		limit = 50,
+		limit = Number.POSITIVE_INFINITY, // Par défaut : tout retourner, la pagination est gérée par la couche UI (TanStack Table)
 	} = options
 
 	// IMPORTANT:
@@ -125,6 +136,12 @@ export function useAppPosProducts(options: UseAppPosProductsOptions = {}) {
 		}
 
 		const totalItems = filtered.length
+
+		// Si limit = Infinity, on retourne tout sans découpage
+		if (!isFinite(limit)) {
+			return { items: filtered, totalItems, totalPages: 1, page: 1 }
+		}
+
 		const totalPages = Math.max(1, Math.ceil(totalItems / limit))
 		const safePage = Math.min(Math.max(1, page), totalPages)
 		const start = (safePage - 1) * limit

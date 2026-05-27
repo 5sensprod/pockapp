@@ -505,25 +505,73 @@ export function ProductTable({ data }: ProductTableProps) {
 
 			<div className='flex items-center justify-between'>
 				<div className='text-sm text-muted-foreground'>
-					{table.getFilteredRowModel().rows.length} produit(s)
+					{(() => {
+						const total = table.getFilteredRowModel().rows.length
+						const { pageIndex, pageSize } = table.getState().pagination
+						const from = total === 0 ? 0 : pageIndex * pageSize + 1
+						const to = Math.min((pageIndex + 1) * pageSize, total)
+						return `${from}–${to} sur ${total} produit${total > 1 ? 's' : ''}`
+					})()}
 				</div>
-				<div className='flex items-center space-x-2'>
-					<Button
-						variant='outline'
-						size='sm'
-						onClick={() => table.previousPage()}
-						disabled={!table.getCanPreviousPage()}
-					>
-						Précédent
-					</Button>
-					<Button
-						variant='outline'
-						size='sm'
-						onClick={() => table.nextPage()}
-						disabled={!table.getCanNextPage()}
-					>
-						Suivant
-					</Button>
+				<div className='flex items-center gap-4'>
+					<div className='flex items-center gap-2 text-sm'>
+						<span className='text-muted-foreground'>Lignes&nbsp;:</span>
+						<select
+							className='h-8 rounded-md border border-input bg-background px-2 text-sm'
+							value={pagination.pageSize}
+							onChange={(e) =>
+								setPagination((p) => ({
+									...p,
+									pageIndex: 0,
+									pageSize: Number(e.target.value),
+								}))
+							}
+						>
+							{[10, 25, 50, 100].map((size) => (
+								<option key={size} value={size}>
+									{size}
+								</option>
+							))}
+						</select>
+					</div>
+					<div className='flex items-center gap-1 text-sm text-muted-foreground'>
+						Page {table.getState().pagination.pageIndex + 1} /{' '}
+						{table.getPageCount()}
+					</div>
+					<div className='flex items-center space-x-2'>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={() => table.setPageIndex(0)}
+							disabled={!table.getCanPreviousPage()}
+						>
+							«
+						</Button>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={() => table.previousPage()}
+							disabled={!table.getCanPreviousPage()}
+						>
+							Précédent
+						</Button>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={() => table.nextPage()}
+							disabled={!table.getCanNextPage()}
+						>
+							Suivant
+						</Button>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+							disabled={!table.getCanNextPage()}
+						>
+							»
+						</Button>
+					</div>
 				</div>
 			</div>
 

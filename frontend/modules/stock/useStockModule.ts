@@ -30,9 +30,13 @@ export type PanelType = 'categories' | 'brands' | 'suppliers' | null
 export function useStockModule() {
 	// ── Recherche & filtres ───────────────────────────────────────────────────
 	const [searchTerm, setSearchTerm] = useState('')
-	const [selectedCategory, setSelectedCategory] = useState<CategoriesResponse | null>(null)
-	const [selectedBrand, setSelectedBrand] = useState<BrandsResponse | null>(null)
-	const [selectedSupplier, setSelectedSupplier] = useState<SuppliersResponse | null>(null)
+	const [selectedCategory, setSelectedCategory] =
+		useState<CategoriesResponse | null>(null)
+	const [selectedBrand, setSelectedBrand] = useState<BrandsResponse | null>(
+		null,
+	)
+	const [selectedSupplier, setSelectedSupplier] =
+		useState<SuppliersResponse | null>(null)
 	const [activePanel, setActivePanel] = useState<PanelType>(null)
 
 	// ── Connexion AppPOS ──────────────────────────────────────────────────────
@@ -75,6 +79,7 @@ export function useStockModule() {
 	} = useAppPosProducts({
 		enabled: isAppPosConnected,
 		searchTerm: searchTerm || undefined,
+		// Pas de limit → retourne tout le catalogue filtré (TanStack Table gère la pagination)
 	})
 
 	const {
@@ -117,7 +122,8 @@ export function useStockModule() {
 						? { id: p.supplier_ref.id, name: p.supplier_ref.name }
 						: undefined,
 					categories:
-						p.categories_refs?.map((c: any) => ({ id: c.id, name: c.name })) ?? [],
+						p.categories_refs?.map((c: any) => ({ id: c.id, name: c.name })) ??
+						[],
 				},
 			})) as ProductWithExpand[],
 		[productsData],
@@ -170,6 +176,20 @@ export function useStockModule() {
 	].filter(Boolean) as { key: string; label: string; clear: () => void }[]
 
 	const hasFilters = activeFilters.length > 0 || !!searchTerm
+
+	// ── filterKey : change à chaque modification de filtre actif ────────────
+	// Passer comme `key={filterKey}` sur <ProductTable> pour remettre
+	// automatiquement la pagination à la page 1 quand les filtres changent.
+	const filterKey = useMemo(
+		() =>
+			[
+				searchTerm,
+				selectedCategory?.id ?? '',
+				selectedBrand?.id ?? '',
+				selectedSupplier?.id ?? '',
+			].join('|'),
+		[searchTerm, selectedCategory, selectedBrand, selectedSupplier],
+	)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	const handleRefresh = () => {
@@ -243,6 +263,9 @@ export function useStockModule() {
 
 		// Actions
 		handleRefresh,
+
+		// Pagination reset key
+		filterKey,
 	}
 }
 
