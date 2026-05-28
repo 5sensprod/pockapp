@@ -35,10 +35,12 @@ func fixInventorySessionsFields(app *pocketbase.PocketBase) error {
 	}
 
 	// scope — Select, max 1 valeur
+	// ⚠️ "free" doit rester synchronisé avec ensureInventorySessionsCollection
+	//    et AddLabelToInventorySessions
 	if f := collection.Schema.GetFieldByName("scope"); f != nil {
 		f.Options = &schema.SelectOptions{
 			MaxSelect: 1,
-			Values:    []string{"all", "selection"},
+			Values:    []string{"all", "selection", "free"},
 		}
 	}
 
@@ -50,6 +52,17 @@ func fixInventorySessionsFields(app *pocketbase.PocketBase) error {
 	// validated_category_ids — JSON, 5 Mo max
 	if f := collection.Schema.GetFieldByName("validated_category_ids"); f != nil {
 		f.Options = &schema.JsonOptions{MaxSize: 5242880}
+	}
+
+	// label — ajout idempotent (champ texte libre pour scope = "free")
+	// Ex : "Vitrine boutique", "Rayon partitions"
+	if collection.Schema.GetFieldByName("label") == nil {
+		collection.Schema.AddField(&schema.SchemaField{
+			Name:     "label",
+			Type:     schema.FieldTypeText,
+			Required: false,
+		})
+		log.Printf("➕ Champ label ajouté à %s", collectionName)
 	}
 
 	if err := app.Dao().SaveCollection(collection); err != nil {

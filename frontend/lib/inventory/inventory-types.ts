@@ -11,7 +11,10 @@ export type InventorySessionStatus =
 	| 'completed' // Validée et ajustements appliqués
 	| 'cancelled' // Annulée
 
-export type InventoryScope = 'all' | 'selection'
+export type InventoryScope =
+	| 'all' // Tout le catalogue
+	| 'selection' // Catégories choisies
+	| 'free' // Session libre nommée par l'opérateur (ex: "Vitrine boutique")
 
 /**
  * Collection PocketBase : `inventory_sessions`
@@ -23,11 +26,17 @@ export interface InventorySession {
 	started_at: string // ISO date — quand le comptage a commencé
 	completed_at: string | null // ISO date — quand tout a été validé
 	operator: string // Nom de l'opérateur
-	scope: InventoryScope // 'all' = tout le catalogue, 'selection' = catégories choisies
+	scope: InventoryScope // 'all' | 'selection' | 'free'
 	scope_category_ids: string[] // Si scope === 'selection', IDs de catégories AppPOS
 	validated_category_ids: string[] // Catégories dont le comptage est validé (plus modifiables)
 	apppos_snapshot_at: string // ISO date — moment du gel des stocks théoriques
 	notes: string
+	/**
+	 * Nom libre de la session — uniquement pertinent si scope === 'free'
+	 * Ex : "Vitrine boutique", "Rayon partitions", "Réserve fond"
+	 * null pour les sessions all / selection
+	 */
+	label: string | null
 	// Stats dénormalisées — écrites à la clôture de la session (completeInventorySession)
 	// Évite de requêter toutes les entrées pour afficher l'historique
 	stats_total_products: number | null // Nb total de produits dans la session
@@ -137,7 +146,8 @@ export interface InventorySessionSummary {
 export interface CreateInventorySessionInput {
 	operator: string
 	scope: InventoryScope
-	scope_category_ids?: string[]
+	scope_category_ids?: string[] // Requis si scope === 'selection'
+	label?: string | null // Requis si scope === 'free' — nom libre de la session
 	notes?: string
 }
 
@@ -157,6 +167,29 @@ export interface AdjustmentResult {
 }
 
 // ============================================================================
+// HELPERS
+// ============================================================================
+
+/**
+ * Retourne le titre lisible d'une session selon son scope.
+ * - all       → "Inventaire complet"
+ * - selection → nom de la 1ère catégorie (+ n autres si plusieurs)
+ * - free      → label saisi par l'opérateur (ex: "Vitrine boutique")
+ */
+export function getSessionDisplayLabel(session: InventorySession): string {
+	if (session.scope === 'free') {
+		return session.label ?? 'Session libre'
+	}
+	if (session.scope === 'all') {
+		return 'Inventaire complet'
+	}
+	const names = session.stats_category_names ?? []
+	if (names.length === 0) return 'Inventaire'
+	if (names.length === 1) return names[0]
+	return `${names[0]} +${names.length - 1}`
+}
+
+// ============================================================================
 // SCHÉMA POCKETBASE (pour référence lors de la création des collections)
 // ============================================================================
 
@@ -168,7 +201,8 @@ export interface AdjustmentResult {
  * - started_at      : Date
  * - completed_at    : Date    — optional
  * - operator        : Text    — required
- * - scope           : Select  — options: all, selection
+ * - scope           : Select  — options: all, selection, free
+ * - label           : Text    — optional (nom libre si scope = "free")
  * - scope_category_ids     : JSON
  * - validated_category_ids : JSON
  * - apppos_snapshot_at     : Date

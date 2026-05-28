@@ -7,6 +7,7 @@ import {
 	getAppPosProducts,
 	updateAppPosProductStock,
 } from '@/lib/apppos/apppos-api'
+// Note: pas de loginToAppPos ici — l'utilisateur est déjà authentifié via PocketBase/useAuth
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { usePocketBase } from '../use-pocketbase'
@@ -317,6 +318,15 @@ export function useCreateInventorySession() {
 
 	const mutation = useMutation({
 		mutationFn: async (input: CreateInventorySessionInput) => {
+			// ── Session libre : pas de snapshot AppPOS.
+			// L'opérateur ajoute les produits manuellement via scan/recherche.
+			if (input.scope === 'free') {
+				const session = await createInventorySession(pb, input)
+				const started = await startInventorySession(pb, session.id)
+				return { session: started, entriesCount: 0 }
+			}
+
+			// ── Sessions all / selection : snapshot catalogue AppPOS ─────────────
 			const [allProducts, allCategories] = await Promise.all([
 				getAppPosProducts(),
 				getAppPosCategories(),
@@ -339,7 +349,7 @@ export function useCreateInventorySession() {
 
 			if (products.length === 0) {
 				throw new Error(
-					'Aucun produit trouve pour ce perimetre. Verifiez la selection de categories.',
+					'Aucun produit trouvé pour ce périmètre. Vérifiez la sélection de catégories.',
 				)
 			}
 
@@ -347,7 +357,6 @@ export function useCreateInventorySession() {
 
 			const entries = products.map((p) => {
 				const categoryId = p.category_id ?? p.categories?.[0] ?? ''
-				// Extraire le code-barres depuis meta_data AppPOS
 				const barcode = Array.isArray(p.meta_data)
 					? (p.meta_data.find((m: any) => m.key === 'barcode')?.value ?? '')
 					: ''
@@ -358,7 +367,7 @@ export function useCreateInventorySession() {
 					product_barcode: String(barcode),
 					product_image: p.image?.src ?? '',
 					category_id: categoryId,
-					category_name: categoryNameById.get(categoryId) ?? 'Sans categorie',
+					category_name: categoryNameById.get(categoryId) ?? 'Sans catégorie',
 					stock_theorique: Number(p.stock) || 0,
 				}
 			})

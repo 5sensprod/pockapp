@@ -66,7 +66,7 @@ func ensureInventorySessionsCollection(app *pocketbase.PocketBase) error {
 				Required: true,
 				Options: &schema.SelectOptions{
 					MaxSelect: 1,
-					Values:    []string{"all", "selection"},
+					Values:    []string{"all", "selection", "free"},
 				},
 			},
 			// IDs catégories AppPOS sélectionnées (si scope = "selection")

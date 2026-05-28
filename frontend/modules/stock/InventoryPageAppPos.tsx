@@ -21,11 +21,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
-import { getAppPosToken, loginToAppPos } from '@/lib/apppos'
 import { appPosApi } from '@/lib/apppos/apppos-api'
 import { getAppPosImageUrl } from '@/lib/apppos/apppos-config'
 import { useAppPosCategoriesWithCounts } from '@/lib/apppos/apppos-hooks'
 import { appPosTransformers } from '@/lib/apppos/apppos-transformers'
+import { createInventoryEntries } from '@/lib/inventory/inventory-pocketbase'
+import { INVENTORY_ENTRIES_COLLECTION } from '@/lib/inventory/inventory-types'
 import type {
 	CategoryInventoryStatus,
 	CategoryInventorySummary,
@@ -41,9 +42,10 @@ import {
 	useSessionProgress,
 } from '@/lib/inventory/useInventorySession'
 import { useScanner } from '@/lib/pos/scanner'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/modules/auth/AuthProvider'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
 	AlertTriangle,
 	ArrowLeft,
@@ -56,6 +58,7 @@ import {
 	Loader2,
 	Lock,
 	MinusCircle,
+	PackagePlus,
 	PlusCircle,
 	RotateCcw,
 	Search,
@@ -64,8 +67,6 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-// Manifest local pour le ModulePageShell
-// (on ne réutilise pas le manifest stock pour éviter le sidebarMenu du stock)
 const inventoryManifest = {
 	id: 'inventory',
 	name: 'Inventaire',
@@ -74,33 +75,21 @@ const inventoryManifest = {
 	route: '/inventory-apppos',
 }
 
-// ============================================================================
-// TYPES LOCAUX
-// ============================================================================
 type PageView = 'home' | 'overview' | 'counting' | 'history'
 
 function formatInventoryDateTime(value: string | Date) {
 	const date = new Date(value)
 	const now = new Date()
-
 	const isSameDay =
 		date.getFullYear() === now.getFullYear() &&
 		date.getMonth() === now.getMonth() &&
 		date.getDate() === now.getDate()
-
 	const time = date.toLocaleTimeString('fr-FR', {
 		hour: '2-digit',
 		minute: '2-digit',
 	})
-
 	if (isSameDay) return `Aujourd'hui · ${time}`
-
-	return `${date.toLocaleDateString('fr-FR', {
-		weekday: 'short',
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-	})} · ${time}`
+	return `${date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })} · ${time}`
 }
 
 function getInventoryStatusLabel(status: InventorySession['status']) {
@@ -119,9 +108,7 @@ function getLastCountedAt(entries: InventoryEntry[]) {
 		.filter(Boolean)
 		.map((value) => new Date(value as string).getTime())
 		.filter((value) => !Number.isNaN(value))
-
 	if (timestamps.length === 0) return null
-
 	return new Date(Math.max(...timestamps)).toISOString()
 }
 
@@ -136,11 +123,8 @@ function formatInventoryActivityLabel(
 
 function GlobalInventoryCapitalStats({
 	activeSessions,
-}: {
-	activeSessions: InventorySession[]
-}) {
+}: { activeSessions: InventorySession[] }) {
 	const { data: history } = useInventoryHistory()
-
 	const { data: catalogProducts = [], isLoading: catalogLoading } = useQuery({
 		queryKey: ['apppos', 'products', 'catalog'],
 		queryFn: async () => {
@@ -157,36 +141,29 @@ function GlobalInventoryCapitalStats({
 	const countedProducts = useMemo(() => {
 		const countedProductIds = new Set<string>()
 		let fallbackCount = 0
-
 		for (const session of activeSessions) {
 			for (const entry of (session as any).entries ?? []) {
 				if (entry.status === 'counted' || entry.stock_compte !== null) {
 					countedProductIds.add(entry.product_id)
 				}
 			}
-
 			if (((session as any).entries ?? []).length === 0) {
 				fallbackCount += session.stats_counted_products ?? 0
 			}
 		}
-
 		for (const session of history?.items ?? []) {
 			if (session.status !== 'completed') continue
-
 			const entries = (session as any).entries ?? []
-
 			if (entries.length === 0) {
 				fallbackCount += session.stats_counted_products ?? 0
 				continue
 			}
-
 			for (const entry of entries) {
 				if (entry.status === 'counted' || entry.stock_compte !== null) {
 					countedProductIds.add(entry.product_id)
 				}
 			}
 		}
-
 		return countedProductIds.size > 0 ? countedProductIds.size : fallbackCount
 	}, [activeSessions, history])
 
@@ -206,12 +183,10 @@ function GlobalInventoryCapitalStats({
 						Avancement inventaire
 					</h3>
 				</div>
-
 				<div className='rounded-full bg-orange-500 px-3 py-1 text-sm font-bold text-white'>
 					{progress}%
 				</div>
 			</div>
-
 			<div className='grid grid-cols-3 gap-2'>
 				<div className='rounded-xl bg-background/85 px-3 py-2'>
 					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
@@ -221,7 +196,6 @@ function GlobalInventoryCapitalStats({
 						{catalogLoading ? '…' : totalProducts}
 					</div>
 				</div>
-
 				<div className='rounded-xl bg-background/85 px-3 py-2'>
 					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
 						Comptés
@@ -230,7 +204,6 @@ function GlobalInventoryCapitalStats({
 						{countedProducts}
 					</div>
 				</div>
-
 				<div className='rounded-xl bg-background/85 px-3 py-2'>
 					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
 						À compter
@@ -240,7 +213,6 @@ function GlobalInventoryCapitalStats({
 					</div>
 				</div>
 			</div>
-
 			<div className='mt-3'>
 				<div className='mb-1 flex items-center justify-between text-xs text-muted-foreground'>
 					<span>
@@ -257,21 +229,10 @@ function GlobalInventoryCapitalStats({
 	)
 }
 
-// ============================================================================
-// IMAGE PRODUIT — résolue dynamiquement via le catalogue AppPOS caché
-// (le snapshot d'inventaire ne stocke plus l'URL : on la récupère par product_id)
-// ============================================================================
 function ProductImageById({
 	productId,
 	productName,
 }: { productId: string; productName: string }) {
-	// On consomme exactement la même queryKey que useAppPosProducts() dans apppos-hooks.
-	// Avantages :
-	//   1. React Query déduplique → une seule requête réseau pour toute l'app
-	//      (partagée avec ProductsPanel, etc.)
-	//   2. On obtient le CATALOGUE COMPLET non paginé
-	//      (useAppPosProducts retourne un résultat paginé limit=50, donc inutilisable ici)
-	//   3. Le composant re-render automatiquement quand les données arrivent
 	const { data: catalog } = useQuery({
 		queryKey: ['apppos', 'products', 'catalog'],
 		queryFn: async () => {
@@ -284,16 +245,12 @@ function ProductImageById({
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false,
 	})
-
 	const [errored, setErrored] = useState(false)
-
 	const src = useMemo(() => {
 		const match = catalog?.find((p: any) => p.id === productId)
 		const rawPath = (match as any)?.images || ''
-		// Préfixe vers l'origine AppPOS (sinon /uploads/... tape sur le frontend → 404).
 		return getAppPosImageUrl(rawPath)
 	}, [catalog, productId])
-
 	if (src && !errored) {
 		return (
 			<img
@@ -311,9 +268,6 @@ function ProductImageById({
 	)
 }
 
-// ============================================================================
-// HELPERS VISUELS — inchangés
-// ============================================================================
 function CategoryStatusIcon({
 	status,
 }: { status: CategoryInventorySummary['status'] }) {
@@ -371,7 +325,7 @@ function EcartBadge({ ecart }: { ecart: number }) {
 }
 
 // ============================================================================
-// DIALOG CRÉATION SESSION — inchangé
+// DIALOG CRÉATION SESSION
 // ============================================================================
 function CreateSessionDialog({
 	open,
@@ -385,14 +339,17 @@ function CreateSessionDialog({
 	onClose: () => void
 	onConfirm: (
 		operator: string,
-		scope: 'selection',
+		scope: 'selection' | 'free',
 		categoryIds: string[],
+		label?: string,
 	) => void
 	isLoading: boolean
 	activeSessions: InventorySession[]
 	defaultOperator?: string
 }) {
 	const [operator, setOperator] = useState(defaultOperator)
+	const [scopeMode, setScopeMode] = useState<'selection' | 'free'>('selection')
+	const [freeLabel, setFreeLabel] = useState('')
 	const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
 	const [search, setSearch] = useState('')
 	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -406,7 +363,6 @@ function CreateSessionDialog({
 				{ ...cat, id: cat._id, parent: parentId },
 				...flatten(cat.children || [], cat._id),
 			])
-
 		return flatten(categoriesRaw)
 	}, [categoriesRaw])
 
@@ -415,18 +371,15 @@ function CreateSessionDialog({
 			string,
 			{ productCount: number; totalProductCount: number }
 		>()
-
 		const walk = (cats: any[]) => {
 			for (const cat of cats) {
 				map.set(cat._id, {
 					productCount: cat.productCount ?? 0,
 					totalProductCount: cat.totalProductCount ?? cat.productCount ?? 0,
 				})
-
 				if (cat.children?.length) walk(cat.children)
 			}
 		}
-
 		walk(categoriesRaw)
 		return map
 	}, [categoriesRaw])
@@ -444,6 +397,8 @@ function CreateSessionDialog({
 	useEffect(() => {
 		if (open) {
 			setOperator(defaultOperator)
+			setScopeMode('selection')
+			setFreeLabel('')
 			setSelectedCategoryIds([])
 			setSearch('')
 			setExpandedGroups(new Set())
@@ -462,19 +417,13 @@ function CreateSessionDialog({
 
 	const categoryTags = useMemo(() => {
 		const tags = new Map<string, CategoryTag>()
-
 		for (const session of activeSessions) {
 			for (const catId of session.scope_category_ids ?? []) {
-				tags.set(catId, {
-					type: 'active',
-					sessionOperator: session.operator,
-				})
+				tags.set(catId, { type: 'active', sessionOperator: session.operator })
 			}
 		}
-
 		for (const session of history?.items ?? []) {
 			if (session.status !== 'completed') continue
-
 			const dateStr = session.completed_at
 				? new Date(session.completed_at).toLocaleDateString('fr-FR', {
 						day: '2-digit',
@@ -482,7 +431,6 @@ function CreateSessionDialog({
 						year: 'numeric',
 					})
 				: ''
-
 			for (const catId of session.scope_category_ids ?? []) {
 				if (!tags.has(catId)) {
 					tags.set(catId, {
@@ -495,42 +443,29 @@ function CreateSessionDialog({
 				}
 			}
 		}
-
 		return tags
 	}, [activeSessions, history])
 
 	const grouped = useMemo(() => {
 		const byId = new Map(categories.map((c) => [c.id, c]))
-
 		const roots = categories
 			.filter((c) => !c.parent)
 			.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-
 		const groups: Array<{
 			parent: (typeof categories)[0] | null
 			children: typeof categories
 		}> = []
-
 		for (const root of roots) {
 			const children = categories
 				.filter((c) => c.parent === root.id)
 				.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-
-			if (children.length > 0) {
-				groups.push({ parent: root, children })
-			} else {
-				groups.push({ parent: null, children: [root] })
-			}
+			if (children.length > 0) groups.push({ parent: root, children })
+			else groups.push({ parent: null, children: [root] })
 		}
-
 		const orphans = categories
 			.filter((c) => c.parent && !byId.has(c.parent))
 			.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-
-		if (orphans.length > 0) {
-			groups.push({ parent: null, children: orphans })
-		}
-
+		if (orphans.length > 0) groups.push({ parent: null, children: orphans })
 		return groups
 	}, [categories])
 
@@ -538,7 +473,6 @@ function CreateSessionDialog({
 
 	const filteredGrouped = useMemo(() => {
 		if (!searchLower) return grouped
-
 		return grouped
 			.map((group) => ({
 				...group,
@@ -551,7 +485,6 @@ function CreateSessionDialog({
 
 	const searchExpandedIds = useMemo(() => {
 		if (!searchLower) return new Set<string>()
-
 		return new Set(
 			filteredGrouped
 				.filter((g) => g.parent)
@@ -561,13 +494,10 @@ function CreateSessionDialog({
 
 	const isGroupExpanded = (groupId: string) =>
 		searchLower ? searchExpandedIds.has(groupId) : expandedGroups.has(groupId)
-
 	const getCategoryProductCount = (categoryId: string) =>
 		countMap.get(categoryId)?.productCount ?? 0
-
 	const isEmptyCategory = (categoryId: string) =>
 		getCategoryProductCount(categoryId) === 0
-
 	const isSelectableCategory = (categoryId: string) =>
 		!isEmptyCategory(categoryId)
 
@@ -578,24 +508,18 @@ function CreateSessionDialog({
 			return next
 		})
 	}
-
 	const toggleCategory = (id: string) => {
 		if (!isSelectableCategory(id)) return
-
 		setSelectedCategoryIds((prev) =>
 			prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
 		)
 	}
-
 	const toggleGroup = (ids: string[]) => {
 		const selectableIds = ids.filter(isSelectableCategory)
-
 		if (selectableIds.length === 0) return
-
 		const allSelected = selectableIds.every((id) =>
 			selectedCategoryIds.includes(id),
 		)
-
 		setSelectedCategoryIds((prev) =>
 			allSelected
 				? prev.filter((id) => !selectableIds.includes(id))
@@ -607,33 +531,25 @@ function CreateSessionDialog({
 		const selectedCount = childIds.filter((id) =>
 			selectedCategoryIds.includes(id),
 		).length
-
 		const activeCount = childIds.filter(
 			(id) => categoryTags.get(id)?.type === 'active',
 		).length
-
 		const doneCount = childIds.filter(
 			(id) => categoryTags.get(id)?.type === 'done',
 		).length
-
 		const totalProducts = childIds.reduce(
 			(total, id) => total + getCategoryProductCount(id),
 			0,
 		)
-
 		const countedProducts = childIds.reduce((total, id) => {
 			const tag = categoryTags.get(id)
-
 			if (tag?.type !== 'done') return total
-
 			return total + getCategoryProductCount(id)
 		}, 0)
-
 		const progressPercent =
 			totalProducts > 0
 				? Math.round((countedProducts / totalProducts) * 100)
 				: 0
-
 		return {
 			selectedCount,
 			activeCount,
@@ -647,23 +563,18 @@ function CreateSessionDialog({
 	const renderStatusTag = (categoryId: string) => {
 		const tag = categoryTags.get(categoryId)
 		const productCount = getCategoryProductCount(categoryId)
-
-		if (tag?.type === 'active') {
+		if (tag?.type === 'active')
 			return (
 				<span className='rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'>
 					En cours
 				</span>
 			)
-		}
-
-		if (tag?.type === 'done' && productCount > 0) {
+		if (tag?.type === 'done' && productCount > 0)
 			return (
 				<span className='rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300'>
 					Fait le {tag.date}
 				</span>
 			)
-		}
-
 		return null
 	}
 
@@ -672,9 +583,7 @@ function CreateSessionDialog({
 		stats: ReturnType<typeof getGroupStats>,
 	) => {
 		const hasProgress = stats.countedProducts > 0 || stats.activeCount > 0
-
 		if (!hasProgress && stats.selectedCount === 0) return null
-
 		return (
 			<div className='hidden min-w-[220px] shrink-0 md:block'>
 				<div className='mb-1 flex items-center justify-between gap-2 text-[11px]'>
@@ -685,14 +594,12 @@ function CreateSessionDialog({
 								? `${stats.activeCount} en cours`
 								: `${stats.selectedCount}/${childIds.length} sélection.`}
 					</span>
-
 					{stats.countedProducts > 0 && (
 						<span className='font-medium text-green-700 dark:text-green-300'>
 							{stats.countedProducts}/{stats.totalProducts}
 						</span>
 					)}
 				</div>
-
 				<div className='h-1.5 overflow-hidden rounded-full bg-muted'>
 					<div
 						className={cn(
@@ -700,9 +607,7 @@ function CreateSessionDialog({
 							stats.countedProducts > 0 ? 'bg-green-500' : 'bg-blue-500',
 						)}
 						style={{
-							width: `${
-								stats.countedProducts > 0 ? stats.progressPercent : 8
-							}%`,
+							width: `${stats.countedProducts > 0 ? stats.progressPercent : 8}%`,
 						}}
 					/>
 				</div>
@@ -711,11 +616,16 @@ function CreateSessionDialog({
 	}
 
 	const canConfirm =
-		operator.trim().length > 0 && selectedCategoryIds.length > 0
+		operator.trim().length > 0 &&
+		(scopeMode === 'free'
+			? freeLabel.trim().length > 0
+			: selectedCategoryIds.length > 0)
 
 	const handleConfirm = () => {
 		if (!canConfirm) return
-		onConfirm(operator.trim(), 'selection', selectedCategoryIds)
+		if (scopeMode === 'free')
+			onConfirm(operator.trim(), 'free', [], freeLabel.trim())
+		else onConfirm(operator.trim(), 'selection', selectedCategoryIds)
 	}
 
 	return (
@@ -739,203 +649,243 @@ function CreateSessionDialog({
 						/>
 					</div>
 
+					{/* ── Type de session ───────────────────────────────────────── */}
+					<div className='mb-5 max-w-md space-y-1.5'>
+						<Label>Type de session</Label>
+						<div className='grid grid-cols-2 gap-2'>
+							<button
+								type='button'
+								onClick={() => setScopeMode('selection')}
+								className={cn(
+									'rounded-xl border px-4 py-3 text-left transition-colors',
+									scopeMode === 'selection'
+										? 'border-orange-400 bg-orange-50/60 dark:bg-orange-950/20'
+										: 'border-border hover:bg-muted/50',
+								)}
+							>
+								<p className='text-sm font-semibold'>Par catégorie</p>
+								<p className='mt-0.5 text-xs text-muted-foreground'>
+									Choisir les rayons du catalogue
+								</p>
+							</button>
+							<button
+								type='button'
+								onClick={() => setScopeMode('free')}
+								className={cn(
+									'rounded-xl border px-4 py-3 text-left transition-colors',
+									scopeMode === 'free'
+										? 'border-orange-400 bg-orange-50/60 dark:bg-orange-950/20'
+										: 'border-border hover:bg-muted/50',
+								)}
+							>
+								<p className='text-sm font-semibold'>Session libre</p>
+								<p className='mt-0.5 text-xs text-muted-foreground'>
+									Nommer un espace physique
+								</p>
+							</button>
+						</div>
+					</div>
+
+					{/* ── Label session libre ───────────────────────────────────── */}
+					{scopeMode === 'free' && (
+						<div className='mb-5 max-w-md space-y-1.5'>
+							<Label>Nom de la session</Label>
+							<Input
+								placeholder='Ex : Vitrine boutique, Rayon partitions…'
+								value={freeLabel}
+								onChange={(e) => setFreeLabel(e.target.value)}
+							/>
+							<p className='text-xs text-muted-foreground'>
+								Les produits seront ajoutés manuellement via scan ou recherche.
+							</p>
+						</div>
+					)}
+
 					<Separator className='mb-5' />
 
-					<div className='flex min-h-0 flex-col space-y-3'>
-						<div className='flex items-center justify-between gap-3'>
-							<Label>Catégories à inventorier</Label>
+					{/* ── Liste catégories (sélection uniquement) ──────────────── */}
+					{scopeMode === 'selection' && (
+						<div className='flex min-h-0 flex-col space-y-3'>
+							<div className='flex items-center justify-between gap-3'>
+								<Label>Catégories à inventorier</Label>
+								{selectedCategoryIds.length > 0 && (
+									<span className='rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'>
+										{selectedCategoryIds.length} rayon
+										{selectedCategoryIds.length > 1 ? 's' : ''} ·{' '}
+										{selectedProductTotal} produit
+										{selectedProductTotal > 1 ? 's' : ''}
+									</span>
+								)}
+							</div>
 
-							{selectedCategoryIds.length > 0 && (
-								<span className='rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'>
-									{selectedCategoryIds.length} rayon
-									{selectedCategoryIds.length > 1 ? 's' : ''} ·{' '}
-									{selectedProductTotal} produit
-									{selectedProductTotal > 1 ? 's' : ''}
-								</span>
-							)}
-						</div>
+							<div className='relative'>
+								<Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
+								<Input
+									placeholder='Rechercher une catégorie...'
+									value={search}
+									onChange={(e) => setSearch(e.target.value)}
+									className='h-10 pl-9 text-sm'
+								/>
+							</div>
 
-						<div className='relative'>
-							<Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
-							<Input
-								placeholder='Rechercher une catégorie...'
-								value={search}
-								onChange={(e) => setSearch(e.target.value)}
-								className='h-10 pl-9 text-sm'
-							/>
-						</div>
-
-						<div className='h-[460px] overflow-y-auto rounded-xl border'>
-							{categories.length === 0 && (
-								<div className='px-3 py-8 text-center text-sm text-muted-foreground'>
-									<Loader2 className='mx-auto mb-2 h-4 w-4 animate-spin' />
-									Chargement des catégories...
-								</div>
-							)}
-
-							{filteredGrouped.length === 0 && categories.length > 0 && (
-								<div className='px-3 py-8 text-center text-sm text-muted-foreground'>
-									Aucune catégorie trouvée
-								</div>
-							)}
-
-							{filteredGrouped.map((group, gi) => {
-								const childIds = group.children.map((c) => c.id)
-								const selectableChildIds = childIds.filter(isSelectableCategory)
-								const allSelected =
-									selectableChildIds.length > 0 &&
-									selectableChildIds.every((id) =>
-										selectedCategoryIds.includes(id),
-									)
-								const groupKey = group.parent?.id ?? `orphan-${gi}`
-								const expanded = group.parent
-									? isGroupExpanded(group.parent.id)
-									: true
-								const groupStats = getGroupStats(childIds)
-
-								return (
-									<div key={groupKey}>
-										{group.parent ? (
-											<div className='flex items-center gap-3 border-b bg-muted/50 px-3 py-2.5 transition-colors hover:bg-muted'>
-												<button
-													type='button'
-													onClick={() =>
-														group.parent && toggleExpand(group.parent.id)
-													}
-													className='flex min-w-0 flex-1 items-center gap-2 text-left'
-												>
-													<ChevronDown
-														className={cn(
-															'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150',
-															!expanded && '-rotate-90',
-														)}
-													/>
-
-													<div className='min-w-0 flex-1'>
-														<div className='flex min-w-0 items-center gap-2'>
-															<span className='truncate text-sm font-bold uppercase tracking-wide text-foreground/80'>
-																{group.parent.name}
-															</span>
-
-															<span className='shrink-0 text-xs text-muted-foreground'>
-																{groupStats.totalProducts} réf.
-															</span>
-														</div>
-													</div>
-												</button>
-
-												{renderGroupProgress(childIds, groupStats)}
-
-												<Button
-													type='button'
-													variant='ghost'
-													size='sm'
-													onClick={() => toggleGroup(childIds)}
-													disabled={selectableChildIds.length === 0}
-													className={cn(
-														'h-8 shrink-0 px-3 text-xs font-semibold',
-														allSelected
-															? 'text-orange-600'
-															: 'text-muted-foreground',
-													)}
-												>
-													{allSelected ? 'Retirer' : 'Tout'}
-												</Button>
-											</div>
-										) : (
-											(() => {
-												const root = group.children[0]
-												const productCount = getCategoryProductCount(root.id)
-												const isChecked = selectedCategoryIds.includes(root.id)
-												const isDisabled = productCount === 0
-
-												return (
-													<label
-														className={cn(
-															'flex cursor-pointer items-center gap-3 border-b bg-muted/50 px-3 py-2.5 transition-colors hover:bg-muted',
-															isDisabled &&
-																'cursor-not-allowed opacity-45 hover:bg-muted/50',
-														)}
+							<div className='h-[460px] overflow-y-auto rounded-xl border'>
+								{categories.length === 0 && (
+									<div className='px-3 py-8 text-center text-sm text-muted-foreground'>
+										<Loader2 className='mx-auto mb-2 h-4 w-4 animate-spin' />
+										Chargement des catégories...
+									</div>
+								)}
+								{filteredGrouped.length === 0 && categories.length > 0 && (
+									<div className='px-3 py-8 text-center text-sm text-muted-foreground'>
+										Aucune catégorie trouvée
+									</div>
+								)}
+								{filteredGrouped.map((group, gi) => {
+									const childIds = group.children.map((c) => c.id)
+									const selectableChildIds =
+										childIds.filter(isSelectableCategory)
+									const allSelected =
+										selectableChildIds.length > 0 &&
+										selectableChildIds.every((id) =>
+											selectedCategoryIds.includes(id),
+										)
+									const groupKey = group.parent?.id ?? `orphan-${gi}`
+									const expanded = group.parent
+										? isGroupExpanded(group.parent.id)
+										: true
+									const groupStats = getGroupStats(childIds)
+									return (
+										<div key={groupKey}>
+											{group.parent ? (
+												<div className='flex items-center gap-3 border-b bg-muted/50 px-3 py-2.5 transition-colors hover:bg-muted'>
+													<button
+														type='button'
+														onClick={() =>
+															group.parent && toggleExpand(group.parent.id)
+														}
+														className='flex min-w-0 flex-1 items-center gap-2 text-left'
 													>
-														<input
-															type='checkbox'
-															checked={isChecked}
-															disabled={isDisabled}
-															onChange={() => toggleCategory(root.id)}
-															className='shrink-0 rounded accent-orange-500 disabled:cursor-not-allowed'
+														<ChevronDown
+															className={cn(
+																'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150',
+																!expanded && '-rotate-90',
+															)}
 														/>
-
 														<div className='min-w-0 flex-1'>
 															<div className='flex min-w-0 items-center gap-2'>
 																<span className='truncate text-sm font-bold uppercase tracking-wide text-foreground/80'>
-																	{root.name}
+																	{group.parent.name}
 																</span>
-
 																<span className='shrink-0 text-xs text-muted-foreground'>
-																	{productCount} réf.
+																	{groupStats.totalProducts} réf.
 																</span>
 															</div>
 														</div>
-
-														{renderStatusTag(root.id)}
-													</label>
-												)
-											})()
-										)}
-
-										{group.parent &&
-											expanded &&
-											group.children.map((cat, ci, visibleChildren) => {
-												const productCount = getCategoryProductCount(cat.id)
-												const isChecked = selectedCategoryIds.includes(cat.id)
-												const isDisabled = productCount === 0
-
-												return (
-													<label
-														key={cat.id}
+													</button>
+													{renderGroupProgress(childIds, groupStats)}
+													<Button
+														type='button'
+														variant='ghost'
+														size='sm'
+														onClick={() => toggleGroup(childIds)}
+														disabled={selectableChildIds.length === 0}
 														className={cn(
-															'flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50',
-															ci < visibleChildren.length - 1 && 'border-b',
-															isChecked &&
-																'bg-orange-50/50 dark:bg-orange-900/5',
-															isDisabled &&
-																'cursor-not-allowed opacity-45 hover:bg-transparent',
+															'h-8 shrink-0 px-3 text-xs font-semibold',
+															allSelected
+																? 'text-orange-600'
+																: 'text-muted-foreground',
 														)}
 													>
-														<input
-															type='checkbox'
-															checked={isChecked}
-															disabled={isDisabled}
-															onChange={() => toggleCategory(cat.id)}
-															className='shrink-0 rounded accent-orange-500 disabled:cursor-not-allowed'
-														/>
-
-														<span className='min-w-0 flex-1 truncate text-sm'>
-															{cat.name}
-														</span>
-
-														<span className='shrink-0 text-xs text-muted-foreground'>
-															{productCount} réf.
-														</span>
-
-														<div className='shrink-0'>
-															{renderStatusTag(cat.id)}
-														</div>
-													</label>
-												)
-											})}
-									</div>
-								)
-							})}
+														{allSelected ? 'Retirer' : 'Tout'}
+													</Button>
+												</div>
+											) : (
+												(() => {
+													const root = group.children[0]
+													const productCount = getCategoryProductCount(root.id)
+													const isChecked = selectedCategoryIds.includes(
+														root.id,
+													)
+													const isDisabled = productCount === 0
+													return (
+														<label
+															className={cn(
+																'flex cursor-pointer items-center gap-3 border-b bg-muted/50 px-3 py-2.5 transition-colors hover:bg-muted',
+																isDisabled &&
+																	'cursor-not-allowed opacity-45 hover:bg-muted/50',
+															)}
+														>
+															<input
+																type='checkbox'
+																checked={isChecked}
+																disabled={isDisabled}
+																onChange={() => toggleCategory(root.id)}
+																className='shrink-0 rounded accent-orange-500 disabled:cursor-not-allowed'
+															/>
+															<div className='min-w-0 flex-1'>
+																<div className='flex min-w-0 items-center gap-2'>
+																	<span className='truncate text-sm font-bold uppercase tracking-wide text-foreground/80'>
+																		{root.name}
+																	</span>
+																	<span className='shrink-0 text-xs text-muted-foreground'>
+																		{productCount} réf.
+																	</span>
+																</div>
+															</div>
+															{renderStatusTag(root.id)}
+														</label>
+													)
+												})()
+											)}
+											{group.parent &&
+												expanded &&
+												group.children.map((cat, ci, visibleChildren) => {
+													const productCount = getCategoryProductCount(cat.id)
+													const isChecked = selectedCategoryIds.includes(cat.id)
+													const isDisabled = productCount === 0
+													return (
+														<label
+															key={cat.id}
+															className={cn(
+																'flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50',
+																ci < visibleChildren.length - 1 && 'border-b',
+																isChecked &&
+																	'bg-orange-50/50 dark:bg-orange-900/5',
+																isDisabled &&
+																	'cursor-not-allowed opacity-45 hover:bg-transparent',
+															)}
+														>
+															<input
+																type='checkbox'
+																checked={isChecked}
+																disabled={isDisabled}
+																onChange={() => toggleCategory(cat.id)}
+																className='shrink-0 rounded accent-orange-500 disabled:cursor-not-allowed'
+															/>
+															<span className='min-w-0 flex-1 truncate text-sm'>
+																{cat.name}
+															</span>
+															<span className='shrink-0 text-xs text-muted-foreground'>
+																{productCount} réf.
+															</span>
+															<div className='shrink-0'>
+																{renderStatusTag(cat.id)}
+															</div>
+														</label>
+													)
+												})}
+										</div>
+									)
+								})}
+							</div>
 						</div>
-					</div>
+					)}
 				</div>
 
 				<DialogFooter className='shrink-0 border-t px-8 py-5'>
 					<Button variant='ghost' onClick={onClose} disabled={isLoading}>
 						Annuler
 					</Button>
-
 					<Button
 						onClick={handleConfirm}
 						disabled={!canConfirm || isLoading}
@@ -943,7 +893,7 @@ function CreateSessionDialog({
 					>
 						{isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
 						Démarrer le comptage
-						{selectedProductTotal > 0 && (
+						{scopeMode === 'selection' && selectedProductTotal > 0 && (
 							<span className='ml-1 opacity-80'>({selectedProductTotal})</span>
 						)}
 					</Button>
@@ -954,7 +904,422 @@ function CreateSessionDialog({
 }
 
 // ============================================================================
-// SOUS-VUES — inchangées (SessionOverviewView, CategoryCountingView, etc.)
+// VUE SESSION LIBRE
+// ============================================================================
+function FreeSessionView({
+	session,
+	onComplete,
+	onCancel,
+	onBack,
+	isCompleting,
+	isCancelling,
+}: {
+	session: InventorySession
+	onComplete: () => void
+	onCancel: () => void
+	onBack: () => void
+	isCompleting: boolean
+	isCancelling: boolean
+}) {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+	const { entries, countProduct, resetProduct, isCountingProduct } =
+		useInventorySession(session.id)
+
+	const [search, setSearch] = useState('')
+	const [isAdding, setIsAdding] = useState(false)
+	const searchRef = useRef<HTMLInputElement>(null)
+
+	const fetchFreshCatalog = async () => {
+		const products = await appPosApi.getProducts()
+		return appPosTransformers.products(products)
+	}
+
+	const { data: catalog = [] } = useQuery({
+		queryKey: ['apppos', 'products', 'catalog'],
+		queryFn: fetchFreshCatalog,
+		staleTime: 0,
+		gcTime: 60 * 60 * 1000,
+		refetchOnMount: 'always',
+		refetchOnWindowFocus: true,
+		refetchOnReconnect: true,
+	})
+
+	const getProductCurrentStock = (product: any): number => {
+		const rawStock =
+			product.stock ??
+			product.quantity ??
+			product.qty ??
+			product.current_stock ??
+			product.inventory_stock ??
+			product.stock_quantity ??
+			product.available_stock ??
+			0
+
+		const stock = Number(rawStock)
+
+		return Number.isFinite(stock) ? stock : 0
+	}
+
+	const refreshAppPosCatalog = async () => {
+		await queryClient.invalidateQueries({
+			queryKey: ['apppos', 'products', 'catalog'],
+		})
+
+		await queryClient.refetchQueries({
+			queryKey: ['apppos', 'products', 'catalog'],
+			type: 'active',
+		})
+	}
+
+	const getFreshCatalogProduct = async (productId: string) => {
+		const freshCatalog = await fetchFreshCatalog()
+
+		queryClient.setQueryData(['apppos', 'products', 'catalog'], freshCatalog)
+
+		return (freshCatalog as any[]).find((p) => p.id === productId) ?? null
+	}
+
+	const searchLower = search.trim().toLowerCase()
+
+	const addedProductIds = useMemo(
+		() => new Set(entries.map((e) => e.product_id)),
+		[entries],
+	)
+
+	const searchResults = useMemo(() => {
+		if (!searchLower || searchLower.length < 2) return []
+
+		return (catalog as any[])
+			.filter((p: any) => {
+				if (addedProductIds.has(p.id)) return false
+
+				return (
+					p.name?.toLowerCase().includes(searchLower) ||
+					p.sku?.toLowerCase().includes(searchLower) ||
+					p.barcode?.toLowerCase().includes(searchLower)
+				)
+			})
+			.slice(0, 8)
+	}, [catalog, searchLower, addedProductIds])
+
+	const searchResultProductIds = useMemo(
+		() => [...new Set(searchResults.map((p: any) => p.id))],
+		[searchResults],
+	)
+
+	const {
+		data: lastSearchInventoryByProduct = new Map<string, InventoryEntry>(),
+	} = useQuery({
+		queryKey: [
+			'inventory',
+			'last-search-by-product',
+			session.id,
+			searchResultProductIds,
+		],
+		enabled: searchResultProductIds.length > 0,
+		queryFn: async () => {
+			const productFilter = searchResultProductIds
+				.map((id) => `product_id = "${id}"`)
+				.join(' || ')
+
+			const records = await pb
+				.collection(INVENTORY_ENTRIES_COLLECTION)
+				.getFullList<InventoryEntry>(500, {
+					filter: `(${productFilter}) && status = "counted" && session_id != "${session.id}"`,
+					sort: '-counted_at',
+					$autoCancel: false,
+				})
+
+			const map = new Map<string, InventoryEntry>()
+
+			for (const record of records) {
+				if (!map.has(record.product_id)) {
+					map.set(record.product_id, record)
+				}
+			}
+
+			return map
+		},
+	})
+
+	const handleAddProduct = async (product: any) => {
+		if (isAdding) return
+
+		setIsAdding(true)
+
+		try {
+			const freshProduct = await getFreshCatalogProduct(product.id)
+			const productForSnapshot = freshProduct ?? product
+
+			const categoryId =
+				productForSnapshot.category_id ??
+				productForSnapshot.categories?.[0] ??
+				''
+
+			await createInventoryEntries(pb, session.id, [
+				{
+					product_id: productForSnapshot.id,
+					product_name: productForSnapshot.name ?? '',
+					product_sku: productForSnapshot.sku ?? '',
+					product_barcode: productForSnapshot.barcode ?? '',
+					product_image: productForSnapshot.images ?? '',
+					category_id: categoryId,
+					category_name: session.label ?? 'Session libre',
+					stock_theorique: getProductCurrentStock(productForSnapshot),
+				},
+			])
+
+			queryClient.invalidateQueries({ queryKey: ['inventory'] })
+			setSearch('')
+			searchRef.current?.focus()
+		} catch (err) {
+			console.error('Erreur ajout produit:', err)
+		} finally {
+			setIsAdding(false)
+		}
+	}
+
+	const handleSaveFreeProduct = async (
+		entry: InventoryEntry,
+		value: number,
+	) => {
+		await countProduct(entry, value)
+		await refreshAppPosCatalog()
+	}
+
+	const countedEntries = entries.filter((e) => e.status === 'counted')
+	const canComplete =
+		entries.length > 0 && countedEntries.length === entries.length
+
+	const entryProductIds = useMemo(
+		() => [...new Set(entries.map((e) => e.product_id))],
+		[entries],
+	)
+
+	const { data: lastInventoryByProduct = new Map<string, InventoryEntry>() } =
+		useQuery({
+			queryKey: ['inventory', 'last-by-product', session.id, entryProductIds],
+			enabled: entryProductIds.length > 0,
+			queryFn: async () => {
+				const productFilter = entryProductIds
+					.map((id) => `product_id = "${id}"`)
+					.join(' || ')
+
+				const records = await pb
+					.collection(INVENTORY_ENTRIES_COLLECTION)
+					.getFullList<InventoryEntry>(500, {
+						filter: `(${productFilter}) && status = "counted" && session_id != "${session.id}"`,
+						sort: '-counted_at',
+						$autoCancel: false,
+					})
+
+				const map = new Map<string, InventoryEntry>()
+
+				for (const record of records) {
+					if (!map.has(record.product_id)) {
+						map.set(record.product_id, record)
+					}
+				}
+
+				return map
+			},
+		})
+
+	return (
+		<div className='flex flex-col h-full'>
+			<div className='border-b bg-background/95 px-6 py-4'>
+				<div className='mb-3 flex items-center justify-between gap-3'>
+					<Button
+						variant='ghost'
+						size='sm'
+						onClick={onBack}
+						className='gap-1.5 shrink-0'
+					>
+						<ArrowLeft className='h-4 w-4' />
+						Sessions
+					</Button>
+
+					<div className='flex items-center gap-2'>
+						<Button
+							variant='ghost'
+							size='sm'
+							onClick={onCancel}
+							disabled={isCancelling || isCompleting}
+							className='text-muted-foreground hover:text-destructive gap-1.5'
+						>
+							{isCancelling ? (
+								<Loader2 className='h-3.5 w-3.5 animate-spin' />
+							) : (
+								<X className='h-3.5 w-3.5' />
+							)}
+							Annuler
+						</Button>
+
+						<Button
+							size='sm'
+							onClick={onComplete}
+							disabled={!canComplete || isCompleting || isCancelling}
+							className='bg-green-600 hover:bg-green-700 text-white gap-1.5'
+						>
+							{isCompleting ? (
+								<Loader2 className='h-3.5 w-3.5 animate-spin' />
+							) : (
+								<CheckCircle2 className='h-3.5 w-3.5' />
+							)}
+							Clôturer
+						</Button>
+					</div>
+				</div>
+
+				<div className='flex items-start justify-between gap-4 mb-3'>
+					<div>
+						<h2 className='text-xl font-bold'>
+							{session.label ?? 'Session libre'}
+						</h2>
+						<p className='text-xs text-muted-foreground mt-0.5'>
+							Opérateur : {session.operator} · {entries.length} produit
+							{entries.length > 1 ? 's' : ''} · {countedEntries.length} compté
+							{countedEntries.length > 1 ? 's' : ''}
+						</p>
+					</div>
+
+					{entries.length > 0 && (
+						<div className='text-right shrink-0'>
+							<div className='text-2xl font-black text-orange-500'>
+								{Math.round((countedEntries.length / entries.length) * 100)}%
+							</div>
+							<div className='text-xs text-muted-foreground'>progression</div>
+						</div>
+					)}
+				</div>
+
+				<div className='relative'>
+					<Search className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+					<Input
+						ref={searchRef}
+						placeholder='Rechercher un produit par nom, SKU ou code-barres…'
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+						className='pl-9 pr-8'
+						autoFocus
+					/>
+
+					{search && (
+						<button
+							type='button'
+							onClick={() => setSearch('')}
+							className='absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground'
+						>
+							<X className='h-3.5 w-3.5' />
+						</button>
+					)}
+				</div>
+
+				{searchResults.length > 0 && (
+					<div className='mt-1 rounded-xl border bg-card shadow-lg z-10'>
+						{searchResults.map((product: any) => {
+							const lastInventoryAt =
+								lastSearchInventoryByProduct.get(product.id)?.counted_at ?? null
+
+							return (
+								<button
+									key={product.id}
+									type='button'
+									onClick={() => handleAddProduct(product)}
+									disabled={isAdding}
+									className='w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors border-b last:border-0 text-left'
+								>
+									<PackagePlus className='h-4 w-4 shrink-0 text-orange-500' />
+
+									<div className='min-w-0 flex-1'>
+										<p className='text-sm font-medium truncate'>
+											{product.name}
+										</p>
+
+										<p className='text-xs text-muted-foreground'>
+											{product.sku}
+											{product.barcode ? ` · ${product.barcode}` : ''} · Stock :{' '}
+											<span className='font-medium'>
+												{getProductCurrentStock(product)}
+											</span>
+										</p>
+
+										{lastInventoryAt && (
+											<p className='text-xs text-orange-500 mt-0.5'>
+												Dernier inventaire :{' '}
+												{formatInventoryDateTime(lastInventoryAt)}
+											</p>
+										)}
+									</div>
+
+									<span className='text-xs text-orange-500 font-medium shrink-0'>
+										Ajouter
+									</span>
+								</button>
+							)
+						})}
+					</div>
+				)}
+
+				{searchLower.length >= 2 && searchResults.length === 0 && (
+					<p className='mt-2 text-xs text-muted-foreground'>
+						Aucun résultat pour « {search} »
+					</p>
+				)}
+			</div>
+
+			<div className='flex-1 overflow-y-auto'>
+				{entries.length === 0 ? (
+					<div className='flex flex-col items-center justify-center h-full gap-3 text-muted-foreground'>
+						<PackagePlus className='h-10 w-10 opacity-30' />
+						<p className='text-sm'>
+							Recherchez un produit ci-dessus pour l'ajouter
+						</p>
+					</div>
+				) : (
+					<table className='w-full text-sm'>
+						<thead className='sticky top-0 bg-background border-b'>
+							<tr className='text-xs text-muted-foreground'>
+								<th className='text-left px-6 py-3 font-medium'>Produit</th>
+								<th className='text-center px-3 py-3 font-medium w-24'>
+									Théorique
+								</th>
+								<th className='text-center px-3 py-3 font-medium w-32'>
+									Compté
+								</th>
+								<th className='text-center px-3 py-3 font-medium w-20'>
+									Écart
+								</th>
+								<th className='w-10 px-3 py-3' />
+							</tr>
+						</thead>
+
+						<tbody className='divide-y'>
+							{entries.map((entry) => (
+								<CountingRow
+									key={entry.id}
+									entry={entry}
+									lastInventoryAt={
+										lastInventoryByProduct.get(entry.product_id)?.counted_at ??
+										null
+									}
+									isValidated={false}
+									isCountingProduct={isCountingProduct}
+									onSave={handleSaveFreeProduct}
+									onReset={(entryId) => resetProduct(entryId)}
+								/>
+							))}
+						</tbody>
+					</table>
+				)}
+			</div>
+		</div>
+	)
+}
+
+// ============================================================================
+// SOUS-VUES
 // ============================================================================
 function SessionOverviewView({
 	session,
@@ -979,13 +1344,10 @@ function SessionOverviewView({
 }) {
 	const isValidated = (catId: string) =>
 		session.validated_category_ids?.includes(catId) ?? false
-
 	const categoriesWithValidation = summary.categories.map((c) => ({
 		...c,
 		status: isValidated(c.categoryId) ? ('validated' as const) : c.status,
 	}))
-
-	// ── Blocs "que reste-t-il" ────────────────────────────────────────────────
 	const todo = categoriesWithValidation.filter((c) => c.status === 'todo')
 	const inProgress = categoriesWithValidation.filter(
 		(c) => c.status === 'in_progress',
@@ -996,7 +1358,6 @@ function SessionOverviewView({
 
 	return (
 		<div className='flex flex-col h-full'>
-			{/* ── Header ──────────────────────────────────────────────────────── */}
 			<div className='border-b bg-background/95 px-6 py-4'>
 				<div className='mb-4 flex items-center justify-between gap-3'>
 					<Button
@@ -1008,7 +1369,6 @@ function SessionOverviewView({
 						<ArrowLeft className='h-4 w-4' />
 						Sessions
 					</Button>
-
 					<div className='flex items-center gap-2'>
 						<Button
 							variant='ghost'
@@ -1056,7 +1416,6 @@ function SessionOverviewView({
 									En cours
 								</Badge>
 							</div>
-
 							<div className='flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground'>
 								<span className='inline-flex items-center gap-1.5'>
 									<Clock className='h-4 w-4' />
@@ -1068,7 +1427,6 @@ function SessionOverviewView({
 								<span>Opérateur : {session.operator}</span>
 							</div>
 						</div>
-
 						<div className='w-full lg:w-72'>
 							<div className='mb-1.5 flex items-center justify-between text-xs'>
 								<span className='font-medium text-muted-foreground'>
@@ -1088,17 +1446,14 @@ function SessionOverviewView({
 
 					{inProgress.length > 0 && (
 						<div className='mt-4 rounded-2xl border border-blue-200 bg-blue-50/60 px-3 py-3 dark:border-blue-800 dark:bg-blue-900/10'>
-							<div className='mb-3 flex items-center justify-between gap-3'>
-								<div>
-									<p className='text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300'>
-										Continuer la session
-									</p>
-									<p className='text-sm text-blue-700/80 dark:text-blue-300/80'>
-										Reprenez d'abord les rayons déjà commencés.
-									</p>
-								</div>
+							<div className='mb-3'>
+								<p className='text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300'>
+									Continuer la session
+								</p>
+								<p className='text-sm text-blue-700/80 dark:text-blue-300/80'>
+									Reprenez d'abord les rayons déjà commencés.
+								</p>
 							</div>
-
 							<div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
 								{inProgress.map((cat) => (
 									<button
@@ -1148,7 +1503,6 @@ function SessionOverviewView({
 								{todo.length + inProgress.length > 1 ? 's' : ''} à finir
 							</div>
 						</div>
-
 						<div className='rounded-xl border border-green-200/80 bg-green-50/50 px-4 py-3 dark:border-green-800 dark:bg-green-900/10'>
 							<div className='flex items-center gap-1.5 text-xs font-semibold text-green-700 dark:text-green-300'>
 								<CheckCircle2 className='h-3.5 w-3.5' />
@@ -1162,7 +1516,6 @@ function SessionOverviewView({
 								{done.length > 1 ? 's' : ''}
 							</div>
 						</div>
-
 						<div
 							className={cn(
 								'rounded-xl border px-4 py-3',
@@ -1200,9 +1553,7 @@ function SessionOverviewView({
 				</div>
 			</div>
 
-			{/* ── Liste catégories ──────────────────────────────────────────── */}
 			<div className='flex-1 overflow-y-auto divide-y'>
-				{/* Pas encore commencées — en premier si todo > 0 */}
 				{todo.length > 0 && (
 					<div className='px-6 pt-3 pb-1'>
 						<p className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
@@ -1218,8 +1569,6 @@ function SessionOverviewView({
 						onSelectCategory={onSelectCategory}
 					/>
 				))}
-
-				{/* En cours */}
 				{inProgress.length > 0 && (
 					<div className='px-6 pt-3 pb-1'>
 						<p className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
@@ -1234,8 +1583,6 @@ function SessionOverviewView({
 						onSelectCategory={onSelectCategory}
 					/>
 				))}
-
-				{/* Terminées */}
 				{done.length > 0 && (
 					<div className='px-6 pt-3 pb-1'>
 						<p className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
@@ -1256,7 +1603,6 @@ function SessionOverviewView({
 	)
 }
 
-// Composant ligne catégorie extrait pour éviter la répétition
 function CategoryRow({
 	cat,
 	onSelectCategory,
@@ -1270,7 +1616,6 @@ function CategoryRow({
 }) {
 	const progress =
 		cat.totalProducts > 0 ? (cat.countedProducts / cat.totalProducts) * 100 : 0
-
 	return (
 		<button
 			type='button'
@@ -1285,7 +1630,6 @@ function CategoryRow({
 		>
 			<div className='flex items-center gap-4 rounded-xl border border-transparent p-3'>
 				<CategoryStatusIcon status={cat.status} />
-
 				<div className='min-w-0 flex-1'>
 					<div className='flex flex-wrap items-center gap-2'>
 						<span className='truncate text-base font-bold text-foreground'>
@@ -1299,16 +1643,13 @@ function CategoryRow({
 							</span>
 						)}
 					</div>
-
 					<div className='mt-1 text-sm text-muted-foreground'>
 						{cat.countedProducts}/{cat.totalProducts} produits
 					</div>
-
 					<div className='mt-2 max-w-xl'>
 						<Progress value={progress} className='h-1.5' />
 					</div>
 				</div>
-
 				{!validated && (
 					<ChevronRight className='h-4 w-4 shrink-0 text-muted-foreground' />
 				)}
@@ -1321,12 +1662,14 @@ function CountingRow({
 	entry,
 	isValidated,
 	isCountingProduct,
+	lastInventoryAt,
 	onSave,
 	onReset,
 }: {
 	entry: InventoryEntry
 	isValidated: boolean
 	isCountingProduct: boolean
+	lastInventoryAt?: string | null
 	onSave: (entry: InventoryEntry, value: number) => void
 	onReset: (entryId: string) => void
 }) {
@@ -1335,7 +1678,6 @@ function CountingRow({
 			? String(entry.stock_compte)
 			: '',
 	)
-
 	const isCounted = entry.status === 'counted'
 	const isAdjusted = entry.adjusted
 	const ecart =
@@ -1351,9 +1693,8 @@ function CountingRow({
 	}
 
 	useEffect(() => {
-		if (entry.status === 'counted' && entry.stock_compte !== null) {
+		if (entry.status === 'counted' && entry.stock_compte !== null)
 			setLocalValue(String(entry.stock_compte))
-		}
 	}, [entry.status, entry.stock_compte])
 
 	return (
@@ -1397,6 +1738,11 @@ function CountingRow({
 								{entry.product_barcode}
 							</div>
 						)}
+						{lastInventoryAt && (
+							<div className='text-xs text-orange-500'>
+								Dernier inventaire : {formatInventoryDateTime(lastInventoryAt)}
+							</div>
+						)}
 						{entry.counted_at && (
 							<div className='text-xs text-muted-foreground'>
 								Compté le {formatInventoryDateTime(entry.counted_at)}
@@ -1410,13 +1756,11 @@ function CountingRow({
 					</div>
 				</div>
 			</td>
-
 			<td className='px-3 py-3 text-center'>
 				<span className='text-muted-foreground font-mono'>
 					{entry.stock_theorique}
 				</span>
 			</td>
-
 			<td className='px-3 py-3 text-center'>
 				{isValidated ? (
 					<span className='font-mono font-medium'>
@@ -1442,7 +1786,6 @@ function CountingRow({
 					/>
 				)}
 			</td>
-
 			<td className='px-3 py-3 text-center'>
 				{ecart !== null ? (
 					<EcartBadge ecart={ecart} />
@@ -1450,7 +1793,6 @@ function CountingRow({
 					<span className='text-muted-foreground/40 text-sm'>…</span>
 				)}
 			</td>
-
 			{!isValidated && (
 				<td className='px-3 py-3 text-center'>
 					{isCounted && (
@@ -1510,9 +1852,7 @@ function CategoryCountingView({
 	}, [catEntries, searchQuery])
 
 	useEffect(() => {
-		if (!entriesLoading) {
-			setTimeout(() => searchRef.current?.focus(), 100)
-		}
+		if (!entriesLoading) setTimeout(() => searchRef.current?.focus(), 100)
 	}, [entriesLoading])
 
 	const isValidated =
@@ -1526,13 +1866,12 @@ function CategoryCountingView({
 			e.stock_compte !== e.stock_theorique,
 	).length
 
-	if (entriesLoading) {
+	if (entriesLoading)
 		return (
 			<div className='flex items-center justify-center h-64'>
 				<Loader2 className='h-6 w-6 animate-spin text-muted-foreground' />
 			</div>
 		)
-	}
 
 	return (
 		<div className='flex flex-col h-full'>
@@ -1552,8 +1891,7 @@ function CategoryCountingView({
 						)}
 					</div>
 					<p className='text-xs text-muted-foreground'>
-						{countedEntries.length}/{catEntries.length} comptés
-						{' · '}
+						{countedEntries.length}/{catEntries.length} comptés ·{' '}
 						{adjustedEntries.length} ajusté
 						{adjustedEntries.length > 1 ? 's' : ''} AppPOS
 						{gapsCount > 0 && (
@@ -1564,7 +1902,6 @@ function CategoryCountingView({
 					</p>
 				</div>
 			</div>
-
 			<div className='px-6 py-2 border-b bg-muted/30'>
 				<div className='relative max-w-sm'>
 					<Search className='absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none' />
@@ -1595,7 +1932,6 @@ function CategoryCountingView({
 					</p>
 				)}
 			</div>
-
 			<div className='flex-1 overflow-y-auto'>
 				<table className='w-full text-sm'>
 					<thead className='sticky top-0 bg-background border-b'>
@@ -1641,14 +1977,9 @@ function SessionDetailView({
 	sessionId,
 	sessionDate,
 	onBack,
-}: {
-	sessionId: string
-	sessionDate: string
-	onBack: () => void
-}) {
+}: { sessionId: string; sessionDate: string; onBack: () => void }) {
 	const { data, isLoading } = useInventorySessionDetail(sessionId)
 	const [openCategoryId, setOpenCategoryId] = useState<string | null>(null)
-
 	return (
 		<div className='flex flex-col h-full'>
 			<div className='px-6 py-4 border-b flex items-center gap-4 shrink-0'>
@@ -1681,7 +2012,6 @@ function SessionDetailView({
 					)}
 				</div>
 			</div>
-
 			<div className='flex-1 overflow-y-auto'>
 				{isLoading ? (
 					<div className='flex items-center justify-center h-40'>
@@ -1763,7 +2093,6 @@ function SessionDetailView({
 																{entry.product_barcode && (
 																	<span>{entry.product_barcode}</span>
 																)}
-																{/* ✅ Date de comptage */}
 																{entry.counted_at && (
 																	<>
 																		{(entry.product_sku ||
@@ -1826,7 +2155,6 @@ function SessionDetailView({
 function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 	const [page, setPage] = useState(1)
 	const { data, isLoading } = useInventoryHistory(page)
-
 	const sessions = data?.items ?? []
 	const totalPages = data?.totalPages ?? 1
 	const [selectedSession, setSelectedSession] = useState<{
@@ -1844,7 +2172,7 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 		return m > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${h}h`
 	}
 
-	if (selectedSession) {
+	if (selectedSession)
 		return (
 			<SessionDetailView
 				sessionId={selectedSession.id}
@@ -1852,7 +2180,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 				onBack={() => setSelectedSession(null)}
 			/>
 		)
-	}
 
 	return (
 		<div className='flex flex-col h-full'>
@@ -1866,7 +2193,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 					{sessions.length} session{sessions.length > 1 ? 's' : ''}
 				</span>
 			</div>
-
 			<div className='flex-1 overflow-y-auto'>
 				{isLoading ? (
 					<div className='flex items-center justify-center h-40'>
@@ -1893,7 +2219,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 								totalProducts > 0
 									? Math.round((countedProducts / totalProducts) * 100)
 									: 0
-
 							return (
 								<button
 									key={session.id}
@@ -1920,19 +2245,19 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 											<X className='h-5 w-5 text-muted-foreground' />
 										)}
 									</div>
-
 									<div className='flex-1 min-w-0'>
 										<div className='flex items-center gap-2 mb-1'>
 											<span className='font-medium text-sm'>
 												{new Date(session.started_at).toLocaleDateString(
 													'fr-FR',
-													{
-														day: '2-digit',
-														month: 'long',
-														year: 'numeric',
-													},
+													{ day: '2-digit', month: 'long', year: 'numeric' },
 												)}
 											</span>
+											{session.scope === 'free' && session.label && (
+												<span className='text-xs font-medium text-orange-600 dark:text-orange-400'>
+													· {session.label}
+												</span>
+											)}
 											<span
 												className={cn(
 													'text-xs px-2 py-0.5 rounded-full font-medium shrink-0',
@@ -1946,16 +2271,17 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 													: `Interrompu (${progressPct}% fait)`}
 											</span>
 										</div>
-
 										<div className='flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground'>
 											<span className='font-medium text-foreground/70'>
 												{session.operator}
 											</span>
 											<span>·</span>
 											<span>
-												{session.scope === 'all'
-													? 'Catalogue complet'
-													: `${session.scope_category_ids?.length ?? 0} catégorie(s)`}
+												{session.scope === 'free'
+													? 'Session libre'
+													: session.scope === 'all'
+														? 'Catalogue complet'
+														: `${session.scope_category_ids?.length ?? 0} catégorie(s)`}
 											</span>
 											{duration && (
 												<>
@@ -1967,7 +2293,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 												</>
 											)}
 										</div>
-
 										{hasStats && (
 											<div className='flex flex-wrap items-center gap-x-3 mt-1 text-xs'>
 												<span className='text-muted-foreground'>
@@ -2002,7 +2327,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 												)}
 											</div>
 										)}
-
 										{categoryNames.length > 0 && (
 											<div className='flex flex-wrap gap-1 mt-1.5'>
 												{categoryNames.slice(0, 5).map((name) => (
@@ -2021,7 +2345,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 											</div>
 										)}
 									</div>
-
 									<ChevronRight className='h-4 w-4 text-muted-foreground shrink-0' />
 								</button>
 							)
@@ -2029,8 +2352,6 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 					</div>
 				)}
 			</div>
-
-			{/* --- NOUVEAU : Contrôles de pagination --- */}
 			{totalPages > 1 && (
 				<div className='flex items-center justify-between px-6 py-4 border-t'>
 					<Button
@@ -2041,11 +2362,9 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 					>
 						Précédent
 					</Button>
-
 					<span className='text-sm text-muted-foreground'>
 						Page {page} sur {totalPages}
 					</span>
-
 					<Button
 						variant='outline'
 						size='sm'
@@ -2073,14 +2392,12 @@ function InventoryHomeView({
 	onStart: () => void
 	isStarting: boolean
 }) {
-	if (sessionsLoading) {
+	if (sessionsLoading)
 		return (
 			<div className='flex items-center justify-center h-full min-h-[400px]'>
 				<Loader2 className='h-6 w-6 animate-spin text-orange-500' />
 			</div>
 		)
-	}
-
 	return (
 		<div className='flex flex-col h-full overflow-y-auto'>
 			{activeSessions.length > 0 && (
@@ -2088,7 +2405,6 @@ function InventoryHomeView({
 					<div className='mb-4'>
 						<GlobalInventoryCapitalStats activeSessions={activeSessions} />
 					</div>
-
 					<div className='mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
 						<div>
 							<h2 className='text-sm font-semibold text-muted-foreground uppercase tracking-wider'>
@@ -2099,7 +2415,6 @@ function InventoryHomeView({
 								arrêté.
 							</p>
 						</div>
-
 						<Button
 							variant='outline'
 							onClick={() =>
@@ -2111,7 +2426,6 @@ function InventoryHomeView({
 							Continuer la plus récente
 						</Button>
 					</div>
-
 					<div className='grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3'>
 						{activeSessions.map((session) => (
 							<SessionCard
@@ -2123,7 +2437,6 @@ function InventoryHomeView({
 					</div>
 				</div>
 			)}
-
 			<div
 				className={cn(
 					'flex flex-col items-center justify-center gap-8 px-6',
@@ -2142,7 +2455,6 @@ function InventoryHomeView({
 						</p>
 					</div>
 				)}
-
 				<Button
 					size='lg'
 					className='gap-2 bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/20 px-8'
@@ -2158,7 +2470,6 @@ function InventoryHomeView({
 						? 'Démarrer un nouvel inventaire'
 						: 'Démarrer un inventaire'}
 				</Button>
-
 				{activeSessions.length === 0 && (
 					<div className='flex gap-8 text-center text-sm text-muted-foreground'>
 						<div>
@@ -2185,10 +2496,7 @@ function InventoryHomeView({
 function SessionCard({
 	session,
 	onSelect,
-}: {
-	session: InventorySession
-	onSelect: () => void
-}) {
+}: { session: InventorySession; onSelect: () => void }) {
 	const { data: progress } = useSessionProgress(session.id)
 	const { entries } = useInventorySession(session.id)
 	const lastCountedAt = useMemo(() => getLastCountedAt(entries), [entries])
@@ -2198,7 +2506,10 @@ function SessionCard({
 	const pending = Math.max(total - counted, 0)
 	const percent = total > 0 ? Math.round((counted / total) * 100) : 0
 	const categoryNames = progress?.categoryNames ?? []
-	const primaryCategory = getPrimaryCategoryLabel(categoryNames)
+	const primaryCategory =
+		session.scope === 'free'
+			? (session.label ?? 'Session libre')
+			: getPrimaryCategoryLabel(categoryNames)
 
 	return (
 		<button
@@ -2210,7 +2521,6 @@ function SessionCard({
 				<div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500'>
 					<ClipboardList className='h-5 w-5' />
 				</div>
-
 				<div className='min-w-0 flex-1'>
 					<div className='flex flex-wrap items-center gap-2'>
 						<h3 className='truncate text-base font-bold text-foreground'>
@@ -2227,7 +2537,6 @@ function SessionCard({
 							{getInventoryStatusLabel(session.status)}
 						</span>
 					</div>
-
 					<div className='mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground'>
 						<span className='inline-flex items-center gap-1'>
 							<Clock className='h-3.5 w-3.5' />
@@ -2235,7 +2544,6 @@ function SessionCard({
 						</span>
 						<span>Opérateur : {session.operator}</span>
 					</div>
-
 					<div className='mt-3 grid grid-cols-2 gap-2'>
 						<div className='rounded-xl border border-border/70 bg-muted/30 px-3 py-2'>
 							<div className='text-[11px] uppercase tracking-wide text-muted-foreground'>
@@ -2251,7 +2559,6 @@ function SessionCard({
 								/>
 							</div>
 						</div>
-
 						<div className='rounded-xl border border-border/70 bg-muted/30 px-3 py-2'>
 							<div className='text-[11px] uppercase tracking-wide text-muted-foreground'>
 								À compter
@@ -2264,10 +2571,9 @@ function SessionCard({
 							</div>
 						</div>
 					</div>
-
-					<div className='mt-3 flex items-center justify-between gap-3'>
-						<div className='min-w-0 flex-1'>
-							{categoryNames.length > 1 && (
+					{session.scope !== 'free' && categoryNames.length > 1 && (
+						<div className='mt-3 flex items-center justify-between gap-3'>
+							<div className='min-w-0 flex-1'>
 								<div className='flex flex-wrap gap-1.5'>
 									{categoryNames.slice(0, 3).map((name) => (
 										<span
@@ -2283,14 +2589,21 @@ function SessionCard({
 										</span>
 									)}
 								</div>
-							)}
+							</div>
+							<div className='inline-flex items-center gap-2 rounded-full bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white'>
+								Continuer
+								<ChevronRight className='h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5' />
+							</div>
 						</div>
-
-						<div className='inline-flex items-center gap-2 rounded-full bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white'>
-							Continuer
-							<ChevronRight className='h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5' />
+					)}
+					{session.scope === 'free' && (
+						<div className='mt-3 flex justify-end'>
+							<div className='inline-flex items-center gap-2 rounded-full bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white'>
+								Continuer
+								<ChevronRight className='h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5' />
+							</div>
 						</div>
-					</div>
+					)}
 				</div>
 			</div>
 		</button>
@@ -2298,7 +2611,7 @@ function SessionCard({
 }
 
 // ============================================================================
-// PAGE PRINCIPALE — wrappée dans ModulePageShell
+// PAGE PRINCIPALE
 // ============================================================================
 export function InventoryPageAppPos() {
 	const [view, setView] = useState<PageView>('home')
@@ -2312,30 +2625,6 @@ export function InventoryPageAppPos() {
 	const { user } = useAuth()
 	const userName = (user as any)?.name || (user as any)?.username || ''
 
-	const [showAppPosAuth, setShowAppPosAuth] = useState(() => !getAppPosToken())
-	const [appPosPassword, setAppPosPassword] = useState('')
-	const [appPosAuthError, setAppPosAuthError] = useState<string | null>(null)
-	const [appPosAuthLoading, setAppPosAuthLoading] = useState(false)
-
-	const handleAppPosLogin = async () => {
-		setAppPosAuthLoading(true)
-		setAppPosAuthError(null)
-		try {
-			const res = await loginToAppPos('admin', appPosPassword)
-			if (res.success && res.token) {
-				setShowAppPosAuth(false)
-				setAppPosPassword('')
-			} else {
-				setAppPosAuthError('Mot de passe incorrect')
-			}
-		} catch {
-			setAppPosAuthError('Mot de passe incorrect')
-		} finally {
-			setAppPosAuthLoading(false)
-		}
-	}
-
-	// ⚠️ Tous les hooks avant les returns conditionnels
 	const { data: activeSessions = [], isLoading: sessionsLoading } =
 		useActiveSessions()
 	const createSession = useCreateInventorySession()
@@ -2352,7 +2641,6 @@ export function InventoryPageAppPos() {
 		isCompletingSession,
 		isCancellingSession,
 	} = useInventorySession(selectedSessionId ?? undefined)
-
 	const currentSessionLastCountedAt = useMemo(
 		() => getLastCountedAt(entries),
 		[entries],
@@ -2370,57 +2658,6 @@ export function InventoryPageAppPos() {
 		}
 	}, [activeSessions, selectedSessionId, sessionsLoading])
 
-	// ── Contenu selon l'état d'auth AppPOS ───────────────────────────────────
-	const authContent = showAppPosAuth ? (
-		<div className='flex items-center justify-center h-full min-h-[400px]'>
-			<div className='w-full max-w-sm border rounded-xl p-6 bg-card shadow-md'>
-				<div className='flex items-center gap-3 mb-6'>
-					<div className='w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center'>
-						<ClipboardList className='h-5 w-5 text-orange-500' />
-					</div>
-					<div>
-						<h2 className='text-base font-medium'>Accès inventaire</h2>
-						<p className='text-xs text-muted-foreground'>
-							Code administrateur requis
-						</p>
-					</div>
-				</div>
-				<div className='space-y-4'>
-					<div className='space-y-2'>
-						<Label htmlFor='apppos-password'>Mot de passe AppPOS</Label>
-						<Input
-							id='apppos-password'
-							type='password'
-							placeholder='••••••••'
-							value={appPosPassword}
-							onChange={(e) => setAppPosPassword(e.target.value)}
-							onKeyDown={(e) => e.key === 'Enter' && handleAppPosLogin()}
-							autoFocus
-						/>
-					</div>
-					{appPosAuthError && (
-						<p className='text-sm text-destructive'>{appPosAuthError}</p>
-					)}
-					<Button
-						className='w-full'
-						onClick={handleAppPosLogin}
-						disabled={appPosAuthLoading || !appPosPassword}
-					>
-						{appPosAuthLoading ? (
-							<>
-								<Loader2 className='h-4 w-4 animate-spin mr-2' />
-								Connexion...
-							</>
-						) : (
-							'Déverrouiller'
-						)}
-					</Button>
-				</div>
-			</div>
-		</div>
-	) : null
-
-	// ── Handlers ─────────────────────────────────────────────────────────────
 	const handleSelectSession = (session: InventorySession) => {
 		setSelectedSessionId(session.id)
 		setView('overview')
@@ -2428,13 +2665,15 @@ export function InventoryPageAppPos() {
 
 	const handleCreateConfirm = async (
 		operator: string,
-		scope: 'selection',
+		scope: 'selection' | 'free',
 		categoryIds: string[],
+		label?: string,
 	) => {
 		const result = await createSession.mutateAsync({
 			operator,
 			scope,
 			scope_category_ids: categoryIds,
+			label: label ?? null,
 		})
 		setShowCreateDialog(false)
 		setSelectedSessionId(result.session.id)
@@ -2465,7 +2704,6 @@ export function InventoryPageAppPos() {
 		setView('home')
 	}
 
-	// Badge sessions actives pour le shell
 	const sessionsBadge =
 		activeSessions.length > 0 ? (
 			<StatusBadge label={`${activeSessions.length} en cours`} variant='info' />
@@ -2476,143 +2714,143 @@ export function InventoryPageAppPos() {
 			manifest={inventoryManifest as any}
 			badge={sessionsBadge}
 			actions={
-				!showAppPosAuth ? (
-					<Button
-						variant='outline'
-						size='sm'
-						className='gap-1.5'
-						onClick={() => setView('history')}
-					>
-						<History className='h-3.5 w-3.5' />
-						Historique
-					</Button>
-				) : undefined
+				<Button
+					variant='outline'
+					size='sm'
+					className='gap-1.5'
+					onClick={() => setView('history')}
+				>
+					<History className='h-3.5 w-3.5' />
+					Historique
+				</Button>
 			}
 		>
-			{/* Auth AppPOS */}
-			{authContent}
-
-			{/* Contenu principal */}
-			{!showAppPosAuth && (
-				<div className='flex flex-col h-full -m-6 overflow-hidden'>
-					{/* Écran progression création */}
-					{creationProgress && (
-						<div className='flex flex-col items-center justify-center h-full gap-6'>
-							<div className='w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center'>
-								<Loader2 className='h-8 w-8 text-orange-500 animate-spin' />
-							</div>
-							<div className='text-center'>
-								<h3 className='text-lg font-semibold mb-1'>
-									Création du snapshot en cours...
-								</h3>
-								<p className='text-sm text-muted-foreground mb-4'>
-									{creationProgress.done} / {creationProgress.total} produits
-									enregistrés
-								</p>
-								<div className='w-72'>
-									<div className='h-2 bg-muted rounded-full overflow-hidden'>
-										<div
-											className='h-full bg-orange-500 rounded-full transition-all duration-300'
-											style={{
-												width: `${Math.round((creationProgress.done / creationProgress.total) * 100)}%`,
-											}}
-										/>
-									</div>
-									<p className='text-xs text-muted-foreground mt-1 text-right'>
-										{Math.round(
-											(creationProgress.done / creationProgress.total) * 100,
-										)}
-										%
-									</p>
+			<div className='flex flex-col h-full -m-6 overflow-hidden'>
+				{creationProgress && (
+					<div className='flex flex-col items-center justify-center h-full gap-6'>
+						<div className='w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center'>
+							<Loader2 className='h-8 w-8 text-orange-500 animate-spin' />
+						</div>
+						<div className='text-center'>
+							<h3 className='text-lg font-semibold mb-1'>
+								Création du snapshot en cours...
+							</h3>
+							<p className='text-sm text-muted-foreground mb-4'>
+								{creationProgress.done} / {creationProgress.total} produits
+								enregistrés
+							</p>
+							<div className='w-72'>
+								<div className='h-2 bg-muted rounded-full overflow-hidden'>
+									<div
+										className='h-full bg-orange-500 rounded-full transition-all duration-300'
+										style={{
+											width: `${Math.round((creationProgress.done / creationProgress.total) * 100)}%`,
+										}}
+									/>
 								</div>
+								<p className='text-xs text-muted-foreground mt-1 text-right'>
+									{Math.round(
+										(creationProgress.done / creationProgress.total) * 100,
+									)}
+									%
+								</p>
 							</div>
 						</div>
-					)}
+					</div>
+				)}
 
-					{view === 'home' && !creationProgress && (
-						<InventoryHomeView
-							activeSessions={activeSessions}
-							sessionsLoading={sessionsLoading}
-							onSelectSession={handleSelectSession}
-							onStart={() => setShowCreateDialog(true)}
-							isStarting={createSession.isPending}
-						/>
-					)}
-
-					{view === 'overview' &&
-						currentSession &&
-						!creationProgress &&
-						(entriesLoading || !summary ? (
-							<div className='flex flex-col items-center justify-center h-full gap-4'>
-								<Loader2 className='h-6 w-6 animate-spin text-orange-500' />
-								<p className='text-sm text-muted-foreground'>
-									Chargement des produits...
-								</p>
-							</div>
-						) : summary.totalProducts === 0 ? (
-							<div className='flex flex-col items-center justify-center h-full gap-4'>
-								<p className='text-sm text-muted-foreground'>
-									Aucun produit dans cette session.
-								</p>
-								<Button
-									variant='outline'
-									size='sm'
-									onClick={() => window.location.reload()}
-									className='gap-2'
-								>
-									<RotateCcw className='h-3.5 w-3.5' />
-									Rafraîchir la page
-								</Button>
-							</div>
-						) : (
-							<SessionOverviewView
-								session={currentSession}
-								summary={summary}
-								lastCountedAt={currentSessionLastCountedAt}
-								onSelectCategory={(catId) => {
-									const cat = summary.categories.find(
-										(c) => c.categoryId === catId,
-									)
-									handleSelectCategory(catId, cat?.categoryName ?? '')
-								}}
-								onComplete={handleCompleteSession}
-								onCancel={handleCancelSession}
-								onBack={() => setView('home')}
-								isCompleting={isCompletingSession}
-								isCancelling={isCancellingSession}
-							/>
-						))}
-
-					{view === 'history' && (
-						<InventoryHistoryView onBack={() => setView('home')} />
-					)}
-
-					{view === 'counting' && currentSession && activeCategoryId && (
-						<CategoryCountingView
-							sessionId={currentSession.id}
-							session={currentSession}
-							categoryId={activeCategoryId}
-							categoryName={activeCategoryName}
-							onBack={() => setView('overview')}
-						/>
-					)}
-
-					<CreateSessionDialog
-						open={showCreateDialog}
-						onClose={() => setShowCreateDialog(false)}
-						onConfirm={handleCreateConfirm}
-						isLoading={createSession.isPending}
+				{view === 'home' && !creationProgress && (
+					<InventoryHomeView
 						activeSessions={activeSessions}
-						defaultOperator={userName}
+						sessionsLoading={sessionsLoading}
+						onSelectSession={handleSelectSession}
+						onStart={() => setShowCreateDialog(true)}
+						isStarting={createSession.isPending}
 					/>
+				)}
 
-					{createSession.error && (
-						<div className='fixed bottom-4 right-4 bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive shadow-lg max-w-sm'>
-							{(createSession.error as Error).message}
+				{view === 'overview' &&
+					currentSession &&
+					!creationProgress &&
+					(currentSession.scope === 'free' ? (
+						<FreeSessionView
+							session={currentSession}
+							onComplete={handleCompleteSession}
+							onCancel={handleCancelSession}
+							onBack={() => setView('home')}
+							isCompleting={isCompletingSession}
+							isCancelling={isCancellingSession}
+						/>
+					) : entriesLoading || !summary ? (
+						<div className='flex flex-col items-center justify-center h-full gap-4'>
+							<Loader2 className='h-6 w-6 animate-spin text-orange-500' />
+							<p className='text-sm text-muted-foreground'>
+								Chargement des produits...
+							</p>
 						</div>
-					)}
-				</div>
-			)}
+					) : summary.totalProducts === 0 ? (
+						<div className='flex flex-col items-center justify-center h-full gap-4'>
+							<p className='text-sm text-muted-foreground'>
+								Aucun produit dans cette session.
+							</p>
+							<Button
+								variant='outline'
+								size='sm'
+								onClick={() => window.location.reload()}
+								className='gap-2'
+							>
+								<RotateCcw className='h-3.5 w-3.5' />
+								Rafraîchir la page
+							</Button>
+						</div>
+					) : (
+						<SessionOverviewView
+							session={currentSession}
+							summary={summary}
+							lastCountedAt={currentSessionLastCountedAt}
+							onSelectCategory={(catId) => {
+								const cat = summary.categories.find(
+									(c) => c.categoryId === catId,
+								)
+								handleSelectCategory(catId, cat?.categoryName ?? '')
+							}}
+							onComplete={handleCompleteSession}
+							onCancel={handleCancelSession}
+							onBack={() => setView('home')}
+							isCompleting={isCompletingSession}
+							isCancelling={isCancellingSession}
+						/>
+					))}
+
+				{view === 'history' && (
+					<InventoryHistoryView onBack={() => setView('home')} />
+				)}
+
+				{view === 'counting' && currentSession && activeCategoryId && (
+					<CategoryCountingView
+						sessionId={currentSession.id}
+						session={currentSession}
+						categoryId={activeCategoryId}
+						categoryName={activeCategoryName}
+						onBack={() => setView('overview')}
+					/>
+				)}
+
+				<CreateSessionDialog
+					open={showCreateDialog}
+					onClose={() => setShowCreateDialog(false)}
+					onConfirm={handleCreateConfirm}
+					isLoading={createSession.isPending}
+					activeSessions={activeSessions}
+					defaultOperator={userName}
+				/>
+
+				{createSession.error && (
+					<div className='fixed bottom-4 right-4 bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive shadow-lg max-w-sm'>
+						{(createSession.error as Error).message}
+					</div>
+				)}
+			</div>
 		</ModulePageShell>
 	)
 }

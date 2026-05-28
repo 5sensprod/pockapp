@@ -85,6 +85,7 @@ export async function createInventorySession(
 		completed_at: null,
 		operator: input.operator,
 		scope: input.scope,
+		label: input.label ?? null,
 		scope_category_ids: input.scope_category_ids ?? [],
 		validated_category_ids: [],
 		apppos_snapshot_at: new Date().toISOString(),
