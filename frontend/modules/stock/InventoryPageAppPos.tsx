@@ -121,54 +121,70 @@ function formatInventoryActivityLabel(
 		: `Créée · ${formatInventoryDateTime(startedAt)}`
 }
 
-function GlobalInventoryCapitalStats({
-	activeSessions,
-}: { activeSessions: InventorySession[] }) {
-	const { data: history } = useInventoryHistory()
+async function getInventoriedProductIds(
+	pb: ReturnType<typeof usePocketBase>,
+): Promise<string[]> {
+	const records = await pb
+		.collection(INVENTORY_ENTRIES_COLLECTION)
+		.getFullList<Pick<InventoryEntry, 'product_id'>>(500, {
+			filter: 'status = "counted"',
+			fields: 'product_id',
+			$autoCancel: false,
+		})
+
+	return [
+		...new Set(records.map((record) => record.product_id).filter(Boolean)),
+	]
+}
+
+function GlobalInventoryCapitalStats() {
+	const pb = usePocketBase()
+
 	const { data: catalogProducts = [], isLoading: catalogLoading } = useQuery({
 		queryKey: ['apppos', 'products', 'catalog'],
 		queryFn: async () => {
 			const products = await appPosApi.getProducts()
 			return appPosTransformers.products(products)
 		},
-		staleTime: 10 * 60 * 1000,
+		staleTime: 0,
 		gcTime: 60 * 60 * 1000,
-		refetchOnMount: false,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
+		refetchOnMount: 'always',
+		refetchOnWindowFocus: true,
+		refetchOnReconnect: true,
 	})
 
-	const countedProducts = useMemo(() => {
-		const countedProductIds = new Set<string>()
-		let fallbackCount = 0
-		for (const session of activeSessions) {
-			for (const entry of (session as any).entries ?? []) {
-				if (entry.status === 'counted' || entry.stock_compte !== null) {
-					countedProductIds.add(entry.product_id)
-				}
-			}
-			if (((session as any).entries ?? []).length === 0) {
-				fallbackCount += session.stats_counted_products ?? 0
-			}
-		}
-		for (const session of history?.items ?? []) {
-			if (session.status !== 'completed') continue
-			const entries = (session as any).entries ?? []
-			if (entries.length === 0) {
-				fallbackCount += session.stats_counted_products ?? 0
-				continue
-			}
-			for (const entry of entries) {
-				if (entry.status === 'counted' || entry.stock_compte !== null) {
-					countedProductIds.add(entry.product_id)
-				}
-			}
-		}
-		return countedProductIds.size > 0 ? countedProductIds.size : fallbackCount
-	}, [activeSessions, history])
+	const { data: inventoriedProductIds = [], isLoading: inventoriedLoading } =
+		useQuery({
+			queryKey: ['inventory', 'inventoried-product-ids'],
+			queryFn: () => getInventoriedProductIds(pb),
+			staleTime: 0,
+			gcTime: 10 * 60 * 1000,
+			refetchOnMount: 'always',
+			refetchOnWindowFocus: true,
+			refetchOnReconnect: true,
+		})
+
+	const inventoriedProductIdSet = useMemo(
+		() => new Set(inventoriedProductIds),
+		[inventoriedProductIds],
+	)
 
 	const totalProducts = catalogProducts.length
-	const remainingProducts = Math.max(totalProducts - countedProducts, 0)
+
+	const countedProducts = useMemo(() => {
+		return catalogProducts.filter((product: any) =>
+			inventoriedProductIdSet.has(product.id),
+		).length
+	}, [catalogProducts, inventoriedProductIdSet])
+
+	const neverInventoriedCount = useMemo(() => {
+		return catalogProducts.filter(
+			(product: any) => !inventoriedProductIdSet.has(product.id),
+		).length
+	}, [catalogProducts, inventoriedProductIdSet])
+
+	const isLoading = catalogLoading || inventoriedLoading
+
 	const progress =
 		totalProducts > 0 ? Math.round((countedProducts / totalProducts) * 100) : 0
 
@@ -184,9 +200,10 @@ function GlobalInventoryCapitalStats({
 					</h3>
 				</div>
 				<div className='rounded-full bg-orange-500 px-3 py-1 text-sm font-bold text-white'>
-					{progress}%
+					{isLoading ? '…' : `${progress}%`}
 				</div>
 			</div>
+
 			<div className='grid grid-cols-3 gap-2'>
 				<div className='rounded-xl bg-background/85 px-3 py-2'>
 					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
@@ -196,34 +213,37 @@ function GlobalInventoryCapitalStats({
 						{catalogLoading ? '…' : totalProducts}
 					</div>
 				</div>
+
 				<div className='rounded-xl bg-background/85 px-3 py-2'>
 					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
-						Comptés
+						Déjà inventoriés
 					</div>
 					<div className='mt-1 text-2xl font-black text-green-700 dark:text-green-300'>
-						{countedProducts}
+						{isLoading ? '…' : countedProducts}
 					</div>
 				</div>
+
 				<div className='rounded-xl bg-background/85 px-3 py-2'>
 					<div className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
-						À compter
+						Jamais inventoriés
 					</div>
 					<div className='mt-1 text-2xl font-black text-amber-700 dark:text-amber-300'>
-						{catalogLoading ? '…' : remainingProducts}
+						{isLoading ? '…' : neverInventoriedCount}
 					</div>
 				</div>
 			</div>
+
 			<div className='mt-3'>
 				<div className='mb-1 flex items-center justify-between text-xs text-muted-foreground'>
 					<span>
-						{countedProducts} / {catalogLoading ? '…' : totalProducts} produits
-						comptés
+						{isLoading ? '…' : countedProducts} /{' '}
+						{catalogLoading ? '…' : totalProducts} produits déjà inventoriés
 					</span>
 					<span className='font-semibold text-foreground'>
-						{catalogLoading ? '…' : remainingProducts} à faire
+						{isLoading ? '…' : neverInventoriedCount} jamais inventoriés
 					</span>
 				</div>
-				<Progress value={progress} className='h-2' />
+				<Progress value={isLoading ? 0 : progress} className='h-2' />
 			</div>
 		</div>
 	)
@@ -2400,43 +2420,41 @@ function InventoryHomeView({
 		)
 	return (
 		<div className='flex flex-col h-full overflow-y-auto'>
-			{activeSessions.length > 0 && (
-				<div className='px-6 pt-6 pb-4'>
-					<div className='mb-4'>
-						<GlobalInventoryCapitalStats activeSessions={activeSessions} />
-					</div>
-					<div className='mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
-						<div>
-							<h2 className='text-sm font-semibold text-muted-foreground uppercase tracking-wider'>
-								Sessions en cours ({activeSessions.length})
-							</h2>
-							<p className='mt-1 text-sm text-muted-foreground'>
-								L'action principale est de continuer le comptage là où il s'est
-								arrêté.
-							</p>
-						</div>
-						<Button
-							variant='outline'
-							onClick={() =>
-								activeSessions[0] && onSelectSession(activeSessions[0])
-							}
-							className='gap-2 self-start border-orange-200 text-orange-600 hover:bg-orange-50 hover:text-orange-700'
-						>
-							<Clock className='h-4 w-4' />
-							Continuer la plus récente
-						</Button>
-					</div>
-					<div className='grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3'>
-						{activeSessions.map((session) => (
-							<SessionCard
-								key={session.id}
-								session={session}
-								onSelect={() => onSelectSession(session)}
-							/>
-						))}
-					</div>
+			<div className='px-6 pt-6 pb-4'>
+				<div className='mb-4'>
+					<GlobalInventoryCapitalStats />
 				</div>
-			)}
+				<div className='mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
+					<div>
+						<h2 className='text-sm font-semibold text-muted-foreground uppercase tracking-wider'>
+							Sessions en cours ({activeSessions.length})
+						</h2>
+						<p className='mt-1 text-sm text-muted-foreground'>
+							L'action principale est de continuer le comptage là où il s'est
+							arrêté.
+						</p>
+					</div>
+					<Button
+						variant='outline'
+						onClick={() =>
+							activeSessions[0] && onSelectSession(activeSessions[0])
+						}
+						className='gap-2 self-start border-orange-200 text-orange-600 hover:bg-orange-50 hover:text-orange-700'
+					>
+						<Clock className='h-4 w-4' />
+						Continuer la plus récente
+					</Button>
+				</div>
+				<div className='grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3'>
+					{activeSessions.map((session) => (
+						<SessionCard
+							key={session.id}
+							session={session}
+							onSelect={() => onSelectSession(session)}
+						/>
+					))}
+				</div>
+			</div>
 			<div
 				className={cn(
 					'flex flex-col items-center justify-center gap-8 px-6',
