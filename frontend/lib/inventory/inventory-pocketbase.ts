@@ -152,7 +152,6 @@ export async function completeInventorySession(
 /**
  * Complète la session ET écrit les stats dénormalisées.
  * À préférer à completeInventorySession() pour un historique riche.
- * @param stats - Calculées depuis le summary avant clôture
  */
 export async function completeInventorySessionWithStats(
 	pb: PocketBase,
@@ -200,6 +199,7 @@ export async function cancelInventorySession(
 			stats_category_names: stats.categoryNames,
 		})
 }
+
 // ============================================================================
 // ENTRÉES
 // ============================================================================
@@ -214,9 +214,6 @@ export async function getInventoryEntries(
 ): Promise<InventoryEntry[]> {
 	console.log('[getInventoryEntries] sessionId:', sessionId)
 
-	// Compatibilité avec toutes les versions du SDK PocketBase
-	// getFullList(batchSize, queryParams) — ancienne API
-	// getFullList(queryParams) — nouvelle API
 	const records = await pb
 		.collection(INVENTORY_ENTRIES_COLLECTION)
 		.getFullList<InventoryEntry>(500, {
@@ -317,17 +314,42 @@ export async function countInventoryProduct(
 		})
 }
 
+// ============================================================================
+// countAndAdjustProduct
+// ============================================================================
+
+/**
+ * Callback appelé après un ajustement AppPOS réussi.
+ * Permet à l'appelant de journaliser dans product_events sans coupler ce
+ * fichier à la couche product-events.
+ */
+export type OnAdjustedCallback = (params: {
+	productId: string
+	productName: string
+	productSku: string
+	stockBefore: number
+	stockAfter: number
+	entryId: string
+	sessionId: string
+	adjustedAt: string
+}) => Promise<void>
+
 /**
  * Compte un produit ET applique immédiatement l'ajustement AppPOS si écart.
  * Appelé dès que l'opérateur valide la quantité (onBlur / Enter).
- * Si le stock_compte === stock_theorique : marked counted, adjusted reste false.
- * Si écart : PUT AppPOS + adjusted: true en une seule opération.
+ *
+ * - Si stock_compte === stock_theorique : marqué counted, adjusted reste false.
+ * - Si écart : PUT AppPOS + adjusted: true + onAdjusted() (best-effort).
+ *
+ * Le paramètre onAdjusted est optionnel — rétrocompatible avec les appelants
+ * existants qui ne passent que 4 arguments.
  */
 export async function countAndAdjustProduct(
 	pb: PocketBase,
 	entry: InventoryEntry,
 	stockCompte: number,
 	updateAppPosStock: (productId: string, stock: number) => Promise<unknown>,
+	onAdjusted?: OnAdjustedCallback,
 ): Promise<{ entry: InventoryEntry; adjusted: boolean; error?: string }> {
 	if (stockCompte < 0)
 		throw new Error('Le stock compté ne peut pas être négatif')
@@ -353,16 +375,38 @@ export async function countAndAdjustProduct(
 	if (hasGap) {
 		try {
 			await updateAppPosStock(entry.product_id, stockCompte)
+
+			const adjustedAt = new Date().toISOString()
+
 			const adjustedEntry = await pb
 				.collection(INVENTORY_ENTRIES_COLLECTION)
 				.update<InventoryEntry>(
 					entry.id,
-					{
-						adjusted: true,
-						adjusted_at: new Date().toISOString(),
-					},
+					{ adjusted: true, adjusted_at: adjustedAt },
 					{ $autoCancel: false },
 				)
+
+			// 3. Journalisation product_events — best-effort, ne bloque pas le comptage
+			if (onAdjusted) {
+				try {
+					await onAdjusted({
+						productId: entry.product_id,
+						productName: entry.product_name,
+						productSku: entry.product_sku,
+						stockBefore: entry.stock_theorique,
+						stockAfter: stockCompte,
+						entryId: entry.id,
+						sessionId: entry.session_id,
+						adjustedAt,
+					})
+				} catch (journalErr: any) {
+					console.warn(
+						'[countAndAdjustProduct] Erreur journalisation product_events:',
+						journalErr?.message ?? journalErr,
+					)
+				}
+			}
+
 			return { entry: adjustedEntry, adjusted: true }
 		} catch (err: any) {
 			// L'ajustement AppPOS a échoué — on retourne l'entrée comptée sans adjusted

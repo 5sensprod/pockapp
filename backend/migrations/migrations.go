@@ -66,6 +66,7 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		backfillInventoryStats,
 		purgeEmptyInventorySessions,
 		FixInventoryCollectionFields,
+		ensureProductEventsCollection,
 		AddDepositFieldsToInvoices,
 
 		// 9. 🆕 Dépôt-vente instruments d'occasion (dépend de customers + companies)

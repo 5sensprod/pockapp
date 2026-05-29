@@ -8,6 +8,7 @@
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { decrementAppPosProductsStock, getAppPosToken } from '@/lib/apppos'
+import { decrementStockFromCart } from '@/lib/apppos/stock-utils'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import {
 	useCreateBalanceInvoice,
@@ -397,7 +398,11 @@ export function useInvoiceActions(
 				const stockItems = buildStockItems(invoice.items)
 				if (stockItems.length > 0) {
 					try {
-						await decrementAppPosProductsStock(stockItems)
+						await decrementStockFromCart(stockItems, {
+							pb,
+							sourceId: invoice.id,
+							operator: '',
+						})
 						toast.success('Stock synchronisé')
 					} catch (err) {
 						console.error('Erreur synchro stock AppPOS:', err)

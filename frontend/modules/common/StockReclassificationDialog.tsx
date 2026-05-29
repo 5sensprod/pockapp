@@ -31,6 +31,8 @@ import {
 	type StockReturnDestination,
 	incrementAppPosProductsStock,
 } from '@/lib/apppos'
+import { createProductEvent } from '@/lib/product-events/product-events-pocketbase'
+import { usePocketBase } from '@/lib/use-pocketbase'
 
 // ============================================================================
 // TYPES
@@ -53,8 +55,10 @@ export interface StockReclassificationDialogProps {
 	onOpenChange: (open: boolean) => void
 	/** Items remboursés ayant un product_id AppPOS */
 	items: StockReclassificationItem[]
-	/** Numéro du ticket ou de la facture, pour affichage */
+	/** Numéro du ticket ou de la facture, pour affichage et journalisation */
 	documentNumber?: string
+	/** ID du ticket ou de la facture source (pour product_events.source_id) */
+	documentId?: string
 	/** Appelé quand le traitement est terminé (succès ou ignoré) */
 	onComplete?: () => void
 }
@@ -114,9 +118,11 @@ export function StockReclassificationDialog({
 	onOpenChange,
 	items,
 	documentNumber,
+	documentId,
 	onComplete,
 }: StockReclassificationDialogProps) {
-	// Initialiser/réinitialiser les choix à chaque ouverture avec les vrais items
+	const pb = usePocketBase()
+
 	const [choices, setChoices] = useState<Record<string, ItemChoice>>({})
 	const [isProcessing, setIsProcessing] = useState(false)
 	const [done, setDone] = useState(false)
@@ -159,7 +165,7 @@ export function StockReclassificationDialog({
 			)
 
 			if (toProcess.length > 0) {
-				await incrementAppPosProductsStock(
+				const updatedProducts = await incrementAppPosProductsStock(
 					toProcess.map((it) => ({
 						productId: it.product_id,
 						quantityReturned: it.quantity,
@@ -167,6 +173,50 @@ export function StockReclassificationDialog({
 							.destination as StockReturnDestination,
 					})),
 				)
+
+				// ── Journalisation product_events (best-effort) ──────────────
+				const productMap = new Map(updatedProducts.map((p) => [p._id, p]))
+				const now = new Date().toISOString()
+
+				for (const item of toProcess) {
+					const destination = choices[item.product_id]
+						.destination as StockReturnDestination
+
+					// SAV et stock_b ne modifient pas le stock AppPOS standard
+					// → on journalise quand même pour traçabilité, avec source 'return'
+					const updated = productMap.get(item.product_id)
+					const stockAfter =
+						updated && typeof updated.stock === 'number' ? updated.stock : null
+					const stockBefore =
+						stockAfter !== null ? stockAfter - item.quantity : null
+
+					try {
+						await createProductEvent(pb, {
+							product_id: item.product_id,
+							product_name_snapshot: item.name,
+							product_sku_snapshot: item.sku ?? '',
+							event_type: 'stock_return',
+							source: 'return',
+							source_id: documentId ?? documentNumber ?? null,
+							operator: '',
+							occurred_at: now,
+							before: stockBefore !== null ? { stock: stockBefore } : null,
+							after: stockAfter !== null ? { stock: stockAfter } : null,
+							delta: { stock: item.quantity },
+							metadata: {
+								ticket_id: documentId ?? documentNumber ?? '',
+								document_number: documentNumber ?? '',
+								destination,
+								quantity_returned: item.quantity,
+							},
+						})
+					} catch (journalErr: any) {
+						console.warn(
+							`[product_events] Échec journalisation retour ${item.product_id}:`,
+							journalErr?.message ?? journalErr,
+						)
+					}
+				}
 			}
 
 			// Résumé pour affichage
@@ -241,7 +291,6 @@ export function StockReclassificationDialog({
 										key={item.product_id}
 										className='rounded-lg border bg-card p-4 space-y-3'
 									>
-										{/* Article header */}
 										<div className='flex items-start justify-between gap-3'>
 											<div>
 												<div className='font-medium text-sm leading-tight'>
@@ -259,7 +308,6 @@ export function StockReclassificationDialog({
 													</span>
 												</div>
 											</div>
-											{/* Badge destination courante */}
 											{(() => {
 												const dest = DESTINATIONS.find(
 													(d) => d.value === current,
@@ -275,7 +323,6 @@ export function StockReclassificationDialog({
 											})()}
 										</div>
 
-										{/* Choix destination */}
 										<div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
 											{DESTINATIONS.map((dest) => {
 												const Icon = dest.icon
@@ -318,7 +365,6 @@ export function StockReclassificationDialog({
 											})}
 										</div>
 
-										{/* Description de la destination sélectionnée */}
 										<div className='text-xs text-muted-foreground italic'>
 											{DESTINATIONS.find((d) => d.value === current)
 												?.description ?? ''}
@@ -328,7 +374,6 @@ export function StockReclassificationDialog({
 							})}
 						</div>
 
-						{/* Warning SAV/Stock B */}
 						{Object.values(choices).some(
 							(c) => c.destination === 'sav' || c.destination === 'stock_b',
 						) && (
@@ -362,7 +407,6 @@ export function StockReclassificationDialog({
 						</DialogFooter>
 					</>
 				) : (
-					/* Écran de confirmation / récapitulatif */
 					<>
 						<div className='flex flex-col items-center gap-4 py-4'>
 							<CheckCircle2 className='h-12 w-12 text-emerald-500' />

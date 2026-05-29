@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog'
 // import { navigationActions } from '@/lib/stores/navigationStore'
 
-import { decrementAppPosProductsStock, getAppPosToken } from '@/lib/apppos'
+import { getAppPosToken } from '@/lib/apppos'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,6 +38,7 @@ import {
 } from '@/lib/queries/closures'
 
 import { PeriodSelector } from '@/components/PeriodSelector'
+import { decrementStockFromCart } from '@/lib/apppos/stock-utils'
 import { usePeriodFilter } from '@/lib/hooks/usePeriodFilter'
 import { useCreateDeposit } from '@/lib/queries/deposits'
 import {
@@ -82,7 +83,6 @@ import { InvoicesTable } from '../../features/invoices/InvoicesTable'
 import { type DepositPdfData, InvoicePdfDocument } from '../../pdf/InvoicePdf'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { toPngDataUrl } from '../../utils/images' // Uniquement dans InvoicesPage (et QuotesPage si besoin)
-
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -406,7 +406,11 @@ export function InvoicesPage() {
 			const stockItems = buildStockItemsFromInvoice(invoiceToPay.items)
 			if (stockItems.length > 0) {
 				try {
-					await decrementAppPosProductsStock(stockItems)
+					await decrementStockFromCart(stockItems, {
+						pb,
+						sourceId: invoiceToPay.id,
+						operator: '',
+					})
 					toast.success('Stock synchronisé', {
 						description: `${stockItems.length} produit(s) mis à jour dans AppPOS`,
 					})

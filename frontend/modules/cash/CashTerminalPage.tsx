@@ -14,12 +14,13 @@ import { toast } from 'sonner'
 import { EmptyState } from '@/components/module-ui'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import {
-	decrementAppPosProductsStock,
+	// decrementAppPosProductsStock,
 	getAppPosToken,
 	loginToAppPos,
 	useAppPosProducts,
 	useAppPosStockUpdates,
 } from '@/lib/apppos'
+import { decrementStockFromCart } from '@/lib/apppos/stock-utils'
 import { releaseControl, takeControl, useDisplay } from '@/lib/pos/display'
 import { openReceiptPreviewWindow } from '@/lib/pos/posPreview'
 import { openCashDrawer, printReceipt } from '@/lib/pos/posPrint'
@@ -524,11 +525,19 @@ export function CashTerminalPage() {
 
 				if (isAppPosConnected && getAppPosToken()) {
 					try {
-						const stockItems = cartManager.cart.map((item) => ({
-							productId: item.productId,
-							quantitySold: item.quantity,
-						}))
-						await decrementAppPosProductsStock(stockItems)
+						await decrementStockFromCart(
+							cartManager.cart.map((item) => ({
+								productId: item.productId,
+								productName: item.name ?? '', // à adapter selon la structure de CartItem
+								productSku: item.sku ?? '', // idem
+								quantity: item.quantity,
+							})),
+							{
+								pb,
+								sourceId: ticket.number, // ou ticket.id selon ce qui est disponible
+								operator: '', // à passer depuis le contexte auth si dispo
+							},
+						)
 					} catch (stockError) {
 						toast.warning(
 							'Vente enregistrée mais erreur de synchronisation du stock',

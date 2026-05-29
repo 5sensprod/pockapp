@@ -15,6 +15,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { getAppPosToken } from '@/lib/apppos/apppos-api'
+import { decrementStockFromCart } from '@/lib/apppos/stock-utils'
 import { openCashDrawer } from '@/lib/pos/posPrint'
 import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
 import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
@@ -22,6 +24,7 @@ import { useCreateDeposit } from '@/lib/queries/deposits'
 import { useRecordPayment } from '@/lib/queries/invoices'
 import { canCreateDeposit } from '@/lib/types/invoice.types'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { CheckCircle2, ExternalLink, Info, Printer } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
@@ -79,6 +82,7 @@ export function InvoicePaymentDialog({
 	const recordPayment = useRecordPayment()
 	const createDeposit = useCreateDeposit()
 	const openDrawer = useOpenCashDrawerMutation()
+	const pb = usePocketBase()
 
 	// Reset à chaque ouverture
 	React.useEffect(() => {
@@ -152,6 +156,28 @@ export function InvoicePaymentDialog({
 				paidAt: new Date().toISOString(),
 				splitPayments,
 			})
+
+			// ── Décrément stock AppPOS + journalisation product_events ────────
+			if (getAppPosToken() && invoice.items?.length) {
+				const stockItems = invoice.items
+					.filter((it: any) => !!it?.product_id)
+					.map((it: any) => ({
+						productId: it.product_id,
+						productName: it.name ?? '',
+						quantitySold: Math.abs(Number(it.quantity ?? 1)),
+					}))
+				if (stockItems.length > 0) {
+					try {
+						await decrementStockFromCart(stockItems, {
+							pb,
+							sourceId: invoice.id,
+							operator: '',
+						})
+					} catch (err) {
+						console.error('❌ Erreur synchro stock AppPOS:', err)
+					}
+				}
+			}
 
 			// Tiroir-caisse — ouverture auto si activé (tous moyens de paiement)
 			const printerSettings = loadPosPrinterSettings()

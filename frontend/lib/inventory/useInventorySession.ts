@@ -7,7 +7,7 @@ import {
 	getAppPosProducts,
 	updateAppPosProductStock,
 } from '@/lib/apppos/apppos-api'
-// Note: pas de loginToAppPos ici — l'utilisateur est déjà authentifié via PocketBase/useAuth
+import { createInventoryAdjustmentEvent } from '@/lib/product-events/product-events-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { usePocketBase } from '../use-pocketbase'
@@ -78,7 +78,7 @@ export function useSessionProgress(sessionId: string) {
 }
 
 // ============================================================================
-// HOOK: Entrees d une session
+// HOOK: Entrées d'une session
 // ============================================================================
 export function useInventoryEntries(sessionId: string | undefined) {
 	const pb = usePocketBase()
@@ -215,15 +215,33 @@ export function useInventorySession(sessionId: string | undefined) {
 		}
 	}, [entries, sessionId])
 
+	// ── countProduct ──────────────────────────────────────────────────────────
+	// On passe un onAdjusted callback à countAndAdjustProduct pour journaliser
+	// chaque ajustement dans product_events (best-effort, ne bloque pas le comptage).
 	const countProduct = useMutation({
 		mutationFn: ({
 			entry,
 			stockCompte,
+			operator = '',
 		}: {
-			entry: import('./inventory-types').InventoryEntry
+			entry: InventoryEntry
 			stockCompte: number
+			operator?: string
 		}) =>
-			countAndAdjustProduct(pb, entry, stockCompte, updateAppPosProductStock),
+			countAndAdjustProduct(
+				pb,
+				entry,
+				stockCompte,
+				updateAppPosProductStock,
+				// onAdjusted : appelé seulement si écart ET ajustement AppPOS réussi
+				async (params) => {
+					await createInventoryAdjustmentEvent(pb, {
+						...params,
+						sessionLabel: null, // label non disponible dans entry, ignoré ici
+						operator,
+					})
+				},
+			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: inventoryKeys.entries(sessionId ?? ''),
@@ -231,6 +249,7 @@ export function useInventorySession(sessionId: string | undefined) {
 		},
 	})
 
+	// ── resetProduct ──────────────────────────────────────────────────────────
 	const resetProduct = useMutation({
 		mutationFn: (entryId: string) => resetInventoryProduct(pb, entryId),
 		onSuccess: () => {
@@ -240,12 +259,12 @@ export function useInventorySession(sessionId: string | undefined) {
 		},
 	})
 
+	// ── completeSession ───────────────────────────────────────────────────────
 	const completeSession = useMutation({
 		mutationFn: () => {
 			if (!sessionId) throw new Error('Pas de session active')
 			if (!summary) throw new Error('Résumé de session indisponible')
 
-			// Collecter les noms de catégories uniques depuis les entrées
 			const categoryNames = [
 				...new Set(entries.map((e) => e.category_name).filter(Boolean)),
 			].sort()
@@ -262,6 +281,7 @@ export function useInventorySession(sessionId: string | undefined) {
 		},
 	})
 
+	// ── cancelSession ─────────────────────────────────────────────────────────
 	const cancelSession = useMutation({
 		mutationFn: () => {
 			if (!sessionId) throw new Error('Pas de session active')
@@ -288,10 +308,13 @@ export function useInventorySession(sessionId: string | undefined) {
 		summary,
 		entriesLoading,
 
+		// countProduct accepte maintenant un operator optionnel pour le journal
 		countProduct: (
-			entry: import('./inventory-types').InventoryEntry,
+			entry: InventoryEntry,
 			stockCompte: number,
-		) => countProduct.mutateAsync({ entry, stockCompte }),
+			operator?: string,
+		) => countProduct.mutateAsync({ entry, stockCompte, operator }),
+
 		resetProduct: (entryId: string) => resetProduct.mutateAsync(entryId),
 		completeSession: () => completeSession.mutateAsync(),
 		cancelSession: () => cancelSession.mutateAsync(),
@@ -306,7 +329,7 @@ export function useInventorySession(sessionId: string | undefined) {
 }
 
 // ============================================================================
-// HOOK: Creer une session + snapshot AppPOS
+// HOOK: Créer une session + snapshot AppPOS
 // ============================================================================
 export function useCreateInventorySession() {
 	const pb = usePocketBase()
@@ -326,7 +349,7 @@ export function useCreateInventorySession() {
 				return { session: started, entriesCount: 0 }
 			}
 
-			// ── Sessions all / selection : snapshot catalogue AppPOS ─────────────
+			// ── Sessions all / selection : snapshot catalogue AppPOS ──────────
 			const [allProducts, allCategories] = await Promise.all([
 				getAppPosProducts(),
 				getAppPosCategories(),

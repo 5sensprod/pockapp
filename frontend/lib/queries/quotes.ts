@@ -257,7 +257,11 @@ export function useConvertQuoteToInvoice() {
 
 			// ✅ Décrémenter le stock — facture créée directement en validated
 			if (quote.items?.length) {
-				await decrementStockFromItems(quote.items)
+				await decrementStockFromItems(quote.items, {
+					pb,
+					sourceId: invoice.id,
+					operator: '', // pas d'opérateur identifié ici
+				})
 			}
 
 			// 3. Mettre à jour le devis :
