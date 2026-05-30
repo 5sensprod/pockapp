@@ -138,7 +138,7 @@ export function useAppPosProducts(options: UseAppPosProductsOptions = {}) {
 		const totalItems = filtered.length
 
 		// Si limit = Infinity, on retourne tout sans découpage
-		if (!isFinite(limit)) {
+		if (!Number.isFinite(limit)) {
 			return { items: filtered, totalItems, totalPages: 1, page: 1 }
 		}
 

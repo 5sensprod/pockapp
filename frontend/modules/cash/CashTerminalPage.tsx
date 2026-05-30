@@ -125,7 +125,7 @@ export function CashTerminalPage() {
 		enabled: isAppPosConnected,
 		searchTerm: productSearch || undefined,
 	})
-	useAppPosStockUpdates({ enabled: true })
+	useAppPosStockUpdates({ enabled: true, pb })
 	const products = (productsData?.items ?? []) as AppPosProduct[]
 
 	const createPosTicket = useCreatePosTicket()

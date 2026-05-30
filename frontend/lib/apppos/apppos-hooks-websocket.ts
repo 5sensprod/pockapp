@@ -8,6 +8,8 @@
 // 3. Relaie optionnellement les events produits via broadcastInvalidate()
 //    pour que TOUS les clients PocketApp (navigateurs distants) soient
 //    synchronisés — pas seulement le client Wails connecté au WS AppPOS.
+// 4. Journalise les modifications produit dans product_events (PocketBase)
+//    quand pb est fourni — uniquement pour les modifs UI AppPOS (source undefined).
 //
 // MAPPING _id → id
 // ─────────────────────────────────────────────────────────────────────────────
@@ -22,7 +24,10 @@
 // products.updated contient déjà le stock complet dans `data.stock`.
 
 import { broadcastInvalidate } from '@/lib/presence/broadcast'
+import { createProductEvents } from '@/lib/product-events/product-events-pocketbase'
+import { buildProductEvents } from '@/lib/product-events/product-events-types'
 import { useQueryClient } from '@tanstack/react-query'
+import type PocketBase from 'pocketbase'
 import { useEffect } from 'react'
 import type { AppPosProduct } from './apppos-types'
 import type { AppPosWebSocketEvent } from './apppos-websocket'
@@ -129,10 +134,6 @@ function buildPatchFromRaw(raw: AppPosProduct): Partial<CachedProduct> {
 
 /**
  * Résout l'id d'un produit, quelle que soit sa forme (transformé ou brut).
- *
- * Dans le cache React Query, le produit est transformé → `id` (string).
- * `entityId` reçu via WS = `_id` NeDB brut → doit correspondre à `p.id`
- * après transformation.
  */
 function getProductId(p: CachedProduct | RawProduct): string | undefined {
 	if ('id' in p && p.id) return String(p.id)
@@ -216,6 +217,126 @@ function isProductsQueryKey(queryKey: unknown): boolean {
 	)
 }
 
+// ─── findProductInCache ───────────────────────────────────────────────────────
+//
+// Extrait un produit depuis n'importe quelle forme de cache RQ.
+// Utilisé pour capturer le "before" avant que patchProductsData l'écrase.
+
+function findProductInCache(
+	data: ProductsDataShape,
+	productId: string,
+): CachedProduct | null {
+	if (!data) return null
+
+	if (
+		typeof data === 'object' &&
+		!Array.isArray(data) &&
+		'items' in (data as object)
+	) {
+		const arr = (data as { items: CachedProduct[] }).items
+		return arr?.find((p) => getProductId(p) === productId) ?? null
+	}
+
+	if (
+		typeof data === 'object' &&
+		!Array.isArray(data) &&
+		'data' in (data as object)
+	) {
+		const arr = (data as { data: CachedProduct[] }).data
+		return arr?.find((p) => getProductId(p) === productId) ?? null
+	}
+
+	if (Array.isArray(data)) {
+		return (
+			(data as CachedProduct[]).find((p) => getProductId(p) === productId) ??
+			null
+		)
+	}
+
+	if (typeof data === 'object' && data !== null) {
+		const p = data as CachedProduct
+		if (getProductId(p) === productId) return p
+	}
+
+	return null
+}
+
+// ─── journalizeAppPosUpdate ───────────────────────────────────────────────────
+//
+// Crée les product_events pour une modification UI AppPOS (source undefined).
+// Appelé APRÈS le patch du cache, avec before capturé juste avant.
+// Best-effort : ne throw jamais.
+
+async function journalizeAppPosUpdate(
+	pb: PocketBase,
+	productId: string,
+	before: CachedProduct,
+	patch: Partial<CachedProduct>,
+): Promise<void> {
+	try {
+		// Reconstituer les champs "after" depuis le before + patch
+		const after = { ...before, ...patch }
+
+		const events = buildProductEvents({
+			productId,
+			productNameSnapshot: String(after.name ?? before.name ?? ''),
+			productSkuSnapshot: String(after.sku ?? before.sku ?? ''),
+			before: {
+				stock:
+					typeof before.stock_quantity === 'number'
+						? before.stock_quantity
+						: typeof before.stock === 'number'
+							? before.stock
+							: undefined,
+				price_ttc:
+					typeof before.price_ttc === 'number' ? before.price_ttc : undefined,
+				cost_price:
+					typeof before.cost_price === 'number' ? before.cost_price : undefined,
+				name: typeof before.name === 'string' ? before.name : undefined,
+				category_id:
+					typeof before.category_id === 'string'
+						? before.category_id
+						: undefined,
+				sku: typeof before.sku === 'string' ? before.sku : undefined,
+				barcode:
+					typeof before.barcode === 'string' ? before.barcode : undefined,
+			},
+			after: {
+				stock:
+					typeof after.stock_quantity === 'number'
+						? after.stock_quantity
+						: typeof after.stock === 'number'
+							? after.stock
+							: undefined,
+				price_ttc:
+					typeof after.price_ttc === 'number' ? after.price_ttc : undefined,
+				cost_price:
+					typeof after.cost_price === 'number' ? after.cost_price : undefined,
+				name: typeof after.name === 'string' ? after.name : undefined,
+				category_id:
+					typeof after.category_id === 'string' ? after.category_id : undefined,
+				sku: typeof after.sku === 'string' ? after.sku : undefined,
+				barcode: typeof after.barcode === 'string' ? after.barcode : undefined,
+			},
+			source: 'apppos_update',
+			sourceId: null,
+			operator: '',
+		})
+
+		if (events.length > 0) {
+			await createProductEvents(pb, events)
+			console.log(
+				`[product_events] ${events.length} événement(s) journalisé(s) via WS pour ${productId}`,
+			)
+		}
+	} catch (err: any) {
+		console.warn(
+			'[product_events] Échec journalisation WS apppos_update:',
+			err?.message ?? err,
+		)
+	}
+}
+
 // ─── Hook principal ───────────────────────────────────────────────────────────
 
 export interface UseAppPosProductUpdatesOptions {
@@ -229,8 +350,27 @@ export interface UseAppPosProductUpdatesOptions {
 	 */
 	broadcastToPocketApp?: boolean
 
+	/**
+	 * Instance PocketBase — si fournie, les modifications UI AppPOS (source undefined)
+	 * sont automatiquement journalisées dans product_events.
+	 * Ventes (source='sale') et retours (source='return') sont exclus car déjà
+	 * tracés par stock-utils.ts.
+	 */
+	pb?: PocketBase
+
 	// Callbacks optionnels
-	onProductUpdate?: (productId: string, patch: Partial<CachedProduct>) => void
+	/**
+	 * Appelé après chaque patch produit.
+	 * source est présent uniquement si émis via entityUpdatedWithSource côté serveur :
+	 *   'sale'   → décrémentation vente
+	 *   'return' → retour client
+	 *   undefined → modification produit classique (PUT)
+	 */
+	onProductUpdate?: (
+		productId: string,
+		patch: Partial<CachedProduct>,
+		source?: string,
+	) => void
 	onProductCreated?: () => void
 	onProductDeleted?: (productId: string) => void
 
@@ -256,6 +396,7 @@ export function useAppPosProductUpdates(
 	const {
 		enabled = true,
 		broadcastToPocketApp = false,
+		pb,
 		onProductUpdate,
 		onProductCreated,
 		onProductDeleted,
@@ -296,7 +437,6 @@ export function useAppPosProductUpdates(
 				queryClient.invalidateQueries({
 					queryKey: ['apppos', 'products', 'catalog'],
 				})
-				// Invalider aussi le cache du produit individuel
 				queryClient.removeQueries({
 					queryKey: ['apppos', 'products', productId],
 				})
@@ -310,9 +450,8 @@ export function useAppPosProductUpdates(
 			// ── Mise à jour — patch chirurgical ──────────────────────────────────────
 			if (event.type === 'products.updated') {
 				const raw = event.data.data
-				// entityId = _id NeDB brut = ce qui a été passé à notifyEntityUpdated(entityType, id, data)
-				// Après transformation, le cache stocke ce même id sous p.id → le mapping est direct.
 				const productId = event.data.entityId ?? raw?._id
+				const source = event.data.source // undefined = modif UI AppPOS
 
 				if (!productId) {
 					console.warn('⚠️ [RQ PATCH] products.updated sans entityId — ignoré')
@@ -326,7 +465,45 @@ export function useAppPosProductUpdates(
 					return
 				}
 
-				// Parcourir tous les caches apppos/products/...
+				// ── Capturer le "before" AVANT le patch du cache ──────────────────────
+				// Nécessaire pour journaliser les diffs dans product_events.
+				// On cherche dans le catalogue (clé la plus susceptible d'être chargée).
+				let productBefore: CachedProduct | null = null
+				console.log('[journal debug]', {
+					hasPb: !!pb,
+					source,
+					hasProductBefore: !!productBefore,
+					productId,
+				})
+				if (pb && source === undefined) {
+					const catalogData = queryClient.getQueryData<ProductsDataShape>([
+						'apppos',
+						'products',
+						'catalog',
+					])
+					if (catalogData) {
+						productBefore = findProductInCache(catalogData, productId)
+					}
+					// Fallback : chercher dans tous les caches products si pas dans catalog
+					if (!productBefore) {
+						const candidates = queryClient
+							.getQueryCache()
+							.getAll()
+							.filter((q) => isProductsQueryKey(q.queryKey))
+						for (const q of candidates) {
+							const data = queryClient.getQueryData<ProductsDataShape>(
+								q.queryKey,
+							)
+							const found = data ? findProductInCache(data, productId) : null
+							if (found) {
+								productBefore = found
+								break
+							}
+						}
+					}
+				}
+
+				// ── Patch chirurgical du cache ─────────────────────────────────────────
 				const candidates = queryClient
 					.getQueryCache()
 					.getAll()
@@ -348,10 +525,9 @@ export function useAppPosProductUpdates(
 						patched,
 						'queries pour produit',
 						productId,
+						source ? `(source: ${source})` : '(source: apppos_update)',
 					)
 				} else {
-					// Produit non trouvé dans le cache → peut-être pas encore chargé
-					// On invalide le catalogue pour forcer un refetch propre
 					console.warn(
 						'⚠️ [RQ PATCH] Produit introuvable dans le cache, invalidation catalogue',
 						productId,
@@ -361,12 +537,19 @@ export function useAppPosProductUpdates(
 					})
 				}
 
-				// Optionnel : broadcast vers les autres clients PocketApp
+				// ── Journalisation product_events ──────────────────────────────────────
+				// Uniquement pour les modifs UI AppPOS (source === undefined).
+				// Ventes (sale) et retours (return) sont déjà tracés par stock-utils.ts.
+				if (pb && source === undefined && productBefore) {
+					void journalizeAppPosUpdate(pb, productId, productBefore, patch)
+				}
+
+				// ── Broadcast vers les autres clients PocketApp ────────────────────────
 				if (broadcastToPocketApp) {
 					void broadcastInvalidate(['apppos', 'products'])
 				}
 
-				onProductUpdate?.(productId, patch)
+				onProductUpdate?.(productId, patch, source)
 				return
 			}
 
@@ -432,6 +615,7 @@ export function useAppPosProductUpdates(
 	}, [
 		enabled,
 		broadcastToPocketApp,
+		pb,
 		onProductUpdate,
 		onProductCreated,
 		onProductDeleted,

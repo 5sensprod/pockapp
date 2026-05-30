@@ -1,8 +1,3 @@
-// frontend/modules/stock/useStockModule.ts
-//
-// Hook CONTAINER — logique de connexion AppPOS + filtres + données produits.
-// Aucun JSX, aucun import de composant UI.
-
 import {
 	getAppPosToken,
 	loginToAppPos,
@@ -17,6 +12,11 @@ import type {
 	CategoriesResponse,
 	SuppliersResponse,
 } from '@/lib/pocketbase-types'
+// frontend/modules/stock/useStockModule.ts
+//
+// Hook CONTAINER — logique de connexion AppPOS + filtres + données produits.
+// Aucun JSX, aucun import de composant UI.
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { useEffect, useMemo, useState } from 'react'
 import type { ProductWithExpand } from './components/ProductTable'
 
@@ -91,7 +91,8 @@ export function useStockModule() {
 	const { data: suppliersData, isLoading: suppliersLoading } =
 		useAppPosSuppliers({ enabled: isAppPosConnected })
 
-	useAppPosStockUpdates({ enabled: isAppPosConnected })
+	const pb = usePocketBase()
+	useAppPosStockUpdates({ enabled: true, pb })
 
 	// ── Normalisation produits ────────────────────────────────────────────────
 	// Le transformer appPosTransformers.product() a déjà produit :

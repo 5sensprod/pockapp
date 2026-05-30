@@ -5,9 +5,17 @@ import type { AppPosProduct } from './apppos-types'
 
 // ─── Payloads ────────────────────────────────────────────────────────────────
 
+export type AppPosProductEventSource =
+	| 'sale' // vente POS (/decrement-stock)
+	| 'return' // retour client (/increment-stock)
+	| 'manual_adjustment' // ajustement manuel stock
+	| 'update' // modification produit classique
+
 export type AppPosProductsUpdatedPayload = {
 	entityId: string // = _id NeDB brut (string)
 	data: AppPosProduct
+	/** Source de la mise à jour — présente seulement si émise via entityUpdatedWithSource */
+	source?: AppPosProductEventSource
 }
 
 export type AppPosWebSocketEvent =
