@@ -89,15 +89,16 @@ func ensureProductEventsCollection(app *pocketbase.PocketBase) error {
 						"product_created",
 						"product_updated",
 						// Stock
-						"stock_updated",           // modif ponctuelle (UI AppPOS ou admin)
+						"stock_updated",            // modif ponctuelle (UI AppPOS ou admin)
 						"stock_adjusted_inventory", // écart appliqué après comptage physique
-						"stock_sale",              // décrémentation après vente
-						"stock_return",            // incrémentation après retour client
+						"stock_sale",               // décrémentation après vente
+						"stock_return",             // incrémentation après retour client
 						// Prix
 						"purchase_price_changed",
 						"sale_price_changed",
 						// Fiche produit
 						"name_changed",
+						"designation_changed",
 						"category_changed",
 						"sku_changed",
 						"barcode_changed",
@@ -117,13 +118,13 @@ func ensureProductEventsCollection(app *pocketbase.PocketBase) error {
 				Options: &schema.SelectOptions{
 					MaxSelect: 1,
 					Values: []string{
-						"inventory_session",   // ajustement post-comptage
-						"sale",                // vente POS
-						"return",              // retour client
-						"apppos_update",       // modification via UI AppPOS
-						"apppos_sync",         // resynchronisation AppPOS → PocketApp
-						"manual",              // correction manuelle opérateur
-						"import",              // import externe (fichier, API tierce)
+						"inventory_session", // ajustement post-comptage
+						"sale",              // vente POS
+						"return",            // retour client
+						"apppos_update",     // modification via UI AppPOS
+						"apppos_sync",       // resynchronisation AppPOS → PocketApp
+						"manual",            // correction manuelle opérateur
+						"import",            // import externe (fichier, API tierce)
 					},
 				},
 			},

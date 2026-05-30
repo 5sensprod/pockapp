@@ -29,6 +29,7 @@ export type ProductEventType =
 	| 'sale_price_changed'
 	// Fiche produit
 	| 'name_changed'
+	| 'designation_changed' // désignation commerciale (champ prioritaire dans AppPOS)
 	| 'category_changed'
 	| 'sku_changed'
 	| 'barcode_changed'
@@ -191,6 +192,7 @@ export interface BuildProductEventsParams {
 		name?: string
 		category_id?: string
 		category_name?: string
+		designation?: string
 		sku?: string
 		barcode?: string
 	}
@@ -201,6 +203,7 @@ export interface BuildProductEventsParams {
 		name?: string
 		category_id?: string
 		category_name?: string
+		designation?: string
 		sku?: string
 		barcode?: string
 	}
@@ -321,6 +324,21 @@ export function buildProductEvents(
 				category_id: after.category_id,
 				category_name: after.category_name,
 			},
+			delta: null,
+		})
+	}
+
+	// ── Désignation ───────────────────────────────────────────────────────────
+	if (
+		before.designation !== undefined &&
+		after.designation !== undefined &&
+		before.designation !== after.designation
+	) {
+		events.push({
+			...base,
+			event_type: 'designation_changed',
+			before: { designation: before.designation },
+			after: { designation: after.designation },
 			delta: null,
 		})
 	}

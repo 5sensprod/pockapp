@@ -281,6 +281,7 @@ async function journalizeAppPosUpdate(
 			productId,
 			productNameSnapshot: String(after.name ?? before.name ?? ''),
 			productSkuSnapshot: String(after.sku ?? before.sku ?? ''),
+			// designation utilisée comme label d'identification si sku vide
 			before: {
 				stock:
 					typeof before.stock_quantity === 'number'
@@ -293,6 +294,10 @@ async function journalizeAppPosUpdate(
 				cost_price:
 					typeof before.cost_price === 'number' ? before.cost_price : undefined,
 				name: typeof before.name === 'string' ? before.name : undefined,
+				designation:
+					typeof before.designation === 'string'
+						? before.designation
+						: undefined,
 				category_id:
 					typeof before.category_id === 'string'
 						? before.category_id
@@ -313,6 +318,8 @@ async function journalizeAppPosUpdate(
 				cost_price:
 					typeof after.cost_price === 'number' ? after.cost_price : undefined,
 				name: typeof after.name === 'string' ? after.name : undefined,
+				designation:
+					typeof after.designation === 'string' ? after.designation : undefined,
 				category_id:
 					typeof after.category_id === 'string' ? after.category_id : undefined,
 				sku: typeof after.sku === 'string' ? after.sku : undefined,
@@ -469,12 +476,6 @@ export function useAppPosProductUpdates(
 				// Nécessaire pour journaliser les diffs dans product_events.
 				// On cherche dans le catalogue (clé la plus susceptible d'être chargée).
 				let productBefore: CachedProduct | null = null
-				console.log('[journal debug]', {
-					hasPb: !!pb,
-					source,
-					hasProductBefore: !!productBefore,
-					productId,
-				})
 				if (pb && source === undefined) {
 					const catalogData = queryClient.getQueryData<ProductsDataShape>([
 						'apppos',
