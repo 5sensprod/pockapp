@@ -291,11 +291,21 @@ export function InvoicePaymentDialog({
 	return (
 		<Dialog
 			open={open}
-			onOpenChange={(v) => {
-				if (!isProcessing) onOpenChange(v)
+			onOpenChange={() => {
+				// ✅ FIX: une fois le dialog de paiement ouvert, on ne le ferme
+				// JAMAIS de façon implicite (clic en dehors, Échap, croix X).
+				// La facture existe déjà en base à ce stade : fermer "discrètement"
+				// renvoie l'utilisateur sur le formulaire avec le panier encore
+				// rempli, ce qui l'expose à recréer une facture par erreur.
+				// Seul le bouton "Annuler" (handleSkip) peut quitter ce dialog.
 			}}
 		>
-			<DialogContent className='sm:max-w-lg'>
+			<DialogContent
+				className='sm:max-w-lg [&>button]:hidden'
+				onPointerDownOutside={(e) => e.preventDefault()}
+				onEscapeKeyDown={(e) => e.preventDefault()}
+				onInteractOutside={(e) => e.preventDefault()}
+			>
 				{/* Header */}
 				<DialogHeader>
 					<div className='flex items-center justify-between'>
@@ -516,7 +526,7 @@ export function InvoicePaymentDialog({
 								onClick={handleSkip}
 								disabled={isProcessing}
 							>
-								Annuler
+								Payer plus tard
 							</Button>
 							<Button
 								onClick={handleConfirmDeposit}

@@ -527,7 +527,13 @@ export function InvoiceCreatePage() {
 	// SUBMIT
 	// =====================
 
+	// ✅ FIX double-clic: verrou synchrone, ne dépend pas du re-render de
+	// createInvoice.isPending (qui arrive un tick trop tard et laisse passer
+	// un second clic/Enter rapide → 2 factures créées en base)
+	const isSubmittingRef = useRef(false)
+
 	const handleSubmit = async (status: 'draft' | 'validated') => {
+		if (isSubmittingRef.current) return
 		if (!activeCompanyId) {
 			toast.error('Aucune entreprise sélectionnée')
 			return
@@ -541,6 +547,7 @@ export function InvoiceCreatePage() {
 			return
 		}
 
+		isSubmittingRef.current = true
 		try {
 			const normalized: UiInvoiceItem[] = items.map((it) => ({
 				...it,
@@ -621,6 +628,8 @@ export function InvoiceCreatePage() {
 		} catch (error) {
 			console.error('Erreur lors de la création de la facture', error)
 			toast.error('Erreur lors de la création de la facture')
+		} finally {
+			isSubmittingRef.current = false
 		}
 	}
 

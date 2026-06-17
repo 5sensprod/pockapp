@@ -380,7 +380,7 @@ export function PaymentDialog({
 							onClick={onCancel}
 							disabled={isProcessing}
 						>
-							Annuler
+							Payer plus tard
 						</Button>
 						{onPreviewReceipt && (
 							<Button
@@ -703,7 +703,7 @@ export function PaymentDialogContent({
 			<DialogFooter className='flex gap-2 sm:justify-between'>
 				<div className='flex gap-2'>
 					<Button variant='outline' onClick={onCancel} disabled={isProcessing}>
-						Annuler
+						Payer plus tard
 					</Button>
 					{onPreviewReceipt && (
 						<Button
