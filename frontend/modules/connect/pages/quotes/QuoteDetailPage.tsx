@@ -378,7 +378,7 @@ export function QuoteDetailPage() {
 								<TableRow>
 									<TableHead>Désignation</TableHead>
 									<TableHead className='text-right'>Quantité</TableHead>
-									<TableHead className='text-right'>Prix unitaire HT</TableHead>
+									<TableHead className='text-right w-40'>P.U. TTC</TableHead>
 									<TableHead className='text-right'>Remise</TableHead>
 									<TableHead className='text-right'>TVA</TableHead>
 									<TableHead className='text-right'>Total HT</TableHead>
@@ -387,6 +387,9 @@ export function QuoteDetailPage() {
 							</TableHeader>
 							<TableBody>
 								{quote.items.map((item, index) => {
+									const unitPriceTtc =
+										(item as any).unit_price_ttc ??
+										item.unit_price_ht * (1 + (item.tva_rate ?? 0) / 100)
 									const lineDiscountValue =
 										(item as any).line_discount_value || 0
 									const lineDiscountMode =
@@ -410,7 +413,7 @@ export function QuoteDetailPage() {
 												{item.quantity}
 											</TableCell>
 											<TableCell className='text-right'>
-												{formatCurrency(item.unit_price_ht, quote.currency)}
+												{formatCurrency(unitPriceTtc, quote.currency)}
 											</TableCell>
 											<TableCell className='text-right text-green-600'>
 												{discountText}
