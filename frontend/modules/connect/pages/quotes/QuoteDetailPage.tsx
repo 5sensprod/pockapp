@@ -155,8 +155,8 @@ export function QuoteDetailPage() {
 		</DropdownMenuItem>,
 	)
 
-	// Modifier (brouillon ou envoyé)
-	if (quote.status === 'draft' || quote.status === 'sent') {
+	// Modifier (brouillon uniquement — un devis envoyé ne doit plus être modifiable)
+	if (quote.status === 'draft') {
 		dropdownItems.push(
 			<DropdownMenuItem
 				key='modifier'
