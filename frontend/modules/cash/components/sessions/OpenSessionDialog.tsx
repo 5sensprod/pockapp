@@ -16,8 +16,10 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
 import { formatCurrency } from '@/lib/utils'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Loader2, Vault } from 'lucide-react'
 import * as React from 'react'
 import { useForm } from 'react-hook-form'
 import {
@@ -47,6 +49,11 @@ export function OpenSessionDialog({
 	const [openingOverride, setOpeningOverride] = React.useState<number | null>(
 		null,
 	)
+
+	const openDrawer = useOpenCashDrawerMutation()
+	const handleOpenDrawer = () => {
+		openDrawer.mutate()
+	}
 
 	const form = useForm<DenominationsForm>({
 		resolver: zodResolver(denominationsSchema),
@@ -87,8 +94,28 @@ export function OpenSessionDialog({
 			}}
 		>
 			<DialogContent className='max-w-3xl max-h-[90vh] overflow-y-auto'>
-				<DialogHeader>
+				<DialogHeader className='flex-row items-center justify-between gap-4 pr-8'>
 					<DialogTitle>Ouvrir une session de caisse</DialogTitle>
+					<Button
+						type='button'
+						variant='outline'
+						size='sm'
+						onClick={handleOpenDrawer}
+						disabled={openDrawer.isPending}
+						className='h-8 shrink-0'
+					>
+						{openDrawer.isPending ? (
+							<>
+								<Loader2 className='h-3.5 w-3.5 mr-2 animate-spin' />
+								Ouverture...
+							</>
+						) : (
+							<>
+								<Vault className='h-3.5 w-3.5 mr-2' />
+								Ouvrir tiroir
+							</>
+						)}
+					</Button>
 				</DialogHeader>
 
 				{lastKnownFloat !== null && (

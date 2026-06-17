@@ -137,6 +137,26 @@ async function getInventoriedProductIds(
 	]
 }
 
+async function getInventoriedProductsWithDates(
+	pb: ReturnType<typeof usePocketBase>,
+): Promise<Map<string, string>> {
+	const records = await pb
+		.collection(INVENTORY_ENTRIES_COLLECTION)
+		.getFullList<Pick<InventoryEntry, 'product_id' | 'counted_at'>>(500, {
+			filter: 'status = "counted"',
+			fields: 'product_id,counted_at',
+			sort: '-counted_at',
+			$autoCancel: false,
+		})
+	const map = new Map<string, string>()
+	for (const r of records) {
+		if (r.product_id && r.counted_at && !map.has(r.product_id)) {
+			map.set(r.product_id, r.counted_at)
+		}
+	}
+	return map
+}
+
 function GlobalInventoryCapitalStats() {
 	const pb = usePocketBase()
 
@@ -176,6 +196,39 @@ function GlobalInventoryCapitalStats() {
 			inventoriedProductIdSet.has(product.id),
 		).length
 	}, [catalogProducts, inventoriedProductIdSet])
+
+	console.log(
+		'Produits comptés:',
+		catalogProducts
+			.filter((product: any) => inventoriedProductIdSet.has(product.id))
+			.map((p: any) => ({ id: p.id, name: p.name, categories: p.categories })),
+	)
+
+	console.log(
+		'Entrées avec date:',
+		catalogProducts
+			.filter((p: any) => inventoriedProductIdSet.has(p.id))
+			.slice(0, 3)
+			.map((p: any) => ({ id: p.id, name: p.name })),
+	)
+
+	// ← ici
+	const firstCounted = catalogProducts.find((p: any) =>
+		inventoriedProductIdSet.has(p.id),
+	) as any
+	if (firstCounted) {
+		const sameCat = firstCounted.categories?.[0]
+		console.log(
+			`Produits restants dans la catégorie "${sameCat}":`,
+			catalogProducts
+				.filter(
+					(p: any) =>
+						(p.categories as string[])?.includes(sameCat) &&
+						!inventoriedProductIdSet.has(p.id),
+				)
+				.map((p: any) => ({ id: p.id, name: p.name })),
+		)
+	}
 
 	const neverInventoriedCount = useMemo(() => {
 		return catalogProducts.filter(
@@ -362,20 +415,53 @@ function CreateSessionDialog({
 		scope: 'selection' | 'free',
 		categoryIds: string[],
 		label?: string,
+		targetedProductIds?: string[],
 	) => void
 	isLoading: boolean
 	activeSessions: InventorySession[]
 	defaultOperator?: string
 }) {
 	const [operator, setOperator] = useState(defaultOperator)
-	const [scopeMode, setScopeMode] = useState<'selection' | 'free'>('selection')
+	const [scopeMode, setScopeMode] = useState<'selection' | 'free' | 'targeted'>(
+		'selection',
+	)
 	const [freeLabel, setFreeLabel] = useState('')
 	const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
 	const [search, setSearch] = useState('')
 	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+	const [expandedProductGroups, setExpandedProductGroups] = useState<
+		Set<string>
+	>(new Set())
+	const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
 
 	const { data: categoriesRaw = [] } = useAppPosCategoriesWithCounts()
 	const { data: history } = useInventoryHistory()
+
+	const pb = usePocketBase()
+
+	const { data: catalogProducts = [] } = useQuery({
+		queryKey: ['apppos', 'products', 'catalog'],
+		queryFn: async () => {
+			const products = await appPosApi.getProducts()
+			return appPosTransformers.products(products)
+		},
+		staleTime: 0,
+		refetchOnMount: 'always',
+	})
+
+	const { data: inventoriedProductIds = [] } = useQuery({
+		queryKey: ['inventory', 'inventoried-product-ids'],
+		queryFn: () => getInventoriedProductIds(pb),
+		staleTime: 0,
+		refetchOnMount: 'always',
+	})
+
+	const { data: inventoriedWithDates = new Map<string, string>() } = useQuery({
+		queryKey: ['inventory', 'inventoried-with-dates'],
+		queryFn: () => getInventoriedProductsWithDates(pb),
+		staleTime: 0,
+		refetchOnMount: 'always',
+	})
 
 	const categories = useMemo(() => {
 		const flatten = (cats: any[], parentId: string | null = null): any[] =>
@@ -404,6 +490,22 @@ function CreateSessionDialog({
 		return map
 	}, [categoriesRaw])
 
+	const categoryProductIds = useMemo(() => {
+		const map = new Map<string, Set<string>>()
+		for (const product of catalogProducts) {
+			for (const catId of (product.categories as string[]) ?? []) {
+				if (!map.has(catId)) map.set(catId, new Set())
+				map.get(catId)!.add(product.id)
+			}
+		}
+		return map
+	}, [catalogProducts])
+
+	const inventoriedSet = useMemo(
+		() => new Set(inventoriedProductIds),
+		[inventoriedProductIds],
+	)
+
 	const selectedProductTotal = useMemo(
 		() =>
 			selectedCategoryIds.reduce(
@@ -422,6 +524,8 @@ function CreateSessionDialog({
 			setSelectedCategoryIds([])
 			setSearch('')
 			setExpandedGroups(new Set())
+			setExpandedProductGroups(new Set())
+			setSelectedProductIds([])
 		}
 	}, [open, defaultOperator])
 
@@ -557,15 +661,14 @@ function CreateSessionDialog({
 		const doneCount = childIds.filter(
 			(id) => categoryTags.get(id)?.type === 'done',
 		).length
-		const totalProducts = childIds.reduce(
-			(total, id) => total + getCategoryProductCount(id),
-			0,
-		)
-		const countedProducts = childIds.reduce((total, id) => {
-			const tag = categoryTags.get(id)
-			if (tag?.type !== 'done') return total
-			return total + getCategoryProductCount(id)
-		}, 0)
+		const groupProductIds = new Set<string>()
+		for (const catId of childIds) {
+			categoryProductIds.get(catId)?.forEach((id) => groupProductIds.add(id))
+		}
+		const totalProducts = groupProductIds.size
+		const countedProducts = [...groupProductIds].filter((id) =>
+			inventoriedSet.has(id),
+		).length
 		const progressPercent =
 			totalProducts > 0
 				? Math.round((countedProducts / totalProducts) * 100)
@@ -639,13 +742,39 @@ function CreateSessionDialog({
 		operator.trim().length > 0 &&
 		(scopeMode === 'free'
 			? freeLabel.trim().length > 0
-			: selectedCategoryIds.length > 0)
+			: scopeMode === 'targeted'
+				? selectedProductIds.length > 0
+				: selectedCategoryIds.length > 0)
 
 	const handleConfirm = () => {
 		if (!canConfirm) return
-		if (scopeMode === 'free')
+		if (scopeMode === 'free') {
 			onConfirm(operator.trim(), 'free', [], freeLabel.trim())
-		else onConfirm(operator.trim(), 'selection', selectedCategoryIds)
+		} else if (scopeMode === 'targeted') {
+			const categoryNames = [
+				...new Set(
+					selectedProductIds.flatMap((pid) => {
+						const product = catalogProducts.find(
+							(p: any) => p.id === pid,
+						) as any
+						const catId = (product?.categories as string[])?.[0]
+						const cat = categories.find((c) => c.id === catId)
+						return cat?.name ? [cat.name] : []
+					}),
+				),
+			]
+				.slice(0, 3)
+				.join(', ')
+			onConfirm(
+				operator.trim(),
+				'free',
+				[],
+				`Ciblée · ${categoryNames}`,
+				selectedProductIds,
+			)
+		} else {
+			onConfirm(operator.trim(), 'selection', selectedCategoryIds)
+		}
 	}
 
 	return (
@@ -672,7 +801,7 @@ function CreateSessionDialog({
 					{/* ── Type de session ───────────────────────────────────────── */}
 					<div className='mb-5 max-w-md space-y-1.5'>
 						<Label>Type de session</Label>
-						<div className='grid grid-cols-2 gap-2'>
+						<div className='grid grid-cols-3 gap-2'>
 							<button
 								type='button'
 								onClick={() => setScopeMode('selection')}
@@ -703,6 +832,21 @@ function CreateSessionDialog({
 									Nommer un espace physique
 								</p>
 							</button>
+							<button
+								type='button'
+								onClick={() => setScopeMode('targeted')}
+								className={cn(
+									'rounded-xl border px-4 py-3 text-left transition-colors',
+									scopeMode === 'targeted'
+										? 'border-orange-400 bg-orange-50/60 dark:bg-orange-950/20'
+										: 'border-border hover:bg-muted/50',
+								)}
+							>
+								<p className='text-sm font-semibold'>Session ciblée</p>
+								<p className='mt-0.5 text-xs text-muted-foreground'>
+									Produits jamais inventoriés
+								</p>
+							</button>
 						</div>
 					</div>
 
@@ -718,6 +862,188 @@ function CreateSessionDialog({
 							<p className='text-xs text-muted-foreground'>
 								Les produits seront ajoutés manuellement via scan ou recherche.
 							</p>
+						</div>
+					)}
+
+					{scopeMode === 'targeted' && (
+						<div className='mb-5 space-y-3'>
+							<div className='flex items-center justify-between'>
+								<Label>Produits jamais inventoriés</Label>
+								{selectedProductIds.length > 0 && (
+									<span className='rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'>
+										{selectedProductIds.length} produit
+										{selectedProductIds.length > 1 ? 's' : ''} sélectionné
+										{selectedProductIds.length > 1 ? 's' : ''}
+									</span>
+								)}
+							</div>
+
+							<div className='h-[400px] overflow-y-auto rounded-xl border divide-y'>
+								{filteredGrouped.map((group, gi) => {
+									const groupKey = group.parent?.id ?? `orphan-${gi}`
+									return (
+										<div key={groupKey}>
+											{group.parent && (
+												<div className='bg-white bg-muted/50 px-3 py-2 text-xs font-bold uppercase tracking-wide  sticky top-0 opacity-100'>
+													{group.parent.name}
+												</div>
+											)}
+											{group.children.map((cat) => {
+												const catProducts = (catalogProducts as any[]).filter(
+													(p) => (p.categories as string[])?.includes(cat.id),
+												)
+												const neverInventoried = catProducts.filter(
+													(p) => !inventoriedSet.has(p.id),
+												)
+												const alreadyInventoried = catProducts.filter((p) =>
+													inventoriedSet.has(p.id),
+												)
+												if (catProducts.length === 0) return null
+
+												const catExpanded = expandedProductGroups.has(cat.id)
+												const allCatSelected =
+													neverInventoried.length > 0 &&
+													neverInventoried.every((p) =>
+														selectedProductIds.includes(p.id),
+													)
+
+												return (
+													<div key={cat.id}>
+														<div className='flex items-center gap-2 border-b px-4 py-2.5 hover:bg-muted/30 transition-colors'>
+															<button
+																type='button'
+																className='flex min-w-0 flex-1 items-center gap-2 text-left'
+																onClick={() =>
+																	setExpandedProductGroups((prev) => {
+																		const next = new Set(prev)
+																		next.has(cat.id)
+																			? next.delete(cat.id)
+																			: next.add(cat.id)
+																		return next
+																	})
+																}
+															>
+																<ChevronDown
+																	className={cn(
+																		'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150',
+																		!catExpanded && '-rotate-90',
+																	)}
+																/>
+																<span className='truncate text-sm font-semibold'>
+																	{cat.name}
+																</span>
+																<span className='shrink-0 text-xs text-muted-foreground'>
+																	<span className='text-amber-600 font-medium'>
+																		{neverInventoried.length} à faire
+																	</span>
+																	{alreadyInventoried.length > 0 && (
+																		<span className='text-green-600 ml-1'>
+																			· {alreadyInventoried.length} fait
+																		</span>
+																	)}
+																</span>
+															</button>
+															{neverInventoried.length > 0 && (
+																<button
+																	type='button'
+																	onClick={() => {
+																		const ids = neverInventoried.map(
+																			(p: any) => p.id,
+																		)
+																		setSelectedProductIds((prev) =>
+																			allCatSelected
+																				? prev.filter((id) => !ids.includes(id))
+																				: [
+																						...prev,
+																						...ids.filter(
+																							(id) => !prev.includes(id),
+																						),
+																					],
+																		)
+																	}}
+																	className={cn(
+																		'shrink-0 text-xs font-semibold px-2 py-1 rounded-lg transition-colors',
+																		allCatSelected
+																			? 'text-orange-600 bg-orange-50 dark:bg-orange-900/20'
+																			: 'text-muted-foreground hover:text-foreground',
+																	)}
+																>
+																	{allCatSelected ? 'Retirer' : 'Tout'}
+																</button>
+															)}
+														</div>
+
+														{catExpanded && (
+															<div className='divide-y bg-background'>
+																{neverInventoried.map((product: any) => (
+																	<label
+																		key={product.id}
+																		className={cn(
+																			'flex cursor-pointer items-center gap-3 px-6 py-2.5 transition-colors hover:bg-muted/30',
+																			selectedProductIds.includes(product.id) &&
+																				'bg-orange-50/50 dark:bg-orange-900/5',
+																		)}
+																	>
+																		<input
+																			type='checkbox'
+																			checked={selectedProductIds.includes(
+																				product.id,
+																			)}
+																			onChange={() =>
+																				setSelectedProductIds((prev) =>
+																					prev.includes(product.id)
+																						? prev.filter(
+																								(id) => id !== product.id,
+																							)
+																						: [...prev, product.id],
+																				)
+																			}
+																			className='shrink-0 rounded accent-orange-500'
+																		/>
+																		<span className='min-w-0 flex-1 truncate text-sm'>
+																			{product.name}
+																		</span>
+																		<span className='shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'>
+																			Jamais inventorié
+																		</span>
+																	</label>
+																))}
+
+																{alreadyInventoried.map((product: any) => {
+																	const countedAt = inventoriedWithDates.get(
+																		product.id,
+																	)
+																	return (
+																		<div
+																			key={product.id}
+																			className='flex items-center gap-3 px-6 py-2.5 opacity-40'
+																		>
+																			<input
+																				type='checkbox'
+																				checked
+																				disabled
+																				className='shrink-0 rounded accent-green-500'
+																			/>
+																			<span className='min-w-0 flex-1 truncate text-sm'>
+																				{product.name}
+																			</span>
+																			<span className='shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300'>
+																				{countedAt
+																					? `Inventorié · ${formatInventoryDateTime(countedAt)}`
+																					: 'Inventorié'}
+																			</span>
+																		</div>
+																	)
+																})}
+															</div>
+														)}
+													</div>
+												)
+											})}
+										</div>
+									)
+								})}
+							</div>
 						</div>
 					)}
 
@@ -912,9 +1238,16 @@ function CreateSessionDialog({
 						className='gap-2 bg-orange-500 text-white hover:bg-orange-600'
 					>
 						{isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
-						Démarrer le comptage
+						{scopeMode === 'targeted'
+							? 'Démarrer la session ciblée'
+							: 'Démarrer le comptage'}
 						{scopeMode === 'selection' && selectedProductTotal > 0 && (
 							<span className='ml-1 opacity-80'>({selectedProductTotal})</span>
+						)}
+						{scopeMode === 'targeted' && selectedProductIds.length > 0 && (
+							<span className='ml-1 opacity-80'>
+								({selectedProductIds.length})
+							</span>
 						)}
 					</Button>
 				</DialogFooter>
@@ -2642,6 +2975,7 @@ export function InventoryPageAppPos() {
 
 	const { user } = useAuth()
 	const userName = (user as any)?.name || (user as any)?.username || ''
+	const pb = usePocketBase()
 
 	const { data: activeSessions = [], isLoading: sessionsLoading } =
 		useActiveSessions()
@@ -2686,6 +3020,7 @@ export function InventoryPageAppPos() {
 		scope: 'selection' | 'free',
 		categoryIds: string[],
 		label?: string,
+		targetedProductIds?: string[],
 	) => {
 		const result = await createSession.mutateAsync({
 			operator,
@@ -2693,6 +3028,27 @@ export function InventoryPageAppPos() {
 			scope_category_ids: categoryIds,
 			label: label ?? null,
 		})
+
+		if (targetedProductIds && targetedProductIds.length > 0) {
+			const freshCatalog: any[] = await appPosApi
+				.getProducts()
+				.then((p) => appPosTransformers.products(p))
+			const entries = targetedProductIds.map((pid) => {
+				const p = freshCatalog.find((c: any) => c.id === pid) as any
+				return {
+					product_id: p.id,
+					product_name: p.name ?? '',
+					product_sku: p.sku ?? '',
+					product_barcode: p.barcode ?? '',
+					product_image: p.images ?? '',
+					category_id: (p.categories as string[])?.[0] ?? '',
+					category_name: label ?? 'Session ciblée',
+					stock_theorique: Number(p.stock_quantity ?? 0),
+				}
+			})
+			await createInventoryEntries(pb, result.session.id, entries)
+		}
+
 		setShowCreateDialog(false)
 		setSelectedSessionId(result.session.id)
 		setView('overview')

@@ -20,11 +20,12 @@ import {
 	FormLabel,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
 import { useCloseCashSession, useXReport } from '@/lib/queries/cash'
 import type { CashSession } from '@/lib/types/cash.types'
 import { formatCurrency } from '@/lib/utils'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertTriangle, Loader2, Vault } from 'lucide-react'
 import * as React from 'react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -49,6 +50,10 @@ export function CloseSessionDialog({
 }: CloseSessionDialogProps) {
 	const { mutate: closeSession, isPending } = useCloseCashSession()
 	const [showConfirm, setShowConfirm] = useState(false)
+	const openDrawer = useOpenCashDrawerMutation()
+	const handleOpenDrawer = () => {
+		openDrawer.mutate()
+	}
 
 	// ✅ Source de vérité pour "Espèces attendues" : Rapport X
 	const sessionId = session?.id ?? ''
@@ -126,11 +131,35 @@ export function CloseSessionDialog({
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className='max-w-3xl max-h-[90vh] overflow-y-auto'>
-				<DialogHeader>
-					<DialogTitle>Fermer la session de caisse</DialogTitle>
-					<DialogDescription>
-						Comptez les espèces présentes dans la caisse
-					</DialogDescription>
+				<DialogHeader className='flex-row items-center justify-between gap-4 pr-8'>
+					<div>
+						<DialogTitle>Fermer la session de caisse</DialogTitle>
+						<DialogDescription>
+							Comptez les espèces présentes dans la caisse
+						</DialogDescription>
+					</div>
+					{!showConfirm && (
+						<Button
+							type='button'
+							variant='outline'
+							size='sm'
+							onClick={handleOpenDrawer}
+							disabled={openDrawer.isPending}
+							className='h-8 shrink-0'
+						>
+							{openDrawer.isPending ? (
+								<>
+									<Loader2 className='h-3.5 w-3.5 mr-2 animate-spin' />
+									Ouverture...
+								</>
+							) : (
+								<>
+									<Vault className='h-3.5 w-3.5 mr-2' />
+									Ouvrir tiroir
+								</>
+							)}
+						</Button>
+					)}
 				</DialogHeader>
 
 				{!showConfirm ? (

@@ -33,7 +33,7 @@ import type {
 	InvoicesResponse,
 	TypedPocketBase,
 } from '@/lib/pocketbase-types'
-import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
+import { useAllCustomers, useCreateCustomer } from '@/lib/queries/customers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
@@ -118,24 +118,18 @@ export function ConvertTicketToInvoicePage() {
 
 	const isConverted = !!convertedInvoice
 
-	const { data: customersData } = useCustomers({
-		companyId: activeCompanyId ?? undefined,
-	})
-	const customers: CustomersResponse[] = (customersData?.items ??
-		[]) as CustomersResponse[]
+	const { data: customers = [] } = useAllCustomers(activeCompanyId ?? undefined)
 
 	const filteredCustomers = React.useMemo(() => {
-		if (!customerSearch) return customers.slice(0, 10)
+		if (!customerSearch) return customers
 		const term = customerSearch.toLowerCase()
-		return customers
-			.filter(
-				(c) =>
-					(c.name ?? '').toLowerCase().includes(term) ||
-					(c.email ?? '').toLowerCase().includes(term) ||
-					(c.phone ?? '').includes(customerSearch) ||
-					(c.company ?? '').toLowerCase().includes(term),
-			)
-			.slice(0, 20)
+		return customers.filter(
+			(c) =>
+				(c.name ?? '').toLowerCase().includes(term) ||
+				(c.email ?? '').toLowerCase().includes(term) ||
+				(c.phone ?? '').includes(customerSearch) ||
+				(c.company ?? '').toLowerCase().includes(term),
+		)
 	}, [customers, customerSearch])
 
 	// ── Mutations ─────────────────────────────────────────────────────────────
