@@ -226,6 +226,11 @@ export function OrderPdfDocument({
 						<Text style={styles.customerName}>
 							{(customer as any)?.name ?? order.customer_name}
 						</Text>
+						{(customer as any)?.customer_number && (
+							<Text style={styles.customerLine}>
+								N° client : {(customer as any).customer_number}
+							</Text>
+						)}
 						{(customer as any)?.address && (
 							<Text style={styles.customerLine}>
 								{(customer as any).address}

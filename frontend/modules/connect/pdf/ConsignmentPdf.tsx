@@ -400,6 +400,11 @@ export function ConsignmentPdfDocument({
 					<View style={styles.partyBox}>
 						<Text style={styles.partyLabel}>Déposant (vendeur)</Text>
 						<Text style={styles.partyName}>{customer.name}</Text>
+						{(customer as any).customer_number && (
+							<Text style={styles.partyLine}>
+								N° client : {(customer as any).customer_number}
+							</Text>
+						)}
 						{customer.company && (
 							<Text style={styles.partyLine}>{customer.company}</Text>
 						)}

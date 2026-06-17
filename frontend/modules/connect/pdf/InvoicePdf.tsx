@@ -543,6 +543,11 @@ export function InvoicePdfDocument({
 							<Text style={styles.customerLine}>
 								Nom : {customer?.name || 'Client inconnu'}
 							</Text>
+							{(customer as any)?.customer_number && (
+								<Text style={styles.customerLine}>
+									N° client : {(customer as any).customer_number}
+								</Text>
+							)}
 							{customer?.address && (
 								<Text style={styles.customerLine}>{customer.address}</Text>
 							)}
