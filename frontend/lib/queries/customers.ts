@@ -177,7 +177,7 @@ export function useSearchCustomers(searchTerm: string, companyId?: string) {
 			if (!searchTerm) return { items: [] as CustomersResponse[] }
 
 			const filters: string[] = [
-				`name ~ "${searchTerm}" || email ~ "${searchTerm}" || phone ~ "${searchTerm}"`,
+				`name ~ "${searchTerm}" || email ~ "${searchTerm}" || phone ~ "${searchTerm}" || customer_number ~ "${searchTerm}"`,
 			]
 
 			if (companyId) {

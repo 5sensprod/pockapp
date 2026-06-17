@@ -25,7 +25,7 @@ export function useConnectModule() {
 	} = useCustomers({
 		companyId: activeCompanyId ?? undefined,
 		filter: debouncedSearch
-			? `name ~ "${debouncedSearch}" || email ~ "${debouncedSearch}" || phone ~ "${debouncedSearch}" || company ~ "${debouncedSearch}"`
+			? `name ~ "${debouncedSearch}" || email ~ "${debouncedSearch}" || phone ~ "${debouncedSearch}" || company ~ "${debouncedSearch}" || customer_number ~ "${debouncedSearch}"`
 			: '',
 		page,
 		perPage: PER_PAGE,
@@ -39,6 +39,7 @@ export function useConnectModule() {
 		() =>
 			customersData?.items.map((c: any) => ({
 				id: c.id,
+				customer_number: c.customer_number,
 				name: c.name,
 				email: c.email,
 				phone: c.phone,

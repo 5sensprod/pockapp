@@ -120,6 +120,23 @@ export function CustomerTable({
 
 	const columns: ColumnDef<Customer>[] = [
 		{
+			id: 'customer_number',
+			accessorFn: (row) => (row as any).customer_number,
+			header: 'N° client',
+			cell: ({ row }) => {
+				const number = (row.original as any).customer_number as
+					| string
+					| undefined
+				return number ? (
+					<span className='font-mono text-xs text-muted-foreground'>
+						{number}
+					</span>
+				) : (
+					<span className='text-muted-foreground'>-</span>
+				)
+			},
+		},
+		{
 			accessorKey: 'name',
 			header: ({ column }) => (
 				<Button

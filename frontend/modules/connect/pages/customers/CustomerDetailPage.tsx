@@ -280,6 +280,12 @@ export function CustomerDetailPage() {
 							<h1 className='text-xl font-bold tracking-tight text-foreground'>
 								{customer.name}
 							</h1>
+							{/* NUMÉRO CLIENT — identifiant figé, style POS */}
+							{(customer as any).customer_number && (
+								<span className='text-xs font-mono text-muted-foreground/70 tracking-wide'>
+									{(customer as any).customer_number}
+								</span>
+							)}
 							{/* BADGE TOTAL ENCAISSÉ DANS LE HEADER */}
 							{stats.totalPaid > 0 && (
 								<Badge

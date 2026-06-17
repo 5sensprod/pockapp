@@ -57,6 +57,8 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		AddCustomerTypeToCustomers,
 		AddPaymentTermsToCustomers,
 		BackfillCustomerType,
+		AddCustomerNumberToCustomers,
+		BackfillCustomerNumber,
 		FixInvoiceTotalsNonzero,
 
 		// 8. Inventaire physique
