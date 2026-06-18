@@ -15,17 +15,25 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { getAppPosToken } from '@/lib/apppos/apppos-api'
 import { decrementStockFromCart } from '@/lib/apppos/stock-utils'
 import { openCashDrawer } from '@/lib/pos/posPrint'
 import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
 import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
+import { useHasAnyOpenCashSession } from '@/lib/queries/cash'
 import { useCreateDeposit } from '@/lib/queries/deposits'
 import { useRecordPayment } from '@/lib/queries/invoices'
 import { canCreateDeposit } from '@/lib/types/invoice.types'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
-import { CheckCircle2, ExternalLink, Info, Printer } from 'lucide-react'
+import {
+	AlertTriangle,
+	CheckCircle2,
+	ExternalLink,
+	Info,
+	Printer,
+} from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 import { PaymentDialogContent } from '../../cash/components/terminal/payment/PaymentDialog'
@@ -83,6 +91,9 @@ export function InvoicePaymentDialog({
 	const createDeposit = useCreateDeposit()
 	const openDrawer = useOpenCashDrawerMutation()
 	const pb = usePocketBase()
+	const { activeCompanyId } = useActiveCompany()
+	const { hasOpenSession, isLoading: isLoadingSession } =
+		useHasAnyOpenCashSession(activeCompanyId)
 
 	// Reset à chaque ouverture
 	React.useEffect(() => {
@@ -520,6 +531,17 @@ export function InvoicePaymentDialog({
 							</div>
 						</div>
 
+						{!isLoadingSession && !hasOpenSession && (
+							<div className='flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 p-3 text-sm text-amber-800 dark:text-amber-400'>
+								<AlertTriangle className='h-4 w-4 mt-0.5 shrink-0' />
+								<span>
+									Aucune session de caisse n'est ouverte. Ouvrez une session
+									pour pouvoir enregistrer ce paiement, ou choisissez « Payer
+									plus tard ».
+								</span>
+							</div>
+						)}
+
 						<DialogFooter className='flex gap-2 sm:justify-between'>
 							<Button
 								variant='outline'
@@ -530,7 +552,7 @@ export function InvoicePaymentDialog({
 							</Button>
 							<Button
 								onClick={handleConfirmDeposit}
-								disabled={!isDepositValid || isProcessing}
+								disabled={!isDepositValid || isProcessing || !hasOpenSession}
 								className='bg-amber-600 hover:bg-amber-700'
 							>
 								{isProcessing

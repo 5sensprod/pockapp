@@ -12,8 +12,10 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { useHasAnyOpenCashSession } from '@/lib/queries/cash'
 import { usePaymentMethods } from '@/lib/queries/payment-methods'
 import {
+	AlertTriangle,
 	ArrowRightLeft,
 	Banknote,
 	CreditCard,
@@ -435,6 +437,8 @@ export function PaymentDialogContent({
 }: PaymentDialogContentProps) {
 	const { activeCompanyId } = useActiveCompany()
 	const { paymentMethods, isLoading } = usePaymentMethods(activeCompanyId)
+	const { hasOpenSession, isLoading: isLoadingSession } =
+		useHasAnyOpenCashSession(activeCompanyId ?? undefined)
 
 	const [pendingMethod, setPendingMethod] =
 		React.useState<PaymentMethod | null>(initialMethod ?? null)
@@ -506,6 +510,7 @@ export function PaymentDialogContent({
 	)
 	const canConfirm =
 		!isProcessing &&
+		hasOpenSession &&
 		(paymentEntries.length > 0 || pendingMethod !== null) &&
 		totalIfConfirmed >= totalTtc - 0.005
 
@@ -699,6 +704,16 @@ export function PaymentDialogContent({
 					</div>
 				)}
 			</div>
+
+			{!isLoadingSession && !hasOpenSession && (
+				<div className='flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 p-3 text-sm text-amber-800 dark:text-amber-400'>
+					<AlertTriangle className='h-4 w-4 mt-0.5 shrink-0' />
+					<span>
+						Aucune session de caisse n'est ouverte. Ouvrez une session pour
+						pouvoir enregistrer ce paiement, ou choisissez « Payer plus tard ».
+					</span>
+				</div>
+			)}
 
 			<DialogFooter className='flex gap-2 sm:justify-between'>
 				<div className='flex gap-2'>

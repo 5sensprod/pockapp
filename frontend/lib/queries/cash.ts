@@ -11,7 +11,12 @@ import type {
 	ZReportListItem,
 } from '@/lib/types/cash.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+	useMutation,
+	useQueries,
+	useQuery,
+	useQueryClient,
+} from '@tanstack/react-query'
 
 // ============================================================================
 // QUERY KEYS
@@ -115,6 +120,50 @@ export function useActiveCashSession(cashRegisterId?: string) {
 		},
 		refetchInterval: 30000,
 	})
+}
+
+// ============================================================================
+// 🆕 LECTURE : AU MOINS UNE SESSION OUVERTE POUR L'ENTREPRISE
+// ============================================================================
+// Utile quand on doit juste savoir "y a-t-il une caisse ouverte ?" sans se
+// soucier de laquelle précisément (ex: bloquer l'enregistrement d'un
+// paiement de facture si aucune session n'est active).
+
+export function useHasAnyOpenCashSession(ownerCompanyId?: string | null) {
+	const pb = usePocketBase()
+	const { data: registers = [], isLoading: isLoadingRegisters } =
+		useCashRegisters(ownerCompanyId ?? undefined)
+
+	const sessionQueries = useQueries({
+		queries: registers.map((register) => ({
+			queryKey: cashKeys.activeSession(register.id),
+			enabled: !!register.id,
+			queryFn: async () => {
+				const token = pb.authStore.token
+				const res = await fetch(
+					`/api/cash/session/active?cash_register=${encodeURIComponent(register.id)}`,
+					{ headers: { Authorization: token ? `Bearer ${token}` : '' } },
+				)
+				if (!res.ok) return null
+				const data = await res.json()
+				return (data.session || null) as CashSession | null
+			},
+			refetchInterval: 30000,
+		})),
+	})
+
+	const isLoading =
+		isLoadingRegisters || sessionQueries.some((q) => q.isLoading)
+
+	const openSessions = sessionQueries
+		.map((q) => q.data)
+		.filter((s): s is CashSession => !!s && s.status === 'open')
+
+	return {
+		isLoading,
+		hasOpenSession: openSessions.length > 0,
+		openSessions,
+	}
 }
 
 // ============================================================================
