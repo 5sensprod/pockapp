@@ -11,15 +11,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
+
 import {
 	Table,
 	TableBody,
@@ -35,10 +28,7 @@ import { useDepositsForInvoice } from '@/lib/queries/deposits'
 import { useCreditNotesForInvoice, useInvoice } from '@/lib/queries/invoices'
 import { useOrder } from '@/lib/queries/orders'
 import { navigationActions } from '@/lib/stores/navigationStore'
-import {
-	canCreateBalanceInvoice,
-	canCreateDeposit,
-} from '@/lib/types/invoice.types'
+import { canCreateBalanceInvoice } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { RefundInvoiceDialog } from '@/modules/common/RefundInvoiceDialog'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
@@ -49,12 +39,11 @@ import {
 	ClipboardList,
 	CreditCard,
 	FileText,
-	PlusCircle,
 	RefreshCcw,
-	Trash2,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
+import { InvoicePaymentDialog } from '../../components/InvoicePaymentDialog'
 import { SendInvoiceEmailDialog } from '../../dialogs/SendInvoiceEmailDialog'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 import { useInvoiceActions } from '../../hooks/useInvoiceActions'
@@ -112,244 +101,6 @@ function getSoldByLabel(invoice: any): string {
 		soldBy?.username ||
 		soldBy?.email ||
 		(invoice?.sold_by ? String(invoice.sold_by) : '-')
-	)
-}
-
-// ── PaymentDialogBody — Split paiement ───────────────────────────────────────
-type SplitLine = { id: string; methodId: string; amount: string }
-
-const METHOD_MAPPING: Record<string, string> = {
-	card: 'cb',
-	cash: 'especes',
-	check: 'cheque',
-	transfer: 'virement',
-}
-
-function newLine(): SplitLine {
-	return { id: crypto.randomUUID(), methodId: '', amount: '' }
-}
-
-function PaymentDialogBody({
-	invoice,
-	actions,
-}: {
-	invoice: any
-	actions: any
-}) {
-	const totalTtc: number =
-		invoice.invoice_type === 'deposit'
-			? invoice.total_ttc
-			: invoice.deposits_total_ttc
-				? (invoice.balance_due ?? invoice.total_ttc)
-				: invoice.total_ttc
-
-	const [isSplit, setIsSplit] = useState(false)
-	const [lines, setLines] = useState<SplitLine[]>([newLine(), newLine()])
-	const [isSubmitting, setIsSubmitting] = useState(false)
-
-	// Calculs split
-	const allocatedTotal = lines.reduce(
-		(sum, l) => sum + (Number.parseFloat(l.amount) || 0),
-		0,
-	)
-	const remaining = round2(totalTtc - allocatedTotal)
-	const splitValid =
-		lines.every((l) => l.methodId && Number.parseFloat(l.amount) > 0) &&
-		Math.abs(remaining) < 0.01
-
-	const addLine = () => setLines((prev) => [...prev, newLine()])
-
-	const removeLine = (id: string) =>
-		setLines((prev) => prev.filter((l) => l.id !== id))
-
-	const updateLine = (
-		id: string,
-		field: 'methodId' | 'amount',
-		value: string,
-	) =>
-		setLines((prev) =>
-			prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)),
-		)
-
-	// Auto-remplir le dernier montant au blur si reste > 0
-	const handleAmountBlur = (id: string) => {
-		const idx = lines.findIndex((l) => l.id === id)
-		if (idx === lines.length - 1 && remaining > 0) {
-			updateLine(id, 'amount', String(remaining))
-		}
-	}
-
-	const buildSplitPayments = () =>
-		lines.map((l) => {
-			const m = actions.enabledMethods.find((m: any) => m.id === l.methodId)
-			const code =
-				m?.type === 'default' ? METHOD_MAPPING[m.code] || m.code : 'autre'
-			const method_label = m?.type === 'custom' ? m.name : undefined
-			return {
-				method: code,
-				...(method_label && { method_label }),
-				amount: Number.parseFloat(l.amount),
-			}
-		})
-
-	const handleConfirm = async () => {
-		if (isSubmitting) return
-		setIsSubmitting(true)
-		try {
-			if (isSplit) {
-				if (!splitValid) return
-				// Appel direct à recordPayment avec payment_method="multi"
-				await actions.handleRecordPaymentSplit(buildSplitPayments())
-			} else {
-				await actions.handleRecordPayment()
-			}
-		} finally {
-			setIsSubmitting(false)
-		}
-	}
-
-	const isPending = isSubmitting || actions.isRecordingPayment
-
-	return (
-		<>
-			<div className='space-y-4 py-4'>
-				{/* Toggle simple / split */}
-				<div className='flex rounded-md overflow-hidden border border-border text-xs font-medium'>
-					<button
-						type='button'
-						className={`flex-1 px-3 py-2 transition-colors ${!isSplit ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
-						onClick={() => setIsSplit(false)}
-					>
-						Paiement simple
-					</button>
-					<button
-						type='button'
-						className={`flex-1 px-3 py-2 transition-colors ${isSplit ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
-						onClick={() => setIsSplit(true)}
-					>
-						Paiement fractionné
-					</button>
-				</div>
-
-				{!isSplit ? (
-					/* ── Mode simple ─────────────────────────────── */
-					<div className='space-y-2'>
-						<Label>Moyen de paiement *</Label>
-						<Select
-							value={actions.selectedMethodId}
-							onValueChange={actions.setSelectedMethodId}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder='Sélectionner...' />
-							</SelectTrigger>
-							<SelectContent>
-								{actions.enabledMethods.map((m: any) => (
-									<SelectItem key={m.id} value={m.id}>
-										{m.name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
-				) : (
-					/* ── Mode split ──────────────────────────────── */
-					<div className='space-y-3'>
-						<div className='flex items-center justify-between'>
-							<Label>Répartition du paiement</Label>
-							<span
-								className={`text-xs font-semibold ${Math.abs(remaining) < 0.01 ? 'text-emerald-600' : remaining < 0 ? 'text-destructive' : 'text-amber-600'}`}
-							>
-								{Math.abs(remaining) < 0.01
-									? '✓ Soldé'
-									: remaining > 0
-										? `Reste ${formatCurrency(remaining)}`
-										: `Dépassement ${formatCurrency(Math.abs(remaining))}`}
-							</span>
-						</div>
-
-						<div className='space-y-2'>
-							{lines.map((line) => (
-								<div key={line.id} className='flex gap-2 items-center'>
-									<Select
-										value={line.methodId}
-										onValueChange={(v) => updateLine(line.id, 'methodId', v)}
-									>
-										<SelectTrigger className='flex-1 h-9'>
-											<SelectValue placeholder='Moyen...' />
-										</SelectTrigger>
-										<SelectContent>
-											{actions.enabledMethods.map((m: any) => (
-												<SelectItem key={m.id} value={m.id}>
-													{m.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									<Input
-										type='number'
-										min={0.01}
-										step={0.01}
-										placeholder='0.00'
-										value={line.amount}
-										onChange={(e) =>
-											updateLine(line.id, 'amount', e.target.value)
-										}
-										onBlur={() => handleAmountBlur(line.id)}
-										className='w-28 h-9 text-right'
-									/>
-									<span className='text-sm text-muted-foreground'>€</span>
-									{lines.length > 2 && (
-										<button
-											type='button'
-											onClick={() => removeLine(line.id)}
-											className='text-muted-foreground hover:text-destructive transition-colors'
-										>
-											<Trash2 className='h-4 w-4' />
-										</button>
-									)}
-								</div>
-							))}
-						</div>
-
-						<button
-							type='button'
-							onClick={addLine}
-							className='flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors'
-						>
-							<PlusCircle className='h-3.5 w-3.5' />
-							Ajouter un moyen de paiement
-						</button>
-
-						{/* Récap total */}
-						<div className='bg-muted/50 rounded-lg p-3 text-sm flex justify-between'>
-							<span className='text-muted-foreground'>Total facture</span>
-							<span className='font-semibold'>
-								{formatCurrency(totalTtc, invoice.currency)}
-							</span>
-						</div>
-					</div>
-				)}
-			</div>
-
-			<DialogFooter>
-				<Button
-					variant='outline'
-					onClick={() => actions.setPaymentDialogOpen(false)}
-					disabled={isPending}
-				>
-					Annuler
-				</Button>
-				<Button
-					onClick={handleConfirm}
-					disabled={
-						isPending || (isSplit ? !splitValid : !actions.selectedMethodId)
-					}
-					className='bg-green-600 hover:bg-green-700'
-				>
-					{isPending ? 'Enregistrement...' : 'Confirmer le paiement'}
-				</Button>
-			</DialogFooter>
-		</>
 	)
 }
 
@@ -467,7 +218,6 @@ export function InvoiceDetailPage() {
 		remainingAmount,
 		hasCancellationCreditNote,
 		search: search as Record<string, string>,
-		canGenerateDeposit: !!(invoice && canCreateDeposit(invoice)),
 		canGenerateBalance: !!(
 			invoice &&
 			canCreateBalanceInvoice(invoice) &&
@@ -864,7 +614,21 @@ export function InvoiceDetailPage() {
 																{depositsData.balanceInvoice.number}
 															</span>
 															<span className='text-xs text-muted-foreground'>
-																Facture de solde
+																Facture de solde •{' '}
+																{formatDate(depositsData.balanceInvoice.date)} •{' '}
+																{formatCurrency(
+																	depositsData.balanceInvoice.total_ttc,
+																)}{' '}
+																•{' '}
+																{depositsData.balanceInvoice.is_paid ? (
+																	<span className='text-emerald-600'>
+																		Réglé
+																	</span>
+																) : (
+																	<span className='text-amber-600'>
+																		En attente
+																	</span>
+																)}
 															</span>
 														</div>
 													</div>
@@ -1129,102 +893,6 @@ export function InvoiceDetailPage() {
 				onSuccess={() => actions.setEmailDialogOpen(false)}
 			/>
 
-			{/* ── Dialog Demande d'Acompte ───────────────────────────────────── */}
-			<Dialog
-				open={actions.depositDialogOpen}
-				onOpenChange={actions.setDepositDialogOpen}
-			>
-				<DialogContent className='sm:max-w-md'>
-					<DialogHeader>
-						<DialogTitle>Demander un acompte</DialogTitle>
-						<DialogDescription>
-							Définissez le montant ou le pourcentage pour le nouvel acompte.
-						</DialogDescription>
-					</DialogHeader>
-					<div className='space-y-4 py-2'>
-						<div className='flex rounded-md overflow-hidden border border-border text-xs font-medium'>
-							<button
-								type='button'
-								className={`flex-1 px-2 py-2 transition-colors ${actions.depositMode === 'percent' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
-								onClick={() => actions.setDepositMode('percent')}
-							>
-								Pourcentage (%)
-							</button>
-							<button
-								type='button'
-								className={`flex-1 px-2 py-2 transition-colors ${actions.depositMode === 'amount' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
-								onClick={() => actions.setDepositMode('amount')}
-							>
-								Montant (€)
-							</button>
-						</div>
-
-						{actions.depositMode === 'percent' ? (
-							<div className='space-y-2'>
-								<div className='flex items-center gap-4'>
-									<input
-										type='range'
-										min={10}
-										max={90}
-										step={5}
-										value={actions.depositPercentage}
-										onChange={(e) =>
-											actions.setDepositPercentage(Number(e.target.value))
-										}
-										className='flex-1'
-									/>
-									<span className='text-sm font-semibold w-12 text-right'>
-										{actions.depositPercentage}%
-									</span>
-								</div>
-								<p className='text-sm text-muted-foreground text-right'>
-									≈{' '}
-									{formatCurrency(
-										((invoice.deposits_total_ttc
-											? (invoice.balance_due ?? invoice.total_ttc)
-											: invoice.total_ttc) *
-											actions.depositPercentage) /
-											100,
-										invoice.currency,
-									)}
-								</p>
-							</div>
-						) : (
-							<div className='space-y-2'>
-								<div className='flex items-center gap-2'>
-									<Input
-										type='number'
-										min={0.01}
-										step={0.01}
-										placeholder='Montant en €'
-										value={actions.depositAmount || ''}
-										onChange={(e) =>
-											actions.setDepositAmount(Number(e.target.value))
-										}
-										className='flex-1'
-									/>
-									<span className='text-sm font-semibold'>€</span>
-								</div>
-							</div>
-						)}
-					</div>
-					<DialogFooter>
-						<Button
-							variant='outline'
-							onClick={() => actions.setDepositDialogOpen(false)}
-						>
-							Annuler
-						</Button>
-						<Button
-							onClick={actions.handleCreateDeposit}
-							disabled={actions.isCreatingDeposit}
-						>
-							{actions.isCreatingDeposit ? 'Création...' : "Créer l'acompte"}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
 			<Dialog
 				open={actions.cancelDialogOpen}
 				onOpenChange={actions.setCancelDialogOpen}
@@ -1264,21 +932,16 @@ export function InvoiceDetailPage() {
 				</DialogContent>
 			</Dialog>
 
-			<Dialog
+			{/* ✅ Composant partagé — même comportement que dans le flux de création
+			    (fermeture verrouillée tant que le paiement n'est pas confirmé,
+			    bouton "Payer plus tard" au lieu d'"Annuler") */}
+			<InvoicePaymentDialog
+				invoice={invoice}
 				open={actions.paymentDialogOpen}
 				onOpenChange={actions.setPaymentDialogOpen}
-			>
-				<DialogContent className='sm:max-w-lg'>
-					<DialogHeader>
-						<DialogTitle>Enregistrer un paiement</DialogTitle>
-						<DialogDescription>
-							Facture <strong>{invoice.number}</strong> —{' '}
-							{formatCurrency(invoice.total_ttc, invoice.currency)}
-						</DialogDescription>
-					</DialogHeader>
-					<PaymentDialogBody invoice={invoice} actions={actions} />
-				</DialogContent>
-			</Dialog>
+				onPaid={() => actions.setPaymentDialogOpen(false)}
+				onSkip={() => actions.setPaymentDialogOpen(false)}
+			/>
 
 			<Dialog
 				open={actions.deleteDraftDialogOpen}

@@ -29,7 +29,6 @@ import {
 	FileText,
 	Loader2,
 	Mail,
-	Plus,
 	Receipt,
 	RefreshCcw,
 	RotateCcw,
@@ -51,7 +50,6 @@ interface InvoiceDetailHeaderProps {
 	search: Record<string, string>
 	depositsTotal?: number
 	balanceDue?: number
-	canGenerateDeposit?: boolean
 	canGenerateBalance?: boolean
 }
 
@@ -73,7 +71,6 @@ export function useInvoiceDetailHeader({
 	search,
 	depositsTotal,
 	balanceDue,
-	canGenerateDeposit,
 	canGenerateBalance,
 }: InvoiceDetailHeaderProps): HeaderSlots {
 	const navigate = useNavigate()
@@ -274,32 +271,21 @@ export function useInvoiceDetailHeader({
 		)
 	}
 
-	// ── Actions Acomptes & Solde ──
-	if (canGenerateDeposit || canGenerateBalance) {
+	// ── Action Facture de solde ──
+	// (la demande d'acompte se fait désormais via l'onglet "Acompte"
+	// du dialog de paiement, qui couvre le même besoin)
+	if (canGenerateBalance) {
 		dropdownItems.push(<DropdownMenuSeparator key='sep-deposits' />)
-		if (canGenerateDeposit) {
-			dropdownItems.push(
-				<DropdownMenuItem
-					key='create-deposit'
-					onClick={() => actions.setDepositDialogOpen(true)}
-				>
-					<Plus className='h-4 w-4 mr-2' />
-					Demander un acompte
-				</DropdownMenuItem>,
-			)
-		}
-		if (canGenerateBalance) {
-			dropdownItems.push(
-				<DropdownMenuItem
-					key='create-balance'
-					onClick={actions.handleCreateBalanceInvoice}
-					disabled={actions.isCreatingBalanceInvoice}
-				>
-					<CreditCard className='h-4 w-4 mr-2' />
-					Générer la facture de solde
-				</DropdownMenuItem>,
-			)
-		}
+		dropdownItems.push(
+			<DropdownMenuItem
+				key='create-balance'
+				onClick={actions.handleCreateBalanceInvoice}
+				disabled={actions.isCreatingBalanceInvoice}
+			>
+				<CreditCard className='h-4 w-4 mr-2' />
+				Générer la facture de solde
+			</DropdownMenuItem>,
+		)
 	}
 
 	if (

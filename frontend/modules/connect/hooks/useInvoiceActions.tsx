@@ -7,22 +7,16 @@
 // Pattern identique à useTicketActions — utilisable dans InvoiceDetailPage.
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { decrementAppPosProductsStock, getAppPosToken } from '@/lib/apppos'
-import { decrementStockFromCart } from '@/lib/apppos/stock-utils'
+import { getAppPosToken } from '@/lib/apppos'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
-import {
-	useCreateBalanceInvoice,
-	useCreateDeposit,
-} from '@/lib/queries/deposits'
+import { useCreateBalanceInvoice } from '@/lib/queries/deposits'
 import {
 	useCancelInvoice,
 	useDeleteDraftInvoice,
 	useMarkInvoiceAsSent,
-	useRecordPayment,
 	useRefundDeposit,
 	useValidateInvoice,
 } from '@/lib/queries/invoices'
-import { usePaymentMethods } from '@/lib/queries/payment-methods'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import {
@@ -34,10 +28,6 @@ import { pdf } from '@react-pdf/renderer'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
-
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
-
-export type DepositInputMode = 'percent' | 'amount'
 
 export interface InvoiceActionsState {
 	// ── États dialogs ──────────────────────────────────────────────────────────
@@ -51,16 +41,6 @@ export interface InvoiceActionsState {
 
 	paymentDialogOpen: boolean
 	setPaymentDialogOpen: (v: boolean) => void
-	selectedMethodId: string
-	setSelectedMethodId: (v: string) => void
-	paymentMode: 'full' | 'deposit'
-	setPaymentMode: (v: 'full' | 'deposit') => void
-	depositInputMode: DepositInputMode
-	setDepositInputMode: (v: DepositInputMode) => void
-	depositPercentage: number
-	setDepositPercentage: (v: number) => void
-	depositAmount: number
-	setDepositAmount: (v: number) => void
 
 	deleteDraftDialogOpen: boolean
 	setDeleteDraftDialogOpen: (v: boolean) => void
@@ -83,39 +63,24 @@ export interface InvoiceActionsState {
 	stockDocumentNumber: string | undefined
 	setStockDocumentNumber: (v: string | undefined) => void
 
-	depositDialogOpen: boolean
-	setDepositDialogOpen: (v: boolean) => void
-	depositMode: DepositInputMode
-	setDepositMode: (v: DepositInputMode) => void
-
 	// ── États async ────────────────────────────────────────────────────────────
 	isDownloading: boolean
 	isValidating: boolean
 	isMarkingAsSent: boolean
-	isRecordingPayment: boolean
 	isCancelling: boolean
 	isDeletingDraft: boolean
-	isCreatingDeposit: boolean
 	isCreatingBalanceInvoice: boolean
 	isRefundingDeposit: boolean
-
-	// ── Données dérivées ───────────────────────────────────────────────────────
-	enabledMethods: any[]
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	handleDownloadPdf: () => Promise<void>
 	handleValidate: () => Promise<void>
 	handleMarkAsSent: () => Promise<void>
 	handleOpenPaymentDialog: () => void
-	handleRecordPayment: () => Promise<void>
-	handleRecordPaymentSplit: (
-		splitPayments: { method: string; methodLabel?: string; amount: number }[],
-	) => Promise<void>
 	handleOpenCancelDialog: () => void
 	handleCancelInvoice: () => Promise<void>
 	handleOpenDeleteDraft: () => void
 	handleConfirmDeleteDraft: () => Promise<void>
-	handleCreateDeposit: () => Promise<void>
 	handleCreateBalanceInvoice: () => Promise<void>
 	handleRefundDeposit: () => Promise<void>
 }
@@ -127,8 +92,6 @@ export function useInvoiceActions(
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
 	const navigate = useNavigate()
-	const { paymentMethods } = usePaymentMethods(activeCompanyId)
-	const enabledMethods = paymentMethods?.filter((m) => m.enabled) || []
 
 	// ── États dialogs ──────────────────────────────────────────────────────────
 	const [isDownloading, setIsDownloading] = useState(false)
@@ -138,12 +101,6 @@ export function useInvoiceActions(
 	const [cancelReason, setCancelReason] = useState('')
 
 	const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
-	const [selectedMethodId, setSelectedMethodId] = useState('')
-	const [paymentMode, setPaymentMode] = useState<'full' | 'deposit'>('full')
-	const [depositInputMode, setDepositInputMode] =
-		useState<DepositInputMode>('percent')
-	const [depositPercentage, setDepositPercentage] = useState(30)
-	const [depositAmount, setDepositAmount] = useState(0)
 
 	const [deleteDraftDialogOpen, setDeleteDraftDialogOpen] = useState(false)
 
@@ -161,16 +118,11 @@ export function useInvoiceActions(
 		string | undefined
 	>()
 
-	const [depositDialogOpen, setDepositDialogOpen] = useState(false)
-	const [depositMode, setDepositMode] = useState<DepositInputMode>('percent')
-
 	// ── Mutations ──────────────────────────────────────────────────────────────
 	const validateInvoice = useValidateInvoice()
 	const markAsSent = useMarkInvoiceAsSent()
-	const recordPayment = useRecordPayment()
 	const cancelInvoice = useCancelInvoice()
 	const deleteDraftInvoice = useDeleteDraftInvoice()
-	const createDeposit = useCreateDeposit()
 	const createBalanceInvoice = useCreateBalanceInvoice()
 	const refundDeposit = useRefundDeposit()
 
@@ -307,114 +259,10 @@ export function useInvoiceActions(
 	}
 
 	// ── Paiement ───────────────────────────────────────────────────────────────
+	// La réinitialisation des champs (méthode, mode, montants…) est désormais
+	// gérée directement par InvoicePaymentDialog à son ouverture.
 	const handleOpenPaymentDialog = () => {
-		setPaymentMode('full')
-		setDepositPercentage(30)
-		setDepositInputMode('percent')
-		setDepositAmount(0)
-		setSelectedMethodId('')
 		setPaymentDialogOpen(true)
-	}
-
-	const handleRecordPayment = async () => {
-		if (!invoice) return
-
-		if (paymentMode === 'deposit') {
-			try {
-				await createDeposit.mutateAsync(
-					depositInputMode === 'percent'
-						? { parentId: invoice.id, percentage: depositPercentage }
-						: { parentId: invoice.id, amount: depositAmount },
-				)
-				const label =
-					depositInputMode === 'percent'
-						? `Acompte de ${depositPercentage}% créé`
-						: `Acompte de ${depositAmount.toFixed(2)} € créé`
-				toast.success(label)
-				setPaymentDialogOpen(false)
-			} catch (err: any) {
-				toast.error(err?.message || "Erreur lors de la création de l'acompte")
-			}
-			return
-		}
-
-		if (!selectedMethodId) return
-		const method = enabledMethods.find((m) => m.id === selectedMethodId)
-		if (!method) return
-
-		const mapping: Record<string, string> = {
-			card: 'cb',
-			cash: 'especes',
-			check: 'cheque',
-			transfer: 'virement',
-		}
-		const code =
-			method.type === 'default' ? mapping[method.code] || method.code : 'autre'
-		const label = method.type === 'custom' ? method.name : undefined
-
-		try {
-			await recordPayment.mutateAsync({
-				invoiceId: invoice.id,
-				paymentMethod: code,
-				paymentMethodLabel: label,
-			})
-			setPaymentDialogOpen(false)
-			setSelectedMethodId('')
-			toast.success('Paiement enregistré')
-
-			if (getAppPosToken() && invoice.items?.length) {
-				const stockItems = buildStockItems(invoice.items)
-				if (stockItems.length > 0) {
-					try {
-						await decrementAppPosProductsStock(stockItems)
-						toast.success('Stock synchronisé')
-					} catch (err) {
-						console.error('Erreur synchro stock AppPOS:', err)
-						toast.warning(
-							'Paiement enregistré mais erreur de synchronisation du stock',
-						)
-					}
-				}
-			}
-		} catch (err: any) {
-			toast.error(err?.message || "Erreur lors de l'enregistrement du paiement")
-		}
-	}
-
-	// ── Paiement fractionné (split) ────────────────────────────────────────────
-	const handleRecordPaymentSplit = async (
-		splitPayments: { method: string; methodLabel?: string; amount: number }[],
-	) => {
-		if (!invoice) return
-		try {
-			await recordPayment.mutateAsync({
-				invoiceId: invoice.id,
-				splitPayments,
-			})
-			setPaymentDialogOpen(false)
-			toast.success('Paiement fractionné enregistré')
-
-			if (getAppPosToken() && invoice.items?.length) {
-				const stockItems = buildStockItems(invoice.items)
-				if (stockItems.length > 0) {
-					try {
-						await decrementStockFromCart(stockItems, {
-							pb,
-							sourceId: invoice.id,
-							operator: '',
-						})
-						toast.success('Stock synchronisé')
-					} catch (err) {
-						console.error('Erreur synchro stock AppPOS:', err)
-						toast.warning(
-							'Paiement enregistré mais erreur de synchronisation du stock',
-						)
-					}
-				}
-			}
-		} catch (err: any) {
-			toast.error(err?.message || "Erreur lors de l'enregistrement du paiement")
-		}
 	}
 
 	// ── Avoir / annulation ─────────────────────────────────────────────────────
@@ -473,36 +321,6 @@ export function useInvoiceActions(
 		}
 	}
 
-	// ── Acompte ────────────────────────────────────────────────────────────────
-	const handleCreateDeposit = async () => {
-		if (!invoice) return
-		const baseAmount = invoice.deposits_total_ttc
-			? (invoice.balance_due ?? invoice.total_ttc)
-			: invoice.total_ttc
-
-		let percentage: number
-		if (depositMode === 'amount') {
-			const amountVal = Number.parseFloat(
-				String(depositAmount).replace(',', '.'),
-			)
-			if (!amountVal || amountVal <= 0 || amountVal >= baseAmount) {
-				toast.error('Montant invalide')
-				return
-			}
-			percentage = round2((amountVal / baseAmount) * 100)
-		} else {
-			percentage = depositPercentage
-		}
-
-		try {
-			await createDeposit.mutateAsync({ parentId: invoice.id, percentage })
-			toast.success(`Acompte de ${percentage}% créé`)
-			setDepositDialogOpen(false)
-		} catch (err: any) {
-			toast.error(err?.message || "Erreur lors de la création de l'acompte")
-		}
-	}
-
 	// ── Facture de solde ───────────────────────────────────────────────────────
 	const handleCreateBalanceInvoice = async () => {
 		if (!invoice) return
@@ -542,16 +360,6 @@ export function useInvoiceActions(
 		setCancelReason,
 		paymentDialogOpen,
 		setPaymentDialogOpen,
-		selectedMethodId,
-		setSelectedMethodId,
-		paymentMode,
-		setPaymentMode,
-		depositInputMode,
-		setDepositInputMode,
-		depositPercentage,
-		setDepositPercentage,
-		depositAmount,
-		setDepositAmount,
 		deleteDraftDialogOpen,
 		setDeleteDraftDialogOpen,
 		refundTicketDialogOpen,
@@ -568,34 +376,23 @@ export function useInvoiceActions(
 		setStockItemsToReclassify,
 		stockDocumentNumber,
 		setStockDocumentNumber,
-		depositDialogOpen,
-		setDepositDialogOpen,
-		depositMode,
-		setDepositMode,
 		// async
 		isDownloading,
 		isValidating: validateInvoice.isPending,
 		isMarkingAsSent: markAsSent.isPending,
-		isRecordingPayment: recordPayment.isPending,
 		isCancelling: cancelInvoice.isPending,
 		isDeletingDraft: deleteDraftInvoice.isPending,
-		isCreatingDeposit: createDeposit.isPending,
 		isCreatingBalanceInvoice: createBalanceInvoice.isPending,
 		isRefundingDeposit: refundDeposit.isPending,
-		// données
-		enabledMethods,
 		// handlers
 		handleDownloadPdf,
 		handleValidate,
 		handleMarkAsSent,
 		handleOpenPaymentDialog,
-		handleRecordPayment,
-		handleRecordPaymentSplit,
 		handleOpenCancelDialog,
 		handleCancelInvoice,
 		handleOpenDeleteDraft,
 		handleConfirmDeleteDraft,
-		handleCreateDeposit,
 		handleCreateBalanceInvoice,
 		handleRefundDeposit,
 	}
