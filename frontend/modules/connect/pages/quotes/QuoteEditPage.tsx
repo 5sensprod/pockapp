@@ -57,6 +57,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { CustomerDialog } from '../../features/customers/CustomerDialog'
+import { getUnitPriceTtcBeforeDiscount } from '../../utils/formatters'
 
 // =====================
 // TYPES + HELPERS
@@ -309,12 +310,13 @@ export function QuoteEditPage() {
 			const uiItems: UiQuoteItem[] = quote.items.map((it, index) => {
 				const qty = Math.max(0, it.quantity ?? 0)
 				const tvaRate = it.tva_rate ?? 20
-				const coef = 1 + tvaRate / 100
 
-				const inferredUnitTtc =
-					qty > 0
-						? round2((it.total_ttc ?? 0) / qty)
-						: round2((it.unit_price_ht ?? 0) * coef)
+				// P.U. TTC d'origine : champ persiste, ou reconstruction legacy
+				const inferredUnitTtc = getUnitPriceTtcBeforeDiscount({
+					...it,
+					quantity: qty,
+					tva_rate: tvaRate,
+				})
 
 				// ✅ RESTAURER les remises ligne depuis le backend
 				const lineDiscountMode = (it as any).line_discount_mode || 'percent'
@@ -572,6 +574,8 @@ export function QuoteEditPage() {
 				// ✅ SAUVEGARDER les remises ligne
 				line_discount_mode: lineDiscountMode,
 				line_discount_value: lineDiscountValue,
+				// ✅ PERSISTER le P.U. TTC d'origine (avant remise)
+				unit_price_ttc_before_discount: unit_price_ttc,
 			}),
 		)
 		const breakdown = computeVatBreakdownFromItems(invoiceItems)

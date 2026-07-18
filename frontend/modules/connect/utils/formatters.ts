@@ -72,3 +72,37 @@ export function formatPaymentTerms(terms?: string | null): string {
 export function round2(n: number): number {
 	return Math.round((n + Number.EPSILON) * 100) / 100
 }
+
+/**
+ * Retourne le P.U. TTC d'origine d'une ligne, avant remise ligne.
+ *
+ * Lit le champ persiste `unit_price_ttc_before_discount` lorsqu'il existe.
+ * Pour les documents legacy crees avant sa mise en place, le prix est
+ * reconstruit par calcul inverse depuis le prix net et la remise.
+ */
+export function getUnitPriceTtcBeforeDiscount(item: any): number {
+	if (item?.unit_price_ttc_before_discount != null) {
+		return round2(item.unit_price_ttc_before_discount)
+	}
+
+	// ── Legacy : reconstruction par calcul inverse ──────────────
+	const qty = Math.max(1, item?.quantity ?? 1)
+	const mode = item?.line_discount_mode || 'percent'
+	const value = item?.line_discount_value || 0
+
+	const netUnitTtc =
+		item?.unit_price_ttc ??
+		(item?.total_ttc != null
+			? item.total_ttc / qty
+			: (item?.unit_price_ht ?? 0) * (1 + (item?.tva_rate ?? 0) / 100))
+
+	if (value <= 0) return round2(netUnitTtc)
+
+	if (mode === 'percent') {
+		// remise a 100% : le prix d'origine est irrecuperable
+		if (value >= 100) return round2(netUnitTtc)
+		return round2(netUnitTtc / (1 - value / 100))
+	}
+
+	return round2(netUnitTtc + value / qty)
+}

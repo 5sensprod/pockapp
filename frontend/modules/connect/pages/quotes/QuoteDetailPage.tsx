@@ -51,7 +51,11 @@ import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { SendQuoteEmailDialog } from '../../dialogs/SendQuoteEmailDialog'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 import { useQuoteActions } from '../../hooks/useQuoteActions'
-import { formatCurrency, formatDate } from '../../utils/formatters'
+import {
+	formatCurrency,
+	formatDate,
+	getUnitPriceTtcBeforeDiscount,
+} from '../../utils/formatters'
 import { getQuoteStatus } from '../../utils/statusConfig'
 
 export function QuoteDetailPage() {
@@ -387,9 +391,8 @@ export function QuoteDetailPage() {
 							</TableHeader>
 							<TableBody>
 								{quote.items.map((item, index) => {
-									const unitPriceTtc =
-										(item as any).unit_price_ttc ??
-										item.unit_price_ht * (1 + (item.tva_rate ?? 0) / 100)
+									// P.U. TTC d'origine : champ persiste, ou reconstruction legacy
+									const unitPriceTtc = getUnitPriceTtcBeforeDiscount(item)
 									const lineDiscountValue =
 										(item as any).line_discount_value || 0
 									const lineDiscountMode =

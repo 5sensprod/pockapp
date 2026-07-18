@@ -14,6 +14,7 @@ import {
 	Text,
 	View,
 } from '@react-pdf/renderer'
+import { getUnitPriceTtcBeforeDiscount } from '../utils/formatters'
 
 // Type flexible pour le client
 interface CustomerInfo {
@@ -525,7 +526,7 @@ export function QuotePdfDocument({
 						</Text>
 						<Text style={[styles.colQty, styles.tableHeaderText]}>Qté</Text>
 						<Text style={[styles.colUnit, styles.tableHeaderText]}>
-							P.U. HT
+							P.U. TTC
 						</Text>
 						<Text style={[styles.colDiscount, styles.tableHeaderText]}>
 							Remise
@@ -562,7 +563,7 @@ export function QuotePdfDocument({
 								</View>
 								<Text style={styles.colQty}>{item.quantity}</Text>
 								<Text style={styles.colUnit}>
-									{item.unit_price_ht.toFixed(2)}
+									{getUnitPriceTtcBeforeDiscount(item).toFixed(2)}
 								</Text>
 								<Text style={styles.colDiscount}>{discountText}</Text>
 								<Text style={styles.colTva}>{item.tva_rate}%</Text>
