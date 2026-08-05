@@ -79,7 +79,13 @@ export function SendConsignmentEmailDialog({
 	// Pre-remplir a l'ouverture
 	useEffect(() => {
 		if (!item || !open) return
-		const netSeller = item.store_price * (1 - commissionRate / 100)
+
+		// Cohérent avec ConsignmentPdf : le prix vendeur négocié fait foi
+		const commission = Math.max(0, item.store_price - item.seller_price)
+		const netSeller = item.seller_price
+		const effectiveRate =
+			item.store_price > 0 ? (commission / item.store_price) * 100 : 0
+
 		setRecipientEmail(customer.email || '')
 		setRecipientName(customer.name || '')
 		setSubject(`Bordereau de depot-vente ${ref}`)
@@ -88,19 +94,11 @@ export function SendConsignmentEmailDialog({
 				`Veuillez trouver ci-joint votre bordereau de depot-vente (ref. ${ref}) ` +
 				`pour l'article : ${item.description}.\n\n` +
 				`Prix de vente en magasin : ${fmt(item.store_price)}\n` +
-				`Commission magasin (${commissionRate}%) : ${fmt((item.store_price * commissionRate) / 100)}\n` +
+				`Commission magasin (${effectiveRate.toFixed(1)}%) : ${fmt(commission)}\n` +
 				`Net vous revenant : ${fmt(netSeller)}\n\n` +
 				`N'hesitez pas a nous contacter pour toute question.\n\nCordialement,\n${companyName}`,
 		)
-	}, [
-		item,
-		open,
-		commissionRate,
-		customer.email,
-		customer.name,
-		ref,
-		companyName,
-	])
+	}, [item, open, customer.email, customer.name, ref, companyName])
 
 	const handleSubmit = async () => {
 		if (!item || !activeCompanyId) return

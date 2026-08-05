@@ -9,14 +9,48 @@ import (
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
-// EnsureConsignmentItemsCollection crée la collection consignment_items si elle n'existe pas.
-// Un consignment_item représente un instrument d'occasion déposé par un client (dépôt-vente).
+// commissionRateField retourne la définition du champ de taux de commission.
+// Extrait dans une fonction pour être réutilisé à la création ET à la mise à
+// jour du schéma d'une collection déjà existante.
+func commissionRateField() *schema.SchemaField {
+	return &schema.SchemaField{
+		Name:     "commission_rate",
+		Type:     schema.FieldTypeNumber,
+		Required: false,
+		Options: &schema.NumberOptions{
+			Min: types.Pointer(float64(0)),
+			Max: types.Pointer(float64(100)),
+		},
+	}
+}
+
+// EnsureConsignmentItemsCollection crée la collection consignment_items si elle
+// n'existe pas, et met son schéma à jour si elle existe déjà.
+// Un consignment_item représente un instrument d'occasion déposé par un client
+// (dépôt-vente).
 func EnsureConsignmentItemsCollection(app *pocketbase.PocketBase) error {
-	if _, err := app.Dao().FindCollectionByNameOrId("consignment_items"); err == nil {
-		log.Println("📦 Collection 'consignment_items' existe déjà")
+	// ── Cas 1 : la collection existe déjà → on synchronise le schéma ────────
+	if existing, err := app.Dao().FindCollectionByNameOrId("consignment_items"); err == nil {
+		updated := false
+
+		if existing.Schema.GetFieldByName("commission_rate") == nil {
+			log.Println("📦 Ajout du champ 'commission_rate' à 'consignment_items'...")
+			existing.Schema.AddField(commissionRateField())
+			updated = true
+		}
+
+		if updated {
+			if err := app.Dao().SaveCollection(existing); err != nil {
+				return err
+			}
+			log.Println("✅ Schéma de 'consignment_items' mis à jour")
+		} else {
+			log.Println("📦 Collection 'consignment_items' à jour")
+		}
 		return nil
 	}
 
+	// ── Cas 2 : création complète ──────────────────────────────────────────
 	customersCol, err := app.Dao().FindCollectionByNameOrId("customers")
 	if err != nil {
 		return err
@@ -46,7 +80,7 @@ func EnsureConsignmentItemsCollection(app *pocketbase.PocketBase) error {
 				Options:  &schema.TextOptions{Max: types.Pointer(1000)},
 			},
 
-			// Prix souhaité par le vendeur (client)
+			// Prix net reversé au vendeur (client) après commission
 			&schema.SchemaField{
 				Name:     "seller_price",
 				Type:     schema.FieldTypeNumber,
@@ -65,6 +99,9 @@ func EnsureConsignmentItemsCollection(app *pocketbase.PocketBase) error {
 					Min: types.Pointer(float64(0)),
 				},
 			},
+
+			// Taux de commission contractuel figé à la création (en %)
+			commissionRateField(),
 
 			// Statut du dépôt
 			&schema.SchemaField{

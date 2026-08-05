@@ -11,6 +11,8 @@ export interface ConsignmentItemDto {
 	description: string
 	seller_price: number
 	store_price: number
+	/** Taux de commission contractuel en %, figé à la création */
+	commission_rate?: number
 	status: ConsignmentStatus
 	notes?: string
 	customer: string
@@ -23,6 +25,7 @@ export interface CreateConsignmentItemDto {
 	description: string
 	seller_price: number
 	store_price: number
+	commission_rate?: number
 	status?: ConsignmentStatus
 	notes?: string
 	customer: string
@@ -33,6 +36,7 @@ export interface UpdateConsignmentItemDto {
 	description?: string
 	seller_price?: number
 	store_price?: number
+	commission_rate?: number
 	status?: ConsignmentStatus
 	notes?: string
 }

@@ -404,7 +404,7 @@ export function CustomerDetailTabs({
 					ownerCompanyId={activeCompanyId ?? ''}
 					customer={customer as CustomersResponse}
 					company={company}
-					commissionRate={20}
+					commissionRate={(company as any)?.default_commission_rate ?? 20}
 					tabsList={sharedTabsList}
 				/>
 			</TabsContent>

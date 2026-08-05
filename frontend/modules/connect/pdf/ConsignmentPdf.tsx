@@ -346,9 +346,16 @@ export function ConsignmentPdfDocument({
 	if (company.rcs) legalParts.push(`RCS : ${company.rcs}`)
 	if (company.vat_number) legalParts.push(`TVA : ${company.vat_number}`)
 
-	// Calcul commission et net déposant
-	const commission = (item.store_price * commissionRate) / 100
-	const netSeller = item.store_price - commission
+	// ── Calcul commission et net déposant ──────────────────────────────────
+	// Le prix vendeur négocié fait foi : la commission est la DIFFÉRENCE réelle
+	// entre le prix affiché en magasin et le net promis au déposant.
+	// Le taux affiché est donc le taux effectif, jamais un taux théorique qui
+	// contredirait les montants signés.
+	const contractRate = item.commission_rate ?? commissionRate
+	const commission = Math.max(0, item.store_price - item.seller_price)
+	const netSeller = item.seller_price
+	const effectiveRate =
+		item.store_price > 0 ? (commission / item.store_price) * 100 : 0
 
 	// Numéro de référence
 	const ref =
@@ -487,7 +494,12 @@ export function ConsignmentPdfDocument({
 							</Text>
 						</View>
 						<View style={styles.colCommission}>
-							<Text style={styles.cellText}>{commissionRate} %</Text>
+							<Text style={styles.cellText}>
+								{effectiveRate.toFixed(1)} %
+							</Text>
+							<Text style={styles.cellMuted}>
+								{formatCurrency(commission)}
+							</Text>
 						</View>
 					</View>
 				</View>
@@ -502,7 +514,7 @@ export function ConsignmentPdfDocument({
 					</View>
 					<View style={styles.summaryRow}>
 						<Text style={styles.summaryLabel}>
-							Commission magasin ({commissionRate} %)
+							Commission magasin ({effectiveRate.toFixed(1)} %)
 						</Text>
 						<Text style={styles.summaryValue}>
 							- {formatCurrency(commission)}
@@ -519,7 +531,8 @@ export function ConsignmentPdfDocument({
 					</View>
 					<View style={{ marginTop: 4 }}>
 						<Text style={[styles.summaryLabel, { fontSize: 7, color: '#aaa' }]}>
-							* Somme reversée au déposant après la vente de l'article
+							* Somme reversée au déposant après la vente de l'article —
+						taux de commission convenu : {contractRate} %
 						</Text>
 					</View>
 				</View>

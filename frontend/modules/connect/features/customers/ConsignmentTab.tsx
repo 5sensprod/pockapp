@@ -73,21 +73,47 @@ import { getConsignmentStatus } from '../../utils/statusConfig'
 // SCHEMA
 // ============================================================================
 
+/**
+ * Normalise une saisie utilisateur : accepte « 12,5 » comme « 12.5 ».
+ * Renvoie la chaîne telle quelle si elle est incomplète (« 12, », « - », «  »)
+ * pour ne pas casser la frappe en cours.
+ */
+const parseDecimal = (raw: string): number | string => {
+	const cleaned = raw.replace(',', '.')
+	if (cleaned === '' || cleaned === '.' || cleaned === '-') return cleaned
+	if (cleaned.endsWith('.')) return raw
+	const n = Number(cleaned)
+	return Number.isNaN(n) ? raw : n
+}
+
+/** Champ décimal acceptant point ET virgule */
+const decimalField = (label: string) =>
+	z
+		.union([z.string(), z.number()])
+		.transform((v) => (typeof v === 'string' ? Number(v.replace(',', '.')) : v))
+		.refine((v) => !Number.isNaN(v), { message: `${label} invalide` })
+
 const consignmentSchema = z.object({
 	description: z
 		.string()
 		.min(2, 'La description doit faire au moins 2 caractères')
 		.max(1000),
-	seller_price: z.coerce
-		.number({ invalid_type_error: 'Prix invalide' })
-		.min(0, 'Le prix doit être positif'),
-	store_price: z.coerce
-		.number({ invalid_type_error: 'Prix invalide' })
-		.min(0, 'Le prix doit être positif'),
+	seller_price: decimalField('Prix').refine((v) => v >= 0, {
+		message: 'Le prix doit être positif',
+	}),
+	store_price: decimalField('Prix').refine((v) => v >= 0, {
+		message: 'Le prix doit être positif',
+	}),
+	commission_rate: decimalField('Taux').refine((v) => v >= 0 && v <= 100, {
+		message: 'Le taux doit être entre 0 et 100',
+	}),
 	notes: z.string().max(2000).optional(),
 })
 
-type ConsignmentFormValues = z.infer<typeof consignmentSchema>
+/** Ce que contient le formulaire pendant la saisie (virgule autorisée) */
+type ConsignmentFormInput = z.input<typeof consignmentSchema>
+/** Ce que reçoit onSubmit après validation (toujours des nombres) */
+type ConsignmentFormValues = z.output<typeof consignmentSchema>
 
 // ============================================================================
 // PROPS
@@ -130,19 +156,48 @@ export function ConsignmentTab({
 
 	const items = data?.items ?? []
 
-	const form = useForm<ConsignmentFormValues>({
+	const form = useForm<ConsignmentFormInput, any, ConsignmentFormValues>({
 		resolver: zodResolver(consignmentSchema),
 		defaultValues: {
 			description: '',
 			seller_price: 0,
 			store_price: 0,
+			commission_rate: commissionRate,
 			notes: '',
 		},
 	})
 
+	// ── Suggestion automatique du prix magasin ────────────────────────────
+	// IMPORTANT : les <Input> renvoient des chaînes ; z.coerce ne convertit
+	// qu'au submit. On force donc Number() partout où l'on calcule en direct.
+	// Les champs peuvent contenir une chaîne en cours de frappe (« 12, ») :
+	// toNum() la neutralise pour que les calculs live restent numériques.
+	const toNum = (v: unknown): number => {
+		const n = typeof v === 'string' ? Number(v.replace(',', '.')) : Number(v)
+		return Number.isFinite(n) ? n : 0
+	}
+
+	const numSeller = toNum(form.watch('seller_price'))
+	const numStore = toNum(form.watch('store_price'))
+	const numRate = toNum(form.watch('commission_rate'))
+
+	const suggestedStorePrice =
+		numSeller > 0 && numRate >= 0 && numRate < 100
+			? Math.round((numSeller / (1 - numRate / 100)) * 100) / 100
+			: 0
+
+	const liveCommission = numStore - numSeller
+	const liveRate = numStore > 0 ? (liveCommission / numStore) * 100 : 0
+
 	const openCreate = () => {
 		setEditItem(null)
-		form.reset({ description: '', seller_price: 0, store_price: 0, notes: '' })
+		form.reset({
+			description: '',
+			seller_price: 0,
+			store_price: 0,
+			commission_rate: commissionRate,
+			notes: '',
+		})
 		setDialogOpen(true)
 	}
 
@@ -152,18 +207,24 @@ export function ConsignmentTab({
 			description: item.description,
 			seller_price: item.seller_price,
 			store_price: item.store_price,
+			commission_rate: item.commission_rate ?? commissionRate,
 			notes: item.notes ?? '',
 		})
 		setDialogOpen(true)
 	}
 
 	const onSubmit = async (data: ConsignmentFormValues) => {
+		if (!editItem && (!customerId || !ownerCompanyId)) {
+			toast.error('Client ou entreprise manquant')
+			return
+		}
 		try {
 			if (editItem) {
 				const payload: UpdateConsignmentItemDto = {
 					description: data.description,
 					seller_price: data.seller_price,
 					store_price: data.store_price,
+					commission_rate: data.commission_rate,
 					notes: data.notes,
 				}
 				await updateItem.mutateAsync({
@@ -422,7 +483,7 @@ export function ConsignmentTab({
 									</FormItem>
 								)}
 							/>
-							<div className='grid grid-cols-2 gap-4'>
+							<div className='grid grid-cols-3 gap-4'>
 								<FormField
 									control={form.control}
 									name='seller_price'
@@ -431,11 +492,13 @@ export function ConsignmentTab({
 											<FormLabel>Prix vendeur (€) *</FormLabel>
 											<FormControl>
 												<Input
-													type='number'
-													min='0'
-													step='0.01'
-													placeholder='150.00'
+													type='text'
+													inputMode='decimal'
+													placeholder='150,00'
 													{...field}
+													onChange={(e) =>
+														field.onChange(parseDecimal(e.target.value))
+													}
 												/>
 											</FormControl>
 											<FormMessage />
@@ -450,17 +513,91 @@ export function ConsignmentTab({
 											<FormLabel>Prix magasin (€) *</FormLabel>
 											<FormControl>
 												<Input
-													type='number'
-													min='0'
-													step='0.01'
-													placeholder='180.00'
+													type='text'
+													inputMode='decimal'
+													placeholder='180,00'
 													{...field}
+													onChange={(e) =>
+														field.onChange(parseDecimal(e.target.value))
+													}
 												/>
 											</FormControl>
+											{suggestedStorePrice > 0 &&
+												suggestedStorePrice !== numStore && (
+													<button
+														type='button'
+														className='text-xs text-blue-600 hover:underline text-left'
+														onClick={() =>
+															form.setValue(
+																'store_price',
+																suggestedStorePrice,
+																{
+																	shouldValidate: true,
+																},
+															)
+														}
+													>
+														Suggéré : {suggestedStorePrice.toFixed(2)} €
+													</button>
+												)}
 											<FormMessage />
 										</FormItem>
 									)}
 								/>
+								<FormField
+									control={form.control}
+									name='commission_rate'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Commission (%)</FormLabel>
+											<FormControl>
+												<Input
+													type='text'
+													inputMode='decimal'
+													placeholder={String(commissionRate)}
+													{...field}
+													onChange={(e) =>
+														field.onChange(parseDecimal(e.target.value))
+													}
+												/>
+											</FormControl>
+											<p className='text-xs text-muted-foreground'>
+												Par défaut : {commissionRate} %
+											</p>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							{/* Récapitulatif du calcul en direct */}
+							<div className='rounded-md border bg-muted/40 px-3 py-2 text-sm'>
+								<div className='flex justify-between'>
+									<span className='text-muted-foreground'>
+										Commission magasin
+									</span>
+									<span className='font-medium'>
+										{liveCommission.toFixed(2)} €
+										{numStore > 0 && (
+											<span className='text-muted-foreground font-normal'>
+												{' '}
+												({liveRate.toFixed(1)} % réel)
+											</span>
+										)}
+									</span>
+								</div>
+								<div className='flex justify-between mt-1'>
+									<span className='text-muted-foreground'>
+										Net reversé au déposant
+									</span>
+									<span className='font-medium'>{numSeller.toFixed(2)} €</span>
+								</div>
+								{numStore < numSeller && (
+									<p className='text-xs text-red-600 mt-1'>
+										⚠ Le prix magasin est inférieur au prix vendeur : la
+										commission serait négative.
+									</p>
+								)}
 							</div>
 							<FormField
 								control={form.control}
