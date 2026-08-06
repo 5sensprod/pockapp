@@ -12,3 +12,9 @@ build/
 script.txt
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
+
+# Obsidian - etat de session, pas de configuration
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+
+**/.obsidian/workspace.json
