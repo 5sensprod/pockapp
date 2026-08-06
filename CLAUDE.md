@@ -22,7 +22,9 @@ depuis leur propre dépôt.
 ```
 main.go, proxy.go, app.go      Wails + PocketBase embarqué (:8090)
 remote_notifications.go        canal vers le mini-SaaS distant (X-API-Key)
-migrations/, pb_hooks/         schéma PocketBase
+backend/migrations/            schéma PocketBase, importé par main.go:15
+pb_hooks/                      hooks PocketBase
+migrations/                    non importé — vestige, ne pas y ajouter
 frontend/routes/               routes TanStack Router (générées)
 frontend/modules/<nom>/        un module = un domaine métier
 frontend/modules/<nom>/<Nom>-docs/   doc du module, versionnée avec lui
@@ -68,6 +70,8 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
 - **Ne pas créer un troisième chemin d'écriture.** Il en existe déjà deux, et
   `useUpdateProductUniversal` (`frontend/lib/queries/products.ts:180`) route
   entre eux sur une chaîne non typée. Dette connue, à ne pas aggraver.
+- **Une migration non inscrite dans la liste de `RunMigrations`**
+  (`backend/migrations/migrations.go:13`) ne s'exécute jamais, sans erreur.
 - **L'hébergement du site est un mutualisé PHP/MySQL.** Aucun processus
   persistant : pas de Node, pas de Docker, pas de WebSocket serveur, pas de
   SQLite distant. Ne pas proposer de solution qui en suppose un.
