@@ -27,14 +27,13 @@ qu'on a demandé, pas ce qui est vrai.
 
 ## Où en est-on
 
-**Ticket en cours : aucun.** Ticket 3 terminé le 6 août 2026 —
-[`05-contrat-menu.md`](05-contrat-menu.md). Prochain : 1 ou 2, indépendants.
-Le 5 est également débloqué.
+**Ticket en cours : aucun.** Tickets 1 et 2 terminés le 6 août 2026. Le 4 est
+donc débloqué (1, 2 et 3 sont faits), le 5 l'était déjà.
 
 | # | Ticket | Dépend de | Dépôt | État |
 |---|---|---|---|---|
-| 1 | Collection `site_menu` dans PocketBase local | — | PocketApp | à faire |
-| 2 | Squelette du module AppSite et sa route | — | PocketApp | à faire |
+| 1 | Collection `site_menu` dans PocketBase local | — | PocketApp | **fait** |
+| 2 | Squelette du module AppSite et sa route | — | PocketApp | **fait** |
 | 3 | Contrat JSON publié : URL, version, horodatage, entrées | — | doc | **fait** |
 | 4 | Éditeur d'arbre libre | 1, 2, 3 | PocketApp | à faire |
 | 5 | Endpoint PHP de réception, `X-API-Key` | 3 | serveur | à faire |

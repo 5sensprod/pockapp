@@ -76,6 +76,9 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 
 		// 10. 🆕 Garanties (dépend de companies)
 		AddWarrantiesToCompanies,
+
+		// 11. Menu du site axemusique.shop — aucune dépendance
+		ensureSiteMenuCollection,
 	}
 
 	for _, migrate := range migrations {
