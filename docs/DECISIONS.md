@@ -10,6 +10,45 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Contrat du menu publié — 2026-08-06
+
+Le menu publié est servi à une **URL stable et non versionnée**,
+`https://axemusique.shop/data/menu.json`, et chaque entrée porte une
+**référence typée `{type, id}` accompagnée de l'`url` résolue à la
+publication**. Forme complète : `frontend/modules/site/AppSite-docs/05-contrat-menu.md`.
+
+**Écarté — URL versionnée (`menu.v1.json`) :** changer de version obligerait à
+redéployer le site, par FTP et sans retour arrière (faille 3.7). Or c'est
+précisément ce que le contrat existe pour éviter. La version est un champ dans
+le document, comme le prévoyait déjà §4.4 de l'audit.
+
+**Écarté — destination en URL brute, sans référence typée :** le site ne saurait
+pas d'où vient un lien, et personne ne pourrait détecter une destination devenue
+orpheline. La référence seule, sans URL résolue, a été écartée symétriquement :
+elle obligerait le site à savoir ce qu'est une catégorie WooCommerce et à
+refaire la résolution — du travail dans le dépôt le plus coûteux à redéployer.
+On publie donc les deux : le site ne lit que `url` et reste bête, PocketApp
+garde `ref` et l'intelligence.
+
+**Écarté — arbre imbriqué à `children` :** le site consomme aujourd'hui une
+liste plate `{id, title, url, parent}` (`wordpress.js:52-71` du dépôt du site).
+Publier un arbre aurait imposé un aplatissement, donc une modification des
+composants de navigation, pour un bénéfice nul.
+
+**Le raisonnement, commun aux trois :** c'est §4.4 de l'audit appliqué un cran
+plus bas — mettre l'intelligence du côté qui se redéploie facilement. PocketApp
+se rebuilde à volonté ; le site part par FTP sans retour arrière.
+
+**Vérifié à cette occasion :** le `.htaccess` racine garde ses deux règles de
+réécriture par `RewriteCond %{REQUEST_FILENAME} !-f`. Un fichier réellement
+présent à `/data/menu.json` est servi en statique, sans PHP sur le chemin de
+lecture, sans modification du `.htaccess` au ticket 7.
+
+**Remise en cause si :** la couche distante doit accueillir autre chose que le
+menu — un second objet publié remettrait en question le chemin `/data/menu.json`
+et l'idée d'un document unique. Ou si un consommateur autre que le site doit
+lire le fichier et a besoin de plus que `url`.
+
 ## Documentation dans le dépôt, Obsidian pour le personnel — 2026-08-06
 
 `CLAUDE.md`, `docs/DECISIONS.md` et les `<Nom>-docs/` de module sont versionnés
