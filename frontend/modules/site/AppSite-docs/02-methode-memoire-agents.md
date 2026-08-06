@@ -6,15 +6,13 @@ multi-dépôts, en tant que développeur junior travaillant avec des agents de
 code (Claude Code, Codex).
 
 ## Situation actuelle
-- 3 dépôts Git : PocketApp (React), AppPos (React/Express/NeDB), site vitrine
-  React déployé sur axemusique.shop.
-- Je code en vibe coding : je décris, l'agent produit, je valide.
-- Ma documentation est éparpillée dans des commentaires de code et des README
-  jamais remis à jour. Je n'ai aucune mémoire de projet exploitable.
-- Outils : VS Code, Claude Code en terminal dans le dépôt, GitHub, Obsidian
-  pour les notes personnelles. Pas de surcouche d'orchestration d'agents :
-  je veux le socle minimal qui fonctionne, quitte à l'enrichir plus tard.
-
+- PocketApp : application Wails modulaire (AppCash, AppStock, AppSite),
+  embarquant PocketBase. AppPos et le site axemusique.shop sont deux
+  dépôts distincts.
+- Doc de module dans `frontend/modules/<nom>/<Nom>-docs/`, versionnée
+  avec le code. Convention déjà éprouvée sur AppSite.
+- Outils : Claude Code (application de bureau), VS Code, GitHub, Obsidian
+  ouvert sur le dossier de doc. Pas de surcouche d'orchestration d'agents.
 ## Ce que je veux résoudre
 1. Où vit la connaissance du projet ? Que met-on dans le dépôt (versionné avec
    le code, donc toujours cohérent) et que met-on dans un espace de notes
