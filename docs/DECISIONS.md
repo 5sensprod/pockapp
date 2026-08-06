@@ -15,7 +15,7 @@ pourquoi, ce qui pourrait la remettre en cause.
 Le menu publié est servi à une **URL stable et non versionnée**,
 `https://axemusique.shop/data/menu.json`, et chaque entrée porte une
 **référence typée `{type, id}` accompagnée de l'`url` résolue à la
-publication**. Forme complète : `frontend/modules/site/AppSite-docs/05-contrat-menu.md`.
+publication**. Forme complète : `frontend/modules/site/PocketSite-docs/05-contrat-menu.md`.
 
 **Écarté — URL versionnée (`menu.v1.json`) :** changer de version obligerait à
 redéployer le site, par FTP et sans retour arrière (faille 3.7). Or c'est
@@ -94,7 +94,7 @@ arrière. Ce qu'il y a derrière l'URL se remplace en une après-midi. Donc :
 soigner le contrat, prendre le stockage le plus simple.
 
 **Remise en cause si :** un des quatre déclencheurs de la section 4.5 de
-`frontend/modules/site/AppSite-docs/03-audit-resultats.md` est atteint.
+`frontend/modules/site/PocketSite-docs/03-audit-resultats.md` est atteint.
 
 ## PocketBase local est acquis — antérieur, consigné le 2026-08-06
 

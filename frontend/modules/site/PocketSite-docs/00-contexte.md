@@ -118,14 +118,14 @@ PocketApp est modulaire. Chemin racine : `I:\pockapp\`
 
 | Module | Rôle | État |
 |---|---|---|
-| AppCash | Caisse enregistreuse | existant |
-| AppStock | Liste les produits venant de AppPos | existant, **lecture et écriture** |
-| AppSite | Gestion du site | à construire |
+| PocketCash | Caisse enregistreuse | existant |
+| PocketStock | Liste les produits venant de AppPos | existant, **lecture et écriture** |
+| PocketSite | Gestion du site | à construire |
 
 Front sous `frontend/modules/<nom>/`.
 Doc du module dans `frontend/modules/<nom>/<Nom>-docs/`.
 
-**Correction :** AppStock était décrit comme « lecture seule ». C'est faux —
+**Correction :** PocketStock était décrit comme « lecture seule ». C'est faux —
 il crée, modifie et supprime, vers PocketBase **et** vers AppPos
 (`frontend/lib/queries/products.ts`).
 
@@ -141,14 +141,14 @@ il crée, modifie et supprime, vers PocketBase **et** vers AppPos
   charge son menu via `wordpressService.loadMenu()` → `/wp-json/wp/v2/menus`.
   **Cette route n'est pas du WordPress standard** : elle vient d'un plugin ou
   du thème enfant, non identifié à ce jour.
-- **AppSite** est le seul module concerné par la refonte à ce stade.
+- **PocketSite** est le seul module concerné par la refonte à ce stade.
 
 ## Chemin retenu pour le MVP
 
 PocketApp pousse le menu en HTTP vers un script PHP sur le mutualisé, protégé
 par `X-API-Key` — même modèle que l'API de notifications existante. Le script
 écrit un `menu.json`. Le site lit ce fichier en statique, sans PHP sur le
-chemin de lecture. Publication manuelle, déclenchée depuis AppSite.
+chemin de lecture. Publication manuelle, déclenchée depuis PocketSite.
 
 > *La version initiale de ce document disait « à valider, pas à présumer », et
 > mettait en garde contre une confirmation trop rapide de l'intuition. La mise

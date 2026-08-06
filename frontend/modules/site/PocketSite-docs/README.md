@@ -1,4 +1,4 @@
-# AppSite — pilotage du site axemusique.shop
+# PocketSite — pilotage du site axemusique.shop
 
 Module en construction. Objectif de la phase en cours : sortir le menu de
 navigation de WordPress.
@@ -33,7 +33,7 @@ donc débloqué (1, 2 et 3 sont faits), le 5 l'était déjà.
 | # | Ticket | Dépend de | Dépôt | État |
 |---|---|---|---|---|
 | 1 | Collection `site_menu` dans PocketBase local | — | PocketApp | **fait** |
-| 2 | Squelette du module AppSite et sa route | — | PocketApp | **fait** |
+| 2 | Squelette du module PocketSite et sa route | — | PocketApp | **fait** |
 | 3 | Contrat JSON publié : URL, version, horodatage, entrées | — | doc | **fait** |
 | 4 | Éditeur d'arbre libre | 1, 2, 3 | PocketApp | à faire |
 | 5 | Endpoint PHP de réception, `X-API-Key` | 3 | serveur | à faire |

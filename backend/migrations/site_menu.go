@@ -5,7 +5,7 @@
 // Stockage local des entrées du menu de navigation d'axemusique.shop.
 //
 // Ce qui est stocké ici n'a PAS la forme de ce qui est publié. Le fichier
-// publié est décrit par frontend/modules/site/AppSite-docs/05-contrat-menu.md
+// publié est décrit par frontend/modules/site/PocketSite-docs/05-contrat-menu.md
 // et se calcule à partir de cette collection au ticket 6 :
 //
 //	base (édition)              →  document publié (contrat)

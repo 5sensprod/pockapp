@@ -84,7 +84,7 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
 ## Travail en cours
 
 Sortir le menu de navigation de WordPress. 9 tickets ordonnés dans
-[`frontend/modules/site/AppSite-docs/README.md`](frontend/modules/site/AppSite-docs/README.md).
+[`frontend/modules/site/PocketSite-docs/README.md`](frontend/modules/site/PocketSite-docs/README.md).
 
 ## Attentes de travail
 

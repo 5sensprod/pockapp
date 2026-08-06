@@ -15,7 +15,7 @@ import { manifest } from './index'
  *
  * La page ne fait rien et c'est volontaire : l'éditeur d'arbre arrive au
  * ticket 4, l'action « Publier le menu » au ticket 6. Voir
- * `AppSite-docs/README.md` pour l'état des tickets.
+ * `PocketSite-docs/README.md` pour l'état des tickets.
  */
 export function AppSitePage() {
 	const Icon = manifest.icon

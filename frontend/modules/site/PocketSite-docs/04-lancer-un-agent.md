@@ -86,7 +86,7 @@ claude
 Puis, dans la session :
 
 ```
-Lis frontend/modules/site/AppSite-docs/00-contexte.md, puis applique
+Lis frontend/modules/site/PocketSite-docs/00-contexte.md, puis applique
 les instructions de 01-audit-architecture.md.
 
 Le dépôt est volumineux : ne l'explore pas librement. Pars de ce fichier
@@ -120,7 +120,7 @@ API simple » sans l'avoir examinée. C'est une hypothèse, pas une décision.
 
 ```
 Résume nos conclusions dans un fichier
-frontend/modules/site/AppSite-docs/03-audit-resultats.md :
+frontend/modules/site/PocketSite-docs/03-audit-resultats.md :
 le flux tel qu'il est réellement, les failles retenues, l'architecture
 choisie et pourquoi, les tickets du MVP dans l'ordre.
 ```
@@ -135,7 +135,7 @@ et le début concret de la mémoire projet évoquée dans le prompt 02.
 À lancer **après** la session 1, une fois `03-audit-resultats.md` écrit.
 
 ```
-Lis frontend/modules/site/AppSite-docs/00-contexte.md et
+Lis frontend/modules/site/PocketSite-docs/00-contexte.md et
 03-audit-resultats.md, puis applique 02-methode-memoire-agents.md.
 ```
 

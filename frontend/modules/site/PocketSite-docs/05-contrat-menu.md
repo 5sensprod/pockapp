@@ -5,7 +5,7 @@ n'appartiennent pas au même dépôt :
 
 | Consommateur | Dépôt | Ce qu'il en fait |
 |---|---|---|
-| PocketApp — AppSite | `I:\pockapp` | produit le document (tickets 4 et 6) |
+| PocketApp — PocketSite | `I:\pockapp` | produit le document (tickets 4 et 6) |
 | Script PHP de réception | serveur mutualisé | valide et écrit le fichier (ticket 5) |
 | Site React | `I:\divi-child\frontend-wp` | lit le fichier (ticket 8) |
 
