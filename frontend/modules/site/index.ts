@@ -5,7 +5,7 @@ import { AppSitePage } from './AppSitePage'
 
 export const manifest: ModuleManifest = {
 	id: 'site',
-	name: 'AppSite',
+	name: 'PocketSite',
 	description: 'Pilotage du site axemusique.shop',
 	pole: 'digital',
 	icon: Globe,
