@@ -10,6 +10,42 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Schéma de la collection `site_menu` — 2026-08-06
+
+La destination d'une entrée est stockée en **référence dénormalisée**
+(`link_type` en `select`, `ref_id` en chaîne opaque), et la collection **n'a
+pas de champ `company`**. Schéma complet : `backend/migrations/site_menu.go`.
+
+**Écarté — `ref_id` en relation PocketBase :** elle aurait tranché, au ticket 1,
+une question que §7 de
+`frontend/modules/site/PocketSite-docs/05-contrat-menu.md` laisse explicitement
+ouverte jusqu'au ticket 4 — lequel des trois référentiels (AppPos, WooCommerce,
+PocketBase local) fait foi pour une destination. Une relation ne peut pointer
+que vers PocketBase local, qui n'est qu'une copie des référentiels d'AppPos
+(faille 3.3 de l'audit) ; l'exemple du contrat, lui, porte un identifiant
+WooCommerce. Choisir la relation aurait donc désigné la copie comme autorité
+par un effet de bord du typage, et il aurait fallu une migration pour le
+défaire.
+
+**L'absence de `company` est délibérée, ce n'est pas un oubli.** `categories`,
+`products`, `customers` et `invoices` portent toutes une relation `company`
+requise ; `site_menu` en est la seule exception du catalogue local, et un
+lecteur futur y verrait une erreur sans cette note. La raison : ces collections
+décrivent l'activité d'une entreprise, `site_menu` décrit **un site**, et il
+n'y en a qu'un. Ajouter le champ aurait anticipé le multi-site sans besoin, et
+imposé de choisir une société à la publication alors que la publication ne
+s'adresse qu'à axemusique.shop.
+
+**Remise en cause si :**
+
+- `ref_id` — le ticket 4 désigne PocketBase local comme référentiel des
+  destinations, **et** on veut que l'intégrité référentielle détecte les
+  destinations orphelines, plutôt que la vérification faite à la publication.
+  Les deux conditions, pas une seule : sans la première, une relation ne peut
+  pas pointer vers la bonne source.
+- `company` — un second site est piloté depuis PocketApp, ou le multi-poste
+  arrive (§6 de `03-audit-resultats.md` le reporte aujourd'hui).
+
 ## Contrat du menu publié — 2026-08-06
 
 Le menu publié est servi à une **URL stable et non versionnée**,
