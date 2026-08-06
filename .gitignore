@@ -10,3 +10,5 @@ PocketReactInstaller.exe
 build/
 
 script.txt
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
