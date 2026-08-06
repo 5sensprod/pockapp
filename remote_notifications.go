@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	remoteNotifURL      = "https://pocketapp.5sensprod.com/api/notifications.php"
+	remoteNotifURL      = "http://pocketapp.5sensprod.com/api/notifications.php"
 	remoteNotifInterval = 10 * time.Second
 )
 
