@@ -63,6 +63,10 @@ export interface MenuEntryDialogProps {
 	entry?: SiteMenuResponse
 	/** Libellé du parent, pour situer une création. */
 	parentLabel?: string
+	/** Session AppPos ouverte par le composant parent. Les listes de
+	 *  destinations ne sont demandées qu'à partir de là — sans jeton, AppPos
+	 *  ne rend qu'un 401. */
+	appPosReady?: boolean
 	onSubmit: (data: SiteMenuRecord) => Promise<unknown>
 	isSubmitting?: boolean
 }
@@ -72,6 +76,7 @@ export function MenuEntryDialog({
 	onOpenChange,
 	entry,
 	parentLabel,
+	appPosReady = true,
 	onSubmit,
 	isSubmitting,
 }: MenuEntryDialogProps) {
@@ -97,6 +102,7 @@ export function MenuEntryDialog({
 
 	const destinations = useMenuDestinations(
 		isRefType(linkType) && linkType !== 'page' ? linkType : null,
+		appPosReady,
 	)
 
 	const selected = useMemo(
@@ -219,12 +225,17 @@ export function MenuEntryDialog({
 						<div className='space-y-2'>
 							<Label htmlFor='menu-ref'>Cible</Label>
 
-							{destinations.isLoading && (
-								<div className='flex items-center gap-2 text-muted-foreground text-sm'>
-									<Loader2 className='h-4 w-4 animate-spin' />
-									Lecture du catalogue AppPos…
-								</div>
-							)}
+							{/* Requête désactivée tant que la session n'est pas ouverte :
+							    sans ce cas, l'attente de connexion n'afficherait rien. */}
+							{(destinations.isLoading || !appPosReady) &&
+								!destinations.isError && (
+									<div className='flex items-center gap-2 text-muted-foreground text-sm'>
+										<Loader2 className='h-4 w-4 animate-spin' />
+										{appPosReady
+											? 'Lecture du catalogue AppPos…'
+											: 'Connexion à AppPos…'}
+									</div>
+								)}
 
 							{destinations.isError && (
 								<div className='flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm'>

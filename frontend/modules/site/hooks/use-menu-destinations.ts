@@ -48,7 +48,12 @@ export interface MenuDestination {
 const CACHE = {
 	staleTime: 60 * 60 * 1000, // 1h — un catalogue ne bouge pas pendant qu'on édite un menu
 	gcTime: 6 * 60 * 60 * 1000,
-	refetchOnMount: false,
+	// Une lecture réussie n'est pas refaite pendant une heure. Une lecture
+	// **échouée**, si : sans ça, un AppPos éteint au premier affichage laissait
+	// des identifiants bruts jusqu'au redémarrage complet de l'application,
+	// puisque revenir sur la page ne relançait rien.
+	refetchOnMount: (query: { state: { status: string } }) =>
+		query.state.status === 'error',
 	refetchOnWindowFocus: false,
 	refetchOnReconnect: false,
 	retry: 1,
@@ -137,10 +142,15 @@ function useProductDestinations(enabled: boolean) {
  * PocketApp n'interroge pas. L'identifiant se saisit à la main, comme
  * l'autorise le contrat (« identifiant ou slug », §3).
  */
-export function useMenuDestinations(linkType: SiteMenuRefType | null) {
-	const categories = useCategoryDestinations(linkType === 'category')
-	const brands = useBrandDestinations(linkType === 'brand')
-	const products = useProductDestinations(linkType === 'product')
+export function useMenuDestinations(
+	linkType: SiteMenuRefType | null,
+	/** Session AppPos ouverte. Interroger AppPos sans jeton ne rend qu'un 401,
+	 *  et c'est cet échec-là qui se mettait en cache. */
+	ready = true,
+) {
+	const categories = useCategoryDestinations(ready && linkType === 'category')
+	const brands = useBrandDestinations(ready && linkType === 'brand')
+	const products = useProductDestinations(ready && linkType === 'product')
 
 	switch (linkType) {
 		case 'category':
@@ -176,10 +186,14 @@ export function useMenuDestinations(linkType: SiteMenuRefType | null) {
  * En cours de chargement ou en cas d'échec d'AppPos, `labelFor` rend `null` :
  * l'appelant retombe alors sur l'identifiant, qui reste juste et lisible.
  */
-export function useDestinationIndex(usedTypes: Set<SiteMenuRefType>) {
-	const categories = useCategoryDestinations(usedTypes.has('category'))
-	const brands = useBrandDestinations(usedTypes.has('brand'))
-	const products = useProductDestinations(usedTypes.has('product'))
+export function useDestinationIndex(
+	usedTypes: Set<SiteMenuRefType>,
+	/** Session AppPos ouverte. Voir `useMenuDestinations`. */
+	ready = true,
+) {
+	const categories = useCategoryDestinations(ready && usedTypes.has('category'))
+	const brands = useBrandDestinations(ready && usedTypes.has('brand'))
+	const products = useProductDestinations(ready && usedTypes.has('product'))
 
 	const byType: Record<SiteMenuRefType, MenuDestination[] | undefined> = {
 		category: categories.data,

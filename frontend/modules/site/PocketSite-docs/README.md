@@ -51,17 +51,45 @@ en clair dans le bundle public du site.
 
 ## Notes laissées par le ticket 4
 
-Trois constats faits en écrivant l'éditeur. Aucun ne le bloque ; le premier
-demande une action, les deux autres sont là pour éviter qu'on les redécouvre au
-ticket 6.
+Quatre constats faits en écrivant l'éditeur. Aucun ne le bloque ; les deux
+premiers demandent une action, les deux autres sont là pour éviter qu'on les
+redécouvre au ticket 6.
 
-**Une seule chose à faire reprendre :**
+**Deux choses à faire reprendre :**
 
-- **`pnpm typegen` ne passe pas.** Le mot de passe admin du script, en clair
-  dans `package.json`, est rejeté (`400 Failed to authenticate`). `site_menu`
-  est donc absente de `frontend/lib/pocketbase-types.ts`, et ses types sont
-  déclarés provisoirement en tête de `frontend/lib/queries/site-menu.ts`, à la
-  forme du fichier généré. À remplacer dès que le typegen repasse.
+- **`site_menu` reste hors de `frontend/lib/pocketbase-types.ts`.** Non parce
+  que `pnpm typegen` échoue — il fonctionne —, mais parce que le fichier commité
+  n'est pas une sortie de générateur : il a été retouché à la main, et le
+  régénérer efface ces retouches et sort cinq erreurs dans la chaîne
+  produits/caisse. Les types de `site_menu` sont donc déclarés en tête de
+  `frontend/lib/queries/site-menu.ts`, à la forme exacte de la sortie réelle du
+  générateur. Détail et lignes fautives : le commentaire de ce fichier. Adopter
+  la sortie du générateur est une session à part, sur le maillon le moins
+  négociable.
+
+- **Rien n'authentifie AppPos au démarrage de l'application.** Constaté le
+  7 août 2026, lu dans le code : chacune des **neuf** pages qui lisent AppPos
+  refait sa propre connexion dans un `useEffect`
+  (`frontend/modules/stock/useStockModule.ts:47`,
+  `frontend/modules/cash/CashTerminalPage.tsx:272`, et sept pages de
+  `connect`). Le jeton vit ensuite en `sessionStorage`
+  (`frontend/lib/apppos/apppos-api.ts:20`), ce qui donne l'illusion que tout
+  fonctionne — à condition d'être passé par une de ces pages d'abord. Ouvrir
+  PocketSite en premier affichait des identifiants bruts au lieu des noms de
+  catégories.
+
+  Le module a reçu sa propre connexion
+  (`frontend/modules/site/hooks/use-apppos-session.ts`) pour ne plus dépendre
+  de l'ordre de navigation. **C'est une dixième copie, pas une correction** ;
+  la bonne place est un point unique au lancement. Deux points à traiter
+  ensemble ce jour-là : les identifiants sont écrits **en dur** dans huit des
+  neuf appelants (`loginToAppPos('admin', 'admin123')`) et partent donc dans le
+  bundle — même famille que la faille 3.1, ticket à part ; et un point unique ne
+  doit pas retarder l'ouverture de l'application, AppPos éteint étant un cas
+  normal. Refactorer les neuf appelants n'est pas nécessaire : leur garde
+  `getAppPosToken()` les rend inoffensifs dès qu'une session existe en amont,
+  donc la caisse n'a pas à être touchée.
+
 **Deux constats sans action, à connaître avant le ticket 6 :**
 
 - **`AppPosProduct` ne déclare pas `woo_id`** — `frontend/lib/apppos/apppos-types.ts:56-118`,

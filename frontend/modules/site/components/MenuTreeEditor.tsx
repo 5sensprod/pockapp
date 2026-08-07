@@ -37,6 +37,7 @@ import {
 	useUpdateSiteMenuEntry,
 } from '@/lib/queries/site-menu'
 import {
+	AlertTriangle,
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
@@ -51,6 +52,7 @@ import {
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
+import { useAppPosSession } from '../hooks/use-apppos-session'
 import { useDestinationIndex } from '../hooks/use-menu-destinations'
 import {
 	ROOT,
@@ -128,7 +130,16 @@ export function MenuTreeEditor() {
 		}
 		return types
 	}, [list])
-	const { labelFor } = useDestinationIndex(usedTypes)
+	// Ouvre la session AppPos si aucun autre écran ne l'a fait avant nous.
+	const appPos = useAppPosSession()
+	const { labelFor, isError: catalogError } = useDestinationIndex(
+		usedTypes,
+		appPos.isConnected,
+	)
+
+	// Les noms de destinations manquent, le menu lui-même est intact : c'est un
+	// avertissement, pas une erreur bloquante.
+	const catalogUnavailable = catalogError || !!appPos.error
 
 	const parentLabel = useMemo(
 		() =>
@@ -261,6 +272,23 @@ export function MenuTreeEditor() {
 					Entrée racine
 				</Button>
 			</div>
+
+			{catalogUnavailable && (
+				<div className='flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm'>
+					<AlertTriangle className='mt-0.5 h-4 w-4 shrink-0 text-amber-600' />
+					<div>
+						<p className='font-medium'>
+							Catalogue AppPos illisible — les destinations s'affichent par
+							identifiant.
+						</p>
+						<p className='text-muted-foreground text-xs'>
+							Les noms des catégories, marques et produits viennent d'AppPos.
+							Vérifier qu'il est démarré. Le menu lui-même est intact et reste
+							modifiable.
+						</p>
+					</div>
+				</div>
+			)}
 
 			{rows.length > 0 && (
 				<div className='divide-y rounded-md border'>
@@ -398,6 +426,9 @@ export function MenuTreeEditor() {
 				onOpenChange={setDialogOpen}
 				entry={editing}
 				parentLabel={editing ? undefined : parentLabel}
+				// Le formulaire lit AppPos lui aussi : il attend la même session,
+				// plutôt que d'en ouvrir une seconde en parallèle.
+				appPosReady={appPos.isConnected}
 				onSubmit={handleSubmit}
 				isSubmitting={createEntry.isPending || updateEntry.isPending}
 			/>
