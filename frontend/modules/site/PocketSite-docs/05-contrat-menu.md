@@ -222,7 +222,21 @@ L'authentification est `X-API-Key`, sur le modèle du mini-SaaS existant
 (`remote_notifications.go:27`). Rien de plus : §6 de l'audit reporte
 explicitement toute authentification au-delà.
 
-### 6.2 Ticket 8 — ce que le site devra adapter
+### 6.2 Ticket 6 — `menu.name` est une constante
+
+`menu.name` est obligatoire dans le document (§2.2), mais **n'est stocké nulle
+part** : `site_menu` ne contient que des entrées, pas le menu qui les porte.
+C'est délibéré et non un oubli du ticket 1 — un seul menu est publié, et lui
+donner une ligne en base aurait créé une collection à un enregistrement.
+
+Le ticket 4 ne l'édite donc pas. Le ticket 6 l'écrit en constante à la
+production du document. Valeur attendue : `"Menu Principal"`, celle de
+l'exemple §2.
+
+Le jour où plusieurs menus existeraient, ce champ deviendrait une vraie donnée
+— mais §2.2 le dit déjà : ce besoin n'existe pas.
+
+### 6.3 Ticket 8 — ce que le site devra adapter
 
 La forme actuellement retournée par `loadMenu()` a été lue :
 `{name, items[]}`, chaque entrée portant `{id, title, url, parent}` à plat, la

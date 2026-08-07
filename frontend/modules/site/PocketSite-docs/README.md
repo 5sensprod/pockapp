@@ -28,15 +28,15 @@ qu'on a demandé, pas ce qui est vrai.
 
 ## Où en est-on
 
-**Ticket en cours : aucun.** Tickets 1 et 2 terminés le 6 août 2026. Le 4 est
-donc débloqué (1, 2 et 3 sont faits), le 5 l'était déjà.
+**Ticket en cours : aucun.** Tickets 1 à 4 terminés le 6 août 2026. Le 5 est
+sans dépendance et reste le prochain sur le chemin : le 6 attend les deux.
 
 | # | Ticket | Dépend de | Dépôt | État |
 |---|---|---|---|---|
 | 1 | Collection `site_menu` dans PocketBase local | — | PocketApp | **fait** |
 | 2 | Squelette du module PocketSite et sa route | — | PocketApp | **fait** |
 | 3 | Contrat JSON publié : URL, version, horodatage, entrées | — | doc | **fait** |
-| 4 | Éditeur d'arbre libre | 1, 2, 3 | PocketApp | à faire |
+| 4 | Éditeur d'arbre libre | 1, 2, 3 | PocketApp | **fait** |
 | 5 | Endpoint PHP de réception, `X-API-Key` | 3 | serveur | à faire |
 | 6 | Action « Publier le menu » | 4, 5 | PocketApp | à faire |
 | 7 | Exposition du `menu.json` en lecture statique | 5 | serveur | à faire |
@@ -48,6 +48,36 @@ mise en œuvre : section 5 de `03-audit-resultats.md`.
 
 **Prioritaire sur tout ceci et hors tickets :** la faille 3.1 — clés WooCommerce
 en clair dans le bundle public du site.
+
+## Notes laissées par le ticket 4
+
+Trois constats faits en écrivant l'éditeur. Aucun ne le bloque ; le premier
+demande une action, les deux autres sont là pour éviter qu'on les redécouvre au
+ticket 6.
+
+**Une seule chose à faire reprendre :**
+
+- **`pnpm typegen` ne passe pas.** Le mot de passe admin du script, en clair
+  dans `package.json`, est rejeté (`400 Failed to authenticate`). `site_menu`
+  est donc absente de `frontend/lib/pocketbase-types.ts`, et ses types sont
+  déclarés provisoirement en tête de `frontend/lib/queries/site-menu.ts`, à la
+  forme du fichier généré. À remplacer dès que le typegen repasse.
+**Deux constats sans action, à connaître avant le ticket 6 :**
+
+- **`AppPosProduct` ne déclare pas `woo_id`** — `frontend/lib/apppos/apppos-types.ts:56-118`,
+  là où `AppPosCategory` et `AppPosBrand` le déclarent (`:128` et `:155`).
+  **C'est le type qui est incomplet, pas la donnée** : `wooSyncController.js`
+  d'AppPos écrit `woo_id` sur le produit à chaque synchronisation (lignes 357
+  et 513) et filtre sur son absence (ligne 182) ; un produit publié en a un.
+  Lu dans le dépôt AppPos, qu'on ne modifie pas. L'éditeur lit donc le champ
+  défensivement plutôt que d'élargir le type : présent il sert, absent — jamais
+  synchronisé — le produit est listé mais non sélectionnable.
+
+- **La page produit du site est un gabarit vide** (`src/pages/Product.jsx` du
+  dépôt du site : elle affiche « Produit #id »). Sans effet sur le ticket 4,
+  mais une entrée de menu pointant vers un produit mènerait aujourd'hui à une
+  page inachevée. À regarder au ticket 6, quand la résolution en URL se
+  décidera.
 
 ## À ne pas anticiper
 

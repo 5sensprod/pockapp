@@ -10,6 +10,59 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Origine des destinations du menu — 2026-08-06
+
+L'éditeur du ticket 4 propose les destinations **lues depuis AppPos**, en
+lecture seule via le client existant (`frontend/lib/apppos/`), et `ref_id`
+stocke l'**identifiant WooCommerce** de la cible. Aucun nouveau point d'entrée
+réseau : AppPos est déjà le point 2 de `CLAUDE.md`.
+
+C'est l'arbitrage que §7 de
+`frontend/modules/site/PocketSite-docs/05-contrat-menu.md` renvoyait
+explicitement au ticket 4, et dont `ref_id` en chaîne opaque attendait la
+réponse.
+
+**Les deux faits qui l'imposent sont DÉCLARÉS, pas lus dans le code** — ils
+n'étaient écrits nulle part avant ce bloc, et personne ne les a vérifiés
+depuis le dépôt :
+
+1. les collections `products`, `brands`, `categories` et `suppliers` de
+   PocketBase local sont **vides** : elles ne contiennent pas encore les
+   données d'AppPos ;
+2. AppPos porte dans NeDB les **identifiants WooCommerce** des catégories,
+   marques et produits, parce qu'il est synchronisé avec Woo.
+
+**Écarté — PocketBase local :** le fait 1 le disqualifie. Les hooks existants
+(`frontend/lib/queries/categories.ts`) sont branchés, mais sur des collections
+sans lignes ; l'éditeur n'aurait rien à proposer. Le choisir aurait aussi
+désigné la copie comme autorité, ce que le ticket 1 avait justement refusé de
+faire par effet de bord du typage.
+
+**Écarté — WooCommerce interrogé directement :** ce serait une quatrième sortie
+réseau, à inscrire dans `CLAUDE.md`, et elle s'appuierait sur les clés
+WooCommerce qui sont la faille 3.1 — déclarée prioritaire sur tous les tickets.
+Passer par AppPos donne le même identifiant sans ouvrir ce chemin.
+
+**Écarté — repousser l'arbitrage (liens manuels seuls au ticket 4) :** le
+contrat posait la question ici. La laisser ouverte aurait obligé à revenir sur
+l'éditeur une fois écrit.
+
+**Conséquence pour le ticket 6 :** la résolution `ref` → `url` part d'un
+identifiant WooCommerce, ce qui est aussi la forme de l'exemple du contrat
+(`"ref": { "type": "category", "id": "142" }`). Aucune table de correspondance
+intermédiaire à construire.
+
+**Remise en cause si :** AppPos cesse d'être synchronisé avec WooCommerce, ou
+le site cesse de servir ses URL de catégorie depuis WooCommerce. Le
+remplissage des collections locales par les données d'AppPos ne suffirait pas :
+il faudrait en plus que ces copies portent l'identifiant WooCommerce.
+
+**Effet sur le bloc suivant :** la condition de remise en cause de `ref_id` en
+relation PocketBase est **renforcée, pas levée**. Le ticket 4 ne désigne pas
+PocketBase local comme référentiel des destinations — il désigne AppPos. La
+première des deux conditions est donc non seulement non remplie, mais écartée
+sur un fait structurel.
+
 ## Schéma de la collection `site_menu` — 2026-08-06
 
 La destination d'une entrée est stockée en **référence dénormalisée**

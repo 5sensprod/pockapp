@@ -8,14 +8,15 @@ import {
 // frontend/modules/site/AppSitePage.tsx
 import { Outlet } from '@tanstack/react-router'
 
+import { MenuTreeEditor } from './components/MenuTreeEditor'
 import { manifest } from './index'
 
 /**
- * Squelette du module AppSite (ticket 2).
+ * Page du module PocketSite.
  *
- * La page ne fait rien et c'est volontaire : l'éditeur d'arbre arrive au
- * ticket 4, l'action « Publier le menu » au ticket 6. Voir
- * `PocketSite-docs/README.md` pour l'état des tickets.
+ * Porte l'éditeur d'arbre (ticket 4). L'action « Publier le menu » arrive au
+ * ticket 6 : **rien ici ne sort du poste**, l'éditeur écrit dans `site_menu`
+ * et s'arrête là. Voir `PocketSite-docs/README.md` pour l'état des tickets.
  */
 export function AppSitePage() {
 	const Icon = manifest.icon
@@ -36,14 +37,13 @@ export function AppSitePage() {
 				<CardHeader>
 					<CardTitle className='text-lg'>Menu de navigation</CardTitle>
 					<CardDescription>
-						Le menu du site sera édité ici, puis publié vers axemusique.shop.
+						Édité ici, publié vers axemusique.shop dans un second temps. La
+						publication n'est pas encore branchée : le site continue de servir
+						le menu WordPress.
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<p className='text-muted-foreground text-sm'>
-						Module en construction. L'éditeur d'arbre et la publication ne sont
-						pas encore branchés — le site continue de servir le menu WordPress.
-					</p>
+					<MenuTreeEditor />
 				</CardContent>
 			</Card>
 

@@ -67,12 +67,6 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
 
 - **Ne pas modifier AppPos.** La caisse en dépend, c'est le maillon le moins
   négociable. PocketApp lit AppPos ; l'inverse n'existe pas.
-- **Les collections catalogue de PocketBase local sont vides.** `products`,
-  `brands`, `categories` et `suppliers` existent au schéma mais ne contiennent
-  pas encore les données d'AppPos. Les hooks de `frontend/lib/queries/` qui les
-  lisent sont branchés sur du vide : ne rien bâtir dessus sans vérifier. Pour
-  une liste réelle, lire AppPos. Voir `docs/DECISIONS.md`, bloc « Origine des
-  destinations du menu » — fait déclaré, non vérifié dans le code.
 - **Ne pas créer un troisième chemin d'écriture.** Il en existe déjà deux, et
   `useUpdateProductUniversal` (`frontend/lib/queries/products.ts:180`) route
   entre eux sur une chaîne non typée. Dette connue, à ne pas aggraver.
