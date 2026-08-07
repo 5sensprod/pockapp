@@ -52,7 +52,7 @@ import {
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import { useAppPosSession } from '../hooks/use-apppos-session'
+import { useAppPosSession } from '@/lib/apppos'
 import { useDestinationIndex } from '../hooks/use-menu-destinations'
 import {
 	ROOT,
@@ -130,7 +130,8 @@ export function MenuTreeEditor() {
 		}
 		return types
 	}, [list])
-	// Ouvre la session AppPos si aucun autre écran ne l'a fait avant nous.
+	// Lecture de la session ouverte au lancement (main.tsx) — l'éditeur ne
+	// dépend plus de l'ordre de navigation.
 	const appPos = useAppPosSession()
 	const { labelFor, isError: catalogError } = useDestinationIndex(
 		usedTypes,

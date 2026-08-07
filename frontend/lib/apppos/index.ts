@@ -52,6 +52,13 @@ export {
 	transformAppPosSuppliers,
 } from './apppos-transformers'
 
+// Session (point d'authentification unique, monté dans main.tsx)
+export {
+	AppPosSessionProvider,
+	useAppPosSession,
+} from './apppos-session-provider'
+export type { AppPosSession } from './apppos-session-provider'
+
 // Hooks
 export { appPosHooks, default as hooks } from './apppos-hooks'
 export {

@@ -3,6 +3,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'
 import { ActiveCompanyProvider } from '@/lib/ActiveCompanyProvider'
+import { AppPosSessionProvider } from '@/lib/apppos'
 import { AuthProvider } from '@/modules/auth/AuthProvider'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
@@ -30,12 +31,17 @@ if (!rootElement) {
 createRoot(rootElement).render(
 	<StrictMode>
 		<QueryClientProvider client={queryClient}>
-			<AuthProvider>
-				<ActiveCompanyProvider>
-					<RouterProvider router={router} />
-					<Toaster richColors closeButton />
-				</ActiveCompanyProvider>
-			</AuthProvider>
+			{/* Session AppPos ouverte une fois au lancement, sans bloquer le rendu.
+			    Au-dessus d'AuthProvider : la requête part tout de suite et ne pèse
+			    pas sur son `loading`. AppPos éteint reste un cas normal. */}
+			<AppPosSessionProvider>
+				<AuthProvider>
+					<ActiveCompanyProvider>
+						<RouterProvider router={router} />
+						<Toaster richColors closeButton />
+					</ActiveCompanyProvider>
+				</AuthProvider>
+			</AppPosSessionProvider>
 		</QueryClientProvider>
 	</StrictMode>,
 )

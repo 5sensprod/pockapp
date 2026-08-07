@@ -51,11 +51,11 @@ en clair dans le bundle public du site.
 
 ## Notes laissées par le ticket 4
 
-Quatre constats faits en écrivant l'éditeur. Aucun ne le bloque ; les deux
-premiers demandent une action, les deux autres sont là pour éviter qu'on les
+Quatre constats faits en écrivant l'éditeur. Aucun ne le bloque. Le second a
+été traité le 7 août 2026 ; les deux derniers sont là pour éviter qu'on les
 redécouvre au ticket 6.
 
-**Deux choses à faire reprendre :**
+**Une chose à faire reprendre, une déjà reprise :**
 
 - **`site_menu` reste hors de `frontend/lib/pocketbase-types.ts`.** Non parce
   que `pnpm typegen` échoue — il fonctionne —, mais parce que le fichier commité
@@ -67,28 +67,35 @@ redécouvre au ticket 6.
   la sortie du générateur est une session à part, sur le maillon le moins
   négociable.
 
-- **Rien n'authentifie AppPos au démarrage de l'application.** Constaté le
-  7 août 2026, lu dans le code : chacune des **neuf** pages qui lisent AppPos
-  refait sa propre connexion dans un `useEffect`
-  (`frontend/modules/stock/useStockModule.ts:47`,
+- ~~**Rien n'authentifie AppPos au démarrage de l'application.**~~ **Corrigé le
+  7 août 2026.** Le constat était : chacune des **neuf** pages qui lisent AppPos
+  refaisait sa propre connexion dans un `useEffect`
+  (`frontend/modules/stock/useStockModule.ts:55`,
   `frontend/modules/cash/CashTerminalPage.tsx:272`, et sept pages de
-  `connect`). Le jeton vit ensuite en `sessionStorage`
-  (`frontend/lib/apppos/apppos-api.ts:20`), ce qui donne l'illusion que tout
-  fonctionne — à condition d'être passé par une de ces pages d'abord. Ouvrir
-  PocketSite en premier affichait des identifiants bruts au lieu des noms de
-  catégories.
+  `connect`), le jeton vivant ensuite en `sessionStorage`
+  (`frontend/lib/apppos/apppos-api.ts:84-87`) — donc tout marchait, à condition
+  d'être passé par une de ces pages d'abord. La dixième copie que le ticket 4
+  avait laissée dans le module (`hooks/use-apppos-session.ts`) est **supprimée**.
 
-  Le module a reçu sa propre connexion
-  (`frontend/modules/site/hooks/use-apppos-session.ts`) pour ne plus dépendre
-  de l'ordre de navigation. **C'est une dixième copie, pas une correction** ;
-  la bonne place est un point unique au lancement. Deux points à traiter
-  ensemble ce jour-là : les identifiants sont écrits **en dur** dans huit des
-  neuf appelants (`loginToAppPos('admin', 'admin123')`) et partent donc dans le
-  bundle — même famille que la faille 3.1, ticket à part ; et un point unique ne
-  doit pas retarder l'ouverture de l'application, AppPos éteint étant un cas
-  normal. Refactorer les neuf appelants n'est pas nécessaire : leur garde
-  `getAppPosToken()` les rend inoffensifs dès qu'une session existe en amont,
-  donc la caisse n'a pas à être touchée.
+  À sa place, un point unique : `AppPosSessionProvider`
+  (`frontend/lib/apppos/apppos-session-provider.tsx`), monté dans
+  `frontend/main.tsx` **au-dessus d'`AuthProvider`**. Il ouvre la session une
+  fois au lancement et **ne bloque pas le rendu** : ses enfants s'affichent
+  immédiatement, le contexte se met à jour quand la requête retombe — AppPos
+  éteint reste un cas normal, l'application s'ouvre quand même. Il lit
+  `VITE_APPPOS_USERNAME` / `VITE_APPPOS_PASSWORD`. Aucune nouvelle sortie
+  réseau : AppPos est le point 2 de `CLAUDE.md`.
+
+  `useAppPosSession()` s'importe désormais depuis `@/lib/apppos` et n'ouvre plus
+  rien — c'est une **lecture** de l'état (`isConnected`, `isConnecting`,
+  `error`). `MenuTreeEditor.tsx:134` s'en sert inchangé.
+
+  **Les neuf appelants n'ont pas été touchés**, volontairement : leur garde
+  `getAppPosToken()` les rend inoffensifs dès qu'une session existe en amont, et
+  deux d'entre eux sont dans la caisse. **Reste ouvert, ticket à part :** les
+  identifiants sont écrits **en dur** dans huit des neuf
+  (`loginToAppPos('admin', 'admin123')`) et partent dans le bundle — même
+  famille que la faille 3.1. Le point unique ne propage pas ce couple.
 
 **Deux constats sans action, à connaître avant le ticket 6 :**
 
