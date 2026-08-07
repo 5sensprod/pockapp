@@ -1,0 +1,67 @@
+<?php
+/**
+ * Exemple de configuration de la couche distante — ticket 5.
+ *
+ * À copier en `config.php` DANS CE MÊME DOSSIER, sur le serveur, et à remplir.
+ * `config.php` n'est pas versionné (voir server/.gitignore) : aucune clé ne
+ * doit revenir dans ce fichier-ci.
+ *
+ * Modèle repris du mini-SaaS pocketapp.5sensprod.com : la configuration vit
+ * hors dépôt, un exemple versionné à côté.
+ */
+
+return [
+    /**
+     * Clé attendue dans l'en-tête `X-API-Key`.
+     *
+     * Longue et aléatoire. Rien ne la dérive, rien ne la fait tourner
+     * automatiquement : la changer, c'est éditer ce fichier et le champ
+     * correspondant côté PocketApp.
+     *
+     * Pour en produire une :
+     *   php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+     *
+     * Le script refuse de démarrer sous 16 caractères.
+     */
+    'api_key' => 'REMPLACER-PAR-UNE-CLE-ALEATOIRE-DE-64-CARACTERES',
+
+    /**
+     * Chemin ABSOLU du fichier publié, côté système de fichiers.
+     *
+     * Il doit correspondre à l'URL du contrat, https://axemusique.shop/data/menu.json
+     * (05-contrat-menu.md §1). Le fichier temporaire est créé dans le même
+     * répertoire, sans quoi le renommage ne serait plus atomique.
+     *
+     * Le répertoire doit exister et être inscriptible par PHP.
+     */
+    'target_file' => '/home/CHANGEME/public_html/data/menu.json',
+
+    /**
+     * Taille maximale du corps accepté, en octets. 256 Kio par défaut.
+     *
+     * Le contrat (§7) laissait la valeur à fixer sur mesure réelle ; faute de
+     * mesure, on s'aligne sur le seuil indicatif de §4.5 de l'audit — quelques
+     * centaines de kilo-octets sont le signe qu'il faut passer à l'option C,
+     * pas une taille à absorber en silence. Un menu de navigation en fait
+     * quelques kilo-octets.
+     */
+    'max_body_bytes' => 262144,
+
+    /**
+     * Versions de `contractVersion` que ce script sait écrire.
+     *
+     * Toute autre valeur est REFUSÉE, jamais interprétée au mieux (§5 du
+     * contrat). Ajouter `2` ici sans avoir relu les validations reviendrait à
+     * publier un document non vérifié.
+     */
+    'supported_contract_versions' => [1],
+
+    /**
+     * Journal, best-effort. `null` pour ne rien écrire.
+     *
+     * Une ligne par requête refusée ou publiée. À placer HORS de la racine web,
+     * ou dans un dossier interdit en lecture HTTP : il ne contient pas la clé,
+     * mais il dit quand et quoi on publie.
+     */
+    'log_file' => null,
+];

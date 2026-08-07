@@ -28,8 +28,15 @@ qu'on a demandé, pas ce qui est vrai.
 
 ## Où en est-on
 
-**Ticket en cours : aucun.** Tickets 1 à 4 terminés le 6 août 2026. Le 5 est
-sans dépendance et reste le prochain sur le chemin : le 6 attend les deux.
+**Ticket en cours : aucun.** Tickets 1 à 4 terminés le 6 août 2026, le 5 le
+7 août. Le 6 (« Publier le menu ») est le prochain sur le chemin ; le 7 aussi,
+et il est indépendant.
+
+**Le ticket 5 est écrit, pas déployé.** Le code est dans
+[`server/`](../../../../server/) ; il ne tournera qu'une fois déposé à la main
+sur le mutualisé. Marche à suivre et tests de vérification :
+[`server/README.md`](../../../../server/README.md). Tant que ce dépôt n'est pas
+fait, l'endpoint n'existe pas — et rien ne l'appelle avant le ticket 6.
 
 | # | Ticket | Dépend de | Dépôt | État |
 |---|---|---|---|---|
@@ -37,7 +44,7 @@ sans dépendance et reste le prochain sur le chemin : le 6 attend les deux.
 | 2 | Squelette du module PocketSite et sa route | — | PocketApp | **fait** |
 | 3 | Contrat JSON publié : URL, version, horodatage, entrées | — | doc | **fait** |
 | 4 | Éditeur d'arbre libre | 1, 2, 3 | PocketApp | **fait** |
-| 5 | Endpoint PHP de réception, `X-API-Key` | 3 | serveur | à faire |
+| 5 | Endpoint PHP de réception, `X-API-Key` | 3 | serveur (`server/`) | **écrit, à déposer** |
 | 6 | Action « Publier le menu » | 4, 5 | PocketApp | à faire |
 | 7 | Exposition du `menu.json` en lecture statique | 5 | serveur | à faire |
 | 8 | Bascule `.env` dans `loadMenu()` + purge cache + repli | 3, 7 | site | à faire |
@@ -113,6 +120,28 @@ redécouvre au ticket 6.
   mais une entrée de menu pointant vers un produit mènerait aujourd'hui à une
   page inachevée. À regarder au ticket 6, quand la résolution en URL se
   décidera.
+
+## Notes laissées par le ticket 5
+
+- **Ce dont le ticket 6 aura besoin, et que ce dépôt ne contient pas :** l'URL
+  de l'endpoint (`https://axemusique.shop/pocketapp/api/publish-menu.php`, à
+  confirmer après dépôt) et **la clé `X-API-Key`**, qui n'existe que dans
+  `config/config.php` sur le serveur. La clé ne doit pas entrer dans le dépôt ni
+  dans le bundle : le canal existant pour ce genre de secret est le
+  `SecretManager` de PocketApp (`remote_notifications.go:5-6, 54`, réglé depuis
+  Settings > Clés API). C'est la piste, pas une décision — le ticket 6 tranche.
+
+- **Le contrat a bougé sur deux points mineurs**, consignés dans §6.1 de
+  `05-contrat-menu.md` : `ref.type` est validé contre les quatre valeurs de §3,
+  et `publishedAt` doit être en UTC avec suffixe `Z`. Le producteur du
+  ticket 6 doit s'y conformer, sinon le document est refusé en `422`.
+
+- **La taille maximale est fixée à 256 Kio** (§7 du contrat), en configuration
+  serveur et non en dur.
+
+- **Le mini-SaaS n'a toujours pas été lu** (§7.1 de l'audit, inchangé). La
+  structure `api/` + configuration hors dépôt + `schema.sql` a été reprise de sa
+  *description* dans §5 de l'audit, pas de son code.
 
 ## À ne pas anticiper
 

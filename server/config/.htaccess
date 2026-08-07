@@ -1,0 +1,17 @@
+# Ce dossier contient la clé X-API-Key. Rien n'y est servi par HTTP.
+#
+# À déposer sur le serveur avec config.php. C'est une ceinture, pas la bretelle :
+# la vraie protection est que `config.php` est du PHP — servi, il n'affiche
+# rien. Mais un serveur mal configuré (PHP désactivé sur un chemin, extension
+# renommée par un éditeur FTP) rendrait la clé lisible en clair.
+#
+# Si l'hébergeur est encore en Apache 2.2, les directives 2.4 sont ignorées et
+# c'est le bloc `Order` qui prend le relais — les deux cohabitent volontairement.
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

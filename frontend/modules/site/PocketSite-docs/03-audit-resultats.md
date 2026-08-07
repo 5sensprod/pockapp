@@ -159,6 +159,23 @@ thème enfant.
 C'est la dépendance la plus fragile du flux actuel, et la moins documentée. Si
 ce plugin est désactivé, le menu du site disparaît — voir 3.4.
 
+> **Correction du 7 août 2026 — ce n'est pas un plugin.** La route est
+> enregistrée par le **thème enfant** :
+> [`child/functions.php:86`](file:///I:/divi-child/child/functions.php),
+> `register_rest_route('wp/v2', '/menus', …)` avec
+> `'permission_callback' => '__return_true'` (donc publique, sans
+> authentification), la charge utile étant construite par `get_menus_data()`
+> juste en dessous (`:94-117`) — `wp_get_nav_menus()` puis
+> `wp_get_nav_menu_items()`, aplati en `{id, title, url, parent}`, exactement la
+> forme que §6.3 de `05-contrat-menu.md` avait lue côté site.
+>
+> **Ce que ça change :** la dépendance n'est pas un plugin à ne pas désactiver,
+> c'est **le thème enfant à ne pas remplacer ni écraser** avant le ticket 9. Le
+> risque de 3.4 est inchangé, sa cause est identifiée.
+>
+> Constaté, lu dans le dépôt `I:\divi-child`, ouvert le 7 août 2026 en
+> lecture seule. Ferme la première question ouverte de §7.2.
+
 ---
 
 ## 3. Failles retenues
@@ -225,6 +242,10 @@ défaut.
 Conséquence : plugin de menus désactivé, WordPress en maintenance ou `/wp-json`
 inaccessible, et la navigation du site casse. Le repli est écrit, il suffit de
 le brancher.
+
+> **Précision du 7 août 2026 :** « plugin de menus désactivé » se lit
+> désormais « thème enfant remplacé ou écrasé » — la route vient de
+> `child/functions.php:86`, pas d'un plugin (voir 2.6). Le reste est inchangé.
 
 ### 3.5 — MOYENNE — L'autorité est l'application destinée à disparaître
 
@@ -460,14 +481,15 @@ Listé ici pour être ignoré sans hésitation. Ne pas anticiper.
 
 ### 7.2 Questions ouvertes
 
-- **Quel plugin expose `/wp-json/wp/v2/menus` ?** Non identifié. C'est la
-  dépendance qui sera retirée par le MVP ; savoir laquelle c'est éviterait de
-  la désactiver par accident avant le ticket 9.
+- ~~**Quel plugin expose `/wp-json/wp/v2/menus` ?** Non identifié.~~
+  **Résolu le 7 août 2026 : aucun plugin.** C'est le thème enfant,
+  `child/functions.php:86`. Voir la correction en 2.6.
 - **La clé WooCommerce du bundle est-elle en lecture seule ?** Détermine la
   gravité réelle de la faille 3.1. À vérifier dans WooCommerce → Réglages →
   Avancé → API REST.
-- **Où versionner le code du serveur mutualisé ?** Dépôt dédié, ou dossier dans
-  PocketApp ? À trancher au ticket 5.
+- ~~**Où versionner le code du serveur mutualisé ?**~~ **Tranché le 7 août
+  2026 : `server/` dans PocketApp.** Bloc « Où vit le code du serveur
+  mutualisé » de `docs/DECISIONS.md`.
 - **`VITE_APPPOS_URL` n'est pas documentée** dans `.env.example`, qui ne
   contient que `VITE_BACKEND_URL`. La variable est pourtant lue par
   `apppos-config.ts:7`. À ajouter.

@@ -218,6 +218,20 @@ L'écriture doit être **atomique** — fichier temporaire puis renommage — sa
 quoi un visiteur peut lire un JSON tronqué. C'est le seul risque de lecture que
 l'option A introduit, et il se traite en une ligne.
 
+**Ajouté au ticket 5, le 7 août 2026** — deux validations que cette liste ne
+prévoyait pas :
+
+- un `ref` non `null` doit être un objet portant `type` **parmi les quatre
+  de §3** (`category`, `brand`, `product`, `page`) et un `id` chaîne non vide.
+  La règle « ignorer tout champ inconnu » de §5 porte sur les *champs*, pas sur
+  les *valeurs d'une énumération fermée* ; le producteur étant unique, un `type`
+  inconnu est un bogue de PocketApp, pas une extension à tolérer ;
+- `publishedAt` doit être en **UTC avec suffixe `Z`**. Un décalage horaire
+  (`+02:00`) est refusé : §2.1 dit UTC, pas « une date ».
+
+Le script réencode le document validé plutôt que d'écrire le corps reçu tel
+quel : ce qui est publié est alors exactement ce qui a été vérifié.
+
 L'authentification est `X-API-Key`, sur le modèle du mini-SaaS existant
 (`remote_notifications.go:27`). Rien de plus : §6 de l'audit reporte
 explicitement toute authentification au-delà.
@@ -278,9 +292,14 @@ lequel sert aussi de repli en cas de `contractVersion` refusée (§5).
 - **§2.4 de l'audit est à corriger** : la liste d'exclusions qu'il cite
   appartient au seul catch-all final, pas au routage React en général — les
   routes React sont énumérées une par une (lignes 6-38).
-- **Taille maximale du corps accepté** au ticket 5 : à fixer sur mesure réelle.
-  Rappel du seuil indicatif de §4.5 : quelques centaines de kilo-octets
-  déclenchent le passage à l'option C.
+- ~~**Taille maximale du corps accepté** au ticket 5 : à fixer sur mesure
+  réelle.~~ **Fixée le 7 août 2026 à 262 144 octets (256 Kio)**, en
+  configuration du script (`server/config/config.php.example`, clé
+  `max_body_bytes`), pas en dur. Toujours sans mesure réelle : la valeur
+  s'aligne sur le seuil indicatif de §4.5 — quelques centaines de kilo-octets
+  sont le signe qu'il faut passer à l'option C, pas une taille à absorber en
+  silence. Un menu de navigation en fait quelques kilo-octets ; l'écart est tel
+  que la mesure ne changera pas la décision. Refus en `413`.
 - **Identifiants de `ref.id`** : `142` dans l'exemple est un identifiant
   WooCommerce. Lequel des trois référentiels (AppPos, WooCommerce, PocketBase
   local) fait foi pour une destination est à trancher au ticket 4, quand

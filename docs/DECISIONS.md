@@ -10,6 +10,83 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Où vit le code du serveur mutualisé — 2026-08-07
+
+Le code PHP qui tourne sur l'hébergement d'axemusique.shop est versionné dans
+**ce dépôt-ci, sous `server/`**. Il ne s'exécute pas dans PocketApp : il est
+déposé par FTP, à la main, une fois. Rien du binaire Wails ne l'importe.
+
+C'est la question ouverte de §7.2 de
+`frontend/modules/site/PocketSite-docs/03-audit-resultats.md` — « dépôt dédié,
+ou dossier dans PocketApp ? », renvoyée au ticket 5.
+
+**Ce qui tranche :** PocketApp est le seul appelant de cet endpoint, et le
+contrat qu'ils partagent (`05-contrat-menu.md`) vit déjà ici. Les deux côtés du
+même contrat changent ensemble, dans le même commit, ou ils divergent.
+
+**Écarté — un dépôt dédié :** quelques fichiers PHP dans un dépôt à eux, c'est
+le maillon qu'on oublie de cloner, qu'on ne met pas à jour, et dont on découvre
+six mois plus tard qu'il ne correspond plus à ce qui est en ligne. C'est
+exactement l'angle mort que la note « Tickets 5 et 7 : versionner le code
+serveur » de §5 de l'audit voulait éviter.
+
+**Écarté — le thème enfant WordPress (`I:\divi-child`, dossier `child/`) :**
+c'est pourtant un domicile réel, versionné, et déjà déployé sur ce serveur —
+c'est là que vit `functions.php`. Trois raisons de ne pas y aller. Le MVP existe
+pour **sortir** le menu de WordPress : y remettre le code de sortie le rend
+dépendant du thème, donc d'une mise à jour de thème ou d'un changement de
+constructeur de page. Le contrat et son producteur seraient alors dans deux
+dépôts, avec le consommateur (`frontend-wp/`) dans le même que le producteur —
+la pire répartition des trois. Enfin `child/` est chargé par WordPress à chaque
+requête du site, alors que cet endpoint doit rester **hors du chemin WordPress**
+(§1 du contrat : hors `wp-content/`, qu'une restauration WP peut balayer).
+
+**Aucune clé dans le dépôt.** `server/config/config.php` porte la clé
+`X-API-Key` et est ignoré par Git (`server/.gitignore`) ; `config.php.example`
+est versionné à côté. Modèle repris du mini-SaaS `pocketapp.5sensprod.com`
+(`api/`, configuration hors dépôt, `schema.sql`), comme le recommandait §5 de
+l'audit.
+
+**`server/schema.sql` est versionné mais n'est pas joué.** Il décrit le stockage
+MySQL de l'option C, pour que la bascule reste une après-midi. Aucun des quatre
+déclencheurs de §4.5 n'est atteint : la décision « A pour le MVP, C ensuite »
+tient inchangée.
+
+**Remise en cause si :** un second consommateur du code serveur apparaît sans
+lien avec PocketApp, ou le serveur acquiert un déploiement automatisé — auquel
+cas c'est le pipeline, pas le dépôt, qui décide.
+
+## Cible à terme : la couche distante remplace WooCommerce comme catalogue — 2026-08-07
+
+**Intention consignée, rien d'étudié, aucun travail engagé.** Ce bloc existe
+pour que la cible ne se reperde pas entre deux sessions, pas pour la commencer.
+
+À terme, la couche distante posée au ticket 5 — script PHP de réception,
+données servies en statique — a vocation à porter **le catalogue** du site
+(produits, catégories, marques), et non le seul menu. WooCommerce cesserait
+alors d'être la source du site ; sa médiathèque, elle, reste (§4.6 de l'audit).
+
+**Ce qui rend la cible envisageable :** le site est une vitrine sans vente en
+ligne (§2.4 de l'audit). Pas de tunnel d'achat, pas de compte client, pas de
+commande à préserver. C'est un problème de lecture de données. Et c'est aussi la
+réponse durable à la faille 3.1 : plus de clés WooCommerce dans le bundle si le
+site ne parle plus à WooCommerce.
+
+**Ce qui n'est pas tranché** — les trois questions de §7.3 de l'audit restent
+ouvertes, mot pour mot : le volume réel une fois publié, la stratégie d'images,
+la recherche côté site. À quoi s'ajoute que ~2000 produits ne se servent pas en
+un fichier unique — c'est le déclencheur n°1 de §4.5, donc cette cible **passe
+par l'option C**, elle ne s'atteint pas depuis A.
+
+**Ce que ce bloc n'autorise pas :** anticiper. La migration des produits et la
+bascule AppPos → PocketApp sont explicitement reportées en §6 de l'audit, et
+AppPos reste autorité pendant toute la transition. Aucun ticket du MVP ne s'en
+approche.
+
+**Remise en cause si :** le MVP menu échoue à tenir en production, ou WordPress
+doit rester pour une raison qui n'apparaît qu'à l'usage — auquel cas la cible
+n'est pas seulement repoussée, elle est fausse.
+
 ## Origine des destinations du menu — 2026-08-06
 
 L'éditeur du ticket 4 propose les destinations **lues depuis AppPos**, en

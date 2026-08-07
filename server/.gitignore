@@ -1,0 +1,6 @@
+# La configuration réelle porte la clé X-API-Key. Elle ne revient jamais ici.
+# L'exemple versionné est config/config.php.example.
+config/config.php
+
+# Journaux éventuels, si `log_file` pointe dans le dépôt lors d'un test local.
+*.log
