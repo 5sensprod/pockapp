@@ -28,6 +28,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/pocketbase/pocketbase"
+
+	"pocket-react/backend/catalog/load"
 	"pocket-react/backend/catalog/nedb"
 	"pocket-react/backend/catalog/normalize"
 )
@@ -61,6 +64,8 @@ func main() {
 		allowProduction = flag.Bool("allow-production", false, "autoriser la lecture d'un répertoire qui ressemble à la production")
 		doNormalize     = flag.Bool("normalize", false, "normaliser vers le modèle cible et produire le rapport d'anomalies (T3)")
 		detail          = flag.Int("detail", 5, "avec -normalize : nombre de cas détaillés par nature d'anomalie (0 = tous)")
+		doLoad          = flag.Bool("load", false, "ÉCRIRE dans le PocketBase local : purge des quatre collections puis chargement (T4)")
+		pbDir           = flag.String("pb", "", "répertoire pb_data ; par défaut %LOCALAPPDATA%\\PocketReact\\pb_data")
 	)
 	flag.Parse()
 
@@ -68,8 +73,10 @@ func main() {
 		showFields:      *showFields,
 		minRate:         *minRate,
 		allowProduction: *allowProduction,
-		normalize:       *doNormalize,
+		normalize:       *doNormalize || *doLoad, // charger suppose normaliser
 		detail:          *detail,
+		load:            *doLoad,
+		pbDir:           *pbDir,
 	}
 	if err := run(*dataDir, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ %v\n", err)
@@ -83,6 +90,8 @@ type options struct {
 	allowProduction bool
 	normalize       bool
 	detail          int
+	load            bool
+	pbDir           string
 }
 
 func run(dataDir string, opts options) error {
@@ -157,27 +166,119 @@ func run(dataDir string, opts options) error {
 	reportNormalized(cat)
 	reportAnomalies(rep, opts.detail)
 
-	fmt.Println("───────────────────────────────────────────────────────────────")
-	if rep.HasBlocking() {
-		fmt.Println(" ⛔ T4 NE DOIT PAS TOURNER.")
-		fmt.Println("    Les anomalies BLOQUANTES ci-dessus se règlent dans AppPos,")
-		fmt.Println("    pas dans cet outil : normaliser c'est traduire, réparer c'est décider.")
-		return fmt.Errorf("%d anomalie(s) bloquante(s)", countBlocking(rep))
+	if !opts.load {
+		fmt.Println("───────────────────────────────────────────────────────────────")
+		fmt.Println(" ✅ Normalisation terminée. Rien n'a été écrit.")
+		if rep.HasBlocking() {
+			fmt.Printf("    %d enregistrement(s) seront MIS EN QUARANTAINE au chargement :\n", countBlocking(rep))
+			fmt.Println("    écartés et listés, pas corrigés. Ils n'empêchent pas les autres.")
+		}
+		fmt.Println("    Pour charger : -load")
+		return nil
 	}
-	fmt.Println(" ✅ Aucune anomalie bloquante. T4 peut être écrit.")
-	fmt.Println("    Les anomalies déclaratives ne s'opposent pas au chargement ;")
-	fmt.Println("    elles doivent avoir été LUES, c'est tout ce qu'on leur demande.")
-	return nil
+
+	return doLoad(cat, rep, opts)
 }
 
 func countBlocking(rep *normalize.Report) int {
-	n := 0
+	seen := map[string]bool{}
 	for _, a := range rep.Anomalies {
 		if a.Severity == normalize.Blocking {
-			n++
+			seen[a.Entity+"/"+a.SourceID] = true
 		}
 	}
-	return n
+	return len(seen)
+}
+
+// doLoad — le seul chemin de ce programme qui écrit.
+func doLoad(cat *normalize.Catalog, rep *normalize.Report, opts options) error {
+	dir := opts.pbDir
+	if dir == "" {
+		base := os.Getenv("LOCALAPPDATA")
+		if base == "" {
+			base = "."
+		}
+		dir = filepath.Join(base, "PocketReact", "pb_data")
+	}
+
+	fmt.Println("── Chargement dans PocketBase (T4) ────────────────────────────")
+	fmt.Printf(" Base : %s\n", dir)
+	fmt.Println(" ⚠  PocketApp doit être FERMÉ : SQLite n'accepte qu'un écrivain.")
+	fmt.Println()
+
+	app := pocketbase.NewWithConfig(pocketbase.Config{DefaultDataDir: dir})
+	if err := app.Bootstrap(); err != nil {
+		return fmt.Errorf("ouverture de la base %q: %w\n"+
+			"   Si PocketApp est ouvert, le fermer et relancer", dir, err)
+	}
+
+	res, err := load.Run(app, cat, rep)
+	if err != nil {
+		// La transaction a été annulée : les collections sont restées vides
+		// plutôt que d'être à moitié pleines.
+		return fmt.Errorf("chargement annulé, aucune écriture conservée : %w", err)
+	}
+
+	reportLoad(res, opts.detail)
+	return nil
+}
+
+func reportLoad(res *load.Result, detail int) {
+	fmt.Printf(" Entreprise : %s (%s)\n\n", res.CompanyName, res.CompanyID)
+
+	if len(res.Purged) > 0 {
+		fmt.Println(" Purge préalable :")
+		for _, name := range []string{"external_refs", "products", "suppliers", "categories", "brands"} {
+			if n := res.Purged[name]; n > 0 {
+				fmt.Printf("   %-14s %6d supprimé(s)\n", name, n)
+			}
+		}
+		fmt.Println()
+	}
+
+	fmt.Println(" Chargé :")
+	for _, name := range []string{"brands", "categories", "suppliers", "products"} {
+		fmt.Printf("   %-14s %6d\n", name, res.Loaded[name])
+	}
+	fmt.Println()
+
+	if len(res.Skipped) > 0 {
+		fmt.Printf(" ⚠  Quarantaine — %d enregistrement(s) écarté(s), NON corrigés :\n", len(res.Skipped))
+		for entity, items := range res.SkippedByEntity() {
+			fmt.Printf("\n   %s (%d)\n", entity, len(items))
+			shown := len(items)
+			if detail > 0 && shown > detail {
+				shown = detail
+			}
+			for _, s := range items[:shown] {
+				fmt.Printf("     %s « %s »\n       %s\n", s.SourceID, s.Label, s.Reason)
+			}
+			if shown < len(items) {
+				fmt.Printf("     … et %d autre(s) — -detail 0 pour tout voir\n", len(items)-shown)
+			}
+		}
+		fmt.Println()
+		fmt.Println("   Cette liste EST la liste de travail. Les corrections se feront")
+		fmt.Println("   hors de la source, jamais dans AppPos (10-plan-migration.md §2 bis).")
+		fmt.Println()
+	}
+
+	if len(res.Dropped) > 0 {
+		fmt.Println(" Relations perdues (cible écartée ou absente) :")
+		keys := make([]string, 0, len(res.Dropped))
+		for k := range res.Dropped {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Printf("   %-52s %5d\n", k, res.Dropped[k])
+		}
+		fmt.Println()
+	}
+
+	fmt.Println("───────────────────────────────────────────────────────────────")
+	fmt.Println(" ✅ Chargement terminé. Étape suivante : T5, external_refs.")
+	fmt.Println("    Relancer cette commande recharge à l'identique : purge puis écriture.")
 }
 
 func reportNormalized(cat *normalize.Catalog) {

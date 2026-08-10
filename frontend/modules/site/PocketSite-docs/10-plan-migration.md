@@ -62,13 +62,47 @@ déclarant**, et aucun ne se règle dans le code de chargement.
 | produits `published` jamais mis en ligne | **222** | **déclaratif** — à lister, pas à corriger |
 | produits `draft` pourtant en ligne | **5** | idem |
 
-**Proposé — l'ordre compte.** Les deux premières lignes bloquent le chargement ;
-les autres non. Le ticket T3 produit le **rapport d'anomalies**, et c'est lui qui
-dit si T4 peut tourner. Écrire T4 avant d'avoir lu ce rapport, c'est découvrir
-les 7 doublons dans un message d'erreur d'index unique.
-
-**Les 7 doublons de SKU ne se tranchent pas ici :** fusionner, suffixer ou vider
+**Les doublons de SKU ne se tranchent pas ici :** fusionner, suffixer ou vider
 est une décision métier. Ce plan la signale, il ne la prend pas.
+
+### 2 bis. Correction du plan — rien de tout cela ne bloque la phase locale
+
+**Écrit le 11 août 2026, sur remarque du propriétaire, et c'est une correction
+de fond.**
+
+La première rédaction posait un « point d'arrêt décisionnel entre T3 et T4 » :
+les anomalies bloquantes devaient être réglées dans AppPos avant tout
+chargement. **C'était faux, pour trois raisons.**
+
+1. **La base dev n'est pas la référence.** La production porte 3034 produits
+   contre 2306, écart jamais expliqué. Trancher les deux Penta Harp sur la dev,
+   c'est décider sur des données qui ne sont pas celles qu'on migrera. Travail
+   jetable.
+2. **Le rituel interdit de toucher à la production.** Une migration qui *exige*
+   une source corrigée est une migration qui ne pourra jamais tourner sur la
+   vraie base.
+3. **Ce n'est pas ce que la phase locale doit prouver.** Elle doit établir que
+   le tuyau fonctionne, pas que le catalogue est parfait.
+
+**Le chargeur met donc en quarantaine au lieu de refuser.** Ce n'est pas un mode
+dégradé, c'est le comportement normal :
+
+- ce qui est sain se charge — 2299 produits sur 2306 ;
+- ce qui est bloquant est **écarté et listé** ; le rapport de rejet *est* la
+  liste de travail ;
+- rien n'est corrigé, rien n'est perdu, aucune décision métier n'est prise par
+  l'outil.
+
+**Les décisions restent dues** — elles appartiennent à la migration de
+production, que la décision du 10 août sépare explicitement de cette phase.
+
+**Quand la production viendra**, les mêmes classes d'anomalies reviendront, en
+plus grand nombre, et il sera toujours interdit de modifier AppPos. Les
+corrections devront donc vivre **hors de la source** : un fichier de corrections
+versionné ici, appliqué à la normalisation (`0ZXO3LxD4gtQS6qq → name =
+designation`). Rejouable, traçable, et il survit à un rechargement. **À ne pas
+écrire maintenant** — tant qu'on n'a pas vu les anomalies de la vraie base, on
+dimensionnerait à l'aveugle. Mais le chargeur est conçu pour l'accueillir.
 
 ---
 
@@ -213,8 +247,8 @@ go run ./backend/cmd/catalog-import -normalize            # rapport
 go run ./backend/cmd/catalog-import -normalize -detail 0  # tous les cas
 ```
 
-**Verdict : 2 natures bloquantes, 7 cas. T4 ne doit pas tourner avant leur
-règlement.** La commande sort en erreur tant qu'il en reste.
+**Verdict : 2 natures bloquantes, 7 cas — mis en quarantaine par T4**, pas
+opposés au chargement (§2 bis).
 
 | Anomalie | Cas | Niveau |
 |---|---:|---|
@@ -271,7 +305,34 @@ Transformation vers le modèle cible, **sans écrire dans PocketBase** :
 
 **Sortie principale : le rapport d'anomalies du §2.** C'est lui qui autorise T4.
 
-### T4 — Le chargeur, idempotent par purge
+### T4 — Le chargeur — **écrit le 11 août 2026, pas encore exécuté**
+
+`backend/catalog/load/loader.go`. **Seul chemin de ce chantier qui écrit.**
+
+```bash
+# PocketApp doit être FERMÉ : SQLite n'accepte qu'un écrivain.
+go run ./backend/cmd/catalog-import -load
+```
+
+L'écriture est derrière un drapeau explicite : sans `-load`, la commande reste
+en lecture seule. `-pb` permet de viser une autre base que
+`%LOCALAPPDATA%\PocketReact\pb_data`.
+
+**Une seule transaction.** Purge et chargement des quatre collections s'y
+déroulent ensemble : au moindre échec, tout est annulé et les collections
+restent vides plutôt qu'à moitié pleines.
+
+**Ce que le chargeur ne fait pas :** il ne corrige rien, ne choisit pas
+d'entreprise, ne touche jamais NeDB, et n'écrit que dans les cinq collections
+du catalogue — les 19 autres (factures, clients, caisse, menu) ne sont ni lues
+ni purgées.
+
+**Rapport produit à chaque exécution :** purge, chargé par collection,
+quarantaine détaillée, et **relations perdues comptées** — une relation qui
+disparaît parce que sa cible a été écartée est une donnée fausse, elle ne doit
+pas s'évaporer en silence.
+
+### T4 — spécification d'origine
 
 Ordre imposé par les dépendances de relations :
 

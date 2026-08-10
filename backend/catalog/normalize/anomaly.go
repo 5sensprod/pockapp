@@ -70,8 +70,7 @@ func (r *Report) Add(sev Severity, kind, entity, sourceID, detail string) {
 
 func (r *Report) Count(key string) { r.Counters[key]++ }
 
-// HasBlocking dit si T4 peut tourner. C'est la seule question que le plan
-// pose à ce rapport.
+// HasBlocking dit s'il reste des cas à écarter au chargement.
 func (r *Report) HasBlocking() bool {
 	for _, a := range r.Anomalies {
 		if a.Severity == Blocking {
@@ -79,6 +78,30 @@ func (r *Report) HasBlocking() bool {
 		}
 	}
 	return false
+}
+
+// Quarantined rend, par entité, les identifiants NeDB porteurs d'au moins une
+// anomalie bloquante — donc à ÉCARTER du chargement.
+//
+// Le chargeur ne refuse pas de tourner : il charge ce qui est sain et liste ce
+// qu'il écarte (10-plan-migration.md §2 bis). Exiger une source corrigée
+// reviendrait à exiger de modifier AppPos, ce que le rituel interdit — la
+// migration ne pourrait alors jamais tourner sur la base de production.
+func (r *Report) Quarantined() map[string]map[string]string {
+	out := map[string]map[string]string{}
+	for _, a := range r.Anomalies {
+		if a.Severity != Blocking {
+			continue
+		}
+		if out[a.Entity] == nil {
+			out[a.Entity] = map[string]string{}
+		}
+		// Premier motif rencontré : suffisant pour expliquer le rejet.
+		if _, seen := out[a.Entity][a.SourceID]; !seen {
+			out[a.Entity][a.SourceID] = a.Kind + " — " + a.Detail
+		}
+	}
+	return out
 }
 
 // Group est un ensemble d'anomalies de même nature, prêt à l'affichage.
