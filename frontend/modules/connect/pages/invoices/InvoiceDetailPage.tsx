@@ -51,6 +51,7 @@ import {
 	formatCurrency,
 	formatDate,
 	formatPaymentMethod,
+	getUnitPriceTtcBeforeDiscount,
 	round2,
 } from '../../utils/formatters'
 import { useInvoiceDetailHeader } from './InvoiceDetailHeader'
@@ -744,7 +745,7 @@ export function InvoiceDetailPage() {
 									<TableRow>
 										<TableHead>Article</TableHead>
 										<TableHead className='text-center w-20'>Qté</TableHead>
-										<TableHead className='text-right'>P.U. HT</TableHead>
+										<TableHead className='text-right'>P.U. TTC</TableHead>
 										<TableHead className='text-right'>Remise</TableHead>
 										<TableHead className='text-right'>TVA</TableHead>
 										<TableHead className='text-right'>Total TTC</TableHead>
@@ -753,35 +754,32 @@ export function InvoiceDetailPage() {
 								<TableBody>
 									{invoice.items.map((item: any, idx: number) => {
 										const promo = getLineDiscountLabel(item)
-										const beforeUnitTtc = Number(
-											item?.unit_price_ttc_before_discount,
-										)
-										const hasBefore =
-											Number.isFinite(beforeUnitTtc) && beforeUnitTtc > 0
+										// P.U. TTC d'origine (avant remise ligne) : champ
+										// persiste, ou reconstruction pour les documents legacy
+										const unitTtcBefore = getUnitPriceTtcBeforeDiscount(item)
 										const coef = 1 + Number(item?.tva_rate ?? 20) / 100
-										const unitTtcFromHt = round2(
+										const unitTtcNet = round2(
 											Number(item?.unit_price_ht ?? 0) * coef,
 										)
 										return (
 											<TableRow key={`${item.name}-${idx}`}>
 												<TableCell className='font-medium'>
-													<div className='flex flex-col'>
-														<span>{item.name}</span>
-														{hasBefore && promo.hasDiscount && (
-															<span className='text-xs text-muted-foreground'>
-																<span className='line-through mr-2'>
-																	{round2(beforeUnitTtc).toFixed(2)} €
-																</span>
-																<span>{unitTtcFromHt.toFixed(2)} € TTC</span>
-															</span>
-														)}
-													</div>
+													{item.name}
 												</TableCell>
 												<TableCell className='text-center'>
 													{item.quantity}
 												</TableCell>
 												<TableCell className='text-right'>
-													{Number(item.unit_price_ht ?? 0).toFixed(2)} €
+													{promo.hasDiscount ? (
+														<div className='flex flex-col items-end'>
+															<span className='text-xs text-muted-foreground line-through'>
+																{unitTtcBefore.toFixed(2)} €
+															</span>
+															<span>{unitTtcNet.toFixed(2)} €</span>
+														</div>
+													) : (
+														<span>{unitTtcNet.toFixed(2)} €</span>
+													)}
 												</TableCell>
 												<TableCell className='text-right'>
 													{promo.label}

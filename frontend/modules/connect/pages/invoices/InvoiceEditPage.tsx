@@ -55,6 +55,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { CustomerDialog } from '../../features/customers/CustomerDialog'
+import { getUnitPriceTtcBeforeDiscount } from '../../utils/formatters'
 
 // =====================
 // TYPES + HELPERS
@@ -312,12 +313,19 @@ export function InvoiceEditPage() {
 			const uiItems: UiInvoiceItem[] = invoice.items.map((it, index) => {
 				const qty = Math.max(0, it.quantity ?? 0)
 				const tvaRate = it.tva_rate ?? 20
-				const coef = 1 + tvaRate / 100
 
-				const inferredUnitTtc =
-					qty > 0
-						? round2((it.total_ttc ?? 0) / qty)
-						: round2((it.unit_price_ht ?? 0) * coef)
+				// P.U. TTC d'origine : champ persiste, ou reconstruction legacy
+				const inferredUnitTtc = getUnitPriceTtcBeforeDiscount({
+					...it,
+					quantity: qty,
+					tva_rate: tvaRate,
+				})
+
+				// ✅ RESTAURER les remises ligne depuis le backend
+				const lineDiscountMode = (it as any).line_discount_mode || 'percent'
+				const lineDiscountValue = (it as any).line_discount_value || 0
+				const lineDiscountRaw =
+					lineDiscountValue > 0 ? lineDiscountValue.toString() : ''
 
 				const draft: UiInvoiceItem = {
 					...it,
@@ -329,9 +337,9 @@ export function InvoiceEditPage() {
 					sku: '',
 					unit_price_ttc: inferredUnitTtc,
 					unitPriceRaw: inferredUnitTtc.toString(),
-					lineDiscountMode: 'percent',
-					lineDiscountValue: 0,
-					lineDiscountRaw: '',
+					lineDiscountMode,
+					lineDiscountValue,
+					lineDiscountRaw,
 					unit_price_ht: it.unit_price_ht ?? 0,
 					total_ht: it.total_ht ?? 0,
 					total_ttc: it.total_ttc ?? 0,
@@ -341,6 +349,16 @@ export function InvoiceEditPage() {
 			})
 			setItems(uiItems)
 		}
+
+		// ✅ RESTAURER les remises panier depuis le backend
+		const savedCartDiscountMode =
+			(invoice as any).cart_discount_mode || 'percent'
+		const savedCartDiscountValue = (invoice as any).cart_discount_value || 0
+		setCartDiscountMode(savedCartDiscountMode)
+		setCartDiscountValue(savedCartDiscountValue)
+		setCartDiscountRaw(
+			savedCartDiscountValue > 0 ? savedCartDiscountValue.toString() : '',
+		)
 
 		setIsInitialized(true)
 	}, [invoice, isInitialized])
@@ -568,6 +586,7 @@ export function InvoiceEditPage() {
 				...rest
 			}) => ({
 				...rest,
+				tva_rate: Number(rest.tva_rate ?? 20),
 				name: getDisplayText({
 					id,
 					displayMode,
@@ -576,6 +595,9 @@ export function InvoiceEditPage() {
 					unit_price_ttc,
 					...rest,
 				} as UiInvoiceItem),
+				line_discount_mode: lineDiscountMode,
+				line_discount_value: lineDiscountValue,
+				unit_price_ttc_before_discount: unit_price_ttc,
 			}),
 		)
 

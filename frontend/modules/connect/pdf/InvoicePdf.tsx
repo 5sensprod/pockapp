@@ -16,6 +16,7 @@ import {
 	Text,
 	View,
 } from '@react-pdf/renderer'
+import { getUnitPriceTtcBeforeDiscount, round2 } from '../utils/formatters'
 
 const styles = StyleSheet.create({
 	page: {
@@ -144,6 +145,12 @@ const styles = StyleSheet.create({
 	colUnit: {
 		flex: 1.1,
 		textAlign: 'right',
+	},
+	colUnitBefore: {
+		textAlign: 'right',
+		fontSize: 8,
+		color: '#888',
+		textDecoration: 'line-through',
 	},
 	colDiscount: {
 		flex: 0.9,
@@ -573,7 +580,7 @@ export function InvoicePdfDocument({
 						</Text>
 						<Text style={[styles.colQty, styles.tableHeaderText]}>Qté</Text>
 						<Text style={[styles.colUnit, styles.tableHeaderText]}>
-							P.U. HT
+							P.U. TTC
 						</Text>
 						<Text style={[styles.colDiscount, styles.tableHeaderText]}>
 							Remise
@@ -599,13 +606,25 @@ export function InvoicePdfDocument({
 								? `${lineDiscount.toFixed(2)}${lineDiscountMode === 'percent' ? '%' : '€'}`
 								: '-'
 
+						// P.U. TTC net, et prix d'origine barré si la ligne est remisée
+						const coef = 1 + Number(item.tva_rate ?? 20) / 100
+						const unitTtcNet = round2(Number(item.unit_price_ht ?? 0) * coef)
+						const unitTtcBefore = getUnitPriceTtcBeforeDiscount(item)
+
 						return (
 							<View style={rowStyle} key={key}>
 								<Text style={styles.colDescription}>{item.name}</Text>
 								<Text style={styles.colQty}>{item.quantity}</Text>
-								<Text style={styles.colUnit}>
-									{item.unit_price_ht.toFixed(2)}
-								</Text>
+								{lineDiscount > 0 ? (
+									<View style={styles.colUnit}>
+										<Text style={styles.colUnitBefore}>
+											{unitTtcBefore.toFixed(2)}
+										</Text>
+										<Text>{unitTtcNet.toFixed(2)}</Text>
+									</View>
+								) : (
+									<Text style={styles.colUnit}>{unitTtcNet.toFixed(2)}</Text>
+								)}
 								<Text style={styles.colDiscount}>{discountText}</Text>
 								<Text style={styles.colTva}>{item.tva_rate}%</Text>
 								<Text style={styles.colTotal}>{item.total_ttc.toFixed(2)}</Text>
