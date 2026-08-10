@@ -77,12 +77,27 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
 
 - **Ne pas modifier AppPos.** La caisse en dépend, c'est le maillon le moins
   négociable. PocketApp lit AppPos ; l'inverse n'existe pas.
-- **Les collections catalogue de PocketBase local sont vides.** `products`,
-  `brands`, `categories` et `suppliers` existent au schéma mais ne contiennent
-  pas encore les données d'AppPos. Les hooks de `frontend/lib/queries/` qui les
-  lisent sont branchés sur du vide : ne rien bâtir dessus sans vérifier. Pour
-  une liste réelle, lire AppPos. Voir `docs/DECISIONS.md`, bloc « Origine des
-  destinations du menu » — fait déclaré, non vérifié dans le code.
+- **Les collections catalogue de PocketBase local sont vides — vérifié le
+  2026-08-10** sur `%LOCALAPPDATA%\PocketReact\pb_data` : 0 produit,
+  0 catégorie, 0 marque, 0 fournisseur, et une seule entreprise. `products`,
+  `brands`, `categories` et `suppliers` existent au schéma sans les données
+  d'AppPos. Les hooks de `frontend/lib/queries/` qui les lisent sont branchés
+  sur du vide : ne rien bâtir dessus sans vérifier. Pour une liste réelle, lire
+  AppPos. Ces collections sont un **premier jet jamais utilisé** — voir
+  `docs/DECISIONS.md`, bloc « Les collections catalogue de PocketBase sont un
+  premier jet abandonné ».
+- **La base PocketBase est dans `%LOCALAPPDATA%\PocketReact\pb_data`**
+  (`main.go:71-75`), pas dans le dépôt. **`I:\pockapp\pb_data` est un vestige**
+  de novembre 2025, avec un schéma `products` incompatible (`price`, `cost`,
+  `stock`) : ne jamais s'y fier pour juger du schéma en place.
+- **`categories.parent` est cassé au schéma** — `collectionId` vide,
+  `backend/migrations/catalog.go:143` annonce un correctif jamais écrit.
+  Invisible tant que la collection est vide. À réparer avant toute écriture.
+- **Les fonctions `ensure*Collection` sortent si la collection existe par son
+  nom** (`catalog.go:17, 88, 163, 257`). Modifier `catalog.go` ne modifie donc
+  **aucune base déjà installée**, et une base portant des collections homonymes
+  plus anciennes est acceptée sans erreur ni mise à niveau. Toute évolution du
+  schéma passe par une nouvelle migration.
 - **Ne pas créer un troisième chemin d'écriture.** Il en existe déjà deux, et
   `useUpdateProductUniversal` (`frontend/lib/queries/products.ts:180`) route
   entre eux sur une chaîne non typée. Dette connue, à ne pas aggraver.
@@ -105,7 +120,23 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
 
 ## Travail en cours
 
-**Aucun.** Sortir le menu de navigation de WordPress : **fait, en production
+**Migrer le catalogue de NeDB vers PocketBase, tout en local.** Cible :
+s'affranchir d'AppServe, PocketBase devient la source de vérité
+(`docs/DECISIONS.md`, 2026-08-10). Aucune synchronisation de production dans
+cette phase.
+
+**Le modèle cible est arrêté** (`docs/DECISIONS.md`, bloc « Le modèle cible du
+catalogue PocketBase est arrêté »). Point d'entrée du travail en cours :
+[`10-plan-migration.md`](frontend/modules/site/PocketSite-docs/10-plan-migration.md).
+
+En amont, dans l'ordre où ils ont été écrits : le rituel
+[`08-rituel-migration-pocketbase.md`](frontend/modules/site/PocketSite-docs/08-rituel-migration-pocketbase.md),
+le modèle [`09-modele-cible.md`](frontend/modules/site/PocketSite-docs/09-modele-cible.md)
+— dont le §9 confronte le modèle au schéma PocketBase réel —, et l'audit
+préalable du flux AppPos ↔ WooCommerce
+[`07-audit-flux-apppos.md`](frontend/modules/site/PocketSite-docs/07-audit-flux-apppos.md).
+
+Sortir le menu de navigation de WordPress : **fait, en production
 depuis le 10 août 2026.** Le menu est édité dans le module `site`, publié vers
 `axemusique.shop` (point 4 ci-dessus), et servi en statique — le site ne lit
 plus `/wp-json/wp/v2/menus`, l'appel a disparu de son bundle.

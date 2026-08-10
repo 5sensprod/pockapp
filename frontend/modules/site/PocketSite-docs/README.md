@@ -4,15 +4,25 @@ Module en production. **Mission « menu » terminée le 10 août 2026** : la
 navigation d'axemusique.shop est éditée ici et publiée d'un clic ; le site ne
 lit plus WordPress pour l'afficher.
 
-**Mission suivante : sortir le catalogue de WooCommerce** — produits,
-catégories, marques, vers une base SQL sur IONOS. Phase d'analyse uniquement,
-aucun code. Point d'entrée : [`06-rituel-catalogue.md`](06-rituel-catalogue.md).
+**Mission suivante : migrer le catalogue de NeDB vers PocketBase, tout en
+local** — pour s'affranchir d'AppServe. Point d'entrée :
+[`10-plan-migration.md`](10-plan-migration.md).
+
+**La cible a changé le 10 août 2026** : elle n'est plus « publier le catalogue
+vers une base SQL sur IONOS », mais « PocketBase devient la source de vérité »
+([`docs/DECISIONS.md`](../../../../docs/DECISIONS.md)). Le
+[`06-rituel-catalogue.md`](06-rituel-catalogue.md) reste valable pour ce qu'il
+documente : il n'est pas périmé, il est **dépassé sur la cible**.
 
 ## Par où commencer
 
 | Fichier | Quoi | Fiabilité |
 |---|---|---|
-| [`06-rituel-catalogue.md`](06-rituel-catalogue.md) | **À lire en premier pour la suite.** Rituel de reprise : sortir le catalogue de WooCommerce | carte de départ, inventaire non lu |
+| [`10-plan-migration.md`](10-plan-migration.md) | **À lire en premier pour la suite.** Les sept tickets de migration, leurs prérequis et leur ordre | plan, rien d'écrit |
+| [`09-modele-cible.md`](09-modele-cible.md) | **Fait foi sur le modèle.** Les collections cibles, champ par champ ; §9 : confrontation au schéma PocketBase réel | mesuré et lu, décisions au journal |
+| [`08-rituel-migration-pocketbase.md`](08-rituel-migration-pocketbase.md) | Le rituel qui a cadré la mission — remplace le 06 sur la cible | carte de départ |
+| [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md) | **Fait foi sur le flux AppPos ↔ WooCommerce** et sur l'état des données | lu dans le code, mesuré |
+| [`06-rituel-catalogue.md`](06-rituel-catalogue.md) | Rituel précédent — **dépassé sur la cible**, valable sur le reste | carte de départ, inventaire non lu |
 | [`03-audit-resultats.md`](03-audit-resultats.md) | **Fait foi.** Flux réel, failles, architecture retenue, tickets | lu dans le code, références données |
 | [`05-contrat-menu.md`](05-contrat-menu.md) | **Fait foi sur la forme publiée.** URL, format du `menu.json`, notes pour les tickets 5 et 8 | contrat, à respecter |
 | [`docs/DECISIONS.md`](../../../../docs/DECISIONS.md) | **Hors de ce dossier** — journal du dépôt. Contrat du menu, schéma de `site_menu` | fait foi sur ce qui a été écarté |

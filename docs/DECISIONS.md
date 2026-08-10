@@ -10,6 +10,314 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le modèle cible du catalogue PocketBase est arrêté — 2026-08-10
+
+Aboutissement de la séquence imposée par le bloc « Le modèle cible se conçoit
+avant la migration ». Détail complet, champ par champ, dans
+[`09-modele-cible.md`](../frontend/modules/site/PocketSite-docs/09-modele-cible.md).
+Ce bloc consigne les décisions ; il ne les remplace pas.
+
+**Principe directeur retenu :** *ce qui est calculable n'est pas stocké ; ce qui
+appartient à une plateforme externe ne vit pas sur l'entité métier.*
+
+**Six collections :** `products`, `categories`, `brands`, `suppliers`
+transformées ; `external_refs` créée ; `promotions` non créée.
+
+### Ce qui est tranché
+
+- **Le prix est TTC.** Mesuré : sur 648 produits, l'hypothèse « `price` TTC,
+  marge sur base HT » est cohérente sur **636**, l'hypothèse HT sur **0**.
+  Les champs deviennent `price_ttc` et `purchase_price_ht` — un champ de prix
+  sans unité dans son nom est un piège qui se repaie à chaque lecture.
+  `price_ht` **n'est pas stocké**, il se calcule.
+- **Pas de mécanisme de promotion.** La caisse remise déjà à la ligne et au
+  ticket, sans jamais lire un champ de promotion du produit. Si le besoin
+  catalogue apparaît, ce sera une **entité datée**, jamais deux colonnes sur le
+  produit.
+- **Pas de champ `availability`.** Le besoin (« sur commande », « en réappro »)
+  est crédible mais appuyé sur rien : `stock_status` n'a aucun lecteur. S'il se
+  confirme, ce sera un champ neuf — pas la réintroduction du miroir WooCommerce.
+- **La publication des catégories est dérivée**, pas saisie : *une catégorie est
+  en ligne si elle contient un produit `published`, descendants compris ; ses
+  ancêtres le sont par voie de conséquence.* Règle vérifiée exacte sur la base
+  dev, 0 écart.
+- **La relation marque ↔ fournisseur est réelle**, portée par
+  `suppliers.brands`. Elle est saisie au formulaire fournisseur, et le schéma
+  PocketBase la modélise déjà de ce côté.
+- **Un produit a un ensemble de catégories, sans catégorie principale.**
+- **Les identifiants externes sortent des entités**, dans `external_refs` —
+  trois relations optionnelles (`product`, `category`, `brand`), une seule
+  remplie. Une deuxième plateforme n'ajoute aucune colonne, et l'échec de
+  publication devient une donnée au lieu d'une ligne de console.
+- **Le catalogue est multi-entreprise**, avec une seule entreprise pour
+  l'instant. `company` reste requis sur les quatre collections.
+- **`suppliers.siren` est ajouté** — seul champ créé de toutes pièces par ce
+  modèle. Même nom et même contrôle que sur `companies` (`^\d{9}$`).
+- **Conservés pour un usage à construire, et non pour un usage existant :**
+  `min_stock` et `manage_stock` (alertes de seuil), `banking` et
+  `payment_terms` (achat fournisseur). Aucun n'a de lecteur aujourd'hui ; le
+  motif est écrit pour que la conservation reste réexaminable.
+
+### Ce qui est écarté, et pourquoi
+
+**Écarté — garder `woo_id` sur chaque table « pour la transition » :** c'est
+l'état actuel, et il a produit exactement les défauts qu'`external_refs` corrige.
+
+**Écarté — `entity_type` + `entity_id` dans `external_refs` :** PocketBase n'a
+pas de relation polymorphe ; le couple imposerait un champ texte non contraint,
+donc la perte de l'intégrité référentielle — ce qu'on reproche à NeDB.
+
+**Écarté — un champ `status` explicite sur les catégories :** il introduirait
+219 valeurs dont personne n'est responsable, c'est-à-dire le mécanisme exact qui
+a produit `brandsRefs`. Le choix n'est pas symétrique : passer de la règle
+dérivée au champ explicite coûte une initialisation, l'inverse ne se fait pas.
+
+**Écarté — conserver les statistiques de vente sur le produit :** `total_sold`,
+`sales_count`, `revenue_total`, `last_sold_at` n'ont **aucun lecteur** dans
+`frontend/`. Elles ne passent pas la migration ; leur source légitime est
+`sales`.
+
+**Écarté — `tax_rate` en énumération :** figerait le schéma sur les taux en
+vigueur ; un changement de TVA imposerait une migration de collection.
+
+**Écarté — une unicité globale sur `sku` et les `slug` :** dans un modèle
+multi-entreprise elle serait fausse dès la deuxième entreprise, deux magasins
+ayant légitimement le même SKU fournisseur. **Index composites `(company, sku)`
+et `(company, slug)`.**
+
+### Ce qui reste ouvert
+
+Les autres identifiants légaux du fournisseur (`siret`, `vat_number`, `rcs`,
+`ape_naf`) — à décider avec l'écran d'achat fournisseur, pas maintenant. Et la
+cible de publication (WooCommerce, base SQL distante, ou les deux), qui n'a pas
+à être répondue pour concevoir le modèle.
+
+### Remise en cause si
+
+Un besoin métier contredit une des suppressions **avec une mesure à l'appui**,
+et non par principe de précaution. Les champs conservés « pour un usage à
+construire » se réexaminent si l'usage n'existe toujours pas quand la logique de
+stock est reprise.
+
+## Les collections catalogue de PocketBase sont un premier jet abandonné — 2026-08-10
+
+**Fait rapporté par le propriétaire**, et il répond à la question que le rituel
+posait sans réponse (§6.5.1 : *d'où vient le schéma existant ?*).
+
+Les collections `products`, `categories`, `brands` et `suppliers` de PocketBase
+sont la **résurgence d'un premier jet**, écrit avant qu'on décide de se brancher
+directement sur AppPos — décision prise, selon ses termes, *par paresse et pour
+aller vite*. Elles n'ont jamais servi : elles sont vides, et le catalogue est lu
+depuis AppServe.
+
+**Conséquence sur la façon de les traiter :** elles ne sont **pas un acquis à
+préserver**, et l'écart entre elles et le modèle cible n'est pas une dette à
+justifier. Elles se réécrivent librement.
+
+**Ce que la confrontation a néanmoins établi, et qui mérite d'être dit :** ce
+premier jet était bon. Il porte déjà les relations dans le bon sens — dont
+`suppliers.brands` du bon côté —, le contact fournisseur à plat, `barcode` en
+champ de premier rang, et **aucun champ WooCommerce, aucun cache dénormalisé,
+aucune statistique de vente**. Le principe directeur du modèle cible y était
+déjà appliqué. Trois de ses choix ont été retrouvés indépendamment par la
+conception ; c'est une confirmation, pas une coïncidence.
+
+**Trois défauts constatés sur la base réelle**
+(`%LOCALAPPDATA%\PocketReact\pb_data`, lue en copie, en lecture seule) :
+
+1. **`categories.parent` ne cible aucune collection** —
+   `collectionId = ""`. `backend/migrations/catalog.go:143` annonce en
+   commentaire un correctif *« fixé après création »* qui **n'a jamais été
+   écrit**. Seule relation cassée du catalogue ; invisible parce que la
+   collection est vide, elle se serait manifestée à la première insertion d'un
+   arbre — c'est-à-dire pendant la migration.
+2. **`images` est un champ fichier**, incompatible avec la décision de conserver
+   les URL WordPress. Un champ fichier PocketBase n'accepte pas une URL.
+3. **`designation` est absent**, alors que la caisse et le stock le consomment —
+   au point que le transformer l'ajoute hors schéma. Les collections, en l'état,
+   ne pourraient pas servir le terminal.
+
+**Piège actif, à connaître avant d'écrire la migration :** chaque
+`ensure*Collection` sort si la collection **existe par son nom**
+(`catalog.go:17, 88, 163, 257`). Modifier `catalog.go` ne modifiera donc aucune
+base déjà installée, et une base portant d'anciennes collections homonymes
+verrait `RunMigrations` les accepter telles quelles, **sans erreur et sans mise
+à niveau**. Ce n'est pas seulement une gêne : c'est une convergence
+silencieusement fausse.
+
+**Deux bases coexistent, et une seule compte :**
+
+| Base | Ce qu'elle est |
+|---|---|
+| `%LOCALAPPDATA%\PocketReact\pb_data` | **la vraie** — `main.go:71-75`, 23 collections |
+| `I:\pockapp\pb_data` | **vestige** de novembre 2025, 8 collections, produit par le dossier `migrations/` de la racine que `CLAUDE.md` signale déjà comme non importé. Son `products` porte `price`, `cost`, `stock`, `image` |
+
+**Ne jamais juger du schéma en place sur `I:\pockapp\pb_data`.**
+
+**Décision d'exécution :** les quatre collections du catalogue seront
+**recréées**, pas altérées — elles sont vides, la reprise est sans risque, et
+c'est ce qui rend la migration rejouable (exigence du §6.5.2 du rituel).
+« Recréer » signifie **ces quatre collections seulement** : la base réelle porte
+aussi la caisse, les factures, l'inventaire et le menu du site. Supprimer
+`data.db` est exclu.
+
+**Remise en cause si :** le catalogue local cesse d'être vide — auquel cas la
+recréation n'est plus gratuite et il faut de vraies migrations d'altération.
+
+---
+
+## Le modèle cible se conçoit avant la migration — on ne transpose pas AppServe — 2026-08-10
+
+Décision du propriétaire, complément immédiat du bloc suivant.
+
+**Recréer dans PocketBase les collections actuelles à l'identique est écarté.**
+Le modèle NeDB porte les choix d'AppServe et les contraintes de WooCommerce ;
+les transposer reviendrait à migrer la dette avec les données.
+
+Séquence imposée : comprendre le modèle actuel → **concevoir le modèle cible**
+→ déterminer les collections et relations nécessaires → décider du sort des
+champs hérités → migrer → déplacer la logique métier.
+
+**Les collections PocketBase déjà présentes ne sont pas définitives** —
+certaines seront supprimées, d'autres profondément adaptées.
+
+**Principe directeur :** séparer la donnée **métier** de la donnée propre à une
+**plateforme externe**. Un identifiant WooCommerce n'est pas une propriété du
+produit, c'est une propriété de la relation entre ce produit et une plateforme.
+
+**Écarté — migrer d'abord, nettoyer ensuite :** le nettoyage n'arrive jamais, et
+chaque écran écrit entre-temps s'appuie sur les champs qu'on voulait retirer.
+
+**Écarté — repartir de zéro sans reprise :** 2306 produits et 842 fiches en
+ligne existent ; NeDB reste la source de référence des données.
+
+**Ce que la mesure a déjà tranché** (§4 bis de
+[`08-rituel-migration-pocketbase.md`](../frontend/modules/site/PocketSite-docs/08-rituel-migration-pocketbase.md),
+base dev, lecture seule) :
+
+- **aucune variante n'existe** — `type` vaut `simple` (2297) ou `service` (9) ;
+- **le modèle promotionnel est une fiction** — `regular_price` diffère de
+  `price` sur **4** produits, `sale_price` est renseigné sur **5**. Ces champs
+  n'existent que parce que WooCommerce les attend ;
+- **`meta_data` ne contient qu'une clé, `barcode`**, sur 1870 produits — une
+  donnée pleinement métier à promouvoir en champ de premier rang ;
+- **six champs produit sont à zéro document** : `specifications`,
+  `category_ref`, `categories_refs`, `woo_status`, `sync_errors`,
+  `description_short` ;
+- **les marques n'ont aucune image** (0 sur 224).
+
+**Remise en cause si :** la conception du modèle cible s'enlise au-delà de ce
+que la migration ferait gagner — auquel cas on réduit le périmètre du modèle,
+pas la rigueur de la séquence.
+
+## PocketBase devient la source de vérité, et la refonte se fait d'abord tout en local — 2026-08-10
+
+Décision du propriétaire, prise à la fin de l'audit du flux catalogue.
+
+**La cible ultime n'est plus « publier le catalogue vers une base distante »,
+c'est « s'affranchir d'AppServe ».** PocketBase, déjà embarqué dans PocketApp,
+devient la source de vérité du catalogue. AppServe et sa base NeDB deviennent
+une **source de référence pour les données existantes**, à migrer, puis à
+abandonner.
+
+**Et la refonte commence entièrement en local**, sans aucune contrainte de
+production :
+
+```
+NeDB existante → migration des entités → PocketBase / module stock → frontend-wp local
+```
+
+Deux problèmes sont ainsi séparés, et c'est le cœur de la décision :
+
+1. **refondre l'architecture et la source de vérité**, en local, vérifiable de
+   bout en bout ;
+2. **puis seulement** concevoir le transfert vers la production.
+
+**Écarté — publier d'abord vers la base SQL distante (la cible du 2026-08-07) :**
+cela revenait à figer un contrat de données avec WooCommerce et l'hébergeur
+mutualisé dans l'équation, alors que la source de vérité elle-même est
+appelée à changer. On aurait conçu deux fois.
+
+**Écarté — migrer en gardant la synchronisation de production active :** l'audit
+a montré que le flux actuel dérive précisément parce qu'il mélange les deux
+préoccupations (§3 et §4bis.6 de [`07-audit-flux-apppos.md`](../frontend/modules/site/PocketSite-docs/07-audit-flux-apppos.md)).
+Reproduire ce mélange dans la refonte serait reproduire le défaut.
+
+**Ce que cette décision ne fait pas :** elle n'annule pas « Cible à terme : la
+couche distante remplace WooCommerce comme catalogue » (2026-08-07). Elle la
+**réordonne** : la couche distante reste la cible pour le site, mais elle est
+désormais alimentée par PocketBase, pas par AppServe, et elle vient **après**
+la refonte locale.
+
+**Conséquence à assumer, et elle touche une contrainte de `CLAUDE.md` :**
+« Ne pas modifier AppPos » et « AppPos reste autorité pendant la transition »
+restent vraies **pendant la phase d'analyse**, mais la trajectoire les périme à
+terme — « adapter AppPOS pour ne plus dépendre d'AppServe » signifie
+explicitement modifier AppPos. Le jour où un ticket y touche, il faudra un
+nouveau bloc qui annule ces contraintes, et `CLAUDE.md` devra être mis à jour
+le même jour. **Ce bloc-ci ne l'autorise pas.**
+
+**Remise en cause si :** la migration révèle qu'une fonction de la caisse dépend
+d'AppServe d'une manière non reproductible dans PocketBase — auquel cas c'est le
+périmètre de la migration qui se réduit, pas la caisse qui s'adapte.
+
+## Les slugs sont fabriqués par nous, la clé de référence est le `_id` NeDB — 2026-08-10
+
+Décision du propriétaire. Deux points liés, pris pendant l'audit du flux
+catalogue ([`07-audit-flux-apppos.md`](../frontend/modules/site/PocketSite-docs/07-audit-flux-apppos.md)) :
+
+1. **Les `slug` ne viennent plus de WooCommerce, AppPos les fabrique.**
+   Aujourd'hui ils sont produits par Woo à la synchronisation, ce qui explique
+   que 190 catégories sur 219 n'en aient pas : elles n'ont jamais été
+   synchronisées. Sortir de WooCommerce sans reprendre la fabrication des slugs
+   laisserait la majorité du catalogue sans URL.
+2. **La clé de référence entre AppPos et la base SQL distante est le `_id`
+   NeDB.** Pas le `woo_id` — 63 % des produits n'en ont pas et il disparaîtra ;
+   pas le `sku` — 7 doublons locaux et 3 produits n'en ont pas.
+
+**Écarté — garder `woo_id` comme clé :** revient à faire dépendre la nouvelle
+base de celle qu'on retire. Et elle est absente là où on en aurait le plus
+besoin (§4bis.4 de l'audit).
+
+**Écarté — le `sku` comme clé :** signifiant donc modifiable, non unique dans
+les faits, et absent sur 3 produits.
+
+**Écarté — laisser WooCommerce fabriquer les slugs encore un temps :** c'est
+l'état actuel, et il produit exactement le trou qu'on cherche à combler.
+
+**Ce que la décision n'a pas encore tranché**, et qui revient au contrat de
+données :
+
+- **l'unicité des slugs.** Mesuré sur la base dev : une génération naïve depuis
+  `name` produit **28 produits, 23 catégories et 8 marques en collision**. Il
+  faut une règle de désambiguïsation, et pour les catégories elle devra
+  probablement intégrer le parent (« Accessoires » existe deux fois à des
+  endroits différents de l'arbre) ;
+- **la stabilité.** Un slug qui suit le `name` change quand le nom change, donc
+  l'URL change. Il faut décider s'il est figé à la création ou recalculé ;
+- **les 847 produits qui ont déjà une `website_url` WooCommerce.** Des slugs
+  fabriqués autrement changeraient ces URL déjà publiques. À arbitrer
+  explicitement, ce n'est pas un détail technique.
+
+**Ne pas réutiliser les deux `_generateSlug` existants d'AppPos tels quels.**
+Ils sont deux, ils divergent sur 8 noms de marque, et celui de
+`ProductSync.js:73` a deux défauts constatés : `\w` conserve le tiret bas, et
+`.trim()` ne retire que les espaces — d'où `"Keeley "` → `"keeley-"`.
+
+**Remise en cause si :** la reprise des URL existantes s'avère prioritaire sur
+la cohérence des nouvelles — auquel cas il faudrait importer les slugs
+WooCommerce actuels comme valeurs initiales plutôt que de tout regénérer.
+
+**Précision ajoutée le 2026-08-10, quelques heures après ce bloc** — le corps
+ci-dessus n'est pas réécrit, conformément à la règle du fichier. La phrase
+« 190 catégories sur 219 n'en ont pas : elles n'ont jamais été synchronisées »
+donne le bon chiffre mais la mauvaise cause. **L'absence de `woo_id` signifie
+« pas en ligne », et c'est l'état voulu pour la plupart d'entre elles** : le
+catalogue est celui du magasin, pas celui du site. Voir §4bis.6 de l'audit.
+La décision elle-même est inchangée, et même renforcée : il faudra fabriquer
+les slugs **des seules entités destinées au site**, ce qui réduit d'autant le
+volume concerné.
+
 ## Le menu reste en JSON statique — l'option C est abandonnée pour lui — 2026-08-10
 
 Le menu ne passera pas en MySQL. `server/schema.sql`, qui décrivait ce stockage,

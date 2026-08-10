@@ -1,5 +1,12 @@
 # Rituel de reprise — sortir le catalogue de WooCommerce
 
+> **Dépassé sur la cible depuis le 10 août 2026.** Le point d'entrée de la
+> mission suivante est [`08-rituel-migration-pocketbase.md`](08-rituel-migration-pocketbase.md) :
+> la cible n'est plus « publier vers une base SQL distante » mais
+> « s'affranchir d'AppServe, PocketBase devient la source de vérité ».
+> Ce fichier reste valable pour tout ce qu'il documente — il n'est pas périmé,
+> il est dépassé sur la trajectoire.
+
 **Écrit le 10 août 2026, à la fin de la mission « menu ».** Ce fichier est le
 point d'entrée de la mission suivante. Il ne la commence pas : il dit par où
 commencer, et ce qu'il ne faut pas refaire.
@@ -81,6 +88,47 @@ Repères relevés le 10 août 2026, sans ouvrir les fichiers :
 - dernier commit : 2026-07-01
 - API en fonctionnement sur `http://127.0.0.1:3000`, jeton Bearer,
   `POST /api/auth/login`
+
+### 3.1 — Deux bases vivantes : dev et installée
+
+Rapporté par le propriétaire le 10 août 2026, **vérifié par listage de
+répertoires le même jour** (dates et tailles ci-dessous, fichiers non ouverts) :
+la version de développement et la version Electron installée **n'écrivent pas
+dans la même base**.
+
+| | dev | installée (production) |
+|---|---|---|
+| code | `I:\AppPOS\AppServe` | `C:\AppPos\` — `AppPOS.exe`, `locales/`, `resources/`, build du 05/08/2026 |
+| données | `I:\AppPOS\AppServe\data\*.db` | `%APPDATA%\AppPOS\data\*.db` — soit `C:\Users\<user>\AppData\Roaming\AppPOS\data` |
+| `products.db` | 8 339 818 o, 10/08/2026 18:06 | **15 930 636 o**, 10/08/2026 16:30 |
+| `categories.db` | 59 551 o | 101 761 o |
+| `brands.db` | 54 270 o | 197 491 o |
+
+Les deux ont été modifiées le 10 août 2026 : **aucune n'est morte.** La base
+installée contient environ le double de données. À côté d'elle : `config/`,
+`secrets/`, `public/`, `notes.txt`, et un dossier `bak - Copie` daté du
+05/08/2026 (copie, pas une source).
+
+**Conséquences pour l'audit — révisées le 10 août 2026, après mesure :**
+
+1. **Les volumes de §5.3 venaient bien de la base installée.** Recomptage fait
+   fichier par fichier : `%APPDATA%\AppPOS\data` contient **exactement 3034
+   produits, 463 catégories, 287 marques** — les chiffres du §5.3 au document
+   près. La supposition « probablement la dev, donc sous-estimés » **était
+   fausse** et est retirée. La dev en contient 2306 / 219 / 224.
+2. **Toute mesure doit dire de quelle base elle vient.** Un décompte sans cette
+   précision ne vaut rien pour cette mission.
+3. **Base de référence retenue : la dev.** Décision du propriétaire, 10 août
+   2026 — *la base de production n'est pas à jour*. Les mesures de l'audit
+   sont donc faites sur `I:\AppPOS\AppServe\data`.
+   **Déclaré, non vérifié et non expliqué :** la production contient pourtant
+   *davantage* de documents que la dev (3034 contre 2306). L'écart doit être
+   élucidé avant toute première publication réelle — il ne l'est pas ici.
+
+**Comment le code choisit son répertoire — répondu le 10 août 2026**, dans
+`utils/PathManager.js` : `useAppData = (NODE_ENV === 'production') && Electron`.
+Si vrai, `~\AppData\Roaming\AppPOS` ; sinon **`process.cwd()`**. Détail et
+conséquences en §1.4 de [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md).
 
 ---
 
@@ -259,6 +307,11 @@ Un document d'audit du flux AppPos, sur le modèle de `03-audit-resultats.md` :
 
 **Ce qu'elle ne produit pas :** de code, de schéma SQL, de tickets. Le découpage
 vient après l'audit — c'est ce qui a marché la dernière fois.
+
+> **Fait le 10 août 2026** — voir [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md).
+> Les questions 5.1 et 5.2 sont répondues, 5.3 à 5.5 partiellement. Le flux
+> s'est révélé **bidirectionnel**, et `forceSync` **inopérant depuis toujours**
+> (chemin de fichier faux, échec présenté comme un succès).
 
 **Point de départ suggéré :** `services/base/SyncStrategy.js`, puis
 `controllers/wooSyncController.js`. Partir d'un fichier nommé et suivre ses
