@@ -51,10 +51,12 @@ déclarant**, et aucun ne se règle dans le code de chargement.
 
 | Anomalie | Nombre | Traitement |
 |---|---|---|
-| SKU en doublon | **7** | **bloquant** — `sku` devient unique. L'unicité étant `(company, sku)` et tout allant dans une seule entreprise, la contrainte composite ne les sauve pas |
+| SKU en doublon | **6** | **bloquant** — `sku` devient unique. L'unicité étant `(company, sku)` et tout allant dans une seule entreprise, la contrainte composite ne les sauve pas. *(7 dans la donnée brute ; `-----` normalisé en vide en retire un — voir T3)* |
+| produit nommé `/` | **1** | **bloquant** — découvert par T3, `name` requis mais inexploitable |
 | `tax_rate` en chaîne (`"0"`, `"20"`) | 7 | normalisation, décidée : nombre |
 | `margin_rate` de type mixte | — | sans objet : le champ est supprimé |
-| marges incohérentes avec les deux hypothèses du §1 | **12** | **à examiner avant**, pas après : `margin_*` étant supprimés, ces cas disparaîtraient sans avoir été vus |
+| marges incohérentes avec les deux hypothèses du §1 | **16** | **à examiner avant**, pas après : `margin_*` étant supprimés, ces cas disparaîtraient sans avoir été vus |
+| marques en double (« Gator », « Carl Martin », « CORDOBA », « K&M ») | **4** | déclaratif — découvert par T3, fusion à faire |
 | `brand_id` orphelins | 4 | vers un identifiant fantôme unique — relation laissée vide, et **rapportée** |
 | `category_id` orphelins | 4 | idem |
 | produits `published` jamais mis en ligne | **222** | **déclaratif** — à lister, pas à corriger |
@@ -201,7 +203,61 @@ lu comme venant de la dev conduirait à des décisions fausses — l'écart de
 728 produits entre les deux bases n'est toujours pas expliqué (§8 du rituel).
 Le rapport affiche systématiquement le chemin lu.
 
-### T3 — Normalisation et rapport d'anomalies
+### T3 — Normalisation et rapport d'anomalies — **fait le 10 août 2026**
+
+`backend/catalog/normalize/`. **N'écrit nulle part** : produit des structures
+en mémoire et un rapport.
+
+```bash
+go run ./backend/cmd/catalog-import -normalize            # rapport
+go run ./backend/cmd/catalog-import -normalize -detail 0  # tous les cas
+```
+
+**Verdict : 2 natures bloquantes, 7 cas. T4 ne doit pas tourner avant leur
+règlement.** La commande sort en erreur tant qu'il en reste.
+
+| Anomalie | Cas | Niveau |
+|---|---:|---|
+| SKU en doublon | **6** | bloquant |
+| **nom inexploitable** | **1** | bloquant |
+| publié mais jamais mis en ligne | 222 | déclaratif |
+| slug désambiguïsé | 30 | déclaratif |
+| marge incohérente avec les deux hypothèses | 16 | déclaratif |
+| marque orpheline | 6 | déclaratif |
+| brouillon pourtant en ligne | 5 | déclaratif |
+| catégorie orpheline | 4 | déclaratif |
+| SKU de remplissage | 3 | déclaratif |
+
+**Trois écarts avec les chiffres annoncés au §2, tous expliqués :**
+
+- **6 doublons de SKU et non 7** : `-----` est normalisé en vide *avant* le
+  contrôle d'unicité, donc ses 3 porteurs ne se collisionnent plus. Il restait
+  bien 7 collisions dans la donnée brute ; il n'en reste que 6 à trancher.
+- **16 marges incohérentes et non 12** : l'audit mesurait sur les 648 produits
+  portant les cinq champs ; ce contrôle porte sur tous ceux ayant un prix
+  d'achat. Plusieurs des 4 cas supplémentaires ont `tax_rate = 0`, ce qui rend
+  les deux hypothèses de prix indiscernables.
+- **847 correspondances WooCommerce et non 842** : 847 produits portent un
+  `woo_id` ; l'audit comptait 842 « effectivement en ligne ». La définition
+  diffère, et l'écart est à trancher en T5.
+
+**Deux découvertes, absentes de tous les documents antérieurs :**
+
+1. **Un produit nommé `/`** — `0ZXO3LxD4gtQS6qq`, `published`, 209 €, en stock.
+   Son vrai libellé est dans `designation` : « CR77 MICRO Dynamic Stage Vocal ».
+   `name` étant requis, il passerait le contrôle et écrirait une donnée fausse.
+   Classé bloquant à ce titre : le chargement n'échouerait pas, il mentirait.
+2. **Quatre marques en double** — « Gator », « Carl Martin », « CORDOBA » et
+   « K&M » existent chacune deux fois, sous deux identifiants. Sans conséquence
+   sur le chargement, les slugs étant désambiguïsés ; mais c'est une fusion à
+   faire, et personne ne le savait.
+
+**Ce que la normalisation fait, et ne fait pas.** Elle traduit : `tax_rate` en
+nombre (7 conversions), `meta_data` en `barcode`, `contact` à plat, les slugs
+fabriqués. Elle ne répare rien — un doublon reste un doublon, un orphelin reste
+orphelin. Le rituel l'exige (§8 du 08) : identifier, pas corriger en silence.
+
+### T3 — spécification d'origine
 
 Transformation vers le modèle cible, **sans écrire dans PocketBase** :
 

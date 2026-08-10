@@ -25,9 +25,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"pocket-react/backend/catalog/nedb"
+	"pocket-react/backend/catalog/normalize"
 )
 
 // Chiffres de référence de la base DEV, établis par l'audit du 10 août 2026
@@ -57,16 +59,33 @@ func main() {
 		showFields      = flag.Bool("fields", false, "détailler le recensement des champs et leurs taux de remplissage")
 		minRate         = flag.Float64("min-rate", 0, "avec -fields : n'afficher que les champs dont le taux de remplissage est inférieur à ce seuil (en %)")
 		allowProduction = flag.Bool("allow-production", false, "autoriser la lecture d'un répertoire qui ressemble à la production")
+		doNormalize     = flag.Bool("normalize", false, "normaliser vers le modèle cible et produire le rapport d'anomalies (T3)")
+		detail          = flag.Int("detail", 5, "avec -normalize : nombre de cas détaillés par nature d'anomalie (0 = tous)")
 	)
 	flag.Parse()
 
-	if err := run(*dataDir, *showFields, *minRate, *allowProduction); err != nil {
+	opts := options{
+		showFields:      *showFields,
+		minRate:         *minRate,
+		allowProduction: *allowProduction,
+		normalize:       *doNormalize,
+		detail:          *detail,
+	}
+	if err := run(*dataDir, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(dataDir string, showFields bool, minRate float64, allowProduction bool) error {
+type options struct {
+	showFields      bool
+	minRate         float64
+	allowProduction bool
+	normalize       bool
+	detail          int
+}
+
+func run(dataDir string, opts options) error {
 	abs, err := filepath.Abs(dataDir)
 	if err != nil {
 		return fmt.Errorf("chemin invalide %q: %w", dataDir, err)
@@ -77,7 +96,7 @@ func run(dataDir string, showFields bool, minRate float64, allowProduction bool)
 	// produit sur la production et lu comme s'il venait de la dev conduirait à
 	// des décisions fausses — l'écart de 728 produits entre les deux bases n'est
 	// toujours pas expliqué.
-	if looksLikeProduction(abs) && !allowProduction {
+	if looksLikeProduction(abs) && !opts.allowProduction {
 		return fmt.Errorf(
 			"le répertoire %q ressemble à la base de PRODUCTION.\n"+
 				"   La migration se conçoit sur la base DEV (I:\\AppPOS\\AppServe\\data).\n"+
@@ -104,14 +123,14 @@ func run(dataDir string, showFields bool, minRate float64, allowProduction bool)
 	discrepancies := reportCounts(cols)
 	reportLines(cols)
 
-	if showFields {
+	if opts.showFields {
 		for _, col := range cols {
-			reportFields(col, minRate)
+			reportFields(col, opts.minRate)
 		}
 	}
 
-	fmt.Println("───────────────────────────────────────────────────────────────")
 	if len(discrepancies) > 0 {
+		fmt.Println("───────────────────────────────────────────────────────────────")
 		fmt.Println(" ⚠  ÉCART AVEC LES CHIFFRES DE RÉFÉRENCE")
 		for _, d := range discrepancies {
 			fmt.Printf("    %s\n", d)
@@ -120,9 +139,100 @@ func run(dataDir string, showFields bool, minRate float64, allowProduction bool)
 		return fmt.Errorf("les effectifs lus ne correspondent pas à la base de référence — " +
 			"vérifier le répertoire avant d'aller plus loin")
 	}
-	fmt.Println(" ✅ Effectifs conformes à la base de référence.")
-	fmt.Println("    Étape suivante : T3, normalisation et rapport d'anomalies.")
+
+	if !opts.normalize {
+		fmt.Println("───────────────────────────────────────────────────────────────")
+		fmt.Println(" ✅ Effectifs conformes à la base de référence.")
+		fmt.Println("    Étape suivante : -normalize, rapport d'anomalies (T3).")
+		return nil
+	}
+
+	// ── T3 ────────────────────────────────────────────────────────────────
+	byName := map[string]*nedb.Collection{}
+	for _, c := range cols {
+		byName[c.Name] = c
+	}
+	cat, rep := normalize.Run(byName["products"], byName["categories"], byName["brands"], byName["suppliers"])
+
+	reportNormalized(cat)
+	reportAnomalies(rep, opts.detail)
+
+	fmt.Println("───────────────────────────────────────────────────────────────")
+	if rep.HasBlocking() {
+		fmt.Println(" ⛔ T4 NE DOIT PAS TOURNER.")
+		fmt.Println("    Les anomalies BLOQUANTES ci-dessus se règlent dans AppPos,")
+		fmt.Println("    pas dans cet outil : normaliser c'est traduire, réparer c'est décider.")
+		return fmt.Errorf("%d anomalie(s) bloquante(s)", countBlocking(rep))
+	}
+	fmt.Println(" ✅ Aucune anomalie bloquante. T4 peut être écrit.")
+	fmt.Println("    Les anomalies déclaratives ne s'opposent pas au chargement ;")
+	fmt.Println("    elles doivent avoir été LUES, c'est tout ce qu'on leur demande.")
 	return nil
+}
+
+func countBlocking(rep *normalize.Report) int {
+	n := 0
+	for _, a := range rep.Anomalies {
+		if a.Severity == normalize.Blocking {
+			n++
+		}
+	}
+	return n
+}
+
+func reportNormalized(cat *normalize.Catalog) {
+	fmt.Println("── Normalisation vers le modèle cible ─────────────────────────")
+	fmt.Printf(" %-12s %10s\n", "collection", "normalisé")
+	fmt.Printf(" %-12s %10d\n", "products", len(cat.Products))
+	fmt.Printf(" %-12s %10d\n", "categories", len(cat.Categories))
+	fmt.Printf(" %-12s %10d\n", "brands", len(cat.Brands))
+	fmt.Printf(" %-12s %10d\n", "suppliers", len(cat.Suppliers))
+	fmt.Println()
+	fmt.Println(" Rien n'est écrit : ces structures vivent en mémoire. Le chargement est T4.")
+	fmt.Println()
+}
+
+func reportAnomalies(rep *normalize.Report, detail int) {
+	if len(rep.Counters) > 0 {
+		fmt.Println("── Mesures de normalisation ───────────────────────────────────")
+		keys := make([]string, 0, len(rep.Counters))
+		for k := range rep.Counters {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Printf(" %-46s %7d\n", k, rep.Counters[k])
+		}
+		fmt.Println()
+	}
+
+	groups := rep.Grouped()
+	if len(groups) == 0 {
+		fmt.Println("── Anomalies ──────────────────────────────────────────────────")
+		fmt.Println(" Aucune.")
+		fmt.Println()
+		return
+	}
+
+	fmt.Println("── Anomalies ──────────────────────────────────────────────────")
+	for _, g := range groups {
+		mark := "  "
+		if g.Severity == normalize.Blocking {
+			mark = "⛔"
+		}
+		fmt.Printf("\n %s %s — %d cas [%s]\n", mark, g.Kind, len(g.Items), g.Severity)
+		shown := len(g.Items)
+		if detail > 0 && shown > detail {
+			shown = detail
+		}
+		for _, a := range g.Items[:shown] {
+			fmt.Printf("      %s/%s : %s\n", a.Entity, a.SourceID, a.Detail)
+		}
+		if shown < len(g.Items) {
+			fmt.Printf("      … et %d autre(s) — -detail 0 pour tout voir\n", len(g.Items)-shown)
+		}
+	}
+	fmt.Println()
 }
 
 // looksLikeProduction reconnaît %APPDATA%\AppPOS\data — PathManager d'AppServe
