@@ -43,6 +43,58 @@ export interface MenuDestination {
 	refId: string | null
 	/** Chemin de la catégorie, pour distinguer deux homonymes. */
 	hint?: string
+	/**
+	 * URL du site pour cette cible, ou `null` si elle n'est pas connue.
+	 *
+	 * Ajouté au ticket 6. `refId` ne suffit pas à publier : c'est un identifiant
+	 * numérique, alors que le site adresse **par slug**. Table des motifs et
+	 * mesures de couverture : §6.2 bis de `../PocketSite-docs/05-contrat-menu.md`.
+	 *
+	 * `null` n'est pas un cas rare — 433 catégories sur 463 n'ont pas de slug
+	 * dans AppPos. Une destination sans URL est listée mais non sélectionnable,
+	 * au même titre qu'une cible sans `woo_id` : la publication ne saurait pas
+	 * l'écrire.
+	 */
+	url: string | null
+}
+
+// ---------------------------------------------------------------------------
+// FABRIQUES D'URL
+// ---------------------------------------------------------------------------
+// Un slug se lit, il ne se fabrique jamais à partir du nom : `CategoryPage`
+// du site retombe sur un `includes()` partiel (`CategoryPage.jsx:88-102`), donc
+// un slug approché mène silencieusement à une AUTRE catégorie. Pas de repli.
+
+const categoryUrl = (slug?: string | null): string | null =>
+	slug ? `/categorie-produit/${slug}` : null
+
+const brandUrl = (slug?: string | null): string | null =>
+	slug ? `/marque/${slug}/` : null
+
+/**
+ * Le produit ne se recompose pas : AppPos porte l'URL entière dans
+ * `website_url`, champ non déclaré dans `apppos-types.ts` — même cas que
+ * `woo_id`, lu défensivement.
+ *
+ * Deux formes coexistent. Le permalien `…/produit/<slug>/` est exploitable ; le
+ * repli `…/?post_type=product&p=<id>`, que WooCommerce sert quand le permalien
+ * n'est pas résolu, ne l'est pas — la route React du site est `/produit/:slug`
+ * (`App.jsx:119`) et ne saurait rien en faire.
+ *
+ * On rend un chemin relatif plutôt que l'URL absolue reçue : le domaine n'a pas
+ * à être figé dans le fichier publié.
+ */
+function productUrl(websiteUrl?: string | null): string | null {
+	if (!websiteUrl) return null
+
+	try {
+		const { pathname } = new URL(websiteUrl)
+		return pathname.startsWith('/produit/') ? pathname : null
+	} catch {
+		// Valeur qui n'est pas une URL. Rien à en tirer, et rien à signaler :
+		// l'entrée sera simplement non publiable.
+		return null
+	}
 }
 
 const CACHE = {
@@ -73,6 +125,7 @@ function useCategoryDestinations(enabled: boolean) {
 					label: category.name,
 					refId: toRefId(category.woo_id),
 					hint: category.slug,
+					url: categoryUrl(category.slug),
 				}))
 				.sort((a, b) => a.label.localeCompare(b.label, 'fr'))
 		},
@@ -92,6 +145,7 @@ function useBrandDestinations(enabled: boolean) {
 					label: brand.name,
 					refId: toRefId(brand.woo_id),
 					hint: brand.slug,
+					url: brandUrl(brand.slug),
 				}))
 				.sort((a, b) => a.label.localeCompare(b.label, 'fr'))
 		},
@@ -120,12 +174,16 @@ function useProductDestinations(enabled: boolean) {
 			const products = await appPosApi.getProducts()
 			return products
 				.map((product) => {
-					const wooId = (product as { woo_id?: number | null }).woo_id
+					const extra = product as {
+						woo_id?: number | null
+						website_url?: string | null
+					}
 					return {
 						sourceId: product._id,
 						label: product.name,
-						refId: toRefId(wooId),
+						refId: toRefId(extra.woo_id),
 						hint: product.sku,
+						url: productUrl(extra.website_url),
 					}
 				})
 				.sort((a, b) => a.label.localeCompare(b.label, 'fr'))
@@ -204,11 +262,34 @@ export function useDestinationIndex(
 		page: undefined,
 	}
 
+	const find = (type: SiteMenuRefType, refId: string) =>
+		byType[type]?.find((d) => d.refId === refId)
+
 	const labelFor = (type: SiteMenuRefType, refId: string): string | null =>
-		byType[type]?.find((d) => d.refId === refId)?.label ?? null
+		find(type, refId)?.label ?? null
+
+	/**
+	 * URL de la cible, ou `null`. Ticket 6 : c'est ce que la publication écrit
+	 * dans le document.
+	 *
+	 * `null` recouvre trois situations que l'appelant doit distinguer par le
+	 * `loaded` ci-dessous, faute de quoi il publierait un menu amputé sans le
+	 * savoir : catalogue pas encore lu, AppPos injoignable, ou cible réellement
+	 * sans URL. Seule la troisième est un refus légitime.
+	 */
+	const urlFor = (type: SiteMenuRefType, refId: string): string | null =>
+		find(type, refId)?.url ?? null
+
+	/** Vrai quand toutes les listes nécessaires sont effectivement chargées.
+	 *  `page` n'a pas de source : elle ne conditionne rien. */
+	const loaded = (['category', 'brand', 'product'] as const).every(
+		(type) => !usedTypes.has(type) || byType[type] !== undefined,
+	)
 
 	return {
 		labelFor,
+		urlFor,
+		loaded,
 		isLoading: categories.isLoading || brands.isLoading || products.isLoading,
 		isError: categories.isError || brands.isError || products.isError,
 	}

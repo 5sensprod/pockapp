@@ -50,6 +50,32 @@ const (
 
 	// KeyEncryptionSalt est utilisé pour dériver des clés supplémentaires
 	KeyEncryptionSalt = "encryption_salt"
+
+	// KeySitePublishAPI est la clé X-API-Key attendue par l'endpoint de
+	// publication du site (server/api/publish-menu.php sur axemusique.shop).
+	//
+	// DISTINCTE de KeyNotificationAPI, et volontairement : celle-là authentifie
+	// le mini-SaaS de télémétrie, celle-ci la publication du menu. Deux
+	// services sans rapport, deux propriétaires, deux durées de vie — et
+	// GET /api/settings/pocketapp-key expose la première en clair sans garde
+	// admin (backend/routes/secrets_routes.go:125), ce qui suffit à ne pas
+	// réutiliser la même valeur ici.
+	//
+	// Ticket 5b. Consommée au ticket 6, qui pose l'en-tête au moment du POST.
+	KeySitePublishAPI = "site_publish_api_key"
+)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONSTANTES - RÉGLAGES NON CHIFFRÉS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const (
+	// SettingSitePublishURL est l'URL de l'endpoint de publication.
+	//
+	// Ce n'est pas un secret : elle est stockée en clair via SetSetting. La
+	// mettre en réglage plutôt qu'en dur permet de viser un autre serveur sans
+	// recompiler, et documente à elle seule où part la publication.
+	SettingSitePublishURL = "site_publish_url"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════

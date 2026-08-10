@@ -2,8 +2,16 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPOSANT - GESTION DES CLÉS API ET SECRETS
 // ═══════════════════════════════════════════════════════════════════════════
+// Deux clés, deux services sans rapport :
+//   - Notifications : le mini-SaaS pocketapp.5sensprod.com (télémétrie)
+//   - Publication du site : l'endpoint PHP d'axemusique.shop (ticket 5)
+// Elles ne doivent PAS porter la même valeur — voir backend/secrets/secrets.go.
+//
+// Retirées au ticket 5b : « Secret Webhook » (signait des webhooks sortants qui
+// n'existent pas) et « Secrets personnalisés » (formulaire libre permettant
+// d'écraser une clé nommée par erreur).
+// ═══════════════════════════════════════════════════════════════════════════
 
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -17,27 +25,23 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import {
 	useDeleteNotificationKey,
-	useDeleteSecret,
+	useDeleteSitePublishKey,
 	useNotificationKeyStatus,
 	useSetNotificationKey,
-	useSetSecret,
-	useSetWebhookSecret,
-	useSettings,
-	useWebhookSecretStatus,
+	useSetSitePublish,
+	useSitePublishStatus,
 } from '@/lib/queries/secrets'
 import {
 	AlertCircle,
 	CheckCircle2,
 	Eye,
 	EyeOff,
+	Globe,
 	Key,
 	Loader2,
-	RefreshCw,
-	Shield,
 	Trash2,
-	Webhook,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -57,10 +61,38 @@ export default function SecretsSettings() {
 
 			<NotificationKeySection />
 			<Separator />
-			<WebhookSecretSection />
-			<Separator />
-			<CustomSecretsSection />
+			<SitePublishSection />
 		</div>
+	)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOUS-COMPOSANT - INDICATEUR D'ÉTAT
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ConfiguredBadge({
+	loading,
+	configured,
+	labels,
+}: {
+	loading: boolean
+	configured: boolean
+	labels: [string, string]
+}) {
+	if (loading) {
+		return <Loader2 className='h-4 w-4 animate-spin' />
+	}
+
+	return configured ? (
+		<>
+			<CheckCircle2 className='h-4 w-4 text-green-500' />
+			<span className='text-sm text-green-600'>{labels[0]}</span>
+		</>
+	) : (
+		<>
+			<AlertCircle className='h-4 w-4 text-amber-500' />
+			<span className='text-sm text-amber-600'>{labels[1]}</span>
+		</>
 	)
 }
 
@@ -111,29 +143,19 @@ function NotificationKeySection() {
 					Clé API Notifications
 				</CardTitle>
 				<CardDescription>
-					Clé API pour le service de notifications push (ex: OneSignal, Firebase
-					FCM)
+					Clé du mini-SaaS PocketApp — notifications, crédits IA. Sans rapport
+					avec la publication du site.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className='space-y-4'>
-				{/* Status */}
 				<div className='flex items-center gap-2'>
-					{statusLoading ? (
-						<Loader2 className='h-4 w-4 animate-spin' />
-					) : status?.configured ? (
-						<>
-							<CheckCircle2 className='h-4 w-4 text-green-500' />
-							<span className='text-sm text-green-600'>Configurée</span>
-						</>
-					) : (
-						<>
-							<AlertCircle className='h-4 w-4 text-amber-500' />
-							<span className='text-sm text-amber-600'>Non configurée</span>
-						</>
-					)}
+					<ConfiguredBadge
+						loading={statusLoading}
+						configured={!!status?.configured}
+						labels={['Configurée', 'Non configurée']}
+					/>
 				</div>
 
-				{/* Input */}
 				<div className='space-y-2'>
 					<Label htmlFor='notification-key'>
 						{status?.configured
@@ -176,7 +198,6 @@ function NotificationKeySection() {
 					</div>
 				</div>
 
-				{/* Actions */}
 				{status?.configured && (
 					<div className='flex justify-end'>
 						<Button
@@ -200,276 +221,172 @@ function NotificationKeySection() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION - WEBHOOK SECRET
+// SECTION - PUBLICATION DU SITE
 // ═══════════════════════════════════════════════════════════════════════════
+// Deux valeurs de nature différente, réglées ensemble parce qu'aucune ne sert
+// sans l'autre : la clé X-API-Key (chiffrée) et l'URL de l'endpoint (en clair,
+// ce n'est pas un secret).
+//
+// La clé n'est jamais relue : ce formulaire l'écrit, et sait seulement si elle
+// existe. Au ticket 6, c'est le Go qui la lira pour poser l'en-tête.
 
-function WebhookSecretSection() {
-	const [secret, setSecret] = useState('')
+const PUBLISH_URL_PLACEHOLDER =
+	'https://axemusique.shop/server/api/publish-menu.php'
 
-	const { data: status, isLoading: statusLoading } = useWebhookSecretStatus()
-	const setWebhookSecret = useSetWebhookSecret()
+function SitePublishSection() {
+	const [apiKey, setApiKey] = useState('')
+	const [showKey, setShowKey] = useState(false)
+	const [endpointUrl, setEndpointUrl] = useState('')
 
-	const handleGenerate = async () => {
-		try {
-			await setWebhookSecret.mutateAsync(undefined) // ✅ Passer undefined
-			toast.success('Secret webhook généré')
-		} catch (error: any) {
-			toast.error(error.message || 'Erreur lors de la génération')
+	const { data: status, isLoading: statusLoading } = useSitePublishStatus()
+	const save = useSetSitePublish()
+	const deleteKey = useDeleteSitePublishKey()
+
+	// L'URL n'est pas un secret : on la préremplit avec celle enregistrée, pour
+	// qu'elle se relise et se corrige. La clé, elle, part toujours d'un champ vide.
+	useEffect(() => {
+		if (status?.endpoint_url) {
+			setEndpointUrl(status.endpoint_url)
 		}
-	}
-	const handleSaveCustom = async () => {
-		if (!secret.trim()) {
-			toast.error('Veuillez entrer un secret')
+	}, [status?.endpoint_url])
+
+	const urlChanged = endpointUrl.trim() !== (status?.endpoint_url ?? '')
+	const hasSomethingToSave = !!apiKey.trim() || urlChanged
+
+	const handleSave = async () => {
+		const url = endpointUrl.trim()
+
+		if (url && !/^https?:\/\//.test(url)) {
+			toast.error("L'URL doit commencer par http:// ou https://")
 			return
 		}
 
 		try {
-			await setWebhookSecret.mutateAsync(secret)
-			toast.success('Secret webhook sauvegardé')
-			setSecret('')
+			await save.mutateAsync({
+				apiKey: apiKey.trim() || undefined,
+				endpointUrl: urlChanged ? url : undefined,
+			})
+			toast.success('Paramètres de publication enregistrés')
+			setApiKey('')
+			setShowKey(false)
 		} catch (error: any) {
 			toast.error(error.message || 'Erreur lors de la sauvegarde')
 		}
 	}
 
-	return (
-		<Card>
-			<CardHeader>
-				<CardTitle className='flex items-center gap-2'>
-					<Webhook className='h-5 w-5' />
-					Secret Webhook
-				</CardTitle>
-				<CardDescription>
-					Secret utilisé pour signer et vérifier les webhooks sortants
-				</CardDescription>
-			</CardHeader>
-			<CardContent className='space-y-4'>
-				{/* Status */}
-				<div className='flex items-center gap-2'>
-					{statusLoading ? (
-						<Loader2 className='h-4 w-4 animate-spin' />
-					) : status?.configured ? (
-						<>
-							<CheckCircle2 className='h-4 w-4 text-green-500' />
-							<span className='text-sm text-green-600'>Configuré</span>
-						</>
-					) : (
-						<>
-							<AlertCircle className='h-4 w-4 text-amber-500' />
-							<span className='text-sm text-amber-600'>Non configuré</span>
-						</>
-					)}
-				</div>
-
-				{/* Actions */}
-				<div className='flex flex-wrap gap-2'>
-					<Button
-						variant='outline'
-						onClick={handleGenerate}
-						disabled={setWebhookSecret.isPending}
-					>
-						{setWebhookSecret.isPending ? (
-							<Loader2 className='mr-2 h-4 w-4 animate-spin' />
-						) : (
-							<RefreshCw className='mr-2 h-4 w-4' />
-						)}
-						{status?.configured ? 'Régénérer' : 'Générer automatiquement'}
-					</Button>
-				</div>
-
-				{/* Custom secret input */}
-				<div className='space-y-2'>
-					<Label htmlFor='webhook-secret'>
-						Ou définir un secret personnalisé
-					</Label>
-					<div className='flex gap-2'>
-						<Input
-							id='webhook-secret'
-							type='password'
-							placeholder='Votre secret personnalisé'
-							value={secret}
-							onChange={(e) => setSecret(e.target.value)}
-						/>
-						<Button
-							onClick={handleSaveCustom}
-							disabled={setWebhookSecret.isPending || !secret.trim()}
-						>
-							Sauvegarder
-						</Button>
-					</div>
-				</div>
-			</CardContent>
-		</Card>
-	)
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SECTION - SECRETS PERSONNALISÉS
-// ═══════════════════════════════════════════════════════════════════════════
-
-function CustomSecretsSection() {
-	const [newKey, setNewKey] = useState('')
-	const [newValue, setNewValue] = useState('')
-	const [newDescription, setNewDescription] = useState('')
-	const [showValue, setShowValue] = useState(false)
-
-	const { data: settings, isLoading } = useSettings()
-	const setSecret = useSetSecret()
-	const deleteSecret = useDeleteSecret()
-
-	const handleAdd = async () => {
-		if (!newKey.trim() || !newValue.trim()) {
-			toast.error('Clé et valeur obligatoires')
-			return
-		}
-
-		// Validation du nom de clé (snake_case)
-		if (!/^[a-z][a-z0-9_]*$/.test(newKey)) {
-			toast.error('La clé doit être en snake_case (ex: my_api_key)')
-			return
-		}
+	const handleDelete = async () => {
+		if (!confirm('Supprimer la clé de publication du site ?')) return
 
 		try {
-			await setSecret.mutateAsync({
-				key: newKey,
-				value: newValue,
-				description: newDescription || undefined,
-				category: 'custom',
-			})
-			toast.success('Secret ajouté')
-			setNewKey('')
-			setNewValue('')
-			setNewDescription('')
-		} catch (error: any) {
-			toast.error(error.message || "Erreur lors de l'ajout")
-		}
-	}
-
-	const handleDelete = async (key: string) => {
-		if (!confirm(`Supprimer le secret "${key}" ?`)) return
-
-		try {
-			await deleteSecret.mutateAsync(key)
-			toast.success('Secret supprimé')
+			await deleteKey.mutateAsync()
+			toast.success('Clé de publication supprimée')
 		} catch (error: any) {
 			toast.error(error.message || 'Erreur lors de la suppression')
 		}
 	}
 
-	// Filtrer pour n'afficher que les secrets custom
-	const customSecrets = settings?.filter(
-		(s) =>
-			s.encrypted &&
-			!['notification_api_key', 'webhook_secret', 'smtp_password'].includes(
-				s.key,
-			),
-	)
-
 	return (
 		<Card>
 			<CardHeader>
 				<CardTitle className='flex items-center gap-2'>
-					<Shield className='h-5 w-5' />
-					Secrets personnalisés
+					<Globe className='h-5 w-5' />
+					Publication du site
 				</CardTitle>
 				<CardDescription>
-					Ajoutez vos propres clés API et secrets chiffrés
+					Clé et adresse de l'endpoint qui reçoit le menu publié sur
+					axemusique.shop. La clé se lit dans le fichier de configuration du
+					serveur — elle ne doit pas être celle des notifications.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className='space-y-4'>
-				{/* Liste des secrets existants */}
-				{isLoading ? (
-					<div className='flex justify-center py-4'>
-						<Loader2 className='h-6 w-6 animate-spin' />
-					</div>
-				) : customSecrets && customSecrets.length > 0 ? (
-					<div className='space-y-2'>
-						{customSecrets.map((setting) => (
-							<div
-								key={setting.id}
-								className='flex items-center justify-between rounded-lg border p-3'
-							>
-								<div>
-									<p className='font-mono text-sm'>{setting.key}</p>
-									{setting.description && (
-										<p className='text-xs text-muted-foreground'>
-											{setting.description}
-										</p>
-									)}
-								</div>
-								<div className='flex items-center gap-2'>
-									<span className='text-xs text-muted-foreground'>
-										{setting.value}
-									</span>
-									<Button
-										variant='ghost'
-										size='icon'
-										onClick={() => handleDelete(setting.key)}
-									>
-										<Trash2 className='h-4 w-4 text-destructive' />
-									</Button>
-								</div>
-							</div>
-						))}
-					</div>
-				) : (
-					<Alert>
-						<AlertDescription>
-							Aucun secret personnalisé configuré
-						</AlertDescription>
-					</Alert>
-				)}
-
-				<Separator />
-
-				{/* Formulaire d'ajout */}
-				<div className='space-y-3'>
-					<Label>Ajouter un nouveau secret</Label>
-
-					<div className='grid gap-3 sm:grid-cols-2'>
-						<Input
-							placeholder='Clé (ex: stripe_api_key)'
-							value={newKey}
-							onChange={(e) => setNewKey(e.target.value.toLowerCase())}
-						/>
-						<div className='relative'>
-							<Input
-								type={showValue ? 'text' : 'password'}
-								placeholder='Valeur'
-								value={newValue}
-								onChange={(e) => setNewValue(e.target.value)}
-								className='pr-10'
-							/>
-							<Button
-								type='button'
-								variant='ghost'
-								size='icon'
-								className='absolute right-0 top-0 h-full px-3'
-								onClick={() => setShowValue(!showValue)}
-							>
-								{showValue ? (
-									<EyeOff className='h-4 w-4' />
-								) : (
-									<Eye className='h-4 w-4' />
-								)}
-							</Button>
-						</div>
-					</div>
-
-					<Input
-						placeholder='Description (optionnel)'
-						value={newDescription}
-						onChange={(e) => setNewDescription(e.target.value)}
+				<div className='flex items-center gap-2'>
+					<ConfiguredBadge
+						loading={statusLoading}
+						configured={!!status?.configured}
+						labels={['Clé enregistrée', 'Clé non enregistrée']}
 					/>
+				</div>
+
+				{/* URL de l'endpoint — pas un secret, affichée en clair */}
+				<div className='space-y-2'>
+					<Label htmlFor='site-publish-url'>URL de l'endpoint</Label>
+					<Input
+						id='site-publish-url'
+						type='url'
+						placeholder={PUBLISH_URL_PLACEHOLDER}
+						value={endpointUrl}
+						onChange={(e) => setEndpointUrl(e.target.value)}
+					/>
+					<p className='text-xs text-muted-foreground'>
+						L'adresse du script de réception, en POST. Le fichier publié est
+						ensuite lu par le site à <code>/data/menu.json</code>.
+					</p>
+				</div>
+
+				{/* Clé X-API-Key */}
+				<div className='space-y-2'>
+					<Label htmlFor='site-publish-key'>
+						{status?.configured
+							? "Nouvelle clé (remplacera l'actuelle)"
+							: 'Clé X-API-Key'}
+					</Label>
+					<div className='relative'>
+						<Input
+							id='site-publish-key'
+							type={showKey ? 'text' : 'password'}
+							placeholder='64 caractères hexadécimaux'
+							value={apiKey}
+							onChange={(e) => setApiKey(e.target.value)}
+							className='pr-10'
+							autoComplete='off'
+						/>
+						<Button
+							type='button'
+							variant='ghost'
+							size='icon'
+							className='absolute right-0 top-0 h-full px-3'
+							onClick={() => setShowKey(!showKey)}
+						>
+							{showKey ? (
+								<EyeOff className='h-4 w-4' />
+							) : (
+								<Eye className='h-4 w-4' />
+							)}
+						</Button>
+					</div>
+					<p className='text-xs text-muted-foreground'>
+						Enregistrée chiffrée. Elle n'est jamais réaffichée : en cas de
+						doute, on en met une nouvelle des deux côtés.
+					</p>
+				</div>
+
+				<div className='flex items-center justify-between gap-2'>
+					{status?.configured ? (
+						<Button
+							variant='destructive'
+							size='sm'
+							onClick={handleDelete}
+							disabled={deleteKey.isPending}
+						>
+							{deleteKey.isPending ? (
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							) : (
+								<Trash2 className='mr-2 h-4 w-4' />
+							)}
+							Supprimer la clé
+						</Button>
+					) : (
+						<span />
+					)}
 
 					<Button
-						onClick={handleAdd}
-						disabled={setSecret.isPending || !newKey.trim() || !newValue.trim()}
+						onClick={handleSave}
+						disabled={save.isPending || !hasSomethingToSave}
 					>
-						{setSecret.isPending && (
+						{save.isPending && (
 							<Loader2 className='mr-2 h-4 w-4 animate-spin' />
 						)}
-						Ajouter le secret
+						Enregistrer
 					</Button>
 				</div>
 			</CardContent>

@@ -202,6 +202,13 @@ Le même problème vaut pour WordPress : `VITE_WP_USER` et
 `VITE_WP_APP_PASSWORD` ([`constants.js:11`](file:///I:/divi-child/frontend-wp/src/utils/constants.js))
 alimentent une authentification Basic depuis le client.
 
+> **Aggravation constatée le 8 août 2026 :** ces valeurs ne sont pas seulement
+> inlinées dans le bundle livré — **`frontend-wp/.env` est versionné dans le
+> dépôt du site**, clés WooCommerce, identifiant WordPress et mot de passe
+> applicatif en clair. Elles sont donc aussi dans l'historique Git, où les
+> révoquer ne les efface pas. À traiter avec le reste de 3.1 : révoquer et
+> réémettre d'abord, nettoyer ensuite.
+
 **Portée.** Une clé WooCommerce en écriture permet de modifier le catalogue et,
 selon les permissions accordées, de lire les commandes — donc des données
 clients.
@@ -246,6 +253,16 @@ le brancher.
 > **Précision du 7 août 2026 :** « plugin de menus désactivé » se lit
 > désormais « thème enfant remplacé ou écrasé » — la route vient de
 > `child/functions.php:86`, pas d'un plugin (voir 2.6). Le reste est inchangé.
+>
+> **Précision du 8 août 2026 — le repli est plus mort qu'écrit ici.**
+> `DEFAULT_DATA.menus` *est* injecté dans l'état initial
+> (`hooks/useWordPressData.js:17`, par `...DEFAULT_DATA`) : le brancher ne
+> suffira donc pas. Sa **forme ne correspond pas à celle du consommateur** —
+> `{main: {name, items}}` (`constants.js:28-40`) là où `Header.jsx:39` lit
+> `menus?.items`. Le repli rend donc `undefined`, c'est-à-dire un menu vide. Ses
+> URL (`/categorie/guitares`, `/boutique`, `/contact`) ne correspondent en outre
+> à **aucune route** de `App.jsx`. Au ticket 8, le repli est à réécrire, pas à
+> brancher.
 
 ### 3.5 — MOYENNE — L'autorité est l'application destinée à disparaître
 
@@ -263,6 +280,21 @@ jusqu'à purge manuelle.
 **Impact direct sur le MVP :** au moment de basculer la source du menu, un
 visiteur au cache chaud continuerait de voir l'ancien menu. À traiter au
 ticket 8, sans quoi la bascule paraîtra ne pas fonctionner.
+
+> **Correction du 8 août 2026 — cette faille n'existe pas.** `utils/cache.js` a
+> été lu : `cacheUtils.get()` applique bien un TTL, `CACHE_DURATION = 24h`
+> (`cache.js:2, 10-14`). `get()` et `getWithTTL()` sont identiques quand aucune
+> durée n'est précisée. Le menu en `localStorage` (`axemusique_menu`) expire
+> donc au bout de 24 h.
+>
+> La déduction d'origine reposait sur le seul nom des deux fonctions, sans
+> lecture — elle était listée comme non vérifiée en §7.1, et elle était fausse.
+>
+> **Ce qui reste vrai pour le ticket 8 :** un visiteur au cache chaud verra
+> l'ancien menu jusqu'à 24 h après la bascule. L'invalidation reste donc à
+> traiter, mais c'est un délai borné, pas une purge manuelle — et la gravité
+> tombe de MOYENNE à FAIBLE. Le cache est par ailleurs désactivable par
+> `VITE_DISABLE_CACHE` (`wordpress.js:44-47`).
 
 ### 3.7 — MOYENNE — Déploiement sans retour arrière
 
@@ -468,9 +500,9 @@ Listé ici pour être ignoré sans hésitation. Ne pas anticiper.
 
 ### 7.1 Non vérifié dans le code
 
-- **`utils/cache.js` du site** — non lu. La faille 3.6 (menu sans durée de vie)
-  est déduite de l'appel `cacheUtils.get()` plutôt que `getWithTTL()`. À
-  confirmer au ticket 8.
+- ~~**`utils/cache.js` du site** — non lu.~~ **Lu le 8 août 2026 : la faille 3.6
+  était fausse.** TTL de 24 h appliqué par `cacheUtils.get()`. Voir la
+  correction en 3.6.
 - **AppPos** — dépôt jamais ouvert. Tout ce qui le concerne est déclaré :
   qu'il est seul à écrire dans WooCommerce, qu'il alimente PocketBase local,
   qu'il est autorité sur les référentiels.

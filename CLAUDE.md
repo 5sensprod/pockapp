@@ -57,7 +57,8 @@ Trois, et trois seulement :
 Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
 
 **Une quatrième est prévue, pas encore écrite** : la publication du menu vers
-`axemusique.shop` (POST, en-tête `X-API-Key`). Le côté serveur existe depuis le
+`https://axemusique.shop/server/api/publish-menu.php` (POST, en-tête
+`X-API-Key`). Le côté serveur est **déployé et opérationnel** depuis le
 ticket 5 (`server/api/publish-menu.php`) ; **aucun code de PocketApp ne
 l'appelle** — c'est le ticket 6. À inscrire ci-dessus, en point 4, le jour où
 c'est fait.

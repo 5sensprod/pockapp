@@ -13,3 +13,5 @@ script.txt
 
 # Obsidian - configuration locale de l'editeur, pas du projet
 **/.obsidian/
+
+server/config/config.php

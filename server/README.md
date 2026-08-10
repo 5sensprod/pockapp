@@ -41,34 +41,63 @@ décrit rien de ce qui tourne aujourd'hui. Ne pas le jouer.
 
 ---
 
-## Déploiement — à faire une fois, à la main
+## Déploiement — fait le 7 août 2026
 
-Le FTP sert à **déposer le script**, une seule fois. Il n'est pas le canal de
-publication : une fois en place, PocketApp publie en POST (ticket 6).
+**Déployé et validé en conditions réelles sur le mutualisé le 7 août 2026.** Ce
+qui suit est la marche à suivre telle qu'elle a effectivement fonctionné, pas
+une proposition. Le FTP sert à **déposer le script**, une seule fois ; il n'est
+pas le canal de publication — une fois en place, PocketApp publie en POST
+(ticket 6).
 
-### 1. Créer l'arborescence sur le serveur
+### 1. L'arborescence en ligne
 
 À la racine web d'axemusique.shop (le répertoire qui contient le `.htaccess`
-racine et `wp-config.php`) :
+racine, `index.php` et `wp-config.php`) :
 
 ```
-public_html/
-  pocketapp/
+racine web/
+  .htaccess
+  index.php
+  wp-config.php
+  wp-admin/  wp-content/  wp-includes/
+
+  axemusique-react/         ← le frontend React compilé (existant)
+    index.html
+    assets/
+
+  server/                   ← la couche serveur PocketApp
     api/
-      publish-menu.php        ← copie de server/api/publish-menu.php
+      publish-menu.php      ← copie de server/api/publish-menu.php
     config/
-      .htaccess               ← copie de server/config/.htaccess
-      config.php              ← à créer sur place, PAS versionné
+      .htaccess             ← copie de server/config/.htaccess
+      config.php            ← créé sur place, PAS versionné
+
   data/
-    menu.json                 ← créé par le script, pas par vous
+    menu.json               ← créé par le script, pas par vous
 ```
+
+**Le dossier en ligne porte le même nom que celui du dépôt : `server/`.** C'est
+délibéré — un fichier se redépose au même chemin sans traduction mentale. Le
+`/pocketapp/` d'une version antérieure de ce document n'a pas été retenu ; il
+n'apportait rien.
 
 Le dossier `data/` doit exister et être **inscriptible par PHP** (`755`, ou
 `775` selon la configuration de l'hébergeur). C'est la seule permission à
-régler.
+régler. **`menu.json` n'est pas à créer à la main** : le script l'écrit — c'est
+vérifié, la première publication réelle l'a créé de zéro.
 
-`pocketapp/` est hors de `wp-content/`, comme `data/` : une mise à jour ou une
+`server/` est hors de `wp-content/`, comme `data/` : une mise à jour ou une
 restauration WordPress ne les balaie pas (§1 du contrat).
+
+### Les deux URL
+
+```
+POST https://axemusique.shop/server/api/publish-menu.php    ← publication
+GET  https://axemusique.shop/data/menu.json                 ← lecture statique
+```
+
+La seconde est celle du contrat (§1), et elle ne bouge pas. La première est à
+reporter dans PocketApp au ticket 6.
 
 ### 2. Fabriquer une clé
 
@@ -90,10 +119,22 @@ Copier `config/config.php.example` en `config/config.php` **sur le serveur**,
 puis remplir deux valeurs :
 
 - `api_key` : la clé fabriquée à l'étape 2 ;
-- `target_file` : le chemin **absolu système** de `menu.json` — pas l'URL.
-  Typiquement `/home/<compte>/public_html/data/menu.json`. Le chemin exact se
-  lit dans le panneau de l'hébergeur, ou avec un `<?php echo __DIR__;` déposé
-  puis retiré.
+- `target_file` : le chemin **système** de `menu.json` — pas l'URL. C'est le
+  fichier physique, dont `https://axemusique.shop/data/menu.json` est la
+  représentation publique.
+
+  Avec l'arborescence retenue, `config.php` étant dans `server/config/`, la
+  forme robuste est **dérivée de `__DIR__`** plutôt qu'écrite en dur :
+
+  ```php
+  'target_file' => __DIR__ . '/../../data/menu.json',
+  ```
+
+  Un chemin relatif nu (`../../data/menu.json`) fonctionne aussi, mais il dépend
+  du répertoire courant de PHP, que l'hébergeur peut changer sans prévenir.
+  `__DIR__` ne dépend de rien. Un chemin absolu en dur
+  (`/home/<compte>/public_html/data/menu.json`) marche également et casse le
+  jour d'un changement d'hébergeur.
 
 La clé est ensuite à reporter côté PocketApp au **ticket 6**. Ce dépôt ne la
 contient jamais : `config/config.php` est ignoré par Git.
@@ -115,28 +156,44 @@ constater qu'il fonctionne. Remplacer `LA_CLE` par la clé de `config.php`.
 Les six premiers doivent **échouer**. C'est le but : un endpoint qui accepte
 tout n'est pas un endpoint validé.
 
+> **Passés en réel sur le mutualisé le 7 août 2026.** Constaté : `405` sur GET
+> et HEAD, `401` sans clé et avec une mauvaise clé, `400` sur JSON invalide,
+> `422` sur `contractVersion: 2` avec le message
+> `contractVersion 2 inconnue de ce script (connues : 1).`, et `200` sur un
+> document conforme — `{"ok":true,"bytes":340,"items":1,…}`, avec création de
+> `data/menu.json` de zéro.
+>
+> Ce qu'établit la publication réussie, au-delà du code : Apache dessert bien
+> `publish-menu.php`, PHP lit `server/config/config.php`, **l'hébergeur propage
+> l'en-tête `X-API-Key`** (le repli `RewriteRule` décrit plus bas n'est pas
+> nécessaire), `data/` est inscriptible, et le renommage atomique aboutit.
+>
+> Sous PowerShell, voir la section dédiée plus bas : `curl` y est un alias
+> d'`Invoke-WebRequest` et les commandes ci-dessous ne marchent pas telles
+> quelles.
+
 ### 1. Sans clé → 401
 
 ```bash
-curl -i -X POST https://axemusique.shop/pocketapp/api/publish-menu.php -d '{}'
+curl -i -X POST https://axemusique.shop/server/api/publish-menu.php -d '{}'
 ```
 
 ### 2. En GET → 405
 
 ```bash
-curl -i https://axemusique.shop/pocketapp/api/publish-menu.php
+curl -i https://axemusique.shop/server/api/publish-menu.php
 ```
 
 ### 3. JSON invalide → 400
 
 ```bash
-curl -i -X POST -H "X-API-Key: LA_CLE" --data 'pas du json' https://axemusique.shop/pocketapp/api/publish-menu.php
+curl -i -X POST -H "X-API-Key: LA_CLE" --data 'pas du json' https://axemusique.shop/server/api/publish-menu.php
 ```
 
 ### 4. Version de format inconnue → 422
 
 ```bash
-curl -i -X POST -H "X-API-Key: LA_CLE" --data '{"contractVersion":2,"publishedAt":"2026-08-07T10:00:00Z","menu":{"name":"Menu Principal","items":[]}}' https://axemusique.shop/pocketapp/api/publish-menu.php
+curl -i -X POST -H "X-API-Key: LA_CLE" --data '{"contractVersion":2,"publishedAt":"2026-08-07T10:00:00Z","menu":{"name":"Menu Principal","items":[]}}' https://axemusique.shop/server/api/publish-menu.php
 ```
 
 La réponse doit dire `contractVersion 2 inconnue`. C'est le point qui ne se
@@ -146,13 +203,13 @@ fichier que le site ne saura pas lire, et le contrat perd sa raison d'être.
 ### 5. Parent orphelin → 422
 
 ```bash
-curl -i -X POST -H "X-API-Key: LA_CLE" --data '{"contractVersion":1,"publishedAt":"2026-08-07T10:00:00Z","menu":{"name":"Menu Principal","items":[{"id":"a","title":"Orphelin","url":"/x","parent":"fantome","ref":null}]}}' https://axemusique.shop/pocketapp/api/publish-menu.php
+curl -i -X POST -H "X-API-Key: LA_CLE" --data '{"contractVersion":1,"publishedAt":"2026-08-07T10:00:00Z","menu":{"name":"Menu Principal","items":[{"id":"a","title":"Orphelin","url":"/x","parent":"fantome","ref":null}]}}' https://axemusique.shop/server/api/publish-menu.php
 ```
 
 ### 6. Identifiants en double → 422
 
 ```bash
-curl -i -X POST -H "X-API-Key: LA_CLE" --data '{"contractVersion":1,"publishedAt":"2026-08-07T10:00:00Z","menu":{"name":"Menu Principal","items":[{"id":"a","title":"Un","url":"/1","parent":null,"ref":null},{"id":"a","title":"Deux","url":"/2","parent":null,"ref":null}]}}' https://axemusique.shop/pocketapp/api/publish-menu.php
+curl -i -X POST -H "X-API-Key: LA_CLE" --data '{"contractVersion":1,"publishedAt":"2026-08-07T10:00:00Z","menu":{"name":"Menu Principal","items":[{"id":"a","title":"Un","url":"/1","parent":null,"ref":null},{"id":"a","title":"Deux","url":"/2","parent":null,"ref":null}]}}' https://axemusique.shop/server/api/publish-menu.php
 ```
 
 ### 7. Document valide → 200, et le fichier apparaît
@@ -160,7 +217,7 @@ curl -i -X POST -H "X-API-Key: LA_CLE" --data '{"contractVersion":1,"publishedAt
 C'est l'exemple de §2 du contrat, mot pour mot.
 
 ```bash
-curl -i -X POST -H "X-API-Key: LA_CLE" --data '{"contractVersion":1,"publishedAt":"2026-08-06T14:32:11Z","menu":{"name":"Menu Principal","items":[{"id":"k3f9d2m1x8a7b0c","title":"Accueil","url":"/","parent":null,"ref":null},{"id":"p7q2w9e4r1t6y3u","title":"Instruments","url":"#","parent":null,"ref":null},{"id":"z5x8c1v4b7n0m3q","title":"Guitares","url":"/categorie-produit/guitares","parent":"p7q2w9e4r1t6y3u","ref":{"type":"category","id":"142"}}]}}' https://axemusique.shop/pocketapp/api/publish-menu.php
+curl -i -X POST -H "X-API-Key: LA_CLE" --data '{"contractVersion":1,"publishedAt":"2026-08-06T14:32:11Z","menu":{"name":"Menu Principal","items":[{"id":"k3f9d2m1x8a7b0c","title":"Accueil","url":"/","parent":null,"ref":null},{"id":"p7q2w9e4r1t6y3u","title":"Instruments","url":"#","parent":null,"ref":null},{"id":"z5x8c1v4b7n0m3q","title":"Guitares","url":"/categorie-produit/guitares","parent":"p7q2w9e4r1t6y3u","ref":{"type":"category","id":"142"}}]}}' https://axemusique.shop/server/api/publish-menu.php
 ```
 
 Réponse attendue : `{"ok":true,"bytes":…,"items":3,…}`.
@@ -197,7 +254,62 @@ propagent pas les en-têtes non standard. Le script regarde `HTTP_X_API_KEY`,
 `REDIRECT_HTTP_X_API_KEY` et `apache_request_headers()`. Si aucune des trois ne
 porte la valeur, il faut une ligne
 `RewriteRule .* - [E=HTTP_X_API_KEY:%{HTTP:X-API-Key}]` dans un `.htaccess` de
-`pocketapp/` — à ne poser qu'après avoir constaté le problème.
+`server/` — à ne poser qu'après avoir constaté le problème. **Constaté le 7 août
+2026 : ce n'est pas nécessaire sur cet hébergeur**, l'en-tête passe.
+
+---
+
+## Tester depuis Windows PowerShell
+
+Deux pièges, tous deux rencontrés le 7 août 2026.
+
+**`curl` est un alias d'`Invoke-WebRequest`.** Écrire `curl.exe` explicitement,
+sinon les options ci-dessus ne veulent rien dire.
+
+**Le quoting PowerShell abîme un gros JSON passé en ligne de commande.** Passer
+par un fichier. La méthode qui a fonctionné :
+
+```powershell
+$body = @{ contractVersion = 1; publishedAt = "2026-08-07T16:42:00Z"; menu = @{ name = "Menu Principal"; items = @(@{ id = "accueil"; title = "Accueil"; url = "/"; parent = $null; ref = $null }) } } | ConvertTo-Json -Depth 10 -Compress
+```
+
+```powershell
+[System.IO.File]::WriteAllText("$PWD\body.json", $body, [System.Text.UTF8Encoding]::new($false))
+```
+
+L'encodeur explicite **sans BOM** n'est pas un détail : `Out-File` ajoute un BOM
+UTF-8 que `json_decode()` refuse, et l'endpoint répond alors `400 JSON invalide`
+sur un document pourtant correct.
+
+```powershell
+curl.exe -i -H "X-API-Key: $apiKey" -H "Content-Type: application/json" --data-binary "@body.json" "https://axemusique.shop/server/api/publish-menu.php"
+```
+
+Charger la clé sans l'écrire dans l'historique du terminal :
+
+```powershell
+$apiKey = Read-Host "Cle API"
+```
+
+Puis contrôler sans l'afficher — une clé issue d'`openssl rand -hex 32` fait 64
+caractères :
+
+```powershell
+$apiKey.Length
+```
+
+---
+
+## Hygiène
+
+- **Aucun script de diagnostic ne reste en ligne.** Un `debug-key.php` ou
+  équivalent déposé le temps d'un test se supprime le test fini. Il n'y en a
+  pas dans ce dépôt, et il ne doit pas y en avoir sur le serveur.
+- **`server/config/config.php` ne remonte jamais dans Git** (`server/.gitignore`)
+  et son dossier reste interdit en HTTP (`config/.htaccess`).
+- **Une clé vue ailleurs que dans `config.php` est compromise** — terminal
+  partagé, capture d'écran, ticket, conversation, historique de commandes. On la
+  remplace, on ne la surveille pas.
 
 ---
 

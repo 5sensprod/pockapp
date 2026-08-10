@@ -250,6 +250,89 @@ l'exemple §2.
 Le jour où plusieurs menus existeraient, ce champ deviendrait une vraie donnée
 — mais §2.2 le dit déjà : ce besoin n'existe pas.
 
+### 6.2 bis Ticket 6 — comment `ref` devient `url`
+
+**Ajouté le 8 août 2026**, après lecture du dépôt du site (`I:\divi-child`,
+lecture seule). §3 posait que la résolution a lieu dans PocketApp sans dire à
+quoi ressemble une URL du site. Voici ce qui a été lu.
+
+**Le site adresse ses cibles par *slug*, jamais par identifiant** — alors que
+`ref_id` porte un identifiant WooCommerce (bloc « Origine des destinations du
+menu » de `docs/DECISIONS.md`). L'écart est réel et c'est le vrai travail du
+ticket 6.
+
+| `ref.type` | URL servie | Le site retrouve la cible par | Référence |
+|---|---|---|---|
+| `category` | `/categorie-produit/<slug>` | slug, **dernier segment** | `App.jsx:90`, `CategoryPage.jsx:80-102` |
+| `product` | `/produit/<slug>/` | slug, `getProductBySlug` | `App.jsx:119`, `ProductPage.jsx:66` |
+| `brand` | `/marque/<slug>/` — **archive WordPress**, hors dépôt React | slug | vérifié en production, voir ci-dessous |
+| `page` | seules `/`, `/mentions-legales`, `/bons-plans` existent | chemin littéral | `App.jsx:63-80`, `129-136` |
+
+#### Où lire le slug — mesuré le 8 août 2026
+
+`ref_id` contient un identifiant WooCommerce ; l'URL demande un slug. Le seul
+référentiel interrogeable est AppPos (point 2 de `CLAUDE.md`). Mesures faites
+sur AppPos en fonctionnement, ce jour :
+
+| Type | Champ AppPos | Cibles résolubles |
+|---|---|---|
+| `category` | `slug` | **30 sur 463** |
+| `brand` | `slug` | 202 sur 287 |
+| `product` | `website_url` | 2428 sur 3034 |
+
+**La catégorie, que l'exemple de §2 donne en modèle, est le type le moins bien
+couvert.** 433 catégories sur 463 n'ont pas de slug dans AppPos ; 254 n'ont
+même pas de `woo_id`.
+
+`website_url` n'est déclaré ni dans `apppos-types.ts`, ni nulle part ailleurs —
+même cas que `woo_id`, à lire défensivement. Il prend deux formes :
+`https://axemusique.shop/produit/<slug>/` (2428, exploitable) et
+`https://axemusique.shop/?post_type=product&p=<id>` (100, **inexploitable** —
+c'est le repli WooCommerce quand le permalien n'est pas résolu). 506 produits
+n'ont ni l'un ni l'autre, ni `woo_id`.
+
+**Ne jamais fabriquer un slug à partir du nom.** `CategoryPage.jsx:88-102`
+retombe sur un `includes()` partiel : un slug approché mène silencieusement à
+une autre catégorie. Un slug se lit ou l'entrée n'est pas publiable.
+
+**Publier un seul segment pour une catégorie**, pas le chemin hiérarchique. Ce
+n'est pas une préférence : `convertToReactUrl` (`useNavigation.js:77-78`) tronque
+déjà toute URL de catégorie à son premier segment avant de la suivre. C'est
+exactement la forme que le menu WordPress actuel produit après réécriture, et
+celle de l'exemple de §2.
+
+**Deux conséquences du composant de navigation** (`useNavigation.js:63-80`,
+`MenuItems.jsx:8-27`), qui valent pour tout ce qu'on publiera :
+
+- une URL contenant `/categorie-produit/` ou `/shop` est suivie en navigation
+  React (`<Link>`) ;
+- **tout le reste est rendu en `<a href>`**, donc en rechargement complet de la
+  page — un lien produit, une page, un lien externe. Ça fonctionne, mais ce
+  n'est pas de la navigation interne.
+
+#### Les marques ont bien une page — corrigé le 8 août 2026
+
+Une première rédaction de cette section, le même jour, affirmait qu'aucune
+destination de marque n'existait. **C'était faux**, et l'erreur mérite d'être
+gardée : elle venait de n'avoir cherché que dans le dépôt du site. Aucune
+`register_taxonomy`, aucune `add_rewrite_rule`, aucune route React — le constat
+était juste, la conclusion non. L'archive est servie par **WooCommerce
+lui-même**, qui n'a besoin d'aucun code dans le thème.
+
+Vérifié en production : `https://axemusique.shop/marque/neutrik/` répond `200`
+et rend une page titrée « Neutrik | AXE Musique », là où une URL inventée rend
+`404`. Les motifs `/brand/`, `/product-brand/`, `/marque-produit/` et
+`/pa_marque/` rendent tous `404` — le préfixe est bien `/marque/`.
+
+**Leçon de méthode :** l'absence dans un dépôt ne prouve pas l'absence en
+production, dès lors qu'un composant tiers installé sur le serveur peut servir
+la route. Les trois dépôts ne décrivent pas tout le système.
+
+C'est une page WordPress, pas React : elle sera suivie en `<a href>`, donc en
+rechargement complet. Idem pour `/produit/`, bien qu'une route React existe —
+`isReactRoute` ne teste que `/categorie-produit/` et `/shop`
+(`useNavigation.js:63-69`).
+
 ### 6.3 Ticket 8 — ce que le site devra adapter
 
 La forme actuellement retournée par `loadMenu()` a été lue :

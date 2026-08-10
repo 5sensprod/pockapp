@@ -261,6 +261,111 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		})
 	}, requireAdmin)
 
+	// ═══════════════════════════════════════════════════════════════════════
+	// ROUTES POUR LA PUBLICATION DU SITE (ticket 5b)
+	// ═══════════════════════════════════════════════════════════════════════
+	//
+	// Deux valeurs, de nature différente, réglées ensemble parce qu'elles n'ont
+	// aucun sens l'une sans l'autre :
+	//   - la clé X-API-Key      → chiffrée (SetSecret)
+	//   - l'URL de l'endpoint   → en clair (SetSetting), ce n'est pas un secret
+	//
+	// AUCUNE ROUTE NE RELIT LA CLÉ. C'est délibéré : le front n'en a pas besoin
+	// — au ticket 6, il enverra le document composé et c'est le Go qui ira
+	// chercher la clé pour poser l'en-tête. La clé ne descend jamais dans le
+	// renderer. C'est précisément ce que fait GET /api/settings/pocketapp-key
+	// pour le mini-SaaS (:125), et ce qu'on ne reproduit pas ici.
+
+	// POST /api/settings/site-publish - Enregistrer la clé et/ou l'URL
+	router.POST("/api/settings/site-publish", func(c echo.Context) error {
+		log.Println("🌐 POST /api/settings/site-publish")
+
+		var req struct {
+			APIKey      string `json:"api_key"`
+			EndpointURL string `json:"endpoint_url"`
+		}
+
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "Données invalides",
+			})
+		}
+
+		req.APIKey = strings.TrimSpace(req.APIKey)
+		req.EndpointURL = strings.TrimSpace(req.EndpointURL)
+
+		if req.APIKey == "" && req.EndpointURL == "" {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "Renseignez au moins la clé ou l'URL",
+			})
+		}
+
+		// L'URL est facultative à chaque appel : on peut changer la clé sans
+		// retaper l'URL, et l'inverse.
+		if req.EndpointURL != "" {
+			if !strings.HasPrefix(req.EndpointURL, "http://") &&
+				!strings.HasPrefix(req.EndpointURL, "https://") {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+					"error": "L'URL doit être absolue et commencer par http:// ou https://",
+				})
+			}
+			if err := sm.SetSetting(secrets.SettingSitePublishURL, req.EndpointURL); err != nil {
+				log.Printf("❌ Error saving site publish URL: %v", err)
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+					"error": "Erreur lors de la sauvegarde de l'URL",
+				})
+			}
+		}
+
+		if req.APIKey != "" {
+			if err := sm.SetSecret(secrets.KeySitePublishAPI, req.APIKey); err != nil {
+				log.Printf("❌ Error saving site publish key: %v", err)
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+					"error": "Erreur lors de la sauvegarde de la clé API",
+				})
+			}
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "Paramètres de publication enregistrés",
+		})
+	}, requireAdmin)
+
+	// GET /api/settings/site-publish/status - État de la configuration
+	//
+	// Renvoie l'URL, jamais la clé — seulement le fait qu'elle existe.
+	router.GET("/api/settings/site-publish/status", func(c echo.Context) error {
+		url, err := sm.GetSetting(secrets.SettingSitePublishURL)
+		if err != nil {
+			url = "" // réglage jamais écrit : ce n'est pas une erreur
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"configured":   sm.HasSecret(secrets.KeySitePublishAPI),
+			"endpoint_url": url,
+		})
+	}, requireAdmin)
+
+	// DELETE /api/settings/site-publish - Supprimer la clé
+	//
+	// L'URL est conservée : elle n'est pas sensible, et la retaper à chaque
+	// rotation de clé n'apporte rien.
+	router.DELETE("/api/settings/site-publish", func(c echo.Context) error {
+		log.Println("🗑️ DELETE /api/settings/site-publish")
+
+		if err := sm.DeleteSecret(secrets.KeySitePublishAPI); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]interface{}{
+				"error": "Clé API non trouvée",
+			})
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "Clé API de publication supprimée",
+		})
+	}, requireAdmin)
+
 	log.Println("✅ Secrets management routes registered successfully")
 }
 

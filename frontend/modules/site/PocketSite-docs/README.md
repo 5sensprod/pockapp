@@ -29,14 +29,28 @@ qu'on a demandé, pas ce qui est vrai.
 ## Où en est-on
 
 **Ticket en cours : aucun.** Tickets 1 à 4 terminés le 6 août 2026, le 5 le
-7 août. Le 6 (« Publier le menu ») est le prochain sur le chemin ; le 7 aussi,
-et il est indépendant.
+7 août — **écrit, déployé et validé en réel sur le mutualisé** — et le 5b le
+8 août. Le 6 (« Publier le menu ») est le prochain sur le chemin.
 
-**Le ticket 5 est écrit, pas déployé.** Le code est dans
-[`server/`](../../../../server/) ; il ne tournera qu'une fois déposé à la main
-sur le mutualisé. Marche à suivre et tests de vérification :
-[`server/README.md`](../../../../server/README.md). Tant que ce dépôt n'est pas
-fait, l'endpoint n'existe pas — et rien ne l'appelle avant le ticket 6.
+**Le 5b n'était pas au plan initial.** Il porte le réglage de la clé et de
+l'URL de publication, que le ticket 6 supposait acquis sans que rien ne les
+range : section « Publication du site » dans Réglages > Clés API. Séparé du 6
+pour qu'il se teste seul, sans qu'aucune publication existe.
+
+L'endpoint existe et répond :
+
+```
+POST https://axemusique.shop/server/api/publish-menu.php   ← X-API-Key
+GET  https://axemusique.shop/data/menu.json                ← lecture statique
+```
+
+Une publication réelle a été acceptée et a créé `data/menu.json`. Détail des
+tests passés, arborescence en ligne et particularités PowerShell :
+[`server/README.md`](../../../../server/README.md).
+
+**Le ticket 7 n'est pas fait pour autant.** Son objet est de constater que le
+`menu.json` déposé est bien servi en statique par Apache — le `GET` ci-dessus,
+dont le résultat n'est pas encore consigné. C'est une vérification, pas du code.
 
 | # | Ticket | Dépend de | Dépôt | État |
 |---|---|---|---|---|
@@ -44,8 +58,9 @@ fait, l'endpoint n'existe pas — et rien ne l'appelle avant le ticket 6.
 | 2 | Squelette du module PocketSite et sa route | — | PocketApp | **fait** |
 | 3 | Contrat JSON publié : URL, version, horodatage, entrées | — | doc | **fait** |
 | 4 | Éditeur d'arbre libre | 1, 2, 3 | PocketApp | **fait** |
-| 5 | Endpoint PHP de réception, `X-API-Key` | 3 | serveur (`server/`) | **écrit, à déposer** |
-| 6 | Action « Publier le menu » | 4, 5 | PocketApp | à faire |
+| 5 | Endpoint PHP de réception, `X-API-Key` | 3 | serveur (`server/`) | **fait** |
+| 5b | Réglage de la clé et de l'URL de publication | 5 | PocketApp | **fait** |
+| 6 | Action « Publier le menu » | 4, 5b | PocketApp | à faire |
 | 7 | Exposition du `menu.json` en lecture statique | 5 | serveur | à faire |
 | 8 | Bascule `.env` dans `loadMenu()` + purge cache + repli | 3, 7 | site | à faire |
 | 9 | Drapeau par défaut sur la nouvelle source | 8 | site | à faire |
@@ -121,15 +136,32 @@ redécouvre au ticket 6.
   page inachevée. À regarder au ticket 6, quand la résolution en URL se
   décidera.
 
+## Notes laissées par le ticket 5b
+
+- **`GET /api/settings/pocketapp-key` renvoie la clé du mini-SaaS déchiffrée
+  sans garde admin** — `backend/routes/secrets_routes.go:125`, là où les quatre
+  routes voisines portent `requireAdmin` (`:121`, `:154`, `:190`). Appelée ainsi
+  par `frontend/lib/credits.ts:22`, ce qui explique probablement l'omission.
+  **Non corrigé, hors périmètre**, et sans lien avec le menu — mais c'est la
+  raison pour laquelle la clé de publication est une clé à part. Faille de la
+  même famille que 3.1, à traiter dans une session dédiée.
+
+- **Deux sections de réglages ont été retirées :** « Secret Webhook » (signait
+  des webhooks sortants qui n'existent pas) et « Secrets personnalisés »
+  (formulaire libre, permettait d'écraser une clé nommée par erreur). **Les
+  routes Go correspondantes existent toujours**, désormais sans appelant, de
+  même que quatre hooks de `frontend/lib/queries/secrets.ts`. Les supprimer est
+  un nettoyage à part, pas un oubli.
+
 ## Notes laissées par le ticket 5
 
-- **Ce dont le ticket 6 aura besoin, et que ce dépôt ne contient pas :** l'URL
-  de l'endpoint (`https://axemusique.shop/pocketapp/api/publish-menu.php`, à
-  confirmer après dépôt) et **la clé `X-API-Key`**, qui n'existe que dans
-  `config/config.php` sur le serveur. La clé ne doit pas entrer dans le dépôt ni
-  dans le bundle : le canal existant pour ce genre de secret est le
-  `SecretManager` de PocketApp (`remote_notifications.go:5-6, 54`, réglé depuis
-  Settings > Clés API). C'est la piste, pas une décision — le ticket 6 tranche.
+- ~~**Ce dont le ticket 6 aura besoin, et que ce dépôt ne contient pas :** l'URL
+  de l'endpoint et la clé `X-API-Key`.~~ **Traité le 8 août 2026 par le
+  ticket 5b.** Les deux se règlent depuis Réglages > Clés API, section
+  « Publication du site » : la clé dans le `SecretManager` (chiffrée,
+  `site_publish_api_key`), l'URL en réglage clair (`site_publish_url`). Le
+  ticket 6 n'a plus qu'à les lire côté Go. Détail des arbitrages — clé dédiée,
+  composition en React, POST émis par le Go — dans `docs/DECISIONS.md`.
 
 - **Le contrat a bougé sur deux points mineurs**, consignés dans §6.1 de
   `05-contrat-menu.md` : `ref.type` est validé contre les quatre valeurs de §3,

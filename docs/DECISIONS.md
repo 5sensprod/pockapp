@@ -10,6 +10,64 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Clé de publication dédiée, document composé en React, POST émis par le Go — 2026-08-08
+
+Trois décisions liées, prises ensemble parce qu'elles se déterminent l'une
+l'autre. Mise en œuvre : ticket 5b (le réglage), ticket 6 (l'usage).
+
+**1. La clé de publication est distincte de celle du mini-SaaS.**
+`site_publish_api_key` (`backend/secrets/secrets.go`), chiffrée dans
+`app_settings` par le `SecretManager`, saisie depuis Réglages > Clés API. L'URL
+de l'endpoint l'accompagne en réglage **non chiffré** (`site_publish_url`) :
+ce n'est pas un secret, et en dur elle imposerait de recompiler pour viser un
+autre serveur.
+
+**Écarté — réutiliser `notification_api_key` :** c'est ce qui avait été fait au
+premier essai, la clé ayant été générée par le mini-SaaS. Deux raisons de ne pas
+le garder. D'abord un secret unique pour deux services sans rapport : le
+mini-SaaS peut la faire tourner sans savoir que la publication en dépend, et la
+publication tomberait en `401` sans explication. Ensuite, et c'est décisif,
+`GET /api/settings/pocketapp-key` (`backend/routes/secrets_routes.go:125`) la
+renvoie **déchiffrée sans garde admin**, contrairement aux quatre routes
+voisines — elle est appelée ainsi par `frontend/lib/credits.ts:22`. Tout ce qui
+atteint `127.0.0.1:8090` peut donc la lire. **Cette route est une faille
+connue, non corrigée, et hors périmètre du ticket** : la décision consiste à ne
+pas lui confier une seconde responsabilité.
+
+**2. Le document publié est composé en React, pas en Go.**
+L'éditeur (ticket 4) produit le JSON complet — aplatissement, exclusion des
+entrées masquées et de leurs descendants, résolution `ref` → `url` — et l'envoie
+à la couche Go.
+
+**Écarté — tout composer en Go :** la résolution part d'un identifiant
+WooCommerce lu dans AppPos (bloc « Origine des destinations du menu »), et le
+client AppPos n'existe **qu'en TypeScript** (`frontend/lib/apppos/`) ; aucun
+fichier `.go` ne parle à `:3000` — vérifié. Il aurait fallu réécrire ce client
+en Go : seconde authentification, second jeton, second chemin vers AppPos, donc
+le point 2 de `CLAUDE.md` en double.
+
+**Coût accepté :** le Go poste un document qu'il n'a pas composé et ne peut donc
+pas garantir conforme. L'endpoint PHP reste le seul gardien du contrat — c'est
+son rôle, et la raison pour laquelle il renvoie la liste **complète** des
+erreurs plutôt que la première.
+
+**3. Le POST part du Go, jamais du React.** Le front envoie le document à sa
+propre couche Go, qui lit la clé et pose l'en-tête `X-API-Key`. La clé ne
+descend jamais dans le renderer — aucune route ne la relit, contrairement au
+schéma de `credits.ts`.
+
+**Écarté — poster depuis le React avec la clé récupérée par une route :** ce
+serait reproduire exactement le problème du point 1, et rapprocher la clé du
+bundle, famille de la faille 3.1.
+
+**Écarté — une variable `VITE_` :** tout ce qui est préfixé `VITE_` est inliné
+en clair dans le JavaScript livré. C'est la faille 3.1 elle-même.
+
+**Remise en cause si :** un client AppPos en Go apparaît pour une autre raison
+(alors le point 2 se rediscute), ou la publication doit avoir lieu sans
+interface — tâche planifiée, second poste — car le React ne serait plus là pour
+composer.
+
 ## Où vit le code du serveur mutualisé — 2026-08-07
 
 Le code PHP qui tourne sur l'hébergement d'axemusique.shop est versionné dans

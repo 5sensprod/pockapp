@@ -5,9 +5,9 @@
 // Créer, renommer, ordonner, imbriquer, masquer, supprimer les entrées du
 // menu. Écrit dans `site_menu` et nulle part ailleurs.
 //
-// **Ce composant ne publie rien.** La publication est le ticket 6, et
-// l'endpoint qui la reçoit n'existe pas encore. Aucun bouton d'ici ne sort du
-// poste.
+// **La publication est le seul chemin qui sort du poste**, par le bouton
+// « Publier le menu » (ticket 6, `PublishMenuButton`). Tout le reste de cet
+// écran n'écrit que dans PocketBase local.
 //
 // L'ordre se change par boutons — monter, descendre, indenter, désindenter.
 // Pas de glisser-déposer : aucune bibliothèque de ce genre n'existe dans le
@@ -66,6 +66,7 @@ import {
 	outdent,
 } from '../lib/menu-tree'
 import { MenuEntryDialog } from './MenuEntryDialog'
+import { PublishMenuButton } from './PublishMenuButton'
 
 /** Les quatre types qui portent un `ref_id` à résoudre. */
 const REF_TYPES = ['category', 'brand', 'product', 'page'] as const
@@ -133,10 +134,12 @@ export function MenuTreeEditor() {
 	// Lecture de la session ouverte au lancement (main.tsx) — l'éditeur ne
 	// dépend plus de l'ordre de navigation.
 	const appPos = useAppPosSession()
-	const { labelFor, isError: catalogError } = useDestinationIndex(
-		usedTypes,
-		appPos.isConnected,
-	)
+	const {
+		labelFor,
+		urlFor,
+		loaded: catalogLoaded,
+		isError: catalogError,
+	} = useDestinationIndex(usedTypes, appPos.isConnected)
 
 	// Les noms de destinations manquent, le menu lui-même est intact : c'est un
 	// avertissement, pas une erreur bloquante.
@@ -265,13 +268,20 @@ export function MenuTreeEditor() {
 					{rows.length === 0
 						? 'Aucune entrée.'
 						: `${rows.length} entrée${rows.length > 1 ? 's' : ''}.`}{' '}
-					Les modifications sont enregistrées localement ; rien n'est envoyé au
-					site.
+					Les modifications sont enregistrées localement. Le site ne change qu'à
+					la publication.
 				</p>
-				<Button size='sm' onClick={() => openCreate(ROOT)}>
-					<Plus className='mr-2 h-4 w-4' />
-					Entrée racine
-				</Button>
+				<div className='flex items-center gap-2'>
+					<Button size='sm' variant='outline' onClick={() => openCreate(ROOT)}>
+						<Plus className='mr-2 h-4 w-4' />
+						Entrée racine
+					</Button>
+					<PublishMenuButton
+						entries={list}
+						index={{ urlFor }}
+						catalogReady={catalogLoaded}
+					/>
+				</div>
 			</div>
 
 			{catalogUnavailable && (

@@ -96,6 +96,13 @@ export function useSettings() {
 // ═══════════════════════════════════════════════════════════════════════════
 // HOOKS - GESTION GÉNÉRIQUE DES SECRETS
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// Plus aucun écran n'utilise ces quatre hooks depuis le ticket 5b : la section
+// « Secrets personnalisés » a été retirée, parce qu'un formulaire libre permet
+// d'écraser une clé nommée par erreur. Ils sont conservés parce que les routes
+// génériques correspondantes existent toujours côté Go — pas parce qu'ils
+// servent. Les supprimer, eux et leurs routes, est une session de nettoyage à
+// part.
 
 /**
  * Vérifie si un secret est configuré
@@ -215,39 +222,71 @@ export function useDeleteNotificationKey() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// HOOKS - WEBHOOK SECRET
+// HOOKS - PUBLICATION DU SITE (ticket 5b)
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// Il n'existe volontairement AUCUN hook qui relit la clé de publication. Le
+// front l'écrit et sait si elle est configurée, rien de plus : au ticket 6,
+// c'est le Go qui la lira pour poser l'en-tête X-API-Key. Elle ne descend
+// jamais dans le renderer.
 
 /**
- * Vérifie si le webhook secret est configuré
+ * État de la configuration de publication : la clé est-elle enregistrée, et
+ * vers quelle URL publie-t-on. La clé elle-même n'est jamais renvoyée.
  */
-export function useWebhookSecretStatus() {
+export function useSitePublishStatus() {
 	const pb = usePocketBase() as any
 
-	return useQuery<{ configured: boolean }>({
-		queryKey: ['webhook-secret-status'],
+	return useQuery<{ configured: boolean; endpoint_url: string }>({
+		queryKey: ['site-publish-status'],
 		queryFn: async () => {
-			return await fetchWithAuth(pb, '/api/settings/webhook-secret/status')
+			return await fetchWithAuth(pb, '/api/settings/site-publish/status')
 		},
 	})
 }
 
 /**
- * Sauvegarder ou générer le webhook secret
+ * Enregistrer la clé de publication et/ou l'URL de l'endpoint.
+ *
+ * Les deux champs sont facultatifs indépendamment : on change la clé sans
+ * retaper l'URL, et l'inverse. Au moins un des deux doit être fourni.
  */
-export function useSetWebhookSecret() {
+export function useSetSitePublish() {
 	const pb = usePocketBase() as any
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async (secret?: string) => {
-			return await fetchWithAuth(pb, '/api/settings/webhook-secret', {
+		mutationFn: async (data: { apiKey?: string; endpointUrl?: string }) => {
+			return await fetchWithAuth(pb, '/api/settings/site-publish', {
 				method: 'POST',
-				body: JSON.stringify({ secret: secret || '' }),
+				body: JSON.stringify({
+					api_key: data.apiKey ?? '',
+					endpoint_url: data.endpointUrl ?? '',
+				}),
 			})
 		},
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['webhook-secret-status'] })
+			queryClient.invalidateQueries({ queryKey: ['site-publish-status'] })
+			queryClient.invalidateQueries({ queryKey: ['settings'] })
+		},
+	})
+}
+
+/**
+ * Supprimer la clé de publication. L'URL est conservée.
+ */
+export function useDeleteSitePublishKey() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async () => {
+			return await fetchWithAuth(pb, '/api/settings/site-publish', {
+				method: 'DELETE',
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['site-publish-status'] })
 			queryClient.invalidateQueries({ queryKey: ['settings'] })
 		},
 	})
