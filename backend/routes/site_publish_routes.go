@@ -116,6 +116,17 @@ func RegisterSitePublishRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-API-Key", apiKey)
 
+		// Sans agent explicite, Go envoie « Go-http-client/1.1 » — et la couche
+		// anti-bot de l'hébergement mutualisé le REJETTE, avec une page HTML
+		// « The page is temporarily unavailable » en 503. Constaté le 10 août
+		// 2026 : à clé, URL et corps identiques, `Go-http-client/1.1` reçoit
+		// cette page, `curl/8.0` et l'agent ci-dessous reçoivent la réponse
+		// normale de l'endpoint.
+		//
+		// Le symptôme est trompeur : le PHP n'est jamais atteint, donc rien
+		// n'indique que la requête a été filtrée avant lui.
+		req.Header.Set("User-Agent", "PocketApp/1.0 (publication menu)")
+
 		client := &http.Client{Timeout: sitePublishTimeout}
 		resp, err := client.Do(req)
 		if err != nil {

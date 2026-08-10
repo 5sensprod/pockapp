@@ -202,12 +202,22 @@ Le même problème vaut pour WordPress : `VITE_WP_USER` et
 `VITE_WP_APP_PASSWORD` ([`constants.js:11`](file:///I:/divi-child/frontend-wp/src/utils/constants.js))
 alimentent une authentification Basic depuis le client.
 
-> **Aggravation constatée le 8 août 2026 :** ces valeurs ne sont pas seulement
-> inlinées dans le bundle livré — **`frontend-wp/.env` est versionné dans le
-> dépôt du site**, clés WooCommerce, identifiant WordPress et mot de passe
-> applicatif en clair. Elles sont donc aussi dans l'historique Git, où les
-> révoquer ne les efface pas. À traiter avec le reste de 3.1 : révoquer et
-> réémettre d'abord, nettoyer ensuite.
+> **Note du 8 août 2026, ~~aggravation~~ — CORRIGÉE le 10 août.** J'avais écrit
+> ici que `frontend-wp/.env` était « versionné dans le dépôt du site » et donc
+> présent dans l'historique Git. **C'est faux.** Vérifié : le fichier est ignoré
+> (`frontend-wp/.gitignore:26`), n'a jamais été suivi, et n'apparaît dans aucun
+> commit.
+>
+> L'origine de l'erreur mérite d'être notée, parce qu'elle est facile à
+> reproduire : l'audit du dépôt du site signalait que ce fichier « contient en
+> clair des clés WooCommerce et un mot de passe applicatif » — ce qui est vrai
+> **sur le disque**. J'en ai déduit qu'il était versionné, sans le vérifier, et
+> je l'ai écrit au même niveau de certitude que le reste. Un fichier présent
+> dans un répertoire de travail n'est pas un fichier versionné.
+>
+> **Ce qui reste vrai, et qui est la faille elle-même :** les valeurs préfixées
+> `VITE_` sont inlinées en clair dans le bundle livré au navigateur. Rien à
+> purger dans l'historique ; tout à révoquer et réémettre.
 
 **Portée.** Une clé WooCommerce en écriture permet de modifier le catalogue et,
 selon les permissions accordées, de lire les commandes — donc des données

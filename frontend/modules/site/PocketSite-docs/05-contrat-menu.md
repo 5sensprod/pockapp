@@ -291,6 +291,17 @@ même cas que `woo_id`, à lire défensivement. Il prend deux formes :
 c'est le repli WooCommerce quand le permalien n'est pas résolu). 506 produits
 n'ont ni l'un ni l'autre, ni `woo_id`.
 
+**Le slug d'AppPos est bien celui de WooCommerce — vérifié le 10 août 2026.**
+C'était une hypothèse, signalée comme non vérifiée. Contrôlée sur la catégorie
+« Guitares classiques » : AppPos donne `woo_id: 1096, slug: guitares-classiques`,
+et `GET /wp-json/wc/v3/products/categories/1096` renvoie
+`slug: guitares-classiques`. La jointure `ref_id` → slug est donc fondée.
+
+**Corollaire à surveiller, lui non résolu :** le site ne charge que
+**188 catégories** (2 pages de 100, `hide_empty=true` — faille 3.2). Une
+destination valide mais absente de ce jeu ne serait pas retrouvée par
+`CategoryPage`. La 1096 y est ; ce n'est pas garanti pour toutes.
+
 **Ne jamais fabriquer un slug à partir du nom.** `CategoryPage.jsx:88-102`
 retombe sur un `includes()` partiel : un slug approché mène silencieusement à
 une autre catégorie. Un slug se lit ou l'entrée n'est pas publiable.
@@ -361,6 +372,46 @@ Trois choses à traiter ensemble à ce ticket, selon §5 de l'audit : le drapeau
 `.env` par défaut sur WordPress, l'invalidation du cache `localStorage`
 (faille 3.6), et le branchement de `DEFAULT_DATA.menus` en repli (faille 3.4) —
 lequel sert aussi de repli en cas de `contractVersion` refusée (§5).
+
+**Un quatrième point, constaté le 10 août 2026 : `/data/menu.json` est mis en
+cache par le navigateur.** La réponse ne porte pas de `Cache-Control`, seulement
+`etag` et `last-modified` — le navigateur applique alors sa propre heuristique.
+Symptôme observé : une publication réussie, le fichier bien à jour sur le
+serveur, et l'ancien contenu affiché au rechargement.
+
+**Il y a donc deux caches à franchir au ticket 8**, pas un seul : celui du
+`localStorage` (24 h) et celui du navigateur sur la requête elle-même. Le second
+se traite à l'appel — paramètre d'unicité sur l'URL, ou en-têtes de requête —
+et ne demande rien au serveur. À vérifier avec l'outillage réseau, cache vidé et
+cache chaud.
+
+#### En développement local, la nouvelle source est bloquée par CORS
+
+Constaté le 10 août 2026, avec `Origin: http://localhost:5174` :
+
+| Source | `Access-Control-Allow-Origin` |
+|---|---|
+| `/wp-json/wp/v2/menus` — source actuelle | `http://localhost:5174` (WordPress renvoie l'origine reçue) |
+| `/data/menu.json` — source nouvelle | **aucun en-tête** |
+
+Le site tourne aujourd'hui en local contre WordPress **parce que WordPress
+renvoie l'en-tête**. Le fichier statique, lui, est servi par Apache sans aucun
+en-tête CORS : un `fetch` depuis `localhost` sera **bloqué par le navigateur**.
+
+**Ce n'est pas un problème de production** — le site et le fichier y sont sur la
+même origine, aucune vérification CORS n'a lieu. C'est un artefact du
+développement local, et c'est là qu'il faut le traiter : **un proxy dans le
+`vite.config` du dépôt du site**, qui n'engage ni le serveur ni le fichier
+publié.
+
+**Écarté — ajouter `Access-Control-Allow-Origin` sur `/data/` :** ce serait
+modifier la production pour un besoin de développement, et ouvrir le fichier à
+toute origine pour un confort local. Le proxy Vite ne coûte rien et ne sort pas
+du poste.
+
+**Le piège** : le symptôme ressemble à un bogue du code de bascule — l'ancienne
+source marche, la nouvelle « ne charge pas ». Le message est en console, pas
+dans l'application.
 
 ---
 

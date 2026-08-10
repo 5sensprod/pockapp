@@ -230,25 +230,36 @@ function NotificationKeySection() {
 // La clé n'est jamais relue : ce formulaire l'écrit, et sait seulement si elle
 // existe. Au ticket 6, c'est le Go qui la lira pour poser l'en-tête.
 
-const PUBLISH_URL_PLACEHOLDER =
+/**
+ * URL de publication en production. Sert de **valeur par défaut réelle**, pas
+ * de placeholder.
+ *
+ * La première version de cette section l'affichait en `placeholder` : le champ
+ * paraissait rempli alors qu'il était vide, la clé partait seule, et la
+ * publication échouait en `412` sans que rien à l'écran ne l'explique. Un
+ * réglage obligatoire ne se suggère pas en gris.
+ */
+const DEFAULT_PUBLISH_URL =
 	'https://axemusique.shop/server/api/publish-menu.php'
 
 function SitePublishSection() {
 	const [apiKey, setApiKey] = useState('')
 	const [showKey, setShowKey] = useState(false)
 	const [endpointUrl, setEndpointUrl] = useState('')
+	const [urlTouched, setUrlTouched] = useState(false)
 
 	const { data: status, isLoading: statusLoading } = useSitePublishStatus()
 	const save = useSetSitePublish()
 	const deleteKey = useDeleteSitePublishKey()
 
-	// L'URL n'est pas un secret : on la préremplit avec celle enregistrée, pour
-	// qu'elle se relise et se corrige. La clé, elle, part toujours d'un champ vide.
+	// L'URL n'est pas un secret : on affiche celle enregistrée pour qu'elle se
+	// relise et se corrige, et la valeur par défaut quand il n'y en a aucune.
+	// `urlTouched` empêche l'arrivée tardive du statut d'écraser une saisie en
+	// cours. La clé, elle, part toujours d'un champ vide.
 	useEffect(() => {
-		if (status?.endpoint_url) {
-			setEndpointUrl(status.endpoint_url)
-		}
-	}, [status?.endpoint_url])
+		if (urlTouched || !status) return
+		setEndpointUrl(status.endpoint_url || DEFAULT_PUBLISH_URL)
+	}, [status, urlTouched])
 
 	const urlChanged = endpointUrl.trim() !== (status?.endpoint_url ?? '')
 	const hasSomethingToSave = !!apiKey.trim() || urlChanged
@@ -256,7 +267,12 @@ function SitePublishSection() {
 	const handleSave = async () => {
 		const url = endpointUrl.trim()
 
-		if (url && !/^https?:\/\//.test(url)) {
+		// L'URL n'est pas facultative : sans elle, la clé seule ne publie rien.
+		if (!url) {
+			toast.error("L'URL de l'endpoint est obligatoire")
+			return
+		}
+		if (!/^https?:\/\//.test(url)) {
 			toast.error("L'URL doit commencer par http:// ou https://")
 			return
 		}
@@ -313,13 +329,21 @@ function SitePublishSection() {
 					<Input
 						id='site-publish-url'
 						type='url'
-						placeholder={PUBLISH_URL_PLACEHOLDER}
 						value={endpointUrl}
-						onChange={(e) => setEndpointUrl(e.target.value)}
+						onChange={(e) => {
+							setUrlTouched(true)
+							setEndpointUrl(e.target.value)
+						}}
 					/>
 					<p className='text-xs text-muted-foreground'>
 						L'adresse du script de réception, en POST. Le fichier publié est
 						ensuite lu par le site à <code>/data/menu.json</code>.
+						{!statusLoading && !status?.endpoint_url && (
+							<span className='block text-amber-600'>
+								Valeur par défaut proposée, pas encore enregistrée — «
+								Enregistrer » la validera.
+							</span>
+						)}
 					</p>
 				</div>
 

@@ -34,10 +34,16 @@ PHP.
 | `config/config.php.example` | modèle de configuration | oui |
 | `config/config.php` | la configuration réelle, **avec la clé** | **non** (`.gitignore`) |
 | `config/.htaccess` | interdit l'accès HTTP au dossier de configuration | oui |
-| `schema.sql` | schéma MySQL de l'option C — **non joué** | oui |
 
-`schema.sql` est là pour que le passage de A à C reste une après-midi. Il ne
-décrit rien de ce qui tourne aujourd'hui. Ne pas le jouer.
+**`schema.sql` a été supprimé le 10 août 2026.** Il décrivait le stockage du
+*menu* en MySQL — l'option C de §4.3 de l'audit — et cette piste est abandonnée :
+le menu tient en quelques kilo-octets, le fichier statique lui convient, et
+aucun des quatre déclencheurs de §4.5 n'a été atteint après mise en production.
+
+Le garder aurait été trompeur pour la mission suivante — sortir le **catalogue**
+de WooCommerce —, qui aura bien besoin d'une base SQL, mais d'un schéma qui n'a
+rien à voir avec celui-là. Voir le bloc « Le menu reste en JSON statique » de
+`docs/DECISIONS.md`.
 
 ---
 
@@ -300,6 +306,38 @@ $apiKey.Length
 
 ---
 
+## Une couche anti-bot filtre les requêtes avant Apache
+
+**Constaté le 10 août 2026, en cherchant pourquoi la publication échouait alors
+que tous les tests `curl` passaient.**
+
+L'hébergement place un filtre devant Apache — ses en-têtes `X-WS-Origin` et
+`X-WS-RateLimit-*` apparaissent sur toute réponse. Il **rejette l'agent
+utilisateur par défaut de Go**. À clé, URL et corps rigoureusement identiques :
+
+| `User-Agent` | Réponse |
+|---|---|
+| `Go-http-client/1.1` | `503` + page HTML « The page is temporarily unavailable » |
+| `curl/8.0` | `422` JSON — la réponse normale de l'endpoint |
+| `PocketApp/1.0 (publication menu)` | `422` JSON |
+
+**Le symptôme est trompeur et coûteux à diagnostiquer** : le PHP n'est jamais
+atteint, donc ni son journal, ni ses validations, ni aucun des tests de la
+section précédente ne peuvent en témoigner — ils passent tous par `curl`, qui
+envoie son propre agent. Côté PocketApp, cela remontait en « réponse inattendue
+du serveur de publication ».
+
+`backend/routes/site_publish_routes.go` pose donc un `User-Agent` explicite.
+**Tout nouvel appel vers ce domaine doit en faire autant.**
+
+**Ce que ça implique pour la suite :** l'endpoint est protégé par une couche
+qu'on ne contrôle pas et dont les règles peuvent changer sans préavis — rythme
+des requêtes, taille du corps, agent. La parade n'est pas de la deviner, c'est
+de **remonter le corps de la réponse** plutôt qu'un message résumé, ce que fait
+désormais la chaîne Go → React.
+
+---
+
 ## Hygiène
 
 - **Aucun script de diagnostic ne reste en ligne.** Un `debug-key.php` ou
@@ -315,7 +353,7 @@ $apiKey.Length
 
 ## Ce que ce dossier ne fait pas
 
-- **Pas de MySQL.** Voir `schema.sql`.
+- **Pas de MySQL.** Le menu est un fichier, et le reste.
 - **Pas de lecture.** Le site lit le fichier statique, pas un endpoint.
 - **Pas d'historique, pas de retour arrière.** Une publication écrase la
   précédente. C'est le déclencheur n°2 de §4.5 qui fera basculer sur l'option C.

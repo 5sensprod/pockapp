@@ -101,8 +101,17 @@ export function usePublishMenu() {
 				)
 			}
 
+			// La couche Go joint `status` et `body` quand le serveur distant a
+			// répondu autre chose que du JSON — page d'erreur de l'hébergeur,
+			// avertissement PHP, redirection. C'est précisément ce cas qui est
+			// impossible à diagnostiquer sans voir le corps, donc on le montre.
+			const detail = payload as { status?: number; body?: string }
+			const suffix = detail?.body
+				? ` — le serveur a répondu ${detail.status ?? '?'} : ${detail.body.slice(0, 200)}`
+				: ''
+
 			throw new PublishTransportError(
-				rejection?.error ?? `Erreur ${response.status}`,
+				(rejection?.error ?? `Erreur ${response.status}`) + suffix,
 				response.status,
 			)
 		},

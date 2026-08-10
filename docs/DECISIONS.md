@@ -10,6 +10,129 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le menu reste en JSON statique — l'option C est abandonnée pour lui — 2026-08-10
+
+Le menu ne passera pas en MySQL. `server/schema.sql`, qui décrivait ce stockage,
+est **supprimé**. Le fichier statique reste, définitivement, la forme du menu
+publié.
+
+Ce bloc **clôt** la partie « C ensuite » du bloc « Couche distante : JSON
+statique déposé par PHP » du 2026-08-06, pour le seul menu. Le raisonnement de
+ce bloc-là n'est pas désavoué — il est arrivé à son terme : on a soigné le
+contrat, pris le stockage le plus simple, et le plus simple a suffi.
+
+**Ce qui le justifie, après mise en production :** le document publié fait
+quelques kilo-octets, aucun des quatre déclencheurs de §4.5 de l'audit n'est
+atteint, et le menu s'affiche en ~244 ms sans PHP ni base sur le chemin de
+lecture. Le passage à MySQL n'apporterait que l'historique des publications —
+un besoin qui ne s'est pas manifesté en trois jours d'usage.
+
+**Pourquoi supprimer le fichier plutôt que le garder « au cas où » :** il aurait
+été trompeur. La mission suivante — sortir le **catalogue** de WooCommerce —
+aura bien besoin d'une base SQL, et quelqu'un aurait ouvert `schema.sql` en
+croyant y trouver un point de départ. Il décrit des publications de menu, table
+`menu_publication` et colonne `payload` comprises : rien de réutilisable pour
+des produits, des catégories et des marques.
+
+**Remise en cause si :** un besoin de retour arrière sur publication du menu
+apparaît — déclencheur n°2 de §4.5, toujours valable. Il se traiterait alors
+sans doute dans la base du catalogue plutôt que dans une base à lui.
+
+## Le menu publié est la seule source du menu affiché — 2026-08-10
+
+**Annule le bloc « Le menu affiché n'est pas seulement le menu publié » du même
+jour.** L'injection des sous-catégories WooCommerce dans le menu est
+**supprimée** : `useNavigation.js` du dépôt du site ne lit plus les catégories,
+et `useWordPress()` n'y est même plus importé. Le menu rendu est exactement le
+contenu de `menu.json`.
+
+**Ce qui a changé en quelques heures, et ce n'est pas un fait nouveau :** le
+bloc annulé arbitrait en faveur du confort — l'arborescence se maintenait seule.
+Le propriétaire du projet a posé une exigence qui prime : **plus aucun lien avec
+WordPress pour l'affichage du menu.** Or WooCommerce est servi par WordPress.
+Garder l'injection, c'était retirer la dépendance au *menu* WordPress tout en la
+laissant intacte pour son *contenu* — la moitié du travail, avec l'apparence de
+la totalité.
+
+**Ce qui rend l'échange acceptable :** le menu WordPress importé porte déjà
+20 sous-entrées choisies à la main. Elles remplacent exactement ce que
+l'injection produisait automatiquement, en mieux : triées, nommées et masquables
+depuis PocketApp. On ne perd pas une fonctionnalité, on la reprend en main.
+
+**Trois gains, qui sont les raisons de la décision :**
+
+- **`menu.json` redevient diagnosticable seul.** Lire le fichier publié suffit à
+  savoir ce que voit un visiteur — c'était l'un des deux buts de `ref` en §3 du
+  contrat, perdu par l'injection.
+- **Le menu ne dépend plus d'aucune API à l'affichage.** Ni `wp/v2`, ni `wc/v3`.
+  Vérifié : 15 liens rendus, tous présents dans le document publié, aucun ajout.
+- **Ordre, libellé et visibilité des sous-entrées reviennent à PocketApp**, ce
+  que l'injection interdisait.
+
+**Le prix, assumé :** le menu ne suit plus le catalogue. Une nouvelle
+sous-catégorie n'apparaîtra que si on l'ajoute dans PocketApp et qu'on republie.
+C'est l'échange demandé — l'indépendance contre l'automatisme.
+
+**Effet de bord qu'il a fallu traiter en même temps, et qui n'était pas
+évident :** `convertToReactUrl` ne gardait que le **premier segment** d'une URL
+de catégorie. C'était sans conséquence tant que les sous-catégories injectées
+portaient leur `reactUrl` déjà calculée — elles ne passaient pas par cette
+fonction. L'injection coupée, une entrée `guitares-folk/folk-electro` aurait été
+tronquée en `guitares-folk` et aurait mené à la catégorie **parente, sans
+erreur**. La troncature est supprimée ; `CategoryPage` résout sur le dernier
+segment et accepte le chemin complet. Vérifié dans un navigateur.
+
+**Remise en cause si :** maintenir les sous-entrées à la main devient une charge
+— auquel cas la réponse n'est pas de rétablir l'injection, mais de générer ces
+entrées dans PocketApp au moment de l'édition, où elles resteraient
+maîtrisables et publiées.
+
+## ~~Le menu affiché n'est pas seulement le menu publié~~ — 2026-08-10 — annulée le 2026-08-10 par « Le menu publié est la seule source du menu affiché »
+
+**Constat d'abord, décision ensuite.** Le site n'affiche pas le document publié
+tel quel : quand une entrée pointe vers une catégorie racine, il y **greffe les
+sous-catégories lues chez WooCommerce**, au moment du rendu.
+`useNavigation.js:119-135` du dépôt du site (`buildCategoryChildren`, `:85-106`)
+— code antérieur au MVP, découvert en vérifiant le ticket 8, pas écrit pour lui.
+
+Vérifié le 10 août 2026 : une entrée « Guitare classique » vers la catégorie
+1096 produit à l'écran sept sous-entrées (Classiques 1/4 & 1/2, 3/4, 4/4, 7/8,
+électro, pour gauchers, Flamenco) et un « Voir tout → », dont **aucune n'est
+dans `menu.json`**.
+
+**Décision : on garde.** L'arborescence reste à jour toute seule, sans rien
+republier, et c'est le modèle d'hydratation voulu — le catalogue vient de
+WooCommerce pendant toute la transition.
+
+**Écarté — publier les sous-catégories comme entrées réelles :** il faudrait
+recopier dans `site_menu` une arborescence qui vit ailleurs, et republier à
+chaque évolution du catalogue. On échangerait une hydratation automatique
+contre un problème de synchronisation que PocketApp devrait résoudre — soit la
+faille 3.3 (copies non réconciliées) étendue au menu.
+
+**Ce que ça coûte, et qu'il faut assumer les yeux ouverts :**
+
+- **`menu.json` ne décrit pas entièrement ce que voit un visiteur.** Diagnostiquer
+  le menu en lisant le seul fichier publié — un des deux buts de `ref` selon §3
+  du contrat — ne suffit plus.
+- **Aucun contrôle depuis PocketApp** sur les sous-catégories injectées :
+  ni masquage, ni renommage, ni ordre, ni exclusion.
+- **Le menu dépend encore de WooCommerce à l'affichage.** Le MVP a retiré la
+  dépendance au *menu* WordPress, pas celle-ci.
+- **La faille 3.2 s'applique en silence** : le site ne charge que 188 catégories
+  (2 pages de 100, `hide_empty`) ; au-delà, des enfants manqueraient sans erreur.
+- **Décalage visible** : menu publié prêt à ~470 ms, catégories à ~4,2 s. Le
+  sous-menu se remplit après coup.
+- **Condition non évidente** : l'injection n'a lieu que pour une catégorie
+  **racine** (`cat.parent === 0`, `useNavigation.js:128`) et si
+  `VITE_USE_REACT_CATEGORIES` vaut `true`. Une entrée vers une sous-catégorie
+  n'aura pas d'enfants, sans que rien ne le signale.
+
+**Remise en cause si :** la couche distante remplace WooCommerce comme catalogue
+— l'injection n'aurait alors plus de source, et la question se reposera d'
+elle-même. Ou si le besoin apparaît de maîtriser l'ordre ou la visibilité des
+sous-entrées depuis PocketApp.
+
 ## Clé de publication dédiée, document composé en React, POST émis par le Go — 2026-08-08
 
 Trois décisions liées, prises ensemble parce qu'elles se déterminent l'une

@@ -56,12 +56,12 @@ Trois, et trois seulement :
 
 Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
 
-**Une quatrième est prévue, pas encore écrite** : la publication du menu vers
-`https://axemusique.shop/server/api/publish-menu.php` (POST, en-tête
-`X-API-Key`). Le côté serveur est **déployé et opérationnel** depuis le
-ticket 5 (`server/api/publish-menu.php`) ; **aucun code de PocketApp ne
-l'appelle** — c'est le ticket 6. À inscrire ci-dessus, en point 4, le jour où
-c'est fait.
+4. **Publication du menu** — `backend/routes/site_publish_routes.go` —
+   `https://axemusique.shop/server/api/publish-menu.php`, POST, en-tête
+   `X-API-Key`. Sortante uniquement, déclenchée par le bouton « Publier le
+   menu » (ticket 6). L'URL et la clé sont des réglages
+   (`site_publish_url`, `site_publish_api_key`) ; rien n'est en dur.
+   Le code serveur qui reçoit est dans `server/`.
 
 ## Commandes
 
@@ -91,6 +91,12 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
 - **L'hébergement du site est un mutualisé PHP/MySQL.** Aucun processus
   persistant : pas de Node, pas de Docker, pas de WebSocket serveur, pas de
   SQLite distant. Ne pas proposer de solution qui en suppose un.
+- **Une couche anti-bot filtre axemusique.shop avant Apache**, et elle **rejette
+  l'agent utilisateur par défaut de Go** (`Go-http-client/1.1`) : page HTML
+  « The page is temporarily unavailable » en `503`, le PHP n'étant jamais
+  atteint. Tout appel Go vers ce domaine doit poser un `User-Agent` explicite —
+  voir `backend/routes/site_publish_routes.go`. Constaté le 2026-08-10, à clé,
+  URL et corps identiques.
 - **Ne pas toucher `wp-admin` ni `wp-json`** dans le `.htaccess` du site tant
   que WordPress sert le catalogue et la médiathèque.
 - **Secrets :** `package.json` contient le mot de passe PocketBase en clair
@@ -99,8 +105,17 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
 
 ## Travail en cours
 
-Sortir le menu de navigation de WordPress. 9 tickets ordonnés dans
+**Aucun.** Sortir le menu de navigation de WordPress : **fait, en production
+depuis le 10 août 2026.** Le menu est édité dans le module `site`, publié vers
+`axemusique.shop` (point 4 ci-dessus), et servi en statique — le site ne lit
+plus `/wp-json/wp/v2/menus`, l'appel a disparu de son bundle.
+
+Historique des neuf tickets et état réel :
 [`frontend/modules/site/PocketSite-docs/README.md`](frontend/modules/site/PocketSite-docs/README.md).
+
+**Prioritaire et non traité :** la faille 3.1 — clés WooCommerce en clair dans
+le bundle public du site. Indépendante de la refonte, elle lui était déclarée
+prioritaire du premier jour et ne l'a jamais été dans les faits.
 
 ## Attentes de travail
 

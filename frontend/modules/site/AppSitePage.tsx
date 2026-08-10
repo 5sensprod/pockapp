@@ -37,9 +37,10 @@ export function AppSitePage() {
 				<CardHeader>
 					<CardTitle className='text-lg'>Menu de navigation</CardTitle>
 					<CardDescription>
-						Édité ici, publié vers axemusique.shop dans un second temps. La
-						publication n'est pas encore branchée : le site continue de servir
-						le menu WordPress.
+						Édité ici, publié vers axemusique.shop d'un clic. Publier écrit le
+						fichier distant, mais{' '}
+						<strong>le site affiche encore le menu WordPress</strong> : la
+						bascule est le ticket 8.
 					</CardDescription>
 				</CardHeader>
 				<CardContent>

@@ -12,6 +12,8 @@
     "build:windows-installer": "wails build -platform windows/amd64 -nsis",
     "build:mac": "wails build -platform darwin/universal",
     "build:linux": "wails build -platform linux/amd64",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "format": "pnpm biome check --write ./frontend/",
     "generate": "wails generate module",
     "router:generate": "tsr generate --routesDir=frontend/routes",
@@ -76,6 +78,7 @@
     "vite": "^5.4.9",
     "vite-plugin-top-level-await": "^1.4.4",
     "vite-plugin-wasm": "^3.3.0",
-    "vite-tsconfig-paths": "^5.0.1"
+    "vite-tsconfig-paths": "^5.0.1",
+    "vitest": "^2"
   }
 }

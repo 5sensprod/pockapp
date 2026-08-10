@@ -1,19 +1,23 @@
 # PocketSite — pilotage du site axemusique.shop
 
-Module en construction. Objectif de la phase en cours : sortir le menu de
-navigation de WordPress.
+Module en production. **Mission « menu » terminée le 10 août 2026** : la
+navigation d'axemusique.shop est éditée ici et publiée d'un clic ; le site ne
+lit plus WordPress pour l'afficher.
+
+**Mission suivante : sortir le catalogue de WooCommerce** — produits,
+catégories, marques, vers une base SQL sur IONOS. Phase d'analyse uniquement,
+aucun code. Point d'entrée : [`06-rituel-catalogue.md`](06-rituel-catalogue.md).
 
 ## Par où commencer
 
 | Fichier | Quoi | Fiabilité |
 |---|---|---|
+| [`06-rituel-catalogue.md`](06-rituel-catalogue.md) | **À lire en premier pour la suite.** Rituel de reprise : sortir le catalogue de WooCommerce | carte de départ, inventaire non lu |
 | [`03-audit-resultats.md`](03-audit-resultats.md) | **Fait foi.** Flux réel, failles, architecture retenue, tickets | lu dans le code, références données |
 | [`05-contrat-menu.md`](05-contrat-menu.md) | **Fait foi sur la forme publiée.** URL, format du `menu.json`, notes pour les tickets 5 et 8 | contrat, à respecter |
 | [`docs/DECISIONS.md`](../../../../docs/DECISIONS.md) | **Hors de ce dossier** — journal du dépôt. Contrat du menu, schéma de `site_menu` | fait foi sur ce qui a été écarté |
 | [`00-contexte.md`](00-contexte.md) | Cadrage, arbitrages tranchés | corrigé après audit |
-| [`01-audit-architecture.md`](01-audit-architecture.md) | Prompt de la session d'audit | archive |
-| [`02-methode-memoire-agents.md`](02-methode-memoire-agents.md) | Prompt de la session méthode | archive |
-| [`04-lancer-un-agent.md`](04-lancer-un-agent.md) | Installer Claude Code, lancer les sessions | archive |
+| [`archive/`](archive/) | Prompts déjà exécutés, énoncés de tickets | **ne fait pas foi** |
 
 En cas de contradiction entre deux fichiers, `03-audit-resultats.md` gagne —
 sauf sur la **forme du menu publié et son URL**, où `05-contrat-menu.md` gagne.
@@ -23,34 +27,42 @@ C'est le seul fichier d'ici destiné à être lu depuis les deux autres dépôts
 suivre l'avancement. Son tableau de tickets dit ce qui était prévu le 6 août
 2026 ; **le tableau ci-dessous fait foi sur l'état réel des tickets**, libellés
 compris. Un ticket dont le périmètre a bougé est reformulé ici, pas là-bas.
-Les fichiers `01`, `02`, `04` sont des prompts déjà exécutés : ils disent ce
-qu'on a demandé, pas ce qui est vrai.
+Les prompts déjà exécutés sont dans [`archive/`](archive/) : ils disent ce qu'on
+a demandé, pas ce qui est vrai.
 
 ## Où en est-on
 
-**Ticket en cours : aucun.** Tickets 1 à 4 terminés le 6 août 2026, le 5 le
-7 août — **écrit, déployé et validé en réel sur le mutualisé** — et le 5b le
-8 août. Le 6 (« Publier le menu ») est le prochain sur le chemin.
+**Les neuf tickets sont terminés. Le MVP est en production depuis le 10 août
+2026.** 1 à 4 le 6 août, le 5 le 7, le 5b et le 6 le 8, les 7, 8 et 9 le 10.
+
+**Le menu de navigation d'axemusique.shop ne vient plus de WordPress.** Il est
+édité dans PocketApp, publié d'un clic, et servi en statique.
+
+```
+PocketApp (site_menu)
+   │  composition + résolution ref → url, en React
+   ▼
+POST https://axemusique.shop/server/api/publish-menu.php   ← X-API-Key, depuis le Go
+   │  validation du contrat, écriture atomique
+   ▼
+GET  https://axemusique.shop/data/menu.json                ← lecture statique, sans PHP
+   │
+   ▼
+site React — seule source du menu affiché
+```
+
+**Constaté dans le bundle en production** (`/assets/index-By-vV8I8.js`) :
+`data/menu.json` présent, **`wp/v2/menus` absent — zéro occurrence**. L'ancienne
+source n'est pas désactivée par un drapeau, elle n'est plus dans le code livré.
 
 **Le 5b n'était pas au plan initial.** Il porte le réglage de la clé et de
 l'URL de publication, que le ticket 6 supposait acquis sans que rien ne les
-range : section « Publication du site » dans Réglages > Clés API. Séparé du 6
-pour qu'il se teste seul, sans qu'aucune publication existe.
+range : section « Publication du site » dans Réglages > Clés API.
 
-L'endpoint existe et répond :
-
-```
-POST https://axemusique.shop/server/api/publish-menu.php   ← X-API-Key
-GET  https://axemusique.shop/data/menu.json                ← lecture statique
-```
-
-Une publication réelle a été acceptée et a créé `data/menu.json`. Détail des
-tests passés, arborescence en ligne et particularités PowerShell :
-[`server/README.md`](../../../../server/README.md).
-
-**Le ticket 7 n'est pas fait pour autant.** Son objet est de constater que le
-`menu.json` déposé est bien servi en statique par Apache — le `GET` ci-dessus,
-dont le résultat n'est pas encore consigné. C'est une vérification, pas du code.
+**Ce qui reste vrai et n'a pas été traité :** la faille 3.1 (clés WooCommerce
+dans le bundle public) reste ouverte et prioritaire, `wp-admin` conserve son
+menu inutilisé, et les pages du site continuent de s'hydrater depuis
+WooCommerce — seul le **menu** en est sorti.
 
 | # | Ticket | Dépend de | Dépôt | État |
 |---|---|---|---|---|
@@ -60,10 +72,10 @@ dont le résultat n'est pas encore consigné. C'est une vérification, pas du co
 | 4 | Éditeur d'arbre libre | 1, 2, 3 | PocketApp | **fait** |
 | 5 | Endpoint PHP de réception, `X-API-Key` | 3 | serveur (`server/`) | **fait** |
 | 5b | Réglage de la clé et de l'URL de publication | 5 | PocketApp | **fait** |
-| 6 | Action « Publier le menu » | 4, 5b | PocketApp | à faire |
-| 7 | Exposition du `menu.json` en lecture statique | 5 | serveur | à faire |
-| 8 | Bascule `.env` dans `loadMenu()` + purge cache + repli | 3, 7 | site | à faire |
-| 9 | Drapeau par défaut sur la nouvelle source | 8 | site | à faire |
+| 6 | Action « Publier le menu » | 4, 5b | PocketApp | **fait** |
+| 7 | Exposition du `menu.json` en lecture statique | 5 | serveur | **fait** |
+| 8 | Bascule `.env` dans `loadMenu()` + purge cache + repli | 3, 7 | site | **fait, drapeau à `false`** |
+| 9 | Drapeau par défaut sur la nouvelle source | 8 | site | **fait, en production** |
 
 Les tickets 1 à 5 n'ont aucun effet observable en production. Détail et notes de
 mise en œuvre : section 5 de `03-audit-resultats.md`.
@@ -135,6 +147,115 @@ redécouvre au ticket 6.
   mais une entrée de menu pointant vers un produit mènerait aujourd'hui à une
   page inachevée. À regarder au ticket 6, quand la résolution en URL se
   décidera.
+
+## Après le ticket 8 — le menu ne dépend plus de WordPress du tout
+
+**10 août 2026, hors tickets.** Deux changements demandés une fois le ticket 8
+en place, parce que la bascule seule ne suffisait pas à couper WordPress.
+
+- **Le menu WordPress a été importé dans `site_menu`** —
+  [`scripts/import-wp-menu.mjs`](../../../../scripts/import-wp-menu.mjs), 26
+  entrées, 6 racines, 20 enfants. Script autonome, joué une fois, **ne faisant
+  pas partie de l'application** : lire WordPress depuis PocketApp aurait été une
+  cinquième sortie réseau permanente pour un besoin ponctuel. Tout est importé
+  en **lien manuel**, jamais en référence typée — la résolution `ref` → `url`
+  lit le slug dans AppPos, absent pour 433 catégories sur 463 ; un import typé
+  aurait produit un menu impubliable.
+
+- **L'injection des sous-catégories WooCommerce est supprimée** dans
+  `useNavigation.js` du dépôt du site. Le menu affiché est désormais exactement
+  le menu publié. Raisons, prix et effet de bord sur la troncature d'URL : bloc
+  « Le menu publié est la seule source du menu affiché » de `docs/DECISIONS.md`,
+  qui **annule** celui pris quelques heures plus tôt.
+
+## Notes laissées par le ticket 8
+
+Écrit dans `I:\divi-child` le 10 août 2026. **Rien n'est déployé** : le drapeau
+`VITE_USE_PUBLISHED_MENU` vaut `false`, `dist/` est ignoré par Git. Le ticket 9
+est de le passer à `true` et de rebuilder.
+
+**Vérifié dans un navigateur**, drapeau forcé sur une instance de test : le menu
+publié s'affiche avec sa hiérarchie, sous-menu compris. Ce n'est pas une
+déduction de lecture de code.
+
+- **La conversion `parent: null` → `"0"` était indispensable, et invisible.**
+  `useNavigation.js:109-111` cherche la racine par
+  `item.parent === parentId.toString()` avec `parentId = "0"`. Le document
+  publié met `null`. Mesuré sur le fichier réel : **sans conversion, zéro
+  racine, menu vide** ; avec, l'arbre se construit. §6.3 du contrat annonçait un
+  écart bénin (« `!item.parent` continue de fonctionner ») — c'était faux, le
+  test réel n'est pas celui-là. L'adaptation est faite en un seul endroit,
+  `src/services/published-menu.js` ; aucun composant de navigation n'est touché.
+
+- **Deux dépendances résiduelles à WordPress, trouvées après coup :**
+  `useWordPressData.js` lisait `CACHE_KEYS.MENU` en dur pour l'affichage
+  immédiat (menu WordPress au premier rendu, même site basculé), et n'appelait
+  `loadMenu()` que si `testConnection()` passait — donc WordPress en panne
+  privait le site de son menu *alors qu'il ne le sert plus*. On aurait remplacé
+  la source sans supprimer la dépendance. Corrigé par `activeMenuCacheKey()`,
+  seul endroit qui décide de la clé.
+
+- **Le repli a été réécrit, pas branché.** Détail dans `constants.js` : forme
+  incompatible avec son unique consommateur, `parent` numériques, et URL ne
+  correspondant à aucune route.
+
+- **Le cache s'invalide par construction** : une clé par source. Basculer ne
+  peut pas resservir l'ancien menu, revenir en arrière retrouve le sien, aucune
+  purge à écrire. `clearAllCache()` efface bien les deux.
+
+- **Le menu était affiché ~2,5 s trop tard, et ce n'était pas le mode
+  développement.** Mesuré : le `menu.json` publié arrive en 0,13 s, les marques
+  en 1,64 s, les catégories en ~2 s. Deux causes dans `useWordPressData.js`,
+  toutes deux corrigées, **et c'est la seule incursion dans la performance** —
+  §6 de l'audit la reporte, on n'ouvre pas ce chantier :
+
+  1. le menu était posé dans le même `setData` que tout le reste, donc derrière
+     un `Promise.allSettled` qui attendait produits, catégories et marques. Il a
+     désormais sa propre promesse et s'affiche seul ;
+  2. `testConnection()` s'exécutait **en série avant tout**, pour 0,64 s et
+     328 Ko d'index `wp-json` que personne ne lit. Son seul rôle est de décider
+     s'il faut interroger WordPress — question sans objet quand la source est le
+     fichier publié. Il est sauté dans ce cas.
+
+  Résultat mesuré dans le navigateur : menu prêt à **244 ms**, aucun appel à
+  `/wp-json/wp/v2/`, le catalogue continuant de charger derrière sans le
+  retenir. Le reste du chargement n'a pas été touché.
+
+## Notes laissées par les tickets 6 et 7
+
+- **L'hébergeur rejette l'agent utilisateur par défaut de Go.** Symptôme :
+  publication en échec, « réponse inattendue du serveur », alors que tous les
+  tests `curl` passent — parce que `curl` envoie son propre agent. Le PHP n'est
+  jamais atteint. Table de comparaison et parade : section dédiée de
+  [`server/README.md`](../../../../server/README.md), et contrainte inscrite
+  dans `CLAUDE.md`.
+
+- **Deux pièges d'interface corrigés en cours de route**, tous deux du même
+  genre — l'information existait, l'écran ne la montrait pas :
+  l'URL de publication était un `placeholder` (champ qui paraît rempli, ne
+  s'enregistre pas, publication en `412`), et le corps de la réponse distante
+  était remonté par le Go puis jeté par le hook. Un réglage obligatoire ne se
+  suggère pas en gris, et un diagnostic transporté doit être affiché.
+
+- **`/data/menu.json` est mis en cache par le navigateur** — pas de
+  `Cache-Control`, seulement `etag`/`last-modified`. Une publication réussie
+  peut donc sembler sans effet. **Deux caches à franchir au ticket 8**, pas un
+  seul. Voir §6.3 du contrat.
+
+- **`vitest` est désormais une dépendance du projet** — `pnpm test`. Neuf cas
+  sur la composition dans `../lib/publish-menu.test.ts` : exemple du contrat,
+  ordre des frères, descendance d'une entrée masquée, absence de parent
+  orphelin, refus global sur une entrée non résolue, forme de `publishedAt`.
+  C'est le premier test automatisé du dépôt.
+
+  **Version 2, pas 4** : `vitest` 4 exige Vite 6, le projet est en Vite 5.
+  Installer la dernière version laissait une dépendance de pair non satisfaite.
+
+- **Avant le ticket 8 : lancer le site en local est un prérequis, pas un
+  confort.** Le site part par FTP sans retour arrière (faille 3.7) ; comparer
+  les deux sources en changeant un drapeau ne peut se faire qu'en local. Deux
+  obstacles à connaître avant de commencer, tous deux consignés en §6.3 du
+  contrat : le CORS sur `/data/menu.json`, et les **deux** caches.
 
 ## Notes laissées par le ticket 5b
 
