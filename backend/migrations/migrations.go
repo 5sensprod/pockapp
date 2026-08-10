@@ -79,6 +79,12 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 
 		// 11. Menu du site axemusique.shop — aucune dépendance
 		ensureSiteMenuCollection,
+
+		// 12. Schéma cible du catalogue (ticket T1 de la migration NeDB →
+		// PocketBase). DOIT rester APRÈS les ensure*Collection du point 2 :
+		// elle reprend ce qu'elles ont créé. Elle ne touche pas aux autres
+		// collections, et refuse de s'exécuter si le catalogue n'est pas vide.
+		MigrateCatalogV2,
 	}
 
 	for _, migrate := range migrations {
