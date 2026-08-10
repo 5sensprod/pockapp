@@ -17,7 +17,17 @@ avec la source), **proposé** (mon avis, avec ce qu'il écarte), **ouvert**.
 
 **Il fait :** lire la base NeDB **dev** (`I:\AppPOS\AppServe\data`) en lecture
 seule, et charger le catalogue dans le PocketBase **local** au modèle du §3
-du 09 — 2306 produits, 219 catégories, 224 marques, 43 fournisseurs.
+du 09 — **2306 produits, 219 catégories, 224 marques, 34 fournisseurs**.
+
+**Les quatre effectifs sont vérifiés** par T2, le 10 août 2026. Deux
+corrections à des documents antérieurs :
+
+- **34 fournisseurs, pas 43.** Le rituel se contredisait lui-même — 43 au §3,
+  34 au tableau du §4bis.6. C'est 34.
+- **2306 produits, et le 2307 relevé un temps était une erreur de lecture :**
+  NeDB intercale des lignes `$$indexCreated` sans `_id`, qui ne sont pas des
+  documents. 3 dans `products.db`, 2 dans `categories.db`, 1 dans `brands.db`
+  et `suppliers.db`. Un lecteur qui ne les écarte pas surcompte.
 
 **Il ne fait pas**, et aucun ticket n'y touche :
 
@@ -153,17 +163,43 @@ Contenu :
 **Vérification :** l'application démarre, les 23 collections sont là, les quatre
 du catalogue ont le nouveau schéma, `parent` cible bien `categories`.
 
-### T2 — Le lecteur NeDB, en lecture seule
+### T2 — Le lecteur NeDB, en lecture seule — **fait le 10 août 2026**
 
-Extraction des quatre fichiers `products.db`, `categories.db`, `brands.db`,
-`suppliers.db`. **Aucune écriture, nulle part.** Sortie : un rapport de
-comptage, à confronter aux chiffres de référence — 2306 / 219 / 224 / 43.
+`backend/catalog/nedb/reader.go` (reconstruction) et
+`backend/cmd/catalog-import/` (rapport). **N'écrit nulle part** — ni dans NeDB,
+ni dans PocketBase.
 
-Un écart de comptage à ce stade arrête tout : il signifie qu'on ne lit pas la
-base qu'on croit. **Rappel :** deux bases AppPos coexistent, dev sur `I:\` et
-production dans `%APPDATA%\AppPOS\data`, et la production en contient
-*davantage* — 3034 contre 2306, écart non expliqué (§8 du rituel). **La cible
-est la dev**, et le rapport doit afficher le chemin lu.
+```bash
+go run ./backend/cmd/catalog-import            # effectifs et comptabilité
+go run ./backend/cmd/catalog-import -fields    # recensement des champs
+```
+
+**Résultat : 2306 / 219 / 224 / 34, conformes.**
+
+Le rapport ne donne pas qu'un total : il rend la **comptabilité de lecture** —
+lignes, vides, métadonnées, données, réécritures, suppressions, documents. Un
+total seul ne permet pas de vérifier qu'on a bien lu ; l'arithmétique, si.
+Sur la base dev : **0 ligne illisible, 0 réécriture, 0 suppression** — le
+journal NeDB est propre, chaque document n'y figure qu'une fois.
+
+**Ce que T2 a établi de neuf :**
+
+- les lignes `$$indexCreated` sans `_id` ne sont pas des documents, et les
+  compter surestime les effectifs (§1) ;
+- **les six champs morts sont confirmés indépendamment** — `categories_refs`,
+  `category_ref`, `description_short`, `specifications`, `sync_errors`,
+  `woo_status`, tous à 0 document sur 2306. Le recensement les marque seul ;
+- **52 champs sur `products`**, dont **21 à types mixtes** — `tax_rate` en
+  `number|string`, `margin_rate` en `null|number|string`, `dateSoumission`,
+  `last_sync`, `last_sold_at` et `updated_at` en `object|string`. PocketBase
+  étant typé, c'est la matière de T3.
+
+**Garde de production.** La commande refuse un répertoire ressemblant à
+`%APPDATA%\AppPOS\AppPOS\data` sauf `-allow-production`. La lecture seule y
+serait techniquement sans danger, mais un rapport produit sur la production et
+lu comme venant de la dev conduirait à des décisions fausses — l'écart de
+728 produits entre les deux bases n'est toujours pas expliqué (§8 du rituel).
+Le rapport affiche systématiquement le chemin lu.
 
 ### T3 — Normalisation et rapport d'anomalies
 
