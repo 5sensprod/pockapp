@@ -150,12 +150,33 @@ c'est voulu : la bascule est T7, derrière un drapeau par défaut sur AppPos.
 
 ## 6. Ce qu'il reste, dans l'ordre
 
-**T5 — `external_refs`.** Y écrire les correspondances WooCommerce :
-`woo_id`, `website_url`, `last_sync` des quatre entités. **2528 attendues.**
-Une ligne par entité en ligne, `platform = woocommerce`. Règle d'intégrité à
-tenir par le chargeur : **un seul** des trois champs `product` / `category` /
-`brand` est rempli — le schéma ne peut pas la porter, les règles d'API
-PocketBase ne s'appliquant pas aux écritures par le DAO Go.
+**T5 — `external_refs`.** Y écrire les correspondances WooCommerce, une ligne
+par entité en ligne, `platform = woocommerce`.
+
+**Mesuré le 11 août sur la base de référence** — et non repris d'un document :
+
+| Entité | `woo_id` | `website_url` |
+|---|---:|---:|
+| products | **2528** | 2528 |
+| categories | **209** | **0** |
+| brands | **237** | **0** |
+| suppliers | 0 | 0 |
+| **total** | **2974** | 2528 |
+
+**Trois choses que ce tableau apprend, et qui ne sont écrites nulle part
+ailleurs :**
+
+1. **2974, pas 2528.** Le 2528 souvent cité ne compte que les **produits** —
+   c'est un compteur de la normalisation, qui ne parcourt les correspondances
+   que côté produit. Catégories et marques en portent 446 de plus.
+2. **`external_url` sera vide pour les catégories et les marques** :
+   `website_url` n'y est jamais renseigné. Seuls les produits en ont une.
+3. **Les fournisseurs n'ont aucun `woo_id`** — cohérent avec le modèle, qui ne
+   leur prévoit pas de relation dans `external_refs`.
+
+Règle d'intégrité à tenir **par le chargeur** : **un seul** des trois champs
+`product` / `category` / `brand` est rempli. Le schéma ne peut pas la porter,
+les règles d'API PocketBase ne s'appliquant pas aux écritures par le DAO Go.
 
 **T6 — contrôles de conformité.** Rejouables, en lecture seule. Comptages,
 absence de relation orpheline, forme de l'arbre, et surtout : **la règle de

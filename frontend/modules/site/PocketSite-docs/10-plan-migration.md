@@ -464,6 +464,25 @@ Tout le reste s'enchaîne.
 
 ---
 
+## 8. Ce que ce plan ne referme pas, et qui reste prioritaire
+
+**La faille 3.1 — clés WooCommerce en lecture-écriture dans le bundle public du
+site.** Déclarée prioritaire depuis le premier jour, jamais traitée. La sortie
+de WooCommerce la refermera ; **elle ne doit pas attendre cette mission.**
+
+Également hors périmètre, et consignés pour ne pas être perdus :
+
+- `GET /api/settings/pocketapp-key` renvoie une clé déchiffrée **sans garde
+  admin** (`backend/routes/secrets_routes.go:125`) ;
+- les identifiants AppPos en dur dans huit fichiers
+  (`loginToAppPos('admin', 'admin123')`) ;
+- les règles d'accès du catalogue sont `@request.auth.id != ''`, **sans
+  filtrage par entreprise** (`catalog.go:33-37`) : sans effet avec une seule
+  entreprise, faille d'isolation dès la deuxième ;
+- `site_menu` hors de `pocketbase-types.ts`.
+
+---
+
 ## 9. État réel au 11 août 2026
 
 **T1 à T4 sont faits, exécutés et vérifiés.** Le catalogue de référence est
@@ -552,20 +571,3 @@ quarantaine et les contrôles se réutilisent tels quels quelle que soit la
 source. Seul le **lecteur** change.
 
 ---
-
-## 8. Ce que ce plan ne referme pas, et qui reste prioritaire
-
-**La faille 3.1 — clés WooCommerce en lecture-écriture dans le bundle public du
-site.** Déclarée prioritaire depuis le premier jour, jamais traitée. La sortie
-de WooCommerce la refermera ; **elle ne doit pas attendre cette mission.**
-
-Également hors périmètre, et consignés pour ne pas être perdus :
-
-- `GET /api/settings/pocketapp-key` renvoie une clé déchiffrée **sans garde
-  admin** (`backend/routes/secrets_routes.go:125`) ;
-- les identifiants AppPos en dur dans huit fichiers
-  (`loginToAppPos('admin', 'admin123')`) ;
-- les règles d'accès du catalogue sont `@request.auth.id != ''`, **sans
-  filtrage par entreprise** (`catalog.go:33-37`) : sans effet avec une seule
-  entreprise, faille d'isolation dès la deuxième ;
-- `site_menu` hors de `pocketbase-types.ts`.
