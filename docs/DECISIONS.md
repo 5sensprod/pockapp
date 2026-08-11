@@ -10,6 +10,118 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## La base NeDB de référence est celle de l'installation, pas celle de développement — 2026-08-11
+
+Décision du propriétaire, prise en constatant que le catalogue chargé était
+incomplet.
+
+**La référence est `%APPDATA%\AppPOS\data`.** `I:\AppPOS\AppServe\data` est une
+copie de développement **périmée**, et tout ce qui a été mesuré dessus est à
+reprendre.
+
+| | produits | catégories | marques | fournisseurs |
+|---|---:|---:|---:|---:|
+| **installation — référence** | **3034** | **463** | **287** | **43** |
+| développement — périmée | 2306 | 219 | 224 | 34 |
+
+**Plus du double de catégories.** L'audit du 2026-08-10 ne relevait que l'écart
+sur les produits (+728), en le déclarant inexpliqué ; celui sur les catégories
+n'était mentionné nulle part.
+
+**Ce que la mauvaise base a coûté, et c'est le vrai enseignement :** le modèle
+cible avait **supprimé le champ image des marques** sur la mesure « 0 image sur
+224 ». La mesure était exacte. La base ne l'était pas. La référence porte
+**225 logos sur 287**, dont **26 seulement** ont une URL WordPress : sans la
+décision de copier les fichiers, 199 logos étaient perdus sans que personne le
+voie.
+
+*Une mesure juste sur la mauvaise base est une mesure fausse.* Les quatre
+défauts corrigés le 11 août viennent tous de là, aucun d'une erreur de
+raisonnement.
+
+**À reprendre en conséquence :** tous les chiffres de
+[`07-audit-flux-apppos.md`](../frontend/modules/site/PocketSite-docs/07-audit-flux-apppos.md)
+et de [`09-modele-cible.md`](../frontend/modules/site/PocketSite-docs/09-modele-cible.md).
+Le rituel annonçait d'ailleurs « 43 fournisseurs » — chiffre de l'installation —
+à côté de « 2306 produits » — chiffre de la dev : **il mélangeait déjà les deux
+sans le dire**, et personne ne l'avait vu.
+
+**Écarté — corriger les documents antérieurs :** ils sont datés et font foi sur
+ce qu'ils ont constaté *ce jour-là*. Ils reçoivent un avertissement en tête ;
+l'état réel est au §9 de
+[`10-plan-migration.md`](../frontend/modules/site/PocketSite-docs/10-plan-migration.md).
+
+**Ce que ça ne change pas :** la contrainte de ne pas toucher à la production
+reste entière **côté écriture**. L'outil lit ces bases, il n'y écrit jamais.
+
+**Remise en cause si :** la base d'installation cesse d'être la plus à jour —
+par exemple si le travail reprend sur un autre poste.
+
+## Les images du catalogue sont copiées dans PocketBase — 2026-08-11
+
+Décision du propriétaire. **Annule le §9.2b de
+[`09-modele-cible.md`](../frontend/modules/site/PocketSite-docs/09-modele-cible.md)**,
+qui tranchait pour un champ texte portant des URL.
+
+**Constaté, et c'est ce qui a fait changer d'avis :**
+
+```
+image.src   chemin AppServe relatif, servi par :3000 seulement   1710 / 1710
+image.url   URL WordPress absolue                                  845 / 1710
+source_url  n'existe pas
+```
+
+L'audit §1.3 affirmait que « les URL d'images viennent du `source_url`
+WordPress et ne bougent pas ». **Le champ n'existe nulle part**, et l'URL ne
+couvre que la moitié des images. Charger `src` produisait des images que seul
+AppServe sait servir — or s'affranchir d'AppServe est l'objet de la migration.
+
+**Donc : champs fichier, et copie des fichiers.** 4665 fichiers, 1,7 Go.
+`wp_image_url` conserve l'URL d'origine quand elle existe, pour la
+réconciliation avec le site.
+
+**Écarté — ne garder que l'URL WordPress :** 865 images sur 1710 n'en ont
+aucune. On en perdait la moitié.
+
+**Écarté — faire servir `public/` par PocketApp :** remplace une dépendance à
+AppServe par une autre, sans rien régler.
+
+**Trois défauts corrigés en même temps :** les galeries produit sont conservées
+(747 produits en portent une, l'audit avait conclu de leur absence sur les
+*catégories* à leur absence sur les *produits*) ; les images de catégorie sont
+des **objets** et étaient lues comme des chaînes ; le champ image des marques
+est rétabli.
+
+**Reste ouvert :** 36 images n'existent que sur WordPress. Les télécharger
+suppose un `User-Agent` explicite — la couche anti-bot d'axemusique.shop rejette
+celui de Go, voir `CLAUDE.md`.
+
+**Remise en cause si :** le volume devient un problème, ou si une politique de
+médias centralisée apparaît.
+
+## Le lecteur de fichiers NeDB est transitoire — 2026-08-11
+
+**Trajectoire annoncée par le propriétaire.** À terme :
+
+1. **PocketApp importera le catalogue depuis l'API AppPos** à laquelle il est
+   déjà connecté, et non depuis les fichiers NeDB ;
+2. **le module stock aura un sélecteur AppPos ↔ PocketBase**, pour basculer la
+   source de lecture.
+
+**Conséquence :** `backend/catalog/nedb/` est un outil d'établissement, pas
+d'exploitation. Il a servi à fixer le modèle, le chargeur et les contrôles ; le
+chemin durable passera par `frontend/lib/apppos/`, qui existe déjà.
+
+**Ce que ça préserve :** le schéma, la normalisation, la quarantaine et les
+contrôles se réutilisent tels quels quelle que soit la source. **Seul le lecteur
+change.** C'est précisément pourquoi la normalisation a été séparée de la
+lecture dès le premier jour.
+
+**Le sélecteur est le drapeau de bascule** prévu au ticket T7 du plan, par
+défaut sur AppPos.
+
+---
+
 ## Le modèle cible du catalogue PocketBase est arrêté — 2026-08-10
 
 Aboutissement de la séquence imposée par le bloc « Le modèle cible se conçoit

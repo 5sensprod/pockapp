@@ -6,6 +6,24 @@ consigné dans [`docs/DECISIONS.md`](../../../../docs/DECISIONS.md). Le rituel
 [`08-rituel-migration-pocketbase.md`](08-rituel-migration-pocketbase.md)
 n'autorisait aucun plan avant cette validation ; elle est acquise.
 
+> ## ⚠ Avertissement — 11 août 2026
+>
+> **La base NeDB de référence a changé.** Elle n'est plus
+> `I:\AppPOS\AppServe\data` (développement) mais
+> **`%APPDATA%\AppPOS\data` (installation)** — décision du propriétaire.
+>
+> | | produits | catégories | marques | fournisseurs |
+> |---|---:|---:|---:|---:|
+> | **installation — référence** | **3034** | **463** | **287** | **43** |
+> | développement — périmée | 2306 | 219 | 224 | 34 |
+>
+> **Tous les chiffres mesurés avant cette date le sont sur la base périmée**,
+> ici comme dans [`09-modele-cible.md`](09-modele-cible.md) et
+> [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md). Les sections T2 et T3
+> ci-dessous portent leurs chiffres d'origine, entre parenthèses, et les
+> chiffres de référence en gras. Les autres documents ne sont **pas** réécrits :
+> ils sont datés, et le §9 dit ce qu'ils ont de faux.
+
 **Ce document décrit ce qu'il faut écrire. Il n'écrit rien.**
 
 Trois niveaux de fiabilité, tenus comme dans le 09 : **constaté** (lu ou mesuré,
@@ -443,6 +461,95 @@ Tout le reste s'enchaîne.
   moitié : la caisse ne consomme que dix champs produit.
 - **Comment `frontend-wp` lit en local** — §6.5.4 du rituel. Le contrat de
   données s'écrit **avant** le code qui le consomme, donc pas ici.
+
+---
+
+## 9. État réel au 11 août 2026
+
+**T1 à T4 sont faits, exécutés et vérifiés.** Le catalogue de référence est
+chargé dans le PocketBase local.
+
+### 9.1 Ce qui est en base
+
+| Collection | Chargé | Source |
+|---|---:|---:|
+| products | **2999** | 3034 − 35 en quarantaine |
+| categories | **463** | 463 |
+| brands | **287** | 287 |
+| suppliers | **43** | 43 |
+| external_refs | **0** | T5, non fait |
+
+**Images : 4665 fichiers, 1,7 Go** dans le stockage PocketBase — 225 logos de
+marque, 36 images de catégorie, les images produit et 747 galeries. L'arbre des
+catégories est reconstruit **sans un seul parent introuvable**.
+
+### 9.2 Anomalies sur la base de référence
+
+| Anomalie | Cas | Niveau |
+|---|---:|---|
+| SKU en doublon | **35** | bloquant — en quarantaine |
+| publié mais jamais mis en ligne | 160 | déclaratif |
+| brouillon pourtant en ligne | **97** | déclaratif |
+| slug désambiguïsé | 79 | déclaratif |
+| marge incohérente | 7 | déclaratif |
+| catégorie orpheline | 4 | déclaratif |
+| taux de TVA absent | 1 | déclaratif |
+
+**97 brouillons en ligne contre 5 sur la base dev.** L'écart est trop grand
+pour être ignoré : il dit que la publication a beaucoup dérivé depuis la copie
+de développement. À reprendre avec T5.
+
+Le produit nommé `/` de la base dev **n'existe pas** dans la base de référence.
+
+### 9.3 Ce que le modèle a dû corriger après le premier chargement
+
+Quatre défauts, tous relevés par le propriétaire ou par la vérification qui a
+suivi. Ils sont consignés ici parce qu'ils disent **comment** on s'est trompé :
+
+1. **Les galeries produit étaient perdues.** L'audit avait mesuré
+   `gallery_images` à 0 % sur les catégories et les marques ; la conclusion a
+   glissé aux produits sans vérification. **747 produits** en portent une.
+2. **Les images de catégorie chargeaient vide.** Leur champ `image` est un
+   OBJET, comme celui des produits, et il était lu comme une chaîne.
+3. **Le champ image des marques avait été supprimé** sur la mesure « 0 sur
+   224 ». La mesure était juste, **la base ne l'était pas** : la référence en
+   porte 225 sur 287.
+4. **Les images ne survivaient pas à AppServe.** `image.src` est un chemin que
+   seul AppServe sert ; `source_url`, que l'audit §1.3 donnait pour la source
+   des URL, **n'existe pas**. D'où le passage en champs fichier et la copie.
+
+**La leçon commune : une mesure juste sur la mauvaise base est une mesure
+fausse.** Les quatre défauts viennent de là, pas d'une erreur de raisonnement.
+
+### 9.4 Ce qui reste ouvert
+
+- **36 images n'existent que sur WordPress.** Leur URL est dans
+  `wp_image_url`. Les télécharger suppose un `User-Agent` explicite : la couche
+  anti-bot d'axemusique.shop rejette celui de Go (`CLAUDE.md`).
+- **261 homonymes dans `public/`.** L'index par nom retient le premier trouvé,
+  ce qui est arbitraire. Ne concerne que les 63 images résolues par nom.
+  **Non vérifié** : ce sont probablement des copies d'un même fichier.
+- **Les 35 SKU en doublon**, en quarantaine, jamais tranchés.
+- **`pnpm typegen` reste interdit** tant que `apppos-transformers.ts` n'est pas
+  aligné sur le nouveau schéma : 21 fichiers référencent `price_ht`,
+  `cost_price`, `active`, `stock_max`, `unit`, `weight`.
+
+### 9.5 La trajectoire annoncée, qui change la nature de l'outil
+
+**Propriétaire, 11 août 2026.** À terme :
+
+1. **PocketApp importera depuis l'API AppPos** à laquelle il est déjà connecté,
+   et non depuis les fichiers NeDB ;
+2. **le module stock aura un sélecteur AppPos ↔ PocketBase.**
+
+Conséquence directe : `backend/catalog/nedb/` est **transitoire**. Il a servi à
+établir le modèle, le chargeur et les contrôles ; le chemin durable passera par
+`frontend/lib/apppos/`, déjà en place. Le sélecteur, lui, **est** le drapeau de
+T7 — le plan le prévoyait déjà, par défaut sur AppPos.
+
+Rien de tout cela n'invalide T1 à T4 : le schéma, la normalisation, la
+quarantaine et les contrôles se réutilisent tels quels quelle que soit la
+source. Seul le **lecteur** change.
 
 ---
 

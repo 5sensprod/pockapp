@@ -1,5 +1,31 @@
 # Modèle cible PocketBase — proposition
 
+> ## ⚠ Ce document est daté, et ses chiffres sont périmés — 11 août 2026
+>
+> **Tout ce qui est mesuré ici l'a été sur la base NeDB de développement**
+> (`I:\AppPOS\AppServe\data`), qui n'est **pas** la référence. La référence est
+> la base d'installation, `%APPDATA%\AppPOS\data` :
+>
+> | | produits | catégories | marques | fournisseurs |
+> |---|---:|---:|---:|---:|
+> | **installation — référence** | **3034** | **463** | **287** | **43** |
+> | développement — ce document | 2306 | 219 | 224 | 34 |
+>
+> **Une conclusion de ce document est fausse de ce fait :** « les marques n'ont
+> aucune image (0 sur 224) », §3.3. La référence en porte **225 sur 287**. Le
+> champ a été rétabli.
+>
+> **Trois autres points ont été corrigés après le premier chargement :** les
+> galeries produit sont conservées, les images de catégorie étaient lues comme
+> des chaînes alors que ce sont des objets, et les images sont désormais des
+> **champs fichier** copiés dans PocketBase — le §9.2b de ce document, qui
+> tranchait pour du texte, est caduc.
+>
+> **Le raisonnement du document reste valable ; ses chiffres ne le sont plus.**
+> Il n'est pas réécrit : il est daté, et
+> [`10-plan-migration.md`](10-plan-migration.md) §9 dit l'état réel.
+
+
 **Écrit le 10 août 2026.** Première session du rituel
 [`08-rituel-migration-pocketbase.md`](08-rituel-migration-pocketbase.md), §9 :
 elle traite les questions de modélisation de §5 et s'arrête là.

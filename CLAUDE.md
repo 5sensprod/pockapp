@@ -77,15 +77,19 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
 
 - **Ne pas modifier AppPos.** La caisse en dépend, c'est le maillon le moins
   négociable. PocketApp lit AppPos ; l'inverse n'existe pas.
-- **Les collections catalogue de PocketBase local sont vides — vérifié le
-  2026-08-10** sur `%LOCALAPPDATA%\PocketReact\pb_data` : 0 produit,
-  0 catégorie, 0 marque, 0 fournisseur, et une seule entreprise. `products`,
-  `brands`, `categories` et `suppliers` existent au schéma sans les données
-  d'AppPos. Les hooks de `frontend/lib/queries/` qui les lisent sont branchés
-  sur du vide : ne rien bâtir dessus sans vérifier. Pour une liste réelle, lire
-  AppPos. Ces collections sont un **premier jet jamais utilisé** — voir
-  `docs/DECISIONS.md`, bloc « Les collections catalogue de PocketBase sont un
-  premier jet abandonné ».
+- **Le catalogue PocketBase est chargé depuis le 2026-08-11** :
+  2999 produits, 463 catégories, 287 marques, 43 fournisseurs, et 4665 images
+  (1,7 Go) dans `%LOCALAPPDATA%\PocketReact\pb_data`. Il est une **projection
+  de NeDB**, reconstructible par `go run ./backend/cmd/catalog-import -load`.
+  **Les écrans lisent toujours AppPos** : la bascule est le ticket T7.
+- **La base NeDB de référence est `%APPDATA%\AppPOS\data`** (installation).
+  `I:\AppPOS\AppServe\data` est une copie de développement **périmée** —
+  2306 produits contre 3034, 219 catégories contre 463, et **aucun logo de
+  marque** alors que la référence en porte 225. Tout chiffre mesuré avant le
+  2026-08-11 vient de la base périmée. Voir `docs/DECISIONS.md`.
+- **`pnpm typegen` casserait le front** tant que `apppos-transformers.ts` n'est
+  pas aligné : le schéma catalogue n'a plus `price_ht`, `cost_price`, `active`,
+  `stock_max`, `unit` ni `weight`, et 21 fichiers les référencent.
 - **La base PocketBase est dans `%LOCALAPPDATA%\PocketReact\pb_data`**
   (`main.go:71-75`), pas dans le dépôt. **`I:\pockapp\pb_data` est un vestige**
   de novembre 2025, avec un schéma `products` incompatible (`price`, `cost`,
@@ -125,9 +129,12 @@ s'affranchir d'AppServe, PocketBase devient la source de vérité
 (`docs/DECISIONS.md`, 2026-08-10). Aucune synchronisation de production dans
 cette phase.
 
-**Le modèle cible est arrêté** (`docs/DECISIONS.md`, bloc « Le modèle cible du
-catalogue PocketBase est arrêté »). Point d'entrée du travail en cours :
-[`10-plan-migration.md`](frontend/modules/site/PocketSite-docs/10-plan-migration.md).
+**Point d'entrée pour reprendre :**
+[`11-rituel-reprise.md`](frontend/modules/site/PocketSite-docs/11-rituel-reprise.md).
+Les tickets T1 à T4 sont faits — schéma, lecture NeDB, normalisation,
+chargement. L'état réel est au §9 de
+[`10-plan-migration.md`](frontend/modules/site/PocketSite-docs/10-plan-migration.md) ;
+le modèle est arrêté (`docs/DECISIONS.md`).
 
 En amont, dans l'ordre où ils ont été écrits : le rituel
 [`08-rituel-migration-pocketbase.md`](frontend/modules/site/PocketSite-docs/08-rituel-migration-pocketbase.md),
