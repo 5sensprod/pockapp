@@ -3,7 +3,7 @@
 // Isolé de index.ts pour éviter les imports circulaires :
 // AppSitePage → manifest  ET  index → AppSitePage
 
-import { Globe, Menu } from 'lucide-react'
+import { Globe, Menu, Store } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
 
 export const manifest: ModuleManifest = {
@@ -25,8 +25,13 @@ export const manifest: ModuleManifest = {
 			icon: Menu,
 			items: [
 				{
+					label: 'Catalogue en ligne',
+					to: '/site/catalogue',
+					icon: Store,
+				},
+				{
 					label: 'Menu de navigation',
-					to: '/site/',
+					to: '/site/menu',
 					icon: Menu,
 				},
 			],

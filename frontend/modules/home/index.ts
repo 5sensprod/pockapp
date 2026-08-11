@@ -13,6 +13,7 @@ import {
 	Receipt,
 	Settings,
 	ShoppingCart,
+	Store,
 	Users,
 } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
@@ -88,7 +89,10 @@ export const manifest: ModuleManifest = {
 			id: 'site',
 			label: 'PocketSite',
 			icon: Globe,
-			items: [{ label: 'Menu de navigation', to: '/site/', icon: Menu }],
+			items: [
+				{ label: 'Catalogue en ligne', to: '/site/catalogue', icon: Store },
+				{ label: 'Menu de navigation', to: '/site/menu', icon: Menu },
+			],
 		},
 	],
 }
