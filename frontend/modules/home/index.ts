@@ -5,7 +5,9 @@ import {
 	Database,
 	FileImage,
 	FilePen,
+	Globe,
 	LayoutDashboard,
+	Menu,
 	Monitor,
 	Package,
 	Receipt,
@@ -79,6 +81,14 @@ export const manifest: ModuleManifest = {
 			label: 'PocketStick',
 			icon: FileImage,
 			items: [{ label: 'Mes affiches', to: '/stick', icon: FileImage }],
+		},
+
+		// ── PocketSite ───────────────────────────────────────────────────
+		{
+			id: 'site',
+			label: 'PocketSite',
+			icon: Globe,
+			items: [{ label: 'Menu de navigation', to: '/site/', icon: Menu }],
 		},
 	],
 }

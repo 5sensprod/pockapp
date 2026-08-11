@@ -9,7 +9,7 @@ import {
 import { Outlet } from '@tanstack/react-router'
 
 import { MenuTreeEditor } from './components/MenuTreeEditor'
-import { manifest } from './index'
+import { manifest } from './manifest'
 
 /**
  * Page du module PocketSite.
