@@ -36,19 +36,61 @@ import (
 	"pocket-react/backend/migrations"
 )
 
-// Chiffres de référence de la base DEV, établis par l'audit du 10 août 2026
-// (07-audit-flux-apppos.md). Le rapport les confronte à ce qu'il lit : un
-// écart signifie qu'on ne lit pas la base qu'on croit, et rien ne doit
-// continuer avant de l'avoir expliqué.
+// ── Les deux bases AppPos, et laquelle fait foi ───────────────────────────
 //
-// Rappel : deux bases AppPos coexistent, dev sur I:\ et production dans
-// %APPDATA%\AppPOS\data, et la PRODUCTION en contient DAVANTAGE — 3034 produits
-// contre 2306, écart jamais expliqué. La cible est la dev.
-var referenceCounts = map[string]int{
-	"products":   2306,
-	"categories": 219,
-	"brands":     224,
-	"suppliers":  34,
+// Décision du propriétaire, 11 août 2026 : **la base d'installation fait
+// référence**, pas la base de développement. Cette dernière est périmée.
+//
+//	                             produits  catég.  marques  fourn.
+//	installation (référence)         3034     463      287      43
+//	développement (périmée)          2306     219      224      34
+//
+// L'écart n'est pas marginal : +728 produits et **plus du double de
+// catégories**. Et surtout, les MARQUES Y ONT DES LOGOS — 225 sur 287 —, là où
+// la base dev n'en portait aucun. C'est sur cette mesure que le modèle cible
+// avait supprimé le champ image des marques : la mesure était juste, la base
+// ne l'était pas.
+//
+// Conséquence à garder en tête : tous les chiffres de l'audit du 10 août
+// (07-audit-flux-apppos.md) sont mesurés sur la base dev et sont donc à
+// reprendre. Le §3 du rituel annonçait d'ailleurs « 43 fournisseurs » — chiffre
+// de la base d'installation — à côté de « 2306 produits » — chiffre de la dev :
+// l'audit mélangeait déjà les deux sans le dire.
+//
+// Cette commande LIT ces bases, elle n'y écrit jamais. La contrainte
+// « ne pas toucher à la production » reste entière côté écriture.
+type baseline struct {
+	label  string
+	counts map[string]int
+}
+
+var baselines = map[string]baseline{
+	"installation": {"installation (référence)", map[string]int{
+		"products": 3034, "categories": 463, "brands": 287, "suppliers": 43,
+	}},
+	"dev": {"développement (PÉRIMÉE)", map[string]int{
+		"products": 2306, "categories": 219, "brands": 224, "suppliers": 34,
+	}},
+}
+
+// defaultDataDir — la base d'installation, sous %APPDATA%.
+func defaultDataDir() string {
+	if appData := os.Getenv("APPDATA"); appData != "" {
+		return filepath.Join(appData, "AppPOS", "data")
+	}
+	return `C:\Users\Bossa\AppData\Roaming\AppPOS\data`
+}
+
+// baselineFor reconnaît la base lue à son chemin.
+func baselineFor(path string) baseline {
+	p := strings.ToLower(filepath.ToSlash(path))
+	if strings.Contains(p, "/appdata/roaming/apppos") || strings.Contains(p, "/appdata/apppos") {
+		return baselines["installation"]
+	}
+	if strings.Contains(p, "appserve") {
+		return baselines["dev"]
+	}
+	return baseline{"inconnue", nil}
 }
 
 // Les quatre fichiers du périmètre catalogue. Les autres fichiers de NeDB
@@ -59,25 +101,23 @@ var catalogFiles = []string{"products", "categories", "brands", "suppliers"}
 
 func main() {
 	var (
-		dataDir         = flag.String("data", `I:\AppPOS\AppServe\data`, "répertoire des fichiers NeDB d'AppServe (base DEV)")
-		showFields      = flag.Bool("fields", false, "détailler le recensement des champs et leurs taux de remplissage")
-		minRate         = flag.Float64("min-rate", 0, "avec -fields : n'afficher que les champs dont le taux de remplissage est inférieur à ce seuil (en %)")
-		allowProduction = flag.Bool("allow-production", false, "autoriser la lecture d'un répertoire qui ressemble à la production")
-		doNormalize     = flag.Bool("normalize", false, "normaliser vers le modèle cible et produire le rapport d'anomalies (T3)")
-		detail          = flag.Int("detail", 5, "avec -normalize : nombre de cas détaillés par nature d'anomalie (0 = tous)")
-		doLoad          = flag.Bool("load", false, "ÉCRIRE dans le PocketBase local : purge des quatre collections puis chargement (T4)")
-		pbDir           = flag.String("pb", "", "répertoire pb_data ; par défaut %LOCALAPPDATA%\\PocketReact\\pb_data")
+		dataDir     = flag.String("data", defaultDataDir(), `répertoire des fichiers NeDB ; par défaut la base d'installation %APPDATA%\AppPOS\data`)
+		showFields  = flag.Bool("fields", false, "détailler le recensement des champs et leurs taux de remplissage")
+		minRate     = flag.Float64("min-rate", 0, "avec -fields : n'afficher que les champs dont le taux de remplissage est inférieur à ce seuil (en %)")
+		doNormalize = flag.Bool("normalize", false, "normaliser vers le modèle cible et produire le rapport d'anomalies (T3)")
+		detail      = flag.Int("detail", 5, "avec -normalize : nombre de cas détaillés par nature d'anomalie (0 = tous)")
+		doLoad      = flag.Bool("load", false, "ÉCRIRE dans le PocketBase local : purge des quatre collections puis chargement (T4)")
+		pbDir       = flag.String("pb", "", "répertoire pb_data ; par défaut %LOCALAPPDATA%\\PocketReact\\pb_data")
 	)
 	flag.Parse()
 
 	opts := options{
-		showFields:      *showFields,
-		minRate:         *minRate,
-		allowProduction: *allowProduction,
-		normalize:       *doNormalize || *doLoad, // charger suppose normaliser
-		detail:          *detail,
-		load:            *doLoad,
-		pbDir:           *pbDir,
+		showFields: *showFields,
+		minRate:    *minRate,
+		normalize:  *doNormalize || *doLoad, // charger suppose normaliser
+		detail:     *detail,
+		load:       *doLoad,
+		pbDir:      *pbDir,
 	}
 	if err := run(*dataDir, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ %v\n", err)
@@ -86,13 +126,12 @@ func main() {
 }
 
 type options struct {
-	showFields      bool
-	minRate         float64
-	allowProduction bool
-	normalize       bool
-	detail          int
-	load            bool
-	pbDir           string
+	showFields bool
+	minRate    float64
+	normalize  bool
+	detail     int
+	load       bool
+	pbDir      string
 }
 
 func run(dataDir string, opts options) error {
@@ -101,23 +140,20 @@ func run(dataDir string, opts options) error {
 		return fmt.Errorf("chemin invalide %q: %w", dataDir, err)
 	}
 
-	// Garde production. Le rituel interdit de toucher à %APPDATA%\AppPOS\data.
-	// La lecture seule y serait techniquement sans danger, mais un rapport
-	// produit sur la production et lu comme s'il venait de la dev conduirait à
-	// des décisions fausses — l'écart de 728 produits entre les deux bases n'est
-	// toujours pas expliqué.
-	if looksLikeProduction(abs) && !opts.allowProduction {
-		return fmt.Errorf(
-			"le répertoire %q ressemble à la base de PRODUCTION.\n"+
-				"   La migration se conçoit sur la base DEV (I:\\AppPOS\\AppServe\\data).\n"+
-				"   Si la lecture est volontaire : -allow-production", abs)
-	}
+	base := baselineFor(abs)
 
 	fmt.Println("═══════════════════════════════════════════════════════════════")
-	fmt.Println(" CATALOGUE — EXTRACTION NeDB (ticket T2, lecture seule)")
+	fmt.Println(" CATALOGUE — EXTRACTION NeDB")
 	fmt.Println("═══════════════════════════════════════════════════════════════")
 	fmt.Printf(" Répertoire lu : %s\n", abs)
-	fmt.Println(" Aucune écriture n'est effectuée, ni dans NeDB, ni dans PocketBase.")
+	fmt.Printf(" Base          : %s\n", base.label)
+	fmt.Println(" NeDB est lue, jamais écrite.")
+	if base.label == baselines["dev"].label {
+		fmt.Println()
+		fmt.Println(" ⚠  Cette base est PÉRIMÉE. La référence est la base")
+		fmt.Println("    d'installation (%APPDATA%\\AppPOS\\data) : +728 produits,")
+		fmt.Println("    plus du double de catégories, et les logos de marque.")
+	}
 	fmt.Println()
 
 	cols := make([]*nedb.Collection, 0, len(catalogFiles))
@@ -130,7 +166,7 @@ func run(dataDir string, opts options) error {
 		cols = append(cols, col)
 	}
 
-	discrepancies := reportCounts(cols)
+	discrepancies := reportCounts(cols, base)
 	reportLines(cols)
 
 	if opts.showFields {
@@ -360,20 +396,12 @@ func reportAnomalies(rep *normalize.Report, detail int) {
 	fmt.Println()
 }
 
-// looksLikeProduction reconnaît %APPDATA%\AppPOS\data — PathManager d'AppServe
-// place la production là, et la dev dans le répertoire courant (audit §1.4).
-func looksLikeProduction(path string) bool {
-	p := strings.ToLower(filepath.ToSlash(path))
-	return strings.Contains(p, "/appdata/roaming/apppos") ||
-		strings.Contains(p, "/appdata/apppos")
-}
-
-func reportCounts(cols []*nedb.Collection) []string {
+func reportCounts(cols []*nedb.Collection, base baseline) []string {
 	fmt.Println("── Effectifs ──────────────────────────────────────────────────")
 	fmt.Printf(" %-12s %10s %10s   %s\n", "collection", "lu", "référence", "")
 	var out []string
 	for _, col := range cols {
-		ref, hasRef := referenceCounts[col.Name]
+		ref, hasRef := base.counts[col.Name]
 		mark := "  "
 		switch {
 		case !hasRef:

@@ -105,11 +105,20 @@ func MigrateCatalogV2(app *pocketbase.PocketBase) error {
 	// ── Garde 1 : le schéma est-il déjà à jour ? ──────────────────────────
 	// On teste la forme, pas le nom. `gallery` n'existe que dans la révision
 	// courante : sa présence signe le schéma à jour.
+	upToDate := 0
 	if products, err := app.Dao().FindCollectionByNameOrId("products"); err == nil {
 		if products.Schema.GetFieldByName("gallery") != nil {
-			log.Println("📦 Catalogue déjà au schéma cible")
-			return nil
+			upToDate++
 		}
+	}
+	if brands, err := app.Dao().FindCollectionByNameOrId("brands"); err == nil {
+		if brands.Schema.GetFieldByName("image") != nil {
+			upToDate++
+		}
+	}
+	if upToDate == 2 {
+		log.Println("📦 Catalogue déjà au schéma cible")
+		return nil
 	}
 
 	// ── Garde 2 : la donnée est-elle reconstructible ? ────────────────────
@@ -289,6 +298,25 @@ func createBrandsV2(app *pocketbase.PocketBase, companiesID string) (*models.Col
 			Name:    "description",
 			Type:    schema.FieldTypeText,
 			Options: &schema.TextOptions{Max: types.Pointer(5000)},
+		},
+		// ── Logo ──────────────────────────────────────────────────────────
+		// Rétabli le 11 août 2026. Le modèle cible l'avait supprimé sur la foi
+		// d'une mesure — « les marques n'ont aucune image, 0 sur 224 » — qui
+		// portait sur la base DEV. Sur la base d'installation, qui est la vraie
+		// référence : 225 marques illustrées sur 287, soit 78 %, 20,6 Mo, et
+		// tous les fichiers présents sur disque.
+		//
+		// Seules 26 de ces 225 images portent une URL WordPress : le champ
+		// fichier n'est pas un choix de confort, c'est le seul qui les conserve.
+		&schema.SchemaField{
+			Name:    "image",
+			Type:    schema.FieldTypeFile,
+			Options: imageFileOptions(1),
+		},
+		&schema.SchemaField{
+			Name:    "wp_image_url",
+			Type:    schema.FieldTypeText,
+			Options: &schema.TextOptions{Max: types.Pointer(2000)},
 		},
 		legacyIDField(),
 		companyField(companiesID),

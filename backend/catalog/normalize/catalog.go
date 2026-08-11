@@ -97,6 +97,8 @@ type Brand struct {
 	Name        string
 	Slug        string
 	Description string
+	ImageSrc    string
+	ImageWPURL  string
 	WooID       string
 	WooURL      string
 }
@@ -155,11 +157,17 @@ func normalizeBrands(src *nedb.Collection, out *Catalog, rep *Report) map[string
 			continue
 		}
 		ids[id] = true
+		imgSrc, imgURL := image(d["image"])
+		if imgSrc != "" {
+			rep.Count("logos de marque")
+		}
 		out.Brands = append(out.Brands, Brand{
 			LegacyID:    id,
 			Name:        name,
 			Slug:        slugs.Allocate(id, name, ""),
 			Description: strings.TrimSpace(str(d["description"])),
+			ImageSrc:    imgSrc,
+			ImageWPURL:  imgURL,
 			WooID:       numOrStr(d["woo_id"]),
 			WooURL:      str(d["website_url"]),
 		})

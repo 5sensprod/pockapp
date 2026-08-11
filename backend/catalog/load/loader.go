@@ -176,7 +176,7 @@ func Run(app *pocketbase.PocketBase, cat *normalize.Catalog, rep *normalize.Repo
 		}
 		// L'ordre suit les dépendances : une relation ne peut pointer que vers
 		// un enregistrement déjà écrit.
-		brandIDs, err := loadBrands(tx, cat, res, companyID, quarantine["brands"])
+		brandIDs, err := loadBrands(tx, cat, res, companyID, quarantine["brands"], fl)
 		if err != nil {
 			return err
 		}
@@ -261,7 +261,7 @@ func purge(tx *daos.Dao, res *Result, fsys *filesystem.System) error {
 
 // ── Marques ───────────────────────────────────────────────────────────────
 
-func loadBrands(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID string, quarantine map[string]string) (map[string]string, error) {
+func loadBrands(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID string, quarantine map[string]string, fl *files) (map[string]string, error) {
 	col, err := tx.FindCollectionByNameOrId("brands")
 	if err != nil {
 		return nil, err
@@ -274,9 +274,12 @@ func loadBrands(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID str
 			continue
 		}
 		r := models.NewRecord(col)
+		r.RefreshId() // requis avant la copie : voir loadCategories
 		r.Set("name", b.Name)
 		r.Set("slug", b.Slug)
 		r.Set("description", b.Description)
+		r.Set("image", fl.upload(r, b.ImageSrc))
+		r.Set("wp_image_url", b.ImageWPURL)
 		r.Set("legacy_id", b.LegacyID)
 		r.Set("company", companyID)
 		if err := tx.SaveRecord(r); err != nil {
