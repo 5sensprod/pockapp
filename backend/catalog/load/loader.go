@@ -29,6 +29,7 @@ package load
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -61,6 +62,55 @@ type files struct {
 	root string
 	fsys *filesystem.System
 	res  *Result
+	// byName indexe public/ par nom de fichier. Construit à la demande.
+	//
+	// 93 images portent un `src` ABSOLU — une URL vers axemusique.shop — au
+	// lieu d'un chemin local, et aucune n'a de `local_path`. Le fichier est
+	// pourtant présent sous public/ dans 63 cas sur 93 : seul le chemin
+	// enregistré est faux. Chercher par nom les récupère.
+	byName map[string]string
+}
+
+// index construit, une seule fois, la table nom → chemin de public/.
+func (f *files) index() map[string]string {
+	if f.byName != nil {
+		return f.byName
+	}
+	f.byName = map[string]string{}
+	pub := filepath.Join(f.root, "public")
+	_ = filepath.WalkDir(pub, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil //nolint:nilerr // un répertoire illisible ne doit pas tout arrêter
+		}
+		name := d.Name()
+		if _, seen := f.byName[name]; seen {
+			// Homonymes : on garde le premier. Les noms portent un horodatage,
+			// les collisions sont donc improbables — mais pas impossibles.
+			f.res.AmbiguousFiles++
+			return nil
+		}
+		f.byName[name] = path
+		return nil
+	})
+	return f.byName
+}
+
+// resolve rend le chemin disque d'un `src`, ou "" s'il reste introuvable.
+func (f *files) resolve(src string) string {
+	// Cas normal : chemin relatif à la racine d'AppServe.
+	if !strings.HasPrefix(src, "http://") && !strings.HasPrefix(src, "https://") {
+		p := filepath.Join(f.root, filepath.FromSlash(strings.TrimPrefix(src, "/")))
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	// Repli : le fichier existe sous public/, à un autre chemin. C'est le cas
+	// des `src` absolus, et de quelques chemins relatifs périmés.
+	if p, ok := f.index()[path.Base(src)]; ok {
+		f.res.ResolvedByName++
+		return p
+	}
+	return ""
 }
 
 // upload copie un fichier et rend le nom stocké par PocketBase.
@@ -70,12 +120,12 @@ func (f *files) upload(record *models.Record, src string) string {
 	if src == "" || f == nil {
 		return ""
 	}
-	path := filepath.Join(f.root, filepath.FromSlash(strings.TrimPrefix(src, "/")))
-	if _, err := os.Stat(path); err != nil {
+	diskPath := f.resolve(src)
+	if diskPath == "" {
 		f.res.MissingFiles = append(f.res.MissingFiles, src)
 		return ""
 	}
-	file, err := filesystem.NewFileFromPath(path)
+	file, err := filesystem.NewFileFromPath(diskPath)
 	if err != nil {
 		f.res.MissingFiles = append(f.res.MissingFiles, src)
 		return ""
@@ -124,6 +174,11 @@ type Result struct {
 	// FilesCopied et MissingFiles rendent compte de la copie des images.
 	FilesCopied  int
 	MissingFiles []string
+	// ResolvedByName compte les fichiers retrouvés sous public/ par leur nom,
+	// le chemin enregistré dans NeDB étant faux ou absolu.
+	ResolvedByName int
+	// AmbiguousFiles compte les homonymes rencontrés à l'indexation.
+	AmbiguousFiles int
 }
 
 func newResult() *Result {

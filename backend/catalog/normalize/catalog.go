@@ -585,7 +585,14 @@ func image(v any) (src, wpURL string) {
 	if !ok {
 		return "", ""
 	}
-	return str(m["src"]), str(m["url"])
+	src, wpURL = str(m["src"]), str(m["url"])
+	// 93 images portent une URL absolue dans `src` au lieu d'un chemin local,
+	// et n'ont pas de `url`. L'URL ne doit pas se perdre : elle est le seul
+	// recours pour les 30 dont le fichier n'est pas non plus sous public/.
+	if wpURL == "" && (strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://")) {
+		wpURL = src
+	}
+	return src, wpURL
 }
 
 // gallery rend les chemins de la galerie, en excluant l'image principale.

@@ -30,20 +30,20 @@ func GetLocalIP() string {
 // StartMDNS annonce le service sur le réseau local
 func StartMDNS(port int, serviceName string) error {
 	hostname, _ := os.Hostname()
-	
+
 	var err error
 	mdnsServer, err = zeroconf.Register(
-		serviceName,           // Nom du service (ex: "PocketReact")
-		"_http._tcp",          // Type de service
-		"local.",              // Domaine
-		port,                  // Port
-		[]string{"path=/"},    // TXT records
-		nil,                   // Interfaces (nil = toutes)
+		serviceName,        // Nom du service (ex: "PocketReact")
+		"_http._tcp",       // Type de service
+		"local.",           // Domaine
+		port,               // Port
+		[]string{"path=/"}, // TXT records
+		nil,                // Interfaces (nil = toutes)
 	)
 	if err != nil {
 		return fmt.Errorf("mDNS register failed: %w", err)
 	}
-	
+
 	log.Printf("mDNS: %s.local:%d (hostname: %s)", serviceName, port, hostname)
 	return nil
 }

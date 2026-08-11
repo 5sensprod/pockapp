@@ -287,6 +287,12 @@ func reportLoad(res *load.Result, detail int) {
 		fmt.Printf("   %-14s %6d\n", name, res.Loaded[name])
 	}
 	fmt.Printf("   %-14s %6d fichier(s) image copiés dans le stockage\n", "images", res.FilesCopied)
+	if res.ResolvedByName > 0 {
+		fmt.Printf("     dont %d retrouvés sous public/ par leur nom (chemin NeDB faux ou absolu)\n", res.ResolvedByName)
+	}
+	if res.AmbiguousFiles > 0 {
+		fmt.Printf("     ⚠ %d homonyme(s) dans public/ : le premier trouvé a été retenu\n", res.AmbiguousFiles)
+	}
 	if n := len(res.MissingFiles); n > 0 {
 		fmt.Printf("   ⚠ %d fichier(s) référencés mais introuvables sur le disque :\n", n)
 		shown := n
