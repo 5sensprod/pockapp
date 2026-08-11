@@ -28,15 +28,75 @@ package load
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/tools/filesystem"
 
 	"pocket-react/backend/catalog/normalize"
 )
+
+// ── Copie des fichiers image ──────────────────────────────────────────────
+//
+// Les images d'AppServe sont copiées dans le stockage PocketBase — 2217
+// fichiers distincts, 585 Mo. C'est la seule voie qui survive à la disparition
+// d'AppServe : `image.src` est un chemin que seul AppServe sait servir, et
+// 865 images sur 1710 n'ont aucune URL WordPress de repli.
+//
+// La copie n'est PAS transactionnelle : SQLite l'est, le disque non. Si la
+// transaction est annulée, des fichiers orphelins subsistent dans le stockage.
+// Sans conséquence — la purge les efface au rechargement suivant — mais il faut
+// le savoir plutôt que de le découvrir.
+
+// files porte le contexte de copie d'une exécution.
+type files struct {
+	// root est la racine d'AppServe, parent du répertoire `data`. Les `src`
+	// sont relatifs à elle : /public/products/… → <root>/public/products/…
+	root string
+	fsys *filesystem.System
+	res  *Result
+}
+
+// upload copie un fichier et rend le nom stocké par PocketBase.
+// Rend "" si le chemin est vide ou le fichier introuvable — un fichier
+// manquant ne doit pas interrompre le chargement, mais il se compte.
+func (f *files) upload(record *models.Record, src string) string {
+	if src == "" || f == nil {
+		return ""
+	}
+	path := filepath.Join(f.root, filepath.FromSlash(strings.TrimPrefix(src, "/")))
+	if _, err := os.Stat(path); err != nil {
+		f.res.MissingFiles = append(f.res.MissingFiles, src)
+		return ""
+	}
+	file, err := filesystem.NewFileFromPath(path)
+	if err != nil {
+		f.res.MissingFiles = append(f.res.MissingFiles, src)
+		return ""
+	}
+	if err := f.fsys.UploadFile(file, record.BaseFilesPath()+"/"+file.Name); err != nil {
+		f.res.MissingFiles = append(f.res.MissingFiles, src)
+		return ""
+	}
+	f.res.FilesCopied++
+	return file.Name
+}
+
+func (f *files) uploadAll(record *models.Record, srcs []string) []string {
+	out := make([]string, 0, len(srcs))
+	for _, s := range srcs {
+		if name := f.upload(record, s); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
 
 // purgeOrder — l'inverse des dépendances. external_refs pointe vers les trois
 // entités, products vers brands/categories/suppliers, suppliers vers brands.
@@ -61,6 +121,9 @@ type Result struct {
 	// ou n'existe pas. Une relation qui disparaît en silence est une donnée
 	// fausse ; elle doit se compter.
 	Dropped map[string]int
+	// FilesCopied et MissingFiles rendent compte de la copie des images.
+	FilesCopied  int
+	MissingFiles []string
 }
 
 func newResult() *Result {
@@ -87,7 +150,9 @@ func (r *Result) SkippedByEntity() map[string][]Skipped {
 
 // Run charge le catalogue. Tout se fait dans UNE transaction : au moindre
 // échec, les quatre collections restent vides plutôt qu'à moitié pleines.
-func Run(app *pocketbase.PocketBase, cat *normalize.Catalog, rep *normalize.Report) (*Result, error) {
+// nedbDir est le répertoire des fichiers .db ; la racine d'AppServe en est le
+// parent, et les `src` des images lui sont relatifs.
+func Run(app *pocketbase.PocketBase, cat *normalize.Catalog, rep *normalize.Report, nedbDir string) (*Result, error) {
 	res := newResult()
 
 	companyID, companyName, err := resolveCompany(app.Dao())
@@ -96,10 +161,17 @@ func Run(app *pocketbase.PocketBase, cat *normalize.Catalog, rep *normalize.Repo
 	}
 	res.CompanyID, res.CompanyName = companyID, companyName
 
+	fsys, err := app.NewFilesystem()
+	if err != nil {
+		return nil, fmt.Errorf("ouverture du stockage PocketBase: %w", err)
+	}
+	defer fsys.Close()
+	fl := &files{root: filepath.Dir(nedbDir), fsys: fsys, res: res}
+
 	quarantine := rep.Quarantined()
 
 	err = app.Dao().RunInTransaction(func(tx *daos.Dao) error {
-		if err := purge(tx, res); err != nil {
+		if err := purge(tx, res, fsys); err != nil {
 			return err
 		}
 		// L'ordre suit les dépendances : une relation ne peut pointer que vers
@@ -108,7 +180,7 @@ func Run(app *pocketbase.PocketBase, cat *normalize.Catalog, rep *normalize.Repo
 		if err != nil {
 			return err
 		}
-		categoryIDs, err := loadCategories(tx, cat, res, companyID, quarantine["categories"])
+		categoryIDs, err := loadCategories(tx, cat, res, companyID, quarantine["categories"], fl)
 		if err != nil {
 			return err
 		}
@@ -119,7 +191,7 @@ func Run(app *pocketbase.PocketBase, cat *normalize.Catalog, rep *normalize.Repo
 		if err != nil {
 			return err
 		}
-		return loadProducts(tx, cat, res, companyID, quarantine["products"], brandIDs, categoryIDs, supplierIDs)
+		return loadProducts(tx, cat, res, companyID, quarantine["products"], brandIDs, categoryIDs, supplierIDs, fl)
 	})
 	if err != nil {
 		return nil, err
@@ -160,10 +232,17 @@ func resolveCompany(dao *daos.Dao) (id, name string, err error) {
 // purge vide les quatre collections, plus external_refs. Suppression directe :
 // c'est une remise à zéro, pas une opération métier, et 2306 suppressions
 // unitaires par le DAO coûteraient sans rien apporter.
-func purge(tx *daos.Dao, res *Result) error {
+func purge(tx *daos.Dao, res *Result, fsys *filesystem.System) error {
 	for _, name := range purgeOrder {
-		if _, err := tx.FindCollectionByNameOrId(name); err != nil {
+		col, err := tx.FindCollectionByNameOrId(name)
+		if err != nil {
 			continue // external_refs peut ne pas exister sur une base ancienne
+		}
+		// Les fichiers d'une collection vivent sous <collectionId>/. Les
+		// effacer avec les enregistrements évite d'accumuler 585 Mo à chaque
+		// rechargement.
+		if fsys != nil {
+			_ = fsys.DeletePrefix(col.Id + "/")
 		}
 		var n int
 		if err := tx.DB().Select("count(*)").From(name).Row(&n); err != nil {
@@ -211,7 +290,7 @@ func loadBrands(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID str
 
 // ── Catégories ────────────────────────────────────────────────────────────
 
-func loadCategories(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID string, quarantine map[string]string) (map[string]string, error) {
+func loadCategories(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID string, quarantine map[string]string, fl *files) (map[string]string, error) {
 	col, err := tx.FindCollectionByNameOrId("categories")
 	if err != nil {
 		return nil, err
@@ -227,10 +306,14 @@ func loadCategories(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID
 			continue
 		}
 		r := models.NewRecord(col)
+		// L'identifiant doit exister avant la copie : le chemin de stockage
+		// d'un fichier est <collectionId>/<recordId>/<nom>.
+		r.RefreshId()
 		r.Set("name", c.Name)
 		r.Set("slug", c.Slug)
 		r.Set("description", c.Description)
-		r.Set("image", c.Image)
+		r.Set("image", fl.upload(r, c.ImageSrc))
+		r.Set("wp_image_url", c.ImageWPURL)
 		r.Set("is_featured", c.IsFeatured)
 		r.Set("legacy_id", c.LegacyID)
 		r.Set("company", companyID)
@@ -320,7 +403,7 @@ func supplierMap(tx *daos.Dao, companyID string) (map[string]string, error) {
 
 // ── Produits ──────────────────────────────────────────────────────────────
 
-func loadProducts(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID string, quarantine map[string]string, brandIDs, categoryIDs, supplierIDs map[string]string) error {
+func loadProducts(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID string, quarantine map[string]string, brandIDs, categoryIDs, supplierIDs map[string]string, fl *files) error {
 	col, err := tx.FindCollectionByNameOrId("products")
 	if err != nil {
 		return err
@@ -331,6 +414,7 @@ func loadProducts(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID s
 			continue
 		}
 		r := models.NewRecord(col)
+		r.RefreshId() // voir loadCategories : requis avant la copie des fichiers
 		r.Set("name", p.Name)
 		r.Set("designation", p.Designati)
 		r.Set("sku", p.SKU)
@@ -345,7 +429,9 @@ func loadProducts(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID s
 		r.Set("stock", p.Stock)
 		r.Set("manage_stock", p.ManageStk)
 		r.Set("min_stock", p.MinStock)
-		r.Set("images", p.Images)
+		r.Set("image", fl.upload(r, p.ImageSrc))
+		r.Set("gallery", fl.uploadAll(r, p.GallerySrc))
+		r.Set("wp_image_url", p.ImageWPURL)
 
 		if p.BrandLegacyID != "" {
 			if id, ok := brandIDs[p.BrandLegacyID]; ok {

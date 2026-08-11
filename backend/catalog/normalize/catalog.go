@@ -56,7 +56,16 @@ type Product struct {
 	Stock     float64
 	ManageStk bool
 	MinStock  float64
-	Images    string
+
+	// Images. `Src` est un chemin AppServe relatif (« /public/products/… ») ;
+	// c'est le seul champ toujours présent. `WPURL` est l'URL WordPress, et
+	// elle manque sur 865 des 1710 images. Voir l'en-tête de catalog_v2.go.
+	ImageSrc   string
+	ImageWPURL string
+	// GallerySrc exclut l'image principale : les galeries la répètent presque
+	// toujours en première position (3554 références pour 2217 fichiers
+	// distincts). La stocker deux fois doublerait l'espace pour rien.
+	GallerySrc []string
 
 	// Relations, en identifiants NeDB. La résolution vers les identifiants
 	// PocketBase se fait au chargement, par la table de correspondance.
@@ -75,7 +84,8 @@ type Category struct {
 	Name           string
 	Slug           string
 	Description    string
-	Image          string
+	ImageSrc       string
+	ImageWPURL     string
 	IsFeatured     bool
 	ParentLegacyID string
 	WooID          string
@@ -190,12 +200,17 @@ func normalizeCategories(src *nedb.Collection, out *Catalog, rep *Report) map[st
 			parent = ""
 		}
 
+		imgSrc, imgURL := image(d["image"])
+		if imgSrc != "" {
+			rep.Count("images de catégorie")
+		}
 		out.Categories = append(out.Categories, Category{
 			LegacyID:       id,
 			Name:           name,
 			Slug:           slugs.Allocate(id, name, nameByID[parent]),
 			Description:    strings.TrimSpace(str(d["description"])),
-			Image:          str(d["image"]),
+			ImageSrc:       imgSrc,
+			ImageWPURL:     imgURL,
 			IsFeatured:     boolean(d["is_featured"]),
 			ParentLegacyID: parent,
 			WooID:          numOrStr(d["woo_id"]),
@@ -277,9 +292,17 @@ func normalizeProducts(src *nedb.Collection, out *Catalog, rep *Report, brandIDs
 			Name:      name,
 			Designati: strings.TrimSpace(str(d["designation"])),
 			Descripti: strings.TrimSpace(str(d["description"])),
-			Images:    imageURL(d["image"]),
 			WooID:     numOrStr(d["woo_id"]),
 			WooURL:    str(d["website_url"]),
+		}
+		p.ImageSrc, p.ImageWPURL = image(d["image"])
+		p.GallerySrc = gallery(d["gallery_images"], p.ImageSrc)
+		if p.ImageSrc != "" {
+			rep.Count("images principales")
+		}
+		if n := len(p.GallerySrc); n > 0 {
+			rep.Counters["images de galerie (hors principale)"] += n
+			rep.Count("produits avec galerie")
 		}
 		p.Slug = slugs.Allocate(id, name, p.Designati)
 
@@ -540,15 +563,40 @@ func numOrStr(v any) string {
 	}
 }
 
-// imageURL prend l'URL WordPress telle quelle. Décision du 10 août : les URL
-// sont conservées et ne bougent pas. La galerie n'est pas reprise — le modèle
-// cible ne porte qu'une image.
-func imageURL(v any) string {
+// image extrait le chemin AppServe et l'URL WordPress d'un objet image.
+//
+// ATTENTION — c'est ici que la première version se trompait sur les CATÉGORIES.
+// Leur champ `image` a exactement la même forme que celui des produits : un
+// OBJET {src, url, local_path, status, type, metadata}. Il était lu comme une
+// chaîne, ce qui rendait "" pour les 22 catégories illustrées.
+//
+// La leçon vaut au-delà du cas : dans NeDB, un champ nommé « image » n'est
+// jamais une URL. Ne pas présumer de la forme, la vérifier.
+func image(v any) (src, wpURL string) {
 	m, ok := v.(map[string]any)
 	if !ok {
-		return ""
+		return "", ""
 	}
-	return str(m["src"])
+	return str(m["src"]), str(m["url"])
+}
+
+// gallery rend les chemins de la galerie, en excluant l'image principale.
+func gallery(v any, mainSrc string) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	seen := map[string]bool{mainSrc: true}
+	out := make([]string, 0, len(arr))
+	for _, e := range arr {
+		src, _ := image(e)
+		if src == "" || seen[src] {
+			continue
+		}
+		seen[src] = true
+		out = append(out, src)
+	}
+	return out
 }
 
 func trunc(s string) string {

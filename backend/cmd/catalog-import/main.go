@@ -33,6 +33,7 @@ import (
 	"pocket-react/backend/catalog/load"
 	"pocket-react/backend/catalog/nedb"
 	"pocket-react/backend/catalog/normalize"
+	"pocket-react/backend/migrations"
 )
 
 // Chiffres de référence de la base DEV, établis par l'audit du 10 août 2026
@@ -177,7 +178,7 @@ func run(dataDir string, opts options) error {
 		return nil
 	}
 
-	return doLoad(cat, rep, opts)
+	return doLoad(cat, rep, opts, abs)
 }
 
 func countBlocking(rep *normalize.Report) int {
@@ -191,7 +192,7 @@ func countBlocking(rep *normalize.Report) int {
 }
 
 // doLoad — le seul chemin de ce programme qui écrit.
-func doLoad(cat *normalize.Catalog, rep *normalize.Report, opts options) error {
+func doLoad(cat *normalize.Catalog, rep *normalize.Report, opts options, nedbDir string) error {
 	dir := opts.pbDir
 	if dir == "" {
 		base := os.Getenv("LOCALAPPDATA")
@@ -212,7 +213,16 @@ func doLoad(cat *normalize.Catalog, rep *normalize.Report, opts options) error {
 			"   Si PocketApp est ouvert, le fermer et relancer", dir, err)
 	}
 
-	res, err := load.Run(app, cat, rep)
+	// Le schéma du catalogue est mis à niveau avant le chargement. La même
+	// migration tourne au démarrage de PocketApp ; l'appeler ici évite un
+	// cycle ouvrir/fermer, et garantit que le chargeur écrit dans le schéma
+	// qu'il attend. Elle est convergente et refuse d'agir sur des données
+	// non reconstructibles.
+	if err := migrations.MigrateCatalogV2(app); err != nil {
+		return fmt.Errorf("mise à niveau du schéma: %w", err)
+	}
+
+	res, err := load.Run(app, cat, rep, nedbDir)
 	if err != nil {
 		// La transaction a été annulée : les collections sont restées vides
 		// plutôt que d'être à moitié pleines.
@@ -239,6 +249,20 @@ func reportLoad(res *load.Result, detail int) {
 	fmt.Println(" Chargé :")
 	for _, name := range []string{"brands", "categories", "suppliers", "products"} {
 		fmt.Printf("   %-14s %6d\n", name, res.Loaded[name])
+	}
+	fmt.Printf("   %-14s %6d fichier(s) image copiés dans le stockage\n", "images", res.FilesCopied)
+	if n := len(res.MissingFiles); n > 0 {
+		fmt.Printf("   ⚠ %d fichier(s) référencés mais introuvables sur le disque :\n", n)
+		shown := n
+		if detail > 0 && shown > detail {
+			shown = detail
+		}
+		for _, m := range res.MissingFiles[:shown] {
+			fmt.Printf("     %s\n", m)
+		}
+		if shown < n {
+			fmt.Printf("     … et %d autre(s)\n", n-shown)
+		}
 	}
 	fmt.Println()
 

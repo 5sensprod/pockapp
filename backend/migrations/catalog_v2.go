@@ -25,14 +25,39 @@
 //
 //  1. CONVERGENCE, pas sortie sur le nom. catalog.go sort si la collection
 //     « existe », ce qui fait accepter sans bruit un schéma périmé (§9.5 du
-//     09). Ici on teste la FORME : la présence de `legacy_id` sur `products`
-//     signe le schéma v2. Une collection homonyme à l'ancien schéma est donc
-//     détectée et reprise, pas acceptée.
+//     09). Ici on teste la FORME : la présence de `gallery` sur `products`
+//     signe le schéma courant. Une collection homonyme à un schéma antérieur
+//     est donc détectée et reprise, pas acceptée.
 //
-//  2. REFUS SI NON VIDE. La recréation n'est légitime que parce que les
-//     collections sont vides. Le jour où elles ne le sont plus, cette
-//     migration doit s'arrêter et laisser la place à de vraies altérations.
-//     Elle ne détruira jamais de données en silence.
+//  2. REFUS SI LA DONNÉE N'EST PAS RECONSTRUCTIBLE. La recréation n'est
+//     légitime que parce que le catalogue est une PROJECTION de NeDB : tout
+//     enregistrement porte un `legacy_id`, et `catalog-import -load` le
+//     reconstruit à l'identique. Si un seul enregistrement n'en porte pas,
+//     c'est une saisie directe, et la migration s'arrête.
+//
+//     Après passage : relancer `go run ./backend/cmd/catalog-import -load`.
+//
+// ── Révision du 11 août 2026 — les images ─────────────────────────────────
+//
+// La première version stockait `images` en TEXTE, sur la foi de l'audit §1.3
+// (« les URL viennent du source_url WordPress et ne bougent pas »). Vérifié sur
+// les données : c'est faux.
+//
+//	image.src   chemin AppServe relatif       1710 / 1710
+//	image.url   URL WordPress absolue           845 / 1710
+//	source_url  n'existe pas
+//
+// Charger `src` produisait des images que seul AppServe sait servir — or
+// s'affranchir d'AppServe est l'objet même de cette migration. Et 865 images
+// n'ont aucune URL WordPress : elles n'existent que sur le disque.
+//
+// D'où le passage en CHAMPS FICHIER, et la copie des 585 Mo dans le stockage
+// PocketBase. C'est ce que §9.2b du 09 avait écarté ; l'écart est assumé, la
+// raison ayant changé — décision du propriétaire du 11 août 2026.
+//
+// `wp_image_url` conserve l'URL WordPress quand elle existe : elle sert la
+// réconciliation avec le site et évite de relire NeDB. Même case « à garder
+// temporairement » que `legacy_id`.
 //
 // ── L'auto-relation, et le défaut qu'on répare ─────────────────────────────
 //
@@ -49,6 +74,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
@@ -76,35 +102,50 @@ var catalogV2DropOrder = []string{
 
 // MigrateCatalogV2 installe le schéma cible du catalogue.
 func MigrateCatalogV2(app *pocketbase.PocketBase) error {
-	// ── Garde 1 : déjà en v2 ? ────────────────────────────────────────────
-	// On teste la forme, pas le nom. `legacy_id` n'existe que dans le modèle
-	// cible : sa présence signe le schéma v2.
+	// ── Garde 1 : le schéma est-il déjà à jour ? ──────────────────────────
+	// On teste la forme, pas le nom. `gallery` n'existe que dans la révision
+	// courante : sa présence signe le schéma à jour.
 	if products, err := app.Dao().FindCollectionByNameOrId("products"); err == nil {
-		if products.Schema.GetFieldByName("legacy_id") != nil {
-			log.Println("📦 Catalogue déjà au schéma cible (v2)")
+		if products.Schema.GetFieldByName("gallery") != nil {
+			log.Println("📦 Catalogue déjà au schéma cible")
 			return nil
 		}
 	}
 
-	// ── Garde 2 : refus si une collection porte des données ───────────────
-	// La recréation n'est acquise que sur des collections vides. Cette
-	// migration ne détruit jamais de données ; elle s'arrête.
+	// ── Garde 2 : la donnée est-elle reconstructible ? ────────────────────
+	// Le catalogue est une projection de NeDB : chaque enregistrement porte un
+	// `legacy_id` et `catalog-import -load` le reconstruit. Recréer les
+	// collections ne détruit donc rien d'irremplaçable — à condition que ce
+	// soit vrai de TOUS les enregistrements.
 	for _, name := range catalogV2DropOrder {
-		if _, err := app.Dao().FindCollectionByNameOrId(name); err != nil {
+		col, err := app.Dao().FindCollectionByNameOrId(name)
+		if err != nil {
 			continue // absente : rien à protéger
 		}
 		count, err := countRecords(app, name)
 		if err != nil {
-			return fmt.Errorf("catalog v2: comptage de %q: %w", name, err)
+			return fmt.Errorf("catalog: comptage de %q: %w", name, err)
 		}
-		if count > 0 {
+		if count == 0 {
+			continue
+		}
+		if col.Schema.GetFieldByName("legacy_id") == nil {
 			return fmt.Errorf(
-				"catalog v2: la collection %q contient %d enregistrement(s) — "+
-					"la recréation est refusée. Le modèle cible suppose des collections "+
-					"vides ; passer par des migrations d'altération",
-				name, count,
-			)
+				"catalog: la collection %q contient %d enregistrement(s) et n'a pas de "+
+					"`legacy_id` — la recréation est refusée, ces données ne sont pas "+
+					"reconstructibles depuis NeDB", name, count)
 		}
+		var orphans int
+		if err := app.Dao().DB().Select("count(*)").From(name).
+			Where(dbx.NewExp("legacy_id = '' OR legacy_id IS NULL")).Row(&orphans); err != nil {
+			return fmt.Errorf("catalog: contrôle de %q: %w", name, err)
+		}
+		if orphans > 0 {
+			return fmt.Errorf(
+				"catalog: %d enregistrement(s) de %q sans `legacy_id` — saisis à la main, "+
+					"donc non reconstructibles. La recréation est refusée", orphans, name)
+		}
+		log.Printf("♻️  %s : %d enregistrement(s), tous reconstructibles depuis NeDB", name, count)
 	}
 
 	log.Println("📦 Installation du schéma cible du catalogue (v2)...")
@@ -176,6 +217,18 @@ func legacyIDField() *schema.SchemaField {
 		Name:    "legacy_id",
 		Type:    schema.FieldTypeText,
 		Options: &schema.TextOptions{Max: types.Pointer(50)},
+	}
+}
+
+// imageFileOptions — les extensions réellement présentes dans
+// I:\AppPOS\AppServe\public\ : 1043 jpg, 667 png, 384 webp, 122 jpeg.
+// Le plafond de taille est large : le plus lourd des 2217 fichiers est loin
+// en dessous, et un refus à la copie coûterait un rechargement complet.
+func imageFileOptions(maxSelect int) *schema.FileOptions {
+	return &schema.FileOptions{
+		MaxSelect: maxSelect,
+		MaxSize:   10 * 1024 * 1024,
+		MimeTypes: []string{"image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"},
 	}
 }
 
@@ -292,11 +345,17 @@ func createCategoriesV2(app *pocketbase.PocketBase, companiesID string) (*models
 			Type:    schema.FieldTypeText,
 			Options: &schema.TextOptions{Max: types.Pointer(5000)},
 		},
-		// Texte, pas fichier : les URL WordPress sont conservées telles quelles
-		// (décision du 10 août). Un champ fichier PocketBase n'accepte pas une
-		// URL — c'est le conflit constaté au §9.2b du 09.
+		// Fichier, comme pour les produits. La première version lisait ce champ
+		// comme une chaîne ; c'est un OBJET {src, url, local_path, …}, si bien
+		// que les 22 catégories illustrées ont chargé une image vide.
+		// Les 22 portent une URL WordPress.
 		&schema.SchemaField{
 			Name:    "image",
+			Type:    schema.FieldTypeFile,
+			Options: imageFileOptions(1),
+		},
+		&schema.SchemaField{
+			Name:    "wp_image_url",
 			Type:    schema.FieldTypeText,
 			Options: &schema.TextOptions{Max: types.Pointer(2000)},
 		},
@@ -573,13 +632,29 @@ func createProductsV2(app *pocketbase.PocketBase, companiesID, brandsID, categor
 			Options: &schema.NumberOptions{Min: types.Pointer(0.0)},
 		},
 
-		// ── Image ─────────────────────────────────────────────────────────
-		// Texte et non fichier. Les URL WordPress sont conservées et ne bougent
-		// pas (audit §1.3) ; un champ fichier PocketBase attend un téléversement
-		// et n'accepte pas une URL. Le nom reste `images` pour ne pas rompre le
-		// contrat que le front consomme déjà (ProductsRecord.images).
+		// ── Images ────────────────────────────────────────────────────────
+		// Fichiers, et non URL : voir l'en-tête de ce fichier. Les 585 Mo de
+		// I:\AppPOS\AppServe\public\ sont copiés dans le stockage PocketBase,
+		// seule voie qui survive à la disparition d'AppServe.
 		&schema.SchemaField{
-			Name:    "images",
+			Name:    "image",
+			Type:    schema.FieldTypeFile,
+			Options: imageFileOptions(1),
+		},
+		// 1339 produits (58 %) portent une galerie de 1 à 7 images. La première
+		// version du modèle les perdait : l'audit avait relevé gallery_images à
+		// 0 % sur les catégories et les marques, et la conclusion avait glissé
+		// aux produits sans vérification. Constaté le 11 août 2026.
+		&schema.SchemaField{
+			Name:    "gallery",
+			Type:    schema.FieldTypeFile,
+			Options: imageFileOptions(10),
+		},
+		// URL WordPress d'origine, quand elle existe (845 sur 1710). Conservée
+		// pour la réconciliation avec le site, et pour n'avoir pas à relire
+		// NeDB. Même case « à garder temporairement » que `legacy_id`.
+		&schema.SchemaField{
+			Name:    "wp_image_url",
 			Type:    schema.FieldTypeText,
 			Options: &schema.TextOptions{Max: types.Pointer(2000)},
 		},
