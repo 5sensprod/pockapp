@@ -63,6 +63,14 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    (`site_publish_url`, `site_publish_api_key`) ; rien n'est en dur.
    Le code serveur qui reçoit est dans `server/`.
 
+5. **Export du catalogue** — `backend/routes/site_catalog_routes.go` —
+   `https://axemusique.shop/server/api/products-sync.php`, en-tête `X-API-Key`
+   et `User-Agent` explicite (même couche anti-bot). **GET** pour lire
+   l'inventaire de la base SQL distante, **POST** pour y pousser un lot.
+   Réglages `site_catalog_url` et `site_catalog_api_key`, distincts de ceux du
+   menu : cette clé-là écrit dans la base de données du catalogue. Contrat :
+   `frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md`.
+
 ## Commandes
 
 ```bash

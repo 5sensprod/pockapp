@@ -10,6 +10,50 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Les 257 produits dont l'état de publication va basculer se tranchent à l'export — 2026-08-11
+
+Décision du propriétaire, prise en constatant les 2562 produits publiés de la
+vue « Catalogue en ligne ». **On ne tranche pas maintenant ; on avance, et le
+sort de ces 257 produits se décide au moment de l'export vers la base SQL
+Axemusique.**
+
+**Ce qui est mesuré**, sur la base de référence `%APPDATA%\AppPOS\data`, par
+`catalog-import -fields` et `-normalize`, en lecture seule :
+
+| | produits |
+|---|---:|
+| dans NeDB | 3034 |
+| portant un `woo_id` — donc réellement en ligne aujourd'hui | **2528** |
+| `published` **sans** `woo_id` — publiés jamais mis en ligne | **160** |
+| `draft` **avec** `woo_id` — brouillons pourtant en ligne | **97** |
+| `published` dans NeDB | 2591 *(2528 − 97 + 160)* |
+| `published` chargés dans PocketBase | **2562** *(observé à l'écran)* |
+
+L'écart de 29 entre 2591 et 2562 est le nombre de produits publiés parmi les 35
+mis en quarantaine pour SKU en doublon. **C'est une déduction arithmétique, pas
+une lecture** — seul point de ce tableau qui ne soit pas mesuré directement.
+
+**Ce que la bascule produit :** `status` devenant la seule autorité, les 160
+apparaîtront sur le site pour la première fois et les 97 en disparaîtront.
+**257 produits changent d'état visible d'un coup, à la première synchronisation.**
+
+**Ce qui est écarté, et pourquoi :**
+
+- **Trancher maintenant, produit par produit** — 257 décisions métier à froid,
+  sans le contexte de l'export, pour un site qui n'est pas encore alimenté.
+- **Un onglet « à vérifier » dans la vue** — il suppose de charger
+  `external_refs` avec les correspondances WooCommerce, ce que la direction du
+  11 août a précisément annulé. Importer la dette pour l'afficher.
+
+**Ce que cette décision coûte si elle est tenue trop longtemps :** `woo_id` est
+le **seul témoin** de ce qui est réellement en ligne, et il disparaît avec
+WooCommerce. Passé ce point, plus rien ne permet de dire quels produits ont
+changé d'état. La liste des 257 se reproduit à volonté par `catalog-import`
+tant que la base NeDB de référence existe ; elle ne se reproduit plus après.
+
+**Remise en cause si :** l'export approche sans que la question soit reprise,
+ou si WooCommerce est arrêté avant que la liste ait été regardée une fois.
+
 ## La base NeDB de référence est celle de l'installation, pas celle de développement — 2026-08-11
 
 Décision du propriétaire, prise en constatant que le catalogue chargé était

@@ -30,10 +30,18 @@ PHP.
 
 | Chemin | Rôle | Versionné |
 |---|---|---|
-| `api/publish-menu.php` | l'endpoint de réception | oui |
+| `api/publish-menu.php` | l'endpoint de réception du menu | oui |
+| `api/products-sync.php` | l'endpoint d'export du **catalogue** vers MySQL | oui |
+| `sql/schema.sql` | les quatre tables du catalogue, à exécuter une fois | oui |
 | `config/config.php.example` | modèle de configuration | oui |
 | `config/config.php` | la configuration réelle, **avec la clé** | **non** (`.gitignore`) |
 | `config/.htaccess` | interdit l'accès HTTP au dossier de configuration | oui |
+
+**`sql/schema.sql` est revenu le 11 août 2026, pour le catalogue** — les quatre
+tables `ax_products`, `ax_categories`, `ax_brands` et `ax_product_categories`.
+Ce n'est pas le retour de celui d'avant : le paragraphe ci-dessous annonçait
+justement un schéma « qui n'a rien à voir », et c'est celui-là. La clé y est
+`legacy_id`, jamais l'identifiant PocketBase — §1 du contrat.
 
 **`schema.sql` a été supprimé le 10 août 2026.** Il décrivait le stockage du
 *menu* en MySQL — l'option C de §4.3 de l'audit — et cette piste est abandonnée :

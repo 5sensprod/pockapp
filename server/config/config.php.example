@@ -56,6 +56,47 @@ return [
      */
     'supported_contract_versions' => [1],
 
+    // ── Export du catalogue vers la base SQL ────────────────────────────────
+    // Lu par api/products-sync.php uniquement. Contrat :
+    // frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md
+
+    /**
+     * Clé attendue par l'endpoint d'export du catalogue.
+     *
+     * DISTINCTE de `api_key` ci-dessus, et volontairement : celle-là autorise
+     * à publier un menu de quelques kilo-octets, celle-ci à écrire dans la
+     * base de données du catalogue. Deux portées, deux durées de vie ;
+     * révoquer l'une ne doit pas condamner l'autre.
+     *
+     *   php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+     */
+    'catalog_api_key' => 'REMPLACER-PAR-UNE-AUTRE-CLE-ALEATOIRE',
+
+    /**
+     * Accès MySQL du mutualisé. Les mêmes identifiants que WordPress
+     * fonctionneraient ; en prendre de dédiés, restreints à la base du
+     * catalogue, évite qu'une clé d'export donne la main sur wp_users.
+     */
+    'db' => [
+        'host' => 'localhost',
+        'name' => 'CHANGEME',
+        'user' => 'CHANGEME',
+        'pass' => 'CHANGEME',
+    ],
+
+    /**
+     * Préfixe des tables, tel que créé par server/sql/schema.sql.
+     * Contraint à [A-Za-z0-9_] : il entre dans des noms de table, donc dans du
+     * SQL non paramétrable.
+     */
+    'table_prefix' => 'ax_',
+
+    /**
+     * Plafonds d'un lot d'export — §6 du contrat. Le découpage est fait côté
+     * PocketApp ; ces valeurs sont le garde-fou, pas la consigne.
+     */
+    'max_entities_per_batch' => 200,
+
     /**
      * Journal, best-effort. `null` pour ne rien écrire.
      *

@@ -63,6 +63,15 @@ const (
 	//
 	// Ticket 5b. Consommée au ticket 6, qui pose l'en-tête au moment du POST.
 	KeySitePublishAPI = "site_publish_api_key"
+
+	// KeySiteCatalogAPI est la clé X-API-Key attendue par l'endpoint d'export
+	// du catalogue (server/api/products-sync.php).
+	//
+	// DISTINCTE de KeySitePublishAPI, et pour une raison de portée : celle-là
+	// autorise à publier un menu de quelques kilo-octets, celle-ci à ÉCRIRE
+	// DANS LA BASE DE DONNÉES du catalogue. Révoquer l'une ne doit pas
+	// condamner l'autre.
+	KeySiteCatalogAPI = "site_catalog_api_key"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -76,6 +85,13 @@ const (
 	// mettre en réglage plutôt qu'en dur permet de viser un autre serveur sans
 	// recompiler, et documente à elle seule où part la publication.
 	SettingSitePublishURL = "site_publish_url"
+
+	// SettingSiteCatalogURL est l'URL de l'endpoint d'export du catalogue,
+	// typiquement https://axemusique.shop/server/api/products-sync.php.
+	//
+	// Comme la précédente : pas un secret, en réglage plutôt qu'en dur pour
+	// viser un autre serveur sans recompiler.
+	SettingSiteCatalogURL = "site_catalog_url"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════

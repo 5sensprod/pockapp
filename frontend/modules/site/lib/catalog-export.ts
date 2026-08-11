@@ -1,0 +1,256 @@
+// frontend/modules/site/lib/catalog-export.ts
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPOSITION DES LOTS D'EXPORT
+// ═══════════════════════════════════════════════════════════════════════════
+// Traduit les entités PocketBase en la forme du contrat
+// (PocketSite-docs/12-contrat-catalogue.md), calcule leur empreinte et
+// découpe en lots.
+//
+// Fonctions pures — aucun réseau, aucun React : c'est le hook
+// `use-catalog-sync.ts` qui envoie. Vérifiées par catalog-export.test.ts.
+//
+// ⚠️ LA CLÉ EST `legacy_id`. Les identifiants PocketBase sont régénérés à
+// chaque rechargement par purge ; s'en servir produirait des doublons
+// silencieux côté SQL au premier `catalog-import -load`. §1 du contrat.
+// ═══════════════════════════════════════════════════════════════════════════
+
+import type {
+	CatalogBrand,
+	CatalogCategory,
+	CatalogProduct,
+} from '@/lib/queries/site-catalog'
+
+export const CATALOG_CONTRACT_VERSION = 1
+
+/** §6 du contrat : plafond d'un lot, garde-fou côté serveur, consigne ici. */
+export const MAX_ENTITIES_PER_BATCH = 200
+
+// ---------------------------------------------------------------------------
+// FORMES DU CONTRAT
+// ---------------------------------------------------------------------------
+
+type WithChecksum = { legacy_id: string; checksum: string }
+
+export type ExportProduct = WithChecksum & {
+	name: string
+	site_title: string | null
+	sku: string | null
+	slug: string | null
+	description: string | null
+	price_ttc: number
+	tax_rate: number
+	stock: number
+	status: 'published'
+	brand: string | null
+	categories: string[]
+}
+
+export type ExportCategory = WithChecksum & {
+	name: string
+	slug: string | null
+	description: string | null
+	parent: string | null
+	is_featured: boolean
+}
+
+export type ExportBrand = WithChecksum & {
+	name: string
+	slug: string | null
+	description: string | null
+}
+
+export type ExportBatch = {
+	contractVersion: number
+	exportedAt: string
+	products: ExportProduct[]
+	categories: ExportCategory[]
+	brands: ExportBrand[]
+}
+
+/** État d'une entité au regard de la base SQL — §3 du contrat. */
+export type SyncState = 'absent' | 'modified' | 'synced'
+
+/** legacy_id → checksum, tel que renvoyé par l'inventaire. */
+export type ChecksumIndex = Record<string, string>
+
+// ---------------------------------------------------------------------------
+// EMPREINTE
+// ---------------------------------------------------------------------------
+
+/**
+ * Sérialisation canonique : clés triées, récursivement. Sans elle, deux objets
+ * identiques mais construits dans un ordre différent produiraient deux
+ * empreintes différentes, et tout paraîtrait modifié en permanence.
+ */
+function canonical(value: unknown): string {
+	if (value === null || typeof value !== 'object') return JSON.stringify(value)
+	if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+
+	const entries = Object.entries(value as Record<string, unknown>)
+		.filter(([key]) => key !== 'checksum')
+		.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+		.map(([key, v]) => `${JSON.stringify(key)}:${canonical(v)}`)
+
+	return `{${entries.join(',')}}`
+}
+
+/**
+ * SHA-1 de la forme canonique. **Aucune valeur de sécurité** : il ne répond
+ * qu'à « cette entité a-t-elle changé depuis son dernier export ? » (§4.4).
+ *
+ * `crypto.subtle` n'existe que sur une origine sûre — localhost en fait partie,
+ * ce qui couvre Wails comme le proxy Vite.
+ */
+export async function checksumOf(entity: object): Promise<string> {
+	const bytes = new TextEncoder().encode(canonical(entity))
+	const digest = await crypto.subtle.digest('SHA-1', bytes)
+	return [...new Uint8Array(digest)]
+		.map((b) => b.toString(16).padStart(2, '0'))
+		.join('')
+}
+
+// ---------------------------------------------------------------------------
+// TRADUCTION
+// ---------------------------------------------------------------------------
+
+const nullable = (value: string | undefined): string | null =>
+	value && value.trim() !== '' ? value : null
+
+/**
+ * `site_title` reste `null` tant que les retouches éditoriales n'ont pas de
+ * support : le catalogue est une projection rechargée par purge, et un titre
+ * saisi n'y survivrait pas. Le champ existe au contrat pour que le serveur
+ * n'ait pas à changer le jour où elles arriveront.
+ */
+export function toExportProduct(
+	product: CatalogProduct,
+	categoryLegacyIds: string[],
+	brandLegacyId: string | null,
+): Omit<ExportProduct, 'checksum'> {
+	return {
+		legacy_id: product.legacy_id,
+		name: product.name,
+		site_title: null,
+		sku: nullable(product.sku),
+		slug: nullable(product.slug),
+		description: nullable(product.description),
+		price_ttc: product.price_ttc ?? 0,
+		tax_rate: product.tax_rate ?? 0,
+		stock: product.stock ?? 0,
+		status: 'published',
+		brand: brandLegacyId,
+		categories: categoryLegacyIds,
+	}
+}
+
+export function toExportCategory(
+	category: CatalogCategory,
+	parentLegacyId: string | null,
+): Omit<ExportCategory, 'checksum'> {
+	return {
+		legacy_id: category.legacy_id,
+		name: category.name,
+		slug: nullable(category.slug),
+		description: nullable(category.description),
+		parent: parentLegacyId,
+		is_featured: Boolean(category.is_featured),
+	}
+}
+
+export function toExportBrand(
+	brand: CatalogBrand,
+): Omit<ExportBrand, 'checksum'> {
+	return {
+		legacy_id: brand.legacy_id,
+		name: brand.name,
+		slug: nullable(brand.slug),
+		description: nullable(brand.description),
+	}
+}
+
+/** Ajoute l'empreinte à une entité déjà traduite. */
+export async function sealed<T extends { legacy_id: string }>(
+	entity: T,
+): Promise<T & { checksum: string }> {
+	return { ...entity, checksum: await checksumOf(entity) }
+}
+
+// ---------------------------------------------------------------------------
+// ÉTAT
+// ---------------------------------------------------------------------------
+
+/**
+ * Compare une empreinte à l'inventaire. Trois états, et trois seulement :
+ * l'interface ne sait rien de plus (§3).
+ */
+export function syncStateOf(
+	legacyId: string,
+	checksum: string | undefined,
+	inventory: ChecksumIndex | undefined,
+): SyncState {
+	if (!inventory) return 'absent'
+	const known = inventory[legacyId]
+	if (known === undefined) return 'absent'
+	if (checksum === undefined) return 'synced' // empreinte pas encore calculée
+	return known === checksum ? 'synced' : 'modified'
+}
+
+// ---------------------------------------------------------------------------
+// DÉCOUPAGE
+// ---------------------------------------------------------------------------
+
+/**
+ * Découpe en lots de `maxPerBatch` entités **tous types confondus** — c'est
+ * ainsi que le serveur compte (§6).
+ *
+ * Les marques et catégories passent en PREMIER : le contrat dit que l'ordre est
+ * indifférent, les relations n'étant pas contraintes côté SQL, mais un lot
+ * interrompu laisse alors une base cohérente plutôt que des produits qui
+ * citent des catégories absentes.
+ */
+export function buildExportBatches(
+	products: ExportProduct[],
+	categories: ExportCategory[],
+	brands: ExportBrand[],
+	exportedAt: string,
+	maxPerBatch: number = MAX_ENTITIES_PER_BATCH,
+): ExportBatch[] {
+	const batches: ExportBatch[] = []
+
+	let current: ExportBatch = {
+		contractVersion: CATALOG_CONTRACT_VERSION,
+		exportedAt,
+		products: [],
+		categories: [],
+		brands: [],
+	}
+	let count = 0
+
+	const flush = () => {
+		if (count > 0) batches.push(current)
+		current = {
+			contractVersion: CATALOG_CONTRACT_VERSION,
+			exportedAt,
+			products: [],
+			categories: [],
+			brands: [],
+		}
+		count = 0
+	}
+
+	for (const brand of brands) {
+		current.brands.push(brand)
+		if (++count >= maxPerBatch) flush()
+	}
+	for (const category of categories) {
+		current.categories.push(category)
+		if (++count >= maxPerBatch) flush()
+	}
+	for (const product of products) {
+		current.products.push(product)
+		if (++count >= maxPerBatch) flush()
+	}
+	flush()
+
+	return batches
+}
