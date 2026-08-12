@@ -10,6 +10,42 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## L'endpoint de lecture du catalogue est public et sans clé — 2026-08-11
+
+`server/api/catalog.php` n'attend **aucun** `X-API-Key`, et ne doit jamais en
+attendre. Mis en service le 11 août 2026 : le site lit ses premiers produits
+hors WooCommerce.
+
+**Pourquoi, en une phrase :** son consommateur est un bundle JavaScript public,
+et tout secret qu'il porterait serait lisible par n'importe quel visiteur.
+
+C'est très exactement la faille 3.1 — `VITE_WC_CONSUMER_KEY` et
+`VITE_WC_CONSUMER_SECRET`, en lecture-écriture, dans le bundle du site. Elle est
+déclarée prioritaire depuis le premier jour et jamais traitée. **On ne la
+reproduit pas en la déplaçant sur notre propre base.**
+
+**La protection n'est pas une clé, c'est la portée :**
+
+- que des `SELECT`, sur des données déjà destinées à être publiques ;
+- aucune écriture, aucune suppression ;
+- ni `purchase_price_ht`, ni fournisseur, ni marge, ni stock d'alerte — la
+  liste des champs publiés est énumérée, pas obtenue par soustraction ;
+- l'écriture reste derrière `products-sync.php` et sa clé, que seul PocketApp
+  détient.
+
+**Écarté — une clé « de lecture » dans le bundle :** elle n'authentifie
+personne. Elle donne l'illusion d'une protection tout en étant publique, ce qui
+est pire que pas de clé du tout : on finit par lui confier des données qu'on
+n'aurait pas exposées sans elle.
+
+**Écarté — restreindre par `Origin` ou `Referer` :** ces en-têtes sont posés par
+le client. Ils gênent un navigateur, jamais un script.
+
+**Remise en cause si :** on veut publier par cet endpoint une donnée qui n'est
+pas publique — un prix réservé, un stock exact, un client. Alors ce n'est plus
+le même besoin, et il lui faudra son propre chemin authentifié, pas un
+paramètre de plus sur celui-ci.
+
 ## Les 257 produits dont l'état de publication va basculer se tranchent à l'export — 2026-08-11
 
 Décision du propriétaire, prise en constatant les 2562 produits publiés de la

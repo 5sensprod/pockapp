@@ -32,10 +32,17 @@ PHP.
 |---|---|---|
 | `api/publish-menu.php` | l'endpoint de réception du menu | oui |
 | `api/products-sync.php` | l'endpoint d'export du **catalogue** vers MySQL | oui |
+| `api/catalog.php` | la lecture **publique** du catalogue, pour le site | oui |
 | `sql/schema.sql` | les quatre tables du catalogue, à exécuter une fois | oui |
 | `config/config.php.example` | modèle de configuration | oui |
 | `config/config.php` | la configuration réelle, **avec la clé** | **non** (`.gitignore`) |
 | `config/.htaccess` | interdit l'accès HTTP au dossier de configuration | oui |
+
+**Deux endpoints pour le catalogue, et deux régimes.** `products-sync.php`
+écrit et exige la clé ; `catalog.php` lit et n'en veut aucune — son consommateur
+est un bundle public, où un secret serait lisible de tous. Voir le bloc
+« L'endpoint de lecture du catalogue est public et sans clé » de
+[`docs/DECISIONS.md`](../docs/DECISIONS.md).
 
 **`sql/schema.sql` est revenu le 11 août 2026, pour le catalogue** — les quatre
 tables `ax_products`, `ax_categories`, `ax_brands` et `ax_product_categories`.

@@ -12,7 +12,7 @@ projet. Ne pas s'y fier.
 |---|---|---|
 | **PocketApp** (`I:\pockapp`, ce dépôt) | Caisse + pilotage du site | actif |
 | **AppPos** (non versionné ici) | React / Express / NeDB `:3000` — **autorité** sur produits, catégories, marques, fournisseurs | on n'y touche pas |
-| **Site** (`I:\divi-child\frontend-wp`) | Build React devant WordPress/WooCommerce — vitrine, **pas de vente en ligne** | modifié aux tickets 8-9 |
+| **Site** (`I:\divi-child\frontend-wp`) | Build React devant WordPress/WooCommerce — vitrine, **pas de vente en ligne**. Lit le menu publié, et depuis le 2026-08-11 ses premiers produits dans notre base SQL via `server/api/catalog.php` — drapeau `VITE_USE_AXE_CATALOG`, par défaut `false` | modifié aux tickets 8-9 |
 
 Ce dépôt est le seul documenté. AppPos et le site sont décrits ici, jamais
 depuis leur propre dépôt.
