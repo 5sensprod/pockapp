@@ -99,12 +99,21 @@ const CATEGORY_FIELDS =
 const BRAND_FIELDS =
 	'id,collectionId,collectionName,legacy_id,name,slug,description,image'
 
+// Le catalogue bouge au rythme des rechargements par purge, pas à la seconde.
+// `new QueryClient()` (frontend/main.tsx:17) ne fixe aucun `staleTime`, donc la
+// valeur par défaut est 0 : sans la ligne ci-dessous, revenir sur l'écran
+// relance les 2562 produits, les 463 catégories et les 287 marques à chaque
+// fois. Cinq minutes rendent le retour instantané sans jamais servir une donnée
+// d'une autre session.
+const CATALOG_STALE_TIME = 5 * 60_000
+
 /** Les produits publiés — l'ensemble exact de ce qui est destiné au site. */
 export function usePublishedProducts() {
 	const pb = usePocketBase() as any
 
 	return useQuery<CatalogProduct[]>({
 		queryKey: ['site-catalog', 'products', 'published'],
+		staleTime: CATALOG_STALE_TIME,
 		queryFn: async () =>
 			(await pb.collection('products').getFullList({
 				filter: 'status = "published"',
@@ -122,6 +131,7 @@ export function useProductCount() {
 
 	return useQuery<number>({
 		queryKey: ['site-catalog', 'products', 'count'],
+		staleTime: CATALOG_STALE_TIME,
 		queryFn: async () => {
 			const res = await pb
 				.collection('products')
@@ -139,6 +149,7 @@ export function useCatalogCategories() {
 
 	return useQuery<CatalogCategory[]>({
 		queryKey: ['site-catalog', 'categories'],
+		staleTime: CATALOG_STALE_TIME,
 		queryFn: async () =>
 			(await pb.collection('categories').getFullList({
 				fields: CATEGORY_FIELDS,
@@ -154,6 +165,7 @@ export function useCatalogBrands() {
 
 	return useQuery<CatalogBrand[]>({
 		queryKey: ['site-catalog', 'brands'],
+		staleTime: CATALOG_STALE_TIME,
 		queryFn: async () =>
 			(await pb.collection('brands').getFullList({
 				fields: BRAND_FIELDS,

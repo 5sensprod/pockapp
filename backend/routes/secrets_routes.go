@@ -366,6 +366,103 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		})
 	}, requireAdmin)
 
+	// ═══════════════════════════════════════════════════════════════════════
+	// EXPORT DU CATALOGUE VERS LA BASE SQL AXEMUSIQUE
+	// ═══════════════════════════════════════════════════════════════════════
+	//
+	// Même forme que le trio ci-dessus, et pour les mêmes raisons — clé
+	// chiffrée, URL en clair, aucune route qui relise la clé.
+	//
+	// Réglages SÉPARÉS de ceux de la publication du menu, et ce n'est pas une
+	// duplication par facilité : la clé du menu autorise à écrire un fichier
+	// JSON de quelques kilo-octets, celle-ci à ÉCRIRE DANS LA BASE DE DONNÉES
+	// du catalogue. Deux portées, deux durées de vie ; révoquer l'une ne doit
+	// pas condamner l'autre. Côté serveur, ce sont deux entrées distinctes de
+	// config.php (`api_key` et `catalog_api_key`).
+
+	// POST /api/settings/site-catalog - Enregistrer la clé et/ou l'URL
+	router.POST("/api/settings/site-catalog", func(c echo.Context) error {
+		log.Println("🌐 POST /api/settings/site-catalog")
+
+		var req struct {
+			APIKey      string `json:"api_key"`
+			EndpointURL string `json:"endpoint_url"`
+		}
+
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "Données invalides",
+			})
+		}
+
+		req.APIKey = strings.TrimSpace(req.APIKey)
+		req.EndpointURL = strings.TrimSpace(req.EndpointURL)
+
+		if req.APIKey == "" && req.EndpointURL == "" {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "Renseignez au moins la clé ou l'URL",
+			})
+		}
+
+		if req.EndpointURL != "" {
+			if !strings.HasPrefix(req.EndpointURL, "http://") &&
+				!strings.HasPrefix(req.EndpointURL, "https://") {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+					"error": "L'URL doit être absolue et commencer par http:// ou https://",
+				})
+			}
+			if err := sm.SetSetting(secrets.SettingSiteCatalogURL, req.EndpointURL); err != nil {
+				log.Printf("❌ Error saving site catalog URL: %v", err)
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+					"error": "Erreur lors de la sauvegarde de l'URL",
+				})
+			}
+		}
+
+		if req.APIKey != "" {
+			if err := sm.SetSecret(secrets.KeySiteCatalogAPI, req.APIKey); err != nil {
+				log.Printf("❌ Error saving site catalog key: %v", err)
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+					"error": "Erreur lors de la sauvegarde de la clé API",
+				})
+			}
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "Paramètres d'export du catalogue enregistrés",
+		})
+	}, requireAdmin)
+
+	// GET /api/settings/site-catalog/status - État de la configuration
+	router.GET("/api/settings/site-catalog/status", func(c echo.Context) error {
+		url, err := sm.GetSetting(secrets.SettingSiteCatalogURL)
+		if err != nil {
+			url = ""
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"configured":   sm.HasSecret(secrets.KeySiteCatalogAPI),
+			"endpoint_url": url,
+		})
+	}, requireAdmin)
+
+	// DELETE /api/settings/site-catalog - Supprimer la clé
+	router.DELETE("/api/settings/site-catalog", func(c echo.Context) error {
+		log.Println("🗑️ DELETE /api/settings/site-catalog")
+
+		if err := sm.DeleteSecret(secrets.KeySiteCatalogAPI); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]interface{}{
+				"error": "Clé API non trouvée",
+			})
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "Clé API d'export du catalogue supprimée",
+		})
+	}, requireAdmin)
+
 	log.Println("✅ Secrets management routes registered successfully")
 }
 

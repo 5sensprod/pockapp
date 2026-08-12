@@ -35,6 +35,7 @@ import {
 } from '@/lib/queries/site-catalog'
 import { AlertTriangle, Globe, Loader2, Search, X } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { CatalogSyncBar } from './components/online-catalog/CatalogSyncBar'
 import { OnlineBrandGrid } from './components/online-catalog/OnlineBrandGrid'
@@ -51,6 +52,17 @@ import {
 	buildOnlineCatalog,
 	collectSubtreeProducts,
 } from './lib/online-catalog'
+
+/**
+ * Tableaux vides PARTAGÉS, et non des `[]` créés à la volée.
+ *
+ * `data ?? []` fabrique un nouveau tableau à chaque rendu : passé en dépendance
+ * d'un hook qui calcule puis pose un état, cela reboucle indéfiniment et la
+ * page ne s'affiche jamais. Une constante de module a une identité stable.
+ */
+const NO_PRODUCTS: CatalogProduct[] = []
+const NO_CATEGORIES: CatalogCategory[] = []
+const NO_BRANDS: CatalogBrand[] = []
 
 export function CatalogueEnLignePage() {
 	const products = usePublishedProducts()
@@ -111,9 +123,10 @@ export function CatalogueEnLignePage() {
 	const exportCatalog = useExportCatalog()
 
 	const checksums = useProductChecksums(
-		products.data ?? [],
-		categories.data ?? [],
-		brands.data ?? [],
+		products.data ?? NO_PRODUCTS,
+		categories.data ?? NO_CATEGORIES,
+		brands.data ?? NO_BRANDS,
+		Boolean(inventory.data),
 	)
 
 	const syncStates = useMemo(() => {
@@ -146,6 +159,36 @@ export function CatalogueEnLignePage() {
 	 */
 	const exportProducts = useCallback(
 		(selection: CatalogProduct[]) => {
+			// ⚠️ GARDE-FOU, ajouté après un export qui a écrit `brand = NULL`.
+			//
+			// Si les catégories ou les marques n'ont pas été chargées, les index
+			// `id → legacy_id` sont vides : chaque produit part alors sans marque
+			// et sans catégorie, et le serveur l'écrit sans broncher — il ne
+			// décide de rien, c'est le contrat (§2). Le résultat est une base de
+			// site silencieusement amputée de toutes ses relations.
+			//
+			// Un export ne doit jamais partir sur des relations qu'on n'a pas pu
+			// résoudre. Mieux vaut ne rien envoyer et le dire.
+			const referencesCategories = selection.some(
+				(p) => (p.categories ?? []).length > 0,
+			)
+			const referencesBrands = selection.some((p) => Boolean(p.brand))
+
+			if (referencesCategories && !categories.data?.length) {
+				toast.error(
+					'Export annulé : les catégories ne sont pas chargées. ' +
+						'Les produits partiraient sans aucun rattachement.',
+				)
+				return
+			}
+			if (referencesBrands && !brands.data?.length) {
+				toast.error(
+					'Export annulé : les marques ne sont pas chargées. ' +
+						'Les produits partiraient sans marque.',
+				)
+				return
+			}
+
 			const categoryById = new Map(
 				(categories.data ?? []).map((c) => [c.id, c]),
 			)
@@ -175,7 +218,7 @@ export function CatalogueEnLignePage() {
 				brands: [...neededBrands.values()],
 			})
 		},
-		[categories.data, brandsById, exportCatalog],
+		[categories.data, brands.data, brandsById, exportCatalog],
 	)
 
 	const toggle = (id: string) =>
@@ -254,6 +297,44 @@ export function CatalogueEnLignePage() {
 							warn={catalog.uncategorized.length > 0}
 						/>
 					</div>
+
+					{/* Distinguer la panne du résultat métier. « Aucune catégorie en
+				    ligne » est une conclusion ; une collection vide alors que les
+				    produits en citent est une PANNE DE LECTURE, et le dire évite de
+				    chercher le défaut du mauvais côté. */}
+					{!categories.isLoading && !categories.data?.length && (
+						<Card className='mb-6 border-destructive'>
+							<CardContent className='flex items-start gap-3 pt-6'>
+								<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
+								<div>
+									<p className='font-medium'>
+										Les catégories n'ont pas été lues
+									</p>
+									<p className='text-muted-foreground text-sm'>
+										{categories.error
+											? String(categories.error)
+											: 'La collection est revenue vide. L’arbre et les rattachements sont donc faux, et l’export est bloqué.'}
+									</p>
+								</div>
+							</CardContent>
+						</Card>
+					)}
+
+					{!brands.isLoading && !brands.data?.length && (
+						<Card className='mb-6 border-destructive'>
+							<CardContent className='flex items-start gap-3 pt-6'>
+								<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
+								<div>
+									<p className='font-medium'>Les marques n'ont pas été lues</p>
+									<p className='text-muted-foreground text-sm'>
+										{brands.error
+											? String(brands.error)
+											: 'La collection est revenue vide. Les produits partiraient sans marque : l’export est bloqué.'}
+									</p>
+								</div>
+							</CardContent>
+						</Card>
+					)}
 
 					{catalog.missingCategoryIds.length > 0 && (
 						<Card className='mb-6 border-amber-500/50'>

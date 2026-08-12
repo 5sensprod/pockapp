@@ -25,6 +25,19 @@ export const CATALOG_CONTRACT_VERSION = 1
 /** §6 du contrat : plafond d'un lot, garde-fou côté serveur, consigne ici. */
 export const MAX_ENTITIES_PER_BATCH = 200
 
+/**
+ * Plafond de taille d'un lot, en octets de JSON.
+ *
+ * Le contrat fixe 1 Mio, et le relais Go refuse au-delà
+ * (`siteCatalogMaxBytes`). Or **le nombre d'entités ne dit rien de la taille** :
+ * 200 produits dont la description fait 5 Kio font déjà 1 Mio. Compter les
+ * entités seules laisserait l'export échouer au milieu, sur un lot au hasard,
+ * selon la longueur des fiches.
+ *
+ * 800 Kio laisse de la marge pour l'enveloppe et l'échappement JSON.
+ */
+export const MAX_BATCH_BYTES = 800 * 1024
+
 // ---------------------------------------------------------------------------
 // FORMES DU CONTRAT
 // ---------------------------------------------------------------------------
@@ -214,6 +227,7 @@ export function buildExportBatches(
 	brands: ExportBrand[],
 	exportedAt: string,
 	maxPerBatch: number = MAX_ENTITIES_PER_BATCH,
+	maxBytes: number = MAX_BATCH_BYTES,
 ): ExportBatch[] {
 	const batches: ExportBatch[] = []
 
@@ -225,6 +239,7 @@ export function buildExportBatches(
 		brands: [],
 	}
 	let count = 0
+	let bytes = 0
 
 	const flush = () => {
 		if (count > 0) batches.push(current)
@@ -236,20 +251,32 @@ export function buildExportBatches(
 			brands: [],
 		}
 		count = 0
+		bytes = 0
 	}
 
-	for (const brand of brands) {
-		current.brands.push(brand)
-		if (++count >= maxPerBatch) flush()
+	/**
+	 * Ajoute une entité, en fermant le lot AVANT si elle le ferait déborder —
+	 * jamais après. Fermer après laisserait partir un lot au-dessus du plafond,
+	 * c'est-à-dire précisément ce qu'on cherche à éviter.
+	 *
+	 * Une entité seule plus grosse que le plafond part quand même, seule : la
+	 * couper serait pire, et le serveur dira ce qu'il en pense.
+	 */
+	const push = (entity: object, into: (b: ExportBatch) => void) => {
+		const size = JSON.stringify(entity).length
+		if (count > 0 && (count >= maxPerBatch || bytes + size > maxBytes)) flush()
+		into(current)
+		count++
+		bytes += size
 	}
-	for (const category of categories) {
-		current.categories.push(category)
-		if (++count >= maxPerBatch) flush()
-	}
-	for (const product of products) {
-		current.products.push(product)
-		if (++count >= maxPerBatch) flush()
-	}
+
+	// Marques et catégories d'abord : un export interrompu laisse alors une base
+	// cohérente plutôt que des produits citant des catégories absentes.
+	for (const brand of brands) push(brand, (b) => b.brands.push(brand))
+	for (const category of categories)
+		push(category, (b) => b.categories.push(category))
+	for (const product of products) push(product, (b) => b.products.push(product))
+
 	flush()
 
 	return batches

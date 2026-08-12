@@ -164,6 +164,52 @@ describe('buildExportBatches', () => {
 		).toBe(4)
 	})
 
+	it('ferme le lot sur la TAILLE, pas seulement sur le nombre', () => {
+		// Le cas réel : des descriptions longues font déborder le mégaoctet bien
+		// avant la 200e entité. Sans ce découpage, l'export échouerait au milieu.
+		const gros = (n: number) => ({
+			legacy_id: `e${n}`,
+			checksum: `c${n}`,
+			description: 'x'.repeat(400),
+		})
+
+		const batches = buildExportBatches(
+			[gros(1), gros(2), gros(3)] as unknown as ExportProduct[],
+			[],
+			[],
+			at,
+			200, // le plafond en nombre n'est jamais atteint
+			500, // celui en octets, si
+		)
+
+		expect(batches.length).toBeGreaterThan(1)
+		for (const batch of batches) {
+			expect(JSON.stringify(batch).length).toBeLessThan(1200)
+		}
+	})
+
+	it('laisse partir seule une entité plus grosse que le plafond', () => {
+		// La couper serait pire que la laisser passer : le serveur dira ce qu'il
+		// en pense, et le refus nommera l'entité.
+		const enorme = {
+			legacy_id: 'e1',
+			checksum: 'c1',
+			description: 'x'.repeat(2000),
+		}
+
+		const batches = buildExportBatches(
+			[enorme] as unknown as ExportProduct[],
+			[],
+			[],
+			at,
+			200,
+			500,
+		)
+
+		expect(batches).toHaveLength(1)
+		expect(batches[0].products).toHaveLength(1)
+	})
+
 	it('envoie marques et catégories avant les produits', () => {
 		const batches = buildExportBatches(
 			[entity(1)] as unknown as ExportProduct[],

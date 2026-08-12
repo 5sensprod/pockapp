@@ -25,15 +25,19 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import {
 	useDeleteNotificationKey,
+	useDeleteSiteCatalogKey,
 	useDeleteSitePublishKey,
 	useNotificationKeyStatus,
 	useSetNotificationKey,
+	useSetSiteCatalog,
 	useSetSitePublish,
+	useSiteCatalogStatus,
 	useSitePublishStatus,
 } from '@/lib/queries/secrets'
 import {
 	AlertCircle,
 	CheckCircle2,
+	Database,
 	Eye,
 	EyeOff,
 	Globe,
@@ -62,6 +66,8 @@ export default function SecretsSettings() {
 			<NotificationKeySection />
 			<Separator />
 			<SitePublishSection />
+			<Separator />
+			<SiteCatalogSection />
 		</div>
 	)
 }
@@ -381,6 +387,193 @@ function SitePublishSection() {
 					<p className='text-xs text-muted-foreground'>
 						Enregistrée chiffrée. Elle n'est jamais réaffichée : en cas de
 						doute, on en met une nouvelle des deux côtés.
+					</p>
+				</div>
+
+				<div className='flex items-center justify-between gap-2'>
+					{status?.configured ? (
+						<Button
+							variant='destructive'
+							size='sm'
+							onClick={handleDelete}
+							disabled={deleteKey.isPending}
+						>
+							{deleteKey.isPending ? (
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							) : (
+								<Trash2 className='mr-2 h-4 w-4' />
+							)}
+							Supprimer la clé
+						</Button>
+					) : (
+						<span />
+					)}
+
+					<Button
+						onClick={handleSave}
+						disabled={save.isPending || !hasSomethingToSave}
+					>
+						{save.isPending && (
+							<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+						)}
+						Enregistrer
+					</Button>
+				</div>
+			</CardContent>
+		</Card>
+	)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOUS-COMPOSANT - EXPORT DU CATALOGUE
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Distinct de la publication du menu, et pas par symétrie décorative : cette
+// clé-là écrit dans la BASE DE DONNÉES du catalogue, l'autre dépose un fichier
+// JSON. Côté serveur ce sont `catalog_api_key` et `api_key`, deux entrées de
+// config.php. Réutiliser la même valeur des deux côtés ferait d'une révocation
+// de menu une panne d'export.
+//
+// Contrat : frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md
+
+const DEFAULT_CATALOG_URL =
+	'https://axemusique.shop/server/api/products-sync.php'
+
+function SiteCatalogSection() {
+	const [apiKey, setApiKey] = useState('')
+	const [showKey, setShowKey] = useState(false)
+	const [endpointUrl, setEndpointUrl] = useState('')
+	const [urlTouched, setUrlTouched] = useState(false)
+
+	const { data: status, isLoading: statusLoading } = useSiteCatalogStatus()
+	const save = useSetSiteCatalog()
+	const deleteKey = useDeleteSiteCatalogKey()
+
+	useEffect(() => {
+		if (urlTouched || !status) return
+		setEndpointUrl(status.endpoint_url || DEFAULT_CATALOG_URL)
+	}, [status, urlTouched])
+
+	const urlChanged = endpointUrl.trim() !== (status?.endpoint_url ?? '')
+	const hasSomethingToSave = !!apiKey.trim() || urlChanged
+
+	const handleSave = async () => {
+		const url = endpointUrl.trim()
+
+		if (!url) {
+			toast.error("L'URL de l'endpoint est obligatoire")
+			return
+		}
+		if (!/^https?:\/\//.test(url)) {
+			toast.error("L'URL doit commencer par http:// ou https://")
+			return
+		}
+
+		try {
+			await save.mutateAsync({
+				apiKey: apiKey.trim() || undefined,
+				endpointUrl: urlChanged ? url : undefined,
+			})
+			toast.success("Paramètres d'export du catalogue enregistrés")
+			setApiKey('')
+			setShowKey(false)
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la sauvegarde')
+		}
+	}
+
+	const handleDelete = async () => {
+		if (!confirm("Supprimer la clé d'export du catalogue ?")) return
+
+		try {
+			await deleteKey.mutateAsync()
+			toast.success("Clé d'export supprimée")
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la suppression')
+		}
+	}
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle className='flex items-center gap-2'>
+					<Database className='h-5 w-5' />
+					Export du catalogue
+				</CardTitle>
+				<CardDescription>
+					Clé et adresse de l'endpoint qui écrit les produits dans la base SQL
+					d'axemusique.shop.{' '}
+					<strong>Elle ne doit pas être celle du menu</strong> : celle-ci donne
+					accès en écriture à la base de données du catalogue.
+				</CardDescription>
+			</CardHeader>
+			<CardContent className='space-y-4'>
+				<div className='flex items-center gap-2'>
+					<ConfiguredBadge
+						loading={statusLoading}
+						configured={!!status?.configured}
+						labels={['Clé enregistrée', 'Clé non enregistrée']}
+					/>
+				</div>
+
+				<div className='space-y-2'>
+					<Label htmlFor='site-catalog-url'>URL de l'endpoint</Label>
+					<Input
+						id='site-catalog-url'
+						type='url'
+						value={endpointUrl}
+						onChange={(e) => {
+							setUrlTouched(true)
+							setEndpointUrl(e.target.value)
+						}}
+					/>
+					<p className='text-xs text-muted-foreground'>
+						Lue en GET pour connaître ce que le site contient déjà, écrite en
+						POST pour y pousser un lot. Le schéma SQL doit avoir été créé au
+						préalable (<code>server/sql/schema.sql</code>).
+						{!statusLoading && !status?.endpoint_url && (
+							<span className='block text-amber-600'>
+								Valeur par défaut proposée, pas encore enregistrée — «
+								Enregistrer » la validera.
+							</span>
+						)}
+					</p>
+				</div>
+
+				<div className='space-y-2'>
+					<Label htmlFor='site-catalog-key'>
+						{status?.configured
+							? "Nouvelle clé (remplacera l'actuelle)"
+							: 'Clé X-API-Key'}
+					</Label>
+					<div className='relative'>
+						<Input
+							id='site-catalog-key'
+							type={showKey ? 'text' : 'password'}
+							placeholder='64 caractères hexadécimaux'
+							value={apiKey}
+							onChange={(e) => setApiKey(e.target.value)}
+							className='pr-10'
+							autoComplete='off'
+						/>
+						<Button
+							type='button'
+							variant='ghost'
+							size='icon'
+							className='absolute right-0 top-0 h-full px-3'
+							onClick={() => setShowKey(!showKey)}
+						>
+							{showKey ? (
+								<EyeOff className='h-4 w-4' />
+							) : (
+								<Eye className='h-4 w-4' />
+							)}
+						</Button>
+					</div>
+					<p className='text-xs text-muted-foreground'>
+						Celle de <code>catalog_api_key</code> dans le{' '}
+						<code>config.php</code> du serveur. Enregistrée chiffrée, jamais
+						réaffichée.
 					</p>
 				</div>
 

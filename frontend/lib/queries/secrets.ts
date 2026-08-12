@@ -272,6 +272,71 @@ export function useSetSitePublish() {
 	})
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORT DU CATALOGUE VERS LA BASE SQL AXEMUSIQUE
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Réglages SÉPARÉS de ceux de la publication du menu. Ce n'est pas une
+// duplication par facilité : la clé du menu écrit un fichier JSON, celle-ci
+// écrit dans la BASE DE DONNÉES du catalogue. Révoquer l'une ne doit pas
+// condamner l'autre — côté serveur, ce sont `api_key` et `catalog_api_key`,
+// deux entrées distinctes de config.php.
+//
+// Comme ci-dessus : aucun hook ne relit la clé.
+
+export function useSiteCatalogStatus() {
+	const pb = usePocketBase() as any
+
+	return useQuery<{ configured: boolean; endpoint_url: string }>({
+		queryKey: ['site-catalog-status'],
+		queryFn: async () => {
+			return await fetchWithAuth(pb, '/api/settings/site-catalog/status')
+		},
+	})
+}
+
+export function useSetSiteCatalog() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (data: { apiKey?: string; endpointUrl?: string }) => {
+			return await fetchWithAuth(pb, '/api/settings/site-catalog', {
+				method: 'POST',
+				body: JSON.stringify({
+					api_key: data.apiKey ?? '',
+					endpoint_url: data.endpointUrl ?? '',
+				}),
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['site-catalog-status'] })
+			// L'inventaire distant devient lisible : l'écran « Catalogue en ligne »
+			// doit le redemander plutôt que de rester sur « État du site inconnu ».
+			queryClient.invalidateQueries({ queryKey: ['site-catalog'] })
+			queryClient.invalidateQueries({ queryKey: ['settings'] })
+		},
+	})
+}
+
+export function useDeleteSiteCatalogKey() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async () => {
+			return await fetchWithAuth(pb, '/api/settings/site-catalog', {
+				method: 'DELETE',
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['site-catalog-status'] })
+			queryClient.invalidateQueries({ queryKey: ['site-catalog'] })
+			queryClient.invalidateQueries({ queryKey: ['settings'] })
+		},
+	})
+}
+
 /**
  * Supprimer la clé de publication. L'URL est conservée.
  */

@@ -251,10 +251,19 @@ export function useProductChecksums(
 	products: CatalogProduct[],
 	categories: CatalogCategory[],
 	brands: CatalogBrand[],
+	/**
+	 * Sans inventaire distant, l'empreinte ne répond à aucune question : rien
+	 * n'existe côté site à quoi la comparer. Calculer 2562 SHA-1 pour les jeter
+	 * coûte une seconde d'affichage à chaque ouverture de l'écran — d'où ce
+	 * drapeau, piloté par la présence de l'inventaire.
+	 */
+	enabled = true,
 ): Map<string, string> {
 	const [index, setIndex] = useState<Map<string, string>>(new Map())
 
 	const compute = useCallback(async () => {
+		if (!enabled) return new Map<string, string>()
+
 		const categoryLegacyById = new Map(
 			categories.map((c) => [c.id, c.legacy_id]),
 		)
@@ -276,17 +285,42 @@ export function useProductChecksums(
 		)
 
 		return new Map(pairs)
-	}, [products, categories, brands])
+	}, [products, categories, brands, enabled])
 
 	useEffect(() => {
 		let cancelled = false
-		compute().then((result) => {
-			if (!cancelled) setIndex(result)
-		})
+		compute()
+			.catch((cause) => {
+				// `crypto.subtle` n'existe pas hors origine sûre. Le cas ne devrait
+				// pas se produire sous Wails ni sur localhost, mais un échec ici ne
+				// doit jamais empêcher la page de s'afficher : sans empreintes, on
+				// perd la distinction « modifié », pas la vue.
+				console.warn('[catalogue] empreintes non calculées :', cause)
+				return new Map<string, string>()
+			})
+			.then((result) => {
+				if (cancelled) return
+				// Ne remplacer l'état que si le contenu a VRAIMENT changé. Sans cette
+				// garde, un appelant qui passe `data ?? []` recrée un tableau à chaque
+				// rendu, le calcul se relance, `setIndex` provoque un rendu, et la page
+				// boucle sans jamais s'afficher. La garde côté appelant reste la bonne
+				// (des tableaux stables), celle-ci empêche la boucle de se reformer.
+				setIndex((previous) =>
+					sameIndex(previous, result) ? previous : result,
+				)
+			})
 		return () => {
 			cancelled = true
 		}
 	}, [compute])
 
 	return index
+}
+
+function sameIndex(a: Map<string, string>, b: Map<string, string>): boolean {
+	if (a.size !== b.size) return false
+	for (const [key, value] of a) {
+		if (b.get(key) !== value) return false
+	}
+	return true
 }
