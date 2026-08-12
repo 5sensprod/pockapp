@@ -164,6 +164,15 @@ $action = isset($_GET['action']) ? (string) $_GET['action'] : 'category';
 $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 8;
 $limit = max(1, min(48, $limit));
 
+// La pagination va avec : `per_page` prime sur `limit` quand il est fourni,
+// pour que la page d'accueil (« montre-m'en 8 ») et la page catégorie
+// (« page 3 sur 12 ») ne se disputent pas le même paramètre.
+if (isset($_GET['per_page'])) {
+    $limit = max(1, min(48, (int) $_GET['per_page']));
+}
+$page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
+$offset = ($page - 1) * $limit;
+
 try {
     // ── Liste des catégories qui portent des produits ───────────────────────
     if ($action === 'categories') {
@@ -189,6 +198,64 @@ try {
                     'product_count' => (int) $row['product_count'],
                 ];
             }, $rows),
+        ]);
+    }
+
+    // ── Un produit, par son slug ────────────────────────────────────────────
+    // Sert la page produit du site. Le slug est la clé d'adressage publique —
+    // et il est figé au premier envoi (§4.5 du contrat d'export), ce qui est
+    // exactement ce qui rend cette route stable.
+    if ($action === 'product') {
+        $slug = isset($_GET['slug']) ? (string) $_GET['slug'] : '';
+        $id = isset($_GET['id']) ? (string) $_GET['id'] : '';
+
+        if ($slug === '' && $id === '') {
+            fail(400, 'Produit : slug ou id attendu.');
+        }
+
+        $st = $pdo->prepare(sprintf(
+            'SELECT %s
+               FROM `%s` p
+          LEFT JOIN `%s` b ON b.legacy_id = p.brand
+              WHERE %s = ?
+                AND p.status = \'published\'
+              LIMIT 1',
+            $PRODUCT_COLUMNS,
+            $T_PRODUCTS,
+            $T_BRANDS,
+            $slug !== '' ? 'p.slug' : 'p.legacy_id'
+        ));
+        $st->execute([$slug !== '' ? $slug : $id]);
+
+        $row = $st->fetch();
+        if (!$row) {
+            fail(404, 'Produit introuvable.');
+        }
+
+        // Les catégories du produit, pour le fil d'Ariane. Sans elles, la page
+        // produit n'a aucun moyen de dire d'où vient le visiteur.
+        $st = $pdo->prepare(sprintf(
+            'SELECT c.legacy_id, c.name, c.slug, c.parent
+               FROM `%s` c
+               JOIN `%s` pc ON pc.category_legacy_id = c.legacy_id
+              WHERE pc.product_legacy_id = ?
+              ORDER BY c.name ASC',
+            $T_CATEGORIES,
+            $T_PRODCAT
+        ));
+        $st->execute([$row['legacy_id']]);
+
+        respond(200, [
+            'ok'         => true,
+            'product'    => present_product($row),
+            'categories' => array_map(static function (array $c): array {
+                return [
+                    'id'     => (string) $c['legacy_id'],
+                    'name'   => (string) $c['name'],
+                    'slug'   => $c['slug'] !== null ? (string) $c['slug'] : null,
+                    'parent' => $c['parent'] !== null ? (string) $c['parent'] : null,
+                ];
+            }, $st->fetchAll()),
         ]);
     }
 
@@ -229,27 +296,203 @@ try {
             fail(404, 'Catégorie introuvable.');
         }
 
-        // Les produits de la catégorie ELLE-MÊME, sans descendance : la
-        // hiérarchie est reconstruite côté site s'il en a besoin, et une
-        // requête récursive sur un mutualisé en MySQL 5.7 n'est pas une bonne
-        // idée.
+        // ── La catégorie ET SA DESCENDANCE ──────────────────────────────
+        //
+        // Constaté à l'usage : une catégorie de pur classement ne porte aucun
+        // produit en propre — « Guitares folk » affichait « 15 produits » alors
+        // que ses cinq enfants en portent 78. Un visiteur qui clique une
+        // rubrique du menu attend ce qu'elle CONTIENT, descendance comprise,
+        // et c'est aussi ce que fait WooCommerce.
+        //
+        // Pas de requête récursive : MySQL 5.7 du mutualisé n'a pas de CTE.
+        // L'arbre entier tient en une lecture — 463 catégories — et la
+        // descendance se calcule ensuite en PHP, sans aller-retour par niveau.
+        // `name` et `slug` sont lus au passage : ils servent au fil d'Ariane,
+        // qui remonte la chaîne des parents. Les relire dans une seconde
+        // requête pour trois ou quatre ancêtres serait payer un aller-retour
+        // par niveau.
+        $tree = $pdo->query(sprintf(
+            'SELECT legacy_id, parent, name, slug FROM `%s`',
+            $T_CATEGORIES
+        ))->fetchAll();
+
+        $childrenOf = [];
+        $nodeById = [];
+        foreach ($tree as $row) {
+            $nodeById[(string) $row['legacy_id']] = $row;
+
+            $parent = $row['parent'];
+            if ($parent === null || $parent === '') {
+                continue;
+            }
+            $childrenOf[(string) $parent][] = (string) $row['legacy_id'];
+        }
+
+        /**
+         * Les ancêtres d'une catégorie, de la RACINE vers le parent direct —
+         * l'ordre dans lequel un fil d'Ariane se lit. La catégorie elle-même
+         * n'y figure pas : c'est à l'affichage de la poser en dernier.
+         *
+         * Garde-fou sur les visités, comme pour la descente : `parent` est une
+         * colonne libre et un cycle ferait tourner la remontée sans fin.
+         *
+         * @return array<int,array<string,string|null>>
+         */
+        $ancestorsOf = static function (string $startId) use ($nodeById): array {
+            $chain = [];
+            $seen = [];
+            $current = $nodeById[$startId]['parent'] ?? null;
+
+            while ($current !== null && $current !== '' && isset($nodeById[(string) $current])) {
+                $key = (string) $current;
+                if (isset($seen[$key])) {
+                    break;
+                }
+                $seen[$key] = true;
+
+                $node = $nodeById[$key];
+                array_unshift($chain, [
+                    'id'   => (string) $node['legacy_id'],
+                    'name' => (string) $node['name'],
+                    'slug' => $node['slug'] !== null ? (string) $node['slug'] : null,
+                ]);
+
+                $current = $node['parent'];
+            }
+
+            return $chain;
+        };
+
+        /**
+         * Identifiants d'une branche, racine comprise.
+         *
+         * Le jeu des visités n'est pas décoratif : `parent` est une colonne
+         * libre, rien n'interdit un cycle, et sans lui la descente tournerait
+         * indéfiniment.
+         *
+         * @return string[]
+         */
+        $branchOf = static function (string $rootId) use ($childrenOf): array {
+            $seen = [$rootId => true];
+            $stack = [$rootId];
+
+            while ($stack !== []) {
+                $current = array_pop($stack);
+                foreach ($childrenOf[$current] ?? [] as $child) {
+                    if (!isset($seen[$child])) {
+                        $seen[$child] = true;
+                        $stack[] = $child;
+                    }
+                }
+            }
+
+            return array_keys($seen);
+        };
+
+        $branch = $branchOf((string) $category['legacy_id']);
+
+        $branchPlaceholders = implode(',', array_fill(0, count($branch), '?'));
+        // DISTINCT, et non GROUP BY : un produit rattaché à deux catégories de
+        // la même branche remonterait deux fois. Toutes les colonnes venant du
+        // produit, les doublons sont des lignes identiques et DISTINCT suffit —
+        // là où un GROUP BY buterait sur ONLY_FULL_GROUP_BY, actif par défaut
+        // en MySQL 5.7.
+        //
+        // Paramètres tous positionnels : PDO refuse de mélanger nommés et
+        // positionnels dans une même requête, et la liste de branche est de
+        // longueur variable.
         $st = $pdo->prepare(sprintf(
-            'SELECT %s
+            'SELECT DISTINCT %s
                FROM `%s` p
                JOIN `%s` pc ON pc.product_legacy_id = p.legacy_id
           LEFT JOIN `%s` b ON b.legacy_id = p.brand
-              WHERE pc.category_legacy_id = :category
+              WHERE pc.category_legacy_id IN (%s)
                 AND p.status = \'published\'
               ORDER BY p.name ASC
-              LIMIT :limit',
+              LIMIT ? OFFSET ?',
             $PRODUCT_COLUMNS,
             $T_PRODUCTS,
             $T_PRODCAT,
-            $T_BRANDS
+            $T_BRANDS,
+            $branchPlaceholders
         ));
-        $st->bindValue(':category', $category['legacy_id'], PDO::PARAM_STR);
-        $st->bindValue(':limit', $limit, PDO::PARAM_INT);
+
+        $position = 1;
+        foreach ($branch as $branchId) {
+            $st->bindValue($position++, $branchId, PDO::PARAM_STR);
+        }
+        $st->bindValue($position++, $limit, PDO::PARAM_INT);
+        $st->bindValue($position, $offset, PDO::PARAM_INT);
         $st->execute();
+        $products = $st->fetchAll();
+
+        // ── Les sous-catégories, comptées SUR LEUR BRANCHE ──────────────
+        //
+        // Le décompte d'un enfant doit obéir à la même règle que celui du
+        // parent, sans quoi la pastille « Folk 27 » mènerait à une page qui en
+        // affiche 30 — et c'est l'interface qui aurait l'air fausse.
+        //
+        // Une seule requête pour tout le monde : les couples
+        // (catégorie, produit) de la branche. Le parent en compte au plus
+        // quelques centaines ; les regrouper en PHP coûte moins qu'une requête
+        // de comptage par enfant.
+        $pairsSt = $pdo->prepare(sprintf(
+            'SELECT pc.category_legacy_id, pc.product_legacy_id
+               FROM `%s` pc
+               JOIN `%s` p ON p.legacy_id = pc.product_legacy_id
+              WHERE pc.category_legacy_id IN (%s)
+                AND p.status = \'published\'',
+            $T_PRODCAT,
+            $T_PRODUCTS,
+            $branchPlaceholders
+        ));
+        $pairsSt->execute($branch);
+
+        $productsByCategory = [];
+        foreach ($pairsSt->fetchAll() as $pair) {
+            $productsByCategory[(string) $pair['category_legacy_id']][] =
+                (string) $pair['product_legacy_id'];
+        }
+
+        /** Produits d'une branche, dédoublonnés — un produit rattaché à deux
+         *  catégories sœurs ne compte qu'une fois dans leur ancêtre. */
+        $branchProductCount = static function (string $rootId) use ($branchOf, $productsByCategory): int {
+            $seen = [];
+            foreach ($branchOf($rootId) as $categoryId) {
+                foreach ($productsByCategory[$categoryId] ?? [] as $productId) {
+                    $seen[$productId] = true;
+                }
+            }
+            return count($seen);
+        };
+
+        // Le total obéit à la MÊME règle que les pastilles d'enfants, et il
+        // est calculé par la même fonction : deux comptages écrits séparément
+        // finiraient par diverger, et c'est précisément l'incohérence qu'on
+        // vient de corriger.
+        $total = $branchProductCount((string) $category['legacy_id']);
+
+        $childrenSt = $pdo->prepare(sprintf(
+            'SELECT legacy_id, name, slug FROM `%s` WHERE parent = ? ORDER BY name ASC',
+            $T_CATEGORIES
+        ));
+        $childrenSt->execute([$category['legacy_id']]);
+
+        $children = [];
+        foreach ($childrenSt->fetchAll() as $child) {
+            $count = $branchProductCount((string) $child['legacy_id']);
+            // Une branche vide est une impasse pour le visiteur : on ne la
+            // propose pas.
+            if ($count === 0) {
+                continue;
+            }
+            $children[] = [
+                'id'            => (string) $child['legacy_id'],
+                'name'          => (string) $child['name'],
+                'slug'          => $child['slug'] !== null ? (string) $child['slug'] : null,
+                'product_count' => $count,
+            ];
+        }
 
         respond(200, [
             'ok'       => true,
@@ -259,7 +502,13 @@ try {
                 'slug'        => $category['slug'] !== null ? (string) $category['slug'] : null,
                 'description' => $category['description'] !== null ? (string) $category['description'] : null,
             ],
-            'products' => array_map('present_product', $st->fetchAll()),
+            // De la racine au parent direct. Vide pour une catégorie racine.
+            'ancestors' => $ancestorsOf((string) $category['legacy_id']),
+            'children' => $children,
+            'products' => array_map('present_product', $products),
+            'total'    => $total,
+            'page'     => $page,
+            'per_page' => $limit,
         ]);
     }
 

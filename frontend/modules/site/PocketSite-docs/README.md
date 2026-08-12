@@ -70,9 +70,64 @@ l'URL de publication, que le ticket 6 supposait acquis sans que rien ne les
 range : section « Publication du site » dans Réglages > Clés API.
 
 **Ce qui reste vrai et n'a pas été traité :** la faille 3.1 (clés WooCommerce
-dans le bundle public) reste ouverte et prioritaire, `wp-admin` conserve son
-menu inutilisé, et les pages du site continuent de s'hydrater depuis
-WooCommerce — seul le **menu** en est sorti.
+dans le bundle public) reste ouverte et prioritaire, et `wp-admin` conserve son
+menu inutilisé.
+
+## Le catalogue est sorti de WooCommerce — 11 août 2026
+
+La phrase ci-dessus disait « les pages du site continuent de s'hydrater depuis
+WooCommerce ». **Ce n'est plus vrai des pages catalogue.**
+
+```
+NeDB (référence)  ──catalog-import -load──▶  PocketBase local
+                                                  │  règle de mise en ligne
+                                                  │  (status = published)
+                                                  ▼
+                        POST  server/api/products-sync.php   ← X-API-Key, depuis le Go
+                                                  │  upsert sur legacy_id
+                                                  ▼
+                                       base SQL Axemusique (ax_*)
+                                                  │
+                        GET   server/api/catalog.php         ← PUBLIC, sans clé
+                                                  ▼
+                                     site React — accueil, catégorie, produit
+```
+
+| Fait | Où |
+|---|---|
+| Vue « Catalogue en ligne », états absent / modifié / à jour | `frontend/modules/site/CatalogueEnLignePage.tsx` |
+| Règle de mise en ligne, dérivée et testée | `frontend/modules/site/lib/online-catalog.ts` |
+| Export par lots, empreintes SHA-1 | `frontend/modules/site/lib/catalog-export.ts` |
+| Écriture SQL, upsert, slug figé | `server/api/products-sync.php` |
+| Lecture publique, branche et ancêtres | `server/api/catalog.php` |
+| Pages du site derrière `VITE_USE_AXE_CATALOG` | `src/pages/axe/` du dépôt site |
+
+**Contrats :** [`12-contrat-catalogue.md`](12-contrat-catalogue.md) fait foi sur
+l'export ET sur la lecture publique.
+
+**Quatre décisions structurantes**, toutes au journal du dépôt :
+
+- la clé d'une entité est **`legacy_id`**, jamais l'identifiant PocketBase —
+  qui est régénéré à chaque rechargement par purge ;
+- **l'URL est figée au premier envoi**, et le serveur en est le seul gardien ;
+- **l'endpoint de lecture est public et sans clé** — un secret dans un bundle
+  public serait la faille 3.1 répétée ;
+- **les destinations du menu viennent du catalogue PocketBase**, plus d'AppPos :
+  433 catégories sur 463 n'avaient pas de slug chez lui et ne pouvaient donc pas
+  figurer au menu.
+
+**Ce qui n'est pas fait, et qui est connu :**
+
+- **les images** — 4665 fichiers, 1,7 Go, non exportés ; les pages affichent une
+  vignette de remplacement. Session dédiée ;
+- **le retrait** d'un produit dépublié : l'export n'efface rien ;
+- **les 257 produits** dont l'état de publication bascule, à trancher à l'export ;
+- **les entrées de menu héritées** portent des URL manuelles écrites du temps de
+  WordPress : certaines pointent un homonyme, d'autres un slug inexistant ;
+- **les catégories homonymes** — deux « Guitares électriques », dont celle qui
+  porte le slug propre n'a qu'un produit. À nettoyer côté NeDB de production ;
+- **les marques n'ont pas de page** sur le site : elles sont listées dans
+  l'éditeur de menu mais non sélectionnables.
 
 | # | Ticket | Dépend de | Dépôt | État |
 |---|---|---|---|---|

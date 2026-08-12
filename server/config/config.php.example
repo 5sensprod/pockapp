@@ -49,6 +49,25 @@ return [
     'max_body_bytes' => 262144,
 
     /**
+     * Cibles NOMMÉES supplémentaires pour la publication du menu.
+     *
+     * `publish-menu.php?target=<nom>` écrit dans le fichier correspondant, au
+     * lieu de `target_file`. Le nom est une clé de ce tableau, JAMAIS un
+     * chemin : rien de ce que l'appelant envoie n'entre dans un chemin de
+     * fichier, et un nom inconnu est refusé plutôt que ramené à la cible
+     * principale.
+     *
+     * Sert à raccorder le menu au catalogue sans toucher au menu en
+     * production. Le site en développement lit ce fichier via
+     * `VITE_PUBLISHED_MENU_URL=/data/menu-dev.json`.
+     *
+     * Laisser vide en production si aucun essai n'est en cours.
+     */
+    'targets' => [
+        'dev' => __DIR__ . '/../../data/menu-dev.json',
+    ],
+
+    /**
      * Versions de `contractVersion` que ce script sait écrire.
      *
      * Toute autre valeur est REFUSÉE, jamais interprétée au mieux (§5 du

@@ -1,59 +1,70 @@
 // frontend/modules/site/hooks/use-menu-destinations.ts
 // ═══════════════════════════════════════════════════════════════════════════
-// DESTINATIONS PROPOSÉES PAR L'ÉDITEUR  (ticket 4)
+// DESTINATIONS PROPOSÉES PAR L'ÉDITEUR DE MENU
 // ═══════════════════════════════════════════════════════════════════════════
-// Les catégories, marques et produits proposés dans l'éditeur viennent
-// d'AppPos, en lecture seule, et `ref_id` stocke l'identifiant **WooCommerce**
-// de la cible. Arbitrage et raisons : docs/DECISIONS.md, bloc « Origine des
-// destinations du menu ».
+// Les catégories, marques et produits proposés viennent du **catalogue
+// PocketBase**, et `ref_id` stocke le `legacy_id` de la cible.
 //
-// Aucun nouveau point d'entrée réseau : AppPos est le point 2 de CLAUDE.md et
-// le client existe déjà (frontend/lib/apppos/).
+// ─── Ce qui a changé le 11 août 2026, et pourquoi ──────────────────────────
+// Jusqu'ici cette liste venait d'AppPos et `ref_id` portait un identifiant
+// **WooCommerce**. Deux raisons d'en sortir :
 //
-// ─── Pourquoi ne pas réutiliser useAppPosCategories / useAppPosBrands ───────
-// Parce qu'ils passent par `appPosTransformers`, qui moule les objets AppPos
-// dans la forme PocketBase — laquelle n'a pas de champ `woo_id`. Le champ est
-// donc perdu : transformAppPosCategory (apppos-transformers.ts:138) et
-// transformAppPosBrand (:167) ne le recopient pas. Or c'est précisément la
-// donnée dont ce ticket a besoin.
+//   1. **Les slugs manquaient.** L'URL se lisait dans AppPos, où 433 catégories
+//      sur 463 n'ont pas de slug : elles étaient listées mais NON
+//      SÉLECTIONNABLES, et une entrée déjà posée refusait de se publier avec
+//      « aucune URL connue ». C'est le blocage constaté à l'usage.
+//   2. **WooCommerce disparaît.** Un `ref_id` qui est un identifiant Woo
+//      désigne une cible dans un système qu'on est en train de retirer.
 //
-// On lit donc `appPosApi` directement, qui rend les objets AppPos bruts. On ne
-// touche pas aux transformers : le module `stock` en dépend, et leur ajouter
-// un champ hors forme PocketBase créerait une ambiguïté ailleurs pour un
-// besoin qui n'existe qu'ici.
+// Le catalogue PocketBase, lui, porte un slug pour chaque entité — la
+// normalisation en produit un, quitte à le désambiguïser — et ces slugs sont
+// ceux que le site sert désormais (`/categorie-produit/<slug>`).
+//
+// ─── Conséquence sur les entrées de menu DÉJÀ ENREGISTRÉES ────────────────
+// Leur `ref_id` est un identifiant WooCommerce ; il ne correspond à aucun
+// `legacy_id`. Elles deviennent donc non résolues, et la publication les
+// signale nommément au lieu de les publier de travers. `looksLikeWooId`
+// ci-dessous permet de le dire dans ces termes plutôt que de laisser croire à
+// une cible supprimée.
+//
+// ─── Ce que ce fichier n'appelle plus ──────────────────────────────────────
+// **AppPos.** L'édition du menu ne dépend plus d'une session AppPos ouverte.
+// Le paramètre `ready` est conservé pour ne pas casser les appelants, mais il
+// n'est plus consulté.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { appPosApi } from '@/lib/apppos'
+import {
+	useCatalogBrands,
+	useCatalogCategories,
+	usePublishedProducts,
+} from '@/lib/queries/site-catalog'
 import type { SiteMenuRefType } from '@/lib/queries/site-menu'
-import { useQuery } from '@tanstack/react-query'
+// Réexporté depuis la couche pure : voir la note à sa définition.
+export { looksLikeWooId } from '../lib/publish-menu'
+import { useMemo } from 'react'
 
 /**
  * Une destination proposable, indépendante du type.
  *
- * `refId` est l'identifiant WooCommerce en chaîne — c'est lui qui part dans
- * `ref_id`, et que le ticket 6 résoudra en URL. Il vaut `null` quand la cible
- * n'a pas encore été synchronisée vers WooCommerce : elle est alors listée
- * mais non sélectionnable, faute de quoi on stockerait une destination que la
- * publication ne saurait pas résoudre.
+ * `refId` est le `legacy_id` de la cible — c'est lui qui part dans `ref_id`, et
+ * que la publication résout en URL. Il ne vaut `null` que si l'entité n'en
+ * porte pas, ce qui ne devrait pas arriver : le chargeur l'écrit pour tout le
+ * monde.
  */
 export interface MenuDestination {
-	/** Identifiant AppPos, sert de clé de liste et de rien d'autre. */
+	/** Identifiant PocketBase, sert de clé de liste et de rien d'autre.
+	 *  **Jamais stocké** : il est régénéré à chaque rechargement par purge. */
 	sourceId: string
 	label: string
 	refId: string | null
-	/** Chemin de la catégorie, pour distinguer deux homonymes. */
+	/** Slug de la cible, pour distinguer deux homonymes. */
 	hint?: string
 	/**
-	 * URL du site pour cette cible, ou `null` si elle n'est pas connue.
+	 * URL du site pour cette cible, ou `null` si elle n'est pas adressable.
 	 *
-	 * Ajouté au ticket 6. `refId` ne suffit pas à publier : c'est un identifiant
-	 * numérique, alors que le site adresse **par slug**. Table des motifs et
-	 * mesures de couverture : §6.2 bis de `../PocketSite-docs/05-contrat-menu.md`.
-	 *
-	 * `null` n'est pas un cas rare — 433 catégories sur 463 n'ont pas de slug
-	 * dans AppPos. Une destination sans URL est listée mais non sélectionnable,
-	 * au même titre qu'une cible sans `woo_id` : la publication ne saurait pas
-	 * l'écrire.
+	 * Une destination sans URL est listée mais non sélectionnable : stocker une
+	 * destination que la publication ne saurait pas écrire ne ferait que
+	 * déplacer l'échec.
 	 */
 	url: string | null
 }
@@ -61,136 +72,90 @@ export interface MenuDestination {
 // ---------------------------------------------------------------------------
 // FABRIQUES D'URL
 // ---------------------------------------------------------------------------
-// Un slug se lit, il ne se fabrique jamais à partir du nom : `CategoryPage`
-// du site retombe sur un `includes()` partiel (`CategoryPage.jsx:88-102`), donc
-// un slug approché mène silencieusement à une AUTRE catégorie. Pas de repli.
+// Un slug se lit, il ne se fabrique jamais à partir du nom : une URL approchée
+// mène silencieusement à une AUTRE cible, et le site compte deux catégories
+// homonymes pour s'en convaincre.
 
 const categoryUrl = (slug?: string | null): string | null =>
 	slug ? `/categorie-produit/${slug}` : null
 
-const brandUrl = (slug?: string | null): string | null =>
-	slug ? `/marque/${slug}/` : null
+const productUrl = (slug?: string | null): string | null =>
+	slug ? `/produit/${slug}` : null
 
 /**
- * Le produit ne se recompose pas : AppPos porte l'URL entière dans
- * `website_url`, champ non déclaré dans `apppos-types.ts` — même cas que
- * `woo_id`, lu défensivement.
+ * **Les marques n'ont pas de page sur le site.**
  *
- * Deux formes coexistent. Le permalien `…/produit/<slug>/` est exploitable ; le
- * repli `…/?post_type=product&p=<id>`, que WooCommerce sert quand le permalien
- * n'est pas résolu, ne l'est pas — la route React du site est `/produit/:slug`
- * (`App.jsx:119`) et ne saurait rien en faire.
+ * `App.jsx` du site déclare `/categorie-produit/*` et `/produit/:slug`, et
+ * rien pour les marques : une URL `/marque/<slug>` tomberait sur la route
+ * attrape-tout, c'est-à-dire sur la page 404.
  *
- * On rend un chemin relatif plutôt que l'URL absolue reçue : le domaine n'a pas
- * à être figé dans le fichier publié.
+ * On rend donc `null` — la marque est listée, non sélectionnable — plutôt que
+ * de produire une adresse qui a l'air juste et mène nulle part. Le jour où la
+ * page existe, cette fonction est la seule chose à changer.
  */
-function productUrl(websiteUrl?: string | null): string | null {
-	if (!websiteUrl) return null
+const brandUrl = (_slug?: string | null): string | null => null
 
-	try {
-		const { pathname } = new URL(websiteUrl)
-		return pathname.startsWith('/produit/') ? pathname : null
-	} catch {
-		// Valeur qui n'est pas une URL. Rien à en tirer, et rien à signaler :
-		// l'entrée sera simplement non publiable.
-		return null
-	}
-}
+// ---------------------------------------------------------------------------
+// LISTES
+// ---------------------------------------------------------------------------
 
-const CACHE = {
-	staleTime: 60 * 60 * 1000, // 1h — un catalogue ne bouge pas pendant qu'on édite un menu
-	gcTime: 6 * 60 * 60 * 1000,
-	// Une lecture réussie n'est pas refaite pendant une heure. Une lecture
-	// **échouée**, si : sans ça, un AppPos éteint au premier affichage laissait
-	// des identifiants bruts jusqu'au redémarrage complet de l'application,
-	// puisque revenir sur la page ne relançait rien.
-	refetchOnMount: (query: { state: { status: string } }) =>
-		query.state.status === 'error',
-	refetchOnWindowFocus: false,
-	refetchOnReconnect: false,
-	retry: 1,
-} as const
+function useCategoryDestinations(): MenuDestination[] | undefined {
+	const { data } = useCatalogCategories()
 
-const toRefId = (wooId?: number | null): string | null =>
-	wooId === null || wooId === undefined ? null : String(wooId)
-
-function useCategoryDestinations(enabled: boolean) {
-	return useQuery({
-		queryKey: ['site', 'destinations', 'category'],
-		queryFn: async (): Promise<MenuDestination[]> => {
-			const categories = await appPosApi.getCategories()
-			return categories
-				.map((category) => ({
-					sourceId: category._id,
+	return useMemo(
+		() =>
+			data
+				?.map((category) => ({
+					sourceId: category.id,
 					label: category.name,
-					refId: toRefId(category.woo_id),
+					refId: category.legacy_id || null,
 					hint: category.slug,
 					url: categoryUrl(category.slug),
 				}))
-				.sort((a, b) => a.label.localeCompare(b.label, 'fr'))
-		},
-		enabled,
-		...CACHE,
-	})
+				.sort((a, b) => a.label.localeCompare(b.label, 'fr')),
+		[data],
+	)
 }
 
-function useBrandDestinations(enabled: boolean) {
-	return useQuery({
-		queryKey: ['site', 'destinations', 'brand'],
-		queryFn: async (): Promise<MenuDestination[]> => {
-			const brands = await appPosApi.getBrands()
-			return brands
-				.map((brand) => ({
-					sourceId: brand._id,
+function useBrandDestinations(): MenuDestination[] | undefined {
+	const { data } = useCatalogBrands()
+
+	return useMemo(
+		() =>
+			data
+				?.map((brand) => ({
+					sourceId: brand.id,
 					label: brand.name,
-					refId: toRefId(brand.woo_id),
+					refId: brand.legacy_id || null,
 					hint: brand.slug,
 					url: brandUrl(brand.slug),
 				}))
-				.sort((a, b) => a.label.localeCompare(b.label, 'fr'))
-		},
-		enabled,
-		...CACHE,
-	})
+				.sort((a, b) => a.label.localeCompare(b.label, 'fr')),
+		[data],
+	)
 }
 
 /**
- * `AppPosProduct` ne **déclare** pas `woo_id` (apppos-types.ts:56-118), là où
- * `AppPosCategory` et `AppPosBrand` le font (:128 et :155). Le type est
- * incomplet, pas la donnée : côté AppPos, `wooSyncController.js` écrit
- * `woo_id` sur le produit à chaque synchronisation (lignes 357 et 513) et
- * filtre sur son absence (ligne 182). Un produit publié en a donc un.
- *
- * On lit le champ défensivement plutôt que d'élargir le type d'AppPos, qu'on
- * ne modifie pas. Un produit sans `woo_id` — jamais synchronisé — est listé
- * mais non sélectionnable. Pas de repli sur `_id` : ce serait un identifiant
- * AppPos rangé dans un champ qui doit contenir un identifiant WooCommerce, et
- * la publication produirait une URL fausse sans rien signaler.
+ * Seuls les produits **publiés** sont proposables : un brouillon n'existe pas
+ * sur le site, et le mettre au menu produirait une rubrique menant à une page
+ * absente.
  */
-function useProductDestinations(enabled: boolean) {
-	return useQuery({
-		queryKey: ['site', 'destinations', 'product'],
-		queryFn: async (): Promise<MenuDestination[]> => {
-			const products = await appPosApi.getProducts()
-			return products
-				.map((product) => {
-					const extra = product as {
-						woo_id?: number | null
-						website_url?: string | null
-					}
-					return {
-						sourceId: product._id,
-						label: product.name,
-						refId: toRefId(extra.woo_id),
-						hint: product.sku,
-						url: productUrl(extra.website_url),
-					}
-				})
-				.sort((a, b) => a.label.localeCompare(b.label, 'fr'))
-		},
-		enabled,
-		...CACHE,
-	})
+function useProductDestinations(): MenuDestination[] | undefined {
+	const { data } = usePublishedProducts()
+
+	return useMemo(
+		() =>
+			data
+				?.map((product) => ({
+					sourceId: product.id,
+					label: product.name,
+					refId: product.legacy_id || null,
+					hint: product.sku,
+					url: productUrl(product.slug),
+				}))
+				.sort((a, b) => a.label.localeCompare(b.label, 'fr')),
+		[data],
+	)
 }
 
 /**
@@ -202,21 +167,43 @@ function useProductDestinations(enabled: boolean) {
  */
 export function useMenuDestinations(
 	linkType: SiteMenuRefType | null,
-	/** Session AppPos ouverte. Interroger AppPos sans jeton ne rend qu'un 401,
-	 *  et c'est cet échec-là qui se mettait en cache. */
-	ready = true,
+	/** Conservé pour les appelants. Plus consulté : l'édition du menu ne
+	 *  dépend plus d'AppPos. */
+	_ready = true,
 ) {
-	const categories = useCategoryDestinations(ready && linkType === 'category')
-	const brands = useBrandDestinations(ready && linkType === 'brand')
-	const products = useProductDestinations(ready && linkType === 'product')
+	const categories = useCatalogCategories()
+	const brands = useCatalogBrands()
+	const products = usePublishedProducts()
+
+	const categoryList = useCategoryDestinations()
+	const brandList = useBrandDestinations()
+	const productList = useProductDestinations()
 
 	switch (linkType) {
 		case 'category':
-			return { ...categories, supported: true as const }
+			return {
+				data: categoryList,
+				isLoading: categories.isLoading,
+				isError: categories.isError,
+				error: categories.error,
+				supported: true as const,
+			}
 		case 'brand':
-			return { ...brands, supported: true as const }
+			return {
+				data: brandList,
+				isLoading: brands.isLoading,
+				isError: brands.isError,
+				error: brands.error,
+				supported: true as const,
+			}
 		case 'product':
-			return { ...products, supported: true as const }
+			return {
+				data: productList,
+				isLoading: products.isLoading,
+				isError: products.isError,
+				error: products.error,
+				supported: true as const,
+			}
 		default:
 			// `page`, `none`, `manual` : rien à proposer.
 			return {
@@ -230,33 +217,34 @@ export function useMenuDestinations(
 }
 
 /**
- * Résout `ref_id` → nom de la cible, pour l'affichage de la liste.
+ * Résout `ref_id` → nom et URL de la cible.
  *
- * Une entrée stocke un identifiant WooCommerce ; l'opérateur, lui, a besoin de
- * lire « Guitares » et non « 1598 ». Le nom n'est **pas** stocké dans
- * `site_menu` : ce serait une copie qui se périmerait au premier renommage
- * côté AppPos, et une seconde source de vérité sur la même chose.
+ * Le nom n'est **pas** stocké dans `site_menu` : ce serait une copie qui se
+ * périmerait au premier renommage, et une seconde source de vérité sur la même
+ * chose.
  *
- * `usedTypes` limite les lectures aux types réellement présents dans le menu.
- * Sans ça, ouvrir la page chargerait le catalogue produits entier — quelques
- * milliers de lignes — pour peut-être zéro entrée de ce type.
- *
- * En cours de chargement ou en cas d'échec d'AppPos, `labelFor` rend `null` :
- * l'appelant retombe alors sur l'identifiant, qui reste juste et lisible.
+ * `usedTypes` est conservé dans la signature mais ne pilote plus de chargement
+ * conditionnel : les trois collections sont déjà lues par l'écran « Catalogue
+ * en ligne » et partagent leur cache TanStack Query. Les redemander ici ne
+ * coûte rien.
  */
 export function useDestinationIndex(
 	usedTypes: Set<SiteMenuRefType>,
-	/** Session AppPos ouverte. Voir `useMenuDestinations`. */
-	ready = true,
+	/** Conservé pour les appelants. Voir `useMenuDestinations`. */
+	_ready = true,
 ) {
-	const categories = useCategoryDestinations(ready && usedTypes.has('category'))
-	const brands = useBrandDestinations(ready && usedTypes.has('brand'))
-	const products = useProductDestinations(ready && usedTypes.has('product'))
+	const categories = useCatalogCategories()
+	const brands = useCatalogBrands()
+	const products = usePublishedProducts()
+
+	const categoryList = useCategoryDestinations()
+	const brandList = useBrandDestinations()
+	const productList = useProductDestinations()
 
 	const byType: Record<SiteMenuRefType, MenuDestination[] | undefined> = {
-		category: categories.data,
-		brand: brands.data,
-		product: products.data,
+		category: categoryList,
+		brand: brandList,
+		product: productList,
 		// Les pages ne sont lues nulle part : PocketApp n'interroge pas
 		// WordPress. Leur `ref_id` s'affiche tel quel, tel qu'il a été saisi.
 		page: undefined,
@@ -269,13 +257,12 @@ export function useDestinationIndex(
 		find(type, refId)?.label ?? null
 
 	/**
-	 * URL de la cible, ou `null`. Ticket 6 : c'est ce que la publication écrit
-	 * dans le document.
+	 * URL de la cible, ou `null` — ce que la publication écrit dans le document.
 	 *
-	 * `null` recouvre trois situations que l'appelant doit distinguer par le
-	 * `loaded` ci-dessous, faute de quoi il publierait un menu amputé sans le
-	 * savoir : catalogue pas encore lu, AppPos injoignable, ou cible réellement
-	 * sans URL. Seule la troisième est un refus légitime.
+	 * `null` recouvre trois situations que l'appelant distingue par `loaded`,
+	 * faute de quoi il publierait un menu amputé sans le savoir : catalogue pas
+	 * encore lu, lecture en échec, ou cible réellement sans URL. Seule la
+	 * troisième est un refus légitime.
 	 */
 	const urlFor = (type: SiteMenuRefType, refId: string): string | null =>
 		find(type, refId)?.url ?? null

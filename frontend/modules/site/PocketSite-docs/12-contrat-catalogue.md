@@ -105,7 +105,7 @@ arriver après le produit qui la cite.
 | `name` | chaîne non vide | oui | le libellé de la caisse |
 | `site_title` | chaîne ou `null` | oui | le titre affiché sur le site, quand il diffère |
 | `sku` | chaîne ou `null` | oui | |
-| `slug` | chaîne ou `null` | oui | |
+| `slug` | chaîne ou `null` | oui | **figé au premier envoi**, voir §4.5 |
 | `description` | chaîne ou `null` | oui | |
 | `price_ttc` | nombre | oui | **TTC**, l'unité est dans le nom |
 | `tax_rate` | nombre | oui | |
@@ -134,6 +134,21 @@ clés triées. Calculé par PocketApp, opaque pour le serveur.
 
 Il ne sert qu'à répondre à une question : *cette entité a-t-elle changé depuis
 son dernier export ?* Il n'a aucune valeur de sécurité.
+
+### 4.5 Le slug est figé au premier envoi
+
+**Le serveur ne remplace jamais un slug déjà en base.** Décision du 11 août
+2026 (`docs/DECISIONS.md`) : une URL publiée vit dans les favoris et dans
+l'index des moteurs ; la recalculer parce que le nom a changé casserait
+silencieusement des liens qu'on ne contrôle pas.
+
+Le serveur est le **seul** à pouvoir tenir cette règle : PocketApp recharge son
+catalogue par purge et ne sait pas ce qui est déjà en ligne. Vaut pour les
+produits, les catégories et les marques.
+
+Conséquence pour le producteur : envoyer un slug différent de celui en place
+n'a **aucun effet** et ne produit aucun refus. Renommer une URL sera une
+opération explicite, qui n'existe pas encore.
 
 ## 5. La réponse à un export
 
@@ -169,6 +184,41 @@ limites de taille et de durée qu'on ne contrôle pas.
   l'opération est idempotente, on rejoue.
 - **L'idempotence est la propriété qui rend tout cela sûr.** Réexporter le même
   lot deux fois produit exactement le même état.
+
+## 6 bis. La lecture publique par le site — `catalog.php`
+
+Ce contrat décrit l'ÉCRITURE (PocketApp → serveur). La lecture, elle, est
+assurée par `server/api/catalog.php`, **sans aucune clé** : son consommateur
+est un bundle public, où un secret serait lisible de tous
+(`docs/DECISIONS.md`, 11 août 2026).
+
+| Action | Rend |
+|---|---|
+| `?action=categories` | toutes les catégories portant au moins un produit |
+| `?action=category&slug=…` | la catégorie, ses **ancêtres**, ses enfants, ses produits paginés |
+| `?action=product&slug=…` | le produit et les catégories auxquelles il appartient |
+
+**Deux règles de comptage, qui doivent rester ensemble :**
+
+- **Une catégorie compte les produits de TOUTE SA BRANCHE**, descendance
+  comprise — « Guitares folk » porte 15 produits en propre et 83 dans sa
+  branche. Un visiteur qui clique une rubrique attend ce qu'elle contient, et
+  une catégorie de pur classement afficherait sinon « 0 produit ».
+- **Un produit rattaché à deux catégories sœurs ne compte qu'une fois** dans
+  leur ancêtre commun. Le total d'une catégorie n'est donc pas l'addition
+  arithmétique de ses pastilles d'enfants.
+
+Le total du parent et le décompte de chaque enfant passent par **la même
+fonction** : deux comptages écrits séparément finissent toujours par diverger,
+et l'écart s'était déjà produit.
+
+Pas de requête récursive — MySQL 5.7 du mutualisé n'a pas de CTE. L'arbre entier
+est lu en une fois (463 lignes) et parcouru en PHP, avec un garde-fou sur les
+cycles : `parent` est une colonne libre.
+
+**`ancestors`** est rendu de la racine au parent direct, la catégorie courante
+exclue. Il alimente le fil d'Ariane des pages catégorie du site, jumeau de celui
+des pages produit.
 
 ## 7. Ce que ce contrat ne couvre pas
 

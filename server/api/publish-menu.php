@@ -81,6 +81,7 @@ $config = require $configFile;
 $defaults = [
     'api_key'                       => '',
     'target_file'                   => '',
+    'targets'                       => [],
     'max_body_bytes'                => 262144, // 256 Kio — voir README, §4.5 de l'audit
     'supported_contract_versions'   => [1],
     'log_file'                      => null,
@@ -371,8 +372,34 @@ if ($errors !== []) {
 // tronqué. rename() sur le même système de fichiers est atomique : un lecteur
 // voit l'ancien fichier entier, ou le nouveau entier, jamais un intermédiaire.
 
-$targetFile = (string) $config['target_file'];
-$targetDir  = dirname($targetFile);
+// ── Cible : la principale, ou une cible NOMMÉE de la configuration ─────────
+//
+// Ajouté le 11 août 2026 pour que le raccordement du menu au catalogue `ax_`
+// se teste SANS toucher au menu en production, qui est servi depuis août.
+//
+// `?target=<nom>` choisit une entrée de `targets` dans config.php. Le nom est
+// une CLÉ D'UN TABLEAU DE LA CONFIGURATION, jamais un chemin : rien de ce que
+// l'appelant envoie n'entre dans un chemin de fichier. Un nom inconnu est
+// refusé, il ne retombe pas sur la cible principale — se tromper de nom et
+// écraser la production sans s'en apercevoir serait exactement ce qu'on essaie
+// d'éviter.
+//
+// Sans paramètre, le comportement est inchangé : la cible principale.
+
+$targetName = isset($_GET['target']) ? (string) $_GET['target'] : '';
+
+if ($targetName !== '') {
+    $targets = is_array($config['targets']) ? $config['targets'] : [];
+    if (!isset($targets[$targetName]) || !is_string($targets[$targetName]) || $targets[$targetName] === '') {
+        publish_log($config, sprintf('refus cible inconnue : %s', $targetName));
+        reject(422, sprintf('Cible « %s » inconnue de la configuration du serveur.', $targetName));
+    }
+    $targetFile = (string) $targets[$targetName];
+} else {
+    $targetFile = (string) $config['target_file'];
+}
+
+$targetDir = dirname($targetFile);
 
 if (!is_dir($targetDir)) {
     reject(500, 'Répertoire de destination absent sur le serveur.');
@@ -414,10 +441,11 @@ if (!@rename($tmpFile, $targetFile)) {
 @clearstatcache(true, $targetFile);
 
 publish_log($config, sprintf(
-    'publié %d octets, %d entrées, publishedAt=%s',
+    'publié %d octets, %d entrées, publishedAt=%s, cible=%s',
     strlen($encoded),
     count($document['menu']['items']),
-    $document['publishedAt']
+    $document['publishedAt'],
+    $targetName !== '' ? $targetName : 'principale'
 ));
 
 respond(200, [
@@ -425,5 +453,9 @@ respond(200, [
     'bytes'       => strlen($encoded),
     'items'       => count($document['menu']['items']),
     'publishedAt' => $document['publishedAt'],
+    // Dire QUELLE cible a été écrite : c'est la seule chose qui distingue une
+    // publication de test d'une publication en production, et l'opérateur doit
+    // pouvoir le lire sans aller ouvrir le journal.
+    'target'      => $targetName !== '' ? $targetName : 'principale',
     'receivedAt'  => gmdate('Y-m-d\TH:i:s\Z'),
 ]);

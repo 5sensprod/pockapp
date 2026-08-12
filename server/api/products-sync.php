@@ -347,11 +347,27 @@ $written  = ['products' => 0, 'categories' => 0, 'brands' => 0];
 $received = ['products' => count($batches['products']), 'categories' => count($batches['categories']), 'brands' => count($batches['brands'])];
 $rejected = [];
 
+// ── L'URL EST FIGÉE AU PREMIER ENVOI ──────────────────────────────────────
+// Décision du 11 août 2026. Un slug publié vit dans les favoris et dans
+// l'index des moteurs : le recalculer parce que le nom a changé casserait
+// silencieusement des liens qu'on ne contrôle pas.
+//
+// Le serveur est le SEUL à pouvoir tenir cette règle. PocketBase est rechargé
+// par purge et ne sait pas ce qui est déjà en ligne ; lui seul sait qu'une
+// ligne existe déjà. D'où le `IF(slug IS NULL OR CHAR_LENGTH(slug) = 0, …)`
+// des trois requêtes ci-dessous : un slug déjà en base n'est JAMAIS remplacé.
+// (Pas de chaîne vide littérale dans le SQL : elle vit dans une chaîne PHP à
+// guillemets simples, où elle demanderait un échappement de plus.)
+//
+// Renommer une URL sera donc une opération explicite, pas un effet de bord
+// d'export. Elle n'existe pas encore.
+
 $sqlBrand = sprintf(
     'INSERT INTO `%s` (legacy_id, checksum, name, slug, description, exported_at)
      VALUES (:legacy_id, :checksum, :name, :slug, :description, :exported_at)
      ON DUPLICATE KEY UPDATE
-        checksum = VALUES(checksum), name = VALUES(name), slug = VALUES(slug),
+        checksum = VALUES(checksum), name = VALUES(name),
+        slug = IF(slug IS NULL OR CHAR_LENGTH(slug) = 0, VALUES(slug), slug),
         description = VALUES(description), exported_at = VALUES(exported_at)',
     $T_BRANDS
 );
@@ -360,7 +376,8 @@ $sqlCategory = sprintf(
     'INSERT INTO `%s` (legacy_id, checksum, name, slug, description, parent, is_featured, exported_at)
      VALUES (:legacy_id, :checksum, :name, :slug, :description, :parent, :is_featured, :exported_at)
      ON DUPLICATE KEY UPDATE
-        checksum = VALUES(checksum), name = VALUES(name), slug = VALUES(slug),
+        checksum = VALUES(checksum), name = VALUES(name),
+        slug = IF(slug IS NULL OR CHAR_LENGTH(slug) = 0, VALUES(slug), slug),
         description = VALUES(description), parent = VALUES(parent),
         is_featured = VALUES(is_featured), exported_at = VALUES(exported_at)',
     $T_CATEGORIES
@@ -373,7 +390,9 @@ $sqlProduct = sprintf(
              :price_ttc, :tax_rate, :stock, :status, :brand, :exported_at)
      ON DUPLICATE KEY UPDATE
         checksum = VALUES(checksum), name = VALUES(name), site_title = VALUES(site_title),
-        sku = VALUES(sku), slug = VALUES(slug), description = VALUES(description),
+        sku = VALUES(sku),
+        slug = IF(slug IS NULL OR CHAR_LENGTH(slug) = 0, VALUES(slug), slug),
+        description = VALUES(description),
         price_ttc = VALUES(price_ttc), tax_rate = VALUES(tax_rate), stock = VALUES(stock),
         status = VALUES(status), brand = VALUES(brand), exported_at = VALUES(exported_at)',
     $T_PRODUCTS

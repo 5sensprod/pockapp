@@ -85,6 +85,17 @@ const REF_TYPE_NOUNS: Record<SiteMenuRefType, string> = {
 	page: 'page',
 }
 
+/**
+ * Un `ref_id` hérité de WooCommerce est un nombre ; un `legacy_id` NeDB est une
+ * chaîne alphanumérique de 8 à 30 caractères.
+ *
+ * Défini ICI et non dans le hook des destinations, parce que ce fichier doit
+ * rester **pur** — son en-tête l'annonce, et un import du hook y ferait entrer
+ * le client PocketBase, donc `window`, donc l'échec de toute la suite de tests.
+ * Le hook l'importe depuis ici.
+ */
+export const looksLikeWooId = (refId: string): boolean => /^\d+$/.test(refId)
+
 const isRefType = (value: string): value is SiteMenuRefType =>
 	value === 'category' ||
 	value === 'brand' ||
@@ -138,11 +149,26 @@ export function resolveEntryUrl(
 	const url = index.urlFor(entry.link_type, refId)
 	if (url) return { url }
 
-	// Le cas de loin le plus fréquent aujourd'hui : la cible existe dans AppPos
-	// mais son slug y est absent. 433 catégories sur 463 sont dans ce cas —
-	// mesure du 8 août 2026, §6.2 bis du contrat.
+	// Depuis le 11 août 2026, les destinations viennent du catalogue PocketBase
+	// et `ref_id` porte un `legacy_id`. Une entrée enregistrée AVANT porte un
+	// identifiant WooCommerce, qui ne correspond à rien : le dire dans ces
+	// termes évite de chercher une cible supprimée qui existe très bien.
+	if (looksLikeWooId(refId)) {
+		return {
+			reason: `${REF_TYPE_NOUNS[entry.link_type]} ${refId} : destination héritée de WooCommerce, à repointer sur le catalogue`,
+		}
+	}
+
+	// Les marques n'ont pas de page sur le site : aucune route ne leur
+	// correspond, une URL les concernant mènerait à la page 404.
+	if (entry.link_type === 'brand') {
+		return {
+			reason: `marque ${refId} : le site n'a pas de page marque — utiliser un lien manuel en attendant`,
+		}
+	}
+
 	return {
-		reason: `${REF_TYPE_NOUNS[entry.link_type]} ${refId} : aucune URL connue (slug absent dans AppPos, ou cible supprimée)`,
+		reason: `${REF_TYPE_NOUNS[entry.link_type]} ${refId} : absente du catalogue en ligne, ou sans slug`,
 	}
 }
 

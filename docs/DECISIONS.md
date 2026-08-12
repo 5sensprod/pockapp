@@ -10,6 +10,71 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le site fabrique ses propres URL, et elles sont figées au premier envoi — 2026-08-11
+
+Décision du propriétaire, à l'ouverture de la phase de raccordement du menu au
+catalogue `ax_`.
+
+**Nos URL sont les nôtres.** Le slug ne se lit plus chez AppPos ni chez
+WooCommerce : il est produit par notre flux et écrit à l'export. Et **une fois
+publiée, une URL ne change plus.**
+
+**Ce que ça débloque, et c'est considérable :** la publication d'une entrée de
+menu échouait quand la cible n'avait pas de slug dans AppPos — **433 catégories
+sur 463** étaient dans ce cas (mesure du 8 août 2026, §6.2 bis du contrat du
+menu). Elles étaient listées dans l'éditeur mais non sélectionnables. Le
+catalogue PocketBase, lui, porte un slug pour tout le monde, la normalisation
+en ayant même désambiguïsé 79. Toute la mécanique de lecture de slug d'AppPos
+(`use-menu-destinations.ts`) perd sa raison d'être.
+
+**Pourquoi figée, et pas recalculée :** une URL publiée vit dans les favoris et
+dans l'index des moteurs. La recalculer au changement de nom casserait
+silencieusement des liens qu'on ne contrôle pas — et le silence est le
+problème, pas la casse.
+
+**Le serveur est le seul gardien possible de cette règle.** PocketBase est
+rechargé par purge : il ne sait pas ce qui est déjà en ligne. Seule la base SQL
+le sait. D'où, dans `products-sync.php`, un slug déjà présent qui n'est
+**jamais** remplacé par l'upsert — produits, catégories et marques.
+
+**Écarté — recalculer le slug à chaque mise à jour :** l'URL suit le nom, et
+chaque renommage casse les liens existants sans que rien ne le signale.
+
+**Ce que ça laisse à faire, et qui n'existe pas encore :** le renommage
+délibéré d'une URL, avec redirection de l'ancienne. C'est une opération
+explicite, pas un effet de bord d'export.
+
+**Remise en cause si :** un besoin de renommage en masse apparaît, ou si le
+référencement impose une forme d'URL que la génération ne produit pas.
+
+## Le menu de test est une cible nommée, pas un second menu en base — 2026-08-11
+
+Pour raccorder le menu au catalogue `ax_` sans toucher au menu **en production
+depuis le 10 août**, `publish-menu.php` accepte `?target=<nom>`, où `<nom>` est
+une clé du tableau `targets` de `config.php` — jamais un chemin. Le site en
+développement lit alors ce fichier via `VITE_PUBLISHED_MENU_URL`.
+
+Rien de tout cela n'existe côté PocketBase : **aucun second menu, aucune notion
+de menu nommé en base.** L'URL de publication est déjà un réglage ; y ajouter
+`?target=dev` suffit, et il n'y a pas une ligne de Go ni de React à écrire.
+
+**Écarté pour l'instant — une vraie notion de plusieurs menus** (principal,
+pied de page, promotionnel), avec un menu de test comme cas particulier. L'idée
+est bonne et reviendra : un site a normalement plus d'un menu. Mais la
+construire **pour pouvoir tester** serait la construire pour la mauvaise
+raison, et on hériterait de son modèle — un menu a-t-il un nom, un
+emplacement, une portée ? — décidé à la va-vite dans le seul but d'isoler un
+essai.
+
+**À noter pour le jour où :** le contrat du menu porte déjà `menu.name`
+(§6.2 : « Menu Principal », écrit en constante faute de collection). C'est
+l'amorce naturelle d'un vrai multi-menus, et la correspondance nom → fichier de
+`targets` en est le brouillon involontaire.
+
+**Remise en cause si :** le besoin d'un second menu réel apparaît — pied de
+page, menu saisonnier —, auquel cas il se conçoit pour lui-même et la cible de
+test devient un cas parmi d'autres.
+
 ## L'endpoint de lecture du catalogue est public et sans clé — 2026-08-11
 
 `server/api/catalog.php` n'attend **aucun** `X-API-Key`, et ne doit jamais en
