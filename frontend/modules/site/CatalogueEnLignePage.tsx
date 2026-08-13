@@ -8,16 +8,24 @@
 // et non saisie.
 //
 // L'écran EXPORTE vers la base SQL du site (contrat : PocketSite-docs/
-// 12-contrat-catalogue.md), mais n'ÉDITE rien du catalogue local.
+// 12-contrat-catalogue.md) et ÉDITE les textes que le visiteur lira.
 //
-// ⚠️ AUCUNE ÉDITION LOCALE, ET CE N'EST PAS UN OUBLI.
-// Le catalogue PocketBase est une projection de NeDB rechargée **par purge** :
-// chaque `catalog-import -load` efface tout et réécrit. Un titre de site saisi
-// ici, une description de marque retouchée, seraient détruits au prochain
-// rechargement sans un mot. Les retouches éditoriales prévues (titre de site du
-// produit, image et description de catégorie, logo et description de marque)
-// attendent donc que leur persistance soit tranchée — collection séparée clée
-// sur `legacy_id`, champs préservés par le chargeur, ou fin des rechargements.
+// ── L'ÉDITION, ET SA CONTRAINTE ─────────────────────────────────────────────
+// Tranchée le 12 août 2026 (docs/DECISIONS.md) : les textes s'écrivent
+// DIRECTEMENT dans `products`, `categories` et `brands`. Deux champs, et deux
+// seulement — le `name` du produit, qui fait office de titre de site puisque
+// `present_product` (server/api/catalog.php:134-141) retombe dessus quand
+// `site_title` est vide, et la `description` des trois entités. Ni prix, ni
+// stock, ni statut : ils appartiennent à AppStock.
+//
+// ⚠️ CES SAISIES NE SURVIVENT PAS À `catalog-import -load`, qui purge les
+// collections (backend/catalog/load/loader.go:290). Ce n'est pas un défaut à
+// contourner : la campagne éditoriale réelle se fera APRÈS l'import définitif,
+// et ce qui est saisi d'ici là est un essai dont la perte est acceptée d'avance.
+// L'éditeur le dit à l'écran, il ne se contente pas de le savoir.
+//
+// La voie d'écriture est unique et nommée : `hooks/use-catalog-editorial.ts`.
+// Elle ne passe pas par `useUpdateProductUniversal`.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { Badge } from '@/components/ui/badge'
@@ -33,11 +41,15 @@ import {
 	useProductCount,
 	usePublishedProducts,
 } from '@/lib/queries/site-catalog'
-import { AlertTriangle, Globe, Loader2, Search, X } from 'lucide-react'
+import { AlertTriangle, Globe, Loader2, Pencil, Search, X } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { CatalogSyncBar } from './components/online-catalog/CatalogSyncBar'
+import {
+	EditorialDialog,
+	type EditorialTarget,
+} from './components/online-catalog/EditorialDialog'
 import { OnlineBrandGrid } from './components/online-catalog/OnlineBrandGrid'
 import { OnlineCategoryTree } from './components/online-catalog/OnlineCategoryTree'
 import { OnlineProductGrid } from './components/online-catalog/OnlineProductGrid'
@@ -75,6 +87,9 @@ export function CatalogueEnLignePage() {
 		useState<OnlineCategoryNode | null>(null)
 	const [selectedBrand, setSelectedBrand] = useState<CatalogBrand | null>(null)
 	const [expanded, setExpanded] = useState<Set<string>>(new Set())
+	/** La fiche en cours d'édition, quel que soit son genre. `null` : dialogue
+	 *  fermé. Un seul état pour les trois, l'éditeur étant le même. */
+	const [editing, setEditing] = useState<EditorialTarget | null>(null)
 
 	// La recherche filtre les produits AVANT la dérivation : l'arbre montre
 	// alors les seules branches qui portent un résultat, ce qui est l'intérêt —
@@ -219,6 +234,47 @@ export function CatalogueEnLignePage() {
 			})
 		},
 		[categories.data, brands.data, brandsById, exportCatalog],
+	)
+
+	// ── Ouverture de l'éditeur ───────────────────────────────────────────────
+	// La fiche est relue dans les données FRAÎCHES au moment du clic, jamais
+	// prise dans l'objet que le composant porte : `selectedCategory` est un nœud
+	// d'arbre figé dans un état React, et rouvrir l'éditeur après une première
+	// modification y montrerait le texte d'avant.
+	const editProduct = useCallback((product: CatalogProduct) => {
+		setEditing({
+			kind: 'product',
+			id: product.id,
+			name: product.name,
+			description: product.description,
+		})
+	}, [])
+
+	const editCategory = useCallback(
+		(id: string) => {
+			const fresh = (categories.data ?? []).find((c) => c.id === id)
+			if (!fresh) return
+			setEditing({
+				kind: 'category',
+				id: fresh.id,
+				name: fresh.name,
+				description: fresh.description,
+			})
+		},
+		[categories.data],
+	)
+
+	const editBrand = useCallback(
+		(brand: CatalogBrand) => {
+			const fresh = brandsById.get(brand.id) ?? brand
+			setEditing({
+				kind: 'brand',
+				id: fresh.id,
+				name: fresh.name,
+				description: fresh.description,
+			})
+		},
+		[brandsById],
 	)
 
 	const toggle = (id: string) =>
@@ -445,6 +501,23 @@ export function CatalogueEnLignePage() {
 												descendance comprise
 											</span>
 										)}
+										{/* La description d'une catégorie s'édite depuis la
+										    catégorie sélectionnée, et non depuis l'arbre : une
+										    rangée de crayons dans un arbre de 463 lignes ferait
+										    un champ de mines pour le clic de sélection. */}
+										{selectedCategory && (
+											<button
+												type='button'
+												onClick={() =>
+													editCategory(selectedCategory.category.id)
+												}
+												className='inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors hover:bg-accent'
+												title='Modifier la description affichée sur le site'
+											>
+												<Pencil className='h-3 w-3' />
+												Description
+											</button>
+										)}
 										{/* Le filtre marque se pose dans l'AUTRE onglet. Sans moyen
 										    visible de le retirer, il vide la grille sans dire
 										    pourquoi — d'où la croix, et non un simple badge. */}
@@ -467,6 +540,7 @@ export function CatalogueEnLignePage() {
 										syncStates={syncStates}
 										onExport={(product) => exportProducts([product])}
 										exporting={exportCatalog.isPending}
+										onEdit={editProduct}
 										emptyLabel={
 											selectedBrand
 												? `Aucun produit de la marque ${selectedBrand.name} ici. Retirez le filtre pour voir les ${selectedCategory?.totalCount ?? ''} produits de la branche.`
@@ -483,6 +557,7 @@ export function CatalogueEnLignePage() {
 								brands={catalog.brands}
 								selectedId={selectedBrand?.id ?? null}
 								onSelect={setSelectedBrand}
+								onEdit={editBrand}
 							/>
 						</TabsContent>
 					</Tabs>
@@ -502,9 +577,13 @@ export function CatalogueEnLignePage() {
 								syncStates={syncStates}
 								onExport={(product) => exportProducts([product])}
 								exporting={exportCatalog.isPending}
+								onEdit={editProduct}
 							/>
 						</section>
 					)}
+
+					{/* Monté une fois pour les trois genres : la cible dit lequel. */}
+					<EditorialDialog target={editing} onClose={() => setEditing(null)} />
 				</>
 			)}
 		</div>

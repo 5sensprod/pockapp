@@ -84,6 +84,51 @@ describe('toExportProduct', () => {
 		expect(exported.status).toBe('published')
 	})
 
+	// ── L'ÉDITION DES TEXTES DU SITE PASSE PAR L'EMPREINTE ────────────────────
+	// Décision du 12 août 2026 : `name` et `description` s'éditent dans l'écran
+	// « Catalogue en ligne » et s'écrivent dans `products`. Rien d'autre n'a été
+	// ajouté à la chaîne d'export — c'est précisément ce que ces deux cas
+	// vérifient : les deux champs entrant dans l'empreinte, une retouche fait
+	// repasser le produit « modifié », donc il repart à l'export.
+	//
+	// Aucun autre gardien : ni le PHP, qui stocke l'empreinte sans la
+	// recalculer (§4.4 du contrat), ni le type, qui ne dit rien du contenu.
+	it('change d’empreinte quand le nom est corrigé', async () => {
+		const reference = await sealed(
+			toExportProduct(product({ name: 'ABGS14SH' }), [], null),
+		)
+		const corrige = await sealed(
+			toExportProduct(product({ name: 'Guitare folk Alvarez' }), [], null),
+		)
+
+		expect(corrige.checksum).not.toBe(reference.checksum)
+	})
+
+	it('change d’empreinte quand la description est écrite', async () => {
+		const sans = await sealed(toExportProduct(product(), [], null))
+		const avec = await sealed(
+			toExportProduct(product({ description: 'Un bel instrument.' }), [], null),
+		)
+
+		expect(avec.checksum).not.toBe(sans.checksum)
+		// Et l'inventaire les départage : c'est ce qui rend le bouton « Mettre à
+		// jour » visible sur la carte.
+		expect(
+			syncStateOf('nedb-1', avec.checksum, { 'nedb-1': sans.checksum }),
+		).toBe('modified')
+	})
+
+	it('laisse site_title à null — le champ reste au contrat, non câblé', () => {
+		// `catalog.php` retombe sur `name` quand `site_title` est vide
+		// (`present_product`), et c'est ce qui fait arriver le nom corrigé sur le
+		// site sans une ligne de plus ici. Brancher `site_title` est une décision
+		// à part, pas un raccourci à prendre en passant.
+		const exported = toExportProduct(product({ name: 'Guitare' }), [], null)
+
+		expect(exported.site_title).toBeNull()
+		expect(exported.name).toBe('Guitare')
+	})
+
 	it('porte les relations en legacy_id, jamais en identifiant PocketBase', () => {
 		const exported = toExportProduct(product(), ['cat-legacy'], 'brand-legacy')
 

@@ -10,6 +10,63 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Les textes du site s'écrivent dans `products`, `categories` et `brands` — 2026-08-12
+
+Décision du propriétaire. Les champs éditoriaux modifiables depuis « Catalogue
+en ligne » — le **`name`** du produit, la **`description`** du produit, de la
+catégorie et de la marque — sont écrits **directement dans les collections du
+catalogue PocketBase**. Pas de collection annexe, pas de nouveau champ, pas de
+migration.
+
+**Ce qui rend la chose simple, et qui a été constaté en base :** `name` fait
+déjà office de titre de site. Beaucoup de produits ont pour `name` leur
+référence — « ABGS14SH », « TNTCA8 » —, d'autres un vrai libellé. Et
+`present_product` (`server/api/catalog.php:134-141`) retombe **déjà** sur `name`
+quand `site_title` est vide. Un `name` corrigé arrive donc sur le site sans une
+ligne de plus dans la chaîne d'export.
+
+**La contrainte, assumée : tout `catalog-import -load` efface ces saisies.** Le
+chargeur purge les collections en SQL brut (`backend/catalog/load/loader.go:290`,
+`Delete(name, "1=1")` sur `external_refs, products, suppliers, categories,
+brands`). Ce n'est pas un défaut à contourner : la **campagne éditoriale réelle
+se fera après l'import définitif**. Ce qui est saisi d'ici là est un test, et sa
+perte est acceptée d'avance.
+
+**Écarté — une collection séparée clée sur `legacy_id`.** C'était la voie
+pressentie, et elle survivait à la purge. Elle paie une migration, un index, une
+jointure à la lecture et un lot d'orphelines à nettoyer, pour protéger des
+saisies dont on vient de dire qu'elles sont jetables. On ne construit pas la
+persistance d'un brouillon.
+
+**Écarté — des champs relus puis réappliqués par le chargeur.** Le chargeur
+deviendrait gardien d'une donnée qu'il ne produit pas, et une interruption entre
+la relecture et la réécriture perdrait la saisie sans le dire.
+
+**Écarté — brancher `site_title`.** Le champ **reste** au contrat (§4.1) et dans
+la table SQL, **non câblé** : `toExportProduct` continue de l'envoyer à `null`.
+C'est la porte de sortie du jour où un titre long sur le site devra cohabiter
+avec une étiquette courte sur le ticket de caisse. Le supprimer coûterait une
+migration SQL et une modification du contrat pour rouvrir la même porte plus
+tard.
+
+**La conséquence à venir, à ne pas découvrir en route :** à la bascule T7,
+`name` devient le libellé du ticket de caisse. Corriger un `name` aujourd'hui
+pour le site, c'est corriger demain ce que le client lit sur son ticket — ce qui
+est voulu, mais qui déplace le curseur : le champ cessera d'être purement
+éditorial.
+
+**Une seule voie d'écriture, nommée** — `frontend/lib/queries/site-catalog-edit.ts`.
+Elle ne passe **pas** par `useUpdateProductUniversal`
+(`frontend/lib/queries/products.ts:180`), qui route entre deux chemins sur une
+chaîne non typée : c'est la dette que `CLAUDE.md` interdit d'aggraver. Cette
+voie écrit dans PocketBase et nulle part ailleurs, et refuse un `name` vide
+plutôt que de laisser remonter l'erreur brute du champ requis
+(`backend/migrations/catalog_v2.go:553`).
+
+**Remise en cause si :** l'import devient définitif — alors la contrainte tombe
+d'elle-même —, ou si un titre de site doit diverger du libellé de caisse : c'est
+le jour où `site_title` se branche.
+
 ## Le site fabrique ses propres URL, et elles sont figées au premier envoi — 2026-08-11
 
 Décision du propriétaire, à l'ouverture de la phase de raccordement du menu au

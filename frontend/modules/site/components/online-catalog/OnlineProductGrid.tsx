@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import type { CatalogBrand, CatalogProduct } from '@/lib/queries/site-catalog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
-import { CloudUpload, ImageOff, RefreshCw } from 'lucide-react'
+import { CloudUpload, ImageOff, Pencil, RefreshCw } from 'lucide-react'
 
 import type { SyncState } from '../../lib/catalog-export'
 import { catalogImageUrl } from '../../lib/catalog-image'
@@ -29,6 +29,10 @@ type Props = {
 	syncStates?: Map<string, SyncState>
 	onExport?: (product: CatalogProduct) => void
 	exporting?: boolean
+	/** Ouvre l'éditeur des textes du site. Disponible quel que soit l'état de
+	 *  synchronisation : corriger un nom AVANT le premier export est le cas le
+	 *  plus fréquent, puisque beaucoup de produits ont pour nom leur référence. */
+	onEdit?: (product: CatalogProduct) => void
 }
 
 export function OnlineProductGrid({
@@ -38,6 +42,7 @@ export function OnlineProductGrid({
 	syncStates,
 	onExport,
 	exporting,
+	onEdit,
 }: Props) {
 	const pb = usePocketBase() as any
 
@@ -65,10 +70,25 @@ export function OnlineProductGrid({
 					<article
 						key={product.id}
 						className={cn(
-							'flex flex-col overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md',
+							'group relative flex flex-col overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md',
 							absent && 'border-dashed bg-muted/30',
 						)}
 					>
+						{/* Le crayon est posé SUR la carte, hors du bloc image : celui-ci
+						    est grisé quand le produit est absent du site, et l'action
+						    d'édition, elle, reste pleinement disponible — corriger un nom
+						    avant le premier export est le cas le plus fréquent. */}
+						{onEdit && (
+							<button
+								type='button'
+								onClick={() => onEdit(product)}
+								title='Modifier le nom et la description affichés sur le site'
+								className='absolute top-1.5 right-1.5 z-10 rounded-md border bg-background/90 p-1.5 opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:opacity-100 group-hover:opacity-100'
+							>
+								<Pencil className='h-3.5 w-3.5' />
+							</button>
+						)}
+
 						<div
 							className={cn(
 								'relative flex aspect-square items-center justify-center bg-muted/40',

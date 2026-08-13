@@ -105,6 +105,36 @@ NeDB (référence)  ──catalog-import -load──▶  PocketBase local
 **Contrats :** [`12-contrat-catalogue.md`](12-contrat-catalogue.md) fait foi sur
 l'export ET sur la lecture publique.
 
+### Les textes du site s'éditent dans l'écran — 12 août 2026
+
+La vue « Catalogue en ligne » n'était que lecture et export ; elle édite
+désormais **le `name` du produit et la `description` du produit, de la catégorie
+et de la marque**. Ni prix, ni stock, ni statut : ils appartiennent à AppStock.
+
+**`name` fait office de titre de site** — constaté en base : beaucoup de
+produits ont pour nom leur référence (« ABGS14SH »), et `present_product`
+(`server/api/catalog.php:134-141`) retombe sur `name` quand `site_title` est
+vide. Un nom corrigé arrive donc sur le site **sans une ligne de plus dans la
+chaîne d'export** : `toExportProduct` est inchangé, `site_title` continue de
+partir à `null`, et le champ reste au contrat, non câblé, pour le jour où un
+titre long devra cohabiter avec une étiquette courte de ticket.
+
+**Chaîne vérifiée de bout en bout par le propriétaire le 13 août 2026** :
+produit renommé dans l'écran, carte repassée « modifiée », export, titre corrigé
+lu sur la page produit du site. Constat rapporté, non mesuré depuis le dépôt.
+
+**Écriture directe dans les collections, pas de migration** (`docs/DECISIONS.md`,
+2026-08-12). Contrepartie assumée : **`catalog-import -load` efface ces saisies**
+— la campagne éditoriale réelle se fera après l'import définitif, et l'éditeur
+affiche l'avertissement.
+
+| Fait | Où |
+|---|---|
+| Règle de saisie — refus d'un `name` vide | `lib/catalog-edit.ts`, testée |
+| Voie d'écriture unique, hors `useUpdateProductUniversal` | `hooks/use-catalog-editorial.ts` |
+| L'éditeur | `components/online-catalog/EditorialDialog.tsx` |
+| L'empreinte suit `name` et `description` | trois cas dans `lib/catalog-export.test.ts` |
+
 **Quatre décisions structurantes**, toutes au journal du dépôt :
 
 - la clé d'une entité est **`legacy_id`**, jamais l'identifiant PocketBase —

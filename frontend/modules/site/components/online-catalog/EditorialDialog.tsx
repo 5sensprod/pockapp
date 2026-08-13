@@ -1,0 +1,197 @@
+// frontend/modules/site/components/online-catalog/EditorialDialog.tsx
+//
+// L'éditeur des textes du site : le nom du produit — qui EST son titre sur le
+// site — et la description d'un produit, d'une catégorie ou d'une marque.
+//
+// Un dialogue et non un champ en ligne dans la carte : une description peut
+// faire 20 000 caractères (catalog_v2.go), et la grille montre le catalogue
+// « comme le site le montrera ». Y glisser des zones de saisie détruirait
+// justement ce qu'elle sert à voir.
+//
+// Le prix, le stock et le statut n'y figurent pas, et c'est délibéré : ils
+// appartiennent à AppStock.
+
+import { Button } from '@/components/ui/button'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Loader2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+
+import type { EditableKind } from '../../hooks/use-catalog-editorial'
+import { useUpdateCatalogEditorial } from '../../hooks/use-catalog-editorial'
+import {
+	DESCRIPTION_MAX,
+	NAME_MAX,
+	isUnchanged,
+	validateEditorial,
+} from '../../lib/catalog-edit'
+
+/** Ce que l'écran passe à l'éditeur : le strict nécessaire, quel que soit le
+ *  genre de l'entité. */
+export type EditorialTarget = {
+	kind: EditableKind
+	id: string
+	name: string
+	description?: string
+}
+
+const LIBELLE: Record<EditableKind, string> = {
+	product: 'Produit',
+	category: 'Catégorie',
+	brand: 'Marque',
+}
+
+type Props = {
+	target: EditorialTarget | null
+	onClose: () => void
+}
+
+export function EditorialDialog({ target, onClose }: Props) {
+	const update = useUpdateCatalogEditorial()
+	const [name, setName] = useState('')
+	const [description, setDescription] = useState('')
+
+	// Le formulaire se recharge à chaque cible : sans cela, ouvrir une seconde
+	// fiche montrerait le texte de la première.
+	useEffect(() => {
+		setName(target?.name ?? '')
+		setDescription(target?.description ?? '')
+	}, [target])
+
+	if (!target) return null
+
+	// Seul le produit voit son nom édité : celui d'une catégorie compose le menu
+	// publié, celui d'une marque n'a pas de page sur le site.
+	const editsName = target.kind === 'product'
+
+	const submit = () => {
+		const checked = validateEditorial({
+			name: editsName ? name : undefined,
+			description,
+		})
+
+		if (!checked.ok) {
+			toast.error(checked.error)
+			return
+		}
+
+		if (isUnchanged(checked.patch, target)) {
+			onClose()
+			return
+		}
+
+		update.mutate(
+			{ kind: target.kind, id: target.id, patch: checked.patch },
+			{
+				onSuccess: () => {
+					toast.success(
+						'Texte enregistré. La fiche repasse « modifiée » : il reste à ' +
+							'l’exporter pour que le site la reçoive.',
+					)
+					onClose()
+				},
+				onError: (cause) =>
+					toast.error(`Enregistrement refusé : ${cause.message}`),
+			},
+		)
+	}
+
+	return (
+		<Dialog open onOpenChange={(open) => !open && onClose()}>
+			<DialogContent className='sm:max-w-2xl'>
+				<DialogHeader>
+					<DialogTitle>Texte du site — {LIBELLE[target.kind]}</DialogTitle>
+					<DialogDescription>
+						Ce qui s’écrit ici part vers axemusique.shop au prochain export.
+						Prix, stock et statut ne s’éditent pas ici : ils viennent
+						d’AppStock.
+					</DialogDescription>
+				</DialogHeader>
+
+				<div className='space-y-4'>
+					{editsName ? (
+						<div className='space-y-1.5'>
+							<Label htmlFor='editorial-name'>
+								Nom — c’est le titre affiché sur le site
+							</Label>
+							<Input
+								id='editorial-name'
+								value={name}
+								maxLength={NAME_MAX}
+								onChange={(e) => setName(e.target.value)}
+								placeholder='Ukulélé soprano acajou'
+							/>
+							{/* Beaucoup de produits ont pour nom leur référence — « ABGS14SH ».
+							    Le dire ici est la raison d'être de cet écran. */}
+							<p className='text-muted-foreground text-xs'>
+								À la bascule de la caisse vers PocketBase, ce nom deviendra
+								aussi le libellé du ticket.
+							</p>
+						</div>
+					) : (
+						<div className='space-y-1.5'>
+							<Label>Nom</Label>
+							<p className='rounded-md border bg-muted/40 px-3 py-2 text-sm'>
+								{target.name}
+							</p>
+							<p className='text-muted-foreground text-xs'>
+								Non modifiable ici : le nom d’une catégorie compose le menu
+								publié.
+							</p>
+						</div>
+					)}
+
+					<div className='space-y-1.5'>
+						<Label htmlFor='editorial-description'>Description</Label>
+						<Textarea
+							id='editorial-description'
+							value={description}
+							maxLength={DESCRIPTION_MAX}
+							rows={10}
+							onChange={(e) => setDescription(e.target.value)}
+							placeholder='Le texte lu par le visiteur sur la page.'
+						/>
+						<p className='text-right text-muted-foreground text-xs tabular-nums'>
+							{description.length} / {DESCRIPTION_MAX}
+						</p>
+					</div>
+
+					{/* L'avertissement n'est pas décoratif : c'est la contrainte assumée
+					    au journal (2026-08-12), et la seule chose qui empêche une
+					    campagne éditoriale prématurée. */}
+					<p className='rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs'>
+						Un rechargement du catalogue (<code>catalog-import -load</code>)
+						efface ces saisies : il réécrit les collections depuis NeDB. Tant
+						que l’import n’est pas définitif, ce qui est écrit ici est un essai.
+					</p>
+				</div>
+
+				<DialogFooter>
+					<Button
+						variant='outline'
+						onClick={onClose}
+						disabled={update.isPending}
+					>
+						Annuler
+					</Button>
+					<Button onClick={submit} disabled={update.isPending}>
+						{update.isPending && (
+							<Loader2 className='mr-1.5 h-4 w-4 animate-spin' />
+						)}
+						Enregistrer
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	)
+}
