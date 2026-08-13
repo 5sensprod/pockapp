@@ -14,7 +14,7 @@ import { invoiceKeys } from './invoices'
 export interface CreateDepositInput {
 	parentId: string
 	percentage?: number // ex: 30 pour 30% — exclusif avec amount
-	amount?: number     // montant TTC fixe — exclusif avec percentage
+	amount?: number // montant TTC fixe — exclusif avec percentage
 	paymentMethod?: 'virement' | 'cb' | 'especes' | 'cheque' | 'autre'
 	paymentMethodLabel?: string // si paymentMethod = 'autre'
 }
@@ -69,7 +69,10 @@ export function useCreateDeposit() {
 			if (input.percentage && input.amount) {
 				throw new Error('percentage et amount sont mutuellement exclusifs')
 			}
-			if (input.percentage && (input.percentage <= 0 || input.percentage > 100)) {
+			if (
+				input.percentage &&
+				(input.percentage <= 0 || input.percentage > 100)
+			) {
 				throw new Error('percentage invalide (doit être entre 1 et 100)')
 			}
 			if (input.amount && input.amount <= 0) {

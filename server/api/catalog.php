@@ -201,6 +201,90 @@ try {
         ]);
     }
 
+    // ── Recherche ───────────────────────────────────────────────────────────
+    // Le site a une recherche ; sans cette action, elle continuerait à
+    // interroger WooCommerce pendant que les pages affichent notre catalogue —
+    // deux sources visibles côte à côte, avec des prix qui peuvent différer.
+    //
+    // Recherche volontairement simple : nom, référence, slug. Pas la
+    // description, qui contient du HTML et ferait remonter n'importe quoi sur
+    // un mot courant. Pas de pertinence pondérée non plus : MySQL 5.7 sans
+    // index FULLTEXT sur ces colonnes ne saurait pas la calculer, et une
+    // fausse pertinence est pire qu'un ordre alphabétique assumé.
+    if ($action === 'search') {
+        $query = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
+
+        // Deux caractères minimum : en dessous, la requête ramènerait une part
+        // notable des 2562 produits pour rien.
+        if (mb_strlen($query) < 2) {
+            respond(200, [
+                'ok'       => true,
+                'query'    => $query,
+                'products' => [],
+                'total'    => 0,
+                'page'     => 1,
+                'per_page' => $limit,
+            ]);
+        }
+
+        // `%` et `_` sont des jokers LIKE : échappés, sinon une recherche sur
+        // « 100% » ramènerait tout. La valeur reste un paramètre lié.
+        // Pas d'antislash litteral dans ce fichier : addcslashes fait le travail,
+        // et chr(92) evite d'ecrire un echappement qui se relit mal.
+        $escaped = addcslashes($query, '%_' . chr(92));
+        $pattern = '%' . $escaped . '%';
+
+        // TROIS paramètres nommés DISTINCTS pour la même valeur, et ce n'est
+        // pas une coquetterie : le PDO est ouvert en préparation NATIVE
+        // (ATTR_EMULATE_PREPARES => false, ligne 106), et MySQL n'admet pas
+        // qu'un même paramètre nommé serve deux fois dans une requête — il
+        // lève HY093, remonté ici en « Lecture du catalogue impossible ».
+        // Constaté en production le 12 août 2026.
+        $where = '(p.name LIKE :q1 OR p.sku LIKE :q2 OR p.slug LIKE :q3)
+                  AND p.status = ' . $pdo->quote('published');
+
+        $st = $pdo->prepare(sprintf(
+            'SELECT %s
+               FROM `%s` p
+          LEFT JOIN `%s` b ON b.legacy_id = p.brand
+              WHERE %s
+              ORDER BY p.name ASC
+              LIMIT :limit OFFSET :offset',
+            $PRODUCT_COLUMNS,
+            $T_PRODUCTS,
+            $T_BRANDS,
+            $where
+        ));
+        foreach (['q1', 'q2', 'q3'] as $name) {
+            $st->bindValue(':' . $name, $pattern, PDO::PARAM_STR);
+        }
+        $st->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $st->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $st->execute();
+        $found = $st->fetchAll();
+
+        $stCount = $pdo->prepare(sprintf(
+            'SELECT COUNT(*) AS total FROM `%s` p WHERE %s',
+            $T_PRODUCTS,
+            $where
+        ));
+        // Le comptage réutilise le MÊME $where : il porte donc les mêmes trois
+        // paramètres, et les oublier ici aurait reproduit la panne à l'identique.
+        foreach (['q1', 'q2', 'q3'] as $name) {
+            $stCount->bindValue(':' . $name, $pattern, PDO::PARAM_STR);
+        }
+        $stCount->execute();
+
+        respond(200, [
+            'ok'       => true,
+            'query'    => $query,
+            'products' => array_map('present_product', $found),
+            'total'    => (int) ($stCount->fetch()['total'] ?? 0),
+            'page'     => $page,
+            'per_page' => $limit,
+        ]);
+    }
+
     // ── Un produit, par son slug ────────────────────────────────────────────
     // Sert la page produit du site. Le slug est la clé d'adressage publique —
     // et il est figé au premier envoi (§4.5 du contrat d'export), ce qui est
@@ -512,7 +596,7 @@ try {
         ]);
     }
 
-    fail(400, 'Action inconnue. Attendues : category, categories.');
+    fail(400, 'Action inconnue. Attendues : category, categories, product, search.');
 } catch (PDOException $e) {
     fail(500, 'Lecture du catalogue impossible.');
 }

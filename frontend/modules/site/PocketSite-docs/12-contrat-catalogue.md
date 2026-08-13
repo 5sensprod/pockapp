@@ -197,6 +197,7 @@ est un bundle public, où un secret serait lisible de tous
 | `?action=categories` | toutes les catégories portant au moins un produit |
 | `?action=category&slug=…` | la catégorie, ses **ancêtres**, ses enfants, ses produits paginés |
 | `?action=product&slug=…` | le produit et les catégories auxquelles il appartient |
+| `?action=search&q=…` | les produits publiés dont le nom, la référence ou le slug contient `q` |
 
 **Deux règles de comptage, qui doivent rester ensemble :**
 
@@ -215,6 +216,13 @@ et l'écart s'était déjà produit.
 Pas de requête récursive — MySQL 5.7 du mutualisé n'a pas de CTE. L'arbre entier
 est lu en une fois (463 lignes) et parcouru en PHP, avec un garde-fou sur les
 cycles : `parent` est une colonne libre.
+
+**La recherche** porte sur `name`, `sku` et `slug` — pas sur la description,
+qui contient du HTML et ferait remonter n'importe quoi sur un mot courant.
+Deux caractères minimum, sinon la réponse est vide : en dessous, la requête
+ramènerait une part notable des 2562 produits pour rien. Pas de pertinence
+pondérée : sans index FULLTEXT, MySQL ne saurait pas la calculer, et une fausse
+pertinence est pire qu'un ordre alphabétique assumé.
 
 **`ancestors`** est rendu de la racine au parent direct, la catégorie courante
 exclue. Il alimente le fil d'Ariane des pages catégorie du site, jumeau de celui

@@ -157,7 +157,16 @@ affiche l'avertissement.
 - **les catégories homonymes** — deux « Guitares électriques », dont celle qui
   porte le slug propre n'a qu'un produit. À nettoyer côté NeDB de production ;
 - **les marques n'ont pas de page** sur le site : elles sont listées dans
-  l'éditeur de menu mais non sélectionnables.
+  l'éditeur de menu mais non sélectionnables ;
+- **aucune date d'arrivée ne traverse la chaîne** — le site ne peut donc pas
+  afficher « les derniers produits », et les produits venus de NeDB n'en auront
+  jamais une qui leur soit propre. État des lieux couche par couche, ce que
+  `dateSoumission` porte réellement en base, et les trois chemins possibles :
+  [`13-dates-produits.md`](13-dates-produits.md). **Pas urgent, rien d'engagé.**
+- **le bandeau de statistiques du site est masqué** sous le drapeau : il compte
+  les produits et les marques dans WooCommerce, et `catalog.php` ne sait rendre
+  ni un total de produits ni une liste de marques. Rituel prêt à exécuter, SQL
+  compris : [`14-rituel-stats.md`](14-rituel-stats.md). **Pas urgent.**
 
 | # | Ticket | Dépend de | Dépôt | État |
 |---|---|---|---|---|
