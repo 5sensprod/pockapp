@@ -8,6 +8,15 @@ lit plus WordPress pour l'afficher.
 local** — pour s'affranchir d'AppServe. Point d'entrée :
 [`10-plan-migration.md`](10-plan-migration.md).
 
+> **13 août 2026 — la suite se joue ailleurs.** Ce que le site demandait est
+> livré : il lit le catalogue PocketBase, et ses textes s'éditent ici. Ce qui
+> reste — faire passer la **gestion interne** derrière une couche d'accès
+> commune, puis vers PocketBase — est une mission du module `stock`, avec son
+> propre rituel :
+> [`../../stock/PocketStock-docs/00-rituel-migration-appstock.md`](../../stock/PocketStock-docs/00-rituel-migration-appstock.md).
+> Ce dossier-ci reste l'autorité sur **le site** : contrat d'export, lecture
+> publique, menu. Il ne suit pas l'avancement d'AppStock.
+
 **La cible a changé le 10 août 2026** : elle n'est plus « publier le catalogue
 vers une base SQL sur IONOS », mais « PocketBase devient la source de vérité »
 ([`docs/DECISIONS.md`](../../../../docs/DECISIONS.md)). Le

@@ -111,8 +111,15 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   plus anciennes est acceptée sans erreur ni mise à niveau. Toute évolution du
   schéma passe par une nouvelle migration.
 - **Ne pas créer un troisième chemin d'écriture.** Il en existe déjà deux, et
-  `useUpdateProductUniversal` (`frontend/lib/queries/products.ts:180`) route
-  entre eux sur une chaîne non typée. Dette connue, à ne pas aggraver.
+  `useUpdateProductUniversal` (`frontend/lib/queries/products.ts:179`) route
+  entre eux sur une chaîne non typée — `source === 'apppos_products'`, paramètre
+  optionnel : l'oublier écrit dans l'autre base sans erreur. Dette connue, à ne
+  pas aggraver, et **à remplacer** par la couche de la mission en cours.
+- **`frontend/modules/stock/StockPage.tsx` n'a aucun importeur** : le modifier
+  ne change rien à l'écran. `modules/stock/index.ts:5` réexporte
+  `StockPageAppPos` **sous le nom `StockPage`**, si bien que `/stock` et
+  `/stock-apppos` rendent la même page. Mesuré le 2026-08-13 ; détail et cinq
+  autres paires de composants en double dans le rituel du module `stock`.
 - **Une migration non inscrite dans la liste de `RunMigrations`**
   (`backend/migrations/migrations.go:13`) ne s'exécute jamais, sans erreur.
 - **L'hébergement du site est un mutualisé PHP/MySQL.** Aucun processus
@@ -131,6 +138,26 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   Ne pas en ajouter ; voir `docs/DECISIONS.md`.
 
 ## Travail en cours
+
+**Mission ouverte le 13 août 2026 — faire passer AppStock derrière une couche
+d'accès aux données commune**, pour que ses écrans cessent de dépendre de la
+provenance de ce qu'ils affichent : AppPos aujourd'hui, PocketBase à terme.
+Quatre entités, `products`, `categories`, `brands`, `suppliers`.
+
+**Point d'entrée :**
+[`00-rituel-migration-appstock.md`](frontend/modules/stock/PocketStock-docs/00-rituel-migration-appstock.md).
+Rien n'est commencé ; la première session consigne les décisions d'architecture
+(§4 du rituel), elle n'écrit pas de composant.
+
+Trois constats mesurés le 13 août 2026 y sont détaillés, et ils changent le
+plan : le module `stock` porte **six paires de composants** dont la moitié
+non-AppPos — celle qui lit PocketBase — n'est atteignable que par
+`StockPage.tsx`, **qui n'a aucun importeur** ; `ProductTable.tsx` mêle les deux
+bases dans un même fichier ; et **la caisse crée des produits dans NeDB**
+(`modules/cash/CreateProductDialog.tsx:22`), ce qui interdit à PocketBase
+d'être source de vérité tant que c'est vrai.
+
+### Mission précédente — terminée
 
 **Migrer le catalogue de NeDB vers PocketBase, tout en local.** Cible :
 s'affranchir d'AppServe, PocketBase devient la source de vérité

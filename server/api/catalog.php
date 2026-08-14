@@ -596,7 +596,49 @@ try {
         ]);
     }
 
-    fail(400, 'Action inconnue. Attendues : category, categories, product, search.');
+    // ── Les décomptes du bandeau de statistiques ────────────────────────────
+    //
+    // Trois COUNT, aucun paramètre d'entrée : rien à lier, rien à échapper.
+    //
+    // Marques et catégories sont comptées PORTANT au moins un produit publié,
+    // pas dans l'absolu : le catalogue en porte 287, le site n'en expose
+    // qu'une part, et annoncer le volume de la caisse au visiteur serait le
+    // défaut même qui a fait masquer le bandeau
+    // (14-rituel-stats.md, « La décision à prendre AVANT d'écrire »).
+    if ($action === 'stats') {
+        // Seuls les produits publiés : ce sont les seuls que le site affiche.
+        $produits = (int) $pdo->query(sprintf(
+            'SELECT COUNT(*) FROM `%s` WHERE status = %s',
+            $T_PRODUCTS,
+            $pdo->quote('published')
+        ))->fetchColumn();
+
+        $marques = (int) $pdo->query(sprintf(
+            'SELECT COUNT(DISTINCT p.brand) FROM `%s` p
+              WHERE p.brand IS NOT NULL AND p.status = %s',
+            $T_PRODUCTS,
+            $pdo->quote('published')
+        ))->fetchColumn();
+
+        $categories = (int) $pdo->query(sprintf(
+            'SELECT COUNT(DISTINCT pc.category_legacy_id)
+               FROM `%s` pc
+               JOIN `%s` p ON p.legacy_id = pc.product_legacy_id
+              WHERE p.status = %s',
+            $T_PRODCAT,
+            $T_PRODUCTS,
+            $pdo->quote('published')
+        ))->fetchColumn();
+
+        respond(200, [
+            'ok'         => true,
+            'products'   => $produits,
+            'brands'     => $marques,
+            'categories' => $categories,
+        ]);
+    }
+
+    fail(400, 'Action inconnue. Attendues : category, categories, product, search, stats.');
 } catch (PDOException $e) {
     fail(500, 'Lecture du catalogue impossible.');
 }
