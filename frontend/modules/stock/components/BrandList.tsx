@@ -18,9 +18,9 @@ import { Globe, Package, Pencil, Plus, Trash2, Truck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import type { BrandsResponse } from '@/lib/pocketbase-types'
 import { useBrands, useDeleteBrand } from '@/lib/queries/brands'
-import { useProducts } from '@/lib/queries/products'
+import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
+import { useProductCountsByBrand } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { toast } from 'sonner'
 import { BrandDialog } from './BrandDialog'
@@ -32,19 +32,21 @@ export function BrandList() {
 		isLoading,
 		refetch,
 	} = useBrands({ companyId: activeCompanyId ?? undefined })
-	const { data: productsData } = useProducts({
-		companyId: activeCompanyId ?? undefined,
-	})
+	// Le décompte porte sur TOUT le catalogue, pas sur une page de produits —
+	// voir le commentaire de `useProductCountsByBrand`.
+	const { data: productCountByBrand } = useProductCountsByBrand(
+		activeCompanyId ?? undefined,
+	)
 	const { data: suppliers } = useSuppliers({
 		companyId: activeCompanyId ?? undefined,
 	})
 	const deleteBrand = useDeleteBrand()
 
 	const [dialogOpen, setDialogOpen] = useState(false)
-	const [editBrand, setEditBrand] = useState<BrandsResponse | null>(null)
+	const [editBrand, setEditBrand] = useState<CatalogBrandShape | null>(null)
 
 	const [confirmOpen, setConfirmOpen] = useState(false)
-	const [brandToDelete, setBrandToDelete] = useState<BrandsResponse | null>(
+	const [brandToDelete, setBrandToDelete] = useState<CatalogBrandShape | null>(
 		null,
 	)
 
@@ -54,19 +56,6 @@ export function BrandList() {
 			refetch()
 		}
 	}, [activeCompanyId, refetch])
-
-	// Compter les produits par marque
-	const productCountByBrand = useMemo(() => {
-		const counts: Record<string, number> = {}
-		if (productsData?.items) {
-			for (const product of productsData.items) {
-				if (product.brand) {
-					counts[product.brand] = (counts[product.brand] || 0) + 1
-				}
-			}
-		}
-		return counts
-	}, [productsData])
 
 	// Trouver les fournisseurs par marque
 	const suppliersByBrand = useMemo(() => {
@@ -89,12 +78,12 @@ export function BrandList() {
 		setDialogOpen(true)
 	}
 
-	const handleEdit = (brand: BrandsResponse) => {
+	const handleEdit = (brand: CatalogBrandShape) => {
 		setEditBrand(brand)
 		setDialogOpen(true)
 	}
 
-	const askDelete = (brand: BrandsResponse) => {
+	const askDelete = (brand: CatalogBrandShape) => {
 		setBrandToDelete(brand)
 		setConfirmOpen(true)
 	}
@@ -142,14 +131,14 @@ export function BrandList() {
 						<UiTableHeader>
 							<UiTableRow>
 								<UiTableHead>Marque</UiTableHead>
-								<UiTableHead>Site web</UiTableHead>
+								<UiTableHead>Slug</UiTableHead>
 								<UiTableHead>Description</UiTableHead>
 								<UiTableHead className='w-[100px]'>Actions</UiTableHead>
 							</UiTableRow>
 						</UiTableHeader>
 						<UiTableBody>
 							{brands.map((brand) => {
-								const productCount = productCountByBrand[brand.id] || 0
+								const productCount = productCountByBrand?.[brand.id] ?? 0
 								const brandSuppliers = suppliersByBrand[brand.id] || []
 
 								return (
@@ -174,17 +163,16 @@ export function BrandList() {
 												</div>
 											</div>
 										</UiTableCell>
+										{/* `website` n'existe plus au schéma — la colonne montre
+										    désormais le SLUG, qui est ce que la marque devient dans
+										    une URL du site. Le logo (champ fichier `image`) est un
+										    sujet à part : les images sont hors périmètre. */}
 										<UiTableCell>
-											{brand.website ? (
-												<a
-													href={brand.website}
-													target='_blank'
-													rel='noopener noreferrer'
-													className='flex items-center gap-1 text-blue-600 hover:underline'
-												>
+											{brand.slug ? (
+												<span className='flex items-center gap-1 font-mono text-muted-foreground text-xs'>
 													<Globe className='h-3 w-3' />
-													Visiter
-												</a>
+													{brand.slug}
+												</span>
 											) : (
 												<span className='text-muted-foreground'>-</span>
 											)}

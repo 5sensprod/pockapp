@@ -1,4 +1,3 @@
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -19,8 +18,8 @@ import { Building2, Mail, Pencil, Phone, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import type { SuppliersResponse } from '@/lib/pocketbase-types'
 import { useBrands } from '@/lib/queries/brands'
+import type { CatalogSupplierShape } from '@/lib/queries/catalog-shapes'
 import { useDeleteSupplier, useSuppliers } from '@/lib/queries/suppliers'
 import { toast } from 'sonner'
 import { SupplierDialog } from './SupplierDialog'
@@ -38,13 +37,13 @@ export function SupplierList() {
 	const deleteSupplier = useDeleteSupplier()
 
 	const [dialogOpen, setDialogOpen] = useState(false)
-	const [editSupplier, setEditSupplier] = useState<SuppliersResponse | null>(
+	const [editSupplier, setEditSupplier] = useState<CatalogSupplierShape | null>(
 		null,
 	)
 
 	const [confirmOpen, setConfirmOpen] = useState(false)
 	const [supplierToDelete, setSupplierToDelete] =
-		useState<SuppliersResponse | null>(null)
+		useState<CatalogSupplierShape | null>(null)
 
 	// Refetch quand l'entreprise change
 	useEffect(() => {
@@ -66,12 +65,12 @@ export function SupplierList() {
 		setDialogOpen(true)
 	}
 
-	const handleEdit = (supplier: SuppliersResponse) => {
+	const handleEdit = (supplier: CatalogSupplierShape) => {
 		setEditSupplier(supplier)
 		setDialogOpen(true)
 	}
 
-	const askDelete = (supplier: SuppliersResponse) => {
+	const askDelete = (supplier: CatalogSupplierShape) => {
 		setSupplierToDelete(supplier)
 		setConfirmOpen(true)
 	}
@@ -119,10 +118,10 @@ export function SupplierList() {
 						<UiTableHeader>
 							<UiTableRow>
 								<UiTableHead>Fournisseur</UiTableHead>
+								<UiTableHead>Code</UiTableHead>
 								<UiTableHead>Contact</UiTableHead>
 								<UiTableHead>Email</UiTableHead>
 								<UiTableHead>Téléphone</UiTableHead>
-								<UiTableHead>Statut</UiTableHead>
 								<UiTableHead className='w-[100px]'>Actions</UiTableHead>
 							</UiTableRow>
 						</UiTableHeader>
@@ -148,45 +147,45 @@ export function SupplierList() {
 												)}
 											</div>
 										</UiTableCell>
+										{/* Le code fournisseur remplace l'ancienne colonne « Statut » :
+										    `active` n'existe plus au schéma, et un fournisseur ne
+										    porte plus d'état de service. Le code, lui, est ce par
+										    quoi on le désigne dans les commandes. */}
 										<UiTableCell>
-											{supplier.contact || (
+											{supplier.supplier_code || (
 												<span className='text-muted-foreground'>-</span>
 											)}
 										</UiTableCell>
 										<UiTableCell>
-											{supplier.email ? (
+											{supplier.contact_name || (
+												<span className='text-muted-foreground'>-</span>
+											)}
+										</UiTableCell>
+										<UiTableCell>
+											{supplier.contact_email ? (
 												<a
-													href={`mailto:${supplier.email}`}
+													href={`mailto:${supplier.contact_email}`}
 													className='flex items-center gap-1 text-blue-600 hover:underline'
 												>
 													<Mail className='h-3 w-3' />
-													{supplier.email}
+													{supplier.contact_email}
 												</a>
 											) : (
 												<span className='text-muted-foreground'>-</span>
 											)}
 										</UiTableCell>
 										<UiTableCell>
-											{supplier.phone ? (
+											{supplier.contact_phone ? (
 												<a
-													href={`tel:${supplier.phone}`}
+													href={`tel:${supplier.contact_phone}`}
 													className='flex items-center gap-1 hover:underline'
 												>
 													<Phone className='h-3 w-3' />
-													{supplier.phone}
+													{supplier.contact_phone}
 												</a>
 											) : (
 												<span className='text-muted-foreground'>-</span>
 											)}
-										</UiTableCell>
-										<UiTableCell>
-											<Badge
-												variant={
-													supplier.active !== false ? 'default' : 'secondary'
-												}
-											>
-												{supplier.active !== false ? 'Actif' : 'Inactif'}
-											</Badge>
 										</UiTableCell>
 										<UiTableCell>
 											<div className='flex gap-1'>

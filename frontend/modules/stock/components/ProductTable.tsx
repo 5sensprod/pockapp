@@ -50,11 +50,13 @@ import { useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { APPPOS_ASSETS_BASE_URL } from '@/lib/apppos/apppos-config'
-import type {
-	CategoriesResponse,
-	ProductsResponse,
-} from '@/lib/pocketbase-types'
+import type { ProductsResponse } from '@/lib/pocketbase-types'
 import { useBrands } from '@/lib/queries/brands'
+// Les catégories viennent de la forme réelle, pas de `pocketbase-types.ts` —
+// qui décrit ici une collection disparue (§6bis.4 du rituel AppStock). Les
+// PRODUITS, eux, n'y sont pas encore : ce fichier mêle les deux bases, et son
+// démêlage est l'étape 3.
+import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import { useCategories } from '@/lib/queries/categories'
 import { useDeleteProduct } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
@@ -112,7 +114,7 @@ export function ProductTable({ data }: ProductTableProps) {
 		null,
 	)
 
-	const getCategoryPath = (category: CategoriesResponse): string => {
+	const getCategoryPath = (category: CatalogCategoryShape): string => {
 		if (!categories) return category.name
 
 		const path: string[] = [category.name]

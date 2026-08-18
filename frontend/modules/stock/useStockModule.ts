@@ -8,7 +8,6 @@ import {
 	useAppPosSuppliers,
 } from '@/lib/apppos'
 import type {
-	BrandsResponse,
 	CategoriesResponse,
 	SuppliersResponse,
 } from '@/lib/pocketbase-types'
@@ -32,9 +31,18 @@ export function useStockModule() {
 	const [searchTerm, setSearchTerm] = useState('')
 	const [selectedCategory, setSelectedCategory] =
 		useState<CategoriesResponse | null>(null)
-	const [selectedBrand, setSelectedBrand] = useState<BrandsResponse | null>(
-		null,
-	)
+	// La marque SÉLECTIONNÉE vient d'AppPos, comme les produits qu'elle filtre —
+	// et le filtre compare `p.brand` à `selectedBrand.id`, donc les deux doivent
+	// venir de la même base. Le type est structurel et ne nomme aucune
+	// collection : `BrandsResponse` prétendait ici décrire une donnée PocketBase
+	// qui n'en est pas une.
+	//
+	// `selectedCategory` et `selectedSupplier` portent le même défaut ; ils seront
+	// traités quand leur entité sera branchée, pas avant.
+	const [selectedBrand, setSelectedBrand] = useState<{
+		id: string
+		name: string
+	} | null>(null)
 	const [selectedSupplier, setSelectedSupplier] =
 		useState<SuppliersResponse | null>(null)
 	const [activePanel, setActivePanel] = useState<PanelType>(null)

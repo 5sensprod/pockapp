@@ -1,4 +1,23 @@
-import type { BrandsRecord, BrandsResponse } from '@/lib/pocketbase-types'
+// frontend/lib/queries/brands.ts
+//
+// ⚠️ NE PAS REVENIR AUX TYPES `Brands*` DE `pocketbase-types.ts` : ils
+// déclarent `logo` et `website`, qui n'existent pas. La collection installée
+// porte `name, slug, description, image, wp_image_url, legacy_id, company`
+// (mesuré le 13 août 2026 dans `pb_data/data.db`). `image` est un champ
+// FICHIER : il se résout par `pb.files.getUrl`, ce n'est pas une URL.
+//
+// Ces hooks ne servent qu'au module `stock` (vérifié le 13 août 2026).
+// Détail : §6bis.4 du rituel de migration AppStock.
+
+import type {
+	CatalogBrandShape,
+	PocketBaseRecord,
+} from '@/lib/queries/catalog-shapes'
+
+/** Ce qu'on peut écrire. `legacy_id` en est exclu : il vient de NeDB. */
+export type BrandWrite = Partial<
+	Omit<CatalogBrandShape, keyof PocketBaseRecord | 'legacy_id'>
+> & { name: string; company?: string }
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -30,7 +49,7 @@ export function useBrands(options: BrandsListOptions = {}) {
 
 			const finalFilter = filters.length > 0 ? filters.join(' && ') : undefined
 
-			return await pb.collection('brands').getFullList<BrandsResponse>({
+			return await pb.collection('brands').getFullList<CatalogBrandShape>({
 				sort: sort || 'name',
 				filter: finalFilter,
 				...otherOptions,
@@ -48,7 +67,7 @@ export function useBrand(brandId?: string) {
 		queryKey: ['brands', brandId],
 		queryFn: async () => {
 			if (!brandId) throw new Error('brandId is required')
-			return await pb.collection('brands').getOne<BrandsResponse>(brandId)
+			return await pb.collection('brands').getOne<CatalogBrandShape>(brandId)
 		},
 		enabled: !!brandId,
 	})
@@ -59,8 +78,8 @@ export function useCreateBrand() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async (data: BrandsRecord) => {
-			return await pb.collection('brands').create<BrandsResponse>(data)
+		mutationFn: async (data: BrandWrite) => {
+			return await pb.collection('brands').create<CatalogBrandShape>(data)
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['brands'] })
@@ -73,11 +92,8 @@ export function useUpdateBrand() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async ({
-			id,
-			data,
-		}: { id: string; data: Partial<BrandsRecord> }) => {
-			return await pb.collection('brands').update<BrandsResponse>(id, data)
+		mutationFn: async ({ id, data }: { id: string; data: BrandWrite }) => {
+			return await pb.collection('brands').update<CatalogBrandShape>(id, data)
 		},
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: ['brands'] })

@@ -6,7 +6,7 @@
 //   - token layout-tokens mis à jour avec bottom-nav
 
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Footer, Header, Sidebar } from '@/components/layout'
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -93,19 +93,37 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	})
 
 	// ── Sync activeGroup avec l'URL ─────────────────────────────────────────
+	//
+	// ⚠️ CET EFFET NE DOIT S'EXÉCUTER QU'AU CHANGEMENT D'URL, jamais en réaction
+	// à `activeGroup`.
+	//
+	// Il avait `activeGroup` en dépendance, et se rappelait donc lui-même : un
+	// groupe ouvert À LA MAIN sans changer d'URL était immédiatement réaligné sur
+	// le groupe de l'URL courante — le panneau se refermait dans la foulée du
+	// clic. Le défaut était invisible tant que chaque groupe n'avait qu'UN item,
+	// car cliquer un groupe naviguait aussitôt (`Sidebar.tsx:126`) et l'URL
+	// donnait raison au clic. Ajouter « Marques » au groupe Stock, donc un second
+	// item, l'a rendu visible : depuis l'inventaire, ouvrir Stock ne navigue plus,
+	// et le panneau se rabattait sur « Inventaire ».
+	//
+	// La garde est le chemin déjà synchronisé : une URL n'est alignée qu'une
+	// fois, et un clic manuel ne peut plus être annulé par cet effet.
+	const lastSyncedPath = useRef<string | null>(null)
 	useEffect(() => {
-		if (!sidebarMenu.length || manuallyClosed) return
+		if (!sidebarMenu.length) return
 		const normPath = normalizePath(pathname)
+		if (lastSyncedPath.current === normPath) return
+		lastSyncedPath.current = normPath
+
+		if (manuallyClosed) return
 		const matchingGroup = sidebarMenu.find((group) =>
 			group.items?.some((item) => {
 				const t = normalizePath(item.to)
 				return normPath === t || normPath.startsWith(t)
 			}),
 		)
-		if (matchingGroup && matchingGroup.id !== activeGroup) {
-			setActiveGroup(matchingGroup.id)
-		}
-	}, [pathname, sidebarMenu, activeGroup, manuallyClosed])
+		if (matchingGroup) setActiveGroup(matchingGroup.id)
+	}, [pathname, sidebarMenu, manuallyClosed])
 
 	// ── Reset sur changement de module ─────────────────────────────────────
 	useEffect(() => {

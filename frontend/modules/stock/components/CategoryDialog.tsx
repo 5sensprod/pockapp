@@ -20,19 +20,29 @@ import {
 	FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import type { CategoriesResponse } from '@/lib/pocketbase-types'
+import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import { useCreateCategory, useUpdateCategory } from '@/lib/queries/categories'
+import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { toast } from 'sonner'
 import { CategoryPicker } from './CategoryPicker'
 
+// `order`, `icon` et `color` ont disparu du formulaire : aucun des trois
+// n'existe dans la collection installée (§6bis.4 du rituel AppStock). Ils
+// étaient saisis puis ignorés à l'écriture — et `order` prétendait un
+// classement manuel que le modèle ne porte plus.
+//
+// `description` et `is_featured` les remplacent : ce sont les deux champs que
+// le site consomme réellement. `slug` reste hors du formulaire — l'URL est
+// figée au premier envoi, le serveur en est le gardien (§4.5 du contrat).
 const categorySchema = z.object({
-	name: z.string().min(1, 'Le nom est requis').max(100),
+	name: z.string().min(1, 'Le nom est requis').max(255),
 	parent: z.string().optional(),
-	order: z.coerce.number().int().min(0).optional(),
-	icon: z.string().max(50).optional(),
-	color: z.string().max(20).optional(),
+	description: z.string().max(20000).optional(),
+	is_featured: z.boolean().optional(),
 })
 
 type CategoryFormValues = z.infer<typeof categorySchema>
@@ -40,7 +50,7 @@ type CategoryFormValues = z.infer<typeof categorySchema>
 interface CategoryDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
-	category?: CategoriesResponse | null
+	category?: CatalogCategoryShape | null
 	defaultParentId?: string
 }
 
@@ -60,9 +70,8 @@ export function CategoryDialog({
 		defaultValues: {
 			name: '',
 			parent: undefined,
-			order: 0,
-			icon: '',
-			color: '',
+			description: '',
+			is_featured: false,
 		},
 	})
 
@@ -71,23 +80,26 @@ export function CategoryDialog({
 			form.reset({
 				name: category?.name ?? '',
 				parent: category?.parent || defaultParentId || undefined,
-				order: category?.order ?? 0,
-				icon: category?.icon ?? '',
-				color: category?.color ?? '',
+				description: category?.description ?? '',
+				is_featured: category?.is_featured ?? false,
 			})
 		}
 	}, [open, category, defaultParentId, form])
 
 	const onSubmit = async (data: CategoryFormValues) => {
+		// `parent` part en chaîne vide à la racine, jamais en `undefined` : côté
+		// PocketBase, une relation vide EST la chaîne vide, et `undefined`
+		// laisserait l'ancien parent en place — une catégorie qu'on remonte à la
+		// racine y resterait accrochée.
+		const payload = {
+			name: data.name.trim(),
+			parent: data.parent || '',
+			description: data.description ?? '',
+			is_featured: data.is_featured ?? false,
+		}
+
 		try {
 			if (isEdit && category) {
-				const payload = {
-					name: data.name,
-					parent: data.parent || undefined,
-					order: data.order,
-					icon: data.icon || undefined,
-					color: data.color || undefined,
-				}
 				await updateCategory.mutateAsync({ id: category.id, data: payload })
 				toast.success('Catégorie modifiée')
 			} else {
@@ -95,20 +107,16 @@ export function CategoryDialog({
 					toast.error('Aucune entreprise active')
 					return
 				}
-				const payload = {
-					name: data.name,
-					parent: data.parent || undefined,
-					order: data.order,
-					icon: data.icon || undefined,
-					color: data.color || undefined,
+				await createCategory.mutateAsync({
+					...payload,
 					company: activeCompanyId,
-				}
-				await createCategory.mutateAsync(payload)
+				})
 				toast.success('Catégorie créée')
 			}
 			onOpenChange(false)
 		} catch (error) {
-			toast.error('Une erreur est survenue')
+			const detail = pocketbaseErrorMessage(error)
+			toast.error(`Enregistrement refusé : ${detail}`)
 			console.error(error)
 		}
 	}
@@ -168,46 +176,41 @@ export function CategoryDialog({
 							)}
 						/>
 
-						<div className='grid grid-cols-2 gap-4'>
-							<FormField
-								control={form.control}
-								name='order'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Ordre</FormLabel>
-										<FormControl>
-											<Input type='number' min='0' placeholder='0' {...field} />
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-
-							<FormField
-								control={form.control}
-								name='color'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Couleur</FormLabel>
-										<FormControl>
-											<Input placeholder='blue' {...field} />
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						</div>
+						<FormField
+							control={form.control}
+							name='description'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Description</FormLabel>
+									<FormControl>
+										<Textarea
+											placeholder='Le texte lu par le visiteur sur la page de la catégorie.'
+											rows={4}
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
 
 						<FormField
 							control={form.control}
-							name='icon'
+							name='is_featured'
 							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Icône (lucide)</FormLabel>
+								<FormItem className='flex items-center justify-between rounded-lg border p-3'>
+									<div>
+										<FormLabel>Mise en avant</FormLabel>
+										<p className='text-muted-foreground text-sm'>
+											Signale la catégorie comme mise en avant sur le site.
+										</p>
+									</div>
 									<FormControl>
-										<Input placeholder='coffee' {...field} />
+										<Switch
+											checked={field.value ?? false}
+											onCheckedChange={field.onChange}
+										/>
 									</FormControl>
-									<FormMessage />
 								</FormItem>
 							)}
 						/>

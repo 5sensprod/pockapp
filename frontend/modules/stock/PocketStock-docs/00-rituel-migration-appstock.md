@@ -150,7 +150,28 @@ Reprend `CLAUDE.md`, sans le remplacer. En cas d'écart, `CLAUDE.md` gagne.
 - **Les images sont hors périmètre** — 4665 fichiers, 1,7 Go. Étape 5, session
   dédiée, on n'y touche pas en passant.
 
-## 4. Le point d'architecture — proposé, pas tranché
+## 4. Le point d'architecture — **tranché le 13 août 2026**
+
+**Les trois questions de ce paragraphe ont reçu leur réponse**, et les trois
+blocs sont au journal (`docs/DECISIONS.md`, 13 août 2026). Elles ne se
+rediscutent pas ici :
+
+1. **La source est explicite et déclarée par entité**, typée, lisible au point
+   d'appel. Ni drapeau `.env`, ni réglage en base.
+2. **Les six paires de composants convergent**, chacune réduite à un composant
+   dans la session qui la traite. Le module doit rétrécir en avançant : une
+   session qui ajoute sans retirer a échoué.
+3. **Pas de double écriture.** Une entité a une seule base de destination à un
+   instant donné ; au moment de basculer, les écritures faites dans l'ancienne
+   base depuis le dernier chargement sont reprises — travail ponctuel et
+   visible, préféré à une divergence permanente et silencieuse.
+
+Ce qui suit est le raisonnement qui y a mené. Il est conservé parce qu'il dit
+**pourquoi**, et que le journal ne répète pas les mesures.
+
+---
+
+### Le raisonnement, conservé
 
 **L'hypothèse du propriétaire :** ne pas dupliquer l'interface, introduire
 PocketBase derrière une couche d'accès commune, faire évoluer les composants
@@ -164,25 +185,23 @@ mixte indistinguable du mode PocketBase à la lecture du code, et elle fait de
 variable d'environnement lue au fond de la pile. La leçon est déjà payée :
 `useUpdateProductUniversal` est exactement cette erreur en petit (§2.3).
 
-**Ce qui reste à trancher, et qui n'est pas de mon ressort :**
+**Les trois points, et ce qui a été retenu :**
 
 1. **La forme du sélecteur de source** — variable d'environnement, réglage en
-   base, ou paramètre explicite par entité. Ma recommandation : par entité et
-   explicite, parce que la bascule ne sera pas simultanée pour les quatre.
+   base, ou paramètre explicite par entité. **Retenu : par entité et explicite**,
+   parce que la bascule ne sera pas simultanée pour les quatre. Catégories,
+   marques et fournisseurs sont petits, stables et déjà dotés de composants
+   PocketBase ; les produits portent le stock, la caisse et l'export.
 2. **Le sort des composants en double** — rebrancher les composants PocketBase
-   existants, faire converger les deux jeux en un, ou repartir des AppPos. Ma
-   recommandation : **faire converger, en supprimant les jumeaux au fur et à
-   mesure**, jamais en gardant les deux « au cas où ». Six paires aujourd'hui,
-   c'est déjà une de trop.
+   existants, faire converger les deux jeux en un, ou repartir des AppPos.
+   **Retenu : faire converger, en supprimant les jumeaux au fur et à mesure**,
+   jamais en gardant les deux « au cas où ». Six paires aujourd'hui, c'est déjà
+   une de trop.
 3. **Le mode « synchronisation des deux »** — écrire dans les deux bases à la
-   fois. Ma recommandation : **ne pas l'écrire**. Une écriture double sans
-   transaction produit deux bases qui divergent au premier échec partiel, et
-   c'est précisément le mode d'échec qui a coûté cher côté WooCommerce
+   fois. **Retenu : ne pas l'écrire.** Une écriture double sans transaction
+   produit deux bases qui divergent au premier échec partiel, et c'est
+   précisément le mode d'échec qui a coûté cher côté WooCommerce
    (`07-audit-flux-apppos.md`). Lire les deux, oui ; écrire les deux, non.
-
-**Ces trois points se consignent dans `docs/DECISIONS.md` une fois tranchés,
-avant la première ligne de la couche.** Un bloc par décision, options écartées
-comprises.
 
 ## 5. Les cinq étapes, reformulées avec ce qu'on sait
 
@@ -223,15 +242,173 @@ Ce n'est pas une objection au plan. C'est ce qu'il faut avoir décidé avant
 l'étape 3, sous peine de construire une couche qui suppose une source de vérité
 qui n'existe pas encore.
 
+## 6 bis. Étape 1 — la mesure, faite le 13 août 2026
+
+Le §2.1 disait que les composants PocketBase existaient et qu'il faudrait
+vérifier ce qu'ils couvrent « avant de conclure qu'ils suffisent ». **C'est
+fait. Ils ne suffisent pas, et le mot est faible : ils écrivent dans des champs
+qui n'existent plus.**
+
+### 6bis.1 La base installée est bien celle de `catalog_v2`
+
+Lu dans `%LOCALAPPDATA%\PocketReact\pb_data\data.db`, table `_collections` :
+
+| Collection | Champs réellement en place | Lignes |
+|---|---|---|
+| `suppliers` | `name, supplier_code, siren, contact_name, contact_email, contact_phone, contact_address, banking, payment_terms, brands, legacy_id, company` | 43 |
+| `brands` | `name, slug, description, image, wp_image_url, legacy_id, company` | 287 |
+| `categories` | `name, slug, description, image, wp_image_url, is_featured, legacy_id, company, parent` | 463 |
+| `products` | (schéma `catalog_v2`) | 2999 |
+
+La question du §2 — v1 ou v2 dans la base installée, les `ensure*` sortant si la
+collection existe — **est donc tranchée par la mesure : c'est v2**. Le doute
+était légitime, il n'a plus lieu d'être.
+
+### 6bis.2 `SupplierDialog` écrit six champs qui n'existent pas
+
+Son schéma de saisie (`components/SupplierDialog.tsx:32-41`) déclare `name`,
+`email`, `phone`, `address`, `contact`, `notes`, `brands`, `active`.
+
+Confronté à la collection réelle : **seuls `name` et `brands` existent.** Les
+six autres sont ceux de l'**ancienne** collection, celle de
+`backend/migrations/catalog.go` — `contact, email, phone, address, notes,
+active` s'y trouvent mot pour mot. Le dialogue a été écrit pour le schéma v1 et
+n'a jamais suivi.
+
+Et les champs v2 qu'il ignore sont exactement ceux qui portent la valeur métier :
+`supplier_code`, `siren`, `contact_name`, `contact_email`, `contact_phone`,
+`contact_address`, `banking`, `payment_terms`.
+
+**Rebrancher ce dialogue tel quel ne serait pas neutre** : un enregistrement
+n'écrirait que le nom et les marques, en silence, et l'utilisateur croirait
+avoir saisi une fiche fournisseur.
+
+### 6bis.3 `useCategories` trie sur un champ absent
+
+`frontend/lib/queries/categories.ts:39` : `sort: sort || 'order,name'`. **La
+collection n'a pas de champ `order`** (v1 en avait un). PocketBase refuse un tri
+sur un champ inconnu — l'appel part en erreur, il ne rend pas une liste
+désordonnée.
+
+C'est le défaut le plus court à corriger de tout l'inventaire, et le plus
+bloquant : tant qu'il est là, aucun écran catégories PocketBase ne s'affiche.
+
+### 6bis.4 `pocketbase-types.ts` décrit trois collections qui n'existent plus
+
+Le fichier est retouché à la main et `pnpm typegen` reste interdit (`CLAUDE.md`).
+Résultat, il fait foi pour le compilateur tout en étant faux :
+
+| Type | Ce qu'il déclare | Ce que la base a |
+|---|---|---|
+| `SuppliersRecord` | `active, address, contact, email, notes, phone` | aucun des six |
+| `BrandsRecord` | `logo, website` | `image`, `wp_image_url`, `slug` |
+| `CategoriesRecord` | `color, icon, order` | `slug, description, image, is_featured` |
+
+**Et aucun des trois ne déclare `legacy_id`** — la clé de l'export vers le site
+(§1 du contrat catalogue). Le typage ne protège donc pas ici : il **couvre**
+l'erreur. C'est la raison pour laquelle `site-catalog.ts` déclare ses types à la
+main plutôt que de les importer, et la couche du §4 devra faire de même.
+
+### 6bis.5 Le filtre par entreprise est sans effet aujourd'hui
+
+Les trois hooks filtrent sur `company = "<id de session>"`
+(`brands.ts:23`, `categories.ts:28`, `suppliers.ts:23`). Mesuré :
+**une seule entreprise en base** — `468mpen5lhg6u0v`, SARL GALICHET — et les
+793 lignes des trois collections lui sont toutes rattachées. Le filtre est donc
+inoffensif **tant qu'il n'y a qu'une entreprise**, exactement comme la note
+déjà consignée pour `site-catalog.ts`. À ne pas prendre pour une garantie.
+
+### 6bis.6 Ce que la mesure change au plan
+
+L'étape 1 n'est pas « rebrancher », c'est **remettre à niveau puis rebrancher**,
+et dans cet ordre :
+
+1. `useCategories` — retirer `order` du tri (6bis.3). Sans cela rien ne
+   s'affiche ;
+2. les types des trois collections — déclarés à la main, à la forme réelle,
+   `legacy_id` compris (6bis.4) ;
+3. `SupplierDialog` — refait sur les champs v2 (6bis.2). C'est le plus gros
+   morceau de l'étape 2, et il était réputé « déjà écrit » ;
+4. `BrandList` et `CategoryTree` — à confronter au même exercice avant
+   branchement.
+
+**Correction, le jour même.** J'avais écrit ici que `BrandDialog` « passe tel
+quel ». **C'est faux :** il saisit `website`, le valide comme URL et l'écrit —
+champ qui n'existe pas plus que ceux des fournisseurs. `CategoryDialog` fait de
+même avec `order`, `icon` et `color`. La première mesure avait cherché les
+champs du schéma dans les composants ; elle n'avait pas cherché **les champs des
+composants dans le schéma**, et c'est ce sens-là qui révèle les fantômes.
+**Les trois formulaires étaient touchés, pas un seul.**
+
+## 6 ter. Étape 1 — ce qui a été remis à niveau, le 13 août 2026
+
+Les quatre points du §6bis.6, faits. `npx tsc -b` silencieux, `pnpm test` vert
+(48 cas), Biome passé — les deux avertissements restants de
+`InventoryPageAppPos.tsx` sont antérieurs et hors périmètre.
+
+**Le fichier neuf : `frontend/lib/queries/catalog-shapes.ts`.** Il déclare à la
+main la forme réelle de `brands`, `categories` et `suppliers`, `legacy_id`
+compris. Il ne redéclare **pas** les produits : leur forme lue vit dans
+`site-catalog.ts`, en production, et en créer une seconde version avant la
+couche du §4 ferait deux vérités concurrentes pour la même collection.
+
+**`pocketbase-types.ts` n'a pas été corrigé, et ne doit pas l'être ici.** Ses
+types portent aussi des données **AppPos** (`apppos-transformers.ts`,
+`apppos-hooks.ts`), qui ont, elles, `logo`, `website`, `active`. Les redresser
+casserait la chaîne AppPos, donc la caisse.
+
+| Fichier | Ce qui change |
+|---|---|
+| `lib/queries/categories.ts` | tri `order,name` → `name`, aux trois endroits ; types réels ; `CategoryWrite` |
+| `lib/queries/brands.ts` | types réels ; `BrandWrite` |
+| `lib/queries/suppliers.ts` | types réels ; `SupplierWrite` |
+| `components/SupplierDialog.tsx` | refait : `supplier_code`, `siren`, `contact_*`, `brands`. SIREN validé à 9 chiffres |
+| `components/SupplierList.tsx` | colonnes `contact_*` ; « Statut » (`active`) remplacé par « Code » |
+| `components/BrandDialog.tsx` | `website` retiré |
+| `components/BrandList.tsx` | colonne « Site web » → « Slug » |
+| `components/CategoryDialog.tsx` | `order`/`icon`/`color` retirés, `description` et `is_featured` ajoutés |
+| `CategoryPicker`, `CategoryTree`, `ProductTable`, `StockPage` | suivent les types |
+
+**Trois règles posées en passant, chacune commentée sur place :**
+
+- **un champ vidé part en chaîne vide, jamais en `undefined`** : `undefined`
+  disparaît du corps JSON, l'ancienne valeur reste en base, et l'utilisateur
+  voit son champ se remplir seul au rechargement. Vaut aussi pour `parent`, dont
+  la valeur racine est la chaîne vide ;
+- **`slug` n'est éditable nulle part** : l'URL est figée au premier envoi et le
+  serveur en est le gardien (§4.5 du contrat catalogue). Un champ qui ne changera
+  rien en ligne ne doit pas être proposé ;
+- **le message d'erreur de PocketBase est affiché** plutôt que jeté : il nomme
+  le champ refusé.
+
+**Ce qui n'est PAS vérifié dans l'application.** PocketBase local ne tournait
+plus au moment de la remise à niveau (`/api/health` injoignable) : la mesure de
+schéma a été faite sur le fichier SQLite, et les écrans n'ont pas été ouverts.
+**Rien de tout ceci n'est atteignable depuis l'interface** — ces composants sont
+sous `StockPage.tsx`, qui n'a toujours aucun importeur. Le branchement, lui,
+reste à faire, et c'est lui qui apportera la vérification à l'écran.
+
+**Le pronostic du §2.1 est donc à corriger, et je le corrige ici plutôt que de
+le réécrire là-bas** : les composants PocketBase sont une base de départ réelle
+pour les marques et les catégories, mais pour les fournisseurs, « déjà écrit »
+voulait dire « écrit contre un schéma disparu ».
+
 ## 7. L'état — ce fichier tient le compte
 
-**Rien n'est commencé au 13 août 2026.** Aucune ligne de la couche n'est écrite,
-aucun composant n'est rebranché, aucune décision du §4 n'est consignée.
+**Les trois décisions du §4 sont prises et consignées** (13 août 2026). **La
+mesure de l'étape 1 est faite** (§6 bis) ; aucune ligne de la couche n'est
+écrite, aucun composant n'est rebranché.
+
+**La prochaine session branche.** Les quatre composants sont désormais alignés
+sur le schéma réel (§6 ter) mais restent injoignables : `StockPage.tsx` n'a
+aucun importeur. Brancher veut dire choisir, pour chacune des trois entités
+annexes, quel composant survit — c'est la décision de convergence du §4, et elle
+s'applique une paire à la fois.
 
 | # | Étape | État |
 |---|---|---|
-| 0 | Décisions du §4 consignées au journal | **à faire, en premier** |
-| 1 | Les 4 entités PocketBase affichées dans AppStock | non commencé |
+| 0 | Décisions du §4 consignées au journal | **fait le 13 août 2026** — trois blocs |
+| 1 | Les 4 entités PocketBase affichées dans AppStock | **mesure faite** (§6 bis) et **remise à niveau faite** (§6 ter) ; **branchement à faire** — rien n'est encore atteignable à l'écran |
 | 2 | Édition depuis AppStock | non commencé |
 | 3 | Couche de données unique | non commencé |
 | 4 | Synchronisation et frontière public/interne | non commencé |

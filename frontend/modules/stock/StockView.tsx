@@ -16,7 +16,7 @@ import {
 	X,
 } from 'lucide-react'
 
-import { BrandListAppPos } from './components/BrandListAppPos'
+import { BrandFilterPanel } from './components/BrandFilterPanel'
 import { CategoryTreeAppPos } from './components/CategoryTreeAppPos'
 import { ProductTable } from './components/ProductTable'
 import { SupplierListAppPos } from './components/SupplierListAppPos'
@@ -169,7 +169,7 @@ export function StockView({
 						/>
 					)}
 					{activePanel === 'brands' && (
-						<BrandListAppPos
+						<BrandFilterPanel
 							brands={brandsData || []}
 							isLoading={brandsLoading}
 							selectedId={selectedBrand?.id ?? null}

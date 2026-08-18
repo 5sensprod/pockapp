@@ -1,5 +1,5 @@
 import { Input } from '@/components/ui/input'
-import type { CategoriesResponse } from '@/lib/pocketbase-types'
+import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import { useCategories } from '@/lib/queries/categories'
 import { cn } from '@/lib/utils'
 import {
@@ -13,8 +13,8 @@ import { useMemo, useState } from 'react'
 
 // Helper pour construire le chemin complet
 function getCategoryPath(
-	category: CategoriesResponse,
-	allCategories: CategoriesResponse[],
+	category: CatalogCategoryShape,
+	allCategories: CatalogCategoryShape[],
 ): string {
 	const path: string[] = [category.name]
 	let current = category
@@ -34,13 +34,13 @@ function getCategoryPath(
 
 // Construire l'arbre des catégories
 interface CategoryNode {
-	category: CategoriesResponse
+	category: CatalogCategoryShape
 	children: CategoryNode[]
 	path: string
 }
 
 function buildTree(
-	categories: CategoriesResponse[],
+	categories: CatalogCategoryShape[],
 	excludeIds: string[] = [],
 ): CategoryNode[] {
 	function addChildren(parentId: string | null): CategoryNode[] {
@@ -71,7 +71,7 @@ function nodeMatchesSearch(node: CategoryNode, search: string): boolean {
 function isDescendantOf(
 	categoryId: string,
 	ancestorId: string,
-	categories: CategoriesResponse[],
+	categories: CatalogCategoryShape[],
 ): boolean {
 	const category = categories.find((c) => c.id === categoryId)
 	if (!category) return false

@@ -1,5 +1,12 @@
 // frontend/modules/stock/index.ts
-import { ClipboardList, Database, Package } from 'lucide-react'
+import {
+	Building2,
+	ClipboardList,
+	Database,
+	Package,
+	Tags,
+	Truck,
+} from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
 
 import { StockPageAppPos as StockPage } from './StockPageAppPos'
@@ -30,6 +37,18 @@ export const manifest: ModuleManifest = {
 			icon: Database,
 			items: [
 				{ label: 'Catalogue produits', to: '/stock-apppos', icon: Database },
+				// Première entité branchée sur PocketBase (13 août 2026). Entrée
+				// distincte, et non un onglet du catalogue produits : celui-ci lit
+				// AppPos, et mélanger les deux dans un même écran est précisément ce
+				// que la migration doit défaire.
+				{
+					label: 'Produits (PocketBase)',
+					to: '/stock/produits',
+					icon: Package,
+				},
+				{ label: 'Marques', to: '/stock/marques', icon: Building2 },
+				{ label: 'Catégories', to: '/stock/categories', icon: Tags },
+				{ label: 'Fournisseurs', to: '/stock/fournisseurs', icon: Truck },
 			],
 		},
 		{

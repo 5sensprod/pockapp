@@ -1,25 +1,40 @@
+// frontend/modules/stock/components/BrandFilterPanel.tsx
+//
+// Le panneau qui FILTRE la liste des produits par marque. Il s'appelait
+// `BrandListAppPos`, ce qui le faisait lire comme le jumeau AppPos de
+// `BrandList` — il ne l'est pas : `BrandList` gère les marques (créer, modifier,
+// supprimer), celui-ci n'en sélectionne qu'une. Deux rôles, pas deux versions.
+// Renommé le 13 août 2026 pour que la paire cesse de se lire comme un doublon.
+//
+// Il ne connaît PAS sa source : ses marques arrivent en props. Elles viennent
+// aujourd'hui d'AppPos, comme les produits qu'il filtre — et les deux doivent
+// venir du même endroit, sinon les identifiants ne se correspondent plus. D'où
+// le type structurel ci-dessous, qui ne nomme aucune base.
+
 import { Input } from '@/components/ui/input'
-import type { BrandsResponse } from '@/lib/pocketbase-types'
-// frontend/modules/stock/components/BrandListAppPos.tsx
 import { cn } from '@/lib/utils'
 import { Building2, Search, X } from 'lucide-react'
 import { useState } from 'react'
 
-interface BrandListAppPosProps {
-	brands: BrandsResponse[]
+/** Le strict nécessaire pour afficher et sélectionner. Volontairement pas un
+ *  type de collection : ce composant reste indifférent à la provenance. */
+type SelectableBrand = { id: string; name: string }
+
+interface BrandFilterPanelProps {
+	brands: SelectableBrand[]
 	isLoading: boolean
 	selectedId?: string | null
-	onSelect: (brand: BrandsResponse | null) => void
+	onSelect: (brand: SelectableBrand | null) => void
 	onClose?: () => void
 }
 
-export function BrandListAppPos({
+export function BrandFilterPanel({
 	brands,
 	isLoading,
 	selectedId,
 	onSelect,
 	onClose,
-}: BrandListAppPosProps) {
+}: BrandFilterPanelProps) {
 	const [search, setSearch] = useState('')
 
 	const filtered = [...brands]

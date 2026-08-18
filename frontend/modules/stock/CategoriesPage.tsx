@@ -1,0 +1,124 @@
+// frontend/modules/stock/CategoriesPage.tsx
+//
+// DEUXIÈME ENTITÉ BRANCHÉE SUR POCKETBASE — 13 août 2026, après les marques.
+//
+// Écran de GESTION des catégories : lit et écrit `categories` dans PocketBase,
+// et nulle part ailleurs (décision « source explicite, par entité »,
+// docs/DECISIONS.md, 2026-08-13).
+//
+// Ne pas confondre avec `components/CategoryTreeAppPos.tsx`, qui filtre la
+// liste des produits venus d'AppPos : même forme, autre rôle — comme pour les
+// marques (`BrandFilterPanel`). Tant que les produits viennent d'AppPos, le
+// panneau de filtre doit lire AppPos, sinon les identifiants ne correspondent
+// plus et le filtre ne rend rien.
+
+import { Card, CardContent } from '@/components/ui/card'
+import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
+import { AlertTriangle, Star, Tags } from 'lucide-react'
+import { useState } from 'react'
+
+import { CategoryTree } from './components/CategoryTree'
+
+export function CategoriesPage() {
+	const [selected, setSelected] = useState<CatalogCategoryShape | null>(null)
+
+	return (
+		<div className='container mx-auto px-6 py-8'>
+			<div className='mb-6'>
+				<div className='mb-2 flex items-center gap-3'>
+					<div className='flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10'>
+						<Tags className='h-6 w-6 text-primary' />
+					</div>
+					<h1 className='font-bold text-3xl'>Catégories</h1>
+				</div>
+				<p className='text-muted-foreground'>
+					L’arborescence du catalogue <strong>PocketBase</strong>, pas d’AppPos.
+					Le compteur est double : ce qui est rattaché à la catégorie même, puis
+					ce que toute sa branche emporte.
+				</p>
+			</div>
+
+			<Card className='mb-6 border-amber-500/40'>
+				<CardContent className='flex items-start gap-3 pt-6'>
+					<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-500' />
+					<div className='text-sm'>
+						<p className='font-medium'>
+							Un rechargement du catalogue efface ces saisies
+						</p>
+						<p className='text-muted-foreground'>
+							<code>catalog-import -load</code> purge les collections et les
+							réécrit depuis NeDB. Tant que l’import n’est pas définitif, ce qui
+							est modifié ici est un essai.
+						</p>
+					</div>
+				</CardContent>
+			</Card>
+
+			<div className='grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]'>
+				<Card>
+					<CardContent className='max-h-[70vh] overflow-y-auto p-0'>
+						<CategoryTree
+							selectedId={selected?.id ?? null}
+							onSelect={setSelected}
+						/>
+					</CardContent>
+				</Card>
+
+				{/* Le détail montre ce que l'arbre ne peut pas : le slug, la
+				    description, la mise en avant. Sans lui, ces champs seraient
+				    saisissables mais invisibles une fois le dialogue fermé. */}
+				<Card className='h-fit'>
+					<CardContent className='space-y-3 pt-6 text-sm'>
+						{selected ? (
+							<>
+								<div>
+									<p className='text-muted-foreground text-xs uppercase tracking-wide'>
+										Catégorie
+									</p>
+									<p className='font-medium'>{selected.name}</p>
+								</div>
+
+								<div>
+									<p className='text-muted-foreground text-xs uppercase tracking-wide'>
+										Slug
+									</p>
+									{selected.slug ? (
+										<p className='font-mono text-xs'>{selected.slug}</p>
+									) : (
+										<p className='text-muted-foreground'>—</p>
+									)}
+									<p className='mt-1 text-muted-foreground text-xs'>
+										Figé au premier envoi vers le site, non modifiable ici.
+									</p>
+								</div>
+
+								<div>
+									<p className='text-muted-foreground text-xs uppercase tracking-wide'>
+										Description
+									</p>
+									<p className='whitespace-pre-wrap'>
+										{selected.description || (
+											<span className='text-muted-foreground'>—</span>
+										)}
+									</p>
+								</div>
+
+								{selected.is_featured && (
+									<p className='flex items-center gap-1.5 text-amber-600'>
+										<Star className='h-4 w-4' />
+										Mise en avant sur le site
+									</p>
+								)}
+							</>
+						) : (
+							<p className='text-muted-foreground'>
+								Sélectionnez une catégorie dans l’arbre pour voir son slug, sa
+								description et sa mise en avant.
+							</p>
+						)}
+					</CardContent>
+				</Card>
+			</div>
+		</div>
+	)
+}

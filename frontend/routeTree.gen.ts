@@ -30,6 +30,10 @@ import { Route as SettingsSmtpImport } from './routes/settings/smtp'
 import { Route as SettingsSecretsImport } from './routes/settings/secrets'
 import { Route as SettingsCompaniesImport } from './routes/settings/companies'
 import { Route as CashConfigImport } from './routes/cash/config'
+import { Route as StockProduitsIndexImport } from './routes/stock/produits/index'
+import { Route as StockMarquesIndexImport } from './routes/stock/marques/index'
+import { Route as StockFournisseursIndexImport } from './routes/stock/fournisseurs/index'
+import { Route as StockCategoriesIndexImport } from './routes/stock/categories/index'
 import { Route as ConnectQuotesIndexImport } from './routes/connect/quotes/index'
 import { Route as ConnectOrdersIndexImport } from './routes/connect/orders/index'
 import { Route as ConnectInvoicesIndexImport } from './routes/connect/invoices/index'
@@ -167,6 +171,30 @@ const SettingsCompaniesRoute = SettingsCompaniesImport.update({
 const CashConfigRoute = CashConfigImport.update({
   id: '/cash/config',
   path: '/cash/config',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const StockProduitsIndexRoute = StockProduitsIndexImport.update({
+  id: '/stock/produits/',
+  path: '/stock/produits/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const StockMarquesIndexRoute = StockMarquesIndexImport.update({
+  id: '/stock/marques/',
+  path: '/stock/marques/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const StockFournisseursIndexRoute = StockFournisseursIndexImport.update({
+  id: '/stock/fournisseurs/',
+  path: '/stock/fournisseurs/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const StockCategoriesIndexRoute = StockCategoriesIndexImport.update({
+  id: '/stock/categories/',
+  path: '/stock/categories/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -535,6 +563,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectQuotesIndexImport
       parentRoute: typeof rootRoute
     }
+    '/stock/categories/': {
+      id: '/stock/categories/'
+      path: '/stock/categories'
+      fullPath: '/stock/categories'
+      preLoaderRoute: typeof StockCategoriesIndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/stock/fournisseurs/': {
+      id: '/stock/fournisseurs/'
+      path: '/stock/fournisseurs'
+      fullPath: '/stock/fournisseurs'
+      preLoaderRoute: typeof StockFournisseursIndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/stock/marques/': {
+      id: '/stock/marques/'
+      path: '/stock/marques'
+      fullPath: '/stock/marques'
+      preLoaderRoute: typeof StockMarquesIndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/stock/produits/': {
+      id: '/stock/produits/'
+      path: '/stock/produits'
+      fullPath: '/stock/produits'
+      preLoaderRoute: typeof StockProduitsIndexImport
+      parentRoute: typeof rootRoute
+    }
     '/connect/customers/$customerId/edit': {
       id: '/connect/customers/$customerId/edit'
       path: '/connect/customers/$customerId/edit'
@@ -649,6 +705,10 @@ export interface FileRoutesByFullPath {
   '/connect/invoices': typeof ConnectInvoicesIndexRoute
   '/connect/orders': typeof ConnectOrdersIndexRoute
   '/connect/quotes': typeof ConnectQuotesIndexRoute
+  '/stock/categories': typeof StockCategoriesIndexRoute
+  '/stock/fournisseurs': typeof StockFournisseursIndexRoute
+  '/stock/marques': typeof StockMarquesIndexRoute
+  '/stock/produits': typeof StockProduitsIndexRoute
   '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
   '/connect/invoices/$invoiceId/edit': typeof ConnectInvoicesInvoiceIdEditRoute
   '/connect/orders/$orderId/edit': typeof ConnectOrdersOrderIdEditRoute
@@ -694,6 +754,10 @@ export interface FileRoutesByTo {
   '/connect/invoices': typeof ConnectInvoicesIndexRoute
   '/connect/orders': typeof ConnectOrdersIndexRoute
   '/connect/quotes': typeof ConnectQuotesIndexRoute
+  '/stock/categories': typeof StockCategoriesIndexRoute
+  '/stock/fournisseurs': typeof StockFournisseursIndexRoute
+  '/stock/marques': typeof StockMarquesIndexRoute
+  '/stock/produits': typeof StockProduitsIndexRoute
   '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
   '/connect/invoices/$invoiceId/edit': typeof ConnectInvoicesInvoiceIdEditRoute
   '/connect/orders/$orderId/edit': typeof ConnectOrdersOrderIdEditRoute
@@ -740,6 +804,10 @@ export interface FileRoutesById {
   '/connect/invoices/': typeof ConnectInvoicesIndexRoute
   '/connect/orders/': typeof ConnectOrdersIndexRoute
   '/connect/quotes/': typeof ConnectQuotesIndexRoute
+  '/stock/categories/': typeof StockCategoriesIndexRoute
+  '/stock/fournisseurs/': typeof StockFournisseursIndexRoute
+  '/stock/marques/': typeof StockMarquesIndexRoute
+  '/stock/produits/': typeof StockProduitsIndexRoute
   '/connect/customers/$customerId/edit': typeof ConnectCustomersCustomerIdEditRoute
   '/connect/invoices/$invoiceId/edit': typeof ConnectInvoicesInvoiceIdEditRoute
   '/connect/orders/$orderId/edit': typeof ConnectOrdersOrderIdEditRoute
@@ -787,6 +855,10 @@ export interface FileRouteTypes {
     | '/connect/invoices'
     | '/connect/orders'
     | '/connect/quotes'
+    | '/stock/categories'
+    | '/stock/fournisseurs'
+    | '/stock/marques'
+    | '/stock/produits'
     | '/connect/customers/$customerId/edit'
     | '/connect/invoices/$invoiceId/edit'
     | '/connect/orders/$orderId/edit'
@@ -831,6 +903,10 @@ export interface FileRouteTypes {
     | '/connect/invoices'
     | '/connect/orders'
     | '/connect/quotes'
+    | '/stock/categories'
+    | '/stock/fournisseurs'
+    | '/stock/marques'
+    | '/stock/produits'
     | '/connect/customers/$customerId/edit'
     | '/connect/invoices/$invoiceId/edit'
     | '/connect/orders/$orderId/edit'
@@ -875,6 +951,10 @@ export interface FileRouteTypes {
     | '/connect/invoices/'
     | '/connect/orders/'
     | '/connect/quotes/'
+    | '/stock/categories/'
+    | '/stock/fournisseurs/'
+    | '/stock/marques/'
+    | '/stock/produits/'
     | '/connect/customers/$customerId/edit'
     | '/connect/invoices/$invoiceId/edit'
     | '/connect/orders/$orderId/edit'
@@ -921,6 +1001,10 @@ export interface RootRouteChildren {
   ConnectInvoicesIndexRoute: typeof ConnectInvoicesIndexRoute
   ConnectOrdersIndexRoute: typeof ConnectOrdersIndexRoute
   ConnectQuotesIndexRoute: typeof ConnectQuotesIndexRoute
+  StockCategoriesIndexRoute: typeof StockCategoriesIndexRoute
+  StockFournisseursIndexRoute: typeof StockFournisseursIndexRoute
+  StockMarquesIndexRoute: typeof StockMarquesIndexRoute
+  StockProduitsIndexRoute: typeof StockProduitsIndexRoute
   ConnectCustomersCustomerIdEditRoute: typeof ConnectCustomersCustomerIdEditRoute
   ConnectInvoicesInvoiceIdEditRoute: typeof ConnectInvoicesInvoiceIdEditRoute
   ConnectOrdersOrderIdEditRoute: typeof ConnectOrdersOrderIdEditRoute
@@ -966,6 +1050,10 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectInvoicesIndexRoute: ConnectInvoicesIndexRoute,
   ConnectOrdersIndexRoute: ConnectOrdersIndexRoute,
   ConnectQuotesIndexRoute: ConnectQuotesIndexRoute,
+  StockCategoriesIndexRoute: StockCategoriesIndexRoute,
+  StockFournisseursIndexRoute: StockFournisseursIndexRoute,
+  StockMarquesIndexRoute: StockMarquesIndexRoute,
+  StockProduitsIndexRoute: StockProduitsIndexRoute,
   ConnectCustomersCustomerIdEditRoute: ConnectCustomersCustomerIdEditRoute,
   ConnectInvoicesInvoiceIdEditRoute: ConnectInvoicesInvoiceIdEditRoute,
   ConnectOrdersOrderIdEditRoute: ConnectOrdersOrderIdEditRoute,
@@ -1023,6 +1111,10 @@ export const routeTree = rootRoute
         "/connect/invoices/",
         "/connect/orders/",
         "/connect/quotes/",
+        "/stock/categories/",
+        "/stock/fournisseurs/",
+        "/stock/marques/",
+        "/stock/produits/",
         "/connect/customers/$customerId/edit",
         "/connect/invoices/$invoiceId/edit",
         "/connect/orders/$orderId/edit",
@@ -1128,6 +1220,18 @@ export const routeTree = rootRoute
     },
     "/connect/quotes/": {
       "filePath": "connect/quotes/index.tsx"
+    },
+    "/stock/categories/": {
+      "filePath": "stock/categories/index.tsx"
+    },
+    "/stock/fournisseurs/": {
+      "filePath": "stock/fournisseurs/index.tsx"
+    },
+    "/stock/marques/": {
+      "filePath": "stock/marques/index.tsx"
+    },
+    "/stock/produits/": {
+      "filePath": "stock/produits/index.tsx"
     },
     "/connect/customers/$customerId/edit": {
       "filePath": "connect/customers/$customerId/edit.tsx"

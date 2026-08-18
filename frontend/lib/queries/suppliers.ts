@@ -1,6 +1,28 @@
-import type { SuppliersRecord, SuppliersResponse } from '@/lib/pocketbase-types'
+// frontend/lib/queries/suppliers.ts
+//
+// ⚠️ NE PAS REVENIR AUX TYPES `Suppliers*` DE
+// `pocketbase-types.ts` : ils décrivent le schéma v1 — `active`, `address`,
+// `contact`, `email`, `notes`, `phone` —, dont **aucun champ n'existe** dans la
+// collection installée. Mesuré le 13 août 2026 dans `pb_data/data.db`.
+// La forme réelle est dans `catalog-shapes.ts`, déclarée à la main.
+//
+// Ces hooks ne sont utilisés que par le module `stock` (vérifié le 13 août
+// 2026) : les retyper n'a donc aucun effet sur la caisse ni sur les documents
+// commerciaux. Détail : §6bis.2 et §6bis.4 du rituel de migration AppStock.
+
+import type {
+	CatalogSupplierShape,
+	PocketBaseRecord,
+} from '@/lib/queries/catalog-shapes'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+/** Ce qu'on peut écrire : la forme réelle, moins ce que PocketBase pose
+ *  lui-même. `legacy_id` en fait partie — il vient de NeDB, on ne l'invente
+ *  pas pour un fournisseur saisi ici. */
+export type SupplierWrite = Partial<
+	Omit<CatalogSupplierShape, keyof PocketBaseRecord | 'legacy_id'>
+> & { name: string; company?: string }
 
 export interface SuppliersListOptions {
 	companyId?: string
@@ -30,12 +52,14 @@ export function useSuppliers(options: SuppliersListOptions = {}) {
 
 			const finalFilter = filters.length > 0 ? filters.join(' && ') : undefined
 
-			return await pb.collection('suppliers').getFullList<SuppliersResponse>({
-				sort: sort || 'name',
-				expand: 'brands',
-				filter: finalFilter,
-				...otherOptions,
-			})
+			return await pb
+				.collection('suppliers')
+				.getFullList<CatalogSupplierShape>({
+					sort: sort || 'name',
+					expand: 'brands',
+					filter: finalFilter,
+					...otherOptions,
+				})
 		},
 		enabled: !!companyId,
 		refetchOnMount: 'always',
@@ -51,7 +75,7 @@ export function useSupplier(supplierId?: string) {
 			if (!supplierId) throw new Error('supplierId is required')
 			return await pb
 				.collection('suppliers')
-				.getOne<SuppliersResponse>(supplierId, {
+				.getOne<CatalogSupplierShape>(supplierId, {
 					expand: 'brands',
 				})
 		},
@@ -64,8 +88,8 @@ export function useCreateSupplier() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async (data: SuppliersRecord) => {
-			return await pb.collection('suppliers').create<SuppliersResponse>(data)
+		mutationFn: async (data: SupplierWrite) => {
+			return await pb.collection('suppliers').create<CatalogSupplierShape>(data)
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['suppliers'] })
@@ -78,18 +102,12 @@ export function useUpdateSupplier() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async ({
-			id,
-			data,
-		}: { id: string; data: Partial<SuppliersRecord> }) => {
+		mutationFn: async ({ id, data }: { id: string; data: SupplierWrite }) => {
 			return await pb
 				.collection('suppliers')
-				.update<SuppliersResponse>(id, data)
+				.update<CatalogSupplierShape>(id, data)
 		},
-		onSuccess: (
-			_,
-			variables: { id: string; data: Partial<SuppliersRecord> },
-		) => {
+		onSuccess: (_, variables: { id: string; data: SupplierWrite }) => {
 			queryClient.invalidateQueries({ queryKey: ['suppliers'] })
 			queryClient.invalidateQueries({ queryKey: ['suppliers', variables.id] })
 		},

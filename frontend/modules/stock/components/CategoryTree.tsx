@@ -26,19 +26,49 @@ import {
 import { useEffect, useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import type { CategoriesResponse } from '@/lib/pocketbase-types'
+import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import {
 	type CategoryNode,
 	buildCategoryTree,
 	useCategories,
 	useDeleteCategory,
 } from '@/lib/queries/categories'
+import { useProductIdsByCategory } from '@/lib/queries/products'
 import { toast } from 'sonner'
 import { CategoryDialog } from './CategoryDialog'
 
 interface CategoryTreeProps {
 	selectedId?: string | null
-	onSelect: (category: CategoriesResponse | null) => void
+	onSelect: (category: CatalogCategoryShape | null) => void
+}
+
+/** Objet vide PARTAGÉ : `{}` créé à la volée change d'identité à chaque rendu
+ *  et ferait recalculer tout l'arbre pour rien. */
+const EMPTY_IDS: Record<string, string[]> = {}
+
+/**
+ * Décomptes d'une branche : ce qui est rattaché ICI, et ce que la branche
+ * entière emporte, **dédoublonné**.
+ *
+ * Un produit rattaché à deux catégories sœurs ne compte qu'une fois dans leur
+ * ancêtre commun : le total d'un parent n'est donc pas la somme de ceux de ses
+ * enfants. C'est la même règle que côté site (§6 bis du contrat catalogue), et
+ * elle doit rester la même — deux comptages écrits séparément finissent
+ * toujours par diverger.
+ */
+function countsOf(
+	node: CategoryNode,
+	idsByCategory: Record<string, string[]>,
+): { direct: number; total: number; subtree: Set<string> } {
+	const subtree = new Set<string>(idsByCategory[node.id] ?? [])
+	for (const child of node.children) {
+		for (const id of countsOf(child, idsByCategory).subtree) subtree.add(id)
+	}
+	return {
+		direct: idsByCategory[node.id]?.length ?? 0,
+		total: subtree.size,
+		subtree,
+	}
 }
 
 export function CategoryTree({ selectedId, onSelect }: CategoryTreeProps) {
@@ -48,17 +78,20 @@ export function CategoryTree({ selectedId, onSelect }: CategoryTreeProps) {
 		isLoading,
 		refetch,
 	} = useCategories({ companyId: activeCompanyId ?? undefined })
+	const { data: idsByCategory } = useProductIdsByCategory(
+		activeCompanyId ?? undefined,
+	)
 	const deleteCategory = useDeleteCategory()
 
 	const [dialogOpen, setDialogOpen] = useState(false)
-	const [editCategory, setEditCategory] = useState<CategoriesResponse | null>(
+	const [editCategory, setEditCategory] = useState<CatalogCategoryShape | null>(
 		null,
 	)
 	const [defaultParentId, setDefaultParentId] = useState<string | undefined>()
 
 	const [confirmOpen, setConfirmOpen] = useState(false)
 	const [categoryToDelete, setCategoryToDelete] =
-		useState<CategoriesResponse | null>(null)
+		useState<CatalogCategoryShape | null>(null)
 
 	// Refetch quand l'entreprise change
 	useEffect(() => {
@@ -75,13 +108,13 @@ export function CategoryTree({ selectedId, onSelect }: CategoryTreeProps) {
 		setDialogOpen(true)
 	}
 
-	const handleEdit = (cat: CategoriesResponse) => {
+	const handleEdit = (cat: CatalogCategoryShape) => {
 		setEditCategory(cat)
 		setDefaultParentId(undefined)
 		setDialogOpen(true)
 	}
 
-	const askDelete = (cat: CategoriesResponse) => {
+	const askDelete = (cat: CatalogCategoryShape) => {
 		setCategoryToDelete(cat)
 		setConfirmOpen(true)
 	}
@@ -148,6 +181,7 @@ export function CategoryTree({ selectedId, onSelect }: CategoryTreeProps) {
 						onAdd={handleAdd}
 						onEdit={handleEdit}
 						onDelete={askDelete}
+						idsByCategory={idsByCategory ?? EMPTY_IDS}
 					/>
 				))}
 			</div>
@@ -193,10 +227,11 @@ interface TreeNodeProps {
 	node: CategoryNode
 	level: number
 	selectedId?: string | null
-	onSelect: (category: CategoriesResponse | null) => void
+	onSelect: (category: CatalogCategoryShape | null) => void
 	onAdd: (parentId: string) => void
-	onEdit: (cat: CategoriesResponse) => void
-	onDelete: (cat: CategoriesResponse) => void
+	onEdit: (cat: CatalogCategoryShape) => void
+	onDelete: (cat: CatalogCategoryShape) => void
+	idsByCategory: Record<string, string[]>
 }
 
 function TreeNode({
@@ -207,10 +242,14 @@ function TreeNode({
 	onAdd,
 	onEdit,
 	onDelete,
+	idsByCategory,
 }: TreeNodeProps) {
-	const [expanded, setExpanded] = useState(true)
+	// Replié par défaut hors racines : le catalogue porte 463 catégories, et
+	// tout déplier d'emblée noyait la structure au lieu de la montrer.
+	const [expanded, setExpanded] = useState(level === 0)
 	const hasChildren = node.children.length > 0
 	const isSelected = selectedId === node.id
+	const { direct, total } = countsOf(node, idsByCategory)
 
 	return (
 		<div>
@@ -254,6 +293,26 @@ function TreeNode({
 					)}
 					<span className='truncate'>{node.name}</span>
 				</button>
+
+				{/* Un seul nombre quand la branche n'apporte rien de plus ; sinon
+				    « ici / branche ». Une catégorie de pur classement porte 0 produit
+				    en propre, et n'afficher que ce 0 la ferait croire vide. */}
+				<span
+					className='shrink-0 text-muted-foreground text-xs tabular-nums'
+					title={
+						total === direct
+							? `${direct} produit(s)`
+							: `${direct} rattaché(s) ici, ${total} dans la branche`
+					}
+				>
+					{total === direct ? (
+						direct
+					) : (
+						<>
+							{direct} / {total}
+						</>
+					)}
+				</span>
 
 				{/* Actions */}
 				<DropdownMenu>
@@ -300,6 +359,7 @@ function TreeNode({
 							onAdd={onAdd}
 							onEdit={onEdit}
 							onDelete={onDelete}
+							idsByCategory={idsByCategory}
 						/>
 					))}
 				</div>

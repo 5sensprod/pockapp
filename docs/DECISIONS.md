@@ -10,6 +10,88 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## La couche d'accès d'AppStock : source explicite, par entité — 2026-08-13
+
+Décision du propriétaire, à l'ouverture de la mission AppStock. **Chaque entité
+— `products`, `categories`, `brands`, `suppliers` — déclare sa source, de façon
+typée et lisible au point d'appel.** Pas de drapeau global, pas de déduction.
+
+**Pourquoi par entité :** la bascule ne sera pas simultanée. Les catégories, les
+marques et les fournisseurs sont petits, stables, et déjà dotés de composants
+PocketBase ; les produits portent le stock, la caisse et l'export vers le site.
+Un interrupteur unique obligerait à tout basculer le même jour, donc à ne jamais
+basculer.
+
+**Écarté — un drapeau dans `.env`.** Il rend le mode mixte indistinguable du
+mode PocketBase à la lecture du code, et fait d'un fichier de configuration ce
+qui décide de la base écrite. C'est la même erreur que
+`useUpdateProductUniversal` (`frontend/lib/queries/products.ts:179`), en plus
+large : un `source?: string` optionnel qu'on oublie écrit dans l'autre base sans
+lever d'erreur. **La nouvelle couche remplace ce hook, elle ne s'y ajoute pas.**
+
+**Écarté — un réglage en base, modifiable dans l'application.** L'état du
+système dépendrait alors d'une donnée, et un test ne reproduirait pas
+nécessairement la production. Séduisant en démonstration, ingérable au
+diagnostic.
+
+**Remise en cause si :** les quatre entités finissent par basculer ensemble —
+alors le paramètre par entité n'aura plus d'objet et pourra tomber.
+
+## Les composants en double du module `stock` convergent, ils ne cohabitent pas — 2026-08-13
+
+Décision du propriétaire. Le module porte **six paires** de composants, l'un
+« AppPos », l'autre lisant PocketBase (détail et mesures :
+`frontend/modules/stock/PocketStock-docs/00-rituel-migration-appstock.md`, §2.1).
+**Chaque paire traitée est réduite à un seul composant dans la session qui la
+traite.** Jamais de troisième variante, jamais de jumeau gardé « au cas où ».
+
+**Ce que ça implique, et qui est le vrai engagement :** le module doit
+**rétrécir** à mesure que la migration avance. Une session qui ajoute un
+composant sans en retirer un a échoué, même si son écran fonctionne.
+
+**Écarté — rebrancher d'abord les composants PocketBase pour voir ce qu'ils
+couvrent.** La mesure serait utile, mais elle remet en service un écran de plus
+à maintenir pendant ce temps, et l'expérience de ce module est qu'un écran remis
+« provisoirement » en service y reste. La comparaison se fait sur le code, pas
+en production.
+
+**Écarté — repartir des composants AppPos en changeant leur source.** Le moins
+risqué à court terme, mais il jette sans l'avoir lu du code PocketBase déjà
+écrit — celui-là même qui couvre les catégories, marques et fournisseurs.
+
+**Remise en cause si :** une paire s'avère porter deux besoins réellement
+distincts, et non deux versions du même. Ce serait un constat à consigner, pas
+une permission de garder les deux.
+
+## Pas de double écriture pendant la transition AppStock — 2026-08-13
+
+Décision du propriétaire. **Lire les deux bases, oui ; écrire dans les deux, non.**
+À tout instant, une entité donnée a **une seule** base de destination.
+
+**Pourquoi :** une écriture double sans transaction — et il ne peut pas y en
+avoir, NeDB et PocketBase étant deux systèmes distincts — laisse les deux bases
+divergentes au premier échec partiel. C'est exactement le mode d'échec du flux
+WooCommerce, documenté dans
+`frontend/modules/site/PocketSite-docs/07-audit-flux-apppos.md` : les écarts ne
+se voient pas au moment où ils se créent, ils se découvrent des semaines plus
+tard, et on ne sait plus laquelle des deux avait raison.
+
+**Écarté — une base maîtresse et l'autre en écho.** Techniquement faisable, mais
+il faut alors un journal des échecs, une reprise, et une règle d'arbitrage en
+cas de désaccord : un chantier à part entière, greffé sur une transition qui en
+est déjà une.
+
+**Le prix accepté :** au moment de basculer une entité, les écritures faites
+dans l'ancienne base depuis le dernier chargement doivent être reprises. C'est
+un travail ponctuel et visible, préférable à une divergence permanente et
+silencieuse. Il rejoint le point dur de la mission (§6 du rituel) : **le
+rechargement par purge devra s'arrêter**, et ce jour-là PocketBase cesse d'être
+une projection.
+
+**Remise en cause si :** une entité doit rester écrite des deux côtés pour une
+raison métier — le cas n'est pas identifié aujourd'hui, et le stock modifié par
+la caisse est le seul candidat sérieux.
+
 ## Les textes du site s'écrivent dans `products`, `categories` et `brands` — 2026-08-12
 
 Décision du propriétaire. Les champs éditoriaux modifiables depuis « Catalogue

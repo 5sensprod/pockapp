@@ -85,6 +85,11 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// elle reprend ce qu'elles ont créé. Elle ne touche pas aux autres
 		// collections, et refuse de s'exécuter si le catalogue n'est pas vide.
 		MigrateCatalogV2,
+
+		// 13. Correctif : les champs JSON de `suppliers` étaient déclarés sans
+		// MaxSize, donc à 0, ce qui rendait TOUTE mise à jour d'un fournisseur
+		// impossible. DOIT rester après MigrateCatalogV2, qui crée la collection.
+		FixSupplierJsonMaxSize,
 	}
 
 	for _, migrate := range migrations {

@@ -5,7 +5,7 @@ import { Building2, Package, Tags, Truck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import type { CategoriesResponse } from '@/lib/pocketbase-types'
+import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import { useProducts } from '@/lib/queries/products'
 import { BrandList } from './components/BrandList'
 import { CategoryTree } from './components/CategoryTree'
@@ -18,7 +18,7 @@ export function StockPage() {
 	const [searchTerm, setSearchTerm] = useState('')
 	const [isDialogOpen, setIsDialogOpen] = useState(false)
 	const [selectedCategory, setSelectedCategory] =
-		useState<CategoriesResponse | null>(null)
+		useState<CatalogCategoryShape | null>(null)
 	const [activeTab, setActiveTab] = useState('products')
 
 	const { activeCompanyId } = useActiveCompany()

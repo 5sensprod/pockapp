@@ -23,14 +23,22 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import type { BrandsResponse } from '@/lib/pocketbase-types'
 import { useCreateBrand, useUpdateBrand } from '@/lib/queries/brands'
+import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
+import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { toast } from 'sonner'
 
+// `website` a disparu du formulaire : le champ n'existe pas dans la collection
+// installée (§6bis.4 du rituel de migration AppStock). Il était saisi, validé
+// comme URL, puis ignoré à l'écriture.
+//
+// `slug` n'y entre pas non plus, et c'est une autre raison : **l'URL est figée
+// au premier envoi**, et le serveur en est le seul gardien (§4.5 du contrat
+// catalogue). Le modifier ici ne changerait rien en ligne et laisserait croire
+// le contraire.
 const brandSchema = z.object({
-	name: z.string().min(1, 'Le nom est requis').max(100),
-	website: z.string().url('URL invalide').optional().or(z.literal('')),
-	description: z.string().max(500).optional(),
+	name: z.string().min(1, 'Le nom est requis').max(255),
+	description: z.string().max(20000).optional(),
 })
 
 type BrandFormValues = z.infer<typeof brandSchema>
@@ -38,7 +46,7 @@ type BrandFormValues = z.infer<typeof brandSchema>
 interface BrandDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
-	brand?: BrandsResponse | null
+	brand?: CatalogBrandShape | null
 }
 
 export function BrandDialog({
@@ -55,7 +63,6 @@ export function BrandDialog({
 		resolver: zodResolver(brandSchema),
 		defaultValues: {
 			name: '',
-			website: '',
 			description: '',
 		},
 	})
@@ -64,20 +71,22 @@ export function BrandDialog({
 		if (open) {
 			form.reset({
 				name: brand?.name ?? '',
-				website: brand?.website ?? '',
 				description: brand?.description ?? '',
 			})
 		}
 	}, [open, brand, form])
 
 	const onSubmit = async (data: BrandFormValues) => {
+		// Chaîne vide et non `undefined` : c'est ainsi qu'on efface une valeur.
+		// `undefined` disparaît du corps JSON, et l'ancienne description resterait
+		// en base — un champ vidé à l'écran qui se remplit seul au rechargement.
+		const payload = {
+			name: data.name.trim(),
+			description: data.description ?? '',
+		}
+
 		try {
 			if (isEdit && brand) {
-				const payload = {
-					name: data.name,
-					website: data.website || undefined,
-					description: data.description || undefined,
-				}
 				await updateBrand.mutateAsync({ id: brand.id, data: payload })
 				toast.success('Marque modifiée')
 			} else {
@@ -85,18 +94,13 @@ export function BrandDialog({
 					toast.error('Aucune entreprise active')
 					return
 				}
-				const payload = {
-					name: data.name,
-					website: data.website || undefined,
-					description: data.description || undefined,
-					company: activeCompanyId,
-				}
-				await createBrand.mutateAsync(payload)
+				await createBrand.mutateAsync({ ...payload, company: activeCompanyId })
 				toast.success('Marque créée')
 			}
 			onOpenChange(false)
 		} catch (error) {
-			toast.error('Une erreur est survenue')
+			const detail = pocketbaseErrorMessage(error)
+			toast.error(`Enregistrement refusé : ${detail}`)
 			console.error(error)
 		}
 	}
@@ -124,21 +128,7 @@ export function BrandDialog({
 								<FormItem>
 									<FormLabel>Nom *</FormLabel>
 									<FormControl>
-										<Input placeholder='Coca-Cola' {...field} />
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name='website'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Site web</FormLabel>
-									<FormControl>
-										<Input placeholder='https://www.coca-cola.com' {...field} />
+										<Input placeholder='Yamaha' {...field} />
 									</FormControl>
 									<FormMessage />
 								</FormItem>
