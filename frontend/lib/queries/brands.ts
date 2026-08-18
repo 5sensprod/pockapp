@@ -13,6 +13,7 @@ import type {
 	CatalogBrandShape,
 	PocketBaseRecord,
 } from '@/lib/queries/catalog-shapes'
+import { type ImageIntent, buildWritePayload } from '@/lib/queries/image-upload'
 import { newLegacyKey } from '@/lib/queries/legacy-key'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -20,8 +21,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 /** Ce qu'on peut écrire. `legacy_id` n'en fait pas partie : la couche le pose
  *  elle-même à la création, aucun écran ne doit pouvoir l'oublier. */
 export type BrandWrite = Partial<
-	Omit<CatalogBrandShape, keyof PocketBaseRecord | 'legacy_id'>
-> & { name: string; company?: string }
+	Omit<CatalogBrandShape, keyof PocketBaseRecord | 'legacy_id' | 'image'>
+> & { name: string; company?: string } & ImageIntent
 
 export interface BrandsListOptions {
 	companyId?: string
@@ -86,7 +87,9 @@ export function useCreateBrand() {
 			// produits qui la citent, en silence (docs/DECISIONS.md, 2026-08-13).
 			return await pb
 				.collection('brands')
-				.create<CatalogBrandShape>({ legacy_id: newLegacyKey(), ...data })
+				.create<CatalogBrandShape>(
+					buildWritePayload({ legacy_id: newLegacyKey(), ...data }),
+				)
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['brands'] })
@@ -100,7 +103,9 @@ export function useUpdateBrand() {
 
 	return useMutation({
 		mutationFn: async ({ id, data }: { id: string; data: BrandWrite }) => {
-			return await pb.collection('brands').update<CatalogBrandShape>(id, data)
+			return await pb
+				.collection('brands')
+				.update<CatalogBrandShape>(id, buildWritePayload(data))
 		},
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: ['brands'] })

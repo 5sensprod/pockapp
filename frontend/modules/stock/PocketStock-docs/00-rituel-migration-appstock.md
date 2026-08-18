@@ -628,6 +628,63 @@ le sélecteur les indente désormais.
 - **un cycle de parenté** dans la donnée importée aurait figé l'écran : le
   parcours est itératif, avec ensemble de visités. Un test le couvre.
 
+## 6 septies. Les images des marques et des catégories — 18 août 2026
+
+**La question posée : les marques et les catégories affichent-elles l'image
+servie par PocketBase, comme les produits ? Réponse mesurée : non, et il y avait
+de quoi.**
+
+| Collection | Lignes | Avec une image en base | Affichée avant ce jour |
+|---|---|---|---|
+| `brands` | 288 | **225** | non |
+| `categories` | 464 | **36** | non |
+
+225 logos de marque dormaient dans le stockage sans qu'aucun écran ne les
+montre. `BrandList.tsx:168` le disait même en toutes lettres — « le logo est un
+sujet à part : les images sont hors périmètre ».
+
+**Ce qui a été fait :**
+
+- **`BrandList`** — une colonne vignette en tête de ligne, `pb.files.getUrl` ;
+- **`CategoryTree`** — l'image remplace l'icône de dossier quand elle existe ;
+- **`BrandDialog`, `CategoryDialog`, `CatalogProductDialog`** — un champ image :
+  aperçu, importer, retirer.
+
+### La brique, et pourquoi elle existe
+
+**Les prochaines installations n'auront pas de dossier AppPos.** L'import
+(`backend/catalog/load/loader.go`) tire 4665 fichiers de
+`%APPDATA%\AppPOS\data\public` ; un client qui n'a jamais connu AppPos n'a
+rien à importer. Il lui faut le geste inverse : **envoyer** une image depuis
+l'écran. C'est celui du logo d'entreprise (`lib/queries/companies.ts:118-176`),
+seul à le porter jusqu'ici.
+
+Deux fichiers neufs, tirés de là :
+
+- **`components/ui/image-field.tsx`** — aperçu, importer, retirer. Il ne connaît
+  aucune base : il rend un fichier et une intention de retrait ;
+- **`lib/queries/image-upload.ts`** — `buildWritePayload`, qui sait envoyer un
+  champ fichier. **8 tests**, pour trois règles qui se payent cher autrement :
+
+  1. **un `File` ne passe que par `FormData`** — dans un objet JSON il part en
+     `{}` et PocketBase enregistre un champ vide sans se plaindre ;
+  2. **retirer une image, c'est envoyer la chaîne vide**, jamais `undefined` —
+     la même règle que les champs texte, posée le 13 août ;
+  3. **ne rien dire du fichier laisse l'image en place** — sans quoi enregistrer
+     une fiche sans ouvrir le sélecteur effacerait son image.
+
+`useCreateBrand`, `useUpdateBrand`, `useCreateCategory`, `useUpdateCategory`,
+`useCreateCatalogProduct` et `useUpdateCatalogProduct` passent tous par elle.
+
+**Ce qui reste hors périmètre : la galerie du produit.** Elle porte plusieurs
+fichiers, avec un ordre, et demande un écran à elle.
+
+**Vérifié :** `npx tsc -b` silencieux, `pnpm test` vert (96 cas, dont 8 neufs),
+Biome passé, les fichiers se transforment dans Vite. **Non vérifié : l'écran** —
+l'application demande une connexion. À regarder : les vignettes sur
+`/stock/marques` et `/stock/categories`, et un import d'image dans chacun des
+trois dialogues.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
@@ -641,6 +698,9 @@ plus, et le catalogue AppPos est passé en lecture seule.
 
 **Fronts A et B faits** (§6 sexies) : l'import des images est complet et
 mesuré, et l'écran catalogue est unique, sur PocketBase.
+
+**Les images du catalogue sont complètes en lecture ET en écriture**
+(§6 septies) — marques, catégories et produits, galerie exceptée.
 
 **La prochaine session** : front C du plan — `useCatalogProductSearch`, puis les
 quatre écrans de choix produit de PocketConnect. Le point dur du §6 reste

@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 
@@ -19,6 +19,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from '@/components/ui/form'
+import { ImageField } from '@/components/ui/image-field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -26,6 +27,7 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useCreateBrand, useUpdateBrand } from '@/lib/queries/brands'
 import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 
 // `website` a disparu du formulaire : le champ n'existe pas dans la collection
@@ -58,6 +60,16 @@ export function BrandDialog({
 	const { activeCompanyId } = useActiveCompany()
 	const createBrand = useCreateBrand()
 	const updateBrand = useUpdateBrand()
+	const pb = usePocketBase()
+
+	// L'image vit hors du formulaire : react-hook-form sérialise ses valeurs, et
+	// un `File` n'y survit pas.
+	const [imageFile, setImageFile] = useState<File | null>(null)
+	const [imageRemoved, setImageRemoved] = useState(false)
+
+	// `image` est un NOM DE FICHIER, pas une URL. Seul `pb.files.getUrl` sait en
+	// faire une — et c'est PocketBase qui la sert, plus AppPos.
+	const imageUrl = brand?.image ? pb.files.getUrl(brand, brand.image) : null
 
 	const form = useForm<BrandFormValues>({
 		resolver: zodResolver(brandSchema),
@@ -73,6 +85,8 @@ export function BrandDialog({
 				name: brand?.name ?? '',
 				description: brand?.description ?? '',
 			})
+			setImageFile(null)
+			setImageRemoved(false)
 		}
 	}, [open, brand, form])
 
@@ -83,6 +97,9 @@ export function BrandDialog({
 		const payload = {
 			name: data.name.trim(),
 			description: data.description ?? '',
+			// Ne rien dire de l'image la laisse en place ; voir `image-upload.ts`.
+			image: imageFile,
+			removeImage: imageRemoved,
 		}
 
 		try {
@@ -121,6 +138,16 @@ export function BrandDialog({
 
 				<Form {...form}>
 					<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+						<ImageField
+							label='Logo de la marque'
+							currentUrl={imageUrl}
+							value={imageFile}
+							onChange={setImageFile}
+							removed={imageRemoved}
+							onRemovedChange={setImageRemoved}
+							disabled={createBrand.isPending || updateBrand.isPending}
+						/>
+
 						<FormField
 							control={form.control}
 							name='name'

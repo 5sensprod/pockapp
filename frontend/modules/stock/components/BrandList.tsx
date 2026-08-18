@@ -14,7 +14,15 @@ import {
 	TableHeader as UiTableHeader,
 	TableRow as UiTableRow,
 } from '@/components/ui/table'
-import { Globe, Package, Pencil, Plus, Trash2, Truck } from 'lucide-react'
+import {
+	Globe,
+	ImageIcon,
+	Package,
+	Pencil,
+	Plus,
+	Trash2,
+	Truck,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
@@ -22,11 +30,13 @@ import { useBrands, useDeleteBrand } from '@/lib/queries/brands'
 import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
 import { useProductCountsByBrand } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 import { BrandDialog } from './BrandDialog'
 
 export function BrandList() {
 	const { activeCompanyId } = useActiveCompany()
+	const pb = usePocketBase()
 	const {
 		data: brands,
 		isLoading,
@@ -130,6 +140,7 @@ export function BrandList() {
 					<UiTable>
 						<UiTableHeader>
 							<UiTableRow>
+								<UiTableHead className='w-[64px]' />
 								<UiTableHead>Marque</UiTableHead>
 								<UiTableHead>Slug</UiTableHead>
 								<UiTableHead>Description</UiTableHead>
@@ -141,8 +152,28 @@ export function BrandList() {
 								const productCount = productCountByBrand?.[brand.id] ?? 0
 								const brandSuppliers = suppliersByBrand[brand.id] || []
 
+								// `image` est un nom de fichier ; PocketBase le sert.
+								// 225 des 287 marques en portent un — jamais affiché avant le
+								// 18 août 2026.
+								const logoUrl = brand.image
+									? pb.files.getUrl(brand, brand.image)
+									: null
+
 								return (
 									<UiTableRow key={brand.id}>
+										<UiTableCell>
+											<div className='flex h-10 w-10 items-center justify-center overflow-hidden rounded-md bg-muted'>
+												{logoUrl ? (
+													<img
+														src={logoUrl}
+														alt={brand.name}
+														className='h-full w-full object-contain'
+													/>
+												) : (
+													<ImageIcon className='h-4 w-4 text-muted-foreground' />
+												)}
+											</div>
+										</UiTableCell>
 										<UiTableCell>
 											<div className='space-y-0.5'>
 												<div className='font-medium'>{brand.name}</div>
@@ -165,8 +196,8 @@ export function BrandList() {
 										</UiTableCell>
 										{/* `website` n'existe plus au schéma — la colonne montre
 										    désormais le SLUG, qui est ce que la marque devient dans
-										    une URL du site. Le logo (champ fichier `image`) est un
-										    sujet à part : les images sont hors périmètre. */}
+										    une URL du site. Le logo, lui, est en première colonne
+										    depuis le 18 août 2026. */}
 										<UiTableCell>
 											{brand.slug ? (
 												<span className='flex items-center gap-1 font-mono text-muted-foreground text-xs'>

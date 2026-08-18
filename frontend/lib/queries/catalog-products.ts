@@ -36,6 +36,7 @@ import {
 } from '@tanstack/react-query'
 
 import type { PocketBaseRecord } from './catalog-shapes'
+import { type ImageIntent, buildWritePayload } from './image-upload'
 import { newLegacyKey } from './legacy-key'
 
 export type CatalogProductStatus = 'draft' | 'published'
@@ -197,11 +198,15 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 // bases sur une chaîne optionnelle (`products.ts:179`) ; celui-ci a une seule
 // destination, nommée, sans paramètre à oublier.
 
-/** Ce qu'un écran peut écrire. Trois absents, et chacun pour sa raison :
+/** Ce qu'un écran peut écrire. Deux absents, et chacun pour sa raison :
  *  - `slug` : figé au premier envoi vers le site, le serveur en est le gardien ;
- *  - `legacy_id` : posé par la couche, pas par l'écran — voir `useCreate…` ;
- *  - `image` : les images sont hors périmètre, session dédiée. */
-export type CatalogProductWrite = {
+ *  - `legacy_id` : posé par la couche, pas par l'écran — voir `useCreate…`.
+ *
+ *  L'IMAGE, elle, s'écrit depuis le 18 août 2026 (`ImageIntent`) : les
+ *  installations neuves n'ont pas de dossier AppPos d'où l'importer. La galerie
+ *  reste hors périmètre — elle porte plusieurs fichiers et demande un écran à
+ *  elle. */
+export type CatalogProductWrite = ImageIntent & {
 	name: string
 	designation?: string
 	sku?: string
@@ -242,7 +247,9 @@ export function useCreateCatalogProduct() {
 			// doit pouvoir l'oublier.
 			(await pb
 				.collection('products')
-				.create({ legacy_id: newLegacyKey(), ...data })) as CatalogProductShape,
+				.create(
+					buildWritePayload({ legacy_id: newLegacyKey(), ...data }),
+				)) as CatalogProductShape,
 		onSuccess: () => invalidateCatalog(queryClient),
 	})
 }
@@ -256,7 +263,9 @@ export function useUpdateCatalogProduct() {
 			id,
 			data,
 		}: { id: string; data: Partial<CatalogProductWrite> }) =>
-			(await pb.collection('products').update(id, data)) as CatalogProductShape,
+			(await pb
+				.collection('products')
+				.update(id, buildWritePayload(data))) as CatalogProductShape,
 		onSuccess: () => invalidateCatalog(queryClient),
 	})
 }

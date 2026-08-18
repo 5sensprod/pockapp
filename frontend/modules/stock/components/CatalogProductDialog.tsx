@@ -13,10 +13,12 @@
 //   • `legacy_id` il vient de NeDB, on ne l'invente pas pour un produit créé
 //                 ici — il restera vide, et l'export le refusera tant qu'il
 //                 l'est. C'est dit à l'écran, pas caché ;
-//   • `image`     les images sont hors périmètre, session dédiée.
+//   • `gallery`   plusieurs fichiers, écran à part : hors périmètre.
+//   • `image`     importable depuis le 18 août 2026 — les installations
+//                 neuves n'ont pas de dossier AppPos d'où la tirer.
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 
@@ -36,6 +38,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from '@/components/ui/form'
+import { ImageField } from '@/components/ui/image-field'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
@@ -48,6 +51,7 @@ import {
 } from '@/lib/queries/catalog-products'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { useSuppliers } from '@/lib/queries/suppliers'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 
 import { CategoryPicker } from './CategoryPicker'
@@ -110,6 +114,16 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 
 	const brands = useBrands({ companyId: activeCompanyId ?? undefined })
 	const suppliers = useSuppliers({ companyId: activeCompanyId ?? undefined })
+	const pb = usePocketBase()
+
+	// Hors formulaire : react-hook-form sérialise ses valeurs, un `File` n'y
+	// survit pas.
+	const [imageFile, setImageFile] = useState<File | null>(null)
+	const [imageRemoved, setImageRemoved] = useState(false)
+
+	const imageUrl = product?.image
+		? pb.files.getUrl(product, product.image)
+		: null
 
 	const form = useForm<ProductFormValues>({
 		resolver: zodResolver(productSchema),
@@ -140,6 +154,8 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 					}
 				: EMPTY,
 		)
+		setImageFile(null)
+		setImageRemoved(false)
 	}, [open, product, form])
 
 	const onSubmit = async (data: ProductFormValues) => {
@@ -163,6 +179,9 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 			brand: data.brand ?? '',
 			supplier: data.supplier ?? '',
 			categories: data.categories,
+			// Ne rien dire de l'image la laisse en place ; voir `image-upload.ts`.
+			image: imageFile,
+			removeImage: imageRemoved,
 		}
 
 		try {
@@ -245,6 +264,18 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 
 				<Form {...form}>
 					<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+						{/* L'image principale seulement. La galerie porte plusieurs
+						    fichiers et demande un écran à elle : hors périmètre. */}
+						<ImageField
+							label='Image du produit'
+							currentUrl={imageUrl}
+							value={imageFile}
+							onChange={setImageFile}
+							removed={imageRemoved}
+							onRemovedChange={setImageRemoved}
+							disabled={createProduct.isPending || updateProduct.isPending}
+						/>
+
 						<FormField
 							control={form.control}
 							name='name'

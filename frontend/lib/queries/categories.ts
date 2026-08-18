@@ -22,14 +22,15 @@ import type {
 	CatalogCategoryShape,
 	PocketBaseRecord,
 } from '@/lib/queries/catalog-shapes'
+import { type ImageIntent, buildWritePayload } from '@/lib/queries/image-upload'
 import { newLegacyKey } from '@/lib/queries/legacy-key'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 /** Ce qu'on peut écrire. `legacy_id` en est exclu : il vient de NeDB. */
 export type CategoryWrite = Partial<
-	Omit<CatalogCategoryShape, keyof PocketBaseRecord | 'legacy_id'>
-> & { name: string; company?: string }
+	Omit<CatalogCategoryShape, keyof PocketBaseRecord | 'legacy_id' | 'image'>
+> & { name: string; company?: string } & ImageIntent
 
 export interface CategoriesListOptions {
 	companyId?: string
@@ -155,7 +156,9 @@ export function useCreateCategory() {
 			// et disparaître en silence le rattachement du produit qui la citait.
 			return await pb
 				.collection('categories')
-				.create<CatalogCategoryShape>({ legacy_id: newLegacyKey(), ...data })
+				.create<CatalogCategoryShape>(
+					buildWritePayload({ legacy_id: newLegacyKey(), ...data }),
+				)
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['categories'] })
@@ -172,7 +175,7 @@ export function useUpdateCategory() {
 		mutationFn: async ({ id, data }: { id: string; data: CategoryWrite }) => {
 			return await pb
 				.collection('categories')
-				.update<CatalogCategoryShape>(id, data)
+				.update<CatalogCategoryShape>(id, buildWritePayload(data))
 		},
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: ['categories'] })

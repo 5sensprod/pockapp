@@ -34,6 +34,7 @@ import {
 	useDeleteCategory,
 } from '@/lib/queries/categories'
 import { useProductIdsByCategory } from '@/lib/queries/products'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 import { CategoryDialog } from './CategoryDialog'
 
@@ -250,6 +251,8 @@ function TreeNode({
 	const hasChildren = node.children.length > 0
 	const isSelected = selectedId === node.id
 	const { direct, total } = countsOf(node, idsByCategory)
+	const pb = usePocketBase()
+	const imageUrl = node.image ? pb.files.getUrl(node, node.image) : null
 
 	return (
 		<div>
@@ -286,7 +289,17 @@ function TreeNode({
 					onClick={() => onSelect(node)}
 					className='flex-1 flex items-center gap-2 text-left'
 				>
-					{expanded && hasChildren ? (
+					{/* L'image de la catégorie remplace l'icône de dossier quand elle
+					    existe — 36 des 464 en portent une, jamais affichée avant le
+					    18 août 2026. `image` est un nom de fichier : c'est PocketBase
+					    qui la sert, par `pb.files.getUrl`. */}
+					{imageUrl ? (
+						<img
+							src={imageUrl}
+							alt=''
+							className='h-5 w-5 shrink-0 rounded object-cover'
+						/>
+					) : expanded && hasChildren ? (
 						<FolderOpen className='h-4 w-4 text-muted-foreground' />
 					) : (
 						<Folder className='h-4 w-4 text-muted-foreground' />

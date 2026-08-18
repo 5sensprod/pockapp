@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 
@@ -19,6 +19,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from '@/components/ui/form'
+import { ImageField } from '@/components/ui/image-field'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
@@ -27,6 +28,7 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import { useCreateCategory, useUpdateCategory } from '@/lib/queries/categories'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 import { CategoryPicker } from './CategoryPicker'
 
@@ -64,6 +66,18 @@ export function CategoryDialog({
 	const { activeCompanyId } = useActiveCompany()
 	const createCategory = useCreateCategory()
 	const updateCategory = useUpdateCategory()
+	const pb = usePocketBase()
+
+	// Hors formulaire : react-hook-form sérialise ses valeurs, un `File` n'y
+	// survit pas.
+	const [imageFile, setImageFile] = useState<File | null>(null)
+	const [imageRemoved, setImageRemoved] = useState(false)
+
+	// `image` est un nom de fichier ; PocketBase le sert, `pb.files.getUrl` en
+	// construit l'URL. 36 des 464 catégories en portent un (mesuré le 18 août).
+	const imageUrl = category?.image
+		? pb.files.getUrl(category, category.image)
+		: null
 
 	const form = useForm<CategoryFormValues>({
 		resolver: zodResolver(categorySchema),
@@ -83,6 +97,8 @@ export function CategoryDialog({
 				description: category?.description ?? '',
 				is_featured: category?.is_featured ?? false,
 			})
+			setImageFile(null)
+			setImageRemoved(false)
 		}
 	}, [open, category, defaultParentId, form])
 
@@ -96,6 +112,9 @@ export function CategoryDialog({
 			parent: data.parent || '',
 			description: data.description ?? '',
 			is_featured: data.is_featured ?? false,
+			// Ne rien dire de l'image la laisse en place ; voir `image-upload.ts`.
+			image: imageFile,
+			removeImage: imageRemoved,
 		}
 
 		try {
@@ -140,6 +159,16 @@ export function CategoryDialog({
 
 				<Form {...form}>
 					<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+						<ImageField
+							label='Image de la catégorie'
+							currentUrl={imageUrl}
+							value={imageFile}
+							onChange={setImageFile}
+							removed={imageRemoved}
+							onRemovedChange={setImageRemoved}
+							disabled={createCategory.isPending || updateCategory.isPending}
+						/>
+
 						<FormField
 							control={form.control}
 							name='name'
