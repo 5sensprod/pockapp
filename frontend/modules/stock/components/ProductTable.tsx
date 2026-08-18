@@ -1,18 +1,18 @@
+// frontend/modules/stock/components/ProductTable.tsx
+//
+// Table du catalogue AppPos — LECTURE SEULE, et une seule provenance.
+// L'édition d'un produit se fait sous `/stock/produits`, dans PocketBase
+// (`CatalogProductDialog`). Ni « Modifier » ni « Supprimer » ici : le premier
+// écrivait dans AppPos, ce que la migration interdit (`CLAUDE.md`), le second
+// appelait `useDeleteProduct` — une suppression PocketBase avec un identifiant
+// NeDB, qui ne pouvait rien supprimer.
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogHeader,
-	DialogTitle,
-} from '@/components/ui/dialog'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuLabel,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -41,35 +41,34 @@ import {
 	Building2,
 	ImageIcon,
 	MoreHorizontal,
-	Pencil,
 	Tags,
-	Trash2,
 	Truck,
 } from 'lucide-react'
 import { useState } from 'react'
 
-import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { APPPOS_ASSETS_BASE_URL } from '@/lib/apppos/apppos-config'
-import type { ProductsResponse } from '@/lib/pocketbase-types'
-import { useBrands } from '@/lib/queries/brands'
-// Les catégories viennent de la forme réelle, pas de `pocketbase-types.ts` —
-// qui décrit ici une collection disparue (§6bis.4 du rituel AppStock). Les
-// PRODUITS, eux, n'y sont pas encore : ce fichier mêle les deux bases, et son
-// démêlage est l'étape 3.
-import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
-import { useCategories } from '@/lib/queries/categories'
-import { useDeleteProduct } from '@/lib/queries/products'
-import { useSuppliers } from '@/lib/queries/suppliers'
-import { toast } from 'sonner'
-import { ProductDialog } from './ProductDialog'
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 const APPPOS_BASE_URL = APPPOS_ASSETS_BASE_URL
 
-// Type étendu pour les produits avec expand AppPOS
-export interface ProductWithExpand extends ProductsResponse {
+// La ligne affichée, déclarée par ce que la table LIT — et rien d'autre.
+// Elle ne dérive plus de `ProductsResponse` (`pocketbase-types.ts`) : ce type
+// nommait PocketBase alors que les produits affichés ici viennent d'AppPos, et
+// c'est ce mensonge qui a laissé cohabiter deux bases dans un même fichier.
+// Le nom de la marque, du fournisseur et des catégories arrive DÉJÀ résolu dans
+// `expand`, posé par `appPosTransformers.product()` : la table ne va plus le
+// chercher elle-même.
+export interface StockProductRow {
+	id: string
+	name: string
+	barcode?: string | null
+	price_ttc?: number | null
+	cost_price?: number | null
+	stock_quantity?: number | null
+	active?: boolean
+	images?: string | null
 	expand?: {
 		brand?: { id: string; name: string }
 		supplier?: { id: string; name: string }
@@ -78,7 +77,7 @@ export interface ProductWithExpand extends ProductsResponse {
 }
 
 interface ProductTableProps {
-	data: ProductWithExpand[]
+	data: StockProductRow[]
 }
 
 export function ProductTable({ data }: ProductTableProps) {
@@ -89,121 +88,17 @@ export function ProductTable({ data }: ProductTableProps) {
 		pageSize: 10,
 	})
 
-	const deleteProduct = useDeleteProduct()
-	const { activeCompanyId } = useActiveCompany()
+	const getBrandName = (product: StockProductRow): string | null =>
+		product.expand?.brand?.name ?? null
 
-	// Hooks PocketBase (utilisés si les données ne viennent pas d'AppPOS)
-	const { data: categories } = useCategories({
-		companyId: activeCompanyId ?? undefined,
-	})
+	const getSupplierName = (product: StockProductRow): string | null =>
+		product.expand?.supplier?.name ?? null
 
-	const { data: brands } = useBrands({
-		companyId: activeCompanyId ?? undefined,
-	})
-
-	const { data: suppliers } = useSuppliers({
-		companyId: activeCompanyId ?? undefined,
-	})
-
-	const [confirmOpen, setConfirmOpen] = useState(false)
-	const [productToDelete, setProductToDelete] =
-		useState<ProductWithExpand | null>(null)
-
-	const [editOpen, setEditOpen] = useState(false)
-	const [productToEdit, setProductToEdit] = useState<ProductWithExpand | null>(
-		null,
-	)
-
-	const getCategoryPath = (category: CatalogCategoryShape): string => {
-		if (!categories) return category.name
-
-		const path: string[] = [category.name]
-		let current = category
-
-		while (current.parent) {
-			const parent = categories.find((c) => c.id === current.parent)
-			if (parent) {
-				path.unshift(parent.name)
-				current = parent
-			} else {
-				break
-			}
-		}
-
-		return path.join(' › ')
-	}
-
-	const getCategoryPaths = (categoryIds: string[]): string[] => {
-		if (!categories || !categoryIds?.length) return []
-		return categoryIds
-			.map((id) => {
-				const cat = categories.find((c) => c.id === id)
-				return cat ? getCategoryPath(cat) : null
-			})
-			.filter(Boolean) as string[]
-	}
-
-	// ✅ Récupère le nom de la marque (depuis expand AppPOS ou PocketBase)
-	const getBrandName = (product: ProductWithExpand): string | null => {
-		// D'abord essayer depuis expand (données AppPOS)
-		if (product.expand?.brand?.name) {
-			return product.expand.brand.name
-		}
-		// Sinon essayer depuis les données PocketBase
-		const brandId = product.brand as string
-		if (!brands || !brandId) return null
-		return brands.find((b) => b.id === brandId)?.name ?? null
-	}
-
-	// ✅ Récupère le nom du fournisseur (depuis expand AppPOS ou PocketBase)
-	const getSupplierName = (product: ProductWithExpand): string | null => {
-		// D'abord essayer depuis expand (données AppPOS)
-		if (product.expand?.supplier?.name) {
-			return product.expand.supplier.name
-		}
-		// Sinon essayer depuis les données PocketBase
-		const supplierId = product.supplier as string
-		if (!suppliers || !supplierId) return null
-		return suppliers.find((s) => s.id === supplierId)?.name ?? null
-	}
-
-	// ✅ Récupère les catégories (depuis expand AppPOS ou PocketBase)
-	const getProductCategoryPaths = (product: ProductWithExpand): string[] => {
-		// D'abord essayer depuis expand (données AppPOS)
-		if (product.expand?.categories?.length) {
-			return product.expand.categories.map((cat) => cat.name)
-		}
-		// Sinon essayer depuis les données PocketBase
-		const categoryIds = product.categories || []
-		return getCategoryPaths(categoryIds)
-	}
-
-	const askDelete = (product: ProductWithExpand) => {
-		setProductToDelete(product)
-		setConfirmOpen(true)
-	}
-
-	const confirmDelete = async () => {
-		if (!productToDelete) return
-		try {
-			await deleteProduct.mutateAsync(productToDelete.id)
-			toast.success(`Produit "${productToDelete.name}" supprimé`)
-		} catch (error) {
-			toast.error('Erreur lors de la suppression')
-			console.error(error)
-		} finally {
-			setConfirmOpen(false)
-			setProductToDelete(null)
-		}
-	}
-
-	const openEdit = (product: ProductWithExpand) => {
-		setProductToEdit(product)
-		setEditOpen(true)
-	}
+	const getProductCategoryPaths = (product: StockProductRow): string[] =>
+		product.expand?.categories?.map((cat) => cat.name) ?? []
 
 	// Helper pour construire l'URL de l'image
-	const getImageUrl = (imagePath: string | undefined): string | null => {
+	const getImageUrl = (imagePath: string | null | undefined): string | null => {
 		if (!imagePath) return null
 		// Si c'est déjà une URL complète
 		if (imagePath.startsWith('http')) return imagePath
@@ -211,7 +106,7 @@ export function ProductTable({ data }: ProductTableProps) {
 		return `${APPPOS_BASE_URL}${imagePath}`
 	}
 
-	const columns: ColumnDef<ProductWithExpand>[] = [
+	const columns: ColumnDef<StockProductRow>[] = [
 		// ✅ COLONNE IMAGE
 		{
 			id: 'image',
@@ -425,18 +320,6 @@ export function ProductTable({ data }: ProductTableProps) {
 							>
 								Copier le code-barres
 							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={() => openEdit(product)}>
-								<Pencil className='h-4 w-4 mr-2' />
-								Modifier
-							</DropdownMenuItem>
-							<DropdownMenuItem
-								className='text-red-600'
-								onClick={() => askDelete(product)}
-							>
-								<Trash2 className='h-4 w-4 mr-2' />
-								Supprimer
-							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 				)
@@ -576,45 +459,6 @@ export function ProductTable({ data }: ProductTableProps) {
 					</div>
 				</div>
 			</div>
-
-			<ProductDialog
-				open={editOpen}
-				onOpenChange={setEditOpen}
-				product={productToEdit}
-			/>
-
-			<Dialog
-				open={confirmOpen}
-				onOpenChange={(open) => {
-					setConfirmOpen(open)
-					if (!open) setProductToDelete(null)
-				}}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Supprimer ce produit ?</DialogTitle>
-						<DialogDescription>
-							{productToDelete
-								? `Vous êtes sur le point de supprimer "${productToDelete.name}". Cette action est définitive.`
-								: 'Vous êtes sur le point de supprimer ce produit.'}
-						</DialogDescription>
-					</DialogHeader>
-					<div className='flex justify-end gap-2 pt-4'>
-						<Button
-							variant='outline'
-							onClick={() => {
-								setConfirmOpen(false)
-								setProductToDelete(null)
-							}}
-						>
-							Annuler
-						</Button>
-						<Button variant='destructive' onClick={confirmDelete}>
-							Supprimer
-						</Button>
-					</div>
-				</DialogContent>
-			</Dialog>
 		</div>
 	)
 }

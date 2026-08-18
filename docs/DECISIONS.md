@@ -10,6 +10,39 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le catalogue AppPos passe en lecture seule — 2026-08-18
+
+**`/stock-apppos` n'écrit plus rien.** Les boutons « Modifier » et « Supprimer »
+de `ProductTable` sont retirés ; l'édition d'un produit se fait sous
+`/stock/produits`, dans PocketBase, par `CatalogProductDialog`.
+
+Ce n'est pas un choix de confort, c'est la conséquence de deux règles déjà
+prises et d'une mesure faite le jour même :
+
+- « Modifier » appelait `updateAppPosProduct` — donc **écrivait dans AppPos**,
+  ce que la décision du 2026-08-13 interdit ;
+- « Supprimer » appelait `useDeleteProduct` — une suppression **PocketBase**
+  avec un identifiant **NeDB**. Elle ne pouvait pas aboutir : les deux espaces
+  d'identifiants ne se recouvrent pas, le pont est `legacy_id`.
+
+**Écarté — faire pointer ces deux boutons vers PocketBase :** les produits
+affichés viennent d'AppPos ; leur identifiant n'y désigne rien. Il aurait fallu
+résoudre par `legacy_id` à chaque clic, c'est-à-dire construire un second écran
+d'édition PocketBase à côté de celui qui existe déjà.
+
+**Écarté — garder le routeur `useUpdateProductUniversal` en le typant :** un
+routeur suppose deux destinations. Il n'y en a plus qu'une.
+
+**Conséquence assumée :** l'écran qui liste le catalogue AppPos ne permet plus
+de le corriger. Tant que la caisse et l'inventaire écrivent dans NeDB, cette
+correction se fait dans AppPos lui-même.
+
+**Remise en cause si :** les produits affichés sous `/stock-apppos` viennent un
+jour de PocketBase — auquel cas l'écran fusionne avec `/stock/produits` plutôt
+que de retrouver ses boutons.
+
+---
+
 ## `legacy_id` devient « clé stable », et PocketApp en génère une à la création — 2026-08-13
 
 Décision du propriétaire, après un refus constaté à l'export : *« 1 entité

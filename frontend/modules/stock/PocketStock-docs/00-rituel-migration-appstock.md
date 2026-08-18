@@ -478,6 +478,52 @@ marque déclarée (3 sur 43) ne vide pas la liste, et la marque déjà enregistr
 reste proposée même hors fournisseur — sinon un simple enregistrement l'aurait
 effacée sans demande.
 
+## 6 quinquies. Étape 3 — la couche unique, 18 août 2026
+
+**Ce qui a été mesuré avant de toucher quoi que ce soit.** La chaîne réellement
+rendue par `/stock` et `/stock-apppos` est : `routes/stock/index.tsx:2` →
+`modules/stock/index.ts:12` → `StockPageAppPos` → `useStockModule` + `StockView`
+→ `ProductTable`. Les produits qui y arrivent viennent **toujours** d'AppPos.
+`StockPage.tsx` — le seul appelant qui aurait pu y mettre des produits
+PocketBase — n'avait toujours aucun importeur.
+
+**Deux défauts en découlaient, invisibles à la lecture rapide :**
+
+1. **« Supprimer » ne pouvait rien supprimer.** `ProductTable.tsx:92` appelait
+   `useDeleteProduct` — une suppression **PocketBase** — avec l'identifiant
+   **NeDB** du produit affiché. Les deux espaces d'identifiants ne se
+   recouvrent pas : l'appel ne pouvait que rater.
+2. **« Modifier » écrivait dans AppPos.** `ProductDialog` passait
+   `source: product.collectionId`, donc `'apppos_products'`, donc
+   `updateAppPosProduct`. C'est exactement ce que `CLAUDE.md` interdit depuis le
+   13 août — on n'écrit jamais dans AppPos.
+
+**Ce qui a été fait.** Le catalogue AppPos (`/stock-apppos`) devient une vue
+**en lecture seule**, à une seule provenance. L'édition d'un produit se fait
+sous `/stock/produits`, dans PocketBase, par `CatalogProductDialog`.
+
+| Fichier | Ce qui change |
+|---|---|
+| `StockPage.tsx` | **supprimé** — sans importeur depuis le premier jour de la mission |
+| `components/ProductDialog.tsx` | **supprimé** — il portait les deux bases et le routeur |
+| `components/CategoryPickerAppPos.tsx` | **supprimé** — plus aucun appelant après le précédent |
+| `lib/queries/products.ts` | `useUpdateProductUniversal` **supprimé**, avec `useProducts`, `useProduct`, `useProductByBarcode`, `useCreateProduct`, `useUpdateProduct`, `useDeleteProduct`, `useUpdateAppPosProduct` — aucun n'avait plus d'appelant. Il ne reste que les deux lectures agrégées |
+| `components/ProductTable.tsx` | plus une seule requête PocketBase ; `ProductWithExpand extends ProductsResponse` remplacé par `StockProductRow`, structurel, déclaré par ce que la table lit |
+| `useStockModule.ts` | `selectedCategory` et `selectedSupplier` typés `SelectedRef` — le défaut noté le 13 août, corrigé |
+| `single-source.test.ts` | **neuf** — 6 cas qui lisent les fichiers et refusent le retour des chemins mêlés |
+
+**Le module a rétréci** : trois composants retirés, aucun ajouté ;
+1354 lignes en moins pour 81 en plus.
+
+**Ce qui est vérifié, et comment.** `npx tsc -b` silencieux, `pnpm test` vert
+(60 cas, dont 6 neufs), Biome passé sur les fichiers touchés. Les quatre modules
+modifiés se transforment sans erreur dans le serveur Vite en cours
+(`GET /frontend/…` → 200, JS réel). **Ce qui n'est PAS vérifié : l'écran.**
+L'application demande une connexion, que je n'ai pas faite. Restent à regarder :
+`/stock-apppos` — la table s'affiche, le menu « … » ne propose plus que « Copier
+le code-barres » —, et `/stock/produits`, inchangé, où l'édition doit continuer
+de fonctionner.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
@@ -485,17 +531,21 @@ pas de double écriture, sortie d'AppPos, clé stable, export explicite).
 **Les quatre entités sont branchées, lues et écrites depuis PocketBase**, et
 vérifiées dans l'application (§6 quater).
 
-**La prochaine session** : la couche d'accès unique (étape 3), c'est-à-dire le
-démêlage de `ProductTable.tsx` et de `useStockModule.ts`, qui mêlent encore les
-deux bases — et la suppression des jumeaux devenus inutiles à mesure qu'AppPos
-sort.
+**Le démêlage est fait** (§6 quinquies, 18 août 2026) : `ProductTable.tsx` et
+`useStockModule.ts` ne portent plus qu'AppPos, `useUpdateProductUniversal` n'existe
+plus, et le catalogue AppPos est passé en lecture seule.
+
+**La prochaine session** : l'étape 4 — synchronisation et frontière public /
+interne. Le point dur du §6 reste entier : la caisse crée toujours ses produits
+dans NeDB (`modules/cash/CreateProductDialog.tsx`), et le rechargement par purge
+existe toujours.
 
 | # | Étape | État |
 |---|---|---|
 | 0 | Décisions du §4 consignées au journal | **fait le 13 août 2026** |
 | 1 | Les 4 entités PocketBase affichées dans AppStock | **fait** — mesure (§6 bis), remise à niveau (§6 ter), branchement et vérification (§6 quater) |
 | 2 | Édition depuis AppStock | **fait** pour les 4 entités ; images exclues |
-| 3 | Couche de données unique | **prochaine** — `ProductTable.tsx` et `useStockModule.ts` mêlent encore les deux bases |
+| 3 | Couche de données unique | **fait le 18 août 2026** (§6 quinquies) — une seule provenance par fichier, routeur supprimé, gardé par un test. Reste hors périmètre : la caisse (`CreateProductDialog`) et l'inventaire (`InventoryPageAppPos`) parlent toujours à AppPos |
 | 4 | Synchronisation et frontière public/interne | **en partie** : export explicite, état visible pour les 3 entités exportées |
 | 5 | Images | **reporté, hors périmètre** |
 

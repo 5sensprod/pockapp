@@ -110,16 +110,20 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   **aucune base déjà installée**, et une base portant des collections homonymes
   plus anciennes est acceptée sans erreur ni mise à niveau. Toute évolution du
   schéma passe par une nouvelle migration.
-- **Ne pas créer un troisième chemin d'écriture.** Il en existe déjà deux, et
-  `useUpdateProductUniversal` (`frontend/lib/queries/products.ts:179`) route
-  entre eux sur une chaîne non typée — `source === 'apppos_products'`, paramètre
-  optionnel : l'oublier écrit dans l'autre base sans erreur. Dette connue, à ne
-  pas aggraver, et **à remplacer** par la couche de la mission en cours.
-- **`frontend/modules/stock/StockPage.tsx` n'a aucun importeur** : le modifier
-  ne change rien à l'écran. `modules/stock/index.ts:5` réexporte
-  `StockPageAppPos` **sous le nom `StockPage`**, si bien que `/stock` et
-  `/stock-apppos` rendent la même page. Mesuré le 2026-08-13 ; détail et cinq
-  autres paires de composants en double dans le rituel du module `stock`.
+- **Un seul chemin d'écriture pour les produits**, depuis le 18 août 2026 :
+  `useCreateCatalogProduct` / `useUpdateCatalogProduct`
+  (`frontend/lib/queries/catalog-products.ts`), vers PocketBase.
+  `useUpdateProductUniversal` — qui routait entre les deux bases sur une chaîne
+  non typée, `source === 'apppos_products'` en paramètre **optionnel** — a été
+  supprimé avec son unique appelant. **Ne pas le réintroduire :** la source se
+  déclare au point d'appel, typée. Un test le garde
+  (`frontend/modules/stock/single-source.test.ts`).
+- **`/stock` et `/stock-apppos` rendent la même page** : `modules/stock/index.ts:12`
+  réexporte `StockPageAppPos` **sous le nom `StockPage`**. L'ancien
+  `StockPage.tsx`, sans importeur, a été supprimé le 2026-08-18 avec
+  `ProductDialog.tsx` et `CategoryPickerAppPos.tsx`. **Ce catalogue AppPos est
+  en lecture seule** : l'édition d'un produit se fait sous `/stock/produits`,
+  dans PocketBase.
 - **Une migration non inscrite dans la liste de `RunMigrations`**
   (`backend/migrations/migrations.go:13`) ne s'exécute jamais, sans erreur.
 - **L'hébergement du site est un mutualisé PHP/MySQL.** Aucun processus
@@ -148,11 +152,14 @@ Quatre entités, `products`, `categories`, `brands`, `suppliers`.
 [`00-rituel-migration-appstock.md`](frontend/modules/stock/PocketStock-docs/00-rituel-migration-appstock.md).
 Le §7 tient l'état ; le §6 quater dit ce qui a été branché et vérifié.
 
-**État au 13 août 2026 — les quatre entités sont branchées sur PocketBase**, en
+**État au 18 août 2026 — les quatre entités sont branchées sur PocketBase**, en
 lecture ET en écriture, sous `/stock/produits`, `/stock/marques`,
-`/stock/categories`, `/stock/fournisseurs`. Vérifié dans l'application, AppPos
-éteint. **La prochaine étape est la couche d'accès unique** : `ProductTable.tsx`
-et `useStockModule.ts` mêlent encore les deux bases.
+`/stock/categories`, `/stock/fournisseurs`. **La couche d'accès unique est
+faite** (étape 3, §6 quinquies du rituel) : plus aucun fichier du module `stock`
+ne mêle les deux bases, le catalogue AppPos est en lecture seule, et un test le
+garde. Hors périmètre et toujours branchés sur AppPos : la caisse
+(`modules/cash/CreateProductDialog.tsx`) et l'inventaire
+(`InventoryPageAppPos.tsx`).
 
 **AppPos sort de la logique à la prochaine release** (`docs/DECISIONS.md`,
 2026-08-13) : l'écriture dans PocketBase est ouverte, la caisse et l'inventaire

@@ -7,17 +7,17 @@ import {
 	useAppPosStockUpdates,
 	useAppPosSuppliers,
 } from '@/lib/apppos'
-import type {
-	CategoriesResponse,
-	SuppliersResponse,
-} from '@/lib/pocketbase-types'
 // frontend/modules/stock/useStockModule.ts
 //
 // Hook CONTAINER — logique de connexion AppPOS + filtres + données produits.
 // Aucun JSX, aucun import de composant UI.
+//
+// UNE SEULE provenance : AppPos. `usePocketBase` n'est plus importé ici que
+// pour le canal de mises à jour de stock (`useAppPosStockUpdates`), qui écrit
+// dans PocketBase ce qu'AppPos annonce — ce n'est pas une lecture d'écran.
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useEffect, useMemo, useState } from 'react'
-import type { ProductWithExpand } from './components/ProductTable'
+import type { StockProductRow } from './components/ProductTable'
 
 const APPPOS_CREDENTIALS = {
 	username: import.meta.env.VITE_APPPOS_USERNAME ?? '',
@@ -26,25 +26,33 @@ const APPPOS_CREDENTIALS = {
 
 export type PanelType = 'categories' | 'brands' | 'suppliers' | null
 
+/** Une entité AppPos choisie dans un panneau de filtre. Structurel à dessein :
+ *  seuls l'identifiant — comparé aux produits — et le nom affiché servent. */
+export interface SelectedRef {
+	id: string
+	name: string
+}
+
 export function useStockModule() {
 	// ── Recherche & filtres ───────────────────────────────────────────────────
 	const [searchTerm, setSearchTerm] = useState('')
-	const [selectedCategory, setSelectedCategory] =
-		useState<CategoriesResponse | null>(null)
-	// La marque SÉLECTIONNÉE vient d'AppPos, comme les produits qu'elle filtre —
-	// et le filtre compare `p.brand` à `selectedBrand.id`, donc les deux doivent
-	// venir de la même base. Le type est structurel et ne nomme aucune
-	// collection : `BrandsResponse` prétendait ici décrire une donnée PocketBase
-	// qui n'en est pas une.
+	// Les TROIS sélections viennent d'AppPos, comme les produits qu'elles
+	// filtrent — le filtre compare `p.categories`, `p.brand` et `p.supplier` à
+	// leur `.id`, donc les deux côtés doivent venir de la même base. Brancher ces
+	// panneaux sur PocketBase rendrait ZÉRO produit, sans erreur : les
+	// identifiants NeDB et PocketBase ne sont pas interchangeables.
 	//
-	// `selectedCategory` et `selectedSupplier` portent le même défaut ; ils seront
-	// traités quand leur entité sera branchée, pas avant.
-	const [selectedBrand, setSelectedBrand] = useState<{
-		id: string
-		name: string
-	} | null>(null)
-	const [selectedSupplier, setSelectedSupplier] =
-		useState<SuppliersResponse | null>(null)
+	// Les types sont structurels et ne nomment aucune collection.
+	// `CategoriesResponse` et `SuppliersResponse` prétendaient ici décrire des
+	// données PocketBase qui n'en sont pas — corrigé le 18 août 2026, comme
+	// l'avait été `selectedBrand` le 13.
+	const [selectedCategory, setSelectedCategory] = useState<SelectedRef | null>(
+		null,
+	)
+	const [selectedBrand, setSelectedBrand] = useState<SelectedRef | null>(null)
+	const [selectedSupplier, setSelectedSupplier] = useState<SelectedRef | null>(
+		null,
+	)
 	const [activePanel, setActivePanel] = useState<PanelType>(null)
 
 	// ── Connexion AppPOS ──────────────────────────────────────────────────────
@@ -124,7 +132,7 @@ export function useStockModule() {
 				expand: {
 					...p.expand,
 				},
-			})) as ProductWithExpand[],
+			})) as StockProductRow[],
 		[productsData],
 	)
 
