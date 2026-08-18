@@ -324,3 +324,91 @@ function sameIndex(a: Map<string, string>, b: Map<string, string>): boolean {
 	}
 	return true
 }
+
+/**
+ * Les empreintes des CATÉGORIES et des MARQUES, pour qu'elles montrent leur
+ * état comme les produits.
+ *
+ * Sans cela, modifier la description d'une catégorie ne se voyait nulle part :
+ * l'écran affichait « à jour » — c'est-à-dire rien — alors que le site ne
+ * l'avait pas reçue. L'inventaire renvoyait pourtant déjà leurs empreintes
+ * (§3 du contrat) ; la matière était là, l'écran ne la regardait pas.
+ * Décision du 13 août 2026 : l'export reste explicite, mais l'état doit se voir
+ * pour les trois entités.
+ *
+ * Une seule passe pour les deux : elles se calculent avec les mêmes index, et
+ * deux hooks jumeaux auraient doublé les occasions de diverger.
+ */
+export function useRelationChecksums(
+	categories: CatalogCategory[],
+	brands: CatalogBrand[],
+	enabled = true,
+): { categories: Map<string, string>; brands: Map<string, string> } {
+	const [index, setIndex] = useState<{
+		categories: Map<string, string>
+		brands: Map<string, string>
+	}>({ categories: new Map(), brands: new Map() })
+
+	const compute = useCallback(async () => {
+		if (!enabled) {
+			return {
+				categories: new Map<string, string>(),
+				brands: new Map<string, string>(),
+			}
+		}
+
+		const legacyById = new Map(categories.map((c) => [c.id, c.legacy_id]))
+
+		const categoryPairs = await Promise.all(
+			categories.map(async (category) => {
+				const sealedCategory = await sealed(
+					toExportCategory(
+						category,
+						(category.parent && legacyById.get(category.parent)) || null,
+					),
+				)
+				return [category.legacy_id, sealedCategory.checksum] as const
+			}),
+		)
+
+		const brandPairs = await Promise.all(
+			brands.map(async (brand) => {
+				const sealedBrand = await sealed(toExportBrand(brand))
+				return [brand.legacy_id, sealedBrand.checksum] as const
+			}),
+		)
+
+		return {
+			categories: new Map(categoryPairs),
+			brands: new Map(brandPairs),
+		}
+	}, [categories, brands, enabled])
+
+	useEffect(() => {
+		let cancelled = false
+		compute()
+			.catch((cause) => {
+				console.warn('[catalogue] empreintes relations non calculées :', cause)
+				return {
+					categories: new Map<string, string>(),
+					brands: new Map<string, string>(),
+				}
+			})
+			.then((result) => {
+				if (cancelled) return
+				// Même garde que pour les produits : ne remplacer l'état que si le
+				// contenu a vraiment changé, sinon la page reboucle sans s'afficher.
+				setIndex((previous) =>
+					sameIndex(previous.categories, result.categories) &&
+					sameIndex(previous.brands, result.brands)
+						? previous
+						: result,
+				)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [compute])
+
+	return index
+}

@@ -3,9 +3,16 @@
 // LES PRODUITS DU CATALOGUE POCKETBASE — LECTURE, PAGINÉE CÔTÉ SERVEUR
 // ═══════════════════════════════════════════════════════════════════════════
 // Source explicite : PocketBase, et rien d'autre (docs/DECISIONS.md,
-// 2026-08-13). Ce fichier n'écrit rien — l'édition des produits demande un
-// arbitrage qui n'est pas rendu : `price_ttc` et `stock` appartiennent à
-// AppStock, et la caisse écrit encore dans NeDB.
+// 2026-08-13).
+//
+// **L'ÉCRITURE EST OUVERTE DEPUIS LE 13 AOÛT 2026.** L'arbitrage attendu — où
+// vit la vérité du prix et du stock — a été rendu par la décision « AppPos sort
+// de la logique à la prochaine release » : on écrit ici, la caisse et
+// l'inventaire se raccordent en dernier, et les divergences avec NeDB sont
+// acceptées d'ici là.
+//
+// Ce qui reste vrai malgré cela, et qui est affiché à l'écran : un
+// `catalog-import -load` purge les collections. Toute saisie meurt avec.
 //
 // ⚠️ PAGINATION CÔTÉ SERVEUR, ET C'EST LA RAISON D'ÊTRE DE CE FICHIER.
 // Le catalogue porte 2999 produits. `useProducts` (`products.ts`) rend
@@ -21,9 +28,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { usePocketBase } from '@/lib/use-pocketbase'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import {
+	keepPreviousData,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from '@tanstack/react-query'
 
 import type { PocketBaseRecord } from './catalog-shapes'
+import { newLegacyKey } from './legacy-key'
 
 export type CatalogProductStatus = 'draft' | 'published'
 
@@ -136,5 +149,80 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			}
 		},
 		enabled: !!companyId,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ÉCRITURE
+// ---------------------------------------------------------------------------
+// Ouverte le 13 août 2026 (docs/DECISIONS.md). Elle écrit dans PocketBase et
+// nulle part ailleurs : AppPos n'est jamais touché — la caisse en dépend
+// jusqu'à la release, et c'est précisément ce qui rend cette écriture sûre.
+//
+// ⚠️ CE N'EST PAS `useUpdateProductUniversal`. Ce hook-là route entre deux
+// bases sur une chaîne optionnelle (`products.ts:179`) ; celui-ci a une seule
+// destination, nommée, sans paramètre à oublier.
+
+/** Ce qu'un écran peut écrire. Trois absents, et chacun pour sa raison :
+ *  - `slug` : figé au premier envoi vers le site, le serveur en est le gardien ;
+ *  - `legacy_id` : posé par la couche, pas par l'écran — voir `useCreate…` ;
+ *  - `image` : les images sont hors périmètre, session dédiée. */
+export type CatalogProductWrite = {
+	name: string
+	designation?: string
+	sku?: string
+	barcode?: string
+	description?: string
+	type?: 'simple' | 'service'
+	status?: CatalogProductStatus
+	price_ttc?: number
+	purchase_price_ht?: number
+	tax_rate?: number
+	stock?: number
+	min_stock?: number
+	manage_stock?: boolean
+	brand?: string
+	supplier?: string
+	categories?: string[]
+	company?: string
+}
+
+/** Invalide TOUT ce qui dépend du catalogue : la liste paginée, mais aussi les
+ *  décomptes par marque et par catégorie, et la vue « Catalogue en ligne » —
+ *  qui recalcule ses empreintes et fera repasser le produit en « modifié ». */
+function invalidateCatalog(queryClient: ReturnType<typeof useQueryClient>) {
+	queryClient.invalidateQueries({ queryKey: ['catalog-products'] })
+	queryClient.invalidateQueries({ queryKey: ['products'] })
+	queryClient.invalidateQueries({ queryKey: ['site-catalog'] })
+}
+
+export function useCreateCatalogProduct() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (data: CatalogProductWrite) =>
+			// La clé stable est posée ICI, pas dans le formulaire : un produit sans
+			// `legacy_id` n'est pas seulement refusé à l'export, il disparaît des
+			// relations des autres (docs/DECISIONS.md, 2026-08-13). Aucun écran ne
+			// doit pouvoir l'oublier.
+			(await pb
+				.collection('products')
+				.create({ legacy_id: newLegacyKey(), ...data })) as CatalogProductShape,
+		onSuccess: () => invalidateCatalog(queryClient),
+	})
+}
+
+export function useUpdateCatalogProduct() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async ({
+			id,
+			data,
+		}: { id: string; data: Partial<CatalogProductWrite> }) =>
+			(await pb.collection('products').update(id, data)) as CatalogProductShape,
+		onSuccess: () => invalidateCatalog(queryClient),
 	})
 }

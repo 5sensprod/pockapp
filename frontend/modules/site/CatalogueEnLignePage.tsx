@@ -29,6 +29,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -41,7 +42,15 @@ import {
 	useProductCount,
 	usePublishedProducts,
 } from '@/lib/queries/site-catalog'
-import { AlertTriangle, Globe, Loader2, Pencil, Search, X } from 'lucide-react'
+import {
+	AlertTriangle,
+	Globe,
+	Loader2,
+	Pencil,
+	RefreshCw,
+	Search,
+	X,
+} from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -57,6 +66,7 @@ import {
 	useCatalogInventory,
 	useExportCatalog,
 	useProductChecksums,
+	useRelationChecksums,
 } from './hooks/use-catalog-sync'
 import { type SyncState, syncStateOf } from './lib/catalog-export'
 import {
@@ -159,6 +169,52 @@ export function CatalogueEnLignePage() {
 		}
 		return map
 	}, [inventory.data, products.data, checksums])
+
+	// ── État des catégories et des marques ───────────────────────────────────
+	// Décision du 13 août 2026 : l'export reste explicite, mais une retouche de
+	// texte isolée doit se VOIR. Sans cela, on modifie la description d'une
+	// catégorie et rien ne dit qu'elle n'est pas partie.
+	const relationChecksums = useRelationChecksums(
+		categories.data ?? NO_CATEGORIES,
+		brands.data ?? NO_BRANDS,
+		Boolean(inventory.data),
+	)
+
+	/** Les catégories et marques EN LIGNE dont l'empreinte diffère de celle du
+	 *  site. Restreint à ce qui est en ligne : une catégorie que le site ne
+	 *  connaît pas n'est pas « modifiée », elle est absente — et elle partira
+	 *  d'elle-même avec le premier produit qui la cite. */
+	const staleRelations = useMemo(() => {
+		if (!inventory.data) {
+			return {
+				categories: [] as CatalogCategory[],
+				brands: [] as CatalogBrand[],
+			}
+		}
+
+		const staleCategories = (categories.data ?? []).filter(
+			(category) =>
+				catalog.onlineCategoryIds.has(category.id) &&
+				syncStateOf(
+					category.legacy_id,
+					relationChecksums.categories.get(category.legacy_id),
+					inventory.data?.categories,
+				) === 'modified',
+		)
+
+		const onlineBrandIds = new Set(catalog.brands.map((b) => b.brand.id))
+		const staleBrands = (brands.data ?? []).filter(
+			(brand) =>
+				onlineBrandIds.has(brand.id) &&
+				syncStateOf(
+					brand.legacy_id,
+					relationChecksums.brands.get(brand.legacy_id),
+					inventory.data?.brands,
+				) === 'modified',
+		)
+
+		return { categories: staleCategories, brands: staleBrands }
+	}, [inventory.data, categories.data, brands.data, catalog, relationChecksums])
 
 	const syncCounts = useMemo(() => {
 		const counts = { absent: 0, modified: 0, synced: 0 }
@@ -427,6 +483,43 @@ export function CatalogueEnLignePage() {
 							)
 						}
 					/>
+
+					{/* Les retouches de texte isolées : elles ne partent QUE si on le
+					    demande, mais elles ne doivent pas se taire (docs/DECISIONS.md,
+					    2026-08-13). Une modification qui accompagne un produit, elle,
+					    part déjà toute seule avec lui. */}
+					{(staleRelations.categories.length > 0 ||
+						staleRelations.brands.length > 0) && (
+						<Card className='mb-6 border-amber-500/50'>
+							<CardContent className='flex flex-wrap items-center justify-between gap-3 pt-6'>
+								<div className='text-sm'>
+									<p className='font-medium'>
+										{staleRelations.categories.length} catégorie(s) et{' '}
+										{staleRelations.brands.length} marque(s) modifiées depuis
+										leur dernier envoi
+									</p>
+									<p className='text-muted-foreground'>
+										Leur texte a changé ici, pas encore sur le site. Les
+										produits, eux, ne sont pas concernés.
+									</p>
+								</div>
+								<Button
+									variant='secondary'
+									disabled={exportCatalog.isPending}
+									onClick={() =>
+										exportCatalog.mutate({
+											products: [],
+											categories: staleRelations.categories,
+											brands: staleRelations.brands,
+										})
+									}
+								>
+									<RefreshCw className='mr-1.5 h-4 w-4' />
+									Envoyer ces textes
+								</Button>
+							</CardContent>
+						</Card>
+					)}
 
 					{exportCatalog.error && (
 						<Card className='mb-6 border-destructive'>

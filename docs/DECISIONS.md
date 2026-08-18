@@ -10,6 +10,115 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## `legacy_id` devient « clé stable », et PocketApp en génère une à la création — 2026-08-13
+
+Décision du propriétaire, après un refus constaté à l'export : *« 1 entité
+refusée — legacy_id : chaîne non vide attendue »*.
+
+**Toute entité créée dans PocketApp reçoit un `legacy_id` généré**, préfixé
+`pa_`. Vaut pour les produits, les catégories et les marques — les trois que le
+contrat exporte.
+
+**Le champ change de sens, pas de rôle.** Il voulait dire « identifiant NeDB
+d'origine » ; il veut désormais dire **« clé stable de l'entité, hors
+PocketBase »**. C'était de toute façon son destin : AppPos sort de la logique à
+la prochaine release, et le champ lui survit parce que c'est lui qui identifie
+une entité côté site.
+
+**Le préfixe n'est pas décoratif :** il distingue au premier regard ce qui vient
+de NeDB de ce qui est né ici, et rend une collision arithmétiquement impossible
+avec les identifiants NeDB, qui n'en portent pas.
+
+**Ce que ça répare, et qui était silencieux.** Une entité sans clé n'est pas
+seulement refusée : elle disparaît des relations. `toExportProduct` résout
+marque et catégories en `legacy_id` puis élimine les vides — un produit partait
+donc **sans sa catégorie et sans sa marque, sans un mot**. Le refus visible ne
+concernait que la catégorie elle-même ; la marque, elle, partait à `null` sans
+rien signaler.
+
+**Écarté — que le serveur accepte l'identifiant PocketBase en repli.** Ce serait
+rouvrir ce que §1 du contrat ferme : les identifiants PocketBase sont régénérés
+à chaque rechargement par purge, et 2562 produits en double apparaîtraient au
+premier `catalog-import -load`, sans erreur.
+
+**Écarté — refuser la création d'entités dans PocketApp tant que la clé n'existe
+pas.** C'est repousser le problème sur l'utilisateur pour éviter d'écrire dix
+lignes.
+
+**Remise en cause si :** une source tierce impose sa propre clé — alors il
+faudra un espace de noms, et le préfixe en est déjà l'amorce.
+
+## L'export reste un acte explicite, mais les catégories et marques doivent montrer leur état — 2026-08-13
+
+Décision du propriétaire, sur la question « faut-il pousser en silence les
+retouches de texte ? ». **Non.**
+
+**L'export ne part jamais tout seul.** C'est ce qui rend la chaîne prévisible :
+on sait ce qui est en ligne parce qu'on l'y a envoyé. Pousser à chaque
+enregistrement ferait partir des écritures réseau que personne n'a demandées, et
+noierait les refus — le refus qui vient d'être constaté serait passé inaperçu.
+
+**Mais l'état doit se voir pour les trois entités, pas seulement les produits.**
+Aujourd'hui seuls les produits portent absent / modifié / à jour ; on peut donc
+modifier la description d'une catégorie sans que rien à l'écran ne dise qu'elle
+n'est pas partie. L'inventaire renvoie **déjà** les empreintes des catégories et
+des marques (§3 du contrat) : la matière existe, elle n'est pas affichée.
+
+**La règle qui en découle, et elle est simple :**
+
+- **automatique quand la modification accompagne un produit** — l'export d'un
+  produit emporte déjà sa marque et ses catégories, ancêtres compris
+  (`CatalogueEnLignePage.tsx`), et c'est le comportement voulu ;
+- **explicite et visible quand elle est isolée** — une retouche de texte seule
+  se voit passer « modifié », et s'envoie d'un geste.
+
+**Écarté — une synchronisation périodique en arrière-plan.** Elle rendrait
+l'état affiché faux entre deux passages, et transformerait chaque frappe en
+requête vers un mutualisé.
+
+**Remise en cause si :** le volume de retouches rend le geste explicite pénible
+— alors ce serait un envoi groupé, pas un envoi automatique.
+
+## AppPos sort de la logique à la prochaine release — l'écriture produit s'ouvre maintenant — 2026-08-13
+
+Décision du propriétaire, en cours de mission AppStock. **La prochaine version
+livrée n'aura plus AppPos dans sa logique.** Trois conséquences immédiates, et
+elles renversent une contrainte qui organisait tout le reste :
+
+1. **On écrit dans les produits PocketBase dès maintenant**, sans attendre que
+   la question « où vit la vérité du prix et du stock » soit tranchée : elle se
+   tranche par la sortie d'AppPos.
+2. **La caisse et l'inventaire se raccordent en dernier.** Ils continuent
+   d'écrire dans NeDB en attendant, et ce n'est pas un obstacle.
+3. **Les divergences entre NeDB et PocketBase sont acceptées d'ici là.** Un
+   stock différent des deux côtés n'est plus un défaut à corriger, c'est l'état
+   normal d'une transition dont on connaît la fin.
+
+**Ce que cela annule :** le « point dur » du §6 du rituel de migration AppStock
+— *tant que la caisse crée des produits dans NeDB, PocketBase ne peut pas être
+source de vérité* — reste **vrai comme description**, mais cesse d'être un
+**préalable**. On ne cherche plus à le résoudre avant d'écrire ; il disparaîtra
+avec AppPos.
+
+**Ce que cela ne change pas :**
+
+- le rechargement par purge existe toujours, et **toute saisie meurt au prochain
+  `catalog-import -load`** (bloc du 12 août 2026). C'est du travail d'essai tant
+  que l'import n'est pas définitif ;
+- l'export vers le site est inchangé : une écriture fait bouger l'empreinte, le
+  produit repasse « modifié », il se réexporte ;
+- **les identifiants restent incompatibles entre les deux bases.** Un écran qui
+  affiche des produits AppPos ne peut pas filtrer sur des marques PocketBase, et
+  réciproquement : le pont est `legacy_id`, pas l'identifiant PocketBase.
+
+**Prudence conservée, et c'est la seule :** on n'écrit pas *dans AppPos*, jamais
+— la caisse en dépend jusqu'à la release. Écrire dans PocketBase n'a aucun effet
+sur elle, c'est précisément ce qui rend la chose sûre.
+
+**Remise en cause si :** la release glisse au point que l'écart NeDB ↔ PocketBase
+devienne coûteux à reprendre — alors il faudra un rattrapage, pas un retour en
+arrière.
+
 ## La couche d'accès d'AppStock : source explicite, par entité — 2026-08-13
 
 Décision du propriétaire, à l'ouverture de la mission AppStock. **Chaque entité

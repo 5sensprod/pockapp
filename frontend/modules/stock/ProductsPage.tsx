@@ -1,6 +1,6 @@
 // frontend/modules/stock/ProductsPage.tsx
 //
-// LES PRODUITS POCKETBASE — EN LECTURE, 13 août 2026.
+// LES PRODUITS POCKETBASE — LECTURE ET ÉCRITURE, 13 août 2026.
 //
 // Quatrième et dernière entité affichée depuis PocketBase. Elle est d'une autre
 // nature que les trois précédentes, et l'écran le dit plutôt que de le cacher :
@@ -10,10 +10,11 @@
 //   • ils sont 2999, donc la pagination est une contrainte de requête et non un
 //     confort d'affichage — d'où `useCatalogProducts`, paginé côté serveur.
 //
-// ⚠️ AUCUNE ÉCRITURE ICI, ET CE N'EST PAS UN OUBLI. Éditer un produit demande
-// de trancher où vit la vérité du prix et du stock tant que la caisse écrit
-// ailleurs — §6 du rituel de migration AppStock. Le nom et la description, eux,
-// s'éditent déjà depuis « Catalogue en ligne ».
+// L'ÉCRITURE EST OUVERTE depuis le 13 août 2026 : la prochaine version retire
+// AppPos de la logique, donc la question « où vit la vérité du prix et du
+// stock » est tranchée par le calendrier (docs/DECISIONS.md). La caisse et
+// l'inventaire se raccordent en dernier ; jusque-là les deux bases peuvent
+// diverger, et c'est accepté.
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,7 @@ import {
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
 import {
+	type CatalogProductShape,
 	type CatalogProductStatus,
 	useCatalogProducts,
 } from '@/lib/queries/catalog-products'
@@ -41,9 +43,12 @@ import {
 	ChevronRight,
 	Loader2,
 	Package,
+	Plus,
 	Search,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+
+import { CatalogProductDialog } from './components/CatalogProductDialog'
 
 const PER_PAGE = 25
 
@@ -59,6 +64,17 @@ export function ProductsPage() {
 	const [debounced, setDebounced] = useState('')
 	const [page, setPage] = useState(1)
 	const [status, setStatus] = useState<CatalogProductStatus | undefined>()
+	const [editing, setEditing] = useState<CatalogProductShape | null>(null)
+	const [dialogOpen, setDialogOpen] = useState(false)
+
+	const openCreate = () => {
+		setEditing(null)
+		setDialogOpen(true)
+	}
+	const openEdit = (product: CatalogProductShape) => {
+		setEditing(product)
+		setDialogOpen(true)
+	}
 
 	// La recherche part au serveur : la lancer à chaque frappe ferait 2999
 	// produits interrogés une fois par lettre. 300 ms suffisent à ne plus le
@@ -114,10 +130,10 @@ export function ProductsPage() {
 					<h1 className='font-bold text-3xl'>Produits</h1>
 				</div>
 				<p className='text-muted-foreground'>
-					Le catalogue <strong>PocketBase</strong>, pas AppPos. En lecture seule
-					: le prix et le stock appartiennent à AppStock, et la caisse les
-					modifie encore dans l’autre base. Le nom et la description s’éditent
-					depuis « Catalogue en ligne ».
+					Le catalogue <strong>PocketBase</strong>, pas AppPos. Cliquez une
+					ligne pour la modifier. La caisse et l’inventaire lisent encore
+					l’autre base jusqu’à la prochaine version : les deux peuvent différer,
+					et c’est attendu.
 				</p>
 			</div>
 
@@ -170,6 +186,11 @@ export function ProductsPage() {
 				<span className='text-muted-foreground text-sm tabular-nums'>
 					{products.isLoading ? '…' : `${total} produit${total > 1 ? 's' : ''}`}
 				</span>
+
+				<Button onClick={openCreate}>
+					<Plus className='mr-2 h-4 w-4' />
+					Nouveau produit
+				</Button>
 			</div>
 
 			<Card>
@@ -197,7 +218,11 @@ export function ProductsPage() {
 									.filter(Boolean)
 
 								return (
-									<TableRow key={product.id}>
+									<TableRow
+										key={product.id}
+										className='cursor-pointer'
+										onClick={() => openEdit(product)}
+									>
 										<TableCell>
 											<div className='font-medium'>{product.name}</div>
 											{categoryNames.length > 0 && (
@@ -295,6 +320,12 @@ export function ProductsPage() {
 						<ChevronRight className='ml-1 h-4 w-4' />
 					</Button>
 				</div>
+
+				<CatalogProductDialog
+					open={dialogOpen}
+					onOpenChange={setDialogOpen}
+					product={editing}
+				/>
 			</div>
 		</div>
 	)

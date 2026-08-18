@@ -393,25 +393,110 @@ le réécrire là-bas** : les composants PocketBase sont une base de départ ré
 pour les marques et les catégories, mais pour les fournisseurs, « déjà écrit »
 voulait dire « écrit contre un schéma disparu ».
 
+## 6 quater. Le branchement, et l'écriture — 13 août 2026
+
+**Tout ce qui suit a été vérifié dans l'application par le propriétaire.**
+Ce n'est pas une lecture de code.
+
+### Les quatre entités sont atteignables
+
+Quatre entrées au menu du module, quatre routes, quatre écrans qui lisent
+PocketBase et lui seul — sans AppPos, qui ne tournait même pas pendant les
+essais :
+
+| Écran | Route | Ce qu'il fait |
+|---|---|---|
+| Produits (PocketBase) | `/stock/produits` | liste paginée **côté serveur**, recherche, filtres, création et modification |
+| Marques | `/stock/marques` | 287 marques, gestion complète |
+| Catégories | `/stock/categories` | arbre, compteurs « ici / branche », gestion complète |
+| Fournisseurs | `/stock/fournisseurs` | 43 fiches, sur les champs v2 |
+
+**L'écriture des produits est ouverte** (`docs/DECISIONS.md`, 13 août 2026 :
+AppPos sort de la logique à la prochaine release). Elle passe par
+`useCreateCatalogProduct` / `useUpdateCatalogProduct`, jamais par
+`useUpdateProductUniversal`.
+
+### La paire « marques » n'en était pas une
+
+`BrandList` **gère**, `BrandListAppPos` **filtre** une liste de produits AppPos.
+Deux rôles, pas deux versions — le cas prévu au §4, qui demande de le consigner
+plutôt que de forcer une fusion. Le second est renommé **`BrandFilterPanel`** et
+son type ne nomme plus aucune base.
+
+**Ce qui n'a PAS été fait, et c'est délibéré :** brancher ce panneau sur
+PocketBase. Le filtre compare `p.brand` à `selectedBrand.id`
+(`useStockModule.ts`), et les produits viennent d'AppPos avec des identifiants
+NeDB : des marques PocketBase auraient donné **zéro produit, sans erreur**.
+
+### Quatre défauts trouvés en branchant, tous mesurés
+
+1. **Les compteurs de produits par marque étaient à zéro.** `useProducts` rend
+   `getList(1, 50)` — une page. Mesuré : 232 marques portent au moins un
+   produit, mais **27 seulement** apparaissent dans les 50 produits les plus
+   récents. Remplacé par `useProductCountsByBrand`, une requête sur
+   `fields: 'brand'`. Même traitement préventif pour les catégories, avec
+   `useProductIdsByCategory` — qui rend les identifiants et non des décomptes,
+   pour pouvoir **dédoublonner** un produit rattaché à deux catégories sœurs.
+2. **Le sous-menu du module se refermait tout seul.** `layout.tsx` avait
+   `activeGroup` dans les dépendances de l'effet qui l'aligne sur l'URL : il se
+   rappelait lui-même et annulait le clic. Invisible tant que chaque groupe
+   n'avait qu'un item ; ajouter « Marques » l'a révélé.
+3. **Aucun fournisseur n'était modifiable.** `banking` et `payment_terms` sont
+   déclarés `FieldTypeJson` **sans options** (`catalog_v2.go:493-500`), donc
+   `MaxSize = 0` : PocketBase refuse toute valeur non vide, et il valide
+   l'enregistrement ENTIER à chaque mise à jour. Les 43 fournisseurs portaient un
+   `payment_terms` non vide. Corrigé par une migration neuve,
+   `backend/migrations/fix_json_max_size.go`, inscrite dans `RunMigrations`.
+   **Trois champs de la caisse portent le même défaut** — `cash_movements.meta`
+   sur 160 des 179 mouvements — mais **rien ne met à jour un mouvement
+   existant** (cinq écrivains, tous en création, tous par le DAO) : le défaut est
+   latent, il est consigné dans la migration, il n'est pas corrigé ici.
+4. **Le message d'erreur ne disait rien.** `error.message` de PocketBase vaut
+   toujours « Something went wrong… » ; le détail par champ est dans
+   `error.response.data`. C'est `lib/queries/pb-error.ts` qui l'extrait — et
+   c'est lui qui a permis de trouver le défaut n° 3 en une fois.
+
+### La clé, et l'état des relations
+
+Deux décisions du 13 août 2026, prises après un refus à l'export :
+
+- **`legacy_id` devient « clé stable »**, générée par la couche (`pa_…`) pour
+  toute entité créée ici — `lib/queries/legacy-key.ts`, 6 tests. Sans elle, une
+  entité n'était pas seulement refusée : elle **disparaissait des relations**,
+  un produit partant sans sa catégorie et sans sa marque, en silence ;
+- **l'export reste explicite, mais l'état se voit désormais pour les trois
+  entités** : `useRelationChecksums` calcule les empreintes des catégories et
+  marques, et « Catalogue en ligne » affiche ce qui a changé avec un bouton pour
+  l'envoyer. Automatique quand la retouche accompagne un produit — c'était déjà
+  le cas —, explicite quand elle est isolée.
+
+### Un détail d'interface qui portait un vrai risque
+
+Dans le dialogue produit, choisir un fournisseur restreint les marques à celles
+qu'il distribue. **Deux gardes valent plus que le filtre :** un fournisseur sans
+marque déclarée (3 sur 43) ne vide pas la liste, et la marque déjà enregistrée
+reste proposée même hors fournisseur — sinon un simple enregistrement l'aurait
+effacée sans demande.
+
 ## 7. L'état — ce fichier tient le compte
 
-**Les trois décisions du §4 sont prises et consignées** (13 août 2026). **La
-mesure de l'étape 1 est faite** (§6 bis) ; aucune ligne de la couche n'est
-écrite, aucun composant n'est rebranché.
+**Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
+pas de double écriture, sortie d'AppPos, clé stable, export explicite).
+**Les quatre entités sont branchées, lues et écrites depuis PocketBase**, et
+vérifiées dans l'application (§6 quater).
 
-**La prochaine session branche.** Les quatre composants sont désormais alignés
-sur le schéma réel (§6 ter) mais restent injoignables : `StockPage.tsx` n'a
-aucun importeur. Brancher veut dire choisir, pour chacune des trois entités
-annexes, quel composant survit — c'est la décision de convergence du §4, et elle
-s'applique une paire à la fois.
+**La prochaine session** : la couche d'accès unique (étape 3), c'est-à-dire le
+démêlage de `ProductTable.tsx` et de `useStockModule.ts`, qui mêlent encore les
+deux bases — et la suppression des jumeaux devenus inutiles à mesure qu'AppPos
+sort.
 
 | # | Étape | État |
 |---|---|---|
-| 0 | Décisions du §4 consignées au journal | **fait le 13 août 2026** — trois blocs |
-| 1 | Les 4 entités PocketBase affichées dans AppStock | **mesure faite** (§6 bis) et **remise à niveau faite** (§6 ter) ; **branchement à faire** — rien n'est encore atteignable à l'écran |
-| 2 | Édition depuis AppStock | non commencé |
-| 3 | Couche de données unique | non commencé |
-| 4 | Synchronisation et frontière public/interne | non commencé |
+| 0 | Décisions du §4 consignées au journal | **fait le 13 août 2026** |
+| 1 | Les 4 entités PocketBase affichées dans AppStock | **fait** — mesure (§6 bis), remise à niveau (§6 ter), branchement et vérification (§6 quater) |
+| 2 | Édition depuis AppStock | **fait** pour les 4 entités ; images exclues |
+| 3 | Couche de données unique | **prochaine** — `ProductTable.tsx` et `useStockModule.ts` mêlent encore les deux bases |
+| 4 | Synchronisation et frontière public/interne | **en partie** : export explicite, état visible pour les 3 entités exportées |
 | 5 | Images | **reporté, hors périmètre** |
 
 ## 8. Attentes de travail

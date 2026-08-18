@@ -146,16 +146,21 @@ Quatre entités, `products`, `categories`, `brands`, `suppliers`.
 
 **Point d'entrée :**
 [`00-rituel-migration-appstock.md`](frontend/modules/stock/PocketStock-docs/00-rituel-migration-appstock.md).
-Rien n'est commencé ; la première session consigne les décisions d'architecture
-(§4 du rituel), elle n'écrit pas de composant.
+Le §7 tient l'état ; le §6 quater dit ce qui a été branché et vérifié.
 
-Trois constats mesurés le 13 août 2026 y sont détaillés, et ils changent le
-plan : le module `stock` porte **six paires de composants** dont la moitié
-non-AppPos — celle qui lit PocketBase — n'est atteignable que par
-`StockPage.tsx`, **qui n'a aucun importeur** ; `ProductTable.tsx` mêle les deux
-bases dans un même fichier ; et **la caisse crée des produits dans NeDB**
-(`modules/cash/CreateProductDialog.tsx:22`), ce qui interdit à PocketBase
-d'être source de vérité tant que c'est vrai.
+**État au 13 août 2026 — les quatre entités sont branchées sur PocketBase**, en
+lecture ET en écriture, sous `/stock/produits`, `/stock/marques`,
+`/stock/categories`, `/stock/fournisseurs`. Vérifié dans l'application, AppPos
+éteint. **La prochaine étape est la couche d'accès unique** : `ProductTable.tsx`
+et `useStockModule.ts` mêlent encore les deux bases.
+
+**AppPos sort de la logique à la prochaine release** (`docs/DECISIONS.md`,
+2026-08-13) : l'écriture dans PocketBase est ouverte, la caisse et l'inventaire
+se raccordent en dernier, et les divergences NeDB ↔ PocketBase sont acceptées
+d'ici là. Deux règles en découlent et ne bougent pas : **on n'écrit jamais dans
+AppPos**, et **les identifiants des deux bases ne sont pas interchangeables** —
+le pont est `legacy_id`, devenu « clé stable », que PocketApp génère (`pa_…`)
+pour toute entité créée ici.
 
 ### Mission précédente — terminée
 
