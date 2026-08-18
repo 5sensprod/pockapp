@@ -1,8 +1,8 @@
 // frontend/modules/home/index.ts
 import {
 	BarChart2,
+	Building2,
 	ClipboardList,
-	Database,
 	FileImage,
 	FilePen,
 	Globe,
@@ -14,6 +14,8 @@ import {
 	Settings,
 	ShoppingCart,
 	Store,
+	Tags,
+	Truck,
 	Users,
 } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
@@ -61,13 +63,20 @@ export const manifest: ModuleManifest = {
 		},
 
 		// ── PocketStock ──────────────────────────────────────────────────────
-		// Route principale du module = /stock-apppos (plus /stock)
+		// Les entrées reprennent celles du module (`modules/stock/index.ts`) : la
+		// barre principale doit ouvrir les mêmes écrans que la barre du module,
+		// sinon des pages n'existent que pour qui est déjà dedans. `/stock-apppos`
+		// figurait ici et n'existe plus depuis le 18 août 2026 — le lien était
+		// mort, et avec lui le seul accès à AppStock depuis l'accueil.
 		{
 			id: 'stock',
 			label: 'PocketStock',
 			icon: Package,
 			items: [
-				{ label: 'Catalogue produits', to: '/stock-apppos', icon: Database },
+				{ label: 'Catalogue produits', to: '/stock/produits', icon: Package },
+				{ label: 'Marques', to: '/stock/marques', icon: Building2 },
+				{ label: 'Catégories', to: '/stock/categories', icon: Tags },
+				{ label: 'Fournisseurs', to: '/stock/fournisseurs', icon: Truck },
 				{
 					label: 'Inventaire physique',
 					to: '/inventory-apppos',
