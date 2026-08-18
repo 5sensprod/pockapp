@@ -46,8 +46,10 @@ Six, et six seulement :
 2. **AppPos** — `frontend/lib/apppos/apppos-config.ts:5` — `VITE_APPPOS_URL`,
    sinon `127.0.0.1:3000`. Jeton Bearer en `sessionStorage`. WebSocket en plus
    du REST (`apppos-websocket.ts`).
-3. **Mini-SaaS distant** — `remote_notifications.go:27` —
-   `pocketapp.5sensprod.com/api/notifications.php`, en-tête `X-API-Key`.
+3. **Mini-SaaS distant** — `remote_notifications.go:27` et
+   `backend/routes/gemini_routes.go` —
+   `pocketapp.5sensprod.com/api/notifications.php` pour les notifications et
+   `/api/usage.php` pour déclarer les jetons Gemini, en-tête `X-API-Key`.
    Notifications, clés API, crédits IA. Télémétrie uniquement, jamais de
    catalogue.
 4. **Publication du menu** — `backend/routes/site_publish_routes.go` —
@@ -58,7 +60,7 @@ Six, et six seulement :
    en-tête `X-API-Key`. Contrat :
    `frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md`.
 6. **Gemini Developer API** — `backend/routes/gemini_routes.go` —
-   `generativelanguage.googleapis.com`, modèle `gemini-3.5-flash-lite`, pour
+   `generativelanguage.googleapis.com`, modèle `gemini-3.1-flash-lite`, pour
    proposer un titre de produit. La clé `GEMINI_API_KEY` reste dans le Go et
    part dans l'en-tête `x-goog-api-key`, jamais dans le renderer ni dans l'URL.
 

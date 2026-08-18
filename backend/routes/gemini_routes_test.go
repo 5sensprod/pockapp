@@ -1,7 +1,11 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -77,12 +81,27 @@ func TestExtractGeminiTitle(t *testing.T) {
 		}]
 	}`)
 
-	title, err := extractGeminiTitle(raw)
+	generation, err := extractGeminiTitle(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if title != "Yamaha P-145 Piano numérique" {
-		t.Fatalf("titre = %q", title)
+	if generation.Title != "Yamaha P-145 Piano numérique" {
+		t.Fatalf("titre = %q", generation.Title)
+	}
+}
+
+func TestExtractGeminiTitleKeepsUsageMetadata(t *testing.T) {
+	raw := []byte(`{
+		"candidates": [{"content": {"parts": [{"text": "{\"title\":\"Yamaha P-145\"}"}]}}],
+		"usageMetadata": {"promptTokenCount": 42, "candidatesTokenCount": 7}
+	}`)
+
+	generation, err := extractGeminiTitle(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if generation.InputTokens != 42 || generation.OutputTokens != 7 {
+		t.Fatalf("usage = %d/%d, attendu 42/7", generation.InputTokens, generation.OutputTokens)
 	}
 }
 
@@ -99,5 +118,41 @@ func TestExtractGeminiTitleRejectsOverlongOutput(t *testing.T) {
 
 	if _, err := extractGeminiTitle(response); err == nil {
 		t.Fatal("un titre trop long a été accepté")
+	}
+}
+
+func TestReportPocketAppUsage(t *testing.T) {
+	var gotKey string
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("X-API-Key")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"billed_cost":0.001}`))
+	}))
+	defer server.Close()
+
+	err := reportPocketAppUsage(
+		context.Background(),
+		server.Client(),
+		server.URL,
+		"client-secret",
+		42,
+		7,
+		"product title",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotKey != "client-secret" {
+		t.Fatalf("X-API-Key = %q", gotKey)
+	}
+
+	var body pocketAppUsageReport
+	if err := json.Unmarshal(gotBody, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.InputTokens != 42 || body.OutputTokens != 7 || body.Label != "product title" {
+		t.Fatalf("corps inattendu: %#v", body)
 	}
 }

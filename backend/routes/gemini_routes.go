@@ -20,15 +20,19 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"pocket-react/backend/secrets"
+
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 )
 
 const (
-	geminiModel                      = "gemini-3.5-flash-lite"
+	geminiModel                      = "gemini-3.1-flash-lite"
 	geminiGenerateURL                = "https://generativelanguage.googleapis.com/v1beta/models/" + geminiModel + ":generateContent"
 	geminiTimeout                    = 20 * time.Second
+	pocketAppUsageURL                = "https://pocketapp.5sensprod.com/api/usage.php"
+	pocketAppUsageTimeout            = 5 * time.Second
 	geminiRequestMaxBytes      int64 = 32 * 1024
 	productTitleMaxRunes             = 70
 	productDescriptionMaxRunes       = 1500
@@ -102,10 +106,26 @@ type geminiGenerateResponse struct {
 	Candidates []struct {
 		Content geminiContent `json:"content"`
 	} `json:"candidates"`
+	UsageMetadata struct {
+		PromptTokenCount     int `json:"promptTokenCount"`
+		CandidatesTokenCount int `json:"candidatesTokenCount"`
+	} `json:"usageMetadata"`
 }
 
 type generatedProductTitle struct {
 	Title string `json:"title"`
+}
+
+type productTitleGeneration struct {
+	Title        string
+	InputTokens  int
+	OutputTokens int
+}
+
+type pocketAppUsageReport struct {
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	Label        string `json:"label,omitempty"`
 }
 
 type geminiHTTPError struct {
@@ -119,6 +139,7 @@ func (e *geminiHTTPError) Error() string {
 
 func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 	client := &http.Client{Timeout: geminiTimeout}
+	usageClient := &http.Client{Timeout: pocketAppUsageTimeout}
 
 	router.POST("/api/ai/product-title", func(c echo.Context) error {
 		info := apis.RequestInfo(c)
@@ -144,7 +165,7 @@ func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
-		title, err := requestGeminiProductTitle(c.Request().Context(), client, apiKey, payload)
+		generation, err := requestGeminiProductTitle(c.Request().Context(), client, apiKey, payload)
 		if err != nil {
 			var remote *geminiHTTPError
 			if errors.As(err, &remote) {
@@ -169,8 +190,34 @@ func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 			})
 		}
 
+		// Même contrat que l'implémentation AppPos historique : le reporting est
+		// fire-and-forget et ne transforme jamais un titre Gemini réussi en échec.
+		// La clé du mini-SaaS reste dans le Go, chiffrée dans app_settings.
+		if generation.InputTokens > 0 || generation.OutputTokens > 0 {
+			notificationAPIKey, keyErr := secrets.NewSecretManager(pb).GetSecret(secrets.KeyNotificationAPI)
+			if keyErr != nil || strings.TrimSpace(notificationAPIKey) == "" {
+				pb.Logger().Warn("Reporting Gemini ignoré : clé PocketApp indisponible", "error", keyErr)
+			} else {
+				go func(inputTokens, outputTokens int, reportingKey string) {
+					ctx, cancel := context.WithTimeout(context.Background(), pocketAppUsageTimeout)
+					defer cancel()
+					if reportErr := reportPocketAppUsage(
+						ctx,
+						usageClient,
+						pocketAppUsageURL,
+						reportingKey,
+						inputTokens,
+						outputTokens,
+						"product title",
+					); reportErr != nil {
+						pb.Logger().Warn("Reporting usage Gemini échoué", "error", reportErr)
+					}
+				}(generation.InputTokens, generation.OutputTokens, notificationAPIKey)
+			}
+		}
+
 		return c.JSON(http.StatusOK, map[string]string{
-			"title": title,
+			"title": generation.Title,
 			"model": geminiModel,
 		})
 	}, apis.ActivityLogger(pb))
@@ -235,15 +282,15 @@ func requestGeminiProductTitle(
 	client *http.Client,
 	apiKey string,
 	payload geminiGenerateRequest,
-) (string, error) {
+) (productTitleGeneration, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return "", err
+		return productTitleGeneration{}, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, geminiGenerateURL, bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return productTitleGeneration{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-goog-api-key", apiKey)
@@ -251,16 +298,16 @@ func requestGeminiProductTitle(
 
 	response, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return productTitleGeneration{}, err
 	}
 	defer response.Body.Close()
 
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 1024*1024))
 	if err != nil {
-		return "", err
+		return productTitleGeneration{}, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return "", &geminiHTTPError{
+		return productTitleGeneration{}, &geminiHTTPError{
 			Status:     response.StatusCode,
 			RetryAfter: response.Header.Get("Retry-After"),
 		}
@@ -269,13 +316,13 @@ func requestGeminiProductTitle(
 	return extractGeminiTitle(raw)
 }
 
-func extractGeminiTitle(raw []byte) (string, error) {
+func extractGeminiTitle(raw []byte) (productTitleGeneration, error) {
 	var response geminiGenerateResponse
 	if err := json.Unmarshal(raw, &response); err != nil {
-		return "", fmt.Errorf("réponse Gemini invalide: %w", err)
+		return productTitleGeneration{}, fmt.Errorf("réponse Gemini invalide: %w", err)
 	}
 	if len(response.Candidates) == 0 {
-		return "", errors.New("Gemini n'a renvoyé aucun candidat")
+		return productTitleGeneration{}, errors.New("Gemini n'a renvoyé aucun candidat")
 	}
 
 	var textParts []string
@@ -285,22 +332,64 @@ func extractGeminiTitle(raw []byte) (string, error) {
 		}
 	}
 	if len(textParts) == 0 {
-		return "", errors.New("Gemini n'a renvoyé aucun texte")
+		return productTitleGeneration{}, errors.New("Gemini n'a renvoyé aucun texte")
 	}
 
 	var generated generatedProductTitle
 	if err := json.Unmarshal([]byte(strings.Join(textParts, "")), &generated); err != nil {
-		return "", fmt.Errorf("titre Gemini non structuré: %w", err)
+		return productTitleGeneration{}, fmt.Errorf("titre Gemini non structuré: %w", err)
 	}
 
 	title := strings.Trim(compactWhitespace(generated.Title), "\"' ")
 	if title == "" {
-		return "", errors.New("Gemini a renvoyé un titre vide")
+		return productTitleGeneration{}, errors.New("Gemini a renvoyé un titre vide")
 	}
 	if utf8.RuneCountInString(title) > productTitleMaxRunes {
-		return "", fmt.Errorf("Gemini a renvoyé un titre de plus de %d caractères", productTitleMaxRunes)
+		return productTitleGeneration{}, fmt.Errorf("Gemini a renvoyé un titre de plus de %d caractères", productTitleMaxRunes)
 	}
-	return title, nil
+	return productTitleGeneration{
+		Title:        title,
+		InputTokens:  response.UsageMetadata.PromptTokenCount,
+		OutputTokens: response.UsageMetadata.CandidatesTokenCount,
+	}, nil
+}
+
+func reportPocketAppUsage(
+	ctx context.Context,
+	client *http.Client,
+	endpoint string,
+	apiKey string,
+	inputTokens int,
+	outputTokens int,
+	label string,
+) error {
+	payload, err := json.Marshal(pocketAppUsageReport{
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		Label:        label,
+	})
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("User-Agent", "PocketApp/1.0 (Gemini usage reporter)")
+
+	response, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(response.Body, 4*1024))
+		return fmt.Errorf("PocketApp usage HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	return nil
 }
 
 func cleanDescriptionForPrompt(value string) string {

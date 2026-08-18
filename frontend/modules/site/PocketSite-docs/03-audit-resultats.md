@@ -90,7 +90,7 @@ Deux, et deux seulement, pour toute la donnée catalogue :
 
 À quoi s'ajoute le canal Go vers le mini-SaaS distant :
 [`remote_notifications.go:27`](../../../../remote_notifications.go),
-`http://pocketapp.5sensprod.com/api/notifications.php`, en-tête `X-API-Key`,
+`https://pocketapp.5sensprod.com/api/notifications.php`, en-tête `X-API-Key`,
 poller démarré au lancement.
 
 ---

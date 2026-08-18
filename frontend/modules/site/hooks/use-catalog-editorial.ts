@@ -21,9 +21,11 @@
 // campagne éditoriale réelle se fera après l'import définitif
 // (docs/DECISIONS.md, 2026-08-12). L'écran le dit à l'utilisateur.
 //
-// L'invalidation porte sur `['site-catalog']` en entier : les empreintes se
-// recalculent depuis les listes lues, et un produit dont le `name` a changé
-// doit repasser « modifié » sans qu'on ait à rafraîchir la page.
+// L'invalidation porte sur la SEULE liste éditée : les empreintes se
+// recalculent depuis cette liste, et un produit dont le `name` a changé doit
+// repasser « modifié » sans qu'on ait à rafraîchir la page. Le décompte total
+// des produits n'est pas relancé : une retouche éditoriale ne peut pas le
+// changer, et invalider tout `['site-catalog']` annulait parfois sa requête.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { usePocketBase } from '@/lib/use-pocketbase'
@@ -70,8 +72,12 @@ export function useUpdateCatalogEditorial() {
 
 			await pb.collection(COLLECTION[kind]).update(id, body)
 		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['site-catalog'] })
+		onSuccess: (_result, { kind }) => {
+			const queryKey =
+				kind === 'product'
+					? ['site-catalog', 'products', 'published']
+					: ['site-catalog', COLLECTION[kind]]
+			queryClient.invalidateQueries({ queryKey })
 		},
 	})
 }

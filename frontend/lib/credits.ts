@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-const POCKETAPP_URL = 'http://pocketapp.5sensprod.com'
+const POCKETAPP_URL = 'https://pocketapp.5sensprod.com'
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 
 export interface PocketAppCredits {

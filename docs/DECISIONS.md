@@ -10,7 +10,29 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
-## Gemini propose les titres, le Go garde la clé et l'humain garde l'écriture — 2026-08-18
+## Le titre produit passe au modèle économique Gemini 3.1 Flash-Lite — 2026-08-19
+
+**L'assistant du champ « Nom » utilise désormais `gemini-3.1-flash-lite`, la
+version stable sans suffixe `preview`.** Cette tâche produit une courte chaîne
+factuelle de 70 caractères maximum avec un raisonnement minimal : le surcoût de
+`gemini-3.5-flash-lite` n'est pas justifié. Le 3.1 coûte 0,25 $ par million de
+jetons d'entrée et 1,50 $ par million de jetons de sortie, contre 0,30 $ et
+2,50 $ pour le 3.5 au 19 août 2026.
+
+Cette décision ne réintroduit pas l'ancien
+`gemini-3.1-flash-lite-preview`, arrêté le 25 mai 2026. Le modèle choisi est
+`gemini-3.1-flash-lite`, désormais GA. Le prompt contraint, la sortie JSON, la
+route Go et la validation humaine restent inchangés.
+
+**Écarté — conserver le 3.5 par principe :** aucune exigence mesurée de cette
+tâche simple ne justifie son tarif de sortie supérieur.
+
+**Remise en cause si :** le modèle stable 3.1 est déprécié ou si un jeu de
+produits mesuré montre une baisse de qualité que le prompt ne corrige pas.
+
+---
+
+## Gemini propose les titres, le Go garde la clé et l'humain garde l'écriture — 2026-08-18 — annulée le 2026-08-19 par « Le titre produit passe au modèle économique Gemini 3.1 Flash-Lite »
 
 **L'assistant du champ « Nom » appelle `gemini-3.5-flash-lite` depuis une route
 Go authentifiée.** Il remplit le champ avec une proposition ; il n'enregistre
