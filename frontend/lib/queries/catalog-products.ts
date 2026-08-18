@@ -87,12 +87,27 @@ export type CatalogProductQuery = {
 	status?: CatalogProductStatus
 	/** Identifiant PocketBase d'une marque. */
 	brandId?: string
+	/** Identifiant PocketBase d'une catégorie. Le produit en porte plusieurs :
+	 *  le filtre teste l'appartenance (`~`), pas l'égalité. */
+	categoryId?: string
+	/** Identifiant PocketBase d'un fournisseur. */
+	supplierId?: string
 	sort?: string
 }
 
 export function useCatalogProducts(query: CatalogProductQuery) {
 	const pb = usePocketBase() as any
-	const { companyId, page, perPage, search, status, brandId, sort } = query
+	const {
+		companyId,
+		page,
+		perPage,
+		search,
+		status,
+		brandId,
+		categoryId,
+		supplierId,
+		sort,
+	} = query
 
 	return useQuery<CatalogProductPage>({
 		queryKey: [
@@ -103,6 +118,8 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			search,
 			status,
 			brandId,
+			categoryId,
+			supplierId,
 			sort,
 		],
 		// Sans cela, changer de page vide la table le temps de la requête et la
@@ -120,6 +137,18 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			}
 			if (brandId) {
 				clauses.push(pb.filter('brand = {:brand}', { brand: brandId }))
+			}
+			if (supplierId) {
+				clauses.push(
+					pb.filter('supplier = {:supplier}', { supplier: supplierId }),
+				)
+			}
+			if (categoryId) {
+				// `categories` est une relation MULTIPLE : `=` ne vaudrait que pour un
+				// produit rattaché à cette seule catégorie. `~` teste l'appartenance.
+				clauses.push(
+					pb.filter('categories ~ {:category}', { category: categoryId }),
+				)
 			}
 
 			const term = search?.trim()

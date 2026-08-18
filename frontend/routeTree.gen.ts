@@ -15,7 +15,6 @@ import { Route as SetupImport } from './routes/setup'
 import { Route as LoginImport } from './routes/login'
 import { Route as IndexImport } from './routes/index'
 import { Route as StockIndexImport } from './routes/stock/index'
-import { Route as StockAppposIndexImport } from './routes/stock-apppos/index'
 import { Route as StickIndexImport } from './routes/stick/index'
 import { Route as StatsIndexImport } from './routes/stats/index'
 import { Route as SiteIndexImport } from './routes/site/index'
@@ -81,12 +80,6 @@ const IndexRoute = IndexImport.update({
 const StockIndexRoute = StockIndexImport.update({
   id: '/stock/',
   path: '/stock/',
-  getParentRoute: () => rootRoute,
-} as any)
-
-const StockAppposIndexRoute = StockAppposIndexImport.update({
-  id: '/stock-apppos/',
-  path: '/stock-apppos/',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -465,13 +458,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StickIndexImport
       parentRoute: typeof rootRoute
     }
-    '/stock-apppos/': {
-      id: '/stock-apppos/'
-      path: '/stock-apppos'
-      fullPath: '/stock-apppos'
-      preLoaderRoute: typeof StockAppposIndexImport
-      parentRoute: typeof rootRoute
-    }
     '/stock/': {
       id: '/stock/'
       path: '/stock'
@@ -691,7 +677,6 @@ export interface FileRoutesByFullPath {
   '/site': typeof SiteIndexRoute
   '/stats': typeof StatsIndexRoute
   '/stick': typeof StickIndexRoute
-  '/stock-apppos': typeof StockAppposIndexRoute
   '/stock': typeof StockIndexRoute
   '/connect/customers/new': typeof ConnectCustomersNewRoute
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
@@ -740,7 +725,6 @@ export interface FileRoutesByTo {
   '/site': typeof SiteIndexRoute
   '/stats': typeof StatsIndexRoute
   '/stick': typeof StickIndexRoute
-  '/stock-apppos': typeof StockAppposIndexRoute
   '/stock': typeof StockIndexRoute
   '/connect/customers/new': typeof ConnectCustomersNewRoute
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
@@ -790,7 +774,6 @@ export interface FileRoutesById {
   '/site/': typeof SiteIndexRoute
   '/stats/': typeof StatsIndexRoute
   '/stick/': typeof StickIndexRoute
-  '/stock-apppos/': typeof StockAppposIndexRoute
   '/stock/': typeof StockIndexRoute
   '/connect/customers/new': typeof ConnectCustomersNewRoute
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
@@ -841,7 +824,6 @@ export interface FileRouteTypes {
     | '/site'
     | '/stats'
     | '/stick'
-    | '/stock-apppos'
     | '/stock'
     | '/connect/customers/new'
     | '/connect/invoices/new'
@@ -889,7 +871,6 @@ export interface FileRouteTypes {
     | '/site'
     | '/stats'
     | '/stick'
-    | '/stock-apppos'
     | '/stock'
     | '/connect/customers/new'
     | '/connect/invoices/new'
@@ -937,7 +918,6 @@ export interface FileRouteTypes {
     | '/site/'
     | '/stats/'
     | '/stick/'
-    | '/stock-apppos/'
     | '/stock/'
     | '/connect/customers/new'
     | '/connect/invoices/new'
@@ -987,7 +967,6 @@ export interface RootRouteChildren {
   SiteIndexRoute: typeof SiteIndexRoute
   StatsIndexRoute: typeof StatsIndexRoute
   StickIndexRoute: typeof StickIndexRoute
-  StockAppposIndexRoute: typeof StockAppposIndexRoute
   StockIndexRoute: typeof StockIndexRoute
   ConnectCustomersNewRoute: typeof ConnectCustomersNewRoute
   ConnectInvoicesNewRoute: typeof ConnectInvoicesNewRoute
@@ -1036,7 +1015,6 @@ const rootRouteChildren: RootRouteChildren = {
   SiteIndexRoute: SiteIndexRoute,
   StatsIndexRoute: StatsIndexRoute,
   StickIndexRoute: StickIndexRoute,
-  StockAppposIndexRoute: StockAppposIndexRoute,
   StockIndexRoute: StockIndexRoute,
   ConnectCustomersNewRoute: ConnectCustomersNewRoute,
   ConnectInvoicesNewRoute: ConnectInvoicesNewRoute,
@@ -1097,7 +1075,6 @@ export const routeTree = rootRoute
         "/site/",
         "/stats/",
         "/stick/",
-        "/stock-apppos/",
         "/stock/",
         "/connect/customers/new",
         "/connect/invoices/new",
@@ -1178,9 +1155,6 @@ export const routeTree = rootRoute
     },
     "/stick/": {
       "filePath": "stick/index.tsx"
-    },
-    "/stock-apppos/": {
-      "filePath": "stock-apppos/index.tsx"
     },
     "/stock/": {
       "filePath": "stock/index.tsx"

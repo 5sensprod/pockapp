@@ -524,6 +524,72 @@ L'application demande une connexion, que je n'ai pas faite. Restent à regarder 
 le code-barres » —, et `/stock/produits`, inchangé, où l'édition doit continuer
 de fonctionner.
 
+## 6 sexies. Fronts A et B — 18 août 2026
+
+### A. Les galeries : 758 attendues, 747 en base, et rien n'est perdu
+
+Le §0 du plan relevait un écart entre les 1339 galeries annoncées par
+`catalog_v2.go:672` et les 747 mesurées en base. **Compté côté NeDB**
+(`%APPDATA%\AppPOS\data\products.db`, 3050 produits vivants après application
+des `$$deleted`) :
+
+| Mesure NeDB | Valeur |
+|---|---|
+| avec `gallery_images` non vide | 2361 |
+| **dont au moins une image AUTRE que la principale** | **758** |
+
+Le 1339 comptait donc autre chose — vraisemblablement les galeries avant
+exclusion de l'image principale (`normalize/catalog.go:598-607`), ou la base de
+développement périmée. **L'attendu réel est 758.**
+
+**L'écart de 11 se décompose, et aucune de ses deux moitiés n'est un défaut du
+chargeur :**
+
+- **8 produits ne sont pas dans PocketBase du tout** — ils font partie des
+  **53 produits** présents dans NeDB et absents de la base, créés depuis
+  l'import du 13 août. C'est le point dur du §6, désormais chiffré : 53 ;
+- **3 produits sont bien importés mais sans galerie** — `YPr1r2fnKJg8WDWI`,
+  `xFkkcXtE0z7CFY5c`, `zsjmZrAtnB1mxQ0W`. Vérifié fichier par fichier :
+  **aucune des images attendues n'existe sur le disque AppPos**. NeDB déclare
+  des chemins qui ne pointent nulle part ; le chargeur ne pouvait pas les
+  copier.
+
+**Conclusion : l'import des images est complet.** 2639 images principales et
+747 galeries, pour 2639 et 758 attendues — la différence est du côté d'AppPos,
+pas du nôtre. Il n'y a rien à écrire côté import.
+
+### B. `/stock/produits` prend l'UI d'AppStock, et l'écran AppPos disparaît
+
+**Un seul écran catalogue désormais**, sur PocketBase, avec la table riche de
+l'ancien : vignette, chemin de catégories, marque et fournisseur sous le nom,
+prix d'achat sous le prix de vente, badges de stock.
+
+| Fichier | Ce qui change |
+|---|---|
+| `lib/queries/catalog-rows.ts` | **neuf** — `toStockRow`, du produit PocketBase à la ligne affichée : relations résolues en mémoire, image résolue par `pb.files.getUrl`. 6 tests |
+| `lib/queries/catalog-products.ts` | filtres serveur `categoryId` (relation multiple, donc `~`) et `supplierId` |
+| `components/ProductTable.tsx` | ne fait plus aucune requête et ne construit plus aucune URL ; `paginated` et `onRowClick` en props ; colonne `active` → `status` ; un `console.log` oublié retiré |
+| `ProductsPage.tsx` | rend `ProductTable`, ajoute les filtres marque / catégorie / fournisseur, ligne cliquable vers `CatalogProductDialog` |
+| `StockView`, `StockPageAppPos`, `useStockModule`, `BrandFilterPanel`, `CategoryTreeAppPos`, `SupplierListAppPos`, `routes/stock-apppos` | **supprimés** |
+| `index.ts` | route principale `/stock/produits` ; une seule entrée de menu au lieu de deux |
+
+**Les images arrivent gratuitement, et c'était le pari du plan** : elles étaient
+déjà en base, seule leur URL venait d'AppPos. Vérifié sur disque —
+`storage/<collectionId>/<id>/<image>` existe pour les 5 produits tirés au sort,
+`collectionId` valant `71wy9ngwa1b87sk`.
+
+**Le module a encore rétréci** : sept fichiers retirés, deux ajoutés
+(`catalog-rows.ts` et son test).
+
+**Vérifié :** `npx tsc -b` silencieux, `pnpm test` vert (66 cas), Biome passé,
+les modules se transforment sans erreur dans Vite. **Non vérifié : l'écran** —
+l'application demande une connexion. À regarder : `/stock/produits`, la table
+avec ses vignettes, les trois filtres, et le clic sur une ligne qui ouvre
+l'édition.
+
+**Reste AppPos dans le module `stock` :** `InventoryPageAppPos.tsx` seul, c'est
+le front D du plan.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
@@ -535,10 +601,14 @@ vérifiées dans l'application (§6 quater).
 `useStockModule.ts` ne portent plus qu'AppPos, `useUpdateProductUniversal` n'existe
 plus, et le catalogue AppPos est passé en lecture seule.
 
-**La prochaine session** : l'étape 4 — synchronisation et frontière public /
-interne. Le point dur du §6 reste entier : la caisse crée toujours ses produits
-dans NeDB (`modules/cash/CreateProductDialog.tsx`), et le rechargement par purge
-existe toujours.
+**Fronts A et B faits** (§6 sexies) : l'import des images est complet et
+mesuré, et l'écran catalogue est unique, sur PocketBase.
+
+**La prochaine session** : front C du plan — `useCatalogProductSearch`, puis les
+quatre écrans de choix produit de PocketConnect. Le point dur du §6 reste
+entier, et il est maintenant chiffré : **53 produits** existent dans NeDB et pas
+dans PocketBase, parce que la caisse crée toujours ses produits là-bas
+(`modules/cash/CreateProductDialog.tsx`).
 
 | # | Étape | État |
 |---|---|---|

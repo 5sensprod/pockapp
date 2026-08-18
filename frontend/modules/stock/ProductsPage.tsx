@@ -16,18 +16,9 @@
 // l'inventaire se raccordent en dernier ; jusque-là les deux bases peuvent
 // diverger, et c'est accepté.
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
 import {
@@ -35,7 +26,10 @@ import {
 	type CatalogProductStatus,
 	useCatalogProducts,
 } from '@/lib/queries/catalog-products'
+import { toStockRow } from '@/lib/queries/catalog-rows'
 import { useCategories } from '@/lib/queries/categories'
+import { useSuppliers } from '@/lib/queries/suppliers'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import {
 	AlertTriangle,
@@ -45,25 +39,26 @@ import {
 	Package,
 	Plus,
 	Search,
+	X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { CatalogProductDialog } from './components/CatalogProductDialog'
+import { ProductTable } from './components/ProductTable'
 
 const PER_PAGE = 25
 
-const euros = new Intl.NumberFormat('fr-FR', {
-	style: 'currency',
-	currency: 'EUR',
-})
-
 export function ProductsPage() {
 	const { activeCompanyId } = useActiveCompany()
+	const pb = usePocketBase()
 
 	const [search, setSearch] = useState('')
 	const [debounced, setDebounced] = useState('')
 	const [page, setPage] = useState(1)
 	const [status, setStatus] = useState<CatalogProductStatus | undefined>()
+	const [brandId, setBrandId] = useState<string>('')
+	const [categoryId, setCategoryId] = useState<string>('')
+	const [supplierId, setSupplierId] = useState<string>('')
 	const [editing, setEditing] = useState<CatalogProductShape | null>(null)
 	const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -90,10 +85,14 @@ export function ProductsPage() {
 		perPage: PER_PAGE,
 		search: debounced || undefined,
 		status,
+		brandId: brandId || undefined,
+		categoryId: categoryId || undefined,
+		supplierId: supplierId || undefined,
 	})
 
 	const brands = useBrands({ companyId: activeCompanyId ?? undefined })
 	const categories = useCategories({ companyId: activeCompanyId ?? undefined })
+	const suppliers = useSuppliers({ companyId: activeCompanyId ?? undefined })
 
 	const brandById = useMemo(
 		() => new Map((brands.data ?? []).map((b) => [b.id, b.name])),
@@ -103,6 +102,32 @@ export function ProductsPage() {
 		() => new Map((categories.data ?? []).map((c) => [c.id, c.name])),
 		[categories.data],
 	)
+	const supplierById = useMemo(
+		() => new Map((suppliers.data ?? []).map((s) => [s.id, s.name])),
+		[suppliers.data],
+	)
+
+	// Les lignes affichées : produits PocketBase, relations résolues en mémoire,
+	// image résolue par `pb.files.getUrl`. Une seule provenance, du haut en bas.
+	const rows = useMemo(
+		() =>
+			(products.data?.items ?? []).map((product) =>
+				toStockRow(product, {
+					brandById,
+					supplierById,
+					categoryById,
+					fileUrl: (record, filename) => pb.files.getUrl(record, filename),
+				}),
+			),
+		[products.data, brandById, supplierById, categoryById, pb],
+	)
+
+	// La ligne cliquée ouvre le dialogue d'édition. La table ne rend que des
+	// lignes ; le produit complet se retrouve par son identifiant.
+	const openRow = (rowId: string) => {
+		const produit = products.data?.items.find((p) => p.id === rowId)
+		if (produit) openEdit(produit)
+	}
 
 	// Toute recherche et tout changement de filtre ramènent à la page 1 : rester
 	// en page 7 d'un résultat qui n'en compte que 2 donnerait un écran vide sans
@@ -114,6 +139,19 @@ export function ProductsPage() {
 
 	const changeStatus = (value: CatalogProductStatus | undefined) => {
 		setStatus(value)
+		setPage(1)
+	}
+
+	const changeFilter = (setter: (v: string) => void) => (value: string) => {
+		setter(value)
+		setPage(1)
+	}
+
+	const filtresActifs = !!(brandId || categoryId || supplierId)
+	const clearFilters = () => {
+		setBrandId('')
+		setCategoryId('')
+		setSupplierId('')
 		setPage(1)
 	}
 
@@ -183,6 +221,32 @@ export function ProductsPage() {
 					</FilterButton>
 				</div>
 
+				<FilterSelect
+					value={brandId}
+					onChange={changeFilter(setBrandId)}
+					vide='Toutes les marques'
+					options={brands.data ?? []}
+				/>
+				<FilterSelect
+					value={categoryId}
+					onChange={changeFilter(setCategoryId)}
+					vide='Toutes les catégories'
+					options={categories.data ?? []}
+				/>
+				<FilterSelect
+					value={supplierId}
+					onChange={changeFilter(setSupplierId)}
+					vide='Tous les fournisseurs'
+					options={suppliers.data ?? []}
+				/>
+
+				{filtresActifs && (
+					<Button variant='ghost' size='sm' onClick={clearFilters}>
+						<X className='mr-1 h-4 w-4' />
+						Retirer les filtres
+					</Button>
+				)}
+
 				<span className='text-muted-foreground text-sm tabular-nums'>
 					{products.isLoading ? '…' : `${total} produit${total > 1 ? 's' : ''}`}
 				</span>
@@ -194,98 +258,19 @@ export function ProductsPage() {
 			</div>
 
 			<Card>
-				<CardContent className='p-0'>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Produit</TableHead>
-								<TableHead>Référence</TableHead>
-								<TableHead>Marque</TableHead>
-								<TableHead className='text-right'>Prix TTC</TableHead>
-								<TableHead className='text-right'>Stock</TableHead>
-								<TableHead>Statut</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody
-							// La page précédente reste lisible pendant le chargement de la
-							// suivante, grisée : la table ne se vide pas et la page ne saute
-							// pas d'un demi-écran.
-							className={cn(products.isFetching && 'opacity-60')}
-						>
-							{products.data?.items.map((product) => {
-								const categoryNames = (product.categories ?? [])
-									.map((id) => categoryById.get(id))
-									.filter(Boolean)
-
-								return (
-									<TableRow
-										key={product.id}
-										className='cursor-pointer'
-										onClick={() => openEdit(product)}
-									>
-										<TableCell>
-											<div className='font-medium'>{product.name}</div>
-											{categoryNames.length > 0 && (
-												<div className='text-muted-foreground text-xs'>
-													{categoryNames.join(' · ')}
-												</div>
-											)}
-										</TableCell>
-										<TableCell className='font-mono text-xs'>
-											{product.sku || (
-												<span className='text-muted-foreground'>—</span>
-											)}
-										</TableCell>
-										<TableCell className='text-sm'>
-											{(product.brand && brandById.get(product.brand)) || (
-												<span className='text-muted-foreground'>—</span>
-											)}
-										</TableCell>
-										<TableCell className='text-right tabular-nums'>
-											{typeof product.price_ttc === 'number'
-												? euros.format(product.price_ttc)
-												: '—'}
-										</TableCell>
-										{/* Le stock affiché vient de PocketBase. Tant que la caisse
-										    écrit dans NeDB, il peut être en retard — c'est le point
-										    dur de la migration, pas un défaut d'affichage. */}
-										<TableCell
-											className={cn(
-												'text-right tabular-nums',
-												(product.stock ?? 0) <= 0 && 'text-amber-600',
-											)}
-										>
-											{product.stock ?? 0}
-										</TableCell>
-										<TableCell>
-											<Badge
-												variant={
-													product.status === 'published'
-														? 'default'
-														: 'secondary'
-												}
-											>
-												{product.status === 'published'
-													? 'Publié'
-													: 'Brouillon'}
-											</Badge>
-										</TableCell>
-									</TableRow>
-								)
-							})}
-
-							{!products.isLoading && !products.data?.items.length && (
-								<TableRow>
-									<TableCell
-										colSpan={6}
-										className='py-12 text-center text-muted-foreground'
-									>
-										Aucun produit ne correspond.
-									</TableCell>
-								</TableRow>
-							)}
-						</TableBody>
-					</Table>
+				<CardContent
+					// La page précédente reste lisible pendant le chargement de la
+					// suivante, grisée : la table ne se vide pas et la page ne saute pas.
+					className={cn('p-4', products.isFetching && 'opacity-60')}
+				>
+					{/* `paginated={false}` : la page vient du serveur. Paginer une
+					    seconde fois en mémoire afficherait « 1–10 sur 25 » sous une
+					    table qui en montre 25. */}
+					<ProductTable
+						data={rows}
+						paginated={false}
+						onRowClick={(row) => openRow(row.id)}
+					/>
 
 					{products.isLoading && (
 						<div className='flex items-center justify-center gap-3 py-12 text-muted-foreground'>
@@ -351,5 +336,35 @@ function FilterButton({
 		>
 			{children}
 		</button>
+	)
+}
+
+// Un filtre par entité, sur les listes déjà en cache — 287 marques, 463
+// catégories, 43 fournisseurs, toutes lues entières ailleurs. Le filtrage, lui,
+// part au SERVEUR : filtrer en mémoire ne verrait que la page affichée.
+function FilterSelect({
+	value,
+	onChange,
+	vide,
+	options,
+}: {
+	value: string
+	onChange: (value: string) => void
+	vide: string
+	options: { id: string; name: string }[]
+}) {
+	return (
+		<select
+			className='h-9 rounded-md border border-input bg-background px-2 text-sm'
+			value={value}
+			onChange={(e) => onChange(e.target.value)}
+		>
+			<option value=''>{vide}</option>
+			{options.map((o) => (
+				<option key={o.id} value={o.id}>
+					{o.name}
+				</option>
+			))}
+		</select>
 	)
 }

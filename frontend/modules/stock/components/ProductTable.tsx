@@ -1,11 +1,17 @@
 // frontend/modules/stock/components/ProductTable.tsx
 //
-// Table du catalogue AppPos — LECTURE SEULE, et une seule provenance.
-// L'édition d'un produit se fait sous `/stock/produits`, dans PocketBase
-// (`CatalogProductDialog`). Ni « Modifier » ni « Supprimer » ici : le premier
-// écrivait dans AppPos, ce que la migration interdit (`CLAUDE.md`), le second
-// appelait `useDeleteProduct` — une suppression PocketBase avec un identifiant
-// NeDB, qui ne pouvait rien supprimer.
+// La table du catalogue. UNE seule provenance : PocketBase, par des lignes déjà
+// résolues (`lib/queries/catalog-rows.ts`) — noms de marque, de fournisseur et
+// de catégories, et l'URL de l'image.
+//
+// Elle ne fait aucune requête et ne construit aucune URL. Elle a porté les deux
+// bases jusqu'au 18 août 2026 ; c'est ce qui a laissé « Supprimer » appeler une
+// suppression PocketBase avec un identifiant NeDB.
+//
+// La PAGINATION est celle de l'appelant quand il en a une : le catalogue porte
+// 2999 produits, la page vient du serveur, et paginer une deuxième fois en
+// mémoire donnerait « 1–10 sur 25 » sous une table qui en montre 25.
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -46,65 +52,27 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 
-import { APPPOS_ASSETS_BASE_URL } from '@/lib/apppos/apppos-config'
-
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
-const APPPOS_BASE_URL = APPPOS_ASSETS_BASE_URL
-
-// La ligne affichée, déclarée par ce que la table LIT — et rien d'autre.
-// Elle ne dérive plus de `ProductsResponse` (`pocketbase-types.ts`) : ce type
-// nommait PocketBase alors que les produits affichés ici viennent d'AppPos, et
-// c'est ce mensonge qui a laissé cohabiter deux bases dans un même fichier.
-// Le nom de la marque, du fournisseur et des catégories arrive DÉJÀ résolu dans
-// `expand`, posé par `appPosTransformers.product()` : la table ne va plus le
-// chercher elle-même.
-export interface StockProductRow {
-	id: string
-	name: string
-	barcode?: string | null
-	price_ttc?: number | null
-	cost_price?: number | null
-	stock_quantity?: number | null
-	active?: boolean
-	images?: string | null
-	expand?: {
-		brand?: { id: string; name: string }
-		supplier?: { id: string; name: string }
-		categories?: Array<{ id: string; name: string; parent?: string }>
-	}
-}
+import type { StockProductRow } from '@/lib/queries/catalog-rows'
 
 interface ProductTableProps {
 	data: StockProductRow[]
+	/** Cliquer une ligne. Absent = la table n'est pas cliquable. */
+	onRowClick?: (product: StockProductRow) => void
+	/** `false` quand l'appelant pagine côté serveur — c'est le cas du catalogue. */
+	paginated?: boolean
 }
 
-export function ProductTable({ data }: ProductTableProps) {
+export function ProductTable({
+	data,
+	onRowClick,
+	paginated = true,
+}: ProductTableProps) {
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 	const [pagination, setPagination] = useState<PaginationState>({
 		pageIndex: 0,
 		pageSize: 10,
 	})
-
-	const getBrandName = (product: StockProductRow): string | null =>
-		product.expand?.brand?.name ?? null
-
-	const getSupplierName = (product: StockProductRow): string | null =>
-		product.expand?.supplier?.name ?? null
-
-	const getProductCategoryPaths = (product: StockProductRow): string[] =>
-		product.expand?.categories?.map((cat) => cat.name) ?? []
-
-	// Helper pour construire l'URL de l'image
-	const getImageUrl = (imagePath: string | null | undefined): string | null => {
-		if (!imagePath) return null
-		// Si c'est déjà une URL complète
-		if (imagePath.startsWith('http')) return imagePath
-		// Sinon, préfixer avec l'URL AppPOS
-		return `${APPPOS_BASE_URL}${imagePath}`
-	}
 
 	const columns: ColumnDef<StockProductRow>[] = [
 		// ✅ COLONNE IMAGE
@@ -113,8 +81,7 @@ export function ProductTable({ data }: ProductTableProps) {
 			header: '',
 			size: 60,
 			cell: ({ row }) => {
-				const imagePath = row.original.images
-				const imageUrl = getImageUrl(imagePath)
+				const imageUrl = row.original.imageUrl
 
 				return (
 					<div className='w-12 h-12 rounded-md overflow-hidden bg-muted flex items-center justify-center flex-shrink-0'>
@@ -155,9 +122,9 @@ export function ProductTable({ data }: ProductTableProps) {
 				const product = row.original
 
 				// ✅ Utilise les nouvelles fonctions qui gèrent AppPOS et PocketBase
-				const categoryPaths = getProductCategoryPaths(product)
-				const brandName = getBrandName(product)
-				const supplierName = getSupplierName(product)
+				const categoryPaths = product.categoryNames
+				const brandName = product.brandName
+				const supplierName = product.supplierName
 
 				const hasCategories = categoryPaths.length > 0
 				const hasBrandOrSupplier = brandName || supplierName
@@ -220,21 +187,10 @@ export function ProductTable({ data }: ProductTableProps) {
 				</Button>
 			),
 			cell: ({ row }) => {
-				const rawPrice = row.getValue<any>('price_ttc')
-				const price =
-					rawPrice == null || rawPrice === ''
-						? undefined
-						: typeof rawPrice === 'number'
-							? rawPrice
-							: Number(rawPrice)
-
-				const rawCost = row.original.cost_price as any
-				const cost =
-					rawCost == null || rawCost === ''
-						? undefined
-						: typeof rawCost === 'number'
-							? rawCost
-							: Number(rawCost)
+				// Les valeurs arrivent typées depuis PocketBase. Les conversions
+				// défensives d'avant venaient d'AppPos, qui rendait des chaînes.
+				const price = row.getValue<number | null>('price_ttc') ?? undefined
+				const cost = row.original.purchase_price_ht ?? undefined
 
 				if (price == null || Number.isNaN(price)) {
 					return (
@@ -262,16 +218,10 @@ export function ProductTable({ data }: ProductTableProps) {
 			},
 		},
 		{
-			accessorKey: 'stock_quantity',
+			accessorKey: 'stock',
 			header: 'Stock',
 			cell: ({ row }) => {
-				const rawStock = row.getValue<any>('stock_quantity')
-				const stock =
-					rawStock == null || rawStock === ''
-						? undefined
-						: typeof rawStock === 'number'
-							? rawStock
-							: Number(rawStock)
+				const stock = row.getValue<number | null>('stock') ?? undefined
 
 				if (stock == null || Number.isNaN(stock)) {
 					return <span className='text-muted-foreground'>-</span>
@@ -289,13 +239,15 @@ export function ProductTable({ data }: ProductTableProps) {
 			},
 		},
 		{
-			accessorKey: 'active',
+			accessorKey: 'status',
 			header: 'Statut',
 			cell: ({ row }) => {
-				const active = row.getValue<boolean>('active')
+				// L'intention de publication du catalogue en ligne — pas un « actif /
+				// inactif », qui n'existe plus au schéma depuis `catalog_v2`.
+				const publie = row.getValue<string>('status') === 'published'
 				return (
-					<Badge variant={active !== false ? 'default' : 'secondary'}>
-						{active !== false ? 'Actif' : 'Inactif'}
+					<Badge variant={publie ? 'default' : 'secondary'}>
+						{publie ? 'Publié' : 'Brouillon'}
 					</Badge>
 				)
 			},
@@ -331,7 +283,7 @@ export function ProductTable({ data }: ProductTableProps) {
 		data,
 		columns,
 		getCoreRowModel: getCoreRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
+		...(paginated ? { getPaginationRowModel: getPaginationRowModel() } : {}),
 		getSortedRowModel: getSortedRowModel(),
 		getFilteredRowModel: getFilteredRowModel(),
 		onSortingChange: setSorting,
@@ -339,7 +291,6 @@ export function ProductTable({ data }: ProductTableProps) {
 		onPaginationChange: setPagination,
 		state: { sorting, columnFilters, pagination },
 	})
-	console.log('expand[0]:', JSON.stringify(data[0]?.expand))
 	return (
 		<div className='space-y-4'>
 			<div className='rounded-md border'>
@@ -363,7 +314,13 @@ export function ProductTable({ data }: ProductTableProps) {
 					<TableBody>
 						{table.getRowModel().rows?.length ? (
 							table.getRowModel().rows.map((row) => (
-								<TableRow key={row.id}>
+								<TableRow
+									key={row.id}
+									className={onRowClick ? 'cursor-pointer' : undefined}
+									onClick={
+										onRowClick ? () => onRowClick(row.original) : undefined
+									}
+								>
 									{row.getVisibleCells().map((cell) => (
 										<TableCell key={cell.id}>
 											{flexRender(
@@ -388,77 +345,79 @@ export function ProductTable({ data }: ProductTableProps) {
 				</Table>
 			</div>
 
-			<div className='flex items-center justify-between'>
-				<div className='text-sm text-muted-foreground'>
-					{(() => {
-						const total = table.getFilteredRowModel().rows.length
-						const { pageIndex, pageSize } = table.getState().pagination
-						const from = total === 0 ? 0 : pageIndex * pageSize + 1
-						const to = Math.min((pageIndex + 1) * pageSize, total)
-						return `${from}–${to} sur ${total} produit${total > 1 ? 's' : ''}`
-					})()}
+			{paginated && (
+				<div className='flex items-center justify-between'>
+					<div className='text-sm text-muted-foreground'>
+						{(() => {
+							const total = table.getFilteredRowModel().rows.length
+							const { pageIndex, pageSize } = table.getState().pagination
+							const from = total === 0 ? 0 : pageIndex * pageSize + 1
+							const to = Math.min((pageIndex + 1) * pageSize, total)
+							return `${from}–${to} sur ${total} produit${total > 1 ? 's' : ''}`
+						})()}
+					</div>
+					<div className='flex items-center gap-4'>
+						<div className='flex items-center gap-2 text-sm'>
+							<span className='text-muted-foreground'>Lignes&nbsp;:</span>
+							<select
+								className='h-8 rounded-md border border-input bg-background px-2 text-sm'
+								value={pagination.pageSize}
+								onChange={(e) =>
+									setPagination((p) => ({
+										...p,
+										pageIndex: 0,
+										pageSize: Number(e.target.value),
+									}))
+								}
+							>
+								{[10, 25, 50, 100].map((size) => (
+									<option key={size} value={size}>
+										{size}
+									</option>
+								))}
+							</select>
+						</div>
+						<div className='flex items-center gap-1 text-sm text-muted-foreground'>
+							Page {table.getState().pagination.pageIndex + 1} /{' '}
+							{table.getPageCount()}
+						</div>
+						<div className='flex items-center space-x-2'>
+							<Button
+								variant='outline'
+								size='sm'
+								onClick={() => table.setPageIndex(0)}
+								disabled={!table.getCanPreviousPage()}
+							>
+								«
+							</Button>
+							<Button
+								variant='outline'
+								size='sm'
+								onClick={() => table.previousPage()}
+								disabled={!table.getCanPreviousPage()}
+							>
+								Précédent
+							</Button>
+							<Button
+								variant='outline'
+								size='sm'
+								onClick={() => table.nextPage()}
+								disabled={!table.getCanNextPage()}
+							>
+								Suivant
+							</Button>
+							<Button
+								variant='outline'
+								size='sm'
+								onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+								disabled={!table.getCanNextPage()}
+							>
+								»
+							</Button>
+						</div>
+					</div>
 				</div>
-				<div className='flex items-center gap-4'>
-					<div className='flex items-center gap-2 text-sm'>
-						<span className='text-muted-foreground'>Lignes&nbsp;:</span>
-						<select
-							className='h-8 rounded-md border border-input bg-background px-2 text-sm'
-							value={pagination.pageSize}
-							onChange={(e) =>
-								setPagination((p) => ({
-									...p,
-									pageIndex: 0,
-									pageSize: Number(e.target.value),
-								}))
-							}
-						>
-							{[10, 25, 50, 100].map((size) => (
-								<option key={size} value={size}>
-									{size}
-								</option>
-							))}
-						</select>
-					</div>
-					<div className='flex items-center gap-1 text-sm text-muted-foreground'>
-						Page {table.getState().pagination.pageIndex + 1} /{' '}
-						{table.getPageCount()}
-					</div>
-					<div className='flex items-center space-x-2'>
-						<Button
-							variant='outline'
-							size='sm'
-							onClick={() => table.setPageIndex(0)}
-							disabled={!table.getCanPreviousPage()}
-						>
-							«
-						</Button>
-						<Button
-							variant='outline'
-							size='sm'
-							onClick={() => table.previousPage()}
-							disabled={!table.getCanPreviousPage()}
-						>
-							Précédent
-						</Button>
-						<Button
-							variant='outline'
-							size='sm'
-							onClick={() => table.nextPage()}
-							disabled={!table.getCanNextPage()}
-						>
-							Suivant
-						</Button>
-						<Button
-							variant='outline'
-							size='sm'
-							onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-							disabled={!table.getCanNextPage()}
-						>
-							»
-						</Button>
-					</div>
-				</div>
-			</div>
+			)}
 		</div>
 	)
 }

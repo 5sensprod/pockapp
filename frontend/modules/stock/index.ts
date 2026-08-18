@@ -9,7 +9,9 @@ import {
 } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
 
-import { StockPageAppPos as StockPage } from './StockPageAppPos'
+// `/stock` rend le catalogue PocketBase, comme `/stock/produits` : l'écran
+// AppPos a été retiré le 18 août 2026, il n'avait plus de données à lui.
+import { ProductsPage as StockPage } from './ProductsPage'
 
 export const manifest: ModuleManifest = {
 	id: 'stock',
@@ -17,7 +19,7 @@ export const manifest: ModuleManifest = {
 	description: 'Stock & Catalogue',
 	pole: 'commerce',
 	icon: Package,
-	route: '/stock-apppos', // ← route principale corrigée
+	route: '/stock/produits',
 	color: 'text-orange-500',
 	iconColor: 'text-orange-500',
 	enabled: true,
@@ -36,16 +38,10 @@ export const manifest: ModuleManifest = {
 			label: 'Stock',
 			icon: Database,
 			items: [
-				{ label: 'Catalogue produits', to: '/stock-apppos', icon: Database },
-				// Première entité branchée sur PocketBase (13 août 2026). Entrée
-				// distincte, et non un onglet du catalogue produits : celui-ci lit
-				// AppPos, et mélanger les deux dans un même écran est précisément ce
-				// que la migration doit défaire.
-				{
-					label: 'Produits (PocketBase)',
-					to: '/stock/produits',
-					icon: Package,
-				},
+				// Une seule entrée depuis le 18 août 2026 : « Catalogue produits » et
+				// « Produits (PocketBase) » désignaient deux écrans sur deux bases.
+				// Il n'en reste qu'un, sur PocketBase.
+				{ label: 'Catalogue produits', to: '/stock/produits', icon: Package },
 				{ label: 'Marques', to: '/stock/marques', icon: Building2 },
 				{ label: 'Catégories', to: '/stock/categories', icon: Tags },
 				{ label: 'Fournisseurs', to: '/stock/fournisseurs', icon: Truck },

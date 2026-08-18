@@ -118,12 +118,15 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   supprimé avec son unique appelant. **Ne pas le réintroduire :** la source se
   déclare au point d'appel, typée. Un test le garde
   (`frontend/modules/stock/single-source.test.ts`).
-- **`/stock` et `/stock-apppos` rendent la même page** : `modules/stock/index.ts:12`
-  réexporte `StockPageAppPos` **sous le nom `StockPage`**. L'ancien
-  `StockPage.tsx`, sans importeur, a été supprimé le 2026-08-18 avec
-  `ProductDialog.tsx` et `CategoryPickerAppPos.tsx`. **Ce catalogue AppPos est
-  en lecture seule** : l'édition d'un produit se fait sous `/stock/produits`,
-  dans PocketBase.
+- **Il n'y a plus qu'un écran catalogue**, `/stock/produits`, sur PocketBase
+  (2026-08-18). `/stock` y renvoie. `/stock-apppos` et sa moitié AppPos —
+  `StockView`, `StockPageAppPos`, `useStockModule`, `BrandFilterPanel`,
+  `CategoryTreeAppPos`, `SupplierListAppPos` — sont supprimés, comme l'étaient
+  déjà `StockPage.tsx`, `ProductDialog.tsx` et `CategoryPickerAppPos.tsx`.
+  **Les images des produits sont servies par PocketBase**, par
+  `pb.files.getUrl` : elles y sont depuis l'import du 2026-08-11 (2639 images
+  principales, 747 galeries, 1,7 Go). Dans le module `stock`, seul
+  `InventoryPageAppPos.tsx` parle encore à AppPos.
 - **Une migration non inscrite dans la liste de `RunMigrations`**
   (`backend/migrations/migrations.go:13`) ne s'exécute jamais, sans erreur.
 - **L'hébergement du site est un mutualisé PHP/MySQL.** Aucun processus
@@ -152,14 +155,19 @@ Quatre entités, `products`, `categories`, `brands`, `suppliers`.
 [`00-rituel-migration-appstock.md`](frontend/modules/stock/PocketStock-docs/00-rituel-migration-appstock.md).
 Le §7 tient l'état ; le §6 quater dit ce qui a été branché et vérifié.
 
-**État au 18 août 2026 — les quatre entités sont branchées sur PocketBase**, en
-lecture ET en écriture, sous `/stock/produits`, `/stock/marques`,
-`/stock/categories`, `/stock/fournisseurs`. **La couche d'accès unique est
-faite** (étape 3, §6 quinquies du rituel) : plus aucun fichier du module `stock`
-ne mêle les deux bases, le catalogue AppPos est en lecture seule, et un test le
-garde. Hors périmètre et toujours branchés sur AppPos : la caisse
-(`modules/cash/CreateProductDialog.tsx`) et l'inventaire
-(`InventoryPageAppPos.tsx`).
+**État au 18 août 2026 — le module `stock` est sur PocketBase**, en lecture et
+en écriture, sous `/stock/produits`, `/stock/marques`, `/stock/categories`,
+`/stock/fournisseurs`. L'étape 3 (couche unique) et les fronts A et B du plan
+sont faits : un seul écran catalogue, images comprises. Un test garde la règle
+« une seule provenance » (`frontend/modules/stock/single-source.test.ts`).
+
+**Ce qui parle encore à AppPos, et c'est la suite** : la caisse
+(`modules/cash/`), les quatre écrans de choix produit de PocketConnect,
+l'inventaire (`InventoryPageAppPos.tsx`, `lib/inventory/useInventorySession.ts`)
+et le reclassement de stock. Le plan et son ordre :
+[`02-plan-source-unique.md`](frontend/modules/stock/PocketStock-docs/02-plan-source-unique.md).
+**53 produits existent dans NeDB et pas dans PocketBase** (mesuré le
+2026-08-18) : la caisse en crée là-bas, c'est le point dur.
 
 **AppPos sort de la logique à la prochaine release** (`docs/DECISIONS.md`,
 2026-08-13) : l'écriture dans PocketBase est ouverte, la caisse et l'inventaire
