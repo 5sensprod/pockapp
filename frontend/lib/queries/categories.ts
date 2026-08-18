@@ -22,6 +22,7 @@ import type {
 	CatalogCategoryShape,
 	PocketBaseRecord,
 } from '@/lib/queries/catalog-shapes'
+import { newLegacyKey } from '@/lib/queries/legacy-key'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -149,9 +150,12 @@ export function useCreateCategory() {
 
 	return useMutation({
 		mutationFn: async (data: CategoryWrite) => {
+			// Clé stable posée par la couche, jamais par l'écran : c'est l'absence de
+			// cette clé qui a fait refuser une catégorie à l'export le 13 août 2026,
+			// et disparaître en silence le rattachement du produit qui la citait.
 			return await pb
 				.collection('categories')
-				.create<CatalogCategoryShape>(data)
+				.create<CatalogCategoryShape>({ legacy_id: newLegacyKey(), ...data })
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['categories'] })

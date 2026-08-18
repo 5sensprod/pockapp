@@ -13,13 +13,15 @@ import type {
 	CatalogBrandShape,
 	PocketBaseRecord,
 } from '@/lib/queries/catalog-shapes'
+import { newLegacyKey } from '@/lib/queries/legacy-key'
+import { usePocketBase } from '@/lib/use-pocketbase'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-/** Ce qu'on peut écrire. `legacy_id` en est exclu : il vient de NeDB. */
+/** Ce qu'on peut écrire. `legacy_id` n'en fait pas partie : la couche le pose
+ *  elle-même à la création, aucun écran ne doit pouvoir l'oublier. */
 export type BrandWrite = Partial<
 	Omit<CatalogBrandShape, keyof PocketBaseRecord | 'legacy_id'>
 > & { name: string; company?: string }
-import { usePocketBase } from '@/lib/use-pocketbase'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 export interface BrandsListOptions {
 	companyId?: string
@@ -79,7 +81,12 @@ export function useCreateBrand() {
 
 	return useMutation({
 		mutationFn: async (data: BrandWrite) => {
-			return await pb.collection('brands').create<CatalogBrandShape>(data)
+			// Clé stable posée par la couche, jamais par l'écran : une marque sans
+			// `legacy_id` est refusée à l'export ET disparaît des relations des
+			// produits qui la citent, en silence (docs/DECISIONS.md, 2026-08-13).
+			return await pb
+				.collection('brands')
+				.create<CatalogBrandShape>({ legacy_id: newLegacyKey(), ...data })
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['brands'] })
