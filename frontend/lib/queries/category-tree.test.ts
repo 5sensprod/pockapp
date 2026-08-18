@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
 	type CategoryNode,
 	collectBranchIds,
+	collectPopulatedCategoryIds,
 	toCategoryOptions,
 } from './category-tree'
 
@@ -48,6 +49,35 @@ describe('collectBranchIds', () => {
 	})
 })
 
+describe('collectPopulatedCategoryIds', () => {
+	it('conserve une feuille remplie et tous ses parents, mais pas les branches vides', () => {
+		expect(
+			[
+				...collectPopulatedCategoryIds(arbre, {
+					s: ['produit-1'],
+					a: [],
+				}),
+			].sort(),
+		).toEqual(['e', 'g', 's'])
+	})
+
+	it('ne conserve pas les enfants vides d’un parent qui porte un produit', () => {
+		expect([
+			...collectPopulatedCategoryIds(arbre, { g: ['produit-1'] }),
+		]).toEqual(['g'])
+	})
+
+	it('remonte un cycle sans boucler', () => {
+		const cycle: CategoryNode[] = [
+			{ id: 'x', name: 'X', parent: 'y' },
+			{ id: 'y', name: 'Y', parent: 'x' },
+		]
+		expect(
+			[...collectPopulatedCategoryIds(cycle, { x: ['produit-1'] })].sort(),
+		).toEqual(['x', 'y'])
+	})
+})
+
 describe('toCategoryOptions', () => {
 	it("suit l'ordre de l'arbre, fratries par ordre alphabétique", () => {
 		expect(toCategoryOptions(arbre).map((o) => o.id)).toEqual([
@@ -74,6 +104,15 @@ describe('toCategoryOptions', () => {
 		expect(toCategoryOptions(orpheline)).toEqual([
 			{ id: 'o', name: 'Orpheline', depth: 0 },
 		])
+	})
+
+	it('expose une composante cyclique sans oublier ni dupliquer ses nœuds', () => {
+		const cycle: CategoryNode[] = [
+			{ id: 'x', name: 'X', parent: 'y' },
+			{ id: 'y', name: 'Y', parent: 'x' },
+		]
+
+		expect(toCategoryOptions(cycle).map((o) => o.id)).toEqual(['x', 'y'])
 	})
 
 	it("n'oublie et ne duplique aucune catégorie", () => {

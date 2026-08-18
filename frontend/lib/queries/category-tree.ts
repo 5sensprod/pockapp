@@ -68,6 +68,37 @@ export interface CategoryOption {
 }
 
 /**
+ * Catégories qui portent des produits, directement ou dans leur descendance.
+ *
+ * Les parents sont conservés même s'ils ne portent rien eux-mêmes : sans eux,
+ * masquer les catégories vides aplatirait l'arbre et sortirait les feuilles de
+ * leur contexte. Les relations vers une catégorie inconnue sont ignorées.
+ */
+export function collectPopulatedCategoryIds(
+	categories: CategoryNode[],
+	productIdsByCategory: Record<string, readonly string[]>,
+): Set<string> {
+	const parId = new Map(
+		categories.map((categorie) => [categorie.id, categorie]),
+	)
+	const visibles = new Set<string>()
+
+	for (const [categoryId, productIds] of Object.entries(productIdsByCategory)) {
+		if (productIds.length === 0) continue
+
+		let courante = parId.get(categoryId)
+		const chaine = new Set<string>()
+		while (courante && !chaine.has(courante.id)) {
+			chaine.add(courante.id)
+			visibles.add(courante.id)
+			courante = courante.parent ? parId.get(courante.parent) : undefined
+		}
+	}
+
+	return visibles
+}
+
+/**
  * Les catégories dans l'ordre de l'arbre : chaque racine suivie de sa
  * descendance, chaque fratrie par ordre alphabétique.
  *
@@ -107,5 +138,12 @@ export function toCategoryOptions(
 		}
 	}
 	for (const racine of racines.sort(parLangue)) descendre(racine, 0)
+
+	// Un composant cyclique n'a aucune racine et serait donc absent du
+	// sélecteur. Les nœuds encore inconnus sont exposés comme des racines de
+	// secours ; `vus` arrête le parcours lorsque le cycle se referme.
+	for (const categorie of [...categories].sort(parLangue)) {
+		if (!vus.has(categorie.id)) descendre(categorie, 0)
+	}
 	return options
 }

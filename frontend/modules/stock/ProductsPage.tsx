@@ -19,6 +19,11 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from '@/components/ui/popover'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
 import {
@@ -30,22 +35,26 @@ import { toStockRow } from '@/lib/queries/catalog-rows'
 import { useCategories } from '@/lib/queries/categories'
 import {
 	collectBranchIds,
+	collectPopulatedCategoryIds,
 	toCategoryOptions,
 } from '@/lib/queries/category-tree'
+import { useProductIdsByCategory } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import {
 	AlertTriangle,
+	Check,
 	ChevronLeft,
 	ChevronRight,
+	ChevronsUpDown,
 	Loader2,
 	Package,
 	Plus,
 	Search,
 	X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { CatalogProductDialog } from './components/CatalogProductDialog'
 import { ProductTable } from './components/ProductTable'
@@ -65,6 +74,7 @@ export function ProductsPage() {
 	const [supplierId, setSupplierId] = useState<string>('')
 	const [editing, setEditing] = useState<CatalogProductShape | null>(null)
 	const [dialogOpen, setDialogOpen] = useState(false)
+	const previousCompanyId = useRef(activeCompanyId)
 
 	const openCreate = () => {
 		setEditing(null)
@@ -83,7 +93,22 @@ export function ProductsPage() {
 		return () => window.clearTimeout(timer)
 	}, [search])
 
+	// Les identifiants de marque, catégorie et fournisseur appartiennent à une
+	// entreprise. Les conserver lors d'un changement d'entreprise fabriquerait
+	// un filtre invisible et impossible à satisfaire dans le nouveau catalogue.
+	useEffect(() => {
+		if (previousCompanyId.current === activeCompanyId) return
+		previousCompanyId.current = activeCompanyId
+		setBrandId('')
+		setCategoryId('')
+		setSupplierId('')
+		setPage(1)
+	}, [activeCompanyId])
+
 	const categories = useCategories({ companyId: activeCompanyId ?? undefined })
+	const productIdsByCategory = useProductIdsByCategory(
+		activeCompanyId ?? undefined,
+	)
 
 	// Filtrer sur une catégorie, c'est filtrer sur SA BRANCHE : les produits sont
 	// rattachés aux feuilles, jamais aux ancêtres. Sans cela, « Guitares » ne
@@ -99,12 +124,36 @@ export function ProductsPage() {
 		return branche.length ? branche : [categoryId]
 	}, [categories.data, categoryId])
 
-	// Les catégories dans l'ordre de l'arbre, avec leur profondeur : une liste
-	// de 464 noms à plat ne dit pas laquelle est une racine.
-	const categoryOptions = useMemo(
-		() => toCategoryOptions(categories.data ?? []),
-		[categories.data],
+	// Les catégories dans l'ordre de l'arbre, sans les branches réellement
+	// vides. Un parent sans produit direct reste visible dès qu'une feuille sous
+	// lui en porte : masquer ce parent casserait le contexte de l'arbre.
+	const populatedCategoryIds = useMemo(
+		() =>
+			collectPopulatedCategoryIds(
+				categories.data ?? [],
+				productIdsByCategory.data ?? {},
+			),
+		[categories.data, productIdsByCategory.data],
 	)
+	const categoryOptions = useMemo(
+		() =>
+			productIdsByCategory.data
+				? toCategoryOptions(categories.data ?? []).filter((categorie) =>
+						populatedCategoryIds.has(categorie.id),
+					)
+				: [],
+		[categories.data, populatedCategoryIds, productIdsByCategory.data],
+	)
+
+	// Une catégorie peut devenir vide après une réaffectation ou un nouvel
+	// import. Elle disparaît alors des choix et ne doit pas rester sélectionnée
+	// comme un filtre invisible.
+	useEffect(() => {
+		if (!categoryId || !productIdsByCategory.data) return
+		if (populatedCategoryIds.has(categoryId)) return
+		setCategoryId('')
+		setPage(1)
+	}, [categoryId, populatedCategoryIds, productIdsByCategory.data])
 
 	const products = useCatalogProducts({
 		companyId: activeCompanyId ?? undefined,
@@ -251,18 +300,22 @@ export function ProductsPage() {
 					value={brandId}
 					onChange={changeFilter(setBrandId)}
 					vide='Toutes les marques'
+					recherche='Rechercher une marque…'
 					options={brands.data ?? []}
 				/>
 				<FilterSelect
 					value={categoryId}
 					onChange={changeFilter(setCategoryId)}
 					vide='Toutes les catégories'
+					recherche='Rechercher une catégorie…'
 					options={categoryOptions}
+					loading={categories.isLoading || productIdsByCategory.isLoading}
 				/>
 				<FilterSelect
 					value={supplierId}
 					onChange={changeFilter(setSupplierId)}
 					vide='Tous les fournisseurs'
+					recherche='Rechercher un fournisseur…'
 					options={suppliers.data ?? []}
 				/>
 
@@ -289,20 +342,37 @@ export function ProductsPage() {
 					// suivante, grisée : la table ne se vide pas et la page ne saute pas.
 					className={cn('p-4', products.isFetching && 'opacity-60')}
 				>
-					{/* `paginated={false}` : la page vient du serveur. Paginer une
-					    seconde fois en mémoire afficherait « 1–10 sur 25 » sous une
-					    table qui en montre 25. */}
-					<ProductTable
-						data={rows}
-						paginated={false}
-						onRowClick={(row) => openRow(row.id)}
-					/>
-
-					{products.isLoading && (
+					{/* Un écran vide doit dire POURQUOI il est vide. Sans ces trois cas,
+					    « aucune entreprise active », « lecture en cours » et « 0 résultat
+					    pour ces filtres » se ressemblent tous : une table sans ligne. */}
+					{!activeCompanyId ? (
+						<p className='py-12 text-center text-muted-foreground'>
+							Aucune entreprise active — sélectionnez-en une pour voir le
+							catalogue.
+						</p>
+					) : products.isLoading ? (
 						<div className='flex items-center justify-center gap-3 py-12 text-muted-foreground'>
 							<Loader2 className='h-5 w-5 animate-spin' />
 							<span className='text-sm'>Lecture du catalogue…</span>
 						</div>
+					) : rows.length === 0 ? (
+						<div className='py-12 text-center text-muted-foreground'>
+							<p>Aucun produit ne correspond.</p>
+							<p className='mt-1 text-sm'>
+								{filtresActifs || debounced || status
+									? 'Des filtres sont actifs.'
+									: `Le catalogue en compte ${total}.`}
+							</p>
+						</div>
+					) : (
+						/* `paginated={false}` : la page vient du serveur. Paginer une
+						   seconde fois en mémoire afficherait « 1–10 sur 25 » sous une
+						   table qui en montre 25. */
+						<ProductTable
+							data={rows}
+							paginated={false}
+							onRowClick={(row) => openRow(row.id)}
+						/>
 					)}
 				</CardContent>
 			</Card>
@@ -372,28 +442,134 @@ function FilterSelect({
 	value,
 	onChange,
 	vide,
+	recherche,
 	options,
+	loading = false,
 }: {
 	value: string
 	onChange: (value: string) => void
 	vide: string
+	recherche: string
 	options: { id: string; name: string; depth?: number }[]
+	loading?: boolean
 }) {
+	const [open, setOpen] = useState(false)
+	const [search, setSearch] = useState('')
+	const selected = options.find((option) => option.id === value)
+
+	const filteredOptions = useMemo(() => {
+		const terme = normalizeFilterText(search.trim())
+		if (!terme) return options
+
+		// Quand une sous-catégorie correspond, ses parents restent visibles : la
+		// recherche réduit l'arbre sans l'aplatir.
+		const inclus = new Set<number>()
+		const ancetres: number[] = []
+		for (const [index, option] of options.entries()) {
+			const depth = option.depth ?? 0
+			ancetres.length = depth
+			if (normalizeFilterText(option.name).includes(terme)) {
+				inclus.add(index)
+				for (const ancetre of ancetres) inclus.add(ancetre)
+			}
+			ancetres[depth] = index
+		}
+		return options.filter((_, index) => inclus.has(index))
+	}, [options, search])
+
+	const select = (nextValue: string) => {
+		onChange(nextValue)
+		setOpen(false)
+		setSearch('')
+	}
+
 	return (
-		<select
-			className='h-9 rounded-md border border-input bg-background px-2 text-sm'
-			value={value}
-			onChange={(e) => onChange(e.target.value)}
+		<Popover
+			open={open}
+			onOpenChange={(nextOpen) => {
+				setOpen(nextOpen)
+				if (!nextOpen) setSearch('')
+			}}
 		>
-			<option value=''>{vide}</option>
-			{options.map((o) => (
-				<option key={o.id} value={o.id}>
-					{/* Espaces insécables : un `<option>` mange les espaces ordinaires
-					    en début de texte, et l'indentation de l'arbre disparaîtrait. */}
-					{'  '.repeat(o.depth ?? 0)}
-					{o.name}
-				</option>
-			))}
-		</select>
+			<PopoverTrigger asChild>
+				<Button
+					variant='outline'
+					aria-expanded={open}
+					aria-haspopup='listbox'
+					className='min-w-[190px] max-w-[260px] justify-between px-2 font-normal'
+				>
+					<span className='truncate'>{selected?.name ?? vide}</span>
+					<ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent
+				align='start'
+				className='w-[var(--radix-popover-trigger-width)] min-w-[260px] p-0'
+			>
+				<div className='border-b p-2'>
+					<div className='relative'>
+						<Search className='-translate-y-1/2 absolute top-1/2 left-2.5 h-4 w-4 text-muted-foreground' />
+						<Input
+							autoFocus
+							value={search}
+							onChange={(event) => setSearch(event.target.value)}
+							placeholder={recherche}
+							className='h-8 pl-8'
+						/>
+					</div>
+				</div>
+
+				<div className='max-h-72 overflow-y-auto p-1'>
+					<button
+						type='button'
+						onClick={() => select('')}
+						className='flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent'
+					>
+						<Check
+							className={cn(
+								'mr-2 h-4 w-4 shrink-0',
+								value ? 'opacity-0' : 'opacity-100',
+							)}
+						/>
+						{vide}
+					</button>
+
+					{loading ? (
+						<p className='px-2 py-3 text-center text-muted-foreground text-sm'>
+							Chargement…
+						</p>
+					) : filteredOptions.length === 0 ? (
+						<p className='px-2 py-3 text-center text-muted-foreground text-sm'>
+							Aucun résultat
+						</p>
+					) : (
+						filteredOptions.map((option) => (
+							<button
+								type='button'
+								key={option.id}
+								onClick={() => select(option.id)}
+								className='flex w-full items-center rounded-sm py-1.5 pr-2 text-left text-sm hover:bg-accent'
+								style={{ paddingLeft: `${8 + (option.depth ?? 0) * 16}px` }}
+							>
+								<Check
+									className={cn(
+										'mr-2 h-4 w-4 shrink-0',
+										value === option.id ? 'opacity-100' : 'opacity-0',
+									)}
+								/>
+								<span className='truncate'>{option.name}</span>
+							</button>
+						))
+					)}
+				</div>
+			</PopoverContent>
+		</Popover>
 	)
+}
+
+function normalizeFilterText(value: string) {
+	return value
+		.normalize('NFD')
+		.replace(/\p{Diacritic}/gu, '')
+		.toLocaleLowerCase('fr')
 }
