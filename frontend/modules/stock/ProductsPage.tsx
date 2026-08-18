@@ -28,6 +28,10 @@ import {
 } from '@/lib/queries/catalog-products'
 import { toStockRow } from '@/lib/queries/catalog-rows'
 import { useCategories } from '@/lib/queries/categories'
+import {
+	collectBranchIds,
+	toCategoryOptions,
+} from '@/lib/queries/category-tree'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
@@ -79,6 +83,29 @@ export function ProductsPage() {
 		return () => window.clearTimeout(timer)
 	}, [search])
 
+	const categories = useCategories({ companyId: activeCompanyId ?? undefined })
+
+	// Filtrer sur une catégorie, c'est filtrer sur SA BRANCHE : les produits sont
+	// rattachés aux feuilles, jamais aux ancêtres. Sans cela, « Guitares » ne
+	// rendrait que les rares produits posés sur le nœud lui-même.
+	//
+	// Le repli sur `[categoryId]` n'est pas une précaution de style : une liste
+	// VIDE serait comprise comme « pas de filtre » et afficherait les 2999
+	// produits sous une catégorie qui n'en a aucun. Il sert deux fois — pendant
+	// le chargement des catégories, et si la catégorie choisie a disparu.
+	const categoryBranch = useMemo(() => {
+		if (!categoryId) return undefined
+		const branche = collectBranchIds(categories.data ?? [], categoryId)
+		return branche.length ? branche : [categoryId]
+	}, [categories.data, categoryId])
+
+	// Les catégories dans l'ordre de l'arbre, avec leur profondeur : une liste
+	// de 464 noms à plat ne dit pas laquelle est une racine.
+	const categoryOptions = useMemo(
+		() => toCategoryOptions(categories.data ?? []),
+		[categories.data],
+	)
+
 	const products = useCatalogProducts({
 		companyId: activeCompanyId ?? undefined,
 		page,
@@ -86,12 +113,11 @@ export function ProductsPage() {
 		search: debounced || undefined,
 		status,
 		brandId: brandId || undefined,
-		categoryId: categoryId || undefined,
+		categoryIds: categoryBranch,
 		supplierId: supplierId || undefined,
 	})
 
 	const brands = useBrands({ companyId: activeCompanyId ?? undefined })
-	const categories = useCategories({ companyId: activeCompanyId ?? undefined })
 	const suppliers = useSuppliers({ companyId: activeCompanyId ?? undefined })
 
 	const brandById = useMemo(
@@ -231,7 +257,7 @@ export function ProductsPage() {
 					value={categoryId}
 					onChange={changeFilter(setCategoryId)}
 					vide='Toutes les catégories'
-					options={categories.data ?? []}
+					options={categoryOptions}
 				/>
 				<FilterSelect
 					value={supplierId}
@@ -351,7 +377,7 @@ function FilterSelect({
 	value: string
 	onChange: (value: string) => void
 	vide: string
-	options: { id: string; name: string }[]
+	options: { id: string; name: string; depth?: number }[]
 }) {
 	return (
 		<select
@@ -362,6 +388,9 @@ function FilterSelect({
 			<option value=''>{vide}</option>
 			{options.map((o) => (
 				<option key={o.id} value={o.id}>
+					{/* Espaces insécables : un `<option>` mange les espaces ordinaires
+					    en début de texte, et l'indentation de l'arbre disparaîtrait. */}
+					{'  '.repeat(o.depth ?? 0)}
 					{o.name}
 				</option>
 			))}

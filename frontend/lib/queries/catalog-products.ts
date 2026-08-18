@@ -87,9 +87,11 @@ export type CatalogProductQuery = {
 	status?: CatalogProductStatus
 	/** Identifiant PocketBase d'une marque. */
 	brandId?: string
-	/** Identifiant PocketBase d'une catégorie. Le produit en porte plusieurs :
-	 *  le filtre teste l'appartenance (`~`), pas l'égalité. */
-	categoryId?: string
+	/** Les catégories retenues — une BRANCHE entière, racine comprise
+	 *  (`category-tree.ts`, `collectBranchIds`). Un produit est rattaché à ses
+	 *  feuilles, jamais à leurs ancêtres : filtrer sur la seule racine cacherait
+	 *  tout ce qui est rangé dessous. Liste vide = pas de filtre. */
+	categoryIds?: string[]
 	/** Identifiant PocketBase d'un fournisseur. */
 	supplierId?: string
 	sort?: string
@@ -104,7 +106,7 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 		search,
 		status,
 		brandId,
-		categoryId,
+		categoryIds,
 		supplierId,
 		sort,
 	} = query
@@ -118,7 +120,7 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			search,
 			status,
 			brandId,
-			categoryId,
+			categoryIds?.join(',') ?? '',
 			supplierId,
 			sort,
 		],
@@ -143,12 +145,15 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 					pb.filter('supplier = {:supplier}', { supplier: supplierId }),
 				)
 			}
-			if (categoryId) {
+			if (categoryIds?.length) {
 				// `categories` est une relation MULTIPLE : `=` ne vaudrait que pour un
 				// produit rattaché à cette seule catégorie. `~` teste l'appartenance.
-				clauses.push(
-					pb.filter('categories ~ {:category}', { category: categoryId }),
-				)
+				// La branche la plus large mesurée en base compte 62 catégories, ce
+				// qui tient largement dans une chaîne de filtre.
+				const ou = categoryIds
+					.map((id) => pb.filter('categories ~ {:category}', { category: id }))
+					.join(' || ')
+				clauses.push(`(${ou})`)
 			}
 
 			const term = search?.trim()

@@ -590,6 +590,44 @@ l'édition.
 **Reste AppPos dans le module `stock` :** `InventoryPageAppPos.tsx` seul, c'est
 le front D du plan.
 
+## 6 septies. Le filtre catégorie porte sur la BRANCHE — 18 août 2026
+
+Signalé par le propriétaire à l'essai du nouvel écran, et c'est un vrai défaut :
+**un produit est rattaché à ses catégories feuilles, jamais à leurs ancêtres.**
+Filtrer sur `categories ~ <racine>` ne rendait donc que les rares produits posés
+directement sur le nœud, et cachait tout ce qui est rangé dessous — sans erreur,
+ce qui est le pire des cas.
+
+**Mesuré en base**, quelques racines, nœud seul contre branche entière :
+
+| Racine | nœud seul | branche | catégories de la branche |
+|---|---|---|---|
+| Sonorisation | 11 | **30** | 8 |
+| Batterie & Percussion | 2 | **10** | 16 |
+| ACCESSOIRES pour Musiciens | 4 | **8** | 17 |
+| Guitares & Basses | 0 | **4** | 16 |
+
+L'arbre mesuré le même jour : **464 catégories, 47 racines, profondeur maximale
+3**, la plus large branche en comptant 62 — ce qui rend l'énumération des
+descendants tenable dans une chaîne de filtre. 264 produits sur 2999 n'ont
+aucune catégorie, et aucun rattachement ne pointe vers une catégorie inconnue.
+
+**Le fichier neuf : `lib/queries/category-tree.ts`**, deux fonctions pures et
+11 tests. `collectBranchIds` rend la racine et toute sa descendance ;
+`toCategoryOptions` rend les catégories dans l'ordre de l'arbre, avec leur
+profondeur — une liste de 464 noms à plat ne dit pas laquelle est une racine, et
+le sélecteur les indente désormais.
+
+**Deux pièges fermés au passage, chacun commenté sur place :**
+
+- **une branche vide vaut « pas de filtre »** : `collectBranchIds` rend `[]`
+  pour une catégorie inconnue, et la requête aurait alors affiché les 2999
+  produits sous une catégorie qui n'en a aucun. `ProductsPage` se replie sur
+  `[categoryId]` — filtre exact, donc zéro résultat — le temps que les
+  catégories chargent, et si la catégorie choisie a disparu ;
+- **un cycle de parenté** dans la donnée importée aurait figé l'écran : le
+  parcours est itératif, avec ensemble de visités. Un test le couvre.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
