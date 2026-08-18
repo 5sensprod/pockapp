@@ -23,10 +23,11 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import { useGenerateProductTitle } from '../../hooks/use-ai-product-title'
 import type { EditableKind } from '../../hooks/use-catalog-editorial'
 import { useUpdateCatalogEditorial } from '../../hooks/use-catalog-editorial'
 import {
@@ -43,6 +44,10 @@ export type EditorialTarget = {
 	id: string
 	name: string
 	description?: string
+	designation?: string
+	sku?: string
+	brand?: string
+	categories?: string[]
 }
 
 const LIBELLE: Record<EditableKind, string> = {
@@ -58,6 +63,7 @@ type Props = {
 
 export function EditorialDialog({ target, onClose }: Props) {
 	const update = useUpdateCatalogEditorial()
+	const generateTitle = useGenerateProductTitle()
 	const [name, setName] = useState('')
 	const [description, setDescription] = useState('')
 
@@ -106,6 +112,26 @@ export function EditorialDialog({ target, onClose }: Props) {
 		)
 	}
 
+	const suggestTitle = () => {
+		generateTitle.mutate(
+			{
+				name,
+				designation: target.designation,
+				sku: target.sku,
+				brand: target.brand,
+				categories: target.categories,
+				currentDescription: description,
+			},
+			{
+				onSuccess: ({ title }) => {
+					setName(title)
+					toast.success('Proposition insérée. Relis-la avant d’enregistrer.')
+				},
+				onError: (cause) => toast.error(cause.message),
+			},
+		)
+	}
+
 	return (
 		<Dialog open onOpenChange={(open) => !open && onClose()}>
 			<DialogContent className='sm:max-w-2xl'>
@@ -124,13 +150,30 @@ export function EditorialDialog({ target, onClose }: Props) {
 							<Label htmlFor='editorial-name'>
 								Nom — c’est le titre affiché sur le site
 							</Label>
-							<Input
-								id='editorial-name'
-								value={name}
-								maxLength={NAME_MAX}
-								onChange={(e) => setName(e.target.value)}
-								placeholder='Ukulélé soprano acajou'
-							/>
+							<div className='flex gap-2'>
+								<Input
+									id='editorial-name'
+									value={name}
+									maxLength={NAME_MAX}
+									onChange={(e) => setName(e.target.value)}
+									placeholder='Ukulélé soprano acajou'
+								/>
+								<Button
+									type='button'
+									variant='outline'
+									size='icon'
+									onClick={suggestTitle}
+									disabled={generateTitle.isPending || update.isPending}
+									aria-label='Proposer un titre avec Gemini'
+									title='Proposer un titre avec Gemini'
+								>
+									{generateTitle.isPending ? (
+										<Loader2 className='animate-spin' />
+									) : (
+										<Sparkles />
+									)}
+								</Button>
+							</div>
 							{/* Beaucoup de produits ont pour nom leur référence — « ABGS14SH ».
 							    Le dire ici est la raison d'être de cet écran. */}
 							<p className='text-muted-foreground text-xs'>
@@ -184,7 +227,10 @@ export function EditorialDialog({ target, onClose }: Props) {
 					>
 						Annuler
 					</Button>
-					<Button onClick={submit} disabled={update.isPending}>
+					<Button
+						onClick={submit}
+						disabled={update.isPending || generateTitle.isPending}
+					>
 						{update.isPending && (
 							<Loader2 className='mr-1.5 h-4 w-4 animate-spin' />
 						)}

@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Toggle } from '@/components/ui/toggle'
 import {
 	type CatalogBrand,
 	type CatalogCategory,
@@ -51,7 +52,7 @@ import {
 	Search,
 	X,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { CatalogSyncBar } from './components/online-catalog/CatalogSyncBar'
@@ -93,6 +94,7 @@ export function CatalogueEnLignePage() {
 	const totalProducts = useProductCount()
 
 	const [search, setSearch] = useState('')
+	const [onlyModified, setOnlyModified] = useState(false)
 	const [selectedCategory, setSelectedCategory] =
 		useState<OnlineCategoryNode | null>(null)
 	const [selectedBrand, setSelectedBrand] = useState<CatalogBrand | null>(null)
@@ -100,6 +102,49 @@ export function CatalogueEnLignePage() {
 	/** La fiche en cours d'édition, quel que soit son genre. `null` : dialogue
 	 *  fermé. Un seul état pour les trois, l'éditeur étant le même. */
 	const [editing, setEditing] = useState<EditorialTarget | null>(null)
+	/**
+	 * PocketBase répond par une liste vide (et non une erreur) quand la règle de
+	 * lecture n'est momentanément pas satisfaite. React Query garderait alors ce
+	 * faux résultat pendant cinq minutes. Si les produits prouvent que des
+	 * relations existent, on accorde une seule seconde lecture aux collections.
+	 */
+	const relationRetryAttempted = useRef(false)
+	useEffect(() => {
+		if (
+			relationRetryAttempted.current ||
+			!products.data?.length ||
+			categories.isFetching ||
+			brands.isFetching
+		) {
+			return
+		}
+
+		const categoriesExpected = products.data.some(
+			(product) => (product.categories?.length ?? 0) > 0,
+		)
+		const brandsExpected = products.data.some((product) =>
+			Boolean(product.brand),
+		)
+		const categoriesMissing =
+			categoriesExpected && (categories.data?.length ?? 0) === 0
+		const brandsMissing = brandsExpected && (brands.data?.length ?? 0) === 0
+
+		if (!categoriesMissing && !brandsMissing) return
+
+		relationRetryAttempted.current = true
+		const retries: Promise<unknown>[] = []
+		if (categoriesMissing) retries.push(categories.refetch())
+		if (brandsMissing) retries.push(brands.refetch())
+		void Promise.all(retries)
+	}, [
+		products.data,
+		categories.data,
+		categories.isFetching,
+		categories.refetch,
+		brands.data,
+		brands.isFetching,
+		brands.refetch,
+	])
 
 	// La recherche filtre les produits AVANT la dérivation : l'arbre montre
 	// alors les seules branches qui portent un résultat, ce qui est l'intérêt —
@@ -116,30 +161,17 @@ export function CatalogueEnLignePage() {
 		)
 	}, [products.data, search])
 
-	const catalog = useMemo(
-		() =>
-			buildOnlineCatalog(
-				filteredProducts,
-				categories.data ?? [],
-				brands.data ?? [],
-			),
-		[filteredProducts, categories.data, brands.data],
-	)
-
 	const brandsById = useMemo(
 		() => new Map((brands.data ?? []).map((b) => [b.id, b])),
 		[brands.data],
 	)
-
-	// Ce qui s'affiche à droite : la sélection de catégorie d'abord, celle de
-	// marque ensuite, et à défaut tout ce qui part vers le site.
-	const shownProducts = useMemo(() => {
-		let list = selectedCategory
-			? collectSubtreeProducts(selectedCategory, catalog.productsByCategory)
-			: filteredProducts
-		if (selectedBrand) list = list.filter((p) => p.brand === selectedBrand.id)
-		return list
-	}, [selectedCategory, selectedBrand, catalog, filteredProducts])
+	const categoriesById = useMemo(
+		() =>
+			new Map(
+				(categories.data ?? []).map((category) => [category.id, category]),
+			),
+		[categories.data],
+	)
 
 	// ── Synchronisation ──────────────────────────────────────────────────────
 	// L'inventaire n'est interrogé qu'une fois le catalogue lu : sans produits
@@ -169,6 +201,39 @@ export function CatalogueEnLignePage() {
 		}
 		return map
 	}, [inventory.data, products.data, checksums])
+
+	// Le filtre « à mettre à jour » porte uniquement sur les produits déjà
+	// présents sur le site dont l'empreinte a changé. Les produits jamais
+	// exportés gardent leur état distinct et restent accessibles dans la vue
+	// complète.
+	const visibleProducts = useMemo(() => {
+		if (!onlyModified || !inventory.data) return filteredProducts
+		return filteredProducts.filter(
+			(product) => syncStates.get(product.legacy_id) === 'modified',
+		)
+	}, [filteredProducts, inventory.data, onlyModified, syncStates])
+
+	// La dérivation vient APRÈS tous les filtres produit : l'arbre et la grille
+	// montrent ainsi les mêmes branches, marques et décomptes.
+	const catalog = useMemo(
+		() =>
+			buildOnlineCatalog(
+				visibleProducts,
+				categories.data ?? [],
+				brands.data ?? [],
+			),
+		[visibleProducts, categories.data, brands.data],
+	)
+
+	// Ce qui s'affiche à droite : la sélection de catégorie d'abord, celle de
+	// marque ensuite, et à défaut tout ce qui part vers le site.
+	const shownProducts = useMemo(() => {
+		let list = selectedCategory
+			? collectSubtreeProducts(selectedCategory, catalog.productsByCategory)
+			: visibleProducts
+		if (selectedBrand) list = list.filter((p) => p.brand === selectedBrand.id)
+		return list
+	}, [selectedCategory, selectedBrand, catalog, visibleProducts])
 
 	// ── État des catégories et des marques ───────────────────────────────────
 	// Décision du 13 août 2026 : l'export reste explicite, mais une retouche de
@@ -297,14 +362,23 @@ export function CatalogueEnLignePage() {
 	// prise dans l'objet que le composant porte : `selectedCategory` est un nœud
 	// d'arbre figé dans un état React, et rouvrir l'éditeur après une première
 	// modification y montrerait le texte d'avant.
-	const editProduct = useCallback((product: CatalogProduct) => {
-		setEditing({
-			kind: 'product',
-			id: product.id,
-			name: product.name,
-			description: product.description,
-		})
-	}, [])
+	const editProduct = useCallback(
+		(product: CatalogProduct) => {
+			setEditing({
+				kind: 'product',
+				id: product.id,
+				name: product.name,
+				description: product.description,
+				designation: product.designation,
+				sku: product.sku,
+				brand: product.brand ? brandsById.get(product.brand)?.name : undefined,
+				categories: (product.categories ?? [])
+					.map((id) => categoriesById.get(id)?.name)
+					.filter((name): name is string => Boolean(name)),
+			})
+		},
+		[brandsById, categoriesById],
+	)
 
 	const editCategory = useCallback(
 		(id: string) => {
@@ -414,7 +488,7 @@ export function CatalogueEnLignePage() {
 				    ligne » est une conclusion ; une collection vide alors que les
 				    produits en citent est une PANNE DE LECTURE, et le dire évite de
 				    chercher le défaut du mauvais côté. */}
-					{!categories.isLoading && !categories.data?.length && (
+					{!categories.isFetching && !categories.data?.length && (
 						<Card className='mb-6 border-destructive'>
 							<CardContent className='flex items-start gap-3 pt-6'>
 								<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
@@ -432,7 +506,7 @@ export function CatalogueEnLignePage() {
 						</Card>
 					)}
 
-					{!brands.isLoading && !brands.data?.length && (
+					{!brands.isFetching && !brands.data?.length && (
 						<Card className='mb-6 border-destructive'>
 							<CardContent className='flex items-start gap-3 pt-6'>
 								<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
@@ -540,15 +614,33 @@ export function CatalogueEnLignePage() {
 						</Card>
 					)}
 
-					{/* ── Recherche ──────────────────────────────────────────────── */}
-					<div className='relative mb-4'>
-						<Search className='-translate-y-1/2 absolute top-1/2 left-3 h-4 w-4 text-muted-foreground' />
-						<Input
-							value={search}
-							onChange={(e) => setSearch(e.target.value)}
-							placeholder='Rechercher un produit en ligne (nom, référence)…'
-							className='pl-9'
-						/>
+					{/* ── Filtres produit ───────────────────────────────────────── */}
+					<div className='mb-4 flex flex-col gap-2 sm:flex-row'>
+						<div className='relative flex-1'>
+							<Search className='-translate-y-1/2 absolute top-1/2 left-3 h-4 w-4 text-muted-foreground' />
+							<Input
+								value={search}
+								onChange={(e) => setSearch(e.target.value)}
+								placeholder='Rechercher un produit en ligne (nom, référence)…'
+								className='pl-9'
+							/>
+						</div>
+						<Toggle
+							variant='outline'
+							pressed={onlyModified}
+							onPressedChange={setOnlyModified}
+							disabled={!inventory.data}
+							aria-label='Afficher uniquement les produits à mettre à jour'
+							title={
+								inventory.data
+									? 'Afficher uniquement les produits modifiés depuis leur dernier export'
+									: 'L’état du site doit être disponible pour utiliser ce filtre'
+							}
+							className='shrink-0'
+						>
+							<RefreshCw className='h-4 w-4' />À mettre à jour (
+							{syncCounts.modified})
+						</Toggle>
 					</div>
 
 					<Tabs defaultValue='structure'>
@@ -635,9 +727,11 @@ export function CatalogueEnLignePage() {
 										exporting={exportCatalog.isPending}
 										onEdit={editProduct}
 										emptyLabel={
-											selectedBrand
-												? `Aucun produit de la marque ${selectedBrand.name} ici. Retirez le filtre pour voir les ${selectedCategory?.totalCount ?? ''} produits de la branche.`
-												: undefined
+											onlyModified
+												? 'Aucun produit à mettre à jour avec ces filtres.'
+												: selectedBrand
+													? `Aucun produit de la marque ${selectedBrand.name} ici. Retirez le filtre pour voir les ${selectedCategory?.totalCount ?? ''} produits de la branche.`
+													: undefined
 										}
 									/>
 								</div>

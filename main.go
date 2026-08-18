@@ -46,26 +46,40 @@ func initLogging(baseDir string) {
 	log.Println("=== App started ===")
 }
 
-func loadEnvFile(baseDir string) {
+func loadEnvFile(baseDir, launchDir string) {
 	envPaths := []string{
 		filepath.Join(baseDir, ".env"),
-		".env",
+		filepath.Join(launchDir, ".env"),
 	}
+	loaded := false
+	seen := map[string]struct{}{}
 	for _, path := range envPaths {
+		path = filepath.Clean(path)
+		if _, duplicate := seen[path]; duplicate {
+			continue
+		}
+		seen[path] = struct{}{}
 		if err := godotenv.Load(path); err == nil {
 			log.Println("Loaded .env from:", path)
-			return
+			loaded = true
 		}
 	}
-	log.Println("No .env file found, using environment variables")
+	if !loaded {
+		log.Println("No .env file found, using environment variables")
+	}
 }
 
 func main() {
+	launchDir, _ := os.Getwd()
 	exe, _ := os.Executable()
 	baseDir := filepath.Dir(exe)
+
+	// En binaire, `.env` vit à côté de l'exécutable. En `wails dev`, celui-ci
+	// peut être construit dans un dossier temporaire : on garde donc aussi le
+	// dossier depuis lequel la commande a été lancée (`I:\pockapp`).
+	loadEnvFile(baseDir, launchDir)
 	_ = os.Chdir(baseDir)
 
-	loadEnvFile(baseDir)
 	initLogging(baseDir)
 
 	appDataDir := os.Getenv("LOCALAPPDATA")
@@ -182,6 +196,7 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterSecretsRoutes(pb, e.Router)
 		routes.RegisterSitePublishRoutes(pb, e.Router)
 		routes.RegisterSiteCatalogRoutes(pb, e.Router)
+		routes.RegisterGeminiRoutes(pb, e.Router)
 		routes.InitSecretManager(pb)
 		routes.RegisterDepositRoutes(pb, e.Router)
 		routes.RegisterInvoicePayRoutes(pb, e.Router)

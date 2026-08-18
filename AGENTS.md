@@ -39,7 +39,7 @@ Modules : `cash` (caisse), `stock` (produits, lecture **et** écriture),
 
 ## Points d'entrée réseau
 
-Trois, et trois seulement :
+Six, et six seulement :
 
 1. **PocketBase local** — `frontend/lib/use-pocketbase.ts:5` — `127.0.0.1:8090`
    sous Wails, sinon proxy Vite (`VITE_BACKEND_URL`).
@@ -50,6 +50,17 @@ Trois, et trois seulement :
    `pocketapp.5sensprod.com/api/notifications.php`, en-tête `X-API-Key`.
    Notifications, clés API, crédits IA. Télémétrie uniquement, jamais de
    catalogue.
+4. **Publication du menu** — `backend/routes/site_publish_routes.go` —
+   `https://axemusique.shop/server/api/publish-menu.php`, POST, en-tête
+   `X-API-Key`. L'URL et la clé sont des réglages ; rien n'est en dur.
+5. **Export du catalogue** — `backend/routes/site_catalog_routes.go` —
+   `https://axemusique.shop/server/api/products-sync.php`, GET et POST,
+   en-tête `X-API-Key`. Contrat :
+   `frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md`.
+6. **Gemini Developer API** — `backend/routes/gemini_routes.go` —
+   `generativelanguage.googleapis.com`, modèle `gemini-3.5-flash-lite`, pour
+   proposer un titre de produit. La clé `GEMINI_API_KEY` reste dans le Go et
+   part dans l'en-tête `x-goog-api-key`, jamais dans le renderer ni dans l'URL.
 
 Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
 

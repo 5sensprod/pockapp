@@ -10,6 +10,40 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Gemini propose les titres, le Go garde la clé et l'humain garde l'écriture — 2026-08-18
+
+**L'assistant du champ « Nom » appelle `gemini-3.5-flash-lite` depuis une route
+Go authentifiée.** Il remplit le champ avec une proposition ; il n'enregistre
+pas le produit et ne déclenche aucun export. La clé `GEMINI_API_KEY` ne descend
+jamais dans le renderer et n'est pas mise dans l'URL distante.
+
+Le modèle est stable, disponible au niveau gratuit et dimensionné pour cette
+tâche courte. Le prompt interdit d'inventer une caractéristique, sépare les
+données produit de l'instruction système et demande une sortie JSON structurée.
+Le raisonnement est `minimal`, sans `temperature`, `topP` ni `topK`, paramètres
+dépréciés sur les modèles Gemini actuels. Le niveau gratuit autorise Google à
+utiliser les requêtes pour améliorer ses produits ; seules des données de
+catalogue destinées à être publiques sont envoyées, et la description est
+limitée à 1 500 caractères pour ne pas gaspiller le quota.
+
+**Écarté — reprendre tel quel `GeminiDirectService.js` d'AppPos :** son modèle
+principal `gemini-3.1-flash-lite-preview` est arrêté depuis le 25 mai 2026, son
+repli automatique sur `gemini-2.5-flash` masque un quota épuisé en lançant une
+seconde requête, et sa consigne « titre accrocheur » autorise des faits
+commerciaux non fournis. Ses sorties sont nettoyées après coup au lieu d'être
+contraintes par un schéma.
+
+**Écarté — appeler Gemini depuis React :** une variable `VITE_` mettrait la clé
+en clair dans le bundle. Une route qui rendrait la clé au front déplacerait le
+même défaut sans le corriger.
+
+**Remise en cause si :** le niveau gratuit disparaît, le modèle est déprécié,
+ou les propositions mesurées ne respectent pas assez les données source. Dans
+ce dernier cas on évalue d'abord le prompt et un jeu de produits, pas un modèle
+plus coûteux par réflexe.
+
+---
+
 ## Le catalogue AppPos passe en lecture seule — 2026-08-18
 
 **`/stock-apppos` n'écrit plus rien.** Les boutons « Modifier » et « Supprimer »
