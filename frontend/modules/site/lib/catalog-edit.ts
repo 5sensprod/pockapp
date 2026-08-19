@@ -5,18 +5,11 @@
 // Fonctions pures — aucun réseau, aucun React —, pour que la règle soit
 // vérifiable seule : catalog-edit.test.ts.
 //
-// Deux champs, et deux seulement (docs/DECISIONS.md, 2026-08-12) :
-//
-//   • `name` du produit, qui FAIT OFFICE de titre de site — `catalog.php`
-//     retombe dessus quand `site_title` est vide (`present_product`, :134-141) ;
-//   • `description` du produit, de la catégorie et de la marque.
+// Deux champs : le `name` canonique du produit et la `description` du produit,
+// de la catégorie ou de la marque. Il n'existe pas de second titre éditorial.
 //
 // Ni prix, ni stock : ils appartiennent à AppStock.
 //
-// ⚠️ `name` est REQUIS au schéma (backend/migrations/catalog_v2.go:553). Une
-// chaîne vide part en écriture, revient en erreur PocketBase brute, et
-// l'utilisateur lit un message de validation d'API pour un champ qu'il vient
-// d'effacer. On refuse ici, avec une phrase.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Longueurs du schéma. Dépassées, PocketBase refuse — autant le dire avant. */
@@ -44,9 +37,7 @@ export type EditorialValidation =
 /**
  * Valide et normalise une saisie.
  *
- * Le rognage n'est pas cosmétique : un `name` réduit à des espaces passerait la
- * garde du champ requis côté PocketBase — la chaîne n'est pas vide — et le site
- * afficherait un titre blanc.
+ * Le rognage évite de marquer une fiche comme modifiée pour des espaces seuls.
  */
 export function validateEditorial(draft: EditorialDraft): EditorialValidation {
 	const description = draft.description.trim()
@@ -61,20 +52,17 @@ export function validateEditorial(draft: EditorialDraft): EditorialValidation {
 	if (draft.name === undefined) return { ok: true, patch: { description } }
 
 	const name = draft.name.trim()
-
 	if (name === '') {
 		return {
 			ok: false,
 			error:
-				'Le nom ne peut pas être vide : il est requis au schéma, et c’est lui ' +
-				'que le site affiche comme titre du produit.',
+				'Le titre ne peut pas être vide : garde la référence ou génère un titre.',
 		}
 	}
-
 	if (name.length > NAME_MAX) {
 		return {
 			ok: false,
-			error: `Le nom dépasse ${NAME_MAX} caractères (${name.length}).`,
+			error: `Le titre dépasse ${NAME_MAX} caractères (${name.length}).`,
 		}
 	}
 

@@ -1,7 +1,9 @@
 // frontend/modules/site/hooks/use-ai-product-title.ts
 //
-// Le renderer ne connaît ni la clé Gemini ni l'URL distante. Il parle à la
-// route Go locale, authentifiée, qui garde le secret dans le processus Wails.
+// Le renderer ne connaît ni la clé Gemini ni l'URL distante. Il parle aux
+// routes Go locales, authentifiées, qui gardent le secret dans Wails. La fiche
+// complète peut partir de documents OU de Google Search, jamais des deux dans
+// la même requête : c'est une garde de coût autant qu'une règle d'interface.
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation } from '@tanstack/react-query'
 
@@ -16,6 +18,33 @@ export type ProductTitleDraft = {
 
 export type GeneratedProductTitle = {
 	title: string
+	model: string
+}
+
+export type ProductSheetFile = {
+	name: string
+	mimeType: string
+	data: string
+}
+
+export type ProductSheetDraft = ProductTitleDraft & {
+	descriptionFormat: 'short' | 'detailed'
+	instructions?: string
+	sourceText?: string
+	files?: ProductSheetFile[]
+	webSearch: boolean
+}
+
+export type ProductSheetSource = {
+	title: string
+	url: string
+}
+
+export type GeneratedProductSheet = {
+	description: string
+	sources: ProductSheetSource[]
+	searchQueries: string[]
+	searchEntryPointHtml?: string
 	model: string
 }
 
@@ -47,6 +76,23 @@ export function useGenerateProductTitle() {
 					method: 'POST',
 					body: draft,
 				})) as GeneratedProductTitle
+			} catch (cause) {
+				throw generationError(cause)
+			}
+		},
+	})
+}
+
+export function useGenerateProductSheet() {
+	const pb = usePocketBase() as any
+
+	return useMutation<GeneratedProductSheet, Error, ProductSheetDraft>({
+		mutationFn: async (draft) => {
+			try {
+				return (await pb.send('/api/ai/product-sheet', {
+					method: 'POST',
+					body: draft,
+				})) as GeneratedProductSheet
 			} catch (cause) {
 				throw generationError(cause)
 			}

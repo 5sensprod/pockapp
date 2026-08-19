@@ -11,12 +11,10 @@
 // 12-contrat-catalogue.md) et ÉDITE les textes que le visiteur lira.
 //
 // ── L'ÉDITION, ET SA CONTRAINTE ─────────────────────────────────────────────
-// Tranchée le 12 août 2026 (docs/DECISIONS.md) : les textes s'écrivent
-// DIRECTEMENT dans `products`, `categories` et `brands`. Deux champs, et deux
-// seulement — le `name` du produit, qui fait office de titre de site puisque
-// `present_product` (server/api/catalog.php:134-141) retombe dessus quand
-// `site_title` est vide, et la `description` des trois entités. Ni prix, ni
-// stock, ni statut : ils appartiennent à AppStock.
+// Révisée le 19 août 2026 (docs/DECISIONS.md) : le `name` canonique du produit
+// se modifie manuellement ou avec son icône IA dédiée ; l'assistant de fiche ne
+// modifie que la `description`. Ni prix, ni stock, ni statut : ils appartiennent
+// à AppStock.
 //
 // ⚠️ CES SAISIES NE SURVIVENT PAS À `catalog-import -load`, qui purge les
 // collections (backend/catalog/load/loader.go:290). Ce n'est pas un défaut à

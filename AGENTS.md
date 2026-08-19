@@ -60,9 +60,11 @@ Six, et six seulement :
    en-tête `X-API-Key`. Contrat :
    `frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md`.
 6. **Gemini Developer API** — `backend/routes/gemini_routes.go` —
-   `generativelanguage.googleapis.com`, modèle `gemini-3.1-flash-lite`, pour
-   proposer un titre de produit. La clé `GEMINI_API_KEY` reste dans le Go et
-   part dans l'en-tête `x-goog-api-key`, jamais dans le renderer ni dans l'URL.
+   `generativelanguage.googleapis.com`. `gemini-3.1-flash-lite` propose les
+   titres et les fiches depuis documents ; `gemini-2.5-flash-lite` porte le
+   mode Google Search, disponible au niveau gratuit. Les sources web sont
+   rendues à l'utilisateur. La clé `GEMINI_API_KEY` reste dans le Go et part
+   dans l'en-tête `x-goog-api-key`, jamais dans le renderer ni dans l'URL.
 
 Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
 

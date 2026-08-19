@@ -4,10 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // `pnpm test`
 //
-// Ce qui est gardé ici : le refus d'un `name` vide. C'est la seule règle de
-// cette mission qui n'a aucun autre gardien côté application — PocketBase
-// refuserait aussi, mais avec un message d'API que l'utilisateur ne peut pas
-// relier au champ qu'il vient d'effacer.
+// Le titre possède sa logique propre ; la description ne le remplace jamais.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { describe, expect, it } from 'vitest'
@@ -19,21 +16,11 @@ import {
 } from './catalog-edit'
 
 describe('validateEditorial', () => {
-	it('refuse un nom vide', () => {
-		const result = validateEditorial({ name: '', description: 'x' })
-
-		expect(result.ok).toBe(false)
+	it('refuse un titre vide', () => {
+		expect(validateEditorial({ name: '   ', description: '' }).ok).toBe(false)
 	})
 
-	it('refuse un nom fait d’espaces', () => {
-		// Non vide au sens de PocketBase — le champ requis passerait — mais le
-		// site afficherait un titre blanc.
-		const result = validateEditorial({ name: '   ', description: '' })
-
-		expect(result.ok).toBe(false)
-	})
-
-	it('rogne le nom et la description', () => {
+	it('rogne le titre et la description', () => {
 		const result = validateEditorial({
 			name: '  Ukulélé soprano  ',
 			description: '  Un bel instrument.\n',
@@ -45,13 +32,13 @@ describe('validateEditorial', () => {
 		})
 	})
 
-	it('accepte une description vide, sans nom — cas catégorie et marque', () => {
+	it('accepte une description vide', () => {
 		const result = validateEditorial({ description: '   ' })
 
 		expect(result).toEqual({ ok: true, patch: { description: '' } })
 	})
 
-	it('refuse au-delà des longueurs du schéma', () => {
+	it('refuse au-delà de la longueur du schéma', () => {
 		expect(
 			validateEditorial({ name: 'a'.repeat(NAME_MAX + 1), description: '' }).ok,
 		).toBe(false)

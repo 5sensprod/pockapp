@@ -85,11 +85,9 @@ describe('toExportProduct', () => {
 	})
 
 	// ── L'ÉDITION DES TEXTES DU SITE PASSE PAR L'EMPREINTE ────────────────────
-	// Décision du 12 août 2026 : `name` et `description` s'éditent dans l'écran
-	// « Catalogue en ligne » et s'écrivent dans `products`. Rien d'autre n'a été
-	// ajouté à la chaîne d'export — c'est précisément ce que ces deux cas
-	// vérifient : les deux champs entrant dans l'empreinte, une retouche fait
-	// repasser le produit « modifié », donc il repart à l'export.
+	// `name` et `description` entrent tous deux dans l'empreinte d'export. Depuis
+	// le 19 août, seul `description` s'édite ici ; un changement de nom provenant
+	// de la source produit doit néanmoins continuer à faire repartir la fiche.
 	//
 	// Aucun autre gardien : ni le PHP, qui stocke l'empreinte sans la
 	// recalculer (§4.4 du contrat), ni le type, qui ne dit rien du contenu.
@@ -120,9 +118,8 @@ describe('toExportProduct', () => {
 
 	it('laisse site_title à null — le champ reste au contrat, non câblé', () => {
 		// `catalog.php` retombe sur `name` quand `site_title` est vide
-		// (`present_product`), et c'est ce qui fait arriver le nom corrigé sur le
-		// site sans une ligne de plus ici. Brancher `site_title` est une décision
-		// à part, pas un raccourci à prendre en passant.
+		// (`present_product`). Le même nom/référence canonique fait donc foi dans
+		// PocketBase et sur le site, sans titre parallèle.
 		const exported = toExportProduct(product({ name: 'Guitare' }), [], null)
 
 		expect(exported.site_title).toBeNull()

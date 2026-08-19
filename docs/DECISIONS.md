@@ -10,6 +10,119 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## La fiche IA ne touche pas au titre ; l'icône titre écrit le nom canonique — 2026-08-19
+
+**Les deux gestes IA sont séparés.** L'assistant de fiche n'écrit que la
+`description` et sa route Gemini ne demande ni ne renvoie de titre. Le champ
+« Titre / nom du produit » garde sa propre icône IA, branchée sur la route
+historique `product-title`. Seule cette icône, ou une saisie manuelle explicite
+dans le champ, peut modifier `products.name` au moment d'enregistrer.
+
+`site_title` reste envoyé à `null`. Le serveur du site retombe donc sur
+`products.name`, ce qui garantit le même nom dans PocketApp et sur le catalogue
+public. Le titre généré et validé devient ce nom canonique ; si l'utilisateur
+ne génère rien, la référence déjà présente reste inchangée. Le nom reste dans
+le contexte de la fiche uniquement pour identifier correctement le produit et
+cibler une éventuelle recherche Web.
+
+Cette décision révise la génération « titre et description » du 19 août, le
+schéma court qui contenait encore un titre, mais pas la logique dédiée du champ
+titre. Après une écriture réussie de `name`, le cache de la grille est mis à
+jour immédiatement puis invalidé : la carte montre le titre validé sans
+attendre le rechargement réseau.
+
+**Écarté — utiliser `site_title` pour conserver une proposition différente :**
+cela créerait précisément deux noms possibles pour le même produit, alors que
+la règle demandée est qu'une seule identité fasse foi.
+
+**Remise en cause si :** le métier demande explicitement un titre public
+distinct du nom/référence de caisse et définit quelle valeur est canonique.
+
+---
+
+## La longueur de fiche est un choix explicite — 2026-08-19 — partiellement révisée le 2026-08-19 par « La fiche IA ne touche pas au titre ; l'icône titre écrit le nom canonique »
+
+**Avant chaque génération, l'utilisateur choisit entre « Description courte »
+et « Fiche détaillée ».** Le format court vise les piles, vis et petits
+accessoires : deux ou trois phrases, sans section, liste, tableau ni conseil.
+Son schéma ne contient que le titre et l'introduction, avec 350 jetons de sortie
+maximum. La fiche détaillée conserve les points forts, caractéristiques et
+conseils, avec 1 400 jetons maximum.
+
+Le choix vaut aussi bien pour les documents que pour la recherche Web. Le Go
+impose le schéma court quand il est disponible et valide dans tous les cas le
+résultat avant de composer le HTML.
+
+**Écarté — déduire automatiquement le format de la catégorie :** une catégorie
+ne suffit pas à distinguer un accessoire complexe d'une pièce simple, et une
+mauvaise déduction gaspillerait précisément les jetons que le format court doit
+économiser.
+
+**Remise en cause si :** l'usage montre qu'un troisième format intermédiaire
+est réellement nécessaire.
+
+---
+
+## Le Web reste gratuit via Gemini 2.5 Flash-Lite — 2026-08-19
+
+**Le mode Google Search utilise `gemini-2.5-flash-lite`, tandis que le titre et
+les fiches fondées sur des documents restent sur `gemini-3.1-flash-lite`.** La
+tarification Google du 19 août 2026 rend Search indisponible au niveau gratuit
+de Gemini 3.1 Flash-Lite, alors que 2.5 Flash-Lite conserve 500 recherches par
+jour, partagées avec 2.5 Flash. C'est la cause observée d'un `429` sur la fiche
+Web alors que le titre 3.1 réussissait avec la même clé.
+
+Le mode Web 2.5 demande toujours un JSON strict, mais n'envoie pas le schéma de
+sortie ni `thinkingLevel`, combinaison propre aux modèles Gemini 3 dans ce
+flux. Le Go extrait et valide le JSON avant de composer le HTML ; aucune fiche
+mal formée n'atteint le formulaire. Cette décision révise uniquement la phrase
+« la sortie reste sur 3.1 » de la décision suivante ; la séparation documents
+ou Web et tous ses garde-fous restent valides.
+
+**Écarté — imposer l'activation de la facturation Google :** elle ferait
+fonctionner Search 3.1, mais transformerait une fonction annoncée comme
+utilisable avec le quota gratuit en réglage externe obligatoire.
+
+**Écarté — retomber silencieusement sur les connaissances internes de 3.1 :**
+l'utilisateur demande explicitement le Web et les sources. Une fiche sans
+recherche ne doit jamais se présenter comme recherchée.
+
+**Remise en cause si :** Google retire le quota Search de 2.5, déprécie ce
+modèle, ou active Search 3.1 au niveau gratuit.
+
+---
+
+## La fiche produit choisit une seule source : documents ou Web — 2026-08-19 — partiellement révisée le 2026-08-19 par « Le Web reste gratuit via Gemini 2.5 Flash-Lite » et « La fiche IA ne touche pas au titre ; l'icône titre écrit le nom canonique »
+
+**L'assistant éditorial peut générer ensemble le titre et la description depuis
+des documents fournis par l'utilisateur, ou depuis Google Search quand il n'en
+a aucun.** Les deux modes sont mutuellement exclusifs dans une requête. Le mode
+Web est un geste explicite, construit une recherche ciblée depuis la marque, la
+désignation, la référence et la catégorie, puis affiche les requêtes et les
+sources renvoyées par Gemini. Une proposition remplit le formulaire mais
+n'écrit rien avant la validation humaine existante.
+
+La sortie reste sur `gemini-3.1-flash-lite`, en JSON structuré et raisonnement
+minimal. La description HTML est composée et échappée par le Go depuis des
+champs structurés ; le modèle ne livre jamais du HTML arbitraire au catalogue.
+Les pièces jointes sont limitées à trois images ou PDF, 2 Mo chacune et 5 Mo au
+total ; le texte collé est limité à 12 000 caractères. Le reporting de jetons
+continue vers le mini-SaaS avec un libellé distinguant Web et documents.
+
+**Écarté — rechercher automatiquement dès qu'une information manque :** une
+recherche Gemini 3 est facturée par requête décidée par le modèle et rendrait la
+dépense invisible. Le choix Web reste donc visible et volontaire.
+
+**Écarté — envoyer documents et Web ensemble :** cela augmente le contexte et
+peut faire préférer une page web moins fiable à une documentation fournie. Si
+l'utilisateur possède une source, elle suffit ; sinon le Web prend le relais.
+
+**Remise en cause si :** les recherches réelles nécessitent régulièrement plus
+d'une requête ou si les fiches obtenues avec Flash-Lite demandent davantage de
+corrections humaines que celles d'un modèle supérieur.
+
+---
+
 ## Le titre produit passe au modèle économique Gemini 3.1 Flash-Lite — 2026-08-19
 
 **L'assistant du champ « Nom » utilise désormais `gemini-3.1-flash-lite`, la

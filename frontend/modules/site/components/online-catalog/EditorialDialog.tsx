@@ -1,7 +1,7 @@
 // frontend/modules/site/components/online-catalog/EditorialDialog.tsx
 //
-// L'éditeur des textes du site : le nom du produit — qui EST son titre sur le
-// site — et la description d'un produit, d'une catégorie ou d'une marque.
+// L'éditeur des textes du site. Pour un produit, le titre validé remplace
+// directement son `name` canonique : aucun second nom n'est créé.
 //
 // Un dialogue et non un champ en ligne dans la carte : une description peut
 // faire 20 000 caractères (catalog_v2.go), et la grille montre le catalogue
@@ -36,6 +36,7 @@ import {
 	isUnchanged,
 	validateEditorial,
 } from '../../lib/catalog-edit'
+import { ProductSheetAssistant } from './ProductSheetAssistant'
 
 /** Ce que l'écran passe à l'éditeur : le strict nécessaire, quel que soit le
  *  genre de l'entité. */
@@ -66,23 +67,25 @@ export function EditorialDialog({ target, onClose }: Props) {
 	const generateTitle = useGenerateProductTitle()
 	const [name, setName] = useState('')
 	const [description, setDescription] = useState('')
+	const [sheetPending, setSheetPending] = useState(false)
 
 	// Le formulaire se recharge à chaque cible : sans cela, ouvrir une seconde
 	// fiche montrerait le texte de la première.
 	useEffect(() => {
 		setName(target?.name ?? '')
 		setDescription(target?.description ?? '')
+		setSheetPending(false)
 	}, [target])
 
 	if (!target) return null
 
-	// Seul le produit voit son nom édité : celui d'une catégorie compose le menu
-	// publié, celui d'une marque n'a pas de page sur le site.
-	const editsName = target.kind === 'product'
+	const isProduct = target.kind === 'product'
 
 	const submit = () => {
 		const checked = validateEditorial({
-			name: editsName ? name : undefined,
+			// Une validation de description seule ne doit même pas renvoyer `name`
+			// à PocketBase. Il n'entre dans le patch que si le champ titre a changé.
+			name: isProduct && name.trim() !== target.name ? name : undefined,
 			description,
 		})
 
@@ -125,7 +128,9 @@ export function EditorialDialog({ target, onClose }: Props) {
 			{
 				onSuccess: ({ title }) => {
 					setName(title)
-					toast.success('Proposition insérée. Relis-la avant d’enregistrer.')
+					toast.success(
+						'Titre inséré comme nom officiel. Relis-le avant d’enregistrer.',
+					)
 				},
 				onError: (cause) => toast.error(cause.message),
 			},
@@ -134,7 +139,13 @@ export function EditorialDialog({ target, onClose }: Props) {
 
 	return (
 		<Dialog open onOpenChange={(open) => !open && onClose()}>
-			<DialogContent className='sm:max-w-2xl'>
+			<DialogContent
+				className={
+					isProduct
+						? 'h-[94vh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-6xl'
+						: 'max-h-[94vh] overflow-y-auto sm:max-w-2xl'
+				}
+			>
 				<DialogHeader>
 					<DialogTitle>Texte du site — {LIBELLE[target.kind]}</DialogTitle>
 					<DialogDescription>
@@ -144,92 +155,120 @@ export function EditorialDialog({ target, onClose }: Props) {
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className='space-y-4'>
-					{editsName ? (
-						<div className='space-y-1.5'>
-							<Label htmlFor='editorial-name'>
-								Nom — c’est le titre affiché sur le site
-							</Label>
-							<div className='flex gap-2'>
-								<Input
-									id='editorial-name'
-									value={name}
-									maxLength={NAME_MAX}
-									onChange={(e) => setName(e.target.value)}
-									placeholder='Ukulélé soprano acajou'
-								/>
-								<Button
-									type='button'
-									variant='outline'
-									size='icon'
-									onClick={suggestTitle}
-									disabled={generateTitle.isPending || update.isPending}
-									aria-label='Proposer un titre avec Gemini'
-									title='Proposer un titre avec Gemini'
-								>
-									{generateTitle.isPending ? (
-										<Loader2 className='animate-spin' />
-									) : (
-										<Sparkles />
-									)}
-								</Button>
+				<div
+					className={
+						isProduct
+							? 'grid min-h-0 gap-5 overflow-y-auto lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:overflow-hidden'
+							: 'space-y-4'
+					}
+				>
+					<div className='min-h-0 space-y-4 overflow-y-auto pr-1'>
+						{isProduct ? (
+							<div className='space-y-1.5'>
+								<Label htmlFor='editorial-name'>Titre / nom du produit</Label>
+								<div className='flex gap-2'>
+									<Input
+										id='editorial-name'
+										value={name}
+										maxLength={NAME_MAX}
+										onChange={(event) => setName(event.target.value)}
+										placeholder='Ukulélé soprano acajou'
+									/>
+									<Button
+										type='button'
+										variant='outline'
+										size='icon'
+										onClick={suggestTitle}
+										disabled={
+											generateTitle.isPending ||
+											update.isPending ||
+											sheetPending
+										}
+										aria-label='Proposer un titre avec Gemini'
+										title='Proposer un titre avec Gemini'
+									>
+										{generateTitle.isPending ? (
+											<Loader2 className='animate-spin' />
+										) : (
+											<Sparkles />
+										)}
+									</Button>
+								</div>
+								<p className='text-muted-foreground text-xs'>
+									Valeur unique : ce titre, ou la référence conservée, devient
+									le nom officiel dans PocketApp et sur le site.
+								</p>
 							</div>
-							{/* Beaucoup de produits ont pour nom leur référence — « ABGS14SH ».
-							    Le dire ici est la raison d'être de cet écran. */}
-							<p className='text-muted-foreground text-xs'>
-								À la bascule de la caisse vers PocketBase, ce nom deviendra
-								aussi le libellé du ticket.
-							</p>
-						</div>
-					) : (
-						<div className='space-y-1.5'>
-							<Label>Nom</Label>
-							<p className='rounded-md border bg-muted/40 px-3 py-2 text-sm'>
-								{target.name}
-							</p>
-							<p className='text-muted-foreground text-xs'>
-								Non modifiable ici : le nom d’une catégorie compose le menu
-								publié.
-							</p>
-						</div>
-					)}
+						) : (
+							<div className='space-y-1.5'>
+								<Label>Nom</Label>
+								<p className='rounded-md border bg-muted/40 px-3 py-2 text-sm'>
+									{target.name}
+								</p>
+								<p className='text-muted-foreground text-xs'>
+									Non modifiable ici : le nom d’une catégorie compose le menu
+									publié.
+								</p>
+							</div>
+						)}
 
-					<div className='space-y-1.5'>
-						<Label htmlFor='editorial-description'>Description</Label>
-						<Textarea
-							id='editorial-description'
-							value={description}
-							maxLength={DESCRIPTION_MAX}
-							rows={10}
-							onChange={(e) => setDescription(e.target.value)}
-							placeholder='Le texte lu par le visiteur sur la page.'
-						/>
-						<p className='text-right text-muted-foreground text-xs tabular-nums'>
-							{description.length} / {DESCRIPTION_MAX}
+						<div className='space-y-1.5'>
+							<Label htmlFor='editorial-description'>Description</Label>
+							<Textarea
+								id='editorial-description'
+								value={description}
+								maxLength={DESCRIPTION_MAX}
+								rows={10}
+								onChange={(e) => setDescription(e.target.value)}
+								placeholder='Le texte lu par le visiteur sur la page.'
+							/>
+							<p className='text-right text-muted-foreground text-xs tabular-nums'>
+								{description.length} / {DESCRIPTION_MAX}
+							</p>
+						</div>
+
+						{/* L'avertissement n'est pas décoratif : c'est la contrainte assumée
+					    au journal (2026-08-12), et la seule chose qui empêche une
+					    campagne éditoriale prématurée. */}
+						<p className='rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs'>
+							Un rechargement du catalogue (<code>catalog-import -load</code>)
+							efface ces saisies : il réécrit les collections depuis NeDB. Tant
+							que l’import n’est pas définitif, ce qui est écrit ici est un
+							essai.
 						</p>
 					</div>
 
-					{/* L'avertissement n'est pas décoratif : c'est la contrainte assumée
-					    au journal (2026-08-12), et la seule chose qui empêche une
-					    campagne éditoriale prématurée. */}
-					<p className='rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs'>
-						Un rechargement du catalogue (<code>catalog-import -load</code>)
-						efface ces saisies : il réécrit les collections depuis NeDB. Tant
-						que l’import n’est pas définitif, ce qui est écrit ici est un essai.
-					</p>
+					{isProduct && (
+						<ProductSheetAssistant
+							key={target.id}
+							product={target}
+							currentName={name}
+							currentDescription={description}
+							disabled={update.isPending || generateTitle.isPending}
+							onPendingChange={setSheetPending}
+							onApply={(generatedDescription) => {
+								setDescription(generatedDescription)
+								toast.success(
+									'La description est dans le formulaire. Le titre reste inchangé.',
+								)
+							}}
+						/>
+					)}
 				</div>
 
-				<DialogFooter>
+				<DialogFooter className='shrink-0 border-t pt-4'>
 					<Button
 						variant='outline'
 						onClick={onClose}
-						disabled={update.isPending}
+						disabled={update.isPending || sheetPending}
 					>
 						Annuler
 					</Button>
 					<Button
 						onClick={submit}
-						disabled={update.isPending || generateTitle.isPending}
+						disabled={
+							update.isPending || generateTitle.isPending || sheetPending
+						}
 					>
 						{update.isPending && (
 							<Loader2 className='mr-1.5 h-4 w-4 animate-spin' />

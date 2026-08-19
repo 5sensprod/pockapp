@@ -73,11 +73,13 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    menu : cette clé-là écrit dans la base de données du catalogue. Contrat :
    `frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md`.
 
-6. **Assistant de titre Gemini** — `backend/routes/gemini_routes.go` —
-   `https://generativelanguage.googleapis.com`, modèle stable
-   `gemini-3.1-flash-lite`. Le renderer appelle la route locale authentifiée
-   `/api/ai/product-title` ; la clé `GEMINI_API_KEY` reste dans le processus Go
-   et part dans l'en-tête `x-goog-api-key`, jamais dans le bundle ni dans l'URL.
+6. **Assistant éditorial Gemini** — `backend/routes/gemini_routes.go` —
+   `https://generativelanguage.googleapis.com`. Le titre et les documents
+   utilisent `gemini-3.1-flash-lite` ; Google Search utilise
+   `gemini-2.5-flash-lite`, dont le niveau gratuit accepte le grounding. Le
+   renderer appelle la route locale authentifiée et restitue les sources. La
+   clé `GEMINI_API_KEY` reste dans le processus Go et part dans l'en-tête
+   `x-goog-api-key`, jamais dans le bundle ni dans l'URL.
 
 ## Commandes
 

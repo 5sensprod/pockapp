@@ -2,9 +2,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // ÉCRITURE DES TEXTES DU SITE — la seule voie, et elle est nommée
 // ═══════════════════════════════════════════════════════════════════════════
-// Écrit `name` (produit) et `description` (produit, catégorie, marque) dans le
-// catalogue PocketBase. Rien d'autre : ni prix, ni stock, ni statut — ils
-// appartiennent à AppStock et feront l'objet d'une mission distincte.
+// Écrit le `name` canonique (produit) et `description` (les trois genres) dans
+// PocketBase. L'assistant de description ne change jamais `name` ; seule la
+// saisie du champ titre ou son icône IA peut le faire.
 //
 // Elle vit ICI, et non dans `frontend/lib/queries/site-catalog.ts`, qui déclare
 // en tête ne rien écrire : cette voie est propre à l'écran « Catalogue en
@@ -22,7 +22,7 @@
 // (docs/DECISIONS.md, 2026-08-12). L'écran le dit à l'utilisateur.
 //
 // L'invalidation porte sur la SEULE liste éditée : les empreintes se
-// recalculent depuis cette liste, et un produit dont le `name` a changé doit
+// recalculent depuis cette liste, et un titre ou une description modifié doit
 // repasser « modifié » sans qu'on ait à rafraîchir la page. Le décompte total
 // des produits n'est pas relancé : une retouche éditoriale ne peut pas le
 // changer, et invalider tout `['site-catalog']` annulait parfois sa requête.
@@ -55,9 +55,8 @@ export type EditorialWrite = {
  * différence tient au nom de la collection, et trois hooks jumeaux auraient
  * surtout triplé les occasions de diverger.
  *
- * `name` n'est envoyé que pour un produit. La garde n'est pas une politesse :
- * une catégorie ou une marque dont le nom changerait ici sortirait du périmètre
- * décidé, et le nom d'une catégorie est ce qui compose le menu publié.
+ * `name` n'est envoyé que pour un produit. Catégories et marques restent
+ * strictement limitées à leur description dans cet écran.
  */
 export function useUpdateCatalogEditorial() {
 	const pb = usePocketBase() as any
@@ -69,14 +68,18 @@ export function useUpdateCatalogEditorial() {
 			if (kind === 'product' && patch.name !== undefined) {
 				body.name = patch.name
 			}
-
 			await pb.collection(COLLECTION[kind]).update(id, body)
 		},
-		onSuccess: (_result, { kind }) => {
+		onSuccess: (_result, { kind, id, patch }) => {
 			const queryKey =
 				kind === 'product'
 					? ['site-catalog', 'products', 'published']
 					: ['site-catalog', COLLECTION[kind]]
+			queryClient.setQueryData<
+				Array<{ id: string; name: string; description?: string }>
+			>(queryKey, (current) =>
+				current?.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+			)
 			queryClient.invalidateQueries({ queryKey })
 		},
 	})

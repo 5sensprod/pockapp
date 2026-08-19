@@ -130,10 +130,9 @@ const nullable = (value: string | undefined): string | null =>
 	value && value.trim() !== '' ? value : null
 
 /**
- * `site_title` reste `null` tant que les retouches éditoriales n'ont pas de
- * support : le catalogue est une projection rechargée par purge, et un titre
- * saisi n'y survivrait pas. Le champ existe au contrat pour que le serveur
- * n'ait pas à changer le jour où elles arriveront.
+ * `site_title` reste délibérément `null` : le nom/référence canonique doit faire
+ * foi partout et `catalog.php` retombe sur `name`. Le champ reste au contrat
+ * pour ne pas imposer une migration au serveur si cette règle change un jour.
  */
 export function toExportProduct(
 	product: CatalogProduct,
