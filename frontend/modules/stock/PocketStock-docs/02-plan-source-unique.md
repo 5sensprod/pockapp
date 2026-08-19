@@ -143,7 +143,7 @@ donc le pont existe pour reprendre ce qui aurait divergé.
 | B | ~~`/stock/produits` prend l'UI d'AppStock~~ | **fait le 18 août 2026** — sept fichiers retirés, images servies par PocketBase (§6 sexies) | — |
 | C | ~~`useCatalogProductSearch` et les écrans de choix produit~~ | **fait le 19 août 2026** — sept écrans et non quatre, trois écarts de schéma corrigés au passage (§6 octies) | — |
 | D | ~~`adjustStock`, inventaire et reclassement~~ | **fait le 19 août 2026** — `stock-adjust.ts`, deux défauts corrigés en passant (§6 nonies) | — |
-| E | **La caisse** — lecture, création, décrément | dernier, comme décidé le 13 août | **le plus élevé du dépôt** |
+| E | ~~La caisse~~ | **fait le 19 août 2026** — lecture, création et décrément sur PocketBase ; trois gardes de jeton retirées (§6 decies) | — |
 | F | **Arrêt du rechargement par purge** | seulement après E | irréversible |
 
 **Ce qui n'est pas dans ce plan, et pourquoi :** la faille 3.1 — clés

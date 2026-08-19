@@ -13,14 +13,6 @@ import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/module-ui'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import {
-	// decrementAppPosProductsStock,
-	getAppPosToken,
-	loginToAppPos,
-	useAppPosProducts,
-	useAppPosStockUpdates,
-} from '@/lib/apppos'
-import { decrementStockFromCart } from '@/lib/apppos/stock-utils'
 import { releaseControl, takeControl, useDisplay } from '@/lib/pos/display'
 import { openReceiptPreviewWindow } from '@/lib/pos/posPreview'
 import { openCashDrawer, printReceipt } from '@/lib/pos/posPrint'
@@ -32,9 +24,14 @@ import {
 	useActiveCashSession,
 	useCashRegisters,
 } from '@/lib/queries/cash'
+import {
+	type CatalogProductShape,
+	useCatalogProductSearch,
+} from '@/lib/queries/catalog-products'
 import { type Company, getLogoUrl, useCompany } from '@/lib/queries/companies'
 import { fetchAsDataUrl } from '@/lib/queries/logoToDataUrl'
 import { cartItemToPosItem, useCreatePosTicket } from '@/lib/queries/pos'
+import { recordSale } from '@/lib/queries/stock-adjust'
 import { clearLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useAuth } from '@/modules/auth/AuthProvider'
@@ -43,12 +40,12 @@ import { CashModuleShell } from './CashModuleShell'
 
 import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
 import {
-	type AppPosProduct,
 	CartPanel,
 	PaymentDialog,
 	type PaymentEntry,
 	type PaymentMethod,
 	type PaymentStep,
+	type PosProduct,
 	ProductsPanel,
 	SuccessView,
 	getEffectiveUnitTtc,
@@ -102,9 +99,6 @@ export function CashTerminalPage() {
 	const [initialPaymentMethod, setInitialPaymentMethod] =
 		React.useState<PaymentMethod | null>(null)
 	const [isProcessing, setIsProcessing] = React.useState(false)
-	const [isAppPosConnected, setIsAppPosConnected] = React.useState(false)
-	const [isAppPosConnecting, setIsAppPosConnecting] = React.useState(true)
-	const [, setAppPosConnectionError] = React.useState<string | null>(null)
 	const [editingLineId, setEditingLineId] = React.useState<string | null>(null)
 	const [showCreateProductDialog, setShowCreateProductDialog] =
 		React.useState(false)
@@ -121,12 +115,31 @@ export function CashTerminalPage() {
 	const { data: activeSession, isLoading: isSessionLoading } =
 		useActiveCashSession(cashRegisterId)
 
-	const { data: productsData } = useAppPosProducts({
-		enabled: isAppPosConnected,
-		searchTerm: productSearch || undefined,
+	// Le catalogue vient de PocketBase depuis le 19 août 2026 (front E) : plus
+	// de connexion à attendre pour encaisser, et la recherche part au serveur —
+	// code-barres, référence ou nom, les trois sont interrogés.
+	const { items: catalogItems } = useCatalogProductSearch({
+		companyId: activeCompanyId ?? undefined,
+		term: productSearch,
 	})
-	useAppPosStockUpdates({ enabled: true, pb })
-	const products = (productsData?.items ?? []) as AppPosProduct[]
+
+	// L'image est résolue ICI, une fois : la grille et le panier reçoivent une
+	// URL, jamais un nom de fichier.
+	const products: PosProduct[] = React.useMemo(
+		() =>
+			catalogItems.map((p: CatalogProductShape) => ({
+				id: p.id,
+				name: p.name,
+				designation: p.designation ?? null,
+				sku: p.sku ?? null,
+				barcode: p.barcode ?? null,
+				price_ttc: p.price_ttc ?? null,
+				stock: p.stock ?? null,
+				tax_rate: p.tax_rate ?? null,
+				imageUrl: p.image ? pb.files.getUrl(p, p.image) : null,
+			})),
+		[catalogItems, pb],
+	)
 
 	const createPosTicket = useCreatePosTicket()
 	const currentRegister = registers?.find((r) => r.id === cashRegisterId)
@@ -259,45 +272,29 @@ export function CashTerminalPage() {
 		if (!productSearch) lastAutoAddRef.current = null
 	}, [productSearch])
 
-	React.useEffect(() => {
-		const connectToAppPos = async () => {
-			if (getAppPosToken()) {
-				setIsAppPosConnected(true)
-				setIsAppPosConnecting(false)
-				return
-			}
-			try {
-				setIsAppPosConnecting(true)
-				setAppPosConnectionError(null)
-				const response = await loginToAppPos('admin', 'admin123')
-				if (response.success && response.token) {
-					setIsAppPosConnected(true)
-				} else {
-					throw new Error('Login failed')
-				}
-			} catch (error) {
-				setAppPosConnectionError(
-					error instanceof Error
-						? error.message
-						: 'Impossible de se connecter à AppPOS',
-				)
-				setIsAppPosConnected(false)
-			} finally {
-				setIsAppPosConnecting(false)
-			}
-		}
-		connectToAppPos()
-	}, [])
-
 	const handleProductCreated = React.useCallback(
-		(product: any) => {
-			cartManager.addToCart(product)
+		(product: CatalogProductShape) => {
+			// Le produit sort de PocketBase : le panier attend une ligne déjà
+			// résolue, image comprise.
+			cartManager.addToCart({
+				id: product.id,
+				name: product.name,
+				designation: product.designation ?? null,
+				sku: product.sku ?? null,
+				barcode: product.barcode ?? null,
+				price_ttc: product.price_ttc ?? null,
+				stock: product.stock ?? null,
+				tax_rate: product.tax_rate ?? null,
+				imageUrl: product.image
+					? pb.files.getUrl(product, product.image)
+					: null,
+			})
 			toast.success(`${product.name} ajouté au panier`)
 			setTimeout(() => {
 				searchInputRef.current?.focus()
 			}, 100)
 		},
-		[cartManager],
+		[cartManager, pb],
 	)
 
 	const handleCreateProductClick = React.useCallback(() => {
@@ -522,27 +519,21 @@ export function CashTerminalPage() {
 
 				const ticket = result.ticket
 				const backendTotals = result.totals
-
-				if (isAppPosConnected && getAppPosToken()) {
-					try {
-						await decrementStockFromCart(
-							cartManager.cart.map((item) => ({
-								productId: item.productId,
-								productName: item.name ?? '', // à adapter selon la structure de CartItem
-								productSku: item.sku ?? '', // idem
-								quantity: item.quantity,
-							})),
-							{
-								pb,
-								sourceId: ticket.number, // ou ticket.id selon ce qui est disponible
-								operator: '', // à passer depuis le contexte auth si dispo
-							},
-						)
-					} catch (stockError) {
-						toast.warning(
-							'Vente enregistrée mais erreur de synchronisation du stock',
-						)
-					}
+				try {
+					await recordSale(
+						pb,
+						cartManager.cart.map((item) => ({
+							productId: item.productId,
+							productName: item.name ?? '',
+							productSku: item.sku ?? '',
+							quantity: item.quantity,
+						})),
+						{ sourceId: ticket.number },
+					)
+				} catch (stockError) {
+					toast.warning(
+						'Vente enregistrée mais erreur de synchronisation du stock',
+					)
 				}
 
 				if (printerSettings.enabled && printerSettings.printerName) {
@@ -591,7 +582,6 @@ export function CashTerminalPage() {
 			cashRegisterId,
 			clearAll,
 			createPosTicket,
-			isAppPosConnected,
 			paymentEntries,
 			pb,
 			totalTtc,
@@ -682,17 +672,12 @@ export function CashTerminalPage() {
 	// ── paymentStep === 'cart' — rendu principal ───────────────────────────────
 	const headerRight = (
 		<div className='flex items-center gap-2'>
+			{/* Le voyant annonçait la connexion à AppPos. Le catalogue est
+			    désormais local : il n'y a plus de lien réseau à surveiller pour
+			    encaisser, et un voyant toujours vert ne dirait rien. */}
 			<div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-				{isAppPosConnecting ? (
-					<Loader2 className='h-3 w-3 animate-spin' />
-				) : isAppPosConnected ? (
-					<span className='h-2 w-2 rounded-full bg-emerald-500 shrink-0' />
-				) : (
-					<span className='h-2 w-2 rounded-full bg-destructive shrink-0' />
-				)}
-				<span className='hidden tablet:inline'>
-					{isAppPosConnecting ? 'API...' : 'API'}
-				</span>
+				<span className='h-2 w-2 rounded-full bg-emerald-500 shrink-0' />
+				<span className='hidden tablet:inline'>Catalogue local</span>
 			</div>
 			<TerminalDrawerButton />
 		</div>
@@ -733,7 +718,6 @@ export function CashTerminalPage() {
 			productSearch={productSearch}
 			onProductSearchChange={setProductSearch}
 			searchInputRef={searchInputRef}
-			isAppPosConnected={isAppPosConnected}
 			products={products}
 			onAddToCart={(p) => {
 				cartManager.addToCart(p)

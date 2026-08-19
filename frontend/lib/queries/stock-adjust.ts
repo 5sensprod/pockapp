@@ -8,11 +8,10 @@
 // (`updateAppPosProductStock`, `incrementAppPosProductsStock`,
 // `decrementAppPosProductsStock`). Ce fichier les rassemble.
 //
-// ── CE QUI EST BRANCHÉ, ET CE QUI NE L'EST PAS ────────────────────────────
-// Branchés le 19 août 2026 : l'INVENTAIRE et le RECLASSEMENT.
-// Pas encore : la VENTE — caisse, facture, devis —, qui reste sur AppPos
-// jusqu'au front E. C'est l'ordre décidé : la couche se prouve sur deux
-// appelants avant de toucher au maillon le moins négociable.
+// ── CE QUI EST BRANCHÉ ────────────────────────────────────────────────────
+// Les QUATRE motifs, depuis le 19 août 2026 : l'inventaire et le reclassement
+// (front D), puis la VENTE — caisse, facture, conversion de devis (front E).
+// `lib/apppos/stock-utils.ts`, qui portait la vente, est supprimé.
 //
 // ── LE PONT ENTRE LES DEUX BASES ──────────────────────────────────────────
 // Les appelants tiennent des identifiants NeDB — une entrée d'inventaire, une
@@ -23,8 +22,10 @@
 // ── CE QUE CETTE COUCHE NE FAIT PAS ───────────────────────────────────────
 // Elle n'écrit PAS dans AppPos, et n'a pas à le faire : « on n'écrit jamais
 // dans AppPos » (`CLAUDE.md`), et « pas de double écriture » (DECISIONS,
-// 2026-08-13). Tant que la caisse vend sur NeDB, les deux stocks divergent —
-// c'est accepté, daté, et ça se referme au front E.
+// 2026-08-13). **Le stock d'AppPos ne bouge donc plus depuis PocketApp** : il
+// reste à la valeur qu'il avait, et seul AppPos lui-même le fait encore vivre.
+// C'est la contrepartie assumée de la bascule ; elle prend fin quand AppPos
+// sort, à la prochaine release.
 
 import { createProductEvent } from '@/lib/product-events/product-events-pocketbase'
 import type PocketBase from 'pocketbase'
@@ -157,14 +158,12 @@ export async function applyStockMovements(
 		}
 
 		try {
-			const produit = await pb
-				.collection('products')
-				.getFirstListItem<{
-					id: string
-					name: string
-					sku?: string
-					stock?: number
-				}>(productFilter(movement.productId), { fields: 'id,name,sku,stock' })
+			const produit = await pb.collection('products').getFirstListItem<{
+				id: string
+				name: string
+				sku?: string
+				stock?: number
+			}>(productFilter(movement.productId), { fields: 'id,name,sku,stock' })
 
 			const avant = produit.stock ?? 0
 			const apres = nextStock(avant, movement)
@@ -244,4 +243,85 @@ export async function setCountedStock(
 		{ ...options, reason: 'inventory' },
 	)
 	return resultat
+}
+
+/** Une ligne vendue, telle que la tiennent le panier de caisse et les documents
+ *  commerciaux. Les deux formats de quantité coexistaient dans les appelants —
+ *  `quantity` en caisse, `quantitySold` dans les factures : la couche accepte
+ *  les deux plutôt que d'aller les renommer dans six fichiers. */
+export interface SoldLine {
+	productId: string
+	productName?: string
+	productSku?: string
+	quantity?: number
+	quantitySold?: number
+}
+
+/**
+ * La vente : caisse, facture validée, conversion de devis.
+ *
+ * NON BLOQUANTE, et c'est délibéré — c'était déjà la règle avec AppPos. Une
+ * erreur de stock ne doit jamais empêcher un encaissement : le ticket est déjà
+ * enregistré quand on arrive ici, et refuser après coup laisserait un client
+ * payé sans vente. Les échecs sont rendus à l'appelant, qui décide quoi en dire.
+ */
+export async function recordSale(
+	pb: PocketBase,
+	lines: SoldLine[],
+	options: Omit<StockAdjustOptions, 'reason'> = {},
+): Promise<StockAdjustResult[]> {
+	const mouvements: StockMovement[] = lines
+		.map((line) => ({
+			productId: line.productId,
+			quantite: line.quantitySold ?? line.quantity ?? 0,
+			productName: line.productName,
+			productSku: line.productSku,
+		}))
+		// Une ligne libre — sans produit — ou à quantité nulle ne bouge aucun
+		// stock. Les documents en portent : elles étaient déjà écartées avant.
+		.filter((l) => l.productId && l.quantite > 0)
+		.map(({ quantite, ...reste }) => ({
+			...reste,
+			delta: -quantite,
+			metadata: { quantity_sold: quantite },
+		}))
+
+	if (mouvements.length === 0) return []
+
+	try {
+		return await applyStockMovements(pb, mouvements, {
+			...options,
+			reason: 'sale',
+		})
+	} catch (error) {
+		// Le filet de sécurité du filet de sécurité : `applyStockMovements` rend
+		// déjà ses erreurs ligne par ligne, mais rien de ce qui touche à la vente
+		// ne doit pouvoir remonter en exception.
+		console.error('[vente] mouvement de stock refusé', error)
+		return []
+	}
+}
+
+/** Les lignes d'un document commercial, ramenées à ce qui bouge du stock.
+ *  Structurel à dessein : la couche n'a pas à connaître le type facture. */
+export function toSoldLines(
+	items: Array<{
+		product_id?: string | null
+		name?: string | null
+		quantity?: number | null
+	}>,
+): SoldLine[] {
+	return items
+		.filter(
+			(item): item is { product_id: string; name?: string; quantity: number } =>
+				typeof item.product_id === 'string' &&
+				!!item.product_id &&
+				typeof item.quantity === 'number' &&
+				item.quantity > 0,
+		)
+		.map((item) => ({
+			productId: item.product_id,
+			productName: item.name ?? '',
+			quantity: item.quantity,
+		}))
 }

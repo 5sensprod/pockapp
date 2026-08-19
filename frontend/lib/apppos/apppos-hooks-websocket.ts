@@ -361,7 +361,7 @@ export interface UseAppPosProductUpdatesOptions {
 	 * Instance PocketBase — si fournie, les modifications UI AppPOS (source undefined)
 	 * sont automatiquement journalisées dans product_events.
 	 * Ventes (source='sale') et retours (source='return') sont exclus car déjà
-	 * tracés par stock-utils.ts.
+	 * tracés par `lib/queries/stock-adjust.ts`.
 	 */
 	pb?: PocketBase
 
@@ -540,7 +540,7 @@ export function useAppPosProductUpdates(
 
 				// ── Journalisation product_events ──────────────────────────────────────
 				// Uniquement pour les modifs UI AppPOS (source === undefined).
-				// Ventes (sale) et retours (return) sont déjà tracés par stock-utils.ts.
+				// Ventes (sale) et retours (return) sont déjà tracés par `lib/queries/stock-adjust.ts`.
 				if (pb && source === undefined && productBefore) {
 					void journalizeAppPosUpdate(pb, productId, productBefore, patch)
 				}

@@ -8,16 +8,14 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
 import type * as React from 'react'
-import type { AppPosProduct } from '../types/cart'
-import { getImageUrl } from '../utils/imageUtils'
+import type { PosProduct } from '../types/cart'
 
 interface ProductsPanelProps {
 	productSearch: string
 	onProductSearchChange: (v: string) => void
 	searchInputRef: React.RefObject<HTMLInputElement>
-	isAppPosConnected: boolean
-	products: AppPosProduct[]
-	onAddToCart: (p: AppPosProduct) => void
+	products: PosProduct[]
+	onAddToCart: (p: PosProduct) => void
 	onCreateProductClick: () => void
 }
 
@@ -25,43 +23,36 @@ export function ProductsPanel({
 	productSearch,
 	onProductSearchChange,
 	searchInputRef,
-	isAppPosConnected,
 	products,
 	onAddToCart,
 	onCreateProductClick,
 }: ProductsPanelProps) {
 	const empty = (
 		<div className='flex h-full flex-col items-center justify-center gap-4 px-4 py-6'>
-			{isAppPosConnected ? (
-				productSearch.length > 0 ? (
-					<>
-						<div className='text-center'>
-							<div className='mb-2 text-sm font-medium text-foreground'>
-								Aucun produit trouvé
-							</div>
-							<div className='text-xs text-muted-foreground'>
-								Recherche : "{productSearch}"
-							</div>
+			{productSearch.length > 0 ? (
+				<>
+					<div className='text-center'>
+						<div className='mb-2 text-sm font-medium text-foreground'>
+							Aucun produit trouvé
 						</div>
-						<Button
-							type='button'
-							variant='outline'
-							size='sm'
-							onClick={onCreateProductClick}
-							className='gap-2'
-						>
-							<span className='text-lg'>+</span>
-							Créer ce produit
-						</Button>
-					</>
-				) : (
-					<div className='text-center text-xs text-muted-foreground'>
-						Scannez un code-barres ou recherchez un produit
+						<div className='text-xs text-muted-foreground'>
+							Recherche : "{productSearch}"
+						</div>
 					</div>
-				)
+					<Button
+						type='button'
+						variant='outline'
+						size='sm'
+						onClick={onCreateProductClick}
+						className='gap-2'
+					>
+						<span className='text-lg'>+</span>
+						Créer ce produit
+					</Button>
+				</>
 			) : (
 				<div className='text-center text-xs text-muted-foreground'>
-					Connexion à AppPOS en cours ou échouée
+					Scannez un code-barres ou recherchez un produit
 				</div>
 			)}
 		</div>
@@ -103,7 +94,7 @@ export function ProductsPanel({
 					{products.length === 0
 						? empty
 						: products.slice(0, 50).map((p) => {
-								const imageUrl = getImageUrl(p.images)
+								const imageUrl = p.imageUrl
 								return (
 									<button
 										key={p.id}
@@ -135,9 +126,9 @@ export function ProductsPanel({
 											{(p.price_ttc ?? 0).toFixed(2)} €
 										</div>
 										<div
-											className={`w-24 text-right text-xs shrink-0 ${(p.stock_quantity ?? 0) <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}
+											className={`w-24 text-right text-xs shrink-0 ${(p.stock ?? 0) <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}
 										>
-											{p.stock_quantity ?? '?'} en stock
+											{p.stock ?? '?'} en stock
 										</div>
 									</button>
 								)
@@ -152,8 +143,8 @@ export function ProductsPanel({
 				) : (
 					<div className='grid grid-pos-products tablet:grid-cols-4 gap-3'>
 						{products.slice(0, 10).map((p) => {
-							const imageUrl = getImageUrl(p.images)
-							const outOfStock = (p.stock_quantity ?? 0) <= 0
+							const imageUrl = p.imageUrl
+							const outOfStock = (p.stock ?? 0) <= 0
 							return (
 								<button
 									key={p.id}
@@ -191,7 +182,7 @@ export function ProductsPanel({
 											<span
 												className={`text-[10px] font-medium ${outOfStock ? 'text-destructive' : 'text-emerald-600'}`}
 											>
-												{outOfStock ? '0 stock' : `${p.stock_quantity} stock`}
+												{outOfStock ? '0 stock' : `${p.stock} stock`}
 											</span>
 										</div>
 									</div>

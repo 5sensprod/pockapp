@@ -27,15 +27,22 @@ export interface VatBreakdown {
 	total_ttc: number
 }
 
-export type AppPosProduct = {
+/** Le produit tel que la caisse l'affiche et le met au panier.
+ *  Structurel, et il ne nomme plus aucune base : il s'appelait
+ *  `AppPosProduct` jusqu'au 19 août 2026, et portait `images` — un chemin que
+ *  seul AppServe savait servir — et `price_ht`, qui n'existe plus au schéma.
+ *  L'URL de l'image arrive RÉSOLUE, par `pb.files.getUrl`. */
+export type PosProduct = {
 	id: string
 	name: string
 	designation?: string | null
 	sku?: string | null
 	barcode?: string | null
 	price_ttc?: number | null
-	price_ht?: number | null
-	stock_quantity?: number | null
-	images?: string
-	tva_rate?: number
+	stock?: number | null
+	/** Prête à poser dans un `<img src>`, ou `null`. */
+	imageUrl?: string | null
+	/** Taux de TVA du schéma `catalog_v2`. Le nom `tva_rate` était celui du
+	 *  transformateur AppPos. */
+	tax_rate?: number | null
 }

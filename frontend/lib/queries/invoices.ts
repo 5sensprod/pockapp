@@ -3,7 +3,7 @@
 // 🔢 Le numéro est maintenant généré automatiquement par le backend
 // ✅ FIX: Ajout des champs optionnels pour les tickets POS
 // ✅ AJOUT: Support vat_breakdown pour ventilation TVA multi-taux
-import { decrementStockFromItems } from '@/lib/apppos/stock-utils'
+import { recordSale, toSoldLines } from '@/lib/queries/stock-adjust'
 import type {
 	InvoiceCreateDto,
 	InvoiceItem as InvoiceItemType,
@@ -427,7 +427,9 @@ export function useCreateInvoice() {
 				!invoiceData.original_invoice_id &&
 				invoiceData.items?.length
 			) {
-				await decrementStockFromItems(invoiceData.items)
+				await recordSale(pb, toSoldLines(invoiceData.items), {
+					sourceId: result.id,
+				})
 			}
 
 			return result as unknown as InvoiceResponse
@@ -517,7 +519,9 @@ export function useValidateInvoice() {
 				!existing.original_invoice_id &&
 				existing.items?.length
 			) {
-				await decrementStockFromItems(existing.items)
+				await recordSale(pb, toSoldLines(existing.items), {
+					sourceId: invoiceId,
+				})
 			}
 
 			return result as unknown as InvoiceResponse

@@ -1,5 +1,11 @@
-// frontend/components/cash/CreateProductDialog.tsx
-// Dialogue de création rapide de produit depuis le terminal de caisse
+// frontend/modules/cash/CreateProductDialog.tsx
+// Dialogue de création rapide de produit depuis le terminal de caisse.
+//
+// ⚠️ C'ÉTAIT LE POINT DUR DE LA MIGRATION. Ce dialogue créait ses produits dans
+// NeDB, si bien que PocketBase était en retard PAR CONSTRUCTION : 53 produits y
+// manquaient au 18 août 2026, tous nés en caisse depuis le dernier import.
+// Depuis le 19 août 2026 il écrit dans PocketBase, comme tout le reste. C'est
+// ce qui rend possible l'arrêt du rechargement par purge (front F).
 
 import { Button } from '@/components/ui/button'
 import {
@@ -19,8 +25,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import { useCreateAppPosProduct } from '@/lib/apppos'
-import type { CreateAppPosProductInput } from '@/lib/apppos'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { useCreateCatalogProduct } from '@/lib/queries/catalog-products'
+import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { Loader2, Package } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
@@ -37,29 +44,32 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 	const { open, onOpenChange, initialBarcode, initialName, onProductCreated } =
 		props
 
-	const [formData, setFormData] = React.useState<CreateAppPosProductInput>({
+	type QuickProductForm = {
+		name: string
+		price_ttc: number
+		tax_rate: number
+		barcode: string
+		sku: string
+		designation: string
+		description: string
+		stock: number
+		min_stock: number
+	}
+
+	const [formData, setFormData] = React.useState<QuickProductForm>({
 		name: '',
 		price_ttc: 0,
-		tva_rate: 20,
+		tax_rate: 20,
 		barcode: initialBarcode || '',
 		sku: '',
-		designation: '', // 🆕 Ajout de la désignation
+		designation: '',
 		description: '',
-		stock_quantity: 0,
-		stock_min: 0,
+		stock: 0,
+		min_stock: 0,
 	})
 
-	const createProduct = useCreateAppPosProduct({
-		onSuccess: (product) => {
-			toast.success('Produit créé avec succès !')
-			onProductCreated?.(product)
-			onOpenChange(false)
-			resetForm()
-		},
-		onError: (error) => {
-			toast.error(`Erreur : ${error.message}`)
-		},
-	})
+	const { activeCompanyId } = useActiveCompany()
+	const createProduct = useCreateCatalogProduct()
 
 	// Réinitialiser le formulaire avec le nouveau barcode ou nom quand il change
 	React.useEffect(() => {
@@ -76,21 +86,20 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 		setFormData({
 			name: initialName || '',
 			price_ttc: 0,
-			tva_rate: 20,
+			tax_rate: 20,
 			barcode: initialBarcode || '',
 			sku: '',
-			designation: '', // 🆕
+			designation: '',
 			description: '',
-			stock_quantity: 0,
-			stock_min: 0,
+			stock: 0,
+			min_stock: 0,
 		})
 	}, [initialBarcode, initialName])
 
 	const handleSubmit = React.useCallback(
-		(e: React.FormEvent) => {
+		async (e: React.FormEvent) => {
 			e.preventDefault()
 
-			// Validation
 			if (!formData.name.trim()) {
 				toast.error('Le nom du produit est obligatoire')
 				return
@@ -101,13 +110,42 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 				return
 			}
 
-			createProduct.mutate(formData)
+			if (!activeCompanyId) {
+				toast.error('Aucune entreprise active')
+				return
+			}
+
+			try {
+				// `status: 'published'` — sans quoi le produit tout juste créé serait
+				// invisible du sélecteur de la caisse, qui écarte les brouillons.
+				// `legacy_id` est posé par la couche, pas ici.
+				const product = await createProduct.mutateAsync({
+					...formData,
+					company: activeCompanyId,
+					status: 'published',
+					type: 'simple',
+					manage_stock: true,
+				})
+				toast.success('Produit créé avec succès !')
+				onProductCreated?.(product)
+				onOpenChange(false)
+				resetForm()
+			} catch (error) {
+				toast.error(`Enregistrement refusé : ${pocketbaseErrorMessage(error)}`)
+			}
 		},
-		[formData, createProduct],
+		[
+			formData,
+			createProduct,
+			activeCompanyId,
+			onProductCreated,
+			onOpenChange,
+			resetForm,
+		],
 	)
 
 	const handleFieldChange = React.useCallback(
-		(field: keyof CreateAppPosProductInput, value: string | number) => {
+		(field: keyof QuickProductForm, value: string | number) => {
 			setFormData((prev) => ({
 				...prev,
 				[field]: value,
@@ -217,16 +255,16 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 						</div>
 
 						<div className='space-y-2'>
-							<Label htmlFor='tva_rate' className='text-sm font-semibold'>
+							<Label htmlFor='tax_rate' className='text-sm font-semibold'>
 								TVA
 							</Label>
 							<Select
-								value={String(formData.tva_rate)}
+								value={String(formData.tax_rate)}
 								onValueChange={(v) =>
-									handleFieldChange('tva_rate', Number.parseInt(v))
+									handleFieldChange('tax_rate', Number.parseInt(v))
 								}
 							>
-								<SelectTrigger id='tva_rate' className='h-11'>
+								<SelectTrigger id='tax_rate' className='h-11'>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -247,7 +285,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 								{formData.price_ttc > 0
 									? (
 											formData.price_ttc /
-											(1 + (formData.tva_rate || 20) / 100)
+											(1 + (formData.tax_rate || 20) / 100)
 										).toFixed(2)
 									: '0.00'}{' '}
 								€

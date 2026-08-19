@@ -9,7 +9,9 @@ import {
 	looksLikePocketBaseId,
 	nextStock,
 	productFilter,
+	recordSale,
 	setCountedStock,
+	toSoldLines,
 } from './stock-adjust'
 
 // Un PocketBase de comptoir : il tient les produits en mémoire et note ce qu'on
@@ -214,5 +216,77 @@ describe('setCountedStock', () => {
 			source: 'inventory_session',
 			source_id: 'session-3',
 		})
+	})
+})
+
+describe('recordSale', () => {
+	it('décrémente, et accepte les deux noms de quantité', async () => {
+		// `quantity` en caisse, `quantitySold` dans les factures : les deux
+		// formats existaient dans les appelants, la couche les prend tels quels
+		// plutôt que d'aller les renommer dans six fichiers.
+		const { pb, updates } = fakePb([
+			{ id: 'a', stock: 10 },
+			{ id: 'b', stock: 4 },
+		])
+
+		await recordSale(pb, [
+			{ productId: 'a', quantity: 3 },
+			{ productId: 'b', quantitySold: 1 },
+		])
+
+		expect(updates).toEqual([
+			{ id: 'a', data: { stock: 7 } },
+			{ id: 'b', data: { stock: 3 } },
+		])
+	})
+
+	it('ignore les lignes libres et les quantités nulles', async () => {
+		// Un document porte des lignes sans produit — une remise, un forfait.
+		const { pb, updates } = fakePb([{ id: 'a', stock: 10 }])
+		await recordSale(pb, [
+			{ productId: '', quantity: 2 },
+			{ productId: 'a', quantity: 0 },
+		])
+		expect(updates).toHaveLength(0)
+	})
+
+	it('journalise la vente avec sa quantité', async () => {
+		const { pb, journal } = fakePb([{ id: 'a', stock: 10 }])
+		await recordSale(pb, [{ productId: 'a', quantity: 2 }], {
+			sourceId: 'ticket-1',
+		})
+		expect(journal[0]).toMatchObject({
+			event_type: 'stock_sale',
+			source: 'sale',
+			source_id: 'ticket-1',
+			delta: { stock: -2 },
+			metadata: { quantity_sold: 2 },
+		})
+	})
+
+	it('ne lève jamais : un encaissement ne se refuse pas après coup', async () => {
+		// Le ticket est déjà enregistré quand on arrive ici. Refuser laisserait
+		// un client payé sans vente.
+		const pb = {
+			collection: () => {
+				throw new Error('base injoignable')
+			},
+		} as any
+		const resultats = await recordSale(pb, [{ productId: 'a', quantity: 1 }])
+		expect(resultats).toHaveLength(1)
+		expect(resultats[0].applied).toBe(false)
+		expect(resultats[0].error).toBeTruthy()
+	})
+})
+
+describe('toSoldLines', () => {
+	it('ne garde que les lignes qui portent un produit et une quantité', () => {
+		expect(
+			toSoldLines([
+				{ product_id: 'a', name: 'Ampli', quantity: 2 },
+				{ product_id: null, name: 'Remise', quantity: 1 },
+				{ product_id: 'b', name: 'Cable', quantity: 0 },
+			]),
+		).toEqual([{ productId: 'a', productName: 'Ampli', quantity: 2 }])
 	})
 })

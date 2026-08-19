@@ -171,13 +171,17 @@ en écriture, sous `/stock/produits`, `/stock/marques`, `/stock/categories`,
 sont faits : un seul écran catalogue, images comprises. Un test garde la règle
 « une seule provenance » (`frontend/modules/stock/single-source.test.ts`).
 
-**Ce qui parle encore à AppPos, et c'est la suite** : la caisse
-(`modules/cash/`), les quatre écrans de choix produit de PocketConnect,
-l'inventaire (`InventoryPageAppPos.tsx`, `lib/inventory/useInventorySession.ts`)
-et le reclassement de stock. Le plan et son ordre :
-[`02-plan-source-unique.md`](frontend/modules/stock/PocketStock-docs/02-plan-source-unique.md).
-**53 produits existent dans NeDB et pas dans PocketBase** (mesuré le
-2026-08-18) : la caisse en crée là-bas, c'est le point dur.
+**Au 19 août 2026, PocketApp n'écrit plus jamais dans AppPos**, et sa caisse
+n'en dépend plus : catalogue, création de produit, vente, inventaire et
+reclassement passent tous par PocketBase (fronts A à E du plan,
+[`02-plan-source-unique.md`](frontend/modules/stock/PocketStock-docs/02-plan-source-unique.md)).
+Les mouvements de stock ont un chemin unique,
+`frontend/lib/queries/stock-adjust.ts`.
+
+**Ce qui reste** : l'inventaire physique (`InventoryPageAppPos.tsx`,
+`lib/inventory/useInventorySession.ts`) LIT encore son catalogue dans AppPos —
+il n'y écrit plus —, et le front F reste à faire : arrêter le rechargement par
+purge, ce qui fera de PocketBase une base et non plus une projection.
 
 **AppPos sort de la logique à la prochaine release** (`docs/DECISIONS.md`,
 2026-08-13) : l'écriture dans PocketBase est ouverte, la caisse et l'inventaire

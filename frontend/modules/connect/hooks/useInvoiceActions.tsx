@@ -7,7 +7,6 @@
 // Pattern identique à useTicketActions — utilisable dans InvoiceDetailPage.
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { getAppPosToken } from '@/lib/apppos'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import { useCreateBalanceInvoice } from '@/lib/queries/deposits'
 import {
@@ -294,7 +293,7 @@ export function useInvoiceActions(
 				quantity: it.quantitySold,
 			}))
 
-			if (stockItems.length > 0 && getAppPosToken()) {
+			if (stockItems.length > 0) {
 				setStockItemsToReclassify(stockItems)
 				setStockDocumentNumber(invoice.number)
 				setStockReclassifyOpen(true)

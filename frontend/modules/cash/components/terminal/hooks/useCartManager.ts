@@ -5,9 +5,8 @@ import {
 } from '@/lib/stores/appCashStore'
 // frontend/modules/cash/components/terminal/hooks/useCartManager.ts
 import * as React from 'react'
-import type { AppPosProduct, CartItem, LineDiscountMode } from '../types/cart'
+import type { CartItem, LineDiscountMode, PosProduct } from '../types/cart'
 import { clamp } from '../utils/calculations'
-import { getImageUrl } from '../utils/imageUtils'
 
 export interface ParkedCart {
 	id: string
@@ -43,10 +42,11 @@ export function useCartManager(registerId: string) {
 	)
 
 	const addToCart = React.useCallback(
-		(product: AppPosProduct) => {
-			const price = product.price_ttc || product.price_ht || 0
-			const imageUrl = getImageUrl(product.images)
-			const tvaRate = product.tva_rate ?? 20
+		(product: PosProduct) => {
+			// `price_ht` a disparu du schéma : le prix de vente est TTC.
+			const price = product.price_ttc || 0
+			const imageUrl = product.imageUrl
+			const tvaRate = product.tax_rate ?? 20
 
 			setCart((prev) => {
 				const existingIndex = prev.findIndex(

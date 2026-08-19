@@ -10,6 +10,40 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## La caisse écrit dans PocketBase — 2026-08-19
+
+**Le catalogue, les produits créés au comptoir et le stock vendu vivent dans
+PocketBase.** AppPos n'est plus écrit par PocketApp, nulle part.
+
+C'est l'aboutissement de « AppPos sort de la logique à la prochaine release »
+(2026-08-13) et la fermeture du point dur nommé le même jour : tant que la
+caisse créait ses produits dans NeDB, PocketBase était en retard **par
+construction**.
+
+**Écarté — une bascule progressive, la caisse écrivant dans les deux :** c'est
+la double écriture, refusée le 13 août. Une écriture double sans transaction
+produit deux bases qui divergent au premier échec partiel.
+
+**Écarté — garder la garde `getAppPosToken()` sur les mouvements de stock :**
+elle ne protégeait plus rien depuis que le stock est local, et empêchait la
+marchandise retournée de rentrer en stock quand AppPos ne tournait pas.
+
+**Conséquences assumées, et datées :**
+
+- **le stock d'AppPos ne bouge plus depuis PocketApp.** Si AppPos continue
+  d'être utilisé en parallèle, ses chiffres et les nôtres divergent ;
+- **le canal WebSocket d'AppPos n'est plus écouté par la caisse** : un
+  mouvement fait dans AppPos n'est plus vu ici ;
+- **lecture puis écriture sans transaction** (`stock-adjust.ts`) : deux postes
+  vendant en même temps peuvent s'écraser. À reprendre par un hook serveur si
+  un second poste apparaît.
+
+**Remise en cause si :** un client doit faire tourner AppPos et PocketApp
+ensemble durablement — auquel cas ce n'est plus une migration mais une
+synchronisation, et c'est une autre décision.
+
+---
+
 ## La fiche IA ne touche pas au titre ; l'icône titre écrit le nom canonique — 2026-08-19
 
 **Les deux gestes IA sont séparés.** L'assistant de fiche n'écrit que la

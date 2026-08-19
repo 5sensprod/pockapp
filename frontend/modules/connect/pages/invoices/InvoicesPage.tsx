@@ -11,8 +11,6 @@ import {
 } from '@/components/ui/dialog'
 // import { navigationActions } from '@/lib/stores/navigationStore'
 
-import { getAppPosToken } from '@/lib/apppos'
-
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,7 +36,6 @@ import {
 } from '@/lib/queries/closures'
 
 import { PeriodSelector } from '@/components/PeriodSelector'
-import { decrementStockFromCart } from '@/lib/apppos/stock-utils'
 import { usePeriodFilter } from '@/lib/hooks/usePeriodFilter'
 import { useCreateDeposit } from '@/lib/queries/deposits'
 import {
@@ -52,6 +49,7 @@ import {
 	useValidateInvoice,
 } from '@/lib/queries/invoices'
 import { usePaymentMethods } from '@/lib/queries/payment-methods'
+import { recordSale } from '@/lib/queries/stock-adjust'
 import type { InvoiceResponse, InvoiceStatus } from '@/lib/types/invoice.types'
 import { isOverdue } from '@/lib/types/invoice.types'
 import { canCreateDeposit } from '@/lib/types/invoice.types'
@@ -402,20 +400,27 @@ export function InvoicesPage() {
 		setPaymentDialogOpen(false)
 		setSelectedMethodId('')
 
-		if (getAppPosToken() && invoiceToPay.items?.length) {
+		if (invoiceToPay.items?.length) {
 			const stockItems = buildStockItemsFromInvoice(invoiceToPay.items)
 			if (stockItems.length > 0) {
 				try {
-					await decrementStockFromCart(stockItems, {
-						pb,
+					const resultats = await recordSale(pb, stockItems, {
 						sourceId: invoiceToPay.id,
-						operator: '',
 					})
-					toast.success('Stock synchronisé', {
-						description: `${stockItems.length} produit(s) mis à jour dans AppPOS`,
-					})
+					// Un produit introuvable ne doit pas passer pour un succès : la
+					// facture est payée, la marchandise est sortie, et le stock non.
+					const echecs = resultats.filter((r) => r.error)
+					if (echecs.length > 0) {
+						toast.warning(
+							`Stock : ${echecs.length} produit(s) introuvable(s) en base`,
+						)
+					} else {
+						toast.success('Stock mis à jour', {
+							description: `${resultats.length} produit(s)`,
+						})
+					}
 				} catch (err) {
-					console.error('❌ Erreur synchro stock AppPOS:', err)
+					console.error('❌ Erreur mouvement de stock:', err)
 					toast.warning(
 						'Paiement enregistré mais erreur de synchronisation du stock',
 					)
@@ -457,7 +462,7 @@ export function InvoicesPage() {
 			setInvoiceToCancel(null)
 			await refetchInvoices()
 
-			if (stockItems.length > 0 && getAppPosToken()) {
+			if (stockItems.length > 0) {
 				setStockItemsToReclassify(stockItems)
 				setStockDocumentNumber(invoiceToCancel.number)
 				setStockReclassifyOpen(true)

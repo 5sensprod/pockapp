@@ -119,10 +119,53 @@ describe('les mouvements de stock ont un seul chemin', () => {
 		expect(imports(source)).not.toMatch(/@\/lib\/apppos/)
 	})
 
-	it('la vente reste sur AppPos, et le dit', () => {
-		// Front E. Tant que c'est vrai, les deux stocks divergent : le constat
-		// doit rester visible dans le fichier qui le porte.
-		const source = lire('lib/apppos/stock-utils.ts')
-		expect(source).toMatch(/decrementAppPosProductsStock/)
+	it('la caisse ne parle plus à AppPos du tout', () => {
+		// Front E : lecture du catalogue, création de produit et décrément de
+		// vente. Le module `cash` n'a plus aucune raison d'importer AppPos.
+		for (const fichier of [
+			'modules/cash/CashTerminalPage.tsx',
+			'modules/cash/CreateProductDialog.tsx',
+			'modules/cash/components/terminal/hooks/useCartManager.ts',
+			'modules/cash/components/terminal/products/ProductsPanel.tsx',
+			'modules/cash/components/terminal/types/cart.ts',
+		]) {
+			expect(imports(lire(fichier)), fichier).not.toMatch(/@\/lib\/apppos/)
+		}
+	})
+
+	it('la caisse crée ses produits dans PocketBase — le point dur', () => {
+		// C'est ce qui rendait PocketBase en retard par construction : 53
+		// produits y manquaient au 18 août 2026, tous nés en caisse.
+		const source = lire('modules/cash/CreateProductDialog.tsx')
+		expect(source).toMatch(/useCreateCatalogProduct/)
+		expect(source).not.toMatch(/useCreateAppPosProduct/)
+	})
+
+	it("aucun mouvement de stock n'est conditionné à un jeton AppPos", () => {
+		// La garde `getAppPosToken()` empêchait le reclassement d'un retour de
+		// s'ouvrir quand AppPos ne tournait pas — donc la marchandise revenue de
+		// rentrer en stock, alors que le stock est local depuis le front D.
+		for (const fichier of [
+			'modules/connect/components/InvoicePaymentDialog.tsx',
+			'modules/connect/hooks/useInvoiceActions.tsx',
+			'modules/connect/pages/invoices/InvoicesPage.tsx',
+		]) {
+			expect(lire(fichier), fichier).not.toMatch(/getAppPosToken/)
+		}
+	})
+
+	it('la vente aussi, et son ancien chemin a disparu', () => {
+		// Front E, 19 août 2026. `lib/apppos/stock-utils.ts` portait le décrément
+		// de vente ; il est supprimé, et rien ne doit le faire revenir.
+		expect(() => lire('lib/apppos/stock-utils.ts')).toThrow()
+		for (const fichier of [
+			'modules/cash/CashTerminalPage.tsx',
+			'modules/connect/components/InvoicePaymentDialog.tsx',
+			'modules/connect/pages/invoices/InvoicesPage.tsx',
+			'lib/queries/invoices.ts',
+			'lib/queries/quotes.ts',
+		]) {
+			expect(lire(fichier), fichier).toMatch(/recordSale/)
+		}
 	})
 })

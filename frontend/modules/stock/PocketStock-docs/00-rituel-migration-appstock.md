@@ -823,6 +823,75 @@ vérifié : l'écran** — à regarder, un comptage avec écart dans une session
 d'inventaire, et un retour reclassé en « remis en stock », puis le stock du
 produit sous `/stock/produits`.
 
+## 6 decies. Front E — la caisse, 19 août 2026
+
+**Le maillon le moins négociable est passé sur PocketBase**, dans ses trois
+dimensions : elle LIT le catalogue local, elle CRÉE ses produits ici, et sa
+vente décrémente ici.
+
+### Ce qui a changé
+
+| | Avant | Après |
+|---|---|---|
+| catalogue de la caisse | `useAppPosProducts`, 3000 produits chargés, filtre en mémoire | `useCatalogProductSearch`, recherche au serveur |
+| connexion préalable | `loginToAppPos('admin', 'admin123')`, voyant « API » | **aucune** — la base est locale |
+| création de produit | `useCreateAppPosProduct` → **NeDB** | `useCreateCatalogProduct` → PocketBase |
+| décrément de vente | `decrementStockFromCart` → AppPos | `recordSale` → PocketBase |
+| images de la grille | `getAppPosImageUrl` | `pb.files.getUrl`, résolue une fois |
+
+**`lib/apppos/stock-utils.ts` est supprimé** — il portait les deux fonctions de
+vente et leur journalisation. `recordSale` et `toSoldLines` les remplacent dans
+`stock-adjust.ts`, avec les cinq appelants : caisse, paiement de facture, liste
+des factures, création de facture validée, conversion de devis.
+**`components/terminal/utils/imageUtils.ts`** part aussi : la grille reçoit une
+URL, elle n'en construit plus.
+
+**`AppPosProduct` devient `PosProduct`** (`components/terminal/types/cart.ts`) :
+il ne nomme plus aucune base, `images` (chemin AppServe) devient `imageUrl`
+résolue, `price_ht` disparaît — il n'existe plus au schéma —, `tva_rate` devient
+`tax_rate`, et `stock_quantity` devient `stock`.
+
+### Le point dur est refermé
+
+**La caisse ne crée plus de produits dans NeDB.** C'est ce qui rendait
+PocketBase en retard *par construction* — 53 produits y manquaient au 18 août
+2026, tous nés en caisse depuis l'import. Un produit créé au comptoir naît
+désormais dans PocketBase, publié (sans quoi le sélecteur de la caisse, qui
+écarte les brouillons, ne le retrouverait pas dans la seconde qui suit) et doté
+de sa clé stable par la couche.
+
+**Ce qui rend possible le front F** : le rechargement par purge peut cesser, et
+avec lui le caractère provisoire de toute saisie.
+
+### Un défaut trouvé en basculant
+
+**Trois gardes `getAppPosToken()` conditionnaient un mouvement de stock à la
+présence d'AppPos** — `InvoicePaymentDialog.tsx:172`,
+`useInvoiceActions.tsx:297`, `InvoicesPage.tsx:467`. Depuis le front D, le
+reclassement d'un retour écrit dans PocketBase : la garde n'empêchait plus une
+double écriture, elle empêchait **la marchandise revenue de rentrer en stock**
+quand AppPos ne tournait pas. Retirées.
+
+### Ce qui disparaît de l'écran, volontairement
+
+Le voyant « API » du bandeau de caisse et le message « Connexion à AppPOS en
+cours ou échouée » du panneau produits : il n'y a plus de lien réseau à
+surveiller pour encaisser. Le bandeau dit désormais « Catalogue local ».
+
+**Le canal WebSocket `useAppPosStockUpdates` n'est plus branché dans la
+caisse.** Il recevait les changements de stock faits *dans* AppPos pour
+rafraîchir les caches. Tant qu'AppPos vit encore en parallèle, ses propres
+mouvements ne sont donc plus vus ici — c'est la conséquence directe de « une
+seule source », et elle cesse d'exister quand AppPos sort.
+
+**Vérifié :** `npx tsc -b` silencieux, `pnpm test` vert (135 cas, dont 8 neufs
+sur la vente), Biome passé, les fichiers se transforment dans Vite. **NON
+VÉRIFIÉ : l'écran, et c'est ici que ça compte le plus.** À faire avant
+d'encaisser pour de vrai : scanner un code-barres connu, encaisser, et
+contrôler le stock du produit sous `/stock/produits` ; créer un produit depuis
+un code-barres inconnu et vérifier qu'il arrive au panier ; enfin annuler une
+facture pour voir s'ouvrir le reclassement de retour.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
@@ -846,9 +915,13 @@ cherchent dans PocketBase.
 **Front D fait** (§6 nonies) : l'inventaire et le reclassement écrivent leur
 stock dans PocketBase, par un chemin unique.
 
-**La prochaine session** : front E — la caisse. Lecture, création de produit et
-décrément de vente. C'est le maillon le moins négociable du dépôt, et c'est lui
-qui referme la divergence des stocks. Le point dur du §6 reste
+**Front E fait** (§6 decies) : la caisse lit, crée et décrémente dans
+PocketBase. Le point dur du §6 est refermé.
+
+**La prochaine session** : front F — arrêter le rechargement par purge, ce qui
+fait de PocketBase une base et non plus une projection. Et l'inventaire
+(`InventoryPageAppPos.tsx`) lit encore son catalogue dans AppPos : c'est le
+dernier écran, il ne bouge plus de stock mais il en lit. Le point dur du §6 reste
 entier, et il est maintenant chiffré : **53 produits** existent dans NeDB et pas
 dans PocketBase, parce que la caisse crée toujours ses produits là-bas
 (`modules/cash/CreateProductDialog.tsx`).

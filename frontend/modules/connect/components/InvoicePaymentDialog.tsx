@@ -16,14 +16,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { getAppPosToken } from '@/lib/apppos/apppos-api'
-import { decrementStockFromCart } from '@/lib/apppos/stock-utils'
 import { openCashDrawer } from '@/lib/pos/posPrint'
 import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
 import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
 import { useHasAnyOpenCashSession } from '@/lib/queries/cash'
 import { useCreateDeposit } from '@/lib/queries/deposits'
 import { useRecordPayment } from '@/lib/queries/invoices'
+import { recordSale } from '@/lib/queries/stock-adjust'
 import { canCreateDeposit } from '@/lib/types/invoice.types'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
@@ -169,7 +168,7 @@ export function InvoicePaymentDialog({
 			})
 
 			// ── Décrément stock AppPOS + journalisation product_events ────────
-			if (getAppPosToken() && invoice.items?.length) {
+			if (invoice.items?.length) {
 				const stockItems = invoice.items
 					.filter((it: any) => !!it?.product_id)
 					.map((it: any) => ({
@@ -179,13 +178,9 @@ export function InvoicePaymentDialog({
 					}))
 				if (stockItems.length > 0) {
 					try {
-						await decrementStockFromCart(stockItems, {
-							pb,
-							sourceId: invoice.id,
-							operator: '',
-						})
+						await recordSale(pb, stockItems, { sourceId: invoice.id })
 					} catch (err) {
-						console.error('❌ Erreur synchro stock AppPOS:', err)
+						console.error('❌ Erreur mouvement de stock:', err)
 					}
 				}
 			}

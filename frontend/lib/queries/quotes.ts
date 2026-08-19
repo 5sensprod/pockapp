@@ -1,9 +1,9 @@
 // frontend/lib/queries/quotes.ts
 // 🔢 Le numéro de devis est maintenant généré automatiquement par le backend
 
-import { decrementStockFromItems } from '@/lib/apppos/stock-utils'
 // ✅ IMPORT: On récupère le type de ventilation TVA défini dans invoices
 import type { VatBreakdownItem } from '@/lib/queries/invoices'
+import { recordSale, toSoldLines } from '@/lib/queries/stock-adjust'
 import type {
 	QuoteCreateDto,
 	QuoteResponse,
@@ -257,10 +257,8 @@ export function useConvertQuoteToInvoice() {
 
 			// ✅ Décrémenter le stock — facture créée directement en validated
 			if (quote.items?.length) {
-				await decrementStockFromItems(quote.items, {
-					pb,
+				await recordSale(pb, toSoldLines(quote.items), {
 					sourceId: invoice.id,
-					operator: '', // pas d'opérateur identifié ici
 				})
 			}
 
