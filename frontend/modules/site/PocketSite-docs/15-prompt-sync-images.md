@@ -26,10 +26,13 @@ mutualisé, versionné ici, **déposé par FTP à la main** — lis
    galerie : un champ `image` scalaire (`.schema brands`, `.schema categories`).
    C'est la même chaîne de bout en bout, sans le problème de la liste ordonnée.
    Les produits viennent après, une fois la mécanique validée en ligne.
-3. **La structure de dossiers distante reproduit la structure locale.** Une
-   fois la mécanique validée, on doit pouvoir déverser le reste par copie de
-   dossiers, sans transformation. C'est le critère qui départage les
-   conceptions.
+3. **L'arborescence distante est rangée par `legacy_id`**, pas par
+   l'identifiant PocketBase (`docs/DECISIONS.md`, 2026-08-19). Le déversement
+   en masse se fait donc par une copie **renommante** —
+   `storage/<collectionId>/<recordId>/` vers `<entité>/<legacy_id>/` —, pas par
+   un copier-coller brut. L'intention de départ était l'inverse ; elle a été
+   écartée parce qu'elle ferait dépendre 1,7 Go de fichiers d'une clé que le
+   rechargement par purge régénère.
 4. **Il faut un envoi manuel, entité par entité**, déclenché depuis
    l'interface, pour **mesurer la vitesse réelle** avant tout envoi en masse.
    Ce n'est pas un mode dégradé, c'est le premier livrable.
@@ -56,18 +59,18 @@ Trois faits à ne pas manquer :
   contrat est plafonné à **200 entités et 1 Mio** (§6) : une seule image de
   catégorie le dépasse. Les octets ne peuvent pas voyager dans le lot
   d'entités.
-- **Les dossiers de stockage sont nommés par l'identifiant PocketBase**, pas
-  par `legacy_id` :
+- **Les dossiers de stockage locaux sont nommés par l'identifiant PocketBase** :
   `storage/<collectionId>/<recordId>/<nom_suffixé>.<ext>` — par exemple
-  `f32dzjil2t50m5x/09399kf06jnjbx5/…_PiDxAYvQfC.jpg`. Or le contrat pose que
-  **`legacy_id` est la clé, jamais l'identifiant PocketBase** (§1). La
-  décision 3 (« même structure ») et le contrat (§1) se contredisent donc au
-  premier pas. **C'est le point à trancher en premier, et à écrire.**
-  Éléments : la purge qui régénérait les identifiants est désormais refusée
-  (`backend/catalog/load/guard.go`), donc l'argument d'instabilité s'est
-  affaibli — il n'a pas disparu.
+  `f32dzjil2t50m5x/09399kf06jnjbx5/…_PiDxAYvQfC.jpg`. C'est la source de la
+  copie renommante de la décision 3.
   Collections : `brands=f32dzjil2t50m5x`, `categories=odvn2lqe02m6pn6`,
   `products=71wy9ngwa1b87sk`.
+  **`legacy_id` est non vide partout** — mesuré sur les quatre collections, 0
+  manquant. Les entités nées ici reçoivent une clé `pa_…` posée par la couche
+  d'accès (`catalog-products.ts:321`, `categories.ts:160`, `brands.ts:91`), pas
+  par l'écran. **Mais aucun test ne le garde** : `legacy-key.test.ts` couvre le
+  générateur, pas ses appelants. C'est la règle dont dépend le nommage des
+  dossiers — écris ce test.
 
 ## Phase 1 — l'écrit, avant le code
 
@@ -77,7 +80,6 @@ le premier octet.
 
 À trancher, au minimum :
 
-- **l'arborescence distante** (le point ci-dessus) ;
 - **qu'est-ce qui identifie une image ?** PocketBase suffixe chaque fichier à
   l'enregistrement (`…_PiDxAYvQfC.jpg`) : réimporter la même photo donne un
   autre nom. Le nom, un hachage du contenu, ou le couple (entité, rang) ?

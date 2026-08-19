@@ -10,6 +10,70 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Les images en ligne se rangent par `legacy_id`, pas par l'identifiant PocketBase — 2026-08-19
+
+Décision du propriétaire, en préparant la mise en ligne des images.
+
+**L'arborescence distante des images est nommée par `legacy_id`** — la clé
+stable de l'entité —, et non par l'identifiant de l'enregistrement PocketBase,
+alors même que le stockage local, lui, est rangé par identifiant PocketBase :
+`storage/<collectionId>/<recordId>/<nom_suffixé>.<ext>`. Le déversement en
+masse se fera donc par une copie **renommante**, pas par un copier-coller brut.
+
+C'est l'application du §1 du contrat d'export
+(`frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md`) à un objet
+qu'il ne couvrait pas encore.
+
+**Ce qui a emporté la décision, et c'est une mesure, pas un principe :** la
+collection `product_events` est le seul endroit du dépôt où un référentiel de
+clés a déjà bougé sous des données déjà écrites. Sur 2792 événements, **2710 se
+résolvent par `legacy_id`, 5 par l'identifiant PocketBase, et 77 par aucun des
+deux**. `legacy_id` est donc la seule clé dont on ait la preuve empirique
+qu'elle traverse un changement de base — elle a survécu à la migration
+NeDB → PocketBase.
+
+Couverture vérifiée le jour de la décision : **aucune entité sans clé**, sur
+les quatre collections (2999 produits, 288 marques, 464 catégories, 43
+fournisseurs). Les entités nées ici reçoivent une clé `pa_…` posée par la
+couche d'accès et jamais par l'écran — `catalog-products.ts:321`,
+`categories.ts:160`, `brands.ts:91`.
+
+**Écarté — reproduire à l'identique l'arborescence locale, pour pouvoir
+copier-coller les dossiers sans transformation.** C'était l'intention de
+départ, et elle avait sa force : la mise en ligne du reste du catalogue devait
+coûter une commande. Elle est abandonnée parce qu'elle ferait dépendre 1,7 Go
+de fichiers d'une clé régénérée par le rechargement par purge. Le refus de
+purge (`backend/catalog/load/guard.go`) atténue le risque mais ne le supprime
+pas : `-force-purge` existe. Le coût réel de l'abandon est faible — la copie
+renomme au lieu de copier, elle reste une commande.
+
+**Écarté — convertir `product_events.product_id` vers les identifiants
+PocketBase par un script.** Cela aurait troqué la clé qui a survécu contre celle
+qui ne survit pas, rendu les 77 orphelins indiagnosticables — les deux
+référentiels se distinguent aujourd'hui à la longueur, 16 caractères pour NeDB
+et 15 pour PocketBase — et réécrit un journal qui se déclare append-only
+(`frontend/lib/product-events/product-events-pocketbase.ts:3`). Le gain aurait
+été nul : la résolution coûte un `||` sur deux colonnes indexées
+(`backend/routes/stock_routes.go:131`).
+
+**Conséquence à traiter, et elle est ouverte :** le journal dérive **en ce
+moment** vers l'identifiant PocketBase. `stock-adjust.ts:220` journalise
+`ligne.record_id`, l'identifiant que la route Go renvoie ; les 5 lignes en
+référentiel PocketBase datent toutes du 19 août, et chaque vente en ajoute.
+Arrêter la dérive — faire renvoyer `legacy_id` par la route et journaliser
+celui-là — n'est pas fait.
+
+**Manque connu :** aucun test ne vérifie que les trois `create` posent bien la
+clé. `legacy-key.test.ts` couvre le générateur, pas ses appelants. C'est
+pourtant la règle dont dépend le nommage des dossiers distants.
+
+**Remise en cause si :** `legacy_id` cesse d'être garanti non vide à la
+création — pour les fournisseurs, c'est déjà le cas, `suppliers.ts:21` exclut
+volontairement le champ du type d'écriture, sans conséquence tant que les
+fournisseurs ne sont pas au contrat d'export.
+
+---
+
 ## L'image principale se désigne, elle ne s'écrase pas — 2026-08-19
 
 Décision du propriétaire, en ouvrant la session « galerie ».
