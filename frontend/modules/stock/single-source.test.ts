@@ -98,3 +98,31 @@ describe('le choix produit des documents vient de PocketBase', () => {
 		expect(source).not.toMatch(/loginToAppPos/)
 	})
 })
+
+describe('les mouvements de stock ont un seul chemin', () => {
+	// Front D, 19 août 2026. L'inventaire et le reclassement écrivaient dans
+	// AppPos par deux routes distinctes ; ils passent par `stock-adjust.ts`.
+	it("l'inventaire n'écrit plus dans AppPos", () => {
+		const source = lire('lib/inventory/useInventorySession.ts')
+		expect(source).not.toMatch(/updateAppPosProductStock/)
+		expect(source).toMatch(/setCountedStock/)
+	})
+
+	it('le reclassement de retour non plus', () => {
+		const source = lire('modules/common/StockReclassificationDialog.tsx')
+		expect(source).not.toMatch(/incrementAppPosProductsStock/)
+		expect(imports(source)).not.toMatch(/@\/lib\/apppos/)
+	})
+
+	it("la couche de mouvement n'écrit jamais dans AppPos", () => {
+		const source = lire('lib/queries/stock-adjust.ts')
+		expect(imports(source)).not.toMatch(/@\/lib\/apppos/)
+	})
+
+	it('la vente reste sur AppPos, et le dit', () => {
+		// Front E. Tant que c'est vrai, les deux stocks divergent : le constat
+		// doit rester visible dans le fichier qui le porte.
+		const source = lire('lib/apppos/stock-utils.ts')
+		expect(source).toMatch(/decrementAppPosProductsStock/)
+	})
+})

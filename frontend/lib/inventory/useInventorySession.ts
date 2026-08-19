@@ -1,13 +1,14 @@
 // frontend/lib/inventory/useInventorySession.ts
 // Hook principal qui orchestre la session d'inventaire
-// Combine PocketBase (persistance) + AppPOS (snapshot + ajustements)
+// Combine PocketBase (persistance ET ajustements) + AppPOS (snapshot).
+//
+// L'AJUSTEMENT DE STOCK VA DANS POCKETBASE depuis le 19 août 2026, par
+// `setCountedStock` (`lib/queries/stock-adjust.ts`) — un seul chemin pour les
+// quatre motifs. AppPos n'est plus écrit ici ; il ne sert plus qu'à lire le
+// catalogue au démarrage de la session, ce que le front E retirera à son tour.
 
-import {
-	getAppPosCategories,
-	getAppPosProducts,
-	updateAppPosProductStock,
-} from '@/lib/apppos/apppos-api'
-import { createInventoryAdjustmentEvent } from '@/lib/product-events/product-events-pocketbase'
+import { getAppPosCategories, getAppPosProducts } from '@/lib/apppos/apppos-api'
+import { setCountedStock } from '@/lib/queries/stock-adjust'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { usePocketBase } from '../use-pocketbase'
@@ -216,8 +217,6 @@ export function useInventorySession(sessionId: string | undefined) {
 	}, [entries, sessionId])
 
 	// ── countProduct ──────────────────────────────────────────────────────────
-	// On passe un onAdjusted callback à countAndAdjustProduct pour journaliser
-	// chaque ajustement dans product_events (best-effort, ne bloque pas le comptage).
 	const countProduct = useMutation({
 		mutationFn: ({
 			entry,
@@ -228,19 +227,20 @@ export function useInventorySession(sessionId: string | undefined) {
 			stockCompte: number
 			operator?: string
 		}) =>
-			countAndAdjustProduct(
-				pb,
-				entry,
-				stockCompte,
-				updateAppPosProductStock,
-				// onAdjusted : appelé seulement si écart ET ajustement AppPOS réussi
-				async (params) => {
-					await createInventoryAdjustmentEvent(pb, {
-						...params,
-						sessionLabel: null, // label non disponible dans entry, ignoré ici
-						operator,
-					})
-				},
+			countAndAdjustProduct(pb, entry, stockCompte, (productId, stock) =>
+				// Un seul chemin, un seul journal : `setCountedStock` écrit le stock
+				// ET l'événement. Le rappel d'avant journalisait à côté de
+				// l'ajustement, si bien que la trace et le mouvement pouvaient se
+				// contredire quand l'un des deux ratait.
+				setCountedStock(pb, productId, stock, {
+					sourceId: entry.session_id,
+					operator,
+					metadata: {
+						session_id: entry.session_id,
+						entry_id: entry.id,
+						adjusted_at: new Date().toISOString(),
+					},
+				}),
 			),
 		onSuccess: () => {
 			queryClient.invalidateQueries({

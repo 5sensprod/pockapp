@@ -319,37 +319,22 @@ export async function countInventoryProduct(
 // ============================================================================
 
 /**
- * Callback appelé après un ajustement AppPOS réussi.
- * Permet à l'appelant de journaliser dans product_events sans coupler ce
- * fichier à la couche product-events.
- */
-export type OnAdjustedCallback = (params: {
-	productId: string
-	productName: string
-	productSku: string
-	stockBefore: number
-	stockAfter: number
-	entryId: string
-	sessionId: string
-	adjustedAt: string
-}) => Promise<void>
-
-/**
- * Compte un produit ET applique immédiatement l'ajustement AppPOS si écart.
+ * Compte un produit ET applique immédiatement l'ajustement si écart.
  * Appelé dès que l'opérateur valide la quantité (onBlur / Enter).
  *
  * - Si stock_compte === stock_theorique : marqué counted, adjusted reste false.
- * - Si écart : PUT AppPOS + adjusted: true + onAdjusted() (best-effort).
+ * - Si écart : ajustement + adjusted: true.
  *
- * Le paramètre onAdjusted est optionnel — rétrocompatible avec les appelants
- * existants qui ne passent que 4 arguments.
+ * `applyStock` est injecté : ce fichier ne sait pas où va le stock, et c'est
+ * ainsi que la destination a pu passer d'AppPos à PocketBase le 19 août 2026
+ * en changeant une seule ligne, au point d'appel. Il journalise lui-même —
+ * le rappel `onAdjusted` qui doublait cette écriture a été retiré.
  */
 export async function countAndAdjustProduct(
 	pb: PocketBase,
 	entry: InventoryEntry,
 	stockCompte: number,
-	updateAppPosStock: (productId: string, stock: number) => Promise<unknown>,
-	onAdjusted?: OnAdjustedCallback,
+	applyStock: (productId: string, stock: number) => Promise<unknown>,
 ): Promise<{ entry: InventoryEntry; adjusted: boolean; error?: string }> {
 	if (stockCompte < 0)
 		throw new Error('Le stock compté ne peut pas être négatif')
@@ -371,10 +356,11 @@ export async function countAndAdjustProduct(
 			{ $autoCancel: false },
 		)
 
-	// 2. Si écart → ajuster AppPOS immédiatement
+	// 2. Si écart → ajuster le stock immédiatement (et journaliser, côté
+	//    `applyStock`)
 	if (hasGap) {
 		try {
-			await updateAppPosStock(entry.product_id, stockCompte)
+			await applyStock(entry.product_id, stockCompte)
 
 			const adjustedAt = new Date().toISOString()
 
@@ -386,34 +372,13 @@ export async function countAndAdjustProduct(
 					{ $autoCancel: false },
 				)
 
-			// 3. Journalisation product_events — best-effort, ne bloque pas le comptage
-			if (onAdjusted) {
-				try {
-					await onAdjusted({
-						productId: entry.product_id,
-						productName: entry.product_name,
-						productSku: entry.product_sku,
-						stockBefore: entry.stock_theorique,
-						stockAfter: stockCompte,
-						entryId: entry.id,
-						sessionId: entry.session_id,
-						adjustedAt,
-					})
-				} catch (journalErr: any) {
-					console.warn(
-						'[countAndAdjustProduct] Erreur journalisation product_events:',
-						journalErr?.message ?? journalErr,
-					)
-				}
-			}
-
 			return { entry: adjustedEntry, adjusted: true }
 		} catch (err: any) {
-			// L'ajustement AppPOS a échoué — on retourne l'entrée comptée sans adjusted
+			// L'ajustement a échoué — on rend l'entrée comptée, sans `adjusted`
 			return {
 				entry: updated,
 				adjusted: false,
-				error: err?.message ?? 'Erreur ajustement AppPOS',
+				error: err?.message ?? 'Erreur ajustement du stock',
 			}
 		}
 	}

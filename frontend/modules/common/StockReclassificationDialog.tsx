@@ -27,11 +27,11 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 
-import {
-	type StockReturnDestination,
-	incrementAppPosProductsStock,
-} from '@/lib/apppos'
 import { createProductEvent } from '@/lib/product-events/product-events-pocketbase'
+import {
+	type ReturnDestination as StockReturnDestination,
+	applyStockMovements,
+} from '@/lib/queries/stock-adjust'
 import { usePocketBase } from '@/lib/use-pocketbase'
 
 // ============================================================================
@@ -39,7 +39,8 @@ import { usePocketBase } from '@/lib/use-pocketbase'
 // ============================================================================
 
 export interface StockReclassificationItem {
-	/** _id du produit dans AppPOS */
+	/** Identifiant du produit — clé PocketBase ou clé stable NeDB, résolue par
+	 *  `applyStockMovements`. */
 	product_id: string
 	name: string
 	quantity: number
@@ -53,7 +54,7 @@ interface ItemChoice {
 export interface StockReclassificationDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
-	/** Items remboursés ayant un product_id AppPOS */
+	/** Items remboursés portant un identifiant de produit */
 	items: StockReclassificationItem[]
 	/** Numéro du ticket ou de la facture, pour affichage et journalisation */
 	documentNumber?: string
@@ -159,36 +160,61 @@ export function StockReclassificationDialog({
 		setIsProcessing(true)
 
 		try {
-			// Articles à envoyer à AppPOS (tout sauf 'skip')
+			// Articles à traiter (tout sauf 'skip')
 			const toProcess = items.filter(
 				(it) => choices[it.product_id]?.destination !== 'skip',
 			)
 
 			if (toProcess.length > 0) {
-				const updatedProducts = await incrementAppPosProductsStock(
-					toProcess.map((it) => ({
-						productId: it.product_id,
-						quantityReturned: it.quantity,
-						destination: choices[it.product_id]
-							.destination as StockReturnDestination,
-					})),
+				// Seul « restock » remet la marchandise en vente : SAV et Stock B la
+				// sortent du stock vendable. Les trois se journalisent, mais un seul
+				// bouge le stock — c'était déjà la règle côté AppPos, elle est
+				// désormais lisible ici plutôt que dans l'API distante.
+				const aRemettreEnStock = toProcess.filter(
+					(it) => choices[it.product_id]?.destination === 'restock',
 				)
 
-				// ── Journalisation product_events (best-effort) ──────────────
-				const productMap = new Map(updatedProducts.map((p) => [p._id, p]))
-				const now = new Date().toISOString()
+				const resultats = await applyStockMovements(
+					pb,
+					aRemettreEnStock.map((it) => ({
+						productId: it.product_id,
+						delta: it.quantity,
+						productName: it.name,
+						productSku: it.sku ?? '',
+						metadata: {
+							destination: 'restock',
+							quantity_returned: it.quantity,
+						},
+					})),
+					{
+						reason: 'return',
+						sourceId: documentId ?? documentNumber ?? undefined,
+						metadata: {
+							ticket_id: documentId ?? documentNumber ?? '',
+							document_number: documentNumber ?? '',
+						},
+					},
+				)
 
+				// Un produit introuvable ne doit pas passer inaperçu : 53 produits
+				// vivent dans NeDB sans exister dans PocketBase (mesuré le 18 août
+				// 2026), et la caisse en crée encore.
+				const echecs = resultats.filter((r) => r.error)
+				if (echecs.length > 0) {
+					console.error('[retour] produits non retrouvés en base', echecs)
+					toast.error(
+						`${echecs.length} produit(s) introuvable(s) : stock non remis`,
+					)
+				}
+
+				// SAV et Stock B ne changent pas le stock vendable ; ils laissent
+				// quand même une trace, sans quoi la marchandise disparaîtrait du
+				// journal en même temps que du stock.
+				const now = new Date().toISOString()
 				for (const item of toProcess) {
 					const destination = choices[item.product_id]
 						.destination as StockReturnDestination
-
-					// SAV et stock_b ne modifient pas le stock AppPOS standard
-					// → on journalise quand même pour traçabilité, avec source 'return'
-					const updated = productMap.get(item.product_id)
-					const stockAfter =
-						updated && typeof updated.stock === 'number' ? updated.stock : null
-					const stockBefore =
-						stockAfter !== null ? stockAfter - item.quantity : null
+					if (destination === 'restock') continue
 
 					try {
 						await createProductEvent(pb, {
@@ -200,9 +226,9 @@ export function StockReclassificationDialog({
 							source_id: documentId ?? documentNumber ?? null,
 							operator: '',
 							occurred_at: now,
-							before: stockBefore !== null ? { stock: stockBefore } : null,
-							after: stockAfter !== null ? { stock: stockAfter } : null,
-							delta: { stock: item.quantity },
+							before: null,
+							after: null,
+							delta: { stock: 0 },
 							metadata: {
 								ticket_id: documentId ?? documentNumber ?? '',
 								document_number: documentNumber ?? '',
@@ -380,7 +406,7 @@ export function StockReclassificationDialog({
 							<div className='flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800'>
 								<AlertTriangle className='h-4 w-4 shrink-0 mt-0.5 text-amber-500' />
 								<span>
-									Les articles SAV et Stock B ne modifient pas le stock AppPOS
+									Les articles SAV et Stock B ne modifient pas le stock vendable
 									standard. Leur traitement physique doit être géré séparément.
 								</span>
 							</div>

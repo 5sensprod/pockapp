@@ -751,6 +751,78 @@ les sept écrans se transforment dans Vite. **Non vérifié : l'écran** — à
 regarder, l'ouverture du sélecteur de produit dans une facture, un devis et une
 commande, et le prix repris avec **le bon taux de TVA**.
 
+## 6 nonies. Front D — le chemin unique des mouvements de stock, 19 août 2026
+
+**`lib/queries/stock-adjust.ts`**, neuf. Un seul chemin là où il y en avait
+trois, chacune vers AppPos : `updateAppPosProductStock` (inventaire),
+`incrementAppPosProductsStock` (retour), `decrementAppPosProductsStock` (vente).
+
+```
+applyStockMovements(pb, mouvements, { reason, sourceId, operator, metadata })
+setCountedStock(pb, productId, compté, …)     // l'inventaire, en absolu
+```
+
+**Branchés : l'inventaire et le reclassement de retour. Pas la vente** — elle
+reste sur AppPos jusqu'au front E, comme décidé : la couche se prouve sur deux
+appelants avant de toucher au maillon le moins négociable.
+
+### Ce que la couche porte, et pourquoi
+
+- **le pont `legacy_id`, explicite.** Les appelants tiennent des identifiants
+  NeDB — une entrée d'inventaire, une ligne de facture. `productFilter`
+  interroge **les deux champs**, `id` et `legacy_id` : ne tester que `id`
+  rendrait introuvable tout ce qui vient de la caisse ;
+- **`absolute` prime sur `delta`** : l'inventaire ne corrige pas, il constate ;
+- **aucun plafonnement à zéro.** Un stock négatif dit qu'il s'est vendu plus que
+  ce que la base croyait détenir ; l'écraser masquerait la cause ;
+- **un stock inchangé n'est ni écrit ni journalisé.** Un comptage conforme n'est
+  pas un mouvement — sinon une session d'inventaire noie ses propres écarts ;
+- **un produit introuvable est rendu, pas avalé.** Les 53 produits qui vivent
+  dans NeDB sans exister dans PocketBase rendent le cas quotidien ;
+- **le journal est best-effort**, comme il l'était : une trace ratée ne défait
+  pas un mouvement appliqué.
+
+**14 cas de test**, sur un PocketBase simulé.
+
+### Deux défauts corrigés en branchant
+
+1. **L'inventaire journalisait à côté de son ajustement.** `countAndAdjustProduct`
+   appelait `updateAppPosStock` puis un rappel `onAdjusted` qui écrivait
+   l'événement : deux écritures indépendantes, donc une trace et un mouvement
+   qui pouvaient se contredire quand l'une des deux ratait. Le rappel et son
+   type `OnAdjustedCallback` sont supprimés ; `setCountedStock` fait les deux.
+2. **Le reclassement ne signalait pas ses échecs.** `incrementAppPosProductsStock`
+   avalait l'erreur produit par produit, en console. Un produit introuvable
+   affiche désormais un message : c'est de la marchandise physiquement revenue
+   dont le stock n'a pas bougé.
+
+**`StockReturnDestination` devient `ReturnDestination`**, déclaré dans la
+couche : `restock`, `sav`, `stock_b` sont une notion de métier, pas une notion
+de l'API qu'on quitte. Seul `restock` bouge le stock ; les deux autres laissent
+une trace, sans quoi la marchandise disparaîtrait du journal en même temps que
+du stock.
+
+### ⚠️ La conséquence, à connaître avant d'utiliser
+
+**L'inventaire ne corrige plus le stock qu'AppPos affiche.** Il corrige celui de
+PocketBase. Tant que la caisse vend sur NeDB (front E), un comptage physique
+n'empêche donc plus la caisse de vendre sur un stock faux. C'est la contrepartie
+assumée de « pas de double écriture » (DECISIONS, 2026-08-13), et elle se
+referme au front E — pas avant.
+
+### Une limite du support, écrite plutôt que découverte
+
+**Lecture puis écriture, sans transaction** : PocketBase n'expose pas
+d'incrément atomique en REST. Deux mouvements simultanés sur le même produit
+peuvent s'écraser. Tenable pour un poste et un opérateur ; à reprendre par un
+hook serveur le jour où deux postes vendent en même temps.
+
+**Vérifié :** `npx tsc -b` silencieux, `pnpm test` vert (127 cas, dont 18
+neufs), Biome passé, les quatre fichiers se transforment dans Vite. **Non
+vérifié : l'écran** — à regarder, un comptage avec écart dans une session
+d'inventaire, et un retour reclassé en « remis en stock », puis le stock du
+produit sous `/stock/produits`.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
@@ -771,9 +843,12 @@ mesuré, et l'écran catalogue est unique, sur PocketBase.
 **Front C fait** (§6 octies) : les sept écrans de choix produit de PocketConnect
 cherchent dans PocketBase.
 
-**La prochaine session** : front D — `adjustStock`, un seul chemin pour les
-quatre motifs de mouvement, prouvé d'abord sur l'inventaire et le reclassement,
-la caisse en dernier. Le point dur du §6 reste
+**Front D fait** (§6 nonies) : l'inventaire et le reclassement écrivent leur
+stock dans PocketBase, par un chemin unique.
+
+**La prochaine session** : front E — la caisse. Lecture, création de produit et
+décrément de vente. C'est le maillon le moins négociable du dépôt, et c'est lui
+qui referme la divergence des stocks. Le point dur du §6 reste
 entier, et il est maintenant chiffré : **53 produits** existent dans NeDB et pas
 dans PocketBase, parce que la caisse crée toujours ses produits là-bas
 (`modules/cash/CreateProductDialog.tsx`).
