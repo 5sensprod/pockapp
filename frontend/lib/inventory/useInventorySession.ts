@@ -1,13 +1,18 @@
 // frontend/lib/inventory/useInventorySession.ts
 // Hook principal qui orchestre la session d'inventaire
-// Combine PocketBase (persistance ET ajustements) + AppPOS (snapshot).
+// PocketBase de bout en bout : persistance, ajustements ET snapshot.
 //
 // L'AJUSTEMENT DE STOCK VA DANS POCKETBASE depuis le 19 août 2026, par
 // `setCountedStock` (`lib/queries/stock-adjust.ts`) — un seul chemin pour les
-// quatre motifs. AppPos n'est plus écrit ici ; il ne sert plus qu'à lire le
-// catalogue au démarrage de la session, ce que le front E retirera à son tour.
+// quatre motifs. LE SNAPSHOT AUSSI depuis le 19 août 2026, par
+// `fetchCatalogSnapshot` (`lib/queries/catalog-snapshot.ts`) : AppPos ne se lit
+// plus ici non plus.
+//
+// ⚠️ Les entrées neuves portent l'identifiant POCKETBASE dans `product_id`.
+// Les 2465 déjà en base portent un identifiant NeDB ; l'affichage les résout
+// par `indexCatalogueParCle`, qui interroge `id` ET `legacy_id`.
 
-import { getAppPosCategories, getAppPosProducts } from '@/lib/apppos/apppos-api'
+import { fetchCatalogSnapshot } from '@/lib/queries/catalog-snapshot'
 import { setCountedStock } from '@/lib/queries/stock-adjust'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
@@ -341,7 +346,7 @@ export function useCreateInventorySession() {
 
 	const mutation = useMutation({
 		mutationFn: async (input: CreateInventorySessionInput) => {
-			// ── Session libre : pas de snapshot AppPOS.
+			// ── Session libre : pas de snapshot.
 			// L'opérateur ajoute les produits manuellement via scan/recherche.
 			if (input.scope === 'free') {
 				const session = await createInventorySession(pb, input)
@@ -349,24 +354,26 @@ export function useCreateInventorySession() {
 				return { session: started, entriesCount: 0 }
 			}
 
-			// ── Sessions all / selection : snapshot catalogue AppPOS ──────────
+			// ── Sessions all / selection : snapshot du catalogue PocketBase ───
+			// `fetchCatalogSnapshot` prend TOUT le catalogue (`getFullList`) : une
+			// page de 25 produits ferait une session d'inventaire muette.
 			const [allProducts, allCategories] = await Promise.all([
-				getAppPosProducts(),
-				getAppPosCategories(),
+				fetchCatalogSnapshot(pb, input.companyId),
+				pb.collection('categories').getFullList<{ id: string; name?: string }>({
+					batch: 500,
+					fields: 'id,name',
+				}),
 			])
 
 			const categoryNameById = new Map(
-				allCategories.map((c) => [c._id, c.name]),
+				allCategories.map((c) => [c.id, c.name ?? '']),
 			)
 
 			let products = allProducts
 			if (input.scope === 'selection' && input.scope_category_ids?.length) {
 				const scopeIds = new Set(input.scope_category_ids)
-				products = products.filter(
-					(p) =>
-						(p.category_id != null && scopeIds.has(p.category_id)) ||
-						(Array.isArray(p.categories) &&
-							p.categories.some((cid) => scopeIds.has(cid))),
+				products = products.filter((p) =>
+					p.categories.some((cid) => scopeIds.has(cid)),
 				)
 			}
 
@@ -379,19 +386,18 @@ export function useCreateInventorySession() {
 			const session = await createInventorySession(pb, input)
 
 			const entries = products.map((p) => {
-				const categoryId = p.category_id ?? p.categories?.[0] ?? ''
-				const barcode = Array.isArray(p.meta_data)
-					? (p.meta_data.find((m: any) => m.key === 'barcode')?.value ?? '')
-					: ''
+				const categoryId = p.categories[0] ?? ''
 				return {
-					product_id: p._id,
-					product_name: p.name ?? '',
-					product_sku: p.sku ?? '',
-					product_barcode: String(barcode),
-					product_image: p.image?.src ?? '',
+					// L'identifiant POCKETBASE, désormais. Le pont `legacy_id` reste
+					// lisible à l'affichage pour les entrées d'avant.
+					product_id: p.id,
+					product_name: p.name,
+					product_sku: p.sku,
+					product_barcode: p.barcode,
+					product_image: p.imageUrl ?? '',
 					category_id: categoryId,
-					category_name: categoryNameById.get(categoryId) ?? 'Sans catégorie',
-					stock_theorique: Number(p.stock) || 0,
+					category_name: categoryNameById.get(categoryId) || 'Sans catégorie',
+					stock_theorique: p.stock,
 				}
 			})
 

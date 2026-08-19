@@ -39,11 +39,9 @@ describe('le module stock ne parle plus à AppPos', () => {
 		expect(source).toMatch(/useCatalogProducts/)
 	})
 
-	it("le module stock n'importe plus AppPos que pour l'inventaire", () => {
-		// L'inventaire physique se raccorde plus tard (front D du plan). Tant
-		// qu'il est là, il est le SEUL — et cette liste doit rétrécir, jamais
-		// s'allonger.
-		const attendus = ['InventoryPageAppPos.tsx']
+	it("le module stock n'importe plus AppPos DU TOUT", () => {
+		// L'inventaire physique était le dernier : il lisait son catalogue dans
+		// AppPos jusqu'au 19 août 2026. La liste ne doit plus jamais s'allonger.
 		const fichiers = [
 			'modules/stock/ProductsPage.tsx',
 			'modules/stock/BrandsPage.tsx',
@@ -51,11 +49,20 @@ describe('le module stock ne parle plus à AppPos', () => {
 			'modules/stock/SuppliersPage.tsx',
 			'modules/stock/components/ProductTable.tsx',
 			'modules/stock/components/CatalogProductDialog.tsx',
+			'modules/stock/InventoryPageAppPos.tsx',
+			'lib/inventory/useInventorySession.ts',
 		]
 		for (const fichier of fichiers) {
 			expect(imports(lire(fichier)), fichier).not.toMatch(/@\/lib\/apppos/)
 		}
-		expect(attendus).toHaveLength(1)
+	})
+
+	it("l'inventaire prend TOUT le catalogue, pas une page", () => {
+		// `getList(1, 50)` a déjà donné « 0 produit » sur 205 marques. Un
+		// snapshot d'inventaire qui pagine rendrait une session muette.
+		const source = lire('lib/queries/catalog-snapshot.ts')
+		expect(source).toMatch(/getFullList/)
+		expect(source).not.toMatch(/getList\(/)
 	})
 })
 

@@ -951,6 +951,95 @@ avant la garde sur cette machine, à un contrôle antérieur — NeDB porte
 3050 produits pour 3034 attendus, écart qui lui est propre et qui n'est pas de
 mon ressort.
 
+## 6 duodecies. L'inventaire physique lit dans PocketBase — 19 août 2026
+
+**Le module `stock` n'importe plus `@/lib/apppos`.** `InventoryPageAppPos.tsx`
+était le dernier ; il écrivait déjà dans PocketBase (§6 nonies), il y lit
+désormais aussi.
+
+### Ce qui a été trouvé, et qui n'était pas annoncé
+
+Le prompt de passage de main annonçait deux appels à `appPosApi.getProducts()`.
+Il y en avait **quatre requêtes** portant la même clé de cache
+`['apppos','products','catalog']` — les statistiques globales, la vignette
+`ProductImageById`, le dialogue de création, la session libre — **plus deux
+appels directs** : `fetchFreshCatalog` et la création d'une session ciblée.
+Toutes les six passent par `lib/queries/catalog-snapshot.ts`.
+
+### Le piège des identifiants, mesuré avant d'écrire
+
+Sur la base installée (`%LOCALAPPDATA%\PocketReact\pb_data\data.db`, en
+`-readonly`, 19 août 2026) :
+
+| Mesure | Valeur |
+|---|---|
+| sessions / entrées | 196 / 2465 |
+| entrées dont `product_id` est un `products.id` | **0** |
+| entrées résolues par `products.legacy_id` | **2370** |
+| entrées résolues par aucun des deux | **95** |
+| entrées dont `category_id` est un `categories.id` | **0** — **2462 par `legacy_id`** |
+| produits PocketBase | 2999, **tous** avec un `legacy_id` (dont 3 en `pa_`) |
+
+**Le prompt ne nommait que `product_id` : `category_id` est dans le même cas.**
+L'historique est intégralement en identifiants NeDB, produits ET catégories.
+
+**Ce qui a été décidé :** les sessions neuves écrivent l'identifiant
+PocketBase ; l'affichage résout **les deux formes**, par
+`indexCatalogueParCle`, qui indexe chaque produit sur `id` **et** sur
+`legacy_id` — la même règle que `applyStockMovements` côté écriture. Ne tester
+que `id` aurait affiché « jamais inventorié » sur tout le catalogue, sans la
+moindre erreur.
+
+**Les 95 orphelines s'affichent comme « produit absent du catalogue »** —
+vignette orange et badge —, et non en vignette vide, qui ne distinguerait pas
+« pas d'image » de « pas de produit ». Elles gardent le nom, le SKU et le code
+figés à leur snapshot : l'information n'est pas perdue, elle est datée.
+
+### Ce que la couche porte
+
+`lib/queries/catalog-snapshot.ts`, neuf :
+
+- **`fetchCatalogSnapshot` prend TOUT** — `getFullList` par lots de 500, jamais
+  `getList`. C'est le défaut qui avait donné « 0 produit » sur 205 marques
+  (§6 quater) ; un test le garde désormais ;
+- **`indexCatalogueParCle` / `resoudreProduit`** — les deux clés, et la clé vide
+  n'est pas indexée : elle confondrait tous les produits sans `legacy_id` ;
+- **`construireArbreCategories`** remplace `useAppPosCategoriesWithCounts`.
+  AppServe rendait l'arbre déjà compté ; PocketBase ne compte pas. Les
+  compteurs sortent **du snapshot lui-même**, donc des produits réellement
+  proposés — jamais d'un total qui les contredirait. Une catégorie dont le
+  parent manque remonte en racine plutôt que de disparaître ;
+- **`pb` est passé, non importé**, comme `toStockRow` : sans quoi le module
+  n'est pas testable — `use-pocketbase.ts` crée son client au chargement et
+  `window` n'existe pas sous Vitest. Constaté en écrivant le test.
+
+### Trois choses supprimées en passant
+
+1. **`getProductCurrentStock`** — sept alias testés (`stock`, `quantity`, `qty`,
+   `current_stock`, `inventory_stock`, `stock_quantity`, `available_stock`)
+   parce qu'AppPos nommait le champ diversement. PocketBase le nomme `stock` ;
+2. **trois `console.log` de mise au point** qui sondaient la forme des produits
+   AppPos, dont un calcul complet de « produits restants dans la catégorie » à
+   chaque rendu des statistiques globales ;
+3. **la session ciblée ne plante plus** sur un produit disparu entre la
+   sélection et la validation : `freshCatalog.find(...)` rendait `undefined`,
+   puis `p.id` levait. Elle l'ignore, désormais.
+
+### Vérifié, et non vérifié
+
+**Vérifié :** `npx tsc -b` silencieux, `pnpm test` vert — **143 cas, dont 23
+neufs** (7 sur la résolution à deux clés et l'arbre, plus la liste
+`single-source` étendue) —, Biome propre sur les six fichiers touchés (les deux
+avertissements restants de `InventoryPageAppPos.tsx` lui préexistent).
+
+**Non vérifié : l'écran.** PocketBase tourne (`PocketReact-dev.exe`, `:8090`,
+santé `ok`), mais `products` et `categories` ont pour règle de liste
+`@request.auth.id != ''` : une lecture anonyme rend zéro. Ouvrir une session
+d'inventaire et regarder les 95 entrées orphelines demande d'être connecté dans
+l'application — ce n'a pas été fait. **À regarder :** une session « sélection »
+sur une catégorie, le compte d'entrées créées, et une session ancienne dont les
+produits doivent toujours s'afficher avec leur image.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
@@ -980,19 +1069,22 @@ PocketBase. Le point dur du §6 est refermé.
 **Front F fait** (§6 undecies) : le rechargement par purge est gardé.
 PocketBase n'est plus une projection.
 
-**Ce qui reste, et c'est tout** : `InventoryPageAppPos.tsx` lit encore son
-catalogue dans AppPos — il n'y écrit plus rien. C'est le dernier écran, et le
-dernier import de `@/lib/apppos` du module `stock`. Le point dur du §6 reste
-entier, et il est maintenant chiffré : **53 produits** existent dans NeDB et pas
-dans PocketBase, parce que la caisse crée toujours ses produits là-bas
-(`modules/cash/CreateProductDialog.tsx`).
+**Front G fait** (§6 duodecies) : l'inventaire physique lit son catalogue dans
+PocketBase. **Le module `stock` n'importe plus `@/lib/apppos` nulle part**, et
+un test le garde.
+
+**Ce qui reste** : rien dans le module `stock`. Ce qui reste tient à
+l'historique, et il est chiffré : **95 des 2465 entrées d'inventaire** ne
+désignent plus aucun produit du catalogue, et s'affichent comme « produit
+absent du catalogue ». Les 2370 autres se résolvent par `legacy_id` — le pont
+reste nécessaire tant que ces sessions se relisent.
 
 | # | Étape | État |
 |---|---|---|
 | 0 | Décisions du §4 consignées au journal | **fait le 13 août 2026** |
 | 1 | Les 4 entités PocketBase affichées dans AppStock | **fait** — mesure (§6 bis), remise à niveau (§6 ter), branchement et vérification (§6 quater) |
 | 2 | Édition depuis AppStock | **fait** pour les 4 entités ; images exclues |
-| 3 | Couche de données unique | **fait le 18 août 2026** (§6 quinquies) — une seule provenance par fichier, routeur supprimé, gardé par un test. Reste hors périmètre : la caisse (`CreateProductDialog`) et l'inventaire (`InventoryPageAppPos`) parlent toujours à AppPos |
+| 3 | Couche de données unique | **fait** — une seule provenance par fichier le 18 août 2026 (§6 quinquies), puis la caisse (§6 decies) et l'inventaire (§6 duodecies) le 19. Plus aucun fichier du module `stock` n'importe `@/lib/apppos` |
 | 4 | Synchronisation et frontière public/interne | **en partie** : export explicite, état visible pour les 3 entités exportées |
 | 5 | Images | **reporté, hors périmètre** |
 

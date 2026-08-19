@@ -147,6 +147,8 @@ export interface CreateInventorySessionInput {
 	operator: string
 	scope: InventoryScope
 	scope_category_ids?: string[] // Requis si scope === 'selection'
+	/** Périmètre du snapshot. Déclaré au point d'appel, jamais deviné. */
+	companyId?: string
 	label?: string | null // Requis si scope === 'free' — nom libre de la session
 	notes?: string
 }

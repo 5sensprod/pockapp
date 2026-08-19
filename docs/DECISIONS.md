@@ -10,6 +10,31 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Les entrées d'inventaire s'écrivent en identifiant PocketBase et se lisent sur les deux clés — 2026-08-19
+
+Une entrée d'inventaire créée à partir d'aujourd'hui porte l'**identifiant
+PocketBase** du produit dans `product_id`. **La lecture, elle, interroge les
+deux clés** — `id` et `legacy_id` — par `indexCatalogueParCle`
+(`frontend/lib/queries/catalog-snapshot.ts`), comme le fait déjà
+`applyStockMovements` côté écriture.
+
+**Pourquoi cette dissymétrie :** mesuré sur la base installée le 19 août 2026,
+sur 2465 entrées, **0** se résout par `products.id`, **2370** par
+`legacy_id`, **95** par aucun des deux. Écrire en `legacy_id` pour rester
+homogène ferait dépendre toute session neuve d'un pont qu'on démonte ; lire sur
+la seule clé neuve rendrait illisibles 196 sessions.
+
+**Écarté — migrer les 2465 entrées vers l'identifiant PocketBase :** 95 n'ont
+pas de cible, et une entrée d'inventaire est une **mesure datée**, pas une
+donnée courante. La réécrire, c'est réécrire un comptage.
+
+**Écarté — masquer les 95 orphelines :** elles portent un comptage réel. Elles
+s'affichent avec leur nom et leur code figés au snapshot, marquées « produit
+absent du catalogue ».
+
+**Remise en cause si :** `legacy_id` disparaît du schéma — ce qui suppose
+d'avoir d'abord tranché le sort de l'historique d'inventaire, pas l'inverse.
+
 ## Le rechargement par purge est gardé, pas supprimé — 2026-08-19
 
 **`catalog-import -load` refuse de purger dès que la base porte des données que

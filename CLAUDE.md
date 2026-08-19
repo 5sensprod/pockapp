@@ -138,8 +138,10 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   déjà `StockPage.tsx`, `ProductDialog.tsx` et `CategoryPickerAppPos.tsx`.
   **Les images des produits sont servies par PocketBase**, par
   `pb.files.getUrl` : elles y sont depuis l'import du 2026-08-11 (2639 images
-  principales, 747 galeries, 1,7 Go). Dans le module `stock`, seul
-  `InventoryPageAppPos.tsx` parle encore à AppPos.
+  principales, 747 galeries, 1,7 Go). Depuis le 2026-08-19, **plus aucun
+  fichier du module `stock` n'importe `@/lib/apppos`** — l'inventaire physique
+  était le dernier ; un test le garde
+  (`frontend/modules/stock/single-source.test.ts`).
 - **Une migration non inscrite dans la liste de `RunMigrations`**
   (`backend/migrations/migrations.go:13`) ne s'exécute jamais, sans erreur.
 - **L'hébergement du site est un mutualisé PHP/MySQL.** Aucun processus
@@ -181,10 +183,15 @@ reclassement passent tous par PocketBase (fronts A à E du plan,
 Les mouvements de stock ont un chemin unique,
 `frontend/lib/queries/stock-adjust.ts`.
 
-**Ce qui reste** : l'inventaire physique (`InventoryPageAppPos.tsx`,
-`lib/inventory/useInventorySession.ts`) LIT encore son catalogue dans AppPos —
-il n'y écrit plus —, et le front F reste à faire : arrêter le rechargement par
-purge, ce qui fera de PocketBase une base et non plus une projection.
+**Les fronts A à G sont faits.** Le rechargement par purge est gardé
+(`backend/catalog/load/guard.go`), et l'inventaire physique lit son snapshot
+dans PocketBase (`frontend/lib/queries/catalog-snapshot.ts`).
+
+**Ce qui reste, et ce n'est plus du code** : l'historique d'inventaire est en
+identifiants NeDB — sur 2465 entrées, 2370 se résolvent par `legacy_id` et
+**95 ne désignent plus aucun produit** et s'affichent « produit absent du
+catalogue » (`docs/DECISIONS.md`, 2026-08-19). Le pont `legacy_id` reste donc
+nécessaire à la LECTURE tant que ces sessions se relisent.
 
 **AppPos sort de la logique à la prochaine release** (`docs/DECISIONS.md`,
 2026-08-13) : l'écriture dans PocketBase est ouverte, la caisse et l'inventaire

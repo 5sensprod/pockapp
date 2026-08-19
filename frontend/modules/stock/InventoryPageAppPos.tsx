@@ -21,10 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
-import { appPosApi } from '@/lib/apppos/apppos-api'
-import { getAppPosImageUrl } from '@/lib/apppos/apppos-config'
-import { useAppPosCategoriesWithCounts } from '@/lib/apppos/apppos-hooks'
-import { appPosTransformers } from '@/lib/apppos/apppos-transformers'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { createInventoryEntries } from '@/lib/inventory/inventory-pocketbase'
 import { INVENTORY_ENTRIES_COLLECTION } from '@/lib/inventory/inventory-types'
 import type {
@@ -42,6 +39,15 @@ import {
 	useSessionProgress,
 } from '@/lib/inventory/useInventorySession'
 import { useScanner } from '@/lib/pos/scanner'
+import {
+	type CatalogSnapshotProduct,
+	construireArbreCategories,
+	fetchCatalogSnapshot,
+	indexCatalogueParCle,
+	resoudreProduit,
+	useCatalogSnapshot,
+} from '@/lib/queries/catalog-snapshot'
+import { useCategories } from '@/lib/queries/categories'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/modules/auth/AuthProvider'
@@ -65,7 +71,7 @@ import {
 	Sparkles,
 	X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const inventoryManifest = {
 	id: 'inventory',
@@ -160,18 +166,10 @@ async function getInventoriedProductsWithDates(
 function GlobalInventoryCapitalStats() {
 	const pb = usePocketBase()
 
-	const { data: catalogProducts = [], isLoading: catalogLoading } = useQuery({
-		queryKey: ['apppos', 'products', 'catalog'],
-		queryFn: async () => {
-			const products = await appPosApi.getProducts()
-			return appPosTransformers.products(products)
-		},
-		staleTime: 0,
-		gcTime: 60 * 60 * 1000,
-		refetchOnMount: 'always',
-		refetchOnWindowFocus: true,
-		refetchOnReconnect: true,
-	})
+	const { activeCompanyId } = useActiveCompany()
+
+	const { data: catalogProducts = [], isLoading: catalogLoading } =
+		useCatalogSnapshot(pb, activeCompanyId ?? undefined)
 
 	const { data: inventoriedProductIds = [], isLoading: inventoriedLoading } =
 		useQuery({
@@ -189,52 +187,27 @@ function GlobalInventoryCapitalStats() {
 		[inventoriedProductIds],
 	)
 
+	// Une entrée d'inventaire porte soit l'identifiant PocketBase (sessions
+	// neuves), soit l'identifiant NeDB (les 2465 d'avant le 19 août 2026). Ne
+	// tester que `id` afficherait « jamais inventorié » sur tout le catalogue.
+	const estInventorie = useCallback(
+		(produit: CatalogSnapshotProduct) =>
+			inventoriedProductIdSet.has(produit.id) ||
+			(!!produit.legacyId && inventoriedProductIdSet.has(produit.legacyId)),
+		[inventoriedProductIdSet],
+	)
+
 	const totalProducts = catalogProducts.length
 
-	const countedProducts = useMemo(() => {
-		return catalogProducts.filter((product: any) =>
-			inventoriedProductIdSet.has(product.id),
-		).length
-	}, [catalogProducts, inventoriedProductIdSet])
-
-	console.log(
-		'Produits comptés:',
-		catalogProducts
-			.filter((product: any) => inventoriedProductIdSet.has(product.id))
-			.map((p: any) => ({ id: p.id, name: p.name, categories: p.categories })),
+	const countedProducts = useMemo(
+		() => catalogProducts.filter(estInventorie).length,
+		[catalogProducts, estInventorie],
 	)
 
-	console.log(
-		'Entrées avec date:',
-		catalogProducts
-			.filter((p: any) => inventoriedProductIdSet.has(p.id))
-			.slice(0, 3)
-			.map((p: any) => ({ id: p.id, name: p.name })),
+	const neverInventoriedCount = useMemo(
+		() => catalogProducts.filter((p) => !estInventorie(p)).length,
+		[catalogProducts, estInventorie],
 	)
-
-	// ← ici
-	const firstCounted = catalogProducts.find((p: any) =>
-		inventoriedProductIdSet.has(p.id),
-	) as any
-	if (firstCounted) {
-		const sameCat = firstCounted.categories?.[0]
-		console.log(
-			`Produits restants dans la catégorie "${sameCat}":`,
-			catalogProducts
-				.filter(
-					(p: any) =>
-						(p.categories as string[])?.includes(sameCat) &&
-						!inventoriedProductIdSet.has(p.id),
-				)
-				.map((p: any) => ({ id: p.id, name: p.name })),
-		)
-	}
-
-	const neverInventoriedCount = useMemo(() => {
-		return catalogProducts.filter(
-			(product: any) => !inventoriedProductIdSet.has(product.id),
-		).length
-	}, [catalogProducts, inventoriedProductIdSet])
 
 	const isLoading = catalogLoading || inventoriedLoading
 
@@ -302,28 +275,45 @@ function GlobalInventoryCapitalStats() {
 	)
 }
 
+/**
+ * La vignette d'une entrée d'inventaire, retrouvée au catalogue PocketBase par
+ * `product_id` — quelle que soit sa forme, `id` ou `legacy_id`.
+ *
+ * ⚠️ **Le produit peut ne plus exister.** 95 des 2465 entrées en base ne se
+ * résolvent par aucune des deux clés (mesuré le 19 août 2026) : elles gardent
+ * leur nom et leur code figés au snapshot, mais plus de produit derrière. Elles
+ * s'affichent alors comme ABSENTES DU CATALOGUE, plutôt qu'en vignette vide qui
+ * ne distinguerait pas « pas d'image » de « pas de produit ».
+ */
 function ProductImageById({
 	productId,
 	productName,
 }: { productId: string; productName: string }) {
-	const { data: catalog } = useQuery({
-		queryKey: ['apppos', 'products', 'catalog'],
-		queryFn: async () => {
-			const products = await appPosApi.getProducts()
-			return appPosTransformers.products(products)
-		},
-		staleTime: 10 * 60 * 1000,
-		gcTime: 60 * 60 * 1000,
-		refetchOnMount: false,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
-	})
+	const { activeCompanyId } = useActiveCompany()
+	const pb = usePocketBase()
+	const { data: catalog = [], isSuccess } = useCatalogSnapshot(
+		pb,
+		activeCompanyId ?? undefined,
+	)
+	const index = useMemo(() => indexCatalogueParCle(catalog), [catalog])
 	const [errored, setErrored] = useState(false)
-	const src = useMemo(() => {
-		const match = catalog?.find((p: any) => p.id === productId)
-		const rawPath = (match as any)?.images || ''
-		return getAppPosImageUrl(rawPath)
-	}, [catalog, productId])
+
+	const produit = resoudreProduit(index, productId)
+	const src = produit?.imageUrl ?? null
+
+	// Tant que le catalogue n'est pas chargé, on ne conclut à rien : afficher
+	// « absent » sur une requête en vol serait un faux message.
+	if (isSuccess && !produit) {
+		return (
+			<div
+				title='Produit absent du catalogue'
+				className='w-12 h-12 rounded border border-dashed border-orange-400/70 bg-orange-50 flex items-center justify-center shrink-0 dark:bg-orange-950/20'
+			>
+				<AlertTriangle className='h-5 w-5 text-orange-500' />
+			</div>
+		)
+	}
+
 	if (src && !errored) {
 		return (
 			<img
@@ -338,6 +328,26 @@ function ProductImageById({
 		<div className='w-12 h-12 rounded bg-muted flex items-center justify-center shrink-0'>
 			<ClipboardList className='h-5 w-5 text-muted-foreground/50' />
 		</div>
+	)
+}
+
+/** Le pendant textuel de la vignette « absent », posé à côté du nom. */
+function ProductAbsenceBadge({ productId }: { productId: string }) {
+	const { activeCompanyId } = useActiveCompany()
+	const pb = usePocketBase()
+	const { data: catalog = [], isSuccess } = useCatalogSnapshot(
+		pb,
+		activeCompanyId ?? undefined,
+	)
+	const index = useMemo(() => indexCatalogueParCle(catalog), [catalog])
+	if (!isSuccess || resoudreProduit(index, productId)) return null
+	return (
+		<Badge
+			variant='outline'
+			className='mt-0.5 border-orange-400/70 text-orange-600 dark:text-orange-400'
+		>
+			Produit absent du catalogue
+		</Badge>
 	)
 }
 
@@ -434,20 +444,27 @@ function CreateSessionDialog({
 	>(new Set())
 	const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
 
-	const { data: categoriesRaw = [] } = useAppPosCategoriesWithCounts()
 	const { data: history } = useInventoryHistory()
 
 	const pb = usePocketBase()
+	const { activeCompanyId } = useActiveCompany()
 
-	const { data: catalogProducts = [] } = useQuery({
-		queryKey: ['apppos', 'products', 'catalog'],
-		queryFn: async () => {
-			const products = await appPosApi.getProducts()
-			return appPosTransformers.products(products)
-		},
-		staleTime: 0,
-		refetchOnMount: 'always',
+	const { data: catalogProducts = [] } = useCatalogSnapshot(
+		pb,
+		activeCompanyId ?? undefined,
+	)
+
+	// AppServe rendait l'arbre déjà compté. PocketBase ne compte pas : l'arbre
+	// se construit ici, et ses compteurs sortent du snapshot lui-même — donc
+	// des produits réellement proposés, jamais d'un total qui les contredirait.
+	const { data: categoriesPlates = [] } = useCategories({
+		companyId: activeCompanyId ?? undefined,
 	})
+
+	const categoriesRaw = useMemo(
+		() => construireArbreCategories(categoriesPlates as any[], catalogProducts),
+		[categoriesPlates, catalogProducts],
+	)
 
 	const { data: inventoriedProductIds = [] } = useQuery({
 		queryKey: ['inventory', 'inventoried-product-ids'],
@@ -493,7 +510,7 @@ function CreateSessionDialog({
 	const categoryProductIds = useMemo(() => {
 		const map = new Map<string, Set<string>>()
 		for (const product of catalogProducts) {
-			for (const catId of (product.categories as string[]) ?? []) {
+			for (const catId of product.categories) {
 				if (!map.has(catId)) map.set(catId, new Set())
 				map.get(catId)!.add(product.id)
 			}
@@ -754,10 +771,8 @@ function CreateSessionDialog({
 			const categoryNames = [
 				...new Set(
 					selectedProductIds.flatMap((pid) => {
-						const product = catalogProducts.find(
-							(p: any) => p.id === pid,
-						) as any
-						const catId = (product?.categories as string[])?.[0]
+						const product = catalogProducts.find((p) => p.id === pid)
+						const catId = product?.categories?.[0]
 						const cat = categories.find((c) => c.id === catId)
 						return cat?.name ? [cat.name] : []
 					}),
@@ -889,8 +904,8 @@ function CreateSessionDialog({
 												</div>
 											)}
 											{group.children.map((cat) => {
-												const catProducts = (catalogProducts as any[]).filter(
-													(p) => (p.categories as string[])?.includes(cat.id),
+												const catProducts = catalogProducts.filter((p) =>
+													p.categories.includes(cat.id),
 												)
 												const neverInventoried = catProducts.filter(
 													(p) => !inventoriedSet.has(p.id),
@@ -1283,54 +1298,30 @@ function FreeSessionView({
 	const [isAdding, setIsAdding] = useState(false)
 	const searchRef = useRef<HTMLInputElement>(null)
 
-	const fetchFreshCatalog = async () => {
-		const products = await appPosApi.getProducts()
-		return appPosTransformers.products(products)
-	}
+	const { activeCompanyId } = useActiveCompany()
+	const cleCatalogue = ['catalog-snapshot', activeCompanyId ?? undefined]
 
-	const { data: catalog = [] } = useQuery({
-		queryKey: ['apppos', 'products', 'catalog'],
-		queryFn: fetchFreshCatalog,
-		staleTime: 0,
-		gcTime: 60 * 60 * 1000,
-		refetchOnMount: 'always',
-		refetchOnWindowFocus: true,
-		refetchOnReconnect: true,
-	})
+	const fetchFreshCatalog = () =>
+		fetchCatalogSnapshot(pb, activeCompanyId ?? undefined)
 
-	const getProductCurrentStock = (product: any): number => {
-		const rawStock =
-			product.stock ??
-			product.quantity ??
-			product.qty ??
-			product.current_stock ??
-			product.inventory_stock ??
-			product.stock_quantity ??
-			product.available_stock ??
-			0
+	const { data: catalog = [] } = useCatalogSnapshot(
+		pb,
+		activeCompanyId ?? undefined,
+	)
 
-		const stock = Number(rawStock)
-
-		return Number.isFinite(stock) ? stock : 0
-	}
-
-	const refreshAppPosCatalog = async () => {
-		await queryClient.invalidateQueries({
-			queryKey: ['apppos', 'products', 'catalog'],
-		})
-
-		await queryClient.refetchQueries({
-			queryKey: ['apppos', 'products', 'catalog'],
-			type: 'active',
-		})
+	// Le stock est un champ, pas une devinette : sept alias étaient testés parce
+	// qu'AppPos le nommait diversement. PocketBase le nomme `stock`.
+	const refreshCatalogue = async () => {
+		await queryClient.invalidateQueries({ queryKey: cleCatalogue })
+		await queryClient.refetchQueries({ queryKey: cleCatalogue, type: 'active' })
 	}
 
 	const getFreshCatalogProduct = async (productId: string) => {
 		const freshCatalog = await fetchFreshCatalog()
 
-		queryClient.setQueryData(['apppos', 'products', 'catalog'], freshCatalog)
+		queryClient.setQueryData(cleCatalogue, freshCatalog)
 
-		return (freshCatalog as any[]).find((p) => p.id === productId) ?? null
+		return freshCatalog.find((p) => p.id === productId) ?? null
 	}
 
 	const searchLower = search.trim().toLowerCase()
@@ -1343,21 +1334,24 @@ function FreeSessionView({
 	const searchResults = useMemo(() => {
 		if (!searchLower || searchLower.length < 2) return []
 
-		return (catalog as any[])
-			.filter((p: any) => {
+		return catalog
+			.filter((p) => {
+				// Une entrée d'avant porte la clé NeDB : sans ce second test, un
+				// produit déjà ajouté réapparaîtrait dans la recherche.
 				if (addedProductIds.has(p.id)) return false
+				if (p.legacyId && addedProductIds.has(p.legacyId)) return false
 
 				return (
-					p.name?.toLowerCase().includes(searchLower) ||
-					p.sku?.toLowerCase().includes(searchLower) ||
-					p.barcode?.toLowerCase().includes(searchLower)
+					p.name.toLowerCase().includes(searchLower) ||
+					p.sku.toLowerCase().includes(searchLower) ||
+					p.barcode.toLowerCase().includes(searchLower)
 				)
 			})
 			.slice(0, 8)
 	}, [catalog, searchLower, addedProductIds])
 
 	const searchResultProductIds = useMemo(
-		() => [...new Set(searchResults.map((p: any) => p.id))],
+		() => [...new Set(searchResults.map((p) => p.id))],
 		[searchResults],
 	)
 
@@ -1396,7 +1390,7 @@ function FreeSessionView({
 		},
 	})
 
-	const handleAddProduct = async (product: any) => {
+	const handleAddProduct = async (product: CatalogSnapshotProduct) => {
 		if (isAdding) return
 
 		setIsAdding(true)
@@ -1405,21 +1399,16 @@ function FreeSessionView({
 			const freshProduct = await getFreshCatalogProduct(product.id)
 			const productForSnapshot = freshProduct ?? product
 
-			const categoryId =
-				productForSnapshot.category_id ??
-				productForSnapshot.categories?.[0] ??
-				''
-
 			await createInventoryEntries(pb, session.id, [
 				{
 					product_id: productForSnapshot.id,
-					product_name: productForSnapshot.name ?? '',
-					product_sku: productForSnapshot.sku ?? '',
-					product_barcode: productForSnapshot.barcode ?? '',
-					product_image: productForSnapshot.images ?? '',
-					category_id: categoryId,
+					product_name: productForSnapshot.name,
+					product_sku: productForSnapshot.sku,
+					product_barcode: productForSnapshot.barcode,
+					product_image: productForSnapshot.imageUrl ?? '',
+					category_id: productForSnapshot.categories[0] ?? '',
 					category_name: session.label ?? 'Session libre',
-					stock_theorique: getProductCurrentStock(productForSnapshot),
+					stock_theorique: productForSnapshot.stock,
 				},
 			])
 
@@ -1438,7 +1427,7 @@ function FreeSessionView({
 		value: number,
 	) => {
 		await countProduct(entry, value)
-		await refreshAppPosCatalog()
+		await refreshCatalogue()
 	}
 
 	const countedEntries = entries.filter((e) => e.status === 'counted')
@@ -1593,9 +1582,7 @@ function FreeSessionView({
 										<p className='text-xs text-muted-foreground'>
 											{product.sku}
 											{product.barcode ? ` · ${product.barcode}` : ''} · Stock :{' '}
-											<span className='font-medium'>
-												{getProductCurrentStock(product)}
-											</span>
+											<span className='font-medium'>{product.stock}</span>
 										</p>
 
 										{lastInventoryAt && (
@@ -2081,6 +2068,7 @@ function CountingRow({
 						<div className='font-medium truncate max-w-xs'>
 							{entry.product_name}
 						</div>
+						<ProductAbsenceBadge productId={entry.product_id} />
 						{entry.product_sku && (
 							<div className='text-xs text-muted-foreground'>
 								SKU {entry.product_sku}
@@ -2436,6 +2424,9 @@ function SessionDetailView({
 															<p className='text-sm font-medium truncate'>
 																{entry.product_name}
 															</p>
+															<ProductAbsenceBadge
+																productId={entry.product_id}
+															/>
 															<p className='text-xs text-muted-foreground'>
 																{entry.product_sku && (
 																	<span>SKU {entry.product_sku}</span>
@@ -2976,6 +2967,7 @@ export function InventoryPageAppPos() {
 	const { user } = useAuth()
 	const userName = (user as any)?.name || (user as any)?.username || ''
 	const pb = usePocketBase()
+	const { activeCompanyId } = useActiveCompany()
 
 	const { data: activeSessions = [], isLoading: sessionsLoading } =
 		useActiveSessions()
@@ -3027,24 +3019,31 @@ export function InventoryPageAppPos() {
 			scope,
 			scope_category_ids: categoryIds,
 			label: label ?? null,
+			companyId: activeCompanyId ?? undefined,
 		})
 
 		if (targetedProductIds && targetedProductIds.length > 0) {
-			const freshCatalog: any[] = await appPosApi
-				.getProducts()
-				.then((p) => appPosTransformers.products(p))
-			const entries = targetedProductIds.map((pid) => {
-				const p = freshCatalog.find((c: any) => c.id === pid) as any
-				return {
-					product_id: p.id,
-					product_name: p.name ?? '',
-					product_sku: p.sku ?? '',
-					product_barcode: p.barcode ?? '',
-					product_image: p.images ?? '',
-					category_id: (p.categories as string[])?.[0] ?? '',
-					category_name: label ?? 'Session ciblée',
-					stock_theorique: Number(p.stock_quantity ?? 0),
-				}
+			const freshCatalog = await fetchCatalogSnapshot(
+				pb,
+				activeCompanyId ?? undefined,
+			)
+			const entries = targetedProductIds.flatMap((pid) => {
+				// Un produit disparu entre la sélection et la validation ne fait plus
+				// planter la création : il est simplement absent du périmètre.
+				const p = freshCatalog.find((c) => c.id === pid)
+				if (!p) return []
+				return [
+					{
+						product_id: p.id,
+						product_name: p.name,
+						product_sku: p.sku,
+						product_barcode: p.barcode,
+						product_image: p.imageUrl ?? '',
+						category_id: p.categories[0] ?? '',
+						category_name: label ?? 'Session ciblée',
+						stock_theorique: p.stock,
+					},
+				]
 			})
 			await createInventoryEntries(pb, result.session.id, entries)
 		}

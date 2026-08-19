@@ -145,6 +145,7 @@ donc le pont existe pour reprendre ce qui aurait divergé.
 | D | ~~`adjustStock`, inventaire et reclassement~~ | **fait le 19 août 2026** — `stock-adjust.ts`, deux défauts corrigés en passant (§6 nonies) | — |
 | E | ~~La caisse~~ | **fait le 19 août 2026** — lecture, création et décrément sur PocketBase ; trois gardes de jeton retirées (§6 decies) | — |
 | F | ~~Arrêt du rechargement par purge~~ | **fait le 19 août 2026** — garde dans `guard.go`, `-force-purge` pour passer outre (§6 undecies) | — |
+| G | ~~L'inventaire physique lit dans PocketBase~~ | **fait le 19 août 2026** — snapshot par `catalog-snapshot.ts`, résolution à deux clés, dernier import de `@/lib/apppos` du module retiré (§6 duodecies) | — |
 
 **Ce qui n'est pas dans ce plan, et pourquoi :** la faille 3.1 — clés
 WooCommerce en clair dans le bundle public du site — reste prioritaire et
@@ -154,8 +155,9 @@ indépendante (`CLAUDE.md`). Ce plan ne la traite pas et ne la remplace pas.
 
 Dit plutôt que deviné :
 
-- **le contenu réel de `InventoryPageAppPos.tsx`** — 3230 lignes, deux appels
-  directs à `appPosApi.getProducts()` repérés (`:166`, `:312`), le reste non lu ;
+- ~~**le contenu réel de `InventoryPageAppPos.tsx`**~~ — mesuré le 19 août
+  2026 : **quatre** `useQuery(['apppos','products','catalog'])` et deux appels
+  directs, non deux. Tous retirés (§6 duodecies) ;
 - **ce que la caisse fait du produit** au-delà de la lecture et du décrément —
   `CashTerminalPage.tsx` n'a été parcouru qu'en imports ;
 - **si `useCreateAppPosProduct` a d'autres appelants** que la caisse : mesuré
