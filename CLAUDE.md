@@ -146,11 +146,17 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   (`frontend/modules/stock/single-source.test.ts`).
 - **Le déploiement est multi-postes** (19 août 2026) : un poste sur
   l'application bureau, les autres au navigateur, sur le même PocketBase.
-  Conséquence directe : `frontend/lib/queries/stock-adjust.ts` lit puis écrit
-  **sans transaction** — PocketBase n'a pas d'incrément atomique en REST — donc
-  **deux postes vendant le même produit en même temps peuvent s'écraser**.
-  Défaut actif, non corrigé. Le correctif est un hook PocketBase **côté
-  serveur** ; une garde côté client ne verrait pas l'autre poste.
+- **Le stock ne se lit ni ne s'écrit depuis le client.** Le mouvement passe par
+  `POST /api/stock/adjust` (`backend/routes/stock_routes.go`), qui tient la
+  lecture et l'écriture dans une seule transaction ; `stock-adjust.ts` ne fait
+  plus qu'appeler la route et journaliser. **Ne pas réintroduire un
+  `pb.collection('products').update({ stock })`** : deux postes s'écraseraient
+  — mesuré, 60 ventes concurrentes n'en retiraient que 15. Deux gardiens :
+  `backend/routes/stock_atomic_test.go` et le faux PocketBase de
+  `frontend/lib/queries/stock-adjust.test.ts`, qui lève dès qu'on touche la
+  collection. L'atomicité repose sur une propriété **de PocketBase v0.22.22**
+  (une seule connexion d'écriture) : à revérifier à chaque mise à jour, voir
+  `docs/DECISIONS.md`.
 - **Le front n'utilise aucun `subscribe()` PocketBase.** Son seul temps réel
   est le SSE Go — `backend/routes/sse_routes.go:101` et
   `frontend/lib/presence/use-presence-events.ts:120`. La scanette

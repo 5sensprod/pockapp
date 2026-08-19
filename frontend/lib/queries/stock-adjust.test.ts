@@ -6,48 +6,79 @@ import {
 	applyStockMovements,
 	eventSourceFor,
 	eventTypeFor,
-	looksLikePocketBaseId,
-	nextStock,
-	productFilter,
 	recordSale,
 	setCountedStock,
 	toSoldLines,
 } from './stock-adjust'
 
-// Un PocketBase de comptoir : il tient les produits en mémoire et note ce qu'on
-// lui demande d'écrire. Assez pour prouver la règle sans base réelle.
+// Un PocketBase de comptoir. Depuis le 19 août 2026, le mouvement passe par
+// `POST /api/stock/adjust` : le faux implémente donc `send`, avec la même
+// sémantique que `backend/routes/stock_routes.go`. `updates` note ce qui a été
+// écrit, comme avant — c'est ce que les tests vérifient.
 function fakePb(
 	produits: Array<{
 		id: string
 		legacy_id?: string
 		name?: string
+		sku?: string
 		stock?: number
 	}>,
 ) {
 	const journal: any[] = []
 	const updates: Array<{ id: string; data: any }> = []
+	const envois: any[] = []
 
 	const pb = {
+		send: async (chemin: string, config: any) => {
+			envois.push({ chemin, body: config?.body })
+			if (chemin !== '/api/stock/adjust') {
+				throw new Error(`route inattendue : ${chemin}`)
+			}
+
+			const results = (config.body.movements as any[]).map((m) => {
+				const trouve = produits.find(
+					(p) => p.id === m.product_id || p.legacy_id === m.product_id,
+				)
+				if (!trouve) {
+					return {
+						product_id: m.product_id,
+						record_id: '',
+						product_name: '',
+						product_sku: '',
+						stock_before: null,
+						stock_after: null,
+						applied: false,
+						error: "The requested resource wasn't found.",
+					}
+				}
+
+				const avant = trouve.stock ?? 0
+				const apres =
+					typeof m.absolute === 'number' ? m.absolute : avant + (m.delta ?? 0)
+				const applied = apres !== avant
+				if (applied) {
+					updates.push({ id: trouve.id, data: { stock: apres } })
+					trouve.stock = apres
+				}
+
+				return {
+					product_id: m.product_id,
+					record_id: trouve.id,
+					product_name: trouve.name ?? '',
+					product_sku: trouve.sku ?? '',
+					stock_before: avant,
+					stock_after: apres,
+					applied,
+				}
+			})
+
+			return { results }
+		},
 		collection(nom: string) {
 			if (nom === 'products') {
-				return {
-					getFirstListItem: async (filtre: string) => {
-						const trouve = produits.find(
-							(p) =>
-								filtre.includes(`id = "${p.id}"`) ||
-								(p.legacy_id &&
-									filtre.includes(`legacy_id = "${p.legacy_id}"`)),
-						)
-						if (!trouve) throw new Error("The requested resource wasn't found.")
-						return { ...trouve }
-					},
-					update: async (id: string, data: any) => {
-						updates.push({ id, data })
-						const cible = produits.find((p) => p.id === id)
-						if (cible) cible.stock = data.stock
-						return { ...cible }
-					},
-				}
+				// Plus aucun mouvement ne doit passer par là : le stock ne se lit ni
+				// ne s'écrit depuis le client.
+				throw new Error('la collection products ne doit plus être touchée ici')
 			}
 			return {
 				create: async (data: any) => {
@@ -58,49 +89,8 @@ function fakePb(
 		},
 	} as unknown as PocketBase
 
-	return { pb, journal, updates }
+	return { pb, journal, updates, envois }
 }
-
-describe('la résolution des identifiants', () => {
-	it('reconnaît la forme des identifiants PocketBase', () => {
-		expect(looksLikePocketBaseId('583fjmjlr9l0wh8')).toBe(true)
-		// 16 caractères, casses mêlées : c'est du NeDB.
-		expect(looksLikePocketBaseId('9XBUS4bQr3jyoJ0j')).toBe(false)
-	})
-
-	it('interroge les DEUX champs, id et clé stable', () => {
-		// Ne tester que `id` laisserait introuvable un produit désigné par sa clé
-		// NeDB — c'est-à-dire tout ce qui vient de la caisse et de l'inventaire.
-		const filtre = productFilter('9XBUS4bQr3jyoJ0j')
-		expect(filtre).toContain('id = "9XBUS4bQr3jyoJ0j"')
-		expect(filtre).toContain('legacy_id = "9XBUS4bQr3jyoJ0j"')
-	})
-
-	it('neutralise les guillemets, qui casseraient le filtre', () => {
-		expect(productFilter('a"b')).not.toContain('a"b')
-	})
-})
-
-describe('le calcul du stock', () => {
-	it('ajoute un mouvement relatif', () => {
-		expect(nextStock(10, { productId: 'x', delta: -3 })).toBe(7)
-		expect(nextStock(10, { productId: 'x', delta: 2 })).toBe(12)
-	})
-
-	it("laisse l'inventaire poser sa valeur, sans la corriger", () => {
-		expect(nextStock(10, { productId: 'x', absolute: 4 })).toBe(4)
-	})
-
-	it('fait primer le comptage sur le mouvement', () => {
-		expect(nextStock(10, { productId: 'x', absolute: 4, delta: 99 })).toBe(4)
-	})
-
-	it('ne plafonne pas à zéro', () => {
-		// Un stock négatif dit qu'il s'est vendu plus que ce que la base croyait
-		// détenir. L'écraser masquerait la cause.
-		expect(nextStock(1, { productId: 'x', delta: -3 })).toBe(-2)
-	})
-})
 
 describe('le motif décide du journal', () => {
 	it('nomme le type et la source, sans les déduire ailleurs', () => {
@@ -288,5 +278,94 @@ describe('toSoldLines', () => {
 				{ product_id: 'b', name: 'Cable', quantity: 0 },
 			]),
 		).toEqual([{ productId: 'a', productName: 'Ampli', quantity: 2 }])
+	})
+})
+
+describe('le mouvement passe par le serveur, et par lui seul', () => {
+	it("n'écrit jamais le stock depuis le client", async () => {
+		// La règle du 19 août 2026. Elle n'a pas d'autre gardien : un
+		// `pb.collection('products').update({ stock })` compilerait, marcherait à
+		// l'écran, et ne se verrait qu'au moment où deux postes vendent le même
+		// produit. Le faux PocketBase lève dès qu'on touche la collection.
+		const { pb, envois } = fakePb([{ id: 'pb1', stock: 5 }])
+
+		await applyStockMovements(pb, [{ productId: 'pb1', delta: -1 }], {
+			reason: 'sale',
+		})
+
+		expect(envois).toHaveLength(1)
+		expect(envois[0].chemin).toBe('/api/stock/adjust')
+	})
+
+	it('envoie le lot entier en un seul appel, pas un appel par ligne', async () => {
+		// Un appel par ligne rouvrirait la fenêtre qu'on vient de fermer entre
+		// les lignes d'un même ticket.
+		const { pb, envois } = fakePb([
+			{ id: 'a', stock: 10 },
+			{ id: 'b', stock: 4 },
+		])
+
+		await recordSale(pb, [
+			{ productId: 'a', quantity: 3 },
+			{ productId: 'b', quantity: 1 },
+		])
+
+		expect(envois).toHaveLength(1)
+		expect(envois[0].body.movements).toHaveLength(2)
+	})
+
+	it('rapproche les résultats par position, pas par identifiant', async () => {
+		// Un même produit peut figurer deux fois dans un ticket. Rapprocher par
+		// `product_id` collerait le résultat de la première ligne sur la seconde.
+		const { pb } = fakePb([{ id: 'a', stock: 10 }])
+
+		const resultats = await applyStockMovements(
+			pb,
+			[
+				{ productId: 'a', delta: -1 },
+				{ productId: 'a', delta: -2 },
+			],
+			{ reason: 'sale' },
+		)
+
+		expect(resultats[0].stockBefore).toBe(10)
+		expect(resultats[0].stockAfter).toBe(9)
+		expect(resultats[1].stockBefore).toBe(9)
+		expect(resultats[1].stockAfter).toBe(7)
+	})
+
+	it("rend l'échec ligne par ligne quand la route ne répond pas", async () => {
+		// La caisse ne doit jamais voir une exception remonter d'ici : le ticket
+		// est déjà encaissé quand on arrive là.
+		const pb = {
+			send: async () => {
+				throw new Error('serveur injoignable')
+			},
+		} as unknown as PocketBase
+
+		const resultats = await applyStockMovements(
+			pb,
+			[{ productId: 'a', delta: -1 }],
+			{ reason: 'sale' },
+		)
+
+		expect(resultats).toHaveLength(1)
+		expect(resultats[0].applied).toBe(false)
+		expect(resultats[0].error).toContain('injoignable')
+	})
+
+	it("journalise le nom rendu par le serveur quand l'appelant n'en donne pas", async () => {
+		// L'inventaire ne passe pas de nom : sans le nom rendu par la route, le
+		// journal perdrait le libellé au moment du comptage.
+		const { pb, journal } = fakePb([
+			{ id: 'pb1', name: 'Ampli', sku: 'AMP-1', stock: 12 },
+		])
+
+		await setCountedStock(pb, 'pb1', 9)
+
+		expect(journal[0]).toMatchObject({
+			product_name_snapshot: 'Ampli',
+			product_sku_snapshot: 'AMP-1',
+		})
 	})
 })

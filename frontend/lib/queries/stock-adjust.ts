@@ -75,31 +75,17 @@ export interface StockAdjustOptions {
 }
 
 // ---------------------------------------------------------------------------
-// RÉSOLUTION — la partie qui décide dans quelle base vit l'identifiant
+// RÉSOLUTION ET CALCUL — désormais côté serveur
 // ---------------------------------------------------------------------------
-
-/** Un identifiant PocketBase fait 15 caractères alphanumériques minuscules ;
- *  ceux de NeDB en font 16 et mêlent les casses. La distinction ne sert qu'à
- *  choisir le champ interrogé — en cas de doute, `legacy_id` est essayé aussi. */
-export function looksLikePocketBaseId(id: string): boolean {
-	return /^[a-z0-9]{15}$/.test(id)
-}
-
-/** Le filtre qui retrouve le produit, quelle que soit l'origine de la clé.
- *  On interroge les DEUX champs : un identifiant de 15 caractères venu de NeDB
- *  resterait introuvable si on ne testait que `id`. */
-export function productFilter(id: string): string {
-	const echappe = id.replace(/["\\]/g, '')
-	return `id = "${echappe}" || legacy_id = "${echappe}"`
-}
-
-/** Le stock après mouvement. `absolute` prime : l'inventaire ne corrige pas,
- *  il constate. Aucun plafonnement à zéro — un stock négatif est une
- *  information, l'écraser masquerait la cause. */
-export function nextStock(before: number, movement: StockMovement): number {
-	if (typeof movement.absolute === 'number') return movement.absolute
-	return before + (movement.delta ?? 0)
-}
+// `productFilter`, `looksLikePocketBaseId` et `nextStock` vivaient ici. Ils ont
+// suivi le mouvement dans `backend/routes/stock_routes.go` (19 août 2026) :
+// c'est là que la lecture et l'écriture doivent tenir ensemble, donc là que la
+// résolution de l'identifiant doit se faire. Le serveur interroge les deux
+// champs — `id` et `legacy_id` — avec des paramètres liés (`dbx.Params`), ce
+// qui règle en passant l'échappement des guillemets que ce fichier bricolait.
+//
+// Ne pas les réintroduire ici : recalculer le stock côté client, c'est le
+// calculer sur une valeur qu'un autre poste a déjà pu changer.
 
 /** Le type d'événement du journal, par motif. */
 export function eventTypeFor(reason: StockReason) {
@@ -129,106 +115,128 @@ export function eventSourceFor(reason: StockReason) {
 // ÉCRITURE
 // ---------------------------------------------------------------------------
 
+/** La forme rendue par `POST /api/stock/adjust`. */
+interface ReponseServeur {
+	results: Array<{
+		product_id: string
+		record_id: string
+		product_name: string
+		product_sku: string
+		stock_before: number | null
+		stock_after: number | null
+		applied: boolean
+		error?: string
+	}>
+}
+
 /**
- * Applique les mouvements, un par un, et journalise.
+ * Applique les mouvements, puis journalise.
  *
- * ⚠️ LECTURE PUIS ÉCRITURE, sans transaction : PocketBase n'expose pas
- * d'incrément atomique en REST. Deux mouvements simultanés sur le même produit
- * peuvent donc s'écraser.
+ * ── LE MOUVEMENT PASSE PAR LE SERVEUR ─────────────────────────────────────
+ * Ce fichier lisait le stock puis le réécrivait, en deux appels REST. Deux
+ * postes vendant le même produit en même temps lisaient tous deux 10 et
+ * écrivaient tous deux 9 : deux ventes, une seule unité retirée. Depuis le
+ * 19 août 2026, le nombre est calculé et écrit dans une transaction unique,
+ * par `backend/routes/stock_routes.go` — voir ce fichier pour la raison pour
+ * laquelle la transaction suffit.
  *
- * ⚠️ Ce texte disait « tenable ici — un poste de caisse, un opérateur ». **Ce
- * n'est plus vrai depuis le 19 août 2026** : le déploiement est multi-postes,
- * un sur l'application bureau et les autres au navigateur
- * (docs/DECISIONS.md). Le défaut est donc ACTIF, et il ne se corrige pas ici :
- * il faut un hook PocketBase côté serveur. Ne pas le rustiner côté client —
- * une garde dans ce fichier ne verrait pas l'autre poste.
+ * ── LE JOURNAL RESTE ICI ──────────────────────────────────────────────────
+ * `product_events` s'écrit toujours depuis le client, et reste best-effort :
+ * une trace ratée ne défait pas un mouvement appliqué. Seul le nombre avait
+ * besoin d'être atomique.
  *
- * Chaque produit est traité séparément : un produit introuvable n'empêche pas
- * les autres de passer, et il est rendu dans le résultat plutôt qu'avalé.
+ * Chaque produit reste traité séparément : un produit introuvable n'empêche
+ * pas les autres de passer, et il est rendu dans le résultat plutôt qu'avalé.
  */
 export async function applyStockMovements(
 	pb: PocketBase,
 	movements: StockMovement[],
 	options: StockAdjustOptions,
 ): Promise<StockAdjustResult[]> {
-	const resultats: StockAdjustResult[] = []
+	if (movements.length === 0) return []
 
-	for (const movement of movements) {
-		const base: StockAdjustResult = {
-			productId: movement.productId,
+	let reponse: ReponseServeur
+	try {
+		reponse = await pb.send('/api/stock/adjust', {
+			method: 'POST',
+			body: {
+				movements: movements.map((m) => ({
+					product_id: m.productId,
+					delta: m.delta,
+					absolute: m.absolute,
+				})),
+			},
+		})
+	} catch (error) {
+		// La route est locale, servie par le même PocketBase que le reste : si
+		// elle ne répond pas, rien n'a bougé. On rend l'échec ligne par ligne,
+		// dans la forme que les appelants attendent déjà.
+		const message =
+			error instanceof Error ? error.message : 'mouvement de stock refusé'
+		return movements.map((m) => ({
+			productId: m.productId,
 			recordId: null,
 			stockBefore: null,
 			stockAfter: null,
 			applied: false,
+			error: message,
+		}))
+	}
+
+	const resultats: StockAdjustResult[] = []
+
+	// Le serveur rend les résultats dans l'ordre reçu : on rapproche par
+	// position, et non par `product_id` — deux lignes du même produit sont
+	// légitimes dans un même ticket.
+	for (const [index, movement] of movements.entries()) {
+		const ligne = reponse.results?.[index]
+
+		if (!ligne) {
+			resultats.push({
+				productId: movement.productId,
+				recordId: null,
+				stockBefore: null,
+				stockAfter: null,
+				applied: false,
+				error: 'réponse du serveur incomplète',
+			})
+			continue
 		}
 
+		resultats.push({
+			productId: movement.productId,
+			recordId: ligne.record_id || null,
+			stockBefore: ligne.stock_before,
+			stockAfter: ligne.stock_after,
+			applied: ligne.applied,
+			...(ligne.error ? { error: ligne.error } : {}),
+		})
+
+		// Rien à journaliser d'un comptage conforme ou d'une ligne en échec.
+		if (!ligne.applied) continue
+
 		try {
-			const produit = await pb.collection('products').getFirstListItem<{
-				id: string
-				name: string
-				sku?: string
-				stock?: number
-			}>(productFilter(movement.productId), { fields: 'id,name,sku,stock' })
-
-			const avant = produit.stock ?? 0
-			const apres = nextStock(avant, movement)
-
-			if (apres === avant) {
-				// Rien à écrire, et surtout rien à journaliser : un comptage conforme
-				// n'est pas un mouvement.
-				resultats.push({
-					...base,
-					recordId: produit.id,
-					stockBefore: avant,
-					stockAfter: avant,
-					applied: false,
-				})
-				continue
-			}
-
-			await pb.collection('products').update(produit.id, { stock: apres })
-
-			resultats.push({
-				...base,
-				recordId: produit.id,
-				stockBefore: avant,
-				stockAfter: apres,
-				applied: true,
+			await createProductEvent(pb, {
+				product_id: ligne.record_id,
+				product_name_snapshot: movement.productName ?? ligne.product_name ?? '',
+				product_sku_snapshot: movement.productSku ?? ligne.product_sku ?? '',
+				event_type: eventTypeFor(options.reason),
+				source: eventSourceFor(options.reason),
+				source_id: options.sourceId ?? null,
+				operator: options.operator ?? '',
+				before: { stock: ligne.stock_before },
+				after: { stock: ligne.stock_after },
+				// Le journal porte le mouvement, pas seulement les deux bornes :
+				// c'est lui qu'on additionne pour reconstituer une période.
+				delta: { stock: (ligne.stock_after ?? 0) - (ligne.stock_before ?? 0) },
+				metadata:
+					movement.metadata || options.metadata
+						? { ...(options.metadata ?? {}), ...(movement.metadata ?? {}) }
+						: null,
+				occurred_at: new Date().toISOString(),
 			})
-
-			// Le journal est best-effort, comme il l'était pour AppPos : une écriture
-			// de trace ratée ne défait pas un mouvement déjà appliqué.
-			try {
-				await createProductEvent(pb, {
-					product_id: produit.id,
-					product_name_snapshot: movement.productName ?? produit.name,
-					product_sku_snapshot: movement.productSku ?? produit.sku ?? '',
-					event_type: eventTypeFor(options.reason),
-					source: eventSourceFor(options.reason),
-					source_id: options.sourceId ?? null,
-					operator: options.operator ?? '',
-					before: { stock: avant },
-					after: { stock: apres },
-					// Le journal porte le mouvement, pas seulement les deux bornes :
-					// c'est lui qu'on additionne pour reconstituer une période.
-					delta: { stock: apres - avant },
-					metadata:
-						movement.metadata || options.metadata
-							? { ...(options.metadata ?? {}), ...(movement.metadata ?? {}) }
-							: null,
-					occurred_at: new Date().toISOString(),
-				})
-			} catch (error) {
-				console.error('[stock] journalisation refusée', error)
-			}
 		} catch (error) {
-			resultats.push({
-				...base,
-				error:
-					error instanceof Error
-						? error.message
-						: 'produit introuvable en base',
-			})
+			console.error('[stock] journalisation refusée', error)
 		}
 	}
 

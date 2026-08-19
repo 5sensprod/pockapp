@@ -10,6 +10,51 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le mouvement de stock devient atomique, côté serveur — 2026-08-19
+
+**Le stock ne se lit ni ne s'écrit plus depuis le client.**
+`frontend/lib/queries/stock-adjust.ts` appelle `POST /api/stock/adjust`
+(`backend/routes/stock_routes.go`), qui fait tenir la lecture et l'écriture
+dans une seule transaction. C'est le correctif ouvert par la décision
+« Le canal WebSocket AppPos est retiré » du même jour.
+
+**Le défaut corrigé, mesuré :** avec l'ancien chemin, 60 ventes concurrentes
+d'une unité sur un stock de 100 le laissaient à **85** — 45 mouvements perdus.
+Constaté en retirant la transaction du nouveau code et en relançant
+`TestMouvementsConcurrentsNeSEcrasentPas`
+(`backend/routes/stock_atomic_test.go`), qui passe à 40 avec elle.
+
+**Ce qui rend la transaction suffisante — et c'est une propriété de la
+bibliothèque, pas du métier :** PocketBase n'ouvre qu'une connexion
+d'écriture. Lu dans la v0.22.22 : `core/base.go:1035` pose
+`nonconcurrentDB.SetMaxOpenConns(1)`, et `daos/base.go:130` fait tourner
+`RunInTransaction` dessus. Les transactions se sérialisent donc à la connexion.
+**C'est le point à revérifier lors d'une mise à jour de PocketBase**, pas le
+code de la route.
+
+**Écarté — une garde côté client** (verrou, relecture, réessai) : elle ne voit
+pas l'autre poste. C'est exactement ce que le défaut était.
+
+**Écarté — journaliser dans la route.** `product_events` reste écrit par le
+client, best-effort comme avant : une trace ratée ne défait pas un mouvement
+appliqué. Seul le nombre avait besoin d'être atomique, et élargir la
+transaction au journal aurait fait tomber un mouvement valide sur une trace
+refusée. La route rend en revanche `product_name` et `product_sku`, que le
+client ne peut plus lire lui-même et dont le journal a besoin.
+
+**Écarté — une transaction pour le lot entier.** Chaque mouvement a la sienne :
+un produit introuvable — il y en a — n'a pas à annuler la vente des autres
+lignes du ticket. C'était déjà la sémantique du client.
+
+**Conséquence sur le calcul :** `nextStock`, `productFilter` et
+`looksLikePocketBaseId` ont quitté le client pour le serveur. Le filtre
+s'écrit maintenant en paramètres liés (`dbx.Params`), ce qui règle en passant
+l'échappement des guillemets que le client bricolait.
+
+**Remise en cause si :** PocketBase change de mode de connexion en écriture, ou
+si un besoin de stock réservé (panier en cours) apparaît — ce n'est pas le même
+problème et ça ne se résout pas par la même transaction.
+
 ## Le canal WebSocket AppPos est retiré ; le temps réel multi-postes reste à bâtir — 2026-08-19
 
 **Les 1009 lignes de WebSocket AppPos sont supprimées** —
