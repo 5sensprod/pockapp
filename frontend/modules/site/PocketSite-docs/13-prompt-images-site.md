@@ -3,6 +3,13 @@
 **Écrit le 19 août 2026.** À donner tel quel à la session qui traitera le §7 du
 contrat catalogue — le seul point qu'il déclare explicitement **non couvert**.
 
+> ⚠️ **Remplacé par [`15-prompt-sync-images.md`](15-prompt-sync-images.md)**, le
+> 19 août 2026 au soir. Ce fichier-ci a été écrit AVANT la session « galerie » :
+> son état chiffré est d'une demi-journée trop vieux, et l'unité à synchroniser
+> a changé — une principale plus une liste ordonnée, et non une image. Il reste
+> lisible pour ses trois voies et pour la mesure des URL WordPress, qui n'ont
+> pas bougé.
+
 ---
 
 Tu travailles dans `I:\pockapp`, module `frontend/modules/site` (PocketApp :

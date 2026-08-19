@@ -174,6 +174,13 @@ affiche l'avertissement.
   jamais une qui leur soit propre. État des lieux couche par couche, ce que
   `dateSoumission` porte réellement en base, et les trois chemins possibles :
   [`13-dates-produits.md`](13-dates-produits.md). **Pas urgent, rien d'engagé.**
+- **Les images du catalogue vers le site** — le §7 du contrat, le seul point
+  qu'il déclare non couvert. Prompt de reprise :
+  [`15-prompt-sync-images.md`](15-prompt-sync-images.md), qui remplace
+  [`13-prompt-images-site.md`](13-prompt-images-site.md) depuis la fin de la
+  session « galerie » (19 août 2026). **La phase 1 est une conception, pas un
+  transfert :** nommer les risques de désynchronisation avant de choisir un
+  mécanisme.
 - **le bandeau de statistiques du site est masqué** sous le drapeau : il compte
   les produits et les marques dans WooCommerce, et `catalog.php` ne sait rendre
   ni un total de produits ni une liste de marques. Rituel prêt à exécuter, SQL
