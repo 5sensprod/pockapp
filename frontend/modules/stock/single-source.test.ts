@@ -70,3 +70,31 @@ describe("il n'y a plus de routeur de base non typé", () => {
 		expect(source).not.toMatch(/\.create<|\.update<|\.delete\(/)
 	})
 })
+
+describe('le choix produit des documents vient de PocketBase', () => {
+	// Sept écrans faisaient le même préambule : `loginToAppPos('admin',
+	// 'admin123')`, les 3000 produits chargés d'un coup, un filtre en mémoire à
+	// chaque frappe. Ils passent tous par `useCatalogProductSearch` depuis le
+	// 19 août 2026 — et cette liste ne doit pas se repeupler.
+	const ecrans = [
+		'modules/connect/pages/invoices/InvoiceCreatePage.tsx',
+		'modules/connect/pages/invoices/InvoiceEditPage.tsx',
+		'modules/connect/pages/quotes/QuoteCreatePage.tsx',
+		'modules/connect/pages/quotes/QuoteEditPage.tsx',
+		'modules/connect/pages/orders/OrderCreatePage.tsx',
+		'modules/connect/pages/orders/OrderDetailPage.tsx',
+		'modules/connect/features/orders/OrderCreateInline.tsx',
+	]
+
+	it.each(ecrans)('%s cherche dans le catalogue PocketBase', (fichier) => {
+		const source = lire(fichier)
+		expect(source).toMatch(/useCatalogProductSearch/)
+		expect(source).not.toMatch(/useAppPosProducts/)
+	})
+
+	it.each(ecrans)('%s ne se connecte plus à AppPos', (fichier) => {
+		const source = lire(fichier)
+		// Le mot de passe était en clair dans chacun des sept fichiers.
+		expect(source).not.toMatch(/loginToAppPos/)
+	})
+})

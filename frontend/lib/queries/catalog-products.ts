@@ -34,6 +34,7 @@ import {
 	useQuery,
 	useQueryClient,
 } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 
 import type { PocketBaseRecord } from './catalog-shapes'
 import { type ImageIntent, buildWritePayload } from './image-upload'
@@ -185,6 +186,59 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 		},
 		enabled: !!companyId,
 	})
+}
+
+// ---------------------------------------------------------------------------
+// RECHERCHE — le choix d'un produit dans un document
+// ---------------------------------------------------------------------------
+// Six écrans faisaient la même chose avec AppPos : se connecter avec
+// `loginToAppPos('admin', 'admin123')`, charger LES 3000 PRODUITS d'un coup, et
+// filtrer en mémoire à chaque frappe (facture, devis et commande, en création
+// comme en modification). Ce hook remplace ce préambule.
+//
+// Trois choix, chacun pour une raison mesurée :
+//
+//  • **la recherche part au serveur**, comme dans `/stock/produits` : 2999
+//    produits ne se chargent pas pour en choisir un ;
+//  • **l'anti-rebond est ICI**, pas dans les écrans. Il y était absent : chaque
+//    frappe relançait le filtre. 300 ms, la même valeur que `ProductsPage` ;
+//  • **une liste courte sans recherche** — le sélecteur s'ouvre garni plutôt
+//    que vide, et l'appelant n'a plus à faire `slice(0, 20)`.
+
+const SEARCH_PER_PAGE = 25
+
+export function useCatalogProductSearch(options: {
+	companyId?: string
+	term?: string
+	/** Le sélecteur est fermé : rien ne part au serveur. */
+	enabled?: boolean
+}) {
+	const { companyId, term = '', enabled = true } = options
+	const [debounced, setDebounced] = useState(term)
+
+	useEffect(() => {
+		const timer = window.setTimeout(() => setDebounced(term), 300)
+		return () => window.clearTimeout(timer)
+	}, [term])
+
+	const page = useCatalogProducts({
+		// `useCatalogProducts` ne part qu'avec une entreprise : la retirer suffit
+		// à ne rien demander tant que le sélecteur est fermé.
+		companyId: enabled ? companyId : undefined,
+		page: 1,
+		perPage: SEARCH_PER_PAGE,
+		search: debounced.trim() || undefined,
+		// Un document ne se compose pas de brouillons : ce qui n'est pas publié
+		// n'a pas de prix arrêté.
+		status: 'published',
+	})
+
+	return {
+		...page,
+		items: (page.data?.items ?? []) as CatalogProductShape[],
+		/** Vrai tant que la frappe n'est pas encore partie au serveur. */
+		isTyping: debounced !== term,
+	}
 }
 
 // ---------------------------------------------------------------------------

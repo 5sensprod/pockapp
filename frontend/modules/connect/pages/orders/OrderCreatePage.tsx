@@ -12,8 +12,10 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
-import type { ProductsResponse } from '@/lib/pocketbase-types'
+import {
+	type CatalogProductShape,
+	useCatalogProductSearch,
+} from '@/lib/queries/catalog-products'
 import { useAllCustomers } from '@/lib/queries/customers'
 import { useCreateOrder } from '@/lib/queries/orders'
 import type { OrderItem } from '@/lib/queries/orders'
@@ -102,7 +104,6 @@ export function OrderCreatePage() {
 	}, [customerPickerOpen])
 
 	// ── AppPOS ────────────────────────────────────────────────────────────
-	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
 	const [productPickerOpen, setProductPickerOpen] = useState(false)
 	const [productPickerTab, setProductPickerTab] = useState<
 		'catalogue' | 'libre'
@@ -114,32 +115,12 @@ export function OrderCreatePage() {
 	const [freeLinePriceHT, setFreeLinePriceHT] = useState(0)
 	const [freeLineVat, setFreeLineVat] = useState(0.2)
 
-	useEffect(() => {
-		const connect = async () => {
-			if (isAppPosConnected) return
-			const existingToken = getAppPosToken()
-			if (existingToken) {
-				setIsAppPosConnected(true)
-				return
-			}
-			try {
-				const res = await loginToAppPos('admin', 'admin123')
-				if (res.success && res.token) setIsAppPosConnected(true)
-			} catch (err) {
-				console.error('AppPOS connexion:', err)
-			}
-		}
-		void connect()
-	}, [isAppPosConnected])
-
-	const { data: productsData } = useAppPosProducts({
-		enabled:
-			isAppPosConnected &&
-			productPickerOpen &&
-			productPickerTab === 'catalogue',
-		searchTerm: productSearch || undefined,
+	// Recherche AU SERVEUR, anti-rebond compris (`useCatalogProductSearch`).
+	// Remplace le chargement des 3000 produits d'AppPos filtré en mémoire.
+	const { items: products } = useCatalogProductSearch({
+		companyId: activeCompanyId ?? undefined,
+		term: productSearch,
 	})
-	const products = (productsData?.items ?? []) as ProductsResponse[]
 
 	// ── Lignes ────────────────────────────────────────────────────────────
 	const [items, setItems] = useState<OrderItem[]>([])
@@ -150,14 +131,15 @@ export function OrderCreatePage() {
 	const isFromQuote = !!search.sourceQuoteId
 	const { total_ht, total_tva, total_ttc } = computeOrderTotals(items)
 
-	const addFromCatalogue = (product: ProductsResponse) => {
-		const vatRate = (product.tva_rate ?? 20) / 100
+	const addFromCatalogue = (product: CatalogProductShape) => {
+		const vatRate = (product.tax_rate ?? 20) / 100
 		const coef = 1 + vatRate
-		let unitPriceHT = 0
-		if (typeof product.price_ht === 'number')
-			unitPriceHT = round2(product.price_ht)
-		else if (typeof product.price_ttc === 'number')
-			unitPriceHT = round2(product.price_ttc / coef)
+		// `catalog_v2` ne porte plus `price_ht` : le prix de vente est TTC, et
+		// le HT s'en déduit par le taux. C'était déjà la branche de repli.
+		const unitPriceHT =
+			typeof product.price_ttc === 'number'
+				? round2(product.price_ttc / coef)
+				: 0
 		const newItem = computeItem({
 			id: crypto.randomUUID(),
 			description: product.name,
@@ -609,9 +591,7 @@ export function OrderCreatePage() {
 							<div className='max-h-64 overflow-y-auto border rounded-md divide-y'>
 								{products.length === 0 ? (
 									<div className='p-4 text-center text-sm text-muted-foreground'>
-										{isAppPosConnected
-											? 'Aucun produit trouvé'
-											: 'Connexion au catalogue…'}
+										'Aucun produit trouvé'
 									</div>
 								) : (
 									products.slice(0, 30).map((product) => (
@@ -632,11 +612,6 @@ export function OrderCreatePage() {
 												)}
 											</div>
 											<div className='text-right shrink-0'>
-												{product.price_ht != null && (
-													<p className='text-sm font-medium'>
-														{formatAmount(product.price_ht)} HT
-													</p>
-												)}
 												{product.price_ttc != null && (
 													<p className='text-xs text-muted-foreground'>
 														{formatAmount(product.price_ttc)} TTC

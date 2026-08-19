@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { ProductWithRefs } from '@/lib/apppos/apppos-transformers'
 
 import {
 	Select,
@@ -34,11 +33,12 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
-import type {
-	CustomersResponse,
-	ProductsResponse,
-} from '@/lib/pocketbase-types'
+import type { CustomersResponse } from '@/lib/pocketbase-types'
+import { useBrands } from '@/lib/queries/brands'
+import {
+	type CatalogProductShape,
+	useCatalogProductSearch,
+} from '@/lib/queries/catalog-products'
 import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
 import { useQuote, useUpdateQuote } from '@/lib/queries/quotes'
 import type { InvoiceItem, QuoteStatus } from '@/lib/types/invoice.types'
@@ -90,7 +90,7 @@ interface SelectedCustomer {
 }
 
 type QuoteCustomer = CustomersResponse
-type QuoteProduct = ProductsResponse
+type QuoteProduct = CatalogProductShape
 
 const clamp = (n: number, min: number, max: number) =>
 	Math.min(max, Math.max(min, n))
@@ -243,19 +243,31 @@ export function QuoteEditPage() {
 	const [productPickerOpen, setProductPickerOpen] = useState(false)
 	const [productSearch, setProductSearch] = useState('')
 	const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
-	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
 
 	// Queries
 	const { data: customersData } = useCustomers({
 		companyId: activeCompanyId ?? undefined,
 	})
-	const { data: productsData } = useAppPosProducts({
-		enabled: isAppPosConnected,
-		searchTerm: productSearch || undefined,
+	// Recherche AU SERVEUR, anti-rebond compris (`useCatalogProductSearch`).
+	// Remplace le chargement des 3000 produits d'AppPos filtré en mémoire.
+	const { items: products } = useCatalogProductSearch({
+		companyId: activeCompanyId ?? undefined,
+		term: productSearch,
 	})
 
+	// La ligne de devis porte le NOM de la marque. AppPos le livrait dans
+	// `expand.brand.name` ; PocketBase rend un identifiant, et les 287 marques
+	// sont déjà en cache — on résout en mémoire plutôt que de demander un
+	// `expand` à chaque page (même raison que `catalog-rows.ts`).
+	const { data: brandList } = useBrands({
+		companyId: activeCompanyId ?? undefined,
+	})
+	const brandNameById = useMemo(
+		() => new Map((brandList ?? []).map((b) => [b.id, b.name])),
+		[brandList],
+	)
+
 	const customers = (customersData?.items ?? []) as QuoteCustomer[]
-	const products = (productsData?.items ?? []) as QuoteProduct[]
 
 	const filteredCustomers = useMemo(() => {
 		const term = customerSearch.toLowerCase()
@@ -267,24 +279,6 @@ export function QuoteEditPage() {
 			)
 		})
 	}, [customers, customerSearch])
-
-	useEffect(() => {
-		const connect = async () => {
-			if (isAppPosConnected) return
-			const existingToken = getAppPosToken()
-			if (existingToken) {
-				setIsAppPosConnected(true)
-				return
-			}
-			try {
-				const res = await loginToAppPos('admin', 'admin123')
-				if (res.success && res.token) setIsAppPosConnected(true)
-			} catch (err) {
-				console.error('AppPOS: erreur de connexion', err)
-			}
-		}
-		void connect()
-	}, [isAppPosConnected])
 
 	useEffect(() => {
 		if (!quote || isInitialized) return
@@ -369,14 +363,9 @@ export function QuoteEditPage() {
 	}
 
 	const addProduct = (product: QuoteProduct) => {
-		const tvaRate = product.tva_rate ?? 20
-		const coef = 1 + tvaRate / 100
-		const p = product as unknown as ProductWithRefs
-
-		let unitTtc = 0
-		if (typeof product.price_ttc === 'number') unitTtc = product.price_ttc
-		else if (typeof product.price_ht === 'number')
-			unitTtc = product.price_ht * coef
+		const tvaRate = product.tax_rate ?? 20
+		// `catalog_v2` ne porte plus `price_ht` : le prix de vente est TTC.
+		let unitTtc = typeof product.price_ttc === 'number' ? product.price_ttc : 0
 
 		unitTtc = round2(unitTtc)
 		const id = `item-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -387,7 +376,7 @@ export function QuoteEditPage() {
 			name: product.name,
 			designation: (product as any).designation ?? product.name,
 			sku: (product as any).sku ?? '',
-			brandName: p.expand?.brand?.name ?? undefined,
+			brandName: product.brand ? brandNameById.get(product.brand) : undefined,
 			displayMode: 'name',
 			quantity: 1,
 			tva_rate: tvaRate,
@@ -1297,7 +1286,7 @@ export function QuoteEditPage() {
 					<DialogHeader>
 						<DialogTitle>Ajouter un produit</DialogTitle>
 						<DialogDescription>
-							Recherchez un produit à partir d&apos;AppPOS.
+							Recherchez un produit dans le catalogue.
 						</DialogDescription>
 					</DialogHeader>
 					<div className='space-y-3'>
@@ -1309,13 +1298,11 @@ export function QuoteEditPage() {
 						<div className='max-h-64 overflow-y-auto border rounded-md'>
 							{products.length === 0 ? (
 								<div className='p-4 text-center text-sm text-muted-foreground'>
-									{isAppPosConnected
-										? 'Aucun produit trouvé'
-										: 'Connexion à AppPOS...'}
+									'Aucun produit trouvé'
 								</div>
 							) : (
 								<ul className='divide-y'>
-									{products.slice(0, 20).map((product) => (
+									{products.map((product) => (
 										<li key={product.id}>
 											<button
 												type='button'

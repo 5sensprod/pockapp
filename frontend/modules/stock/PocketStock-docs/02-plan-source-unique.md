@@ -141,7 +141,7 @@ donc le pont existe pour reprendre ce qui aurait divergé.
 |---|---|---|---|
 | A | ~~Comptage des galeries~~ | **fait le 18 août 2026** — attendu réel 758, écart de 11 expliqué, import complet (§6 sexies du rituel) | — |
 | B | ~~`/stock/produits` prend l'UI d'AppStock~~ | **fait le 18 août 2026** — sept fichiers retirés, images servies par PocketBase (§6 sexies) | — |
-| C | **`useCatalogProductSearch`**, puis les quatre écrans de choix produit de PocketConnect | même besoin répété quatre fois ; aucun de ces écrans ne bouge de stock | faible |
+| C | ~~`useCatalogProductSearch` et les écrans de choix produit~~ | **fait le 19 août 2026** — sept écrans et non quatre, trois écarts de schéma corrigés au passage (§6 octies) | — |
 | D | **`adjustStock`**, d'abord pour l'inventaire et le reclassement | deux appelants, hors caisse : la couche se prouve avant de toucher au maillon critique | moyen |
 | E | **La caisse** — lecture, création, décrément | dernier, comme décidé le 13 août | **le plus élevé du dépôt** |
 | F | **Arrêt du rechargement par purge** | seulement après E | irréversible |

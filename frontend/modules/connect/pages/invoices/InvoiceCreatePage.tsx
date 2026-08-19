@@ -32,8 +32,10 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
-import type { ProductsResponse } from '@/lib/pocketbase-types'
+import {
+	type CatalogProductShape,
+	useCatalogProductSearch,
+} from '@/lib/queries/catalog-products'
 import { useAllCustomers, useCreateCustomer } from '@/lib/queries/customers'
 import { useCreateInvoice } from '@/lib/queries/invoices'
 import type { InvoiceItem } from '@/lib/types/invoice.types'
@@ -92,7 +94,7 @@ interface VatBreakdown {
 	total_ttc: number
 }
 
-type InvoiceProduct = ProductsResponse
+type InvoiceProduct = CatalogProductShape
 
 const clamp = (n: number, min: number, max: number) =>
 	Math.min(max, Math.max(min, n))
@@ -214,7 +216,6 @@ export function InvoiceCreatePage() {
 	const [productPickerOpen, setProductPickerOpen] = useState(false)
 	const [productSearch, setProductSearch] = useState('')
 	const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
-	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
 
 	// Queries
 	// ❌ Supprime cette ligne - plus utilisée
@@ -222,9 +223,11 @@ export function InvoiceCreatePage() {
 	//     companyId: activeCompanyId ?? undefined,
 	// })
 
-	const { data: productsData } = useAppPosProducts({
-		enabled: isAppPosConnected,
-		searchTerm: productSearch || undefined,
+	// Recherche AU SERVEUR, anti-rebond compris (`useCatalogProductSearch`).
+	// Remplace le chargement des 3000 produits d'AppPos filtré en mémoire.
+	const { items: products } = useCatalogProductSearch({
+		companyId: activeCompanyId ?? undefined,
+		term: productSearch,
 	})
 	const createInvoice = useCreateInvoice()
 	const createCustomer = useCreateCustomer()
@@ -251,8 +254,6 @@ export function InvoiceCreatePage() {
 		}
 	}, [incomingCustomerId, customers])
 
-	const products = (productsData?.items ?? []) as InvoiceProduct[]
-
 	const filteredCustomers = customers.filter((c) => {
 		const term = customerSearch.toLowerCase()
 		return (
@@ -261,24 +262,6 @@ export function InvoiceCreatePage() {
 			(c.phone ?? '').includes(customerSearch)
 		)
 	})
-
-	useEffect(() => {
-		const connect = async () => {
-			if (isAppPosConnected) return
-			const existingToken = getAppPosToken()
-			if (existingToken) {
-				setIsAppPosConnected(true)
-				return
-			}
-			try {
-				const res = await loginToAppPos('admin', 'admin123')
-				if (res.success && res.token) setIsAppPosConnected(true)
-			} catch (err) {
-				console.error('AppPOS: erreur de connexion', err)
-			}
-		}
-		void connect()
-	}, [isAppPosConnected])
 
 	// =====================
 	// ACTIONS PRODUITS
@@ -291,13 +274,9 @@ export function InvoiceCreatePage() {
 	}
 
 	const addProduct = (product: InvoiceProduct) => {
-		const tvaRate = product.tva_rate ?? 20
-		const coef = 1 + tvaRate / 100
-
-		let unitTtc = 0
-		if (typeof product.price_ttc === 'number') unitTtc = product.price_ttc
-		else if (typeof product.price_ht === 'number')
-			unitTtc = product.price_ht * coef
+		const tvaRate = product.tax_rate ?? 20
+		// `catalog_v2` ne porte plus `price_ht` : le prix de vente est TTC.
+		let unitTtc = typeof product.price_ttc === 'number' ? product.price_ttc : 0
 
 		unitTtc = round2(unitTtc)
 		const id = `item-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -1183,7 +1162,7 @@ export function InvoiceCreatePage() {
 						<DialogHeader>
 							<DialogTitle>Ajouter un produit</DialogTitle>
 							<DialogDescription>
-								Recherchez un produit à partir d&apos;AppPOS.
+								Recherchez un produit dans le catalogue.
 							</DialogDescription>
 						</DialogHeader>
 						<div className='space-y-3'>
@@ -1195,13 +1174,11 @@ export function InvoiceCreatePage() {
 							<div className='max-h-64 overflow-y-auto border rounded-md'>
 								{products.length === 0 ? (
 									<div className='p-4 text-center text-sm text-muted-foreground'>
-										{isAppPosConnected
-											? 'Aucun produit trouvé'
-											: 'Connexion à AppPOS...'}
+										'Aucun produit trouvé'
 									</div>
 								) : (
 									<ul className='divide-y'>
-										{products.slice(0, 20).map((product) => (
+										{products.map((product) => (
 											<li key={product.id}>
 												<button
 													type='button'

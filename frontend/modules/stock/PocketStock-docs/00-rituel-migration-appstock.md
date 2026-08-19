@@ -685,6 +685,72 @@ l'application demande une connexion. À regarder : les vignettes sur
 `/stock/marques` et `/stock/categories`, et un import d'image dans chacun des
 trois dialogues.
 
+## 6 octies. Front C — le choix produit des documents, 19 août 2026
+
+**Sept écrans, pas quatre.** Le plan en annonçait quatre ; la mesure en a trouvé
+sept, tous avec le même préambule copié :
+
+```
+useEffect(() => { … loginToAppPos('admin', 'admin123') … }, [isAppPosConnected])
+const { data: productsData } = useAppPosProducts({ enabled: isAppPosConnected, searchTerm })
+const products = (productsData?.items ?? []) as XProduct[]
+```
+
+Facture (création, modification), devis (création, modification), commande
+(création, détail) et la commande en ligne. **Le mot de passe AppPos était en
+clair dans les sept.**
+
+### Ce qui remplace : `useCatalogProductSearch`
+
+Dans `lib/queries/catalog-products.ts`. Trois choix, chacun pour une raison :
+
+- **la recherche part au serveur**, comme `/stock/produits` : 2999 produits ne
+  se chargent pas pour en choisir un. AppPos les chargeait tous, à chaque écran ;
+- **l'anti-rebond est dans le hook**, pas dans les écrans — où il n'existait
+  pas : chaque frappe relançait le filtre. 300 ms, la valeur de `ProductsPage` ;
+- **25 produits sans recherche**, pour que le sélecteur s'ouvre garni. Les
+  écrans faisaient `slice(0, 20)` sur une liste de 3000 ; le `slice` a disparu.
+
+Le hook filtre aussi sur `status = 'published'` : **un document ne se compose
+pas de brouillons**, dont le prix n'est pas arrêté.
+
+### Trois écarts de schéma trouvés en basculant
+
+1. **`tva_rate` n'existe pas dans `catalog_v2`** — c'est `tax_rate`. Les sept
+   écrans lisaient `product.tva_rate ?? 20`, nom que le transformateur AppPos
+   produisait. Sans correction, **tous les produits seraient partis à 20 %** de
+   TVA par défaut, silencieusement ;
+2. **`price_ht` n'existe plus** (`CLAUDE.md`). Les commandes s'en servaient en
+   premier et retombaient sur le TTC ; la branche fantôme est retirée, le HT se
+   dérive du TTC par le taux — ce qui était déjà le repli ;
+3. **le nom de marque d'une ligne de devis** venait de `expand.brand.name`.
+   PocketBase rend un identifiant : il est résolu par le cache `useBrands`,
+   comme dans `catalog-rows.ts`. Deux `console.log` de débogage traînaient là,
+   retirés avec.
+
+### L'état
+
+| | Avant | Après |
+|---|---|---|
+| écrans lisant AppPos pour choisir un produit | 7 | **0** |
+| mots de passe AppPos en clair dans `connect` | 7 | **0** |
+| produits chargés pour ouvrir un sélecteur | ~3000 | 25 |
+
+**14 cas de test neufs** gardent la bascule, écran par écran
+(`single-source.test.ts`) : chacun cherche dans PocketBase, aucun ne se
+reconnecte à AppPos.
+
+**Ce qui parle encore à AppPos dans `connect`, et c'est le front D** : le
+mouvement de stock — `decrementStockFromCart` / `decrementStockFromItems`
+(`InvoicesPage.tsx`, `InvoicePaymentDialog.tsx`, `useInvoiceActions.tsx`,
+`lib/queries/invoices.ts`, `lib/queries/quotes.ts`). **Lire est basculé, bouger
+ne l'est pas.**
+
+**Vérifié :** `npx tsc -b` silencieux, `pnpm test` vert (109 cas), Biome passé,
+les sept écrans se transforment dans Vite. **Non vérifié : l'écran** — à
+regarder, l'ouverture du sélecteur de produit dans une facture, un devis et une
+commande, et le prix repris avec **le bon taux de TVA**.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
@@ -702,8 +768,12 @@ mesuré, et l'écran catalogue est unique, sur PocketBase.
 **Les images du catalogue sont complètes en lecture ET en écriture**
 (§6 septies) — marques, catégories et produits, galerie exceptée.
 
-**La prochaine session** : front C du plan — `useCatalogProductSearch`, puis les
-quatre écrans de choix produit de PocketConnect. Le point dur du §6 reste
+**Front C fait** (§6 octies) : les sept écrans de choix produit de PocketConnect
+cherchent dans PocketBase.
+
+**La prochaine session** : front D — `adjustStock`, un seul chemin pour les
+quatre motifs de mouvement, prouvé d'abord sur l'inventaire et le reclassement,
+la caisse en dernier. Le point dur du §6 reste
 entier, et il est maintenant chiffré : **53 produits** existent dans NeDB et pas
 dans PocketBase, parce que la caisse crée toujours ses produits là-bas
 (`modules/cash/CreateProductDialog.tsx`).

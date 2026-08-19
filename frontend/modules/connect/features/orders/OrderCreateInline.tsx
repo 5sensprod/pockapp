@@ -16,8 +16,10 @@ import { Label } from '@/components/ui/label'
 
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
-import type { ProductsResponse } from '@/lib/pocketbase-types'
+import {
+	type CatalogProductShape,
+	useCatalogProductSearch,
+} from '@/lib/queries/catalog-products'
 import { type OrderItem, useCreateOrder } from '@/lib/queries/orders'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -70,7 +72,6 @@ export function OrderCreateInline({
 	const navigate = useNavigate()
 
 	// ── AppPOS ────────────────────────────────────────────────────────────────
-	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
 	// Ouvre le picker catalogue immédiatement à l'arrivée sur le formulaire
 	const [productPickerOpen, setProductPickerOpen] = useState(true)
 	const [productPickerTab, setProductPickerTab] = useState<
@@ -80,32 +81,12 @@ export function OrderCreateInline({
 	const productSearchRef = useRef<HTMLInputElement>(null)
 	const freeLineDescRef = useRef<HTMLInputElement>(null)
 
-	useEffect(() => {
-		const connect = async () => {
-			if (isAppPosConnected) return
-			const token = getAppPosToken()
-			if (token) {
-				setIsAppPosConnected(true)
-				return
-			}
-			try {
-				const res = await loginToAppPos('admin', 'admin123')
-				if (res.success && res.token) setIsAppPosConnected(true)
-			} catch (err) {
-				console.error('AppPOS connexion:', err)
-			}
-		}
-		void connect()
-	}, [isAppPosConnected])
-
-	const { data: productsData } = useAppPosProducts({
-		enabled:
-			isAppPosConnected &&
-			productPickerOpen &&
-			productPickerTab === 'catalogue',
-		searchTerm: productSearch || undefined,
+	// Recherche AU SERVEUR, anti-rebond compris (`useCatalogProductSearch`).
+	// Remplace le chargement des 3000 produits d'AppPos filtré en mémoire.
+	const { items: products } = useCatalogProductSearch({
+		companyId: activeCompanyId ?? undefined,
+		term: productSearch,
 	})
-	const products = (productsData?.items ?? []) as ProductsResponse[]
 
 	useEffect(() => {
 		if (productPickerOpen && productPickerTab === 'catalogue')
@@ -131,7 +112,7 @@ export function OrderCreateInline({
 	const [freeLineVat, setFreeLineVat] = useState(0.2)
 
 	// Sélection multiple dans le catalogue
-	type CatalogueSelection = { product: ProductsResponse; qty: number }
+	type CatalogueSelection = { product: CatalogProductShape; qty: number }
 	const [catalogueSelection, setCatalogueSelection] = useState<
 		CatalogueSelection[]
 	>([])
@@ -145,7 +126,7 @@ export function OrderCreateInline({
 		setProductPickerOpen(true)
 	}
 
-	const toggleCatalogueSelection = (product: ProductsResponse) => {
+	const toggleCatalogueSelection = (product: CatalogProductShape) => {
 		setCatalogueSelection((prev) => {
 			const exists = prev.find((s) => s.product.id === product.id)
 			if (exists) return prev.filter((s) => s.product.id !== product.id)
@@ -163,13 +144,14 @@ export function OrderCreateInline({
 
 	const confirmCatalogueSelection = () => {
 		const newItems = catalogueSelection.map(({ product, qty }) => {
-			const vatRate = (product.tva_rate ?? 20) / 100
+			const vatRate = (product.tax_rate ?? 20) / 100
 			const coef = 1 + vatRate
-			let unitPriceHT = 0
-			if (typeof product.price_ht === 'number')
-				unitPriceHT = round2(product.price_ht)
-			else if (typeof product.price_ttc === 'number')
-				unitPriceHT = round2(product.price_ttc / coef)
+			// `catalog_v2` ne porte plus `price_ht` : le prix de vente est TTC, et
+			// le HT s'en déduit par le taux. C'était déjà la branche de repli.
+			const unitPriceHT =
+				typeof product.price_ttc === 'number'
+					? round2(product.price_ttc / coef)
+					: 0
 			return computeItem({
 				id: crypto.randomUUID(),
 				description: product.name,
@@ -182,13 +164,14 @@ export function OrderCreateInline({
 		setCataloguePrices((prev) => {
 			const next = { ...prev }
 			catalogueSelection.forEach(({ product }, i) => {
-				const vatRate = (product.tva_rate ?? 20) / 100
+				const vatRate = (product.tax_rate ?? 20) / 100
 				const coef = 1 + vatRate
-				let unitPriceHT = 0
-				if (typeof product.price_ht === 'number')
-					unitPriceHT = round2(product.price_ht)
-				else if (typeof product.price_ttc === 'number')
-					unitPriceHT = round2(product.price_ttc / coef)
+				// `catalog_v2` ne porte plus `price_ht` : le prix de vente est TTC, et
+				// le HT s'en déduit par le taux. C'était déjà la branche de repli.
+				const unitPriceHT =
+					typeof product.price_ttc === 'number'
+						? round2(product.price_ttc / coef)
+						: 0
 				next[newItems[i].id] = unitPriceHT
 			})
 			return next
@@ -538,9 +521,7 @@ export function OrderCreateInline({
 							<div className='max-h-56 overflow-y-auto border rounded-md divide-y'>
 								{products.length === 0 ? (
 									<div className='p-4 text-center text-sm text-muted-foreground'>
-										{isAppPosConnected
-											? 'Aucun produit trouvé'
-											: 'Connexion au catalogue…'}
+										'Aucun produit trouvé'
 									</div>
 								) : (
 									products.slice(0, 30).map((product) => {
@@ -597,11 +578,6 @@ export function OrderCreateInline({
 												{/* Prix + quantité si sélectionné */}
 												<div className='shrink-0 flex items-center gap-3'>
 													<div className='text-right'>
-														{product.price_ht != null && (
-															<p className='text-sm font-medium'>
-																{fmt(product.price_ht)} HT
-															</p>
-														)}
 														{product.price_ttc != null && (
 															<p className='text-xs text-muted-foreground'>
 																{fmt(product.price_ttc)} TTC

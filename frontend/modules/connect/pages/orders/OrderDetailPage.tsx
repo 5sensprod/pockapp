@@ -22,8 +22,11 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { getAppPosToken, loginToAppPos, useAppPosProducts } from '@/lib/apppos'
-import type { ProductsResponse } from '@/lib/pocketbase-types'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import {
+	type CatalogProductShape,
+	useCatalogProductSearch,
+} from '@/lib/queries/catalog-products'
 import { useDepositsForInvoice } from '@/lib/queries/deposits'
 import { useInvoice } from '@/lib/queries/invoices'
 import { useOrder, useUpdateOrder } from '@/lib/queries/orders'
@@ -141,34 +144,13 @@ export function OrderDetailPage() {
 	const productSearchRef = useRef<HTMLInputElement>(null)
 	const freeLineDescRef = useRef<HTMLInputElement>(null)
 
-	// ── AppPOS ────────────────────────────────────────────────────────────────
-	const [isAppPosConnected, setIsAppPosConnected] = useState(false)
-	useEffect(() => {
-		const connect = async () => {
-			if (isAppPosConnected) return
-			const existing = getAppPosToken()
-			if (existing) {
-				setIsAppPosConnected(true)
-				return
-			}
-			try {
-				const res = await loginToAppPos('admin', 'admin123')
-				if (res.success && res.token) setIsAppPosConnected(true)
-			} catch (err) {
-				console.error('AppPOS connexion:', err)
-			}
-		}
-		void connect()
-	}, [isAppPosConnected])
+	// ── Catalogue PocketBase ──────────────────────────────────────────────────
 
-	const { data: productsData } = useAppPosProducts({
-		enabled:
-			isAppPosConnected &&
-			productPickerOpen &&
-			productPickerTab === 'catalogue',
-		searchTerm: productSearch || undefined,
+	const { activeCompanyId } = useActiveCompany()
+	const { items: products } = useCatalogProductSearch({
+		companyId: activeCompanyId ?? undefined,
+		term: productSearch,
 	})
-	const products = (productsData?.items ?? []) as ProductsResponse[]
 
 	useEffect(() => {
 		if (productPickerOpen && productPickerTab === 'catalogue')
@@ -216,14 +198,15 @@ export function OrderDetailPage() {
 		triggerSave(next)
 	}
 
-	const addFromCatalogue = (product: ProductsResponse) => {
-		const vatRate = (product.tva_rate ?? 20) / 100
+	const addFromCatalogue = (product: CatalogProductShape) => {
+		const vatRate = (product.tax_rate ?? 20) / 100
 		const coef = 1 + vatRate
-		let unitPriceHT = 0
-		if (typeof product.price_ht === 'number')
-			unitPriceHT = round2(product.price_ht)
-		else if (typeof product.price_ttc === 'number')
-			unitPriceHT = round2(product.price_ttc / coef)
+		// `catalog_v2` ne porte plus `price_ht` : le prix de vente est TTC, et
+		// le HT s'en déduit par le taux. C'était déjà la branche de repli.
+		const unitPriceHT =
+			typeof product.price_ttc === 'number'
+				? round2(product.price_ttc / coef)
+				: 0
 		const newItem = computeItem({
 			id: crypto.randomUUID(),
 			description: product.name,
@@ -946,9 +929,7 @@ export function OrderDetailPage() {
 							<div className='max-h-64 overflow-y-auto border rounded-md divide-y'>
 								{products.length === 0 ? (
 									<div className='p-4 text-center text-sm text-muted-foreground'>
-										{isAppPosConnected
-											? 'Aucun produit trouvé'
-											: 'Connexion au catalogue…'}
+										'Aucun produit trouvé'
 									</div>
 								) : (
 									products.slice(0, 30).map((product) => (
@@ -969,15 +950,6 @@ export function OrderDetailPage() {
 												)}
 											</div>
 											<div className='text-right shrink-0'>
-												{product.price_ht != null && (
-													<p className='text-sm font-medium'>
-														{new Intl.NumberFormat('fr-FR', {
-															style: 'currency',
-															currency: 'EUR',
-														}).format(product.price_ht)}{' '}
-														HT
-													</p>
-												)}
 												{product.price_ttc != null && (
 													<p className='text-xs text-muted-foreground'>
 														{new Intl.NumberFormat('fr-FR', {
