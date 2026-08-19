@@ -179,6 +179,9 @@ type Result struct {
 	ResolvedByName int
 	// AmbiguousFiles compte les homonymes rencontrés à l'indexation.
 	AmbiguousFiles int
+	// Findings est ce que la garde a trouvé avant d'écrire — vide sur une base
+	// reconstructible, renseigné quand `-force-purge` a passé outre.
+	Findings Findings
 }
 
 func newResult() *Result {
@@ -203,12 +206,31 @@ func (r *Result) SkippedByEntity() map[string][]Skipped {
 	return out
 }
 
+// Options porte ce que l'appelant décide, et lui seul.
+type Options struct {
+	// ForcePurge passe outre la garde de guard.go. Écrit à la main, jamais par
+	// défaut : depuis le 19 août 2026, une purge détruit des données que NeDB
+	// n'a pas.
+	ForcePurge bool
+}
+
 // Run charge le catalogue. Tout se fait dans UNE transaction : au moindre
 // échec, les quatre collections restent vides plutôt qu'à moitié pleines.
 // nedbDir est le répertoire des fichiers .db ; la racine d'AppServe en est le
 // parent, et les `src` des images lui sont relatifs.
-func Run(app *pocketbase.PocketBase, cat *normalize.Catalog, rep *normalize.Report, nedbDir string) (*Result, error) {
+func Run(app *pocketbase.PocketBase, cat *normalize.Catalog, rep *normalize.Report, nedbDir string, opts Options) (*Result, error) {
 	res := newResult()
+
+	// La garde AVANT tout le reste : rien ne doit être écrit, pas même un
+	// fichier image, si la purge doit être refusée.
+	findings, err := Inspect(app.Dao())
+	if err != nil {
+		return nil, fmt.Errorf("inspection préalable: %w", err)
+	}
+	res.Findings = findings
+	if findings.Blocks() && !opts.ForcePurge {
+		return nil, fmt.Errorf("%s", findings.Explain())
+	}
 
 	companyID, companyName, err := resolveCompany(app.Dao())
 	if err != nil {

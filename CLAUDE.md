@@ -97,9 +97,12 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   négociable. PocketApp lit AppPos ; l'inverse n'existe pas.
 - **Le catalogue PocketBase est chargé depuis le 2026-08-11** :
   2999 produits, 463 catégories, 287 marques, 43 fournisseurs, et 4665 images
-  (1,7 Go) dans `%LOCALAPPDATA%\PocketReact\pb_data`. Il est une **projection
-  de NeDB**, reconstructible par `go run ./backend/cmd/catalog-import -load`.
-  **Les écrans lisent toujours AppPos** : la bascule est le ticket T7.
+  (1,7 Go) dans `%LOCALAPPDATA%\PocketReact\pb_data`. Il a été une
+  **projection de NeDB**, reconstructible par
+  `go run ./backend/cmd/catalog-import -load`.
+  **Ce n'est plus vrai depuis le 2026-08-19** : la base porte des ventes, des
+  comptages et des produits nés en caisse. `backend/catalog/load/guard.go`
+  refuse la purge dès qu'il en trouve, et `-force-purge` détruit sans retour.
 - **La base NeDB de référence est `%APPDATA%\AppPOS\data`** (installation).
   `I:\AppPOS\AppServe\data` est une copie de développement **périmée** —
   2306 produits contre 3034, 219 catégories contre 463, et **aucun logo de

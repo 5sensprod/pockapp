@@ -108,6 +108,7 @@ func main() {
 		detail      = flag.Int("detail", 5, "avec -normalize : nombre de cas détaillés par nature d'anomalie (0 = tous)")
 		doLoad      = flag.Bool("load", false, "ÉCRIRE dans le PocketBase local : purge des quatre collections puis chargement (T4)")
 		pbDir       = flag.String("pb", "", "répertoire pb_data ; par défaut %LOCALAPPDATA%\\PocketReact\\pb_data")
+		forcePurge  = flag.Bool("force-purge", false, "avec -load : purger MÊME SI la base porte des données nées ici — produits créés en caisse, comptages d'inventaire, ventes. Destruction sans retour.")
 	)
 	flag.Parse()
 
@@ -118,6 +119,7 @@ func main() {
 		detail:     *detail,
 		load:       *doLoad,
 		pbDir:      *pbDir,
+		forcePurge: *forcePurge,
 	}
 	if err := run(*dataDir, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ %v\n", err)
@@ -132,6 +134,7 @@ type options struct {
 	detail     int
 	load       bool
 	pbDir      string
+	forcePurge bool
 }
 
 func run(dataDir string, opts options) error {
@@ -258,7 +261,7 @@ func doLoad(cat *normalize.Catalog, rep *normalize.Report, opts options, nedbDir
 		return fmt.Errorf("mise à niveau du schéma: %w", err)
 	}
 
-	res, err := load.Run(app, cat, rep, nedbDir)
+	res, err := load.Run(app, cat, rep, nedbDir, load.Options{ForcePurge: opts.forcePurge})
 	if err != nil {
 		// La transaction a été annulée : les collections sont restées vides
 		// plutôt que d'être à moitié pleines.
@@ -271,6 +274,15 @@ func doLoad(cat *normalize.Catalog, rep *normalize.Report, opts options, nedbDir
 
 func reportLoad(res *load.Result, detail int) {
 	fmt.Printf(" Entreprise : %s (%s)\n\n", res.CompanyName, res.CompanyID)
+
+	// Quand -force-purge a passé outre la garde, on nomme ce qui vient d'être
+	// détruit. Le dire APRÈS coup n'empêche rien, mais laisse une trace lisible
+	// dans la console de celui qui l'a lancé.
+	if res.Findings.Blocks() {
+		fmt.Println(" ⚠  -force-purge : des données nées ici ont été DÉTRUITES.")
+		fmt.Println(res.Findings.Explain())
+		fmt.Println()
+	}
 
 	if len(res.Purged) > 0 {
 		fmt.Println(" Purge préalable :")
@@ -343,8 +355,11 @@ func reportLoad(res *load.Result, detail int) {
 	}
 
 	fmt.Println("───────────────────────────────────────────────────────────────")
-	fmt.Println(" ✅ Chargement terminé. Étape suivante : T5, external_refs.")
-	fmt.Println("    Relancer cette commande recharge à l'identique : purge puis écriture.")
+	fmt.Println(" ✅ Chargement terminé.")
+	fmt.Println("    ⚠ Relancer NE recharge plus à l'identique : depuis le 19 août 2026,")
+	fmt.Println("      la base porte des données qui ne viennent pas de NeDB — produits")
+	fmt.Println("      créés en caisse, comptages, ventes. La garde de guard.go refuse")
+	fmt.Println("      alors la purge, et -force-purge détruit sans retour.")
 }
 
 func reportNormalized(cat *normalize.Catalog) {

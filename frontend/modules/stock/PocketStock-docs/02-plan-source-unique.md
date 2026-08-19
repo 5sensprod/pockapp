@@ -144,7 +144,7 @@ donc le pont existe pour reprendre ce qui aurait divergé.
 | C | ~~`useCatalogProductSearch` et les écrans de choix produit~~ | **fait le 19 août 2026** — sept écrans et non quatre, trois écarts de schéma corrigés au passage (§6 octies) | — |
 | D | ~~`adjustStock`, inventaire et reclassement~~ | **fait le 19 août 2026** — `stock-adjust.ts`, deux défauts corrigés en passant (§6 nonies) | — |
 | E | ~~La caisse~~ | **fait le 19 août 2026** — lecture, création et décrément sur PocketBase ; trois gardes de jeton retirées (§6 decies) | — |
-| F | **Arrêt du rechargement par purge** | seulement après E | irréversible |
+| F | ~~Arrêt du rechargement par purge~~ | **fait le 19 août 2026** — garde dans `guard.go`, `-force-purge` pour passer outre (§6 undecies) | — |
 
 **Ce qui n'est pas dans ce plan, et pourquoi :** la faille 3.1 — clés
 WooCommerce en clair dans le bundle public du site — reste prioritaire et

@@ -892,6 +892,65 @@ contrôler le stock du produit sous `/stock/produits` ; créer un produit depuis
 un code-barres inconnu et vérifier qu'il arrive au panier ; enfin annuler une
 facture pour voir s'ouvrir le reclassement de retour.
 
+## 6 undecies. Front F — le rechargement par purge est gardé, 19 août 2026
+
+**PocketBase cesse d'être une projection.** `catalog-import -load` vidait les
+quatre collections avant d'écrire ; c'était sans risque tant que NeDB portait
+tout ce qu'on effaçait. Depuis le front E, c'est faux.
+
+**`backend/catalog/load/guard.go`**, neuf. Avant toute écriture — avant même
+l'ouverture du stockage —, il cherche trois traces d'une base vivante :
+
+1. **des entités nées ici** — `legacy_id` préfixé `pa_` ;
+2. **des mouvements de stock locaux** — `product_events` de source `sale`,
+   `inventory_session`, `return`, `manual` ;
+3. **des documents citant des produits** — factures, devis, commandes : les
+   purger laisserait leurs lignes pointer vers des identifiants disparus.
+
+Si l'une des trois existe, le chargement **s'arrête et nomme ce qui serait
+perdu**. Passer outre demande `-force-purge`, écrit à la main ; la commande
+affiche alors ce qu'elle vient de détruire.
+
+### Ce que la garde trouve sur la base d'aujourd'hui
+
+Mesuré le 19 août 2026, en exécutant `Inspect` sur une **copie** de
+`pb_data/data.db` :
+
+| Trace | Décompte |
+|---|---|
+| ventes | 513 |
+| comptages d'inventaire | 735 |
+| retours | 10 |
+| factures | 1153 |
+| devis | 63 |
+| commandes | 16 |
+| entités nées ici | **0** |
+
+**Le rechargement était donc déjà destructeur, et rien ne le disait.** Une
+commande de neuf mots aurait effacé 1258 mouvements et 1232 documents de
+référence.
+
+### Le piège du souligné, trouvé en vérifiant
+
+`LIKE 'pa_%'` **sans `ESCAPE` traite le souligné comme un joker**. Une clé NeDB
+ordinaire — `PAz78WYfCpbSWJay` — y répond, et la garde aurait bloqué une base
+parfaitement reconstructible, en prétendant y voir une entité née dans
+PocketApp. Le motif est extrait en constante `legacyKeyExpr`, échappé, et un
+test le tient.
+
+**Ce qui n'a PAS été fait, et pourquoi :** supprimer la purge. Une installation
+neuve doit pouvoir charger son catalogue depuis un dossier AppPos, et une base
+de test doit pouvoir être remise à zéro. Ce n'est pas la purge qui était
+dangereuse, c'est son silence.
+
+**Vérifié :** `go build ./backend/...` et `go test ./backend/catalog/...`
+passent (6 cas neufs), `gofmt` propre, et `Inspect` a tourné **sur une copie de
+la vraie base** — c'est ce qui a produit le tableau ci-dessus et révélé le piège
+du souligné. **Non vérifié de bout en bout :** `catalog-import -load` s'arrête
+avant la garde sur cette machine, à un contrôle antérieur — NeDB porte
+3050 produits pour 3034 attendus, écart qui lui est propre et qui n'est pas de
+mon ressort.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
@@ -918,10 +977,12 @@ stock dans PocketBase, par un chemin unique.
 **Front E fait** (§6 decies) : la caisse lit, crée et décrémente dans
 PocketBase. Le point dur du §6 est refermé.
 
-**La prochaine session** : front F — arrêter le rechargement par purge, ce qui
-fait de PocketBase une base et non plus une projection. Et l'inventaire
-(`InventoryPageAppPos.tsx`) lit encore son catalogue dans AppPos : c'est le
-dernier écran, il ne bouge plus de stock mais il en lit. Le point dur du §6 reste
+**Front F fait** (§6 undecies) : le rechargement par purge est gardé.
+PocketBase n'est plus une projection.
+
+**Ce qui reste, et c'est tout** : `InventoryPageAppPos.tsx` lit encore son
+catalogue dans AppPos — il n'y écrit plus rien. C'est le dernier écran, et le
+dernier import de `@/lib/apppos` du module `stock`. Le point dur du §6 reste
 entier, et il est maintenant chiffré : **53 produits** existent dans NeDB et pas
 dans PocketBase, parce que la caisse crée toujours ses produits là-bas
 (`modules/cash/CreateProductDialog.tsx`).

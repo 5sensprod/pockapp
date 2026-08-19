@@ -10,6 +10,32 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le rechargement par purge est gardé, pas supprimé — 2026-08-19
+
+**`catalog-import -load` refuse de purger dès que la base porte des données que
+NeDB n'a pas** : entités nées ici (`legacy_id` en `pa_`), mouvements de stock
+locaux, documents citant des produits. `-force-purge` passe outre, à la main.
+
+C'est ce qui achève la migration : PocketBase n'est plus une projection
+reconstructible, c'est une base. La contrainte « les saisies éditoriales ne
+survivent pas à `catalog-import -load` » (2026-08-12) tombe.
+
+**Mesuré le jour même sur une copie de la base réelle** : 513 ventes,
+735 comptages d'inventaire, 10 retours, 1153 factures, 63 devis, 16 commandes.
+**Le rechargement était déjà destructeur, et rien ne le disait.**
+
+**Écarté — supprimer la purge :** une installation neuve doit pouvoir charger
+son catalogue depuis un dossier AppPos, et une base de test doit pouvoir être
+remise à zéro. Ce n'est pas la purge qui était dangereuse, c'est son silence.
+
+**Écarté — un simple avertissement à l'écran :** un message qu'on peut ignorer
+en tapant Entrée ne protège rien. Le refus est le défaut ; le forçage s'écrit.
+
+**Remise en cause si :** un besoin de resynchronisation régulière depuis NeDB
+apparaît — auquel cas il faudra une convergence, pas une purge.
+
+---
+
 ## La caisse écrit dans PocketBase — 2026-08-19
 
 **Le catalogue, les produits créés au comptoir et le stock vendu vivent dans
