@@ -102,6 +102,33 @@ pas une image servie.
   rapporté.** Mesure avant d'affirmer, et dis sur quelle base.
 - **Perdre le fil vaut mieux que deviner** : le dire.
 
+## Ce qui a changé depuis l'écriture de ce prompt — 19 août 2026
+
+**Deux choses, et elles touchent ta mission.**
+
+1. **Une image de produit n'est plus seule.** Le propriétaire a tranché :
+   l'ancienne image principale rejoint la galerie, et n'importe quelle image de
+   la galerie peut être promue principale (`docs/DECISIONS.md`, « L'image
+   principale se désigne, elle ne s'écrase pas »). **L'ordre de la galerie est
+   une donnée**, posée pour toi : c'est lui qui décide de l'ordre des vignettes
+   sur le site. **747 produits portent déjà une galerie non vide** ;
+2. **La session « galerie » passe avant la tienne** —
+   [`../../stock/PocketStock-docs/04-prompt-galerie.md`](../../stock/PocketStock-docs/04-prompt-galerie.md).
+   Elle rend l'information disponible et ordonnée côté PocketBase ; sans elle,
+   tu exporterais un ensemble d'images sans savoir laquelle est la vitrine.
+
+**Ce que ça change à ta conception :** l'unité à synchroniser n'est plus « une
+image par produit » mais **une image principale plus une galerie ordonnée**.
+Le contrat devra donc porter deux choses, pas une — et le schéma distant, une
+table de liaison plutôt qu'une colonne. `server/sql/schema.sql` **n'a
+aujourd'hui aucune colonne d'image**, ni sur `ax_products` ni ailleurs : tout
+est à concevoir, et c'est justement pour ça que rien n'a été posé à la hâte.
+
+Le précédent est dans le même fichier : `ax_product_categories` existe parce
+qu'un produit a un ENSEMBLE de catégories. Une galerie ordonnée appelle la même
+forme — une table `ax_product_images` avec sa position, et l'image principale
+qui est soit une colonne, soit la position zéro. **Choisis, et dis pourquoi.**
+
 ## Avant de commencer
 
 **Mesure d'abord les 2395 URL WordPress** — combien répondent, en quelle taille,

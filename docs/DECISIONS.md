@@ -10,6 +10,37 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## L'image principale se désigne, elle ne s'écrase pas — 2026-08-19
+
+Décision du propriétaire, en ouvrant la session « galerie ».
+
+**Remplacer l'image principale d'un produit ne la détruit pas : l'ancienne
+rejoint la galerie.** Et réciproquement, **n'importe quelle image de la galerie
+peut être promue principale** — promouvoir B rétrograde A, sans qu'aucun fichier
+ne bouge sur le disque : `image` et `gallery` vivent déjà dans le même dossier
+de stockage, seuls les deux champs changent.
+
+**L'ordre de la galerie est une donnée**, pas un hasard de tri : c'est lui qui
+décidera de l'ordre des vignettes sur le site.
+
+**Écarté — remplacer purement et simplement :** le geste courant est « celle-ci
+sera meilleure en vitrine », pas « supprime l'autre ». Une photo prise en
+boutique ne se retrouve pas.
+
+**Écarté — une case « image principale » sur chaque vignette, sans notion
+d'ordre :** le site a besoin d'un ordre pour ses vignettes secondaires ; le lui
+inventer à l'export serait une décision prise au mauvais endroit.
+
+**Conséquence à surveiller :** promouvoir écrit `image` ET `gallery` dans la
+même requête, et PocketBase remplace la liste entière d'un champ fichier
+multiple. Une liste incomplète supprime des fichiers **sans confirmation**.
+
+**Remise en cause si :** un produit doit porter plusieurs images principales
+selon le canal — vitrine, ticket, étiquette. Ce serait alors un champ par
+usage, pas une désignation.
+
+---
+
 ## Le temps réel multi-postes passe par PocketBase, pas par le SSE Go — 2026-08-19
 
 **Les écrans se mettent à jour d'un poste à l'autre sans rechargement.**

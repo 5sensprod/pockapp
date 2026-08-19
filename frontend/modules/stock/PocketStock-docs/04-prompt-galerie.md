@@ -132,13 +132,48 @@ ordre de risque croissant :
   depuis le 19 août 2026, `backend/catalog/load/guard.go` refuse la purge, et
   `-force-purge` détruirait ventes, comptages et documents.
 
-## Une question ouverte, à trancher avec le propriétaire
+## La règle, tranchée par le propriétaire le 19 août 2026
 
-**Que doit-il se passer quand on remplace l'image principale d'un produit qui a
-une galerie ?** L'ancienne principale rejoint-elle la galerie, ou disparaît-elle ?
-Le chargeur d'origine excluait la principale de la galerie
-(`backend/catalog/normalize/catalog.go:598-607`) : la question n'a jamais été
-posée à un utilisateur.
+**Une image ne se perd pas, et la principale se désigne.**
+
+1. **Remplacer l'image principale ne la détruit pas : l'ancienne rejoint la
+   galerie.** Le geste courant est « celle-ci sera meilleure en vitrine », pas
+   « supprime l'autre ». Supprimer reste possible, mais c'est un geste distinct,
+   explicite ;
+2. **N'importe quelle image de la galerie peut être promue principale.** C'est
+   la même opération vue de l'autre côté : promouvoir B rétrograde A dans la
+   galerie. Aucun fichier ne bouge sur le disque — seuls les deux champs
+   changent, `image` et `gallery` vivant déjà dans le même dossier ;
+3. **L'ordre de la galerie est une donnée**, pas un hasard de tri : c'est lui
+   qui décidera de l'ordre des vignettes sur le site.
+
+⚠️ **Le piège de cette règle** : promouvoir revient à écrire `image` ET
+`gallery` dans la même requête. `buildWritePayload` envoie alors un `FormData`
+qui doit porter **la liste complète** de la nouvelle galerie — en oublier une
+entrée supprime le fichier correspondant, sans confirmation. Écris le test
+avant le code.
+
+Cette règle mérite d'être consignée : elle est dans `docs/DECISIONS.md`,
+« L'image principale se désigne, elle ne s'écrase pas » (2026-08-19).
+
+## Ce que la session suivante attendra de toi
+
+**La synchronisation des images vers axemusique.shop est une autre session**, et
+elle a son prompt :
+[`../../site/PocketSite-docs/13-prompt-images-site.md`](../../site/PocketSite-docs/13-prompt-images-site.md).
+Elle ne peut pas commencer avant la tienne, pour une raison simple : **le site
+doit savoir quelle image est la principale et dans quel ordre viennent les
+autres**, et cette information n'existe qu'une fois ton travail fait.
+
+Deux points à ne pas casser pour elle :
+
+- **`legacy_id` est la clé de l'export**, jamais l'identifiant PocketBase. Une
+  image se rattachera à un produit par sa clé stable ;
+- **le schéma distant (`server/sql/schema.sql`) n'a AUCUNE colonne d'image** —
+  ni sur `ax_products`, ni ailleurs. Ce n'est pas un oubli : le §7 du contrat
+  catalogue l'interdit tant que le transfert n'est pas conçu. **Tu n'as donc
+  rien à y ajouter** ; contente-toi de rendre l'information disponible et
+  ordonnée côté PocketBase.
 
 ## Contraintes de travail
 
