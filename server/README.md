@@ -33,7 +33,9 @@ PHP.
 | `api/publish-menu.php` | l'endpoint de réception du menu | oui |
 | `api/products-sync.php` | l'endpoint d'export du **catalogue** vers MySQL | oui |
 | `api/catalog.php` | la lecture **publique** du catalogue, pour le site | oui |
+| `api/images-sync.php` | le **miroir des images** — marques et catégories | oui |
 | `sql/schema.sql` | les quatre tables du catalogue, à exécuter une fois | oui |
+| `sql/images.sql` | les colonnes `image_*`, à exécuter une fois après | oui |
 | `config/config.php.example` | modèle de configuration | oui |
 | `config/config.php` | la configuration réelle, **avec la clé** | **non** (`.gitignore`) |
 | `config/.htaccess` | interdit l'accès HTTP au dossier de configuration | oui |
@@ -43,6 +45,26 @@ PHP.
 est un bundle public, où un secret serait lisible de tous. Voir le bloc
 « L'endpoint de lecture du catalogue est public et sans clé » de
 [`docs/DECISIONS.md`](../docs/DECISIONS.md).
+
+**`images-sync.php` est un TROISIÈME script, déposé le 19 août 2026**, et non
+une action de plus dans `products-sync.php` : le lot d'entités plafonne à
+1 Mio (§6 du contrat) quand **une seule image de catégorie pèse 1 Mo en moyenne
+et 2,7 Mo au pire** (mesuré). Les octets ne peuvent pas voyager par la route
+qui porte les entités. Il partage la clé `catalog_api_key` — même base, même
+portée d'écriture — et lit deux réglages de plus, `media_root` et
+`media_base_url`.
+
+Il écrit **les octets d'abord, la ligne SQL ensuite** : tant que la ligne est
+vide, le site n'affiche rien, ce qu'il fait déjà ; l'ordre inverse montrerait
+des images cassées à un visiteur. Un envoi porte TOUTES les images d'une
+entité, jamais une seule, ce qui rend le retrait possible sans jamais
+supprimer. Mécanisme :
+[`16-conception-images.md`](../frontend/modules/site/PocketSite-docs/16-conception-images.md).
+
+⚠️ `media_root` est sous la racine web : **tout ce qui s'y écrit est servi par
+Apache**. C'est pourquoi le script n'accepte qu'une liste fermée d'extensions
+et ne laisse aucun nom venu du client toucher le disque — le nom distant est
+calculé, `<kind>/<legacy_id>/<rang>.<ext>`.
 
 **`sql/schema.sql` est revenu le 11 août 2026, pour le catalogue** — les quatre
 tables `ax_products`, `ax_categories`, `ax_brands` et `ax_product_categories`.

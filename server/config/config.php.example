@@ -117,6 +117,58 @@ return [
      */
     'max_entities_per_batch' => 200,
 
+    // ── Miroir des images ───────────────────────────────────────────────────
+    // Lu par api/images-sync.php uniquement. Mécanisme :
+    // frontend/modules/site/PocketSite-docs/16-conception-images.md
+    //
+    // La CLÉ est `catalog_api_key` ci-dessus : même base, même portée
+    // d'écriture. En créer une seconde donnerait deux secrets à révoquer
+    // ensemble, donc une occasion de plus d'en oublier un.
+
+    /**
+     * Racine des octets, chemin ABSOLU côté système de fichiers.
+     *
+     * Sous la racine web : les images y sont servies directement par Apache,
+     * sans passer par PHP. L'arborescence est
+     * `<media_root>/<brands|categories>/<legacy_id>/<rang>.<ext>` — nommée par
+     * `legacy_id`, jamais par l'identifiant PocketBase, qui est régénéré à
+     * chaque rechargement par purge (§4.1 de la conception).
+     *
+     * ⚠️ Tout ce qui s'écrit ici est servi par Apache. C'est pourquoi
+     * images-sync.php n'accepte qu'une liste FERMÉE d'extensions et ne laisse
+     * aucun nom venu du client toucher le disque.
+     *
+     * Le répertoire doit exister et être inscriptible par PHP.
+     */
+    'media_root' => '/home/CHANGEME/public_html/media/catalog',
+
+    /**
+     * Préfixe d'URL publique correspondant à `media_root`.
+     *
+     * Il ne sert PAS à écrire : il est renvoyé, pour que PocketApp sache sous
+     * quelle URL l'image sera lisible. La ligne SQL, elle, ne porte que le
+     * chemin RELATIF (`image_paths`).
+     *
+     * §6.5 de la conception est tranché depuis le 19 août 2026 : `catalog.php`
+     * rend au bundle une URL COMPLÈTE, qu'il compose ici même à partir de ce
+     * préfixe. Le bundle ne le connaît donc pas, et n'a pas à être rebâti si
+     * les médias déménagent.
+     */
+    'media_base_url' => 'https://axemusique.shop/media/catalog/',
+
+    /**
+     * Plafond d'UN fichier, en octets. Sans rapport avec
+     * `catalog_max_body_bytes`, qui vaut 1 Mio et plafonne un lot d'ENTITÉS :
+     * une seule image de catégorie pèse 1 Mo en moyenne et 2,7 Mo au pire
+     * (mesuré le 19 août 2026).
+     *
+     * Les plafonds PHP de l'hébergeur — `post_max_size`,
+     * `upload_max_filesize` — ne sont PAS mesurés et peuvent être plus
+     * serrés : dans ce cas c'est eux qui refusent, et images-sync.php le dit
+     * explicitement plutôt que de rendre « erreur 1 ».
+     */
+    'image_max_bytes' => 8388608,
+
     /**
      * Journal, best-effort. `null` pour ne rien écrire.
      *

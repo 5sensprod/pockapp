@@ -23,7 +23,7 @@ import type {
 	PocketBaseRecord,
 } from '@/lib/queries/catalog-shapes'
 import { type ImageIntent, buildWritePayload } from '@/lib/queries/image-upload'
-import { newLegacyKey } from '@/lib/queries/legacy-key'
+import { withLegacyKey } from '@/lib/queries/legacy-key'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -156,9 +156,7 @@ export function useCreateCategory() {
 			// et disparaître en silence le rattachement du produit qui la citait.
 			return await pb
 				.collection('categories')
-				.create<CatalogCategoryShape>(
-					buildWritePayload({ legacy_id: newLegacyKey(), ...data }),
-				)
+				.create<CatalogCategoryShape>(buildWritePayload(withLegacyKey(data)))
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['categories'] })

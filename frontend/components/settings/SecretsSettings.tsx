@@ -439,11 +439,20 @@ function SitePublishSection() {
 const DEFAULT_CATALOG_URL =
 	'https://axemusique.shop/server/api/products-sync.php'
 
+// Le miroir d'images est un SECOND script, et pas un caprice de rangement :
+// le lot d'entités plafonne à 1 Mio (§6 du contrat) quand une seule image de
+// catégorie pèse 1 Mo en moyenne et 2,7 Mo au pire (mesuré le 19 août 2026).
+// Les octets ne peuvent pas voyager par la route qui porte les entités.
+// Mécanisme : PocketSite-docs/16-conception-images.md.
+const DEFAULT_IMAGES_URL = 'https://axemusique.shop/server/api/images-sync.php'
+
 function SiteCatalogSection() {
 	const [apiKey, setApiKey] = useState('')
 	const [showKey, setShowKey] = useState(false)
 	const [endpointUrl, setEndpointUrl] = useState('')
 	const [urlTouched, setUrlTouched] = useState(false)
+	const [imagesUrl, setImagesUrl] = useState('')
+	const [imagesUrlTouched, setImagesUrlTouched] = useState(false)
 
 	const { data: status, isLoading: statusLoading } = useSiteCatalogStatus()
 	const save = useSetSiteCatalog()
@@ -454,8 +463,14 @@ function SiteCatalogSection() {
 		setEndpointUrl(status.endpoint_url || DEFAULT_CATALOG_URL)
 	}, [status, urlTouched])
 
+	useEffect(() => {
+		if (imagesUrlTouched || !status) return
+		setImagesUrl(status.images_url || DEFAULT_IMAGES_URL)
+	}, [status, imagesUrlTouched])
+
 	const urlChanged = endpointUrl.trim() !== (status?.endpoint_url ?? '')
-	const hasSomethingToSave = !!apiKey.trim() || urlChanged
+	const imagesUrlChanged = imagesUrl.trim() !== (status?.images_url ?? '')
+	const hasSomethingToSave = !!apiKey.trim() || urlChanged || imagesUrlChanged
 
 	const handleSave = async () => {
 		const url = endpointUrl.trim()
@@ -469,10 +484,19 @@ function SiteCatalogSection() {
 			return
 		}
 
+		const images = imagesUrl.trim()
+		if (images && !/^https?:\/\//.test(images)) {
+			toast.error(
+				"L'URL du miroir d'images doit commencer par http:// ou https://",
+			)
+			return
+		}
+
 		try {
 			await save.mutateAsync({
 				apiKey: apiKey.trim() || undefined,
 				endpointUrl: urlChanged ? url : undefined,
+				imagesUrl: imagesUrlChanged ? images : undefined,
 			})
 			toast.success("Paramètres d'export du catalogue enregistrés")
 			setApiKey('')
@@ -537,6 +561,25 @@ function SiteCatalogSection() {
 								Enregistrer » la validera.
 							</span>
 						)}
+					</p>
+				</div>
+
+				<div className='space-y-2'>
+					<Label htmlFor='site-images-url'>URL du miroir d'images</Label>
+					<Input
+						id='site-images-url'
+						type='url'
+						value={imagesUrl}
+						onChange={(e) => {
+							setImagesUrlTouched(true)
+							setImagesUrl(e.target.value)
+						}}
+					/>
+					<p className='text-xs text-muted-foreground'>
+						Second script, MÊME clé : les octets des images ne tiennent pas dans
+						le lot d'entités, plafonné à 1 Mio. Les colonnes{' '}
+						<code>image_*</code> doivent avoir été ajoutées au préalable (
+						<code>server/sql/images.sql</code>).
 					</p>
 				</div>
 

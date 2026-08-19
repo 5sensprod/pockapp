@@ -42,7 +42,7 @@ import {
 	type ImageIntent,
 	buildWritePayload,
 } from './image-upload'
-import { newLegacyKey } from './legacy-key'
+import { withLegacyKey } from './legacy-key'
 
 export type CatalogProductStatus = 'draft' | 'published'
 
@@ -317,9 +317,7 @@ export function useCreateCatalogProduct() {
 			// doit pouvoir l'oublier.
 			(await pb
 				.collection('products')
-				.create(
-					buildWritePayload({ legacy_id: newLegacyKey(), ...data }),
-				)) as CatalogProductShape,
+				.create(buildWritePayload(withLegacyKey(data)))) as CatalogProductShape,
 		onSuccess: () => invalidateCatalog(queryClient),
 	})
 }

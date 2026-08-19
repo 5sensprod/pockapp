@@ -41,6 +41,7 @@ import {
 	useProductCount,
 	usePublishedProducts,
 } from '@/lib/queries/site-catalog'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import {
 	AlertTriangle,
 	Globe,
@@ -58,6 +59,10 @@ import {
 	EditorialDialog,
 	type EditorialTarget,
 } from './components/online-catalog/EditorialDialog'
+import {
+	type ImageRow,
+	ImageSyncPanel,
+} from './components/online-catalog/ImageSyncPanel'
 import { OnlineBrandGrid } from './components/online-catalog/OnlineBrandGrid'
 import { OnlineCategoryTree } from './components/online-catalog/OnlineCategoryTree'
 import { OnlineProductGrid } from './components/online-catalog/OnlineProductGrid'
@@ -67,6 +72,12 @@ import {
 	useProductChecksums,
 	useRelationChecksums,
 } from './hooks/use-catalog-sync'
+import {
+	toImageBearing,
+	useImageInventory,
+	useLocalImageChecksums,
+	useSendEntityImages,
+} from './hooks/use-image-sync'
 import { type SyncState, syncStateOf } from './lib/catalog-export'
 import {
 	type OnlineCategoryNode,
@@ -86,6 +97,10 @@ const NO_CATEGORIES: CatalogCategory[] = []
 const NO_BRANDS: CatalogBrand[] = []
 
 export function CatalogueEnLignePage() {
+	// `pb` ne sert qu'à résoudre les URL des images : elles sont des CHAMPS
+	// FICHIER PocketBase, pas des URL, et `pb.files.getUrl` a besoin de
+	// l'enregistrement entier (`catalog-image.ts`).
+	const pb = usePocketBase()
 	const products = usePublishedProducts()
 	const categories = useCatalogCategories()
 	const brands = useCatalogBrands()
@@ -278,6 +293,88 @@ export function CatalogueEnLignePage() {
 
 		return { categories: staleCategories, brands: staleBrands }
 	}, [inventory.data, categories.data, brands.data, catalog, relationChecksums])
+
+	// ── Le miroir des images ────────────────────────────────────────────────
+	// Marques et catégories seules : elles portent un champ `image` scalaire,
+	// donc la même chaîne de bout en bout sans le problème de la liste
+	// ordonnée. Les produits viennent après, mécanique validée en ligne
+	// (§4.4 de PocketSite-docs/16-conception-images.md).
+	//
+	// L'inventaire d'images est DISTINCT de celui des entités : le checksum
+	// d'entité ne couvre aucun champ image, un export incrémental fondé sur lui
+	// ne verrait jamais un changement d'image (§4.2).
+	const imageInventory = useImageInventory(
+		(brands.data?.length ?? 0) > 0 || (categories.data?.length ?? 0) > 0,
+	)
+	const localImageChecksums = useLocalImageChecksums()
+	const sendImages = useSendEntityImages()
+	const [sendingImages, setSendingImages] = useState<string | null>(null)
+
+	/** Les fiches qui PORTENT une image. Le champ `image` fait foi, pas le
+	 *  répertoire de stockage : une catégorie a déjà perdu son image en laissant
+	 *  son dossier derrière elle (mesuré le 19 août 2026). */
+	const imageRows = useMemo<ImageRow[]>(() => {
+		const rows: ImageRow[] = []
+
+		for (const brand of brands.data ?? []) {
+			if (!brand.image) continue
+			const checksum = localImageChecksums.index.get(brand.legacy_id)
+			rows.push({
+				kind: 'brands',
+				entity: toImageBearing(pb, brand),
+				checksum,
+				state: syncStateOf(
+					brand.legacy_id,
+					checksum,
+					imageInventory.data?.brands,
+				),
+			})
+		}
+
+		for (const category of categories.data ?? []) {
+			if (!category.image) continue
+			const checksum = localImageChecksums.index.get(category.legacy_id)
+			rows.push({
+				kind: 'categories',
+				entity: toImageBearing(pb, category),
+				checksum,
+				state: syncStateOf(
+					category.legacy_id,
+					checksum,
+					imageInventory.data?.categories,
+				),
+			})
+		}
+
+		return rows
+	}, [
+		brands.data,
+		categories.data,
+		imageInventory.data,
+		localImageChecksums.index,
+		pb,
+	])
+
+	const sendEntityImages = useCallback(
+		(row: ImageRow) => {
+			if (row.checksum === undefined) return
+			const cle = `${row.kind}/${row.entity.legacy_id}`
+			setSendingImages(cle)
+			sendImages.mutate(
+				{ kind: row.kind, entity: row.entity, imageChecksum: row.checksum },
+				{
+					onSuccess: (outcome) => {
+						toast.success(
+							`${row.entity.name} : ${outcome.paths.length} image(s) en ligne`,
+						)
+					},
+					onError: (cause) => toast.error(cause.message),
+					onSettled: () => setSendingImages(null),
+				},
+			)
+		},
+		[sendImages],
+	)
 
 	const syncCounts = useMemo(() => {
 		const counts = { absent: 0, modified: 0, synced: 0 }
@@ -647,6 +744,13 @@ export function CatalogueEnLignePage() {
 							<TabsTrigger value='brands'>
 								Marques ({catalog.brands.length})
 							</TabsTrigger>
+							{/* Les images ont leur propre onglet, leur propre inventaire et
+							    leur propre empreinte : elles ne voyagent PAS dans le lot
+							    d'entités, dont le plafond est 1 Mio quand une seule image de
+							    catégorie en pèse 2,7 (§4.4 de la conception). */}
+							<TabsTrigger value='images'>
+								Images ({imageRows.length})
+							</TabsTrigger>
 						</TabsList>
 
 						{/* ── Arbre + produits ─────────────────────────────────────── */}
@@ -743,6 +847,25 @@ export function CatalogueEnLignePage() {
 								selectedId={selectedBrand?.id ?? null}
 								onSelect={setSelectedBrand}
 								onEdit={editBrand}
+							/>
+						</TabsContent>
+
+						{/* ── Images ───────────────────────────────────────────────── */}
+						<TabsContent value='images' className='mt-4'>
+							<ImageSyncPanel
+								available={Boolean(imageInventory.data)}
+								inventoryError={imageInventory.error as Error | null}
+								rows={imageRows}
+								computing={localImageChecksums.computing}
+								computeProgress={localImageChecksums.progress}
+								computeError={localImageChecksums.error}
+								onCompute={() =>
+									localImageChecksums.compute(imageRows.map((r) => r.entity))
+								}
+								onRefresh={() => imageInventory.refetch()}
+								sending={sendingImages}
+								sendError={sendImages.error}
+								onSend={sendEntityImages}
 							/>
 						</TabsContent>
 					</Tabs>

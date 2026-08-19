@@ -45,16 +45,22 @@ mutualisé, versionné ici, **déposé par FTP à la main** — lis
 | avec `image` | **225** | **37** | 2412 publiés |
 | avec galerie non vide | — | — | 731 (1720 fichiers) |
 | `legacy_id` vide | 0 | 0 | 0 (publiés) |
-| octets (hors `thumbs_` et `.attrs`) | 20 Mo / 275 fichiers | **36 Mo / 37 fichiers** | ~1,6 Go |
-| poids moyen · max | 77 Ko · 752 Ko | **1004 Ko · 2627 Ko** | à mesurer |
+| octets (hors `thumbs_*/` et `.attrs`) | 20,6 Mio / 225 fichiers | **36,3 Mio / 37 fichiers** | 1,53 Gio / 4407 fichiers |
+| poids moyen · max | 96 Ko · 770 Ko | **1029 Ko · 2690 Ko** | 372 Ko · 4955 Ko |
 
 **Refais ces mesures**, elles bougent.
 
 Trois faits à ne pas manquer :
 
-- **275 fichiers pour 225 marques** : ~50 fichiers ne sont désignés par aucun
-  enregistrement. Le dossier local n'est donc pas l'inventaire de ce qui est
-  utilisé. Ce qui fait foi est le champ `image`, pas le `ls`.
+- **Le champ `image` fait foi, pas le `ls`** — mais l'écart est d'une seule
+  entité, pas de cinquante : les marques ont 225 fichiers pour 225
+  enregistrements, exactement. Le cas réel est une catégorie,
+  `odvn2lqe02m6pn6/y746mmw9ivp37o1/logo_axe_neon_7RFjfnokJJ.png`, dont le champ
+  `image` a été vidé : 37 dossiers pour 36 enregistrements.
+  **Attention en mesurant :** les vignettes vivent dans des sous-dossiers
+  `thumbs_*`. Les exclure par `! -name 'thumbs_*'` ne les exclut pas — il faut
+  `! -path '*/thumbs_*/*'`, sinon on compte 275 fichiers de marques au lieu de
+  225.
 - **Une image de catégorie pèse 1 Mo en moyenne, 2,6 Mo au pire.** Le lot du
   contrat est plafonné à **200 entités et 1 Mio** (§6) : une seule image de
   catégorie le dépasse. Les octets ne peuvent pas voyager dans le lot

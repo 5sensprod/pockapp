@@ -387,6 +387,18 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		var req struct {
 			APIKey      string `json:"api_key"`
 			EndpointURL string `json:"endpoint_url"`
+			// URL du MIROIR D'IMAGES. Réglage distinct de l'export d'entités —
+			// deux scripts, parce que leurs plafonds de corps n'ont rien à voir
+			// (§4.4 de PocketSite-docs/16-conception-images.md) — mais la MÊME
+			// clé : même base, même portée d'écriture.
+			//
+			// C'est ICI qu'il s'enregistre, et pas sur la route du menu : le
+			// formulaire poste sur /api/settings/site-catalog, et `c.Bind`
+			// ignore en SILENCE un champ non déclaré. Mesuré le 19 août 2026 —
+			// l'URL n'arrivait jamais en base, GET .../status la relisait
+			// pourtant, et le seul symptôme était le refus « Renseignez au
+			// moins la clé ou l'URL » quand ce champ était le seul modifié.
+			ImagesURL string `json:"images_url"`
 		}
 
 		if err := c.Bind(&req); err != nil {
@@ -397,11 +409,27 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 
 		req.APIKey = strings.TrimSpace(req.APIKey)
 		req.EndpointURL = strings.TrimSpace(req.EndpointURL)
+		req.ImagesURL = strings.TrimSpace(req.ImagesURL)
 
-		if req.APIKey == "" && req.EndpointURL == "" {
+		if req.APIKey == "" && req.EndpointURL == "" && req.ImagesURL == "" {
 			return c.JSON(http.StatusBadRequest, map[string]interface{}{
-				"error": "Renseignez au moins la clé ou l'URL",
+				"error": "Renseignez au moins la clé ou une URL",
 			})
+		}
+
+		if req.ImagesURL != "" {
+			if !strings.HasPrefix(req.ImagesURL, "http://") &&
+				!strings.HasPrefix(req.ImagesURL, "https://") {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+					"error": "L'URL du miroir d'images doit être absolue et commencer par http:// ou https://",
+				})
+			}
+			if err := sm.SetSetting(secrets.SettingSiteImagesURL, req.ImagesURL); err != nil {
+				log.Printf("❌ Error saving site images URL: %v", err)
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+					"error": "Erreur lors de la sauvegarde de l'URL du miroir d'images",
+				})
+			}
 		}
 
 		if req.EndpointURL != "" {
@@ -441,9 +469,15 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 			url = ""
 		}
 
+		imagesURL, err := sm.GetSetting(secrets.SettingSiteImagesURL)
+		if err != nil {
+			imagesURL = ""
+		}
+
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"configured":   sm.HasSecret(secrets.KeySiteCatalogAPI),
 			"endpoint_url": url,
+			"images_url":   imagesURL,
 		})
 	}, requireAdmin)
 

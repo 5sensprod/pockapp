@@ -116,6 +116,17 @@ $T_CATEGORIES = $prefix . 'categories';
 $T_BRANDS = $prefix . 'brands';
 $T_PRODCAT = $prefix . 'product_categories';
 
+/**
+ * Préfixe d'URL publique des médias, ou chaîne vide s'il n'est pas configuré.
+ *
+ * `image_paths` en base ne porte que du RELATIF (« brands/pa_x/0.png ») ; ce
+ * préfixe est ce qui en fait une URL. Il n'est lu QUE ici, et une barre finale
+ * est garantie — config.php la porte déjà, mais rien ne l'impose.
+ */
+define('MEDIA_BASE_URL', is_string($config['media_base_url'] ?? null) && $config['media_base_url'] !== ''
+    ? rtrim((string) $config['media_base_url'], '/') . '/'
+    : '');
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -144,18 +155,92 @@ function present_product(array $row): array
         'description' => $row['description'] !== null ? (string) $row['description'] : null,
         'price_ttc'   => (float) $row['price_ttc'],
         'stock'       => (int) $row['stock'],
+        // `image` est presque toujours null, et c'est le cas NORMAL, pas une
+        // erreur : trois marques sur 288 ont leurs octets en ligne au 19 août
+        // 2026 (inventaire images-sync.php, mesuré). Le site doit traiter
+        // l'absence comme la situation ordinaire.
         'brand'       => ($row['brand_name'] ?? null) !== null
-            ? ['id' => (string) $row['brand'], 'name' => (string) $row['brand_name']]
+            ? [
+                'id'    => (string) $row['brand'],
+                'name'  => (string) $row['brand_name'],
+                'image' => brand_image_url(
+                    ($row['brand_image_paths'] ?? null) !== null
+                        ? (string) $row['brand_image_paths']
+                        : null
+                ),
+            ]
             : null,
-        // Pas de champ image : les images ne sont PAS encore exportées (§7 du
-        // contrat). Renvoyer une URL locale de PocketBase donnerait des images
-        // cassées sur le site ; ne rien renvoyer laisse le composant afficher
-        // une vignette de remplacement, ce qui est honnête.
+        // Toujours pas de champ image pour le PRODUIT : les images de produits
+        // ne sont pas exportées (le miroir n'accepte que marques et catégories,
+        // images-sync.php). Renvoyer une URL locale de PocketBase donnerait des
+        // images cassées ; ne rien renvoyer laisse le composant afficher une
+        // vignette de remplacement, ce qui est honnête.
+        //
+        // Le LOGO DE MARQUE, lui, est en ligne depuis le 19 août 2026 : ses
+        // octets sont sur le mutualisé, servis par Apache, et `image_paths`
+        // porte la liste ordonnée des chemins relatifs. Il remonte donc ici —
+        // voir brand_image_url().
     ];
 }
 
+/**
+ * URL publique du LOGO d'une marque, ou null.
+ *
+ * §6.5 de la conception laissait ouvert : URL complète, ou chemin relatif que
+ * le bundle compose avec media_base_url ? **Tranché ici : URL COMPLÈTE.**
+ *
+ * Trois raisons, dans cet ordre :
+ *
+ * 1. Le bundle du site est PUBLIC et DÉJÀ EN PRODUCTION. Lui faire composer
+ *    l'URL veut dire y poser le préfixe — en dur, ou par une variable de build
+ *    de plus. Déplacer les médias demanderait alors un rebuild ET un
+ *    redéploiement du site, en plus du serveur.
+ * 2. Le préfixe n'a qu'UNE source de vérité, `media_base_url` dans config.php,
+ *    et le serveur est le seul à la connaître : la base ne porte que le chemin
+ *    RELATIF (`image_paths`). Composer ici, c'est ne jamais avoir deux copies
+ *    du préfixe à tenir d'accord.
+ * 3. Le coût est de quelques dizaines d'octets par produit, sur une réponse
+ *    qui en porte déjà des milliers de description.
+ *
+ * Corollaire, et il vaut des deux côtés : le site consomme cette valeur TELLE
+ * QUELLE. Il ne la préfixe jamais.
+ *
+ * `image_paths` FAIT FOI, pas le contenu du répertoire : les rangs abandonnés
+ * et les extensions périmées restent sur le disque, inertes. On lit donc le
+ * rang 0 de la liste — l'image principale — et rien d'autre : une page produit
+ * veut un logo, pas la galerie de la marque.
+ *
+ * Sans `media_base_url` en configuration, on rend null plutôt qu'un chemin
+ * relatif : mieux vaut pas de logo qu'une URL que personne ne sait résoudre.
+ */
+function brand_image_url(?string $imagePaths): ?string
+{
+    if ($imagePaths === null || $imagePaths === '' || MEDIA_BASE_URL === '') {
+        return null;
+    }
+
+    $paths = json_decode($imagePaths, true);
+    if (!is_array($paths) || !isset($paths[0]) || !is_string($paths[0]) || $paths[0] === '') {
+        return null;
+    }
+
+    // Le chemin vient de NOTRE base, écrit par images-sync.php, qui n'accepte
+    // ni nom venu du client ni extension hors liste fermée. Ceinture tout de
+    // même : rien qui remonte l'arborescence ne sort d'ici.
+    if (strpos($paths[0], '..') !== false) {
+        return null;
+    }
+
+    return MEDIA_BASE_URL . ltrim($paths[0], '/');
+}
+
+// `b.image_paths` s'ajoute à `b.name` : c'est la liste ORDONNÉE des chemins
+// relatifs des images de la marque, en JSON, écrite par images-sync.php. Les
+// trois requêtes qui utilisent ces colonnes joignent déjà `ax_brands` en LEFT
+// JOIN — rien d'autre à changer.
 $PRODUCT_COLUMNS = 'p.legacy_id, p.name, p.site_title, p.slug, p.sku, p.description,
-                    p.price_ttc, p.stock, p.brand, b.name AS brand_name';
+                    p.price_ttc, p.stock, p.brand, b.name AS brand_name,
+                    b.image_paths AS brand_image_paths';
 
 $action = isset($_GET['action']) ? (string) $_GET['action'] : 'category';
 

@@ -14,7 +14,7 @@ import type {
 	PocketBaseRecord,
 } from '@/lib/queries/catalog-shapes'
 import { type ImageIntent, buildWritePayload } from '@/lib/queries/image-upload'
-import { newLegacyKey } from '@/lib/queries/legacy-key'
+import { withLegacyKey } from '@/lib/queries/legacy-key'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -87,9 +87,7 @@ export function useCreateBrand() {
 			// produits qui la citent, en silence (docs/DECISIONS.md, 2026-08-13).
 			return await pb
 				.collection('brands')
-				.create<CatalogBrandShape>(
-					buildWritePayload({ legacy_id: newLegacyKey(), ...data }),
-				)
+				.create<CatalogBrandShape>(buildWritePayload(withLegacyKey(data)))
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['brands'] })

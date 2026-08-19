@@ -83,6 +83,16 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    clé `GEMINI_API_KEY` reste dans le processus Go et part dans l'en-tête
    `x-goog-api-key`, jamais dans le bundle ni dans l'URL.
 
+7. **Miroir des images du catalogue** — `backend/routes/site_images_routes.go` —
+   `https://axemusique.shop/server/api/images-sync.php`, en-tête `X-API-Key` et
+   `User-Agent` explicite (même couche anti-bot). **GET** pour l'inventaire
+   `legacy_id → image_checksum`, **POST multipart** pour envoyer TOUTES les
+   images d'une entité. Réglage `site_images_url` ; la **clé est celle du
+   catalogue** (`site_catalog_api_key`) — même base, même portée d'écriture.
+   Route distincte du point 5 parce que son plafond de corps n'a rien à voir :
+   24 Mio ici contre 1 Mio là. Mécanisme :
+   `frontend/modules/site/PocketSite-docs/16-conception-images.md`.
+
 ## Commandes
 
 ```bash
@@ -198,6 +208,29 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   atteint. Tout appel Go vers ce domaine doit poser un `User-Agent` explicite —
   voir `backend/routes/site_publish_routes.go`. Constaté le 2026-08-10, à clé,
   URL et corps identiques.
+- **Les images du catalogue partent par un miroir, pas par le lot d'entités**
+  (19 août 2026). Le checksum d'entité (§4.4 du contrat) ne couvre AUCUN champ
+  image : promouvoir une image ou réordonner une galerie n'écrit ni nom, ni
+  prix, ni relation, et un export incrémental fondé sur lui ne verrait jamais
+  un changement d'image. D'où une **seconde empreinte**, `image_checksum` —
+  SHA-1 de la liste ordonnée des SHA-256 des octets, principale en tête
+  (`frontend/modules/site/lib/image-checksum.ts`). Ne pas élargir le premier
+  checksum : cela marquerait les 2563 produits « modifiés » d'un coup.
+  L'arborescence distante est `<kind>/<legacy_id>/<rang>.<ext>` — **le nom
+  distant est calculé, jamais transporté** —, un envoi porte toutes les images
+  d'une entité, et **les octets s'écrivent avant la ligne SQL**. Seules les
+  marques et les catégories sont acceptées côté serveur pour l'instant.
+  **Le site LIT ces images par `catalog.php`, en URL COMPLÈTE** : `brand.image`
+  est composée côté serveur (`brand_image_url()`) à partir de `media_base_url`
+  et du rang 0 de `image_paths` ; le bundle la consomme telle quelle et ne la
+  préfixe jamais — il est public et déjà en production, il ne doit pas porter le
+  préfixe des médias. Trois marques sur 288 sont synchronisées au 19 août 2026 :
+  **l'absence de logo est le cas normal**, et le repli est silencieux
+  (`AxeProductPage.jsx`, composant `BrandBadge`, dans le dépôt du site).
+  Gardiens : `frontend/modules/site/lib/image-checksum.test.ts` et
+  `frontend/lib/queries/create-legacy-key.test.ts` — c'est `legacy_id` qui
+  nomme toute l'arborescence, et les trois `create` doivent le poser
+  (`withLegacyKey`, `frontend/lib/queries/legacy-key.ts`).
 - **Ne pas toucher `wp-admin` ni `wp-json`** dans le `.htaccess` du site tant
   que WordPress sert le catalogue et la médiathèque.
 - **Secrets :** `package.json` contient le mot de passe PocketBase en clair

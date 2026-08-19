@@ -1,0 +1,430 @@
+# Conception — mettre les images du catalogue en ligne
+
+**Écrit le 19 août 2026.** Phase 1 de
+[`15-prompt-sync-images.md`](15-prompt-sync-images.md) : l'écrit avant le code.
+Aucune ligne de code n'accompagne ce document, et aucun octet n'est parti.
+**La décision se consigne dans `docs/DECISIONS.md` par le propriétaire avant le
+premier envoi.**
+
+Ce qui était déjà tranché — source PocketBase et non WordPress, arborescence
+distante nommée par `legacy_id`, marques et catégories d'abord, envoi manuel
+entité par entité comme premier livrable — ne se rediscute pas ici.
+
+---
+
+## 1. Les mesures, refaites
+
+Base `%LOCALAPPDATA%\PocketReact\pb_data\data.db`, ouverte en
+`sqlite3 -readonly file:data.db?immutable=1`. Stockage mesuré par `find`, en
+excluant les `.attrs` **et les sous-dossiers `thumbs_*`**.
+
+| | marques | catégories | produits |
+|---|---|---|---|
+| enregistrements | 288 | 464 | 2999 (2563 `published`, 436 `draft`) |
+| avec `image` non vide | **225** | **36** | 2640 (2412 publiés) |
+| avec galerie non vide | — | — | 748 (1767 fichiers) ; **731 publiés / 1720 fichiers** |
+| `legacy_id` vide | 0 | 0 | 0 |
+| dossiers de stockage | 225 | **37** | 2640 |
+| fichiers réels | 225 | 37 | 4407 |
+| octets | 21 568 057 (20,6 Mio) | 38 056 950 (36,3 Mio) | 1 638 158 158 (1,53 Gio) |
+| poids moyen · max | 96 Ko · 770 Ko | **1029 Ko · 2690 Ko** | 372 Ko · 4955 Ko |
+
+### Ce qui a bougé depuis les mesures du prompt
+
+- **Les « ~50 fichiers de marques que personne ne désigne » n'existent pas.**
+  Le prompt annonçait « 275 fichiers pour 225 marques ». Refait : 225 fichiers
+  réels, 225 dossiers, 225 enregistrements — exactement. Les 275 étaient les
+  fichiers `.attrs` (225 originaux + 50 vignettes), et les 50 vignettes vivent
+  dans des sous-dossiers `thumbs_*`. **Aucun orphelin côté marques.**
+- **Une catégorie a perdu son image depuis** : 36 enregistrements portent une
+  `image`, 37 dossiers existent. L'orphelin est
+  `odvn2lqe02m6pn6/y746mmw9ivp37o1/logo_axe_neon_7RFjfnokJJ.png` — la catégorie
+  « Accumulateurs & Chargeurs » (`legacy_id` `6Uwc6luOMaFnrxBn`), dont le champ
+  `image` est désormais `[]`. **La règle du prompt est donc vraie, mais pour une
+  autre raison que celle avancée : le `ls` n'est pas l'inventaire, le champ
+  `image` fait foi.** C'est ce cas unique qui la démontre, pas les marques.
+- Les produits : 2640 avec image (le prompt ne donnait que les publiés), et
+  `image` vide + galerie non vide = **0 produit**. Toute galerie s'accompagne
+  d'une principale. 2640 + 1767 = 4407, soit exactement les fichiers du disque :
+  **aucun octet orphelin côté produits non plus**.
+- Le poids moyen des produits, « à mesurer » au prompt : **372 Ko, 4,95 Mo au
+  pire**.
+
+Le fait dur du prompt tient et se durcit : **une image de catégorie pèse 1 Mo en
+moyenne et 2,7 Mo au pire**. Le relais d'export actuel refuse au-delà de 1 Mio
+(`backend/routes/site_catalog_routes.go:52`, `siteCatalogMaxBytes`), et le
+découpage du front vise 800 Kio
+(`frontend/modules/site/lib/catalog-export.ts:37`). **Les octets ne peuvent pas
+voyager dans le lot d'entités**, et pas davantage par la route qui le porte.
+
+### Ce que j'ai lu, et où
+
+- Les images sont des champs fichier servis par `pb.files.getUrl`
+  (`frontend/modules/site/lib/catalog-image.ts:33`) — inatteignables depuis
+  axemusique.shop.
+- **`catalog.php` ne rend aujourd'hui aucun champ image**, délibérément :
+  `server/api/catalog.php:150-151` le dit en commentaire. Le site n'affiche donc
+  rien, plutôt que des images cassées. C'est l'état de départ, et il est sûr.
+- L'inventaire distant rend déjà `legacy_id → checksum` par une seule requête
+  SQL par table (`server/api/products-sync.php:190-200`).
+- Le checksum est un SHA-1 de la forme canonique de l'entité, `checksum` retiré,
+  clés triées récursivement (`catalog-export.ts:96-118`). Les champs traduits
+  sont énumérés à `catalog-export.ts:135-171` : **aucun ne parle d'image**.
+- La clé `pa_…` est posée par la couche d'accès, pas par l'écran
+  (`catalog-products.ts:321`, `categories.ts:160`, `brands.ts:91`).
+
+### Ce que je n'ai pas mesuré, et le dis
+
+- **L'état de la base SQL distante.** L'inventaire exige `X-API-Key` ; je n'ai
+  pas lu la clé et ne l'ai pas utilisée. Seule la lecture publique a été faite :
+  `GET catalog.php?action=categories` répond `200`, 23 944 octets, **199
+  catégories portant au moins un produit**. Combien de marques et de produits
+  sont en base, je l'ignore.
+- **Les plafonds PHP du mutualisé** (`post_max_size`, `upload_max_filesize`,
+  `max_execution_time`) : inconnus. Ils décident de la taille d'un envoi
+  d'octets et je ne peux pas les deviner. Voir §6.
+- **L'espace disque disponible sur le mutualisé** : inconnu. 1,6 Gio de produits
+  n'est pas rien.
+
+---
+
+## 2. Les risques retenus
+
+1. **Le checksum est aveugle aux images.** §4.4 du contrat couvre nom, slug,
+   description, prix, stock, relations — rien d'autre. Promouvoir une image ou
+   réordonner une galerie n'écrit aucun de ces champs : un export incrémental
+   fondé sur ce checksum ne verrait **jamais** un changement d'image. C'est le
+   risque central, tout le reste en découle.
+2. **La promotion et le réordonnancement sont des changements d'ordre, pas de
+   contenu.** Les mêmes octets, dans un autre rang. Toute détection fondée sur
+   « l'ensemble des fichiers » les manquerait.
+3. **Le retrait d'une image en local.** Le contrat pose que l'export ne supprime
+   jamais (§2). Appliqué tel quel aux images, il laisserait en ligne une image
+   qu'on a retirée — et la catégorie « Accumulateurs & Chargeurs » mesurée
+   ci-dessus prouve que le cas est déjà arrivé, en une semaine d'usage.
+4. **`legacy_id` est la fondation, et rien ne la garde.** L'arborescence
+   distante est nommée par lui. Il est non vide partout aujourd'hui (mesuré, 0
+   sur trois collections), mais **aucun test ne vérifie que les trois `create`
+   le posent** (`catalog-products.ts:321`, `categories.ts:160`,
+   `brands.ts:91`) : une régression y produirait des dossiers distants nommés
+   par une chaîne vide, sans erreur.
+5. **Deux postes exportent en même temps** (multi-postes depuis le 19 août). Il
+   n'y a ni verrou ni transaction couvrant un export.
+6. **Le site lit pendant qu'on écrit.** `catalog.php` n'a ni clé ni verrou : un
+   visiteur peut tomber au milieu d'une écriture.
+7. **L'octet et la ligne SQL sont deux écritures.** Entre les deux, il existe un
+   instant où l'un existe sans l'autre.
+
+## 3. Les risques écartés, et pourquoi
+
+- **Le renommage PocketBase** (`…_PiDxAYvQfC.jpg` : réimporter la même photo
+  donne un autre nom) — écarté : le nom local ne voyage pas. Le nom distant est
+  calculé, jamais recopié (§4).
+- **Les doublons au rechargement par purge** — écarté : c'est précisément
+  pourquoi l'arborescence est nommée par `legacy_id`, qui survit (§1 du
+  contrat).
+- **La collision de noms entre deux entités** — écartée : le dossier distant est
+  nommé par une clé unique par collection.
+- **La divergence entre le `ls` distant et la base SQL** — écartée comme
+  bénigne : le site lit la ligne SQL, jamais le répertoire. Un octet que plus
+  personne ne désigne est invisible et sans coût, sauf l'espace disque. C'est
+  déjà l'état local, mesuré.
+- **`wp_image_url` divergeant de PocketBase** — écarté : décision du 19 août,
+  WordPress n'est pas la source. Au mieux un repli d'affichage.
+- **La dérive de `product_events` vers l'identifiant PocketBase**
+  (`frontend/lib/queries/stock-adjust.ts:220`) — écartée **du périmètre** : ce
+  journal n'alimente pas l'export et n'entre dans aucun chemin d'image. Le
+  manque reste réel et reste à traiter ailleurs.
+- **Les 436 produits `draft`** — écartés : `status` n'admet que `published`
+  (§4.1), un brouillon ne s'exporte pas, donc ses images non plus.
+- **Le vol de bande passante par appel direct aux octets** — écarté : le site
+  est déjà public sans clé (§6 bis), les images le sont aussi par nature.
+
+---
+
+## 4. Le mécanisme — un seul
+
+> **Un miroir d'octets nommé par `legacy_id` et par le rang, plus une seconde
+> empreinte qui ne couvre que les images.**
+
+Trois pièces, pas une de plus.
+
+### 4.1 Le nom distant est calculé, jamais transporté
+
+```
+<racine média>/<marques|categories|produits>/<legacy_id>/<rang>.<ext>
+```
+
+Le rang `0` est l'image principale ; `1, 2, …` sont la galerie, dans son ordre.
+
+**Ce qui identifie une image est donc le couple (entité, rang)**, pas son nom et
+pas un hachage de son contenu. Motif : c'est la forme qui a **le moins d'états**
+— un emplacement par (entité, rang), un réenvoi écrase, rien à réconcilier. Un
+nom porté par le contenu (`0-<sha16>.jpg`) créerait un fichier de plus à chaque
+retouche et rouvrirait la question du ménage ; le nom PocketBase, lui, change
+sans que l'image change.
+
+Le hachage du contenu existe quand même, mais il **détecte**, il ne **nomme**
+pas (§4.2).
+
+Un changement d'extension (`0.jpg` devenu `0.png`) laisse l'ancien octet en
+place : invisible, puisque la ligne SQL porte le nom qui fait foi. Le §3 l'a
+accepté.
+
+### 4.2 Une empreinte d'images, séparée de celle du contrat
+
+Le checksum §4.4 **ne change pas**. Le toucher marquerait les 2563 produits
+« modifiés » et déclencherait un réexport complet du catalogue pour rien.
+
+À côté, une seconde valeur par entité :
+
+> `image_checksum` = SHA-1 de la **liste ordonnée** des SHA-256 des octets de
+> l'entité, principale en tête.
+
+Elle règle d'un coup les risques 1, 2 et 3 : le contenu change → la liste
+change ; on promeut ou on réordonne → l'ordre change ; on retire une image → la
+liste raccourcit. Elle est stockée telle quelle côté SQL et **réémise sans être
+recalculée**, exactement comme le checksum d'entité (§3 du contrat) — le
+serveur continue de ne rien décider.
+
+L'inventaire d'images est le même geste que l'inventaire d'entités, et rend
+`legacy_id → image_checksum`. L'interface y lit les **mêmes trois états** —
+absent, modifié, à jour — par la même fonction (`catalog-export.ts:186`,
+`syncStateOf`).
+
+### 4.3 Un envoi par entité, entier, idempotent
+
+Une requête = **toutes les images d'une entité**, plus son `image_checksum`.
+Jamais une image seule.
+
+Motif : c'est la même règle que la galerie locale, où « la liste s'envoie
+toujours ENTIÈRE » (CLAUDE.md). Envoyer entité par entité rend le retrait
+possible sans violer §2 : on ne supprime pas une entité, on **réécrit l'état
+d'une entité**. Les rangs au-delà de la nouvelle longueur disparaissent de la
+ligne SQL ; leurs octets restent sur le disque, inertes.
+
+**L'ordre d'écriture : les octets d'abord, la ligne SQL ensuite**, dans la même
+requête. Motif mesuré : `catalog.php:150-151` ne rend aujourd'hui aucun champ
+image — tant que la ligne SQL est vide, le site n'affiche rien, ce qu'il fait
+déjà. Une interruption entre les deux laisse des octets que personne ne désigne,
+invisibles, et le rejeu répare. L'ordre inverse afficherait des images cassées à
+un visiteur, ce qui est le seul état vraiment coûteux.
+
+La ligne SQL est mise à jour par **un seul `UPDATE` par entité** : un visiteur
+lit l'ancien état ou le nouveau, jamais un état mi-écrit. Risque 6 traité.
+
+Deux postes qui envoient la même entité écrivent la même chose ou, s'ils
+divergent, le dernier gagne — et l'inventaire dit ensuite lequel a gagné.
+Aucun verrou, aucune file. Risque 5 traité par l'idempotence, pas par un
+mécanisme.
+
+### 4.4 Ce que ça donne, dans l'ordre
+
+1. Le contrat gagne un §8 « images » : un `image_checksum` par entité, un
+   inventaire d'images, et un champ image rendu par `catalog.php` — ce que §7
+   interdisait tant que le point n'était pas conçu.
+2. Une sixième sortie réseau, distincte de l'export d'entités parce que son
+   plafond de corps n'a rien à voir avec 1 Mio, à inscrire dans `CLAUDE.md`, et
+   posant un `User-Agent` explicite.
+3. **Le premier livrable : un bouton par fiche marque et par fiche catégorie**,
+   plus la colonne d'état à trois valeurs. 225 marques et 36 catégories, soit
+   57 Mio : de quoi mesurer la vitesse réelle avant d'envisager 1,6 Gio de
+   produits.
+4. Le test manquant sur les trois `create` (risque 4) s'écrit **avant** le
+   premier envoi : c'est la règle dont dépend le nommage de toute
+   l'arborescence.
+
+### 4.5 Le budget, vérifié
+
+| Exigence | Comment |
+|---|---|
+| idempotent | rejouer un envoi d'entité donne le même état |
+| réparable par rejeu | aucun SQL à la main ; on renvoie l'entité |
+| détectable | l'inventaire d'images dit ce que le distant a |
+| sans état intermédiaire | aucune table de suivi, aucun drapeau « en cours » |
+
+États possibles pour une entité : **absent, modifié, à jour**. Les trois du
+contrat, pas un de plus.
+
+---
+
+## 5. Écartés d'emblée
+
+- **File de travaux** — impossible : aucun processus persistant sur le mutualisé.
+- **Processus résident** — même motif, et rien à surveiller n'est un objectif.
+- **Webhooks** — le mutualisé ne peut pas rappeler PocketApp, qui est en poste.
+- **Différentiel temps réel** — l'envoi est manuel et déclenché ; le temps réel
+  de PocketBase s'arrête au réseau local.
+- **Table d'état de synchro en double** — l'état est déjà dans l'inventaire ; le
+  doubler, c'est créer une divergence à réconcilier.
+- **Service tiers** — une dépendance de plus pour déplacer 57 Mio.
+- **CDN** — problème d'échelle qu'on n'a pas, et une couche de cache à invalider.
+- **Stockage objet** — le disque du mutualisé fait l'affaire ; le contrat
+  n'aurait plus de destination unique.
+
+---
+
+## 6. Ce que je laisse ouvert au propriétaire
+
+1. **Où vivent les octets sur le mutualisé, et sous quelle URL publique ?**
+   Sous `server/`, ou un dossier média à la racine web ? Ce choix touche le
+   `.htaccess`, où `wp-admin` et `wp-json` ne se touchent pas.
+2. **Quel plafond de corps accepte l'hébergeur ?** `post_max_size`,
+   `upload_max_filesize`, `max_execution_time` : non mesurés, et une catégorie
+   à 2,7 Mo peut déjà en dépasser un. À relever sur place avant de fixer le
+   découpage.
+3. **Redimensionne-t-on à l'envoi ?** 1 Mo en moyenne pour un visuel de
+   catégorie est lourd pour une vitrine. Envoyer l'original est plus simple et
+   plus fidèle ; envoyer une version réduite divise le volume et la durée. C'est
+   une décision de qualité, pas de technique — je ne la prends pas.
+4. **1,6 Gio de produits tient-il sur le mutualisé ?** Espace disque inconnu.
+   Si non, la question 3 devient obligatoire.
+5. **Le champ image rendu par `catalog.php`** : une URL complète, ou un chemin
+   relatif que le bundle compose ? Le bundle est public et déjà en production.
+6. **Rouvre-t-on §7 du contrat maintenant, ou après l'essai sur les marques ?**
+   Je conseille : essai d'abord, contrat ensuite — « ne rien mettre au contrat
+   qu'on n'a pas mesuré ».
+
+**Je m'arrête ici.** Aucun code, aucun octet, aucun commit.
+
+---
+
+## 7. Ce qui a été écrit — 19 août 2026
+
+Phase 2. Le mécanisme du §4, implémenté pour les **marques et les catégories
+seules**. **Aucun octet n'est encore parti** : rien n'a été déposé par FTP, le
+schéma SQL distant n'a pas été modifié, et les réglages ne sont pas renseignés.
+Ce qui suit est lu dans le code de ce dépôt, pas mesuré en ligne.
+
+| Pièce | Fichier |
+|---|---|
+| l'empreinte d'images (§4.2) | `frontend/modules/site/lib/image-checksum.ts` |
+| inventaire, empreintes locales, envoi | `frontend/modules/site/hooks/use-image-sync.ts` |
+| le bouton par fiche + l'état à trois valeurs (§4.4.3) | `frontend/modules/site/components/online-catalog/ImageSyncPanel.tsx`, onglet « Images » de `CatalogueEnLignePage.tsx` |
+| la sixième sortie réseau (§4.4.2) | `backend/routes/site_images_routes.go`, réglage `site_images_url` |
+| le serveur | `server/api/images-sync.php`, colonnes `server/sql/images.sql` |
+| le test manquant (§4.4.4) | `frontend/lib/queries/create-legacy-key.test.ts` |
+
+### Le test du §4.4.4 a trouvé quelque chose
+
+Écrit **avant** le reste, comme prévu. Il a montré que la clé était posée
+**avant** l'étalement des données de l'appelant —
+`{ legacy_id: newLegacyKey(), ...data }` —, donc qu'un `legacy_id` vide venu
+d'un écran l'aurait écrasée en silence. Le type l'interdisait pour les marques
+et les catégories, rien ne l'interdisait à l'exécution, et PocketBase accepte
+la chaîne vide sans un mot : des dossiers distants nommés par du vide.
+
+Les trois `create` passent désormais par `withLegacyKey`
+(`frontend/lib/queries/legacy-key.ts`), qui pose la clé **après** l'étalement.
+
+### Les choix que j'ai faits, faute de réponse au §6
+
+Ils sont tous configurables, et aucun n'est en dur :
+
+1. **Où vivent les octets** — un `media_root` de configuration, hors du dépôt,
+   avec `media_base_url` en regard. Le `.htaccess` n'est pas touché.
+2. **Le plafond de corps** — 24 Mio côté Go, 8 Mio par fichier côté PHP. Ce ne
+   sont pas des mesures : `post_max_size` et `upload_max_filesize` restent
+   inconnus, et c'est l'hébergeur qui refusera. Le script le **dit
+   explicitement** dans ce cas plutôt que de rendre « erreur 1 ».
+3. **Le redimensionnement** — aucun. L'original part tel quel. C'est une
+   décision de qualité, elle reste ouverte ; la changer se fait côté envoi,
+   sans toucher au mécanisme.
+4. **Ce que rend `catalog.php`** — rien pour l'instant : il ne rend toujours
+   aucun champ image (`catalog.php:150-151`). La ligne SQL porte le **chemin
+   relatif** et `media_base_url` est renvoyé à côté ; ce que le bundle recevra
+   se tranche au §8 du contrat, après l'essai.
+5. **Les produits** — refusés par le serveur (`kind` n'admet que `brands` et
+   `categories`), mais leurs colonnes SQL sont créées d'avance : ajouter une
+   colonne à 2999 lignes plus tard coûte un verrou de table sur un mutualisé.
+
+### Ce qu'il reste à faire avant le premier octet
+
+1. Consigner la décision dans `docs/DECISIONS.md` — **le propriétaire**.
+2. Exécuter `server/sql/images.sql` dans phpMyAdmin.
+3. Créer le répertoire média et le renseigner dans `config.php`
+   (`media_root`, `media_base_url`, `image_max_bytes`).
+4. Déposer `server/api/images-sync.php` par FTP.
+5. Régler l'URL du miroir dans Réglages > Clés API.
+6. Envoyer **une** marque, et mesurer : durée, taille, ce qu'Apache sert.
+
+### Ce que je n'ai pas vérifié, et le dis
+
+Le PHP n'a pas de suite de tests dans ce dépôt et **n'a pas été exécuté** : il
+est seulement passé au `php -l` (aucune erreur de syntaxe, PHP 8.2 en local).
+L'écran n'a pas été ouvert : le mécanisme est gardé par
+`image-checksum.test.ts` et `create-legacy-key.test.ts`, `npx tsc -b` et
+`pnpm test` passent (195 tests), `go build ./...` et `go test ./backend/...`
+aussi. Rien de tout cela ne dit qu'un octet arrive à destination.
+
+---
+
+## 8. Le logo de marque sur la page produit — 19 août 2026
+
+Phase 3, et la **première fois que le miroir sert à quelque chose de visible**.
+
+### Le §6.5 est tranché : URL COMPLÈTE
+
+`catalog.php` rend `brand.image` — une URL absolue, composée côté serveur à
+partir de `media_base_url` et du rang 0 de `image_paths`. Le bundle du site la
+consomme **telle quelle** et ne la préfixe jamais.
+
+Pourquoi pas le chemin relatif : le bundle est public et déjà en production.
+Lui faire composer l'URL, c'est y poser le préfixe des médias — en dur ou par
+une variable de build de plus — et transformer tout déménagement des médias en
+rebuild + redéploiement du site, en plus du serveur. Le préfixe n'a qu'une
+source de vérité, `config.php` ; le serveur est le seul à la connaître, il
+compose. Le coût est de quelques dizaines d'octets par produit.
+
+Le raisonnement complet est en commentaire au-dessus de `brand_image_url()`,
+dans `server/api/catalog.php` — là où quelqu'un qui modifie le code le lira.
+
+### Ce qui a été mesuré, en ligne, ce jour
+
+| Mesure | Résultat |
+|---|---|
+| `images-sync.php?action=inventory` | **3 marques**, 0 catégorie (le prompt en annonçait deux) |
+| Les trois | `8vAMv7T68F1K1wDL` ADAM HALL (`0.png`), `Y7CGJq5M6WBM0oyw` ADMIRA (`0.jpg`), `ZpBxd7powzo0MxTp` ACUS (`0.jpg`) |
+| Leurs octets sous `media/catalog/brands/<id>/0.<ext>` | **200**, servis par Apache |
+| `catalog.php` en production | rend encore `brand: {id, name}` — le patch n'est **pas déposé** |
+| Marques distinctes vues dans le catalogue en ligne | 145 sur 288 (échantillon de recherche, non exhaustif) |
+
+Trois sur 288 : **le repli est le cas normal**, pas le cas d'erreur. C'est la
+règle qui a guidé l'écran.
+
+### Ce qui a été vérifié dans le navigateur
+
+Serveur de développement du site, `VITE_USE_AXE_CATALOG=true` (`.env:29`) :
+
+- **Repli, en réel** — `/produit/guitare-classique-admira-malaga` contre la
+  production non patchée : pastille « ADMIRA » seule, aucun `<img>`, hauteur
+  37,6 px.
+- **Avec logo** — même page, réponse du catalogue complétée à la volée dans la
+  console (outil de debug, aucun code modifié) : `<img>` rendu sur l'URL
+  absolue, image chargée depuis axemusique.shop, **929 × 929** affichée en
+  24 × 24.
+- **URL présente mais octets absents** (404 injecté) : `onError` retire l'image,
+  la pastille reste, hauteur **37,6 px — identique au repli**. Aucune secousse
+  de mise en page dans aucun des trois cas.
+
+### Ce que je n'ai pas vérifié, et le dis
+
+- **Le PHP n'a pas été exécuté sur des données réelles.** Pas de MySQL ici :
+  seuls `php -l` (aucune erreur) et un test unitaire de `brand_image_url()`
+  hors de son fichier — liste normale, `null`, `[]`, JSON invalide, chemin
+  remontant : les quatre derniers rendent `null`. La colonne
+  `b.image_paths` n'a jamais été lue par une vraie requête.
+- **Aucune capture d'écran** : le volet navigateur n'était pas affiché, donc la
+  page ne composait pas d'image. C'est aussi ce qui a démasqué le
+  `loading="lazy"` initial — retiré : un logo de 24 px au-dessus de la ligne de
+  flottaison n'a rien à différer.
+- **Le contrat n'a pas été touché.** Son §8 « images » s'écrira quand cet écran
+  aura tourné en production, pas avant.
+
+### Ce qu'il reste à faire
+
+1. Déposer `server/api/catalog.php` par FTP — **rien ne s'affiche avant.**
+2. Rebâtir et redéployer le bundle du site.
+3. Ouvrir une page produit ACUS, ADMIRA ou ADAM HALL et regarder.
+4. Les logos pèsent lourd pour leur usage (929 px pour 24 px affichés) : la
+   question 3 du §6 — redimensionner à l'envoi — se repose ici, avec un chiffre.

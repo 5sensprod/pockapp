@@ -92,6 +92,16 @@ const (
 	// Comme la précédente : pas un secret, en réglage plutôt qu'en dur pour
 	// viser un autre serveur sans recompiler.
 	SettingSiteCatalogURL = "site_catalog_url"
+
+	// SettingSiteImagesURL est l'URL du miroir d'images,
+	// typiquement https://axemusique.shop/server/api/images-sync.php.
+	//
+	// DISTINCTE de SettingSiteCatalogURL : ce sont deux scripts, parce que
+	// leurs plafonds de corps n'ont rien à voir — 1 Mio pour un lot d'entités,
+	// plusieurs Mio pour une seule image de catégorie (§4.4 de
+	// PocketSite-docs/16-conception-images.md). La CLÉ, elle, est partagée avec
+	// l'export du catalogue : même base, même portée d'écriture.
+	SettingSiteImagesURL = "site_images_url"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════

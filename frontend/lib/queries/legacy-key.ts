@@ -48,3 +48,30 @@ export function newLegacyKey(): string {
 export function isPocketAppKey(legacyId: string | undefined): boolean {
 	return Boolean(legacyId?.startsWith(POCKETAPP_KEY_PREFIX))
 }
+
+/**
+ * Le payload d'une création, avec sa clé stable garantie non vide.
+ *
+ * Les trois `create` du catalogue passent par ici — marques, catégories,
+ * produits. La clé est posée APRÈS l'étalement de `data` : écrite avant, une
+ * valeur vide venue de l'appelant l'écrasait en silence, et PocketBase accepte
+ * la chaîne vide sans un mot. C'est la règle dont dépend le nommage de
+ * l'arborescence distante des images, `<entité>/<legacy_id>/<rang>.<ext>`
+ * (`PocketSite-docs/16-conception-images.md`, §4.1).
+ *
+ * Une clé déjà fournie et non vide est respectée : rien n'oblige à en inventer
+ * une pour une entité qui en porte déjà.
+ *
+ * Gardien : `create-legacy-key.test.ts`.
+ */
+export function withLegacyKey<T extends object>(
+	data: T,
+): T & { legacy_id: string } {
+	const fournie = (data as { legacy_id?: unknown }).legacy_id
+	const legacy_id =
+		typeof fournie === 'string' && fournie.trim() !== ''
+			? fournie
+			: newLegacyKey()
+
+	return { ...data, legacy_id }
+}

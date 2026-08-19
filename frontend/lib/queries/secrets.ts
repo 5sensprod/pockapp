@@ -287,7 +287,13 @@ export function useSetSitePublish() {
 export function useSiteCatalogStatus() {
 	const pb = usePocketBase() as any
 
-	return useQuery<{ configured: boolean; endpoint_url: string }>({
+	return useQuery<{
+		configured: boolean
+		endpoint_url: string
+		/** URL du miroir d'images. Réglage distinct de l'export d'entités —
+		 *  deux scripts, deux plafonds de corps —, MÊME clé. */
+		images_url: string
+	}>({
 		queryKey: ['site-catalog-status'],
 		queryFn: async () => {
 			return await fetchWithAuth(pb, '/api/settings/site-catalog/status')
@@ -300,12 +306,17 @@ export function useSetSiteCatalog() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async (data: { apiKey?: string; endpointUrl?: string }) => {
+		mutationFn: async (data: {
+			apiKey?: string
+			endpointUrl?: string
+			imagesUrl?: string
+		}) => {
 			return await fetchWithAuth(pb, '/api/settings/site-catalog', {
 				method: 'POST',
 				body: JSON.stringify({
 					api_key: data.apiKey ?? '',
 					endpoint_url: data.endpointUrl ?? '',
+					images_url: data.imagesUrl ?? '',
 				}),
 			})
 		},
@@ -314,6 +325,9 @@ export function useSetSiteCatalog() {
 			// L'inventaire distant devient lisible : l'écran « Catalogue en ligne »
 			// doit le redemander plutôt que de rester sur « État du site inconnu ».
 			queryClient.invalidateQueries({ queryKey: ['site-catalog'] })
+			// Le miroir d'images a son propre inventaire : sans cela, l'onglet
+			// « Images » reste sur « État des images inconnu » après le réglage.
+			queryClient.invalidateQueries({ queryKey: ['site-images'] })
 			queryClient.invalidateQueries({ queryKey: ['settings'] })
 		},
 	})
