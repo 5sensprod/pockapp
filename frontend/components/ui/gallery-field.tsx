@@ -1,0 +1,299 @@
+// frontend/components/ui/gallery-field.tsx
+//
+// LES IMAGES D'UN PRODUIT — la principale et la galerie, dans un seul champ.
+//
+// ── POURQUOI CE COMPOSANT REMPLACE `ImageField` SUR LE PRODUIT ────────────
+// `ImageField` a un geste destructeur : « Changer » écrase l'image en place,
+// l'ancienne est supprimée du stockage. C'est acceptable pour un logo de
+// marque ; ça ne l'est pas ici. La règle du 19 août 2026 dit l'inverse :
+// « remplacer l'image principale ne la détruit pas : l'ancienne rejoint la
+// galerie », et « supprimer reste possible, mais c'est un geste distinct ».
+//
+// Il n'est donc pas une variante multiple d'`ImageField` : `image` et
+// `gallery` sont deux champs du schéma, et ce composant tient LEUR RELATION.
+// `ImageField` reste seul en usage sur les marques et les catégories, dont le
+// schéma ne porte qu'un fichier (`imageFileOptions(1)`).
+//
+// ── LE MODÈLE : TOUT ENTRE PAR LA GALERIE, LA PRINCIPALE SE DÉSIGNE ───────
+// C'est la forme des logiciels de vente modernes — une liste ordonnée de
+// médias, plus une vedette désignée. Elle a ici une seconde raison, mesurée :
+// PocketBase ne sait pas déplacer un fichier d'un champ à l'autre par l'API
+// REST (`forms/record_upsert.go:428-435`, refus « unknown filenames » couvert
+// par `backend/routes/product_image_test.go`). Un fichier importé rejoint donc
+// la galerie, et « Définir comme principale » appelle la route serveur.
+//
+// Conséquence assumée, et dite à l'écran : promouvoir est IMMÉDIAT, il ne
+// passe pas par « Enregistrer ». Les ajouts, retraits et déplacements, eux,
+// partent avec le formulaire.
+//
+// Ce composant ne connaît aucune base : il reçoit des URL déjà résolues par
+// `pb.files.getUrl` et rend une liste. C'est `lib/queries/image-upload.ts` qui
+// sait l'envoyer, et `lib/queries/gallery-order.ts` qui tient l'ordre.
+
+import { Button } from '@/components/ui/button'
+import {
+	type GalleryEntry,
+	MAX_GALERIE,
+	ajouter,
+	deplacer,
+	estPromouvable,
+	nomEntree,
+	retirer,
+} from '@/lib/queries/gallery-order'
+import { cn } from '@/lib/utils'
+import {
+	ArrowLeft,
+	ArrowRight,
+	ImagePlus,
+	Star,
+	Trash2,
+	Upload,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+
+const TYPES_ACCEPTES = 'image/jpeg,image/png,image/webp,image/avif'
+
+// La clé de rendu ne peut pas être le rang : réordonner ferait suivre l'état
+// de React à la POSITION et non à l'image, et les aperçus sauteraient d'une
+// vignette à l'autre. Un nom de fichier en base est unique — PocketBase le
+// suffixe —, mais deux fichiers choisis au disque peuvent porter le même nom :
+// on leur attache une identité stable, liée à l'objet lui-même.
+const identites = new WeakMap<File, string>()
+let compteur = 0
+
+function cleEntree(entree: GalleryEntry): string {
+	if (typeof entree === 'string') return entree
+	let cle = identites.get(entree)
+	if (!cle) {
+		compteur += 1
+		cle = `neuf-${compteur}`
+		identites.set(entree, cle)
+	}
+	return cle
+}
+
+interface GalleryFieldProps {
+	/** L'image principale enregistrée, résolue par `pb.files.getUrl`. */
+	mainUrl?: string | null
+	/** La galerie en cours d'édition. */
+	value: GalleryEntry[]
+	onChange: (entrees: GalleryEntry[]) => void
+	/** Rend l'URL d'une entrée DÉJÀ EN BASE. */
+	urlDe: (nom: string) => string
+	/** Promouvoir une entrée enregistrée. Absent = produit pas encore créé. */
+	onPromote?: (nom: string) => void
+	promoting?: boolean
+	disabled?: boolean
+}
+
+export function GalleryField({
+	mainUrl,
+	value,
+	onChange,
+	urlDe,
+	onPromote,
+	promoting,
+	disabled,
+}: GalleryFieldProps) {
+	const inputRef = useRef<HTMLInputElement>(null)
+
+	// Les aperçus locaux : une URL d'objet par fichier neuf, révoquée à la
+	// sortie. Sans révocation, le fichier reste en mémoire tant que l'onglet
+	// vit — le défaut déjà corrigé sur `ImageField`.
+	const [apercus, setApercus] = useState<Map<File, string>>(new Map())
+
+	useEffect(() => {
+		const carte = new Map<File, string>()
+		for (const entree of value) {
+			if (entree instanceof File) carte.set(entree, URL.createObjectURL(entree))
+		}
+		setApercus(carte)
+		return () => {
+			for (const url of carte.values()) URL.revokeObjectURL(url)
+		}
+	}, [value])
+
+	const choisir = () => inputRef.current?.click()
+
+	const auChangement = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const fichiers = Array.from(e.target.files ?? [])
+		if (fichiers.length > 0) onChange(ajouter(value, fichiers))
+		// Sans cela, rechoisir le MÊME fichier ne déclenche aucun événement.
+		e.target.value = ''
+	}
+
+	const plein = value.length >= MAX_GALERIE
+
+	return (
+		<div className='space-y-2'>
+			<div className='flex items-baseline justify-between gap-2'>
+				<span className='font-medium text-sm'>Images</span>
+				<span className='text-muted-foreground text-xs'>
+					{value.length}/{MAX_GALERIE} en galerie
+				</span>
+			</div>
+
+			<div className='flex flex-wrap items-start gap-3'>
+				{/* L'image principale n'a pas de bouton « Changer » : on importe,
+				    puis on désigne. C'est ce qui garantit qu'aucune image n'est
+				    écrasée. */}
+				<figure className='space-y-1'>
+					<div
+						className={cn(
+							'flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border-2',
+							mainUrl
+								? 'border-primary border-solid'
+								: 'border-dashed bg-muted/50',
+						)}
+					>
+						{mainUrl ? (
+							<img
+								src={mainUrl}
+								alt='Vue principale du produit'
+								className='h-full w-full object-contain'
+							/>
+						) : (
+							<ImagePlus className='h-8 w-8 text-muted-foreground' />
+						)}
+					</div>
+					<figcaption className='flex items-center justify-center gap-1 text-primary text-xs'>
+						<Star className='h-3 w-3 fill-current' />
+						Principale
+					</figcaption>
+				</figure>
+
+				{value.map((entree, index) => {
+					const nom = nomEntree(entree)
+					// Une chaîne vide dans `<img src>` recharge la page courante :
+					// on ne rend l'image que quand l'URL existe vraiment.
+					const url =
+						entree instanceof File
+							? apercus.get(entree)
+							: urlDe(nom) || undefined
+
+					return (
+						<figure key={cleEntree(entree)} className='space-y-1'>
+							<div className='flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
+								{url ? (
+									<img
+										src={url}
+										alt={nom}
+										className='h-full w-full object-contain'
+									/>
+								) : (
+									<ImagePlus className='h-6 w-6 text-muted-foreground' />
+								)}
+							</div>
+
+							{/* Le geste principal est NOMMÉ, les autres sont des icônes :
+							    « définir comme principale » n'était pas trouvable sous une
+							    étoile muette — signalé à l'usage le 19 août 2026. */}
+							<Button
+								type='button'
+								variant='outline'
+								size='sm'
+								className='h-6 w-24 px-1 text-xs'
+								title={
+									estPromouvable(entree)
+										? 'Devient l’image principale tout de suite'
+										: 'Enregistrez d’abord : cette image n’est pas encore en base'
+								}
+								disabled={
+									disabled || promoting || !onPromote || !estPromouvable(entree)
+								}
+								onClick={() => estPromouvable(entree) && onPromote?.(entree)}
+							>
+								<Star className='mr-1 h-3 w-3' />
+								Principale
+							</Button>
+
+							<div className='flex items-center justify-center gap-0.5'>
+								<Button
+									type='button'
+									variant='ghost'
+									size='icon'
+									className='h-6 w-6'
+									title='Déplacer vers la gauche'
+									disabled={disabled || index === 0}
+									onClick={() => onChange(deplacer(value, index, index - 1))}
+								>
+									<ArrowLeft className='h-3 w-3' />
+								</Button>
+								<span className='text-muted-foreground text-xs tabular-nums'>
+									{index + 1}
+								</span>
+								<Button
+									type='button'
+									variant='ghost'
+									size='icon'
+									className='h-6 w-6'
+									title='Déplacer vers la droite'
+									disabled={disabled || index === value.length - 1}
+									onClick={() => onChange(deplacer(value, index, index + 1))}
+								>
+									<ArrowRight className='h-3 w-3' />
+								</Button>
+								<Button
+									type='button'
+									variant='ghost'
+									size='icon'
+									className='h-6 w-6 text-destructive hover:text-destructive'
+									title='Retirer cette image du produit'
+									disabled={disabled}
+									onClick={() => onChange(retirer(value, index))}
+								>
+									<Trash2 className='h-3 w-3' />
+								</Button>
+							</div>
+						</figure>
+					)
+				})}
+			</div>
+
+			{value.length === 0 && (
+				<p className='text-muted-foreground text-xs'>
+					Aucune image secondaire. Importez-en pour composer la galerie — et
+					pour pouvoir changer l’image principale sans détruire l’actuelle.
+				</p>
+			)}
+
+			<input
+				ref={inputRef}
+				type='file'
+				accept={TYPES_ACCEPTES}
+				multiple
+				onChange={auChangement}
+				className='hidden'
+				disabled={disabled}
+			/>
+
+			<div className='flex items-center gap-3'>
+				<Button
+					type='button'
+					variant='outline'
+					size='sm'
+					onClick={choisir}
+					disabled={disabled || plein}
+				>
+					<Upload className='mr-2 h-4 w-4' />
+					Importer
+				</Button>
+				<div className='space-y-0.5 text-muted-foreground text-xs'>
+					<p>
+						{plein
+							? `Galerie pleine : ${MAX_GALERIE} images au maximum.`
+							: 'JPEG, PNG, WebP ou AVIF. Une image importée se place en fin de galerie.'}
+					</p>
+					{/* LES DEUX TEMPORALITÉS. Elles ne se devinent pas, et les
+					    confondre a produit un enregistrement refusé. */}
+					<p>
+						<strong>« Principale » s’applique tout de suite</strong> —
+						l’ancienne principale reprend le rang de celle qu’elle remplace,
+						rien n’est supprimé. Les ajouts, retraits et déplacements attendent
+						« Enregistrer ».
+					</p>
+				</div>
+			</div>
+		</div>
+	)
+}

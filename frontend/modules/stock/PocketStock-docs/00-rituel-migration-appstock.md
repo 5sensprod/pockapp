@@ -1056,6 +1056,139 @@ l'application — ce n'a pas été fait. **À regarder :** une session « sélec
 sur une catégorie, le compte d'entrées créées, et une session ancienne dont les
 produits doivent toujours s'afficher avec leur image.
 
+## 6 terdecies. La galerie des produits — 19 août 2026
+
+**Le constat du propriétaire était exact, et il est chiffré.** Mesuré en base,
+en lecture seule, le 19 août 2026 :
+
+| Mesure | Valeur |
+|---|---|
+| produits | 2999 |
+| avec une image principale | 2639 |
+| **avec une galerie non vide** | **747** |
+| occurrences de `gallery` dans le front, avant ce jour | **aucune**, hors un commentaire d'exclusion |
+
+747 galeries importées dormaient dans le stockage sans qu'aucun écran ne les
+montre — exactement le sort des 225 logos de marque avant le 18 août.
+
+### La cause première, et elle tenait en un mot
+
+`PRODUCT_FIELDS` (`lib/queries/catalog-products.ts`) ne demandait pas
+`gallery`. **Un champ absent de `fields` revient vide, sans erreur** : le champ
+paraissait vide alors que la base était pleine. C'est le piège le plus cher du
+module, et il n'avait aucun gardien — `catalog-fields.test.ts` en est un.
+
+### Ce qui a été MESURÉ dans la bibliothèque, et qui a décidé de la conception
+
+La règle du propriétaire — « promouvoir B rétrograde A, aucun fichier ne bouge »
+— supposait un échange des deux champs en une requête. **PocketBase le refuse**,
+et ce n'est pas une opinion : `forms/record_upsert.go:428-435` (v0.22.22)
+compare les noms de fichiers soumis aux anciens **du même champ**, et rend
+`validation_unknown_filenames`. Refus reproduit :
+
+```
+image: The field contains unknown filenames.
+```
+
+Un client ne peut donc promouvoir qu'en téléversant l'octet une seconde fois —
+ce qui duplique le fichier et contredit la règle. Deux conséquences :
+
+- **la promotion passe par une route Go** — `POST /api/catalog/products/:id/`
+  `promote-image`, `backend/routes/product_image_routes.go`. `Dao().SaveRecord`
+  n'est pas `RecordUpsert` : ni validation des noms, ni `filesToDelete`. Elle
+  écrit les deux colonnes dans une transaction, et **rien ne bouge sur le
+  disque** — vérifié sur la donnée réelle, le produit `m1xazzk84koylog` range
+  son image principale et ses deux images de galerie dans le MÊME dossier,
+  `storage/71wy9ngwa1b87sk/m1xazzk84koylog/` ;
+- **l'ordre par le tableau est validé par la bibliothèque**, pas toléré :
+  `record_upsert.go:461`, « allow file key reasignments for file names
+  sorting ». Renvoyer les noms dans un autre ordre réordonne la galerie.
+
+⚠️ **Un fichier neuf atterrit toujours en FIN de galerie** : PocketBase traite
+les noms soumis avant les téléversements. `ajouter` place donc les imports là
+où ils iront, plutôt que de promettre un rang qu'ils n'obtiendraient pas.
+
+### Le modèle retenu : tout entre par la galerie, la principale se désigne
+
+C'est la forme des logiciels de vente modernes — une liste ordonnée de médias,
+plus une vedette désignée (Shopify `media` + `featuredImage`, WooCommerce
+`image` + `images[]`). Elle a ici la vertu de rendre « une image ne se perd
+pas » **structurellement vrai** : il n'existe plus de geste qui écrase la
+principale. `ImageField` a donc quitté l'écran produit — son bouton « Changer »
+détruit l'image en place. Il reste seul en usage sur les marques et les
+catégories, dont le schéma ne porte qu'un fichier.
+
+Deux temporalités, dites à l'écran : **promouvoir part tout de suite** (route
+serveur) ; **ajouter, retirer, réordonner partent avec « Enregistrer »**.
+
+### Les fichiers
+
+| Fichier | Rôle |
+|---|---|
+| `backend/routes/product_image_routes.go` | la promotion, seule opération impossible côté client |
+| `backend/routes/product_image_test.go` | 5 tests, dont **un gardien de la bibliothèque** : le jour où l'API REST acceptera l'échange, il échouera, et la route pourra être reconsidérée — pas avant |
+| `lib/queries/gallery-order.ts` | l'ordre, en fonctions pures — 9 tests |
+| `lib/queries/image-upload.ts` | `GalleryIntent` : la liste part ENTIÈRE — 7 tests neufs |
+| `lib/queries/catalog-fields.test.ts` | le champ demandé, sinon l'écran le croit vide |
+| `components/ui/gallery-field.tsx` | la principale et la galerie, ensemble |
+
+**Le piège nommé dans le prompt a son test** : la galerie fait basculer l'envoi
+en `FormData`, et la version précédente y écrivait `image: ''` — enregistrer
+une galerie aurait **supprimé le fichier de l'image principale**. Le test
+« ne touche PAS à l'image principale quand seule la galerie change » le garde.
+
+**Convergence** : un composant ajouté (`GalleryField`), un retiré de cet écran
+(`ImageField`, qui garde ses deux autres appelants). Le compte n'est pas
+négatif ; il n'est pas positif non plus.
+
+### Le défaut trouvé À L'USAGE, le jour même — et il était de conception
+
+Signalé par le propriétaire après essai, en deux symptômes qui n'en font qu'un :
+
+1. la promotion se voyait dans la liste, **pas dans la modale** ;
+2. enregistrer ensuite un simple changement de prix rendait
+   **« gallery — The field contains unknown filenames. »**
+
+**La cause :** `ProductsPage.tsx:75` garde un INSTANTANÉ du produit, pris au
+clic sur la ligne. Il ne suit ni le temps réel, ni nos propres promotions. La
+modale continuait donc d'afficher l'ancienne principale, et son état de galerie
+contenait encore le nom de l'image promue — un nom qui vit désormais dans
+`image`. En le renvoyant, on demandait à PocketBase un fichier que `gallery` ne
+connaît plus : le même refus que celui documenté plus haut, arrivé par l'autre
+bout.
+
+**Deux corrections, l'une locale et l'autre de fond :**
+
+- **la réponse de la route fait foi.** Elle rend `image` et `gallery` d'après
+  promotion ; la modale les adopte au lieu de les recalculer ;
+- **`gallery` ne part que si elle a changé** — `memeGalerie`, trois tests. Se
+  taire laisse le champ en place (règle 3 d'`image-upload.ts`). Cette garde vaut
+  au-delà du cas trouvé : une modale ouverte pendant qu'un AUTRE POSTE modifie
+  la galerie porte une liste périmée, et le déploiement est multi-postes.
+
+**L'ergonomie a été reprise dans la foulée** : « définir comme principale »
+n'était qu'une étoile muette. C'est désormais un bouton nommé, chaque vignette
+porte son rang, et les deux temporalités sont écrites sous le champ — ce qui
+s'applique tout de suite, ce qui attend « Enregistrer ».
+
+**Ce qui n'est PAS corrigé, et qui est plus large que la galerie :** la modale
+travaille sur un instantané pour TOUS ses champs. Deux postes qui éditent la
+même fiche en même temps s'écrasent encore, en dernier arrivé. Ce n'est pas un
+défaut de la galerie ; c'est le sujet suivant.
+
+**Vérifié :** `go build ./...` et `go test ./backend/routes/` verts (5 tests
+neufs), `npx tsc -b` silencieux, `pnpm test` vert — **168 cas, dont 18 neufs**
+— dont la correction ci-dessus —, Biome passé sur les fichiers touchés, `pnpm build:client` construit le
+bundle. Les deux mesures de base ont été refaites en `-readonly`.
+
+**Non vérifié : l'écran.** L'application demande une connexion dont je ne
+dispose pas — même limite qu'au §6 septies, et elle est réelle. À regarder en
+priorité, dans cet ordre : (1) un produit à galerie s'ouvre et montre ses
+vignettes ; (2) « Définir comme principale » échange bien les deux, et
+l'ancienne principale prend le rang de la promue ; (3) importer deux images,
+enregistrer, rouvrir — elles sont en fin de galerie, dans l'ordre ; (4) retirer
+une image et enregistrer ne doit emporter **que** celle-là.
+
 ## 7. L'état — ce fichier tient le compte
 
 **Les décisions sont au journal** (13 août 2026 : convergence, source explicite,
@@ -1071,7 +1204,9 @@ plus, et le catalogue AppPos est passé en lecture seule.
 mesuré, et l'écran catalogue est unique, sur PocketBase.
 
 **Les images du catalogue sont complètes en lecture ET en écriture**
-(§6 septies) — marques, catégories et produits, galerie exceptée.
+(§6 septies) — marques, catégories et produits. **Galerie comprise depuis le
+19 août 2026** (§6 terdecies) : affichée, composable, ordonnée, et la
+principale se désigne sans rien détruire.
 
 **Front C fait** (§6 octies) : les sept écrans de choix produit de PocketConnect
 cherchent dans PocketBase.
@@ -1089,6 +1224,10 @@ PocketBase n'est plus une projection.
 PocketBase. **Le module `stock` n'importe plus `@/lib/apppos` nulle part**, et
 un test le garde.
 
+**La galerie est branchée** (§6 terdecies) : 747 galeries invisibles sont
+affichées, l'ordre est une donnée, et « une image ne se perd pas » est tenu par
+la structure de l'écran, pas par la prudence de l'utilisateur.
+
 **Ce qui reste** : rien dans le module `stock`. Ce qui reste tient à
 l'historique, et il est chiffré : **95 des 2465 entrées d'inventaire** ne
 désignent plus aucun produit du catalogue, et s'affichent comme « produit
@@ -1102,7 +1241,7 @@ reste nécessaire tant que ces sessions se relisent.
 | 2 | Édition depuis AppStock | **fait** pour les 4 entités ; images exclues |
 | 3 | Couche de données unique | **fait** — une seule provenance par fichier le 18 août 2026 (§6 quinquies), puis la caisse (§6 decies) et l'inventaire (§6 duodecies) le 19. Plus aucun fichier du module `stock` n'importe `@/lib/apppos` |
 | 4 | Synchronisation et frontière public/interne | **en partie** : export explicite, état visible pour les 3 entités exportées |
-| 5 | Images | **reporté, hors périmètre** |
+| 5 | Images | **fait** — principale et galerie le 18 puis le 19 août 2026 (§6 septies, §6 terdecies). Reste hors périmètre : leur transfert vers le site, qui a sa propre session |
 
 ## 8. Attentes de travail
 

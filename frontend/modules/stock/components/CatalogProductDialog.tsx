@@ -13,9 +13,18 @@
 //   • `legacy_id` il vient de NeDB, on ne l'invente pas pour un produit créé
 //                 ici — il restera vide, et l'export le refusera tant qu'il
 //                 l'est. C'est dit à l'écran, pas caché ;
-//   • `gallery`   plusieurs fichiers, écran à part : hors périmètre.
-//   • `image`     importable depuis le 18 août 2026 — les installations
-//                 neuves n'ont pas de dossier AppPos d'où la tirer.
+//
+// LES IMAGES, depuis le 19 août 2026 : `image` ET `gallery`, tenues ensemble
+// par `GalleryField`. Elles ne sont plus deux sujets — la règle du jour dit
+// qu'« une image ne se perd pas, et la principale se désigne » : tout fichier
+// importé rejoint la galerie, et la principale est une DÉSIGNATION, jamais un
+// écrasement. `ImageField` a donc quitté cet écran, son bouton « Changer »
+// détruisant l'image en place.
+//
+// ⚠️ Deux temporalités dans ce dialogue, et c'est dit à l'écran : promouvoir
+// part TOUT DE SUITE (route serveur, seule capable de déplacer un nom entre
+// deux champs fichier) ; ajouter, retirer et réordonner partent avec
+// « Enregistrer ».
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useState } from 'react'
@@ -38,7 +47,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from '@/components/ui/form'
-import { ImageField } from '@/components/ui/image-field'
+import { GalleryField } from '@/components/ui/gallery-field'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
@@ -47,8 +56,10 @@ import { useBrands } from '@/lib/queries/brands'
 import {
 	type CatalogProductShape,
 	useCreateCatalogProduct,
+	usePromoteProductImage,
 	useUpdateCatalogProduct,
 } from '@/lib/queries/catalog-products'
+import { type GalleryEntry, memeGalerie } from '@/lib/queries/gallery-order'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
@@ -118,12 +129,50 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 
 	// Hors formulaire : react-hook-form sérialise ses valeurs, un `File` n'y
 	// survit pas.
-	const [imageFile, setImageFile] = useState<File | null>(null)
-	const [imageRemoved, setImageRemoved] = useState(false)
+	// La galerie en cours d'édition : des noms pour ce qui est en base, des
+	// `File` pour ce qui arrive. Hors formulaire, comme l'image : react-hook-form
+	// sérialise ses valeurs et un `File` n'y survit pas.
+	const [galerie, setGalerie] = useState<GalleryEntry[]>([])
+	const promote = usePromoteProductImage()
 
-	const imageUrl = product?.image
-		? pb.files.getUrl(product, product.image)
-		: null
+	// ⚠️ `product` est un INSTANTANÉ, pris au clic sur la ligne
+	// (`ProductsPage.tsx:75`) : il ne suit ni le temps réel, ni nos propres
+	// promotions. Ces deux états portent donc l'après-promotion, et ils sont la
+	// vérité de cette modale tant qu'elle est ouverte.
+	//
+	// C'est le défaut constaté à l'usage le 19 août 2026 : la liste se mettait à
+	// jour dans l'application, pas dans la modale, et « Enregistrer » renvoyait
+	// ensuite une galerie périmée — « The field contains unknown filenames. »
+	const [imagePromue, setImagePromue] = useState<string | null>(null)
+	/** La galerie telle qu'elle est EN BASE. Sert à ne rien envoyer quand
+	 *  l'utilisateur n'y a pas touché. */
+	const [galerieEnBase, setGalerieEnBase] = useState<GalleryEntry[]>([])
+
+	// `product` sert de porteur d'identité pour `getUrl` : les fichiers des deux
+	// champs vivent dans le même dossier, `storage/<collectionId>/<idProduit>/`.
+	const urlDe = (nom: string) => (product ? pb.files.getUrl(product, nom) : '')
+
+	const nomPrincipale = imagePromue ?? product?.image ?? ''
+	const imageUrl = nomPrincipale ? urlDe(nomPrincipale) : null
+
+	const promouvoir = async (nom: string) => {
+		if (!product) return
+		try {
+			// La route rend l'état d'APRÈS : on le prend pour vérité plutôt que de
+			// le recalculer. Sans cela, l'écran et la base divergeraient dès la
+			// première promotion.
+			const apres = await promote.mutateAsync({
+				productId: product.id,
+				filename: nom,
+			})
+			setImagePromue(apres.image)
+			setGalerie(apres.gallery)
+			setGalerieEnBase(apres.gallery)
+			toast.success('Image principale mise à jour')
+		} catch (error) {
+			toast.error(`Promotion refusée : ${pocketbaseErrorMessage(error)}`)
+		}
+	}
 
 	const form = useForm<ProductFormValues>({
 		resolver: zodResolver(productSchema),
@@ -154,8 +203,11 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 					}
 				: EMPTY,
 		)
-		setImageFile(null)
-		setImageRemoved(false)
+		// La galerie repart de la base à chaque ouverture : une édition
+		// abandonnée ne doit pas resurgir au produit suivant.
+		setGalerie(product?.gallery ?? [])
+		setGalerieEnBase(product?.gallery ?? [])
+		setImagePromue(null)
 	}, [open, product, form])
 
 	const onSubmit = async (data: ProductFormValues) => {
@@ -179,9 +231,15 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 			brand: data.brand ?? '',
 			supplier: data.supplier ?? '',
 			categories: data.categories,
-			// Ne rien dire de l'image la laisse en place ; voir `image-upload.ts`.
-			image: imageFile,
-			removeImage: imageRemoved,
+			// LA GALERIE NE PART QUE SI ELLE A CHANGÉ. Elle part alors ENTIÈRE :
+			// une entrée omise serait un fichier supprimé, sans confirmation
+			// (`image-upload.ts`). Se taire quand rien n'a bougé évite de renvoyer
+			// une liste périmée — c'est ce qui faisait échouer un simple
+			// changement de prix après une promotion.
+			//
+			// On ne dit jamais rien d'`image` : elle ne se change que par
+			// promotion, et la promotion est déjà partie.
+			gallery: memeGalerie(galerieEnBase, galerie) ? undefined : galerie,
 		}
 
 		try {
@@ -264,15 +322,15 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 
 				<Form {...form}>
 					<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
-						{/* L'image principale seulement. La galerie porte plusieurs
-						    fichiers et demande un écran à elle : hors périmètre. */}
-						<ImageField
-							label='Image du produit'
-							currentUrl={imageUrl}
-							value={imageFile}
-							onChange={setImageFile}
-							removed={imageRemoved}
-							onRemovedChange={setImageRemoved}
+						<GalleryField
+							mainUrl={imageUrl}
+							value={galerie}
+							onChange={setGalerie}
+							urlDe={urlDe}
+							// Un produit pas encore créé n'a pas d'identifiant : rien à
+							// promouvoir tant qu'il n'est pas enregistré.
+							onPromote={product ? promouvoir : undefined}
+							promoting={promote.isPending}
 							disabled={createProduct.isPending || updateProduct.isPending}
 						/>
 

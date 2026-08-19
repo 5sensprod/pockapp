@@ -74,4 +74,75 @@ describe('buildWritePayload', () => {
 		}) as FormData
 		expect(form.getAll('brands')).toEqual([])
 	})
+	// ── LA GALERIE, 19 août 2026 ──────────────────────────────────────────
+	// « Une image ne se perd pas » : chacun de ces cas protège un fichier que
+	// PocketBase supprimerait sans confirmation si la liste envoyée était
+	// incomplète.
+
+	it('ne dit rien de la galerie quand le formulaire n’y a pas touché', () => {
+		const payload = buildWritePayload({ name: 'Ampli' })
+		expect('gallery' in (payload as object)).toBe(false)
+	})
+
+	it('renvoie la galerie COMPLÈTE, noms d’abord, dans l’ordre donné', () => {
+		// L'ordre est une donnée : c'est lui qui décidera de l'ordre des
+		// vignettes sur le site. PocketBase le respecte
+		// (`forms/record_upsert.go:461`).
+		const form = buildWritePayload({
+			name: 'Ampli',
+			gallery: ['c.jpg', 'a.jpg', 'b.jpg'],
+		}) as FormData
+		expect(form).toBeInstanceOf(FormData)
+		expect(form.getAll('gallery')).toEqual(['c.jpg', 'a.jpg', 'b.jpg'])
+	})
+
+	it('mêle un fichier neuf aux noms déjà en base', () => {
+		const form = buildWritePayload({
+			name: 'Ampli',
+			gallery: ['a.jpg', fichier()],
+		}) as FormData
+		const entrees = form.getAll('gallery')
+		expect(entrees[0]).toBe('a.jpg')
+		expect(entrees[1]).toBeInstanceOf(File)
+	})
+
+	it('vide la galerie avec la chaîne vide, jamais par le silence', () => {
+		// `undefined` laisserait les fichiers en base ; un tableau vide sans
+		// entrée n'écrirait rien du tout dans le FormData.
+		const form = buildWritePayload({ name: 'Ampli', gallery: [] }) as FormData
+		expect(form.getAll('gallery')).toEqual([''])
+	})
+
+	it('ne touche PAS à l’image principale quand seule la galerie change', () => {
+		// LE PIÈGE : la galerie fait basculer en FormData, et l'ancienne
+		// version y écrivait `image: ''` — enregistrer une galerie aurait
+		// supprimé le fichier de l'image principale.
+		const form = buildWritePayload({
+			name: 'Ampli',
+			gallery: ['a.jpg'],
+		}) as FormData
+		expect(form.getAll('image')).toEqual([])
+	})
+
+	it('écrit l’image ET la galerie dans la même requête', () => {
+		// Le cas du remplacement de la principale : les deux champs partent
+		// ensemble, et la galerie porte sa liste complète.
+		const form = buildWritePayload({
+			name: 'Ampli',
+			image: fichier(),
+			gallery: ['a.jpg', 'b.jpg'],
+		}) as FormData
+		expect(form.get('image')).toBeInstanceOf(File)
+		expect(form.getAll('gallery')).toEqual(['a.jpg', 'b.jpg'])
+	})
+
+	it('retire l’image principale sans emporter la galerie', () => {
+		const form = buildWritePayload({
+			name: 'Ampli',
+			removeImage: true,
+			gallery: ['a.jpg'],
+		}) as FormData
+		expect(form.get('image')).toBe('')
+		expect(form.getAll('gallery')).toEqual(['a.jpg'])
+	})
 })

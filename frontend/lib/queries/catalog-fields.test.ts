@@ -1,0 +1,44 @@
+// frontend/lib/queries/catalog-fields.test.ts
+//
+// LE PIÈGE LE PLUS CHER DU MODULE : un champ absent de `fields` revient VIDE,
+// sans erreur. `gallery` a manqué à la liste jusqu'au 19 août 2026, et c'est
+// pourquoi 747 galeries importées ne s'affichaient nulle part — le champ
+// paraissait vide alors que la base était pleine.
+//
+// Ce test n'a pas d'autre gardien : rien, dans TypeScript, ne relie le type
+// `CatalogProductShape` à la chaîne `fields` envoyée au serveur.
+//
+// ⚠️ L'import est DYNAMIQUE, et c'est forcé : `catalog-products.ts` construit
+// le client PocketBase au chargement du module (`use-pocketbase.ts:20`), qui
+// lit `window` et `document`. Un import statique lèverait avant le premier
+// test, et jsdom n'est pas une dépendance de ce dépôt — deux lignes de décor
+// coûtent moins qu'un paquet de plus.
+
+import { beforeAll, describe, expect, it } from 'vitest'
+
+let PRODUCT_FIELDS = ''
+
+beforeAll(async () => {
+	const g = globalThis as any
+	g.window ??= g
+	g.document ??= { location: { origin: 'http://127.0.0.1:8090' } }
+	PRODUCT_FIELDS = (await import('./catalog-products')).PRODUCT_FIELDS
+})
+
+describe('PRODUCT_FIELDS', () => {
+	it('demande les deux champs image — sinon l’écran les croit vides', () => {
+		const demandes = PRODUCT_FIELDS.split(',')
+		expect(demandes).toContain('image')
+		expect(demandes).toContain('gallery')
+	})
+
+	it('demande la clé stable et l’identité du record', () => {
+		// `legacy_id` est le pont vers NeDB ; `collectionId` et `collectionName`
+		// sont ce dont `pb.files.getUrl` a besoin pour construire l'URL d'un
+		// fichier. Sans eux, aucune image ne s'affiche.
+		const demandes = PRODUCT_FIELDS.split(',')
+		expect(demandes).toContain('legacy_id')
+		expect(demandes).toContain('collectionId')
+		expect(demandes).toContain('collectionName')
+	})
+})

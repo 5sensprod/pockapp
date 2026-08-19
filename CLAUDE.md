@@ -144,6 +144,18 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   fichier du module `stock` n'importe `@/lib/apppos`** — l'inventaire physique
   était le dernier ; un test le garde
   (`frontend/modules/stock/single-source.test.ts`).
+- **L'image principale d'un produit ne s'écrase pas, elle se désigne**
+  (19 août 2026). Tout fichier importé entre par `gallery` ; `image` est une
+  désignation. **Promouvoir passe obligatoirement par
+  `POST /api/catalog/products/:id/promote-image`**
+  (`backend/routes/product_image_routes.go`) : l'API REST de PocketBase refuse
+  un nom de fichier venu d'un autre champ — mesuré,
+  `forms/record_upsert.go:428-435`, « The field contains unknown filenames. »
+  L'ordre du tableau `gallery` **est** l'ordre des vignettes, et la liste
+  s'envoie toujours ENTIÈRE : une entrée omise supprime le fichier, sans
+  confirmation. Gardiens : `backend/routes/product_image_test.go`,
+  `frontend/lib/queries/gallery-order.test.ts` et les tests galerie de
+  `image-upload.test.ts`.
 - **Le déploiement est multi-postes** (19 août 2026) : un poste sur
   l'application bureau, les autres au navigateur, sur le même PocketBase.
 - **Le stock ne se lit ni ne s'écrit depuis le client.** Le mouvement passe par

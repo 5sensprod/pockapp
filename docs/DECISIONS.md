@@ -39,6 +39,37 @@ multiple. Une liste incomplète supprime des fichiers **sans confirmation**.
 selon le canal — vitrine, ticket, étiquette. Ce serait alors un champ par
 usage, pas une désignation.
 
+### Mise en œuvre, le même jour — ce que la mesure a imposé
+
+La règle supposait un échange des deux champs en une requête. **PocketBase le
+refuse**, et c'est lu dans la bibliothèque, pas supposé :
+`forms/record_upsert.go:428-435` (v0.22.22) compare les noms de fichiers soumis
+aux anciens **du même champ**, et rend `validation_unknown_filenames` — refus
+reproduit : « image: The field contains unknown filenames. » Promouvoir depuis
+le client obligerait à téléverser l'octet une seconde fois, donc à dupliquer le
+fichier : exactement ce que la règle interdit.
+
+**La promotion est donc une route Go** — `POST /api/catalog/products/:id/promote-image`,
+`backend/routes/product_image_routes.go`. `Dao().SaveRecord` n'a ni validation
+des noms ni liste de suppression : il écrit les deux colonnes, et rien ne bouge
+sur le disque. Le fait que les deux champs partagent le dossier du produit est
+vérifié sur la donnée réelle (`m1xazzk84koylog`, 19 août 2026).
+
+**En sens inverse, l'ordre par le tableau est une capacité déclarée** de la
+bibliothèque — `record_upsert.go:461`, « allow file key reasignments for file
+names sorting ». L'ordre de la galerie n'est donc pas un contournement.
+
+**Conséquence retenue, et c'est ce qui rend la règle structurelle :** tout
+fichier importé entre par la GALERIE, et la principale n'est qu'une
+désignation. Il n'existe plus, sur l'écran produit, de geste qui écrase une
+image — la forme des logiciels de vente modernes, adoptée ici pour une raison
+mesurée autant que par convention.
+
+**À revérifier à chaque mise à jour de PocketBase**, comme l'atomicité du
+stock : `backend/routes/product_image_test.go` porte un test qui échouera le
+jour où l'API REST acceptera l'échange. Ce jour-là, la route pourra être
+reconsidérée — pas avant.
+
 ---
 
 ## Le temps réel multi-postes passe par PocketBase, pas par le SSE Go — 2026-08-19

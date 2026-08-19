@@ -37,7 +37,11 @@ import {
 import { useEffect, useState } from 'react'
 
 import type { PocketBaseRecord } from './catalog-shapes'
-import { type ImageIntent, buildWritePayload } from './image-upload'
+import {
+	type GalleryIntent,
+	type ImageIntent,
+	buildWritePayload,
+} from './image-upload'
 import { newLegacyKey } from './legacy-key'
 
 export type CatalogProductStatus = 'draft' | 'published'
@@ -59,6 +63,9 @@ export type CatalogProductShape = PocketBaseRecord & {
 	min_stock?: number
 	manage_stock?: boolean
 	image?: string
+	/** Les noms de fichiers de la galerie, DANS L'ORDRE — l'ordre est une
+	 *  donnée (règle du 19 août 2026). Jusqu'à dix. */
+	gallery?: string[]
 	/** Relation simple vers `brands`. Chaîne vide si absente. */
 	brand?: string
 	/** Relation simple vers `suppliers`. */
@@ -76,8 +83,12 @@ export type CatalogProductPage = {
 	totalPages: number
 }
 
-const PRODUCT_FIELDS =
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,status,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,brand,supplier,categories'
+/** Exporté pour être GARDÉ : voir `catalog-fields.test.ts`. */
+export const PRODUCT_FIELDS =
+	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
+	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
+	// **un champ absent de `fields` revient vide, sans erreur.**
+	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,status,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -256,29 +267,32 @@ export function useCatalogProductSearch(options: {
  *  - `slug` : figé au premier envoi vers le site, le serveur en est le gardien ;
  *  - `legacy_id` : posé par la couche, pas par l'écran — voir `useCreate…`.
  *
- *  L'IMAGE, elle, s'écrit depuis le 18 août 2026 (`ImageIntent`) : les
- *  installations neuves n'ont pas de dossier AppPos d'où l'importer. La galerie
- *  reste hors périmètre — elle porte plusieurs fichiers et demande un écran à
- *  elle. */
-export type CatalogProductWrite = ImageIntent & {
-	name: string
-	designation?: string
-	sku?: string
-	barcode?: string
-	description?: string
-	type?: 'simple' | 'service'
-	status?: CatalogProductStatus
-	price_ttc?: number
-	purchase_price_ht?: number
-	tax_rate?: number
-	stock?: number
-	min_stock?: number
-	manage_stock?: boolean
-	brand?: string
-	supplier?: string
-	categories?: string[]
-	company?: string
-}
+ *  L'IMAGE s'écrit depuis le 18 août 2026 (`ImageIntent`) et LA GALERIE depuis
+ *  le 19 (`GalleryIntent`) : les installations neuves n'ont pas de dossier
+ *  AppPos d'où les importer.
+ *
+ *  ⚠️ La galerie s'envoie ENTIÈRE : une entrée omise est un fichier supprimé.
+ *  Voir `image-upload.ts`. */
+export type CatalogProductWrite = ImageIntent &
+	GalleryIntent & {
+		name: string
+		designation?: string
+		sku?: string
+		barcode?: string
+		description?: string
+		type?: 'simple' | 'service'
+		status?: CatalogProductStatus
+		price_ttc?: number
+		purchase_price_ht?: number
+		tax_rate?: number
+		stock?: number
+		min_stock?: number
+		manage_stock?: boolean
+		brand?: string
+		supplier?: string
+		categories?: string[]
+		company?: string
+	}
 
 /** Invalide TOUT ce qui dépend du catalogue : la liste paginée, mais aussi les
  *  décomptes par marque et par catégorie, et la vue « Catalogue en ligne » —
@@ -322,6 +336,36 @@ export function useUpdateCatalogProduct() {
 			(await pb
 				.collection('products')
 				.update(id, buildWritePayload(data))) as CatalogProductShape,
+		onSuccess: () => invalidateCatalog(queryClient),
+	})
+}
+
+/**
+ * PROMOUVOIR UNE IMAGE DE LA GALERIE EN IMAGE PRINCIPALE.
+ *
+ * « Une image ne se perd pas, et la principale se désigne » — promouvoir B
+ * rétrograde A dans la galerie, à son rang (docs/DECISIONS.md, 2026-08-19).
+ *
+ * ⚠️ **Ce geste ne peut PAS être fait par l'API REST**, et ce n'est pas un
+ * choix : PocketBase refuse un nom de fichier venu d'un autre champ —
+ * « The field contains unknown filenames. », `forms/record_upsert.go:428-435`,
+ * refus mesuré par `backend/routes/product_image_test.go`. Il passe donc par
+ * une route Go qui échange les deux colonnes en base ; aucun octet ne bouge,
+ * `image` et `gallery` partageant déjà le dossier du produit.
+ */
+export function usePromoteProductImage() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async ({
+			productId,
+			filename,
+		}: { productId: string; filename: string }) =>
+			(await pb.send(
+				`/api/catalog/products/${encodeURIComponent(productId)}/promote-image`,
+				{ method: 'POST', body: { filename } },
+			)) as { image: string; gallery: string[] },
 		onSuccess: () => invalidateCatalog(queryClient),
 	})
 }
