@@ -157,8 +157,20 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   collection. L'atomicité repose sur une propriété **de PocketBase v0.22.22**
   (une seule connexion d'écriture) : à revérifier à chaque mise à jour, voir
   `docs/DECISIONS.md`.
-- **Le front n'utilise aucun `subscribe()` PocketBase.** Son seul temps réel
-  est le SSE Go — `backend/routes/sse_routes.go:101` et
+- **Le catalogue se met à jour d'un poste à l'autre sans rechargement**
+  (19 août 2026) : `frontend/lib/realtime/` s'abonne au temps réel natif de
+  PocketBase sur `products`, `categories`, `brands`, `suppliers`, et invalide
+  les caches TanStack Query correspondants. Monté une fois, sous
+  l'authentification (`frontend/main.tsx`). Deux règles gardées par
+  `frontend/lib/realtime/catalog-realtime.test.ts` : les événements sont
+  **regroupés** (un ticket de trente lignes n'invalide qu'une fois), et la
+  table `COLLECTIONS_SURVEILLEES` doit périmer **exactement** ce que périme
+  `invalidateCatalog` — sinon l'écran se tient à jour quand on modifie
+  soi-même, et pas quand un autre poste modifie.
+  Les écritures Go diffusent aussi : le temps réel de PocketBase est accroché
+  aux événements de **modèle**, pas à l'API REST (`apis/realtime.go:257`).
+- **L'autre temps réel est le SSE Go**, pour la présence —
+  `backend/routes/sse_routes.go:101` et
   `frontend/lib/presence/use-presence-events.ts:120`. La scanette
   (`frontend/lib/pos/scanner.ts:65`) et l'afficheur client VFD
   (`backend/pos/vfd.go`, binding Wails, `CashTerminalPage.tsx:204`) sont

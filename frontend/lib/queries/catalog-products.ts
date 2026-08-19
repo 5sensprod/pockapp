@@ -283,7 +283,9 @@ export type CatalogProductWrite = ImageIntent & {
 /** Invalide TOUT ce qui dépend du catalogue : la liste paginée, mais aussi les
  *  décomptes par marque et par catégorie, et la vue « Catalogue en ligne » —
  *  qui recalcule ses empreintes et fera repasser le produit en « modifié ». */
-function invalidateCatalog(queryClient: ReturnType<typeof useQueryClient>) {
+export function invalidateCatalog(
+	queryClient: ReturnType<typeof useQueryClient>,
+) {
 	queryClient.invalidateQueries({ queryKey: ['catalog-products'] })
 	queryClient.invalidateQueries({ queryKey: ['products'] })
 	queryClient.invalidateQueries({ queryKey: ['site-catalog'] })

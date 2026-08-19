@@ -10,6 +10,48 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le temps réel multi-postes passe par PocketBase, pas par le SSE Go — 2026-08-19
+
+**Les écrans se mettent à jour d'un poste à l'autre sans rechargement.**
+`frontend/lib/realtime/` s'abonne au temps réel natif de PocketBase sur les
+quatre collections du catalogue et invalide les caches TanStack Query
+correspondants. C'est la réponse à la question laissée ouverte par
+« Le canal WebSocket AppPos est retiré » : plusieurs postes, donc du temps
+réel, donc lequel des mécanismes déjà présents.
+
+**Pourquoi PocketBase et pas le SSE Go**, qui existait déjà
+(`backend/routes/sse_routes.go`) : le SSE demande qu'on **publie** l'événement
+à la main depuis chaque endroit qui écrit. Un chemin d'écriture oublié, et
+l'écran ment sans que rien ne le signale. Le temps réel de PocketBase est
+accroché aux événements de **modèle** — vérifié dans la v0.22.22,
+`apis/realtime.go:257` s'abonne à `OnModelAfterUpdate` — donc **toute**
+écriture diffuse, y compris le `SaveRecord` de `POST /api/stock/adjust` à
+l'intérieur de sa transaction. Rien à ne pas oublier. Le SSE Go reste ce qu'il
+était : le canal de la présence, qui ne porte pas de données de collection.
+
+**Écarté — un abonnement qui invalide tout le cache à chaque événement :** le
+piège annoncé. La table `COLLECTIONS_SURVEILLEES` associe chaque collection
+aux seules clés qu'elle périme ; une marque renommée ne fait pas repartir la
+page de produits. Et l'invalidation ne recharge pas 2999 produits :
+`invalidateQueries` ne refait partir que les requêtes **actives**, donc la page
+affichée — vérifié par test plutôt que supposé, tout le dimensionnement en
+dépendant.
+
+**Écarté — ne pas regrouper les événements :** un ticket de trente lignes
+produit trente événements. Le premier arme un délai de 400 ms, les suivants s'y
+rangent. Le délai **n'est pas repoussé** à chaque événement : pendant un
+inventaire qui se déverse, l'écran ne se mettrait jamais à jour.
+
+**Coût accepté :** l'invalidation refait une requête, elle ne transporte pas la
+donnée de l'événement. Un poste voit donc le changement après un aller-retour,
+pas instantanément. C'est le bon compromis tant que rien ne demande mieux : la
+donnée de l'événement n'est pas filtrée par les mêmes règles que la requête, et
+l'écrire dans le cache ferait diverger les deux.
+
+**Remise en cause si :** le nombre de postes rend les invalidations coûteuses —
+alors on lit la donnée de l'événement plutôt que de refaire la requête, et ça
+se mesure avant de se décider.
+
 ## Le mouvement de stock devient atomique, côté serveur — 2026-08-19
 
 **Le stock ne se lit ni ne s'écrit plus depuis le client.**

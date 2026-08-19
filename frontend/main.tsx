@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import './styles/index.css'
 import { ActiveCompanyProvider } from '@/lib/ActiveCompanyProvider'
 import { AppPosSessionProvider } from '@/lib/apppos'
+import { CatalogRealtimeMount } from '@/lib/realtime/CatalogRealtimeMount'
 import { AuthProvider } from '@/modules/auth/AuthProvider'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
@@ -37,6 +38,10 @@ createRoot(rootElement).render(
 			<AppPosSessionProvider>
 				<AuthProvider>
 					<ActiveCompanyProvider>
+						{/* Ventes, prix et stock d'un autre poste arrivent sans qu'on
+						    recharge la page. Sous AuthProvider : la collection exige un
+						    compte. Ne rend rien, ne bloque rien. */}
+						<CatalogRealtimeMount />
 						<RouterProvider router={router} />
 						<Toaster richColors closeButton />
 					</ActiveCompanyProvider>
