@@ -80,14 +80,5 @@ export type {
 	UseCreateAppPosProductOptions, // 🆕
 } from './apppos-hooks'
 
-// WebSocket
-export { appPosWebSocket } from './apppos-websocket'
-export type {
-	AppPosWebSocketEvent,
-	AppPosWebSocketCallback,
-} from './apppos-websocket'
-export {
-	useAppPosStockUpdates,
-	useAppPosProductUpdates,
-} from './apppos-hooks-websocket'
-export type { UseAppPosProductUpdatesOptions } from './apppos-hooks-websocket'
+// Le canal WebSocket est retiré (2026-08-19) : plus aucun consommateur depuis le
+// front E. Voir docs/DECISIONS.md, « Le canal WebSocket AppPos est retiré ».

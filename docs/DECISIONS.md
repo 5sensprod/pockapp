@@ -10,6 +10,50 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le canal WebSocket AppPos est retiré ; le temps réel multi-postes reste à bâtir — 2026-08-19
+
+**Les 1009 lignes de WebSocket AppPos sont supprimées** —
+`frontend/lib/apppos/apppos-websocket.ts` et `apppos-hooks-websocket.ts`, plus
+leurs ré-exports d'`index.ts`. Elles n'avaient plus aucun consommateur depuis le
+front E : mesuré le 19 août 2026, seul `index.ts` les importait, et il les
+ré-exportait vers personne.
+
+**Le déploiement est multi-postes** — décision du propriétaire, le 19 août
+2026 : **un poste sur l'application bureau (Wails), les autres au navigateur**,
+sur le même PocketBase. Ce fait n'était écrit nulle part dans le dépôt ;
+`frontend/lib/queries/stock-adjust.ts:135-137` supposait l'inverse (« un poste
+de caisse, un opérateur ») pour justifier une lecture-puis-écriture sans
+transaction. **Cette justification tombe** : deux postes vendant le même produit
+en même temps peuvent s'écraser. Le correctif est un hook PocketBase côté
+serveur, pas une garde côté client — il n'est pas écrit par cette décision, il
+est ouvert par elle.
+
+**L'afficheur client n'était pas concerné.** Les événements `lcd.*` d'AppPos ne
+pilotaient rien dans PocketApp : l'afficheur réel est un VFD série local, par
+binding Wails (`backend/pos/vfd.go`, `app.go:248`), consommé une seule fois
+depuis `frontend/modules/cash/CashTerminalPage.tsx:204`. Le retrait ne le
+touche pas. La scanette non plus : `frontend/lib/pos/scanner.ts:65` parle au
+backend Go local, pas à AppPos.
+
+**Ce qui reste d'AppPos, et pourquoi :** l'API REST et
+`AppPosSessionProvider` (`frontend/main.tsx:6`), parce que
+`frontend/modules/site/components/MenuTreeEditor.tsx:55` lit encore le catalogue
+AppPos pour nommer les destinations du menu. C'est le dernier lecteur.
+
+**Écarté — remplacer le canal poste pour poste par un abonnement PocketBase :**
+les quatre premiers groupes d'événements (`products.*`, arbres,
+`stock.statistics`) portaient des données qui vivent maintenant dans
+PocketBase ; les remplacer d'abord, c'est recréer un besoin avant de l'avoir
+mesuré. Le front n'utilise aujourd'hui **aucun** `subscribe()` PocketBase ; son
+seul temps réel est le SSE Go (`backend/routes/sse_routes.go:101`,
+`frontend/lib/presence/use-presence-events.ts:120`). Le choix entre les deux se
+fait quand un écran en aura besoin, pas maintenant.
+
+**Remise en cause si :** un écran multi-postes montre des données périmées de
+façon gênante — alors on tranche SSE Go contre abonnement PocketBase. La
+concurrence d'écriture sur le stock, elle, ne dépend pas de ce choix et se
+corrige indépendamment.
+
 ## Les entrées d'inventaire s'écrivent en identifiant PocketBase et se lisent sur les deux clés — 2026-08-19
 
 Une entrée d'inventaire créée à partir d'aujourd'hui porte l'**identifiant

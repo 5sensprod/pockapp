@@ -29,7 +29,7 @@ frontend/routes/               routes TanStack Router (générées)
 frontend/modules/<nom>/        un module = un domaine métier
 frontend/modules/<nom>/<Nom>-docs/   doc du module, versionnée avec lui
 frontend/lib/queries/          accès données (TanStack Query)
-frontend/lib/apppos/           client HTTP + WebSocket vers AppPos
+frontend/lib/apppos/           client HTTP vers AppPos (REST seul depuis le 19/08)
 server/                        code PHP du serveur mutualisé d'axemusique.shop —
                                versionné ici, déposé par FTP, ne s'exécute pas
                                dans PocketApp. Voir server/README.md
@@ -47,8 +47,10 @@ Trois, et trois seulement :
 1. **PocketBase local** — `frontend/lib/use-pocketbase.ts:5` — `127.0.0.1:8090`
    sous Wails, sinon proxy Vite (`VITE_BACKEND_URL`).
 2. **AppPos** — `frontend/lib/apppos/apppos-config.ts:5` — `VITE_APPPOS_URL`,
-   sinon `127.0.0.1:3000`. Jeton Bearer en `sessionStorage`. WebSocket en plus
-   du REST (`apppos-websocket.ts`).
+   sinon `127.0.0.1:3000`. Jeton Bearer en `sessionStorage`. **REST seul** : le
+   canal WebSocket est retiré depuis le 19 août 2026, il n'avait plus aucun
+   consommateur. Un seul lecteur subsiste, `MenuTreeEditor.tsx:55`, pour nommer
+   les destinations du menu.
 3. **Mini-SaaS distant** — `remote_notifications.go:27` et
    `backend/routes/gemini_routes.go` —
    `pocketapp.5sensprod.com/api/notifications.php` pour les notifications et
@@ -142,6 +144,19 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   fichier du module `stock` n'importe `@/lib/apppos`** — l'inventaire physique
   était le dernier ; un test le garde
   (`frontend/modules/stock/single-source.test.ts`).
+- **Le déploiement est multi-postes** (19 août 2026) : un poste sur
+  l'application bureau, les autres au navigateur, sur le même PocketBase.
+  Conséquence directe : `frontend/lib/queries/stock-adjust.ts` lit puis écrit
+  **sans transaction** — PocketBase n'a pas d'incrément atomique en REST — donc
+  **deux postes vendant le même produit en même temps peuvent s'écraser**.
+  Défaut actif, non corrigé. Le correctif est un hook PocketBase **côté
+  serveur** ; une garde côté client ne verrait pas l'autre poste.
+- **Le front n'utilise aucun `subscribe()` PocketBase.** Son seul temps réel
+  est le SSE Go — `backend/routes/sse_routes.go:101` et
+  `frontend/lib/presence/use-presence-events.ts:120`. La scanette
+  (`frontend/lib/pos/scanner.ts:65`) et l'afficheur client VFD
+  (`backend/pos/vfd.go`, binding Wails, `CashTerminalPage.tsx:204`) sont
+  locaux et n'ont jamais dépendu d'AppPos.
 - **Une migration non inscrite dans la liste de `RunMigrations`**
   (`backend/migrations/migrations.go:13`) ne s'exécute jamais, sans erreur.
 - **L'hébergement du site est un mutualisé PHP/MySQL.** Aucun processus

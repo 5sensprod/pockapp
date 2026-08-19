@@ -134,9 +134,14 @@ export function eventSourceFor(reason: StockReason) {
  *
  * ⚠️ LECTURE PUIS ÉCRITURE, sans transaction : PocketBase n'expose pas
  * d'incrément atomique en REST. Deux mouvements simultanés sur le même produit
- * peuvent donc s'écraser. C'est tenable ici — un poste de caisse, un opérateur
- * d'inventaire — et ça ne l'est plus le jour où deux postes vendent en même
- * temps : il faudra alors un hook PocketBase côté serveur.
+ * peuvent donc s'écraser.
+ *
+ * ⚠️ Ce texte disait « tenable ici — un poste de caisse, un opérateur ». **Ce
+ * n'est plus vrai depuis le 19 août 2026** : le déploiement est multi-postes,
+ * un sur l'application bureau et les autres au navigateur
+ * (docs/DECISIONS.md). Le défaut est donc ACTIF, et il ne se corrige pas ici :
+ * il faut un hook PocketBase côté serveur. Ne pas le rustiner côté client —
+ * une garde dans ce fichier ne verrait pas l'autre poste.
  *
  * Chaque produit est traité séparément : un produit introuvable n'empêche pas
  * les autres de passer, et il est rendu dans le résultat plutôt qu'avalé.

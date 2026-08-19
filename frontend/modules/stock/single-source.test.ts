@@ -175,4 +175,20 @@ describe('les mouvements de stock ont un seul chemin', () => {
 			expect(lire(fichier), fichier).toMatch(/recordSale/)
 		}
 	})
+
+	it('le canal WebSocket AppPos a disparu, et rien ne le rouvre', () => {
+		// 19 août 2026. Les deux fichiers (1009 lignes) n'avaient plus aucun
+		// consommateur depuis le front E : seul `index.ts` les importait, et il
+		// les ré-exportait vers personne. Voir docs/DECISIONS.md.
+		expect(() => lire('lib/apppos/apppos-websocket.ts')).toThrow()
+		expect(() => lire('lib/apppos/apppos-hooks-websocket.ts')).toThrow()
+		expect(lire('lib/apppos/index.ts')).not.toMatch(/apppos-websocket/)
+	})
+
+	it("l'afficheur client ne dépend pas d'AppPos", () => {
+		// Les événements `lcd.*` d'AppPos ne pilotaient rien ici : l'afficheur
+		// est un VFD série local, par binding Wails.
+		const source = lire('lib/pos/useCustomerDisplay.ts')
+		expect(imports(source)).not.toMatch(/@\/lib\/apppos/)
+	})
 })
