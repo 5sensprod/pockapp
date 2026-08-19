@@ -28,8 +28,9 @@ export const manifest: ModuleManifest = {
 	paid: true,
 	plan: 'pro',
 
-	// /stock gardé en alias au cas où des liens internes l'utilisent encore
-	// /inventory-apppos reste alias pour l'inventaire physique
+	// /stock gardé en alias au cas où des liens internes l'utilisent encore.
+	// /inventory-apppos est l'ancienne URL de l'inventaire physique : la route
+	// redirige vers /stock/inventaire depuis le 19 août 2026.
 	aliases: ['/stock', '/inventory-apppos'],
 
 	sidebarMenu: [
@@ -54,7 +55,7 @@ export const manifest: ModuleManifest = {
 			items: [
 				{
 					label: 'Inventaire physique',
-					to: '/inventory-apppos',
+					to: '/stock/inventaire',
 					icon: ClipboardList,
 				},
 			],

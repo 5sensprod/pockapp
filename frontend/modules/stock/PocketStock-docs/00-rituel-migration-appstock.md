@@ -1025,6 +1025,22 @@ figés à leur snapshot : l'information n'est pas perdue, elle est datée.
    sélection et la validation : `freshCatalog.find(...)` rendait `undefined`,
    puis `p.id` levait. Elle l'ignore, désormais.
 
+### L'écran change de nom et d'URL
+
+Quatre libellés annonçaient encore AppPos à l'utilisateur, et **trois étaient
+faux depuis le front D** — dont « Les écarts sont appliqués automatiquement dans
+AppPOS à la validation », alors qu'ils vont dans PocketBase.
+
+`InventoryPageAppPos.tsx` devient **`InventoryPage.tsx`**, l'export
+`InventoryPageAppPos` devient `InventoryPage`, et l'écran vit à
+**`/stock/inventaire`**, avec les quatre autres du module.
+`/inventory-apppos` **redirige** plutôt que de rendre le composant : deux URL
+pour un même écran, c'est deux écrans qui divergent un jour. L'alias reste
+déclaré dans `modules/stock/index.ts` pour les liens existants.
+
+**Les mentions du nom dans les sections antérieures de ce fichier ne sont pas
+réécrites** : ce sont des constats datés.
+
 ### Vérifié, et non vérifié
 
 **Vérifié :** `npx tsc -b` silencieux, `pnpm test` vert — **143 cas, dont 23

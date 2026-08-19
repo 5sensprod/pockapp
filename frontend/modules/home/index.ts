@@ -79,7 +79,7 @@ export const manifest: ModuleManifest = {
 				{ label: 'Fournisseurs', to: '/stock/fournisseurs', icon: Truck },
 				{
 					label: 'Inventaire physique',
-					to: '/inventory-apppos',
+					to: '/stock/inventaire',
 					icon: ClipboardList,
 				},
 			],

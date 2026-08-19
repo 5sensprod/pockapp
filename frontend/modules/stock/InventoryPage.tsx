@@ -1,5 +1,5 @@
-// frontend/modules/stock/InventoryPageAppPos.tsx
-// Page d'inventaire physique AppPOS
+// frontend/modules/stock/InventoryPage.tsx
+// Page d'inventaire physique
 // Vues : accueil → création session → liste catégories → comptage → validation
 //
 // MODIFIÉ :
@@ -76,9 +76,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 const inventoryManifest = {
 	id: 'inventory',
 	name: 'Inventaire',
-	description: 'Inventaire physique AppPOS',
+	description: 'Inventaire physique',
 	icon: ClipboardList,
-	route: '/inventory-apppos',
+	route: '/stock/inventaire',
 }
 
 type PageView = 'home' | 'overview' | 'counting' | 'history'
@@ -2091,7 +2091,7 @@ function CountingRow({
 						)}
 						{isAdjusted && (
 							<div className='text-xs text-blue-500 font-medium'>
-								✓ Ajusté AppPOS
+								✓ Stock ajusté
 							</div>
 						)}
 					</div>
@@ -2234,7 +2234,7 @@ function CategoryCountingView({
 					<p className='text-xs text-muted-foreground'>
 						{countedEntries.length}/{catEntries.length} comptés ·{' '}
 						{adjustedEntries.length} ajusté
-						{adjustedEntries.length > 1 ? 's' : ''} AppPOS
+						{adjustedEntries.length > 1 ? 's' : ''}
 						{gapsCount > 0 && (
 							<span className='ml-2 text-amber-600'>
 								· {gapsCount} écart{gapsCount > 1 ? 's' : ''}
@@ -2793,7 +2793,7 @@ function InventoryHomeView({
 						<h2 className='text-2xl font-bold mb-2'>Inventaire physique</h2>
 						<p className='text-muted-foreground'>
 							Comptez vos stocks rayon par rayon. Les écarts sont appliqués
-							automatiquement dans AppPOS à la validation.
+							automatiquement à la validation.
 						</p>
 					</div>
 				)}
@@ -2955,7 +2955,7 @@ function SessionCard({
 // ============================================================================
 // PAGE PRINCIPALE
 // ============================================================================
-export function InventoryPageAppPos() {
+export function InventoryPage() {
 	const [view, setView] = useState<PageView>('home')
 	const [showCreateDialog, setShowCreateDialog] = useState(false)
 	const [selectedSessionId, setSelectedSessionId] = useState<string | null>(

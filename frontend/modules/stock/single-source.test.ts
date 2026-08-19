@@ -49,7 +49,7 @@ describe('le module stock ne parle plus à AppPos', () => {
 			'modules/stock/SuppliersPage.tsx',
 			'modules/stock/components/ProductTable.tsx',
 			'modules/stock/components/CatalogProductDialog.tsx',
-			'modules/stock/InventoryPageAppPos.tsx',
+			'modules/stock/InventoryPage.tsx',
 			'lib/inventory/useInventorySession.ts',
 		]
 		for (const fichier of fichiers) {
