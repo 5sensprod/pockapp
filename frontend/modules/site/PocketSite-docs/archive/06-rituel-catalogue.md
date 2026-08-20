@@ -128,7 +128,7 @@ installée contient environ le double de données. À côté d'elle : `config/`,
 **Comment le code choisit son répertoire — répondu le 10 août 2026**, dans
 `utils/PathManager.js` : `useAppData = (NODE_ENV === 'production') && Electron`.
 Si vrai, `~\AppData\Roaming\AppPOS` ; sinon **`process.cwd()`**. Détail et
-conséquences en §1.4 de [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md).
+conséquences en §1.4 de [`07-audit-flux-apppos.md`](../07-audit-flux-apppos.md).
 
 ---
 
@@ -308,7 +308,7 @@ Un document d'audit du flux AppPos, sur le modèle de `03-audit-resultats.md` :
 **Ce qu'elle ne produit pas :** de code, de schéma SQL, de tickets. Le découpage
 vient après l'audit — c'est ce qui a marché la dernière fois.
 
-> **Fait le 10 août 2026** — voir [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md).
+> **Fait le 10 août 2026** — voir [`07-audit-flux-apppos.md`](../07-audit-flux-apppos.md).
 > Les questions 5.1 et 5.2 sont répondues, 5.3 à 5.5 partiellement. Le flux
 > s'est révélé **bidirectionnel**, et `forceSync` **inopérant depuis toujours**
 > (chemin de fichier faux, échec présenté comme un succès).

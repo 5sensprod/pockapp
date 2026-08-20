@@ -1,8 +1,8 @@
 # Plan de migration — NeDB vers PocketBase, tout en local
 
 **Écrit le 10 août 2026.** Suite de
-[`09-modele-cible.md`](09-modele-cible.md), dont le modèle est **arrêté** et
-consigné dans [`docs/DECISIONS.md`](../../../../docs/DECISIONS.md). Le rituel
+[`09-modele-cible.md`](../09-modele-cible.md), dont le modèle est **arrêté** et
+consigné dans [`docs/DECISIONS.md`](../../../../../docs/DECISIONS.md). Le rituel
 [`08-rituel-migration-pocketbase.md`](08-rituel-migration-pocketbase.md)
 n'autorisait aucun plan avant cette validation ; elle est acquise.
 
@@ -18,8 +18,8 @@ n'autorisait aucun plan avant cette validation ; elle est acquise.
 > | développement — périmée | 2306 | 219 | 224 | 34 |
 >
 > **Tous les chiffres mesurés avant cette date le sont sur la base périmée**,
-> ici comme dans [`09-modele-cible.md`](09-modele-cible.md) et
-> [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md). Les sections T2 et T3
+> ici comme dans [`09-modele-cible.md`](../09-modele-cible.md) et
+> [`07-audit-flux-apppos.md`](../07-audit-flux-apppos.md). Les sections T2 et T3
 > ci-dessous portent leurs chiffres d'origine, entre parenthèses, et les
 > chiffres de référence en gras. Les autres documents ne sont **pas** réécrits :
 > ils sont datés, et le §9 dit ce qu'ils ont de faux.

@@ -23,11 +23,11 @@
 >
 > **Le raisonnement du document reste valable ; ses chiffres ne le sont plus.**
 > Il n'est pas réécrit : il est daté, et
-> [`10-plan-migration.md`](10-plan-migration.md) §9 dit l'état réel.
+> [`10-plan-migration.md`](archive/10-plan-migration.md) §9 dit l'état réel.
 
 
 **Écrit le 10 août 2026.** Première session du rituel
-[`08-rituel-migration-pocketbase.md`](08-rituel-migration-pocketbase.md), §9 :
+[`08-rituel-migration-pocketbase.md`](archive/08-rituel-migration-pocketbase.md), §9 :
 elle traite les questions de modélisation de §5 et s'arrête là.
 
 **Ce document est une proposition, pas une décision.** Ce qui est validé passe

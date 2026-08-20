@@ -12,7 +12,7 @@ projet. Ne pas s'y fier.
 |---|---|---|
 | **PocketApp** (`I:\pockapp`, ce dépôt) | Caisse + pilotage du site | actif |
 | **AppPos** (non versionné ici) | React / Express / NeDB `:3000` — **autorité** sur produits, catégories, marques, fournisseurs | on n'y touche pas |
-| **Site** (`I:\divi-child\frontend-wp`) | Build React devant WordPress/WooCommerce — vitrine, **pas de vente en ligne**. Lit le menu publié, et depuis le 2026-08-11 ses premiers produits dans notre base SQL via `server/api/catalog.php` — drapeau `VITE_USE_AXE_CATALOG`, par défaut `false` | modifié aux tickets 8-9 |
+| **Site** (`I:\divi-child\frontend-wp`) | Build React devant WordPress/WooCommerce — vitrine, **pas de vente en ligne**. Lit le menu publié, et depuis le 2026-08-11 ses premiers produits dans notre base SQL via `server/api/catalog.php` — drapeau `VITE_USE_AXE_CATALOG`, **à `true` et en production**. Depuis le 2026-08-20 l'accueil aussi : bandeau de chiffres, carrousel de marques et aperçu du catalogue passent par `catalog.php` (`stats`, `brands`, `latest`). **Audité le même jour : plus aucun appel WooCommerce ne part du site** — mais les clés restent dans le bundle, par imports statiques, et `wp-json/wp/v2/site-data` est encore appelé à chaque page | menu, catalogue, images |
 
 Ce dépôt est le seul documenté. AppPos et le site sont décrits ici, jamais
 depuis leur propre dépôt.
@@ -245,11 +245,15 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   listes, pas vide. Les deux tables ayant une colonne `image_paths` homonyme,
   les alias `brand_image_paths` / `product_image_paths` sont obligatoires :
   sans eux PDO écrase l'une par l'autre, sans erreur.
-  Au 20 août 2026, **3 marques sur 288 et 1 produit sur 2412** sont
-  synchronisés : **l'absence d'image est le cas normal**, le repli est
-  silencieux et le cadre a la même taille avec ou sans image — mesuré, 248×248
-  dans les deux cas (`BrandBadge`, `AxeProductImage`, `ProductGallery`, dans le
-  dépôt du site).
+  **La campagne est terminée le 20 août 2026** — marques, catégories et les
+  2412 produits publiés sont en ligne (rapporté par le propriétaire ; l'état
+  réel vit dans la base SQL distante et se relit par l'inventaire du miroir).
+  Mesuré le même jour par `catalog.php?action=brands` : **179 des 218 marques
+  en ligne portent un logo**.
+  Le repli reste néanmoins silencieux, et le cadre a la même taille avec ou
+  sans image — mesuré, 248×248 dans les deux cas (`BrandBadge`,
+  `AxeProductImage`, `ProductGallery`, dans le dépôt du site) : une entité
+  ajoutée après la campagne s'affichera sans visuel, sans rien casser.
   Gardiens : `frontend/modules/site/lib/image-checksum.test.ts` et
   `frontend/lib/queries/create-legacy-key.test.ts` — c'est `legacy_id` qui
   nomme toute l'arborescence, et les trois `create` doivent le poser
@@ -261,6 +265,25 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   Ne pas en ajouter ; voir `docs/DECISIONS.md`.
 
 ## Travail en cours
+
+**Au 20 août 2026, l'objectif de découplage est atteint côté PocketApp.**
+Mesuré : zéro appel `wp-json` ou `wc/v3` dans `frontend/` et `backend/`, et
+**deux** importateurs de `@/lib/apppos` — `main.tsx:6` (session) et
+`MenuTreeEditor.tsx:55` (nommer les destinations du menu). Ni caisse, ni
+catalogue, ni stock, ni inventaire n'en dépendent plus.
+
+**Trois chantiers restent, et un seul est gros :**
+
+| # | Chantier | Où | Note |
+|---|---|---|---|
+| **A** | **Reprendre la base de production du client** pour remettre le développement à niveau | PocketApp | **La grosse étape.** La PocketBase de dév a divergé : ventes, factures et produits créés en caisse chez le client n'y sont pas. Périmètre à définir ; **session séparée** |
+| **B** | Fermer la faille 3.1 : **sortir les clés WooCommerce du bundle** | site | **Reformulé le 20 août 2026, après audit.** Ce n'est PAS un appel à couper : sous le drapeau, aucun des dix importateurs de `services/woocommerce.js` n'est atteignable, et le carrousel « Soldes » ne se monte que sur une slide **en commentaire**. Les clés partent dans le bundle parce qu'`App.jsx` importe ce service et les quatre pages WooCommerce **statiquement**. Il faut `React.lazy`, ou sortir les clés du code. S'y ajoute `wp-json/wp/v2/site-data`, appelé sans condition à chaque page, avec un mot de passe d'application dont l'endpoint n'a pas besoin |
+| **C** | Couper la dernière lecture AppPos (`MenuTreeEditor.tsx:55`) | PocketApp | **PocketApp doit être totalement indépendant à la prochaine release** |
+
+État détaillé et archives :
+[`frontend/modules/site/PocketSite-docs/README.md`](frontend/modules/site/PocketSite-docs/README.md).
+
+### Mission terminée — AppStock derrière une couche unique
 
 **Mission ouverte le 13 août 2026 — faire passer AppStock derrière une couche
 d'accès aux données commune**, pour que ses écrans cessent de dépendre de la
@@ -310,14 +333,14 @@ s'affranchir d'AppServe, PocketBase devient la source de vérité
 cette phase.
 
 **Point d'entrée pour reprendre :**
-[`11-rituel-reprise.md`](frontend/modules/site/PocketSite-docs/11-rituel-reprise.md).
+[`11-rituel-reprise.md`](frontend/modules/site/PocketSite-docs/archive/11-rituel-reprise.md).
 Les tickets T1 à T4 sont faits — schéma, lecture NeDB, normalisation,
 chargement. L'état réel est au §9 de
-[`10-plan-migration.md`](frontend/modules/site/PocketSite-docs/10-plan-migration.md) ;
+[`10-plan-migration.md`](frontend/modules/site/PocketSite-docs/archive/10-plan-migration.md) ;
 le modèle est arrêté (`docs/DECISIONS.md`).
 
 En amont, dans l'ordre où ils ont été écrits : le rituel
-[`08-rituel-migration-pocketbase.md`](frontend/modules/site/PocketSite-docs/08-rituel-migration-pocketbase.md),
+[`08-rituel-migration-pocketbase.md`](frontend/modules/site/PocketSite-docs/archive/08-rituel-migration-pocketbase.md),
 le modèle [`09-modele-cible.md`](frontend/modules/site/PocketSite-docs/09-modele-cible.md)
 — dont le §9 confronte le modèle au schéma PocketBase réel —, et l'audit
 préalable du flux AppPos ↔ WooCommerce

@@ -1,7 +1,7 @@
 # Conception — mettre les images du catalogue en ligne
 
 **Écrit le 19 août 2026.** Phase 1 de
-[`15-prompt-sync-images.md`](15-prompt-sync-images.md) : l'écrit avant le code.
+[`15-prompt-sync-images.md`](archive/15-prompt-sync-images.md) : l'écrit avant le code.
 Aucune ligne de code n'accompagne ce document, et aucun octet n'est parti.
 **La décision se consigne dans `docs/DECISIONS.md` par le propriétaire avant le
 premier envoi.**

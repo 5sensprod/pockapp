@@ -6,7 +6,7 @@ points. Remplace la version précédente et
 
 Tu travailles dans `I:\pockapp`. Lis `CLAUDE.md` (points 4-5-6 des « points
 d'entrée réseau », section « Contraintes »), puis
-[`12-contrat-catalogue.md`](12-contrat-catalogue.md), qui fait autorité.
+[`12-contrat-catalogue.md`](../12-contrat-catalogue.md), qui fait autorité.
 
 Trois dépôts : `I:\pockapp` (Go + PocketBase), `I:\pockapp\server\` (PHP du
 mutualisé, versionné ici, **déposé par FTP à la main** — lis

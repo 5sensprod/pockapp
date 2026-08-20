@@ -1,5 +1,28 @@
 # Rituel — rebrancher le bandeau de statistiques sur notre catalogue
 
+> **EXÉCUTÉ LE 20 AOÛT 2026. Archivé : il ne fait plus foi sur l'état.**
+>
+> L'autorité est passée à [`../12-contrat-catalogue.md`](../12-contrat-catalogue.md)
+> §6 bis, qui liste les actions de `catalog.php`. Ce fichier garde sa valeur de
+> méthode : il a été suivi tel quel, du SQL à la vérification.
+>
+> **Ce qui a été fait au-delà du rituel**, dans la même session :
+>
+> - **`action=brands`** — non prévue ici. Le §« Ce que ce ticket ne fait pas »
+>   annonçait que `BrandCarousel` ne reviendrait pas faute de logos. Le miroir
+>   d'images les a publiés entre-temps : **179 marques sur 218 portent un logo**
+>   au 20 août 2026, et le carrousel est revenu sur l'accueil le jour même.
+> - **`action=latest`** — non prévue ici non plus. Voir
+>   [`../13-dates-produits.md`](../13-dates-produits.md) : le tri porte sur
+>   `exported_at`, ce n'est pas une date d'arrivée, et le libellé le dit.
+> - **Le comptage des marques est celui du rituel**, sans le garde
+>   `p.brand <> ''` proposé en cours de route puis écarté.
+>
+> **Ce qui a été mesuré et qui n'était pas prévu :** `stats.categories` (199) ne
+> s'accorde PAS avec `action=categories`, qui ne filtre pas sur `status` —
+> l'étape 4 demandait cette cohérence, elle n'est pas atteignable en l'état.
+> C'est `action=categories` qui est en cause, pas `stats`.
+
 **Écrit le 13 août 2026.** Petit ticket, entièrement décrit ici : le SQL, la
 forme JSON, les modifications du site, la vérification. Exécutable par un agent
 ou à la main, sans rien deviner.

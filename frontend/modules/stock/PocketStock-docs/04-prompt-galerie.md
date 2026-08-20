@@ -125,7 +125,7 @@ ordre de risque croissant :
 
 - **ne pas toucher au site.** L'export vers axemusique.shop **ne porte aucun
   champ image** — c'est le §7 du contrat catalogue, et il a sa propre session
-  (`frontend/modules/site/PocketSite-docs/15-prompt-sync-images.md`). Une
+  (`frontend/modules/site/PocketSite-docs/archive/15-prompt-sync-images.md`). Une
   galerie affichée dans PocketApp ne change rien au site ;
 - **ne pas modifier AppPos** ;
 - **ne pas relancer `catalog-import -load`** pour « retrouver » des images :
@@ -160,7 +160,7 @@ Cette règle mérite d'être consignée : elle est dans `docs/DECISIONS.md`,
 
 **La synchronisation des images vers axemusique.shop est une autre session**, et
 elle a son prompt :
-[`../../site/PocketSite-docs/15-prompt-sync-images.md`](../../site/PocketSite-docs/15-prompt-sync-images.md).
+[`../../site/PocketSite-docs/archive/15-prompt-sync-images.md`](../../site/PocketSite-docs/archive/15-prompt-sync-images.md).
 Elle ne peut pas commencer avant la tienne, pour une raison simple : **le site
 doit savoir quelle image est la principale et dans quel ordre viennent les
 autres**, et cette information n'existe qu'une fois ton travail fait.

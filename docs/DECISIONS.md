@@ -10,6 +10,52 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## L'accueil du site est branchée sur `catalog.php` — et la faille 3.1 n'a pas la cause qu'on lui prêtait — 2026-08-20
+
+Trois actions ajoutées à `server/api/catalog.php` le même jour — `stats`,
+`brands`, `latest` — pour que la page d'accueil du site cesse de dépendre de
+WooCommerce : bandeau de chiffres, carrousel de marques, aperçu du catalogue.
+Détail et règles de comptage au §6 bis du contrat
+(`frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md`).
+
+**Deux arbitrages ont été tranchés en écrivant, et ils tiennent ensemble :**
+
+1. **`stats` compte ce que le SITE expose**, pas ce que la caisse porte —
+   produits `published`, marques et catégories portant au moins un produit
+   publié. Écarté : compter toutes les lignes des trois tables, demandé en cours
+   de session puis retiré. Annoncer 287 marques quand le site en montre 218
+   serait le défaut même qui avait fait masquer ce bandeau le 13 août.
+2. **`latest` trie sur `exported_at`, faute de mieux, et le libellé du site le
+   dit** : « Dernières mises à jour du catalogue », jamais « Nouveautés ». Une
+   vente redate un produit — l'empreinte d'export couvre `stock` et
+   `price_ttc`. Écarté : ouvrir `first_seen_at` tout de suite. Le sujet reste
+   entier (`13-dates-produits.md`), et **le tri actuel donne l'illusion qu'il
+   est traité**.
+
+**Ce qui pourrait la remettre en cause :** une vraie date de première parution.
+Seul l'`ORDER BY` de `catalog.php` changerait.
+
+### L'audit de découplage du même jour, qui corrige une affirmation
+
+Les dix importateurs de `services/woocommerce.js` ont été suivis un par un sous
+`VITE_USE_AXE_CATALOG=true` : **aucun n'est atteignable**. Le `README.md` de
+PocketSite-docs affirmait que `HeroContent.jsx` monte `SoldesCarousel` et que
+c'était la cause des clés dans le bundle. **C'est faux** : la slide « soldes »
+est en commentaire (`config/components.js:107-109`), aucun appel `wc/v3` ne part
+du site.
+
+**La faille 3.1 est intacte pour une autre raison** : `App.jsx` importe
+statiquement `services/woocommerce.js` et les quatre pages WooCommerce. Le code
+mort part dans le bundle avec les clés. **Couper les appels ne referme donc
+rien** — c'est le code qu'il faut sortir du bundle, ou les clés du code.
+
+Deux restes mesurés : `SoldesCarousel` ne tient qu'à du code commenté, pas à un
+drapeau ; et `wp-json/wp/v2/site-data` est appelé sans condition à chaque
+chargement de page, alors qu'il répond `200` **sans authentification** — le
+`VITE_WP_APP_PASSWORD` qu'`axios` y pose part dans le bundle pour rien.
+
+---
+
 ## Les images en ligne se rangent par `legacy_id`, pas par l'identifiant PocketBase — 2026-08-19
 
 Décision du propriétaire, en préparant la mise en ligne des images.
@@ -986,7 +1032,7 @@ sans le dire**, et personne ne l'avait vu.
 **Écarté — corriger les documents antérieurs :** ils sont datés et font foi sur
 ce qu'ils ont constaté *ce jour-là*. Ils reçoivent un avertissement en tête ;
 l'état réel est au §9 de
-[`10-plan-migration.md`](../frontend/modules/site/PocketSite-docs/10-plan-migration.md).
+[`10-plan-migration.md`](../frontend/modules/site/PocketSite-docs/archive/10-plan-migration.md).
 
 **Ce que ça ne change pas :** la contrainte de ne pas toucher à la production
 reste entière **côté écriture**. L'outil lit ces bases, il n'y écrit jamais.
@@ -1241,7 +1287,7 @@ chaque écran écrit entre-temps s'appuie sur les champs qu'on voulait retirer.
 ligne existent ; NeDB reste la source de référence des données.
 
 **Ce que la mesure a déjà tranché** (§4 bis de
-[`08-rituel-migration-pocketbase.md`](../frontend/modules/site/PocketSite-docs/08-rituel-migration-pocketbase.md),
+[`08-rituel-migration-pocketbase.md`](../frontend/modules/site/PocketSite-docs/archive/08-rituel-migration-pocketbase.md),
 base dev, lecture seule) :
 
 - **aucune variante n'existe** — `type` vaut `simple` (2297) ou `service` (9) ;

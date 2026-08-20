@@ -1,55 +1,100 @@
 # PocketSite — pilotage du site axemusique.shop
 
-Module en production. **Mission « menu » terminée le 10 août 2026** : la
-navigation d'axemusique.shop est éditée ici et publiée d'un clic ; le site ne
-lit plus WordPress pour l'afficher.
+Module en production. **Trois missions successives, toutes terminées :**
 
-**Mission suivante : migrer le catalogue de NeDB vers PocketBase, tout en
-local** — pour s'affranchir d'AppServe. Point d'entrée :
-[`10-plan-migration.md`](10-plan-migration.md).
+| Mission | Fin | Ce qu'elle a sorti de WordPress / AppPos |
+|---|---|---|
+| **Menu** | 10 août 2026 | la navigation ne vient plus de `wp-json` |
+| **Catalogue** | 11 août 2026 | les pages boutique, catégorie et produit viennent de notre base SQL |
+| **Images** | 20 août 2026 | les visuels des marques, catégories et produits sont servis par notre serveur |
 
-> **13 août 2026 — la suite se joue ailleurs.** Ce que le site demandait est
-> livré : il lit le catalogue PocketBase, et ses textes s'éditent ici. Ce qui
-> reste — faire passer la **gestion interne** derrière une couche d'accès
-> commune, puis vers PocketBase — est une mission du module `stock`, avec son
-> propre rituel :
-> [`../../stock/PocketStock-docs/00-rituel-migration-appstock.md`](../../stock/PocketStock-docs/00-rituel-migration-appstock.md).
-> Ce dossier-ci reste l'autorité sur **le site** : contrat d'export, lecture
-> publique, menu. Il ne suit pas l'avancement d'AppStock.
+**Ce dossier reste l'autorité sur LE SITE** — contrat d'export, lecture
+publique, menu, images. Il ne suit pas l'avancement du module `stock`, qui a son
+propre rituel :
+[`../../stock/PocketStock-docs/00-rituel-migration-appstock.md`](../../stock/PocketStock-docs/00-rituel-migration-appstock.md).
 
-**La cible a changé le 10 août 2026** : elle n'est plus « publier le catalogue
-vers une base SQL sur IONOS », mais « PocketBase devient la source de vérité »
-([`docs/DECISIONS.md`](../../../../docs/DECISIONS.md)). Le
-[`06-rituel-catalogue.md`](06-rituel-catalogue.md) reste valable pour ce qu'il
-documente : il n'est pas périmé, il est **dépassé sur la cible**.
+## L'objectif de découplage — où il en est, mesuré le 20 août 2026
+
+L'objectif de développement était : **découpler PocketApp d'AppPos et de
+WordPress/WooCommerce**, pour qu'il tourne sur ses collections PocketBase et
+notre API PHP.
+
+| Ce qui devait être découplé | État | Comment c'est vérifié |
+|---|---|---|
+| **PocketApp → WordPress / WooCommerce** | **atteint** | zéro appel `wp-json` ou `wc/v3` dans `frontend/` et `backend/` ; les seules occurrences du mot sont des commentaires |
+| **PocketApp → AppPos** | **atteint à deux lignes près** | `grep` des importateurs de `@/lib/apppos` : **2 fichiers** — `main.tsx:6` (session) et `MenuTreeEditor.tsx:55` (nommer les destinations du menu). Ni caisse, ni catalogue, ni stock, ni inventaire |
+| **Site → notre API PHP** | **atteint sur le catalogue** | `VITE_USE_AXE_CATALOG=true` : `/shop`, `/categorie-produit/*` et `/produit/:slug` passent par `catalog.php` |
+| **Site → WooCommerce** | **atteint à l'exécution, PAS au bundle** | audit du 20 août 2026, ci-dessous |
+| **Site → WordPress** | **PAS atteint** | un appel subsiste : `wp-json/wp/v2/site-data` |
+
+### L'audit du 20 août 2026 — ce qu'il corrige
+
+Les dix fichiers qui importent `services/woocommerce.js` ont été suivis un par
+un sous `VITE_USE_AXE_CATALOG=true`. **Aucun n'est atteignable** : les trois
+appels du contexte sont remplacés par `Promise.resolve([])`
+(`useWordPressData.js:136`), le préchauffage des soldes sort en tête
+(`App.jsx:64`), la modale de recherche est `AxeSearch`, les routes sont les
+pages `Axe`, `/bons-plans` n'existe plus.
+
+**La ligne précédente de ce tableau était fausse** : elle disait que
+`HeroContent.jsx` monte `SoldesCarousel`. Il ne le monte que si
+`slide.theme === "soldes"`, et cette slide est **en commentaire**
+(`config/components.js:107-109`). Aucun appel `wc/v3` ne part donc du site.
+
+**Mais la faille 3.1 est intacte, et sa vraie cause est ailleurs :**
+`services/woocommerce.js`, `CategoryPage`, `ProductPage`, `ShopPage` et
+`BonsPlansPage` sont importés **statiquement** par `App.jsx`. Le code mort ne
+s'exécute pas ; il **part quand même dans le bundle**, `VITE_WC_CONSUMER_KEY` et
+`VITE_WC_CONSUMER_SECRET` compris. Couper les appels ne referme rien : il faut
+sortir le code du bundle (`React.lazy`) ou les clés du code.
+
+**Deux points restent, plus petits qu'annoncé :**
+
+1. **`SoldesCarousel` ne tient qu'à du code commenté**, pas à un drapeau.
+   Décommenter la slide « soldes » rebranche WooCommerce sur l'accueil sans
+   qu'aucune garde ne s'y oppose.
+2. **`wp-json/wp/v2/site-data` est appelé à chaque chargement de page**
+   (`wordpress.js:32`, depuis `useWordPressData.js:141`, sans condition). Il
+   rend le titre, la description, le logo et l'e-mail de contact — 200 octets,
+   mesuré en `200`. Il répond **sans authentification**, alors qu'`axios` y pose
+   `VITE_WP_APP_PASSWORD` : ce mot de passe d'application part dans le bundle
+   pour un appel qui n'en a pas besoin.
 
 ## Par où commencer
 
+Les documents actifs — ceux qui décident encore de quelque chose :
+
 | Fichier | Quoi | Fiabilité |
 |---|---|---|
-| [`10-plan-migration.md`](10-plan-migration.md) | **À lire en premier pour la suite.** Les sept tickets de migration, leurs prérequis et leur ordre | plan, rien d'écrit |
-| [`09-modele-cible.md`](09-modele-cible.md) | **Fait foi sur le modèle.** Les collections cibles, champ par champ ; §9 : confrontation au schéma PocketBase réel | mesuré et lu, décisions au journal |
-| [`08-rituel-migration-pocketbase.md`](08-rituel-migration-pocketbase.md) | Le rituel qui a cadré la mission — remplace le 06 sur la cible | carte de départ |
-| [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md) | **Fait foi sur le flux AppPos ↔ WooCommerce** et sur l'état des données | lu dans le code, mesuré |
-| [`06-rituel-catalogue.md`](06-rituel-catalogue.md) | Rituel précédent — **dépassé sur la cible**, valable sur le reste | carte de départ, inventaire non lu |
-| [`03-audit-resultats.md`](03-audit-resultats.md) | **Fait foi.** Flux réel, failles, architecture retenue, tickets | lu dans le code, références données |
-| [`05-contrat-menu.md`](05-contrat-menu.md) | **Fait foi sur la forme publiée.** URL, format du `menu.json`, notes pour les tickets 5 et 8 | contrat, à respecter |
-| [`docs/DECISIONS.md`](../../../../docs/DECISIONS.md) | **Hors de ce dossier** — journal du dépôt. Contrat du menu, schéma de `site_menu` | fait foi sur ce qui a été écarté |
+| [`12-contrat-catalogue.md`](12-contrat-catalogue.md) | **Fait foi sur l'export ET sur la lecture publique.** Identité, checksum, slug figé, limites du mutualisé, `catalog.php` | contrat, à respecter |
+| [`16-conception-images.md`](16-conception-images.md) | **Fait foi sur le miroir d'images.** Risques de désynchro retenus et écartés, nommage distant, empreinte séparée, ménage distant | conçu, écrit, mesuré en ligne |
+| [`05-contrat-menu.md`](05-contrat-menu.md) | **Fait foi sur la forme publiée du menu.** Le seul fichier d'ici destiné à être lu depuis les deux autres dépôts | contrat, à respecter |
+| [`09-modele-cible.md`](09-modele-cible.md) | **Fait foi sur le modèle** des collections, champ par champ ; §9 : confrontation au schéma réel | mesuré et lu |
+| [`03-audit-resultats.md`](03-audit-resultats.md) | **Fait foi sur le flux d'origine, les failles et les tickets du 6 août.** Compte rendu daté : on ne le réécrit pas | lu dans le code, références données |
+| [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md) | Le flux AppPos ↔ WooCommerce **tel qu'il était** — utile pour la reprise de la base client | lu dans le code, mesuré |
+| [`13-dates-produits.md`](13-dates-produits.md) | Chantier non engagé : aucune date d'arrivée ne traverse la chaîne. **Son dernier § dit ce que le site fait en attendant** (tri sur `exported_at`) | état des lieux |
 | [`00-contexte.md`](00-contexte.md) | Cadrage, arbitrages tranchés | corrigé après audit |
-| [`archive/`](archive/) | Prompts déjà exécutés, énoncés de tickets | **ne fait pas foi** |
+| [`docs/DECISIONS.md`](../../../../docs/DECISIONS.md) | **Hors de ce dossier** — journal du dépôt : ce qui a été écarté, et pourquoi | fait foi |
 
-En cas de contradiction entre deux fichiers, `03-audit-resultats.md` gagne —
-sauf sur la **forme du menu publié et son URL**, où `05-contrat-menu.md` gagne.
-C'est le seul fichier d'ici destiné à être lu depuis les deux autres dépôts.
+**[`archive/`](archive/) — les missions closes.** Rituels de missions terminées
+et prompts déjà exécutés. **Ils ne font plus foi sur l'état**, mais ils gardent
+leur valeur de méthode : ils sont écrits pour être rejoués, et sont candidats à
+devenir des *skills* ou des prompts système.
 
-`03-audit-resultats.md` est un compte rendu daté : **on ne le réécrit pas** pour
-suivre l'avancement. Son tableau de tickets dit ce qui était prévu le 6 août
-2026 ; **le tableau ci-dessous fait foi sur l'état réel des tickets**, libellés
-compris. Un ticket dont le périmètre a bougé est reformulé ici, pas là-bas.
-Les prompts déjà exécutés sont dans [`archive/`](archive/) : ils disent ce qu'on
-a demandé, pas ce qui est vrai.
+| Archivé | Ce que c'était | Clos le |
+|---|---|---|
+| [`archive/06-rituel-catalogue.md`](archive/06-rituel-catalogue.md) | rituel de la cible « base SQL sur IONOS » | dépassé le 10 août 2026 |
+| [`archive/08-rituel-migration-pocketbase.md`](archive/08-rituel-migration-pocketbase.md) | rituel « PocketBase source de vérité » | mission finie |
+| [`archive/10-plan-migration.md`](archive/10-plan-migration.md) | les sept tickets de migration du catalogue | T1-T4 faits |
+| [`archive/11-rituel-reprise.md`](archive/11-rituel-reprise.md) | rituel de reprise de cette migration | mission finie |
+| [`archive/13-prompt-images-site.md`](archive/13-prompt-images-site.md) | premier prompt images, écrit avant la galerie | remplacé |
+| [`archive/15-prompt-sync-images.md`](archive/15-prompt-sync-images.md) | prompt de la synchro d'images — **exécuté** | 20 août 2026 |
 
-## Où en est-on
+En cas de contradiction entre deux fichiers actifs, `03-audit-resultats.md`
+gagne — sauf sur la **forme du menu publié**, où `05-contrat-menu.md` gagne, et
+sur **les images**, où `16-conception-images.md` gagne.
+
+## La mission « menu » — terminée le 10 août 2026
 
 **Les neuf tickets sont terminés. Le MVP est en production depuis le 10 août
 2026.** 1 à 4 le 6 août, le 5 le 7, le 5b et le 6 le 8, les 7, 8 et 9 le 10.
@@ -79,8 +124,10 @@ l'URL de publication, que le ticket 6 supposait acquis sans que rien ne les
 range : section « Publication du site » dans Réglages > Clés API.
 
 **Ce qui reste vrai et n'a pas été traité :** la faille 3.1 (clés WooCommerce
-dans le bundle public) reste ouverte et prioritaire, et `wp-admin` conserve son
-menu inutilisé.
+dans le bundle public) reste ouverte, et `wp-admin` conserve son menu inutilisé.
+**Sa cause a été localisée le 20 août 2026** — un seul consommateur subsiste, le
+carrousel « Soldes » de la page d'accueil — et sa fermeture est le chantier B
+de « Ce qui reste ».
 
 ## Le catalogue est sorti de WooCommerce — 11 août 2026
 
@@ -159,8 +206,9 @@ affiche l'avertissement.
 
 **Ce qui n'est pas fait, et qui est connu :**
 
-- **les images** — 4665 fichiers, 1,7 Go, non exportés ; les pages affichent une
-  vignette de remplacement. Session dédiée ;
+- ~~**les images**~~ — **fait le 20 août 2026.** Marques, catégories et
+  produits sont en ligne, servis par notre serveur, en URL complète composée
+  par `media_urls()`. Mécanisme : [`16-conception-images.md`](16-conception-images.md) ;
 - **le retrait** d'un produit dépublié : l'export n'efface rien ;
 - **les 257 produits** dont l'état de publication bascule, à trancher à l'export ;
 - **les entrées de menu héritées** portent des URL manuelles écrites du temps de
@@ -174,13 +222,6 @@ affiche l'avertissement.
   jamais une qui leur soit propre. État des lieux couche par couche, ce que
   `dateSoumission` porte réellement en base, et les trois chemins possibles :
   [`13-dates-produits.md`](13-dates-produits.md). **Pas urgent, rien d'engagé.**
-- **Les images du catalogue vers le site** — le §7 du contrat, le seul point
-  qu'il déclare non couvert. Prompt de reprise :
-  [`15-prompt-sync-images.md`](15-prompt-sync-images.md), qui remplace
-  [`13-prompt-images-site.md`](13-prompt-images-site.md) depuis la fin de la
-  session « galerie » (19 août 2026). **La phase 1 est une conception, pas un
-  transfert :** nommer les risques de désynchronisation avant de choisir un
-  mécanisme.
 - **le bandeau de statistiques du site est masqué** sous le drapeau : il compte
   les produits et les marques dans WooCommerce, et `catalog.php` ne sait rendre
   ni un total de produits ni une liste de marques. Rituel prêt à exécuter, SQL
@@ -202,8 +243,32 @@ affiche l'avertissement.
 Les tickets 1 à 5 n'ont aucun effet observable en production. Détail et notes de
 mise en œuvre : section 5 de `03-audit-resultats.md`.
 
-**Prioritaire sur tout ceci et hors tickets :** la faille 3.1 — clés WooCommerce
-en clair dans le bundle public du site.
+### Les missions suivantes, hors de ce tableau
+
+Elles n'ont jamais été découpées en tickets numérotés — elles ont été menées au
+rituel, session par session. Leur état, pour mémoire :
+
+| Mission | Dépôts touchés | État |
+|---|---|---|
+| **Catalogue** — export vers la base SQL, lecture publique | PocketApp, `server/`, site | **fait le 11 août 2026**, en production |
+| **Textes du site éditables** — nom canonique, description | PocketApp | **fait**, révisé le 19 août 2026 |
+| **Images — marques et catégories** | PocketApp, `server/`, site | **fait le 19 août 2026** |
+| **Images — produits**, principale + galerie ordonnée | PocketApp, `server/`, site | **fait le 20 août 2026** |
+
+## Ce qui reste — au 20 août 2026
+
+Quatre chantiers, et **un seul est gros**.
+
+| # | Chantier | Dépôt | Pourquoi |
+|---|---|---|---|
+| **A** | **Reprendre la base de production du client** pour remettre le développement à niveau | PocketApp | **La grosse étape restante.** La PocketBase de dév a divergé : ventes, factures et produits créés en caisse chez le client n'y sont pas. Périmètre à définir ; **session séparée** |
+| **B** | **Fermer la faille 3.1** — retirer le carrousel « Soldes » de la page d'accueil et sortir les clés WooCommerce du bundle | site | Décidé le 20 août 2026. `HeroContent.jsx:4` → `SoldesCarousel` → `services/woocommerce.js`. C'est le dernier appel WooCommerce du site ; notre catalogue n'a ni prix barré ni `sale_price` |
+| **C** | **Couper la dernière lecture AppPos** — `MenuTreeEditor.tsx:55` nomme les destinations du menu depuis AppPos ; les mêmes noms sont dans PocketBase | PocketApp | **PocketApp doit être totalement indépendant à la prochaine release** (propriétaire, 20 août 2026). C'est le seul reste, avec le fournisseur de session de `main.tsx:6` |
+| **D** | Le bandeau de statistiques, et les dates d'arrivée | site, `server/` | Non engagés, pas urgents. [`14-rituel-stats.md`](14-rituel-stats.md), [`13-dates-produits.md`](13-dates-produits.md) |
+
+**B et C sont petits et bien cernés.** A est le seul dont le périmètre reste à
+écrire, et il ne peut l'être qu'en regardant ce que la production du client
+porte réellement.
 
 ## Notes laissées par le ticket 4
 

@@ -198,6 +198,35 @@ est un bundle public, où un secret serait lisible de tous
 | `?action=category&slug=…` | la catégorie, ses **ancêtres**, ses enfants, ses produits paginés |
 | `?action=product&slug=…` | le produit et les catégories auxquelles il appartient |
 | `?action=search&q=…` | les produits publiés dont le nom, la référence ou le slug contient `q` |
+| `?action=brands` | les marques portant au moins un produit publié, logo compris |
+| `?action=latest&limit=…` | les produits publiés les plus récemment **exportés** |
+| `?action=stats` | trois décomptes : produits, marques, catégories |
+
+Les trois dernières datent du 20 août 2026 et servent la page d'accueil : le
+carrousel de marques, l'aperçu de la section « Notre catalogue », le bandeau
+de chiffres. **Toute action ajoutée s'inscrit dans ce tableau, et dans le
+message de l'action inconnue** — celui-ci a déjà été oublié une fois.
+
+**`stats` compte ce que le SITE expose, pas ce que la caisse porte** : produits
+`published`, marques et catégories **portant au moins un produit publié**.
+Annoncer les 287 marques du catalogue quand le site n'en montre qu'une part
+serait le défaut même qui avait fait masquer ce bandeau. Mesuré le 20 août
+2026 : 2563 produits, 218 marques, 199 catégories.
+
+**Conséquence à connaître : `stats.categories` (199) et `action=categories` ne
+comptent pas la même chose.** La seconde ne filtre pas sur `status`, une
+catégorie ne portant que des produits non publiés y figure donc. L'écart est
+voulu côté `stats` ; s'il faut le réduire, c'est `action=categories` qu'il faut
+corriger, pas l'inverse.
+
+**`latest` trie sur `exported_at`, qui n'est PAS une date d'arrivée.** Cette
+colonne est réécrite à chaque export contenant le produit, et l'export est
+incrémental sur une empreinte qui couvre `stock` et `price_ttc` : une vente
+redate un produit. La liste est « ce qui a bougé en dernier ». Le site
+l'affiche sous « Dernières mises à jour du catalogue », jamais « Nouveautés » —
+voir [`13-dates-produits.md`](13-dates-produits.md). Second critère de tri
+obligatoire (`legacy_id`) : un export pose le même horodatage sur tout son lot,
+et 2563 produits partagent la seconde du chargement initial.
 
 **Deux règles de comptage, qui doivent rester ensemble :**
 
@@ -232,10 +261,16 @@ des pages produit.
 
 - **Les images.** Elles sont des champs fichier PocketBase, servis par un
   serveur local qu'axemusique.shop ne peut pas atteindre. Les transférer est une
-  opération distincte — 4665 fichiers, 1,7 Go, à travers un mutualisé — et elle
-  n'est pas traitée ici. Aucun champ image ne figure au contrat **tant que ce
-  point n'est pas conçu** : en mettre un qui porterait une URL locale
-  produirait 2562 images cassées sur le site.
+  opération distincte — 4665 fichiers, 1,7 Go, à travers un mutualisé.
+  **Depuis le 19 août 2026 elle a son propre mécanisme**, le miroir
+  ([`16-conception-images.md`](16-conception-images.md)), et **aucun champ image
+  ne figure toujours à ce contrat** : ce n'est plus une attente, c'est le
+  partage retenu. Les octets et les chemins passent par `images-sync.php`, le
+  lot d'entités n'en sait rien.
+  **La LECTURE, elle, en rend** : `catalog.php` compose `brand.image`,
+  `product.image` et `product.gallery` en URL complètes à partir de la colonne
+  `image_paths` et de `media_base_url`. Mesuré le 20 août 2026 : 179 des 218
+  marques en ligne portent un logo.
 - **Le retrait** d'une entité, cf. §2.
 - **Les 257 produits** dont l'état de publication bascule
   (`docs/DECISIONS.md`, 11 août 2026) : ils s'exportent comme les autres, la

@@ -1,7 +1,7 @@
 # Rituel de reprise — migrer le catalogue vers PocketBase, tout en local
 
 **Écrit le 10 août 2026**, à la fin de l'audit du flux AppPos
-([`07-audit-flux-apppos.md`](07-audit-flux-apppos.md)). Ce fichier remplace
+([`07-audit-flux-apppos.md`](../07-audit-flux-apppos.md)). Ce fichier remplace
 [`06-rituel-catalogue.md`](06-rituel-catalogue.md) comme point d'entrée de la
 mission suivante. Le 06 reste valable pour ce qu'il documente : il n'est pas
 périmé, il est **dépassé sur la cible**.
@@ -16,7 +16,7 @@ site lit de là*. **Ce n'est plus l'étape suivante.**
 La cible est désormais **s'affranchir d'AppServe** : PocketBase, déjà embarqué
 dans PocketApp, devient la source de vérité du catalogue. Décision du
 propriétaire du 10 août 2026, consignée dans
-[`docs/DECISIONS.md`](../../../../docs/DECISIONS.md), bloc « PocketBase devient
+[`docs/DECISIONS.md`](../../../../../docs/DECISIONS.md), bloc « PocketBase devient
 la source de vérité, et la refonte se fait d'abord tout en local ».
 
 ```
@@ -67,7 +67,7 @@ Dans la suite de ce document, « **le module stock** » désigne
 
 ## 3. Ce que l'audit a établi, et qu'il ne faut pas réétudier
 
-Tout est dans [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md). Les acquis
+Tout est dans [`07-audit-flux-apppos.md`](../07-audit-flux-apppos.md). Les acquis
 qui portent directement sur la migration :
 
 | Acquis | Où |

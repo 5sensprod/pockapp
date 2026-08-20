@@ -1,7 +1,7 @@
 # Audit du flux de synchronisation AppPos ↔ WooCommerce
 
 **Écrit le 10 août 2026.** Première session de la mission catalogue, telle que
-la prévoit le §7 de [`06-rituel-catalogue.md`](06-rituel-catalogue.md). Ce
+la prévoit le §7 de [`06-rituel-catalogue.md`](archive/06-rituel-catalogue.md). Ce
 document ne produit **ni code, ni schéma SQL, ni tickets**.
 
 **Base lue :** `I:\AppPOS\AppServe` — l'environnement **dev**, seul en

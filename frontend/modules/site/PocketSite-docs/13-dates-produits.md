@@ -90,9 +90,31 @@ arrivés.
 
 ## Ce que le site fait en attendant
 
-Dans le dépôt du site (`I:\divi-child\frontend-wp`), la section « Notre
-catalogue » de la page d'accueil
-(`src/components/section/AxeCatalogSearchSection.jsx`) affiche au repos
-**« Un aperçu du catalogue — *nom de la catégorie* »**, et non « Nouveautés ».
-Le titre dit ce que la donnée permet de dire. Le jour où une vraie date existe,
-seul le tri change ; la mise en page reste.
+**Mis à jour le 20 août 2026.** La section « Notre catalogue » de l'accueil
+(`src/components/section/AxeCatalogSearchSection.jsx`, dépôt du site) montrait
+au repos la catégorie la mieux fournie, sous le titre « Un aperçu du catalogue
+— *nom de la catégorie* ». C'était honnête et c'était figé : « Partitions » à
+chaque visite, pour toujours.
+
+Elle affiche désormais **`catalog.php?action=latest`** — les huit produits au
+`exported_at` le plus récent — sous le libellé **« Dernières mises à jour du
+catalogue »**.
+
+**Ce libellé est le compromis, et il vaut d'être défendu.** Le tri ne dit
+toujours pas ce que demande la question d'origine : `exported_at` est réécrit à
+chaque export contenant le produit, et l'export est incrémental sur une
+empreinte qui couvre `stock` et `price_ttc` (`catalog-export.ts:141-157`) — une
+vente redate un produit. La liste remonte donc des réassorts autant que des
+arrivées. Elle est vivante, ce qu'on lui demandait ; elle n'est pas des
+nouveautés, et rien à l'écran ne le prétend.
+
+Deux choses en découlent :
+
+1. **Le jour où une vraie date existe, seul l'`ORDER BY` de `catalog.php`
+   change.** Ni l'appel du site, ni la mise en page, ni le nom de l'action.
+   Seul le libellé devient « Les derniers arrivés » — et il le devient
+   légitimement.
+2. **L'option 1 reste ouverte et son calendrier court toujours.** Le tri sur
+   `exported_at` donne l'illusion que le sujet est traité : il ne l'est pas.
+   Chaque export qui passe est encore un lot de produits dont on ne pourra
+   jamais dire quand ils sont arrivés.

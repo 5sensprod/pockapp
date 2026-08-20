@@ -17,7 +17,7 @@ Wails, Go + React/TypeScript, PocketBase embarqué ; il pilote le site vitrine
 axemusique.shop). Lis d'abord `CLAUDE.md` à la racine — surtout les points 4, 5
 et 6 des « points d'entrée réseau » et la section « Contraintes à ne pas
 franchir » —, puis
-[`12-contrat-catalogue.md`](12-contrat-catalogue.md), qui **fait autorité** sur
+[`12-contrat-catalogue.md`](../12-contrat-catalogue.md), qui **fait autorité** sur
 ce qui part vers le site, et [`README.md`](README.md) pour l'historique.
 
 ## Ta mission, et sa frontière
@@ -120,7 +120,7 @@ pas une image servie.
    une donnée**, posée pour toi : c'est lui qui décide de l'ordre des vignettes
    sur le site. **747 produits portent déjà une galerie non vide** ;
 2. **La session « galerie » passe avant la tienne** —
-   [`../../stock/PocketStock-docs/04-prompt-galerie.md`](../../stock/PocketStock-docs/04-prompt-galerie.md).
+   [`../../../stock/PocketStock-docs/04-prompt-galerie.md`](../../../stock/PocketStock-docs/04-prompt-galerie.md).
    Elle rend l'information disponible et ordonnée côté PocketBase ; sans elle,
    tu exporterais un ensemble d'images sans savoir laquelle est la vitrine.
 
