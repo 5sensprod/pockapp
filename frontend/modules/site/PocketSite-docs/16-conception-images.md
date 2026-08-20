@@ -428,3 +428,344 @@ Serveur de développement du site, `VITE_USE_AXE_CATALOG=true` (`.env:29`) :
 3. Ouvrir une page produit ACUS, ADMIRA ou ADAM HALL et regarder.
 4. Les logos pèsent lourd pour leur usage (929 px pour 24 px affichés) : la
    question 3 du §6 — redimensionner à l'envoi — se repose ici, avec un chiffre.
+
+---
+
+## 9. Les produits — 20 août 2026
+
+Phase 4. Le mécanisme du §4 étendu aux produits, **images principales et
+galeries**. Ce n'est pas un mécanisme de plus, c'est un cas de plus : le nom
+distant est toujours calculé, l'empreinte est toujours la seconde, un envoi
+porte toujours toutes les images d'une entité, les octets partent toujours
+avant la ligne SQL, et il n'y a toujours qu'un `UPDATE`.
+
+**Aucun octet n'est encore parti.** Le PHP n'est pas déposé.
+
+### 9.1 Les mesures, refaites ce jour
+
+Même méthode qu'au §1 : `sqlite3 -readonly file:data.db?immutable=1`, `find`
+sans les `.attrs` ni les `thumbs_*`.
+
+| | tous | `published` seuls |
+|---|---|---|
+| produits | 2999 | 2563 (436 `draft`) |
+| avec `image` | 2640 | **2412** |
+| avec galerie | 748 | 731 |
+| fichiers de galerie | 1767 | **1720** |
+| `legacy_id` vide | 0 | 0 |
+| `image` vide + galerie non vide | 0 | 0 |
+| fichiers sur disque | 4407 — **aucun orphelin** | **4132** |
+| octets | 1 638 158 158 (1,526 Gio) | 1 613 774 987 — **1,503 Gio** |
+| moyen · pire fichier | 363 Kio · 4,84 Mio | 381 Kio · 4,84 Mio |
+
+Les chiffres du §1 tiennent. **Deux mesures neuves, et ce sont elles qui
+décident**, parce que l'unité d'envoi est l'entité, pas le fichier :
+
+| | |
+|---|---|
+| pire envoi d'une entité publiée | **15,92 Mio** — `iik6y8krect5bag`, 11 fichiers |
+| entités > 1 Mio · > 8 Mio · > 24 Mio | 466 · **11** · 0 |
+| fichier unitaire > 8 Mio | **0** |
+
+Donc : `image_max_bytes` (8 Mio **par fichier**) passe, `siteImagesMaxBytes`
+(24 Mio) passe. **Mais `post_max_size` n'est toujours pas mesuré**, et 11
+entités demandent plus de 8 Mio de corps. Si l'hébergeur est à 8M — défaut
+fréquent —, ce sont ces 11-là qui échoueront, en 413, et elles seules. Ce n'est
+pas un défaut de conception, c'est un chiffre à relever.
+
+### 9.2 Ce qui a été écrit
+
+| Pièce | Fichier |
+|---|---|
+| la liste ordonnée, pure | `orderedImageNames`, `frontend/modules/site/lib/image-checksum.ts` |
+| l'entité « produit » à envoyer | `toProductImageBearing`, `hooks/use-image-sync.ts` |
+| le cache d'empreintes | `frontend/modules/site/lib/image-checksum-store.ts` |
+| calcul borné, annulable | `useLocalImageChecksums`, `hooks/use-image-sync.ts` |
+| l'écran | `components/online-catalog/ImageSyncPanel.tsx`, `CatalogueEnLignePage.tsx` |
+| le serveur : `products`, le ménage, l'espace disque | `server/api/images-sync.php` |
+
+Le relais Go n'a pas changé d'une ligne de code : il ne lit pas `kind`, il
+relaie. Seuls ses commentaires portent les mesures neuves.
+
+### 9.3 Le piège du §2 était armé, et il l'a été jusqu'ici
+
+`frontend/lib/queries/site-catalog.ts` a sa **propre** chaîne `fields`, et elle
+ne demandait pas `gallery`. Tel quel, chaque produit aurait paru n'avoir que
+son image principale, **sans une erreur**, et 1767 fichiers ne seraient jamais
+partis. C'est exactement le mécanisme qui a caché 747 galeries pendant une
+semaine, au même endroit, une collection plus loin. Gardien étendu :
+`frontend/lib/queries/catalog-fields.test.ts`, qui couvre désormais les deux
+listes.
+
+### 9.4 Les brouillons
+
+Ils ne sont pas filtrés par une condition ajoutée pour l'occasion : l'écran lit
+`usePublishedProducts`, donc les 436 `draft` n'y entrent jamais. C'est la seule
+bonne façon de les écarter — le miroir répondrait 409 « Entité inconnue de la
+base du site » (`images-sync.php`), et l'utilisateur croirait à une panne.
+
+### 9.5 Le coût du calcul local, et la réponse
+
+Le calcul d'une empreinte **lit les octets** : 57 Mio pour 261 marques et
+catégories, **1,503 Gio pour 2412 produits**. Le bouton unique « comparer »
+tel qu'il était les aurait tous lus, en série, sans arrêt possible.
+
+Trois garde-fous, et les trois sont nécessaires :
+
+1. **Un cache persistant dont la clé est la liste ordonnée des noms locaux**
+   (`image-checksum-store.ts`). Il repose sur une propriété de PocketBase déjà
+   énoncée et déjà exploitée dans ce dépôt : **le nom porte un jeton qui change
+   dès que le fichier change**. Remplacer, promouvoir, réordonner, retirer :
+   les quatre changent la liste de noms, donc ratent le cache. Le second
+   passage est gratuit.
+   **Ce n'est pas une empreinte de substitution** : ce qui part au serveur
+   reste le SHA-1 des SHA-256 des octets. La clé décide seulement s'il faut les
+   relire — un ratage coûte du temps, jamais une valeur fausse.
+   Dans `localStorage`, par poste, et assumé comme un cache : le §5 écarte une
+   table d'état de synchro, parce qu'un état doublé est un état à réconcilier.
+   Le perdre coûte un recalcul, jamais une divergence.
+2. **Un plafond**, `MAX_ENTITES_PAR_CALCUL` = 200, sur ce qui reste à lire
+   APRÈS le cache. Ce qui déborde est **dit**, pas tronqué en silence.
+3. **L'annulation.** Sans elle, la seule sortie d'un calcul long serait de
+   fermer l'écran, ce qui perdrait aussi ce qui a été mesuré.
+
+Et la règle qui les précède tous : **le calcul suit la sélection affichée**,
+filtres compris, pas le catalogue. L'écran plafonne aussi son tableau à 300
+lignes — bornage du DOM, sans rapport avec le précédent, et annoncé sous le
+tableau.
+
+### 9.6 Le §4.3 change sur un point : le ménage distant
+
+> « leurs octets restent sur le disque, inertes » — §4.3
+> « invisible et sans coût, sauf l'espace disque » — §3
+
+Vrai pour 57 Mio de marques. **Faux pour 1,503 Gio de produits**, sur un
+mutualisé dont l'espace est inconnu, quand chaque galerie qu'on raccourcit et
+chaque extension qu'on change laisse un rang derrière elle. La parenthèse est
+devenue le sujet, et la décision est du propriétaire (20 août 2026) : **un
+dossier n'a pas à garder une photo inutile.**
+
+`images-sync.php` efface donc, dans le dossier de l'entité, tout fichier que la
+nouvelle liste ne désigne plus.
+
+**L'ordre du §4.3 ne bouge pas** — octets, puis SQL — et le ménage vient
+**après les deux** :
+
+- après les octets, sinon on effacerait un rang avant de savoir si son
+  remplaçant s'écrit ;
+- après le SQL, parce que `image_paths` fait foi : tant que la ligne n'est pas
+  à jour, un fichier que la nouvelle liste ignore peut être celui que l'ancienne
+  désigne, donc celui qu'un visiteur charge.
+
+Il **ne rejette jamais** : refuser après une réussite annoncerait un échec qui
+n'en est pas un. S'il échoue, l'entité reste grasse et le prochain envoi
+rattrape. Il est borné à `<media_root>/<kind>/<legacy_id>/`, sans récursion,
+compare des noms de base à ceux qu'on vient d'écrire, et `$kind` comme
+`$legacyId` sont contraints depuis le début du script. Ce qu'il a repris est
+rendu dans la réponse (`cleaned`) et affiché : **le seul geste destructeur du
+mécanisme ne se fait pas en silence.**
+
+Effet de bord voulu : un `.tmp` laissé par un envoi interrompu n'est dans
+aucune liste, donc il tombe.
+
+### 9.7 L'espace disque du §6.4 cesse d'être inconnu
+
+`?action=inventory` rend désormais `disk.freeBytes` / `disk.totalBytes`
+(`disk_free_space` sur `media_root`). C'est une **lecture** : le script ne
+refuse aucun envoi sur cette base — ce serait décider, et le §3 le lui interdit.
+`null` si l'hébergeur a désactivé ces fonctions.
+
+### 9.8 Ce qui a été vérifié, et comment
+
+**Sur de vrais enregistrements et de vrais octets**, lus dans
+`%LOCALAPPDATA%\PocketReact\pb_data` en lecture seule — deux produits publiés,
+4 et 5 fichiers, 994 et 815 Kio :
+
+| | |
+|---|---|
+| promotion (`image` ↔ `gallery[0]`) | l'empreinte **change** |
+| réordonnancement de la galerie, contenu identique | l'empreinte **change** |
+| retrait de la dernière image | l'empreinte **change** |
+| rejeu à l'identique | l'empreinte est **stable** |
+
+`npx tsc -b`, `pnpm biome check`, `pnpm test` (**215 tests**), `go build ./...`,
+`go test ./backend/...` passent. `php -l` sans erreur.
+
+### 9.9 Ce que je n'ai PAS vérifié, et le dis
+
+- **La promotion n'a pas été exécutée par sa route.** La permutation vérifiée
+  ci-dessus est celle que `backend/routes/product_image_routes.go:136-137`
+  applique — lue dans le code, pas jouée. La route elle-même a son gardien
+  (`product_image_test.go`) ; ce qui n'a jamais été fait, c'est l'enchaînement
+  « je promeus vraiment, puis l'écran me dit modifié ». Il suppose d'écrire dans
+  la base réelle.
+- **Le ménage distant n'a pas de gardien exécutable.** Le PHP n'a pas de suite
+  de tests dans ce dépôt (déjà noté au §7) et n'a pas tourné : `php -l`
+  seulement. C'est le seul geste destructeur du mécanisme et c'est celui dont la
+  vérification manque — à faire à la main, sur une entité, au premier envoi.
+- **Aucun octet n'est parti**, et l'écran n'a pas été ouvert.
+- **`post_max_size` reste inconnu** (§9.1).
+
+### 9.10 Ce qu'il reste à faire, et par qui
+
+1. Déposer `server/api/images-sync.php` par FTP — **le propriétaire**. Rien
+   n'accepte un produit avant.
+2. Relever `post_max_size` et `upload_max_filesize`, et regarder
+   `disk.freeBytes` que l'inventaire rend maintenant.
+3. Envoyer **un** produit à galerie, et mesurer : durée, taille, `cleaned`.
+4. Puis un des 11 produits au-dessus de 8 Mio, pour savoir si le plafond de
+   l'hébergeur mord.
+5. La question 3 du §6 — redimensionner à l'envoi — se repose une troisième
+   fois, et cette fois avec 1,503 Gio en face.
+
+### 9.11 Le bouton photos sur la carte produit — 20 août 2026, même jour
+
+L'onglet « Images » a été ouvert sur des données réelles, et il ne tient pas :
+**2674 fiches, 4394 images**, marques, catégories et produits confondus, avec un
+bouton unique qui propose de tout comparer. Vérifier UN produit y est
+impossible.
+
+La demande du propriétaire est donc : l'action doit être **là où l'on regarde
+le produit**, dans l'arborescence, à côté de ce qui permet déjà d'en modifier le
+texte. Deux temps sur la carte :
+
+| clic | effet | coût |
+|---|---|---|
+| « Vérifier les photos (n) » | lit les octets de **ce** produit, calcule son empreinte | quelques centaines de Kio |
+| « Envoyer / Mettre à jour les photos » | envoie toutes ses images | l'entité entière |
+
+Le bouton n'apparaît que si le produit **porte** des images et **est déjà en
+ligne** : le miroir refuserait ses images en 409, les images étant un état de la
+ligne SQL, pas une entité à part.
+
+L'onglet « Images » reste en place et inchangé. Il mélange trois natures de
+fiches et ce n'est pas défendable ; **sa refonte est ouverte et n'est pas
+traitée ici** — la carte répond au besoin immédiat sans préjuger de ce que
+deviendra l'onglet.
+
+#### Ce que la demande a fait apparaître, et qui était un défaut
+
+`useLocalImageChecksums` tenait un index `legacy_id → empreinte`, reconstruit à
+chaque calcul. Deux défauts, dont le second est une panne silencieuse :
+
+1. **il se remplaçait.** Mesurer un seul produit effaçait l'état de tous les
+   autres — rédhibitoire pour une vérification fiche à fiche ;
+2. **il pouvait mentir.** Une empreinte mesurée hier y restait valide même si la
+   galerie avait changé depuis : la carte aurait dit « à jour » pour des images
+   qui ne l'étaient pas, **sans jamais lever**. C'est exactement la panne que le
+   miroir existe pour éviter.
+
+Le cache est donc devenu l'index. Il retient l'empreinte **avec la liste de noms
+qui l'a produite**, et toute lecture passe par `empreinteConnue`, qui compare la
+clé : galerie modifiée → « non mesurée », jamais une valeur périmée. Le second
+défaut est impossible par construction, et il est gardé par
+`image-checksum-store.test.ts`, qui couvrait déjà les quatre cas — remplacement,
+promotion, réordonnancement, retrait.
+
+#### Ce que je n'ai pas vérifié
+
+**L'écran n'a pas été vu.** Le volet navigateur atteint bien le serveur de
+développement, mais s'arrête à l'authentification, et je n'ai pas saisi
+d'identifiants. `npx tsc -b`, `biome`, `pnpm test` (215) passent ; rien de tout
+cela ne dit que le bouton s'affiche là où il faut.
+
+---
+
+## 9. Les images du produit sur sa fiche — 20 août 2026
+
+Phase 4. Le logo de marque avait ouvert la voie ; c'est le même chemin, avec
+une galerie au bout.
+
+### Ce qui a été mesuré avant d'écrire une ligne
+
+`images-sync.php?action=inventory`, lu à `2026-08-20T11:21:26Z` :
+
+| | en ligne |
+|---|---|
+| marques | 3 (inchangé depuis le 19) |
+| catégories | 0 |
+| **produits** | **1** — `c9lb1s84bQ3EGycc`, « 130.000 », marque Gewa |
+
+Un produit sur 2412 publiés. **L'absence d'image est donc la vue ordinaire du
+site**, à un facteur 2400 près, et c'est cette proportion qui a dicté l'écran
+bien plus que le cas nominal.
+
+Ce produit porte **quatre** fichiers — rangs 0 à 3, tous en `.jpg`, tous en
+`200` (sondage direct des URL ; le code, lui, ne sonde jamais rien). Il sert de
+cas de test complet : principale + galerie de trois, et une marque SANS logo,
+ce qui fait cohabiter les deux replis sur la même page.
+
+L'inventaire rend aussi l'espace disque du mutualisé, ce que le §1 disait
+inconnu : **382 To libres sur 414**. La question 4 du §6 — « 1,6 Gio tient-il ? »
+— est close.
+
+### Ce que j'ai tranché, et pourquoi
+
+**L'image principale sur les trois actions, la galerie sur la fiche seulement.**
+Je confirme la préférence qui m'était soumise, mais pas pour la raison qu'on
+pourrait croire : trois URL pèsent ~200 octets, à comparer aux milliers d'octets
+de description que ces mêmes réponses portent déjà. **Le poids n'est pas
+l'argument.** L'argument est qu'AUCUNE grille n'affiche de galerie : un champ
+publié sans consommateur est un champ qu'il faut porter, faire évoluer et ne
+jamais casser, pour rien.
+
+Corollaire assumé : `gallery` est **absent** des listes, pas vide. Un tableau
+vide affirmerait « ce produit n'a pas de galerie » — faux. L'absence dit « non
+demandé ». Sur la fiche il est toujours là, éventuellement vide.
+
+Et le rang 0 n'est **pas** répété dans `gallery` : il est déjà dans `image`.
+Un carrousel qui le veut en tête compose `[image, ...gallery]` — c'est ce que
+fait la fiche.
+
+**Une seule fonction de lecture**, `media_urls()`, extraite ce jour :
+`brand_image_url()` en prend le rang 0, la fiche en prend tout. C'est la
+validation qui valait d'être partagée, pas une abstraction sur la notion
+d'entité. Les URL restent absolues, pour les trois raisons du §8, inchangées.
+
+### Un piège trouvé en écrivant
+
+Les deux tables ont une colonne du MÊME NOM, `image_paths`. Sans alias distincts
+(`brand_image_paths`, `product_image_paths`), la seconde écrase la première dans
+la ligne rendue par PDO, et **le logo de marque disparaîtrait sans la moindre
+erreur**. C'est noté au-dessus de `$PRODUCT_COLUMNS`.
+
+### Ce qui a été vérifié dans le navigateur
+
+`VITE_USE_AXE_CATALOG=true`, serveur de développement. La production ne rend pas
+encore les nouveaux champs : le cas « avec images » est donc obtenu en
+complétant la réponse dans la console avec les **URL réelles**, mesurées à 200.
+
+| Cas | Résultat |
+|---|---|
+| Produit synchronisé, prod non patchée (réel) | « Image à venir », aucune image, aucune secousse |
+| Fiche, 4 images | grande image = **rang 0**, chargée (2000×1333) ; 4 vignettes dans l'ordre 0-1-2-3 ; `aria-label` « Image 1 sur 4 » |
+| Clic sur la 3ᵉ vignette | la grande devient `2.jpg`, `aria-current` suit |
+| **Un rang en 404** | il disparaît de la liste (restent `0.jpg`, `2.jpg`), les autres tiennent |
+| **Tous les rangs en 404** | retour à « Image à venir », zéro image cassée |
+| Grille catégorie « Banquettes » | 1 carte avec image, 4 avec l'icône — **les 5 cadres font 248×248**, au pixel |
+| Recherche « 130.000 » | la ligne de résultat porte son image dans son cadre 64×64 |
+
+Le dernier point est le plus important de la liste : **la mise en page ne bouge
+pas d'un pixel** entre une carte imagée et une carte qui ne l'est pas. Le cadre
+préexistait, il n'a pas été inventé pour l'occasion.
+
+### Ce que je n'ai PAS vérifié, et le dis
+
+- **Le PHP n'a jamais tourné sur des données réelles.** Pas de MySQL ici :
+  `php -l` et un test unitaire de `media_urls()` / `brand_image_url()` extraites
+  de leur fichier — liste de 4 rangs, `null`, chaîne vide, `[]`, JSON invalide,
+  chemin remontant (en rang 0 comme en rang 2), trou au milieu, objet JSON au
+  lieu d'une liste, nombre, et `media_base_url` absente. La colonne
+  `p.image_paths` n'a **jamais été lue par une vraie requête**, et l'alias qui
+  la sépare de celle de la marque n'a donc jamais été éprouvé sur PDO.
+- **`AxeCatalogSection`** (la section catalogue de la page d'accueil) : branchée
+  sur le même composant, mais **pas ouverte** dans le navigateur.
+- **Aucune capture d'écran** : le volet n'était pas affiché, la page ne compose
+  pas de frames. Tout ci-dessus est lu dans le DOM, pas vu.
+- **Le poids réel des images de produit en ligne** : 2000×1333 à l'affichage,
+  mais je n'ai pas mesuré les octets servis. La question 3 du §6 —
+  redimensionner à l'envoi — reste ouverte, et une fiche qui charge quatre
+  originaux la rend plus pressante qu'avec un logo.
+- **Rien n'est déposé.** `catalog.php` doit partir par FTP et le bundle être
+  rebâti : deux gestes du propriétaire, sans lesquels rien de tout ceci ne
+  s'affiche.

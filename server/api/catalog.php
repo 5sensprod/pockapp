@@ -139,12 +139,17 @@ define('MEDIA_BASE_URL', is_string($config['media_base_url'] ?? null) && $config
  * le principe vaut d'être posé — on énumère ce qu'on publie, on ne retire pas
  * ce qu'on cache.
  *
+ * `$withGallery` n'est vrai que pour la FICHE produit — voir le bloc « Les
+ * images du produit » plus bas, qui dit pourquoi. Les deux actions de liste
+ * appellent par `array_map('present_product', …)`, qui ne passe qu'un seul
+ * argument : le défaut `false` s'y applique de lui-même.
+ *
  * @param array<string,mixed> $row
  * @return array<string,mixed>
  */
-function present_product(array $row): array
+function present_product(array $row, bool $withGallery = false): array
 {
-    return [
+    $product = [
         'id'          => (string) $row['legacy_id'],
         // Le titre du site prime quand il existe ; sinon le libellé de la caisse.
         'title'       => ($row['site_title'] ?? null) !== null && $row['site_title'] !== ''
@@ -170,17 +175,46 @@ function present_product(array $row): array
                 ),
             ]
             : null,
-        // Toujours pas de champ image pour le PRODUIT : les images de produits
-        // ne sont pas exportées (le miroir n'accepte que marques et catégories,
-        // images-sync.php). Renvoyer une URL locale de PocketBase donnerait des
-        // images cassées ; ne rien renvoyer laisse le composant afficher une
-        // vignette de remplacement, ce qui est honnête.
-        //
-        // Le LOGO DE MARQUE, lui, est en ligne depuis le 19 août 2026 : ses
-        // octets sont sur le mutualisé, servis par Apache, et `image_paths`
-        // porte la liste ordonnée des chemins relatifs. Il remonte donc ici —
-        // voir brand_image_url().
     ];
+
+    // ── Les images du produit ───────────────────────────────────────────────
+    //
+    // Le commentaire qui tenait cette place disait « pas de champ image : les
+    // images de produits ne sont pas exportées ». C'était vrai jusqu'au
+    // 20 août 2026 ; le miroir accepte `products` depuis, et un produit est
+    // en ligne (mesuré à l'inventaire). La décision a changé, donc le
+    // commentaire aussi.
+    //
+    // `image` — le rang 0 — est rendu par les TROIS actions : les grilles de
+    // `category` et les résultats de `search` en ont besoin, c'est même leur
+    // seul usage d'image.
+    //
+    // `gallery` — les rangs 1..n — n'est rendu QUE par `product`, la fiche.
+    // Ce n'est pas une économie d'octets (trois URL pèsent ~200 octets, à
+    // comparer aux milliers de la description) : c'est qu'AUCUNE grille
+    // n'affiche de galerie. Un champ publié sans consommateur est un champ
+    // qu'il faut porter, faire évoluer et ne jamais casser, pour rien.
+    //
+    // Et il est ABSENT des listes, pas vide : un tableau vide affirmerait
+    // « ce produit n'a pas de galerie », ce qui serait faux. L'absence dit
+    // « non demandé ». Sur la fiche il est TOUJOURS là, éventuellement vide.
+    $images = media_urls(($row['product_image_paths'] ?? null) !== null
+        ? (string) $row['product_image_paths']
+        : null);
+
+    // Presque toujours null, et c'est le cas NORMAL, pas une panne : UN produit
+    // sur 2412 publiés est en ligne au 20 août 2026 (inventaire images-sync.php,
+    // mesuré). Ils partent un par un, à la main.
+    $product['image'] = $images[0] ?? null;
+
+    if ($withGallery) {
+        // Le rang 0 n'y est PAS : il est déjà dans `image`, et l'y remettre
+        // ferait afficher la principale deux fois. Un carrousel qui la veut en
+        // tête compose `[image, ...gallery]` — c'est à lui de le dire.
+        $product['gallery'] = array_slice($images, 1);
+    }
+
+    return $product;
 }
 
 /**
@@ -205,42 +239,96 @@ function present_product(array $row): array
  * Corollaire, et il vaut des deux côtés : le site consomme cette valeur TELLE
  * QUELLE. Il ne la préfixe jamais.
  *
- * `image_paths` FAIT FOI, pas le contenu du répertoire : les rangs abandonnés
- * et les extensions périmées restent sur le disque, inertes. On lit donc le
- * rang 0 de la liste — l'image principale — et rien d'autre : une page produit
- * veut un logo, pas la galerie de la marque.
- *
- * Sans `media_base_url` en configuration, on rend null plutôt qu'un chemin
- * relatif : mieux vaut pas de logo qu'une URL que personne ne sait résoudre.
+ * La lecture elle-même est dans `media_urls()`, partagée avec les images du
+ * produit depuis le 20 août 2026 : `image_paths` fait foi, jamais le contenu
+ * du répertoire, et l'absence de `media_base_url` rend null.
  */
 function brand_image_url(?string $imagePaths): ?string
 {
+    // Une marque n'expose que son logo : le rang 0 de sa liste, et rien
+    // d'autre. Une page produit veut un logo, pas la galerie de la marque.
+    return media_urls($imagePaths)[0] ?? null;
+}
+
+/**
+ * La liste ORDONNÉE des URL publiques d'une colonne `image_paths`, ou [].
+ *
+ * C'est la couche basse : `brand_image_url()` en prend le rang 0, la fiche
+ * produit en prend tout. Elle a été extraite le 20 août 2026, quand les images
+ * de produits sont arrivées — deux appelants voulaient la même lecture, l'un
+ * d'un seul rang, l'autre de tous. Deux fonctions séparées auraient dupliqué
+ * la validation ; c'est elle qui vaut d'être partagée, pas une abstraction sur
+ * la notion d'entité.
+ *
+ * ─── `image_paths` FAIT FOI, JAMAIS LE RÉPERTOIRE ─────────────────────────
+ * Les rangs abandonnés et les extensions périmées dorment sur le disque du
+ * mutualisé : rien ne les efface (images-sync.php n'a pas de balayage). Un
+ * `scandir` rendrait donc des images que plus personne ne désigne. On ne lit
+ * que cette colonne, et le nom distant n'est jamais recomposé ici — il est
+ * calculé à l'écriture, et transporté seulement dans ce JSON.
+ *
+ * L'ORDRE est le sens : rang 0 = image principale, rangs suivants = galerie
+ * telle qu'elle a été rangée. Ne jamais trier cette liste.
+ *
+ * Sans `media_base_url` en configuration, on rend [] plutôt que des chemins
+ * relatifs : mieux vaut pas d'image qu'une URL que personne ne sait résoudre.
+ *
+ * @return list<string>
+ */
+function media_urls(?string $imagePaths): array
+{
     if ($imagePaths === null || $imagePaths === '' || MEDIA_BASE_URL === '') {
-        return null;
+        return [];
     }
 
     $paths = json_decode($imagePaths, true);
-    if (!is_array($paths) || !isset($paths[0]) || !is_string($paths[0]) || $paths[0] === '') {
-        return null;
+    if (!is_array($paths)) {
+        return [];
     }
 
-    // Le chemin vient de NOTRE base, écrit par images-sync.php, qui n'accepte
-    // ni nom venu du client ni extension hors liste fermée. Ceinture tout de
-    // même : rien qui remonte l'arborescence ne sort d'ici.
-    if (strpos($paths[0], '..') !== false) {
-        return null;
+    // Une LISTE, pas un objet : la clé EST le rang, et `{"a": "…"}` n'en a
+    // pas. `array_is_list()` ferait ça en un mot, mais il demande PHP 8.1 et
+    // ce fichier vise 7.4 (en-tête) — le mutualisé décide, pas nous.
+    if (array_keys($paths) !== range(0, count($paths) - 1)) {
+        return [];
     }
 
-    return MEDIA_BASE_URL . ltrim($paths[0], '/');
+    $urls = [];
+    foreach ($paths as $path) {
+        if (!is_string($path) || $path === '') {
+            // Un trou dans la liste décalerait tous les rangs suivants, et le
+            // rang porte le SENS (0 = principale). On s'arrête au trou plutôt
+            // que de le sauter — comme le fait images-sync.php à la lecture
+            // des `image_<rang>` reçus, « en s'arrêtant au premier trou ».
+            break;
+        }
+
+        // Le chemin vient de NOTRE base, écrit par images-sync.php, qui
+        // n'accepte ni nom venu du client ni extension hors liste fermée.
+        // Ceinture tout de même : rien qui remonte l'arborescence ne sort
+        // d'ici, et on s'arrête plutôt que de renuméroter la suite.
+        if (strpos($path, '..') !== false) {
+            break;
+        }
+
+        $urls[] = MEDIA_BASE_URL . ltrim($path, '/');
+    }
+
+    return $urls;
 }
 
-// `b.image_paths` s'ajoute à `b.name` : c'est la liste ORDONNÉE des chemins
-// relatifs des images de la marque, en JSON, écrite par images-sync.php. Les
-// trois requêtes qui utilisent ces colonnes joignent déjà `ax_brands` en LEFT
-// JOIN — rien d'autre à changer.
+// Deux colonnes `image_paths`, et il faut les distinguer : celle de la MARQUE
+// (`b.`) et celle du PRODUIT (`p.`) portent le même nom dans leurs tables
+// respectives. Sans alias, la seconde écraserait la première dans la ligne
+// rendue par PDO, et le logo de marque disparaîtrait sans erreur.
+//
+// Chacune est la liste ORDONNÉE des chemins relatifs, en JSON, écrite par
+// images-sync.php. Les trois requêtes qui utilisent ces colonnes joignent déjà
+// `ax_brands` en LEFT JOIN — rien d'autre à changer.
 $PRODUCT_COLUMNS = 'p.legacy_id, p.name, p.site_title, p.slug, p.sku, p.description,
                     p.price_ttc, p.stock, p.brand, b.name AS brand_name,
-                    b.image_paths AS brand_image_paths';
+                    b.image_paths AS brand_image_paths,
+                    p.image_paths AS product_image_paths';
 
 $action = isset($_GET['action']) ? (string) $_GET['action'] : 'category';
 
@@ -416,7 +504,9 @@ try {
 
         respond(200, [
             'ok'         => true,
-            'product'    => present_product($row),
+            // Seul appel avec la galerie : c'est la fiche, le seul écran qui
+            // l'affiche.
+            'product'    => present_product($row, true),
             'categories' => array_map(static function (array $c): array {
                 return [
                     'id'     => (string) $c['legacy_id'],

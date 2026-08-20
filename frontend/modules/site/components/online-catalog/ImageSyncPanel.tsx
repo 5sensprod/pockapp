@@ -1,15 +1,26 @@
 // frontend/modules/site/components/online-catalog/ImageSyncPanel.tsx
 //
-// LE MIROIR DES IMAGES — marques et catégories, une fiche à la fois.
+// LE MIROIR DES IMAGES — marques, catégories et produits, une fiche à la fois.
 //
 // Premier livrable de PocketSite-docs/16-conception-images.md (§4.4) : un
 // bouton par fiche, et la colonne d'état à trois valeurs. 225 marques et
 // 36 catégories, soit 57 Mio — de quoi MESURER la vitesse réelle avant
-// d'envisager les 1,6 Gio de produits.
+// d'envisager les produits.
 //
-// L'envoi est manuel et entité par entité. Ce n'est pas un mode dégradé en
+// Les PRODUITS s'y ajoutent le 20 août 2026, et ils changent une chose : la
+// TAILLE. 2412 fiches publiées, 4132 fichiers, 1,503 Gio. Deux conséquences
+// visibles ici, et elles ne sont pas décoratives :
+//
+//   - le tableau est PLAFONNÉ à l'affichage. 2400 lignes de DOM ne se lisent
+//     pas plus qu'elles ne s'affichent ; le plafond est dit, pas subi ;
+//   - la comparaison est ANNULABLE. Elle lit les octets ; sans arrêt possible,
+//     la seule sortie serait de fermer l'écran, ce qui perdrait aussi ce qui a
+//     été mesuré.
+//
+// L'envoi reste manuel et entité par entité. Ce n'est pas un mode dégradé en
 // attendant mieux : c'est la seule façon d'observer ce que le mutualisé
-// encaisse, ses plafonds PHP n'étant pas mesurés (§6.2).
+// encaisse, ses plafonds PHP n'étant pas mesurés (§6.2) — et 11 produits
+// demandent un corps de plus de 8 Mio, le pire à 15,92 Mio.
 //
 // Ce composant ne calcule aucune empreinte et n'appelle aucun réseau
 // lui-même : tout arrive par `use-image-sync.ts`.
@@ -24,6 +35,7 @@ import {
 	CloudUpload,
 	Loader2,
 	RefreshCw,
+	XCircle,
 } from 'lucide-react'
 
 import type { ImageBearing } from '../../hooks/use-image-sync'
@@ -50,10 +62,30 @@ type Props = {
 	computeError: string | null
 	onCompute: () => void
 	onRefresh: () => void
+	/** Arrête la comparaison en cours. Ce qui a déjà été mesuré est gardé. */
+	onCancel: () => void
 	sending: string | null
 	sendError: Error | null
 	onSend: (row: ImageRow) => void
 }
+
+/** Le mot qui va derrière le nom de la fiche. `products` est venu en dernier
+ *  et c'est le seul qui porte plusieurs images. */
+const LIBELLE_KIND: Record<ImageKind, string> = {
+	brands: 'marque',
+	categories: 'catégorie',
+	products: 'produit',
+}
+
+/**
+ * Combien de lignes le tableau affiche au plus.
+ *
+ * Rien à voir avec `MAX_ENTITES_PAR_CALCUL`, qui borne la LECTURE des octets :
+ * celui-ci borne le DOM. 2412 lignes s'affichent mal et ne se lisent pas ; le
+ * plafond est annoncé sous le tableau, jamais silencieux — un tableau tronqué
+ * sans un mot ferait croire qu'une fiche n'existe pas.
+ */
+const MAX_LIGNES_AFFICHEES = 300
 
 const ETIQUETTES: Record<SyncState, { texte: string; classe: string }> = {
 	absent: { texte: 'Jamais envoyée', classe: 'bg-muted text-muted-foreground' },
@@ -78,6 +110,7 @@ export function ImageSyncPanel({
 	computeError,
 	onCompute,
 	onRefresh,
+	onCancel,
 	sending,
 	sendError,
 	onSend,
@@ -109,6 +142,11 @@ export function ImageSyncPanel({
 	const compte = (state: SyncState) =>
 		rows.filter((row) => row.state === state).length
 	const empreintesConnues = rows.some((row) => row.checksum !== undefined)
+	const fichiers = rows.reduce(
+		(total, row) => total + row.entity.images.length,
+		0,
+	)
+	const visibles = rows.slice(0, MAX_LIGNES_AFFICHEES)
 
 	return (
 		<div className='space-y-4'>
@@ -116,6 +154,7 @@ export function ImageSyncPanel({
 				<CardContent className='flex flex-wrap items-center gap-3 pt-6'>
 					<div className='flex flex-1 flex-wrap items-center gap-2 text-sm'>
 						<Badge variant='secondary'>{rows.length} fiches</Badge>
+						<Badge variant='secondary'>{fichiers} images</Badge>
 						<Badge className={ETIQUETTES.absent.classe}>
 							{compte('absent')} jamais envoyées
 						</Badge>
@@ -127,21 +166,33 @@ export function ImageSyncPanel({
 						</Badge>
 					</div>
 
-					<Button
-						variant='outline'
-						size='sm'
-						onClick={onCompute}
-						disabled={computing}
-					>
-						{computing ? (
-							<Loader2 className='mr-2 h-4 w-4 animate-spin' />
-						) : (
-							<RefreshCw className='mr-2 h-4 w-4' />
+					<div className='flex items-center gap-2'>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={onCompute}
+							disabled={computing}
+						>
+							{computing ? (
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							) : (
+								<RefreshCw className='mr-2 h-4 w-4' />
+							)}
+							{computing
+								? `Lecture des images ${computeProgress.done}/${computeProgress.total}`
+								: 'Comparer aux images en ligne'}
+						</Button>
+
+						{/* Visible SEULEMENT pendant le calcul : un bouton d'arrêt en
+						    permanence laisserait croire qu'il y a toujours quelque chose
+						    à arrêter. */}
+						{computing && (
+							<Button variant='ghost' size='sm' onClick={onCancel}>
+								<XCircle className='mr-2 h-4 w-4' />
+								Arrêter
+							</Button>
 						)}
-						{computing
-							? `Lecture des images ${computeProgress.done}/${computeProgress.total}`
-							: 'Comparer aux images en ligne'}
-					</Button>
+					</div>
 				</CardContent>
 			</Card>
 
@@ -152,8 +203,10 @@ export function ImageSyncPanel({
 				<p className='text-muted-foreground text-sm'>
 					Les états affichés ne tiennent compte que de la présence en ligne.
 					Lancez la comparaison pour savoir lesquelles ont changé depuis leur
-					envoi — elle lit les octets de chaque image, comptez quelques dizaines
-					de secondes.
+					envoi — <strong>elle lit les octets de chaque image</strong>. Les
+					fiches déjà mesurées et inchangées sont reconnues sans être relues ;
+					les autres se lisent à quelques centaines de kilo-octets pièce.
+					Filtrez avant de lancer si la liste est longue.
 				</p>
 			)}
 
@@ -179,7 +232,7 @@ export function ImageSyncPanel({
 						</tr>
 					</thead>
 					<tbody>
-						{rows.map((row) => {
+						{visibles.map((row) => {
 							const cle = `${row.kind}/${row.entity.legacy_id}`
 							const enCours = sending === cle
 							const etiquette = ETIQUETTES[row.state]
@@ -189,7 +242,7 @@ export function ImageSyncPanel({
 									<td className='px-3 py-2'>
 										<span className='font-medium'>{row.entity.name}</span>
 										<span className='ml-2 text-muted-foreground text-xs'>
-											{row.kind === 'brands' ? 'marque' : 'catégorie'}
+											{LIBELLE_KIND[row.kind]}
 										</span>
 									</td>
 									<td className='px-3 py-2 tabular-nums'>
@@ -238,7 +291,16 @@ export function ImageSyncPanel({
 
 				{rows.length === 0 && (
 					<p className='px-3 py-8 text-center text-muted-foreground text-sm'>
-						Aucune marque ni catégorie ne porte d’image.
+						Aucune fiche de la sélection ne porte d’image.
+					</p>
+				)}
+
+				{rows.length > visibles.length && (
+					<p className='border-t bg-muted/30 px-3 py-3 text-center text-muted-foreground text-sm'>
+						{visibles.length} fiches affichées sur {rows.length}. Affinez la
+						sélection — catégorie, marque, ou « à mettre à jour » — pour voir
+						les autres.{' '}
+						<strong>La comparaison, elle, porte sur les {rows.length}.</strong>
 					</p>
 				)}
 			</div>

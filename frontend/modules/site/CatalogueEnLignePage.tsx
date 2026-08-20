@@ -74,6 +74,7 @@ import {
 } from './hooks/use-catalog-sync'
 import {
 	toImageBearing,
+	toProductImageBearing,
 	useImageInventory,
 	useLocalImageChecksums,
 	useSendEntityImages,
@@ -295,10 +296,15 @@ export function CatalogueEnLignePage() {
 	}, [inventory.data, categories.data, brands.data, catalog, relationChecksums])
 
 	// ── Le miroir des images ────────────────────────────────────────────────
-	// Marques et catégories seules : elles portent un champ `image` scalaire,
-	// donc la même chaîne de bout en bout sans le problème de la liste
-	// ordonnée. Les produits viennent après, mécanique validée en ligne
-	// (§4.4 de PocketSite-docs/16-conception-images.md).
+	// Marques, catégories ET produits depuis le 20 août 2026. Les deux
+	// premières portent un champ `image` scalaire ; les produits apportent la
+	// LISTE ORDONNÉE — `image` au rang 0, `gallery` derrière, dans son ordre —
+	// et l'ÉCHELLE : 2412 fiches publiées, 4132 fichiers, 1,503 Gio.
+	//
+	// D'où la règle de cet écran : **les produits qui entrent ici sont ceux de
+	// la SÉLECTION affichée**, filtres compris, pas les 2412. Comparer coûte de
+	// lire les octets ; un geste dont on ne peut pas estimer le coût n'est pas
+	// un geste, c'est un piège.
 	//
 	// L'inventaire d'images est DISTINCT de celui des entités : le checksum
 	// d'entité ne couvre aucun champ image, un export incrémental fondé sur lui
@@ -309,6 +315,10 @@ export function CatalogueEnLignePage() {
 	const localImageChecksums = useLocalImageChecksums()
 	const sendImages = useSendEntityImages()
 	const [sendingImages, setSendingImages] = useState<string | null>(null)
+	/** Le produit dont on lit les octets, s'il y en a un. Distinct de
+	 *  `sendingImages` : lire et envoyer sont deux temps, et la carte doit
+	 *  montrer les deux. */
+	const [checkingImages, setCheckingImages] = useState<string | null>(null)
 
 	/** Les fiches qui PORTENT une image. Le champ `image` fait foi, pas le
 	 *  répertoire de stockage : une catégorie a déjà perdu son image en laissant
@@ -318,10 +328,11 @@ export function CatalogueEnLignePage() {
 
 		for (const brand of brands.data ?? []) {
 			if (!brand.image) continue
-			const checksum = localImageChecksums.index.get(brand.legacy_id)
+			const entity = toImageBearing(pb, brand)
+			const checksum = localImageChecksums.lookup(entity)
 			rows.push({
 				kind: 'brands',
-				entity: toImageBearing(pb, brand),
+				entity,
 				checksum,
 				state: syncStateOf(
 					brand.legacy_id,
@@ -333,10 +344,11 @@ export function CatalogueEnLignePage() {
 
 		for (const category of categories.data ?? []) {
 			if (!category.image) continue
-			const checksum = localImageChecksums.index.get(category.legacy_id)
+			const entity = toImageBearing(pb, category)
+			const checksum = localImageChecksums.lookup(entity)
 			rows.push({
 				kind: 'categories',
-				entity: toImageBearing(pb, category),
+				entity,
 				checksum,
 				state: syncStateOf(
 					category.legacy_id,
@@ -346,12 +358,38 @@ export function CatalogueEnLignePage() {
 			})
 		}
 
+		// Les produits de la SÉLECTION, et eux seuls. `shownProducts` vient de
+		// `usePublishedProducts` : les 436 brouillons n'y sont jamais, ce qui
+		// est la seule bonne façon de les écarter — le miroir répondrait 409
+		// « Entité inconnue de la base du site », et l'utilisateur croirait à
+		// une panne.
+		//
+		// `image` OU `gallery` : un produit sans principale mais avec une
+		// galerie n'existe pas dans la base (0 sur 2999, mesuré le 20 août
+		// 2026). Tester les deux ne coûte rien et ne suppose rien.
+		for (const product of shownProducts) {
+			if (!product.image && !(product.gallery?.length ?? 0)) continue
+			const entity = toProductImageBearing(pb, product)
+			const checksum = localImageChecksums.lookup(entity)
+			rows.push({
+				kind: 'products',
+				entity,
+				checksum,
+				state: syncStateOf(
+					product.legacy_id,
+					checksum,
+					imageInventory.data?.products,
+				),
+			})
+		}
+
 		return rows
 	}, [
 		brands.data,
 		categories.data,
+		shownProducts,
 		imageInventory.data,
-		localImageChecksums.index,
+		localImageChecksums.lookup,
 		pb,
 	])
 
@@ -364,8 +402,13 @@ export function CatalogueEnLignePage() {
 				{ kind: row.kind, entity: row.entity, imageChecksum: row.checksum },
 				{
 					onSuccess: (outcome) => {
+						// Le ménage se DIT. C'est le seul geste du mécanisme qui
+						// détruit des octets ; l'annoncer est le minimum.
+						const menage = outcome.cleaned?.files
+							? `, ${outcome.cleaned.files} devenue(s) inutile(s) effacée(s)`
+							: ''
 						toast.success(
-							`${row.entity.name} : ${outcome.paths.length} image(s) en ligne`,
+							`${row.entity.name} : ${outcome.paths.length} image(s) en ligne${menage}`,
 						)
 					},
 					onError: (cause) => toast.error(cause.message),
@@ -374,6 +417,69 @@ export function CatalogueEnLignePage() {
 			)
 		},
 		[sendImages],
+	)
+
+	// ── Les photos, produit par produit, depuis la GRILLE ───────────────────
+	// L'onglet « Images » mêle 2674 fiches et propose de comparer 4394 images
+	// d'un coup : illisible, et hors de proportion quand on veut vérifier une
+	// fiche. Ici, l'action porte sur la carte qu'on regarde — même couple
+	// « vérifier / mettre à jour » que le texte a déjà.
+	//
+	// L'état vient de `imageRows`, qui ne porte que la sélection affichée : il
+	// n'y a donc rien de plus à dériver, et surtout rien à calculer pour les
+	// 2411 autres produits.
+	const productImageRows = useMemo(() => {
+		const map = new Map<string, ImageRow>()
+		for (const row of imageRows) {
+			if (row.kind === 'products') map.set(row.entity.legacy_id, row)
+		}
+		return map
+	}, [imageRows])
+
+	/** `undefined` = jamais mesuré. C'est un état, que la carte affiche. */
+	const productImageStates = useMemo(() => {
+		const map = new Map<string, SyncState | undefined>()
+		for (const [legacyId, row] of productImageRows) {
+			map.set(legacyId, row.checksum === undefined ? undefined : row.state)
+		}
+		return map
+	}, [productImageRows])
+
+	/** Premier temps : LIRE les octets de ce produit, et de lui seul. */
+	const checkProductImages = useCallback(
+		(product: CatalogProduct) => {
+			const row = productImageRows.get(product.legacy_id)
+			if (!row) return
+			// Une entité. Le cache persistant fait que revérifier plus tard ne
+			// relira rien tant que les images n'ont pas bougé.
+			setCheckingImages(product.legacy_id)
+			localImageChecksums
+				.compute([row.entity])
+				.finally(() => setCheckingImages(null))
+		},
+		[productImageRows, localImageChecksums.compute],
+	)
+
+	/** Second temps : ENVOYER. Passe par le même chemin que l'onglet Images —
+	 *  il n'y a qu'une façon d'envoyer des images, et c'est celle-là. */
+	const sendProductImages = useCallback(
+		(product: CatalogProduct) => {
+			const row = productImageRows.get(product.legacy_id)
+			if (row) sendEntityImages(row)
+		},
+		[productImageRows, sendEntityImages],
+	)
+
+	/** Ce que la grille appelle « occupé ». Elle ne connaît que le
+	 *  `legacy_id`, pas la clé `kind/legacy_id` de la mutation d'envoi — et les
+	 *  deux temps, lecture et envoi, doivent l'occuper également. */
+	const productImagesBusy = useMemo(
+		() =>
+			checkingImages ??
+			(sendingImages?.startsWith('products/')
+				? sendingImages.slice('products/'.length)
+				: null),
+		[checkingImages, sendingImages],
 	)
 
 	const syncCounts = useMemo(() => {
@@ -828,6 +934,10 @@ export function CatalogueEnLignePage() {
 										onExport={(product) => exportProducts([product])}
 										exporting={exportCatalog.isPending}
 										onEdit={editProduct}
+										imageStates={productImageStates}
+										onCheckImages={checkProductImages}
+										onSendImages={sendProductImages}
+										imagesBusy={productImagesBusy}
 										emptyLabel={
 											onlyModified
 												? 'Aucun produit à mettre à jour avec ces filtres.'
@@ -862,6 +972,7 @@ export function CatalogueEnLignePage() {
 								onCompute={() =>
 									localImageChecksums.compute(imageRows.map((r) => r.entity))
 								}
+								onCancel={localImageChecksums.cancel}
 								onRefresh={() => imageInventory.refetch()}
 								sending={sendingImages}
 								sendError={sendImages.error}
@@ -886,6 +997,10 @@ export function CatalogueEnLignePage() {
 								onExport={(product) => exportProducts([product])}
 								exporting={exportCatalog.isPending}
 								onEdit={editProduct}
+								imageStates={productImageStates}
+								onCheckImages={checkProductImages}
+								onSendImages={sendProductImages}
+								imagesBusy={productImagesBusy}
 							/>
 						</section>
 					)}

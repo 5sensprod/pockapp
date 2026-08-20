@@ -1,6 +1,6 @@
 <?php
 /**
- * Miroir des images du catalogue — marques et catégories.
+ * Miroir des images du catalogue — marques, catégories et produits.
  *
  * Mécanisme décrit par
  * frontend/modules/site/PocketSite-docs/16-conception-images.md, §4 :
@@ -30,15 +30,24 @@
  *    contrat).
  *
  * Un envoi = une entité, ENTIÈRE. Les rangs au-delà de la nouvelle longueur
- * disparaissent de la ligne SQL ; leurs octets restent sur le disque, inertes
- * (§4.3). On ne supprime pas une entité, on réécrit son état.
+ * disparaissent de la ligne SQL, ET LEURS OCTETS SONT EFFACÉS. On ne supprime
+ * pas une entité, on réécrit son état.
+ *
+ * ⚠️ Ce dernier point est un CHANGEMENT du 20 août 2026. Le §4.3 posait que
+ * les octets devenus inutiles « restent sur le disque, inertes », et que
+ * c'était « sans coût, sauf l'espace disque ». Cette phrase a été écrite pour
+ * 57 Mio de marques. Les produits pèsent 1,503 Gio, l'espace du mutualisé est
+ * inconnu, et une galerie qui raccourcit laisse des rangs derrière elle à
+ * chaque retouche : la parenthèse est devenue le sujet. Voir `menage()`.
  *
  * La ligne SQL est mise à jour par UN SEUL `UPDATE` : un visiteur lit l'ancien
  * état ou le nouveau, jamais un état mi-écrit.
  *
- * **Les produits ne sont pas acceptés ici**, délibérément : le premier
- * livrable est les marques et les catégories, 57 Mio, de quoi mesurer la
- * vitesse réelle avant d'envisager 1,6 Gio (§4.4).
+ * **Les produits sont acceptés depuis le 20 août 2026.** Le premier livrable
+ * — marques et catégories, 57 Mio — a servi à mesurer la vitesse réelle avant
+ * d'ouvrir les 1,503 Gio de produits (§4.4). Ils n'apportent pas un mécanisme
+ * de plus : le rang 0 est leur image principale, les rangs suivants leur
+ * galerie DANS SON ORDRE, et le reste est identique.
  *
  * Aucun secret ici : identifiants de base et clé API vivent dans
  * ../config/config.php, non versionné.
@@ -185,12 +194,15 @@ try {
 }
 
 /**
- * Les seules tables acceptées. `products` en est ABSENT tant que la mécanique
- * n'a pas été mesurée en ligne sur les marques et les catégories (§4.4).
+ * Les seules tables acceptées. `products` s'y ajoute le 20 août 2026, la
+ * mécanique ayant été mesurée en ligne sur les marques (§4.4) ; ses colonnes
+ * `image_*` étaient créées d'avance par `server/sql/images.sql`, précisément
+ * pour que cette ligne ne coûte pas un verrou de table sur 2999 lignes.
  */
 $TABLES = [
     'brands'     => $prefix . 'brands',
     'categories' => $prefix . 'categories',
+    'products'   => $prefix . 'products',
 ];
 
 $method = $_SERVER['REQUEST_METHOD'] ?? '';
@@ -224,22 +236,43 @@ if ($method === 'GET') {
     try {
         $brands     = $inventory($pdo, $TABLES['brands']);
         $categories = $inventory($pdo, $TABLES['categories']);
+        $products   = $inventory($pdo, $TABLES['products']);
     } catch (PDOException $e) {
         images_log($config, 'inventaire images impossible : ' . $e->getMessage());
         reject(500, 'Lecture de l\'inventaire d\'images impossible. Les colonnes image_* sont-elles en place ?');
     }
+
+    // L'ESPACE DISQUE, rendu avec l'inventaire.
+    //
+    // Le §6.4 de la conception le déclarait « inconnu », et il l'est resté tant
+    // que seuls 57 Mio partaient. Les produits en pèsent 1,503 Gio : envoyer
+    // sans savoir ce qui reste, c'est découvrir la limite au milieu d'un lot,
+    // avec des octets écrits et des lignes SQL qui ne le sont pas.
+    //
+    // C'est une LECTURE, elle ne décide de rien : le script ne refuse pas un
+    // envoi parce que le disque lui paraît petit — ce serait décider, et §3 le
+    // lui interdit. Il rend le chiffre, l'humain regarde. `null` si l'hébergeur
+    // a désactivé ces fonctions, ce qui arrive sur les mutualisés.
+    $libre = @disk_free_space($mediaRoot);
+    $total = @disk_total_space($mediaRoot);
 
     respond(200, [
         'ok'     => true,
         'counts' => [
             'brands'     => count($brands),
             'categories' => count($categories),
+            'products'   => count($products),
         ],
         // Objets vides encodés en objets, pas en tableaux : le consommateur
         // indexe par legacy_id, un `[]` casserait sa lecture.
         'brands'       => (object) $brands,
         'categories'   => (object) $categories,
+        'products'     => (object) $products,
         'mediaBaseUrl' => is_string($config['media_base_url']) ? $config['media_base_url'] : null,
+        'disk'         => [
+            'freeBytes'  => is_float($libre) ? (int) $libre : null,
+            'totalBytes' => is_float($total) ? (int) $total : null,
+        ],
         'readAt'       => gmdate('Y-m-d\TH:i:s\Z'),
     ]);
 }
@@ -256,7 +289,7 @@ if ($method !== 'POST') {
 $kind = isset($_POST['kind']) ? (string) $_POST['kind'] : '';
 if (!isset($TABLES[$kind])) {
     reject(422, sprintf(
-        'kind inconnu : « %s ». Attendu : brands ou categories. Les produits ne sont pas encore acceptés.',
+        'kind inconnu : « %s ». Attendu : brands, categories ou products.',
         $kind
     ));
 }
@@ -401,7 +434,76 @@ try {
     reject(500, 'Mise à jour de la ligne impossible. Les colonnes image_* sont-elles en place ?');
 }
 
-images_log($config, sprintf('%s/%s : %d image(s), %s', $kind, $legacyId, count($paths), $imageChecksum));
+// ── Le ménage en DERNIER ────────────────────────────────────────────────────
+// Efface, dans le dossier de CETTE entité, tout fichier que la nouvelle liste
+// ne désigne plus.
+//
+// ─── Pourquoi il existe ────────────────────────────────────────────────────
+// Le §4.3 posait que les rangs abandonnés « restent sur le disque, inertes »,
+// et le §3 que c'était « sans coût, sauf l'espace disque ». Vrai pour 57 Mio
+// de marques. Les produits pèsent 1,503 Gio pour 4132 fichiers, l'espace du
+// mutualisé n'est pas connu, et chaque galerie qu'on raccourcit ou dont on
+// change l'extension laisse un rang derrière elle. Ce qui était une parenthèse
+// est devenu le sujet : un dossier n'a pas à garder une photo inutile.
+//
+// ─── Pourquoi EN DERNIER, et pas ailleurs ──────────────────────────────────
+// C'est le seul geste destructeur de tout le mécanisme. L'ordre du §4.3 ne
+// bouge pas — octets, puis SQL — et le ménage vient APRÈS les deux :
+//
+//   * après les octets, sinon on effacerait un rang avant de savoir si son
+//     remplaçant s'écrit ;
+//   * après le SQL, parce que `image_paths` est ce qui fait foi pour le site.
+//     Tant que la ligne n'est pas à jour, un fichier que la NOUVELLE liste
+//     ignore peut encore être celui que l'ANCIENNE désigne, donc celui qu'un
+//     visiteur est en train de charger.
+//
+// S'il échoue, l'état visible est déjà correct : l'entité reste simplement un
+// peu grasse, et le prochain envoi rattrapera. C'est pourquoi il ne rejette
+// jamais — refuser ici annoncerait un échec après une réussite.
+//
+// ─── Pourquoi il est sûr ───────────────────────────────────────────────────
+// Il ne regarde QUE `<media_root>/<kind>/<legacy_id>/`, jamais au-dessus et
+// jamais en dessous : `glob` sans récursion, et `is_file` écarte les
+// répertoires. `$kind` vient d'une liste fermée et `$legacyId` est contraint à
+// [A-Za-z0-9_-] depuis le début du script — aucun des deux ne peut porter un
+// `..`. Et il compare des NOMS DE BASE à ceux qu'on vient d'écrire, pas des
+// chemins : rien de ce que l'appelant a envoyé n'entre dans la décision.
+
+$garder = [];
+foreach ($paths as $chemin) {
+    $garder[basename($chemin)] = true;
+}
+
+$efface = 0;
+$octetsLiberes = 0;
+foreach ((array) @glob($dir . '/*') as $trouve) {
+    if (!is_string($trouve) || !is_file($trouve)) {
+        continue;
+    }
+    $nom = basename($trouve);
+    if (isset($garder[$nom])) {
+        continue;
+    }
+    // Un `.tmp` oublié par un envoi interrompu est justement ce qu'on veut
+    // voir partir : il n'est dans aucune liste, donc il tombe ici.
+    $taille = (int) @filesize($trouve);
+    if (@unlink($trouve)) {
+        $efface++;
+        $octetsLiberes += $taille;
+    } else {
+        images_log($config, 'ménage : effacement impossible : ' . $trouve);
+    }
+}
+
+images_log($config, sprintf(
+    '%s/%s : %d image(s), %s, ménage %d fichier(s) %d octet(s)',
+    $kind,
+    $legacyId,
+    count($paths),
+    $imageChecksum,
+    $efface,
+    $octetsLiberes
+));
 
 respond(200, [
     'ok'             => true,
@@ -409,6 +511,10 @@ respond(200, [
     'legacy_id'      => $legacyId,
     'image_checksum' => $imageChecksum,
     'paths'          => $paths,
+    // Ce que le ménage a repris. Rendu parce qu'un effacement doit se VOIR :
+    // c'est le seul geste du mécanisme qui détruit, il ne se fait pas en
+    // silence.
+    'cleaned'        => ['files' => $efface, 'bytes' => $octetsLiberes],
     'mediaBaseUrl'   => is_string($config['media_base_url']) ? $config['media_base_url'] : null,
     'writtenAt'      => gmdate('Y-m-d\TH:i:s\Z'),
 ]);

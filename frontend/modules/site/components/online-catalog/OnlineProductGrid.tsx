@@ -9,7 +9,16 @@ import { Button } from '@/components/ui/button'
 import type { CatalogBrand, CatalogProduct } from '@/lib/queries/site-catalog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
-import { CloudUpload, ImageOff, Pencil, RefreshCw } from 'lucide-react'
+import {
+	CheckCircle2,
+	CloudUpload,
+	ImageOff,
+	Images,
+	Loader2,
+	Pencil,
+	RefreshCw,
+	ScanSearch,
+} from 'lucide-react'
 
 import type { SyncState } from '../../lib/catalog-export'
 import { catalogImageUrl } from '../../lib/catalog-image'
@@ -33,6 +42,45 @@ type Props = {
 	 *  synchronisation : corriger un nom AVANT le premier export est le cas le
 	 *  plus fréquent, puisque beaucoup de produits ont pour nom leur référence. */
 	onEdit?: (product: CatalogProduct) => void
+
+	// ── Les PHOTOS, ici, sur la carte ───────────────────────────────────────
+	// Ajoutées le 20 août 2026, et pour une raison mesurée : l'onglet « Images »
+	// mêlait 2674 fiches — marques, catégories et produits confondus — et son
+	// bouton unique proposait de comparer les 4394 images d'un coup. Vérifier
+	// UN produit y était impossible.
+	//
+	// Ici, l'action porte sur la carte qu'on regarde. Vérifier ne lit que les
+	// octets de ce produit ; envoyer n'envoie que ses images. C'est le même
+	// couple « vérifier / mettre à jour » que le texte a déjà, appliqué aux
+	// photos.
+	//
+	// `undefined` dans la carte veut dire **non mesuré** — un état à montrer,
+	// pas un manque à combler en silence.
+	/** legacy_id → état des PHOTOS vis-à-vis du miroir. Absente de la carte
+	 *  tant que le produit n'a pas été vérifié. */
+	imageStates?: Map<string, SyncState | undefined>
+	/** Lit les octets de CE produit et calcule son empreinte d'images. */
+	onCheckImages?: (product: CatalogProduct) => void
+	/** Envoie toutes les images de CE produit. Exige une empreinte mesurée. */
+	onSendImages?: (product: CatalogProduct) => void
+	/** `legacy_id` du produit dont les images sont en cours de traitement. */
+	imagesBusy?: string | null
+}
+
+/** Ce que dit le bouton photos une fois l'état connu. */
+const PHOTOS: Record<SyncState, { texte: string; titre: string }> = {
+	absent: {
+		texte: 'Envoyer les photos',
+		titre: 'Aucune image de ce produit n’est sur le site',
+	},
+	modified: {
+		texte: 'Mettre à jour les photos',
+		titre: 'Les images ont changé depuis leur dernier envoi',
+	},
+	synced: {
+		texte: 'Photos à jour',
+		titre: 'Renvoyer quand même — l’envoi est idempotent',
+	},
 }
 
 export function OnlineProductGrid({
@@ -43,6 +91,10 @@ export function OnlineProductGrid({
 	onExport,
 	exporting,
 	onEdit,
+	imageStates,
+	onCheckImages,
+	onSendImages,
+	imagesBusy,
 }: Props) {
 	const pb = usePocketBase() as any
 
@@ -60,6 +112,16 @@ export function OnlineProductGrid({
 				const url = catalogImageUrl(pb, product, '300x300')
 				const brand = product.brand ? brandsById.get(product.brand) : undefined
 				const state = syncStates?.get(product.legacy_id)
+
+				// Le CHAMP fait foi, pas le répertoire de stockage : une entité a
+				// déjà perdu son image en laissant son dossier derrière elle
+				// (mesuré le 19 août 2026). Un produit sans image n'a rien à
+				// envoyer, et la carte ne propose rien.
+				const aDesImages = Boolean(
+					product.image || (product.gallery?.length ?? 0) > 0,
+				)
+				const etatPhotos = imageStates?.get(product.legacy_id)
+				const photosEnCours = imagesBusy === product.legacy_id
 
 				// Grisé = pas encore dans la base SQL du site. La carte reste
 				// lisible — c'est un état, pas une erreur — mais elle se distingue
@@ -171,6 +233,49 @@ export function OnlineProductGrid({
 								>
 									<RefreshCw className='mr-1.5 h-3.5 w-3.5' />
 									Mettre à jour
+								</Button>
+							)}
+
+							{/* ── Les photos ──────────────────────────────────────────
+							    Deux temps, et ils sont honnêtes : le premier clic MESURE
+							    (il lit les octets de ce produit, quelques centaines de
+							    kilo-octets), le second ENVOIE. On n'envoie jamais une
+							    empreinte qu'on n'a pas mesurée — elle est stockée telle
+							    quelle côté SQL et sert ensuite de référence ; l'inventer
+							    serait mentir au site.
+
+							    Rien ne s'affiche tant que le produit n'est pas en ligne :
+							    le miroir refuserait ses images en 409, les images étant un
+							    ÉTAT de la ligne SQL, pas une entité à part. */}
+							{aDesImages && !absent && onCheckImages && (
+								<Button
+									size='sm'
+									variant={etatPhotos === 'modified' ? 'secondary' : 'outline'}
+									className='mt-2 w-full'
+									disabled={photosEnCours}
+									title={
+										etatPhotos === undefined
+											? 'Lire les images de ce produit et les comparer au site'
+											: PHOTOS[etatPhotos].titre
+									}
+									onClick={() =>
+										etatPhotos === undefined || !onSendImages
+											? onCheckImages(product)
+											: onSendImages(product)
+									}
+								>
+									{photosEnCours ? (
+										<Loader2 className='mr-1.5 h-3.5 w-3.5 animate-spin' />
+									) : etatPhotos === undefined ? (
+										<ScanSearch className='mr-1.5 h-3.5 w-3.5' />
+									) : etatPhotos === 'synced' ? (
+										<CheckCircle2 className='mr-1.5 h-3.5 w-3.5' />
+									) : (
+										<Images className='mr-1.5 h-3.5 w-3.5' />
+									)}
+									{etatPhotos === undefined
+										? `Vérifier les photos (${(product.image ? 1 : 0) + (product.gallery?.length ?? 0)})`
+										: PHOTOS[etatPhotos].texte}
 								</Button>
 							)}
 						</div>

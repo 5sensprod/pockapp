@@ -17,12 +17,14 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 
 let PRODUCT_FIELDS = ''
+let SITE_PRODUCT_FIELDS = ''
 
 beforeAll(async () => {
 	const g = globalThis as any
 	g.window ??= g
 	g.document ??= { location: { origin: 'http://127.0.0.1:8090' } }
 	PRODUCT_FIELDS = (await import('./catalog-products')).PRODUCT_FIELDS
+	SITE_PRODUCT_FIELDS = (await import('./site-catalog')).PRODUCT_FIELDS
 })
 
 describe('PRODUCT_FIELDS', () => {
@@ -40,5 +42,40 @@ describe('PRODUCT_FIELDS', () => {
 		expect(demandes).toContain('legacy_id')
 		expect(demandes).toContain('collectionId')
 		expect(demandes).toContain('collectionName')
+	})
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// L'AUTRE LISTE — celle du module `site`
+// ═══════════════════════════════════════════════════════════════════════════
+// `site-catalog.ts` a sa PROPRE chaîne `fields`, et elle n'a longtemps pas
+// demandé `gallery` : le module site n'en avait pas l'usage tant que les
+// images ne partaient pas. Le miroir d'images des produits en fait la source
+// de l'ORDRE DES RANGS — sans elle, chaque produit paraîtrait n'avoir que son
+// image principale, et 1767 fichiers ne partiraient jamais. Sans un mot : le
+// même piège, au même endroit, une collection plus loin.
+
+describe('PRODUCT_FIELDS du module site', () => {
+	it('demande les deux champs image — l’ordre des rangs vient de `gallery`', () => {
+		const demandes = SITE_PRODUCT_FIELDS.split(',')
+		expect(demandes).toContain('image')
+		expect(demandes).toContain('gallery')
+	})
+
+	it('demande de quoi nommer l’arborescence distante et résoudre les fichiers', () => {
+		// `legacy_id` nomme le dossier distant `<kind>/<legacy_id>/<rang>.<ext>`
+		// (§4.1) ; `collectionId` et `collectionName` sont ce dont
+		// `pb.files.getUrl` a besoin pour aller lire les octets à hacher.
+		const demandes = SITE_PRODUCT_FIELDS.split(',')
+		expect(demandes).toContain('legacy_id')
+		expect(demandes).toContain('collectionId')
+		expect(demandes).toContain('collectionName')
+	})
+
+	it('demande `status` — les brouillons ne partent pas', () => {
+		// §4.1 du contrat : `status` n'admet que `published`. Un brouillon ne
+		// s'exporte pas, donc ses images non plus, et le miroir répond 409
+		// « Entité inconnue de la base du site » si on essaie quand même.
+		expect(SITE_PRODUCT_FIELDS.split(',')).toContain('status')
 	})
 })

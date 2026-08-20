@@ -8,14 +8,24 @@
 //
 // Mécanisme : PocketSite-docs/16-conception-images.md, §4.
 //
-// Premier livrable : les MARQUES et les CATÉGORIES. Elles portent un champ
-// `image` scalaire — pas de galerie, donc pas de liste ordonnée à tenir. Le
-// calcul, lui, est déjà celui d'une liste (`imageChecksumOf` prend un
-// tableau) : les produits n'auront rien à réécrire ici, seulement à fournir
-// leur galerie derrière leur principale.
+// Premier livrable (19 août 2026) : les MARQUES et les CATÉGORIES. Elles
+// portent un champ `image` scalaire — pas de galerie, donc pas de liste
+// ordonnée à tenir.
+//
+// Les PRODUITS s'y ajoutent le 20 août 2026, et c'est bien un cas de plus, pas
+// un mécanisme de plus : le calcul était déjà celui d'une liste
+// (`imageChecksumOf` prend un tableau), l'envoi numérotait déjà les rangs. Ce
+// qu'ils apportent est la LISTE ORDONNÉE — rang 0 = `image`, rangs suivants =
+// `gallery` DANS SON ORDRE — et l'ÉCHELLE : 2412 produits publiés, 4132
+// fichiers, 1,503 Gio (mesuré le 20 août 2026). C'est l'échelle qui a imposé
+// le cache persistant ci-dessous.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import type { CatalogBrand, CatalogCategory } from '@/lib/queries/site-catalog'
+import type {
+	CatalogBrand,
+	CatalogCategory,
+	CatalogProduct,
+} from '@/lib/queries/site-catalog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef, useState } from 'react'
@@ -26,7 +36,16 @@ import {
 	type ImageKind,
 	imageChecksumOfDigests,
 	imageDigest,
+	orderedImageNames,
 } from '../lib/image-checksum'
+import {
+	type CacheEmpreintes,
+	MAX_ENTITES_PAR_CALCUL,
+	ecrireCache,
+	empreinteConnue,
+	lireCache,
+	retenir,
+} from '../lib/image-checksum-store'
 
 // ---------------------------------------------------------------------------
 // INVENTAIRE D'IMAGES
@@ -37,13 +56,21 @@ export type ImageChecksumIndex = Record<string, string>
 
 export type ImageInventory = {
 	ok: true
-	counts: { brands: number; categories: number }
+	counts: { brands: number; categories: number; products: number }
 	brands: ImageChecksumIndex
 	categories: ImageChecksumIndex
+	products: ImageChecksumIndex
 	/** Préfixe d'URL publique des octets, tel que configuré côté serveur. Rendu
 	 *  pour l'affichage : ce que `catalog.php` rendra au bundle reste à
 	 *  trancher (§6.5 de la conception). */
 	mediaBaseUrl: string | null
+	/** L'espace du mutualisé, rendu par le miroir depuis le 20 août 2026. Le
+	 *  §6.4 de la conception le déclarait inconnu ; il l'est resté tant que
+	 *  seuls 57 Mio partaient. Les produits en pèsent 1,503 Gio.
+	 *
+	 *  `null` si l'hébergeur a désactivé `disk_free_space`, ce qui arrive sur
+	 *  les mutualisés. C'est une lecture : elle ne bloque aucun envoi. */
+	disk?: { freeBytes: number | null; totalBytes: number | null }
 	readAt: string
 }
 
@@ -152,52 +179,146 @@ function useDigestCache() {
 
 /**
  * Calcule l'empreinte d'images de chaque entité — **à la demande**, jamais à
- * l'ouverture de l'écran.
+ * l'ouverture de l'écran, **et jamais sur tout le catalogue d'un geste**.
  *
  * Ce n'est pas la même prudence que pour les empreintes d'entités, qui ne
- * coûtent que du calcul : ici chaque empreinte suppose de LIRE les octets. Les
- * déclencher à l'affichage ferait passer 57 Mio sur la boucle locale à chaque
- * visite, pour une information dont on n'a besoin qu'au moment d'envoyer.
+ * coûtent que du calcul : ici chaque empreinte suppose de LIRE les octets.
+ * 57 Mio pour les 261 marques et catégories ; **1,503 Gio pour les 2412
+ * produits publiés** (mesuré le 20 août 2026). Trois garde-fous, et ils sont
+ * tous nécessaires :
+ *
+ *  1. **le cache persistant** (`image-checksum-store.ts`) — la liste ordonnée
+ *     des noms locaux est la clé, et elle change dès qu'une image change,
+ *     qu'on promeut ou qu'on réordonne. Le second passage est donc gratuit ;
+ *  2. **le plafond** `MAX_ENTITES_PAR_CALCUL` — ce qui reste à lire après le
+ *     cache est borné, et ce qui déborde est DIT, pas tronqué en silence ;
+ *  3. **l'annulation** — un calcul long doit pouvoir s'arrêter. Sans elle, la
+ *     seule sortie est de fermer l'écran, ce qui perd aussi ce qui a été
+ *     calculé.
+ *
+ * Le calcul suit la SÉLECTION affichée : c'est l'appelant qui passe la liste,
+ * filtres compris — et il peut n'en passer QU'UNE. C'est ce que fait la grille
+ * du catalogue depuis le 20 août 2026 : vérifier les photos d'un produit ne lit
+ * que les octets de ce produit, quelques centaines de kilo-octets, sans rien
+ * dire des 2411 autres.
  */
 export function useLocalImageChecksums() {
 	const digestOf = useDigestCache()
-	const [index, setIndex] = useState<Map<string, string>>(new Map())
 	const [progress, setProgress] = useState({ done: 0, total: 0 })
 	const [computing, setComputing] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
+	const stockage = typeof localStorage === 'undefined' ? null : localStorage
+
+	// ── Le cache EST l'index ────────────────────────────────────────────────
+	// Il l'est devenu le 20 août 2026, et pas par élégance : un index qui
+	// n'aurait que `legacy_id → empreinte` porte DEUX défauts, dont le second
+	// est une panne silencieuse.
+	//
+	//  1. il se remplaçait à chaque calcul. Mesurer un seul produit effaçait
+	//     l'état de tous les autres — insupportable dès qu'on veut vérifier
+	//     une fiche à la fois, ce que la grille demande maintenant ;
+	//  2. surtout, **il pouvait mentir**. Une empreinte mesurée hier reste
+	//     valide dans un tel index même si la galerie a changé depuis : la
+	//     carte dirait « à jour » pour des images qui ne le sont pas, sans
+	//     jamais lever.
+	//
+	// Le cache, lui, retient l'empreinte AVEC la liste de noms qui l'a
+	// produite. Toute lecture passe donc par `empreinteConnue`, qui compare la
+	// clé : si la galerie a bougé, la réponse est « non mesurée », jamais une
+	// valeur périmée. Le second défaut devient impossible par construction.
+	const [cache, setCache] = useState<CacheEmpreintes>(() => lireCache(stockage))
+
+	// `true` demande l'arrêt. Un ref et pas un état : il est lu DANS la boucle,
+	// qui ne verrait jamais une valeur d'état figée à son premier tour.
+	const arret = useRef(false)
+
+	const cancel = useCallback(() => {
+		arret.current = true
+	}, [])
+
+	/**
+	 * L'empreinte de cette entité SI elle a été mesurée **dans son état
+	 * actuel**. `undefined` veut dire « pas mesurée », et c'est un état à
+	 * afficher, pas un manque à combler en silence.
+	 */
+	const lookup = useCallback(
+		(entity: ImageBearing): string | undefined =>
+			empreinteConnue(cache, entity.legacy_id, imageCacheKey(entity)),
+		[cache],
+	)
+
 	const compute = useCallback(
 		async (entities: ImageBearing[]) => {
+			// Copie : muter l'état en place ne redessinerait rien.
+			const memoire = new Map(cache)
+			arret.current = false
 			setComputing(true)
 			setError(null)
-			setProgress({ done: 0, total: entities.length })
 
-			const next = new Map<string, string>()
+			// ── 1. Ce que le cache sait déjà, sans lire un octet ──────────────
+			const aLire = entities.filter(
+				(entity) =>
+					empreinteConnue(memoire, entity.legacy_id, imageCacheKey(entity)) ===
+					undefined,
+			)
+
+			// ── 2. Ce qu'il reste à lire, borné ───────────────────────────────
+			// Tronquer en silence donnerait un écran qui dit « à jour » pour des
+			// fiches jamais mesurées. On tronque, et on le DIT.
+			const debordement = aLire.length > MAX_ENTITES_PAR_CALCUL
+			const lot = debordement ? aLire.slice(0, MAX_ENTITES_PAR_CALCUL) : aLire
+
+			setProgress({ done: 0, total: lot.length })
+
 			try {
-				// EN SÉRIE, délibérément : 261 requêtes simultanées vers PocketBase
-				// local ne vont pas plus vite et rendent la progression illisible.
-				for (const [position, entity] of entities.entries()) {
+				// EN SÉRIE, délibérément : des centaines de requêtes simultanées
+				// vers PocketBase local ne vont pas plus vite et rendent la
+				// progression illisible.
+				for (const [position, entity] of lot.entries()) {
+					if (arret.current) {
+						setError(
+							`Calcul interrompu : ${position} fiche(s) sur ${lot.length} mesurée(s).`,
+						)
+						break
+					}
+
 					const digests: string[] = []
 					for (const image of entity.images) {
 						digests.push(await digestOf(image))
 					}
-					next.set(entity.legacy_id, await imageChecksumOfDigests(digests))
-					setProgress({ done: position + 1, total: entities.length })
+
+					retenir(
+						memoire,
+						entity.legacy_id,
+						imageCacheKey(entity),
+						await imageChecksumOfDigests(digests),
+					)
+					setProgress({ done: position + 1, total: lot.length })
 				}
-				setIndex(next)
+
+				if (!arret.current && debordement) {
+					setError(
+						`${aLire.length} fiches à mesurer, ${MAX_ENTITES_PAR_CALCUL} traitées. Affinez les filtres, ou relancez : ce qui vient d’être mesuré ne sera pas relu.`,
+					)
+				}
 			} catch (cause) {
-				// Un échec de lecture ne doit pas laisser un index à moitié rempli
-				// passer pour complet : on garde ce qui a été calculé et on le dit.
-				setIndex(next)
+				// Un échec de lecture ne doit pas faire perdre ce qui a été
+				// mesuré avant lui : on garde, et on dit.
 				setError(cause instanceof Error ? cause.message : String(cause))
 			} finally {
+				// Gardé et écrit même après une interruption ou un échec : chaque
+				// empreinte retenue est un octet qu'on ne relira pas.
+				setCache(memoire)
+				ecrireCache(stockage, memoire)
+				arret.current = false
 				setComputing(false)
 			}
 		},
-		[digestOf],
+		[cache, digestOf, stockage],
 	)
 
-	return { index, compute, computing, progress, error }
+	return { lookup, compute, cancel, computing, progress, error }
 }
 
 /** Ce qu'une marque ou une catégorie envoie : son `image`, seule, au rang 0. */
@@ -215,6 +336,65 @@ export function toImageBearing(
 		// « aucune image », ce qui est un état, pas un manque.
 		images: url && entity.image ? [{ url, filename: entity.image }] : [],
 	}
+}
+
+/**
+ * Ce qu'un PRODUIT envoie : son image principale au rang 0, puis sa galerie
+ * DANS SON ORDRE.
+ *
+ * L'ordre du tableau `gallery` EST l'ordre des vignettes (CLAUDE.md) ; il
+ * devient ici l'ordre des rangs distants, et donc une partie de l'empreinte.
+ * Promouvoir (`POST /api/catalog/products/:id/promote-image`) échange `image`
+ * et une entrée de `gallery` : la liste change de forme, l'empreinte change.
+ * Réordonner la galerie ne change que l'ordre — et l'empreinte change quand
+ * même, parce que `imageChecksumOfDigests` hache la liste ORDONNÉE. C'est
+ * exactement le risque 2 de la conception, et c'est réglé sans rien ajouter.
+ *
+ * Un produit sans image principale mais avec une galerie n'existe pas dans la
+ * base (mesuré le 20 août 2026 : 0 sur 2999). S'il en apparaissait un, sa
+ * galerie remonterait d'un rang plutôt que de laisser un trou au rang 0 : le
+ * serveur s'arrête au premier trou de numérotation (`images-sync.php:309`) et
+ * n'enverrait alors AUCUNE image, en silence.
+ */
+export function toProductImageBearing(
+	pb: unknown,
+	product: CatalogProduct,
+): ImageBearing {
+	const files = pb as {
+		files: { getUrl: (record: unknown, file: string) => string }
+	}
+
+	// Le champ fait foi, pas le répertoire de stockage — même règle que pour
+	// les marques et les catégories. La règle d'ordre est pure et gardée à
+	// part : `image-checksum.ts`, `orderedImageNames`.
+	const noms = orderedImageNames(product.image, product.gallery)
+
+	return {
+		legacy_id: product.legacy_id,
+		name: product.name,
+		images: noms.map((filename) => ({
+			url: files.files.getUrl(product, filename),
+			filename,
+		})),
+	}
+}
+
+/**
+ * La CLÉ DE CACHE d'une entité : la liste ordonnée des noms de fichiers
+ * locaux.
+ *
+ * Elle repose sur une propriété de PocketBase déjà exploitée juste au-dessus
+ * (`useDigestCache`) : le nom stocké porte un jeton suffixé
+ * (`…_PiDxAYvQfC.jpg`) qui CHANGE dès que le fichier change. Deux listes de
+ * noms identiques désignent donc les mêmes octets, dans le même ordre — et
+ * l'empreinte est la même sans avoir à relire 1,5 Gio.
+ *
+ * Ce n'est PAS une empreinte de substitution : ce qui part au serveur reste le
+ * SHA-1 des SHA-256 des octets. Cette clé décide seulement s'il faut les
+ * relire. Un ratage coûte du temps, jamais une valeur fausse.
+ */
+export function imageCacheKey(entity: ImageBearing): string {
+	return entity.images.map((image) => image.filename).join('\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -235,13 +415,24 @@ export type SendImagesOutcome = {
 	legacy_id: string
 	image_checksum: string
 	paths: string[]
+	/** Ce que le ménage distant a repris — les rangs que la nouvelle liste ne
+	 *  désigne plus. Absent des réponses d'un miroir antérieur au 20 août 2026,
+	 *  d'où l'optionnel : l'écran ne doit pas afficher « 0 fichier effacé »
+	 *  quand la vérité est « ce serveur ne fait pas le ménage ». */
+	cleaned?: { files: number; bytes: number }
 	mediaBaseUrl: string | null
 }
 
 /**
  * Envoie **toutes les images d'une entité, entières** (§4.3). Jamais une image
- * seule : c'est ce qui rend le retrait possible sans jamais rien supprimer —
- * on ne supprime pas une entité, on réécrit son état.
+ * seule : c'est ce qui rend le retrait possible — on ne supprime pas une
+ * entité, on réécrit son état.
+ *
+ * Depuis le 20 août 2026, le serveur fait ensuite le MÉNAGE dans le dossier de
+ * l'entité : les rangs que la nouvelle liste ne désigne plus sont effacés. Une
+ * galerie qu'on raccourcit ne laisse donc plus de photo inutile derrière elle.
+ * C'est le seul geste destructeur du mécanisme, il vient en dernier, et il est
+ * rendu dans la réponse (`cleaned`) — un effacement ne se fait pas en silence.
  *
  * Idempotent : rejouer donne le même état. Deux postes qui envoient la même
  * entité écrivent la même chose ou, s'ils divergent, le dernier gagne, et

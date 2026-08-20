@@ -104,3 +104,31 @@ export function remoteImagePath(
 ): string {
 	return `${kind}/${legacyId}/${rank}.${extensionOf(filename)}`
 }
+
+/**
+ * LA LISTE ORDONNÉE d'un produit : l'image principale au rang 0, puis la
+ * galerie DANS SON ORDRE.
+ *
+ * C'est la seule chose que les produits ajoutent au mécanisme (§4.1). Elle
+ * mérite d'être ici, pure et sans réseau, parce qu'elle décide de trois
+ * choses à la fois : le rang distant de chaque fichier, l'ordre haché par
+ * `imageChecksumOf`, et donc ce que l'inventaire appellera « modifié ».
+ *
+ * `image` d'abord, toujours : l'image principale ne s'écrase pas, elle se
+ * DÉSIGNE (CLAUDE.md), et promouvoir échange `image` avec une entrée de
+ * `gallery` — la liste change de forme, l'empreinte suit.
+ *
+ * Les entrées vides sont écartées. Un produit sans principale mais avec une
+ * galerie n'existe pas dans la base (0 sur 2999, mesuré le 20 août 2026) ;
+ * s'il en apparaissait un, sa galerie remonterait d'un rang plutôt que de
+ * laisser un trou au rang 0 — le serveur s'arrête au premier trou de
+ * numérotation et n'enverrait alors AUCUNE image, en silence.
+ */
+export function orderedImageNames(
+	image: string | undefined | null,
+	gallery: readonly string[] | undefined | null,
+): string[] {
+	return [image ?? '', ...(gallery ?? [])]
+		.map((nom) => (typeof nom === 'string' ? nom.trim() : ''))
+		.filter((nom) => nom !== '')
+}

@@ -49,6 +49,14 @@ export type CatalogProduct = FileBearing & {
 	stock?: number
 	description?: string
 	image?: string
+	/** La galerie, **dans son ordre** : c'est lui qui fait l'ordre des rangs du
+	 *  miroir d'images (§4.1 de PocketSite-docs/16-conception-images.md), et
+	 *  c'est déjà lui qui fait l'ordre des vignettes en caisse (CLAUDE.md).
+	 *
+	 *  Il a fallu l'ajouter à `PRODUCT_FIELDS` en même temps : un champ absent
+	 *  de `fields` revient VIDE SANS ERREUR — c'est ce qui a caché 747 galeries
+	 *  pendant une semaine. Gardien : `catalog-fields.test.ts`. */
+	gallery?: string[]
 	/** Relation simple vers `brands`. Chaîne vide si absente. */
 	brand?: string
 	/** Relation multiple vers `categories`. Un produit a un ensemble de
@@ -92,8 +100,8 @@ export type CatalogBrand = FileBearing & {
 // Axemusique. Les identifiants PocketBase, eux, sont régénérés à chaque
 // rechargement par purge et ne peuvent pas servir de clé distante — §1 de
 // PocketSite-docs/12-contrat-catalogue.md.
-const PRODUCT_FIELDS =
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,slug,description,status,price_ttc,tax_rate,stock,image,brand,categories'
+export const PRODUCT_FIELDS =
+	'id,collectionId,collectionName,legacy_id,name,designation,sku,slug,description,status,price_ttc,tax_rate,stock,image,gallery,brand,categories'
 const CATEGORY_FIELDS =
 	'id,collectionId,collectionName,legacy_id,name,slug,description,image,is_featured,parent'
 const BRAND_FIELDS =

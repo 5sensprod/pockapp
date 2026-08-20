@@ -11,7 +11,8 @@
 // ─── Pourquoi une route de plus, et pas l'export d'entités ─────────────────
 // Le relais du catalogue plafonne le corps à 1 Mio (siteCatalogMaxBytes, §6
 // du contrat). Or **une seule image de catégorie pèse 1 Mo en moyenne et
-// 2,7 Mo au pire** — mesuré le 19 août 2026. Les octets ne peuvent pas voyager
+// 2,7 Mo au pire** — mesuré le 19 août 2026 —, et un envoi de produit atteint
+// 15,92 Mio, galerie comprise. Les octets ne peuvent pas voyager
 // dans le lot d'entités, ni par la route qui le porte : ce sont deux plafonds
 // sans rapport, donc deux routes.
 //
@@ -48,11 +49,17 @@ const siteImagesTimeout = 180 * time.Second
 // Plafond du corps d'un envoi d'entité. **Sans rapport avec le 1 Mio du lot
 // d'entités** : ici le corps EST une image, ou quelques-unes.
 //
-// 24 Mio couvre le pire cas mesuré côté produits — une principale à 4,95 Mo
-// plus sa galerie — avec de la marge. Il ne dit rien de ce que l'hébergeur
-// accepte : `post_max_size` et `upload_max_filesize` du mutualisé ne sont PAS
-// mesurés (§6.2 de la conception). Le PHP refusera en 413 s'il est plus
-// serré ; c'est lui qui fait foi, ce plafond-ci n'évite qu'un aller-retour.
+// 24 Mio couvre le pire cas mesuré, et il l'est maintenant pour de bon : au
+// 20 août 2026, sur les 2412 produits publiés, **le plus gros envoi d'entité
+// pèse 15,92 Mio** (11 fichiers), et aucun fichier seul ne dépasse 4,84 Mio.
+// 466 entités passent 1 Mio, **11 passent 8 Mio**.
+//
+// Il ne dit toujours rien de ce que l'hébergeur accepte : `post_max_size` et
+// `upload_max_filesize` du mutualisé ne sont PAS mesurés (§6.2 de la
+// conception). Si `post_max_size` vaut 8M — valeur par défaut fréquente —, ce
+// sont ces 11 entités-là qui échoueront, et elles seules. Le PHP refuse en 413
+// en le disant ; c'est lui qui fait foi, ce plafond-ci n'évite qu'un
+// aller-retour.
 const siteImagesMaxBytes = 24 * 1024 * 1024
 
 // L'inventaire d'images ramène au plus une paire par entité, comme celui des

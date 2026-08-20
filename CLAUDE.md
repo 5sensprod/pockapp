@@ -92,6 +92,13 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    Route distincte du point 5 parce que son plafond de corps n'a rien à voir :
    24 Mio ici contre 1 Mio là. Mécanisme :
    `frontend/modules/site/PocketSite-docs/16-conception-images.md`.
+   Depuis le 2026-08-20, le serveur accepte aussi **`products`** — image
+   principale au rang 0, galerie derrière dans son ordre — et **fait le ménage**
+   dans le dossier de l'entité : les rangs que la nouvelle liste ne désigne plus
+   sont EFFACÉS. C'est le seul geste destructeur du mécanisme ; il vient APRÈS
+   les octets et APRÈS le `UPDATE`, ne rejette jamais, et ce qu'il a repris est
+   rendu (`cleaned`) puis affiché. L'inventaire rend aussi l'espace disque du
+   mutualisé (§9 de la conception).
 
 ## Commandes
 
@@ -218,15 +225,31 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   checksum : cela marquerait les 2563 produits « modifiés » d'un coup.
   L'arborescence distante est `<kind>/<legacy_id>/<rang>.<ext>` — **le nom
   distant est calculé, jamais transporté** —, un envoi porte toutes les images
-  d'une entité, et **les octets s'écrivent avant la ligne SQL**. Seules les
-  marques et les catégories sont acceptées côté serveur pour l'instant.
-  **Le site LIT ces images par `catalog.php`, en URL COMPLÈTE** : `brand.image`
-  est composée côté serveur (`brand_image_url()`) à partir de `media_base_url`
-  et du rang 0 de `image_paths` ; le bundle la consomme telle quelle et ne la
-  préfixe jamais — il est public et déjà en production, il ne doit pas porter le
-  préfixe des médias. Trois marques sur 288 sont synchronisées au 19 août 2026 :
-  **l'absence de logo est le cas normal**, et le repli est silencieux
-  (`AxeProductPage.jsx`, composant `BrandBadge`, dans le dépôt du site).
+  d'une entité, et **les octets s'écrivent avant la ligne SQL**. Marques,
+  catégories **et produits** depuis le 2026-08-20 : pour un produit, le rang 0
+  est `image`, les rangs suivants sont `gallery` DANS SON ORDRE. Deux règles
+  d'échelle en découlent, et elles sont dans le code, pas dans l'intention :
+  **calculer une empreinte lit les octets** (1,503 Gio pour les 2412 produits
+  publiés), d'où un cache persistant, un plafond et une annulation
+  (`frontend/modules/site/lib/image-checksum-store.ts`) ; et **`site-catalog.ts`
+  a sa propre chaîne `fields`** — sans `gallery` dedans, 1767 fichiers ne
+  partiraient jamais, sans une erreur (gardien :
+  `frontend/lib/queries/catalog-fields.test.ts`).
+  **Le site LIT ces images par `catalog.php`, en URL COMPLÈTE**, composée côté
+  serveur par `media_urls()` à partir de `media_base_url` et de `image_paths` ;
+  le bundle la consomme telle quelle et ne la préfixe jamais — il est public et
+  déjà en production, il ne doit pas porter le préfixe des médias. Trois
+  champs : `brand.image` (rang 0 de la marque), `product.image` (rang 0 du
+  produit) et `product.gallery` (rangs 1..n) — ce dernier **sur la seule action
+  `product`**, parce qu'aucune grille n'affiche de galerie ; il est absent des
+  listes, pas vide. Les deux tables ayant une colonne `image_paths` homonyme,
+  les alias `brand_image_paths` / `product_image_paths` sont obligatoires :
+  sans eux PDO écrase l'une par l'autre, sans erreur.
+  Au 20 août 2026, **3 marques sur 288 et 1 produit sur 2412** sont
+  synchronisés : **l'absence d'image est le cas normal**, le repli est
+  silencieux et le cadre a la même taille avec ou sans image — mesuré, 248×248
+  dans les deux cas (`BrandBadge`, `AxeProductImage`, `ProductGallery`, dans le
+  dépôt du site).
   Gardiens : `frontend/modules/site/lib/image-checksum.test.ts` et
   `frontend/lib/queries/create-legacy-key.test.ts` — c'est `legacy_id` qui
   nomme toute l'arborescence, et les trois `create` doivent le poser
