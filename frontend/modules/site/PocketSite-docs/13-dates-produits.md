@@ -70,11 +70,19 @@ NeDB porteront tous celle du chargement.
 
 Aucun n'est engagé.
 
-1. **`first_seen_at` côté serveur.** Une colonne posée à l'`INSERT` et absente
-   du `ON DUPLICATE KEY UPDATE` de `server/api/products-sync.php` — c'est ce qui
-   la distingue d'`exported_at`, qui est écrasé à chaque export. Quelques
-   lignes, aucune modification du contrat. Elle date **l'arrivée sur le site**,
-   pas la mise en vente : tout l'existant porterait la même journée.
+1. **`first_seen_at` côté serveur. — RETENUE ET ÉCRITE LE 20 AOÛT 2026.**
+   Une colonne posée à l'`INSERT` et absente du `ON DUPLICATE KEY UPDATE` de
+   `server/api/products-sync.php` — c'est ce qui la distingue d'`exported_at`,
+   qui est écrasé à chaque export. Quelques lignes, aucune modification du
+   contrat. Elle date **l'arrivée sur le site**, pas la mise en vente.
+   `server/sql/first-seen.sql` pose la colonne ; `catalog.php?action=latest`
+   trie dessus, NULL en dernier.
+   **Une phrase de cette note était fausse et l'est restée jusqu'à l'écriture :
+   « tout l'existant porterait la même journée ».** Non — l'existant reste
+   `NULL` POUR TOUJOURS. Ces produits sont déjà en base, chacun de leurs exports
+   passe donc par la branche `UPDATE`, où la colonne n'est pas. C'est ce qui
+   rend la donnée exacte plutôt que trompeuse : non nulle, elle veut dire
+   « apparu sur le site ce jour-là », et rien d'autre.
 2. **Remonter `dateSoumission`.** Quatre couches à modifier — lecteur NeDB,
    `normalize.Product`, contrat + export, table SQL + `present_product` — et une
    version de contrat. À ne pas entreprendre avant d'avoir tranché la question
@@ -114,7 +122,9 @@ Deux choses en découlent :
    change.** Ni l'appel du site, ni la mise en page, ni le nom de l'action.
    Seul le libellé devient « Les derniers arrivés » — et il le devient
    légitimement.
-2. **L'option 1 reste ouverte et son calendrier court toujours.** Le tri sur
-   `exported_at` donne l'illusion que le sujet est traité : il ne l'est pas.
-   Chaque export qui passe est encore un lot de produits dont on ne pourra
-   jamais dire quand ils sont arrivés.
+2. **L'option 1 a été prise le jour même**, quelques heures après cette mise à
+   jour, précisément parce que le tri sur `exported_at` donnait l'illusion que
+   le sujet était traité. `first_seen_at` existe donc, mais elle ne remplit que
+   l'avenir : le fond de catalogue restera classé par son activité, et c'est
+   définitif. Le libellé du site ne changera qu'une fois la colonne assez
+   garnie pour que « Les derniers arrivés » soit vrai à l'écran.

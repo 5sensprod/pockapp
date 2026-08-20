@@ -10,6 +10,44 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## `first_seen_at` : le site aura une vraie date d'arrivée, mais seulement pour l'avenir — 2026-08-20
+
+Décision du propriétaire, le jour même, **annulant l'option 2 du bloc
+ci-dessous** (« écarté : ouvrir `first_seen_at` tout de suite »).
+
+**Une colonne `first_seen_at` est ajoutée à `ax_products`**
+(`server/sql/first-seen.sql`), écrite au seul `INSERT` de `products-sync.php`
+et **absente de son `ON DUPLICATE KEY UPDATE`**. Cette absence n'est pas un
+détail d'implémentation : c'est le mécanisme entier. L'y ajouter en ferait un
+second `exported_at`, sans que rien ne le signale.
+
+**Ce qu'elle vaut, et il faut le dire d'emblée : elle ne rattrape rien.** Les
+2563 produits déjà en base resteront `NULL` pour toujours — ils sont déjà là,
+chacun de leurs exports passe donc par la branche `UPDATE`. Aucun rattrapage
+n'est possible, la date d'arrivée réelle n'existant nulle part dans la chaîne
+(`frontend/modules/site/PocketSite-docs/13-dates-produits.md`).
+
+**C'est précisément ce qui la rend exacte** : `first_seen_at` non nul veut dire
+« apparu sur le site ce jour-là », et rien d'autre. `catalog.php?action=latest`
+trie donc `first_seen_at IS NULL` d'abord — les vraies arrivées en tête, le
+fond de catalogue derrière, classé par `exported_at`.
+
+**Options écartées :** remonter `dateSoumission` depuis NeDB (quatre couches,
+une version de contrat, et on n'a toujours pas tranché si le champ veut dire
+« créé » ou « soumis pour la dernière fois ») ; attendre le `created` de
+PocketBase (ne rattrape pas davantage l'historique, et arrive plus tard).
+
+**Ce qui a emporté la décision : le calendrier.** Chaque export qui passait
+sans cette colonne était un lot de produits dont on ne pourrait jamais dire
+quand ils sont arrivés.
+
+**Ordre de déploiement, et il n'est pas commutatif :** le `ALTER TABLE`
+d'abord, `products-sync.php` ensuite, `catalog.php` en dernier. Déposer
+`catalog.php` avant l'`ALTER` fait répondre `action=latest` « Lecture du
+catalogue impossible » — la colonne n'existerait pas.
+
+---
+
 ## L'accueil du site est branchée sur `catalog.php` — et la faille 3.1 n'a pas la cause qu'on lui prêtait — 2026-08-20
 
 Trois actions ajoutées à `server/api/catalog.php` le même jour — `stats`,
@@ -31,6 +69,9 @@ Détail et règles de comptage au §6 bis du contrat
    `price_ttc`. Écarté : ouvrir `first_seen_at` tout de suite. Le sujet reste
    entier (`13-dates-produits.md`), et **le tri actuel donne l'illusion qu'il
    est traité**.
+   *— ce point 2 annulé le 2026-08-20, quelques heures plus tard, par
+   « `first_seen_at` : le site aura une vraie date d'arrivée, mais seulement
+   pour l'avenir ». Le tri de `latest` a changé avec lui.*
 
 **Ce qui pourrait la remettre en cause :** une vraie date de première parution.
 Seul l'`ORDER BY` de `catalog.php` changerait.

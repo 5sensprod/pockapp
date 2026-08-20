@@ -36,6 +36,7 @@ PHP.
 | `api/images-sync.php` | le **miroir des images** — marques et catégories | oui |
 | `sql/schema.sql` | les quatre tables du catalogue, à exécuter une fois | oui |
 | `sql/images.sql` | les colonnes `image_*`, à exécuter une fois après | oui |
+| `sql/first-seen.sql` | la colonne `first_seen_at` d'`ax_products`, à exécuter une fois | oui |
 | `config/config.php.example` | modèle de configuration | oui |
 | `config/config.php` | la configuration réelle, **avec la clé** | **non** (`.gitignore`) |
 | `config/.htaccess` | interdit l'accès HTTP au dossier de configuration | oui |

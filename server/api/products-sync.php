@@ -383,11 +383,26 @@ $sqlCategory = sprintf(
     $T_CATEGORIES
 );
 
+// ─── `first_seen_at` N'EST PAS DANS LE `ON DUPLICATE KEY UPDATE` ──────────
+//
+// Et c'est TOUT le mécanisme, pas un oubli : la colonne n'est écrite qu'à
+// l'`INSERT`, donc au premier export qui porte ce produit, et plus jamais.
+// L'ajouter à la liste des mises à jour ci-dessous en ferait un second
+// `exported_at` — lequel, lui, est réécrit à chaque export contenant le
+// produit, et qu'une simple vente suffit à rafraîchir (l'empreinte d'export
+// couvre `stock` et `price_ttc`).
+//
+// C'est la distinction que le site attend pour pouvoir dire « les derniers
+// arrivés » au lieu de « les dernières mises à jour »
+// (`frontend/modules/site/PocketSite-docs/13-dates-produits.md`).
+//
+// Colonne ajoutée par `server/sql/first-seen.sql`, à passer avant de déposer
+// ce fichier.
 $sqlProduct = sprintf(
     'INSERT INTO `%s` (legacy_id, checksum, name, site_title, sku, slug, description,
-                       price_ttc, tax_rate, stock, status, brand, exported_at)
+                       price_ttc, tax_rate, stock, status, brand, exported_at, first_seen_at)
      VALUES (:legacy_id, :checksum, :name, :site_title, :sku, :slug, :description,
-             :price_ttc, :tax_rate, :stock, :status, :brand, :exported_at)
+             :price_ttc, :tax_rate, :stock, :status, :brand, :exported_at, :first_seen_at)
      ON DUPLICATE KEY UPDATE
         checksum = VALUES(checksum), name = VALUES(name), site_title = VALUES(site_title),
         sku = VALUES(sku),
@@ -483,6 +498,10 @@ try {
             ':status'      => 'published',
             ':brand'       => opt_string($product['brand'] ?? null),
             ':exported_at' => $now,
+            // Même valeur, deux destins : `exported_at` sera réécrit au
+            // prochain export contenant ce produit, `first_seen_at` ne le sera
+            // jamais — voir le `ON DUPLICATE KEY UPDATE` ci-dessus.
+            ':first_seen_at' => $now,
         ]);
 
         // Les rattachements sont REMPLACÉS, pas complétés : sinon une catégorie

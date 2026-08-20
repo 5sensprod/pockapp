@@ -1,0 +1,42 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- `first_seen_at` — la date de PREMIÈRE arrivée d'un produit sur le site
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Écrit le 20 août 2026. À passer UNE FOIS sur la base du mutualisé, avant de
+-- déposer la version de `products-sync.php` qui l'alimente.
+--
+-- ─── POURQUOI UNE COLONNE DE PLUS, PUISQU'`exported_at` EXISTE ────────────
+-- Parce qu'`exported_at` ne dit pas ce que son nom laisse croire. Il est dans
+-- le `ON DUPLICATE KEY UPDATE` du même `INSERT` : chaque export CONTENANT le
+-- produit le réécrit. Et comme l'export est incrémental sur une empreinte qui
+-- couvre `stock` et `price_ttc`, **une vente suffit à redater un produit**.
+-- Trier par lui donne « ce qui a bougé en dernier », pas les nouveautés.
+--
+-- `first_seen_at` est exactement son contraire : posé à l'`INSERT`, **absent
+-- du `ON DUPLICATE KEY UPDATE`**. C'est cette absence qui EST le mécanisme —
+-- l'y ajouter par mégarde en ferait un second `exported_at`, silencieusement.
+--
+-- ─── CE QU'ELLE NE RATTRAPE PAS ──────────────────────────────────────────
+-- Elle date l'arrivée SUR LE SITE, pas la mise en vente en magasin.
+--
+-- Et surtout : **les 2563 produits déjà en base resteront NULL pour toujours.**
+-- Ils sont déjà là, donc chacun de leurs exports passe par la branche
+-- `ON DUPLICATE KEY UPDATE`, où la colonne n'est pas. Aucun rattrapage n'est
+-- possible : la vraie date d'arrivée n'existe nulle part dans la chaîne
+-- (`frontend/modules/site/PocketSite-docs/13-dates-produits.md`).
+--
+-- Ce n'est pas un défaut, c'est ce qui rend la colonne EXACTE : `first_seen_at`
+-- non nul veut dire « ce produit est apparu sur le site après le 20 août 2026,
+-- ce jour-là », et rien d'autre. Le tri du site met ces produits en tête et
+-- laisse les NULL derrière, départagés par `exported_at`.
+--
+-- L'horloge démarre donc aujourd'hui, et c'est la raison de ne pas attendre :
+-- chaque export qui passe sans cette colonne est un lot de produits dont on ne
+-- pourra jamais dire quand ils sont arrivés.
+--
+-- NULL par défaut, et non `NOT NULL DEFAULT NOW()` : une ligne dont la colonne
+-- vaut NULL est une ligne écrite AVANT ce mécanisme, et elle doit pouvoir se
+-- distinguer d'une arrivée réelle. Le tri les renvoie en fin de liste.
+
+ALTER TABLE `ax_products`
+  ADD COLUMN `first_seen_at` DATETIME DEFAULT NULL,
+  ADD KEY `idx_products_first_seen` (`first_seen_at`);

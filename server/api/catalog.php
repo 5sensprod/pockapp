@@ -424,30 +424,39 @@ try {
     // Sert l'aperçu de l'accueil, qui montrait jusqu'ici la catégorie la mieux
     // fournie — « Partitions », immuable et sans intérêt à la deuxième visite.
     //
-    // ─── CE QUE `exported_at` DIT VRAIMENT ─────────────────────────────────
-    // PAS la date d'arrivée du produit : cette donnée n'existe nulle part dans
-    // la chaîne (`13-dates-produits.md`, 13 août 2026). `exported_at` est
-    // réécrit à chaque export QUI CONTIENT le produit — et l'export est
-    // incrémental, sur une empreinte qui couvre `stock` et `price_ttc`. Une
-    // vente redate donc un produit.
+    // ─── DEUX DATES, DANS CET ORDRE, ET AUCUNE N'EST PARFAITE ──────────────
     //
-    // La liste est par conséquent « ce qui a bougé en dernier », pas « les
-    // nouveautés ». Elle est vivante et change toute seule, ce qui est ce
-    // qu'on lui demande ; elle ne doit simplement pas être annoncée comme une
-    // date de mise en vente. Le jour où une vraie date existe, seul le
-    // `ORDER BY` change.
+    // 1. `first_seen_at` — posée au seul `INSERT` de products-sync.php, jamais
+    //    réécrite (`server/sql/first-seen.sql`, 20 août 2026). Non nulle, elle
+    //    veut dire « ce produit est apparu sur le site ce jour-là », et c'est
+    //    la seule date de la chaîne qui dise vraiment cela. Elle est NULL pour
+    //    les 2563 produits antérieurs au mécanisme, définitivement : eux
+    //    passent toujours par la branche `UPDATE`.
     //
-    // Départage par `legacy_id` : un export pose le MÊME horodatage sur tout
-    // son lot — 2563 produits ont porté la même seconde au chargement initial.
-    // Sans second critère, MySQL rendrait ces ex æquo dans un ordre non
-    // garanti, et la grille changerait d'une page à l'autre sans raison.
+    // 2. `exported_at` — le repli pour ces NULL. Réécrite à chaque export
+    //    contenant le produit, et l'export étant incrémental sur une empreinte
+    //    qui couvre `stock` et `price_ttc`, **une vente redate un produit**.
+    //    C'est « ce qui a bougé en dernier », pas une arrivée.
+    //
+    // `first_seen_at IS NULL` en tête du tri met donc les vraies arrivées
+    // devant, et le fond de catalogue derrière, classé par son activité. La
+    // liste se remplira d'elle-même de vraies nouveautés à mesure que des
+    // produits naîtront.
+    //
+    // Départage final par `legacy_id` : un export pose le MÊME horodatage sur
+    // tout son lot — 2563 produits ont porté la même seconde au chargement
+    // initial. Sans lui, MySQL rendrait ces ex æquo dans un ordre non garanti,
+    // et la grille changerait d'un rechargement à l'autre sans raison.
     if ($action === 'latest') {
         $st = $pdo->prepare(sprintf(
             'SELECT %s
                FROM `%s` p
           LEFT JOIN `%s` b ON b.legacy_id = p.brand
               WHERE p.status = %s
-              ORDER BY p.exported_at DESC, p.legacy_id DESC
+              ORDER BY p.first_seen_at IS NULL ASC,
+                       p.first_seen_at DESC,
+                       p.exported_at DESC,
+                       p.legacy_id DESC
               LIMIT :limit',
             $PRODUCT_COLUMNS,
             $T_PRODUCTS,

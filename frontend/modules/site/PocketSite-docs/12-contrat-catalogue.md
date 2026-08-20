@@ -219,14 +219,29 @@ catégorie ne portant que des produits non publiés y figure donc. L'écart est
 voulu côté `stats` ; s'il faut le réduire, c'est `action=categories` qu'il faut
 corriger, pas l'inverse.
 
-**`latest` trie sur `exported_at`, qui n'est PAS une date d'arrivée.** Cette
-colonne est réécrite à chaque export contenant le produit, et l'export est
-incrémental sur une empreinte qui couvre `stock` et `price_ttc` : une vente
-redate un produit. La liste est « ce qui a bougé en dernier ». Le site
-l'affiche sous « Dernières mises à jour du catalogue », jamais « Nouveautés » —
-voir [`13-dates-produits.md`](13-dates-produits.md). Second critère de tri
-obligatoire (`legacy_id`) : un export pose le même horodatage sur tout son lot,
-et 2563 produits partagent la seconde du chargement initial.
+**`latest` trie sur DEUX dates, et il faut savoir ce que chacune vaut.**
+
+1. **`first_seen_at`** (`server/sql/first-seen.sql`, 20 août 2026) — posée au
+   seul `INSERT` de `products-sync.php`, **absente de son
+   `ON DUPLICATE KEY UPDATE`**. Cette absence EST le mécanisme : l'y ajouter en
+   ferait un second `exported_at`, sans que rien ne le signale. Non nulle, elle
+   dit « apparu sur le site ce jour-là ». Elle est `NULL` pour les 2563
+   produits antérieurs, **définitivement** — eux passent toujours par la
+   branche `UPDATE`.
+2. **`exported_at`** — le repli pour ces `NULL`. Réécrite à chaque export
+   contenant le produit, et l'export étant incrémental sur une empreinte qui
+   couvre `stock` et `price_ttc`, **une vente redate un produit**. C'est « ce
+   qui a bougé en dernier », pas une arrivée.
+
+D'où l'ordre : `first_seen_at IS NULL` d'abord, les vraies arrivées en tête, le
+fond de catalogue derrière. Second critère obligatoire (`legacy_id`) : un export
+pose le même horodatage sur tout son lot, et 2563 produits partagent la seconde
+du chargement initial.
+
+Le site affiche cette liste sous « Dernières mises à jour du catalogue », et
+**pas encore** « Les derniers arrivés » : tant que `first_seen_at` est peu
+garnie, la grille montre surtout des réassorts. Voir
+[`13-dates-produits.md`](13-dates-produits.md).
 
 **Deux règles de comptage, qui doivent rester ensemble :**
 
