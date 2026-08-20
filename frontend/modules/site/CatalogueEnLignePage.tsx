@@ -42,6 +42,7 @@ import {
 	usePublishedProducts,
 } from '@/lib/queries/site-catalog'
 import { usePocketBase } from '@/lib/use-pocketbase'
+import { useQueryClient } from '@tanstack/react-query'
 import {
 	AlertTriangle,
 	Globe,
@@ -93,6 +94,26 @@ import {
  * d'un hook qui calcule puis pose un état, cela reboucle indéfiniment et la
  * page ne s'affiche jamais. Une constante de module a une identité stable.
  */
+/**
+ * L'entité est-elle dans la base SQL du site ?
+ *
+ * C'est la question qui précède toutes les autres pour les images : elles sont
+ * un ÉTAT de la ligne, pas une entité à part, et le miroir refuse en 409 sans
+ * elle. **Toutes les catégories n'y sont pas** — une catégorie ne part qu'avec
+ * le premier produit qui la cite, règle écrite plus bas dans ce fichier, 464
+ * en local pour 199 portant au moins un produit (mesuré le 19 août 2026).
+ *
+ * `undefined` quand l'inventaire d'entités n'a pas été lu : on ne sait pas, et
+ * ne pas savoir n'est pas savoir que non — on laisse alors passer, et c'est le
+ * serveur qui tranche.
+ */
+function onLigne(
+	legacyId: string,
+	inventory: Record<string, string> | undefined,
+): boolean | undefined {
+	return inventory === undefined ? undefined : legacyId in inventory
+}
+
 const NO_PRODUCTS: CatalogProduct[] = []
 const NO_CATEGORIES: CatalogCategory[] = []
 const NO_BRANDS: CatalogBrand[] = []
@@ -314,6 +335,7 @@ export function CatalogueEnLignePage() {
 	)
 	const localImageChecksums = useLocalImageChecksums()
 	const sendImages = useSendEntityImages()
+	const queryClient = useQueryClient()
 	const [sendingImages, setSendingImages] = useState<string | null>(null)
 	/** Le produit dont on lit les octets, s'il y en a un. Distinct de
 	 *  `sendingImages` : lire et envoyer sont deux temps, et la carte doit
@@ -334,6 +356,7 @@ export function CatalogueEnLignePage() {
 				kind: 'brands',
 				entity,
 				checksum,
+				online: onLigne(brand.legacy_id, inventory.data?.brands),
 				state: syncStateOf(
 					brand.legacy_id,
 					checksum,
@@ -350,6 +373,7 @@ export function CatalogueEnLignePage() {
 				kind: 'categories',
 				entity,
 				checksum,
+				online: onLigne(category.legacy_id, inventory.data?.categories),
 				state: syncStateOf(
 					category.legacy_id,
 					checksum,
@@ -375,6 +399,7 @@ export function CatalogueEnLignePage() {
 				kind: 'products',
 				entity,
 				checksum,
+				online: onLigne(product.legacy_id, inventory.data?.products),
 				state: syncStateOf(
 					product.legacy_id,
 					checksum,
@@ -389,6 +414,7 @@ export function CatalogueEnLignePage() {
 		categories.data,
 		shownProducts,
 		imageInventory.data,
+		inventory.data,
 		localImageChecksums.lookup,
 		pb,
 	])
@@ -417,6 +443,96 @@ export function CatalogueEnLignePage() {
 			)
 		},
 		[sendImages],
+	)
+
+	// ── L'ENVOI EN LOT ──────────────────────────────────────────────────────
+	// Une entité après l'autre, jamais autre chose : le mécanisme ne change pas
+	// d'un pouce (§4.3, un envoi porte toutes les images d'UNE entité). Le lot
+	// n'est qu'une boucle, et c'est délibéré — grouper plusieurs entités dans
+	// une requête ferait sauter l'idempotence par entité et le plafond de corps.
+	//
+	// Trois garde-fous, et chacun répond à une panne concrète :
+	//
+	//  1. **un échec n'arrête pas le lot.** Une marque illisible ne doit pas
+	//     empêcher les 224 autres de partir ;
+	//  2. **mais trois échecs de SUITE l'arrêtent.** Une clé refusée ou un
+	//     hébergeur à bout répond pareil 225 fois : insister n'apprend rien et
+	//     martèle le mutualisé ;
+	//  3. **l'inventaire n'est relu qu'UNE FOIS, à la fin.** Sans le drapeau
+	//     `skipInvalidate`, chaque envoi réussi déclencherait une relecture de
+	//     l'inventaire distant — 225 allers-retours pour rien.
+	const [bulkProgress, setBulkProgress] = useState<{
+		done: number
+		total: number
+	} | null>(null)
+	const bulkStop = useRef(false)
+
+	const cancelSendAll = useCallback(() => {
+		bulkStop.current = true
+	}, [])
+
+	const sendAllImages = useCallback(
+		async (rows: ImageRow[]) => {
+			if (rows.length === 0) return
+			bulkStop.current = false
+			setBulkProgress({ done: 0, total: rows.length })
+
+			let envoyees = 0
+			let echecsDeSuite = 0
+			const echecs: string[] = []
+
+			for (const [position, row] of rows.entries()) {
+				if (bulkStop.current) break
+				// Ne devrait pas arriver — le panneau ne propose que du mesuré —
+				// mais on n'envoie jamais une empreinte qu'on n'a pas calculée.
+				if (row.checksum === undefined) continue
+
+				setSendingImages(`${row.kind}/${row.entity.legacy_id}`)
+				try {
+					await sendImages.mutateAsync({
+						kind: row.kind,
+						entity: row.entity,
+						imageChecksum: row.checksum,
+						skipInvalidate: true,
+					})
+					envoyees++
+					echecsDeSuite = 0
+				} catch (cause) {
+					echecsDeSuite++
+					echecs.push(
+						`${row.entity.name} : ${cause instanceof Error ? cause.message : String(cause)}`,
+					)
+					if (echecsDeSuite >= 3) {
+						toast.error(
+							'Trois échecs de suite : le lot s’arrête. Corrigez la cause avant de relancer.',
+						)
+						break
+					}
+				}
+				setBulkProgress({ done: position + 1, total: rows.length })
+			}
+
+			setSendingImages(null)
+			setBulkProgress(null)
+			bulkStop.current = false
+
+			// L'unique relecture, quoi qu'il soit arrivé : après un arrêt ou un
+			// échec, l'état en ligne a quand même changé pour ce qui est parti.
+			queryClient.invalidateQueries({ queryKey: ['site-images', 'inventory'] })
+
+			if (envoyees > 0) toast.success(`${envoyees} fiche(s) envoyée(s)`)
+			if (echecs.length > 0) {
+				// Les trois premiers suffisent à diagnostiquer ; la liste entière
+				// ne tient pas dans un toast et n'apprend rien de plus.
+				toast.error(
+					`${echecs.length} en échec — ${echecs.slice(0, 3).join(' ; ')}`,
+				)
+			}
+			if (envoyees === 0 && echecs.length === 0) {
+				toast.info('Lot interrompu, rien n’a été envoyé.')
+			}
+		},
+		[sendImages, queryClient],
 	)
 
 	// ── Les photos, produit par produit, depuis la GRILLE ───────────────────
@@ -969,10 +1085,14 @@ export function CatalogueEnLignePage() {
 								computing={localImageChecksums.computing}
 								computeProgress={localImageChecksums.progress}
 								computeError={localImageChecksums.error}
-								onCompute={() =>
-									localImageChecksums.compute(imageRows.map((r) => r.entity))
+								onCompute={(visibles) =>
+									localImageChecksums.compute(visibles.map((r) => r.entity))
 								}
 								onCancel={localImageChecksums.cancel}
+								onSendAll={sendAllImages}
+								sendAllProgress={bulkProgress}
+								onCancelSendAll={cancelSendAll}
+								disk={imageInventory.data?.disk}
 								onRefresh={() => imageInventory.refetch()}
 								sending={sendingImages}
 								sendError={sendImages.error}

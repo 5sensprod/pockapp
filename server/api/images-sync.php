@@ -242,17 +242,21 @@ if ($method === 'GET') {
         reject(500, 'Lecture de l\'inventaire d\'images impossible. Les colonnes image_* sont-elles en place ?');
     }
 
-    // L'ESPACE DISQUE, rendu avec l'inventaire.
+    // L'ESPACE DISQUE, rendu avec l'inventaire — ET CE QU'IL NE DIT PAS.
     //
-    // Le §6.4 de la conception le déclarait « inconnu », et il l'est resté tant
-    // que seuls 57 Mio partaient. Les produits en pèsent 1,503 Gio : envoyer
-    // sans savoir ce qui reste, c'est découvrir la limite au milieu d'un lot,
-    // avec des octets écrits et des lignes SQL qui ne le sont pas.
+    // ⚠️ Mesuré en production le 20 août 2026 : **356 Tio libres sur 386 Tio**.
+    // C'est le SYSTÈME DE FICHIERS de l'hébergeur, partagé entre tous ses
+    // clients — pas le quota de ce compte. `disk_free_space()` ne sait pas
+    // faire la différence, et aucune fonction PHP ne le sait sur un mutualisé.
     //
-    // C'est une LECTURE, elle ne décide de rien : le script ne refuse pas un
-    // envoi parce que le disque lui paraît petit — ce serait décider, et §3 le
-    // lui interdit. Il rend le chiffre, l'humain regarde. `null` si l'hébergeur
-    // a désactivé ces fonctions, ce qui arrive sur les mutualisés.
+    // Le §6.4 de la conception reste donc OUVERT : l'espace réellement
+    // disponible pour 1,503 Gio de produits est inconnu, et se lit au panneau
+    // de l'hébergement, pas ici.
+    //
+    // On garde la mesure parce qu'un zéro resterait un signal, et parce que la
+    // retirer laisserait croire qu'on n'a pas cherché. Elle ne décide de rien :
+    // le script ne refuse aucun envoi sur cette base — ce serait décider, et §3
+    // le lui interdit. `null` si l'hébergeur a désactivé ces fonctions.
     $libre = @disk_free_space($mediaRoot);
     $total = @disk_total_space($mediaRoot);
 

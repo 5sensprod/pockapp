@@ -18,6 +18,7 @@ import {
 	type ExportBrand,
 	type ExportCategory,
 	type ExportProduct,
+	aSynchroniser,
 	buildExportBatches,
 	checksumOf,
 	sealed,
@@ -278,5 +279,79 @@ describe('buildExportBatches', () => {
 
 		expect(batches[0].contractVersion).toBe(CATALOG_CONTRACT_VERSION)
 		expect(batches[0].exportedAt).toBe(at)
+	})
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CE QU'UN ENVOI EN LOT ENVOIE
+// ═══════════════════════════════════════════════════════════════════════════
+// Ajouté le 20 août 2026, quand l'onglet Images a gagné « Envoyer les N à
+// synchroniser » — 225 marques ou 36 catégories d'un geste. Cette fonction
+// décide de ce qui est ÉCRIT chez l'hébergeur : elle ne peut pas rester sans
+// gardien.
+
+describe('aSynchroniser', () => {
+	const ligne = (
+		nom: string,
+		state: 'absent' | 'modified' | 'synced',
+		checksum: string | undefined,
+		online?: boolean,
+	) => ({ nom, state, checksum, online })
+
+	it('retient ce qui est absent ou modifié, et mesuré', () => {
+		const retenues = aSynchroniser([
+			ligne('jamais envoyée', 'absent', 'e1'),
+			ligne('changée', 'modified', 'e2'),
+		])
+		expect(retenues.map((r) => r.nom)).toEqual(['jamais envoyée', 'changée'])
+	})
+
+	it('écarte ce qui est déjà à jour — un lot ne renvoie pas pour rien', () => {
+		// L'envoi reste idempotent et rejouable à la pièce ; c'est le LOT qui
+		// ne repousse pas 36,3 Mio de catégories pour aboutir au même état.
+		expect(aSynchroniser([ligne('à jour', 'synced', 'e1')])).toEqual([])
+	})
+
+	it('écarte ce qui n’a PAS d’empreinte mesurée, même marqué « modifié »', () => {
+		// La règle, et non l'économie : on n'envoie jamais une empreinte qu'on
+		// n'a pas calculée — elle est stockée telle quelle côté SQL et sert
+		// ensuite de référence.
+		expect(
+			aSynchroniser([ligne('non mesurée', 'modified', undefined)]),
+		).toEqual([])
+	})
+
+	it('écarte le non mesuré que syncStateOf a déclaré « à jour »', () => {
+		// Le piège : `syncStateOf` rend `synced` quand l'empreinte n'est pas
+		// calculée et que l'entité est connue de l'inventaire — l'écran ne
+		// prétend pas savoir ce qu'il n'a pas mesuré. Filtrer sur le seul état
+		// laisserait passer ces fiches-là.
+		const etat = syncStateOf('nedb-1', undefined, { 'nedb-1': 'e-distant' })
+		expect(etat).toBe('synced')
+		expect(aSynchroniser([ligne('jamais lue', etat, undefined)])).toEqual([])
+	})
+
+	it('écarte ce que la base SQL du site ne connaît PAS', () => {
+		// Mesuré le 20 août 2026 sur un lot réel : 5 catégories parties, 4
+		// refusées en 409 « Entité inconnue de la base du site », et le lot
+		// arrêté sur trois échecs de suite. Les images sont un ÉTAT de la ligne,
+		// pas une entité à part — sans la ligne, l'envoi ne PEUT pas aboutir.
+		expect(
+			aSynchroniser([ligne('pas exportée', 'absent', 'e1', false)]),
+		).toEqual([])
+	})
+
+	it('laisse passer quand on IGNORE si l’entité est en ligne', () => {
+		// `undefined` = inventaire d'entités pas lu. Ne pas savoir n'est pas
+		// savoir que non : on laisse le serveur trancher plutôt que de retenir
+		// à tort tout un lot.
+		const retenues = aSynchroniser([ligne('inconnue', 'absent', 'e1')])
+		expect(retenues.map((r) => r.nom)).toEqual(['inconnue'])
+	})
+
+	it('ne modifie pas la liste reçue', () => {
+		const source = [ligne('a', 'absent', 'e1'), ligne('b', 'synced', 'e2')]
+		aSynchroniser(source)
+		expect(source).toHaveLength(2)
 	})
 })

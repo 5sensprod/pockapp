@@ -408,6 +408,15 @@ export type SendImagesInput = {
 	 *  la même valeur qui sert à décider d'envoyer et qui est stockée en face,
 	 *  sans quoi les deux pourraient diverger. */
 	imageChecksum: string
+	/**
+	 * Ne pas relire l'inventaire distant après cet envoi.
+	 *
+	 * Pour UN envoi, l'invalidation est ce qu'on veut : les pastilles suivent.
+	 * Pour un LOT — 225 marques d'un geste —, elle déclenche 225 relectures de
+	 * l'inventaire du mutualisé, une par entité, sérialisées avec les envois.
+	 * Le lot invalide donc UNE FOIS, à la fin, et pose ce drapeau entre-temps.
+	 */
+	skipInvalidate?: boolean
 }
 
 export type SendImagesOutcome = {
@@ -472,8 +481,10 @@ export function useSendEntityImages() {
 				{ method: 'POST', body: form },
 			)
 		},
-		onSuccess: () => {
-			// L'inventaire vient de changer : les pastilles doivent suivre.
+		onSuccess: (_outcome, { skipInvalidate }) => {
+			// L'inventaire vient de changer : les pastilles doivent suivre. Sauf
+			// en lot, où l'appelant invalide une fois à la fin (voir le champ).
+			if (skipInvalidate) return
 			queryClient.invalidateQueries({ queryKey: ['site-images', 'inventory'] })
 		},
 	})

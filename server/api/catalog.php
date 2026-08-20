@@ -374,6 +374,95 @@ try {
         ]);
     }
 
+    // ── Liste des marques qui portent des produits ──────────────────────────
+    //
+    // Sert le carrousel de marques de l'accueil. Même règle que `stats` : une
+    // marque sans produit publié n'est pas une marque que le visiteur peut
+    // trouver, elle n'a rien à faire dans un bandeau qui annonce des
+    // partenaires.
+    //
+    // `image` est l'URL COMPLÈTE du logo — rang 0 de `image_paths`, par
+    // `brand_image_url()`, exactement comme celle que `present_product()` pose
+    // dans `brand.image`. Le site la consomme telle quelle.
+    //
+    // Elle est null pour la QUASI-TOTALITÉ des marques : trois sur 288 ont
+    // leurs octets en ligne au 20 août 2026. C'est le cas normal, pas une
+    // panne. On rend quand même TOUTE la liste, logo ou pas : c'est à
+    // l'affichage de décider quoi faire d'une marque sans logo — le carrousel
+    // les écarte, un annuaire de marques les garderait.
+    if ($action === 'brands') {
+        $rows = $pdo->query(sprintf(
+            'SELECT b.legacy_id, b.name, b.slug, b.image_paths,
+                    COUNT(p.legacy_id) AS product_count
+               FROM `%s` b
+               JOIN `%s` p ON p.brand = b.legacy_id AND p.status = %s
+              GROUP BY b.legacy_id, b.name, b.slug, b.image_paths
+              ORDER BY product_count DESC, b.name ASC',
+            $T_BRANDS,
+            $T_PRODUCTS,
+            $pdo->quote('published')
+        ))->fetchAll();
+
+        respond(200, [
+            'ok'     => true,
+            'brands' => array_map(static function (array $row): array {
+                return [
+                    'id'            => (string) $row['legacy_id'],
+                    'name'          => (string) $row['name'],
+                    'slug'          => $row['slug'] !== null ? (string) $row['slug'] : null,
+                    'image'         => brand_image_url(
+                        $row['image_paths'] !== null ? (string) $row['image_paths'] : null
+                    ),
+                    'product_count' => (int) $row['product_count'],
+                ];
+            }, $rows),
+        ]);
+    }
+
+    // ── Les produits les plus récemment exportés ────────────────────────────
+    //
+    // Sert l'aperçu de l'accueil, qui montrait jusqu'ici la catégorie la mieux
+    // fournie — « Partitions », immuable et sans intérêt à la deuxième visite.
+    //
+    // ─── CE QUE `exported_at` DIT VRAIMENT ─────────────────────────────────
+    // PAS la date d'arrivée du produit : cette donnée n'existe nulle part dans
+    // la chaîne (`13-dates-produits.md`, 13 août 2026). `exported_at` est
+    // réécrit à chaque export QUI CONTIENT le produit — et l'export est
+    // incrémental, sur une empreinte qui couvre `stock` et `price_ttc`. Une
+    // vente redate donc un produit.
+    //
+    // La liste est par conséquent « ce qui a bougé en dernier », pas « les
+    // nouveautés ». Elle est vivante et change toute seule, ce qui est ce
+    // qu'on lui demande ; elle ne doit simplement pas être annoncée comme une
+    // date de mise en vente. Le jour où une vraie date existe, seul le
+    // `ORDER BY` change.
+    //
+    // Départage par `legacy_id` : un export pose le MÊME horodatage sur tout
+    // son lot — 2563 produits ont porté la même seconde au chargement initial.
+    // Sans second critère, MySQL rendrait ces ex æquo dans un ordre non
+    // garanti, et la grille changerait d'une page à l'autre sans raison.
+    if ($action === 'latest') {
+        $st = $pdo->prepare(sprintf(
+            'SELECT %s
+               FROM `%s` p
+          LEFT JOIN `%s` b ON b.legacy_id = p.brand
+              WHERE p.status = %s
+              ORDER BY p.exported_at DESC, p.legacy_id DESC
+              LIMIT :limit',
+            $PRODUCT_COLUMNS,
+            $T_PRODUCTS,
+            $T_BRANDS,
+            $pdo->quote('published')
+        ));
+        $st->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $st->execute();
+
+        respond(200, [
+            'ok'       => true,
+            'products' => array_map('present_product', $st->fetchAll()),
+        ]);
+    }
+
     // ── Recherche ───────────────────────────────────────────────────────────
     // Le site a une recherche ; sans cette action, elle continuerait à
     // interroger WooCommerce pendant que les pages affichent notre catalogue —
@@ -813,7 +902,7 @@ try {
         ]);
     }
 
-    fail(400, 'Action inconnue. Attendues : category, categories, product, search, stats.');
+    fail(400, 'Action inconnue. Attendues : category, categories, brands, latest, product, search, stats.');
 } catch (PDOException $e) {
     fail(500, 'Lecture du catalogue impossible.');
 }

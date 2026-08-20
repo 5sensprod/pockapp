@@ -35,12 +35,15 @@ import {
 	CloudUpload,
 	Loader2,
 	RefreshCw,
+	Send,
 	XCircle,
 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 import type { ImageBearing } from '../../hooks/use-image-sync'
-import type { SyncState } from '../../lib/catalog-export'
+import { type SyncState, aSynchroniser } from '../../lib/catalog-export'
 import type { ImageKind } from '../../lib/image-checksum'
+import { MAX_ENTITES_PAR_CALCUL } from '../../lib/image-checksum-store'
 
 export type ImageRow = {
 	kind: ImageKind
@@ -49,6 +52,18 @@ export type ImageRow = {
 	/** L'empreinte locale, si elle a été calculée. Sans elle, aucun envoi : on
 	 *  n'envoie pas une valeur qu'on n'a pas mesurée. */
 	checksum: string | undefined
+	/**
+	 * L'entité est-elle dans la base SQL du site ?
+	 *
+	 * Rien à voir avec l'état de ses IMAGES : c'est la ligne elle-même. Les
+	 * images en sont un ÉTAT, pas une entité à part — sans la ligne, le miroir
+	 * refuse en 409. Et toutes les catégories n'y sont pas : une catégorie ne
+	 * part qu'avec le premier produit qui la cite.
+	 *
+	 * `undefined` = l'inventaire d'entités n'a pas été lu. On ne sait pas, ce
+	 * qui n'est pas la même chose que savoir que non.
+	 */
+	online?: boolean
 }
 
 type Props = {
@@ -60,8 +75,18 @@ type Props = {
 	computing: boolean
 	computeProgress: { done: number; total: number }
 	computeError: string | null
-	onCompute: () => void
+	/** Reçoit les lignes de la nature affichée, pas toutes : le filtre décide
+	 *  de ce qu'on mesure, et mesurer LIT les octets. */
+	onCompute: (rows: ImageRow[]) => void
 	onRefresh: () => void
+	/** Envoie tout ce qui est passé, une entité après l'autre. */
+	onSendAll: (rows: ImageRow[]) => void
+	/** Avancement du lot en cours, `null` s'il n'y en a pas. */
+	sendAllProgress: { done: number; total: number } | null
+	onCancelSendAll: () => void
+	/** L'espace du mutualisé, tel que l'inventaire le rend. `null` ou absent
+	 *  quand l'hébergeur a désactivé `disk_free_space`. */
+	disk?: { freeBytes: number | null; totalBytes: number | null } | null
 	/** Arrête la comparaison en cours. Ce qui a déjà été mesuré est gardé. */
 	onCancel: () => void
 	sending: string | null
@@ -87,6 +112,46 @@ const LIBELLE_KIND: Record<ImageKind, string> = {
  */
 const MAX_LIGNES_AFFICHEES = 300
 
+/**
+ * Le filtre par NATURE.
+ *
+ * L'onglet mêlait 2674 fiches — 225 marques, 36 catégories, 2412 produits —
+ * sans les distinguer, et son bouton unique proposait de comparer 4394 images
+ * d'un coup. Or les trois natures n'ont rien à voir : les marques et les
+ * catégories sont 261 fiches et 57 Mio, le premier livrable du miroir, qu'on
+ * veut envoyer d'un geste ; les produits sont 1,503 Gio, qu'on envoie à la
+ * pièce depuis leur carte.
+ *
+ * `all` reste en tête parce que c'est l'état de départ le moins surprenant,
+ * mais ce n'est PAS le mode de travail : on choisit une nature, puis on agit.
+ */
+const NATURES = [
+	{ cle: 'all' as const, texte: 'Toutes' },
+	{ cle: 'brands' as const, texte: 'Marques' },
+	{ cle: 'categories' as const, texte: 'Catégories' },
+	{ cle: 'products' as const, texte: 'Produits' },
+]
+
+type Nature = (typeof NATURES)[number]['cle']
+
+/**
+ * Des octets lisibles. Utilisé UNIQUEMENT pour l'espace disque, qui est une
+ * mesure réelle rendue par le serveur — jamais pour estimer le poids d'un lot,
+ * que le front ne connaît pas : il a des URL, pas des tailles de fichiers.
+ */
+function lisible(octets: number): string {
+	if (octets >= 1024 ** 3) return `${(octets / 1024 ** 3).toFixed(1)} Gio`
+	if (octets >= 1024 ** 2) return `${Math.round(octets / 1024 ** 2)} Mio`
+	return `${Math.round(octets / 1024)} Kio`
+}
+
+/** L'état « la ligne n'existe pas encore côté site ». Il précède les trois
+ *  autres : tant qu'il tient, l'état des images ne veut rien dire. */
+const HORS_LIGNE = {
+	texte: 'À exporter d’abord',
+	classe: 'bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-200',
+}
+
 const ETIQUETTES: Record<SyncState, { texte: string; classe: string }> = {
 	absent: { texte: 'Jamais envoyée', classe: 'bg-muted text-muted-foreground' },
 	modified: {
@@ -111,6 +176,10 @@ export function ImageSyncPanel({
 	onCompute,
 	onRefresh,
 	onCancel,
+	onSendAll,
+	sendAllProgress,
+	onCancelSendAll,
+	disk,
 	sending,
 	sendError,
 	onSend,
@@ -139,21 +208,97 @@ export function ImageSyncPanel({
 		)
 	}
 
+	// ── La nature affichée ──────────────────────────────────────────────────
+	// Tout ce qui suit — décomptes, comparaison, envoi en lot — porte sur elle
+	// et sur elle seule. C'est le point : un bouton doit dire ce qu'il fait,
+	// et « comparer 4394 images » ne le disait pas.
+	const [nature, setNature] = useState<Nature>('all')
+
+	const parNature = useMemo(
+		() => (nature === 'all' ? rows : rows.filter((row) => row.kind === nature)),
+		[rows, nature],
+	)
+
+	const comptes = useMemo(() => {
+		const map = new Map<Nature, number>([['all', rows.length]])
+		for (const row of rows) map.set(row.kind, (map.get(row.kind) ?? 0) + 1)
+		return map
+	}, [rows])
+
 	const compte = (state: SyncState) =>
-		rows.filter((row) => row.state === state).length
-	const empreintesConnues = rows.some((row) => row.checksum !== undefined)
-	const fichiers = rows.reduce(
+		parNature.filter((row) => row.state === state).length
+	const empreintesConnues = parNature.some((row) => row.checksum !== undefined)
+	const fichiers = parNature.reduce(
 		(total, row) => total + row.entity.images.length,
 		0,
 	)
-	const visibles = rows.slice(0, MAX_LIGNES_AFFICHEES)
+	const visibles = parNature.slice(0, MAX_LIGNES_AFFICHEES)
+
+	/**
+	 * Ce que l'envoi en lot enverrait : la nature affichée, moins ce qui est
+	 * déjà à jour, moins ce qu'on n'a pas mesuré.
+	 *
+	 * Écarter « à jour » n'est pas une optimisation de confort : renvoyer les
+	 * 36 catégories déjà en ligne, c'est 36,3 Mio sur le mutualisé pour aboutir
+	 * au même état. L'envoi reste idempotent — on peut le refaire à la pièce —
+	 * mais le lot ne le fait pas pour rien.
+	 *
+	 * Écarter le non mesuré est une règle, pas une commodité : on n'envoie
+	 * jamais une empreinte qu'on n'a pas calculée.
+	 */
+	const aEnvoyer = useMemo(() => aSynchroniser(parNature), [parNature])
+
+	/** Ce qui ne PEUT pas partir : la ligne n'est pas côté site. Compté à part
+	 *  et affiché, parce que le geste qui débloque n'est pas ici — c'est
+	 *  l'export de l'entité, dans l'onglet Arborescence. */
+	const horsLigne = useMemo(
+		() => parNature.filter((row) => row.online === false),
+		[parNature],
+	)
+
+	/**
+	 * Ce qu'il reste vraiment à LIRE. Ce n'est pas `parNature.length` : le cache
+	 * persistant rend gratuit tout ce qui a déjà été mesuré et n'a pas bougé.
+	 *
+	 * Sur 2412 produits, la différence n'est pas cosmétique — c'est elle qui
+	 * dit si le prochain clic coûte 190 Mio ou rien du tout, et c'est ce que
+	 * doit savoir celui qui clique.
+	 */
+	const aMesurer = useMemo(
+		() => parNature.filter((row) => row.checksum === undefined),
+		[parNature],
+	)
+
+	const enLot = sendAllProgress !== null
 
 	return (
 		<div className='space-y-4'>
+			{/* ── La nature d'abord ──────────────────────────────────────────
+			    Elle vient AVANT les décomptes et avant les boutons, parce
+			    qu'elle décide de ce qu'ils disent. Mélanger 225 marques, 36
+			    catégories et 2412 produits dans une seule liste, c'est n'en
+			    montrer aucune. */}
+			<div className='flex flex-wrap items-center gap-1'>
+				{NATURES.map(({ cle, texte }) => (
+					<Button
+						key={cle}
+						size='sm'
+						variant={nature === cle ? 'default' : 'ghost'}
+						disabled={computing || enLot}
+						onClick={() => setNature(cle)}
+					>
+						{texte}
+						<Badge variant='secondary' className='ml-2 tabular-nums'>
+							{comptes.get(cle) ?? 0}
+						</Badge>
+					</Button>
+				))}
+			</div>
+
 			<Card>
 				<CardContent className='flex flex-wrap items-center gap-3 pt-6'>
 					<div className='flex flex-1 flex-wrap items-center gap-2 text-sm'>
-						<Badge variant='secondary'>{rows.length} fiches</Badge>
+						<Badge variant='secondary'>{parNature.length} fiches</Badge>
 						<Badge variant='secondary'>{fichiers} images</Badge>
 						<Badge className={ETIQUETTES.absent.classe}>
 							{compte('absent')} jamais envoyées
@@ -164,14 +309,42 @@ export function ImageSyncPanel({
 						<Badge className={ETIQUETTES.synced.classe}>
 							{compte('synced')} à jour
 						</Badge>
+						{horsLigne.length > 0 && (
+							<Badge className={HORS_LIGNE.classe}>
+								{horsLigne.length} à exporter d’abord
+							</Badge>
+						)}
+						{/* ── L'ESPACE DISQUE, ET CE QU'IL NE DIT PAS ────────────────
+						    `disk_free_space()` mesure le SYSTÈME DE FICHIERS de
+						    l'hébergeur, pas le quota du compte. Mesuré le 20 août 2026 :
+						    **356 Tio libres sur 386 Tio** — le disque du mutualisé,
+						    partagé entre tous ses clients. Ce n'est pas faux, c'est
+						    autre chose.
+						    Le §6.4 de la conception peut donc être rayé de ce qu'on
+						    croyait résolu : **l'espace réellement disponible reste
+						    inconnu**, et PHP n'a aucun moyen de le connaître. Il se lit
+						    au panneau de l'hébergeur.
+						    Le badge reste, parce que zéro libre resterait un signal ;
+						    mais il dit ce qu'il mesure, et refuse de rassurer. */}
+						{typeof disk?.freeBytes === 'number' && (
+							<Badge
+								variant='outline'
+								className='tabular-nums'
+								title='Espace du système de fichiers de l’hébergeur, partagé entre ses clients. Ce n’est PAS le quota de votre compte, que PHP ne peut pas lire — regardez le panneau de votre hébergement.'
+							>
+								volume hôte : {lisible(disk.freeBytes)} libres
+								{typeof disk.totalBytes === 'number' &&
+									` / ${lisible(disk.totalBytes)}`}
+							</Badge>
+						)}
 					</div>
 
 					<div className='flex items-center gap-2'>
 						<Button
 							variant='outline'
 							size='sm'
-							onClick={onCompute}
-							disabled={computing}
+							onClick={() => onCompute(parNature)}
+							disabled={computing || enLot}
 						>
 							{computing ? (
 								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
@@ -180,7 +353,11 @@ export function ImageSyncPanel({
 							)}
 							{computing
 								? `Lecture des images ${computeProgress.done}/${computeProgress.total}`
-								: 'Comparer aux images en ligne'}
+								: aMesurer.length === 0
+									? `Comparer ${parNature.length} fiches`
+									: aMesurer.length > MAX_ENTITES_PAR_CALCUL
+										? `Lire ${MAX_ENTITES_PAR_CALCUL} fiches (sur ${aMesurer.length} à mesurer)`
+										: `Lire ${aMesurer.length} fiches`}
 						</Button>
 
 						{/* Visible SEULEMENT pendant le calcul : un bouton d'arrêt en
@@ -191,6 +368,31 @@ export function ImageSyncPanel({
 								<XCircle className='mr-2 h-4 w-4' />
 								Arrêter
 							</Button>
+						)}
+
+						{/* ── L'ENVOI EN LOT ──────────────────────────────────────
+						    Le bouton dit COMBIEN il enverra, jamais « tout » : c'est
+						    la seule façon d'estimer un geste qui écrit chez
+						    l'hébergeur. Il n'apparaît que s'il y a quelque chose à
+						    envoyer, et donc jamais avant d'avoir comparé. */}
+						{!computing && aEnvoyer.length > 0 && !enLot && (
+							<Button size='sm' onClick={() => onSendAll(aEnvoyer)}>
+								<Send className='mr-2 h-4 w-4' />
+								Envoyer les {aEnvoyer.length} à synchroniser
+							</Button>
+						)}
+
+						{enLot && sendAllProgress && (
+							<>
+								<Button size='sm' disabled>
+									<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+									Envoi {sendAllProgress.done}/{sendAllProgress.total}
+								</Button>
+								<Button variant='ghost' size='sm' onClick={onCancelSendAll}>
+									<XCircle className='mr-2 h-4 w-4' />
+									Arrêter
+								</Button>
+							</>
 						)}
 					</div>
 				</CardContent>
@@ -207,6 +409,18 @@ export function ImageSyncPanel({
 					fiches déjà mesurées et inchangées sont reconnues sans être relues ;
 					les autres se lisent à quelques centaines de kilo-octets pièce.
 					Filtrez avant de lancer si la liste est longue.
+				</p>
+			)}
+
+			{horsLigne.length > 0 && (
+				<p className='text-muted-foreground text-sm'>
+					<strong>
+						{horsLigne.length} fiches ne sont pas dans la base du site
+					</strong>{' '}
+					et ne peuvent pas recevoir d’images : les images sont un état de la
+					ligne, pas une entité à part. Une catégorie ne part qu’avec le premier
+					produit qui la cite — exportez l’entité depuis l’onglet Arborescence,
+					puis revenez. Elles sont exclues de l’envoi en lot.
 				</p>
 			)}
 
@@ -235,7 +449,11 @@ export function ImageSyncPanel({
 						{visibles.map((row) => {
 							const cle = `${row.kind}/${row.entity.legacy_id}`
 							const enCours = sending === cle
-							const etiquette = ETIQUETTES[row.state]
+							// L'absence de la LIGNE prime sur l'état des images : dire
+							// « jamais envoyée » d'une fiche qu'on ne PEUT pas envoyer
+							// invite à un clic qui ne peut que rater.
+							const bloquee = row.online === false
+							const etiquette = bloquee ? HORS_LIGNE : ETIQUETTES[row.state]
 
 							return (
 								<tr key={cle} className='border-t'>
@@ -289,18 +507,21 @@ export function ImageSyncPanel({
 					</tbody>
 				</table>
 
-				{rows.length === 0 && (
+				{parNature.length === 0 && (
 					<p className='px-3 py-8 text-center text-muted-foreground text-sm'>
 						Aucune fiche de la sélection ne porte d’image.
 					</p>
 				)}
 
-				{rows.length > visibles.length && (
+				{parNature.length > visibles.length && (
 					<p className='border-t bg-muted/30 px-3 py-3 text-center text-muted-foreground text-sm'>
-						{visibles.length} fiches affichées sur {rows.length}. Affinez la
-						sélection — catégorie, marque, ou « à mettre à jour » — pour voir
+						{visibles.length} fiches affichées sur {parNature.length}. Affinez
+						la sélection — catégorie, marque, ou « à mettre à jour » — pour voir
 						les autres.{' '}
-						<strong>La comparaison, elle, porte sur les {rows.length}.</strong>
+						<strong>
+							La comparaison et l’envoi, eux, portent sur les {parNature.length}
+							.
+						</strong>
 					</p>
 				)}
 			</div>

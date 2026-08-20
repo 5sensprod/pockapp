@@ -62,15 +62,23 @@ export const CLE_STOCKAGE = 'pocketapp.site.image-checksums.v1'
  * Combien d'entités un seul geste peut mettre en calcul.
  *
  * Ce n'est pas une limite technique, c'est une limite de LISIBILITÉ : au-delà,
- * celui qui clique ne peut plus estimer ce qu'il déclenche. 200 entités pèsent
- * environ 125 Mio au poids moyen mesuré (381 Kio par fichier, 1,7 fichier par
- * produit) — quelques dizaines de secondes sur la boucle locale, pas un
- * après-midi.
+ * celui qui clique ne peut plus estimer ce qu'il déclenche.
+ *
+ * **300 et pas 200**, depuis le 20 août 2026, et le nombre n'est pas rond par
+ * hasard : le plus grand ensemble qu'on veuille pouvoir mesurer D'UN SEUL GESTE
+ * est **les 225 marques** (20,6 Mio) ou **les 36 catégories** (36,3 Mio) —
+ * 57 Mio à elles deux, le premier livrable du miroir. Un plafond à 200 coupait
+ * les marques en deux pour rien et transformait « envoyer toutes les images des
+ * marques » en deux passes.
+ *
+ * Il reste très en dessous d'un balayage des produits : 2412 fiches et
+ * 1,503 Gio. 300 produits au poids moyen mesuré pèsent environ 190 Mio, ce qui
+ * se sent mais ne bloque pas.
  *
  * Le calcul suit la SÉLECTION affichée, filtres compris ; ce plafond n'est que
  * le garde-fou de dernier recours.
  */
-export const MAX_ENTITES_PAR_CALCUL = 200
+export const MAX_ENTITES_PAR_CALCUL = 300
 
 /**
  * Lit le cache. Un contenu illisible ou d'une autre forme n'est pas une

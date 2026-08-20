@@ -568,12 +568,22 @@ mécanisme ne se fait pas en silence.**
 Effet de bord voulu : un `.tmp` laissé par un envoi interrompu n'est dans
 aucune liste, donc il tombe.
 
-### 9.7 L'espace disque du §6.4 cesse d'être inconnu
+### 9.7 L'espace disque — la mesure est là, la réponse n'y était pas
 
-`?action=inventory` rend désormais `disk.freeBytes` / `disk.totalBytes`
+`?action=inventory` rend `disk.freeBytes` / `disk.totalBytes`
 (`disk_free_space` sur `media_root`). C'est une **lecture** : le script ne
 refuse aucun envoi sur cette base — ce serait décider, et le §3 le lui interdit.
-`null` si l'hébergeur a désactivé ces fonctions.
+
+⚠️ **Corrigé le 20 août 2026, mesuré en production : 356 Tio libres sur
+386 Tio.** C'est le système de fichiers de l'hébergeur, partagé entre tous ses
+clients — **pas le quota du compte**, qu'aucune fonction PHP ne sait lire sur un
+mutualisé. J'avais écrit ici que le §6.4 « cessait d'être inconnu » : c'était
+faux, et un badge rassurant qui mesure autre chose est pire que pas de badge.
+
+La mesure est gardée — un zéro resterait un signal — mais elle est étiquetée
+« volume hôte » et refuse de rassurer. **L'espace réellement disponible se lit
+au panneau de l'hébergement**, et c'est là que le propriétaire l'a confirmé
+suffisant pour les 1,503 Gio.
 
 ### 9.8 Ce qui a été vérifié, et comment
 
@@ -769,3 +779,172 @@ préexistait, il n'a pas été inventé pour l'occasion.
 - **Rien n'est déposé.** `catalog.php` doit partir par FTP et le bundle être
   rebâti : deux gestes du propriétaire, sans lesquels rien de tout ceci ne
   s'affiche.
+
+### 9.12 L'onglet Images distingue les natures, et envoie en lot — 20 août 2026
+
+Le §9.11 notait la refonte de l'onglet comme « ouverte et non traitée ». Elle
+l'est en partie, pour un besoin précis : **envoyer les images des 225 marques et
+des 36 catégories rapidement**, ce qui était le premier livrable du miroir
+(§4.4.3) et restait impossible fiche par fiche.
+
+#### Le filtre par nature vient AVANT tout
+
+Les trois natures n'ont rien à voir et n'ont pas le même geste :
+
+| nature | volume | comment on l'envoie |
+|---|---|---|
+| marques | 225 fiches, 20,6 Mio | **en lot**, d'un geste |
+| catégories | 36 fiches, 36,3 Mio | **en lot**, d'un geste |
+| produits | 2412 fiches, 1,503 Gio | **à la pièce**, depuis la carte (§9.11) |
+
+Les décomptes, la comparaison et l'envoi portent désormais sur la nature
+affichée, et sur elle seule. Un bouton doit dire ce qu'il fait : « Comparer 225
+fiches » le dit, « Comparer aux images en ligne » sur 2674 fiches mêlées ne le
+disait pas.
+
+#### L'envoi en lot est une boucle, pas un mécanisme
+
+Une entité après l'autre, jamais autre chose. Grouper plusieurs entités dans une
+requête ferait sauter l'idempotence par entité ET le plafond de corps : le §4.3
+ne bouge pas.
+
+Trois garde-fous, chacun contre une panne concrète :
+
+1. **un échec n'arrête pas le lot** — une marque illisible ne doit pas empêcher
+   les 224 autres de partir ;
+2. **trois échecs de SUITE l'arrêtent** — une clé refusée ou un hébergeur à bout
+   répond pareil 225 fois ; insister n'apprend rien et martèle le mutualisé ;
+3. **l'inventaire n'est relu qu'une fois, à la fin.** C'est un défaut qui a été
+   trouvé en écrivant ceci : `useSendEntityImages` invalidait l'inventaire à
+   chaque succès. Invisible à un envoi, insupportable à 225 — autant de
+   relectures de l'inventaire distant, sérialisées avec les envois. D'où le
+   drapeau `skipInvalidate` sur l'entrée de la mutation.
+
+#### Ce que le lot envoie, et pourquoi c'est gardé
+
+`aSynchroniser` (`lib/catalog-export.ts`) écarte deux choses, de natures
+différentes :
+
+- **ce qui est `synced`, par économie.** L'envoi reste idempotent et rejouable à
+  la pièce ; c'est le lot qui ne repousse pas 36,3 Mio pour aboutir au même
+  état ;
+- **ce qui n'a pas d'empreinte mesurée, par RÈGLE** — et c'est le cas délicat.
+  `syncStateOf` rend `synced` quand l'empreinte n'est pas calculée et que
+  l'entité est connue de l'inventaire : l'écran ne prétend pas savoir ce qu'il
+  n'a pas mesuré. **Filtrer sur le seul état laisserait donc partir des fiches
+  jamais mesurées sous l'étiquette « à jour »**, et il faudrait leur inventer
+  une empreinte. On n'envoie jamais une empreinte qu'on n'a pas calculée.
+
+Cette fonction décide de ce qui est ÉCRIT chez l'hébergeur : gardée par cinq cas
+dans `catalog-export.test.ts`, dont le piège ci-dessus.
+
+#### Le plafond de calcul passe de 200 à 300
+
+Le nombre n'est pas rond par hasard : le plus grand ensemble qu'on veuille
+mesurer d'un seul geste est **les 225 marques**. À 200, le lot se coupait en
+deux pour rien. 300 reste très en dessous d'un balayage des produits — 2412
+fiches, 1,503 Gio.
+
+#### Ce qui n'est PAS fait, et reste ouvert
+
+- **La boucle du lot n'a pas de gardien exécutable.** Les trois garde-fous
+  vivent dans un `useCallback` de `CatalogueEnLignePage`, que rien ici ne peut
+  exécuter — ce dépôt n'a pas d'infrastructure de test de composants. Seule la
+  règle de sélection a été extraite, précisément parce qu'elle décide d'une
+  écriture distante.
+- **L'écran n'a pas été vu.** Le volet navigateur atteint le serveur de
+  développement mais s'arrête à l'authentification.
+- **Aucun lot n'a été envoyé.** `npx tsc -b`, `biome`, `pnpm test` (220) passent.
+- La refonte d'ensemble de l'onglet reste ouverte : il porte maintenant un
+  filtre, pas une organisation.
+
+### 9.13 L'exclusion qui manquait : la ligne avant ses images — 20 août 2026
+
+Premier lot réel, sur les catégories : **5 parties, 4 refusées**, et le lot
+arrêté sur trois échecs de suite. Le serveur répondait 409 :
+
+> Entité inconnue de la base du site : `categories/eBxssgjp5S4JFCtJ`. Exporter
+> l'entité avant ses images.
+
+**Le serveur avait raison, et le défaut était dans l'écran.** Les images sont un
+ÉTAT de la ligne SQL, pas une entité à part (§4.3) : sans la ligne, l'envoi ne
+peut pas aboutir. Or `CatalogueEnLignePage` porte déjà la règle, écrite pour les
+textes et ignorée par moi pour les images :
+
+> « une catégorie que le site ne connaît pas n'est pas modifiée, elle est
+> absente — et elle partira d'elle-même avec le premier produit qui la cite »
+
+Proposer les images d'une fiche qui n'est pas en ligne, c'est promettre un envoi
+que le serveur refusera. `aSynchroniser` gagne donc une **troisième** exclusion,
+et elle n'est ni de l'économie ni une règle de prudence : c'est une
+impossibilité.
+
+#### Combien de fiches sont concernées
+
+Mesuré ce jour, `sqlite3 -readonly`, en comptant les entités citées par au moins
+un produit `published` :
+
+| | portent une image | citées par un produit publié |
+|---|---|---|
+| marques | 225 | **179** — 46 hors de portée |
+| catégories | **37** | **23** — 14 hors de portée |
+
+(37 et non 36 : une catégorie a retrouvé une image depuis le §1.)
+
+Ce sont des **bornes hautes**, pas l'état réel : ce qui compte est la présence
+dans l'inventaire d'ENTITÉS du site, qui dépend de ce qui a effectivement été
+exporté. L'écran lit cet inventaire-là, pas ce comptage.
+
+#### Ce que l'écran fait maintenant
+
+- une quatrième étiquette, **« À exporter d'abord »**, qui **prime sur l'état
+  des images** : dire « jamais envoyée » d'une fiche qu'on ne PEUT pas envoyer
+  invite à un clic qui ne peut que rater ;
+- son bouton d'envoi est désactivé, avec le motif en infobulle ;
+- un décompte et une phrase qui disent où est le geste qui débloque — l'export
+  de l'entité, dans l'onglet Arborescence, pas ici ;
+- ces fiches sont **exclues de l'envoi en lot**.
+
+`online === undefined` — l'inventaire d'entités pas encore lu — n'exclut rien :
+**ne pas savoir n'est pas savoir que non**, et retenir tout un lot par ignorance
+serait pire que laisser le serveur trancher.
+
+#### Ce que l'incident dit du garde-fou
+
+Les trois échecs de suite ont fonctionné exactement comme prévu : le lot s'est
+arrêté au lieu de marteler le mutualisé 32 fois. Il a fait son travail — mais un
+garde-fou qui se déclenche signale toujours que quelque chose aurait dû être
+attrapé plus tôt. C'était le cas.
+
+Gardien : `catalog-export.test.ts`, deux cas de plus — la fiche hors ligne est
+écartée, l'inconnue passe.
+
+### 9.14 Avant la campagne produits — 20 août 2026
+
+Marques et catégories sont **envoyées et en ligne** (mesuré par le propriétaire,
+après le correctif du §9.13). Restent les produits : 2412 fiches, 4132 fichiers,
+**1,503 Gio**.
+
+Deux manques de l'écran, comblés avant de lancer :
+
+1. **L'espace disque du mutualisé est affiché.** Il dormait dans le JSON depuis
+   le §9.7. Affiché, il a immédiatement montré qu'il ne répondait pas à la
+   question — voir la correction au §9.7 : c'est le volume de l'hébergeur, pas
+   le quota du compte. La capacité a été confirmée suffisante par le
+   propriétaire, hors de l'application.
+2. **Le bouton de comparaison annonce ce qu'il reste à LIRE**, pas le nombre de
+   fiches affichées. Le cache rend gratuit ce qui a déjà été mesuré : sur 2412
+   produits, la différence dit si le prochain clic coûte ~190 Mio ou rien.
+   « Lire 300 fiches (sur 2412 à mesurer) » se comprend ; « Comparer 2412
+   fiches » ne se comprenait pas.
+
+Le plafond reste à 300. La campagne se fait donc en **neuf passes**, ou —
+préférable — **branche par branche** en sélectionnant une catégorie dans
+l'arborescence : l'avancement se lit alors en termes de catalogue, et l'on peut
+commencer par ce qui se voit sur le site.
+
+Rappel des deux chiffres qui peuvent mordre : **11 produits demandent un corps
+de plus de 8 Mio** (pire cas 15,92 Mio), et `post_max_size` du mutualisé n'est
+toujours pas mesuré. S'il est serré, ces onze-là échoueront en 413 — sans
+arrêter le lot, sauf s'ils tombent trois de suite.
+

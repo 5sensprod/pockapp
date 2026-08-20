@@ -207,6 +207,55 @@ export function syncStateOf(
 	return known === checksum ? 'synced' : 'modified'
 }
 
+/**
+ * Ce qu'un ENVOI EN LOT doit envoyer, parmi ce qui est affiché.
+ *
+ * Trois exclusions, et elles ne sont pas de même nature.
+ *
+ * **Ce qui est `synced` est écarté par économie.** L'envoi reste idempotent —
+ * rejouer une fiche à la pièce donne le même état, et c'est permis — mais un
+ * lot ne refait pas gratuitement : renvoyer les 36 catégories déjà en ligne,
+ * c'est 36,3 Mio poussés sur le mutualisé pour aboutir exactement où l'on est.
+ *
+ * **Ce qui n'a pas d'empreinte mesurée est écarté par RÈGLE**, et c'est le
+ * point délicat. `syncStateOf` rend `synced` quand l'empreinte n'est pas encore
+ * calculée et que l'entité est connue de l'inventaire — voir juste au-dessus :
+ * l'écran ne prétend pas savoir ce qu'il n'a pas mesuré. Filtrer sur le seul
+ * état laisserait donc passer des fiches jamais mesurées sous l'étiquette « à
+ * jour », et il faudrait leur inventer une empreinte pour les envoyer. On
+ * n'envoie jamais une empreinte qu'on n'a pas calculée : elle est stockée telle
+ * quelle côté SQL et sert ensuite de référence.
+ *
+ * **Ce que la base SQL du site ne connaît pas est écarté parce que c'est
+ * IMPOSSIBLE**, et c'est l'exclusion qui manquait. Les images sont un ÉTAT de
+ * la ligne, pas une entité à part : le miroir refuse en 409 « Entité inconnue
+ * de la base du site » (`images-sync.php`). Or toutes les catégories ne sont
+ * pas en ligne — une catégorie ne part **qu'avec le premier produit qui la
+ * cite** (règle déjà écrite dans `CatalogueEnLignePage`), et 464 existent en
+ * local pour 199 portant au moins un produit, mesuré le 19 août 2026. Proposer
+ * leurs images, c'est promettre un envoi que le serveur refusera.
+ *
+ * `online` vaut `undefined` quand l'inventaire d'ENTITÉS n'a pas été lu : on ne
+ * sait alors pas, et on n'exclut pas. Ne pas savoir n'est pas la même chose que
+ * savoir que non.
+ *
+ * Gardien : catalog-export.test.ts.
+ */
+export function aSynchroniser<
+	T extends {
+		state: SyncState
+		checksum: string | undefined
+		online?: boolean
+	},
+>(rows: readonly T[]): T[] {
+	return rows.filter(
+		(row) =>
+			row.checksum !== undefined &&
+			row.state !== 'synced' &&
+			row.online !== false,
+	)
+}
+
 // ---------------------------------------------------------------------------
 // DÉCOUPAGE
 // ---------------------------------------------------------------------------
