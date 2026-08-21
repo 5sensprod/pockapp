@@ -157,6 +157,14 @@ export function CloseSessionDialog({
 			: 0
 	}, [rapportX, session])
 
+	// 🆕 Tant qu'aucune dénomination n'est saisie, il n'y a pas d'écart à
+	// afficher : montrer « manque X » en rouge d'entrée alarmait pour rien.
+	const hasCounted = React.useMemo(() => {
+		return DENOMINATIONS.some(
+			(denom) => (watchedValues[denom.key as keyof DenominationsForm] || 0) > 0,
+		)
+	}, [watchedValues])
+
 	const difference = countedTotal - expectedCash
 	const isDifferenceHigh = Math.abs(difference) > 10
 
@@ -377,20 +385,29 @@ export function CloseSessionDialog({
 										</span>
 									</div>
 									<div className='border-t pt-2 flex justify-between font-bold'>
-										<span>Écart :</span>
-										<span
-											className={
-												difference === 0 ? 'text-emerald-600' : 'text-red-600'
-											}
-										>
-											{formatCurrency(Math.abs(difference))}
-											{difference > 0
-												? ' (surplus)'
-												: difference < 0
-													? ' (manque)'
-													: ' (aucun)'}
-										</span>
+										<span>{hasCounted ? 'Écart :' : 'Montant attendu :'}</span>
+										{hasCounted ? (
+											<span
+												className={
+													difference === 0 ? 'text-emerald-600' : 'text-red-600'
+												}
+											>
+												{formatCurrency(Math.abs(difference))}
+												{difference > 0
+													? ' (surplus)'
+													: difference < 0
+														? ' (manque)'
+														: ' (aucun)'}
+											</span>
+										) : (
+											<span>{formatCurrency(expectedCash)}</span>
+										)}
 									</div>
+									{!hasCounted && (
+										<p className='text-xs font-normal text-muted-foreground'>
+											Saisissez le comptage ci-dessus pour voir l'écart.
+										</p>
+									)}
 								</CardContent>
 							</Card>
 
