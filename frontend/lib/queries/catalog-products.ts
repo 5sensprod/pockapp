@@ -43,6 +43,7 @@ import {
 	buildWritePayload,
 } from './image-upload'
 import { withLegacyKey } from './legacy-key'
+import { slugLibre } from './slug'
 
 export type CatalogProductStatus = 'draft' | 'published'
 
@@ -305,19 +306,82 @@ export function invalidateCatalog(
 	queryClient.invalidateQueries({ queryKey: ['site-catalog'] })
 }
 
+/**
+ * Le premier slug libre pour ce nom, l'unicité étant vérifiée dans PocketBase.
+ *
+ * Exportée parce que la RÉPARATION en a besoin : les produits créés avant le
+ * 20 août 2026 sont partis sans slug, et l'écran doit pouvoir en proposer un.
+ */
+export async function resoudreSlugProduit(
+	pb: any,
+	nom: string,
+): Promise<string> {
+	return slugLibre(nom, async (candidat) => {
+		try {
+			await pb
+				.collection('products')
+				.getFirstListItem(`slug = "${candidat}"`, { fields: 'id' })
+			return true
+		} catch {
+			// PocketBase lève un 404 quand rien ne correspond : c'est le cas
+			// NORMAL, et c'est aussi pourquoi on ne peut pas distinguer ici une
+			// panne de réseau d'un slug libre. Le pire cas est un doublon
+			// d'adresse, pas une perte de donnée : on laisse passer.
+			return false
+		}
+	})
+}
+
+/**
+ * Le slug d'un produit, garanti non vide — posé par la couche, jamais saisi.
+ *
+ * ⚠️ **Un slug déjà présent n'est jamais retouché.** C'est la règle §4.5 du
+ * contrat, et elle a une raison concrète : le slug est l'adresse publique, il
+ * vit dans les favoris et dans l'index des moteurs. Renommer un produit ne
+ * doit pas déplacer sa page.
+ *
+ * Ce qui a manqué jusqu'au 20 août 2026, c'est l'autre moitié : QUI le pose
+ * quand il n'y en a pas. Un produit créé au comptoir partait en ligne sans
+ * slug, et son adresse rendait « Produit introuvable » — voir `slug.ts`.
+ *
+ * L'unicité est vérifiée dans PocketBase, pas côté site : `ax_products.slug`
+ * n'a qu'un index simple (`server/sql/schema.sql:67`), pas de contrainte. Deux
+ * produits homonymes s'y écraseraient l'un l'autre à l'affichage, sans erreur.
+ */
+async function withSlug(
+	pb: any,
+	data: CatalogProductWrite,
+): Promise<CatalogProductWrite & { slug?: string }> {
+	// `slug` reste ABSENT de `CatalogProductWrite` : aucun écran ne doit
+	// pouvoir le saisir (§4.5). Il n'apparaît qu'ici, à la sortie.
+	const fourni = (data as { slug?: unknown }).slug
+	if (typeof fourni === 'string' && fourni.trim() !== '') return data
+
+	const slug = await resoudreSlugProduit(pb, data.name ?? '')
+
+	// Un nom sans aucun caractère utilisable ne donne pas d'adresse. On
+	// enregistre quand même — la caisse ne doit pas refuser une vente pour un
+	// slug — et l'export refusera le produit tant qu'il n'en a pas.
+	return slug === '' ? data : { ...data, slug }
+}
+
 export function useCreateCatalogProduct() {
 	const pb = usePocketBase() as any
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async (data: CatalogProductWrite) =>
-			// La clé stable est posée ICI, pas dans le formulaire : un produit sans
-			// `legacy_id` n'est pas seulement refusé à l'export, il disparaît des
-			// relations des autres (docs/DECISIONS.md, 2026-08-13). Aucun écran ne
-			// doit pouvoir l'oublier.
-			(await pb
+		mutationFn: async (data: CatalogProductWrite) => {
+			// La clé stable ET l'adresse publique sont posées ICI, pas dans le
+			// formulaire. Un produit sans `legacy_id` n'est pas seulement refusé à
+			// l'export, il disparaît des relations des autres (docs/DECISIONS.md,
+			// 2026-08-13) ; un produit sans `slug` part en ligne avec une adresse
+			// que le site ne sait pas résoudre (20 août 2026). Aucun écran ne doit
+			// pouvoir les oublier.
+			const payload = withLegacyKey(await withSlug(pb, data))
+			return (await pb
 				.collection('products')
-				.create(buildWritePayload(withLegacyKey(data)))) as CatalogProductShape,
+				.create(buildWritePayload(payload))) as CatalogProductShape
+		},
 		onSuccess: () => invalidateCatalog(queryClient),
 	})
 }

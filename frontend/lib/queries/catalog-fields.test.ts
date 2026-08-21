@@ -72,6 +72,15 @@ describe('PRODUCT_FIELDS du module site', () => {
 		expect(demandes).toContain('collectionName')
 	})
 
+	it('demande `slug` — c’est l’adresse publique du produit', () => {
+		// Sans lui, l'export enverrait `slug: null` pour TOUS les produits, et
+		// `products-sync.php` ne l'invente pas : les pages du site tomberaient
+		// sur « Produit introuvable ». C'est le défaut du 20 août 2026, vu par
+		// l'autre bout — il venait d'un slug vide en base, pas d'un champ
+		// manquant, mais l'effet aurait été le même.
+		expect(SITE_PRODUCT_FIELDS.split(',')).toContain('slug')
+	})
+
 	it('demande `status` — les brouillons ne partent pas', () => {
 		// §4.1 du contrat : `status` n'admet que `published`. Un brouillon ne
 		// s'exporte pas, donc ses images non plus, et le miroir répond 409

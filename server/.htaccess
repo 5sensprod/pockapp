@@ -1,0 +1,58 @@
+# BEGIN REACT ROUTES
+RewriteEngine On
+RewriteBase /
+
+# Assets React
+RewriteRule ^assets/(.*)$ /axemusique-react/assets/$1 [L]
+
+RewriteRule ^home/?$ / [R=301,L]
+
+RewriteCond %{REQUEST_URI} ^/$
+RewriteRule ^$ /axemusique-react/index.html [L]
+
+RewriteCond %{REQUEST_URI} ^/mentions-legales/?$
+RewriteRule ^mentions-legales/?$ /axemusique-react/index.html [L]
+
+RewriteCond %{REQUEST_URI} ^/produit/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^produit/(.*)$ /axemusique-react/index.html [L]
+
+RewriteCond %{REQUEST_URI} ^/categorie-produit/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^categorie-produit/(.*)$ /axemusique-react/index.html [L]
+
+RewriteCond %{REQUEST_URI} ^/shop/?$
+RewriteRule ^shop/?$ /axemusique-react/index.html [L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^bons-plans/?$ /axemusique-react/index.html [L]
+
+# END REACT ROUTES
+
+
+# ==========================================================
+# SERVER
+# ==========================================================
+
+# API PHP : ne pas passer par WordPress
+RewriteRule ^server/api(?:/|$) - [L]
+
+# Config : accès HTTP interdit
+RewriteRule ^server/config(?:/|$) - [F,L]
+
+
+# BEGIN WordPress
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteBase /
+RewriteRule ^index\.php$ - [L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.php [L]
+</IfModule>
+# END WordPress

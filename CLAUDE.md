@@ -161,6 +161,16 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   fichier du module `stock` n'importe `@/lib/apppos`** — l'inventaire physique
   était le dernier ; un test le garde
   (`frontend/modules/stock/single-source.test.ts`).
+- **Le slug est figé, mais c'est PocketApp qui le pose** (20 août 2026).
+  `frontend/lib/queries/slug.ts` le dérive du nom à la création, l'unicité
+  étant vérifiée dans PocketBase — le serveur ne décide de rien (§2 du
+  contrat), et `products-sync.php` protège un slug existant sans jamais en
+  inventer. **Un slug non vide ne se retouche jamais** : renommer un produit ne
+  déplace pas sa page. Avant cette date, un produit créé au comptoir partait en
+  ligne sans adresse et sa page rendait « Produit introuvable ». Le dialogue
+  produit l'AFFICHE en lecture seule, et enregistrer une fiche qui n'en a pas
+  la répare — il faut alors la ré-exporter. Gardiens : `slug.test.ts` et
+  `catalog-fields.test.ts`.
 - **L'image principale d'un produit ne s'écrase pas, elle se désigne**
   (19 août 2026). Tout fichier importé entre par `gallery` ; `image` est une
   désignation. **Promouvoir passe obligatoirement par

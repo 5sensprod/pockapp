@@ -72,6 +72,8 @@ Les documents actifs — ceux qui décident encore de quelque chose :
 | [`09-modele-cible.md`](09-modele-cible.md) | **Fait foi sur le modèle** des collections, champ par champ ; §9 : confrontation au schéma réel | mesuré et lu |
 | [`03-audit-resultats.md`](03-audit-resultats.md) | **Fait foi sur le flux d'origine, les failles et les tickets du 6 août.** Compte rendu daté : on ne le réécrit pas | lu dans le code, références données |
 | [`07-audit-flux-apppos.md`](07-audit-flux-apppos.md) | Le flux AppPos ↔ WooCommerce **tel qu'il était** — utile pour la reprise de la base client | lu dans le code, mesuré |
+| [`18-prompt-sous-domaine.md`](18-prompt-sous-domaine.md) | **Prêt à donner :** servir le nouveau build sur `axe.5sensprod.com` pour l'auditer avec Lighthouse. Version courte | prompt prêt |
+| [`17-rituel-sous-domaine-test.md`](17-rituel-sous-domaine-test.md) | Le même ticket en détail — un dossier racine, un `.htaccess`, deux domaines | rituel prêt |
 | [`13-dates-produits.md`](13-dates-produits.md) | Chantier non engagé : aucune date d'arrivée ne traverse la chaîne. **Son dernier § dit ce que le site fait en attendant** (tri sur `exported_at`) | état des lieux |
 | [`00-contexte.md`](00-contexte.md) | Cadrage, arbitrages tranchés | corrigé après audit |
 | [`docs/DECISIONS.md`](../../../../docs/DECISIONS.md) | **Hors de ce dossier** — journal du dépôt : ce qui a été écarté, et pourquoi | fait foi |
@@ -225,7 +227,7 @@ affiche l'avertissement.
 - **le bandeau de statistiques du site est masqué** sous le drapeau : il compte
   les produits et les marques dans WooCommerce, et `catalog.php` ne sait rendre
   ni un total de produits ni une liste de marques. Rituel prêt à exécuter, SQL
-  compris : [`14-rituel-stats.md`](14-rituel-stats.md). **Pas urgent.**
+  compris : [`14-rituel-stats.md`](archive/14-rituel-stats.md). **Pas urgent.**
 
 | # | Ticket | Dépend de | Dépôt | État |
 |---|---|---|---|---|
@@ -264,7 +266,7 @@ Quatre chantiers, et **un seul est gros**.
 | **A** | **Reprendre la base de production du client** pour remettre le développement à niveau | PocketApp | **La grosse étape restante.** La PocketBase de dév a divergé : ventes, factures et produits créés en caisse chez le client n'y sont pas. Périmètre à définir ; **session séparée** |
 | **B** | **Fermer la faille 3.1** — retirer le carrousel « Soldes » de la page d'accueil et sortir les clés WooCommerce du bundle | site | Décidé le 20 août 2026. `HeroContent.jsx:4` → `SoldesCarousel` → `services/woocommerce.js`. C'est le dernier appel WooCommerce du site ; notre catalogue n'a ni prix barré ni `sale_price` |
 | **C** | **Couper la dernière lecture AppPos** — `MenuTreeEditor.tsx:55` nomme les destinations du menu depuis AppPos ; les mêmes noms sont dans PocketBase | PocketApp | **PocketApp doit être totalement indépendant à la prochaine release** (propriétaire, 20 août 2026). C'est le seul reste, avec le fournisseur de session de `main.tsx:6` |
-| **D** | Le bandeau de statistiques, et les dates d'arrivée | site, `server/` | Non engagés, pas urgents. [`14-rituel-stats.md`](14-rituel-stats.md), [`13-dates-produits.md`](13-dates-produits.md) |
+| **D** | Le bandeau de statistiques, et les dates d'arrivée | site, `server/` | Non engagés, pas urgents. [`14-rituel-stats.md`](archive/14-rituel-stats.md), [`13-dates-produits.md`](13-dates-produits.md) |
 
 **B et C sont petits et bien cernés.** A est le seul dont le périmètre reste à
 écrire, et il ne peut l'être qu'en regardant ce que la production du client

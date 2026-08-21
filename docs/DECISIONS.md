@@ -161,6 +161,56 @@ fournisseurs ne sont pas au contrat d'export.
 
 ---
 
+## Le slug est figé, mais quelqu'un doit le POSER — 2026-08-20
+
+Défaut trouvé à l'usage par le propriétaire : un produit créé au comptoir
+(« Soucoupe », `pa_z01ub59ehh638mgd`) se trouvait bien dans la recherche du
+site, mais son adresse rendait « Produit introuvable ».
+
+**La cause : personne ne posait de slug.** La règle §4.5 du contrat — « le slug
+est figé au premier envoi, le serveur en est le gardien » — a été écrite pour
+les produits venus de NeDB, qui arrivaient avec un slug WooCommerce. Elle dit
+qui a le droit de le CHANGER (personne) ; elle ne disait pas qui le POSE quand
+il n'y en a pas. La chaîne entière était cohérente et le laissait vide :
+
+- PocketBase : `slug = ''` — mesuré, 1 produit publié sur 2563 ;
+- `catalog-export.ts:147` envoie `null` ;
+- `products-sync.php:409` **protège** un slug existant, n'en invente jamais —
+  c'est exactement ce qu'on lui a demandé ;
+- `catalog.php` rend `slug: null` ;
+- le site retombe sur le `legacy_id` (`AxeSearch.jsx:189`,
+  `` `/produit/${product.slug || product.id}` ``) ;
+- `catalog.php` action `product` interroge `WHERE p.slug = ?` → 404.
+
+**Décision : la couche d'accès de PocketApp pose le slug à la création**,
+au même endroit et pour la même raison que `legacy_id` — « le serveur ne décide
+de rien » (§2 du contrat). `frontend/lib/queries/slug.ts`, dérivation du nom,
+unicité vérifiée dans PocketBase, suffixe `-2` en cas de collision.
+
+**Ce qui ne change pas :** un slug non vide n'est JAMAIS retouché. Renommer un
+produit ne déplace pas sa page — c'est tout l'intérêt d'une adresse figée.
+
+**Écarté — le faire côté PHP :** le serveur aurait alors décidé d'une donnée,
+contre le §2. Il aurait aussi fallu y écrire une translittération d'accents,
+là où la règle vit déjà en TypeScript.
+
+**Écarté — faire résoudre l'`id` par la page produit du site :** `catalog.php`
+sait déjà répondre par `legacy_id` (`?action=product&id=…`), et le site ne s'en
+sert jamais. Ce repli aurait fait marcher les liens cassés, mais `pa_z01ub…`
+n'est pas une adresse de boutique. Le repli reste disponible pour un usage
+interne.
+
+**Conséquence à surveiller :** `ax_products.slug` n'a qu'un index simple
+(`server/sql/schema.sql:67`), pas de contrainte d'unicité. L'unicité est donc
+tenue par PocketApp seul. Deux produits qui arriveraient avec le même slug
+s'écraseraient à l'affichage, sans erreur.
+
+**Remise en cause si :** le site doit servir plusieurs langues, ou des adresses
+historiques à faire suivre. Ce serait alors une table de redirections, pas un
+slug de plus.
+
+---
+
 ## L'image principale se désigne, elle ne s'écrase pas — 2026-08-19
 
 Décision du propriétaire, en ouvrant la session « galerie ».

@@ -181,7 +181,7 @@ Pas en relisant le code. `npm run dev`, `VITE_USE_AXE_CATALOG=true` :
   lignes identiques dans l'onglet réseau ne sont pas une boucle.
 - **Ne pas ajouter de clé** dans `axeCatalog.js` : ce fichier part dans le
   bundle public. C'est le point central de l'endpoint de lecture
-  ([`12-contrat-catalogue.md`](12-contrat-catalogue.md) §6 bis).
+  ([`12-contrat-catalogue.md`](../12-contrat-catalogue.md) §6 bis).
 - **Ne pas toucher aux pages WooCommerce** : elles restent le comportement par
   défaut tant que le drapeau vaut `false`.
 

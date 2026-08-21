@@ -9,7 +9,11 @@
 //
 // Trois champs du schéma n'y figurent pas, chacun pour sa raison :
 //   • `slug`      figé au premier envoi vers le site, le serveur en est le
-//                 gardien (§4.5 du contrat catalogue) ;
+//                 gardien (§4.5). Il est AFFICHÉ ici depuis le 20 août 2026,
+//                 en lecture seule : c'est l'adresse publique du produit, et
+//                 la voir avant qu'elle ne se fige vaut mieux que de la
+//                 découvrir en ligne. Il n'est jamais saisi — la couche
+//                 d'accès le pose (`catalog-products.ts`, `withSlug`) ;
 //   • `legacy_id` il vient de NeDB, on ne l'invente pas pour un produit créé
 //                 ici — il restera vide, et l'export le refusera tant qu'il
 //                 l'est. C'est dit à l'écran, pas caché ;
@@ -55,12 +59,14 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
 import {
 	type CatalogProductShape,
+	resoudreSlugProduit,
 	useCreateCatalogProduct,
 	usePromoteProductImage,
 	useUpdateCatalogProduct,
 } from '@/lib/queries/catalog-products'
 import { type GalleryEntry, memeGalerie } from '@/lib/queries/gallery-order'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
+import { toSlug } from '@/lib/queries/slug'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
@@ -144,6 +150,10 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 	// jour dans l'application, pas dans la modale, et « Enregistrer » renvoyait
 	// ensuite une galerie périmée — « The field contains unknown filenames. »
 	const [imagePromue, setImagePromue] = useState<string | null>(null)
+	/** Le slug proposé pour un produit qui n'en a pas — RÉPARATION. Les produits
+	 *  créés avant le 20 août 2026 sont partis en ligne sans adresse, et leur
+	 *  page rendait « Produit introuvable ». Enregistrer la fiche la pose. */
+	const [slugRepare, setSlugRepare] = useState('')
 	/** La galerie telle qu'elle est EN BASE. Sert à ne rien envoyer quand
 	 *  l'utilisateur n'y a pas touché. */
 	const [galerieEnBase, setGalerieEnBase] = useState<GalleryEntry[]>([])
@@ -208,7 +218,21 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 		setGalerie(product?.gallery ?? [])
 		setGalerieEnBase(product?.gallery ?? [])
 		setImagePromue(null)
+		setSlugRepare('')
 	}, [open, product, form])
+
+	// La réparation ne se déclenche que pour une fiche EXISTANTE sans slug : un
+	// produit qui en a un le garde, quoi qu'il arrive à son nom.
+	useEffect(() => {
+		if (!open || !product || (product.slug ?? '') !== '') return
+		let vivant = true
+		resoudreSlugProduit(pb, product.name ?? '').then((propose) => {
+			if (vivant) setSlugRepare(propose)
+		})
+		return () => {
+			vivant = false
+		}
+	}, [open, product, pb])
 
 	const onSubmit = async (data: ProductFormValues) => {
 		// Chaînes vides et non `undefined` : c'est ainsi qu'on efface une valeur,
@@ -240,6 +264,12 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 			// On ne dit jamais rien d'`image` : elle ne se change que par
 			// promotion, et la promotion est déjà partie.
 			gallery: memeGalerie(galerieEnBase, galerie) ? undefined : galerie,
+			// L'adresse publique n'est posée QUE si la fiche n'en a pas : §4.5,
+			// un slug ne se retouche jamais. À la création, c'est la couche
+			// d'accès qui s'en charge.
+			...(isEdit && (product?.slug ?? '') === '' && slugRepare !== ''
+				? { slug: slugRepare }
+				: {}),
 		}
 
 		try {
@@ -263,6 +293,16 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 			console.error(error)
 		}
 	}
+
+	// L'ADRESSE PUBLIQUE, telle qu'elle sera. Trois cas, et ils se disent :
+	//  • la fiche en a une  → figée, on la montre ;
+	//  • la fiche n'en a pas → celle qu'enregistrer va poser (réparation) ;
+	//  • création           → un APERÇU dérivé du nom saisi. L'unicité est
+	//    vérifiée à l'enregistrement, pas à chaque frappe : un suffixe `-2`
+	//    peut donc s'ajouter, et c'est dit.
+	const nomSaisi = form.watch('name')
+	const slugEnBase = product?.slug ?? ''
+	const slugAffiche = isEdit ? slugEnBase || slugRepare : toSlug(nomSaisi ?? '')
 
 	const pending = createProduct.isPending || updateProduct.isPending
 
@@ -333,6 +373,31 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 							promoting={promote.isPending}
 							disabled={createProduct.isPending || updateProduct.isPending}
 						/>
+
+						{/* L'ADRESSE PUBLIQUE. Elle ne se saisit pas — la couche d'accès
+						    la pose — mais elle se VOIT : une fois partie au site, elle est
+						    figée (§4.5 du contrat), et un produit créé au comptoir en
+						    manquait jusqu'au 20 août 2026, ce qui rendait sa page
+						    introuvable. */}
+						<div className='space-y-1'>
+							<span className='font-medium text-sm'>Adresse sur le site</span>
+							<div className='rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm'>
+								{slugAffiche ? (
+									<span>/produit/{slugAffiche}</span>
+								) : (
+									<span className='font-sans text-muted-foreground'>
+										Donnez un nom au produit pour qu'une adresse soit calculée.
+									</span>
+								)}
+							</div>
+							<p className='text-muted-foreground text-xs'>
+								{slugEnBase
+									? 'Figée depuis le premier envoi au site : la renommer déplacerait une page déjà indexée.'
+									: isEdit
+										? 'Cette fiche n’a pas encore d’adresse — enregistrer la posera, puis il faudra la ré-exporter vers le site.'
+										: 'Calculée à partir du nom, posée à l’enregistrement. Un suffixe est ajouté si l’adresse est déjà prise.'}
+							</p>
+						</div>
 
 						<FormField
 							control={form.control}
