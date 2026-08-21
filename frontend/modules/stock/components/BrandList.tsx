@@ -1,3 +1,4 @@
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -6,6 +7,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import {
 	Table as UiTable,
 	TableBody as UiTableBody,
@@ -15,11 +17,13 @@ import {
 	TableRow as UiTableRow,
 } from '@/components/ui/table'
 import {
+	Copy,
 	Globe,
 	ImageIcon,
 	Package,
 	Pencil,
 	Plus,
+	Search,
 	Trash2,
 	Truck,
 } from 'lucide-react'
@@ -52,6 +56,7 @@ export function BrandList() {
 	})
 	const deleteBrand = useDeleteBrand()
 
+	const [search, setSearch] = useState('')
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [editBrand, setEditBrand] = useState<CatalogBrandShape | null>(null)
 
@@ -59,6 +64,53 @@ export function BrandList() {
 	const [brandToDelete, setBrandToDelete] = useState<CatalogBrandShape | null>(
 		null,
 	)
+
+	// ── LE TRI, ET POURQUOI IL EST REFAIT ICI ────────────────────────────────
+	//
+	// `useBrands` demande `sort: 'name'` à PocketBase, qui trie en SQLite avec la
+	// collation BINAIRE : toutes les majuscules passent avant toutes les
+	// minuscules. `CORDOBA` se retrouve donc rang 53 et `Cordoba` rang 62, dans
+	// deux blocs séparés de la liste — et un doublon de casse devient invisible
+	// alors qu'on regarde exactement au bon endroit. Mesuré le 21 août 2026 sur
+	// les 288 marques ; c'est ce qui a fait conclure à tort que l'écran cachait
+	// des lignes.
+	//
+	// Un tri insensible à la casse rend les jumelles ADJACENTES. Il se fait ici,
+	// pas dans la requête : PocketBase n'expose pas de collation par champ, et
+	// 288 lignes déjà chargées se trient localement pour rien du tout.
+	const sortedBrands = useMemo(() => {
+		return [...(brands ?? [])].sort(
+			(a, b) =>
+				a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }) ||
+				(a.slug ?? '').localeCompare(b.slug ?? ''),
+		)
+	}, [brands])
+
+	/** Les noms portés par PLUSIEURS marques, à la casse près. Sept paires au
+	 *  21 août 2026, héritées de l'import NeDB. Le doublon est un fait de la
+	 *  base : l'écran le SIGNALE, il ne le corrige pas et n'en cache aucune. */
+	const duplicateNames = useMemo(() => {
+		const seen = new Map<string, number>()
+		for (const brand of sortedBrands) {
+			const key = brand.name.trim().toLowerCase()
+			seen.set(key, (seen.get(key) ?? 0) + 1)
+		}
+		return new Set(
+			[...seen.entries()].filter(([, n]) => n > 1).map(([key]) => key),
+		)
+	}, [sortedBrands])
+
+	/** La recherche porte sur le nom ET le slug — c'est le slug qui distingue
+	 *  deux marques homonymes (`cordoba` / `cordoba-2`), le nom ne le peut pas. */
+	const visibleBrands = useMemo(() => {
+		const needle = search.trim().toLowerCase()
+		if (!needle) return sortedBrands
+		return sortedBrands.filter(
+			(brand) =>
+				brand.name.toLowerCase().includes(needle) ||
+				(brand.slug ?? '').toLowerCase().includes(needle),
+		)
+	}, [sortedBrands, search])
 
 	// Refetch quand l'entreprise change
 	useEffect(() => {
@@ -121,19 +173,49 @@ export function BrandList() {
 
 	return (
 		<div className='space-y-4'>
-			<div className='flex justify-between items-center'>
-				<h2 className='text-lg font-semibold'>
-					Marques ({brands?.length ?? 0})
-				</h2>
-				<Button onClick={handleAdd}>
-					<Plus className='h-4 w-4 mr-2' />
-					Nouvelle marque
-				</Button>
+			<div className='flex flex-wrap items-center justify-between gap-3'>
+				<div className='flex items-baseline gap-3'>
+					{/* Le décompte dit TOUJOURS le total chargé, et le filtre s'affiche
+					    en plus. Un écran qui n'annonce que ce qu'il montre laisse
+					    croire qu'il montre tout. */}
+					<h2 className='font-semibold text-lg'>
+						Marques ({brands?.length ?? 0})
+					</h2>
+					{search.trim() !== '' && (
+						<span className='text-muted-foreground text-sm'>
+							{visibleBrands.length} affichée(s)
+						</span>
+					)}
+					{duplicateNames.size > 0 && (
+						<button
+							type='button'
+							onClick={() => setSearch('')}
+							className='text-amber-600 text-sm hover:underline'
+						>
+							{duplicateNames.size} nom(s) en double
+						</button>
+					)}
+				</div>
+				<div className='flex items-center gap-2'>
+					<div className='relative'>
+						<Search className='-translate-y-1/2 absolute top-1/2 left-2 h-4 w-4 text-muted-foreground' />
+						<Input
+							value={search}
+							onChange={(event) => setSearch(event.target.value)}
+							placeholder='Nom ou slug…'
+							className='w-56 pl-8'
+						/>
+					</div>
+					<Button onClick={handleAdd}>
+						<Plus className='mr-2 h-4 w-4' />
+						Nouvelle marque
+					</Button>
+				</div>
 			</div>
 
-			{!brands?.length ? (
-				<div className='text-center py-12 text-muted-foreground'>
-					Aucune marque
+			{!visibleBrands.length ? (
+				<div className='py-12 text-center text-muted-foreground'>
+					{brands?.length ? 'Aucune marque ne correspond' : 'Aucune marque'}
 				</div>
 			) : (
 				<div className='rounded-md border'>
@@ -148,8 +230,11 @@ export function BrandList() {
 							</UiTableRow>
 						</UiTableHeader>
 						<UiTableBody>
-							{brands.map((brand) => {
+							{visibleBrands.map((brand) => {
 								const productCount = productCountByBrand?.[brand.id] ?? 0
+								const isDuplicate = duplicateNames.has(
+									brand.name.trim().toLowerCase(),
+								)
 								const brandSuppliers = suppliersByBrand[brand.id] || []
 
 								// `image` est un nom de fichier ; PocketBase le sert.
@@ -176,7 +261,23 @@ export function BrandList() {
 										</UiTableCell>
 										<UiTableCell>
 											<div className='space-y-0.5'>
-												<div className='font-medium'>{brand.name}</div>
+												<div className='flex items-center gap-2'>
+													<span className='font-medium'>{brand.name}</span>
+													{/* Deux marques homonymes ne se distinguent QUE par
+													    leur slug — et le nom seul est ce qu'on lit
+													    partout ailleurs (pastilles fournisseur, menu
+													    marque du dialogue produit). Le dire ici évite
+													    d'agir sur la mauvaise. */}
+													{isDuplicate && (
+														<Badge
+															variant='outline'
+															className='border-amber-500/50 text-amber-600 text-xs'
+														>
+															<Copy className='mr-1 h-3 w-3' />
+															doublon
+														</Badge>
+													)}
+												</div>
 												<div className='flex items-center gap-3 text-xs'>
 													<div className='flex items-center gap-1 text-muted-foreground'>
 														<Package className='h-3 w-3' />

@@ -1,3 +1,59 @@
+# BEGIN AXE-TEST-SUBDOMAIN
+# --------------------------------------------------------------------------
+# Sous-domaine de TEST axe.5sensprod.com — nouveau build React servi depuis
+# /frontend/, sur la MEME racine que WordPress et que axemusique.shop.
+#
+# REGLE ABSOLUE : une racine, deux domaines. CHAQUE RewriteRule ci-dessous
+# porte sa propre RewriteCond %{HTTP_HOST} — une RewriteCond ne vaut que pour
+# la RewriteRule qui la suit IMMEDIATEMENT. Rien ici ne doit atteindre
+# axemusique.shop.
+#
+# Plan de retour : supprimer ce bloc entier, de BEGIN a END. Rien d'autre.
+# --------------------------------------------------------------------------
+RewriteEngine On
+RewriteBase /
+
+# noindex pour ce seul hote (marqueur pose ici, en-tete emis plus bas).
+RewriteCond %{HTTP_HOST} ^axe\.5sensprod\.com$ [NC]
+RewriteRule ^ - [E=AXE_TEST:1]
+
+# Le dossier /frontend/ est un dossier REEL de la racine : il reste donc
+# joignable depuis axemusique.shop/frontend/. On ne le bloque pas (le
+# sous-domaine en depend), mais on le marque noindex sur TOUS les hotes,
+# sinon le build de test s'indexe comme un site duplique.
+RewriteRule ^frontend(?:/|$) - [E=AXE_TEST:1]
+
+# Racine du sous-domaine. Regle SEPAREE : "/" est un dossier reel, la
+# condition !-d du repli SPA plus bas ne s'y applique donc jamais.
+RewriteCond %{HTTP_HOST} ^axe\.5sensprod\.com$ [NC]
+RewriteRule ^$ /frontend/index.html [L]
+
+# Assets du build (base: "/" dans vite.config.js:5 — d'ou la reecriture).
+RewriteCond %{HTTP_HOST} ^axe\.5sensprod\.com$ [NC]
+RewriteRule ^assets/(.*)$ /frontend/assets/$1 [L]
+
+# Fichiers de build poses a la racine du bundle (favicon, manifest, polices).
+RewriteCond %{HTTP_HOST} ^axe\.5sensprod\.com$ [NC]
+RewriteRule ^(vite\.svg|favicon\.ico|robots\.txt|manifest\.webmanifest|site\.webmanifest)$ /frontend/$1 [L]
+
+# Repli SPA : tout le reste vers l'index du build.
+# EXCLUSIONS explicites — on n'y touche pas, on les laisse passer :
+#   /server/api    (API PHP)      /server/config (interdit plus bas)
+#   /wp-admin      /wp-json       /wp-content    /wp-includes
+# et tout fichier ou dossier reellement present sur le disque.
+RewriteCond %{HTTP_HOST} ^axe\.5sensprod\.com$ [NC]
+RewriteCond %{REQUEST_URI} !^/server/ [NC]
+RewriteCond %{REQUEST_URI} !^/wp-(admin|json|content|includes|login\.php) [NC]
+RewriteCond %{REQUEST_URI} !^/frontend/ [NC]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /frontend/index.html [L]
+
+<IfModule mod_headers.c>
+  Header always set X-Robots-Tag "noindex, nofollow" env=AXE_TEST
+</IfModule>
+# END AXE-TEST-SUBDOMAIN
+
 # BEGIN REACT ROUTES
 RewriteEngine On
 RewriteBase /

@@ -146,6 +146,9 @@ export function BrandDialog({
 							removed={imageRemoved}
 							onRemovedChange={setImageRemoved}
 							disabled={createBrand.isPending || updateBrand.isPending}
+							// 512 px : le site affiche le logo dans un cadre de 248×248
+							// (`BrandBadge`), on garde la marge des écrans haute densité.
+							optimize={{ maxSide: 512 }}
 						/>
 
 						<FormField

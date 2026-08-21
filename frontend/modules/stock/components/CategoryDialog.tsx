@@ -167,6 +167,11 @@ export function CategoryDialog({
 							removed={imageRemoved}
 							onRemovedChange={setImageRemoved}
 							disabled={createCategory.isPending || updateCategory.isPending}
+							// Même plafond que les marques pour l'instant. Les trois
+							// tailles façon WordPress viendront après : elles supposent
+							// de toucher au contrat du miroir, où le rang porte déjà
+							// l'ordre de la galerie.
+							optimize={{ maxSide: 512 }}
 						/>
 
 						<FormField
