@@ -40,6 +40,7 @@ import {
 	useCatalogCategories,
 	useProductCount,
 	usePublishedProducts,
+	useUnpublishedProducts,
 } from '@/lib/queries/site-catalog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useQueryClient } from '@tanstack/react-query'
@@ -124,6 +125,10 @@ export function CatalogueEnLignePage() {
 	// l'enregistrement entier (`catalog-image.ts`).
 	const pb = usePocketBase()
 	const products = usePublishedProducts()
+	/** Les brouillons. Ils ne s'affichent nulle part sur cet écran : ils ne
+	 *  servent qu'à repérer ceux qui sont ENCORE en ligne, pour pouvoir les en
+	 *  retirer (21 août 2026). Voir `depubliesEnLigne` plus bas. */
+	const unpublished = useUnpublishedProducts()
 	const categories = useCatalogCategories()
 	const brands = useCatalogBrands()
 	const totalProducts = useProductCount()
@@ -214,11 +219,67 @@ export function CatalogueEnLignePage() {
 	const inventory = useCatalogInventory((products.data?.length ?? 0) > 0)
 	const exportCatalog = useExportCatalog()
 
+	/**
+	 * ── LES DÉPUBLIÉS QUI SONT ENCORE EN LIGNE ───────────────────────────────
+	 *
+	 * Un produit repassé en brouillon sort de `usePublishedProducts`, donc de
+	 * l'écran, donc des compteurs — pendant que sa ligne SQL garde `published`
+	 * et que le site continue de le servir. C'est le trou constaté le 21 août
+	 * 2026 sur une guitare Iberia C5 : « 2564 sur le site, 2563 à jour », et
+	 * aucun bouton pour rattraper l'écart.
+	 *
+	 * On ne retient QUE ceux que l'inventaire distant connaît : les autres n'ont
+	 * jamais été exportés et n'ont rien à retirer. Ce filtre borne aussi le
+	 * calcul d'empreintes ci-dessous à une poignée de fiches au lieu des 436
+	 * brouillons.
+	 */
+	const depubliesEnLigne = useMemo(() => {
+		const online = inventory.data?.products
+		if (!online) return NO_PRODUCTS
+		return (unpublished.data ?? []).filter((p) => p.legacy_id in online)
+	}, [inventory.data, unpublished.data])
+
+	/** Les fiches dont on veut l'empreinte : les publiées, plus les dépubliées
+	 *  encore en ligne — sans empreinte, on ne saurait pas dire si le retrait a
+	 *  déjà été envoyé. Tableau stable, sinon `useProductChecksums` boucle. */
+	const empreintables = useMemo(
+		() =>
+			depubliesEnLigne.length === 0
+				? (products.data ?? NO_PRODUCTS)
+				: [...(products.data ?? NO_PRODUCTS), ...depubliesEnLigne],
+		[products.data, depubliesEnLigne],
+	)
+
 	const checksums = useProductChecksums(
-		products.data ?? NO_PRODUCTS,
+		empreintables,
 		categories.data ?? NO_CATEGORIES,
 		brands.data ?? NO_BRANDS,
 		Boolean(inventory.data),
+	)
+
+	/**
+	 * Ce qu'il reste à RETIRER : dépublié ici, et pas encore dépublié là-bas.
+	 *
+	 * Le test est l'empreinte, pas un drapeau : `status` en fait partie, donc
+	 * une fiche passée en brouillon est `modified` tant que le retrait n'est pas
+	 * parti, et `synced` une fois qu'il l'est. Le compteur retombe seul à zéro,
+	 * sans que rien n'ait à mémoriser l'opération.
+	 *
+	 * Le serveur n'EFFACE jamais la ligne : elle garde ses images, ses
+	 * rattachements et son `first_seen_at`. Republier remet la fiche en ligne
+	 * telle quelle.
+	 */
+	const retirables = useMemo(
+		() =>
+			depubliesEnLigne.filter(
+				(p) =>
+					syncStateOf(
+						p.legacy_id,
+						checksums.get(p.legacy_id),
+						inventory.data?.products,
+					) !== 'synced',
+			),
+		[depubliesEnLigne, checksums, inventory.data],
 	)
 
 	const syncStates = useMemo(() => {
@@ -598,11 +659,16 @@ export function CatalogueEnLignePage() {
 		[checkingImages, sendingImages],
 	)
 
+	/** `retirable` ne sort PAS de `syncStates` : celui-ci ne parle que des
+	 *  publiés. Un retrait n'est ni un ajout ni une modification de fiche, et le
+	 *  compter avec les « modifiés » masquerait ce qui va se passer sur le
+	 *  site — une page qui disparaît. */
 	const syncCounts = useMemo(() => {
-		const counts = { absent: 0, modified: 0, synced: 0 }
+		const counts = { absent: 0, modified: 0, synced: 0, retirable: 0 }
 		for (const state of syncStates.values()) counts[state]++
+		counts.retirable = retirables.length
 		return counts
-	}, [syncStates])
+	}, [syncStates, retirables])
 
 	/**
 	 * Exporte une sélection de produits **avec leurs dépendances** : la marque
@@ -867,11 +933,15 @@ export function CatalogueEnLignePage() {
 						rejected={exportCatalog.data?.rejected ?? []}
 						onRefresh={() => inventory.refetch()}
 						onExportAll={() =>
-							exportProducts(
-								(products.data ?? []).filter(
+							// Les retraits partent avec le reste, dans les mêmes lots : le
+							// serveur écrit `status` sans l'interpréter, une fiche
+							// dépubliée n'est qu'une fiche de plus dans le lot.
+							exportProducts([
+								...(products.data ?? []).filter(
 									(p) => syncStates.get(p.legacy_id) !== 'synced',
 								),
-							)
+								...retirables,
+							])
 						}
 					/>
 

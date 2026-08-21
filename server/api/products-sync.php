@@ -13,7 +13,8 @@
  *
  * Ce script ne DÉCIDE de rien : il n'interprète pas `status`, ne calcule pas ce
  * qui est publiable, ne recalcule pas les checksums. La règle de mise en ligne
- * vit dans PocketApp ; ici on écrit ce qu'on reçoit (§2 du contrat).
+ * vit dans PocketApp ; ici on écrit ce qu'on reçoit (§2 du contrat) — y
+ * compris `status = draft`, qui DÉPUBLIE sans rien effacer (21/08/2026).
  *
  * Aucun secret ici : identifiants de base et clé API vivent dans
  * ../config/config.php, non versionné.
@@ -472,11 +473,21 @@ try {
     foreach ($batches['products'] as $index => $product) {
         $reason = common_reason($product);
 
-        // `status` n'admet que `published` : envoyer un brouillon serait
-        // demander au serveur d'appliquer la règle de publication, ce que le
-        // contrat lui interdit (§4.1).
-        if ($reason === null && (($product['status'] ?? '') !== 'published')) {
-            $reason = 'status : seul "published" est accepté à l\'export';
+        // `status` n'admet que deux valeurs, et le serveur n'en interprète
+        // AUCUNE : il écrit celle qu'on lui donne (§2 du contrat). C'est
+        // `catalog.php` qui, à la LECTURE, ne sert que `published`.
+        //
+        // `draft` est accepté depuis le 21 août 2026, et c'est la SEULE façon
+        // de dépublier : avant, une fiche repassée en brouillon dans PocketApp
+        // restait en ligne indéfiniment, sa ligne SQL gardant `published` sans
+        // qu'aucun chemin ne pût la corriger (§4.1).
+        //
+        // La ligne n'est jamais SUPPRIMÉE : elle garde son `first_seen_at`, ses
+        // images et ses rattachements, et repasser la fiche en publié la remet
+        // en ligne telle quelle.
+        $status = (string) ($product['status'] ?? '');
+        if ($reason === null && $status !== 'published' && $status !== 'draft') {
+            $reason = 'status : seuls "published" et "draft" sont acceptés';
         }
 
         if ($reason !== null) {
@@ -495,7 +506,7 @@ try {
             ':price_ttc'   => is_numeric($product['price_ttc'] ?? null) ? (float) $product['price_ttc'] : 0.0,
             ':tax_rate'    => is_numeric($product['tax_rate'] ?? null) ? (float) $product['tax_rate'] : 0.0,
             ':stock'       => is_numeric($product['stock'] ?? null) ? (int) $product['stock'] : 0,
-            ':status'      => 'published',
+            ':status'      => $status,
             ':brand'       => opt_string($product['brand'] ?? null),
             ':exported_at' => $now,
             // Même valeur, deux destins : `exported_at` sera réécrit au

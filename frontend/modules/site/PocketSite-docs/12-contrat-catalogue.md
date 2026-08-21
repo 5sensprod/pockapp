@@ -110,13 +110,29 @@ arriver après le produit qui la cite.
 | `price_ttc` | nombre | oui | **TTC**, l'unité est dans le nom |
 | `tax_rate` | nombre | oui | |
 | `stock` | entier | oui | |
-| `status` | `"published"` | oui | seule valeur admise — voir ci-dessous |
+| `status` | `"published"` ou `"draft"` | oui | l'intention, recopiée telle quelle — voir ci-dessous |
 | `brand` | chaîne ou `null` | oui | `legacy_id` de la marque |
 | `categories` | tableau de chaînes | oui | `legacy_id`, peut être vide |
 
-**`status` n'admet que `published`.** Envoyer un brouillon serait demander au
-serveur d'appliquer la règle de publication, ce que §2 lui interdit. Un produit
-dépublié ne s'exporte pas : il se retire, et le retrait n'existe pas encore.
+**`status` n'admet que `published` et `draft`, et le serveur n'en interprète
+aucun** — il écrit ce qu'il reçoit, conformément à §2. C'est `catalog.php` qui,
+à la LECTURE, ne sert que `published` : envoyer `draft`, c'est donc retirer la
+page du site.
+
+**Révisé le 21 août 2026.** Jusque-là seul `published` était admis, et le
+retrait « n'existait pas encore » : une fiche repassée en brouillon dans
+PocketApp disparaissait de l'écran d'export — `usePublishedProducts` la
+filtrait — pendant que sa ligne SQL gardait `published`. Le site continuait de
+la servir, et aucun chemin ne pouvait la corriger. Constaté sur une guitare
+Iberia C5 : « 2564 sur le site, 2563 à jour, 0 à envoyer ».
+
+**Dépublier n'efface rien.** La ligne reste, avec son `first_seen_at`, ses
+images et ses rattachements de catégories ; le `checksum` reçu est stocké comme
+pour tout autre envoi. Republier la fiche la remet en ligne telle quelle. Le
+contrat n'a toujours AUCUNE opération de suppression, et n'en veut pas.
+
+Côté PocketApp, `status` entre dans le checksum (§4.4) — c'est ce qui rend le
+retrait visible : la fiche passe `modified`, part, et redevient `synced`.
 
 ### 4.2 Catégorie
 

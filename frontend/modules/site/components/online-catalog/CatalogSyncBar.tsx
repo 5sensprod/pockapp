@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import {
 	AlertTriangle,
 	CheckCircle2,
+	CloudOff,
 	CloudUpload,
 	Loader2,
 	RefreshCw,
@@ -25,7 +26,14 @@ type Props = {
 	available: boolean
 	loading: boolean
 	error: Error | null
-	counts: { absent: number; modified: number; synced: number }
+	/** `retirable` : dépubliés ici, encore en ligne là-bas — ils partent avec le
+	 *  reste et disparaissent du site (21 août 2026). */
+	counts: {
+		absent: number
+		modified: number
+		synced: number
+		retirable: number
+	}
 	remoteCount: number | null
 	exporting: boolean
 	progress: { done: number; total: number }
@@ -70,7 +78,7 @@ export function CatalogSyncBar({
 		)
 	}
 
-	const toSend = counts.absent + counts.modified
+	const toSend = counts.absent + counts.modified + counts.retirable
 
 	return (
 		<Card className='mb-6'>
@@ -92,6 +100,17 @@ export function CatalogSyncBar({
 						value={counts.modified}
 						warn={counts.modified > 0}
 					/>
+					{/* Ne s'affiche que s'il y en a : c'est le seul état dont l'envoi
+					    RETIRE une page du site, il ne doit pas se confondre avec un
+					    zéro de routine. */}
+					{counts.retirable > 0 && (
+						<Tally
+							label='À retirer'
+							value={counts.retirable}
+							icon={<CloudOff className='h-4 w-4 text-amber-500' />}
+							warn
+						/>
+					)}
 				</div>
 
 				{exporting ? (

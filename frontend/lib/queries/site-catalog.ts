@@ -131,6 +131,40 @@ export function usePublishedProducts() {
 	})
 }
 
+/**
+ * Les produits qui NE SONT PLUS destinés au site — tout ce qui n'est pas
+ * `published`.
+ *
+ * Miroir exact de `usePublishedProducts`, et il a fallu l'écrire le 21 août
+ * 2026 pour une raison précise : repasser une fiche en brouillon la faisait
+ * DISPARAÎTRE de l'écran, donc des compteurs, donc de l'export — pendant que sa
+ * ligne SQL restait `published` et que le site continuait de la servir. Un
+ * produit ne peut être dépublié que par un écran capable de le voir.
+ *
+ * Ces fiches ne rejoignent JAMAIS `products.data` : elles n'ont rien à faire
+ * dans les grilles du catalogue en ligne ni dans le panneau d'images (le miroir
+ * répondrait 409 pour celles que la base du site ne connaît pas). L'appelant
+ * les croise avec l'inventaire distant et n'en retient que celles qui y sont —
+ * les autres n'ont jamais été en ligne et n'ont rien à retirer.
+ *
+ * Volume : 436 brouillons mesurés le 20 août 2026, contre 2563 publiés. Une
+ * requête de plus, du même ordre de grandeur qu'un dixième de l'existante.
+ */
+export function useUnpublishedProducts() {
+	const pb = usePocketBase() as any
+
+	return useQuery<CatalogProduct[]>({
+		queryKey: ['site-catalog', 'products', 'unpublished'],
+		staleTime: CATALOG_STALE_TIME,
+		queryFn: async () =>
+			(await pb.collection('products').getFullList({
+				filter: 'status != "published"',
+				fields: PRODUCT_FIELDS,
+				sort: 'name',
+			})) as CatalogProduct[],
+	})
+}
+
 /** Le décompte total des produits, toutes intentions confondues. Sert au seul
  *  usage de situer les publiés dans l'ensemble — 1 requête, 1 enregistrement
  *  ramené. */

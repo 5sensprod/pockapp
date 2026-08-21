@@ -10,6 +10,45 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Dépublier un produit, c'est l'exporter en `draft` — 2026-08-21
+
+**Le retrait d'une page du site est un EXPORT, pas une suppression.**
+`products-sync.php` accepte désormais `status = "draft"` et l'écrit tel quel ;
+`catalog.php` ne servant que `published`, la page disparaît. La ligne SQL, elle,
+reste : `first_seen_at`, images et rattachements survivent, et republier remet
+la fiche en ligne telle quelle.
+
+**Le trou qu'elle bouche.** Repasser un produit en brouillon dans PocketApp le
+faisait sortir de `usePublishedProducts` (filtre `status = "published"`), donc
+de l'écran, donc des compteurs, donc de l'export — pendant que sa ligne SQL
+gardait `published`. Le site continuait de le servir, sans qu'aucun bouton ne
+puisse rattraper l'écart. Constaté par le propriétaire sur une guitare Iberia
+C5 : « 2564 sur le site, 2563 à jour, 0 à envoyer ». Trois verrous en série, et
+c'est ce qui l'avait rendu invisible : l'écran ne voyait plus la fiche,
+`toExportProduct` écrivait `status: 'published'` **en dur**, et le PHP refusait
+tout autre statut. Chacun était défendable seul ; ensemble ils fermaient la
+porte.
+
+**Ce qui fait marcher le mécanisme : `status` entre dans le checksum d'export.**
+Une fiche passée en brouillon devient donc `modified` d'elle-même, part avec le
+lot, et l'empreinte alors stockée la rend `synced`. Le compteur retombe à zéro
+seul, sans que rien n'ait à mémoriser l'opération — pas de table de retraits, pas
+de drapeau, pas d'état à réconcilier.
+
+**Options écartées.** Une action `DELETE` au contrat : elle détruirait
+`first_seen_at` et les images, et republier repartirait de zéro ; le contrat n'a
+aucune opération destructrice et n'en veut pas. Un `UPDATE` manuel sur la base
+distante : répare un cas, laisse le trou. Faire décider le serveur (« ne pas
+écrire ce qui n'est pas publiable ») : §2 du contrat le lui interdit, la règle
+de publication vit dans PocketApp.
+
+**Ce qui pourrait la remettre en cause :** un produit SUPPRIMÉ de PocketBase,
+pas seulement dépublié, reste hors d'atteinte — plus aucune fiche locale ne
+porte son `legacy_id`, donc rien ne peut envoyer son retrait. Le cas n'est pas
+traité et ne l'est volontairement pas tant qu'il ne s'est pas présenté.
+
+---
+
 ## `first_seen_at` : le site aura une vraie date d'arrivée, mais seulement pour l'avenir — 2026-08-20
 
 Décision du propriétaire, le jour même, **annulant l'option 2 du bloc

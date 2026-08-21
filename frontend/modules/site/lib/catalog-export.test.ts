@@ -77,12 +77,43 @@ describe('checksumOf', () => {
 })
 
 describe('toExportProduct', () => {
-	it('force status à published', async () => {
-		// Le serveur refuse tout autre statut : appliquer la règle de publication
-		// lui est interdit (§4.1 du contrat).
+	it('recopie le statut publié', async () => {
 		const exported = toExportProduct(product(), [], null)
 
 		expect(exported.status).toBe('published')
+	})
+
+	// ── LA DÉPUBLICATION EST UN EXPORT, PAS UNE SUPPRESSION ───────────────────
+	// Avant le 21 août 2026, `status` valait `'published'` en dur : une fiche
+	// repassée en brouillon restait servie par le site indéfiniment, sa ligne SQL
+	// gardant `published`, et aucun chemin ne pouvait la corriger. Constaté sur
+	// une guitare Iberia C5, « 2564 sur le site, 2563 à jour ».
+	it('recopie le statut brouillon — c’est ce qui dépublie', () => {
+		const exported = toExportProduct(product({ status: 'draft' }), [], null)
+
+		expect(exported.status).toBe('draft')
+	})
+
+	// Le cœur du mécanisme : sans `status` dans l'empreinte, le retrait serait
+	// invisible à l'inventaire et ne partirait jamais. Avec, la fiche devient
+	// `modified`, part, puis redevient `synced` — le compteur retombe seul.
+	it('change d’empreinte quand la fiche est dépubliée', async () => {
+		const publie = await sealed(toExportProduct(product(), [], null))
+		const brouillon = await sealed(
+			toExportProduct(product({ status: 'draft' }), [], null),
+		)
+
+		expect(brouillon.checksum).not.toBe(publie.checksum)
+		expect(
+			syncStateOf('nedb-1', brouillon.checksum, {
+				'nedb-1': publie.checksum,
+			}),
+		).toBe('modified')
+		expect(
+			syncStateOf('nedb-1', brouillon.checksum, {
+				'nedb-1': brouillon.checksum,
+			}),
+		).toBe('synced')
 	})
 
 	// ── L'ÉDITION DES TEXTES DU SITE PASSE PAR L'EMPREINTE ────────────────────

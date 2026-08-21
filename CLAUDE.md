@@ -268,6 +268,18 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   `frontend/lib/queries/create-legacy-key.test.ts` — c'est `legacy_id` qui
   nomme toute l'arborescence, et les trois `create` doivent le poser
   (`withLegacyKey`, `frontend/lib/queries/legacy-key.ts`).
+- **Dépublier un produit, c'est l'exporter en `draft`** (21 août 2026). Le
+  contrat n'a aucune opération de suppression : `products-sync.php` accepte
+  `status` valant `published` ou `draft`, l'écrit sans l'interpréter, et
+  `catalog.php` ne sert que `published` — la page disparaît, la ligne SQL reste
+  avec son `first_seen_at`, ses images et ses rattachements. **`status` entre
+  dans le checksum d'export** : une fiche passée en brouillon devient `modified`
+  d'elle-même, part, puis redevient `synced`. L'écran lit les brouillons par
+  `useUnpublishedProducts` et ne retient que ceux que l'inventaire distant
+  connaît (compteur « À retirer ») ; ils n'entrent jamais dans les grilles ni
+  dans le panneau d'images. Avant cette date, `toExportProduct` écrivait
+  `status: 'published'` en dur et un produit dépublié restait en ligne
+  indéfiniment. Gardiens : `catalog-export.test.ts`.
 - **Ne pas toucher `wp-admin` ni `wp-json`** dans le `.htaccess` du site tant
   que WordPress sert le catalogue et la médiathèque.
 - **Secrets :** `package.json` contient le mot de passe PocketBase en clair

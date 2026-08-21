@@ -18,6 +18,7 @@ import type {
 	CatalogBrand,
 	CatalogCategory,
 	CatalogProduct,
+	CatalogProductStatus,
 } from '@/lib/queries/site-catalog'
 
 export const CATALOG_CONTRACT_VERSION = 1
@@ -53,7 +54,21 @@ export type ExportProduct = WithChecksum & {
 	price_ttc: number
 	tax_rate: number
 	stock: number
-	status: 'published'
+	/**
+	 * L'intention de publication, TELLE QU'ELLE EST. `draft` est la seule façon
+	 * de retirer une fiche du site : `catalog.php` ne sert que `published`, et
+	 * rien n'efface jamais la ligne SQL (§4.1 du contrat, 21 août 2026).
+	 *
+	 * Avant cette date le champ valait `'published'` en dur, ici et dans
+	 * `products-sync.php` : un produit repassé en brouillon restait en ligne
+	 * indéfiniment, sans qu'aucun écran ne puisse même le montrer.
+	 *
+	 * **Il entre dans l'empreinte**, et c'est ce qui fait tout marcher : passer
+	 * une fiche en brouillon la fait basculer en `modified`, l'envoi la
+	 * dépublie, et l'empreinte alors stockée la rend `synced` — le compteur
+	 * retombe à zéro de lui-même.
+	 */
+	status: CatalogProductStatus
 	brand: string | null
 	categories: string[]
 }
@@ -130,6 +145,9 @@ const nullable = (value: string | undefined): string | null =>
 	value && value.trim() !== '' ? value : null
 
 /**
+ * `status` est RECOPIÉ, jamais décidé : tout ce qui n'est pas `published` part
+ * en `draft`, c'est-à-dire dépublié. Le serveur n'accepte que ces deux valeurs.
+ *
  * `site_title` reste délibérément `null` : le nom/référence canonique doit faire
  * foi partout et `catalog.php` retombe sur `name`. Le champ reste au contrat
  * pour ne pas imposer une migration au serveur si cette règle change un jour.
@@ -149,7 +167,7 @@ export function toExportProduct(
 		price_ttc: product.price_ttc ?? 0,
 		tax_rate: product.tax_rate ?? 0,
 		stock: product.stock ?? 0,
-		status: 'published',
+		status: product.status === 'published' ? 'published' : 'draft',
 		brand: brandLegacyId,
 		categories: categoryLegacyIds,
 	}
