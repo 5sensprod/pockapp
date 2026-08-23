@@ -29,6 +29,7 @@ import {
 	type CustomerType,
 	type CustomerTypeSummary,
 	aggregateEreporting,
+	estZQuatreLignes,
 	getPaymentMethodLabel,
 } from '@/lib/types/cash.types'
 import { useNavigate, useSearch } from '@tanstack/react-router'
@@ -47,6 +48,7 @@ import { CashModuleShell } from './CashModuleShell'
 import { useRegisterManager } from './components/hooks/useRegisterManager'
 import {
 	PaymentMethodBreakdown,
+	QuatreLignesCard,
 	VATBreakdownTable,
 	computeNetByMethod,
 	formatCurrency,
@@ -402,13 +404,28 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 		? aggregateEreporting(byCustomerType)
 		: null
 
-	const salesByMethod = totals.by_method ?? {}
+	// Un rapport antérieur au 23 août 2026 se relit sous SA règle : son
+	// `total_ttc` est un total mêlé, et les quatre lignes n'existent pas. Le
+	// présenter sous la forme du nouveau contrat lui ferait dire ce qu'il ne dit
+	// pas — sur un document scellé, c'est inacceptable.
+	const quatreLignes = estZQuatreLignes(totals)
+
+	// Sur un rapport v2, la ventilation qui compte est celle du TOTAL encaissé :
+	// `by_method` ne couvre plus que la ligne 1, l'afficher sous le libellé
+	// « encaissements » sous-estimerait ce qui est entré en caisse.
+	const salesByMethod = quatreLignes
+		? (totals.collected_by_method ?? totals.by_method ?? {})
+		: (totals.by_method ?? {})
 	const refundsByMethod = totals.refunds_by_method
-	const netByMethod =
-		totals.net_by_method ??
-		(refundsByMethod
-			? computeNetByMethod(salesByMethod, refundsByMethod)
-			: undefined)
+	// ⚠️ Sur un rapport v2, `collected_by_method` déduit DÉJÀ les remboursements :
+	// c'est la ventilation du total encaissé, pas celle des ventes. Lui
+	// réappliquer computeNetByMethod les retrancherait une seconde fois.
+	const netByMethod = quatreLignes
+		? undefined
+		: (totals.net_by_method ??
+			(refundsByMethod
+				? computeNetByMethod(salesByMethod, refundsByMethod)
+				: undefined))
 
 	return (
 		<div className='space-y-6 print:space-y-4'>
@@ -459,50 +476,96 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 					<CardTitle className='text-base'>Résumé de la journée</CardTitle>
 				</CardHeader>
 				<CardContent className='space-y-6'>
-					{/* Totaux principaux */}
-					<div className='grid grid-cols-5 gap-4'>
-						<div>
-							<div className='text-xs text-muted-foreground'>Sessions</div>
-							<div className='text-2xl font-bold'>{totals.sessions_count}</div>
-						</div>
-						<div>
-							<div className='text-xs text-muted-foreground'>
-								Tickets / factures
+					{quatreLignes ? (
+						<>
+							<QuatreLignesCard
+								lignes={{
+									ventesDuJour: totals.total_ttc,
+									creances: totals.collected_from_receivables_ttc ?? 0,
+									acomptes: totals.collected_deposits_ttc ?? 0,
+									remboursements: totals.refunds_ttc ?? 0,
+									encaisse: totals.collected_ttc ?? totals.total_ttc,
+								}}
+								tvaVentesDuJour={totals.total_tva}
+							/>
+							<div className='grid grid-cols-3 gap-4 text-sm'>
+								<div>
+									<div className='text-xs text-muted-foreground'>Sessions</div>
+									<div className='text-lg font-medium'>
+										{totals.sessions_count}
+									</div>
+								</div>
+								<div>
+									<div className='text-xs text-muted-foreground'>
+										Ventes du jour (documents)
+									</div>
+									<div className='text-lg font-medium'>
+										{totals.invoice_count}
+									</div>
+								</div>
+								<div>
+									<div className='text-xs text-muted-foreground'>
+										Base HT des ventes du jour
+									</div>
+									<div className='text-lg font-medium'>
+										{formatCurrency(totals.total_ht)}
+									</div>
+								</div>
 							</div>
-							<div className='text-2xl font-bold'>{totals.invoice_count}</div>
-						</div>
-						<div>
-							<div className='text-xs text-muted-foreground'>Total HT</div>
-							<div className='text-2xl font-bold'>
-								{formatCurrency(totals.total_ht)}
+						</>
+					) : (
+						<>
+							{/* Rapport antérieur au contrat du 23 août 2026 : présenté sous
+							    la règle qui l'a produit. `total_ttc` y est un total mêlé. */}
+							<div className='grid grid-cols-5 gap-4'>
+								<div>
+									<div className='text-xs text-muted-foreground'>Sessions</div>
+									<div className='text-2xl font-bold'>
+										{totals.sessions_count}
+									</div>
+								</div>
+								<div>
+									<div className='text-xs text-muted-foreground'>
+										Tickets / factures
+									</div>
+									<div className='text-2xl font-bold'>
+										{totals.invoice_count}
+									</div>
+								</div>
+								<div>
+									<div className='text-xs text-muted-foreground'>Total HT</div>
+									<div className='text-2xl font-bold'>
+										{formatCurrency(totals.total_ht)}
+									</div>
+								</div>
+								<div>
+									<div className='text-xs text-muted-foreground'>Total TVA</div>
+									<div className='text-2xl font-bold text-blue-600'>
+										{formatCurrency(totals.total_tva)}
+									</div>
+								</div>
+								<div>
+									<div className='text-xs text-muted-foreground'>Total TTC</div>
+									<div className='text-2xl font-bold text-emerald-600'>
+										{formatCurrency(totals.total_ttc)}
+									</div>
+								</div>
 							</div>
-						</div>
-						<div>
-							<div className='text-xs text-muted-foreground'>Total TVA</div>
-							<div className='text-2xl font-bold text-blue-600'>
-								{formatCurrency(totals.total_tva)}
-							</div>
-						</div>
-						<div>
-							<div className='text-xs text-muted-foreground'>Total TTC</div>
-							<div className='text-2xl font-bold text-emerald-600'>
-								{formatCurrency(totals.total_ttc)}
-							</div>
-						</div>
-					</div>
 
-					{/* Net après avoirs */}
-					{totals.net_ttc !== undefined &&
-						totals.net_ttc !== totals.total_ttc && (
-							<div className='flex justify-between text-sm px-1'>
-								<span className='text-muted-foreground'>
-									Net après avoirs :
-								</span>
-								<span className='font-semibold text-emerald-700'>
-									{formatCurrency(totals.net_ttc)}
-								</span>
-							</div>
-						)}
+							{/* Net après avoirs */}
+							{totals.net_ttc !== undefined &&
+								totals.net_ttc !== totals.total_ttc && (
+									<div className='flex justify-between text-sm px-1'>
+										<span className='text-muted-foreground'>
+											Net après avoirs :
+										</span>
+										<span className='font-semibold text-emerald-700'>
+											{formatCurrency(totals.net_ttc)}
+										</span>
+									</div>
+								)}
+						</>
+					)}
 
 					<Separator />
 
@@ -570,8 +633,16 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 					<div className='space-y-4'>
 						<div>
 							<div className='text-sm font-medium mb-2'>
-								Encaissements par moyen
+								{quatreLignes
+									? 'Total encaissé par moyen de paiement'
+									: 'Encaissements par moyen'}
 							</div>
+							{quatreLignes && (
+								<p className='text-xs text-muted-foreground mb-2'>
+									Les quatre lignes réunies, remboursements déduits. C'est ce
+									qui doit correspondre au tiroir et à la banque.
+								</p>
+							)}
 							<PaymentMethodBreakdown byMethod={salesByMethod} label='' />
 						</div>
 

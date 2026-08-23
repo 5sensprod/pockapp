@@ -4,6 +4,7 @@
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import {
 	Dialog,
 	DialogContent,
@@ -12,7 +13,11 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
-import { type RapportX, aggregateEreporting } from '@/lib/types/cash.types'
+import {
+	type RapportX,
+	aggregateEreporting,
+	estZQuatreLignes,
+} from '@/lib/types/cash.types'
 import {
 	FileText,
 	Loader2,
@@ -24,6 +29,7 @@ import {
 import {
 	CashMovementsCard,
 	ExpectedCashCard,
+	QuatreLignesCard,
 	RefundsCard,
 	SalesCard,
 	SessionInfoCard,
@@ -106,8 +112,37 @@ export function RapportXDialog({
 
 						<Separator />
 
+						{/* Le X est l'aperçu du Z : mêmes quatre lignes, même sens.
+						    Sur un backend antérieur au contrat, le bloc est absent et
+						    seule la carte Ventes s'affiche, comme avant. */}
+						{estZQuatreLignes(rapport.sales) && (
+							<>
+								<Section icon={TrendingUp} title='Encaissé depuis l’ouverture'>
+									<Card>
+										<CardContent className='pt-6'>
+											<QuatreLignesCard
+												titre='Encaissé depuis l’ouverture'
+												lignes={{
+													ventesDuJour: rapport.sales.total_ttc,
+													creances:
+														rapport.sales.collected_from_receivables_ttc ?? 0,
+													acomptes: rapport.sales.deposits_ttc ?? 0,
+													remboursements: rapport.sales.refunds_ttc ?? 0,
+													encaisse:
+														rapport.sales.collected_ttc ??
+														rapport.sales.total_ttc,
+												}}
+												tvaVentesDuJour={rapport.sales.total_tva}
+											/>
+										</CardContent>
+									</Card>
+								</Section>
+								<Separator />
+							</>
+						)}
+
 						{/* Ventes avec ventilation B2C/B2B */}
-						<Section icon={TrendingUp} title='Ventes'>
+						<Section icon={TrendingUp} title='Ventes du jour'>
 							<SalesCard
 								invoiceCount={rapport.sales.invoice_count}
 								totalTTC={rapport.sales.total_ttc}

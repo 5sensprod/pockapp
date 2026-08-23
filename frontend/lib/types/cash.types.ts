@@ -147,6 +147,17 @@ export interface SalesSummaryX {
 	deposits_count: number
 	deposits_ttc: number
 	by_method_labels?: Record<string, string>
+
+	// ── Contrat « un total, quatre lignes » (ticket Z-6) ─────────────────────
+	// Le X est l'aperçu du Z : il porte les mêmes lignes, avec le même sens.
+	// `total_ttc` ci-dessus ne couvre plus que la ligne 1, et `deposits_ttc`,
+	// jusqu'ici structurellement à zéro, est devenu la ligne 3.
+	// Optionnels : un backend plus ancien ne les envoie pas.
+	schema_version?: number
+	collected_ttc?: number
+	collected_by_method?: Record<string, number>
+	collected_from_receivables_ttc?: number
+	refunds_ttc?: number
 }
 
 export interface RefundsSummaryX {
@@ -248,6 +259,35 @@ export interface RapportZDailyTotals {
 	// ✅ optionnels (dès que le backend les expose)
 	refunds_by_method?: Record<string, number>
 	net_by_method?: Record<string, number>
+
+	// ── Contrat « un total, quatre lignes » (23 août 2026) ───────────────────
+	// frontend/modules/cash/PocketCash-docs/04-refonte-du-z.md
+	//
+	// ⚠️ TOUS ces champs sont optionnels, et ce n'est pas de la prudence : un
+	// rapport émis avant ce contrat ne les porte pas, et son `total_ttc` ne veut
+	// PAS dire la même chose que celui d'un rapport d'après. Un document fiscal
+	// se relit sous la règle qui l'a produit — c'est `schema_version` qui la dit,
+	// et c'est sur elle que l'affichage doit brancher.
+	//   absent ou 1 = règle d'origine, total_ttc est un total mêlé
+	//   2           = total_ttc ne porte que la ligne 1, les ventes du jour
+	schema_version?: number
+	collected_ttc?: number
+	collected_by_method?: Record<string, number>
+	collected_from_receivables_ttc?: number
+	collected_deposits_ttc?: number
+	refunds_ttc?: number
+}
+
+/**
+ * estZQuatreLignes dit si un rapport suit le contrat du 23 août 2026.
+ *
+ * Un seul endroit décide, pour que l'écran, le PDF et le dialogue X ne
+ * puissent pas répondre différemment sur le même document.
+ */
+export function estZQuatreLignes(totals: {
+	schema_version?: number
+}): boolean {
+	return (totals.schema_version ?? 1) >= 2
 }
 
 // ============================================================================

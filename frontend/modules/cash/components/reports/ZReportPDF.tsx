@@ -7,6 +7,7 @@ import {
 	type CustomerType,
 	type CustomerTypeSummary,
 	aggregateEreporting,
+	estZQuatreLignes,
 	getPaymentMethodLabel,
 } from '@/lib/types/cash.types'
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
@@ -183,6 +184,20 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 		: null
 	const netTTC = rapport.daily_totals.net_ttc
 
+	// Ticket Z-9. Ce PDF part chez le comptable : c'est la surface où une
+	// étiquette fausse coûte le plus cher. Sur un rapport v2, `total_ttc` ne
+	// porte QUE les ventes du jour et `by_method` ne ventile QUE cette ligne —
+	// les afficher sous « Total TTC » et « Encaissements par moyen »
+	// sous-estimerait l'argent entré en caisse. Sur un rapport antérieur, ces
+	// mêmes champs veulent dire autre chose, et l'ancienne présentation reste la
+	// bonne : un document scellé se relit sous la règle qui l'a produit.
+	const t = rapport.daily_totals
+	const quatreLignes = estZQuatreLignes(t)
+	const encaisse = t.collected_ttc ?? t.total_ttc
+	const parMoyen = quatreLignes
+		? (t.collected_by_method ?? t.by_method)
+		: t.by_method
+
 	return (
 		<Document>
 			<Page size='A4' style={s.page}>
@@ -205,34 +220,94 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 				</View>
 
 				{/* Synthèse */}
-				<View style={s.section}>
-					<Text style={s.sectionTitle}>SYNTHÈSE</Text>
-					<View style={s.grid}>
-						<View style={s.col}>
-							<Text style={s.label}>Sessions</Text>
-							<Text style={s.value}>{rapport.daily_totals.sessions_count}</Text>
+				{quatreLignes ? (
+					<View style={s.section}>
+						<Text style={s.sectionTitle}>ENCAISSÉ CE JOUR</Text>
+						<Text style={s.total}>{fc(encaisse)}</Text>
+
+						<View style={{ marginTop: 6, marginBottom: 4 }}>
+							<View style={s.row}>
+								<Text>Ventes du jour</Text>
+								<Text style={s.value}>{fc(t.total_ttc)}</Text>
+							</View>
+							<View style={s.row}>
+								<Text>Règlements de factures antérieures</Text>
+								<Text style={s.value}>
+									{fc(t.collected_from_receivables_ttc ?? 0)}
+								</Text>
+							</View>
+							<View style={s.row}>
+								<Text>Acomptes</Text>
+								<Text style={s.value}>{fc(t.collected_deposits_ttc ?? 0)}</Text>
+							</View>
+							<View style={s.row}>
+								<Text>Remboursements</Text>
+								<Text style={{ ...s.value, color: '#c00' }}>
+									-{fc(t.refunds_ttc ?? 0)}
+								</Text>
+							</View>
 						</View>
-						<View style={s.col}>
-							<Text style={s.label}>Tickets / factures</Text>
-							<Text style={s.value}>{rapport.daily_totals.invoice_count}</Text>
+
+						<View style={s.grid}>
+							<View style={s.col}>
+								<Text style={s.label}>Sessions</Text>
+								<Text style={s.value}>{t.sessions_count}</Text>
+							</View>
+							<View style={s.col}>
+								<Text style={s.label}>Ventes du jour (documents)</Text>
+								<Text style={s.value}>{t.invoice_count}</Text>
+							</View>
+							<View style={s.col}>
+								<Text style={s.label}>Base HT (ventes du jour)</Text>
+								<Text style={s.value}>{fc(t.total_ht)}</Text>
+							</View>
+							<View style={s.col}>
+								<Text style={s.label}>TVA (ventes du jour)</Text>
+								<Text style={s.value}>{fc(t.total_tva)}</Text>
+							</View>
 						</View>
-						<View style={s.col}>
-							<Text style={s.label}>Total HT</Text>
-							<Text style={s.value}>{fc(rapport.daily_totals.total_ht)}</Text>
-						</View>
-						<View style={s.col}>
-							<Text style={s.label}>TVA</Text>
-							<Text style={s.value}>{fc(rapport.daily_totals.total_tva)}</Text>
-						</View>
+						<Text style={{ ...s.subtitle, marginTop: 4, marginBottom: 0 }}>
+							Seules les ventes du jour portent du chiffre d'affaires. Les trois
+							autres lignes sont des encaissements, en TTC : leur TVA a déjà été
+							déclarée, ou ne leur revient pas.
+						</Text>
 					</View>
-					<Text style={s.total}>
-						Total TTC : {fc(rapport.daily_totals.total_ttc)}
-					</Text>
-					{netTTC !== undefined &&
-						netTTC !== rapport.daily_totals.total_ttc && (
-							<Text style={s.netTotal}>Net après avoirs : {fc(netTTC)}</Text>
-						)}
-				</View>
+				) : (
+					<View style={s.section}>
+						<Text style={s.sectionTitle}>SYNTHÈSE</Text>
+						<View style={s.grid}>
+							<View style={s.col}>
+								<Text style={s.label}>Sessions</Text>
+								<Text style={s.value}>
+									{rapport.daily_totals.sessions_count}
+								</Text>
+							</View>
+							<View style={s.col}>
+								<Text style={s.label}>Tickets / factures</Text>
+								<Text style={s.value}>
+									{rapport.daily_totals.invoice_count}
+								</Text>
+							</View>
+							<View style={s.col}>
+								<Text style={s.label}>Total HT</Text>
+								<Text style={s.value}>{fc(rapport.daily_totals.total_ht)}</Text>
+							</View>
+							<View style={s.col}>
+								<Text style={s.label}>TVA</Text>
+								<Text style={s.value}>
+									{fc(rapport.daily_totals.total_tva)}
+								</Text>
+							</View>
+						</View>
+						<Text style={s.total}>
+							Total TTC : {fc(rapport.daily_totals.total_ttc)}
+						</Text>
+						{netTTC !== undefined &&
+							netTTC !== rapport.daily_totals.total_ttc && (
+								<Text style={s.netTotal}>Net après avoirs : {fc(netTTC)}</Text>
+							)}
+					</View>
+				)}
 
 				{/* Ventes par nature (e-reporting) */}
 				{hasCustomerTypes && (
@@ -332,82 +407,90 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 					)}
 
 				{/* Moyens de paiement */}
-				{rapport.daily_totals.by_method &&
-					Object.keys(rapport.daily_totals.by_method).length > 0 && (
-						<View style={s.section}>
-							<Text style={s.sectionTitle}>ENCAISSEMENTS PAR MOYEN</Text>
-							{Object.entries(rapport.daily_totals.by_method).map(
-								([method, amount]) => (
-									<View key={method} style={s.row}>
-										<Text>{getPaymentMethodLabel(method)}</Text>
-										<Text style={s.value}>{fc(amount)}</Text>
-									</View>
-								),
+				{parMoyen && Object.keys(parMoyen).length > 0 && (
+					<View style={s.section}>
+						<Text style={s.sectionTitle}>
+							{quatreLignes
+								? 'TOTAL ENCAISSÉ PAR MOYEN DE PAIEMENT'
+								: 'ENCAISSEMENTS PAR MOYEN'}
+						</Text>
+						{quatreLignes && (
+							<Text style={{ ...s.subtitle, marginBottom: 4 }}>
+								Les quatre lignes réunies, remboursements déduits.
+							</Text>
+						)}
+						{Object.entries(parMoyen).map(([method, amount]) => (
+							<View key={method} style={s.row}>
+								<Text>{getPaymentMethodLabel(method)}</Text>
+								<Text style={s.value}>{fc(amount)}</Text>
+							</View>
+						))}
+						{/* Remboursements par moyen si présents. Sur un rapport v2 la
+							    ventilation ci-dessus est DÉJÀ nette : les redétailler ici
+							    laisserait croire qu'ils restent à déduire. */}
+						{!quatreLignes &&
+							rapport.daily_totals.refunds_by_method &&
+							Object.keys(rapport.daily_totals.refunds_by_method).length >
+								0 && (
+								<View
+									style={{
+										marginTop: 4,
+										paddingTop: 4,
+										borderTop: '1pt solid #eee',
+									}}
+								>
+									<Text style={{ fontSize: 8, color: '#666', marginBottom: 2 }}>
+										Remboursements :
+									</Text>
+									{Object.entries(rapport.daily_totals.refunds_by_method).map(
+										([method, amount]) => (
+											<View key={method} style={s.rowMuted}>
+												<Text>{getPaymentMethodLabel(method)}</Text>
+												<Text style={{ color: '#c00' }}>-{fc(amount)}</Text>
+											</View>
+										),
+									)}
+								</View>
 							)}
-							{/* Remboursements par moyen si présents */}
-							{rapport.daily_totals.refunds_by_method &&
-								Object.keys(rapport.daily_totals.refunds_by_method).length >
-									0 && (
-									<View
+						{/* Net par moyen */}
+						{!quatreLignes &&
+							rapport.daily_totals.net_by_method &&
+							Object.keys(rapport.daily_totals.net_by_method).length > 0 && (
+								<View
+									style={{
+										marginTop: 4,
+										paddingTop: 4,
+										borderTop: '1pt solid #ccc',
+									}}
+								>
+									<Text
 										style={{
-											marginTop: 4,
-											paddingTop: 4,
-											borderTop: '1pt solid #eee',
+											fontSize: 8,
+											fontWeight: 'bold',
+											marginBottom: 2,
 										}}
 									>
-										<Text
-											style={{ fontSize: 8, color: '#666', marginBottom: 2 }}
-										>
-											Remboursements :
-										</Text>
-										{Object.entries(rapport.daily_totals.refunds_by_method).map(
-											([method, amount]) => (
-												<View key={method} style={s.rowMuted}>
-													<Text>{getPaymentMethodLabel(method)}</Text>
-													<Text style={{ color: '#c00' }}>-{fc(amount)}</Text>
-												</View>
-											),
-										)}
-									</View>
-								)}
-							{/* Net par moyen */}
-							{rapport.daily_totals.net_by_method &&
-								Object.keys(rapport.daily_totals.net_by_method).length > 0 && (
-									<View
-										style={{
-											marginTop: 4,
-											paddingTop: 4,
-											borderTop: '1pt solid #ccc',
-										}}
-									>
-										<Text
-											style={{
-												fontSize: 8,
-												fontWeight: 'bold',
-												marginBottom: 2,
-											}}
-										>
-											Net par moyen :
-										</Text>
-										{Object.entries(rapport.daily_totals.net_by_method).map(
-											([method, amount]) => (
-												<View key={method} style={s.row}>
-													<Text>{getPaymentMethodLabel(method)}</Text>
-													<Text
-														style={{
-															fontWeight: 'bold',
-															color: amount < 0 ? '#c00' : '#000',
-														}}
-													>
-														{fc(amount)}
-													</Text>
-												</View>
-											),
-										)}
-									</View>
-								)}
-						</View>
-					)}
+										Net par moyen :
+									</Text>
+									{Object.entries(rapport.daily_totals.net_by_method).map(
+										([method, amount]) => (
+											<View key={method} style={s.row}>
+												<Text>{getPaymentMethodLabel(method)}</Text>
+												<Text
+													style={{
+														fontWeight: 'bold',
+														color: amount < 0 ? '#c00' : '#000',
+													}}
+												>
+													{fc(amount)}
+												</Text>
+											</View>
+										),
+									)}
+								</View>
+							)}
+					</View>
+				)}
 
 				{/* Avoirs */}
 				{rapport.daily_totals.credit_notes_count > 0 && (
