@@ -301,6 +301,48 @@ un bug. Deux remarques subsistent, plus petites :
    mais le fond de caisse du jour porte 140 € que le Z n'annonce pas. C'est un
    écart de caisse, pas une erreur de TVA. **[supposé]** que le comptage
    physique s'en accommode : non vérifié.
+### 3.5 Vérification du point 1 ci-dessus — [supposé] levé le 23 août 2026
+
+*Ajouté après mesure. La réserve « le comptage physique s'en accommode : non
+vérifié » est tranchée, et sa portée était plus large que formulée.*
+
+Les encaissements espèces **hors caisse** créent un `cash_movements` via
+`CreateCashMovementIfEspeces` (`backend/cash_movement_helper.go:36`), appelé
+depuis `pay.go:122`, `deposit.go:265` et `refund.go:277`. Ils entrent donc dans
+les espèces attendues, qui valent `opening_float + (cash_in − cash_out −
+refund_out − safe_drop)`.
+
+**Mais ce helper a été créé le 20 mai 2026**, commit `bd8500c` « fix espece
+facture to caisse » — le même jour que la régression des Z, sans lien avec elle.
+Mesuré sur la production :
+
+| Période | Documents espèces hors caisse | TTC | Avec mouvement de caisse |
+|---|---|---|---|
+| Avant le 20/05/2026 | 11 (8 factures, 3 acomptes) | **1 826,45 €** | **0** |
+| Depuis le 20/05/2026 | 16 factures | 5 498,63 € | **16 — tous** |
+
+**Le mécanisme fonctionne**, vérifié sur 16 cas réels. **Avant le 20 mai,
+1 826,45 € d'espèces sont entrés dans le tiroir sans aucune écriture au
+journal** : les espèces attendues de ces sessions étaient sous-évaluées
+d'autant, et le comptage a dû faire apparaître des excédents inexpliqués. Ce
+n'est pas un défaut de session (des sessions étaient bien ouvertes à ces dates,
+vérifié) : le code n'existait pas encore.
+
+Deux conséquences pour la lecture de ce document :
+
+- Le chiffrage « 1 062,73 € dont 140 € en espèces » du point 1 mesurait les
+  acomptes sur parente non soldée. **Le vrai périmètre est plus large** et ne
+  tient pas aux acomptes : c'est tout l'encaissement espèces hors caisse
+  antérieur au 20 mai, acomptes compris (415 € sur les 1 826,45 €).
+- **Sans effet sur le CA ni sur la TVA** — uniquement sur le rapprochement de
+  caisse, et uniquement pour le passé. Aucun acompte espèces n'a été encaissé
+  depuis le 20 mai : le chemin acompte → mouvement reste donc **non éprouvé en
+  production**, même s'il est identique à celui des factures, éprouvé 16 fois.
+
+---
+
+**Reprise du §3.4 :**
+
 2. **`invoice_type = 'deposit'` dans les filtres `cash_reports.go:218` et
    `:518` est du code mort** : combiné à `original_invoice_id = ''`, aucun
    acompte ne peut le satisfaire. Par conséquent `DepositsCount` et
