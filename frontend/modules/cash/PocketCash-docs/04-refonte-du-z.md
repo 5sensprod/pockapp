@@ -12,6 +12,18 @@ fonction dans le dépôt, ou requête sur la copie de production. **[supposé]**
 non démontré, dit comme tel. **[à trancher]** = ambiguïté que le code ne permet
 pas de lever ; elle est posée, pas résolue.
 
+> **État au 24 août 2026 — le contrat est EN PRODUCTION.** Les tickets Z-1 à
+> Z-10 sont faits. Le calcul, le hachage, le rejeu et l'affichage suivent les
+> quatre lignes ; les 46 rapports ont été rejoués en production le 24 août, et
+> relus après coup : **46 sur 46 en `schema_version` 2, aucun déséquilibre entre
+> le total et ses lignes, aucun maillon de hachage rompu.** Cumul encaissé
+> 46 599,84 € — ligne 1 : 43 090,81 · ligne 2 : 1 341,28 · ligne 3 : 3 026,60 ·
+> ligne 4 : 858,85. Sauvegarde préalable dans
+> `%LOCALAPPDATA%\PocketReact\pb_data-sauvegarde-avant-Z10-20260824-005135`.
+> Restent ouverts, et ils sont indépendants : **N-1** (nature bien / service),
+> **C-4** (`CreateDepositInvoice`), **S-2** (renommer « B2B »), et la
+> **décision 3**, qui se pose au comptable.
+
 > **Réserve fiscale, à porter jusqu'au comptable.** Le rattachement de la TVA —
 > à la livraison ou à l'encaissement, selon qu'il s'agit de biens ou de
 > prestations — dépend du régime de l'entreprise et **doit être confirmé avant
@@ -203,16 +215,20 @@ Règle proposée, vérifiée sur les 7 :
    Vérifié sur `FAC-2026-000092` : 277,80 − 257,80 = 20, plus l'acompte
    257,80, le même jour → 277,80. Juste.
 
-**Une seule exception résiste, et c'est une anomalie de données, pas de règle
-— [à trancher] :**
+**Une seule exception résistait, et c'était une anomalie de données, pas de
+règle — TRANCHÉE le 24 août 2026 :**
 
 `FAC-2026-000023`, 974 €, marquée **payée en totalité le 19/06/2026** (elle est
 le hors-caisse du `Z-2026-000034`), porte un acompte `ACC-2026-000012` de 50 €
 marqué **payé le 23/07/2026**, un mois plus tard. Les deux ne peuvent pas être
 vrais : soit la parente n'a encaissé que 924 €, soit l'acompte n'a jamais été
-un encaissement distinct. **Le code ne permet pas de trancher.** Portée : 50 €,
-et le 23/07/2026 ne porte **aucun rapport Z** — aucun Z existant n'est affecté.
-Question à poser au propriétaire, pas à deviner.
+un encaissement distinct. Le code ne permettait pas de trancher.
+
+**Arbitrage du propriétaire : l'acompte de 50 € est réel.** La parente entre
+donc amputée, et le `Z-2026-000034` passe de 1 224,05 € à **1 174,05 €**, dont
+924,00 € en ligne 3. C'est le seul rapport des 46 dont l'argent ne se conserve
+pas au rejeu, et c'est voulu. **Appliqué en production le 24 août 2026**, aucune
+écriture dans `invoices` : la règle suffit, la donnée n'a pas été retouchée.
 
 ### Deux divergences bloc 2 ↔ bloc 3, structurelles et à assumer
 
@@ -331,12 +347,15 @@ de facture porte `name`, `product_id`, `quantity`, `total_ht`, `tva_rate`,
 réparation sera facturée ici, rien ne la distinguera d'une paire de baguettes.
 → **Ticket N-1**, à traiter avant la première réparation facturée, pas après.
 
-### Décision 4 — L'anomalie `FAC-2026-000023`
+### Décision 4 — L'anomalie `FAC-2026-000023` — **tranchée**
 
 Facture de 974 € marquée **payée en totalité le 19/06/2026**, portant un acompte
-de 50 € marqué **payé le 23/07/2026**. Les deux ne peuvent pas être vrais. Le
-code ne permet pas de trancher ; 50 € en jeu, aucun Z affecté (le 23/07 ne porte
-aucun rapport). Question au propriétaire.
+de 50 € marqué **payé le 23/07/2026**. Les deux ne peuvent pas être vrais.
+
+**Arbitrage du 24 août 2026 : l'acompte est réel.** La règle anti-doublon
+s'applique donc sans exception, et le `Z-2026-000034` porte 1 174,05 € au lieu
+de 1 224,05 €. Rien n'a été corrigé dans `invoices` — les 1199 hash restent
+intacts.
 
 ---
 
