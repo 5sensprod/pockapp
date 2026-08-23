@@ -124,8 +124,23 @@ type SalesSummaryX struct {
 	NetByMethod    map[string]float64              `json:"net_by_method"`
 	NetTTC         float64                         `json:"net_ttc"`
 	ByCustomerType map[string]*CustomerTypeSummary `json:"by_customer_type"`
-	DepositsCount  int                             `json:"deposits_count"`
-	DepositsTTC    float64                         `json:"deposits_ttc"`
+
+	// Ticket Z-6 — le X est l'APERÇU du Z en cours de journée : il ne peut pas
+	// suivre une autre logique de calcul, sous peine de contredire à midi le
+	// document qui sera émis le soir. Même quatre lignes, même sens.
+	//
+	// TotalHT / TotalTVA / TotalTTC ci-dessus ne portent donc plus que la
+	// ligne 1. DepositsCount / DepositsTTC, jusqu'ici structurellement à zéro
+	// (le filtre `original_invoice_id = ''` écartait tous les acomptes, qui en
+	// portent un), deviennent la ligne 3 et portent enfin une valeur.
+	SchemaVersion               int                `json:"schema_version"`
+	DepositsCount               int                `json:"deposits_count"`
+	DepositsTTC                 float64            `json:"deposits_ttc"`
+	CollectedTTC                float64            `json:"collected_ttc"`
+	CollectedByMethod           map[string]float64 `json:"collected_by_method"`
+	CollectedFromReceivables    LigneTTC           `json:"collected_from_receivables"`
+	CollectedFromReceivablesTTC float64            `json:"collected_from_receivables_ttc"`
+	RefundsTTC                  float64            `json:"refunds_ttc"`
 }
 
 type MovementsSummary struct {
@@ -215,7 +230,9 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	if ownerCompany != "" {
 		// Factures et acomptes B2B encaisses dans la fenetre de session
 		b2bFilter := fmt.Sprintf(
-			"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at <= '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit') && original_invoice_id = ''",
+			// Ticket Z-3 : voir loadB2BInvoicesForDay. La sélection ramène
+			// tout ; le classificateur écarte nommément les conversions.
+			"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at <= '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit')",
 			ownerCompany, sessionOpenedAt, endStr,
 		)
 		invoicesB2B, _ := dao.FindRecordsByFilter("invoices", b2bFilter, "paid_at", 0, 0)
@@ -276,8 +293,18 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		}
 	}
 
+	// Ligne 3 — acomptes. Le compteur existait déjà mais restait à zéro : la
+	// requête écartait les acomptes avant qu'il puisse les voir (ticket Z-6).
 	var depositsCount int
 	var depositsTTC float64
+	// Ligne 2 — règlements de factures antérieures.
+	var ligneCreances LigneTTC
+	collectedByMethod := make(map[string]float64)
+
+	// Même classificateur que le Z (z_lignes.go). Le X est l'aperçu du Z : les
+	// deux documents doivent ranger un même encaissement au même endroit.
+	// La journée de référence est celle de l'ouverture de la session.
+	classificateur := nouveauClassificateur(app, jourDe(sessionOpenedAt))
 
 	for _, inv := range allInvoices {
 		invType := inv.GetString("invoice_type")
@@ -285,13 +312,26 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		tva := inv.GetFloat("total_tva")
 		ttc := inv.GetFloat("total_ttc")
 
-		if invType == "credit_note" {
-			creditNotesCount++
-			amt := ttc
-			if amt < 0 {
-				amt = -amt
+		// Les tickets de caisse sont en ligne 1 par leur session, sans
+		// condition ; leurs avoirs en ligne 4. Seul le hors caisse se classe.
+		ligne, montant := LigneVentesDuJour, ttc
+		if inv.GetBool("is_pos_ticket") {
+			if invType == "credit_note" {
+				ligne, montant = LigneRemboursements, abs(ttc)
+			} else if invType != "" && invType != "invoice" && invType != "deposit" {
+				ligne = LigneAucune
 			}
-			refundsTotalTTC += amt
+		} else {
+			ligne, montant = classificateur.classer(inv)
+		}
+
+		if ligne == LigneAucune {
+			continue
+		}
+
+		if ligne == LigneRemboursements {
+			creditNotesCount++
+			refundsTotalTTC += montant
 			rm := inv.GetString("payment_method_label")
 			if rm == "" {
 				rm = inv.GetString("refund_method")
@@ -299,26 +339,41 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 					rm = "autre"
 				}
 			}
-			refundsByMethod[rm] += amt
+			refundsByMethod[rm] += montant
+			collectedByMethod[rm] -= montant
 			continue
 		}
 
-		if invType != "" && invType != "invoice" && invType != "deposit" {
+		method := inv.GetString("payment_method_label")
+		if method == "" {
+			method = inv.GetString("payment_method")
+		}
+
+		if ligne == LigneCreances {
+			ligneCreances.ajouter(montant)
+			if method != "" {
+				collectedByMethod[method] += montant
+			}
 			continue
 		}
 
-		// Acomptes separes
-		if invType == "deposit" {
+		if ligne == LigneAcomptes {
 			depositsCount++
-			depositsTTC += ttc
+			depositsTTC += montant
+			if method != "" {
+				collectedByMethod[method] += montant
+			}
+			continue
 		}
 
+		// ── Ligne 1 — ventes du jour : la seule qui porte du HT et de la TVA ──
 		invoiceCount++
 		totalHT += ht
 		totalTVA += tva
 		totalTTC += ttc
 
-		// Ventilation par customer_type
+		// Ventilation par customer_type (e-reporting) : elle suit la ligne 1,
+		// et elle seule (décision 2 du contrat).
 		custID := inv.GetString("customer")
 		ct := getCustomerType(custID)
 		// Tickets POS sans customer explicite → individual par defaut
@@ -331,12 +386,9 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		byCustomerType[ct].TotalTVA += tva
 		byCustomerType[ct].TotalTTC += ttc
 
-		method := inv.GetString("payment_method_label")
-		if method == "" {
-			method = inv.GetString("payment_method")
-		}
 		if method != "" {
 			totalsByMethod[method] += ttc
+			collectedByMethod[method] += ttc
 			if method == "especes" {
 				cashFromSales += ttc
 			}
@@ -426,6 +478,11 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	cashFromSales = roundAmount(cashFromSales)
 	openingFloat = roundAmount(openingFloat)
 	depositsTTC = roundAmount(depositsTTC)
+	ligneCreances.arrondir()
+	for k, v := range collectedByMethod {
+		collectedByMethod[k] = roundAmount(v)
+	}
+	collectedTTC := roundAmount(totalTTC + ligneCreances.TTC + depositsTTC - refundsTotalTTC)
 
 	for k, v := range totalsByMethod {
 		totalsByMethod[k] = roundAmount(v)
@@ -463,8 +520,15 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			NetByMethod:    netByMethod,
 			NetTTC:         netTTC,
 			ByCustomerType: byCustomerType,
-			DepositsCount:  depositsCount,
-			DepositsTTC:    depositsTTC,
+
+			SchemaVersion:               ZSchemaVersionCourante,
+			DepositsCount:               depositsCount,
+			DepositsTTC:                 depositsTTC,
+			CollectedTTC:                collectedTTC,
+			CollectedByMethod:           collectedByMethod,
+			CollectedFromReceivables:    ligneCreances,
+			CollectedFromReceivablesTTC: ligneCreances.TTC,
+			RefundsTTC:                  refundsTotalTTC,
 		},
 		Refunds: RefundsSummaryX{
 			CreditNotesCount: creditNotesCount,
@@ -515,7 +579,13 @@ func loadB2BInvoicesForDay(app *pocketbase.PocketBase, ownerCompany, dateStartSt
 
 	// 1. Factures et acomptes B2B encaissés ce jour
 	invoiceFilter := fmt.Sprintf(
-		"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at < '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit') && original_invoice_id = ''",
+		// Ticket Z-3 : plus de `original_invoice_id = ''` ici. Ce filtre disait
+		// vouloir écarter les conversions de ticket, mais écartait AUSSI les
+		// acomptes et les factures de solde, qui portent le même champ. La
+		// sélection ramène donc tout, et le classificateur (z_lignes.go) écarte
+		// nommément les seules conversions, en résolvant l'origine vers
+		// is_pos_ticket.
+		"owner_company = '%s' && is_pos_ticket = false && is_paid = true && paid_at >= '%s' && paid_at < '%s' && status != 'draft' && (invoice_type = 'invoice' || invoice_type = 'deposit')",
 		ownerCompany, dateStartStr, dateEndStr,
 	)
 	invoices, err := dao.FindRecordsByFilter("invoices", invoiceFilter, "paid_at", 0, 0)
@@ -640,7 +710,33 @@ type DailyTotalsSummary struct {
 	RefundsByMethod     map[string]float64              `json:"refunds_by_method"`
 	NetByMethod         map[string]float64              `json:"net_by_method"`
 	ByCustomerType      map[string]*CustomerTypeSummary `json:"by_customer_type"`
+
+	// ── Le total encaissé, et les quatre lignes qui l'expliquent ────────────
+	// Contrat du 23 août 2026 (04-refonte-du-z.md, §1 et §3 décision 1).
+	//
+	// TotalHT / TotalTVA / TotalTTC ci-dessus ne portent plus que la LIGNE 1,
+	// les ventes du jour : tickets de la session, plus factures hors caisse
+	// émises ET encaissées le même jour. C'est la seule grandeur du Z qui soit
+	// du chiffre d'affaires, et la seule qui ait une base HT — c'est elle que le
+	// comptable reprend, et elle seule que ventile ByCustomerType (décision 2).
+	//
+	// Les trois autres lignes sont en TTC seul : sans base HT, elles ne peuvent
+	// pas se confondre avec du chiffre d'affaires ni s'y additionner par
+	// accident.
+	SchemaVersion               int                `json:"schema_version"`
+	CollectedTTC                float64            `json:"collected_ttc"`
+	CollectedByMethod           map[string]float64 `json:"collected_by_method"`
+	CollectedFromReceivables    LigneTTC           `json:"collected_from_receivables"`
+	CollectedFromReceivablesTTC float64            `json:"collected_from_receivables_ttc"`
+	CollectedDeposits           LigneTTC           `json:"collected_deposits"`
+	CollectedDepositsTTC        float64            `json:"collected_deposits_ttc"`
+	RefundsTTC                  float64            `json:"refunds_ttc"`
 }
+
+// ZSchemaVersionCourante dit sous quelle règle un rapport a été produit.
+// 1 = règle d'origine ; 2 = contrat « un total, quatre lignes » du 23 août 2026.
+// Sans elle, un Z relu dans six mois ne dirait pas ce que son total_ht recouvre.
+const ZSchemaVersionCourante = 2
 
 // ============================================================================
 // AGRÉGATION D'UN RAPPORT Z
@@ -683,6 +779,17 @@ func aggregateZ(
 	totalsByMethod := make(map[string]float64)
 	refundsByMethod := make(map[string]float64)
 	globalVATByRate := make(map[string]VATDetail)
+
+	// ── Les quatre lignes du contrat ────────────────────────────────────────
+	// Ligne 1 : totalHT / totalTVA / totalTTC ci-dessus.
+	// Lignes 2 et 3 : TTC seul. Ligne 4 : creditNotesTotal, en déduction.
+	// collectedByMethod ventile le TOTAL encaissé — les quatre lignes — par
+	// moyen de paiement. C'est le nombre que le commerçant reconnaît, celui qui
+	// doit correspondre à son tiroir et à sa banque ; totalsByMethod, lui, reste
+	// la ventilation de la seule ligne 1, pour que le rapport continue d'égaler
+	// la somme de ses propres ventilations.
+	var ligneCreances, ligneAcomptes LigneTTC
+	collectedByMethod := make(map[string]float64)
 
 	// Cache customer_type pour la ventilation e-reporting (Z)
 	customerTypeCacheZ := make(map[string]string)
@@ -764,6 +871,9 @@ func aggregateZ(
 					}
 					sessionRefundsByMethod[rm] += amt
 					refundsByMethod[rm] += amt
+					// Ligne 4 : les remboursements viennent EN DÉDUCTION du
+					// total encaissé.
+					collectedByMethod[rm] -= amt
 
 					continue
 				}
@@ -788,6 +898,7 @@ func aggregateZ(
 				method := libelleMoyenPaiement(inv)
 				if method != "" {
 					sessionMethodTotals[method] += ttc
+					collectedByMethod[method] += ttc
 					if method == "especes" {
 						cashFromSales += ttc
 					}
@@ -938,19 +1049,25 @@ func aggregateZ(
 	var b2bCreditNotesCount int
 	var b2bCreditNotesTotal float64
 
+	// Le classificateur range chaque document hors caisse dans SA ligne
+	// (z_lignes.go). C'est lui qui porte les règles du §2 : exclusion nommée des
+	// conversions de ticket, anti-doublon parente / acompte / solde, avoirs sans
+	// moyen de remboursement écartés.
+	classificateur := nouveauClassificateur(app, jourDe(dateStartStr))
+
 	for _, inv := range b2bInvoices {
-		invType := inv.GetString("invoice_type")
+		ligne, montant := classificateur.classer(inv)
 
-		// Avoirs B2B : montant négatif → déduire des totaux
-		if invType == "credit_note" {
+		switch ligne {
+		case LigneAucune:
+			// Conversion de ticket, parente dont le solde est facturé, ou avoir
+			// d'annulation. Explicitement hors des quatre lignes (§2).
+			continue
+
+		case LigneRemboursements:
 			b2bCreditNotesCount++
-			amt := inv.GetFloat("total_ttc") // négatif en BDD
-			if amt < 0 {
-				amt = -amt // stocker en positif pour l'affichage
-			}
-			b2bCreditNotesTotal += amt
+			b2bCreditNotesTotal += montant
 
-			// Moyen de remboursement
 			rm := inv.GetString("refund_method")
 			if rm == "" {
 				rm = inv.GetString("payment_method")
@@ -958,26 +1075,45 @@ func aggregateZ(
 			if rm == "" {
 				rm = "autre"
 			}
-			refundsByMethod[rm] += amt
-			continue
+			refundsByMethod[rm] += montant
+			collectedByMethod[rm] -= montant
+
+		case LigneVentesDuJour:
+			// Émise ET encaissée le même jour : commercialement un ticket avec
+			// le nom du client dessus. 240 factures sur 263 sont dans ce cas —
+			// c'est le cas COURANT, pas l'exception (§0).
+			b2bInvoiceCount++
+			aggregateInvoiceIntoTotals(
+				inv,
+				&totalHT, &totalTVA, &totalTTC,
+				totalsByMethod,
+				globalVATByRate,
+				&totalDiscounts,
+			)
+			collectedByMethod[libelleMoyenPaiement(inv)] += montant
+
+			// E-reporting : la ventilation par type de client suit la ligne 1,
+			// et elle seule (décision 2). Les lignes 2 à 4 n'ont ni HT ni TVA.
+			ctB2B := getCustomerTypeZ(inv.GetString("customer"))
+			ensureGlobalCustomerType(ctB2B)
+			globalByCustomerType[ctB2B].Count++
+			globalByCustomerType[ctB2B].TotalHT += inv.GetFloat("total_ht")
+			globalByCustomerType[ctB2B].TotalTVA += inv.GetFloat("total_tva")
+			globalByCustomerType[ctB2B].TotalTTC += inv.GetFloat("total_ttc")
+
+		case LigneCreances:
+			// Émise un jour antérieur : encaissement, JAMAIS du chiffre
+			// d'affaires du jour. Sa TVA a déjà été déclarée à l'émission ; la
+			// fondre dans la ligne 1 la ferait déclarer deux fois.
+			ligneCreances.ajouter(montant)
+			collectedByMethod[libelleMoyenPaiement(inv)] += montant
+
+		case LigneAcomptes:
+			// Un acompte n'est pas du chiffre d'affaires : sa parente porte le
+			// total. Trésorerie pure, TTC seul.
+			ligneAcomptes.ajouter(montant)
+			collectedByMethod[libelleMoyenPaiement(inv)] += montant
 		}
-
-		b2bInvoiceCount++
-		aggregateInvoiceIntoTotals(
-			inv,
-			&totalHT, &totalTVA, &totalTTC,
-			totalsByMethod,
-			globalVATByRate,
-			&totalDiscounts,
-		)
-
-		// Ventilation customer_type (e-reporting) pour les B2B
-		ctB2B := getCustomerTypeZ(inv.GetString("customer"))
-		ensureGlobalCustomerType(ctB2B)
-		globalByCustomerType[ctB2B].Count++
-		globalByCustomerType[ctB2B].TotalHT += inv.GetFloat("total_ht")
-		globalByCustomerType[ctB2B].TotalTVA += inv.GetFloat("total_tva")
-		globalByCustomerType[ctB2B].TotalTTC += inv.GetFloat("total_ttc")
 	}
 
 	// Fusionner dans les compteurs globaux
@@ -1024,6 +1160,16 @@ func aggregateZ(
 		globalVATByRate[k] = v
 	}
 
+	// ── Le total encaissé : la somme des quatre lignes ──────────────────────
+	ligneCreances.arrondir()
+	ligneAcomptes.arrondir()
+	for k, v := range collectedByMethod {
+		collectedByMethod[k] = roundAmount(v)
+	}
+	collectedTTC := roundAmount(
+		totalTTC + ligneCreances.TTC + ligneAcomptes.TTC - creditNotesTotal,
+	)
+
 	return &ZAggregation{
 		Sessions:   sessionsSummaries,
 		SessionIDs: sessionIds,
@@ -1044,6 +1190,15 @@ func aggregateZ(
 			CreditNotesTotal:    creditNotesTotal,
 			RefundsByMethod:     refundsByMethod,
 			ByCustomerType:      globalByCustomerType,
+
+			SchemaVersion:               ZSchemaVersionCourante,
+			CollectedTTC:                collectedTTC,
+			CollectedByMethod:           collectedByMethod,
+			CollectedFromReceivables:    ligneCreances,
+			CollectedFromReceivablesTTC: ligneCreances.TTC,
+			CollectedDeposits:           ligneAcomptes,
+			CollectedDepositsTTC:        ligneAcomptes.TTC,
+			RefundsTTC:                  creditNotesTotal,
 		},
 	}, nil
 }
@@ -1424,6 +1579,18 @@ func computeZReportHash(rapport *RapportZ) (string, error) {
 		"previous_hash":   rapport.PreviousHash,
 		"sequence_number": rapport.SequenceNum,
 		"generated_at":    rapport.GeneratedAt.Format(time.RFC3339),
+
+		// Ticket Z-5. schema_version scelle la RÈGLE sous laquelle total_ht a
+		// été produit : sans elle, deux rapports aux mêmes chiffres mais aux
+		// règles différentes seraient indiscernables. Les collected_* scellent
+		// l'argent que la seule ligne 1 ne dit pas — sans eux, la moitié du
+		// total encaissé resterait hors de la chaîne d'intégrité.
+		"schema_version":                 rapport.DailyTotals.SchemaVersion,
+		"collected_ttc":                  rapport.DailyTotals.CollectedTTC,
+		"collected_by_method":            rapport.DailyTotals.CollectedByMethod,
+		"collected_from_receivables_ttc": rapport.DailyTotals.CollectedFromReceivablesTTC,
+		"collected_deposits_ttc":         rapport.DailyTotals.CollectedDepositsTTC,
+		"refunds_ttc":                    rapport.DailyTotals.RefundsTTC,
 	}
 
 	// Tri des clés pour un hash déterministe
@@ -1486,6 +1653,12 @@ func saveZReport(app *pocketbase.PocketBase, rapport *RapportZ, ownerCompany str
 	record.Set("total_discounts", rapport.DailyTotals.TotalDiscounts)
 	record.Set("credit_notes_count", rapport.DailyTotals.CreditNotesCount)
 	record.Set("credit_notes_total", rapport.DailyTotals.CreditNotesTotal)
+	record.Set("schema_version", rapport.DailyTotals.SchemaVersion)
+	record.Set("collected_ttc", rapport.DailyTotals.CollectedTTC)
+	record.Set("collected_by_method", rapport.DailyTotals.CollectedByMethod)
+	record.Set("collected_from_receivables_ttc", rapport.DailyTotals.CollectedFromReceivablesTTC)
+	record.Set("collected_deposits_ttc", rapport.DailyTotals.CollectedDepositsTTC)
+	record.Set("refunds_ttc", rapport.DailyTotals.RefundsTTC)
 	record.Set("hash", rapport.Hash)
 	record.Set("previous_hash", rapport.PreviousHash)
 	record.Set("generated_at", rapport.GeneratedAt)

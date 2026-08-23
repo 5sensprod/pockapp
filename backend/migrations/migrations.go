@@ -43,6 +43,8 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// 7. Rapports Z (dépend de cash_registers + cash_sessions)
 		ensureZReportsCollection,
 		AddZReportIdToCashSessions,
+		// Ticket Z-1 : le Z passe au modèle « un total, quatre lignes ».
+		AddCollectedToZReports,
 		AddRoleToUsers,
 		AddCompanyToUsers,
 		MigrateAppSettings,
