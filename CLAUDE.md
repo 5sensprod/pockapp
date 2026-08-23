@@ -36,9 +36,14 @@ server/                        code PHP du serveur mutualisé d'axemusique.shop 
 docs/DECISIONS.md              pourquoi les choses sont comme elles sont
 ```
 
-Modules : `cash` (caisse), `stock` (produits, lecture **et** écriture),
-`site` (pilotage du site — en construction), plus `auth`, `home`, `settings`,
-`stats`, `stick`, `connect`, `updater`, `common`.
+Modules : `cash` (caisse — tickets, sessions, rapports X et Z ; sa doc est
+dans `frontend/modules/cash/PocketCash-docs/`), `stock` (produits, lecture
+**et** écriture),
+`site` (pilotage du site — en construction), `stats` (**journal des ventes**,
+depuis le 24 août 2026 — servi par `/api/reports/journal`, qui réutilise le
+classificateur du Z ; il lit les documents jour par jour et NON les `z_reports`,
+parce que 69 % de l'argent hors caisse tombe des journées sans clôture), plus
+`auth`, `home`, `settings`, `stick`, `connect`, `updater`, `common`.
 
 ## Points d'entrée réseau
 
@@ -282,6 +287,47 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   indéfiniment. Gardiens : `catalog-export.test.ts`.
 - **Ne pas toucher `wp-admin` ni `wp-json`** dans le `.htaccess` du site tant
   que WordPress sert le catalogue et la médiathèque.
+- **Le rapport Z dit « un total, quatre lignes », et `schema_version` dit sous
+  quelle règle** (24 août 2026, en production). `total_ht` / `total_tva` /
+  `total_ttc` ne portent QUE la ligne 1 — les ventes du jour : tickets des
+  sessions du Z, plus factures hors caisse **émises ET encaissées le même
+  jour** (91,3 % des cas, mesuré). Les lignes 2 à 4 — règlements de factures
+  antérieures, acomptes, remboursements — sont en **TTC seul**, et c'est ce qui
+  rend une addition accidentelle avec du chiffre d'affaires impossible : la TVA
+  d'une facture antérieure a déjà été déclarée à son émission, la refondre dans
+  la ligne 1 la ferait déclarer deux fois. Le total encaissé est
+  `collected_ttc`, ventilé par `collected_by_method`.
+  **`schema_version` entre dans le hash, avec tous les `collected_*`** : un Z
+  antérieur au contrat vaut 1, ce contrat vaut 2, et un document scellé **se
+  relit sous la règle qui l'a produit** — l'écran, le PDF et le dialogue X
+  branchent tous sur le même prédicat `estZQuatreLignes`
+  (`frontend/lib/types/cash.types.ts`). Les 46 rapports ont été rejoués en
+  production le 24 août : 46 sur 46 en version 2, aucun déséquilibre, aucun
+  maillon de hachage rompu.
+  Contrat, cas limites et mesures :
+  `frontend/modules/cash/PocketCash-docs/04-refonte-du-z.md`.
+- **Un seul chemin d'agrégation pour la caisse**, et ce n'est pas négociable :
+  `aggregateZ` (`backend/reports/cash_reports.go`), partagée par
+  `GenerateRapportZ` et `backend/cmd/z-repair`, et le classificateur
+  `backend/reports/z_lignes.go`, partagé en plus par `GenerateRapportX`. **Une
+  seconde implémentation des mêmes règles est exactement ce qui a produit la
+  régression du 20 mai 2026** — les tickets comptés deux fois du Z-022 au
+  Z-045, pendant trois mois, sur un document fiscal. Ne jamais recalculer ces
+  règles côté React : l'écran affiche ce que le Go a calculé. Gardiens :
+  `backend/reports/cash_reports_test.go`.
+- **Les conversions de ticket s'excluent par une résolution nommée**, pas par
+  `original_invoice_id = ''`. Ce filtre disait vouloir écarter les conversions
+  et écartait AUSSI les acomptes et les factures de solde, qui portent le même
+  champ — `DepositsTTC` en est resté structurellement à zéro pendant des mois.
+  On résout l'origine et on ne rejette que si elle est `is_pos_ticket = true`
+  (même résolution que `frontend/lib/queries/closures.ts` : le champ est du
+  TEXTE, pas une relation, on ne peut pas le déréférencer dans un filtre).
+- **Un dossier acompte / solde ne se somme pas naïvement.** `deposit.go` produit
+  trois documents pour un seul encaissement possible — la parente, les
+  acomptes, la facture de solde — et les trois peuvent porter `is_paid = true`.
+  Si un solde existe, la parente n'entre pas ; sinon elle entre amputée des
+  acomptes encaissés. Mesuré : 7 parentes, 2 523,70 € qui seraient comptés deux
+  fois.
 - **Secrets :** `package.json` contient le mot de passe PocketBase en clair
   dans le script `typegen`, et le bundle du site expose les clés WooCommerce.
   Ne pas en ajouter ; voir `docs/DECISIONS.md`.

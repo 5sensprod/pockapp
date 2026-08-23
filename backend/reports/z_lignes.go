@@ -175,6 +175,18 @@ func (c *classificateurZ) dossierAcompte(parentID string) (acomptes []*models.Re
 // Les tickets de caisse ne passent pas par ici : ils sont en ligne 1 par leur
 // session, sans condition.
 func (c *classificateurZ) classer(inv *models.Record) (LigneZ, float64) {
+	return c.classerAuJour(inv, c.jour)
+}
+
+// classerAuJour est le même classement, mais pour une journée donnée plutôt que
+// pour celle du classificateur.
+//
+// C'est ce qui permet au journal des ventes (journal.go) de traiter une PÉRIODE
+// avec le même code, chaque document se comparant à sa propre journée. Les
+// règles ne sont écrites qu'une fois : le Z, le X et le journal appellent tous
+// cette fonction. Deux implémentations des mêmes règles sont exactement ce qui a
+// produit la régression du 20 mai 2026.
+func (c *classificateurZ) classerAuJour(inv *models.Record, jour string) (LigneZ, float64) {
 	invType := inv.GetString("invoice_type")
 	ttc := inv.GetFloat("total_ttc")
 
@@ -246,7 +258,7 @@ func (c *classificateurZ) classer(inv *models.Record) (LigneZ, float64) {
 	}
 
 	// ── Lignes 1 et 2 — la date d'émission tranche ──────────────────────────
-	if jourDe(inv.GetString("date")) == c.jour {
+	if jourDe(inv.GetString("date")) == jour {
 		return LigneVentesDuJour, ttc
 	}
 	return LigneCreances, ttc

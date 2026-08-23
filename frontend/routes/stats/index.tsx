@@ -1,7 +1,7 @@
-// frontend/routes/stock/index.tsx
+import { JournalDesVentesPage } from '@/modules/stats'
+// frontend/routes/stats/index.tsx
 import { createFileRoute } from '@tanstack/react-router'
-import { StatsPage } from '@/modules/stats'
 
 export const Route = createFileRoute('/stats/')({
-  component: StatsPage,
+	component: JournalDesVentesPage,
 })
