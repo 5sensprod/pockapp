@@ -558,10 +558,7 @@ func aggregateInvoiceIntoTotals(
 	*totalTVA += tva
 	*totalTTC += ttc
 
-	method := inv.GetString("payment_method_label")
-	if method == "" {
-		method = inv.GetString("payment_method")
-	}
+	method := libelleMoyenPaiement(inv)
 	if method != "" {
 		totalsByMethod[method] += ttc
 	}
@@ -645,84 +642,35 @@ type DailyTotalsSummary struct {
 	ByCustomerType      map[string]*CustomerTypeSummary `json:"by_customer_type"`
 }
 
-// GenerateRapportZ génère ET sauvegarde un rapport Z
-func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date string) (*RapportZ, error) {
+// ============================================================================
+// AGRÉGATION D'UN RAPPORT Z
+// ============================================================================
+//
+// aggregateZ calcule les totaux d'un Z depuis les documents sources : tickets
+// POS rattachés aux sessions fournies, factures et acomptes B2B encaissés dans
+// la journée, avoirs des deux origines.
+//
+// Extraite de GenerateRapportZ le 23 août 2026 pour être PARTAGÉE avec la
+// commande de réparation (backend/cmd/z-repair). C'est délibéré : une seconde
+// implémentation des mêmes règles est précisément ce qui a produit la régression
+// du 20 mai — deux chemins d'agrégation qui divergent en silence.
+//
+// Ne dépend d'aucun état du rapport : ni numéro, ni hash, ni date de génération.
+// Rejouable à volonté, sans effet de bord.
+type ZAggregation struct {
+	Sessions    []SessionSummary
+	SessionIDs  []string
+	DailyTotals DailyTotalsSummary
+}
+
+func aggregateZ(
+	app *pocketbase.PocketBase,
+	sessions []*models.Record,
+	ownerCompany string,
+	dateStartStr string,
+	dateEndStr string,
+) (*ZAggregation, error) {
 	dao := app.Dao()
-
-	// ═══════════════════════════════════════════════════════════════════════
-	// 1. VÉRIFIER QU'UN RAPPORT Z N'EXISTE PAS DÉJÀ
-	// ═══════════════════════════════════════════════════════════════════════
-
-	existingFilter := fmt.Sprintf(
-		"cash_register = '%s' && date ~ '%s'",
-		cashRegisterID,
-		date,
-	)
-
-	existingZ, _ := dao.FindFirstRecordByFilter("z_reports", existingFilter)
-	if existingZ != nil {
-		// Retourner le rapport existant au lieu de le régénérer
-		fmt.Printf("📋 Rapport Z déjà existant pour cette date: %s\n", existingZ.GetString("number"))
-		return loadExistingRapportZ(existingZ)
-	}
-
-	// ═══════════════════════════════════════════════════════════════════════
-	// 2. CHARGER LA CAISSE
-	// ═══════════════════════════════════════════════════════════════════════
-
-	cashRegister, err := dao.FindRecordById("cash_registers", cashRegisterID)
-	if err != nil {
-		return nil, fmt.Errorf("caisse introuvable: %w", err)
-	}
-
-	ownerCompany := cashRegister.GetString("owner_company")
-
-	// ═══════════════════════════════════════════════════════════════════════
-	// 3. RÉCUPÉRER LES SESSIONS FERMÉES NON ENCORE UTILISÉES
-	// ═══════════════════════════════════════════════════════════════════════
-
-	dateStart, err := time.Parse("2006-01-02", date)
-	if err != nil {
-		return nil, fmt.Errorf("format de date invalide: %w", err)
-	}
-	dateEnd := dateStart.Add(24 * time.Hour)
-	fiscalYear := dateStart.Year()
-
-	dateStartStr := dateStart.Format("2006-01-02") + " 00:00:00"
-	dateEndStr := dateEnd.Format("2006-01-02") + " 00:00:00"
-
-	// 🔒 IMPORTANT: Ne prendre que les sessions sans z_report_id
-	filter := fmt.Sprintf(
-		"cash_register = '%s' && status = 'closed' && closed_at >= '%s' && closed_at < '%s' && (z_report_id = '' || z_report_id = null)",
-		cashRegisterID,
-		dateStartStr,
-		dateEndStr,
-	)
-
-	fmt.Printf("\n🔍 Rapport Z - Filtre: %s\n", filter)
-
-	sessions, err := dao.FindRecordsByFilter(
-		"cash_sessions",
-		filter,
-		"closed_at",
-		0,
-		0,
-	)
-
-	if err != nil {
-		fmt.Printf("❌ Erreur requête: %v\n", err)
-		return nil, fmt.Errorf("erreur chargement sessions: %w", err)
-	}
-
-	fmt.Printf("✅ Sessions disponibles: %d\n", len(sessions))
-
-	if len(sessions) == 0 {
-		return nil, fmt.Errorf("aucune session fermée disponible pour cette date (déjà incluses dans un rapport Z précédent ?)")
-	}
-
-	// ═══════════════════════════════════════════════════════════════════════
-	// 4. AGRÉGER LES DONNÉES
-	// ═══════════════════════════════════════════════════════════════════════
 
 	var sessionsSummaries []SessionSummary
 	var sessionIds []string
@@ -837,10 +785,7 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 					aggregateVATFromItems(inv.Get("items"), sessionVATByRate)
 				}
 
-				method := inv.GetString("payment_method_label")
-				if method == "" {
-					method = inv.GetString("payment_method")
-				}
+				method := libelleMoyenPaiement(inv)
 				if method != "" {
 					sessionMethodTotals[method] += ttc
 					if method == "especes" {
@@ -911,9 +856,17 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		}
 
 		totalInvoiceCount += invoiceCount
-		totalHT += sessionHT
-		totalTVA += sessionTVA
-		totalTTC += sessionTTC
+		// ⚠️ Ne PAS ajouter sessionHT/TVA/TTC ici : chaque ticket a déjà été
+		// versé dans totalHT/totalTVA/totalTTC par aggregateInvoiceIntoTotals,
+		// dans la boucle ci-dessus. Les accumulateurs de session ne servent qu'au
+		// bloc « Détail des sessions » du rapport.
+		//
+		// C'est la régression du 20 mai 2026 (commit 156692e, « fix b2b to
+		// facture ») : le partage de l'agrégation avec les factures B2B a ajouté
+		// aggregateInvoiceIntoTotals sans retirer ces trois lignes. Les tickets
+		// POS ont été comptés deux fois du Z-022 au Z-045, alors que la
+		// ventilation TVA et les moyens de paiement ne l'étaient qu'une fois.
+		// Gardiens : cash_reports_test.go.
 		totalCashExpected += expectedCash
 		totalCashCounted += countedCash
 		totalCashDifference += cashDiff
@@ -1047,22 +1000,6 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		s.TotalTVA = roundAmount(s.TotalTVA)
 		s.TotalTTC = roundAmount(s.TotalTTC)
 	}
-
-	// ═══════════════════════════════════════════════════════════════════════
-	// 5. GÉNÉRER LE NUMÉRO SÉQUENTIEL
-	// ═══════════════════════════════════════════════════════════════════════
-
-	sequenceNumber, previousHash, err := getNextZSequence(app, ownerCompany, fiscalYear)
-	if err != nil {
-		return nil, fmt.Errorf("erreur génération séquence: %w", err)
-	}
-
-	zNumber := fmt.Sprintf("Z-%d-%0*d", fiscalYear, NumberPadding, sequenceNumber)
-
-	// ═══════════════════════════════════════════════════════════════════════
-	// 6. CONSTRUIRE LE RAPPORT
-	// ═══════════════════════════════════════════════════════════════════════
-
 	// ✅ FIX: Arrondir tous les montants à 2 décimales
 	totalHT = roundAmount(totalHT)
 	totalTVA = roundAmount(totalTVA)
@@ -1087,20 +1024,9 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 		globalVATByRate[k] = v
 	}
 
-	rapport := &RapportZ{
-		ReportType:   "z",
-		GeneratedAt:  time.Now(),
-		Number:       zNumber,
-		SequenceNum:  sequenceNumber,
-		PreviousHash: previousHash,
-		CashRegister: CashRegisterInfo{
-			ID:   cashRegister.Id,
-			Code: cashRegister.GetString("code"),
-			Name: cashRegister.GetString("name"),
-		},
-		Date:       date,
-		FiscalYear: fiscalYear,
+	return &ZAggregation{
 		Sessions:   sessionsSummaries,
+		SessionIDs: sessionIds,
 		DailyTotals: DailyTotalsSummary{
 			SessionsCount:       len(sessions),
 			InvoiceCount:        totalInvoiceCount,
@@ -1119,8 +1045,126 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 			RefundsByMethod:     refundsByMethod,
 			ByCustomerType:      globalByCustomerType,
 		},
-		Note:     "Rapport Z - Document inaltérable",
-		IsLocked: true,
+	}, nil
+}
+
+// GenerateRapportZ génère ET sauvegarde un rapport Z
+func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date string) (*RapportZ, error) {
+	dao := app.Dao()
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// 1. VÉRIFIER QU'UN RAPPORT Z N'EXISTE PAS DÉJÀ
+	// ═══════════════════════════════════════════════════════════════════════
+
+	existingFilter := fmt.Sprintf(
+		"cash_register = '%s' && date ~ '%s'",
+		cashRegisterID,
+		date,
+	)
+
+	existingZ, _ := dao.FindFirstRecordByFilter("z_reports", existingFilter)
+	if existingZ != nil {
+		// Retourner le rapport existant au lieu de le régénérer
+		fmt.Printf("📋 Rapport Z déjà existant pour cette date: %s\n", existingZ.GetString("number"))
+		return loadExistingRapportZ(existingZ)
+	}
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// 2. CHARGER LA CAISSE
+	// ═══════════════════════════════════════════════════════════════════════
+
+	cashRegister, err := dao.FindRecordById("cash_registers", cashRegisterID)
+	if err != nil {
+		return nil, fmt.Errorf("caisse introuvable: %w", err)
+	}
+
+	ownerCompany := cashRegister.GetString("owner_company")
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// 3. RÉCUPÉRER LES SESSIONS FERMÉES NON ENCORE UTILISÉES
+	// ═══════════════════════════════════════════════════════════════════════
+
+	dateStart, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return nil, fmt.Errorf("format de date invalide: %w", err)
+	}
+	dateEnd := dateStart.Add(24 * time.Hour)
+	fiscalYear := dateStart.Year()
+
+	dateStartStr := dateStart.Format("2006-01-02") + " 00:00:00"
+	dateEndStr := dateEnd.Format("2006-01-02") + " 00:00:00"
+
+	// 🔒 IMPORTANT: Ne prendre que les sessions sans z_report_id
+	filter := fmt.Sprintf(
+		"cash_register = '%s' && status = 'closed' && closed_at >= '%s' && closed_at < '%s' && (z_report_id = '' || z_report_id = null)",
+		cashRegisterID,
+		dateStartStr,
+		dateEndStr,
+	)
+
+	fmt.Printf("\n🔍 Rapport Z - Filtre: %s\n", filter)
+
+	sessions, err := dao.FindRecordsByFilter(
+		"cash_sessions",
+		filter,
+		"closed_at",
+		0,
+		0,
+	)
+
+	if err != nil {
+		fmt.Printf("❌ Erreur requête: %v\n", err)
+		return nil, fmt.Errorf("erreur chargement sessions: %w", err)
+	}
+
+	fmt.Printf("✅ Sessions disponibles: %d\n", len(sessions))
+
+	if len(sessions) == 0 {
+		return nil, fmt.Errorf("aucune session fermée disponible pour cette date (déjà incluses dans un rapport Z précédent ?)")
+	}
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// 4. AGRÉGER LES DONNÉES
+	// ═══════════════════════════════════════════════════════════════════════
+
+	agg, err := aggregateZ(app, sessions, ownerCompany, dateStartStr, dateEndStr)
+	if err != nil {
+		return nil, fmt.Errorf("erreur agrégation: %w", err)
+	}
+	sessionIds := agg.SessionIDs
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// 5. GÉNÉRER LE NUMÉRO SÉQUENTIEL
+	// ═══════════════════════════════════════════════════════════════════════
+
+	sequenceNumber, previousHash, err := getNextZSequence(app, ownerCompany, fiscalYear)
+	if err != nil {
+		return nil, fmt.Errorf("erreur génération séquence: %w", err)
+	}
+
+	zNumber := fmt.Sprintf("Z-%d-%0*d", fiscalYear, NumberPadding, sequenceNumber)
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// 6. CONSTRUIRE LE RAPPORT
+	// ═══════════════════════════════════════════════════════════════════════
+
+	rapport := &RapportZ{
+		ReportType:   "z",
+		GeneratedAt:  time.Now(),
+		Number:       zNumber,
+		SequenceNum:  sequenceNumber,
+		PreviousHash: previousHash,
+		CashRegister: CashRegisterInfo{
+			ID:   cashRegister.Id,
+			Code: cashRegister.GetString("code"),
+			Name: cashRegister.GetString("name"),
+		},
+		Date:        date,
+		FiscalYear:  fiscalYear,
+		Sessions:    agg.Sessions,
+		DailyTotals: agg.DailyTotals,
+		Note:        "Rapport Z - Document inaltérable",
+		IsLocked:    true,
 	}
 
 	// ═══════════════════════════════════════════════════════════════════════
@@ -1155,7 +1199,7 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 	}
 
 	fmt.Printf("\n✅ Rapport Z %s généré et sauvegardé: %d sessions, %d tickets, %.2f € TTC\n",
-		zNumber, len(sessions), totalInvoiceCount, totalTTC)
+		zNumber, len(sessions), agg.DailyTotals.InvoiceCount, agg.DailyTotals.TotalTTC)
 
 	return rapport, nil
 }
@@ -1545,4 +1589,22 @@ func isCashInFromSale(mov *models.Record) bool {
 		return true
 	}
 	return false
+}
+
+// libelleMoyenPaiement rend le moyen de paiement d'un document, ou « Non précisé »
+// quand il n'en porte aucun.
+//
+// Sans ce repli, un document encaissé sans moyen renseigné entrait dans le total
+// mais dans aucune colonne de ventilation — et le rapport cessait d'égaler la
+// somme de ses propres ventilations, qui est notre invariant de vérification.
+// Cas réel : FAC-2026-000165, 499 €, payée le 3 juin 2026, `payment_method` et
+// `payment_method_label` tous deux vides.
+func libelleMoyenPaiement(inv *models.Record) string {
+	if m := inv.GetString("payment_method_label"); m != "" {
+		return m
+	}
+	if m := inv.GetString("payment_method"); m != "" {
+		return m
+	}
+	return "Non précisé"
 }

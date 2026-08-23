@@ -44,6 +44,10 @@ export interface IntegritySummary {
 	validDocuments: number
 	invalidDocuments: number
 	chainBreaks: number
+	/** Discontinuités de séquence : signalées, jamais comptées invalides. */
+	sequenceGaps: number
+	/** Brouillons écartés du contrôle : ni valides, ni invalides. */
+	draftsSkipped: number
 	byType: {
 		invoices: { total: number; valid: number; invalid: number }
 		posTickets: { total: number; valid: number; invalid: number }
@@ -60,12 +64,101 @@ export interface ChainVerificationResult {
 	validCount: number
 	invalidCount: number
 	chainBreaks: number
+	/** Discontinuités de séquence : signalées, jamais comptées invalides. */
+	sequenceGaps: number
+	/** Brouillons écartés du contrôle : ni valides, ni invalides. */
+	draftsSkipped: number
 	details: IntegrityCheckResult[]
 	summary: {
 		invoices: { count: number; valid: number }
 		posTickets: { count: number; valid: number }
 		creditNotes: { count: number; valid: number }
 	}
+}
+
+// ============================================================================
+// RÈGLE PARTAGÉE DE VÉRIFICATION D'UN DOCUMENT
+// ============================================================================
+// Les trois vérifications (document unique, chaîne par type, synthèse globale)
+// DOIVENT rendre le même verdict sur le même document. Avant le 23/08/2026,
+// elles divergeaient sur le cas « prédécesseur absent » : la synthèse le
+// comptait invalide, la vérification de chaîne le laissait valide, et le même
+// écran affichait deux chiffres différents.
+// ============================================================================
+
+export const GENESIS_HASH =
+	'0000000000000000000000000000000000000000000000000000000000000000'
+
+/** Un brouillon n'est pas un document fiscal : ni numéro, ni séquence, ni hash. */
+export function isDraftDocument(doc: { status?: string }): boolean {
+	return doc.status === 'draft'
+}
+
+export interface DocumentVerdict {
+	hashValid: boolean
+	chainValid: boolean
+	sequenceGap: boolean
+	expectedHash: string
+	errors: string[]
+	warnings: string[]
+}
+
+/**
+ * Verdict d'un document non brouillon.
+ *
+ * `findPrevious` rend le document portant `sequence_number - 1`, ou `undefined`
+ * s'il n'existe pas. La séquence est COMMUNE à tous les types de documents
+ * d'une entreprise (backend/hooks/invoice_hooks.go:456-459) : ne jamais la
+ * filtrer par type, sous peine de trous artificiels.
+ *
+ * Trois issues distinctes, à ne pas confondre :
+ * - hash recalculé ≠ hash stocké      → altération, invalide
+ * - previous_hash ≠ hash du précédent → rupture de chaîne, invalide
+ * - précédent inexistant              → discontinuité, AVERTISSEMENT
+ */
+export async function evaluateDocumentIntegrity(
+	doc: InvoiceResponse,
+	findPrevious: (
+		sequenceNumber: number,
+	) => Promise<InvoiceResponse | undefined>,
+): Promise<DocumentVerdict> {
+	const errors: string[] = []
+	const warnings: string[] = []
+
+	const expectedHash = await computeDocumentHash(doc)
+	const hashValid = doc.hash === expectedHash
+	if (!hashValid) {
+		errors.push(
+			`Hash incorrect pour ${doc.number} : attendu ${expectedHash.substring(0, 16)}…, trouvé ${(doc.hash || '').substring(0, 16)}…`,
+		)
+	}
+
+	let chainValid = true
+	let sequenceGap = false
+
+	if (doc.sequence_number === 1) {
+		chainValid = doc.previous_hash === GENESIS_HASH
+		if (!chainValid) {
+			errors.push(
+				`Rupture de chaîne à ${doc.number} : premier document de la chaîne sans hash de genèse`,
+			)
+		}
+	} else {
+		const previous = await findPrevious(doc.sequence_number - 1)
+		if (!previous) {
+			sequenceGap = true
+			warnings.push(
+				`Discontinuité de séquence à ${doc.number} : aucun document ne porte le numéro d'ordre ${doc.sequence_number - 1}`,
+			)
+		} else {
+			chainValid = doc.previous_hash === previous.hash
+			if (!chainValid) {
+				errors.push(`Rupture de chaîne à ${doc.number}`)
+			}
+		}
+	}
+
+	return { hashValid, chainValid, sequenceGap, expectedHash, errors, warnings }
 }
 
 // ============================================================================
@@ -128,10 +221,49 @@ export function usePerformDailyClosure() {
 				throw new Error('Une clôture journalière existe déjà pour cette date.')
 			}
 
-			const invoices = (await pb.collection('invoices').getFullList({
-				filter: `owner_company = "${companyId}" && created >= "${startOfDay.toISOString()}" && created <= "${endOfDay.toISOString()}" && is_pos_ticket = false`,
+			// Brouillons exclus : les hooks refusent de les numéroter et de les
+			// hacher (backend/hooks/invoice_hooks.go:441). Les compter reviendrait
+			// à agréger des montants non fiscalisés et à concaténer un hash vide
+			// dans le cumulative_hash.
+			const candidates = (await pb.collection('invoices').getFullList({
+				filter: `owner_company = "${companyId}" && created >= "${startOfDay.toISOString()}" && created <= "${endOfDay.toISOString()}" && is_pos_ticket = false && status != "draft"`,
 				sort: 'sequence_number',
 			})) as unknown as InvoiceResponse[]
+
+			// Factures issues d'un ticket de caisse exclues : leur montant est déjà
+			// compté sur le ticket, dans le Z de sa session. Même règle que les
+			// rapports X/Z (backend/reports/cash_reports.go:218 et :518).
+			// original_invoice_id est un champ TEXTE, pas une relation : impossible
+			// de déréférencer dans le filtre PocketBase, d'où cette seconde requête.
+			const originIds = Array.from(
+				new Set(
+					candidates
+						.filter(
+							(i) => i.invoice_type === 'invoice' && i.original_invoice_id,
+						)
+						.map((i) => i.original_invoice_id as string),
+				),
+			)
+
+			let posTicketOrigins = new Set<string>()
+			if (originIds.length > 0) {
+				const origins = (await pb.collection('invoices').getFullList({
+					filter: `is_pos_ticket = true && (${originIds
+						.map((id) => `id = "${id}"`)
+						.join(' || ')})`,
+					fields: 'id',
+				})) as unknown as Array<{ id: string }>
+				posTicketOrigins = new Set(origins.map((o) => o.id))
+			}
+
+			const invoices = candidates.filter(
+				(i) =>
+					!(
+						i.invoice_type === 'invoice' &&
+						i.original_invoice_id &&
+						posTicketOrigins.has(i.original_invoice_id)
+					),
+			)
 
 			const invoicesOnly = invoices.filter((i) => i.invoice_type === 'invoice')
 			const creditNotes = invoices.filter(
@@ -209,46 +341,49 @@ export function useVerifyInvoiceIntegrity(invoiceId?: string) {
 				.collection('invoices')
 				.getOne(invoiceId)) as unknown as InvoiceResponse
 
-			const expectedHash = await computeDocumentHash(invoice)
-
-			let chainValid = true
-			if (invoice.sequence_number > 1) {
-				const previousInvoices = await pb.collection('invoices').getList(1, 1, {
-					filter: `owner_company = "${invoice.owner_company}" && sequence_number = ${invoice.sequence_number - 1}`,
-				})
-
-				if (previousInvoices.items.length > 0) {
-					const previous = previousInvoices
-						.items[0] as unknown as InvoiceResponse
-					chainValid = invoice.previous_hash === previous.hash
+			// Brouillon : contrôle sans objet, ni valide ni invalide.
+			if (isDraftDocument(invoice)) {
+				return {
+					isValid: true,
+					notApplicable: true,
+					checkedAt: new Date().toISOString(),
+					invoiceId: invoice.id,
+					invoiceNumber: invoice.number,
+					expectedHash: '',
+					actualHash: '',
+					chainValid: true,
+					errors: [],
+					warnings: [
+						"Brouillon : non numéroté et non haché tant qu'il n'est pas validé.",
+					],
 				}
-			} else {
-				chainValid =
-					invoice.previous_hash ===
-					'0000000000000000000000000000000000000000000000000000000000000000'
 			}
 
-			const errors: string[] = []
-
-			if (invoice.hash !== expectedHash) {
-				errors.push(
-					`Hash incorrect: attendu ${expectedHash.substring(0, 16)}..., trouvé ${invoice.hash.substring(0, 16)}...`,
-				)
-			}
-
-			if (!chainValid) {
-				errors.push('Rupture dans la chaîne de hachage détectée')
-			}
+			const verdict = await evaluateDocumentIntegrity(
+				invoice,
+				async (sequenceNumber) => {
+					const previousInvoices = await pb
+						.collection('invoices')
+						.getList(1, 1, {
+							filter: `owner_company = "${invoice.owner_company}" && sequence_number = ${sequenceNumber}`,
+						})
+					return previousInvoices.items[0] as unknown as
+						| InvoiceResponse
+						| undefined
+				},
+			)
 
 			return {
-				isValid: invoice.hash === expectedHash && chainValid,
+				isValid: verdict.hashValid && verdict.chainValid,
 				checkedAt: new Date().toISOString(),
 				invoiceId: invoice.id,
 				invoiceNumber: invoice.number,
-				expectedHash,
+				expectedHash: verdict.expectedHash,
 				actualHash: invoice.hash,
-				chainValid,
-				errors,
+				chainValid: verdict.chainValid,
+				sequenceGap: verdict.sequenceGap,
+				errors: verdict.errors,
+				warnings: verdict.warnings,
 			}
 		},
 		enabled: !!invoiceId,
@@ -267,7 +402,9 @@ export function useVerifyInvoiceChain() {
 			companyId: string
 			docType?: DocumentType
 		}): Promise<ChainVerificationResult> => {
-			let filter = `owner_company = "${companyId}"`
+			// Brouillons écartés : ni numérotés ni hachés par construction
+			// (backend/hooks/invoice_hooks.go:441). Ils sont comptés à part.
+			let filter = `owner_company = "${companyId}" && status != "draft"`
 
 			switch (docType) {
 				case 'invoice':
@@ -283,22 +420,34 @@ export function useVerifyInvoiceChain() {
 
 			const invoices = (await pb.collection('invoices').getFullList({
 				filter,
-				sort: 'created',
+				sort: 'sequence_number',
 			})) as unknown as InvoiceResponse[]
 
-			// Trier par sequence_number
-			invoices.sort((a, b) => {
-				const seqA = a.sequence_number || 0
-				const seqB = b.sequence_number || 0
-				if (seqA === 0 && seqB === 0) return 0
-				if (seqA === 0) return 1
-				if (seqB === 0) return -1
-				return seqA - seqB
-			})
+			const draftsSkipped = (
+				await pb.collection('invoices').getList(1, 1, {
+					filter: `owner_company = "${companyId}" && status = "draft"`,
+					fields: 'id',
+				})
+			).totalItems
+
+			// Index de TOUTE la séquence de l'entreprise, tous types confondus :
+			// la séquence est commune, la filtrer par type créerait des trous
+			// artificiels. Une requête, au lieu d'une par document.
+			const chainIndex = new Map<number, InvoiceResponse>()
+			const allChained = (await pb.collection('invoices').getFullList({
+				filter: `owner_company = "${companyId}" && status != "draft" && sequence_number > 0`,
+				fields: 'id,sequence_number,hash',
+			})) as unknown as InvoiceResponse[]
+			for (const doc of allChained) {
+				chainIndex.set(doc.sequence_number, doc)
+			}
+			const findPrevious = async (sequenceNumber: number) =>
+				chainIndex.get(sequenceNumber)
 
 			const results: IntegrityCheckResult[] = []
 			let allValid = true
 			let chainBreaks = 0
+			let sequenceGaps = 0
 
 			const summary = {
 				invoices: { count: 0, valid: 0 },
@@ -306,70 +455,39 @@ export function useVerifyInvoiceChain() {
 				creditNotes: { count: 0, valid: 0 },
 			}
 
-			for (let i = 0; i < invoices.length; i++) {
-				const invoice = invoices[i]
-				const errors: string[] = []
-
+			for (const invoice of invoices) {
 				const hasSequence =
 					invoice.sequence_number && invoice.sequence_number > 0
 				const hasHash = invoice.hash && invoice.hash.length > 0
 
-				let hashValid = true
-				let chainValid = true
+				let isValid: boolean
+				let chainValid: boolean
+				let sequenceGap = false
+				let expectedHash = ''
+				let errors: string[] = []
+				let warnings: string[] = []
 
 				if (!hasSequence || !hasHash) {
-					errors.push(
-						`Document non chaîné (sequence_number: ${invoice.sequence_number || 'vide'}, hash: ${hasHash ? 'présent' : 'absent'})`,
-					)
-					hashValid = false
+					// Non brouillon et pourtant non chaîné : anomalie réelle.
+					errors = [
+						`Document non chaîné (numéro d'ordre : ${invoice.sequence_number || 'vide'}, hash : ${hasHash ? 'présent' : 'absent'})`,
+					]
 					chainValid = false
+					isValid = false
 					allValid = false
 				} else {
-					const expectedHash = await computeDocumentHash(invoice)
+					const verdict = await evaluateDocumentIntegrity(invoice, findPrevious)
+					chainValid = verdict.chainValid
+					sequenceGap = verdict.sequenceGap
+					expectedHash = verdict.expectedHash
+					errors = verdict.errors
+					warnings = verdict.warnings
+					isValid = verdict.hashValid && verdict.chainValid
 
-					hashValid = invoice.hash === expectedHash
-					if (!hashValid) {
-						errors.push(`Hash incorrect pour ${invoice.number}`)
-						allValid = false
-
-						// Debug: afficher les détails pour comprendre la différence
-						console.log(`🔍 Debug hash ${invoice.number}:`)
-						console.log(`   Attendu: ${expectedHash}`)
-						console.log(`   Stocké:  ${invoice.hash}`)
-					}
-
-					if (i === 0) {
-						if (invoice.sequence_number === 1) {
-							chainValid =
-								invoice.previous_hash ===
-								'0000000000000000000000000000000000000000000000000000000000000000'
-						} else {
-							const prevDoc = await pb.collection('invoices').getList(1, 1, {
-								filter: `owner_company = "${companyId}" && sequence_number = ${invoice.sequence_number - 1}`,
-							})
-							if (prevDoc.items.length > 0) {
-								const prev = prevDoc.items[0] as unknown as InvoiceResponse
-								chainValid = invoice.previous_hash === prev.hash
-							}
-						}
-					} else {
-						const prevDoc = await pb.collection('invoices').getList(1, 1, {
-							filter: `owner_company = "${companyId}" && sequence_number = ${invoice.sequence_number - 1}`,
-						})
-						if (prevDoc.items.length > 0) {
-							const prev = prevDoc.items[0] as unknown as InvoiceResponse
-							chainValid = invoice.previous_hash === prev.hash
-						}
-					}
-
-					if (!chainValid) {
-						errors.push(`Rupture de chaîne à ${invoice.number}`)
-						allValid = false
-						chainBreaks++
-					}
+					if (!isValid) allValid = false
+					if (!verdict.chainValid) chainBreaks++
+					if (verdict.sequenceGap) sequenceGaps++
 				}
-
-				const isValid = hashValid && chainValid
 
 				// ✅ Détection robuste de is_pos_ticket
 				const rawIsPosTicket = (invoice as any).is_pos_ticket
@@ -395,10 +513,12 @@ export function useVerifyInvoiceChain() {
 					checkedAt: new Date().toISOString(),
 					invoiceId: invoice.id,
 					invoiceNumber: invoice.number,
-					expectedHash: hasHash ? await computeDocumentHash(invoice) : '',
+					expectedHash,
 					actualHash: invoice.hash,
 					chainValid,
+					sequenceGap,
 					errors,
+					warnings,
 				})
 			}
 
@@ -409,6 +529,8 @@ export function useVerifyInvoiceChain() {
 				validCount: results.filter((r) => r.isValid).length,
 				invalidCount: results.filter((r) => !r.isValid).length,
 				chainBreaks,
+				sequenceGaps,
+				draftsSkipped,
 				details: results,
 				summary,
 			}
@@ -424,23 +546,30 @@ export function useIntegritySummary(companyId?: string) {
 		queryFn: async (): Promise<IntegritySummary> => {
 			if (!companyId) throw new Error('companyId is required')
 
+			// Brouillons écartés, comme dans les deux autres vérifications.
 			const allDocs = (await pb.collection('invoices').getFullList({
-				filter: `owner_company = "${companyId}"`,
-				sort: 'created',
+				filter: `owner_company = "${companyId}" && status != "draft"`,
+				sort: 'sequence_number',
 			})) as unknown as InvoiceResponse[]
 
-			allDocs.sort((a, b) => {
-				const seqA = a.sequence_number || 0
-				const seqB = b.sequence_number || 0
-				if (seqA === 0 && seqB === 0) return 0
-				if (seqA === 0) return 1
-				if (seqB === 0) return -1
-				return seqA - seqB
-			})
+			const draftsSkipped = (
+				await pb.collection('invoices').getList(1, 1, {
+					filter: `owner_company = "${companyId}" && status = "draft"`,
+					fields: 'id',
+				})
+			).totalItems
+
+			const chainIndex = new Map<number, InvoiceResponse>()
+			for (const doc of allDocs) {
+				if (doc.sequence_number > 0) chainIndex.set(doc.sequence_number, doc)
+			}
+			const findPrevious = async (sequenceNumber: number) =>
+				chainIndex.get(sequenceNumber)
 
 			let validCount = 0
 			let invalidCount = 0
 			let chainBreaks = 0
+			let sequenceGaps = 0
 
 			const byType = {
 				invoices: { total: 0, valid: 0, invalid: 0 },
@@ -468,25 +597,10 @@ export function useIntegritySummary(companyId?: string) {
 					hashValid = false
 					chainValid = false
 				} else {
-					const expectedHash = await computeDocumentHash(doc)
-					hashValid = doc.hash === expectedHash
-
-					// Vérification du chaînage - chercher le BON document précédent
-					if (doc.sequence_number === 1) {
-						chainValid =
-							doc.previous_hash ===
-							'0000000000000000000000000000000000000000000000000000000000000000'
-					} else {
-						// Chercher le document avec sequence_number - 1
-						const prevDoc = allDocs.find(
-							(d) => d.sequence_number === doc.sequence_number - 1,
-						)
-						if (prevDoc) {
-							chainValid = doc.previous_hash === prevDoc.hash
-						} else {
-							chainValid = false
-						}
-					}
+					const verdict = await evaluateDocumentIntegrity(doc, findPrevious)
+					hashValid = verdict.hashValid
+					chainValid = verdict.chainValid
+					if (verdict.sequenceGap) sequenceGaps++
 				}
 
 				if (!chainValid) chainBreaks++
@@ -519,6 +633,8 @@ export function useIntegritySummary(companyId?: string) {
 				validDocuments: validCount,
 				invalidDocuments: invalidCount,
 				chainBreaks,
+				sequenceGaps,
+				draftsSkipped,
 				byType,
 				checkedAt: new Date().toISOString(),
 				allValid: invalidCount === 0 && chainBreaks === 0,

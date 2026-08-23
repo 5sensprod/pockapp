@@ -908,6 +908,20 @@ export function InvoicesPage() {
 								</div>
 							</div>
 						)}
+						{!integrityResult &&
+							integritySummary &&
+							(integritySummary.sequenceGaps > 0 ||
+								integritySummary.draftsSkipped > 0) && (
+								<p className='text-xs text-muted-foreground'>
+									{integritySummary.sequenceGaps > 0 &&
+										`${integritySummary.sequenceGaps} discontinuité(s) de numérotation`}
+									{integritySummary.sequenceGaps > 0 &&
+										integritySummary.draftsSkipped > 0 &&
+										' • '}
+									{integritySummary.draftsSkipped > 0 &&
+										`${integritySummary.draftsSkipped} brouillon(s) hors contrôle`}
+								</p>
+							)}
 						{integrityResult && (
 							<div className='space-y-3'>
 								<div
@@ -931,6 +945,18 @@ export function InvoicesPage() {
 											{integrityResult.chainBreaks > 0 &&
 												` • ${integrityResult.chainBreaks} rupture(s) de chaîne`}
 										</p>
+										{(integrityResult.sequenceGaps > 0 ||
+											integrityResult.draftsSkipped > 0) && (
+											<p className='text-sm text-muted-foreground'>
+												{integrityResult.sequenceGaps > 0 &&
+													`${integrityResult.sequenceGaps} discontinuité(s) de numérotation — document supprimé par le passé, sans altération de la chaîne`}
+												{integrityResult.sequenceGaps > 0 &&
+													integrityResult.draftsSkipped > 0 &&
+													' • '}
+												{integrityResult.draftsSkipped > 0 &&
+													`${integrityResult.draftsSkipped} brouillon(s) hors contrôle — non numérotés tant qu'ils ne sont pas validés`}
+											</p>
+										)}
 									</div>
 								</div>
 								<div className='grid grid-cols-3 gap-2'>

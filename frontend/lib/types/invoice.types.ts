@@ -266,6 +266,19 @@ export interface IntegrityCheckResult {
 	actualHash: string
 	chainValid: boolean
 	errors: string[]
+	/**
+	 * Brouillon : les hooks refusent volontairement de le numéroter et de le
+	 * hacher (backend/hooks/invoice_hooks.go:441). Ce n'est pas un document
+	 * fiscal, le contrôle d'intégrité ne s'y applique pas. Ni valide, ni invalide.
+	 */
+	notApplicable?: boolean
+	/**
+	 * Le document dont le sequence_number précède celui-ci n'existe pas.
+	 * DIFFÉRENT d'une rupture de chaîne : rien ne prouve que ce document ait été
+	 * altéré, son propre hash peut être intact. Signalé, jamais compté invalide.
+	 */
+	sequenceGap?: boolean
+	warnings?: string[]
 }
 
 // ============================================================================
