@@ -36,6 +36,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/pocketbase/dbx"
+
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/models"
 )
@@ -73,10 +75,24 @@ type JournalJour struct {
 	NbDocuments int                `json:"nb_documents"`
 	ParMoyen    map[string]float64 `json:"par_moyen"`
 
-	// ZNumbers dit si la journée a été clôturée, et par quel(s) rapport(s).
-	// Une journée sans Z n'est pas une anomalie : c'est le cas courant pour
-	// l'argent hors caisse.
+	// ── L'état de clôture de la journée ────────────────────────────────────
+	// Il se lit sur les SESSIONS des tickets, jamais sur la date des rapports.
+	// Mesuré sur la base de production : 42 sessions sur 65 s'ouvrent un jour et
+	// se ferment le lendemain ou plus tard — une session ouverte le 17/04 a été
+	// fermée le 30/04, avec 59 tickets. Chercher un Z portant la date de la
+	// journée afficherait donc « non clôturé » sur des journées dont les tickets
+	// sont bel et bien dans le Z d'un autre jour.
+	//
+	// NbTickets à zéro veut dire qu'aucune session n'était ouverte : il n'y avait
+	// rien à clôturer, et l'absence de Z n'est pas une anomalie. C'est le cas de
+	// la plupart des journées — 65 sessions pour 171 journées d'activité, le
+	// reste de l'argent arrive par facture hors caisse, qui relève du journal de
+	// facturation et non du Z.
+	NbTickets int `json:"nb_tickets"`
+	// ZNumbers : les rapports qui couvrent les tickets de cette journée.
 	ZNumbers []string `json:"z_numbers"`
+	// TicketsHorsZ : les tickets de cette journée qu'aucun Z ne couvre encore.
+	TicketsHorsZ int `json:"tickets_hors_z"`
 
 	Documents []JournalDocument `json:"documents"`
 }
@@ -134,6 +150,11 @@ func JournalDesVentes(
 	// posée document par document (classerAuJour) : sur une période, chaque
 	// facture se compare à SA journée, pas à une seule.
 	classificateur := nouveauClassificateur(app, "")
+
+	// Caches : session → id du Z, id du Z → numéro. Une même session revient sur
+	// tous les tickets d'une journée, et souvent sur plusieurs journées.
+	zParSession := make(map[string]string)
+	numeroZ := make(map[string]string)
 
 	nomClient := make(map[string]string)
 	client := func(id string) string {
@@ -207,6 +228,9 @@ func JournalDesVentes(
 	if err != nil {
 		return nil, JournalTotaux{}, fmt.Errorf("chargement des tickets: %w", err)
 	}
+	// couverture[jour][sessionID] : les sessions ayant produit les tickets du
+	// jour. C'est par elles que se lit l'état de clôture.
+	couverture := make(map[string]map[string]bool)
 	for _, inv := range tickets {
 		jour := jourDe(inv.GetString("date"))
 		if inv.GetString("invoice_type") == "credit_note" {
@@ -214,6 +238,21 @@ func JournalDesVentes(
 			continue
 		}
 		ajouter(jour, LigneVentesDuJour, inv.GetFloat("total_ttc"), inv, "ticket")
+
+		j := obtenir(jour)
+		j.NbTickets++
+		if sid := inv.GetString("session"); sid != "" {
+			if couverture[jour] == nil {
+				couverture[jour] = make(map[string]bool)
+			}
+			couverture[jour][sid] = true
+			if !sessionEstClose(dao, sid, zParSession, numeroZ) {
+				j.TicketsHorsZ++
+			}
+		} else {
+			// Un ticket sans session ne peut entrer dans aucun Z.
+			j.TicketsHorsZ++
+		}
 	}
 
 	// ─── 2. Documents hors caisse encaissés, par leur paid_at ───────────────
@@ -260,24 +299,20 @@ func JournalDesVentes(
 		}
 	}
 
-	// ─── 4. Quelles journées ont été clôturées ──────────────────────────────
-	zs, err := dao.FindRecordsByFilter(
-		"z_reports",
-		fmt.Sprintf(
-			"owner_company = '%s' && date >= '%s' && date < '%s'",
-			ownerCompany, borneBasse, borneHaute,
-		),
-		"date", 0, 0,
-	)
-	if err == nil {
-		for _, z := range zs {
-			jour := jourDe(z.GetString("date"))
-			if jour == "" {
+	// ─── 4. Les rapports qui couvrent chaque journée ────────────────────────
+	// Par les sessions, jamais par la date : voir le commentaire de ZNumbers.
+	for jour, sessions := range couverture {
+		vus := make(map[string]bool)
+		j := obtenir(jour)
+		for sid := range sessions {
+			numero := numeroZDeSession(dao, sid, zParSession, numeroZ)
+			if numero == "" || vus[numero] {
 				continue
 			}
-			j := obtenir(jour)
-			j.ZNumbers = append(j.ZNumbers, z.GetString("number"))
+			vus[numero] = true
+			j.ZNumbers = append(j.ZNumbers, numero)
 		}
+		sort.Strings(j.ZNumbers)
 	}
 
 	// ─── 5. Arrondis, totaux, tri ───────────────────────────────────────────
@@ -350,4 +385,139 @@ func heureDe(inv *models.Record) string {
 		}
 	}
 	return ""
+}
+
+// numeroZDeSession rend le numéro du rapport Z qui couvre une session, ou "" si
+// elle n'est encore dans aucun. Les deux caches évitent de relire la même
+// session pour chacun de ses tickets.
+func numeroZDeSession(
+	dao interface {
+		FindRecordById(string, string, ...func(*dbx.SelectQuery) error) (*models.Record, error)
+	},
+	sessionID string,
+	zParSession map[string]string,
+	numeroZ map[string]string,
+) string {
+	zID, vu := zParSession[sessionID]
+	if !vu {
+		zID = ""
+		if s, err := dao.FindRecordById("cash_sessions", sessionID); err == nil && s != nil {
+			zID = s.GetString("z_report_id")
+		}
+		zParSession[sessionID] = zID
+	}
+	if zID == "" {
+		return ""
+	}
+	numero, vu := numeroZ[zID]
+	if !vu {
+		numero = ""
+		if z, err := dao.FindRecordById("z_reports", zID); err == nil && z != nil {
+			numero = z.GetString("number")
+		}
+		numeroZ[zID] = numero
+	}
+	return numero
+}
+
+// sessionEstClose dit si la session est déjà entrée dans un rapport Z.
+func sessionEstClose(
+	dao interface {
+		FindRecordById(string, string, ...func(*dbx.SelectQuery) error) (*models.Record, error)
+	},
+	sessionID string,
+	zParSession map[string]string,
+	numeroZ map[string]string,
+) bool {
+	return numeroZDeSession(dao, sessionID, zParSession, numeroZ) != ""
+}
+
+// SessionEnAttenteDeZ est une session de caisse fermée qui n'est entrée dans
+// aucun rapport Z.
+//
+// C'est le seul manque réel de clôture. Il ne faut pas le confondre avec « une
+// journée sans Z » : mesuré sur la base de production, 125 journées sur 171
+// n'ont aucun Z, mais la caisse n'y avait tout simplement pas été ouverte —
+// l'argent est arrivé par facture hors caisse, qui relève du journal de
+// facturation. Le vrai manque, au 24 août 2026, est de 17 sessions.
+type SessionEnAttenteDeZ struct {
+	ID        string  `json:"id"`
+	OuverteLe string  `json:"ouverte_le"`
+	FermeeLe  string  `json:"fermee_le"`
+	NbTickets int     `json:"nb_tickets"`
+	TTC       float64 `json:"ttc"`
+
+	// JourDejaClos : le jour de fermeture porte DÉJÀ un rapport Z, et
+	// GenerateRapportZ rend alors le rapport existant sans rien y ajouter — la
+	// session ne peut donc pas être rattrapée par une simple génération. Cas
+	// mesuré : 2 sessions, dont une seule porte de l'argent (140,67 €).
+	JourDejaClos bool   `json:"jour_deja_clos"`
+	ZDuJour      string `json:"z_du_jour,omitempty"`
+}
+
+// SessionsEnAttenteDeZ liste toutes les sessions fermées sans Z, sans limite de
+// période : une session de janvier doit rester visible quand on regarde les
+// trente derniers jours, sinon elle ne se rappelle à personne.
+func SessionsEnAttenteDeZ(
+	app *pocketbase.PocketBase,
+	ownerCompany string,
+) ([]SessionEnAttenteDeZ, error) {
+	dao := app.Dao()
+
+	zs, err := dao.FindRecordsByFilter(
+		"z_reports",
+		fmt.Sprintf("owner_company = '%s'", ownerCompany),
+		"date", 0, 0,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("chargement des rapports Z: %w", err)
+	}
+	zDuJour := make(map[string]string, len(zs))
+	for _, z := range zs {
+		if jour := jourDe(z.GetString("date")); jour != "" {
+			zDuJour[jour] = z.GetString("number")
+		}
+	}
+
+	sessions, err := dao.FindRecordsByFilter(
+		"cash_sessions",
+		fmt.Sprintf("owner_company = '%s' && status = 'closed' && (z_report_id = '' || z_report_id = null)", ownerCompany),
+		"-closed_at", 0, 0,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("chargement des sessions: %w", err)
+	}
+
+	attente := make([]SessionEnAttenteDeZ, 0, len(sessions))
+	for _, s := range sessions {
+		invoices, _ := dao.FindRecordsByFilter(
+			"invoices",
+			fmt.Sprintf("session = '%s' && status != 'draft'", s.Id),
+			"", 0, 0,
+		)
+		var ttc float64
+		nb := 0
+		for _, inv := range invoices {
+			if inv.GetString("invoice_type") == "credit_note" {
+				continue
+			}
+			nb++
+			ttc += inv.GetFloat("total_ttc")
+		}
+
+		jourFermeture := jourDe(s.GetString("closed_at"))
+		numero := zDuJour[jourFermeture]
+
+		attente = append(attente, SessionEnAttenteDeZ{
+			ID:           s.Id,
+			OuverteLe:    jourDe(s.GetString("opened_at")),
+			FermeeLe:     jourFermeture,
+			NbTickets:    nb,
+			TTC:          roundAmount(ttc),
+			JourDejaClos: numero != "",
+			ZDuJour:      numero,
+		})
+	}
+
+	return attente, nil
 }

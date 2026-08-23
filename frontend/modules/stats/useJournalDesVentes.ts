@@ -37,9 +37,31 @@ export interface JournalJour {
 	ventes_tva: number
 	nb_documents: number
 	par_moyen: Record<string, number>
-	/** Les rapports Z de la journée. Vide = journée non clôturée, cas courant. */
+	/** Tickets de caisse de la journée. 0 = aucune session : rien à clôturer. */
+	nb_tickets: number
+	/** Les rapports Z couvrant les tickets de la journée, via leur SESSION. */
 	z_numbers: string[] | null
+	/** Tickets de la journée qu'aucun Z ne couvre encore. */
+	tickets_hors_z: number
 	documents: JournalDocument[] | null
+}
+
+/**
+ * Une session de caisse fermée qui n'est entrée dans aucun rapport Z.
+ *
+ * C'est le seul manque réel de clôture, et il ne se confond pas avec « une
+ * journée sans Z » : la plupart des journées n'ont aucune session ouverte,
+ * l'argent y arrive par facture hors caisse — il n'y avait rien à clôturer.
+ */
+export interface SessionEnAttenteDeZ {
+	id: string
+	ouverte_le: string
+	fermee_le: string
+	nb_tickets: number
+	ttc: number
+	/** Le jour de fermeture porte déjà un Z : une simple génération ne suffira pas. */
+	jour_deja_clos: boolean
+	z_du_jour?: string
 }
 
 export interface JournalTotaux {
@@ -59,6 +81,8 @@ export interface JournalReponse {
 	au: string
 	jours: JournalJour[] | null
 	totaux: JournalTotaux
+	/** Hors période, à dessein : une session de janvier doit rester visible. */
+	sessions_en_attente: SessionEnAttenteDeZ[] | null
 }
 
 export const journalKeys = {

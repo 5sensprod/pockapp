@@ -86,6 +86,8 @@ export function JournalDesVentesPage() {
 
 	const jours = data?.jours ?? []
 	const totaux = data?.totaux
+	const enAttente = data?.sessions_en_attente ?? []
+	const ttcEnAttente = enAttente.reduce((somme, s) => somme + s.ttc, 0)
 
 	return (
 		<div className='container mx-auto px-6 py-8 space-y-6'>
@@ -160,6 +162,45 @@ export function JournalDesVentesPage() {
 					<CardContent className='pt-6 flex items-center gap-2 text-destructive'>
 						<AlertCircle className='h-4 w-4' />
 						{(error as Error)?.message ?? 'Erreur de chargement'}
+					</CardContent>
+				</Card>
+			)}
+
+			{/* Les sessions fermées qui n'ont jamais eu leur Z. Volontairement
+			    au-dessus du cumul, et indépendant de la période affichée : c'est le
+			    seul manque réel de clôture, et il doit se voir. */}
+			{enAttente.length > 0 && (
+				<Card className='border-amber-300 bg-amber-50/60'>
+					<CardHeader className='pb-3'>
+						<CardTitle className='text-base flex items-center gap-2'>
+							<AlertCircle className='h-4 w-4 text-amber-600' />
+							{enAttente.length} session(s) de caisse fermée(s) sans rapport Z
+						</CardTitle>
+						<CardDescription>
+							{euros(ttcEnAttente)} de tickets qui ne sont dans aucune clôture.
+							Toutes périodes confondues, pas seulement celle affichée.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className='space-y-1'>
+						{enAttente.map((s) => (
+							<div
+								key={s.id}
+								className='flex flex-wrap items-center gap-3 text-sm py-1 border-b last:border-0 border-amber-200'
+							>
+								<span className='text-muted-foreground'>
+									ouverte le {s.ouverte_le}
+									{s.fermee_le !== s.ouverte_le &&
+										` → fermée le ${s.fermee_le}`}
+								</span>
+								<span className='font-medium'>{s.nb_tickets} ticket(s)</span>
+								<span className='font-medium tabular-nums'>{euros(s.ttc)}</span>
+								{s.jour_deja_clos && (
+									<Badge variant='outline' className='text-xs'>
+										bloquée — le {s.fermee_le} porte déjà {s.z_du_jour}
+									</Badge>
+								)}
+							</div>
+						))}
 					</CardContent>
 				</Card>
 			)}
@@ -302,25 +343,30 @@ function LigneJournee({
 					)}
 
 					<div className='min-w-0 flex-1'>
-						<div className='flex items-center gap-2'>
+						<div className='flex flex-wrap items-center gap-2'>
 							<span className='font-medium capitalize'>
 								{jourLong(jour.date)}
 							</span>
-							{zs.length > 0 ? (
-								zs.map((z) => (
-									<Badge key={z} variant='outline' className='gap-1 text-xs'>
-										<Lock className='h-3 w-3' />
-										{z}
-									</Badge>
-								))
-							) : (
-								<Badge variant='secondary' className='text-xs'>
-									non clôturé
+							{/* L'état de clôture se lit sur la SESSION des tickets, pas sur
+							    la date : 42 sessions sur 65 se ferment un autre jour
+							    qu'elles ne s'ouvrent. Et une journée sans ticket n'a rien à
+							    clôturer — la caisse n'y était pas ouverte, l'argent est
+							    arrivé par facture. */}
+							{zs.map((z) => (
+								<Badge key={z} variant='outline' className='gap-1 text-xs'>
+									<Lock className='h-3 w-3' />
+									{z}
+								</Badge>
+							))}
+							{jour.tickets_hors_z > 0 && (
+								<Badge variant='destructive' className='text-xs'>
+									{jour.tickets_hors_z} ticket(s) à clôturer
 								</Badge>
 							)}
 						</div>
 						<div className='text-xs text-muted-foreground'>
 							{jour.nb_documents} document(s)
+							{jour.nb_tickets === 0 && ' · aucune session de caisse ce jour'}
 						</div>
 					</div>
 

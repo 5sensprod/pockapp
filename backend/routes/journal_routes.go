@@ -27,6 +27,11 @@ type journalReponse struct {
 	Au     string                `json:"au"`
 	Jours  []reports.JournalJour `json:"jours"`
 	Totaux reports.JournalTotaux `json:"totaux"`
+
+	// SessionsEnAttente ignore la période demandée, à dessein : une session de
+	// janvier jamais clôturée doit se rappeler à l'écran même quand on regarde
+	// les trente derniers jours. Sinon elle ne se rappelle à personne.
+	SessionsEnAttente []reports.SessionEnAttenteDeZ `json:"sessions_en_attente"`
 }
 
 // RegisterJournalRoutes expose GET /api/reports/journal?du=&au=&company=
@@ -57,11 +62,18 @@ func RegisterJournalRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			return apis.NewBadRequestError(err.Error(), err)
 		}
 
+		// Non bloquant : le journal reste lisible même si cette lecture échoue.
+		attente, errAttente := reports.SessionsEnAttenteDeZ(app, ownerCompany)
+		if errAttente != nil {
+			attente = nil
+		}
+
 		return c.JSON(http.StatusOK, journalReponse{
-			Du:     du,
-			Au:     au,
-			Jours:  jours,
-			Totaux: totaux,
+			Du:                du,
+			Au:                au,
+			Jours:             jours,
+			Totaux:            totaux,
+			SessionsEnAttente: attente,
 		})
 	}, apis.RequireRecordAuth())
 }

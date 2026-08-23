@@ -168,3 +168,157 @@ func TestLeJournalVoitUnJourSansRapportZ(t *testing.T) {
 			jours[0].ZNumbers)
 	}
 }
+
+// La journée d'un ticket est réputée clôturée si la SESSION de ce ticket est
+// entrée dans un Z — pas si un Z porte la date de la journée.
+//
+// La nuance n'est pas théorique : mesuré sur la base de production, 42 sessions
+// sur 65 s'ouvrent un jour et se ferment le lendemain ou plus tard. Une session
+// ouverte le 17 avril a été fermée le 30, avec 59 tickets. Chercher un Z daté du
+// 17 avril afficherait « non clôturé » sur une journée dont les tickets sont
+// bel et bien scellés dans le Z du 30.
+func TestUneJourneeEstCloturneeParLaSessionPasParLaDate(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+
+	caisse := creerEnregistrement(t, app, "cash_registers", map[string]any{
+		"owner_company": societeDeTest, "code": "C1", "name": "Comptoir",
+	})
+
+	// Une session ouverte la veille et fermée le lendemain — le cas majoritaire.
+	veille := time.Now().AddDate(0, 0, -2).Format("2006-01-02")
+	lendemain := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+
+	session := creerEnregistrement(t, app, "cash_sessions", map[string]any{
+		"owner_company": societeDeTest, "cash_register": caisse.Id,
+		"status":      "closed",
+		"opened_at":   veille + " 18:00:00.000Z",
+		"closed_at":   lendemain + " 09:00:00.000Z",
+		"z_report_id": "",
+	})
+
+	// Le ticket est daté de la VEILLE, jour d'ouverture.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"date": veille, "paid_at": veille + " 18:30:00.000Z",
+		"total_ht": 41.67, "total_tva": 8.33, "total_ttc": 50.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	// Avant clôture : la journée de la veille attend son Z.
+	jours, _, err := JournalDesVentes(app, societeDeTest, veille, lendemain)
+	if err != nil {
+		t.Fatalf("journal: %v", err)
+	}
+	avant := journeeDu(t, jours, veille)
+	if avant.TicketsHorsZ != 1 {
+		t.Errorf("tickets hors Z = %d, attendu 1 avant toute clôture", avant.TicketsHorsZ)
+	}
+
+	// Le Z est généré le jour de FERMETURE, pas celui du ticket.
+	rapport, err := GenerateRapportZ(app, caisse.Id, lendemain)
+	if err != nil {
+		t.Fatalf("génération du Z: %v", err)
+	}
+
+	jours, _, err = JournalDesVentes(app, societeDeTest, veille, lendemain)
+	if err != nil {
+		t.Fatalf("journal: %v", err)
+	}
+	apres := journeeDu(t, jours, veille)
+
+	if apres.TicketsHorsZ != 0 {
+		t.Errorf("tickets hors Z = %d après clôture, attendu 0 : le ticket est "+
+			"dans %s, daté du lendemain", apres.TicketsHorsZ, rapport.Number)
+	}
+	if len(apres.ZNumbers) != 1 || apres.ZNumbers[0] != rapport.Number {
+		t.Errorf("rapports couvrant la journée = %v, attendu [%s]",
+			apres.ZNumbers, rapport.Number)
+	}
+}
+
+// Une journée sans le moindre ticket n'a rien à clôturer : l'absence de Z n'y
+// est pas une anomalie. C'est le cas de la plupart des journées — 65 sessions
+// pour 171 journées d'activité — où l'argent arrive par facture hors caisse.
+func TestUneJourneeSansTicketNAttendAucunZ(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	_, _, jour := caisseEtSessionDuJour(t, app)
+
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"date": jour + " 09:00:00.000Z", "paid_at": jour + " 09:00:00.000Z",
+		"total_ht": 100.00, "total_tva": 20.00, "total_ttc": 120.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	jours, _, err := JournalDesVentes(app, societeDeTest, jour, jour)
+	if err != nil {
+		t.Fatalf("journal: %v", err)
+	}
+	j := journeeDu(t, jours, jour)
+
+	if j.NbTickets != 0 {
+		t.Errorf("tickets = %d, attendu 0", j.NbTickets)
+	}
+	if j.TicketsHorsZ != 0 {
+		t.Errorf("tickets hors Z = %d, attendu 0 : sans ticket, rien à clôturer",
+			j.TicketsHorsZ)
+	}
+	if j.VentesDuJour != 120.00 {
+		t.Errorf("ventes du jour = %.2f, attendu 120,00", j.VentesDuJour)
+	}
+}
+
+// Les sessions fermées sans Z sont le SEUL manque réel de clôture, et elles se
+// listent hors de toute période : une session de janvier doit rester visible
+// quand on regarde les trente derniers jours.
+func TestLesSessionsFermeesSansZSontListees(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	caisse, session, jour := caisseEtSessionDuJour(t, app)
+
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"date": jour, "total_ht": 41.67, "total_tva": 8.33, "total_ttc": 50.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	attente, err := SessionsEnAttenteDeZ(app, societeDeTest)
+	if err != nil {
+		t.Fatalf("sessions en attente: %v", err)
+	}
+	if len(attente) != 1 {
+		t.Fatalf("sessions en attente = %d, attendu 1", len(attente))
+	}
+	if attente[0].NbTickets != 1 || attente[0].TTC != 50.00 {
+		t.Errorf("session en attente : %d ticket(s), %.2f € — attendu 1 et 50,00",
+			attente[0].NbTickets, attente[0].TTC)
+	}
+	if attente[0].JourDejaClos {
+		t.Errorf("la session est annoncée bloquée alors qu'aucun Z ne porte ce jour")
+	}
+
+	// Une fois le Z généré, plus rien n'attend.
+	if _, err := GenerateRapportZ(app, caisse.Id, jour); err != nil {
+		t.Fatalf("génération du Z: %v", err)
+	}
+	attente, err = SessionsEnAttenteDeZ(app, societeDeTest)
+	if err != nil {
+		t.Fatalf("sessions en attente: %v", err)
+	}
+	if len(attente) != 0 {
+		t.Errorf("sessions en attente = %d après clôture, attendu 0", len(attente))
+	}
+}
+
+func journeeDu(t *testing.T, jours []JournalJour, date string) JournalJour {
+	t.Helper()
+	for _, j := range jours {
+		if j.Date == date {
+			return j
+		}
+	}
+	t.Fatalf("journée %s absente du journal", date)
+	return JournalJour{}
+}
