@@ -40,6 +40,18 @@ type ZRepairEntry struct {
 	NouveauHT, NouveauTVA, NouveauTTC float64
 	AncienNbTickets, NouveauNbTickets int
 
+	// Le rejeu sous schema_version = 2 ne change pas seulement des valeurs : il
+	// change ce que les valeurs VEULENT DIRE. AncienTTC est un total mêlé —
+	// ventes du jour ET règlements de créances ; NouveauTTC ne porte plus que la
+	// ligne 1. Les comparer directement ferait passer pour une perte ce qui n'est
+	// qu'un déplacement. C'est NouveauEncaisse qu'il faut confronter à AncienTTC.
+	AncienVersion, NouveauVersion int
+	NouveauEncaisse               float64
+	NouveauVentesDuJour           float64
+	NouveauCreances               float64
+	NouveauAcomptes               float64
+	NouveauRemboursements         float64
+
 	AncienHash, NouveauHash string
 
 	// ValeursChangees : les totaux eux-mêmes diffèrent — c'est la vraie
@@ -57,6 +69,21 @@ type ZRepairEntry struct {
 
 // EcartTTC est la correction apportée au total TTC (négatif = le Z annonçait trop).
 func (e ZRepairEntry) EcartTTC() float64 { return roundAmount(e.NouveauTTC - e.AncienTTC) }
+
+// EcartEncaisse confronte l'ARGENT : ce que le rapport annonçait en tête, et ce
+// que le nouveau total encaissé annonce. C'est le seul écart qui se lise comme
+// une correction comptable ; l'écart sur total_ttc, lui, mesure surtout un
+// changement de définition.
+func (e ZRepairEntry) EcartEncaisse() float64 {
+	return roundAmount(e.NouveauEncaisse - e.AncienTTC)
+}
+
+// LignesEquilibrees vérifie l'invariant du contrat sur ce rapport : le total
+// encaissé est la somme de ses quatre lignes, ni plus ni moins.
+func (e ZRepairEntry) LignesEquilibrees() bool {
+	somme := e.NouveauVentesDuJour + e.NouveauCreances + e.NouveauAcomptes - e.NouveauRemboursements
+	return math.Abs(roundAmount(somme)-e.NouveauEncaisse) <= 0.005
+}
 
 // ZRepairReport est le bilan d'ensemble.
 type ZRepairReport struct {
@@ -117,6 +144,9 @@ func RepairZReports(app *pocketbase.PocketBase, apply bool) (*ZRepairReport, err
 			AncienTTC:       rec.GetFloat("total_ttc"),
 			AncienNbTickets: rec.GetInt("invoice_count"),
 			AncienHash:      rec.GetString("hash"),
+			// Un rapport d'avant le contrat ne porte pas la colonne : GetInt rend
+			// 0, qu'on lit comme la version 1 — la règle d'origine.
+			AncienVersion: versionDeSchema(rec),
 		}
 
 		ownerCompany := rec.GetString("owner_company")
@@ -141,6 +171,12 @@ func RepairZReports(app *pocketbase.PocketBase, apply bool) (*ZRepairReport, err
 		entry.NouveauTVA = nouveau.DailyTotals.TotalTVA
 		entry.NouveauTTC = nouveau.DailyTotals.TotalTTC
 		entry.NouveauNbTickets = nouveau.DailyTotals.InvoiceCount
+		entry.NouveauVersion = nouveau.DailyTotals.SchemaVersion
+		entry.NouveauEncaisse = nouveau.DailyTotals.CollectedTTC
+		entry.NouveauVentesDuJour = nouveau.DailyTotals.TotalTTC
+		entry.NouveauCreances = nouveau.DailyTotals.CollectedFromReceivablesTTC
+		entry.NouveauAcomptes = nouveau.DailyTotals.CollectedDepositsTTC
+		entry.NouveauRemboursements = nouveau.DailyTotals.RefundsTTC
 		entry.NouveauHash = nouveau.Hash
 		entry.Change = entry.NouveauHash != entry.AncienHash
 		entry.ValeursChangees = montantsDifferents(rec, nouveau)
@@ -265,6 +301,15 @@ func ecrireRapport(app *pocketbase.PocketBase, rec *models.Record, r *RapportZ) 
 	rec.Set("total_discounts", t.TotalDiscounts)
 	rec.Set("credit_notes_count", t.CreditNotesCount)
 	rec.Set("credit_notes_total", t.CreditNotesTotal)
+	// Ticket Z-8 — les colonnes du contrat « un total, quatre lignes ». Sans
+	// elles, le rejeu écrirait un hash qui SCELLE les collected_* dans des
+	// colonnes restées vides : le rapport ne pourrait plus se vérifier lui-même.
+	rec.Set("schema_version", t.SchemaVersion)
+	rec.Set("collected_ttc", t.CollectedTTC)
+	rec.Set("collected_by_method", t.CollectedByMethod)
+	rec.Set("collected_from_receivables_ttc", t.CollectedFromReceivablesTTC)
+	rec.Set("collected_deposits_ttc", t.CollectedDepositsTTC)
+	rec.Set("refunds_ttc", t.RefundsTTC)
 	rec.Set("hash", r.Hash)
 	rec.Set("previous_hash", r.PreviousHash)
 
@@ -292,6 +337,15 @@ func generatedAtDOrigine(rec *models.Record) time.Time {
 		}
 	}
 	return parsePocketBaseDate(rec.GetString("generated_at"))
+}
+
+// versionDeSchema lit la règle sous laquelle un rapport a été produit. Une
+// colonne absente ou à zéro, c'est un rapport d'avant le contrat : version 1.
+func versionDeSchema(rec *models.Record) int {
+	if v := rec.GetInt("schema_version"); v > 0 {
+		return v
+	}
+	return 1
 }
 
 // totauxDifferents compare les totaux recalculés à ceux que le rapport portait.

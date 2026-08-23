@@ -16,11 +16,13 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 
 	"github.com/pocketbase/pocketbase"
 
+	"pocket-react/backend/migrations"
 	"pocket-react/backend/reports"
 )
 
@@ -49,18 +51,36 @@ func main() {
 	}
 	fmt.Printf("\nBase : %s\nMode : %s\n\n", *dataDir, mode)
 
+	// Le rejeu produit des rapports en schema_version 2, dont les colonnes
+	// collected_* entrent dans le hash. Si elles manquent, l'écriture scellerait
+	// des valeurs que la base ne porte pas. On pose donc CETTE migration-là, et
+	// elle seule — pas RunMigrations, qui toucherait vingt collections sans
+	// rapport avec la caisse. Elle est idempotente.
+	if *apply {
+		if err := migrations.AddCollectedToZReports(app); err != nil {
+			fmt.Printf("❌ mise à niveau du schéma z_reports : %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	bilan, err := reports.RepairZReports(app, *apply)
 	if err != nil {
 		fmt.Printf("❌ %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("%-16s %-12s %10s %10s %10s   %s\n",
-		"RAPPORT", "DATE", "TTC AVANT", "TTC APRÈS", "ÉCART", "ÉTAT")
-	fmt.Println(dashes(78))
+	// Le tableau confronte l'ANCIEN total en tête au NOUVEAU total encaissé,
+	// puis détaille les quatre lignes. Comparer l'ancien total_ttc au nouveau
+	// n'aurait pas de sens : ils ne recouvrent plus la même chose.
+	fmt.Printf("%-16s %-11s %10s %10s %9s | %10s %10s %10s %9s  %s\n",
+		"RAPPORT", "DATE", "ANNONCÉ", "ENCAISSÉ", "ÉCART",
+		"L1 VENTES", "L2 CRÉANC", "L3 ACOMPT", "L4 REMB", "ÉTAT")
+	fmt.Println(dashes(118))
 
 	var totalEcart float64
-	var nbModifies, nbEnrichis, nbRechaines, nbErreurs int
+	var sommeAnnonce, sommeEncaisse float64
+	var sommeL1, sommeL2, sommeL3, sommeL4 float64
+	var nbModifies, nbEnrichis, nbRechaines, nbErreurs, nbDesequilibres int
 
 	for _, e := range bilan.Entries {
 		etat := "inchangé"
@@ -71,7 +91,7 @@ func main() {
 		case e.ValeursChangees:
 			etat = "VALEURS CORRIGÉES"
 			nbModifies++
-			totalEcart += e.EcartTTC()
+			totalEcart += e.EcartEncaisse()
 		case e.Enrichi:
 			etat = "enrichi (argent inchangé)"
 			nbEnrichis++
@@ -80,18 +100,47 @@ func main() {
 			nbRechaines++
 		}
 
+		if e.Erreur == "" {
+			sommeAnnonce += e.AncienTTC
+			sommeEncaisse += e.NouveauEncaisse
+			sommeL1 += e.NouveauVentesDuJour
+			sommeL2 += e.NouveauCreances
+			sommeL3 += e.NouveauAcomptes
+			sommeL4 += e.NouveauRemboursements
+
+			// Le contrôle le plus important de la reprise : chaque rapport doit
+			// égaler la somme de ses propres lignes. Un déséquilibre, et le
+			// document se contredirait lui-même — c'est exactement le symptôme
+			// de la régression du 20 mai.
+			if !e.LignesEquilibrees() {
+				nbDesequilibres++
+				etat += " ⚠️ LIGNES DÉSÉQUILIBRÉES"
+			}
+		}
+
 		if e.Erreur == "" && !e.Change {
 			continue // on n'affiche que ce qui bouge
 		}
 
-		fmt.Printf("%-16s %-12s %10.2f %10.2f %10.2f   %s\n",
-			e.Number, court(e.Date), e.AncienTTC, e.NouveauTTC, e.EcartTTC(), etat)
+		fmt.Printf("%-16s %-11s %10.2f %10.2f %9.2f | %10.2f %10.2f %10.2f %9.2f  %s\n",
+			e.Number, court(e.Date), e.AncienTTC, e.NouveauEncaisse, e.EcartEncaisse(),
+			e.NouveauVentesDuJour, e.NouveauCreances, e.NouveauAcomptes,
+			e.NouveauRemboursements, etat)
 	}
 
-	fmt.Println(dashes(78))
+	fmt.Println(dashes(118))
+	fmt.Printf("%-16s %-11s %10.2f %10.2f %9.2f | %10.2f %10.2f %10.2f %9.2f\n",
+		"CUMUL", "", sommeAnnonce, sommeEncaisse, roundEcart(sommeEncaisse-sommeAnnonce),
+		sommeL1, sommeL2, sommeL3, sommeL4)
+
 	fmt.Printf("\n%d rapports examinés · %d aux MONTANTS corrigés · %d enrichis · %d rechaînés · %d en erreur\n",
 		len(bilan.Entries), nbModifies, nbEnrichis, nbRechaines, nbErreurs)
-	fmt.Printf("Correction cumulée du TTC : %+.2f €\n", totalEcart)
+	fmt.Printf("Correction cumulée de l'argent encaissé : %+.2f €\n", totalEcart)
+	if nbDesequilibres == 0 {
+		fmt.Printf("✅ Tous les rapports égalent la somme de leurs quatre lignes.\n")
+	} else {
+		fmt.Printf("❌ %d rapports ne s'équilibrent PAS — ne rien appliquer.\n", nbDesequilibres)
+	}
 
 	if !*apply && nbModifies > 0 {
 		fmt.Printf("\nSimulation seule. Pour appliquer :\n")
@@ -119,4 +168,8 @@ func dashes(n int) string {
 		s[i] = '-'
 	}
 	return string(s)
+}
+
+func roundEcart(v float64) float64 {
+	return math.Round(v*100) / 100
 }
