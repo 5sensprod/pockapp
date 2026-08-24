@@ -184,7 +184,20 @@ func RepairZReports(app *pocketbase.PocketBase, apply bool) (*ZRepairReport, err
 
 		hashPrecedent[clePartition] = nouveau.Hash
 
-		if apply && entry.Change {
+		// ⚠️ Écrire dès que le CONTENU diffère, pas seulement le hash.
+		//
+		// Tout ce qui est recalculé n'entre pas dans le hash : `total_cash_expected`
+		// et les autres montants du rapprochement espèces en sont absents. Une
+		// correction qui ne touchait qu'eux laissait donc le hash identique, et la
+		// condition `entry.Change` la faisait passer à la trappe — calculée à
+		// chaque rejeu, jamais écrite. Constaté le 24 août 2026 : le correctif
+		// `refund_out` sur les espèces attendues d'un rapport, 4,00 €, restait sans
+		// effet malgré plusieurs rejeux appliqués.
+		//
+		// Le rapprochement espèces est le seul chiffre que le commerçant vérifie
+		// contre son tiroir : le laisser faux parce qu'il n'est pas haché serait
+		// exactement le mauvais arbitrage.
+		if apply && (entry.Change || entry.ValeursChangees || entry.Enrichi) {
 			if err := ecrireRapport(app, rec, nouveau); err != nil {
 				entry.Erreur = fmt.Sprintf("écriture: %v", err)
 			}
