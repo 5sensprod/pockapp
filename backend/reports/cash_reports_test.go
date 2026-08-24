@@ -747,3 +747,145 @@ func creerEnregistrement(
 	}
 	return rec
 }
+
+// Un remboursement en espèces SORT du tiroir : le Z doit le retrancher de ses
+// espèces attendues, exactement comme le fait le rapport X.
+//
+// Il ne le faisait pas. `refund_out` était absent du switch des mouvements dans
+// aggregateZ, alors que GenerateRapportX le déduisait — les deux rapports se
+// contredisaient sur le seul chiffre que le commerçant vérifie contre son
+// tiroir, et le Z annonçait toujours trop. Le contrat l'écrit pourtant :
+// « fonds de caisse + cash_in − cash_out − refund_out − safe_drop ».
+func TestUnRemboursementEspecesSortDuTiroirDansLeZ(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	caisse, session, jour := caisseEtSessionDuJour(t, app)
+
+	// Fonds de caisse 100 € (posé par caisseEtSessionDuJour), une vente de 50 €
+	// en espèces, puis un remboursement de 30 € en espèces.
+	creerEnregistrement(t, app, "cash_movements", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"movement_type": "cash_in", "amount": 50.00, "reason": "vente",
+	})
+	creerEnregistrement(t, app, "cash_movements", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"movement_type": "refund_out", "amount": 30.00, "reason": "avoir",
+	})
+
+	totaux := genererZ(t, app, caisse.Id, jour)
+
+	const attendu = 120.00 // 100 + 50 − 30
+	if totaux.TotalCashExpected != attendu {
+		t.Errorf("espèces attendues = %.2f, attendu %.2f (150,00 = le remboursement "+
+			"n'est pas sorti du tiroir)", totaux.TotalCashExpected, attendu)
+	}
+}
+
+// Un Z couvre la PÉRIODE écoulée depuis la clôture précédente, pas sa seule
+// date. Décidé le 24 août 2026, sur une mesure : la caisse n'est clôturée qu'un
+// jour sur trois, et une session est restée ouverte du 6 au 19 août. Sous
+// l'ancienne règle, le Z-2026-000045 comptait bien ses 19 tickets des cinq
+// journées couvertes, mais ignorait 3 159,08 € de factures encaissées les 6, 7
+// et 18 — cet argent n'entrait dans aucun rapport, jamais.
+//
+// Le classement en lignes, lui, ne dépend PAS de la date du rapport : une
+// facture émise et payée le même jour est une vente du jour, que le Z qui
+// l'accueille soit daté de ce jour-là ou de douze jours plus tard.
+func TestUnZCouvreLaPeriodeDepuisLaCloturePrecedente(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	caisse, session, jour := caisseEtSessionDuJour(t, app)
+	troisJoursAvant := time.Now().AddDate(0, 0, -4).Format("2006-01-02")
+	dixJoursAvant := time.Now().AddDate(0, 0, -11).Format("2006-01-02")
+
+	// Un ticket, pour que la session ait un contenu.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"date": jour, "total_ht": 8.33, "total_tva": 1.67, "total_ttc": 10.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	// Une facture émise ET payée trois jours plus tôt : aucune clôture n'a eu
+	// lieu depuis, elle appartient donc à cette période — et c'est une VENTE DU
+	// JOUR, parce qu'elle a été émise et encaissée le même jour.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"date":     troisJoursAvant + " 10:00:00.000Z",
+		"paid_at":  troisJoursAvant + " 10:00:00.000Z",
+		"total_ht": 200.00, "total_tva": 40.00, "total_ttc": 240.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	// Une facture émise dix jours plus tôt et payée trois jours plus tôt :
+	// même période, mais c'est un règlement de créance.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"date":     dixJoursAvant + " 10:00:00.000Z",
+		"paid_at":  troisJoursAvant + " 11:00:00.000Z",
+		"total_ht": 250.00, "total_tva": 50.00, "total_ttc": 300.00,
+		"payment_method": "cheque", "payment_method_label": "cheque",
+	})
+
+	totaux := genererZ(t, app, caisse.Id, jour)
+
+	if totaux.TotalTTC != 250.00 {
+		t.Errorf("ligne 1 = %.2f, attendu 250,00 (10,00 de ticket + 240,00 de "+
+			"facture encaissée pendant la période ; 10,00 = la période est ignorée)",
+			totaux.TotalTTC)
+	}
+	if totaux.CollectedFromReceivablesTTC != 300.00 {
+		t.Errorf("ligne 2 = %.2f, attendu 300,00", totaux.CollectedFromReceivablesTTC)
+	}
+	if totaux.CollectedTTC != 550.00 {
+		t.Errorf("total encaissé = %.2f, attendu 550,00", totaux.CollectedTTC)
+	}
+}
+
+// Les périodes de deux Z successifs se touchent sans se recouvrir : un document
+// encaissé entre deux clôtures entre dans exactement une, jamais dans les deux.
+// Sans quoi la refonte troquerait un trou contre un double comptage — et le
+// double comptage est précisément ce qui a coûté trois mois de Z faux.
+func TestLesPeriodesDeDeuxZNeSeRecouvrentPas(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+
+	caisse := creerEnregistrement(t, app, "cash_registers", map[string]any{
+		"owner_company": societeDeTest, "code": "C1", "name": "Comptoir",
+	})
+
+	premier := time.Now().AddDate(0, 0, -10).Format("2006-01-02")
+	second := time.Now().AddDate(0, 0, -3).Format("2006-01-02")
+	entreDeux := time.Now().AddDate(0, 0, -6).Format("2006-01-02")
+
+	for _, j := range []string{premier, second} {
+		creerEnregistrement(t, app, "cash_sessions", map[string]any{
+			"owner_company": societeDeTest, "cash_register": caisse.Id,
+			"status":        "closed",
+			"opened_at":     j + " 08:00:00.000Z",
+			"closed_at":     j + " 19:00:00.000Z",
+			"opening_float": 0.0, "z_report_id": "",
+		})
+	}
+
+	// Une facture encaissée ENTRE les deux clôtures.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"date":     entreDeux + " 10:00:00.000Z",
+		"paid_at":  entreDeux + " 10:00:00.000Z",
+		"total_ht": 100.00, "total_tva": 20.00, "total_ttc": 120.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	totauxPremier := genererZ(t, app, caisse.Id, premier)
+	totauxSecond := genererZ(t, app, caisse.Id, second)
+
+	if totauxPremier.CollectedTTC != 0 {
+		t.Errorf("le premier Z encaisse %.2f, attendu 0 : la facture lui est postérieure",
+			totauxPremier.CollectedTTC)
+	}
+	if totauxSecond.CollectedTTC != 120.00 {
+		t.Errorf("le second Z encaisse %.2f, attendu 120,00 : la facture tombe dans "+
+			"sa période", totauxSecond.CollectedTTC)
+	}
+}

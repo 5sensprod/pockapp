@@ -87,9 +87,9 @@ func (l *LigneTTC) arrondir() {
 // qu'il résout : sur un Z chargé, les mêmes parentes reviennent.
 type classificateurZ struct {
 	app *pocketbase.PocketBase
-	// jour est la journée du rapport, "2006-01-02". Un document hors caisse
-	// émis ce jour-là et encaissé ce jour-là est une vente du jour (ligne 1) ;
-	// émis avant, c'est un règlement de créance (ligne 2).
+	// jour n'est plus qu'un défaut historique : le classement se fait sur les
+	// dates du document lui-même (voir classer). Conservé pour les appelants qui
+	// n'ont rien à en dire.
 	jour string
 
 	origines  map[string]*models.Record // original_invoice_id → document d'origine
@@ -168,24 +168,30 @@ func (c *classificateurZ) dossierAcompte(parentID string) (acomptes []*models.Re
 	return c.acomptes[parentID], c.soldes[parentID]
 }
 
-// classer rend la ligne d'un document HORS CAISSE déjà retenu par la requête du
-// jour (payé ce jour pour les factures, émis ce jour pour les avoirs), et le
-// montant TTC à porter sur cette ligne.
+// classer rend la ligne d'un document HORS CAISSE, et le montant TTC à porter
+// sur cette ligne.
+//
+// La séparation ligne 1 / ligne 2 se lit sur les DEUX dates du document —
+// émission et encaissement —, jamais sur la date du rapport qui l'accueille.
+// C'est la formulation exacte du contrat, « factures hors caisse émises ET
+// payées le même jour », et c'est ce qui rend le classement indépendant de la
+// période que couvre le Z. Tant qu'un Z ne prenait que les documents encaissés à
+// sa propre date, comparer à la date du rapport revenait au même ; depuis que le
+// Z couvre la période écoulée depuis la clôture précédente, ce n'est plus vrai —
+// une facture émise et payée le 7 août dans un Z daté du 19 est une vente du
+// jour, pas un règlement de créance.
 //
 // Les tickets de caisse ne passent pas par ici : ils sont en ligne 1 par leur
 // session, sans condition.
 func (c *classificateurZ) classer(inv *models.Record) (LigneZ, float64) {
-	return c.classerAuJour(inv, c.jour)
+	return c.classerAuJour(inv, jourDEncaissement(inv))
 }
 
-// classerAuJour est le même classement, mais pour une journée donnée plutôt que
-// pour celle du classificateur.
+// classerAuJour est le même classement, pour une journée d'encaissement donnée.
 //
-// C'est ce qui permet au journal des ventes (journal.go) de traiter une PÉRIODE
-// avec le même code, chaque document se comparant à sa propre journée. Les
-// règles ne sont écrites qu'une fois : le Z, le X et le journal appellent tous
-// cette fonction. Deux implémentations des mêmes règles sont exactement ce qui a
-// produit la régression du 20 mai 2026.
+// Les règles ne sont écrites qu'une fois : le Z, le X et le journal appellent
+// tous cette fonction. Deux implémentations des mêmes règles sont exactement ce
+// qui a produit la régression du 20 mai 2026.
 func (c *classificateurZ) classerAuJour(inv *models.Record, jour string) (LigneZ, float64) {
 	invType := inv.GetString("invoice_type")
 	ttc := inv.GetFloat("total_ttc")
@@ -276,4 +282,17 @@ func jourDe(brut string) string {
 		return brut[:10]
 	}
 	return ""
+}
+
+// jourDEncaissement rend la journée à laquelle un document est rattaché : celle
+// de son encaissement pour une facture ou un acompte, celle de son émission pour
+// un avoir — un avoir n'est pas « payé », il est émis.
+func jourDEncaissement(inv *models.Record) string {
+	if inv.GetString("invoice_type") == "credit_note" {
+		return jourDe(inv.GetString("date"))
+	}
+	if j := jourDe(inv.GetString("paid_at")); j != "" {
+		return j
+	}
+	return jourDe(inv.GetString("date"))
 }

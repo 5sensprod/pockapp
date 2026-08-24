@@ -568,6 +568,63 @@ func roundAmount(val float64) float64 {
 }
 
 // ============================================================================
+// LA PÉRIODE QUE COUVRE UN RAPPORT Z
+// ============================================================================
+//
+// Un Z ne couvre pas SA DATE, il couvre LA PÉRIODE ÉCOULÉE DEPUIS LA CLÔTURE
+// PRÉCÉDENTE. C'est la décision du 24 août 2026, et elle vient d'une mesure :
+// la caisse n'est clôturée qu'un jour sur trois, et une session est restée
+// ouverte du 6 au 19 août. Sous l'ancienne règle — un Z ne prenait que le hors
+// caisse encaissé à sa propre date — le Z-2026-000045 comptait ses 19 tickets
+// des cinq journées couvertes, mais IGNORAIT 3 159,08 € de factures encaissées
+// les 6, 7 et 18 août. Cet argent n'entrait dans aucun rapport, jamais.
+//
+// Avec des bornes qui se touchent, la couverture est continue : tout document
+// encaissé entre deux clôtures entre dans exactement une, sans trou ni double
+// comptage. Le premier Z d'une caisse n'a pas de borne basse — il absorbe donc
+// tout ce qui précède, ce qui est le comportement voulu : rien ne doit rester
+// avant la première clôture.
+//
+// ⚠️ Une seule fonction calcule ces bornes, et GenerateRapportZ comme z-repair
+// l'appellent. Les recalculer séparément, c'est reproduire la régression du
+// 20 mai à l'échelle du découpage plutôt qu'à celle du calcul.
+func bornesDeLaPeriodeZ(
+	app *pocketbase.PocketBase,
+	cashRegisterID string,
+	date string,
+) (debut string, fin string, err error) {
+	jourDuZ, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return "", "", fmt.Errorf("format de date invalide: %w", err)
+	}
+	fin = jourDuZ.Add(24*time.Hour).Format("2006-01-02") + " 00:00:00"
+
+	precedents, err := app.Dao().FindRecordsByFilter(
+		"z_reports",
+		fmt.Sprintf("cash_register = '%s' && date < '%s 00:00:00'", cashRegisterID, date),
+		"-date", 1, 0,
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("recherche de la clôture précédente: %w", err)
+	}
+
+	if len(precedents) == 0 {
+		// Aucune clôture avant : la période remonte aussi loin que les documents.
+		return "0001-01-01 00:00:00", fin, nil
+	}
+
+	veille := jourDe(precedents[0].GetString("date"))
+	borne, err := time.Parse("2006-01-02", veille)
+	if err != nil {
+		return "", "", fmt.Errorf("date illisible sur %s: %w",
+			precedents[0].GetString("number"), err)
+	}
+	// La borne basse commence au lendemain de la clôture précédente : les deux
+	// périodes se touchent sans se recouvrir.
+	return borne.Add(24*time.Hour).Format("2006-01-02") + " 00:00:00", fin, nil
+}
+
+// ============================================================================
 // loadB2BDocumentsForDay charge les factures B2B payées ET les avoirs B2B émis
 // dans la journée. Ces documents n'ont PAS de session caisse.
 //
@@ -947,7 +1004,21 @@ func aggregateZ(
 			switch movType {
 			case "cash_in":
 				movementsTotal += amount
-			case "cash_out", "safe_drop":
+			case "cash_out", "refund_out", "safe_drop":
+				// ⚠️ `refund_out` MANQUAIT ici, et lui seul : un remboursement en
+				// espèces sortait du tiroir sans que le Z le retranche de ses
+				// espèces attendues, qui s'en trouvaient surestimées d'autant.
+				// GenerateRapportX le déduisait déjà (`cashOut += amount`, plus
+				// haut dans ce fichier), et le contrat l'écrit noir sur blanc :
+				// « fonds de caisse + cash_in − cash_out − refund_out −
+				// safe_drop » (04-refonte-du-z.md, §1). Les deux rapports se
+				// contredisaient donc sur le seul chiffre que le commerçant
+				// vérifie contre son tiroir.
+				//
+				// Portée mesurée le 24 août 2026 : 10 mouvements, 500,40 €. Deux
+				// rapports Z seulement en portaient l'erreur, pour 18,90 € — mais
+				// 481,50 € dormaient dans des sessions jamais clôturées, et
+				// seraient entrés tels quels dans leurs futurs Z.
 				movementsTotal -= amount
 			case "adjustment":
 				movementsTotal += amount
@@ -1246,15 +1317,23 @@ func GenerateRapportZ(app *pocketbase.PocketBase, cashRegisterID string, date st
 	dateEnd := dateStart.Add(24 * time.Hour)
 	fiscalYear := dateStart.Year()
 
-	dateStartStr := dateStart.Format("2006-01-02") + " 00:00:00"
-	dateEndStr := dateEnd.Format("2006-01-02") + " 00:00:00"
+	// Le découpage des SESSIONS reste journalier — un Z prend les sessions
+	// fermées ce jour-là. Ce sont les DOCUMENTS HORS CAISSE qui suivent la
+	// période écoulée depuis la clôture précédente.
+	sessionStartStr := dateStart.Format("2006-01-02") + " 00:00:00"
+	sessionEndStr := dateEnd.Format("2006-01-02") + " 00:00:00"
+
+	dateStartStr, dateEndStr, err := bornesDeLaPeriodeZ(app, cashRegisterID, date)
+	if err != nil {
+		return nil, err
+	}
 
 	// 🔒 IMPORTANT: Ne prendre que les sessions sans z_report_id
 	filter := fmt.Sprintf(
 		"cash_register = '%s' && status = 'closed' && closed_at >= '%s' && closed_at < '%s' && (z_report_id = '' || z_report_id = null)",
 		cashRegisterID,
-		dateStartStr,
-		dateEndStr,
+		sessionStartStr,
+		sessionEndStr,
 	)
 
 	fmt.Printf("\n🔍 Rapport Z - Filtre: %s\n", filter)

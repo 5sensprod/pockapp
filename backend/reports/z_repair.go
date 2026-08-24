@@ -227,12 +227,15 @@ func recalculerRapport(
 		return nil, fmt.Errorf("date illisible: %q", jour)
 	}
 	jour = jour[:10]
-	debut, err := time.Parse("2006-01-02", jour)
+
+	// Les bornes sont celles de la PÉRIODE, pas de la journée, et elles se
+	// calculent par la même fonction que GenerateRapportZ. Le rejeu doit voir
+	// exactement ce que verrait une génération : c'est toute la raison d'être du
+	// partage d'aggregateZ, et elle vaut désormais aussi pour le découpage.
+	dateStartStr, dateEndStr, err := bornesDeLaPeriodeZ(app, rec.GetString("cash_register"), jour)
 	if err != nil {
-		return nil, fmt.Errorf("date invalide %q: %w", jour, err)
+		return nil, err
 	}
-	dateStartStr := debut.Format("2006-01-02") + " 00:00:00"
-	dateEndStr := debut.Add(24*time.Hour).Format("2006-01-02") + " 00:00:00"
 
 	agg, err := aggregateZ(app, sessions, ownerCompany, dateStartStr, dateEndStr)
 	if err != nil {
