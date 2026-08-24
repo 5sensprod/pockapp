@@ -52,6 +52,10 @@ type JournalDocument struct {
 	Moyen  string  `json:"moyen"`
 	Client string  `json:"client,omitempty"`
 	Heure  string  `json:"heure,omitempty"`
+
+	// instant est la clé de tri de la journée. Non exporté : il ne part pas dans
+	// le JSON, l'écran n'a que `Heure` à afficher et rien à retrier.
+	instant time.Time
 }
 
 // JournalJour est une journée : le total encaissé, ses quatre lignes, et le
@@ -205,14 +209,15 @@ func JournalDesVentes(
 
 		j.NbDocuments++
 		j.Documents = append(j.Documents, JournalDocument{
-			ID:     inv.Id,
-			Number: inv.GetString("number"),
-			Nature: nature,
-			Ligne:  ligne.String(),
-			TTC:    roundAmount(montant),
-			Moyen:  moyen,
-			Client: client(inv.GetString("customer")),
-			Heure:  heureDe(inv),
+			ID:      inv.Id,
+			Number:  inv.GetString("number"),
+			Nature:  nature,
+			Ligne:   ligne.String(),
+			TTC:     roundAmount(montant),
+			Moyen:   moyen,
+			Client:  client(inv.GetString("customer")),
+			Heure:   heureDe(inv),
+			instant: instantDe(inv),
 		})
 	}
 
@@ -319,6 +324,22 @@ func JournalDesVentes(
 	var totaux JournalTotaux
 	sortie := make([]JournalJour, 0, len(jours))
 	for _, j := range jours {
+		// Les documents d'une journée se lisent dans l'ordre où ils se sont
+		// produits. Sans ce tri, ils sortaient dans l'ordre des PASSES — tous les
+		// tickets, puis les factures hors caisse — et une facture de 10:05
+		// s'affichait sous un ticket de 15:28. Constaté sur le 20 août 2026.
+		//
+		// Un document sans heure lisible passe en fin de journée : il ne peut pas
+		// prétendre à une place qu'aucun horodatage ne justifie. Le tri est
+		// STABLE, ces documents-là gardent donc leur ordre d'arrivée entre eux.
+		sort.SliceStable(j.Documents, func(a, b int) bool {
+			ia, ib := j.Documents[a].instant, j.Documents[b].instant
+			if ia.IsZero() != ib.IsZero() {
+				return ib.IsZero()
+			}
+			return ia.Before(ib)
+		})
+
 		j.VentesDuJour = roundAmount(j.VentesDuJour)
 		j.Creances = roundAmount(j.Creances)
 		j.Acomptes = roundAmount(j.Acomptes)
@@ -376,15 +397,29 @@ func natureDe(inv *models.Record) string {
 }
 
 func heureDe(inv *models.Record) string {
+	if t := instantDe(inv); !t.IsZero() {
+		return t.Format("15:04")
+	}
+	return ""
+}
+
+// instantDe rend le moment où le document s'est produit — l'encaissement s'il
+// est horodaté, sinon la date, sinon la création. Rend le zéro quand aucun de
+// ces champs ne porte d'heure.
+//
+// ⚠️ C'est la MÊME fonction qui donne l'heure affichée et la clé de tri. Les
+// séparer laisserait un document rangé à une place que son heure contredit,
+// c'est-à-dire exactement ce que ce tri corrige.
+func instantDe(inv *models.Record) time.Time {
 	for _, champ := range []string{"paid_at", "date", "created"} {
 		if t := parsePocketBaseDate(inv.GetString(champ)); !t.IsZero() {
 			if t.Hour() == 0 && t.Minute() == 0 {
 				continue // une date sans heure ne dit rien
 			}
-			return t.Format("15:04")
+			return t
 		}
 	}
-	return ""
+	return time.Time{}
 }
 
 // numeroZDeSession rend le numéro du rapport Z qui couvre une session, ou "" si

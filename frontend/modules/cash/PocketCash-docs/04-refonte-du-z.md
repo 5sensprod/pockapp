@@ -505,3 +505,69 @@ présentée)* → Z-9 → Z-10. N-1, C-4 et S-2 quand on veut.
   journée restent tels quels. La refonte change ce qu'on calcule sur ces
   sessions, pas lesquelles on prend.
 - **AppPos** : hors sujet, aucun rapport avec la caisse PocketBase.
+
+---
+
+## 7. Les sessions que la clôture a manquées — 24 août 2026
+
+`z-clotures` a émis les Z des journées jamais clôturées, mais il en restait
+**deux qu'il déclare « BLOQUÉES »** : leur journée porte déjà un Z, et
+`GenerateRapportZ` rend alors le rapport existant sans rien y ajouter
+(`cash_reports.go:1286`). Leur argent restait hors clôture indéfiniment, et le
+bandeau ambre du journal des ventes le signalait sans fin.
+
+**Ce ne sont pas des sessions à supprimer.** Leurs trois tickets sont en MILIEU
+de chaîne de hachage (séquences 791, 792, 794) — `facture-supprimer` les
+refuserait, et à raison ; leurs deux mouvements totalisent 600 € de remises en
+banque ; et supprimer les sessions seules orphelinerait les tickets sans les
+retirer du journal, qui les compte par leur date : le bandeau s'éteindrait,
+l'argent resterait dehors.
+
+### La vraie anomalie était le fonds d'ouverture
+
+Les deux sessions ont été ouvertes **quelques secondes après la clôture de la
+précédente**, pour la seule saisie d'une remise en banque :
+
+| | tiroir compté à la clôture précédente | fonds saisi | sortie |
+|---|---|---|---|
+| `d1vx…` 03/06 07:44 | 447,96 € (`fdyc…`, 07:40) | 145,96 € | 300 € à 07:45 |
+| `6kih…` 06/06 18:25 | 429,56 € (`bllz…`, 18:25:00) | 129,76 € | 300 € à 18:25 |
+
+Le fonds saisi est le tiroir **après** la remise, que le mouvement retranche une
+seconde fois : les espèces attendues tombaient à −154,04 € et −170,24 €. Un
+tiroir négatif n'existe pas — c'est la saisie qui était fausse, pas la règle.
+
+**On corrige le fonds, jamais le mouvement** : la remise a réellement eu lieu,
+elle doit rester tracée. Et le fonds juste est le tiroir **compté** à la clôture
+précédente, un chiffre mesuré : reposer « fonds saisi + 300 » aurait donné un
+écart de −0,15 € au 03/06 et masqué les **2,00 €** qui manquent réellement entre
+les deux sessions.
+
+### L'ordre des gestes, qui n'est pas négociable
+
+```
+session-fonds -apply   → le fonds redevient le tiroir réel (refusé si la session est déjà dans un Z)
+z-rattacher   -apply   → la session entre dans le session_ids du Z de sa journée
+z-repair      -apply   → les valeurs et la chaîne de hachage se refont, par aggregateZ
+```
+
+Aucun document n'est émis : les deux Z gardent leur numéro et leur date, seul
+leur **découpage** est corrigé. Mesuré sur copie de la base de production :
+
+| | Z-2026-000034 (03/06) | Z-2026-000037 (06/06) |
+|---|---|---|
+| tickets comptés | 10 → **13** | 16 → 16 |
+| ventes du jour | 894,96 → **1 035,63 €** | inchangé |
+| total encaissé | 1 393,96 → **1 534,63 €** | inchangé |
+| espèces attendues | 444,46 → **592,42 €** | 429,56 → **559,12 €** |
+| écart de caisse | 3,50 → **1,35 €** | 0,00 → 0,00 € |
+
+Rejeu complet : 60 rapports, 2 aux montants corrigés, 25 rechaînés, 0 erreur,
+tous égaux à la somme de leurs quatre lignes. Le cumul encaissé passe de
+95 076,18 € à 95 216,85 € — les 140,67 € qui manquaient, rien d'autre. Sessions
+fermées sans Z après l'opération : **0**.
+
+Gardiens : `backend/reports/z_rattachement_test.go` (le lien se pose des deux
+côtés, ne se pose pas deux fois, et une journée sans Z n'est pas l'affaire de
+cet outil) et `backend/reports/session_fonds_test.go` (le mouvement n'est pas
+altéré, et une session déjà scellée dans un Z est refusée).

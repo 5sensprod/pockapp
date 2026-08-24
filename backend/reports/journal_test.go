@@ -322,3 +322,117 @@ func journeeDu(t *testing.T, jours []JournalJour, date string) JournalJour {
 	t.Fatalf("journée %s absente du journal", date)
 	return JournalJour{}
 }
+
+// Les documents d'une journée se lisent dans l'ordre où ils se sont produits.
+//
+// Le journal les collecte par PASSES — tous les tickets de caisse, puis les
+// documents hors caisse — et sans tri final ils sortaient dans cet ordre-là :
+// le 20 août 2026, un ticket de 15:28 s'affichait au-dessus des factures de
+// 10:05 et 14:02. La journée était juste au centime près, et illisible.
+func TestLesDocumentsDUneJourneeSortentDansLOrdreDesHeures(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	_, session, jour := caisseEtSessionDuJour(t, app)
+
+	// Deux factures hors caisse le matin et l'après-midi, un ticket entre les
+	// deux — c'est la journée du 20 août en miniature.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"number": "FAC-103",
+		"date":   jour + " 10:05:00.000Z", "paid_at": jour + " 10:05:00.000Z",
+		"total_ht": 157.50, "total_tva": 31.50, "total_ttc": 189.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"number": "FAC-104",
+		"date":   jour + " 14:02:00.000Z", "paid_at": jour + " 14:02:00.000Z",
+		"total_ht": 235.04, "total_tva": 47.01, "total_ttc": 282.05,
+		"payment_method": "multi", "payment_method_label": "multi",
+	})
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"number": "TIK-821",
+		"date":   jour + " 15:28:00.000Z", "paid_at": jour + " 15:28:00.000Z",
+		"total_ht": 3.80, "total_tva": 0.76, "total_ttc": 4.56,
+		"payment_method": "card", "payment_method_label": "Carte bancaire",
+	})
+
+	jours, _, err := JournalDesVentes(app, societeDeTest, jour, jour)
+	if err != nil {
+		t.Fatalf("journal: %v", err)
+	}
+	if len(jours) != 1 {
+		t.Fatalf("journées rendues = %d, attendu 1", len(jours))
+	}
+
+	attendu := []string{"FAC-103", "FAC-104", "TIK-821"}
+	obtenu := make([]string, 0, len(jours[0].Documents))
+	for _, d := range jours[0].Documents {
+		obtenu = append(obtenu, d.Number)
+	}
+	if len(obtenu) != len(attendu) {
+		t.Fatalf("documents = %v, attendu %v", obtenu, attendu)
+	}
+	for i := range attendu {
+		if obtenu[i] != attendu[i] {
+			t.Fatalf("ordre des documents = %v, attendu %v (par heure)", obtenu, attendu)
+		}
+	}
+
+	heures := []string{"10:05", "14:02", "15:28"}
+	for i, d := range jours[0].Documents {
+		if d.Heure != heures[i] {
+			t.Errorf("heure du document %s = %q, attendu %q", d.Number, d.Heure, heures[i])
+		}
+	}
+}
+
+// Un encaissement non horodaté — `paid_at` à minuit — se range à l'heure de sa
+// CRÉATION, et non en tête de journée.
+//
+// C'est le repli de `instantDe`, et il vaut mieux que l'alternative : une date à
+// minuit placerait le document avant tous les autres, en annonçant une
+// antériorité que rien ne mesure.
+func TestUnEncaissementNonHorodateSeRangeAsonHeureDeCreation(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	_, _, jour := caisseEtSessionDuJour(t, app)
+
+	// Créée en premier, mais sans heure d'encaissement : son `created` est
+	// pourtant postérieur au 09:00 de la veille de l'autre facture.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"number": "FAC-MINUIT",
+		"date":   jour + " 00:00:00.000Z", "paid_at": jour + " 00:00:00.000Z",
+		"total_ht": 50.00, "total_tva": 10.00, "total_ttc": 60.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"number": "FAC-MATIN",
+		"date":   jour + " 09:00:00.000Z", "paid_at": jour + " 09:00:00.000Z",
+		"total_ht": 100.00, "total_tva": 20.00, "total_ttc": 120.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	jours, _, err := JournalDesVentes(app, societeDeTest, jour, jour)
+	if err != nil {
+		t.Fatalf("journal: %v", err)
+	}
+	if len(jours[0].Documents) != 2 {
+		t.Fatalf("documents = %d, attendu 2", len(jours[0].Documents))
+	}
+	if jours[0].Documents[0].Number != "FAC-MATIN" {
+		t.Errorf("premier document = %s, attendu FAC-MATIN : le document dont "+
+			"l'encaissement n'est pas horodaté a pris la tête de la journée",
+			jours[0].Documents[0].Number)
+	}
+	if jours[0].Documents[1].Heure == "00:00" {
+		t.Errorf("le document rendu annonce 00:00 : le repli sur `created` " +
+			"n'a pas joué")
+	}
+}
