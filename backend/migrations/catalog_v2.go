@@ -30,10 +30,14 @@
 //     est donc détectée et reprise, pas acceptée.
 //
 //  2. REFUS SI LA DONNÉE N'EST PAS RECONSTRUCTIBLE. La recréation n'est
-//     légitime que parce que le catalogue est une PROJECTION de NeDB : tout
-//     enregistrement porte un `legacy_id`, et `catalog-import -load` le
-//     reconstruit à l'identique. Si un seul enregistrement n'en porte pas,
-//     c'est une saisie directe, et la migration s'arrête.
+//     légitime que parce que le catalogue est une PROJECTION de NeDB :
+//     `catalog-import -load` le reconstruit à l'identique. Dès qu'un seul
+//     enregistrement échappe à cette projection, la migration s'arrête.
+//
+//     **C'est `load.Inspect` qui en décide, depuis le 24 août 2026** — la même
+//     fonction que le chargeur, et pour la même question. Voir le corps de
+//     `MigrateCatalogV2` : la garde locale qu'elle remplace laissait passer
+//     les entités nées en caisse, que `guard.go` protège nommément.
 //
 //     Après passage : relancer `go run ./backend/cmd/catalog-import -load`.
 //
@@ -73,6 +77,8 @@ package migrations
 import (
 	"fmt"
 	"log"
+
+	"pocket-react/backend/catalog/load"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
@@ -122,10 +128,33 @@ func MigrateCatalogV2(app *pocketbase.PocketBase) error {
 	}
 
 	// ── Garde 2 : la donnée est-elle reconstructible ? ────────────────────
-	// Le catalogue est une projection de NeDB : chaque enregistrement porte un
-	// `legacy_id` et `catalog-import -load` le reconstruit. Recréer les
-	// collections ne détruit donc rien d'irremplaçable — à condition que ce
-	// soit vrai de TOUS les enregistrements.
+	//
+	// C'est `load.Inspect` qui répond, et PAS un critère local. La question
+	// posée ici — « recréer ces collections détruirait-il quelque chose
+	// d'irremplaçable ? » — est mot pour mot celle du chargeur, et deux
+	// réponses à une même question, c'est ainsi qu'on en obtient une fausse.
+	//
+	// ⚠️ Elle en A donné une, et c'est la raison de ce code. La garde d'ici
+	// ne testait que `legacy_id = '' OR legacy_id IS NULL`. Or un produit né
+	// en caisse porte `pa_…` — un `legacy_id` NON VIDE. Il passait donc, et
+	// `DeleteCollection` l'emportait, alors même que `guard.go` le protège
+	// nommément. La divergence était invisible : les deux gardes disaient
+	// « reconstructible », l'une avait tort, et celle qui avait tort
+	// s'exécute au DÉMARRAGE, sans `-force-purge` pour la retenir.
+	//
+	// Le contrôle local subsiste tout de même, en second : `load.Inspect` ne
+	// regarde pas si une collection a un champ `legacy_id`, et une base
+	// ancienne peut porter des enregistrements sans clé stable.
+	findings, err := load.Inspect(app.Dao())
+	if err != nil {
+		return fmt.Errorf("catalog v2: inspection de la base: %w", err)
+	}
+	if findings.Blocks() {
+		return fmt.Errorf(
+			"catalog v2: la recréation des collections du catalogue est refusée.\n%s",
+			findings.Explain())
+	}
+
 	for _, name := range catalogV2DropOrder {
 		col, err := app.Dao().FindCollectionByNameOrId(name)
 		if err != nil {

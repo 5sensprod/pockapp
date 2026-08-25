@@ -92,6 +92,13 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// MaxSize, donc à 0, ce qui rendait TOUTE mise à jour d'un fournisseur
 		// impossible. DOIT rester après MigrateCatalogV2, qui crée la collection.
 		FixSupplierJsonMaxSize,
+
+		// 14. L'état commercial — « occasion », « location » — sort de l'arbre
+		// des catégories et devient un champ du produit (DECISIONS,
+		// 2026-08-24). DOIT rester après MigrateCatalogV2, qui recrée
+		// `products` : placée avant, elle serait détruite avec la collection,
+		// et sans la moindre erreur.
+		AddCommercialStateToProducts,
 	}
 
 	for _, migrate := range migrations {

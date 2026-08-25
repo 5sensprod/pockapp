@@ -45,10 +45,33 @@ type Findings struct {
 	StockEvents map[string]int
 	// Documents compte les pièces qui citent des produits, par collection.
 	Documents map[string]int
+
+	// CatalogueVide dit que les quatre collections purgées ne contiennent
+	// AUCUN enregistrement.
+	//
+	// ── Pourquoi cela suffit à ne plus bloquer ────────────────────────────
+	//
+	// La garde répond à une seule question : « que perd-on à purger ? ». Si le
+	// catalogue est vide, la réponse est « rien » — il n'y a pas d'entité née
+	// ici à détruire, pas de produit dont un mouvement raconterait l'histoire.
+	//
+	// Les documents comptés ci-dessus ne changent rien à cela. Une facture qui
+	// cite un produit absent le cite DÉJÀ dans le vide ; purger zéro
+	// enregistrement n'aggrave pas son sort d'un iota.
+	//
+	// Sans cette nuance, une base de production au catalogue vide — exactement
+	// l'état de la reprise du 24 août 2026, 1204 factures et 0 produit —
+	// n'aurait pu être chargée qu'avec `-force-purge`. On aurait pris
+	// l'habitude d'écrire le drapeau qui détruit sans retour, pour charger une
+	// base où il n'y avait rien à détruire.
+	CatalogueVide bool
 }
 
 // Blocks dit si le contenu trouvé interdit une purge non forcée.
 func (f Findings) Blocks() bool {
+	if f.CatalogueVide {
+		return false
+	}
 	return f.total() > 0
 }
 
@@ -65,6 +88,9 @@ func (f Findings) total() int {
 // Explain rend le message affiché à l'opérateur. Il nomme ce qui serait perdu
 // plutôt que de dire « refusé » : c'est le décompte qui décide, pas l'outil.
 func (f Findings) Explain() string {
+	if f.CatalogueVide {
+		return "Catalogue vide : la purge ne détruirait rien, quels que soient les documents en base."
+	}
 	if !f.Blocks() {
 		return "Base reconstructible : aucune donnée née ici, aucun mouvement, aucun document."
 	}
@@ -167,8 +193,26 @@ func Inspect(dao *daos.Dao) (Findings, error) {
 		}
 	}
 
+	// En dernier, parce que cela peut tout annuler : le catalogue est-il vide ?
+	vide := true
+	for _, name := range purgedCollections {
+		n, err := countRows(dao, name, nil)
+		if err != nil {
+			return f, err
+		}
+		if n > 0 {
+			vide = false
+			break
+		}
+	}
+	f.CatalogueVide = vide
+
 	return f, nil
 }
+
+// purgedCollections — celles que le chargeur vide. `external_refs` en fait
+// partie : elle est reconstruite avec le reste.
+var purgedCollections = []string{"external_refs", "products", "categories", "brands", "suppliers"}
 
 // countRows compte, et rend 0 sans erreur si la table n'existe pas : une base
 // installée avant l'ajout d'une collection est un cas normal, pas une panne.

@@ -109,3 +109,36 @@ func indexOf(h, n string) int {
 	}
 	return -1
 }
+
+func TestUnCatalogueVideNeBloqueJamais(t *testing.T) {
+	// Le cas de la reprise du 24 août 2026 : 1204 factures en base, et ZÉRO
+	// produit. Purger ne peut rien détruire — une facture qui cite un produit
+	// absent le cite déjà dans le vide.
+	//
+	// Sans cette règle, charger une telle base aurait exigé `-force-purge`,
+	// c'est-à-dire prendre l'habitude d'écrire le drapeau qui détruit sans
+	// retour pour charger une base où il n'y a rien à détruire.
+	f := Findings{
+		Documents:     map[string]int{"invoices": 1204, "orders": 16},
+		CatalogueVide: true,
+	}
+	if f.Blocks() {
+		t.Fatal("un catalogue vide ne doit jamais bloquer la purge")
+	}
+	if got := f.Explain(); got == "" {
+		t.Fatal("Explain doit dire pourquoi il ne bloque pas")
+	}
+}
+
+func TestUnCataloguePeupleBloqueMemeSansDocument(t *testing.T) {
+	// Le corollaire : dès qu'il reste quelque chose à perdre, la garde
+	// retrouve toute sa force. Si celui-ci cédait, `CatalogueVide` deviendrait
+	// un interrupteur qui désarme la garde au lieu de la préciser.
+	f := Findings{
+		CreatedHere:   map[string]int{"products": 1},
+		CatalogueVide: false,
+	}
+	if !f.Blocks() {
+		t.Fatal("une entité née en caisse doit bloquer, documents ou pas")
+	}
+}
