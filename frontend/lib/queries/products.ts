@@ -10,75 +10,72 @@
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useQuery } from '@tanstack/react-query'
 
-// 🔢 Nombre de produits par marque — sur TOUT le catalogue
+// 🔢 LES DÉCOMPTES DU CATALOGUE — UNE REQUÊTE, CALCULÉE PAR LE SERVEUR
 //
-// ⚠️ NE PAS COMPTER DEPUIS `useProducts` : il rend `getList(1, 50)`, donc les
-// 50 produits les plus récents. Compter les marques là-dedans donnait « 0 »
-// pour l'immense majorité des 287 marques — non parce qu'elles n'ont pas de
-// produits, mais parce que ces produits n'étaient pas dans la page. Constaté à
-// l'écran le 13 août 2026.
+// Remplace `useProductCountsByBrand` et `useProductIdsByCategory`, qui
+// balayaient tous deux le catalogue ENTIER depuis le navigateur — 2999
+// produits, et `getFullList` les lit par lots de 500 dont chacun n'est demandé
+// qu'après la réponse du précédent : six allers-retours en série, refaits à
+// chaque montage des trois écrans qui en dépendaient, et à chaque rechargement
+// de l'application. Mesuré le 25 août 2026.
 //
-// Une requête, et une seule : `fields: 'brand'` ne ramène que l'identifiant de
-// marque de chaque produit. 2999 lignes d'un seul champ, là où 287 requêtes de
-// comptage — une par marque — auraient été le réflexe coûteux.
-export function useProductCountsByBrand(companyId?: string) {
+// Le calcul vit maintenant dans `backend/routes/catalog_counts_routes.go`, là
+// où sont les données. ⚠️ **Ne pas revenir à un décompte côté client** : le
+// total d'une branche n'est pas la somme des totaux de ses enfants — un
+// produit rangé dans deux catégories sœurs ne compte qu'une fois dans leur
+// ancêtre commun —, et deux comptages écrits séparément finissent toujours par
+// diverger. C'est exactement ce qui a produit la régression du Z. La règle est
+// gardée par `backend/routes/catalog_counts_test.go`.
+export interface CategoryCounts {
+	/** Produits rattachés à CE nœud. */
+	direct: number
+	/** Produits DISTINCTS de la sous-arborescence, ce nœud compris. */
+	total: number
+}
+
+export interface CatalogCounts {
+	parMarque: Record<string, number>
+	parCategorie: Record<string, CategoryCounts>
+	totalProduits: number
+}
+
+/** La forme rendue par `GET /api/catalog/counts`. */
+interface ReponseDecomptes {
+	par_marque: Record<string, number>
+	par_categorie: Record<string, CategoryCounts>
+	total_produits: number
+}
+
+export function useCatalogCounts(companyId?: string) {
 	const pb = usePocketBase()
 
-	return useQuery({
-		queryKey: ['products', 'counts-by-brand', companyId],
-		// Le catalogue bouge au rythme des rechargements, pas à la seconde.
+	return useQuery<CatalogCounts>({
+		queryKey: ['catalog-counts', companyId],
+		// Le catalogue bouge au rythme des ventes et des imports, pas à la
+		// seconde ; le temps réel PocketBase invalide cette clé quand un autre
+		// poste écrit (`frontend/lib/realtime/`).
 		staleTime: 5 * 60_000,
 		queryFn: async () => {
-			const rows = await pb.collection('products').getFullList<{
-				brand?: string
-			}>({
-				fields: 'brand',
-				filter: companyId ? `company = "${companyId}"` : undefined,
+			const reponse: ReponseDecomptes = await pb.send('/api/catalog/counts', {
+				method: 'GET',
+				query: companyId ? { company: companyId } : undefined,
 			})
 
-			const counts: Record<string, number> = {}
-			for (const row of rows) {
-				if (row.brand) counts[row.brand] = (counts[row.brand] ?? 0) + 1
+			return {
+				parMarque: reponse.par_marque ?? {},
+				parCategorie: reponse.par_categorie ?? {},
+				totalProduits: reponse.total_produits ?? 0,
 			}
-			return counts
 		},
 		enabled: !!companyId,
 	})
 }
 
-// 🔢 Produits rattachés à chaque catégorie — sur TOUT le catalogue
-//
-// Rend les IDENTIFIANTS et non un décompte, pour une raison précise : un
-// produit peut appartenir à deux catégories sœurs, et il ne doit compter
-// qu'une fois dans leur ancêtre commun. Additionner des décomptes en remontant
-// l'arbre donnerait un total faux ; il faut pouvoir dédoublonner.
-//
-// Même remarque de pagination que `useProductCountsByBrand` : une requête,
-// `fields: 'id,categories'`, sur l'ensemble du catalogue.
-export function useProductIdsByCategory(companyId?: string) {
-	const pb = usePocketBase()
-
-	return useQuery({
-		queryKey: ['products', 'ids-by-category', companyId],
-		staleTime: 5 * 60_000,
-		queryFn: async () => {
-			const rows = await pb.collection('products').getFullList<{
-				id: string
-				categories?: string[]
-			}>({
-				fields: 'id,categories',
-				filter: companyId ? `company = "${companyId}"` : undefined,
-			})
-
-			const byCategory: Record<string, string[]> = {}
-			for (const row of rows) {
-				for (const categoryId of row.categories ?? []) {
-					if (!byCategory[categoryId]) byCategory[categoryId] = []
-					byCategory[categoryId].push(row.id)
-				}
-			}
-			return byCategory
-		},
-		enabled: !!companyId,
-	})
+/** Le décompte d'une catégorie, ou zéro. Évite de répéter le repli sur chaque
+ *  nœud de l'arbre. */
+export function countsOfCategory(
+	counts: CatalogCounts | undefined,
+	categoryId: string,
+): CategoryCounts {
+	return counts?.parCategorie[categoryId] ?? { direct: 0, total: 0 }
 }

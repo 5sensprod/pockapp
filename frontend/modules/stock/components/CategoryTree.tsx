@@ -23,7 +23,7 @@ import {
 	Plus,
 	Trash2,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
@@ -33,7 +33,11 @@ import {
 	useCategories,
 	useDeleteCategory,
 } from '@/lib/queries/categories'
-import { useProductIdsByCategory } from '@/lib/queries/products'
+import {
+	type CatalogCounts,
+	countsOfCategory,
+	useCatalogCounts,
+} from '@/lib/queries/products'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 import { CategoryDialog } from './CategoryDialog'
@@ -43,45 +47,26 @@ interface CategoryTreeProps {
 	onSelect: (category: CatalogCategoryShape | null) => void
 }
 
-/** Objet vide PARTAGÉ : `{}` créé à la volée change d'identité à chaque rendu
- *  et ferait recalculer tout l'arbre pour rien. */
-const EMPTY_IDS: Record<string, string[]> = {}
-
 /**
- * Décomptes d'une branche : ce qui est rattaché ICI, et ce que la branche
- * entière emporte, **dédoublonné**.
+ * ⚠️ LES DÉCOMPTES NE SE CALCULENT PLUS ICI.
  *
- * Un produit rattaché à deux catégories sœurs ne compte qu'une fois dans leur
- * ancêtre commun : le total d'un parent n'est donc pas la somme de ceux de ses
- * enfants. C'est la même règle que côté site (§6 bis du contrat catalogue), et
- * elle doit rester la même — deux comptages écrits séparément finissent
- * toujours par diverger.
+ * Ce fichier portait un `countsOf` récursif qui dédoublonnait les produits
+ * d'une branche — un produit rangé dans deux catégories sœurs ne comptant
+ * qu'une fois dans leur ancêtre commun. Pour le nourrir, il fallait les
+ * IDENTIFIANTS des 2999 produits, soit six allers-retours HTTP en série à
+ * chaque montage de l'arbre.
+ *
+ * La même règle vit maintenant dans `backend/routes/catalog_counts_routes.go`,
+ * écrite UNE fois et gardée par un test. Ne pas la réécrire ici : deux
+ * comptages séparés finissent toujours par diverger.
  */
-function countsOf(
-	node: CategoryNode,
-	idsByCategory: Record<string, string[]>,
-): { direct: number; total: number; subtree: Set<string> } {
-	const subtree = new Set<string>(idsByCategory[node.id] ?? [])
-	for (const child of node.children) {
-		for (const id of countsOf(child, idsByCategory).subtree) subtree.add(id)
-	}
-	return {
-		direct: idsByCategory[node.id]?.length ?? 0,
-		total: subtree.size,
-		subtree,
-	}
-}
 
 export function CategoryTree({ selectedId, onSelect }: CategoryTreeProps) {
 	const { activeCompanyId } = useActiveCompany()
-	const {
-		data: categories,
-		isLoading,
-		refetch,
-	} = useCategories({ companyId: activeCompanyId ?? undefined })
-	const { data: idsByCategory } = useProductIdsByCategory(
-		activeCompanyId ?? undefined,
-	)
+	const { data: categories, isLoading } = useCategories({
+		companyId: activeCompanyId ?? undefined,
+	})
+	const { data: catalogCounts } = useCatalogCounts(activeCompanyId ?? undefined)
 	const deleteCategory = useDeleteCategory()
 
 	const [dialogOpen, setDialogOpen] = useState(false)
@@ -93,13 +78,6 @@ export function CategoryTree({ selectedId, onSelect }: CategoryTreeProps) {
 	const [confirmOpen, setConfirmOpen] = useState(false)
 	const [categoryToDelete, setCategoryToDelete] =
 		useState<CatalogCategoryShape | null>(null)
-
-	// Refetch quand l'entreprise change
-	useEffect(() => {
-		if (activeCompanyId) {
-			refetch()
-		}
-	}, [activeCompanyId, refetch])
 
 	const tree = categories ? buildCategoryTree(categories) : []
 
@@ -182,7 +160,7 @@ export function CategoryTree({ selectedId, onSelect }: CategoryTreeProps) {
 						onAdd={handleAdd}
 						onEdit={handleEdit}
 						onDelete={askDelete}
-						idsByCategory={idsByCategory ?? EMPTY_IDS}
+						catalogCounts={catalogCounts}
 					/>
 				))}
 			</div>
@@ -232,7 +210,7 @@ interface TreeNodeProps {
 	onAdd: (parentId: string) => void
 	onEdit: (cat: CatalogCategoryShape) => void
 	onDelete: (cat: CatalogCategoryShape) => void
-	idsByCategory: Record<string, string[]>
+	catalogCounts?: CatalogCounts
 }
 
 function TreeNode({
@@ -243,14 +221,14 @@ function TreeNode({
 	onAdd,
 	onEdit,
 	onDelete,
-	idsByCategory,
+	catalogCounts,
 }: TreeNodeProps) {
 	// Replié par défaut hors racines : le catalogue porte 463 catégories, et
 	// tout déplier d'emblée noyait la structure au lieu de la montrer.
 	const [expanded, setExpanded] = useState(level === 0)
 	const hasChildren = node.children.length > 0
 	const isSelected = selectedId === node.id
-	const { direct, total } = countsOf(node, idsByCategory)
+	const { direct, total } = countsOfCategory(catalogCounts, node.id)
 	const pb = usePocketBase()
 	const imageUrl = node.image ? pb.files.getUrl(node, node.image) : null
 
@@ -372,7 +350,7 @@ function TreeNode({
 							onAdd={onAdd}
 							onEdit={onEdit}
 							onDelete={onDelete}
-							idsByCategory={idsByCategory}
+							catalogCounts={catalogCounts}
 						/>
 					))}
 				</div>

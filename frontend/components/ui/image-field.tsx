@@ -15,9 +15,15 @@ import {
 	type OptimizeOptions,
 	optimizeImage,
 } from '@/lib/images/optimize-image'
+import {
+	messageRefus,
+	typeUtilisable,
+	verifierImages,
+} from '@/lib/images/verifier-image'
 import { cn } from '@/lib/utils'
 import { ImagePlus, Loader2, Trash2, Upload, Wand2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 interface ImageFieldProps {
 	/** URL de l'image déjà enregistrée, résolue par `pb.files.getUrl`. */
@@ -86,6 +92,20 @@ export function ImageField({
 		onRemovedChange(false)
 		setGain(null)
 
+		// ⚠️ Une extension n'est pas un format. `accept` et `file.type` se
+		// déduisent tous deux du NOM : un HEIC renommé `.png` les franchit et
+		// n'échoue qu'au serveur, qui renifle les octets
+		// (`forms/validators/file.go:65`). Ce champ n'avait jamais montré le
+		// défaut — non qu'il en soit protégé, mais parce que `optimize` ré-encode
+		// en WebP et masque le problème par effet de bord. Le masque tombe dès
+		// que la conversion n'a pas lieu : type non rasterisable, ou WebP plus
+		// lourd que l'original. On décode donc ici, pour le dire en français.
+		const { lisibles } = await verifierImages([file])
+		if (lisibles.length === 0) {
+			toast.error(messageRefus([file]))
+			return
+		}
+
 		if (!optimize) {
 			onChange(file)
 			return
@@ -128,8 +148,16 @@ export function ImageField({
 				new URL(currentUrl, document.baseURI).pathname.split('/').pop() ||
 					'image',
 			)
+			// ⚠️ `blob.type` vient de l'en-tête `Content-Type` de la réponse, et il
+			// arrive vide ou en `application/octet-stream`. `estRasterisable('')`
+			// étant faux, `optimizeImage` sautait alors l'optimisation EN SILENCE
+			// et le bouton annonçait « déjà optimale, rien à gagner » — un message
+			// faux, sur une image qui avait tout à gagner. On replie donc sur
+			// l'extension du nom, qui est ici une source acceptable : le fichier
+			// vient de notre propre stockage, où il a déjà passé la validation
+			// serveur, et son extension n'a donc pas de raison de mentir.
 			const res = await optimizeImage(
-				new File([blob], nom, { type: blob.type }),
+				new File([blob], nom, { type: typeUtilisable(blob.type, nom) }),
 				optimize,
 			)
 			if (res.optimized) {

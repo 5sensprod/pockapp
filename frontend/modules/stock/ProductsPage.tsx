@@ -35,10 +35,9 @@ import { toStockRow } from '@/lib/queries/catalog-rows'
 import { useCategories } from '@/lib/queries/categories'
 import {
 	collectBranchIds,
-	collectPopulatedCategoryIds,
 	toCategoryOptions,
 } from '@/lib/queries/category-tree'
-import { useProductIdsByCategory } from '@/lib/queries/products'
+import { useCatalogCounts } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
@@ -106,9 +105,7 @@ export function ProductsPage() {
 	}, [activeCompanyId])
 
 	const categories = useCategories({ companyId: activeCompanyId ?? undefined })
-	const productIdsByCategory = useProductIdsByCategory(
-		activeCompanyId ?? undefined,
-	)
+	const catalogCounts = useCatalogCounts(activeCompanyId ?? undefined)
 
 	// Filtrer sur une catégorie, c'est filtrer sur SA BRANCHE : les produits sont
 	// rattachés aux feuilles, jamais aux ancêtres. Sans cela, « Guitares » ne
@@ -127,33 +124,39 @@ export function ProductsPage() {
 	// Les catégories dans l'ordre de l'arbre, sans les branches réellement
 	// vides. Un parent sans produit direct reste visible dès qu'une feuille sous
 	// lui en porte : masquer ce parent casserait le contexte de l'arbre.
-	const populatedCategoryIds = useMemo(
-		() =>
-			collectPopulatedCategoryIds(
-				categories.data ?? [],
-				productIdsByCategory.data ?? {},
-			),
-		[categories.data, productIdsByCategory.data],
-	)
+	// `total` compte déjà toute la sous-arborescence : le serveur a remonté
+	// l'arbre, il n'y a plus rien à remonter ici. Un parent sans produit direct
+	// reste donc visible dès qu'une feuille sous lui en porte, ce qui était
+	// exactement l'objet de `collectPopulatedCategoryIds`.
+	const populatedCategoryIds = useMemo(() => {
+		const peuplees = new Set<string>()
+		for (const [id, compte] of Object.entries(
+			catalogCounts.data?.parCategorie ?? {},
+		)) {
+			if (compte.total > 0) peuplees.add(id)
+		}
+		return peuplees
+	}, [catalogCounts.data])
+
 	const categoryOptions = useMemo(
 		() =>
-			productIdsByCategory.data
+			catalogCounts.data
 				? toCategoryOptions(categories.data ?? []).filter((categorie) =>
 						populatedCategoryIds.has(categorie.id),
 					)
 				: [],
-		[categories.data, populatedCategoryIds, productIdsByCategory.data],
+		[categories.data, populatedCategoryIds, catalogCounts.data],
 	)
 
 	// Une catégorie peut devenir vide après une réaffectation ou un nouvel
 	// import. Elle disparaît alors des choix et ne doit pas rester sélectionnée
 	// comme un filtre invisible.
 	useEffect(() => {
-		if (!categoryId || !productIdsByCategory.data) return
+		if (!categoryId || !catalogCounts.data) return
 		if (populatedCategoryIds.has(categoryId)) return
 		setCategoryId('')
 		setPage(1)
-	}, [categoryId, populatedCategoryIds, productIdsByCategory.data])
+	}, [categoryId, populatedCategoryIds, catalogCounts.data])
 
 	const products = useCatalogProducts({
 		companyId: activeCompanyId ?? undefined,
@@ -309,7 +312,7 @@ export function ProductsPage() {
 					vide='Toutes les catégories'
 					recherche='Rechercher une catégorie…'
 					options={categoryOptions}
-					loading={categories.isLoading || productIdsByCategory.isLoading}
+					loading={categories.isLoading || catalogCounts.isLoading}
 				/>
 				<FilterSelect
 					value={supplierId}

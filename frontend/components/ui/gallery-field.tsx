@@ -32,6 +32,11 @@
 
 import { Button } from '@/components/ui/button'
 import {
+	type OptimizeOptions,
+	optimizeImage,
+} from '@/lib/images/optimize-image'
+import { messageRefus, verifierImages } from '@/lib/images/verifier-image'
+import {
 	type GalleryEntry,
 	MAX_GALERIE,
 	ajouter,
@@ -50,6 +55,7 @@ import {
 	Upload,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 const TYPES_ACCEPTES = 'image/jpeg,image/png,image/webp,image/avif'
 
@@ -84,6 +90,11 @@ interface GalleryFieldProps {
 	onPromote?: (nom: string) => void
 	promoting?: boolean
 	disabled?: boolean
+	/** Réduit et convertit en WebP chaque fichier choisi, comme le fait
+	 *  `ImageField` sur les marques et les catégories. Absent = le fichier part
+	 *  tel quel — et c'est ce qui exposait la galerie produit aux refus de MIME
+	 *  du serveur (voir `auChangement`). */
+	optimize?: OptimizeOptions
 }
 
 export function GalleryField({
@@ -94,6 +105,7 @@ export function GalleryField({
 	onPromote,
 	promoting,
 	disabled,
+	optimize,
 }: GalleryFieldProps) {
 	const inputRef = useRef<HTMLInputElement>(null)
 
@@ -115,11 +127,49 @@ export function GalleryField({
 
 	const choisir = () => inputRef.current?.click()
 
-	const auChangement = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const auChangement = async (e: React.ChangeEvent<HTMLInputElement>) => {
 		const fichiers = Array.from(e.target.files ?? [])
-		if (fichiers.length > 0) onChange(ajouter(value, fichiers))
 		// Sans cela, rechoisir le MÊME fichier ne déclenche aucun événement.
+		// Fait AVANT l'attente : l'input est réutilisable pendant la
+		// vérification, et `e.target` ne survivrait pas à l'`await`.
 		e.target.value = ''
+		if (fichiers.length === 0) return
+
+		// ⚠️ Une extension n'est pas un format. `accept` et `file.type` se
+		// déduisent tous deux du NOM du fichier : un HEIC renommé `.png` passe
+		// les deux et n'échoue qu'au serveur, avec un message d'API portant un
+		// nom de fichier que l'utilisateur n'a jamais vu (25 août 2026). On
+		// décode ici pour pouvoir le dire en français, tout de suite.
+		const { lisibles, refuses } = await verifierImages(fichiers)
+
+		if (refuses.length > 0) toast.error(messageRefus(refuses))
+		if (lisibles.length === 0) return
+
+		// ── LA CONVERSION EST AUSSI CE QUI REND LE FICHIER ACCEPTABLE ────────
+		// Elle n'est pas qu'une affaire de poids. Marques et catégories
+		// n'avaient jamais ce refus de MIME parce que leur `ImageField` porte un
+		// `optimize` : le fichier choisi y est décodé puis RÉ-ENCODÉ en WebP, et
+		// ce qui part au serveur est un `image/webp` authentique, quels qu'aient
+		// été les octets d'entrée. La galerie produit, elle, envoyait l'original
+		// tel quel — d'où un « .png » qui n'en était pas, refusé ici et nulle
+		// part ailleurs (25 août 2026).
+		//
+		// ⚠️ `optimizeImage` rend TOUJOURS un fichier utilisable, l'original
+		// compris quand la conversion n'a pas lieu d'être (déjà plus léger) ou
+		// n'aboutit pas. Ce n'est donc pas une garantie : c'est ce qui ferme le
+		// cas courant. La validation serveur reste l'autorité.
+		const aAjouter = optimize
+			? await Promise.all(
+					lisibles.map(async (fichier) => {
+						const res = await optimizeImage(fichier, optimize)
+						return res.file
+					}),
+				)
+			: lisibles
+
+		// Les fichiers valides du même lot entrent quand même : refuser les huit
+		// pour un seul fautif obligerait à tout rechoisir.
+		onChange(ajouter(value, aAjouter))
 	}
 
 	const plein = value.length >= MAX_GALERIE

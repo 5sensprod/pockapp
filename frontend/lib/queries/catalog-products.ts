@@ -315,6 +315,12 @@ export function invalidateCatalog(
 ) {
 	queryClient.invalidateQueries({ queryKey: ['catalog-products'] })
 	queryClient.invalidateQueries({ queryKey: ['products'] })
+	// Les décomptes du module `stock` sont calculés par le serveur et gardés
+	// cinq minutes, ET ÉCRITS SUR LE DISQUE (`main.tsx`). Les oublier ici
+	// figerait les compteurs de marques et de catégories bien au-delà de la
+	// session : le pire cas n'est pas un écran en retard, c'est un écran en
+	// retard qui le reste après un rechargement.
+	queryClient.invalidateQueries({ queryKey: ['catalog-counts'] })
 	queryClient.invalidateQueries({ queryKey: ['site-catalog'] })
 }
 

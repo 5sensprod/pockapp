@@ -17,6 +17,8 @@ import {
 	TableRow as UiTableRow,
 } from '@/components/ui/table'
 import {
+	ChevronLeft,
+	ChevronRight,
 	Copy,
 	Globe,
 	ImageIcon,
@@ -27,31 +29,32 @@ import {
 	Trash2,
 	Truck,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands, useDeleteBrand, useUpdateBrand } from '@/lib/queries/brands'
 import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
-import { useProductCountsByBrand } from '@/lib/queries/products'
+import { useCatalogCounts } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 import { BrandDialog } from './BrandDialog'
 import { ImageBatchOptimizer } from './ImageBatchOptimizer'
 
+/** Assez pour balayer le catalogue vite, assez peu pour ne pas remonter 225
+ *  logos d'un coup. */
+const PER_PAGE = 50
+
 export function BrandList() {
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase()
-	const {
-		data: brands,
-		isLoading,
-		refetch,
-	} = useBrands({ companyId: activeCompanyId ?? undefined })
-	// Le décompte porte sur TOUT le catalogue, pas sur une page de produits —
-	// voir le commentaire de `useProductCountsByBrand`.
-	const { data: productCountByBrand } = useProductCountsByBrand(
-		activeCompanyId ?? undefined,
-	)
+	const { data: brands, isLoading } = useBrands({
+		companyId: activeCompanyId ?? undefined,
+	})
+	// Le décompte porte sur TOUT le catalogue, pas sur une page de produits, et
+	// il est calculé par le serveur — voir `useCatalogCounts`.
+	const { data: catalogCounts } = useCatalogCounts(activeCompanyId ?? undefined)
+	const productCountByBrand = catalogCounts?.parMarque
 	const { data: suppliers } = useSuppliers({
 		companyId: activeCompanyId ?? undefined,
 	})
@@ -74,6 +77,7 @@ export function BrandList() {
 	)
 
 	const [search, setSearch] = useState('')
+	const [page, setPage] = useState(1)
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [editBrand, setEditBrand] = useState<CatalogBrandShape | null>(null)
 
@@ -119,7 +123,7 @@ export function BrandList() {
 
 	/** La recherche porte sur le nom ET le slug — c'est le slug qui distingue
 	 *  deux marques homonymes (`cordoba` / `cordoba-2`), le nom ne le peut pas. */
-	const visibleBrands = useMemo(() => {
+	const filteredBrands = useMemo(() => {
 		const needle = search.trim().toLowerCase()
 		if (!needle) return sortedBrands
 		return sortedBrands.filter(
@@ -129,12 +133,39 @@ export function BrandList() {
 		)
 	}, [sortedBrands, search])
 
-	// Refetch quand l'entreprise change
-	useEffect(() => {
-		if (activeCompanyId) {
-			refetch()
-		}
-	}, [activeCompanyId, refetch])
+	// ═══════════════════════════════════════════════════════════════════════
+	// LA PAGINATION EST CÔTÉ CLIENT, ET C'EST UN CHOIX — 25 août 2026
+	// ═══════════════════════════════════════════════════════════════════════
+	// Les 287 marques sont lues d'un coup, en UNE requête, désormais mise en
+	// cache cinq minutes et écrite sur le disque (`main.tsx`). Ce n'est pas là
+	// que l'écran coûtait : ce qui coûtait, c'était de monter 287 lignes et
+	// jusqu'à 225 balises `<img>` d'un seul tenant. C'est donc le RENDU qu'on
+	// pagine, pas la requête.
+	//
+	// ⚠️ Paginer côté serveur casserait deux choses réelles, et il faudrait
+	// les déplacer serveur avec :
+	//   • `duplicateNames` doit voir les 287 marques pour repérer ses sept
+	//     paires homonymes — sur une page de 50, deux jumelles séparées par la
+	//     pagination ne seraient plus signalées nulle part ;
+	//   • la recherche porte sur le nom ET le slug, en mémoire.
+	// Tant que le catalogue tient dans cet ordre de grandeur, la requête
+	// unique est le bon compromis. Au-delà, c'est un vrai chantier, pas un
+	// réglage.
+	const totalPages = Math.max(1, Math.ceil(filteredBrands.length / PER_PAGE))
+
+	// Une recherche qui réduit la liste doit ramener à la première page :
+	// rester en page 7 d'un résultat qui en compte deux afficherait un tableau
+	// vide, sans rien dire.
+	const pageCourante = Math.min(page, totalPages)
+
+	const visibleBrands = useMemo(
+		() =>
+			filteredBrands.slice(
+				(pageCourante - 1) * PER_PAGE,
+				pageCourante * PER_PAGE,
+			),
+		[filteredBrands, pageCourante],
+	)
 
 	// Trouver les fournisseurs par marque
 	const suppliersByBrand = useMemo(() => {
@@ -286,6 +317,12 @@ export function BrandList() {
 													<img
 														src={logoUrl}
 														alt={brand.name}
+														// Le champ `image` n'a pas de miniature au schéma :
+														// PocketBase sert le logo en pleine résolution pour
+														// l'afficher en 40×40. `lazy` ne corrige pas le
+														// poids, il évite seulement de demander d'un coup
+														// les logos qu'on ne regarde pas encore.
+														loading='lazy'
 														className='h-full w-full object-contain'
 													/>
 												) : (
@@ -372,6 +409,36 @@ export function BrandList() {
 							})}
 						</UiTableBody>
 					</UiTable>
+				</div>
+			)}
+
+			{filteredBrands.length > 0 && (
+				<div className='mt-4 flex items-center justify-between'>
+					<span className='text-muted-foreground text-sm tabular-nums'>
+						{filteredBrands.length} marque
+						{filteredBrands.length > 1 ? 's' : ''} — page {pageCourante} sur{' '}
+						{totalPages}
+					</span>
+					<div className='flex gap-2'>
+						<Button
+							variant='outline'
+							size='sm'
+							disabled={pageCourante <= 1}
+							onClick={() => setPage(Math.max(1, pageCourante - 1))}
+						>
+							<ChevronLeft className='mr-1 h-4 w-4' />
+							Précédent
+						</Button>
+						<Button
+							variant='outline'
+							size='sm'
+							disabled={pageCourante >= totalPages}
+							onClick={() => setPage(Math.min(totalPages, pageCourante + 1))}
+						>
+							Suivant
+							<ChevronRight className='ml-1 h-4 w-4' />
+						</Button>
+					</div>
 				</div>
 			)}
 

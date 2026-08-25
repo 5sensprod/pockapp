@@ -59,8 +59,14 @@ export function useBrands(options: BrandsListOptions = {}) {
 			})
 		},
 		enabled: !!companyId,
-		refetchOnMount: 'always',
-		staleTime: 0,
+		// Le catalogue est tenu à jour d'un poste à l'autre par le temps réel
+		// PocketBase (`frontend/lib/realtime/`, règle du 19 août 2026), qui
+		// invalide cette clé dès qu'un autre poste écrit. Un `staleTime: 0` avec
+		// `refetchOnMount: 'always'` par-dessus refaisait donc un `getFullList`
+		// entier à CHAQUE montage d'écran pour rien : 287 marques. Mesuré le
+		// 25 août 2026 — c'est ce qui rendait /stock lent après le premier
+		// chargement.
+		staleTime: 5 * 60_000,
 	})
 }
 

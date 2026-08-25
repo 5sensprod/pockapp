@@ -201,6 +201,31 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   collection. L'atomicité repose sur une propriété **de PocketBase v0.22.22**
   (une seule connexion d'écriture) : à revérifier à chaque mise à jour, voir
   `docs/DECISIONS.md`.
+- **Les décomptes du catalogue se calculent côté serveur** (25 août 2026) :
+  `GET /api/catalog/counts` (`backend/routes/catalog_counts_routes.go`) rend,
+  par marque et par catégorie, ce que trois écrans du module `stock`
+  obtenaient en balayant les 2999 produits depuis le navigateur. Et
+  `getFullList` n'est pas une requête : lots de 500, chacun demandé APRÈS la
+  réponse du précédent — **six allers-retours en série**, refaits à chaque
+  montage d'écran. La route rend **deux** nombres par catégorie, `direct` et
+  `total`, parce que le total d'une branche n'est PAS la somme de ceux de ses
+  enfants : un produit rangé dans deux catégories sœurs ne compte qu'une fois
+  dans leur ancêtre commun. **Ne pas recalculer ces décomptes côté React** —
+  c'est la même règle que pour l'agrégation de la caisse, et pour la même
+  raison. Gardiens : `backend/routes/catalog_counts_test.go` et
+  `frontend/lib/realtime/catalog-realtime.test.ts`, qui exige que
+  `catalog-counts` soit périmée par `products` ET par `categories` (déplacer
+  une catégorie change deux branches sans qu'aucun produit ne bouge).
+- **Le cache TanStack Query est persisté, mais PAS en entier** (25 août 2026).
+  `frontend/main.tsx` monte un `PersistQueryClientProvider` sur `localStorage`
+  — sans lui, un simple rechargement vidait tout et les écrans repartaient de
+  zéro quel que soit leur `staleTime`. **Quatre clés seulement**, nommées dans
+  `CLES_PERSISTEES` : `brands`, `categories`, `suppliers`, `catalog-counts`.
+  Ni caisse, ni factures, ni clients — données commerciales et nominatives, sur
+  un poste partagé, alors que `main.tsx` efface déjà la session PocketBase à
+  chaque démarrage. Élargir cette liste, c'est décider d'écrire ces données sur
+  le disque du poste : le faire sciemment, et changer le `buster` si la forme
+  d'une réponse persistée change.
 - **Le catalogue se met à jour d'un poste à l'autre sans rechargement**
   (19 août 2026) : `frontend/lib/realtime/` s'abonne au temps réel natif de
   PocketBase sur `products`, `categories`, `brands`, `suppliers`, et invalide

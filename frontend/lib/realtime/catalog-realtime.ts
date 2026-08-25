@@ -94,8 +94,15 @@ export function creerRegroupeur(
  *  vente d'un autre poste et la correction de prix d'un autre poste. Les trois
  *  autres tenaient les événements `*.tree.changed` de l'ancien canal AppPos. */
 export const COLLECTIONS_SURVEILLEES: Record<string, string[][]> = {
-	products: [['catalog-products'], ['products'], ['site-catalog']],
-	categories: [['categories'], ['site-catalog']],
+	products: [
+		['catalog-products'],
+		['products'],
+		['catalog-counts'],
+		['site-catalog'],
+	],
+	// `catalog-counts` dépend AUSSI de l'arbre : déplacer une catégorie change
+	// le total de deux branches sans qu'aucun produit ne bouge.
+	categories: [['categories'], ['catalog-counts'], ['site-catalog']],
 	brands: [['brands'], ['site-catalog']],
 	suppliers: [['suppliers']],
 }

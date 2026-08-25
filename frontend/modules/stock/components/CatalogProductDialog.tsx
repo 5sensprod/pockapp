@@ -377,6 +377,18 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 							onPromote={product ? promouvoir : undefined}
 							promoting={promote.isPending}
 							disabled={createProduct.isPending || updateProduct.isPending}
+							// 1600 px : c'est la seule image du site que le visiteur
+							// AGRANDIT — la fiche produit a une galerie, là où un logo de
+							// marque (512) et une bannière de catégorie (1024) ne sont que
+							// regardés. La conversion en WebP qui vient avec est aussi ce
+							// qui met la galerie à l'abri des refus de MIME du serveur.
+							//
+							// ⚠️ Ceci optimise l'image qu'on vient de CHOISIR, à l'unité.
+							// Cela ne rouvre pas la question du lot : le refus chiffré
+							// d'`ImageBatchOptimizer` — 2412 produits, 1,5 Gio de ré-envoi
+							// — tient toujours, et ce composant n'est toujours pas branché
+							// sur les produits.
+							optimize={{ maxSide: 1600 }}
 						/>
 
 						{/* L'ADRESSE PUBLIQUE. Elle ne se saisit pas — la couche d'accès

@@ -67,36 +67,14 @@ export interface CategoryOption {
 	depth: number
 }
 
-/**
- * Catégories qui portent des produits, directement ou dans leur descendance.
- *
- * Les parents sont conservés même s'ils ne portent rien eux-mêmes : sans eux,
- * masquer les catégories vides aplatirait l'arbre et sortirait les feuilles de
- * leur contexte. Les relations vers une catégorie inconnue sont ignorées.
- */
-export function collectPopulatedCategoryIds(
-	categories: CategoryNode[],
-	productIdsByCategory: Record<string, readonly string[]>,
-): Set<string> {
-	const parId = new Map(
-		categories.map((categorie) => [categorie.id, categorie]),
-	)
-	const visibles = new Set<string>()
-
-	for (const [categoryId, productIds] of Object.entries(productIdsByCategory)) {
-		if (productIds.length === 0) continue
-
-		let courante = parId.get(categoryId)
-		const chaine = new Set<string>()
-		while (courante && !chaine.has(courante.id)) {
-			chaine.add(courante.id)
-			visibles.add(courante.id)
-			courante = courante.parent ? parId.get(courante.parent) : undefined
-		}
-	}
-
-	return visibles
-}
+// `collectPopulatedCategoryIds` vivait ici jusqu'au 25 août 2026 : elle
+// remontait l'arbre pour marquer visible tout ancêtre d'une catégorie peuplée.
+// Elle a été SUPPRIMÉE plutôt que gardée sans appelant, parce que la nourrir
+// demandait les identifiants des 2999 produits. Le serveur rend désormais un
+// `total` par catégorie, déjà remonté et déjà dédoublonné
+// (`backend/routes/catalog_counts_routes.go`) : « peuplée » se lit
+// `total > 0`. Ne pas la réintroduire — la garder ici, morte, n'aurait servi
+// qu'à ramener un jour le balayage complet avec elle.
 
 /**
  * Les catégories dans l'ordre de l'arbre : chaque racine suivie de sa
