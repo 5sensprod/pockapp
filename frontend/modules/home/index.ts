@@ -1,6 +1,7 @@
 // frontend/modules/home/index.ts
 import {
 	BarChart2,
+	BarChart3,
 	Building2,
 	ClipboardList,
 	FileImage,
@@ -102,6 +103,14 @@ export const manifest: ModuleManifest = {
 				{ label: 'Catalogue en ligne', to: '/site/catalogue', icon: Store },
 				{ label: 'Menu de navigation', to: '/site/menu', icon: Menu },
 			],
+		},
+
+		// ── PocketStats ──────────────────────────────────────────────────
+		{
+			id: 'stats',
+			label: 'PocketStats',
+			icon: BarChart3,
+			items: [{ label: 'Journal des ventes', to: '/stats', icon: BarChart3 }],
 		},
 	],
 }

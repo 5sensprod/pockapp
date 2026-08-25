@@ -1,12 +1,5 @@
 // frontend/modules/stock/index.ts
-import {
-	Building2,
-	ClipboardList,
-	Database,
-	Package,
-	Tags,
-	Truck,
-} from 'lucide-react'
+import { Building2, ClipboardList, Package, Tags, Truck } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
 
 // `/stock` rend le catalogue PocketBase, comme `/stock/produits` : l'écran
@@ -35,16 +28,33 @@ export const manifest: ModuleManifest = {
 
 	sidebarMenu: [
 		{
-			id: 'stock',
-			label: 'Stock',
-			icon: Database,
+			id: 'products',
+			label: 'Catalogue produits',
+			icon: Package,
 			items: [
 				// Une seule entrée depuis le 18 août 2026 : « Catalogue produits » et
 				// « Produits (PocketBase) » désignaient deux écrans sur deux bases.
 				// Il n'en reste qu'un, sur PocketBase.
 				{ label: 'Catalogue produits', to: '/stock/produits', icon: Package },
-				{ label: 'Marques', to: '/stock/marques', icon: Building2 },
-				{ label: 'Catégories', to: '/stock/categories', icon: Tags },
+			],
+		},
+		{
+			id: 'brands',
+			label: 'Marques',
+			icon: Building2,
+			items: [{ label: 'Marques', to: '/stock/marques', icon: Building2 }],
+		},
+		{
+			id: 'categories',
+			label: 'Catégories',
+			icon: Tags,
+			items: [{ label: 'Catégories', to: '/stock/categories', icon: Tags }],
+		},
+		{
+			id: 'suppliers',
+			label: 'Fournisseurs',
+			icon: Truck,
+			items: [
 				{ label: 'Fournisseurs', to: '/stock/fournisseurs', icon: Truck },
 			],
 		},

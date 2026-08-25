@@ -411,6 +411,18 @@ essais :
 | Catégories | `/stock/categories` | arbre, compteurs « ici / branche », gestion complète |
 | Fournisseurs | `/stock/fournisseurs` | 43 fiches, sur les champs v2 |
 
+**Navigation harmonisée le 25 août 2026.** L'icône Lucide d'un item de
+`sidebarMenu` est désormais obligatoire dans `modules/_registry.ts`. À la
+demande du propriétaire, les quatre entrées ci-dessus et l'inventaire sont
+aussi chacun un groupe à une entrée : le rail desktop affiche donc directement
+Produits, Marques, Catégories, Fournisseurs et Inventaire avec leur propre
+icône, sans panneau générique « Stock ».
+
+**Limite connue sur mobile :** `BottomNav.tsx` ne rend que les quatre premiers
+groupes. Sans modifier le layout commun, Inventaire n'apparaît donc pas dans la
+barre mobile. Cette limite a été signalée avant le changement et acceptée par
+le propriétaire ; aucune route ni aucun ordre d'entrée ne change.
+
 **L'écriture des produits est ouverte** (`docs/DECISIONS.md`, 13 août 2026 :
 AppPos sort de la logique à la prochaine release). Elle passe par
 `useCreateCatalogProduct` / `useUpdateCatalogProduct`, jamais par

@@ -17,6 +17,15 @@ export const manifest: ModuleManifest = {
 	minVersion: '1.0.0',
 	paid: true,
 	plan: 'pro',
+
+	sidebarMenu: [
+		{
+			id: 'journal',
+			label: 'Journal des ventes',
+			icon: BarChart3,
+			items: [{ label: 'Journal des ventes', to: '/stats', icon: BarChart3 }],
+		},
+	],
 }
 
 export { StatsPage, JournalDesVentesPage }

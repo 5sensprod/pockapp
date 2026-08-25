@@ -10,7 +10,8 @@ export interface TopbarMenuItem {
 export interface SidebarMenuItem {
 	label: string
 	to: string
-	icon?: LucideIcon
+	/** Icône du sous-menu, rendue dans les panneaux desktop et mobile. */
+	icon: LucideIcon
 }
 
 export interface SidebarGroup {
