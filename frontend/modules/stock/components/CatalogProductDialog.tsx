@@ -26,9 +26,14 @@
 // détruisant l'image en place.
 //
 // ⚠️ Deux temporalités dans ce dialogue, et c'est dit à l'écran : promouvoir
-// part TOUT DE SUITE (route serveur, seule capable de déplacer un nom entre
-// deux champs fichier) ; ajouter, retirer et réordonner partent avec
-// « Enregistrer ».
+// et supprimer la principale partent TOUT DE SUITE ; ajouter, retirer et
+// réordonner la galerie partent avec « Enregistrer ».
+//
+// SUPPRIMER LA PRINCIPALE NE PROMEUT RIEN, même si la galerie n'est pas vide :
+// le retrait exprime « aucune principale », tandis que promouvoir est un geste
+// distinct et nommé. Cela évite surtout d'envoyer implicitement la liste
+// complète — possiblement périmée — de `gallery`, dont une omission détruirait
+// un fichier et dont l'ordre est une donnée.
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useState } from 'react'
@@ -62,6 +67,7 @@ import {
 	resoudreSlugProduit,
 	useCreateCatalogProduct,
 	usePromoteProductImage,
+	useRemoveProductMainImage,
 	useUpdateCatalogProduct,
 } from '@/lib/queries/catalog-products'
 import { type GalleryEntry, memeGalerie } from '@/lib/queries/gallery-order'
@@ -143,16 +149,20 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 	// sérialise ses valeurs et un `File` n'y survit pas.
 	const [galerie, setGalerie] = useState<GalleryEntry[]>([])
 	const promote = usePromoteProductImage()
+	const removeMain = useRemoveProductMainImage()
 
 	// ⚠️ `product` est un INSTANTANÉ, pris au clic sur la ligne
 	// (`ProductsPage.tsx:75`) : il ne suit ni le temps réel, ni nos propres
-	// promotions. Ces deux états portent donc l'après-promotion, et ils sont la
-	// vérité de cette modale tant qu'elle est ouverte.
+	// promotions ni nos suppressions. Ces états portent donc l'état courant, et
+	// ils sont la vérité de cette modale tant qu'elle est ouverte.
 	//
 	// C'est le défaut constaté à l'usage le 19 août 2026 : la liste se mettait à
 	// jour dans l'application, pas dans la modale, et « Enregistrer » renvoyait
 	// ensuite une galerie périmée — « The field contains unknown filenames. »
-	const [imagePromue, setImagePromue] = useState<string | null>(null)
+	// `null` signifie « reprendre l'instantané reçu » ; la chaîne vide signifie
+	// vraiment « supprimée ». Il faut les distinguer pour que le fichier ne
+	// réapparaisse pas dans la modale après sa suppression immédiate.
+	const [imageCourante, setImageCourante] = useState<string | null>(null)
 	/** Le slug proposé pour un produit qui n'en a pas — RÉPARATION. Les produits
 	 *  créés avant le 20 août 2026 sont partis en ligne sans adresse, et leur
 	 *  page rendait « Produit introuvable ». Enregistrer la fiche la pose. */
@@ -165,7 +175,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 	// champs vivent dans le même dossier, `storage/<collectionId>/<idProduit>/`.
 	const urlDe = (nom: string) => (product ? pb.files.getUrl(product, nom) : '')
 
-	const nomPrincipale = imagePromue ?? product?.image ?? ''
+	const nomPrincipale = imageCourante ?? product?.image ?? ''
 	const imageUrl = nomPrincipale ? urlDe(nomPrincipale) : null
 
 	const promouvoir = async (nom: string) => {
@@ -178,12 +188,26 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 				productId: product.id,
 				filename: nom,
 			})
-			setImagePromue(apres.image)
+			setImageCourante(apres.image)
 			setGalerie(apres.gallery)
 			setGalerieEnBase(apres.gallery)
 			toast.success('Image principale mise à jour')
 		} catch (error) {
 			toast.error(`Promotion refusée : ${pocketbaseErrorMessage(error)}`)
+		}
+	}
+
+	const supprimerPrincipale = async () => {
+		if (!product) return
+		try {
+			// IMMÉDIAT, comme la promotion. On ne joint surtout pas `gallery` : elle
+			// reste intacte, dans son ordre, et aucune entrée n'est promue par
+			// surprise. `removeImage` devient `image: ''` dans `image-upload.ts`.
+			await removeMain.mutateAsync(product.id)
+			setImageCourante('')
+			toast.success('Image principale supprimée')
+		} catch (error) {
+			toast.error(`Suppression refusée : ${pocketbaseErrorMessage(error)}`)
 		}
 	}
 
@@ -221,7 +245,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 		// abandonnée ne doit pas resurgir au produit suivant.
 		setGalerie(product?.gallery ?? [])
 		setGalerieEnBase(product?.gallery ?? [])
-		setImagePromue(null)
+		setImageCourante(null)
 		setSlugRepare('')
 	}, [open, product, form])
 
@@ -309,7 +333,8 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 	const slugEnBase = product?.slug ?? ''
 	const slugAffiche = isEdit ? slugEnBase || slugRepare : toSlug(nomSaisi ?? '')
 
-	const pending = createProduct.isPending || updateProduct.isPending
+	const pending =
+		createProduct.isPending || updateProduct.isPending || removeMain.isPending
 
 	// ── La marque suit le fournisseur ────────────────────────────────────────
 	// Un fournisseur porte les marques qu'il distribue (`suppliers.brands`) :
@@ -376,7 +401,13 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 							// promouvoir tant qu'il n'est pas enregistré.
 							onPromote={product ? promouvoir : undefined}
 							promoting={promote.isPending}
-							disabled={createProduct.isPending || updateProduct.isPending}
+							onRemoveMain={product ? supprimerPrincipale : undefined}
+							removingMain={removeMain.isPending}
+							disabled={
+								createProduct.isPending ||
+								updateProduct.isPending ||
+								removeMain.isPending
+							}
 							// 1600 px : c'est la seule image du site que le visiteur
 							// AGRANDIT — la fiche produit a une galerie, là où un logo de
 							// marque (512) et une bannière de catégorie (1024) ne sont que

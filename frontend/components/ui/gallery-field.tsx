@@ -22,14 +22,25 @@
 // par `backend/routes/product_image_test.go`). Un fichier importé rejoint donc
 // la galerie, et « Définir comme principale » appelle la route serveur.
 //
-// Conséquence assumée, et dite à l'écran : promouvoir est IMMÉDIAT, il ne
-// passe pas par « Enregistrer ». Les ajouts, retraits et déplacements, eux,
-// partent avec le formulaire.
+// Conséquence assumée, et dite à l'écran : promouvoir ET supprimer la
+// principale sont IMMÉDIATS, ils ne passent pas par « Enregistrer ». Les
+// ajouts, retraits et déplacements de la galerie, eux, partent avec le
+// formulaire.
 //
 // Ce composant ne connaît aucune base : il reçoit des URL déjà résolues par
 // `pb.files.getUrl` et rend une liste. C'est `lib/queries/image-upload.ts` qui
 // sait l'envoyer, et `lib/queries/gallery-order.ts` qui tient l'ordre.
 
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
 	type OptimizeOptions,
@@ -89,6 +100,9 @@ interface GalleryFieldProps {
 	/** Promouvoir une entrée enregistrée. Absent = produit pas encore créé. */
 	onPromote?: (nom: string) => void
 	promoting?: boolean
+	/** Supprimer définitivement la principale. Absent = produit pas encore créé. */
+	onRemoveMain?: () => void
+	removingMain?: boolean
 	disabled?: boolean
 	/** Réduit et convertit en WebP chaque fichier choisi, comme le fait
 	 *  `ImageField` sur les marques et les catégories. Absent = le fichier part
@@ -104,10 +118,13 @@ export function GalleryField({
 	urlDe,
 	onPromote,
 	promoting,
+	onRemoveMain,
+	removingMain,
 	disabled,
 	optimize,
 }: GalleryFieldProps) {
 	const inputRef = useRef<HTMLInputElement>(null)
+	const [confirmationSuppression, setConfirmationSuppression] = useState(false)
 
 	// Les aperçus locaux : une URL d'objet par fichier neuf, révoquée à la
 	// sortie. Sans révocation, le fichier reste en mémoire tant que l'onglet
@@ -206,9 +223,25 @@ export function GalleryField({
 							<ImagePlus className='h-8 w-8 text-muted-foreground' />
 						)}
 					</div>
-					<figcaption className='flex items-center justify-center gap-1 text-primary text-xs'>
-						<Star className='h-3 w-3 fill-current' />
-						Principale
+					<figcaption className='flex h-6 w-24 items-center justify-center gap-0.5 text-primary text-xs'>
+						<span className='flex items-center gap-1'>
+							<Star className='h-3 w-3 fill-current' />
+							Principale
+						</span>
+						{mainUrl && onRemoveMain && (
+							<Button
+								type='button'
+								variant='ghost'
+								size='icon'
+								className='h-6 w-6 shrink-0 text-destructive hover:text-destructive'
+								title='Supprimer définitivement l’image principale'
+								aria-label='Supprimer définitivement l’image principale'
+								disabled={disabled || removingMain}
+								onClick={() => setConfirmationSuppression(true)}
+							>
+								<Trash2 className='h-3 w-3' />
+							</Button>
+						)}
 					</figcaption>
 				</figure>
 
@@ -337,13 +370,41 @@ export function GalleryField({
 					{/* LES DEUX TEMPORALITÉS. Elles ne se devinent pas, et les
 					    confondre a produit un enregistrement refusé. */}
 					<p>
-						<strong>« Principale » s’applique tout de suite</strong> —
-						l’ancienne principale reprend le rang de celle qu’elle remplace,
-						rien n’est supprimé. Les ajouts, retraits et déplacements attendent
-						« Enregistrer ».
+						<strong>
+							« Principale » et sa suppression s’appliquent tout de suite.
+						</strong>{' '}
+						Promouvoir ne supprime rien. Supprimer est définitif après
+						confirmation. Les ajouts, retraits et déplacements de la galerie
+						attendent « Enregistrer ».
 					</p>
 				</div>
 			</div>
+
+			<AlertDialog
+				open={confirmationSuppression}
+				onOpenChange={setConfirmationSuppression}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Supprimer l’image principale ?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Le fichier sera supprimé définitivement du stockage, tout de
+							suite, sans attendre « Enregistrer ». La galerie reste strictement
+							intacte et aucune de ses images n’est promue automatiquement.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Conserver l’image</AlertDialogCancel>
+						<AlertDialogAction
+							className='bg-destructive text-destructive-foreground hover:bg-destructive/90'
+							disabled={removingMain}
+							onClick={onRemoveMain}
+						>
+							Supprimer définitivement
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	)
 }

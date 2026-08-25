@@ -145,4 +145,13 @@ describe('buildWritePayload', () => {
 		expect(form.get('image')).toBe('')
 		expect(form.getAll('gallery')).toEqual(['a.jpg'])
 	})
+
+	it('retire la principale en gardant le silence sur toute galerie existante', () => {
+		// Règle produit : supprimer la principale ne choisit pas implicitement la
+		// première image secondaire. La requête immédiate ne porte donc QUE le
+		// retrait ; la galerie reste en base, entière et dans son ordre.
+		const form = buildWritePayload({ removeImage: true }) as FormData
+		expect(form.get('image')).toBe('')
+		expect(form.getAll('gallery')).toEqual([])
+	})
 })

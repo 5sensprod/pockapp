@@ -421,6 +421,39 @@ export function useUpdateCatalogProduct() {
 }
 
 /**
+ * SUPPRIMER L'IMAGE PRINCIPALE, sans toucher à la galerie.
+ *
+ * Le geste est volontairement distinct de la promotion et son corps ne porte
+ * JAMAIS `gallery` : même non vide, elle reste complète, dans son ordre, et
+ * aucune de ses entrées ne devient principale automatiquement. Une promotion
+ * silencieuse choisirait à la place de l'utilisateur ; joindre la galerie
+ * risquerait en plus de renvoyer un instantané périmé dont une omission
+ * supprimerait un fichier.
+ *
+ * `buildWritePayload` traduit `removeImage` en `image: ''`. PocketBase supprime
+ * alors le fichier du stockage : l'écran doit donc confirmer AVANT cet appel.
+ */
+export function productMainImageRemovalPayload() {
+	return buildWritePayload({ removeImage: true })
+}
+
+export function useRemoveProductMainImage() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (productId: string) =>
+			(await pb
+				.collection('products')
+				.update(
+					productId,
+					productMainImageRemovalPayload(),
+				)) as CatalogProductShape,
+		onSuccess: () => invalidateCatalog(queryClient),
+	})
+}
+
+/**
  * PROMOUVOIR UNE IMAGE DE LA GALERIE EN IMAGE PRINCIPALE.
  *
  * « Une image ne se perd pas, et la principale se désigne » — promouvoir B
