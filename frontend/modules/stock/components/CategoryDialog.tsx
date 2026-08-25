@@ -167,11 +167,18 @@ export function CategoryDialog({
 							removed={imageRemoved}
 							onRemovedChange={setImageRemoved}
 							disabled={createCategory.isPending || updateCategory.isPending}
-							// Même plafond que les marques pour l'instant. Les trois
-							// tailles façon WordPress viendront après : elles supposent
-							// de toucher au contrat du miroir, où le rang porte déjà
-							// l'ordre de la galerie.
-							optimize={{ maxSide: 512 }}
+							// 1024 px, le DOUBLE des marques (25 août 2026). Un logo de
+							// marque s'affiche dans un cadre de 248×248 (`BrandBadge`),
+							// une image de catégorie sert de bandeau et de vignette de
+							// rayon : la réduire à 512 la rendrait floue en pleine
+							// largeur. Ce plafond doit rester égal à celui du lot,
+							// `CategoriesPage.tsx` — deux valeurs différentes donneraient
+							// deux résultats selon le chemin emprunté.
+							//
+							// Les trois tailles façon WordPress viendront après : elles
+							// supposent de toucher au contrat du miroir, où le rang porte
+							// déjà l'ordre de la galerie.
+							optimize={{ maxSide: 1024 }}
 						/>
 
 						<FormField

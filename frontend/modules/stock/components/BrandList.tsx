@@ -30,13 +30,14 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { useBrands, useDeleteBrand } from '@/lib/queries/brands'
+import { useBrands, useDeleteBrand, useUpdateBrand } from '@/lib/queries/brands'
 import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
 import { useProductCountsByBrand } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 import { BrandDialog } from './BrandDialog'
+import { ImageBatchOptimizer } from './ImageBatchOptimizer'
 
 export function BrandList() {
 	const { activeCompanyId } = useActiveCompany()
@@ -55,6 +56,22 @@ export function BrandList() {
 		companyId: activeCompanyId ?? undefined,
 	})
 	const deleteBrand = useDeleteBrand()
+	const updateBrand = useUpdateBrand()
+
+	// Ce que le lot d'optimisation peut traiter : les marques qui PORTENT une
+	// image. Une marque sans logo n'a rien à optimiser et gonflerait le total
+	// annoncé sur le bouton.
+	const optimisableBrands = useMemo(
+		() =>
+			(brands ?? [])
+				.filter((brand) => !!brand.image)
+				.map((brand) => ({
+					id: brand.id,
+					label: brand.name,
+					url: pb.files.getUrl(brand, brand.image as string),
+				})),
+		[brands, pb],
+	)
 
 	const [search, setSearch] = useState('')
 	const [dialogOpen, setDialogOpen] = useState(false)
@@ -206,6 +223,23 @@ export function BrandList() {
 							className='w-56 pl-8'
 						/>
 					</div>
+					{/* Le lot porte sur TOUTES les marques chargées, pas sur celles
+					    que le filtre affiche : optimiser « ce qu'on voit » ferait
+					    dépendre un traitement de fond du contenu d'un champ de
+					    recherche. */}
+					<ImageBatchOptimizer
+						items={optimisableBrands}
+						maxSide={512}
+						nomImage='logo'
+						save={async (item, file) =>
+							void (await updateBrand.mutateAsync({
+								id: item.id,
+								// `name` est obligatoire dans `BrandWrite` ; on renvoie
+								// celui qu'on a, sans le modifier.
+								data: { name: item.label, image: file },
+							}))
+						}
+					/>
 					<Button onClick={handleAdd}>
 						<Plus className='mr-2 h-4 w-4' />
 						Nouvelle marque
