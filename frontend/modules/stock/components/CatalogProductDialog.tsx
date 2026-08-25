@@ -85,6 +85,8 @@ const productSchema = z.object({
 	description: z.string().max(20000).optional(),
 	type: z.enum(['simple', 'service']),
 	status: z.enum(['draft', 'published']),
+	// Vide = neuf, et c'est la valeur par défaut. Voir `CatalogCommercialState`.
+	commercial_state: z.enum(['', 'used', 'rental']),
 	price_ttc: money,
 	purchase_price_ht: money,
 	tax_rate: z.coerce.number().min(0).max(100),
@@ -106,6 +108,7 @@ const EMPTY: ProductFormValues = {
 	description: '',
 	type: 'simple',
 	status: 'draft',
+	commercial_state: '',
 	price_ttc: 0,
 	purchase_price_ht: 0,
 	tax_rate: 20,
@@ -201,6 +204,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 						description: product.description ?? '',
 						type: product.type ?? 'simple',
 						status: product.status ?? 'draft',
+						commercial_state: product.commercial_state ?? '',
 						price_ttc: product.price_ttc ?? 0,
 						purchase_price_ht: product.purchase_price_ht ?? 0,
 						tax_rate: product.tax_rate ?? 20,
@@ -246,6 +250,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 			description: data.description ?? '',
 			type: data.type,
 			status: data.status,
+			commercial_state: data.commercial_state,
 			price_ttc: data.price_ttc,
 			purchase_price_ht: data.purchase_price_ht,
 			tax_rate: data.tax_rate,
@@ -606,6 +611,33 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 
 						<FormField
 							control={form.control}
+							name='commercial_state'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>État commercial</FormLabel>
+									<FormControl>
+										<NativeSelect {...field}>
+											<option value=''>Neuf</option>
+											<option value='used'>Occasion</option>
+											<option value='rental'>Location</option>
+										</NativeSelect>
+									</FormControl>
+									{/* Il vit ICI, à côté de la marque et du fournisseur, et non
+									    dans les catégories : une catégorie dit ce que l'objet
+									    EST, celui-ci dit comment il se VEND. C'est toute la
+									    raison pour laquelle « Occasion » et « LOCATION » ont
+									    cessé d'être des branches (DECISIONS, 2026-08-24). */}
+									<p className='text-muted-foreground text-xs'>
+										Un produit d’occasion ou de location garde son rayon
+										habituel — il n’en sort pas.
+									</p>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						<FormField
+							control={form.control}
 							name='categories'
 							render={({ field }) => (
 								<FormItem>
@@ -660,7 +692,9 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 										</FormControl>
 										{/* `status` est la SEULE autorité sur ce qui part vers le
 										    site (online-catalog.ts). Le dire ici évite qu'on
-										    cherche un autre interrupteur. */}
+										    cherche un autre interrupteur — et notamment qu'on
+										    prenne l'état commercial ci-dessous pour un second :
+										    une occasion se publie comme le reste. */}
 										<p className='text-muted-foreground text-xs'>
 											Seuls les produits publiés partent vers axemusique.shop.
 										</p>

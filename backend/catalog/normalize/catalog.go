@@ -73,6 +73,13 @@ type Product struct {
 	SupplierLegacyID string
 	CategoryLegacyID []string
 
+	// CommercialState — « used » ou « rental », vide pour du neuf. Il ne vient
+	// PAS de NeDB : la reprise le déduit des catégories « Occasion » et
+	// « LOCATION », qui cessent d'être des branches (DECISIONS, 2026-08-24).
+	// Il vit ici parce que c'est le type que le chargeur écrit ; `normalize`
+	// ne le remplit jamais.
+	CommercialState string
+
 	// Correspondance WooCommerce, mise de côté pour external_refs (T5).
 	// Elle ne fait PAS partie du produit : c'est tout l'intérêt du modèle.
 	WooID  string

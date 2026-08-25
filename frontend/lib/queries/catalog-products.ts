@@ -47,6 +47,15 @@ import { slugLibre } from './slug'
 
 export type CatalogProductStatus = 'draft' | 'published'
 
+/** L'état commercial d'un produit. **La chaîne vide VEUT DIRE neuf** : c'est le
+ *  cas de l'immense majorité du catalogue, et lui imposer une valeur
+ *  obligerait à écrire 3036 fiches pour n'exprimer que « rien de particulier »
+ *  (DECISIONS, 2026-08-24).
+ *
+ *  ⚠️ Il ne décide PAS de la publication — `status` en est la seule autorité.
+ *  Un produit d'occasion se publie comme un autre. */
+export type CatalogCommercialState = '' | 'used' | 'rental'
+
 export type CatalogProductShape = PocketBaseRecord & {
 	legacy_id: string
 	name: string
@@ -57,6 +66,8 @@ export type CatalogProductShape = PocketBaseRecord & {
 	description?: string
 	type?: 'simple' | 'service'
 	status: CatalogProductStatus
+	/** Vide = neuf. Voir `CatalogCommercialState`. */
+	commercial_state?: CatalogCommercialState
 	price_ttc?: number
 	purchase_price_ht?: number
 	tax_rate?: number
@@ -89,7 +100,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,status,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,categories'
+	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,status,commercial_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -283,6 +294,7 @@ export type CatalogProductWrite = ImageIntent &
 		description?: string
 		type?: 'simple' | 'service'
 		status?: CatalogProductStatus
+		commercial_state?: CatalogCommercialState
 		price_ttc?: number
 		purchase_price_ht?: number
 		tax_rate?: number

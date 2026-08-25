@@ -88,3 +88,22 @@ describe('PRODUCT_FIELDS du module site', () => {
 		expect(SITE_PRODUCT_FIELDS.split(',')).toContain('status')
 	})
 })
+
+describe('commercial_state', () => {
+	it('est demandé par PRODUCT_FIELDS — sinon le dialogue le croit vide', () => {
+		// Le champ est arrivé au schéma le 24 août 2026. Absent de `fields`, il
+		// reviendrait vide à chaque lecture : le dialogue afficherait « Neuf »
+		// pour une occasion, et l'enregistrement écraserait la vraie valeur.
+		// C'est exactement ce qui est arrivé à `gallery` — 747 galeries
+		// invisibles pendant des semaines.
+		expect(PRODUCT_FIELDS.split(',')).toContain('commercial_state')
+	})
+
+	it('n’est PAS demandé par la liste du module site', () => {
+		// Le contrat catalogue ne le connaît pas et son checksum ne le couvre
+		// pas (DECISIONS, 2026-08-24). L'ajouter ici sans ouvrir le contrat le
+		// ferait voyager sans que rien ne le lise — et brouillerait la règle qui
+		// dit que `status` seul décide de ce qui part.
+		expect(SITE_PRODUCT_FIELDS.split(',')).not.toContain('commercial_state')
+	})
+})
