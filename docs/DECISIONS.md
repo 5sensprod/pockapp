@@ -10,6 +10,150 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le pont des identifiants n'avait jamais été rompu — 2026-08-25
+
+**Correction d'un fait, et donc d'une règle.** Le bloc du 24 août ci-dessous
+affirme que les `_id` NeDB ont été régénérés. **C'est faux.** La mesure
+comparait deux listes dont l'une gardait un retour chariot de fin de ligne :
+aucune chaîne ne pouvait correspondre, et « 0 sur 3000 » était un artefact.
+
+**Le décompte exact est 2982 sur 3000** : les `_id` NeDB SONT les clés stables,
+posées par l'import du 11 août et jamais bougées depuis. Le pont
+`PB-PROD.product_id == NeDB._id == PB-DEV.legacy_id` est direct.
+
+**Ce que la décision de conserver les clés devient.** Elle reste juste, mais
+elle est presque automatique : le chargeur écrit `legacy_id = <_id NeDB>` depuis
+toujours. `cles-stables.json` ne sert qu'aux **46 produits** dont l'`_id` n'est
+pas une clé connue — 18 retrouvés par SKU, 28 réellement nouveaux. C'est un
+filet, pas le pont.
+
+**En revanche l'ORDRE d'application est devenu critique, et il a été mis à
+l'endroit après un échec d'écriture sur copie** : `UNIQUE constraint failed:
+products.legacy_id`. La règle est **identité, puis SKU, puis nom**. Un SKU peut
+changer de propriétaire — le dédoublonnage du 25 août a laissé « QSC CB10 » au
+bundle et renuméroté l'enceinte : avec le SKU en premier, la clé de l'enceinte,
+donc son dossier d'images en ligne, partait au bundle. Le SKU décrit ce qu'on
+vend ; l'identifiant décrit la fiche. Quand les deux se contredisent, c'est
+l'identifiant qui dit la vérité sur ce qui est déjà en ligne.
+
+**Le contrôle porte désormais sur le `legacy_id` FINAL**, pas sur les seules
+clés attribuées : un produit devancé conserve son `_id`, qui peut heurter la clé
+retenue par un autre. C'est précisément ce que l'index unique a refusé.
+
+**Ce que l'erreur a coûté, et ce qu'elle a rapporté.** Coûté : une table de
+clés largement redondante, et un raisonnement (a)/(b) construit sur une prémisse
+fausse. Rapporté : la mesure des instantanés d'historique — `inventory_entries`
+porte 2441 SKU sur 2465 lignes, `product_events` 2860 sur 2963 — qui prouve que
+même si le pont cassait un jour, l'historique resterait recollable à 96,7 %. Et
+la certitude que `grep product_id backend/reports/` ne rend rien : aucun lien
+produit n'entre dans un calcul fiscal.
+
+**Ce qui pourrait la remettre en cause :** une future régénération des `_id`
+NeDB, qui ferait de `cles-stables.json` le pont principal. Elle ne s'est pas
+produite ; si elle se produit, c'est l'ordre des passes qui devra changer.
+
+---
+
+## La reprise CONSERVE les clés stables existantes — 2026-08-24
+
+**— partiellement corrigée le 2026-08-25 par « Le pont des identifiants n'avait
+jamais été rompu » : la prémisse sur les identifiants régénérés était fausse.**
+
+**Décision du propriétaire.** L'import de reprise reprend les `legacy_id` déjà
+en service plutôt que d'en générer de neufs. La correspondance est figée dans
+`backend/catalog/mapping/cles-stables.json`, extraite de la PocketBase de
+développement : jointure par SKU, puis par nom **s'il est unique**.
+
+**Ce qu'une clé neuve aurait coûté.** Le miroir d'images distant nomme son
+arborescence `<kind>/<legacy_id>/…`. Régénérer les clés rendait orphelin tout ce
+qui est en ligne — marques, catégories et 2412 produits, ~1,5 Gio — sans que le
+ménage distant puisse jamais les reprendre : il n'efface que dans le dossier
+d'une entité qu'on lui envoie. On aurait payé un ré-envoi complet pour laisser
+un doublon permanent sur le mutualisé. Conserver les clés annule ce coût entier,
+et le pont `legacy_id` des lignes de facture survit à 90 %.
+
+**Mesuré à la simulation : 2898 clés reprises par SKU, 128 par nom, 29 neuves.**
+
+**Une clé neuve est un moindre mal ; une clé FAUSSE est un dégât.** 25 noms
+désignent plusieurs produits et sont écartés de la table : joindre dessus
+donnerait à un produit le dossier d'images d'un autre, en ligne, sans qu'aucune
+erreur ne soit levée. En cas de doute, on ne joint pas.
+
+**Ce que la simulation a découvert, et qui bloque : 33 SKU sont portés par deux
+fiches NeDB différentes** — 68 produits, 35 collisions de clé. Ce sont de vrais
+doublons de saisie, l'une des fiches portant souvent le SKU en guise de nom
+(« MXR M108S » / « Pédale équalizer MXR - MXR M108S »). Ils invalident au
+passage le décompte « 63 produits à créer » du premier état des lieux : ce ne
+sont pas des nouveautés.
+
+**`Plan.Bloquant()` refuse donc l'application tant qu'une collision subsiste**,
+et c'est la SEULE chose qui bloque. Les produits sans rayon et les lignes à
+arbitrer, eux, ne bloquent pas : ce sont des dettes chiffrées et visibles, qu'une
+reprise peut assumer. Une garde qui refuse tout ne protège de rien.
+
+**Options écartées.** Laisser le premier réclamant garder la clé : « premier »
+dépend de l'ordre de lecture, donc le gagnant aurait changé d'une exécution à
+l'autre. Générer une clé neuve pour les deux : orphelinise le dossier d'images
+qui existe déjà. Lire la base de dév à chaque exécution plutôt qu'une table
+figée : le résultat dépendrait d'une base absente du dépôt, que personne ne
+relit, et qui peut bouger entre la simulation et l'application — c'est-à-dire
+entre le moment où l'on vérifie et celui où l'on écrit.
+
+**Ce qui pourrait la remettre en cause :** le dédoublonnage des 33 paires. Il se
+fait dans AppPos — **jamais depuis PocketApp, qui n'y écrit pas** — ou par un
+arbitrage clé par clé consigné dans la table.
+
+---
+
+## L'état commercial sort de l'arbre : `Occasion` et `LOCATION` deviennent un champ — 2026-08-24
+
+**Décision du propriétaire.** Les catégories `Occasion` (10 produits) et
+`LOCATION` (9 produits) ne seront pas reprises comme branches de la nouvelle
+arborescence. Elles deviennent `commercial_state` sur `products` — un `select`
+mono-valeur, `used` ou `rental` — posé par `AddCommercialStateToProducts`.
+
+**Ce qui l'a emporté.** L'arbre cible est LOGISTIQUE : une catégorie dit ce que
+l'objet EST, ce qu'on range, ce qu'on compte, ce qu'on réassortit. Ces deux-là
+disaient comment il se VEND. Les garder force un choix sans bonne réponse —
+ranger un ukulélé d'occasion avec les ukulélés, ou avec les occasions ? On veut
+les deux, et surtout on veut inventorier les ukulélés sans en oublier neuf.
+
+**La mesure qui a rendu le défaut visible : 18 des 19 produits concernés n'ont
+AUCUNE autre catégorie** (NeDB de production, 24 août 2026). L'état commercial
+avait mangé le rangement — c'est exactement le symptôme, et il se paie
+maintenant : ces 19 produits doivent recevoir un rayon un par un, seul travail
+produit-par-produit de toute la reprise.
+
+**Mono-valeur, et ce n'est pas un pari :** aucun produit n'est à la fois en
+occasion et en location, 0 sur 3055. PocketBase stockant un `select` en tableau
+JSON quel que soit `MaxSelect`, passer à 2 le jour où le cas se présente est
+une migration d'une ligne, sans réécriture. Partir d'un multi-valeurs « au cas
+où » coûterait tout de suite, dans chaque écran et chaque filtre, un cas qui ne
+s'est jamais produit.
+
+**L'absence vaut « neuf ».** Le champ n'est pas `Required` : imposer une valeur
+obligerait à écrire 3036 enregistrements pour n'exprimer que « rien de
+particulier ».
+
+**Ce champ ne décide PAS de la publication.** C'est `status` qui tranche, et lui
+seul (bloc du 2026-08-21). Croiser les deux ferait disparaître des pages sans
+que rien ne le dise.
+
+**Options écartées.** Deux booléens `is_used` / `is_rental` : autorisent
+l'état incohérent « les deux », qu'aucune donnée ne réclame, et deux champs à
+tenir au lieu d'un. Garder les catégories ET ajouter le champ : la double
+source revient, et c'est précisément ce que la refonte supprime. Réutiliser
+`type` (`simple` / `service`) : il dit la nature du produit, pas son état ; les
+9 `service` sont des prestations, pas des locations.
+
+**Ce qui pourrait la remettre en cause :** un instrument d'occasion mis en
+location — le premier cas fera passer `MaxSelect` à 2. Et l'exposition au
+site : `commercial_state` n'entre aujourd'hui ni dans le contrat catalogue ni
+dans le checksum d'export, donc rien n'en part. Le jour où le site voudra une
+vue « occasions », c'est le contrat qu'il faudra ouvrir.
+
+---
+
 ## Dépublier un produit, c'est l'exporter en `draft` — 2026-08-21
 
 **Le retrait d'une page du site est un EXPORT, pas une suppression.**
