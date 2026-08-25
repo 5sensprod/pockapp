@@ -1,0 +1,282 @@
+{
+  "_lisez_moi": "backend/catalog/mapping/README.md",
+  "genere_le": "2026-08-24",
+  "source": "%APPDATA%AppPOSdata (NeDB de production)",
+  "cle_de_jointure": "nom — les _id NeDB sont régénérés et ne sont PAS stables",
+  "regle_de_survie": "le plus de produits ; à égalité, celle qui porte un logo ; à égalité encore, arbitrage humain",
+  "totaux": {
+    "marques": 288,
+    "groupes": 8,
+    "a_fusionner": 8,
+    "a_arbitrer": 2,
+    "sans_produit": 53
+  },
+  "groupes": [
+    {
+      "cle": "wittner",
+      "produits_total": 10,
+      "survivant_propose": "WITTNER",
+      "survivant_nedb_id": "rpMJUZitWg5u56Am",
+      "perdants": [
+        "WITTNER"
+      ],
+      "a_arbitrer": false,
+      "note": "survit avec 8 produit(s) et un logo",
+      "images_perdantes_a_vider": [
+        "WITTNER"
+      ],
+      "detail": [
+        {
+          "nom": "WITTNER",
+          "nedb_id": "rpMJUZitWg5u56Am",
+          "produits": 8,
+          "image": true,
+          "galerie": 0,
+          "woo_id": 1348,
+          "fournisseurs": 1
+        },
+        {
+          "nom": "WITTNER",
+          "nedb_id": "BpPI4Ff2Zjdn9elj",
+          "produits": 2,
+          "image": true,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 0
+        }
+      ]
+    },
+    {
+      "cle": "cordoba",
+      "produits_total": 10,
+      "survivant_propose": "Cordoba",
+      "survivant_nedb_id": "MiuRuo1tiLVRkk9B",
+      "perdants": [
+        "CORDOBA"
+      ],
+      "a_arbitrer": false,
+      "note": "survit avec 10 produit(s) et un logo",
+      "images_perdantes_a_vider": [
+        "CORDOBA"
+      ],
+      "detail": [
+        {
+          "nom": "Cordoba",
+          "nedb_id": "MiuRuo1tiLVRkk9B",
+          "produits": 10,
+          "image": true,
+          "galerie": 0,
+          "woo_id": 1129,
+          "fournisseurs": 1
+        },
+        {
+          "nom": "CORDOBA",
+          "nedb_id": "iQn76gmnnIA8Q2kl",
+          "produits": 0,
+          "image": true,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 1
+        }
+      ]
+    },
+    {
+      "cle": "km",
+      "produits_total": 10,
+      "survivant_propose": "K&M",
+      "survivant_nedb_id": "lUjQHdaxgTkwRmmK",
+      "perdants": [
+        "K&M"
+      ],
+      "a_arbitrer": false,
+      "note": "survit avec 8 produit(s) et un logo",
+      "images_perdantes_a_vider": [
+        "K&M"
+      ],
+      "detail": [
+        {
+          "nom": "K&M",
+          "nedb_id": "lUjQHdaxgTkwRmmK",
+          "produits": 8,
+          "image": true,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 1
+        },
+        {
+          "nom": "K&M",
+          "nedb_id": "T8ZN953IFBF0mHKI",
+          "produits": 2,
+          "image": true,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 1
+        }
+      ]
+    },
+    {
+      "cle": "gator",
+      "produits_total": 8,
+      "survivant_propose": "GATOR",
+      "survivant_nedb_id": "4TMGzurAMMtu1lMj",
+      "perdants": [
+        "Gator"
+      ],
+      "a_arbitrer": false,
+      "note": "survit avec 6 produit(s) et un logo",
+      "images_perdantes_a_vider": [
+        "Gator"
+      ],
+      "detail": [
+        {
+          "nom": "GATOR",
+          "nedb_id": "4TMGzurAMMtu1lMj",
+          "produits": 6,
+          "image": true,
+          "galerie": 0,
+          "woo_id": 1188,
+          "fournisseurs": 1
+        },
+        {
+          "nom": "Gator",
+          "nedb_id": "BVpN6HV7NcA1XvQu",
+          "produits": 2,
+          "image": true,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 1
+        }
+      ]
+    },
+    {
+      "cle": "clarke",
+      "produits_total": 2,
+      "survivant_propose": "Clarke",
+      "survivant_nedb_id": "1s1WRINC1OmHfgY0",
+      "perdants": [
+        "CLARKE"
+      ],
+      "a_arbitrer": true,
+      "note": "égalité sur produits ET image : le départage automatique ne tranche pas",
+      "images_perdantes_a_vider": [
+        "CLARKE"
+      ],
+      "detail": [
+        {
+          "nom": "Clarke",
+          "nedb_id": "1s1WRINC1OmHfgY0",
+          "produits": 1,
+          "image": true,
+          "galerie": 0,
+          "woo_id": 1347,
+          "fournisseurs": 1
+        },
+        {
+          "nom": "CLARKE",
+          "nedb_id": "SFuHwPpQndals7qG",
+          "produits": 1,
+          "image": true,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 1
+        }
+      ]
+    },
+    {
+      "cle": "magneto",
+      "produits_total": 2,
+      "survivant_propose": "Magneto",
+      "survivant_nedb_id": "DkXgfBgIOuJbVJbM",
+      "perdants": [
+        "MAGNETO"
+      ],
+      "a_arbitrer": false,
+      "note": "survit avec 2 produit(s) et un logo",
+      "images_perdantes_a_vider": [],
+      "detail": [
+        {
+          "nom": "Magneto",
+          "nedb_id": "DkXgfBgIOuJbVJbM",
+          "produits": 2,
+          "image": true,
+          "galerie": 0,
+          "woo_id": 1508,
+          "fournisseurs": 1
+        },
+        {
+          "nom": "MAGNETO",
+          "nedb_id": "hmOv3ZqiHEBgDTo2",
+          "produits": 0,
+          "image": false,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 1
+        }
+      ]
+    },
+    {
+      "cle": "lmpro",
+      "produits_total": 1,
+      "survivant_propose": "LMPro",
+      "survivant_nedb_id": "AYIZjZTEzwpqG0bj",
+      "perdants": [
+        "LM Pro"
+      ],
+      "a_arbitrer": false,
+      "note": "survit avec 1 produit(s)",
+      "images_perdantes_a_vider": [],
+      "detail": [
+        {
+          "nom": "LMPro",
+          "nedb_id": "AYIZjZTEzwpqG0bj",
+          "produits": 1,
+          "image": false,
+          "galerie": 0,
+          "woo_id": 1611,
+          "fournisseurs": 1
+        },
+        {
+          "nom": "LM Pro",
+          "nedb_id": "nzPlDSPEaDTd8OWj",
+          "produits": 0,
+          "image": false,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 1
+        }
+      ]
+    },
+    {
+      "cle": "akg",
+      "produits_total": 0,
+      "survivant_propose": "AKG",
+      "survivant_nedb_id": "aVkQ0NBcHykGDaK9",
+      "perdants": [
+        "AKG"
+      ],
+      "a_arbitrer": true,
+      "note": "aucun produit des deux côtés — supprimer les deux plutôt que fusionner",
+      "images_perdantes_a_vider": [],
+      "detail": [
+        {
+          "nom": "AKG",
+          "nedb_id": "aVkQ0NBcHykGDaK9",
+          "produits": 0,
+          "image": false,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 1
+        },
+        {
+          "nom": "AKG",
+          "nedb_id": "mBufk4hdTfJPiqFa",
+          "produits": 0,
+          "image": false,
+          "galerie": 0,
+          "woo_id": null,
+          "fournisseurs": 0
+        }
+      ]
+    }
+  ]
+}

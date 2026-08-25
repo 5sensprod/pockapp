@@ -1,0 +1,1264 @@
+{
+ "_lisez_moi": "backend/catalog/mapping/README.md",
+ "genere_le": "2026-08-24",
+ "source": "%APPDATA%AppPOSdata",
+ "role": "33 SKU portés par plusieurs fiches NeDB — ils BLOQUENT la reprise (collision de clé stable)",
+ "a_remplir": "decision : \"garder\" (le nom proposé survit, les autres sont écartés) | \"produits_distincts\" (ce ne sont PAS des doublons : corriger le SKU dans AppPos)",
+ "avertissement": "proposition_garder est un TRI, pas une décision : il privilégie la fiche dont le nom n'est pas le SKU, puis celle qui a un woo_id, une image, des ventes.",
+ "totaux": {
+  "paires": 33,
+  "fiches": 68,
+  "prix_divergent": 7,
+  "reperes_produits_distincts": 7,
+  "ex_aequo": 2
+ },
+ "doublons": [
+  {
+   "sku": "0162",
+   "ecart_prix_pct": 3.2,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Hohner 532/20 MS Harmo Blues Harp C",
+   "ex_aequo": true,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Hohner 532/20 MS Harmo Blues Harp C",
+     "statut": "published",
+     "stock": 0,
+     "prix": 43.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Harmonica",
+     "marque": "HOHNER",
+     "vendus": 0,
+     "nedb_id": "4xvOBwKLZNJOgaiq"
+    },
+    {
+     "nom": "Hohner 532/20 MS Harmonica Blues Harp C",
+     "statut": "published",
+     "stock": 0,
+     "prix": 42.5,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Harmonica",
+     "marque": "HOHNER",
+     "vendus": 0,
+     "nedb_id": "tMvcwgr02gccVsSp"
+    }
+   ]
+  },
+  {
+   "sku": "210/20",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": "deux TONALITÉS différentes : A mineur et E mineur",
+   "proposition_garder": "Penta Harp A Mineur",
+   "ex_aequo": true,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Penta Harp A Mineur",
+     "statut": "published",
+     "stock": 0,
+     "prix": 49.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Harmonica",
+     "marque": "HOHNER",
+     "vendus": 0,
+     "nedb_id": "Tr7NXt6lwQF0bpu7"
+    },
+    {
+     "nom": "Penta Harp E Mineur",
+     "statut": "published",
+     "stock": 0,
+     "prix": 49.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Harmonica",
+     "marque": "HOHNER",
+     "vendus": 0,
+     "nedb_id": "VEvgsVI53Tkcbqoq"
+    }
+   ]
+  },
+  {
+   "sku": "730525",
+   "ecart_prix_pct": 9.1,
+   "prix_divergent": false,
+   "repere_a_la_lecture": "la première fiche se nomme 730595 — une AUTRE référence Gewa",
+   "proposition_garder": "730595",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "730595",
+     "statut": "published",
+     "stock": 0,
+     "prix": 20.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "ACCESSOIRES Divers",
+     "marque": "Gewa",
+     "vendus": 0,
+     "nedb_id": "bKRLZd0agFG1IllP"
+    },
+    {
+     "nom": "730525",
+     "statut": "published",
+     "stock": 1,
+     "prix": 19,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "ACCESSOIRES Divers",
+     "marque": "Gewa",
+     "vendus": 0,
+     "nedb_id": "lLJbEA7ojWxBjptB"
+    }
+   ]
+  },
+  {
+   "sku": "BA-0310-00",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Peau Remo Ambassador clear 10\"",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Peau Remo Ambassador clear 10\"",
+     "statut": "published",
+     "stock": 1,
+     "prix": 21.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "REMO",
+     "vendus": 0,
+     "nedb_id": "qtBAKCYB9Xu7DnTy"
+    },
+    {
+     "nom": "BA-0310-00",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 21.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": "Peaux Batterie",
+     "marque": "REMO",
+     "vendus": 0,
+     "nedb_id": "3YtGLhbnqWU6c8jC"
+    }
+   ]
+  },
+  {
+   "sku": "BD22UV1",
+   "ecart_prix_pct": 2.8,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "22\" UV1 BTR CTD BD22UV1",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "22\" UV1 BTR CTD BD22UV1",
+     "statut": "published",
+     "stock": 1,
+     "prix": 69,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "9rsjsKpSYWsjMvWp"
+    },
+    {
+     "nom": "Peau Grosse Caisse Evans",
+     "statut": "draft",
+     "stock": 1,
+     "prix": 71,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "FbWKA2dJ1lMHV4Ls"
+    }
+   ]
+  },
+  {
+   "sku": "D-01",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Ligature et capuchon d'embouchure en cuir pour clarinette J Michaeld",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Ligature et capuchon d'embouchure en cuir pour clarinette J Michaeld",
+     "statut": "published",
+     "stock": 1,
+     "prix": 22,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Ligatures",
+     "marque": "J.MICHAEL",
+     "vendus": 0,
+     "nedb_id": "1RqeS3kFGQhGUROB"
+    },
+    {
+     "nom": "D-01",
+     "statut": "published",
+     "stock": 1,
+     "prix": 22,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Accessoires vents",
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "EmKtuV3mwXswvt0t"
+    }
+   ]
+  },
+  {
+   "sku": "D-03",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Ligature et capuchon d'embouchure en cuir pour Sax Alto J Michael",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Ligature et capuchon d'embouchure en cuir pour Sax Alto J Michael",
+     "statut": "published",
+     "stock": 1,
+     "prix": 22,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Ligatures",
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "iX109QAZ6c1fcyT4"
+    },
+    {
+     "nom": "D-03",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 22,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Becs & couvre Bec",
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "gwQkVVj9smPBAg3C"
+    }
+   ]
+  },
+  {
+   "sku": "GU261",
+   "ecart_prix_pct": 6.8,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Guitare Folk Guild Memoir DS240 Slope Shoulder",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Guitare Folk Guild Memoir DS240 Slope Shoulder",
+     "statut": "published",
+     "stock": 1,
+     "prix": 549,
+     "woo": true,
+     "image": true,
+     "galerie": 0,
+     "categorie": "Folk electro",
+     "marque": "GUILD",
+     "vendus": 0,
+     "nedb_id": "mmdti38YbjXvqP0P"
+    },
+    {
+     "nom": "GU261 GUILD MEMOIR DS240 SLOPE SHOULDER",
+     "statut": "published",
+     "stock": 1,
+     "prix": 589,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Folk",
+     "marque": "GUILD",
+     "vendus": 0,
+     "nedb_id": "oag2wVSQMEXt2cfO"
+    }
+   ]
+  },
+  {
+   "sku": "GVA VC354-BK",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Guitare Classique 4/4 Noir",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Guitare Classique 4/4 Noir",
+     "statut": "published",
+     "stock": 3,
+     "prix": 159,
+     "woo": true,
+     "image": true,
+     "galerie": 0,
+     "categorie": "Classiques 4/4",
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "VRDyIUpaIDsvtgIO"
+    },
+    {
+     "nom": "Valencia VC354 BK : La Classique Satinée Parfaite",
+     "statut": "published",
+     "stock": 0,
+     "prix": 159,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Classiques 4/4",
+     "marque": "VALENCIA",
+     "vendus": 0,
+     "nedb_id": "RU1XP8n23VaRuega"
+    }
+   ]
+  },
+  {
+   "sku": "HB-30",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Clochettes de traîneau Hayman",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Clochettes de traîneau Hayman",
+     "statut": "published",
+     "stock": 2,
+     "prix": 12.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Batterie & Percussion",
+     "marque": "HAYMAN",
+     "vendus": 0,
+     "nedb_id": "597y9Ih8MWGuLezE"
+    },
+    {
+     "nom": "Clochettes de poignet",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 12.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "xwu9yEA659C6KRAR"
+    }
+   ]
+  },
+  {
+   "sku": "HDDB12T2",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "HEAT Peau 12\" - Son puissant et chaud",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "HEAT Peau 12\" - Son puissant et chaud",
+     "statut": "published",
+     "stock": 1,
+     "prix": 20.5,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "rg8VHFT1tKExfKe7"
+    },
+    {
+     "nom": "HEATS® - dB.series transparente - Tom 12\"",
+     "statut": "published",
+     "stock": 0,
+     "prix": 20.5,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "zzGGlH5aGrJgUe9R"
+    }
+   ]
+  },
+  {
+   "sku": "HDDB14S2",
+   "ecart_prix_pct": 5.4,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Peau sablée Heat dB Serie tom 14\"",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Peau sablée Heat dB Serie tom 14\"",
+     "statut": "published",
+     "stock": 1,
+     "prix": 24.5,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "XPTayIEHVSM69ayR"
+    },
+    {
+     "nom": "HEATS® - dB.series sablée - Tom/Caisse Claire 14\"",
+     "statut": "published",
+     "stock": 0,
+     "prix": 25.9,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "BUxzyeXSwlt3yx5h"
+    }
+   ]
+  },
+  {
+   "sku": "HDDB16T2",
+   "ecart_prix_pct": 2,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "HEAT Peau 16\" - Son puissant et chaud",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "HEAT Peau 16\" - Son puissant et chaud",
+     "statut": "published",
+     "stock": 1,
+     "prix": 28.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "GkYFAGfulCHu8vIW"
+    },
+    {
+     "nom": "peau HEATS dB.series transparente 2 PLIS 16''",
+     "statut": "published",
+     "stock": 2,
+     "prix": 29.5,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "Oilek2ax0kyf1Ak1"
+    }
+   ]
+  },
+  {
+   "sku": "HDEB22M1",
+   "ecart_prix_pct": 2.8,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Peau HEAT Grosse Caisse Echo Black 22\"",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Peau HEAT Grosse Caisse Echo Black 22\"",
+     "statut": "published",
+     "stock": 0,
+     "prix": 49.5,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "7Okm8siPaOMPHR11"
+    },
+    {
+     "nom": "HEATS® - echo.black noir - Grosse Caisse 22\"",
+     "statut": "published",
+     "stock": 1,
+     "prix": 50.9,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "aocfambEyMBTWYQ9"
+    }
+   ]
+  },
+  {
+   "sku": "HDEW20M1",
+   "ecart_prix_pct": 2.8,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Peau HEAT Grosse Caisse Echo white 20\"",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Peau HEAT Grosse Caisse Echo white 20\"",
+     "statut": "published",
+     "stock": 1,
+     "prix": 48.5,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "9vgtmx1jzZEmIWb3"
+    },
+    {
+     "nom": "HEATS® - echo.white sablée - Grosse Caisse 20\"",
+     "statut": "published",
+     "stock": 1,
+     "prix": 49.9,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Peaux Batterie",
+     "marque": "HEATS",
+     "vendus": 0,
+     "nedb_id": "3cjwrBziaZzA9vgU"
+    }
+   ]
+  },
+  {
+   "sku": "JL500GD",
+   "ecart_prix_pct": 4.2,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "JET JL500GD Goldtop : La Légende Singlecut",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "JET JL500GD Goldtop : La Légende Singlecut",
+     "statut": "published",
+     "stock": 0,
+     "prix": 479,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Guitares électriques",
+     "marque": "JET",
+     "vendus": 0,
+     "nedb_id": "tmXeESNoqodrxAO1"
+    },
+    {
+     "nom": "Guitare Électrique JET JL 500GD Goldtop : Le Look Vintage",
+     "statut": "published",
+     "stock": 1,
+     "prix": 459,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Guitares électriques",
+     "marque": "JET",
+     "vendus": 0,
+     "nedb_id": "6MmE6nLb56S7Qj9C"
+    }
+   ]
+  },
+  {
+   "sku": "MF912",
+   "ecart_prix_pct": 3.7,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Coup de pouce Méthhode guitare ROck Débutant Vol 1",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Coup de pouce Méthhode guitare ROck Débutant Vol 1",
+     "statut": "published",
+     "stock": 0,
+     "prix": 26.9,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Partitions",
+     "marque": "COUP DE POUCE",
+     "vendus": 0,
+     "nedb_id": "ST8RN3USNkoiOnHe"
+    },
+    {
+     "nom": "MF912",
+     "statut": "published",
+     "stock": 1,
+     "prix": 25.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Partitions",
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "Oup2VetnHv0FQa5E"
+    }
+   ]
+  },
+  {
+   "sku": "MXR M108S",
+   "ecart_prix_pct": 2.9,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Pédale  équalizer MXR - MXR M108S",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Pédale  équalizer MXR - MXR M108S",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 169,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "2AUBwGqJXJgzsN3x"
+    },
+    {
+     "nom": "MXR M108S",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 174,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": "Pédales",
+     "marque": "MXR",
+     "vendus": 0,
+     "nedb_id": "xAzo41GFVbmwaseE"
+    }
+   ]
+  },
+  {
+   "sku": "P3-1322-C2",
+   "ecart_prix_pct": 7.1,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "17 REMO P3-1322-C2",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "17 REMO P3-1322-C2",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 79.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": "Peaux Batterie",
+     "marque": "REMO",
+     "vendus": 0,
+     "nedb_id": "t6WFK9lVqQbfo7Dq"
+    },
+    {
+     "nom": "P3-1322-C2",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 86,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": "Peaux Batterie",
+     "marque": "REMO",
+     "vendus": 0,
+     "nedb_id": "vnPthjJd5ugliZRL"
+    }
+   ]
+  },
+  {
+   "sku": "PVV206-70SS",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "V206 Platinium SLIM PATCH - 0.75m S/S droit/droit",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "V206 Platinium SLIM PATCH - 0.75m S/S droit/droit",
+     "statut": "published",
+     "stock": 7,
+     "prix": 34,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Cables guitare",
+     "marque": "PROVIDENCE",
+     "vendus": 0,
+     "nedb_id": "fEtL765DvUtuCFja"
+    },
+    {
+     "nom": "Providence V206 0.7m S/S droit/droit",
+     "statut": "published",
+     "stock": 5,
+     "prix": 34,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Cables  autres",
+     "marque": "PROVIDENCE",
+     "vendus": 0,
+     "nedb_id": "Rj7ZbO8phlPSs7B5"
+    }
+   ]
+  },
+  {
+   "sku": "PWCBS-SS",
+   "ecart_prix_pct": 16.8,
+   "prix_divergent": true,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Daddario Bottleneck Chrome : Son Clair & Glisse Fluide",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Daddario Bottleneck Chrome : Son Clair & Glisse Fluide",
+     "statut": "published",
+     "stock": 1,
+     "prix": 14.9,
+     "woo": true,
+     "image": true,
+     "galerie": 4,
+     "categorie": "Bottlenecks et slides",
+     "marque": "DADDARIO",
+     "vendus": 0,
+     "nedb_id": "jZTleMkFnQpOHyH7"
+    },
+    {
+     "nom": "Bottleneck D'Addario",
+     "statut": "published",
+     "stock": 1,
+     "prix": 17.9,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Bottlenecks et slides",
+     "marque": "DADDARIO",
+     "vendus": 0,
+     "nedb_id": "8UPzWgzFTVgw0I5P"
+    }
+   ]
+  },
+  {
+   "sku": "PWGS-SL",
+   "ecart_prix_pct": 23.3,
+   "prix_divergent": true,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Daddario Glass Slide : Son Clair & Expressif",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Daddario Glass Slide : Son Clair & Expressif",
+     "statut": "published",
+     "stock": 1,
+     "prix": 9.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Bottlenecks et slides",
+     "marque": "DADDARIO",
+     "vendus": 0,
+     "nedb_id": "JvQ1MOMEkwIiJh6W"
+    },
+    {
+     "nom": "Bottleneck verre D'Addario taille Large",
+     "statut": "published",
+     "stock": 0,
+     "prix": 12.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "8cLLjecefsmVxhFa"
+    }
+   ]
+  },
+  {
+   "sku": "PWGS-SM",
+   "ecart_prix_pct": 23.3,
+   "prix_divergent": true,
+   "repere_a_la_lecture": "trois fiches, dont « taille Large » ET « taille médium »",
+   "proposition_garder": "Daddario Glass Slide : Son Clair & Expressif (Copie)",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Daddario Glass Slide : Son Clair & Expressif (Copie)",
+     "statut": "published",
+     "stock": 1,
+     "prix": 9.9,
+     "woo": true,
+     "image": true,
+     "galerie": 2,
+     "categorie": "Bottlenecks et slides",
+     "marque": "DADDARIO",
+     "vendus": 0,
+     "nedb_id": "qc73OzNKUIjJpU8M"
+    },
+    {
+     "nom": "Bottleneck verre D'Addario taille Large",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 12.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "O2nrValqmHnifs9C"
+    },
+    {
+     "nom": "Bottleneck verre D'Addario taille médium",
+     "statut": "published",
+     "stock": 1,
+     "prix": 12.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": "Bottlenecks et slides",
+     "marque": "DADDARIO",
+     "vendus": 0,
+     "nedb_id": "SveAeJQOLH1E4Vcd"
+    }
+   ]
+  },
+  {
+   "sku": "PWGS-SS",
+   "ecart_prix_pct": 23.3,
+   "prix_divergent": true,
+   "repere_a_la_lecture": "« taille Small » et un « Bottleneck D'Addario » sans taille",
+   "proposition_garder": "Daddario Glass Slide : Son Clair & Expressif",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Daddario Glass Slide : Son Clair & Expressif",
+     "statut": "published",
+     "stock": 1,
+     "prix": 9.9,
+     "woo": true,
+     "image": true,
+     "galerie": 2,
+     "categorie": "Bottlenecks et slides",
+     "marque": "DADDARIO",
+     "vendus": 0,
+     "nedb_id": "PpHa1t44HImCHYA8"
+    },
+    {
+     "nom": "Bottleneck verre D'Addario taille Small",
+     "statut": "published",
+     "stock": 1,
+     "prix": 12.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "Z9kKBx3TwGRmjP1x"
+    },
+    {
+     "nom": "Bottleneck D'Addario",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 12.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "zmTSaKkmDUDIBuKm"
+    }
+   ]
+  },
+  {
+   "sku": "PWSAL400",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Sangle D'Addario Auto Lock Polypro pour guitare, noir",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Sangle D'Addario Auto Lock Polypro pour guitare, noir",
+     "statut": "published",
+     "stock": 1,
+     "prix": 24.9,
+     "woo": true,
+     "image": true,
+     "galerie": 2,
+     "categorie": "Sangles et courroies",
+     "marque": "DADDARIO",
+     "vendus": 0,
+     "nedb_id": "129HjGRIPmAFB0ON"
+    },
+    {
+     "nom": "sangle Daddario PWSAL400",
+     "statut": "published",
+     "stock": 0,
+     "prix": 24.9,
+     "woo": false,
+     "image": true,
+     "galerie": 3,
+     "categorie": "Sangles et courroies",
+     "marque": "DADDARIO",
+     "vendus": 0,
+     "nedb_id": "E84QDIGshfMHMeYH"
+    }
+   ]
+  },
+  {
+   "sku": "QSC CB10",
+   "ecart_prix_pct": 11.1,
+   "prix_divergent": true,
+   "repere_a_la_lecture": "bundle avec housse (899€) contre enceinte seule (799€)",
+   "proposition_garder": "Bundle Enceinte QSC CB10 Nomade avec Housse de Transport Waterproof",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Bundle Enceinte QSC CB10 Nomade avec Housse de Transport Waterproof",
+     "statut": "published",
+     "stock": 1,
+     "prix": 899,
+     "woo": true,
+     "image": true,
+     "galerie": 3,
+     "categorie": "Enceinte Bluetooth",
+     "marque": "QSC",
+     "vendus": 0,
+     "nedb_id": "CsBM5IkVxJIzezNt"
+    },
+    {
+     "nom": "Enceinte Bluetooth alimentée par batterie QSC CB10",
+     "statut": "published",
+     "stock": 0,
+     "prix": 799,
+     "woo": false,
+     "image": true,
+     "galerie": 8,
+     "categorie": "Enceinte Bluetooth",
+     "marque": "QSC",
+     "vendus": 0,
+     "nedb_id": "56erTY2MCuWNFIFG"
+    }
+   ]
+  },
+  {
+   "sku": "RS1L",
+   "ecart_prix_pct": 2.8,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Meinl Baton Pluie Sonic Energy L Relaxation Zen",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Meinl Baton Pluie Sonic Energy L Relaxation Zen",
+     "statut": "published",
+     "stock": 1,
+     "prix": 39,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Percu bien-être",
+     "marque": "Meinl",
+     "vendus": 0,
+     "nedb_id": "dTWZIMxqeKr3oav8"
+    },
+    {
+     "nom": "RS1L",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 37.9,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "7e2mxJGII4rRe1D8"
+    }
+   ]
+  },
+  {
+   "sku": "RS1S",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Meinl Baton Pluie Sonic Energy L Relaxation Zen (Copie) (Copie)",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Meinl Baton Pluie Sonic Energy L Relaxation Zen (Copie) (Copie)",
+     "statut": "published",
+     "stock": 1,
+     "prix": 24.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Percu bien-être",
+     "marque": "Meinl",
+     "vendus": 0,
+     "nedb_id": "P4P0iWgg3UiaDVeZ"
+    },
+    {
+     "nom": "RAINSTICK SONIC ENERGY BAMBOU S",
+     "statut": "published",
+     "stock": 0,
+     "prix": 24.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": "Petites Percussions ",
+     "marque": "Meinl",
+     "vendus": 0,
+     "nedb_id": "K29W5hMqSSdVa9kg"
+    }
+   ]
+  },
+  {
+   "sku": "SBU600",
+   "ecart_prix_pct": 12.7,
+   "prix_divergent": true,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "SINGING BOWL SONIC ENERGY UNIVER. 650G",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "SINGING BOWL SONIC ENERGY UNIVER. 650G",
+     "statut": "published",
+     "stock": 1,
+     "prix": 102,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Percu bien-être",
+     "marque": "Meinl",
+     "vendus": 0,
+     "nedb_id": "MOYLd6hX3r81Mxns"
+    },
+    {
+     "nom": "SBU600",
+     "statut": "draft",
+     "stock": 0,
+     "prix": 89,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "QlEEcUr0V0vb8v1g"
+    }
+   ]
+  },
+  {
+   "sku": "SC29B",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Meinl Chimes Sonic Energy Spiral Bronze 29\"",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Meinl Chimes Sonic Energy Spiral Bronze 29\"",
+     "statut": "published",
+     "stock": 1,
+     "prix": 59.9,
+     "woo": true,
+     "image": true,
+     "galerie": 2,
+     "categorie": "Percu bien-être",
+     "marque": "Meinl",
+     "vendus": 0,
+     "nedb_id": "Hj5MLtokHLGXyDR5"
+    },
+    {
+     "nom": "CHIMES SONIC ENERGYSPIRAL 29\", BRONZE",
+     "statut": "published",
+     "stock": 1,
+     "prix": 59.9,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Percu bien-être",
+     "marque": "Meinl",
+     "vendus": 0,
+     "nedb_id": "x6bLOQguZIBk9FK9"
+    }
+   ]
+  },
+  {
+   "sku": "VG512.280",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": null,
+   "proposition_garder": "Ukulélé Basse Électro-Acoustique Gewa Manoa K-BS-CE E-A",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Ukulélé Basse Électro-Acoustique Gewa Manoa K-BS-CE E-A",
+     "statut": "published",
+     "stock": 1,
+     "prix": 335,
+     "woo": true,
+     "image": true,
+     "galerie": 0,
+     "categorie": "Basse",
+     "marque": "Gewa",
+     "vendus": 0,
+     "nedb_id": "2j1xIWI9v3XDqWTb"
+    },
+    {
+     "nom": "UKULELE BASS K-BS-CE",
+     "statut": "published",
+     "stock": 1,
+     "prix": 335,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Ukulélés",
+     "marque": "MONOA",
+     "vendus": 0,
+     "nedb_id": "a0RGSiHLA8nz0IpB"
+    }
+   ]
+  },
+  {
+   "sku": "WS-S35/B5",
+   "ecart_prix_pct": 61.2,
+   "prix_divergent": true,
+   "repere_a_la_lecture": "lot de 5 bonnettes (4,90€) contre l'unité (1,90€)",
+   "proposition_garder": "5 BONNETTES ANTIVENT NOIR-35mm",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "5 BONNETTES ANTIVENT NOIR-35mm",
+     "statut": "published",
+     "stock": 0,
+     "prix": 4.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "ACCESSOIRES Divers",
+     "marque": "Stagg",
+     "vendus": 0,
+     "nedb_id": "hbPxZHTvTVUWjze5"
+    },
+    {
+     "nom": "bonette anti vent pour micros",
+     "statut": "published",
+     "stock": 2,
+     "prix": 1.9,
+     "woo": false,
+     "image": true,
+     "galerie": 1,
+     "categorie": "ACCESSOIRES Divers",
+     "marque": "Stagg",
+     "vendus": 0,
+     "nedb_id": "uwHbGd875NzgbJGn"
+    }
+   ]
+  },
+  {
+   "sku": "X000NE768F",
+   "ecart_prix_pct": 0,
+   "prix_divergent": false,
+   "repere_a_la_lecture": "« Règle Coulissante » et « Méthode guitare Impro » : deux articles",
+   "proposition_garder": "Règle Coulissante pour Apprendre les Gammes Facilement à la guitare - Méthode Complète de Lecture des Notes",
+   "ex_aequo": false,
+   "decision": null,
+   "fiches": [
+    {
+     "nom": "Règle Coulissante pour Apprendre les Gammes Facilement à la guitare - Méthode Complète de Lecture des Notes",
+     "statut": "published",
+     "stock": 4,
+     "prix": 44.9,
+     "woo": true,
+     "image": true,
+     "galerie": 1,
+     "categorie": "Partitions",
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "HFbOeGZjsgvZ6q2J"
+    },
+    {
+     "nom": "Méthode guitare Impro",
+     "statut": "draft",
+     "stock": 6,
+     "prix": 44.9,
+     "woo": false,
+     "image": false,
+     "galerie": 0,
+     "categorie": null,
+     "marque": null,
+     "vendus": 0,
+     "nedb_id": "DySX6MoH1Mf7NgKW"
+    }
+   ]
+  }
+ ]
+}

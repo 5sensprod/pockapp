@@ -62,6 +62,11 @@ type files struct {
 	root string
 	fsys *filesystem.System
 	res  *Result
+	// secours est le répertoire `storage` d'une AUTRE base PocketBase, où
+	// retrouver les fichiers que public/ n'a plus. Vide = pas de repli.
+	secours string
+	// bySecours indexe ce répertoire par nom NORMALISÉ. Construit à la demande.
+	bySecours map[string]string
 	// byName indexe public/ par nom de fichier. Construit à la demande.
 	//
 	// 93 images portent un `src` ABSOLU — une URL vers axemusique.shop — au
@@ -95,6 +100,74 @@ func (f *files) index() map[string]string {
 	return f.byName
 }
 
+// normaliserNomPB rend le nom qu'un fichier porte une fois stocké par
+// PocketBase, suffixe aléatoire retiré.
+//
+// PocketBase ne se contente pas d'ajouter un suffixe : il abaisse la casse et
+// remplace tout ce qui n'est ni lettre ni chiffre par un souligné.
+// « image-png-1758570893987.png » devient « image_png_1758570893987_h1e45OavaC.png ».
+// Comparer les noms bruts ne retrouve donc RIEN — mesuré, 0 sur 1334.
+func normaliserNomPB(nom string) string {
+	ext := strings.ToLower(filepath.Ext(nom))
+	base := strings.ToLower(strings.TrimSuffix(nom, filepath.Ext(nom)))
+	var b strings.Builder
+	precedent := false
+	for _, r := range base {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			precedent = false
+			continue
+		}
+		if !precedent {
+			b.WriteByte('_')
+			precedent = true
+		}
+	}
+	return b.String() + ext
+}
+
+// indexSecours construit, une seule fois, la table nom normalisé → chemin du
+// répertoire de secours.
+//
+// ── Pourquoi ce repli existe ───────────────────────────────────────────────
+//
+// 1334 fichiers déclarés par NeDB ne sont plus sous public/ — 478 images
+// principales et 856 de galerie, mesuré le 25 août 2026. Ils n'ont pas disparu
+// pour autant : la base de développement les a copiés dans son propre
+// `storage` lors de l'import du 11 août, et 95,7 % s'y retrouvent.
+//
+// Sans ce repli, 433 produits PUBLIÉS perdaient leur image. Ce n'est pas
+// qu'un défaut d'affichage : `image_checksum` aurait changé, les produits
+// seraient passés « modifiés », et un ré-export aurait déclenché le ménage
+// distant — qui EFFACE les rangs que la nouvelle liste ne désigne plus. On
+// aurait supprimé en ligne des images qui y étaient encore.
+func (f *files) indexSecours() map[string]string {
+	if f.bySecours != nil {
+		return f.bySecours
+	}
+	f.bySecours = map[string]string{}
+	if f.secours == "" {
+		return f.bySecours
+	}
+	_ = filepath.WalkDir(f.secours, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || strings.HasSuffix(d.Name(), ".attrs") {
+			return nil //nolint:nilerr // un répertoire illisible n'arrête pas le reste
+		}
+		ext := filepath.Ext(d.Name())
+		base := strings.TrimSuffix(d.Name(), ext)
+		// Le suffixe aléatoire de PocketBase : dix caractères après un souligné.
+		if i := strings.LastIndex(base, "_"); i > 0 && len(base)-i == 11 {
+			base = base[:i]
+		}
+		k := normaliserNomPB(base + ext)
+		if _, vu := f.bySecours[k]; !vu {
+			f.bySecours[k] = p
+		}
+		return nil
+	})
+	return f.bySecours
+}
+
 // resolve rend le chemin disque d'un `src`, ou "" s'il reste introuvable.
 func (f *files) resolve(src string) string {
 	// Cas normal : chemin relatif à la racine d'AppServe.
@@ -108,6 +181,12 @@ func (f *files) resolve(src string) string {
 	// des `src` absolus, et de quelques chemins relatifs périmés.
 	if p, ok := f.index()[path.Base(src)]; ok {
 		f.res.ResolvedByName++
+		return p
+	}
+	// Dernier repli : le `storage` d'une autre base PocketBase, qui a copié ce
+	// fichier avant qu'il ne disparaisse de public/.
+	if p, ok := f.indexSecours()[normaliserNomPB(path.Base(src))]; ok {
+		f.res.ResolvedFromBackup++
 		return p
 	}
 	return ""
@@ -177,6 +256,9 @@ type Result struct {
 	// ResolvedByName compte les fichiers retrouvés sous public/ par leur nom,
 	// le chemin enregistré dans NeDB étant faux ou absolu.
 	ResolvedByName int
+	// ResolvedFromBackup compte ceux retrouvés dans le `storage` de secours —
+	// disparus de public/, mais copiés par une autre base avant leur perte.
+	ResolvedFromBackup int
 	// AmbiguousFiles compte les homonymes rencontrés à l'indexation.
 	AmbiguousFiles int
 	// Findings est ce que la garde a trouvé avant d'écrire — vide sur une base
@@ -208,6 +290,10 @@ func (r *Result) SkippedByEntity() map[string][]Skipped {
 
 // Options porte ce que l'appelant décide, et lui seul.
 type Options struct {
+	// SecoursImages — répertoire `storage` d'une autre base PocketBase, où
+	// chercher les fichiers absents de public/. Voir indexSecours.
+	SecoursImages string
+
 	// ForcePurge passe outre la garde de guard.go. Écrit à la main, jamais par
 	// défaut : depuis le 19 août 2026, une purge détruit des données que NeDB
 	// n'a pas.
@@ -243,7 +329,7 @@ func Run(app *pocketbase.PocketBase, cat *normalize.Catalog, rep *normalize.Repo
 		return nil, fmt.Errorf("ouverture du stockage PocketBase: %w", err)
 	}
 	defer fsys.Close()
-	fl := &files{root: filepath.Dir(nedbDir), fsys: fsys, res: res}
+	fl := &files{root: filepath.Dir(nedbDir), fsys: fsys, res: res, secours: opts.SecoursImages}
 
 	quarantine := rep.Quarantined()
 
@@ -512,6 +598,12 @@ func loadProducts(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID s
 		r.Set("image", fl.upload(r, p.ImageSrc))
 		r.Set("gallery", fl.uploadAll(r, p.GallerySrc))
 		r.Set("wp_image_url", p.ImageWPURL)
+		// Vide = neuf, et l'absence est la valeur par défaut : on n'écrit rien
+		// plutôt que d'imposer une valeur à 3036 produits pour dire « rien de
+		// particulier ». Voir AddCommercialStateToProducts.
+		if p.CommercialState != "" {
+			r.Set("commercial_state", p.CommercialState)
+		}
 
 		if p.BrandLegacyID != "" {
 			if id, ok := brandIDs[p.BrandLegacyID]; ok {
