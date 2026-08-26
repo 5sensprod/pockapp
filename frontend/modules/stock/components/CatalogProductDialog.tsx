@@ -385,8 +385,8 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 						{isEdit ? 'Modifier le produit' : 'Nouveau produit'}
 					</DialogTitle>
 					<DialogDescription>
-						Écrit dans le catalogue PocketBase. La caisse, elle, lit encore
-						AppPos : les deux peuvent différer jusqu’à la prochaine version.
+						Enregistre la fiche dans le catalogue commun à la caisse, au stock et
+						au site.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -769,10 +769,9 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 
 						{!isEdit && (
 							<p className='rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs'>
-								Un produit créé ici n’a pas d’identifiant NeDB (
-								<code>legacy_id</code>), qui est la clé de l’export vers le site
-								: il ne partira pas tant que cette clé n’est pas donnée. La
-								caisse, elle, ne le verra pas avant la prochaine version.
+								Une clé stable (<code>legacy_id</code>) sera attribuée
+								automatiquement à la création. Elle permettra d’identifier ce produit
+								dans les exports vers le site.
 							</p>
 						)}
 

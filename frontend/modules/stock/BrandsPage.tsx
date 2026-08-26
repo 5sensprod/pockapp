@@ -14,8 +14,7 @@
 // props. Deux rôles distincts, donc deux composants — le §4 du rituel de
 // migration autorise ce cas, à condition de le dire, et c'est ce paragraphe.
 
-import { Card, CardContent } from '@/components/ui/card'
-import { AlertTriangle, Building2 } from 'lucide-react'
+import { Building2 } from 'lucide-react'
 
 import { BrandList } from './components/BrandList'
 
@@ -30,31 +29,11 @@ export function BrandsPage() {
 					<h1 className='font-bold text-3xl'>Marques</h1>
 				</div>
 				<p className='text-muted-foreground'>
-					Les marques du catalogue <strong>PocketBase</strong>, pas d’AppPos. Le
-					nom et la description sont ceux que le site affichera ; le slug, lui,
-					est figé au premier envoi et ne s’édite pas.
+					Gérez les marques du catalogue. Le nom et la description sont ceux que
+					le site affichera ; le slug, lui, est figé au premier envoi et ne
+					s’édite pas.
 				</p>
 			</div>
-
-			{/* Le même avertissement que dans l'éditeur du site, et pour la même
-			    raison : tant que le catalogue est une projection rechargée par purge,
-			    une saisie est un essai. Le taire ici et le dire là-bas n'aurait aucun
-			    sens — c'est la même base. */}
-			<Card className='mb-6 border-amber-500/40'>
-				<CardContent className='flex items-start gap-3 pt-6'>
-					<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-500' />
-					<div className='text-sm'>
-						<p className='font-medium'>
-							Un rechargement du catalogue efface ces saisies
-						</p>
-						<p className='text-muted-foreground'>
-							<code>catalog-import -load</code> purge les collections et les
-							réécrit depuis NeDB. Tant que l’import n’est pas définitif, ce qui
-							est modifié ici est un essai.
-						</p>
-					</div>
-				</CardContent>
-			</Card>
 
 			<BrandList />
 		</div>

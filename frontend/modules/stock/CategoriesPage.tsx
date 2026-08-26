@@ -17,7 +17,7 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import { useCategories, useUpdateCategory } from '@/lib/queries/categories'
 import { usePocketBase } from '@/lib/use-pocketbase'
-import { AlertTriangle, Star, Tags } from 'lucide-react'
+import { Star, Tags } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { CategoryTree } from './components/CategoryTree'
@@ -62,27 +62,10 @@ export function CategoriesPage() {
 					<h1 className='font-bold text-3xl'>Catégories</h1>
 				</div>
 				<p className='text-muted-foreground'>
-					L’arborescence du catalogue <strong>PocketBase</strong>, pas d’AppPos.
-					Le compteur est double : ce qui est rattaché à la catégorie même, puis
-					ce que toute sa branche emporte.
+					Organisez l’arborescence du catalogue. Le compteur distingue ce qui est
+					rattaché à la catégorie même de ce que toute sa branche emporte.
 				</p>
 			</div>
-
-			<Card className='mb-6 border-amber-500/40'>
-				<CardContent className='flex items-start gap-3 pt-6'>
-					<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-500' />
-					<div className='text-sm'>
-						<p className='font-medium'>
-							Un rechargement du catalogue efface ces saisies
-						</p>
-						<p className='text-muted-foreground'>
-							<code>catalog-import -load</code> purge les collections et les
-							réécrit depuis NeDB. Tant que l’import n’est pas définitif, ce qui
-							est modifié ici est un essai.
-						</p>
-					</div>
-				</CardContent>
-			</Card>
 
 			{/* Le lot porte sur TOUTES les catégories chargées, pas sur la branche
 			    dépliée ni sur la sélection : faire dépendre un traitement de fond

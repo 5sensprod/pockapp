@@ -12,8 +12,7 @@
 // `supplier_code`, `siren`, `contact_*` et `brands` — §6bis.2 du rituel. C'est
 // donc l'écran à regarder de plus près : sa saisie n'a jamais été vue à l'œuvre.
 
-import { Card, CardContent } from '@/components/ui/card'
-import { AlertTriangle, Truck } from 'lucide-react'
+import { Truck } from 'lucide-react'
 
 import { SupplierList } from './components/SupplierList'
 
@@ -28,27 +27,10 @@ export function SuppliersPage() {
 					<h1 className='font-bold text-3xl'>Fournisseurs</h1>
 				</div>
 				<p className='text-muted-foreground'>
-					Les fournisseurs du catalogue <strong>PocketBase</strong>, pas
-					d’AppPos. Un fournisseur porte les marques qu’il distribue : c’est ce
-					lien qui les relie au catalogue, et non le produit.
+					Gérez les fournisseurs et les marques qu’ils distribuent. Ce lien les
+					relie au catalogue indépendamment des fiches produit.
 				</p>
 			</div>
-
-			<Card className='mb-6 border-amber-500/40'>
-				<CardContent className='flex items-start gap-3 pt-6'>
-					<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-500' />
-					<div className='text-sm'>
-						<p className='font-medium'>
-							Un rechargement du catalogue efface ces saisies
-						</p>
-						<p className='text-muted-foreground'>
-							<code>catalog-import -load</code> purge les collections et les
-							réécrit depuis NeDB. Tant que l’import n’est pas définitif, ce qui
-							est modifié ici est un essai.
-						</p>
-					</div>
-				</CardContent>
-			</Card>
 
 			{/* Deux champs de la collection ne sont PAS dans le formulaire —
 			    `banking` et `payment_terms`, JSON libres sans forme contrainte. Le

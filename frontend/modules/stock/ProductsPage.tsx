@@ -246,10 +246,8 @@ export function ProductsPage() {
 					<h1 className='font-bold text-3xl'>Produits</h1>
 				</div>
 				<p className='text-muted-foreground'>
-					Le catalogue <strong>PocketBase</strong>, pas AppPos. Cliquez une
-					ligne pour la modifier. La caisse et l’inventaire lisent encore
-					l’autre base jusqu’à la prochaine version : les deux peuvent différer,
-					et c’est attendu.
+					Le catalogue commun à la caisse, au stock et au site. Cliquez une
+					ligne pour consulter ou modifier sa fiche.
 				</p>
 			</div>
 

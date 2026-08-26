@@ -272,7 +272,7 @@ export function ImageField({
 							)}
 						</>
 					) : (
-						'Servie par PocketBase, pas par AppPos.'
+						'Image enregistrée et servie par PocketBase.'
 					)}
 				</p>
 			</div>
