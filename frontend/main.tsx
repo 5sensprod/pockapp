@@ -5,13 +5,14 @@ import './styles/index.css'
 import { ActiveCompanyProvider } from '@/lib/ActiveCompanyProvider'
 import { AppPosSessionProvider } from '@/lib/apppos'
 import { CatalogRealtimeMount } from '@/lib/realtime/CatalogRealtimeMount'
+import { router } from '@/lib/router'
+import { SyncQueueProvider } from '@/lib/sync/SyncQueueProvider'
 import { AuthProvider } from '@/modules/auth/AuthProvider'
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
 import { QueryClient } from '@tanstack/react-query'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
-import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 import { Toaster } from 'sonner'
-import { routeTree } from './routeTree.gen'
 
 // Clear la session au démarrage (force login à chaque lancement)
 localStorage.removeItem('pocketbase_auth')
@@ -48,14 +49,6 @@ const persister = createSyncStoragePersister({
 	key: 'pocketapp-catalog-cache',
 })
 
-const router = createRouter({ routeTree })
-
-declare module '@tanstack/react-router' {
-	interface Register {
-		router: typeof router
-	}
-}
-
 if (!rootElement) {
 	throw Error(`Couldn't find #root in html`)
 }
@@ -91,7 +84,14 @@ createRoot(rootElement).render(
 						    recharge la page. Sous AuthProvider : la collection exige un
 						    compte. Ne rend rien, ne bloque rien. */}
 						<CatalogRealtimeMount />
-						<RouterProvider router={router} />
+						{/* La synchronisation du catalogue vit ICI, et pas dans l'écran
+						    qui la déclenche : quitter la page démontait le composant, et
+						    la boucle de lots continuait en l'air sans que personne
+						    n'affiche sa progression ni ses refus. Même endroit et même
+						    raison que le temps réel ci-dessus. */}
+						<SyncQueueProvider>
+							<RouterProvider router={router} />
+						</SyncQueueProvider>
 						<Toaster richColors closeButton />
 					</ActiveCompanyProvider>
 				</AuthProvider>

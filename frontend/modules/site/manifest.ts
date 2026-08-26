@@ -20,15 +20,22 @@ export const manifest: ModuleManifest = {
 
 	sidebarMenu: [
 		{
-			id: 'navigation',
-			label: 'Navigation',
-			icon: Menu,
+			id: 'catalogue',
+			label: 'Catalogue en ligne',
+			icon: Store,
 			items: [
 				{
 					label: 'Catalogue en ligne',
 					to: '/site/catalogue',
 					icon: Store,
 				},
+			],
+		},
+		{
+			id: 'navigation',
+			label: 'Menu de navigation',
+			icon: Menu,
+			items: [
 				{
 					label: 'Menu de navigation',
 					to: '/site/menu',

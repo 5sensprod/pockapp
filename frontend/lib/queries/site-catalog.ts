@@ -115,20 +115,67 @@ const BRAND_FIELDS =
 // d'une autre session.
 const CATALOG_STALE_TIME = 5 * 60_000
 
+// ---------------------------------------------------------------------------
+// OPTIONS DE REQUÊTE — la même définition pour les écrans et pour la file
+// ---------------------------------------------------------------------------
+// Les hooks ci-dessous montent ces options ; la file de synchronisation
+// (`frontend/lib/sync/SyncQueueProvider.tsx`) les passe à `ensureQueryData`.
+// C'est le même `queryKey` et la même `queryFn` des deux côtés : la file
+// réutilise donc le cache déjà rempli par l'écran quand il est ouvert, et
+// charge elle-même quand il ne l'est pas. Deux définitions parallèles
+// finiraient par diverger sur les `fields`, et un champ manquant à l'export ne
+// lève jamais — c'est déjà ce qui a failli coûter 1767 images (CLAUDE.md).
+
+export function catalogProductsQueryOptions(
+	pb: unknown,
+	intention: 'published' | 'unpublished',
+) {
+	return {
+		queryKey: ['site-catalog', 'products', intention] as const,
+		staleTime: CATALOG_STALE_TIME,
+		queryFn: async () =>
+			(await (pb as any).collection('products').getFullList({
+				filter:
+					intention === 'published'
+						? 'status = "published"'
+						: 'status != "published"',
+				fields: PRODUCT_FIELDS,
+				sort: 'name',
+			})) as CatalogProduct[],
+	}
+}
+
+export function catalogCategoriesQueryOptions(pb: unknown) {
+	return {
+		queryKey: ['site-catalog', 'categories'] as const,
+		staleTime: CATALOG_STALE_TIME,
+		queryFn: async () =>
+			(await (pb as any).collection('categories').getFullList({
+				fields: CATEGORY_FIELDS,
+				sort: 'name',
+			})) as CatalogCategory[],
+	}
+}
+
+export function catalogBrandsQueryOptions(pb: unknown) {
+	return {
+		queryKey: ['site-catalog', 'brands'] as const,
+		staleTime: CATALOG_STALE_TIME,
+		queryFn: async () =>
+			(await (pb as any).collection('brands').getFullList({
+				fields: BRAND_FIELDS,
+				sort: 'name',
+			})) as CatalogBrand[],
+	}
+}
+
 /** Les produits publiés — l'ensemble exact de ce qui est destiné au site. */
 export function usePublishedProducts() {
 	const pb = usePocketBase() as any
 
-	return useQuery<CatalogProduct[]>({
-		queryKey: ['site-catalog', 'products', 'published'],
-		staleTime: CATALOG_STALE_TIME,
-		queryFn: async () =>
-			(await pb.collection('products').getFullList({
-				filter: 'status = "published"',
-				fields: PRODUCT_FIELDS,
-				sort: 'name',
-			})) as CatalogProduct[],
-	})
+	return useQuery<CatalogProduct[]>(
+		catalogProductsQueryOptions(pb, 'published'),
+	)
 }
 
 /**
@@ -153,16 +200,9 @@ export function usePublishedProducts() {
 export function useUnpublishedProducts() {
 	const pb = usePocketBase() as any
 
-	return useQuery<CatalogProduct[]>({
-		queryKey: ['site-catalog', 'products', 'unpublished'],
-		staleTime: CATALOG_STALE_TIME,
-		queryFn: async () =>
-			(await pb.collection('products').getFullList({
-				filter: 'status != "published"',
-				fields: PRODUCT_FIELDS,
-				sort: 'name',
-			})) as CatalogProduct[],
-	})
+	return useQuery<CatalogProduct[]>(
+		catalogProductsQueryOptions(pb, 'unpublished'),
+	)
 }
 
 /** Le décompte total des produits, toutes intentions confondues. Sert au seul
@@ -189,15 +229,7 @@ export function useProductCount() {
 export function useCatalogCategories() {
 	const pb = usePocketBase() as any
 
-	return useQuery<CatalogCategory[]>({
-		queryKey: ['site-catalog', 'categories'],
-		staleTime: CATALOG_STALE_TIME,
-		queryFn: async () =>
-			(await pb.collection('categories').getFullList({
-				fields: CATEGORY_FIELDS,
-				sort: 'name',
-			})) as CatalogCategory[],
-	})
+	return useQuery<CatalogCategory[]>(catalogCategoriesQueryOptions(pb))
 }
 
 /** Toutes les marques. Celles qui sont en ligne se déduisent des produits
@@ -205,13 +237,5 @@ export function useCatalogCategories() {
 export function useCatalogBrands() {
 	const pb = usePocketBase() as any
 
-	return useQuery<CatalogBrand[]>({
-		queryKey: ['site-catalog', 'brands'],
-		staleTime: CATALOG_STALE_TIME,
-		queryFn: async () =>
-			(await pb.collection('brands').getFullList({
-				fields: BRAND_FIELDS,
-				sort: 'name',
-			})) as CatalogBrand[],
-	})
+	return useQuery<CatalogBrand[]>(catalogBrandsQueryOptions(pb))
 }

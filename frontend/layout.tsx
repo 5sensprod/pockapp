@@ -152,10 +152,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
 
-	// sidebarOverlay : vrai si le manifest le déclare OU si on est sur tablette.
-	// Sur tablette, le panel est toujours un overlay (pas de push du contenu),
-	// quelle que soit la valeur du flag manifest — car l'espace est trop étroit.
-	const sidebarOverlay = (currentModule?.sidebarOverlay ?? false) || isTablet
+	// Dans un module, le menu principal survole toujours la page : son ouverture
+	// ne doit pas déplacer le contenu. Home conserve son comportement historique
+	// (panel avec push sur desktop). Un manifest peut encore expliciter ce choix.
+	// Sur tablette, le panel reste toujours un overlay faute de largeur.
+	const sidebarOverlay =
+		(currentModule?.sidebarOverlay ?? !isHomePage) || isTablet
 
 	// ── Marge et padding <main> ─────────────────────────────────────────────
 	// isPanelOpen → push du contenu uniquement sur desktop, manifest non-overlay

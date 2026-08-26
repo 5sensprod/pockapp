@@ -56,6 +56,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { useSyncQueue } from '@/lib/sync/sync-queue-context'
 import { CatalogSyncBar } from './components/online-catalog/CatalogSyncBar'
 import {
 	EditorialDialog,
@@ -70,7 +71,6 @@ import { OnlineCategoryTree } from './components/online-catalog/OnlineCategoryTr
 import { OnlineProductGrid } from './components/online-catalog/OnlineProductGrid'
 import {
 	useCatalogInventory,
-	useExportCatalog,
 	useProductChecksums,
 	useRelationChecksums,
 } from './hooks/use-catalog-sync'
@@ -82,6 +82,7 @@ import {
 	useSendEntityImages,
 } from './hooks/use-image-sync'
 import { type SyncState, syncStateOf } from './lib/catalog-export'
+import { exportBlocker } from './lib/export-selection'
 import {
 	type OnlineCategoryNode,
 	buildOnlineCatalog,
@@ -217,7 +218,13 @@ export function CatalogueEnLignePage() {
 	// L'inventaire n'est interrogé qu'une fois le catalogue lu : sans produits
 	// à confronter, il n'apprendrait rien.
 	const inventory = useCatalogInventory((products.data?.length ?? 0) > 0)
-	const exportCatalog = useExportCatalog()
+	// ── LA SYNCHRO N'APPARTIENT PLUS À CET ÉCRAN ────────────────────────────
+	// Elle vit dans `SyncQueueProvider` (frontend/lib/sync/), monté dans
+	// `main.tsx` à côté du temps réel. Cet écran la DÉCLENCHE et l'AFFICHE ; il
+	// ne la porte plus, sans quoi la quitter démonte la boucle de lots et sa
+	// progression (26 août 2026).
+	const sync = useSyncQueue()
+	const exporting = sync.etat.phase !== 'idle'
 
 	/**
 	 * ── LES DÉPUBLIÉS QUI SONT ENCORE EN LIGNE ───────────────────────────────
@@ -677,67 +684,32 @@ export function CatalogueEnLignePage() {
 	 * connaît pas.
 	 */
 	const exportProducts = useCallback(
-		(selection: CatalogProduct[]) => {
-			// ⚠️ GARDE-FOU, ajouté après un export qui a écrit `brand = NULL`.
-			//
-			// Si les catégories ou les marques n'ont pas été chargées, les index
-			// `id → legacy_id` sont vides : chaque produit part alors sans marque
-			// et sans catégorie, et le serveur l'écrit sans broncher — il ne
-			// décide de rien, c'est le contrat (§2). Le résultat est une base de
-			// site silencieusement amputée de toutes ses relations.
-			//
-			// Un export ne doit jamais partir sur des relations qu'on n'a pas pu
-			// résoudre. Mieux vaut ne rien envoyer et le dire.
-			const referencesCategories = selection.some(
-				(p) => (p.categories ?? []).length > 0,
+		(selection: CatalogProduct[], label?: string) => {
+			// ⚠️ GARDE-FOU, ajouté après un export qui a écrit `brand = NULL` :
+			// sans catégories ni marques chargées, les index `id → legacy_id` sont
+			// vides et les produits partent sans aucun rattachement. Le détail est
+			// dans `exportBlocker`, partagé avec la file.
+			const blocage = exportBlocker(
+				selection,
+				categories.data ?? [],
+				brands.data ?? [],
 			)
-			const referencesBrands = selection.some((p) => Boolean(p.brand))
-
-			if (referencesCategories && !categories.data?.length) {
-				toast.error(
-					'Export annulé : les catégories ne sont pas chargées. ' +
-						'Les produits partiraient sans aucun rattachement.',
-				)
-				return
-			}
-			if (referencesBrands && !brands.data?.length) {
-				toast.error(
-					'Export annulé : les marques ne sont pas chargées. ' +
-						'Les produits partiraient sans marque.',
-				)
+			if (blocage) {
+				toast.error(blocage)
 				return
 			}
 
-			const categoryById = new Map(
-				(categories.data ?? []).map((c) => [c.id, c]),
-			)
-			const neededCategories = new Map<string, CatalogCategory>()
-			const neededBrands = new Map<string, CatalogBrand>()
-
-			for (const product of selection) {
-				for (const categoryId of product.categories ?? []) {
-					// Toute la chaîne d'ancêtres, sinon l'arbre du site a des trous.
-					let current: string | undefined = categoryId
-					const guard = new Set<string>()
-					while (current && categoryById.has(current) && !guard.has(current)) {
-						guard.add(current)
-						const category = categoryById.get(current)
-						if (!category) break
-						neededCategories.set(category.id, category)
-						current = category.parent || undefined
-					}
-				}
-				const brand = product.brand ? brandsById.get(product.brand) : undefined
-				if (brand) neededBrands.set(brand.id, brand)
-			}
-
-			exportCatalog.mutate({
-				products: selection,
-				categories: [...neededCategories.values()],
-				brands: [...neededBrands.values()],
+			// La fermeture des dépendances (marque, catégories et leurs ancêtres)
+			// est faite par la file, à partir des mêmes listes : elle la refait
+			// juste avant d'envoyer, sur des données fraîches.
+			sync.enqueue({
+				label: label ?? `${selection.length} produit(s)`,
+				productIds: selection.map((p) => p.id),
+				donnees: true,
+				images: false,
 			})
 		},
-		[categories.data, brands.data, brandsById, exportCatalog],
+		[categories.data, brands.data, sync],
 	)
 
 	// ── Ouverture de l'éditeur ───────────────────────────────────────────────
@@ -928,9 +900,9 @@ export function CatalogueEnLignePage() {
 						error={(inventory.error as Error | null) ?? null}
 						counts={syncCounts}
 						remoteCount={inventory.data?.counts.products ?? null}
-						exporting={exportCatalog.isPending}
-						progress={exportCatalog.progress}
-						rejected={exportCatalog.data?.rejected ?? []}
+						exporting={exporting}
+						progress={sync.etat.donnees}
+						rejected={sync.etat.rejets}
 						onRefresh={() => inventory.refetch()}
 						onExportAll={() =>
 							// Les retraits partent avec le reste, dans les mêmes lots : le
@@ -966,12 +938,15 @@ export function CatalogueEnLignePage() {
 								</div>
 								<Button
 									variant='secondary'
-									disabled={exportCatalog.isPending}
+									disabled={exporting}
 									onClick={() =>
-										exportCatalog.mutate({
-											products: [],
-											categories: staleRelations.categories,
-											brands: staleRelations.brands,
+										sync.enqueue({
+											label: 'Textes des catégories et marques',
+											productIds: [],
+											categoryIds: staleRelations.categories.map((c) => c.id),
+											brandIds: staleRelations.brands.map((b) => b.id),
+											donnees: true,
+											images: false,
 										})
 									}
 								>
@@ -982,14 +957,14 @@ export function CatalogueEnLignePage() {
 						</Card>
 					)}
 
-					{exportCatalog.error && (
+					{sync.etat.echecs.length > 0 && (
 						<Card className='mb-6 border-destructive'>
 							<CardContent className='flex items-start gap-3 pt-6'>
 								<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
 								<div>
 									<p className='font-medium'>Export interrompu</p>
 									<p className='text-muted-foreground text-sm'>
-										{exportCatalog.error.message}
+										{sync.etat.echecs.join(' ; ')}
 									</p>
 									<p className='mt-1 text-muted-foreground text-xs'>
 										Les lots déjà écrits le restent. L’opération est idempotente
@@ -1117,8 +1092,10 @@ export function CatalogueEnLignePage() {
 										products={shownProducts}
 										brandsById={brandsById}
 										syncStates={syncStates}
-										onExport={(product) => exportProducts([product])}
-										exporting={exportCatalog.isPending}
+										onExport={(product) =>
+											exportProducts([product], product.name)
+										}
+										exporting={exporting}
 										onEdit={editProduct}
 										imageStates={productImageStates}
 										onCheckImages={checkProductImages}
@@ -1184,8 +1161,8 @@ export function CatalogueEnLignePage() {
 								products={catalog.uncategorized}
 								brandsById={brandsById}
 								syncStates={syncStates}
-								onExport={(product) => exportProducts([product])}
-								exporting={exportCatalog.isPending}
+								onExport={(product) => exportProducts([product], product.name)}
+								exporting={exporting}
 								onEdit={editProduct}
 								imageStates={productImageStates}
 								onCheckImages={checkProductImages}

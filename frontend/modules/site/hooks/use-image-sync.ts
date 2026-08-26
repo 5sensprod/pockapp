@@ -397,6 +397,48 @@ export function imageCacheKey(entity: ImageBearing): string {
 	return entity.images.map((image) => image.filename).join('\n')
 }
 
+/**
+ * L'empreinte d'UNE entité, **hors React** — pour la file de synchronisation
+ * (`frontend/lib/sync/SyncQueueProvider.tsx`), dont la boucle est asynchrone et
+ * ne peut donc pas lire un état de composant : `useLocalImageChecksums.lookup`
+ * y rendrait toujours la valeur du tour précédent.
+ *
+ * Même cache persistant, même clé, même calcul : ce n'est pas une seconde
+ * implémentation, c'est le même chemin sans l'enrobage d'état. Le cache est
+ * relu et réécrit à chaque appel — une entité à la fois, quelques entrées, et
+ * c'est ce qui permet à deux appelants concurrents de ne pas s'écraser.
+ *
+ * Conséquence assumée : un écran déjà monté ne verra cette empreinte qu'au
+ * prochain montage, son cache étant chargé une fois. Il en coûte un « non
+ * mesurée » affiché, jamais une valeur fausse.
+ */
+export async function computeEntityImageChecksum(
+	entity: ImageBearing,
+): Promise<string> {
+	const stockage = typeof localStorage === 'undefined' ? null : localStorage
+	const cache = lireCache(stockage)
+	const cle = imageCacheKey(entity)
+
+	const connue = empreinteConnue(cache, entity.legacy_id, cle)
+	if (connue !== undefined) return connue
+
+	const digests: string[] = []
+	for (const image of entity.images) {
+		const response = await fetch(image.url)
+		if (!response.ok) {
+			throw new Error(
+				`Image illisible (${response.status}) : ${image.filename}`,
+			)
+		}
+		digests.push(await imageDigest(await response.arrayBuffer()))
+	}
+
+	const empreinte = await imageChecksumOfDigests(digests)
+	retenir(cache, entity.legacy_id, cle, empreinte)
+	ecrireCache(stockage, cache)
+	return empreinte
+}
+
 // ---------------------------------------------------------------------------
 // ENVOI
 // ---------------------------------------------------------------------------
