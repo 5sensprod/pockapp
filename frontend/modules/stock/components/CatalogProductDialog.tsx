@@ -38,7 +38,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import * as z from 'zod'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -72,59 +71,25 @@ import {
 } from '@/lib/queries/catalog-products'
 import { type GalleryEntry, memeGalerie } from '@/lib/queries/gallery-order'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
+import type { CatalogProduct } from '@/lib/queries/site-catalog'
 import { toSlug } from '@/lib/queries/slug'
 import { useSuppliers } from '@/lib/queries/suppliers'
+import { useSyncAfterSave } from '@/lib/sync/SyncAfterSaveDialog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 
 import { CategoryPicker } from './CategoryPicker'
+import {
+	EMPTY_PRODUCT_DETAIL_VALUES,
+	productDetailSchema,
+	type ProductDetailValues,
+} from './detail/product-detail-form'
 
-// `coerce` parce qu'un `<input type="number">` rend une CHAÎNE : sans lui, le
-// prix partirait en `"59.9"` et PocketBase refuserait un champ numérique.
-const money = z.coerce.number().min(0, 'Valeur négative impossible')
-
-const productSchema = z.object({
-	name: z.string().min(1, 'Le nom est requis').max(255),
-	designation: z.string().max(255).optional(),
-	sku: z.string().max(50).optional(),
-	barcode: z.string().max(50).optional(),
-	description: z.string().max(20000).optional(),
-	type: z.enum(['simple', 'service']),
-	status: z.enum(['draft', 'published']),
-	// Vide = neuf, et c'est la valeur par défaut. Voir `CatalogCommercialState`.
-	commercial_state: z.enum(['', 'used', 'rental']),
-	price_ttc: money,
-	purchase_price_ht: money,
-	tax_rate: z.coerce.number().min(0).max(100),
-	stock: z.coerce.number().int('Le stock est un entier'),
-	min_stock: z.coerce.number().int().min(0),
-	manage_stock: z.boolean(),
-	brand: z.string().optional(),
-	supplier: z.string().optional(),
-	categories: z.array(z.string()),
-})
-
-type ProductFormValues = z.infer<typeof productSchema>
-
-const EMPTY: ProductFormValues = {
-	name: '',
-	designation: '',
-	sku: '',
-	barcode: '',
-	description: '',
-	type: 'simple',
-	status: 'draft',
-	commercial_state: '',
-	price_ttc: 0,
-	purchase_price_ht: 0,
-	tax_rate: 20,
-	stock: 0,
-	min_stock: 0,
-	manage_stock: true,
-	brand: '',
-	supplier: '',
-	categories: [],
-}
+// La modale de création rapide et la fiche complète partagent volontairement
+// une seule validation : un champ déplacé ne doit pas acquérir une autre règle.
+const productSchema = productDetailSchema
+type ProductFormValues = ProductDetailValues
+const EMPTY = EMPTY_PRODUCT_DETAIL_VALUES
 
 interface Props {
 	open: boolean
@@ -138,6 +103,13 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 	const createProduct = useCreateCatalogProduct()
 	const updateProduct = useUpdateCatalogProduct()
 
+	// ── LA QUESTION D'APRÈS L'ENREGISTREMENT ─────────────────────────────────
+	// Enregistrer une fiche déjà en ligne ne met PAS sa page à jour : il fallait
+	// jusqu'ici penser à passer par /site/catalogue. On propose le raccourci —
+	// jamais en création (rien à mettre à jour), et l'inventaire distant n'est
+	// interrogé que quand le formulaire d'édition est ouvert.
+	const syncApresEnregistrement = useSyncAfterSave(open && isEdit)
+
 	const brands = useBrands({ companyId: activeCompanyId ?? undefined })
 	const suppliers = useSuppliers({ companyId: activeCompanyId ?? undefined })
 	const pb = usePocketBase()
@@ -148,6 +120,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 	// `File` pour ce qui arrive. Hors formulaire, comme l'image : react-hook-form
 	// sérialise ses valeurs et un `File` n'y survit pas.
 	const [galerie, setGalerie] = useState<GalleryEntry[]>([])
+	const [imagesTouched, setImagesTouched] = useState(false)
 	const promote = usePromoteProductImage()
 	const removeMain = useRemoveProductMainImage()
 
@@ -191,6 +164,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 			setImageCourante(apres.image)
 			setGalerie(apres.gallery)
 			setGalerieEnBase(apres.gallery)
+			setImagesTouched(true)
 			toast.success('Image principale mise à jour')
 		} catch (error) {
 			toast.error(`Promotion refusée : ${pocketbaseErrorMessage(error)}`)
@@ -205,6 +179,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 			// surprise. `removeImage` devient `image: ''` dans `image-upload.ts`.
 			await removeMain.mutateAsync(product.id)
 			setImageCourante('')
+			setImagesTouched(true)
 			toast.success('Image principale supprimée')
 		} catch (error) {
 			toast.error(`Suppression refusée : ${pocketbaseErrorMessage(error)}`)
@@ -246,6 +221,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 		setGalerie(product?.gallery ?? [])
 		setGalerieEnBase(product?.gallery ?? [])
 		setImageCourante(null)
+		setImagesTouched(false)
 		setSlugRepare('')
 	}, [open, product, form])
 
@@ -303,8 +279,19 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 
 		try {
 			if (isEdit && product) {
-				await updateProduct.mutateAsync({ id: product.id, data: payload })
+				const enregistre = await updateProduct.mutateAsync({
+					id: product.id,
+					data: payload,
+				})
 				toast.success('Produit modifié')
+				// La fiche TELLE QU'ENREGISTRÉE, pas celle du formulaire : après un
+				// envoi de galerie, seul le retour de PocketBase porte les noms de
+				// fichiers réels, et c'est d'eux que dépend l'empreinte d'images.
+				// `proposer` se tait si le site ne connaît pas ce produit.
+				await syncApresEnregistrement.proposer(
+					enregistre as unknown as CatalogProduct,
+					imagesTouched,
+				)
 			} else {
 				if (!activeCompanyId) {
 					toast.error('Aucune entreprise active')
@@ -378,420 +365,430 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 		!supplierBrandIds?.includes(currentBrandId as string)
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className='max-h-[90vh] max-w-2xl overflow-y-auto'>
-				<DialogHeader>
-					<DialogTitle>
-						{isEdit ? 'Modifier le produit' : 'Nouveau produit'}
-					</DialogTitle>
-					<DialogDescription>
-						Enregistre la fiche dans le catalogue commun à la caisse, au stock et
-						au site.
-					</DialogDescription>
-				</DialogHeader>
+		<>
+			<Dialog open={open} onOpenChange={onOpenChange}>
+				<DialogContent className='max-h-[90vh] max-w-2xl overflow-y-auto'>
+					<DialogHeader>
+						<DialogTitle>
+							{isEdit ? 'Modifier le produit' : 'Nouveau produit'}
+						</DialogTitle>
+						<DialogDescription>
+							Enregistre la fiche dans le catalogue commun à la caisse, au stock
+							et au site.
+						</DialogDescription>
+					</DialogHeader>
 
-				<Form {...form}>
-					<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
-						<GalleryField
-							mainUrl={imageUrl}
-							value={galerie}
-							onChange={setGalerie}
-							urlDe={urlDe}
-							// Un produit pas encore créé n'a pas d'identifiant : rien à
-							// promouvoir tant qu'il n'est pas enregistré.
-							onPromote={product ? promouvoir : undefined}
-							promoting={promote.isPending}
-							onRemoveMain={product ? supprimerPrincipale : undefined}
-							removingMain={removeMain.isPending}
-							disabled={
-								createProduct.isPending ||
-								updateProduct.isPending ||
-								removeMain.isPending
-							}
-							// 1600 px : c'est la seule image du site que le visiteur
-							// AGRANDIT — la fiche produit a une galerie, là où un logo de
-							// marque (512) et une bannière de catégorie (1024) ne sont que
-							// regardés. La conversion en WebP qui vient avec est aussi ce
-							// qui met la galerie à l'abri des refus de MIME du serveur.
-							//
-							// ⚠️ Ceci optimise l'image qu'on vient de CHOISIR, à l'unité.
-							// Cela ne rouvre pas la question du lot : le refus chiffré
-							// d'`ImageBatchOptimizer` — 2412 produits, 1,5 Gio de ré-envoi
-							// — tient toujours, et ce composant n'est toujours pas branché
-							// sur les produits.
-							optimize={{ maxSide: 1600 }}
-						/>
+					<Form {...form}>
+						<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+							<GalleryField
+								mainUrl={imageUrl}
+								value={galerie}
+								onChange={(value) => {
+									setGalerie(value)
+									setImagesTouched(true)
+								}}
+								urlDe={urlDe}
+								// Un produit pas encore créé n'a pas d'identifiant : rien à
+								// promouvoir tant qu'il n'est pas enregistré.
+								onPromote={product ? promouvoir : undefined}
+								promoting={promote.isPending}
+								onRemoveMain={product ? supprimerPrincipale : undefined}
+								removingMain={removeMain.isPending}
+								disabled={
+									createProduct.isPending ||
+									updateProduct.isPending ||
+									removeMain.isPending
+								}
+								// 1600 px : c'est la seule image du site que le visiteur
+								// AGRANDIT — la fiche produit a une galerie, là où un logo de
+								// marque (512) et une bannière de catégorie (1024) ne sont que
+								// regardés. La conversion en WebP qui vient avec est aussi ce
+								// qui met la galerie à l'abri des refus de MIME du serveur.
+								//
+								// ⚠️ Ceci optimise l'image qu'on vient de CHOISIR, à l'unité.
+								// Cela ne rouvre pas la question du lot : le refus chiffré
+								// d'`ImageBatchOptimizer` — 2412 produits, 1,5 Gio de ré-envoi
+								// — tient toujours, et ce composant n'est toujours pas branché
+								// sur les produits.
+								optimize={{ maxSide: 1600 }}
+							/>
 
-						{/* L'ADRESSE PUBLIQUE. Elle ne se saisit pas — la couche d'accès
+							{/* L'ADRESSE PUBLIQUE. Elle ne se saisit pas — la couche d'accès
 						    la pose — mais elle se VOIT : une fois partie au site, elle est
 						    figée (§4.5 du contrat), et un produit créé au comptoir en
 						    manquait jusqu'au 20 août 2026, ce qui rendait sa page
 						    introuvable. */}
-						<div className='space-y-1'>
-							<span className='font-medium text-sm'>Adresse sur le site</span>
-							<div className='rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm'>
-								{slugAffiche ? (
-									<span>/produit/{slugAffiche}</span>
-								) : (
-									<span className='font-sans text-muted-foreground'>
-										Donnez un nom au produit pour qu'une adresse soit calculée.
-									</span>
-								)}
+							<div className='space-y-1'>
+								<span className='font-medium text-sm'>Adresse sur le site</span>
+								<div className='rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm'>
+									{slugAffiche ? (
+										<span>/produit/{slugAffiche}</span>
+									) : (
+										<span className='font-sans text-muted-foreground'>
+											Donnez un nom au produit pour qu'une adresse soit
+											calculée.
+										</span>
+									)}
+								</div>
+								<p className='text-muted-foreground text-xs'>
+									{slugEnBase
+										? 'Figée depuis le premier envoi au site : la renommer déplacerait une page déjà indexée.'
+										: isEdit
+											? 'Cette fiche n’a pas encore d’adresse — enregistrer la posera, puis il faudra la ré-exporter vers le site.'
+											: 'Calculée à partir du nom, posée à l’enregistrement. Un suffixe est ajouté si l’adresse est déjà prise.'}
+								</p>
 							</div>
-							<p className='text-muted-foreground text-xs'>
-								{slugEnBase
-									? 'Figée depuis le premier envoi au site : la renommer déplacerait une page déjà indexée.'
-									: isEdit
-										? 'Cette fiche n’a pas encore d’adresse — enregistrer la posera, puis il faudra la ré-exporter vers le site.'
-										: 'Calculée à partir du nom, posée à l’enregistrement. Un suffixe est ajouté si l’adresse est déjà prise.'}
-							</p>
-						</div>
 
-						<FormField
-							control={form.control}
-							name='name'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Nom *</FormLabel>
-									<FormControl>
-										<Input placeholder='Guitare folk Alvarez' {...field} />
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name='designation'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Désignation</FormLabel>
-									<FormControl>
-										<Input placeholder='Libellé court' {...field} />
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<div className='grid grid-cols-2 gap-4'>
 							<FormField
 								control={form.control}
-								name='sku'
+								name='name'
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Référence</FormLabel>
+										<FormLabel>Nom *</FormLabel>
 										<FormControl>
-											<Input placeholder='ABGS14SH' {...field} />
+											<Input placeholder='Guitare folk Alvarez' {...field} />
 										</FormControl>
 										<FormMessage />
 									</FormItem>
 								)}
 							/>
+
 							<FormField
 								control={form.control}
-								name='barcode'
+								name='designation'
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Code-barres</FormLabel>
+										<FormLabel>Désignation</FormLabel>
 										<FormControl>
-											<Input inputMode='numeric' {...field} />
+											<Input placeholder='Libellé court' {...field} />
 										</FormControl>
 										<FormMessage />
 									</FormItem>
 								)}
 							/>
-						</div>
 
-						<div className='grid grid-cols-3 gap-4'>
-							<FormField
-								control={form.control}
-								name='price_ttc'
-								render={({ field }) => (
-									<FormItem>
-										{/* L'unité est DANS LE NOM du champ au schéma, et elle
+							<div className='grid grid-cols-2 gap-4'>
+								<FormField
+									control={form.control}
+									name='sku'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Référence</FormLabel>
+											<FormControl>
+												<Input placeholder='ABGS14SH' {...field} />
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name='barcode'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Code-barres</FormLabel>
+											<FormControl>
+												<Input inputMode='numeric' {...field} />
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div className='grid grid-cols-3 gap-4'>
+								<FormField
+									control={form.control}
+									name='price_ttc'
+									render={({ field }) => (
+										<FormItem>
+											{/* L'unité est DANS LE NOM du champ au schéma, et elle
 										    reste dans le libellé : un prix sans unité est un piège
 										    qui se repaie à chaque lecture. */}
-										<FormLabel>Prix TTC</FormLabel>
-										<FormControl>
-											<Input type='number' step='0.01' min='0' {...field} />
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-							<FormField
-								control={form.control}
-								name='purchase_price_ht'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Achat HT</FormLabel>
-										<FormControl>
-											<Input type='number' step='0.01' min='0' {...field} />
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-							<FormField
-								control={form.control}
-								name='tax_rate'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>TVA (%)</FormLabel>
-										<FormControl>
-											<Input type='number' step='0.1' min='0' {...field} />
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						</div>
+											<FormLabel>Prix TTC</FormLabel>
+											<FormControl>
+												<Input type='number' step='0.01' min='0' {...field} />
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name='purchase_price_ht'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Achat HT</FormLabel>
+											<FormControl>
+												<Input type='number' step='0.01' min='0' {...field} />
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name='tax_rate'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>TVA (%)</FormLabel>
+											<FormControl>
+												<Input type='number' step='0.1' min='0' {...field} />
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
 
-						<div className='grid grid-cols-3 gap-4'>
-							<FormField
-								control={form.control}
-								name='stock'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Stock</FormLabel>
-										<FormControl>
-											<Input type='number' step='1' {...field} />
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-							<FormField
-								control={form.control}
-								name='min_stock'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Stock minimum</FormLabel>
-										<FormControl>
-											<Input type='number' step='1' min='0' {...field} />
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-							<FormField
-								control={form.control}
-								name='type'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Type</FormLabel>
-										<FormControl>
-											<NativeSelect {...field}>
-												<option value='simple'>Article</option>
-												{/* 9 produits sont des services : sans stock, ils
+							<div className='grid grid-cols-3 gap-4'>
+								<FormField
+									control={form.control}
+									name='stock'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Stock</FormLabel>
+											<FormControl>
+												<Input type='number' step='1' {...field} />
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name='min_stock'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Stock minimum</FormLabel>
+											<FormControl>
+												<Input type='number' step='1' min='0' {...field} />
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name='type'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Type</FormLabel>
+											<FormControl>
+												<NativeSelect {...field}>
+													<option value='simple'>Article</option>
+													{/* 9 produits sont des services : sans stock, ils
 												    n'ont rien à voir avec un article. */}
-												<option value='service'>Service</option>
-											</NativeSelect>
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						</div>
+													<option value='service'>Service</option>
+												</NativeSelect>
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
 
-						<div className='grid grid-cols-2 gap-4'>
+							<div className='grid grid-cols-2 gap-4'>
+								<FormField
+									control={form.control}
+									name='brand'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Marque</FormLabel>
+											<FormControl>
+												<NativeSelect {...field}>
+													<option value=''>— Aucune —</option>
+													{brandOptions.map((brand) => (
+														<option key={brand.id} value={brand.id}>
+															{brand.name}
+														</option>
+													))}
+												</NativeSelect>
+											</FormControl>
+											{brandsFilteredBySupplier && (
+												<p className='text-muted-foreground text-xs'>
+													{brandOptions.length} marque(s) distribuée(s) par ce
+													fournisseur. Retirez le fournisseur pour voir tout le
+													catalogue.
+												</p>
+											)}
+											{brandOutsideSupplier && (
+												<p className='text-amber-600 text-xs'>
+													La marque en place n’est pas déclarée chez ce
+													fournisseur. Elle est conservée telle quelle.
+												</p>
+											)}
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name='supplier'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Fournisseur</FormLabel>
+											<FormControl>
+												<NativeSelect {...field}>
+													<option value=''>— Aucun —</option>
+													{(suppliers.data ?? []).map((supplier) => (
+														<option key={supplier.id} value={supplier.id}>
+															{supplier.name}
+														</option>
+													))}
+												</NativeSelect>
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
 							<FormField
 								control={form.control}
-								name='brand'
+								name='commercial_state'
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Marque</FormLabel>
+										<FormLabel>État commercial</FormLabel>
 										<FormControl>
 											<NativeSelect {...field}>
-												<option value=''>— Aucune —</option>
-												{brandOptions.map((brand) => (
-													<option key={brand.id} value={brand.id}>
-														{brand.name}
-													</option>
-												))}
+												<option value=''>Neuf</option>
+												<option value='used'>Occasion</option>
+												<option value='rental'>Location</option>
 											</NativeSelect>
 										</FormControl>
-										{brandsFilteredBySupplier && (
-											<p className='text-muted-foreground text-xs'>
-												{brandOptions.length} marque(s) distribuée(s) par ce
-												fournisseur. Retirez le fournisseur pour voir tout le
-												catalogue.
-											</p>
-										)}
-										{brandOutsideSupplier && (
-											<p className='text-amber-600 text-xs'>
-												La marque en place n’est pas déclarée chez ce
-												fournisseur. Elle est conservée telle quelle.
-											</p>
-										)}
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-							<FormField
-								control={form.control}
-								name='supplier'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Fournisseur</FormLabel>
-										<FormControl>
-											<NativeSelect {...field}>
-												<option value=''>— Aucun —</option>
-												{(suppliers.data ?? []).map((supplier) => (
-													<option key={supplier.id} value={supplier.id}>
-														{supplier.name}
-													</option>
-												))}
-											</NativeSelect>
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						</div>
-
-						<FormField
-							control={form.control}
-							name='commercial_state'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>État commercial</FormLabel>
-									<FormControl>
-										<NativeSelect {...field}>
-											<option value=''>Neuf</option>
-											<option value='used'>Occasion</option>
-											<option value='rental'>Location</option>
-										</NativeSelect>
-									</FormControl>
-									{/* Il vit ICI, à côté de la marque et du fournisseur, et non
+										{/* Il vit ICI, à côté de la marque et du fournisseur, et non
 									    dans les catégories : une catégorie dit ce que l'objet
 									    EST, celui-ci dit comment il se VEND. C'est toute la
 									    raison pour laquelle « Occasion » et « LOCATION » ont
 									    cessé d'être des branches (DECISIONS, 2026-08-24). */}
-									<p className='text-muted-foreground text-xs'>
-										Un produit d’occasion ou de location garde son rayon
-										habituel — il n’en sort pas.
-									</p>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name='categories'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Catégories</FormLabel>
-									{/* Un produit a un ENSEMBLE de catégories, sans catégorie
-									    principale — c'est le modèle arrêté, pas un raccourci. */}
-									<CategoryPicker
-										value={field.value}
-										onChange={(value) =>
-											field.onChange(Array.isArray(value) ? value : [value])
-										}
-										multiple
-										searchPlaceholder='Rechercher une catégorie…'
-										maxHeight='200px'
-										companyId={activeCompanyId ?? undefined}
-									/>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name='description'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Description</FormLabel>
-									<FormControl>
-										<Textarea
-											rows={4}
-											placeholder='Le texte lu par le visiteur sur la page du produit.'
-											{...field}
-										/>
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<div className='grid grid-cols-2 gap-4'>
-							<FormField
-								control={form.control}
-								name='status'
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Publication</FormLabel>
-										<FormControl>
-											<NativeSelect {...field}>
-												<option value='draft'>Brouillon</option>
-												<option value='published'>Publié sur le site</option>
-											</NativeSelect>
-										</FormControl>
-										{/* `status` est la SEULE autorité sur ce qui part vers le
-										    site (online-catalog.ts). Le dire ici évite qu'on
-										    cherche un autre interrupteur — et notamment qu'on
-										    prenne l'état commercial ci-dessous pour un second :
-										    une occasion se publie comme le reste. */}
 										<p className='text-muted-foreground text-xs'>
-											Seuls les produits publiés partent vers axemusique.shop.
+											Un produit d’occasion ou de location garde son rayon
+											habituel — il n’en sort pas.
 										</p>
 										<FormMessage />
 									</FormItem>
 								)}
 							/>
+
 							<FormField
 								control={form.control}
-								name='manage_stock'
+								name='categories'
 								render={({ field }) => (
-									<FormItem className='flex items-center justify-between rounded-lg border p-3'>
-										<div>
-											<FormLabel>Suivi du stock</FormLabel>
-											<p className='text-muted-foreground text-xs'>
-												Décoché pour un service.
-											</p>
-										</div>
-										<FormControl>
-											<Switch
-												checked={field.value}
-												onCheckedChange={field.onChange}
-											/>
-										</FormControl>
+									<FormItem>
+										<FormLabel>Catégories</FormLabel>
+										{/* Un produit a un ENSEMBLE de catégories, sans catégorie
+									    principale — c'est le modèle arrêté, pas un raccourci. */}
+										<CategoryPicker
+											value={field.value}
+											onChange={(value) =>
+												field.onChange(Array.isArray(value) ? value : [value])
+											}
+											multiple
+											searchPlaceholder='Rechercher une catégorie…'
+											maxHeight='200px'
+											companyId={activeCompanyId ?? undefined}
+										/>
+										<FormMessage />
 									</FormItem>
 								)}
 							/>
-						</div>
 
-						{!isEdit && (
-							<p className='rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs'>
-								Une clé stable (<code>legacy_id</code>) sera attribuée
-								automatiquement à la création. Elle permettra d’identifier ce produit
-								dans les exports vers le site.
-							</p>
-						)}
+							<FormField
+								control={form.control}
+								name='description'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Description</FormLabel>
+										<FormControl>
+											<Textarea
+												rows={4}
+												placeholder='Le texte lu par le visiteur sur la page du produit.'
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
 
-						<div className='flex justify-end gap-3 pt-2'>
-							<Button
-								type='button'
-								variant='outline'
-								onClick={() => onOpenChange(false)}
-								disabled={pending}
-							>
-								Annuler
-							</Button>
-							<Button type='submit' disabled={pending}>
-								{isEdit ? 'Enregistrer' : 'Créer'}
-							</Button>
-						</div>
-					</form>
-				</Form>
-			</DialogContent>
-		</Dialog>
+							<div className='grid grid-cols-2 gap-4'>
+								<FormField
+									control={form.control}
+									name='status'
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Publication</FormLabel>
+											<FormControl>
+												<NativeSelect {...field}>
+													<option value='draft'>Brouillon</option>
+													<option value='published'>Publié sur le site</option>
+												</NativeSelect>
+											</FormControl>
+											{/* `status` est la SEULE autorité sur ce qui part vers le
+										    site (online-catalog.ts). Le dire ici évite qu'on
+										    cherche un autre interrupteur — et notamment qu'on
+										    prenne l'état commercial ci-dessous pour un second :
+										    une occasion se publie comme le reste. */}
+											<p className='text-muted-foreground text-xs'>
+												Seuls les produits publiés partent vers axemusique.shop.
+											</p>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name='manage_stock'
+									render={({ field }) => (
+										<FormItem className='flex items-center justify-between rounded-lg border p-3'>
+											<div>
+												<FormLabel>Suivi du stock</FormLabel>
+												<p className='text-muted-foreground text-xs'>
+													Décoché pour un service.
+												</p>
+											</div>
+											<FormControl>
+												<Switch
+													checked={field.value}
+													onCheckedChange={field.onChange}
+												/>
+											</FormControl>
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							{!isEdit && (
+								<p className='rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs'>
+									Une clé stable (<code>legacy_id</code>) sera attribuée
+									automatiquement à la création. Elle permettra d’identifier ce
+									produit dans les exports vers le site.
+								</p>
+							)}
+
+							<div className='flex justify-end gap-3 pt-2'>
+								<Button
+									type='button'
+									variant='outline'
+									onClick={() => onOpenChange(false)}
+									disabled={pending}
+								>
+									Annuler
+								</Button>
+								<Button type='submit' disabled={pending}>
+									{isEdit ? 'Enregistrer' : 'Créer'}
+								</Button>
+							</div>
+						</form>
+					</Form>
+				</DialogContent>
+			</Dialog>
+
+			{/* Hors du dialogue du formulaire, qui vient de se fermer : deux
+			    Dialog imbriqués se disputeraient le focus. */}
+			{syncApresEnregistrement.dialogue}
+		</>
 	)
 }
 

@@ -138,18 +138,24 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 
 				// Le catalogue vient du MÊME cache que les écrans
 				// (`catalog*QueryOptions`) : ouvert, il est déjà là ; fermé, la file
-				// le charge elle-même. Les deux listes de produits, parce qu'un
-				// retrait est un produit dépublié qu'on exporte en `draft` — il
-				// n'est jamais dans les publiés (CLAUDE.md, 21 août 2026).
+				// le charge elle-même. `fetchQuery` est indispensable ici :
+				// `ensureQueryData` rend toute donnée déjà en cache, même invalidée,
+				// et `revalidateIfStale` ne ferait qu'une relecture en arrière-plan sans
+				// changer l'instantané rendu à cet export. `fetchQuery`, lui, sert le
+				// cache frais mais attend la relecture s'il est périmé ou invalidé :
+				// sinon les cinq minutes de `staleTime` envoyaient la fiche D'AVANT
+				// l'enregistrement (constaté le 26 août 2026).
+				//
+				// Les deux listes de produits sont nécessaires parce qu'un retrait est
+				// un produit dépublié qu'on exporte en `draft` — il n'est jamais dans
+				// les publiés (CLAUDE.md, 21 août 2026).
 				const [publies, brouillons, categories, marques] = await Promise.all([
-					queryClient.ensureQueryData(
-						catalogProductsQueryOptions(pb, 'published'),
-					),
-					queryClient.ensureQueryData(
+					queryClient.fetchQuery(catalogProductsQueryOptions(pb, 'published')),
+					queryClient.fetchQuery(
 						catalogProductsQueryOptions(pb, 'unpublished'),
 					),
-					queryClient.ensureQueryData(catalogCategoriesQueryOptions(pb)),
-					queryClient.ensureQueryData(catalogBrandsQueryOptions(pb)),
+					queryClient.fetchQuery(catalogCategoriesQueryOptions(pb)),
+					queryClient.fetchQuery(catalogBrandsQueryOptions(pb)),
 				])
 
 				const parId = new Map<string, CatalogProduct>()
@@ -157,6 +163,22 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 				const selection = job.productIds
 					.map((id) => parId.get(id))
 					.filter((p): p is CatalogProduct => Boolean(p))
+
+				// ⚠️ UN PRODUIT DEMANDÉ QUI NE SE RÉSOUT PAS EST UNE PANNE, PAS UN
+				// CAS NORMAL. Sans cette garde, une sélection vide traversait toute
+				// la boucle sans envoyer un octet et finissait sur `toast.dismiss` :
+				// la synchronisation semblait avoir eu lieu, et la pastille restait
+				// « modifié » sans explication (constaté le 26 août 2026).
+				if (selection.length < job.productIds.length) {
+					const manquants = job.productIds.length - selection.length
+					bilan.echecs.push(
+						`${job.label} : ${manquants} produit(s) introuvable(s) dans le catalogue du site — rien envoyé pour eux.`,
+					)
+				}
+
+				console.info(
+					`[sync] « ${job.label} » — ${selection.length}/${job.productIds.length} produit(s) résolu(s), données=${job.donnees}, images=${job.images}`,
+				)
 
 				setEtat((e) => ({ ...e, enAttente: file.current.length }))
 
@@ -197,6 +219,9 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 							const outcome = await exportRef.current.mutateAsync(aEnvoyer)
 							bilan.produits += outcome.written.products
 							bilan.rejets.push(...outcome.rejected)
+							console.info(
+								`[sync] « ${job.label} » — ${outcome.batches} lot(s) envoyé(s), écrits : ${outcome.written.products} produit(s), ${outcome.written.categories} catégorie(s), ${outcome.written.brands} marque(s), ${outcome.rejected.length} refus.`,
+							)
 						} catch (cause) {
 							// Un lot qui échoue interrompt la SUITE et laisse les
 							// précédents écrits (§6). On le dit, on passe au travail
@@ -271,6 +296,15 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 					})
 				}
 			}
+		} catch (cause) {
+			// Ce qui casse ICI n'est pas un envoi mais la préparation : lecture du
+			// catalogue, résolution de la sélection. Sans ce `catch`, l'erreur
+			// s'échappait en promesse non gérée pendant que le bilan concluait
+			// comme si tout s'était bien passé (constaté le 26 août 2026 avec
+			// l'auto-annulation du SDK PocketBase).
+			bilan.echecs.push(
+				`Préparation interrompue : ${cause instanceof Error ? cause.message : String(cause)}`,
+			)
 		} finally {
 			const interrompu = arret.current
 			// Ce qui reste après un arrêt est abandonné : on ne garde pas une file
@@ -319,7 +353,15 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 			} else if (resume) {
 				toast.success(resume, { id: TOAST_ID, duration: 6_000, action })
 			} else {
-				toast.dismiss(TOAST_ID)
+				// Ni écriture, ni refus, ni échec : il ne s'est RIEN passé. Se taire
+				// ici — ce que faisait `toast.dismiss` — laisse croire que l'envoi a
+				// eu lieu. On le dit, parce qu'un travail empilé qui n'envoie rien
+				// est toujours anormal.
+				toast.info('Rien n’a été envoyé — il n’y avait rien à mettre à jour.', {
+					id: TOAST_ID,
+					duration: 6_000,
+					action,
+				})
 			}
 		}
 	}, [pb, queryClient])

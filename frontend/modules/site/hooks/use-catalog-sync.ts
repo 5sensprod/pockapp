@@ -51,6 +51,9 @@ async function callRelay<T>(
 ): Promise<T> {
 	const response = await fetch(path, {
 		...init,
+		// Le relais Go recrée la réponse et ne retransmet pas le `no-store` du
+		// PHP. L'inventaire doit toujours refléter le dernier lot écrit.
+		cache: 'no-store',
 		headers: {
 			'Content-Type': 'application/json',
 			Authorization: token,

@@ -81,6 +81,9 @@ async function callRelay<T>(
 ): Promise<T> {
 	const response = await fetch(path, {
 		...init,
+		// Le relais Go ne retransmet pas le `no-store` du PHP : une relecture de
+		// l'inventaire d'images ne doit jamais reprendre une réponse HTTP périmée.
+		cache: 'no-store',
 		headers: { Authorization: token, ...(init?.headers ?? {}) },
 	})
 

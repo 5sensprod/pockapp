@@ -81,6 +81,11 @@ export function useUpdateCatalogEditorial() {
 				current?.map((item) => (item.id === id ? { ...item, ...patch } : item)),
 			)
 			queryClient.invalidateQueries({ queryKey })
+			if (kind === 'product') {
+				queryClient.invalidateQueries({
+					queryKey: ['catalog-products', 'detail', id],
+				})
+			}
 		},
 	})
 }

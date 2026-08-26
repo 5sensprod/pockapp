@@ -10,6 +10,81 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## La synchro se propose à l'enregistrement, et deux caches la faisaient mentir — 2026-08-26
+
+**La décision.** Enregistrer un produit **déjà en ligne** propose désormais de
+le synchroniser, dans un dialogue court : deux cases — la fiche, les images —,
+deux boutons. « Synchroniser » empile un travail dans la file
+(`frontend/lib/sync/SyncQueueProvider.tsx`) et rend la main ; c'est le toast
+persistant qui raconte la suite. Le composant est
+`frontend/lib/sync/SyncAfterSaveDialog.tsx`, rangé dans `lib/sync/` et non dans
+`modules/stock/` : il ne connaît rien du formulaire produit, et la future fiche
+produit le réutilisera tel quel. **`stock` importe donc de `site`, jamais
+l'inverse.**
+
+Le dialogue ne s'affiche QUE si l'inventaire distant connaît le `legacy_id` de
+la fiche. Jamais exporté, inventaire injoignable, création : silence. « Plus
+tard » ne perd rien — le produit reste `modified` dans la bande de synchro, le
+dialogue est un raccourci, jamais le seul chemin. **Aucune préférence « ne plus
+demander »** n'a été ajoutée : on veut d'abord voir si la question rassure ou
+agace.
+
+**Écarté :** synchroniser automatiquement à l'enregistrement. Un envoi vers le
+mutualisé n'est pas un effet de bord d'un clic sur « Enregistrer », et la case
+images doit rester un choix — calculer une empreinte LIT LES OCTETS.
+
+### Deux caches faisaient échouer l'envoi en silence, et ils se reprendront
+
+Le mécanisme a été écrit d'un bloc et n'a **rien envoyé du tout** pendant trois
+essais, sans jamais lever d'erreur visible. Deux causes, toutes deux mesurées,
+toutes deux invisibles depuis `/site/catalogue` — l'écran où le mécanisme avait
+été mis au point :
+
+**1. `ensureQueryData` rend le cache, même invalidé.** Lu dans la version
+installée (`node_modules/@tanstack/query-core/build/modern/queryClient.js`) :
+dès qu'une donnée existe, elle est rendue telle quelle ; `revalidateIfStale` ne
+déclenche qu'une revalidation **en arrière-plan**, qui ne change pas
+l'instantané rendu à l'appel en cours. Les requêtes catalogue ont
+`staleTime = 5 min`. La file exportait donc le produit **d'AVANT
+l'enregistrement** ; le serveur stockait fidèlement ce checksum-là
+(`products-sync.php` ne recalcule rien), et `/site/catalogue`, qui relit
+vraiment, calculait celui d'APRÈS. D'où « modifié » après un export à zéro
+refus, et une page publique inchangée. Le correctif est `fetchQuery`, dont
+`isStaleByTime` est vrai dès qu'une requête est invalidée : il refait l'appel
+après un enregistrement et sert le cache quand il est réellement frais.
+**Ne pas remettre `ensureQueryData` en croyant optimiser.**
+
+**2. Le SDK PocketBase auto-annule deux requêtes de même chemin.** La clé
+d'annulation se dérive de la méthode et du chemin, pas des paramètres : les
+listes « publiés » et « brouillons » ne diffèrent que par leur `filter`, donc
+elles la partagent. Lancées ensemble par le `Promise.all` de la file, la seconde
+tuait la première — « The request was autocancelled ». D'où un `requestKey`
+explicite sur les trois options de `site-catalog.ts` ; celles des catégories et
+des marques en portent un aussi, le module `stock` lisant les mêmes collections
+de son côté.
+
+**Pourquoi ni l'une ni l'autre ne s'était vue :** depuis `/site/catalogue`, les
+listes sont déjà en cache et actives — `ensureQueryData` rendait la bonne
+valeur, et aucun chargement concurrent ne partait. Les deux pannes n'existent
+que lorsque la file est déclenchée **depuis un autre écran**, ce qui n'était
+possible d'aucun endroit avant ce chantier.
+
+### Une file qui n'envoie rien doit le dire
+
+Trois trous fermés dans `SyncQueueProvider.tsx`, du même genre : un produit qui
+ne se résout pas dans le catalogue est un échec nommé et non une sélection vide ;
+le cas « rien du tout » affiche « Rien n'a été envoyé » au lieu de refermer le
+toast en silence ; et la boucle a désormais un `catch` — l'erreur de préparation
+s'échappait en promesse non gérée pendant que le bilan concluait normalement.
+C'est ce silence, plus que les caches, qui a coûté le temps de diagnostic.
+
+**Ce qui pourrait remettre en cause :** une montée de TanStack Query changeant
+la sémantique de `fetchQuery`, ou une évolution du SDK PocketBase sur les clés
+d'auto-annulation. Les deux se rejugent au même endroit : la boucle de
+`SyncQueueProvider.tsx` et les options de `site-catalog.ts`.
+
+---
+
 ## Le pont des identifiants n'avait jamais été rompu — 2026-08-25
 
 **Correction d'un fait, et donc d'une règle.** Le bloc du 24 août ci-dessous

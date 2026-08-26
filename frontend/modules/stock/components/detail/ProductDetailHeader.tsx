@@ -1,0 +1,118 @@
+import { ArrowLeft, ImageOff, Pencil, Save, X } from 'lucide-react'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from '@/components/ui/tooltip'
+import type { CatalogProductShape } from '@/lib/queries/catalog-products'
+
+const euros = new Intl.NumberFormat('fr-FR', {
+	style: 'currency',
+	currency: 'EUR',
+})
+
+type Props = {
+	product: CatalogProductShape
+	brandName?: string
+	imageUrl: string | null
+	editing: boolean
+	pending: boolean
+	onBack: () => void
+	onEdit: () => void
+	onCancel: () => void
+}
+
+export function ProductDetailHeader(props: Props) {
+	const commercial =
+		props.product.commercial_state === 'used'
+			? 'Occasion'
+			: props.product.commercial_state === 'rental'
+				? 'Location'
+				: null
+
+	return (
+		<header className='sticky top-header z-40 border-b bg-background/95 backdrop-blur'>
+			<div className='container mx-auto flex items-center gap-4 px-6 py-3'>
+				<Button
+					type='button'
+					variant='ghost'
+					size='icon'
+					onClick={props.onBack}
+					aria-label='Retour aux produits'
+				>
+					<ArrowLeft className='h-5 w-5' />
+				</Button>
+				<div className='flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
+					{props.imageUrl ? (
+						<img
+							src={props.imageUrl}
+							alt=''
+							className='h-full w-full object-contain'
+						/>
+					) : (
+						<ImageOff className='h-6 w-6 text-muted-foreground/50' />
+					)}
+				</div>
+				<div className='min-w-0 flex-1'>
+					<h1 className='truncate font-bold text-xl'>{props.product.name}</h1>
+					<p className='truncate text-muted-foreground text-sm'>
+						{[props.product.sku, props.brandName].filter(Boolean).join(' · ') ||
+							'Sans référence ni marque'}
+					</p>
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<span className='cursor-help font-mono text-muted-foreground text-xs'>
+									/produit/{props.product.slug || '—'}
+								</span>
+							</TooltipTrigger>
+							<TooltipContent className='max-w-80'>
+								Le slug est figé dès le premier envoi au site. S’il manque, le
+								prochain enregistrement le posera sans modifier une adresse
+								existante.
+							</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
+					<div className='mt-1 flex flex-wrap items-center gap-2 text-sm'>
+						<strong>{euros.format(props.product.price_ttc ?? 0)}</strong>
+						<span>Stock {props.product.stock ?? 0}</span>
+						<Badge
+							variant={
+								props.product.status === 'published' ? 'default' : 'secondary'
+							}
+						>
+							{props.product.status === 'published' ? 'Publié' : 'Brouillon'}
+						</Badge>
+						{commercial && <Badge variant='outline'>{commercial}</Badge>}
+					</div>
+				</div>
+				{props.editing ? (
+					<div className='flex gap-2'>
+						<Button
+							type='button'
+							variant='outline'
+							onClick={props.onCancel}
+							disabled={props.pending}
+						>
+							<X className='mr-2 h-4 w-4' />
+							Annuler
+						</Button>
+						<Button type='submit' disabled={props.pending}>
+							<Save className='mr-2 h-4 w-4' />
+							Enregistrer
+						</Button>
+					</div>
+				) : (
+					<Button type='button' onClick={props.onEdit}>
+						<Pencil className='mr-2 h-4 w-4' />
+						Modifier
+					</Button>
+				)}
+			</div>
+		</header>
+	)
+}

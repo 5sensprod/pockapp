@@ -100,7 +100,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,status,commercial_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,categories'
+	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -208,6 +208,27 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			}
 		},
 		enabled: !!companyId,
+	})
+}
+
+/** Une fiche complète, relue par identifiant pour ne pas dépendre de la page
+ * paginée depuis laquelle on est arrivé. La clé de requête PocketBase est
+ * explicite : deux lectures concurrentes de `products` ne doivent pas
+ * s'auto-annuler dans le SDK. */
+export function useCatalogProduct(productId?: string) {
+	const pb = usePocketBase() as any
+
+	return useQuery<CatalogProductShape>({
+		queryKey: ['catalog-products', 'detail', productId],
+		enabled: !!productId,
+		staleTime: 60_000,
+		queryFn: async () => {
+			if (!productId) throw new Error('productId is required')
+			return (await pb.collection('products').getOne(productId, {
+				fields: PRODUCT_FIELDS,
+				requestKey: `catalog-product-${productId}`,
+			})) as CatalogProductShape
+		},
 	})
 }
 

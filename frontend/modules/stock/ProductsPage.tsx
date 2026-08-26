@@ -27,7 +27,6 @@ import {
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
 import {
-	type CatalogProductShape,
 	type CatalogProductStatus,
 	useCatalogProducts,
 } from '@/lib/queries/catalog-products'
@@ -41,6 +40,7 @@ import { useCatalogCounts } from '@/lib/queries/products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
+import { useNavigate } from '@tanstack/react-router'
 import {
 	AlertTriangle,
 	Check,
@@ -63,6 +63,7 @@ const PER_PAGE = 25
 export function ProductsPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase()
+	const navigate = useNavigate()
 
 	const [search, setSearch] = useState('')
 	const [debounced, setDebounced] = useState('')
@@ -71,16 +72,10 @@ export function ProductsPage() {
 	const [brandId, setBrandId] = useState<string>('')
 	const [categoryId, setCategoryId] = useState<string>('')
 	const [supplierId, setSupplierId] = useState<string>('')
-	const [editing, setEditing] = useState<CatalogProductShape | null>(null)
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const previousCompanyId = useRef(activeCompanyId)
 
 	const openCreate = () => {
-		setEditing(null)
-		setDialogOpen(true)
-	}
-	const openEdit = (product: CatalogProductShape) => {
-		setEditing(product)
 		setDialogOpen(true)
 	}
 
@@ -200,11 +195,13 @@ export function ProductsPage() {
 		[products.data, brandById, supplierById, categoryById, pb],
 	)
 
-	// La ligne cliquée ouvre le dialogue d'édition. La table ne rend que des
-	// lignes ; le produit complet se retrouve par son identifiant.
+	// La ligne mène à la fiche complète. La modale reste disponible pour la
+	// création rapide et sera allégée dans l'étape suivante du chantier.
 	const openRow = (rowId: string) => {
-		const produit = products.data?.items.find((p) => p.id === rowId)
-		if (produit) openEdit(produit)
+		void navigate({
+			to: '/stock/produits/$productId',
+			params: { productId: rowId },
+		})
 	}
 
 	// Toute recherche et tout changement de filtre ramènent à la page 1 : rester
@@ -406,7 +403,7 @@ export function ProductsPage() {
 				<CatalogProductDialog
 					open={dialogOpen}
 					onOpenChange={setDialogOpen}
-					product={editing}
+					product={null}
 				/>
 			</div>
 		</div>

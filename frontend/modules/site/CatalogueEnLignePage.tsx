@@ -717,24 +717,6 @@ export function CatalogueEnLignePage() {
 	// prise dans l'objet que le composant porte : `selectedCategory` est un nœud
 	// d'arbre figé dans un état React, et rouvrir l'éditeur après une première
 	// modification y montrerait le texte d'avant.
-	const editProduct = useCallback(
-		(product: CatalogProduct) => {
-			setEditing({
-				kind: 'product',
-				id: product.id,
-				name: product.name,
-				description: product.description,
-				designation: product.designation,
-				sku: product.sku,
-				brand: product.brand ? brandsById.get(product.brand)?.name : undefined,
-				categories: (product.categories ?? [])
-					.map((id) => categoriesById.get(id)?.name)
-					.filter((name): name is string => Boolean(name)),
-			})
-		},
-		[brandsById, categoriesById],
-	)
-
 	const editCategory = useCallback(
 		(id: string) => {
 			const fresh = (categories.data ?? []).find((c) => c.id === id)
@@ -1096,7 +1078,6 @@ export function CatalogueEnLignePage() {
 											exportProducts([product], product.name)
 										}
 										exporting={exporting}
-										onEdit={editProduct}
 										imageStates={productImageStates}
 										onCheckImages={checkProductImages}
 										onSendImages={sendProductImages}
@@ -1163,7 +1144,6 @@ export function CatalogueEnLignePage() {
 								syncStates={syncStates}
 								onExport={(product) => exportProducts([product], product.name)}
 								exporting={exporting}
-								onEdit={editProduct}
 								imageStates={productImageStates}
 								onCheckImages={checkProductImages}
 								onSendImages={sendProductImages}
@@ -1172,7 +1152,8 @@ export function CatalogueEnLignePage() {
 						</section>
 					)}
 
-					{/* Monté une fois pour les trois genres : la cible dit lequel. */}
+					{/* Les produits ont rejoint leur fiche complète ; ce dialogue reste
+					    l'éditeur unique des catégories et des marques. */}
 					<EditorialDialog target={editing} onClose={() => setEditing(null)} />
 				</>
 			)}

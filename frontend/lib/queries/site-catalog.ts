@@ -119,7 +119,8 @@ const CATALOG_STALE_TIME = 5 * 60_000
 // OPTIONS DE REQUÊTE — la même définition pour les écrans et pour la file
 // ---------------------------------------------------------------------------
 // Les hooks ci-dessous montent ces options ; la file de synchronisation
-// (`frontend/lib/sync/SyncQueueProvider.tsx`) les passe à `ensureQueryData`.
+// (`frontend/lib/sync/SyncQueueProvider.tsx`) les passe à `fetchQuery` afin
+// qu'une donnée invalidée soit réellement relue avant l'export.
 // C'est le même `queryKey` et la même `queryFn` des deux côtés : la file
 // réutilise donc le cache déjà rempli par l'écran quand il est ouvert, et
 // charge elle-même quand il ne l'est pas. Deux définitions parallèles
@@ -141,6 +142,17 @@ export function catalogProductsQueryOptions(
 						: 'status != "published"',
 				fields: PRODUCT_FIELDS,
 				sort: 'name',
+				// ⚠️ CLÉ D'ANNULATION EXPLICITE, et ce n'est pas cosmétique.
+				// Le SDK PocketBase auto-annule une requête quand une autre part
+				// avec la MÊME clé, et la clé par défaut se dérive de la méthode et
+				// du chemin : ces deux requêtes-ci ne diffèrent que par leur
+				// `filter`, donc elles la partagent. Lancées ensemble — c'est ce que
+				// fait le `Promise.all` de `SyncQueueProvider` — la seconde tue la
+				// première : « The request was autocancelled » (constaté le 26 août
+				// 2026 en synchronisant depuis /stock/produits).
+				// Invisible depuis /site/catalogue, où les deux listes sont déjà en
+				// cache et où `ensureQueryData` ne déclenche aucun appel.
+				requestKey: `site-catalog-products-${intention}`,
 			})) as CatalogProduct[],
 	}
 }
@@ -153,6 +165,9 @@ export function catalogCategoriesQueryOptions(pb: unknown) {
 			(await (pb as any).collection('categories').getFullList({
 				fields: CATEGORY_FIELDS,
 				sort: 'name',
+				// Même raison que pour les produits : le module `stock` lit la même
+				// collection de son côté, et deux requêtes de même clé s'annulent.
+				requestKey: 'site-catalog-categories',
 			})) as CatalogCategory[],
 	}
 }
@@ -165,6 +180,8 @@ export function catalogBrandsQueryOptions(pb: unknown) {
 			(await (pb as any).collection('brands').getFullList({
 				fields: BRAND_FIELDS,
 				sort: 'name',
+				// Même raison que pour les produits et les catégories.
+				requestKey: 'site-catalog-brands',
 			})) as CatalogBrand[],
 	}
 }

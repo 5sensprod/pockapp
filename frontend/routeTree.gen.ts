@@ -42,6 +42,7 @@ import { Route as CashTicketsIndexImport } from './routes/cash/tickets/index'
 import { Route as CashTerminalIndexImport } from './routes/cash/terminal/index'
 import { Route as CashRapportZIndexImport } from './routes/cash/rapport-z/index'
 import { Route as CashProductsIndexImport } from './routes/cash/products/index'
+import { Route as StockProduitsProductIdImport } from './routes/stock/produits/$productId'
 import { Route as ConnectQuotesNewImport } from './routes/connect/quotes/new'
 import { Route as ConnectOrdersNewImport } from './routes/connect/orders/new'
 import { Route as ConnectInvoicesNewImport } from './routes/connect/invoices/new'
@@ -243,6 +244,12 @@ const CashRapportZIndexRoute = CashRapportZIndexImport.update({
 const CashProductsIndexRoute = CashProductsIndexImport.update({
   id: '/cash/products/',
   path: '/cash/products/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const StockProduitsProductIdRoute = StockProduitsProductIdImport.update({
+  id: '/stock/produits/$productId',
+  path: '/stock/produits/$productId',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -500,6 +507,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectQuotesNewImport
       parentRoute: typeof rootRoute
     }
+    '/stock/produits/$productId': {
+      id: '/stock/produits/$productId'
+      path: '/stock/produits/$productId'
+      fullPath: '/stock/produits/$productId'
+      preLoaderRoute: typeof StockProduitsProductIdImport
+      parentRoute: typeof rootRoute
+    }
     '/cash/products/': {
       id: '/cash/products/'
       path: '/cash/products'
@@ -696,6 +710,7 @@ export interface FileRoutesByFullPath {
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
   '/connect/orders/new': typeof ConnectOrdersNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
+  '/stock/produits/$productId': typeof StockProduitsProductIdRoute
   '/cash/products': typeof CashProductsIndexRoute
   '/cash/rapport-z': typeof CashRapportZIndexRoute
   '/cash/terminal': typeof CashTerminalIndexRoute
@@ -745,6 +760,7 @@ export interface FileRoutesByTo {
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
   '/connect/orders/new': typeof ConnectOrdersNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
+  '/stock/produits/$productId': typeof StockProduitsProductIdRoute
   '/cash/products': typeof CashProductsIndexRoute
   '/cash/rapport-z': typeof CashRapportZIndexRoute
   '/cash/terminal': typeof CashTerminalIndexRoute
@@ -795,6 +811,7 @@ export interface FileRoutesById {
   '/connect/invoices/new': typeof ConnectInvoicesNewRoute
   '/connect/orders/new': typeof ConnectOrdersNewRoute
   '/connect/quotes/new': typeof ConnectQuotesNewRoute
+  '/stock/produits/$productId': typeof StockProduitsProductIdRoute
   '/cash/products/': typeof CashProductsIndexRoute
   '/cash/rapport-z/': typeof CashRapportZIndexRoute
   '/cash/terminal/': typeof CashTerminalIndexRoute
@@ -846,6 +863,7 @@ export interface FileRouteTypes {
     | '/connect/invoices/new'
     | '/connect/orders/new'
     | '/connect/quotes/new'
+    | '/stock/produits/$productId'
     | '/cash/products'
     | '/cash/rapport-z'
     | '/cash/terminal'
@@ -894,6 +912,7 @@ export interface FileRouteTypes {
     | '/connect/invoices/new'
     | '/connect/orders/new'
     | '/connect/quotes/new'
+    | '/stock/produits/$productId'
     | '/cash/products'
     | '/cash/rapport-z'
     | '/cash/terminal'
@@ -942,6 +961,7 @@ export interface FileRouteTypes {
     | '/connect/invoices/new'
     | '/connect/orders/new'
     | '/connect/quotes/new'
+    | '/stock/produits/$productId'
     | '/cash/products/'
     | '/cash/rapport-z/'
     | '/cash/terminal/'
@@ -992,6 +1012,7 @@ export interface RootRouteChildren {
   ConnectInvoicesNewRoute: typeof ConnectInvoicesNewRoute
   ConnectOrdersNewRoute: typeof ConnectOrdersNewRoute
   ConnectQuotesNewRoute: typeof ConnectQuotesNewRoute
+  StockProduitsProductIdRoute: typeof StockProduitsProductIdRoute
   CashProductsIndexRoute: typeof CashProductsIndexRoute
   CashRapportZIndexRoute: typeof CashRapportZIndexRoute
   CashTerminalIndexRoute: typeof CashTerminalIndexRoute
@@ -1041,6 +1062,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectInvoicesNewRoute: ConnectInvoicesNewRoute,
   ConnectOrdersNewRoute: ConnectOrdersNewRoute,
   ConnectQuotesNewRoute: ConnectQuotesNewRoute,
+  StockProduitsProductIdRoute: StockProduitsProductIdRoute,
   CashProductsIndexRoute: CashProductsIndexRoute,
   CashRapportZIndexRoute: CashRapportZIndexRoute,
   CashTerminalIndexRoute: CashTerminalIndexRoute,
@@ -1102,6 +1124,7 @@ export const routeTree = rootRoute
         "/connect/invoices/new",
         "/connect/orders/new",
         "/connect/quotes/new",
+        "/stock/produits/$productId",
         "/cash/products/",
         "/cash/rapport-z/",
         "/cash/terminal/",
@@ -1193,6 +1216,9 @@ export const routeTree = rootRoute
     },
     "/connect/quotes/new": {
       "filePath": "connect/quotes/new.tsx"
+    },
+    "/stock/produits/$productId": {
+      "filePath": "stock/produits/$productId.tsx"
     },
     "/cash/products/": {
       "filePath": "cash/products/index.tsx"

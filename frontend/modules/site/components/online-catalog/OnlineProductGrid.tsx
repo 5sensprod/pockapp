@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import type { CatalogBrand, CatalogProduct } from '@/lib/queries/site-catalog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
+import { useNavigate } from '@tanstack/react-router'
 import {
 	CheckCircle2,
 	CloudUpload,
@@ -38,11 +39,6 @@ type Props = {
 	syncStates?: Map<string, SyncState>
 	onExport?: (product: CatalogProduct) => void
 	exporting?: boolean
-	/** Ouvre l'éditeur des textes du site. Disponible quel que soit l'état de
-	 *  synchronisation : corriger un nom AVANT le premier export est le cas le
-	 *  plus fréquent, puisque beaucoup de produits ont pour nom leur référence. */
-	onEdit?: (product: CatalogProduct) => void
-
 	// ── Les PHOTOS, ici, sur la carte ───────────────────────────────────────
 	// Ajoutées le 20 août 2026, et pour une raison mesurée : l'onglet « Images »
 	// mêlait 2674 fiches — marques, catégories et produits confondus — et son
@@ -90,13 +86,13 @@ export function OnlineProductGrid({
 	syncStates,
 	onExport,
 	exporting,
-	onEdit,
 	imageStates,
 	onCheckImages,
 	onSendImages,
 	imagesBusy,
 }: Props) {
 	const pb = usePocketBase() as any
+	const navigate = useNavigate()
 
 	if (!products.length) {
 		return (
@@ -109,6 +105,11 @@ export function OnlineProductGrid({
 	return (
 		<div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'>
 			{products.map((product) => {
+				const openProduct = () =>
+					navigate({
+						to: '/stock/produits/$productId',
+						params: { productId: product.id },
+					})
 				const url = catalogImageUrl(pb, product, '300x300')
 				const brand = product.brand ? brandsById.get(product.brand) : undefined
 				const state = syncStates?.get(product.legacy_id)
@@ -131,25 +132,30 @@ export function OnlineProductGrid({
 				return (
 					<article
 						key={product.id}
+						role='link'
+						tabIndex={0}
+						onClick={(event) => {
+							if ((event.target as HTMLElement).closest('button')) return
+							void openProduct()
+						}}
+						onKeyDown={(event) => {
+							if (event.key === 'Enter') void openProduct()
+						}}
 						className={cn(
-							'group relative flex flex-col overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md',
+							'group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md',
 							absent && 'border-dashed bg-muted/30',
 						)}
 					>
-						{/* Le crayon est posé SUR la carte, hors du bloc image : celui-ci
-						    est grisé quand le produit est absent du site, et l'action
-						    d'édition, elle, reste pleinement disponible — corriger un nom
-						    avant le premier export est le cas le plus fréquent. */}
-						{onEdit && (
-							<button
-								type='button'
-								onClick={() => onEdit(product)}
-								title='Modifier le nom et la description affichés sur le site'
-								className='absolute top-1.5 right-1.5 z-10 rounded-md border bg-background/90 p-1.5 opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:opacity-100 group-hover:opacity-100'
-							>
-								<Pencil className='h-3.5 w-3.5' />
-							</button>
-						)}
+						{/* La fiche complète est désormais l'unique point d'entrée produit.
+						    L'assistant éditorial y reste monté depuis le module `site`. */}
+						<button
+							type='button'
+							onClick={() => void openProduct()}
+							title='Ouvrir la fiche complète du produit'
+							className='absolute top-1.5 right-1.5 z-10 rounded-md border bg-background/90 p-1.5 opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:opacity-100 group-hover:opacity-100'
+						>
+							<Pencil className='h-3.5 w-3.5' />
+						</button>
 
 						<div
 							className={cn(
