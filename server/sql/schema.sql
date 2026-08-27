@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS `ax_products` (
   `legacy_id`   VARCHAR(64)   NOT NULL,
   `checksum`    CHAR(40)      NOT NULL,
   `name`        VARCHAR(512)  NOT NULL,
+  -- ⚠️ INERTE depuis le 27 août 2026 : plus personne ne l'écrit ni ne la lit.
+  -- `name` EST le nom de la fiche produit sur Internet. Conservée telle quelle
+  -- ici parce que la base de production la porte ; son retrait est une
+  -- décision du propriétaire, en instruction commentée dans `sale-state.sql`.
   `site_title`  VARCHAR(512)  DEFAULT NULL,
   `sku`         VARCHAR(128)  DEFAULT NULL,
   `slug`        VARCHAR(255)  DEFAULT NULL,
@@ -60,6 +64,10 @@ CREATE TABLE IF NOT EXISTS `ax_products` (
   `tax_rate`    DECIMAL(6,3)  NOT NULL DEFAULT 0.000,
   `stock`       INT           NOT NULL DEFAULT 0,
   `status`      VARCHAR(16)   NOT NULL,
+  -- L'opération commerciale : '' (normal), 'sale', 'promo'. La chaîne vide EST
+  -- une valeur, d'où `NOT NULL DEFAULT ''`. Ajoutée par `sale-state.sql` sur
+  -- les bases existantes ; §4.1 bis du contrat.
+  `sale_state`  VARCHAR(8)    NOT NULL DEFAULT '',
   `brand`       VARCHAR(64)   DEFAULT NULL,
   `exported_at` DATETIME      NOT NULL,
   PRIMARY KEY (`legacy_id`),

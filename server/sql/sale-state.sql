@@ -1,0 +1,79 @@
+-- server/sql/sale-state.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+-- `sale_state` — l'opération commerciale d'un produit
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Écrit le 27 août 2026. À passer UNE FOIS sur la base du mutualisé, AVANT de
+-- déposer les versions de `products-sync.php` et `catalog.php` qui la portent.
+-- Ce fichier n'est pas lu par PHP : il est versionné pour que le schéma en
+-- place soit connu.
+--
+-- Contrat : frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md,
+-- §4.1 et §4.1 bis, qui font autorité.
+--
+-- ─── TROIS VALEURS, ET LA CHAÎNE VIDE EN EST UNE ─────────────────────────
+--   ''       normal, plein tarif — l'état de la QUASI-TOTALITÉ du catalogue
+--   'sale'   soldé
+--   'promo'  en promotion
+--
+-- `NOT NULL DEFAULT ''` et non `DEFAULT NULL`, délibérément : ici la chaîne
+-- vide EST une valeur, pas une absence de donnée. Contrairement à
+-- `first_seen_at`, où le NULL porte du sens (« ligne écrite avant le
+-- mécanisme »), il n'y a rien à distinguer : un produit sans opération
+-- commerciale est un produit normal, et le défaut le dit sans ambiguïté. Les
+-- 2563 lignes déjà en base prennent donc `''` immédiatement, ce qui est leur
+-- état exact — aucun rattrapage n'est nécessaire.
+--
+-- ─── PAS D'INDEX ─────────────────────────────────────────────────────────
+-- Aucune requête de `catalog.php` ne filtre ni ne trie dessus : le champ est
+-- SÉLECTIONNÉ et rendu au site, qui décide de l'affichage (une pastille). Un
+-- index sur une colonne à trois valeurs, dont une écrasante, ne servirait
+-- aucun plan d'exécution et coûterait à chaque écriture. Si un jour une action
+-- « les soldes » apparaît, l'index s'ajoutera avec elle.
+--
+-- ─── CE QU'IL N'EST PAS ──────────────────────────────────────────────────
+-- Il ne dit RIEN de la publication : `status` reste la seule autorité sur ce
+-- que `catalog.php` sert. Il ne porte AUCUN prix : `price_ttc` reste le prix de
+-- vente. Et `commercial_state` (`used` / `rental`), que PocketApp porte aussi,
+-- N'EST PAS au contrat et n'a pas de colonne ici.
+
+ALTER TABLE `ax_products`
+  ADD COLUMN `sale_state` VARCHAR(8) NOT NULL DEFAULT '';
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- `site_title` — devenue inutile le 27 août 2026
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ⚠️ NE PAS JOUER CE QUI SUIT SANS L'AVOIR DÉCIDÉ. C'est une RECOMMANDATION,
+-- pas une étape de la migration ci-dessus.
+--
+-- Nouvelle règle côté PocketApp : `name` EST le nom de la fiche produit sur
+-- Internet ; `designation` est le libellé du ticket de caisse et ne voyage
+-- pas. `site_title` n'a donc plus de rôle.
+--
+-- Ce qui a déjà été fait, et qui suffit :
+--   • `products-sync.php` n'écrit plus la colonne. Il continue d'ACCEPTER la
+--     clé `site_title` dans le corps — PocketApp l'envoie encore à `null`, et
+--     la retirer changerait le checksum de tous les produits une SECONDE fois
+--     — mais il l'ignore.
+--   • `catalog.php` ne lit plus la colonne : `title` vaut `name`, toujours.
+--
+-- La colonne est donc désormais INERTE : plus personne ne l'écrit ni ne la
+-- lit. La laisser en place ne coûte rien et ne trompe personne tant que ce
+-- commentaire existe.
+--
+-- ⚠️ `DROP COLUMN` sur une base de PRODUCTION distante est IRRÉVERSIBLE : les
+-- valeurs partent sans copie, et le mutualisé n'a ni instantané ni retour
+-- arrière. Ce n'est pas une décision d'agent. Si le propriétaire veut la
+-- jouer, sciemment :
+--
+--   1. Vérifier d'abord ce qu'on détruit :
+--        SELECT COUNT(*) FROM `ax_products`
+--         WHERE site_title IS NOT NULL AND site_title <> '';
+--      Si ce compte n'est pas nul, ces titres n'existent NULLE PART ailleurs
+--      une fois la colonne partie.
+--   2. Vérifier que les DEUX PHP ci-dessus sont bien déposés en ligne : un
+--      script qui référencerait encore la colonne tomberait en erreur SQL sur
+--      chaque requête, catalogue public compris.
+--   3. Alors seulement :
+--
+--        ALTER TABLE `ax_products` DROP COLUMN `site_title`;

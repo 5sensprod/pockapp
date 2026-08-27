@@ -36,6 +36,11 @@ type FileBearing = {
  *  et lui seul, qui décide de ce qui part vers le site. */
 export type CatalogProductStatus = 'draft' | 'published'
 
+/** L'opération commerciale en cours, telle que le site la reçoit. **Vide VEUT
+ *  DIRE normal** — plein tarif. Schéma :
+ *  `backend/migrations/add_sale_state_to_products.go`. */
+export type CatalogSaleState = '' | 'sale' | 'promo'
+
 export type CatalogProduct = FileBearing & {
 	/** Identifiant NeDB d'origine. **Clé de l'export**, stable au rechargement. */
 	legacy_id: string
@@ -44,6 +49,12 @@ export type CatalogProduct = FileBearing & {
 	sku?: string
 	slug?: string
 	status: CatalogProductStatus
+	/** L'OPÉRATION COMMERCIALE — `sale` (solde), `promo`, ou vide = normal.
+	 *  Elle part vers le site depuis le 27 août 2026 (DECISIONS) ; elle est
+	 *  INDÉPENDANTE de `commercial_state`, qui, lui, ne voyage pas.
+	 *
+	 *  ⚠️ Elle ne décide de RIEN quant à la publication — `status` seul. */
+	sale_state?: CatalogSaleState
 	price_ttc?: number
 	tax_rate?: number
 	stock?: number
@@ -101,7 +112,7 @@ export type CatalogBrand = FileBearing & {
 // rechargement par purge et ne peuvent pas servir de clé distante — §1 de
 // PocketSite-docs/12-contrat-catalogue.md.
 export const PRODUCT_FIELDS =
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,slug,description,status,price_ttc,tax_rate,stock,image,gallery,brand,categories'
+	'id,collectionId,collectionName,legacy_id,name,designation,sku,slug,description,status,sale_state,price_ttc,tax_rate,stock,image,gallery,brand,categories'
 const CATEGORY_FIELDS =
 	'id,collectionId,collectionName,legacy_id,name,slug,description,image,is_featured,parent'
 const BRAND_FIELDS =

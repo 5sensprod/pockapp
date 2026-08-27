@@ -399,18 +399,46 @@ $sqlCategory = sprintf(
 //
 // Colonne ajoutée par `server/sql/first-seen.sql`, à passer avant de déposer
 // ce fichier.
+// ─── `site_title` N'EST PLUS ÉCRITE (27 août 2026) ────────────────────────
+//
+// Nouvelle règle : `name` EST le nom de la fiche produit sur Internet ;
+// `designation` est le libellé du ticket de caisse et ne voyage pas. La
+// colonne n'a donc plus de rôle, et `catalog.php` ne la lit plus.
+//
+// ⚠️ La CLÉ, elle, continue d'arriver dans le corps — PocketApp l'envoie à
+// `null` — et le lot ne doit surtout PAS être rejeté pour autant : la retirer
+// côté PocketApp changerait le checksum de tous les produits une SECONDE fois
+// (§4.1 bis). Elle est donc ACCEPTÉE et IGNORÉE, ce qui ne demande aucun code :
+// rien ne la lit plus ci-dessous.
+//
+// La colonne SQL reste en place, inerte. Son retrait est une décision du
+// propriétaire, en instruction commentée dans `server/sql/sale-state.sql`.
+//
+// ─── `sale_state` EST ÉCRITE TELLE QUELLE (27 août 2026) ──────────────────
+//
+// `''`, `'sale'` ou `'promo'`. **La chaîne vide EST une valeur** — « normal »,
+// l'état de la quasi-totalité du catalogue — et non une absence : elle ne
+// passe donc PAS par `opt_string()`, qui la convertirait en NULL. Aucun défaut
+// deviné, aucun croisement avec `status`, aucun prix dérivé : le serveur écrit
+// ce qu'il reçoit (§2 et §4.1 bis du contrat).
+//
+// Colonne ajoutée par `server/sql/sale-state.sql`, à passer avant de déposer
+// ce fichier.
 $sqlProduct = sprintf(
-    'INSERT INTO `%s` (legacy_id, checksum, name, site_title, sku, slug, description,
-                       price_ttc, tax_rate, stock, status, brand, exported_at, first_seen_at)
-     VALUES (:legacy_id, :checksum, :name, :site_title, :sku, :slug, :description,
-             :price_ttc, :tax_rate, :stock, :status, :brand, :exported_at, :first_seen_at)
+    'INSERT INTO `%s` (legacy_id, checksum, name, sku, slug, description,
+                       price_ttc, tax_rate, stock, status, sale_state, brand,
+                       exported_at, first_seen_at)
+     VALUES (:legacy_id, :checksum, :name, :sku, :slug, :description,
+             :price_ttc, :tax_rate, :stock, :status, :sale_state, :brand,
+             :exported_at, :first_seen_at)
      ON DUPLICATE KEY UPDATE
-        checksum = VALUES(checksum), name = VALUES(name), site_title = VALUES(site_title),
+        checksum = VALUES(checksum), name = VALUES(name),
         sku = VALUES(sku),
         slug = IF(slug IS NULL OR CHAR_LENGTH(slug) = 0, VALUES(slug), slug),
         description = VALUES(description),
         price_ttc = VALUES(price_ttc), tax_rate = VALUES(tax_rate), stock = VALUES(stock),
-        status = VALUES(status), brand = VALUES(brand), exported_at = VALUES(exported_at)',
+        status = VALUES(status), sale_state = VALUES(sale_state),
+        brand = VALUES(brand), exported_at = VALUES(exported_at)',
     $T_PRODUCTS
 );
 
@@ -495,11 +523,27 @@ try {
             continue;
         }
 
+        // `sale_state` : écrit TEL QUEL, sans interprétation (§4.1 bis).
+        //
+        // Clé absente ou valeur non textuelle → `''`, qui est la valeur
+        // « normal » du contrat et le défaut de la colonne. Ce n'est PAS une
+        // valeur devinée : c'est la seule forme qu'un champ obligatoire
+        // manquant puisse prendre sans inventer un état commercial.
+        //
+        // Aucun rejet sur une valeur inconnue : le contrat l'interdit
+        // explicitement (« ni le convertir en NULL, ni le refuser, ni deviner
+        // une valeur par défaut différente »). La colonne fait 8 caractères,
+        // les trois valeurs du contrat en font au plus 5.
+        $saleState = isset($product['sale_state']) && is_string($product['sale_state'])
+            ? $product['sale_state']
+            : '';
+
         $stProduct->execute([
             ':legacy_id'   => $product['legacy_id'],
             ':checksum'    => $product['checksum'],
             ':name'        => $product['name'],
-            ':site_title'  => opt_string($product['site_title'] ?? null),
+            // `site_title` : la clé arrive encore dans le corps, elle est
+            // ACCEPTÉE et IGNORÉE — voir le bloc au-dessus de $sqlProduct.
             ':sku'         => opt_string($product['sku'] ?? null),
             ':slug'        => opt_string($product['slug'] ?? null),
             ':description' => opt_string($product['description'] ?? null),
@@ -507,6 +551,7 @@ try {
             ':tax_rate'    => is_numeric($product['tax_rate'] ?? null) ? (float) $product['tax_rate'] : 0.0,
             ':stock'       => is_numeric($product['stock'] ?? null) ? (int) $product['stock'] : 0,
             ':status'      => $status,
+            ':sale_state'  => $saleState,
             ':brand'       => opt_string($product['brand'] ?? null),
             ':exported_at' => $now,
             // Même valeur, deux destins : `exported_at` sera réécrit au

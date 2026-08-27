@@ -10,6 +10,64 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## `solde` / `promo` sont un champ à part, pas des valeurs de `commercial_state` — 2026-08-27
+
+**L'état commercial d'un produit se dit désormais sur DEUX axes indépendants.**
+`commercial_state` (`used` / `rental`, vide = neuf) dit ce que l'objet EST ;
+`sale_state` (`sale` / `promo`, vide = normal) dit l'OPÉRATION commerciale en
+cours. Posé par `AddSaleStateToProducts`
+(`backend/migrations/add_sale_state_to_products.go`).
+
+**Ce qui l'a emporté.** `commercial_state` est MONO-VALEUR, et ce choix repose
+sur une mesure précise : aucun produit n'est à la fois en occasion et en
+location, 0 sur 3055 (bloc du 2026-08-24). Cette mesure ne dit rien de
+`solde`/`promo`, et le magasin dit l'inverse : **un instrument d'occasion soldé
+est un cas ordinaire.** Verser `sale`/`promo` dans le même select le rendrait
+inexprimable — il faudrait choisir entre « occasion » et « soldé ».
+
+**Options écartées.** Passer `commercial_state` à `MaxSelect: 2` : le tableau
+mélangerait deux axes de nature différente, et chaque écran devrait deviner à
+la lecture quelle valeur relève de quel axe — un filtre « occasions » ramènerait
+les soldes dès qu'on se tromperait d'index. Deux booléens `is_sale` /
+`is_promo` : autorisent « soldé ET en promo », qui n'a pas de sens, et deux
+champs à tenir au lieu d'un. Un champ de remise chiffrée tout de suite : la
+demande est une ÉTIQUETTE, pas un prix ; `price_ttc` reste le prix de vente.
+
+**Les deux axes n'ont pas la même durée de vie**, et c'est l'argument de fond :
+la nature d'un objet ne change qu'une fois — on le reprend d'occasion —, alors
+qu'une opération commerciale se pose et se retire par campagnes.
+
+**L'absence vaut « normal »**, comme l'absence de `commercial_state` vaut
+« neuf » : le champ n'est pas `Required`, sinon il faudrait écrire les ~3000
+fiches du catalogue pour n'exprimer que « rien de particulier ».
+
+**Ce champ ne décide PAS de la publication** — `status` seul (bloc du
+2026-08-21). Croiser les deux ferait disparaître des pages sans que rien ne le
+dise.
+
+**IL PART VERS LE SITE, et le ré-export intégral est ASSUMÉ.** Décision du
+propriétaire, le même jour, après remontée du coût : `sale_state` entre dans
+`site-catalog.ts`, dans `toExportProduct` et donc dans le checksum. Or
+`canonical()` sérialise TOUTES les clés du corps : ajouter celle-ci a changé
+l'empreinte de **chaque** produit, et **les 2412 fiches publiées sont repassées
+« modifiées » et reparties en une fois**. Ce n'est pas un défaut — c'est le prix
+payé sciemment, une fois. **Retirer la clé pour « réparer » le repaierait
+à l'identique.** C'est la même mécanique que la note sur `site_title`
+(`frontend/modules/site/lib/catalog-export.ts`), à ceci près qu'ici on a
+tranché.
+
+`commercial_state`, lui, **ne voyage toujours pas** : le contrat ne le connaît
+pas. Gardien des deux règles :
+`frontend/lib/queries/catalog-fields.test.ts`.
+
+**Ce qui pourrait la remettre en cause :** la demande d'une remise CHIFFRÉE
+(montant ou pourcentage, avec des dates de campagne) — ce serait des champs de
+plus, pas des valeurs de plus ici. Et la symétrie : le jour où le site voudra
+une vue « occasions », c'est `commercial_state` qu'il faudra ajouter au
+contrat — au même prix, et il devra être assumé de la même façon.
+
+---
+
 ## La synchro se propose à l'enregistrement, et deux caches la faisaient mentir — 2026-08-26
 
 **La décision.** Enregistrer un produit **déjà en ligne** propose désormais de

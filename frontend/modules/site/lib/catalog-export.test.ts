@@ -94,6 +94,37 @@ describe('toExportProduct', () => {
 		expect(exported.status).toBe('draft')
 	})
 
+	// ── L'OPÉRATION COMMERCIALE VOYAGE (27 août 2026) ────────────────────────
+	// `sale_state` est recopié comme `status`, et pour la même raison : le
+	// serveur écrit ce qu'il reçoit (§4.1 bis du contrat). La chaîne vide est
+	// une VALEUR — « normal », plein tarif —, pas une absence : la laisser
+	// tomber du corps ferait deviner le serveur.
+	it('recopie l’opération commerciale, chaîne vide comprise', () => {
+		expect(toExportProduct(product(), [], null).sale_state).toBe('')
+		expect(
+			toExportProduct(product({ sale_state: 'sale' }), [], null).sale_state,
+		).toBe('sale')
+		expect(
+			toExportProduct(product({ sale_state: 'promo' }), [], null).sale_state,
+		).toBe('promo')
+	})
+
+	// Sans elle dans l'empreinte, solder une fiche déjà en ligne ne la ferait
+	// jamais repasser `modified` : la pastille n'apparaîtrait sur le site que
+	// le jour où un AUTRE champ changerait. C'est le défaut des images, vu par
+	// l'autre bout — et c'est pourquoi elles ont leur propre empreinte.
+	it('change d’empreinte quand la fiche est soldée', async () => {
+		const normal = await sealed(toExportProduct(product(), [], null))
+		const solde = await sealed(
+			toExportProduct(product({ sale_state: 'sale' }), [], null),
+		)
+
+		expect(solde.checksum).not.toBe(normal.checksum)
+		expect(
+			syncStateOf('nedb-1', solde.checksum, { 'nedb-1': normal.checksum }),
+		).toBe('modified')
+	})
+
 	// Le cœur du mécanisme : sans `status` dans l'empreinte, le retrait serait
 	// invisible à l'inventaire et ne partirait jamais. Avec, la fiche devient
 	// `modified`, part, puis redevient `synced` — le compteur retombe seul.

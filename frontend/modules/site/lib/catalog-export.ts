@@ -19,6 +19,7 @@ import type {
 	CatalogCategory,
 	CatalogProduct,
 	CatalogProductStatus,
+	CatalogSaleState,
 } from '@/lib/queries/site-catalog'
 
 export const CATALOG_CONTRACT_VERSION = 1
@@ -69,6 +70,30 @@ export type ExportProduct = WithChecksum & {
 	 * retombe à zéro de lui-même.
 	 */
 	status: CatalogProductStatus
+	/**
+	 * L'OPÉRATION COMMERCIALE, telle qu'elle est. `''` VEUT DIRE « normal » —
+	 * plein tarif — et c'est la valeur de tout le catalogue le jour où ce champ
+	 * arrive : le serveur ne doit donc pas la traiter comme une absence de
+	 * donnée, mais comme l'état ordinaire.
+	 *
+	 * ⚠️ **Elle ne dit RIEN de la publication** : `status` reste la seule
+	 * autorité (§4.1). Un produit soldé et dépublié part en `draft`.
+	 *
+	 * ⚠️ **Elle ne porte AUCUN prix.** `price_ttc` reste le prix de vente ;
+	 * ceci est une étiquette d'état, pas une remise chiffrée.
+	 *
+	 * **Elle entre dans l'empreinte**, comme `status`, et c'est ce qui la fait
+	 * fonctionner : solder une fiche la fait basculer en `modified`, l'envoi la
+	 * porte, l'empreinte alors stockée la rend `synced`.
+	 *
+	 * **Le coût de son arrivée a été assumé par le propriétaire le 27 août
+	 * 2026** : `canonical()` sérialise TOUTES les clés, donc ajouter celle-ci a
+	 * changé l'empreinte de chaque produit — **les 2412 fiches publiées sont
+	 * repassées « modifiées » et ont été ré-exportées en une fois.** Ce n'est
+	 * pas un défaut, c'est le prix payé sciemment ; ne pas le redécouvrir, et
+	 * ne pas retirer la clé pour « réparer » — ce serait le repayer.
+	 */
+	sale_state: CatalogSaleState
 	brand: string | null
 	categories: string[]
 }
@@ -151,6 +176,15 @@ const nullable = (value: string | undefined): string | null =>
  * `site_title` reste délibérément `null` : le nom/référence canonique doit faire
  * foi partout et `catalog.php` retombe sur `name`. Le champ reste au contrat
  * pour ne pas imposer une migration au serveur si cette règle change un jour.
+ *
+ * ⚠️ **La règle a été tranchée le 27 août 2026 : `name` EST le nom de la fiche
+ * en ligne, `designation` celui du ticket, et `site_title` n'a donc plus aucun
+ * rôle.** Sa colonne SQL peut disparaître côté serveur — mais **cette clé-ci ne
+ * se retire PAS du corps** : `canonical()` sérialise toutes les clés sauf
+ * `checksum`, si bien que supprimer `"site_title":null` de la forme change
+ * l'empreinte de CHAQUE produit d'un coup — les 2412 fiches publiées
+ * repasseraient « modifiées » et repartiraient en entier. On la laisse à `null`
+ * tant que personne n'a décidé d'assumer ce ré-export complet.
  */
 export function toExportProduct(
 	product: CatalogProduct,
@@ -168,6 +202,13 @@ export function toExportProduct(
 		tax_rate: product.tax_rate ?? 0,
 		stock: product.stock ?? 0,
 		status: product.status === 'published' ? 'published' : 'draft',
+		// Recopiée telle quelle, comme `status`. Toute valeur inattendue retombe
+		// sur « normal » : le contrat n'en admet que deux, et un select
+		// PocketBase ne peut de toute façon pas en produire d'autre.
+		sale_state:
+			product.sale_state === 'sale' || product.sale_state === 'promo'
+				? product.sale_state
+				: '',
 		brand: brandLegacyId,
 		categories: categoryLegacyIds,
 	}

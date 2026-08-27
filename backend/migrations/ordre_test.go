@@ -80,6 +80,7 @@ func espacesReduites(s string) string {
 var apresCatalogV2 = []string{
 	"FixSupplierJsonMaxSize",
 	"AddCommercialStateToProducts",
+	"AddSaleStateToProducts",
 }
 
 func TestLesMigrationsDuCatalogueSontInscritesEtApresLaRecreation(t *testing.T) {
@@ -135,6 +136,48 @@ func TestLEtatCommercialEstUnChampDuProduitEtNonUneCategorie(t *testing.T) {
 		if !strings.Contains(src, `"`+v+`"`) {
 			t.Fatalf("la valeur %q est annoncée par CommercialStateValues mais "+
 				"n'est pas dans le schéma", v)
+		}
+	}
+}
+
+func TestLOperationCommercialeEstUnChampSepareDeLEtatCommercial(t *testing.T) {
+	// L'ARBITRAGE QUE CE TEST TIENT : `solde` et `promo` ne sont PAS des
+	// valeurs de `commercial_state`. Ce champ-là est mono-valeur, et il le
+	// reste ; y verser l'opération commerciale rendrait « occasion ET soldé »
+	// inexprimable — un cas ordinaire en magasin, contrairement à
+	// « occasion ET location », mesuré à 0 sur 3055.
+	sale := lireSourceSansCommentaires(t, "add_sale_state_to_products.go")
+
+	if !strings.Contains(sale, `Name: "sale_state"`) {
+		t.Fatal("le champ doit s'appeler sale_state")
+	}
+	if !strings.Contains(sale, "FieldTypeSelect") {
+		t.Fatal("sale_state doit être un select : un texte libre laisserait " +
+			"« solde », « Solde » et « SOLDE » coexister")
+	}
+	if !strings.Contains(sale, "MaxSelect: 1") {
+		t.Fatal("MaxSelect doit valoir 1 : un produit est soldé OU en " +
+			"promotion, jamais les deux")
+	}
+	if strings.Contains(sale, "Required: true") {
+		t.Fatal("sale_state ne doit PAS être obligatoire : l'absence de valeur " +
+			"VEUT DIRE « normal », et c'est le cas de tout le catalogue")
+	}
+	for _, v := range SaleStateValues {
+		if !strings.Contains(sale, `"`+v+`"`) {
+			t.Fatalf("la valeur %q est annoncée par SaleStateValues mais "+
+				"n'est pas dans le schéma", v)
+		}
+	}
+
+	// Et l'autre moitié de l'arbitrage : le select de l'état commercial ne
+	// doit pas s'être mis à porter les mêmes valeurs.
+	etat := lireSourceSansCommentaires(t, "add_commercial_state_to_products.go")
+	for _, v := range SaleStateValues {
+		if strings.Contains(etat, `"`+v+`"`) {
+			t.Fatalf("la valeur %q est entrée dans commercial_state : ce champ "+
+				"est mono-valeur, un produit d'occasion soldé y deviendrait "+
+				"inexprimable", v)
 		}
 	}
 }

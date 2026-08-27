@@ -24,6 +24,18 @@ import type { ProductDetailValues } from './product-detail-form'
 
 const commercial = { '': 'Neuf', used: 'Occasion', rental: 'Location' } as const
 
+// ⚠️ DEUX AXES, ET ILS NE FUSIONNENT PAS. `commercial_state` dit ce que l'objet
+// EST (neuf, occasion, location) ; `sale_state` dit l'OPÉRATION en cours dessus
+// (soldé, en promotion). Un instrument d'occasion soldé est un cas ordinaire :
+// un sélecteur unique à quatre options le rendrait inexprimable.
+// Ni l'un ni l'autre ne décide de la publication — `status` en est la seule
+// autorité (`catalog-products.ts:69`).
+const operation = {
+	'': 'Plein tarif',
+	sale: 'Soldé',
+	promo: 'Promotion',
+} as const
+
 export function ProductLinksCard({
 	product,
 	editing,
@@ -100,6 +112,25 @@ export function ProductLinksCard({
 					/>
 					<FormField
 						control={form.control}
+						name='sale_state'
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel className='flex items-center'>
+									Opération commerciale
+									<HelpTooltip text='Indépendante de l’état commercial : une occasion peut être soldée. Elle ne change ni le prix, ni la publication.' />
+								</FormLabel>
+								<FormControl>
+									<NativeSelect {...field}>
+										<option value=''>Plein tarif</option>
+										<option value='sale'>Soldé</option>
+										<option value='promo'>Promotion</option>
+									</NativeSelect>
+								</FormControl>
+							</FormItem>
+						)}
+					/>
+					<FormField
+						control={form.control}
 						name='categories'
 						render={({ field }) => (
 							<FormItem className='sm:col-span-2'>
@@ -126,6 +157,10 @@ export function ProductLinksCard({
 					<ReadValue
 						label='État commercial'
 						value={commercial[product.commercial_state ?? '']}
+					/>
+					<ReadValue
+						label='Opération commerciale'
+						value={operation[product.sale_state ?? '']}
 					/>
 					<ReadValue label='Catégories' value={names.categories} wide />
 				</div>

@@ -151,15 +151,32 @@ function present_product(array $row, bool $withGallery = false): array
 {
     $product = [
         'id'          => (string) $row['legacy_id'],
-        // Le titre du site prime quand il existe ; sinon le libellé de la caisse.
-        'title'       => ($row['site_title'] ?? null) !== null && $row['site_title'] !== ''
-            ? (string) $row['site_title']
-            : (string) $row['name'],
+        // `name` EST le nom de la fiche produit sur Internet (27 août 2026).
+        //
+        // Il y avait ici un repli : `site_title` s'il existait, `name` sinon.
+        // Le repli est devenu le chemin NOMINAL et le SEUL — côté PocketApp,
+        // `designation` est le libellé du ticket de caisse et ne voyage pas,
+        // et `site_title` n'a plus de rôle. La colonne n'est donc plus ni lue
+        // ici, ni écrite par `products-sync.php`.
+        'title'       => (string) $row['name'],
         'slug'        => $row['slug'] !== null ? (string) $row['slug'] : null,
         'sku'         => $row['sku'] !== null ? (string) $row['sku'] : null,
         'description' => $row['description'] !== null ? (string) $row['description'] : null,
         'price_ttc'   => (float) $row['price_ttc'],
         'stock'       => (int) $row['stock'],
+        // ── L'opération commerciale (27 août 2026) ──────────────────────────
+        //
+        // Rendu par TOUTES les actions qui rendent des produits, listes
+        // comprises — contrairement à `gallery`, réservé à la fiche : une
+        // pastille « Soldé » a du sens dans une grille, et c'est même là
+        // qu'elle en a le plus.
+        //
+        // Rendu TEL QU'IL EST EN BASE, chaîne vide incluse : `''` veut dire
+        // « normal », ce n'est pas une absence de donnée. Le bundle décide de
+        // l'affichage ; le serveur ne l'interprète pas, ne le croise pas avec
+        // `status` et n'en dérive AUCUN prix — `price_ttc` reste le prix de
+        // vente (§4.1 bis du contrat).
+        'sale_state'  => (string) ($row['sale_state'] ?? ''),
         // `image` est presque toujours null, et c'est le cas NORMAL, pas une
         // erreur : trois marques sur 288 ont leurs octets en ligne au 19 août
         // 2026 (inventaire images-sync.php, mesuré). Le site doit traiter
@@ -325,8 +342,16 @@ function media_urls(?string $imagePaths): array
 // Chacune est la liste ORDONNÉE des chemins relatifs, en JSON, écrite par
 // images-sync.php. Les trois requêtes qui utilisent ces colonnes joignent déjà
 // `ax_brands` en LEFT JOIN — rien d'autre à changer.
-$PRODUCT_COLUMNS = 'p.legacy_id, p.name, p.site_title, p.slug, p.sku, p.description,
-                    p.price_ttc, p.stock, p.brand, b.name AS brand_name,
+// `p.site_title` a quitté cette liste le 27 août 2026 : `name` EST le nom de
+// la fiche sur Internet, et la colonne n'est plus lue (voir present_product).
+//
+// `p.sale_state` l'a rejointe le même jour. Une seule liste de colonnes sert
+// les QUATRE actions qui rendent des produits — `category`, `product`,
+// `search`, `latest` — c'est donc le seul endroit à toucher pour qu'un champ
+// apparaisse partout, et rien à faire de plus.
+$PRODUCT_COLUMNS = 'p.legacy_id, p.name, p.slug, p.sku, p.description,
+                    p.price_ttc, p.stock, p.sale_state,
+                    p.brand, b.name AS brand_name,
                     b.image_paths AS brand_image_paths,
                     p.image_paths AS product_image_paths';
 

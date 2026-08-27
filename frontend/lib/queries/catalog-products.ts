@@ -56,9 +56,36 @@ export type CatalogProductStatus = 'draft' | 'published'
  *  Un produit d'occasion se publie comme un autre. */
 export type CatalogCommercialState = '' | 'used' | 'rental'
 
+/** L'OPÉRATION COMMERCIALE en cours sur un produit. **La chaîne vide VEUT DIRE
+ *  normal** — plein tarif, rien de particulier —, comme le vide de
+ *  `commercial_state` veut dire neuf.
+ *
+ *  ⚠️ **C'est un AXE DISTINCT de `commercial_state`, et volontairement.** Ce
+ *  dernier dit ce que l'objet EST (occasion, location) et il est MONO-VALEUR :
+ *  y verser `sale`/`promo` rendrait « instrument d'occasion soldé »
+ *  inexprimable, alors que c'est un cas ordinaire. Les deux axes se combinent
+ *  librement — un produit peut être `used` ET `sale`.
+ *
+ *  ⚠️ Il ne décide PAS de la publication (`status` en est la seule autorité),
+ *  et il ne porte AUCUN prix : `price_ttc` reste le prix de vente, ceci n'est
+ *  qu'une étiquette d'état.
+ *
+ *  Schéma : `backend/migrations/add_sale_state_to_products.go`. */
+export type CatalogSaleState = '' | 'sale' | 'promo'
+
 export type CatalogProductShape = PocketBaseRecord & {
 	legacy_id: string
+	/** **LE NOM DE LA FICHE PRODUIT SUR INTERNET** — c'est lui qui titre la page
+	 *  publique : `toExportProduct` l'envoie dans `name`, et `catalog.php` ne
+	 *  connaît que celui-là (`site_title` est resté `null` de bout en bout, voir
+	 *  `frontend/modules/site/lib/catalog-export.ts:163`).
+	 *
+	 *  Quand il est vide, les écrans d'édition proposent `designation` comme
+	 *  valeur de départ — jamais `sku` : une référence ne fait pas un titre. */
 	name: string
+	/** **LE NOM IMPRIMÉ SUR LE TICKET DE CAISSE.** Le terminal l'affiche en mode
+	 *  `designation` et retombe sur `name` s'il est vide
+	 *  (`frontend/lib/queries/pos.ts:109`). Il ne part JAMAIS vers le site. */
 	designation?: string
 	sku?: string
 	barcode?: string
@@ -68,6 +95,9 @@ export type CatalogProductShape = PocketBaseRecord & {
 	status: CatalogProductStatus
 	/** Vide = neuf. Voir `CatalogCommercialState`. */
 	commercial_state?: CatalogCommercialState
+	/** Vide = normal (ni soldé, ni en promotion). Voir `CatalogSaleState`.
+	 *  Indépendant de `commercial_state` : les deux se cumulent. */
+	sale_state?: CatalogSaleState
 	price_ttc?: number
 	purchase_price_ht?: number
 	tax_rate?: number
@@ -100,7 +130,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,categories'
+	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -316,6 +346,7 @@ export type CatalogProductWrite = ImageIntent &
 		type?: 'simple' | 'service'
 		status?: CatalogProductStatus
 		commercial_state?: CatalogCommercialState
+		sale_state?: CatalogSaleState
 		price_ttc?: number
 		purchase_price_ht?: number
 		tax_rate?: number

@@ -206,14 +206,6 @@ export function CatalogueEnLignePage() {
 		() => new Map((brands.data ?? []).map((b) => [b.id, b])),
 		[brands.data],
 	)
-	const categoriesById = useMemo(
-		() =>
-			new Map(
-				(categories.data ?? []).map((category) => [category.id, category]),
-			),
-		[categories.data],
-	)
-
 	// ── Synchronisation ──────────────────────────────────────────────────────
 	// L'inventaire n'est interrogé qu'une fois le catalogue lu : sans produits
 	// à confronter, il n'apprendrait rien.

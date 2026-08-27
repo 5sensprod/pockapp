@@ -37,6 +37,7 @@ PHP.
 | `sql/schema.sql` | les quatre tables du catalogue, à exécuter une fois | oui |
 | `sql/images.sql` | les colonnes `image_*`, à exécuter une fois après | oui |
 | `sql/first-seen.sql` | la colonne `first_seen_at` d'`ax_products`, à exécuter une fois | oui |
+| `sql/sale-state.sql` | la colonne `sale_state` d'`ax_products`, à exécuter une fois — plus, **en commentaire et à ne pas jouer sans décision**, le retrait de `site_title` | oui |
 | `config/config.php.example` | modèle de configuration | oui |
 | `config/config.php` | la configuration réelle, **avec la clé** | **non** (`.gitignore`) |
 | `config/.htaccess` | interdit l'accès HTTP au dossier de configuration | oui |

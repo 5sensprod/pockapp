@@ -107,3 +107,38 @@ describe('commercial_state', () => {
 		expect(SITE_PRODUCT_FIELDS.split(',')).not.toContain('commercial_state')
 	})
 })
+
+describe('sale_state', () => {
+	it('est demandé par PRODUCT_FIELDS — sinon tout produit paraîtrait « normal »', () => {
+		// Même piège que `commercial_state`, un champ plus loin : absent de
+		// `fields`, il reviendrait vide, l'écran afficherait « Normal » pour un
+		// produit soldé, et l'enregistrement écraserait la vraie valeur.
+		expect(PRODUCT_FIELDS.split(',')).toContain('sale_state')
+	})
+
+	it('est un champ DISTINCT de commercial_state', () => {
+		// L'arbitrage, tenu ici parce qu'il se perdrait dans une chaîne : les
+		// deux axes coexistent. `commercial_state` est mono-valeur ; si
+		// `sale`/`promo` y étaient versés, « occasion soldée » — un cas
+		// ordinaire — deviendrait inexprimable.
+		const demandes = PRODUCT_FIELDS.split(',')
+		expect(demandes).toContain('commercial_state')
+		expect(demandes).toContain('sale_state')
+	})
+
+	it('EST demandé par la liste du module site — sinon rien ne serait jamais soldé en ligne', () => {
+		// **INVERSÉ le 27 août 2026** : le propriétaire a tranché, `sale_state`
+		// voyage jusqu'au site, et le ré-export intégral des 2412 fiches
+		// publiées qu'entraîne la nouvelle clé du checksum a été assumé
+		// (DECISIONS, 2026-08-27).
+		//
+		// Ce test tient l'autre moitié de la décision, celle qui échoue en
+		// SILENCE : `toExportProduct` lit `product.sale_state`, et un champ
+		// absent de `fields` revient VIDE SANS ERREUR. Sans cette ligne, chaque
+		// produit partirait `sale_state: ''` — tout le catalogue « normal », de
+		// façon parfaitement crédible, et le défaut ne se verrait que sur la
+		// vitrine. C'est exactement le défaut de `gallery` : 1767 fichiers
+		// jamais partis, sans un message.
+		expect(SITE_PRODUCT_FIELDS.split(',')).toContain('sale_state')
+	})
+})

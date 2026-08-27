@@ -18,6 +18,9 @@ export const productDetailSchema = z.object({
 	type: z.enum(['simple', 'service']),
 	status: z.enum(['draft', 'published']),
 	commercial_state: z.enum(['', 'used', 'rental']),
+	// Axe SÉPARÉ de `commercial_state` : vide = « normal ». Un produit peut
+	// être `used` ET `sale` — voir `CatalogSaleState`.
+	sale_state: z.enum(['', 'sale', 'promo']),
 	price_ttc: money,
 	purchase_price_ht: money,
 	tax_rate: z.coerce.number().min(0).max(100),
@@ -40,6 +43,7 @@ export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
 	type: 'simple',
 	status: 'draft',
 	commercial_state: '',
+	sale_state: '',
 	price_ttc: 0,
 	purchase_price_ht: 0,
 	tax_rate: 20,
@@ -51,12 +55,55 @@ export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
 	categories: [],
 }
 
+/**
+ * ── LE NOM DE LA FICHE EN LIGNE, QUAND IL N'EN EST PAS UN ──────────────────
+ *
+ * `name` titre la page publique et donne le slug ; `designation` est le nom du
+ * TICKET. Deux cas produisent une page sans titre lisible, et le second ne se
+ * voit pas :
+ *
+ *  1. `name` vide.
+ *  2. `name` qui n'est QUE le `sku` — mesuré au comptoir le 27 août 2026 :
+ *     `name` = « ABGS14SH » pour un `sku` « ABG S14SH », désignation
+ *     « Cordons - Cordon confort crochet à pompe ». La chaîne n'est pas égale
+ *     au `sku` caractère pour caractère : elle en est la forme sans espace.
+ *
+ * D'où la comparaison sur une forme RÉDUITE — sans espace, sans tiret, sans
+ * point, casse ignorée. Une référence ne fait pas un titre de page.
+ *
+ * ⚠️ Ce repli est un repli d'AFFICHAGE, à l'ouverture du formulaire. Il ne
+ * réécrit rien tout seul : c'est l'enregistrement qui fixe la valeur. Et comme
+ * le slug se dérive de `name` à la SEULE création, réparer le nom d'une fiche
+ * déjà publiée ne déplace pas sa page (un slug non vide ne se retouche jamais).
+ */
+function reduire(valeur: string): string {
+	return valeur.toLowerCase().replace(/[\s\-._/]/g, '')
+}
+
+export function nomFicheParDefaut(product: {
+	name?: string
+	designation?: string
+	sku?: string
+}): string {
+	const name = (product.name ?? '').trim()
+	const designation = (product.designation ?? '').trim()
+	const sku = (product.sku ?? '').trim()
+
+	if (!designation) return name
+	if (!name) return designation
+	// `reduire('')` vaut `''` : sans le garde sur `sku`, un produit sans
+	// référence verrait TOUT nom jugé « identique au sku ».
+	if (sku && reduire(name) === reduire(sku)) return designation
+	return name
+}
+
 export function productDetailValues(
 	product: CatalogProductShape,
 ): ProductDetailValues {
 	return {
 		...EMPTY_PRODUCT_DETAIL_VALUES,
-		name: product.name ?? '',
+		// Vide, ou réduit au `sku` : voir `nomFicheParDefaut`.
+		name: nomFicheParDefaut(product),
 		designation: product.designation ?? '',
 		sku: product.sku ?? '',
 		barcode: product.barcode ?? '',
@@ -64,6 +111,7 @@ export function productDetailValues(
 		type: product.type ?? 'simple',
 		status: product.status ?? 'draft',
 		commercial_state: product.commercial_state ?? '',
+		sale_state: product.sale_state ?? '',
 		price_ttc: product.price_ttc ?? 0,
 		purchase_price_ht: product.purchase_price_ht ?? 0,
 		tax_rate: product.tax_rate ?? 20,
@@ -90,6 +138,7 @@ export function productDetailPayload(
 		type: data.type,
 		status: data.status,
 		commercial_state: data.commercial_state,
+		sale_state: data.sale_state,
 		price_ttc: data.price_ttc,
 		purchase_price_ht: data.purchase_price_ht,
 		tax_rate: data.tax_rate,

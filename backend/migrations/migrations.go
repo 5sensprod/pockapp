@@ -99,6 +99,18 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// `products` : placée avant, elle serait détruite avec la collection,
 		// et sans la moindre erreur.
 		AddCommercialStateToProducts,
+
+		// 15. L'opération commerciale — « solde », « promo » — est un champ
+		// DISTINCT de l'état commercial : un produit d'occasion peut être
+		// soldé, et `commercial_state` est mono-valeur. Même contrainte
+		// d'ordre : après MigrateCatalogV2, qui recrée `products`.
+		AddSaleStateToProducts,
+
+		// 16. Réparation de DONNÉES, pas de schéma : les fiches dont le nom EN
+		// LIGNE n'est que le `sku`, séquelle de l'import AppPos. Après
+		// MigrateCatalogV2, qui recrée `products` — et idempotente, donc sans
+		// effet aux démarrages suivants.
+		BackfillProductNameFromDesignation,
 	}
 
 	for _, migrate := range migrations {

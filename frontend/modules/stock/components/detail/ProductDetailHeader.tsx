@@ -27,11 +27,21 @@ type Props = {
 }
 
 export function ProductDetailHeader(props: Props) {
+	// DEUX BADGES, JAMAIS UN SEUL. L'état commercial dit ce que l'objet EST,
+	// l'opération dit ce qui se passe SUR son prix : « Occasion » et « Soldé »
+	// se cumulent, et les fondre en une étiquette perdrait l'un des deux.
 	const commercial =
 		props.product.commercial_state === 'used'
 			? 'Occasion'
 			: props.product.commercial_state === 'rental'
 				? 'Location'
+				: null
+
+	const operation =
+		props.product.sale_state === 'sale'
+			? 'Soldé'
+			: props.product.sale_state === 'promo'
+				? 'Promotion'
 				: null
 
 	return (
@@ -88,6 +98,7 @@ export function ProductDetailHeader(props: Props) {
 							{props.product.status === 'published' ? 'Publié' : 'Brouillon'}
 						</Badge>
 						{commercial && <Badge variant='outline'>{commercial}</Badge>}
+						{operation && <Badge variant='destructive'>{operation}</Badge>}
 					</div>
 				</div>
 				{props.editing ? (

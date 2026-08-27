@@ -83,6 +83,7 @@ import {
 	EMPTY_PRODUCT_DETAIL_VALUES,
 	productDetailSchema,
 	type ProductDetailValues,
+	nomFicheParDefaut,
 } from './detail/product-detail-form'
 
 // La modale de création rapide et la fiche complète partagent volontairement
@@ -196,7 +197,8 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 		form.reset(
 			product
 				? {
-						name: product.name ?? '',
+						// Vide, ou réduit au `sku` : voir `nomFicheParDefaut`.
+						name: nomFicheParDefaut(product),
 						designation: product.designation ?? '',
 						sku: product.sku ?? '',
 						barcode: product.barcode ?? '',
@@ -204,6 +206,9 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 						type: product.type ?? 'simple',
 						status: product.status ?? 'draft',
 						commercial_state: product.commercial_state ?? '',
+						// Axe distinct du précédent : vide = plein tarif, et les deux se
+						// cumulent (`CatalogSaleState`).
+						sale_state: product.sale_state ?? '',
 						price_ttc: product.price_ttc ?? 0,
 						purchase_price_ht: product.purchase_price_ht ?? 0,
 						tax_rate: product.tax_rate ?? 20,
@@ -251,6 +256,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 			type: data.type,
 			status: data.status,
 			commercial_state: data.commercial_state,
+			sale_state: data.sale_state,
 			price_ttc: data.price_ttc,
 			purchase_price_ht: data.purchase_price_ht,
 			tax_rate: data.tax_rate,
@@ -317,6 +323,18 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 	//    vérifiée à l'enregistrement, pas à chaque frappe : un suffixe `-2`
 	//    peut donc s'ajouter, et c'est dit.
 	const nomSaisi = form.watch('name')
+	// LE REPLI DU NOM, RENDU VISIBLE. Il n'agit qu'à L'OUVERTURE du formulaire
+	// (`form.reset` ci-dessus) : une fiche sans nom en ligne s'ouvre garnie de sa
+	// désignation. Rien ne le signalait, et enregistrer sans toucher au champ
+	// FIXE ce nom — et, pour une fiche sans adresse, l'adresse qu'il donne, qui
+	// ne se retouche plus jamais (§4.5). Il n'y a pas de repli à
+	// l'enregistrement : le nom est requis, la validation le dirait.
+	// Vrai quand le champ affiche la désignation À LA PLACE de ce que porte la
+	// base — `name` vide, ou `name` réduit au `sku` (`nomFicheParDefaut`).
+	const nomReprisDeLaDesignation =
+		isEdit &&
+		product !== undefined &&
+		nomFicheParDefaut(product) !== (product.name ?? '')
 	const slugEnBase = product?.slug ?? ''
 	const slugAffiche = isEdit ? slugEnBase || slugRepare : toSlug(nomSaisi ?? '')
 
@@ -439,15 +457,25 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 								</p>
 							</div>
 
+							{/* DEUX NOMS, DEUX DESTINATIONS. `name` titre la page publique et
+						    donne l'adresse ci-dessus ; `designation` s'imprime sur le
+						    ticket de caisse et ne part jamais au site. Les libellés le
+						    disent, parce que « Nom » et « Désignation » ne le disaient
+						    pas. */}
 							<FormField
 								control={form.control}
 								name='name'
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Nom *</FormLabel>
+										<FormLabel>Nom de la fiche en ligne *</FormLabel>
 										<FormControl>
 											<Input placeholder='Guitare folk Alvarez' {...field} />
 										</FormControl>
+										<p className='text-muted-foreground text-xs'>
+											{nomReprisDeLaDesignation
+												? 'Cette fiche n’avait pas de nom en ligne — vide, ou réduit à sa référence : le nom du ticket a été repris ici. Enregistrer le fixera, et l’adresse ci-dessus en découlera.'
+												: 'Titre de la page du produit sur axemusique.shop.'}
+										</p>
 										<FormMessage />
 									</FormItem>
 								)}
@@ -458,10 +486,17 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 								name='designation'
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Désignation</FormLabel>
+										<FormLabel>Nom sur le ticket</FormLabel>
 										<FormControl>
-											<Input placeholder='Libellé court' {...field} />
+											<Input
+												placeholder='Libellé court, imprimé sur le ticket'
+												{...field}
+											/>
 										</FormControl>
+										<p className='text-muted-foreground text-xs'>
+											Imprimé sur le ticket de caisse. Il ne part jamais vers le
+											site.
+										</p>
 										<FormMessage />
 									</FormItem>
 								)}
@@ -665,6 +700,35 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 										<p className='text-muted-foreground text-xs'>
 											Un produit d’occasion ou de location garde son rayon
 											habituel — il n’en sort pas.
+										</p>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							{/* ⚠️ UN SECOND AXE, ET NON QUATRE OPTIONS DE PLUS AU-DESSUS.
+						    L'état commercial dit ce que l'objet EST ; celui-ci dit
+						    l'OPÉRATION en cours sur son prix. « Instrument d'occasion
+						    soldé » est un cas ordinaire : fondre les deux listes le
+						    rendrait inexprimable, `commercial_state` étant mono-valeur
+						    (`catalog-products.ts:59-74`). Comme lui, il ne décide RIEN de
+						    la publication — `status` en reste la seule autorité. */}
+							<FormField
+								control={form.control}
+								name='sale_state'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Opération commerciale</FormLabel>
+										<FormControl>
+											<NativeSelect {...field}>
+												<option value=''>Plein tarif</option>
+												<option value='sale'>Soldé</option>
+												<option value='promo'>Promotion</option>
+											</NativeSelect>
+										</FormControl>
+										<p className='text-muted-foreground text-xs'>
+											Se cumule avec l’état commercial, et ne change aucun prix :
+											c’est une étiquette, pas une remise.
 										</p>
 										<FormMessage />
 									</FormItem>

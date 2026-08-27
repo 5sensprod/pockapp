@@ -111,6 +111,7 @@ arriver après le produit qui la cite.
 | `tax_rate` | nombre | oui | |
 | `stock` | entier | oui | |
 | `status` | `"published"` ou `"draft"` | oui | l'intention, recopiée telle quelle — voir ci-dessous |
+| `sale_state` | `""`, `"sale"` ou `"promo"` | oui | l'opération commerciale — **`""` VEUT DIRE « normal »**, voir §4.1 bis |
 | `brand` | chaîne ou `null` | oui | `legacy_id` de la marque |
 | `categories` | tableau de chaînes | oui | `legacy_id`, peut être vide |
 
@@ -133,6 +134,45 @@ contrat n'a toujours AUCUNE opération de suppression, et n'en veut pas.
 
 Côté PocketApp, `status` entre dans le checksum (§4.4) — c'est ce qui rend le
 retrait visible : la fiche passe `modified`, part, et redevient `synced`.
+
+#### 4.1 bis. `sale_state` — l'opération commerciale (27 août 2026)
+
+**Trois valeurs, et trois seulement :** `""` (normal, plein tarif), `"sale"`
+(soldé), `"promo"` (en promotion). Le champ est **obligatoire dans le corps** et
+**toujours présent** ; c'est sa VALEUR qui peut être vide.
+
+**`""` n'est pas une absence de donnée, c'est l'état ordinaire** — et c'est
+celui de la quasi-totalité du catalogue. Le serveur écrit ce qu'il reçoit, sans
+l'interpréter : il ne doit ni le convertir en `NULL` porteur de sens, ni le
+refuser, ni deviner une valeur par défaut différente.
+
+**Il ne dit RIEN de la publication.** `status` reste la seule autorité sur ce
+que `catalog.php` sert (§4.1). Un produit soldé et dépublié part en `draft` et
+disparaît du site comme un autre ; un produit `""` reste en ligne. Croiser les
+deux ferait disparaître des pages sans que rien ne le dise.
+
+**Il ne porte AUCUN prix.** `price_ttc` reste le prix de vente, tel qu'il doit
+être encaissé. `sale_state` est une ÉTIQUETTE d'état, destinée à l'affichage
+(un bandeau, une pastille). Une remise chiffrée — montant, pourcentage, dates de
+campagne — serait d'autres champs, et ce contrat ne les porte pas.
+
+**Il est INDÉPENDANT de l'état commercial du produit.** PocketApp porte aussi
+`commercial_state` (`used` / `rental`, vide = neuf), qui dit ce que l'objet EST.
+**Ce champ-là ne voyage pas** et n'est pas au contrat. Les deux se cumulent
+librement côté caisse — une occasion peut être soldée — et c'est précisément
+pourquoi ce sont deux champs et non deux valeurs d'un même select
+(`docs/DECISIONS.md`, 2026-08-27).
+
+**Il entre dans le checksum** (§4.4), comme `status` : solder une fiche la fait
+passer `modified`, l'envoi la porte, l'empreinte stockée la rend `synced`.
+
+⚠️ **Le prix de son arrivée, payé une fois et sciemment.** Le checksum
+sérialise TOUTES les clés du corps : ajouter celle-ci a changé l'empreinte de
+**chaque** produit. **Les 2412 fiches publiées sont repassées « modifiées » et
+ont été ré-exportées en une fois**, le 27 août 2026, sur décision du
+propriétaire. Ce n'est pas un défaut à corriger : retirer la clé pour « réparer »
+repaierait exactement le même coût. Même mécanique que la note sur `site_title`
+dans `catalog-export.ts`.
 
 ### 4.2 Catégorie
 
@@ -222,6 +262,13 @@ Les trois dernières datent du 20 août 2026 et servent la page d'accueil : le
 carrousel de marques, l'aperçu de la section « Notre catalogue », le bandeau
 de chiffres. **Toute action ajoutée s'inscrit dans ce tableau, et dans le
 message de l'action inconnue** — celui-ci a déjà été oublié une fois.
+
+**`sale_state` se LIT aussi (27 août 2026).** `catalog.php` doit le restituer
+sur toute action qui rend des produits — listes comprises, contrairement à
+`gallery` qui n'est rendu que sur `product` : une pastille « Soldé » n'a de sens
+que dans une grille. Il se rend **tel qu'il est en base**, chaîne vide incluse ;
+le bundle décide de l'affichage. Et il ne remplace aucun filtre : `catalog.php`
+continue de ne servir que `published`.
 
 **`stats` compte ce que le SITE expose, pas ce que la caisse porte** : produits
 `published`, marques et catégories **portant au moins un produit publié**.
