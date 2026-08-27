@@ -27,6 +27,18 @@ export function ProductDescriptionCard({
 	form: UseFormReturn<ProductDetailValues>
 }) {
 	const [assistantOpen, setAssistantOpen] = useState(false)
+	const [assistantDraft, setAssistantDraft] = useState({
+		name: '',
+		description: '',
+	})
+
+	const openAssistant = () => {
+		setAssistantDraft({
+			name: form.getValues('name'),
+			description: form.getValues('description') ?? '',
+		})
+		setAssistantOpen(true)
+	}
 
 	return (
 		<>
@@ -52,22 +64,43 @@ export function ProductDescriptionCard({
 				) : (
 					<p className='text-muted-foreground text-sm'>Aucune description.</p>
 				)}
-				<Button
-					type='button'
-					variant='outline'
-					className='mt-4 w-full'
-					onClick={() => setAssistantOpen(true)}
-					disabled={editing}
-					title={editing ? 'Terminez ou annulez l’édition en cours' : undefined}
+				<span
+					className='mt-4 block'
+					title={
+						!editing
+							? 'Activez « Modifier » pour utiliser l’assistant'
+							: undefined
+					}
 				>
-					<Sparkles className='mr-2 h-4 w-4' />
-					Assistant Gemini
-				</Button>
+					<Button
+						type='button'
+						variant='outline'
+						className='w-full'
+						onClick={openAssistant}
+						disabled={!editing}
+					>
+						<Sparkles className='mr-2 h-4 w-4' />
+						Assistant Gemini
+					</Button>
+				</span>
 			</DetailCard>
 			<ProductOnlineEditorialDialog
 				product={product}
-				open={assistantOpen}
+				draft={assistantDraft}
+				open={assistantOpen && editing}
 				onClose={() => setAssistantOpen(false)}
+				onApply={({ name, description }) => {
+					form.setValue('name', name ?? form.getValues('name'), {
+						shouldDirty: true,
+						shouldTouch: true,
+						shouldValidate: true,
+					})
+					form.setValue('description', description, {
+						shouldDirty: true,
+						shouldTouch: true,
+						shouldValidate: true,
+					})
+				}}
 			/>
 		</>
 	)

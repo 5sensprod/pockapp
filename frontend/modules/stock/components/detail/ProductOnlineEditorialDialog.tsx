@@ -7,12 +7,16 @@ import { EditorialDialog } from '@/modules/site/components/online-catalog/Editor
 
 export function ProductOnlineEditorialDialog({
 	product,
+	draft,
 	open,
 	onClose,
+	onApply,
 }: {
 	product: CatalogProductShape
+	draft: { name: string; description: string }
 	open: boolean
 	onClose: () => void
+	onApply: (result: { name?: string; description: string }) => void
 }) {
 	const brands = useCatalogBrands()
 	const categories = useCatalogCategories()
@@ -24,8 +28,8 @@ export function ProductOnlineEditorialDialog({
 					? {
 							kind: 'product',
 							id: product.id,
-							name: product.name,
-							description: product.description,
+							name: draft.name,
+							description: draft.description,
 							designation: product.designation,
 							sku: product.sku,
 							brand: brands.data?.find((item) => item.id === product.brand)
@@ -39,6 +43,7 @@ export function ProductOnlineEditorialDialog({
 					: null
 			}
 			onClose={onClose}
+			onApply={onApply}
 		/>
 	)
 }

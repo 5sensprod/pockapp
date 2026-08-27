@@ -1,7 +1,9 @@
 // frontend/modules/site/components/online-catalog/EditorialDialog.tsx
 //
-// L'éditeur des textes du site. Pour un produit, le titre validé remplace
-// directement son `name` canonique : aucun second nom n'est créé.
+// L'éditeur des textes du site a deux sorties, choisies par l'appelant : sans
+// `onApply`, `/site/catalogue` écrit directement dans PocketBase ; avec
+// `onApply`, la fiche produit récupère le texte et reste seule responsable de
+// l'enregistrement. Le dialogue, la validation et Gemini restent uniques.
 //
 // Un dialogue et non un champ en ligne dans la carte : une description peut
 // faire 20 000 caractères (catalog_v2.go), et la grille montre le catalogue
@@ -60,9 +62,10 @@ const LIBELLE: Record<EditableKind, string> = {
 type Props = {
 	target: EditorialTarget | null
 	onClose: () => void
+	onApply?: (result: { name?: string; description: string }) => void
 }
 
-export function EditorialDialog({ target, onClose }: Props) {
+export function EditorialDialog({ target, onClose, onApply }: Props) {
 	const update = useUpdateCatalogEditorial()
 	const generateTitle = useGenerateProductTitle()
 	const [name, setName] = useState('')
@@ -95,6 +98,19 @@ export function EditorialDialog({ target, onClose }: Props) {
 		}
 
 		if (isUnchanged(checked.patch, target)) {
+			toast.info("Aucune modification : rien n'a été enregistré.")
+			onClose()
+			return
+		}
+
+		if (onApply) {
+			onApply({
+				name: isProduct ? (checked.patch.name ?? target.name) : undefined,
+				description: checked.patch.description,
+			})
+			toast.success(
+				'Texte inséré dans le formulaire de la fiche. Utilise « Enregistrer » pour le conserver.',
+			)
 			onClose()
 			return
 		}
@@ -129,7 +145,7 @@ export function EditorialDialog({ target, onClose }: Props) {
 				onSuccess: ({ title }) => {
 					setName(title)
 					toast.success(
-						'Titre inséré comme nom officiel. Relis-le avant d’enregistrer.',
+						'Titre proposé dans l’assistant. Relis-le avant de valider.',
 					)
 				},
 				onError: (cause) => toast.error(cause.message),
@@ -149,9 +165,9 @@ export function EditorialDialog({ target, onClose }: Props) {
 				<DialogHeader>
 					<DialogTitle>Texte du site — {LIBELLE[target.kind]}</DialogTitle>
 					<DialogDescription>
-						Ce qui s’écrit ici part vers axemusique.shop au prochain export.
-						Prix, stock et statut ne s’éditent pas ici : ils viennent
-						d’AppStock.
+						{onApply
+							? 'Le texte validé sera reporté dans le formulaire. Rien ne sera enregistré avant l’enregistrement de la fiche.'
+							: 'Ce qui s’écrit ici part vers axemusique.shop au prochain export. Prix, stock et statut se gèrent dans la fiche produit de PocketApp.'}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -249,7 +265,9 @@ export function EditorialDialog({ target, onClose }: Props) {
 							onApply={(generatedDescription) => {
 								setDescription(generatedDescription)
 								toast.success(
-									'La description est dans le formulaire. Le titre reste inchangé.',
+									onApply
+										? 'Description proposée dans l’assistant. Valide pour la reporter dans la fiche.'
+										: 'La description est dans le formulaire. Le titre reste inchangé.',
 								)
 							}}
 						/>
@@ -273,7 +291,7 @@ export function EditorialDialog({ target, onClose }: Props) {
 						{update.isPending && (
 							<Loader2 className='mr-1.5 h-4 w-4 animate-spin' />
 						)}
-						Enregistrer
+						{onApply ? 'Appliquer à la fiche' : 'Enregistrer'}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
