@@ -54,6 +54,28 @@ export function CatalogSyncBar({
 	onRefresh,
 	onExportAll,
 }: Props) {
+	if (loading && !available) {
+		return (
+			<Card className='mb-6'>
+				<CardContent className='pt-6'>
+					<div className='mb-3 flex items-center gap-3 text-sm'>
+						<Loader2 className='h-5 w-5 animate-spin text-muted-foreground' />
+						<div>
+							<p className='font-medium'>Lecture de l’état du site</p>
+							<p className='text-muted-foreground'>
+								Comparaison avec le catalogue publié…
+							</p>
+						</div>
+					</div>
+					<div
+						aria-hidden='true'
+						className='h-2 w-full animate-pulse rounded-full bg-muted'
+					/>
+				</CardContent>
+			</Card>
+		)
+	}
+
 	// Pas d'inventaire : on ne prétend pas connaître l'état du site. Aucune
 	// carte n'est grisée, et on dit pourquoi plutôt que d'afficher zéro.
 	if (!available) {

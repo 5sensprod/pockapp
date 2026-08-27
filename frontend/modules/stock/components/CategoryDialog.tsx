@@ -28,6 +28,8 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import { useCreateCategory, useUpdateCategory } from '@/lib/queries/categories'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
+import type { CatalogCategory } from '@/lib/queries/site-catalog'
+import { useCategorySyncAfterSave } from '@/lib/sync/SyncAfterSaveDialog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 import { CategoryPicker } from './CategoryPicker'
@@ -67,6 +69,7 @@ export function CategoryDialog({
 	const createCategory = useCreateCategory()
 	const updateCategory = useUpdateCategory()
 	const pb = usePocketBase()
+	const syncApresEnregistrement = useCategorySyncAfterSave(open && isEdit)
 
 	// Hors formulaire : react-hook-form sérialise ses valeurs, un `File` n'y
 	// survit pas.
@@ -116,11 +119,31 @@ export function CategoryDialog({
 			image: imageFile,
 			removeImage: imageRemoved,
 		}
+		const donneesModifiees = Boolean(
+			category &&
+				(payload.name !== category.name ||
+					payload.parent !== (category.parent ?? '') ||
+					payload.description !== (category.description ?? '') ||
+					payload.is_featured !== (category.is_featured ?? false)),
+		)
+		const imageModifiee = imageFile !== null || imageRemoved
 
 		try {
 			if (isEdit && category) {
-				await updateCategory.mutateAsync({ id: category.id, data: payload })
+				const enregistree = await updateCategory.mutateAsync({
+					id: category.id,
+					data: payload,
+				})
 				toast.success('Catégorie modifiée')
+				if (donneesModifiees || imageModifiee) {
+					await syncApresEnregistrement.proposer(
+						enregistree as CatalogCategory,
+						{
+							dataModified: donneesModifiees,
+							imageModified: imageModifiee,
+						},
+					)
+				}
 			} else {
 				if (!activeCompanyId) {
 					toast.error('Aucune entreprise active')
@@ -144,136 +167,141 @@ export function CategoryDialog({
 	const excludeIds = category ? [category.id] : []
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className='max-w-md max-h-[90vh] overflow-y-auto'>
-				<DialogHeader>
-					<DialogTitle>
-						{isEdit ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
-					</DialogTitle>
-					<DialogDescription>
-						{isEdit
-							? 'Modifiez les informations'
-							: 'Ajoutez une nouvelle catégorie'}
-					</DialogDescription>
-				</DialogHeader>
+		<>
+			<Dialog open={open} onOpenChange={onOpenChange}>
+				<DialogContent className='max-w-md max-h-[90vh] overflow-y-auto'>
+					<DialogHeader>
+						<DialogTitle>
+							{isEdit ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
+						</DialogTitle>
+						<DialogDescription>
+							{isEdit
+								? 'Modifiez les informations'
+								: 'Ajoutez une nouvelle catégorie'}
+						</DialogDescription>
+					</DialogHeader>
 
-				<Form {...form}>
-					<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
-						<ImageField
-							label='Image de la catégorie'
-							currentUrl={imageUrl}
-							value={imageFile}
-							onChange={setImageFile}
-							removed={imageRemoved}
-							onRemovedChange={setImageRemoved}
-							disabled={createCategory.isPending || updateCategory.isPending}
-							// 1024 px, le DOUBLE des marques (25 août 2026). Un logo de
-							// marque s'affiche dans un cadre de 248×248 (`BrandBadge`),
-							// une image de catégorie sert de bandeau et de vignette de
-							// rayon : la réduire à 512 la rendrait floue en pleine
-							// largeur. Ce plafond doit rester égal à celui du lot,
-							// `CategoriesPage.tsx` — deux valeurs différentes donneraient
-							// deux résultats selon le chemin emprunté.
-							//
-							// Les trois tailles façon WordPress viendront après : elles
-							// supposent de toucher au contrat du miroir, où le rang porte
-							// déjà l'ordre de la galerie.
-							optimize={{ maxSide: 1024 }}
-						/>
-
-						<FormField
-							control={form.control}
-							name='name'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Nom *</FormLabel>
-									<FormControl>
-										<Input placeholder='Boissons' {...field} />
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name='parent'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Catégorie parente</FormLabel>
-									<CategoryPicker
-										value={field.value ?? ''}
-										onChange={(val) => field.onChange(val || undefined)}
-										multiple={false}
-										showNone={true}
-										noneLabel='Aucune (racine)'
-										excludeIds={excludeIds}
-										searchPlaceholder='Rechercher une catégorie...'
-										maxHeight='180px'
-										companyId={activeCompanyId ?? undefined}
-									/>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name='description'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Description</FormLabel>
-									<FormControl>
-										<Textarea
-											placeholder='Le texte lu par le visiteur sur la page de la catégorie.'
-											rows={4}
-											{...field}
-										/>
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name='is_featured'
-							render={({ field }) => (
-								<FormItem className='flex items-center justify-between rounded-lg border p-3'>
-									<div>
-										<FormLabel>Mise en avant</FormLabel>
-										<p className='text-muted-foreground text-sm'>
-											Signale la catégorie comme mise en avant sur le site.
-										</p>
-									</div>
-									<FormControl>
-										<Switch
-											checked={field.value ?? false}
-											onCheckedChange={field.onChange}
-										/>
-									</FormControl>
-								</FormItem>
-							)}
-						/>
-
-						<div className='flex justify-end gap-3 pt-4'>
-							<Button
-								type='button'
-								variant='outline'
-								onClick={() => onOpenChange(false)}
-							>
-								Annuler
-							</Button>
-							<Button
-								type='submit'
+					<Form {...form}>
+						<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+							<ImageField
+								label='Image de la catégorie'
+								currentUrl={imageUrl}
+								value={imageFile}
+								onChange={setImageFile}
+								removed={imageRemoved}
+								onRemovedChange={setImageRemoved}
 								disabled={createCategory.isPending || updateCategory.isPending}
-							>
-								{isEdit ? 'Modifier' : 'Créer'}
-							</Button>
-						</div>
-					</form>
-				</Form>
-			</DialogContent>
-		</Dialog>
+								// 1024 px, le DOUBLE des marques (25 août 2026). Un logo de
+								// marque s'affiche dans un cadre de 248×248 (`BrandBadge`),
+								// une image de catégorie sert de bandeau et de vignette de
+								// rayon : la réduire à 512 la rendrait floue en pleine
+								// largeur. Ce plafond doit rester égal à celui du lot,
+								// `CategoriesPage.tsx` — deux valeurs différentes donneraient
+								// deux résultats selon le chemin emprunté.
+								//
+								// Les trois tailles façon WordPress viendront après : elles
+								// supposent de toucher au contrat du miroir, où le rang porte
+								// déjà l'ordre de la galerie.
+								optimize={{ maxSide: 1024 }}
+							/>
+
+							<FormField
+								control={form.control}
+								name='name'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Nom *</FormLabel>
+										<FormControl>
+											<Input placeholder='Boissons' {...field} />
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							<FormField
+								control={form.control}
+								name='parent'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Catégorie parente</FormLabel>
+										<CategoryPicker
+											value={field.value ?? ''}
+											onChange={(val) => field.onChange(val || undefined)}
+											multiple={false}
+											showNone={true}
+											noneLabel='Aucune (racine)'
+											excludeIds={excludeIds}
+											searchPlaceholder='Rechercher une catégorie...'
+											maxHeight='180px'
+											companyId={activeCompanyId ?? undefined}
+										/>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							<FormField
+								control={form.control}
+								name='description'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Description</FormLabel>
+										<FormControl>
+											<Textarea
+												placeholder='Le texte lu par le visiteur sur la page de la catégorie.'
+												rows={4}
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							<FormField
+								control={form.control}
+								name='is_featured'
+								render={({ field }) => (
+									<FormItem className='flex items-center justify-between rounded-lg border p-3'>
+										<div>
+											<FormLabel>Mise en avant</FormLabel>
+											<p className='text-muted-foreground text-sm'>
+												Signale la catégorie comme mise en avant sur le site.
+											</p>
+										</div>
+										<FormControl>
+											<Switch
+												checked={field.value ?? false}
+												onCheckedChange={field.onChange}
+											/>
+										</FormControl>
+									</FormItem>
+								)}
+							/>
+
+							<div className='flex justify-end gap-3 pt-4'>
+								<Button
+									type='button'
+									variant='outline'
+									onClick={() => onOpenChange(false)}
+								>
+									Annuler
+								</Button>
+								<Button
+									type='submit'
+									disabled={
+										createCategory.isPending || updateCategory.isPending
+									}
+								>
+									{isEdit ? 'Modifier' : 'Ajouter'}
+								</Button>
+							</div>
+						</form>
+					</Form>
+				</DialogContent>
+			</Dialog>
+			{syncApresEnregistrement.dialogue}
+		</>
 	)
 }

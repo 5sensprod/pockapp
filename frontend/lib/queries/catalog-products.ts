@@ -43,7 +43,7 @@ import {
 	buildWritePayload,
 } from './image-upload'
 import { withLegacyKey } from './legacy-key'
-import { slugLibre } from './slug'
+import { slugLibreDansCollection } from './slug'
 
 export type CatalogProductStatus = 'draft' | 'published'
 
@@ -386,20 +386,7 @@ export async function resoudreSlugProduit(
 	pb: any,
 	nom: string,
 ): Promise<string> {
-	return slugLibre(nom, async (candidat) => {
-		try {
-			await pb
-				.collection('products')
-				.getFirstListItem(`slug = "${candidat}"`, { fields: 'id' })
-			return true
-		} catch {
-			// PocketBase lève un 404 quand rien ne correspond : c'est le cas
-			// NORMAL, et c'est aussi pourquoi on ne peut pas distinguer ici une
-			// panne de réseau d'un slug libre. Le pire cas est un doublon
-			// d'adresse, pas une perte de donnée : on laisse passer.
-			return false
-		}
-	})
+	return slugLibreDansCollection(pb, 'products', nom)
 }
 
 /**

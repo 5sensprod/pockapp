@@ -250,7 +250,8 @@ est un bundle public, où un secret serait lisible de tous
 
 | Action | Rend |
 |---|---|
-| `?action=categories` | toutes les catégories portant au moins un produit |
+| `?action=categories` | toutes les catégories portant au moins un produit, avec `description`, `is_featured` et l'URL complète de l'`image` éventuelle |
+| `?action=featured-categories` | toutes les catégories marquées `is_featured`, y compris les rayons parents sans produit directement rattaché, avec leur image éventuelle |
 | `?action=category&slug=…` | la catégorie, ses **ancêtres**, ses enfants, ses produits paginés |
 | `?action=product&slug=…` | le produit et les catégories auxquelles il appartient |
 | `?action=search&q=…` | les produits publiés dont le nom, la référence ou le slug contient `q` |
@@ -276,11 +277,11 @@ Annoncer les 287 marques du catalogue quand le site n'en montre qu'une part
 serait le défaut même qui avait fait masquer ce bandeau. Mesuré le 20 août
 2026 : 2563 produits, 218 marques, 199 catégories.
 
-**Conséquence à connaître : `stats.categories` (199) et `action=categories` ne
-comptent pas la même chose.** La seconde ne filtre pas sur `status`, une
-catégorie ne portant que des produits non publiés y figure donc. L'écart est
-voulu côté `stats` ; s'il faut le réduire, c'est `action=categories` qu'il faut
-corriger, pas l'inverse.
+**`stats.categories` et `action=categories` portent le même périmètre** : une
+catégorie n'apparaît que si au moins un produit `published` lui est directement
+rattaché. C'est indispensable pour l'accueil : une catégorie mise en avant ne
+doit jamais mener vers une page vide parce que ses seuls produits sont des
+brouillons.
 
 **`latest` trie sur DEUX dates, et il faut savoir ce que chacune vaut.**
 

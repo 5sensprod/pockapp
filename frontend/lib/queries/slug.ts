@@ -93,3 +93,30 @@ export async function slugLibre(
 
 	return `${base}-${maxTentatives + 1}`
 }
+
+/**
+ * Le premier slug libre dans une collection PocketBase.
+ *
+ * La collection est explicite au point d'appel : produits et catégories ont
+ * la même règle d'adresse, mais pas le même espace de noms. L'unicité se lit
+ * dans PocketBase, jamais dans le serveur du site, qui ne doit rien inventer.
+ */
+export async function slugLibreDansCollection(
+	pb: any,
+	collection: 'products' | 'categories' | 'brands',
+	nom: string,
+): Promise<string> {
+	return slugLibre(nom, async (candidat) => {
+		try {
+			await pb
+				.collection(collection)
+				.getFirstListItem(`slug = "${candidat}"`, { fields: 'id' })
+			return true
+		} catch {
+			// PocketBase lève un 404 quand rien ne correspond : c'est le cas
+			// normal. La contrainte unique de la collection reste le dernier garde
+			// en cas de créations concurrentes depuis deux postes.
+			return false
+		}
+	})
+}

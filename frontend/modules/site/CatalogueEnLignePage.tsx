@@ -47,7 +47,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
 	AlertTriangle,
 	Globe,
-	Loader2,
 	Pencil,
 	RefreshCw,
 	Search,
@@ -121,18 +120,71 @@ const NO_CATEGORIES: CatalogCategory[] = []
 const NO_BRANDS: CatalogBrand[] = []
 
 export function CatalogueEnLignePage() {
-	// `pb` ne sert qu'à résoudre les URL des images : elles sont des CHAMPS
-	// FICHIER PocketBase, pas des URL, et `pb.files.getUrl` a besoin de
-	// l'enregistrement entier (`catalog-image.ts`).
-	const pb = usePocketBase()
+	// Les cinq lectures démarrent dès la navigation. Le contenu lourd, lui, ne
+	// monte qu'après qu'un premier cadre a réellement eu le temps d'être peint.
+	// Sur cache chaud, `OnlineProductGrid` peut recevoir plus de 2 400 produits :
+	// sans cette frontière, React construit toutes leurs cartes avant son premier
+	// commit et peut laisser l'écran précédent visible pendant ce travail.
 	const products = usePublishedProducts()
-	/** Les brouillons. Ils ne s'affichent nulle part sur cet écran : ils ne
-	 *  servent qu'à repérer ceux qui sont ENCORE en ligne, pour pouvoir les en
-	 *  retirer (21 août 2026). Voir `depubliesEnLigne` plus bas. */
 	const unpublished = useUnpublishedProducts()
 	const categories = useCatalogCategories()
 	const brands = useCatalogBrands()
 	const totalProducts = useProductCount()
+	const [contentReady, setContentReady] = useState(false)
+
+	useEffect(() => {
+		let secondFrame = 0
+		const firstFrame = window.requestAnimationFrame(() => {
+			secondFrame = window.requestAnimationFrame(() => setContentReady(true))
+		})
+		return () => {
+			window.cancelAnimationFrame(firstFrame)
+			if (secondFrame) window.cancelAnimationFrame(secondFrame)
+		}
+	}, [])
+
+	if (!contentReady) {
+		return (
+			<div className='container mx-auto px-6 py-8'>
+				<CatalogueHeader />
+				<CatalogueLoadingState />
+			</div>
+		)
+	}
+
+	return (
+		<CatalogueEnLigneContent
+			products={products}
+			unpublished={unpublished}
+			categories={categories}
+			brands={brands}
+			totalProducts={totalProducts}
+		/>
+	)
+}
+
+type CatalogueEnLigneContentProps = {
+	products: ReturnType<typeof usePublishedProducts>
+	unpublished: ReturnType<typeof useUnpublishedProducts>
+	categories: ReturnType<typeof useCatalogCategories>
+	brands: ReturnType<typeof useCatalogBrands>
+	totalProducts: ReturnType<typeof useProductCount>
+}
+
+function CatalogueEnLigneContent({
+	products,
+	unpublished,
+	categories,
+	brands,
+	totalProducts,
+}: CatalogueEnLigneContentProps) {
+	// `pb` ne sert qu'à résoudre les URL des images : elles sont des CHAMPS
+	// FICHIER PocketBase, pas des URL, et `pb.files.getUrl` a besoin de
+	// l'enregistrement entier (`catalog-image.ts`).
+	const pb = usePocketBase()
+	/** Les brouillons. Ils ne s'affichent nulle part sur cet écran : ils ne
+	 *  servent qu'à repérer ceux qui sont ENCORE en ligne, pour pouvoir les en
+	 *  retirer (21 août 2026). Voir `depubliesEnLigne` plus bas. */
 
 	const [search, setSearch] = useState('')
 	const [onlyModified, setOnlyModified] = useState(false)
@@ -750,20 +802,7 @@ export function CatalogueEnLignePage() {
 
 	return (
 		<div className='container mx-auto px-6 py-8'>
-			<div className='mb-6'>
-				<div className='mb-2 flex items-center gap-3'>
-					<div className='flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10'>
-						<Globe className='h-6 w-6 text-primary' />
-					</div>
-					<h1 className='font-bold text-3xl'>Catalogue en ligne</h1>
-				</div>
-				<p className='text-muted-foreground'>
-					Ce qui part vers axemusique.shop. Un produit est en ligne si son
-					statut est <strong>publié</strong> ; catégories et marques suivent
-					automatiquement. Les produits grisés ne sont pas encore dans la base
-					du site.
-				</p>
-			</div>
+			<CatalogueHeader />
 
 			{error && (
 				<Card className='mb-6 border-destructive'>
@@ -778,10 +817,7 @@ export function CatalogueEnLignePage() {
 			)}
 
 			{isLoading ? (
-				<div className='flex items-center justify-center gap-3 py-24 text-muted-foreground'>
-					<Loader2 className='h-5 w-5 animate-spin' />
-					<span className='text-sm'>Lecture du catalogue…</span>
-				</div>
+				<CatalogueLoadingState />
 			) : (
 				<>
 					{/* ── Décomptes ──────────────────────────────────────────────── */}
@@ -790,9 +826,11 @@ export function CatalogueEnLignePage() {
 							label='Produits en ligne'
 							value={products.data?.length ?? 0}
 							hint={
-								typeof totalProducts.data === 'number'
-									? `sur ${totalProducts.data} au catalogue`
-									: undefined
+								totalProducts.isLoading
+									? 'Lecture du total…'
+									: typeof totalProducts.data === 'number'
+										? `sur ${totalProducts.data} au catalogue`
+										: undefined
 							}
 						/>
 						<Stat
@@ -1063,6 +1101,12 @@ export function CatalogueEnLignePage() {
 									</div>
 
 									<OnlineProductGrid
+										key={[
+											search,
+											onlyModified ? 'modified' : 'all',
+											selectedCategory?.category.id ?? 'all-categories',
+											selectedBrand?.id ?? 'all-brands',
+										].join(':')}
 										products={shownProducts}
 										brandsById={brandsById}
 										syncStates={syncStates}
@@ -1098,26 +1142,45 @@ export function CatalogueEnLignePage() {
 
 						{/* ── Images ───────────────────────────────────────────────── */}
 						<TabsContent value='images' className='mt-4'>
-							<ImageSyncPanel
-								available={Boolean(imageInventory.data)}
-								inventoryError={imageInventory.error as Error | null}
-								rows={imageRows}
-								computing={localImageChecksums.computing}
-								computeProgress={localImageChecksums.progress}
-								computeError={localImageChecksums.error}
-								onCompute={(visibles) =>
-									localImageChecksums.compute(visibles.map((r) => r.entity))
-								}
-								onCancel={localImageChecksums.cancel}
-								onSendAll={sendAllImages}
-								sendAllProgress={bulkProgress}
-								onCancelSendAll={cancelSendAll}
-								disk={imageInventory.data?.disk}
-								onRefresh={() => imageInventory.refetch()}
-								sending={sendingImages}
-								sendError={sendImages.error}
-								onSend={sendEntityImages}
-							/>
+							{imageInventory.isFetching && !imageInventory.data ? (
+								<Card>
+									<CardContent className='space-y-3 pt-6'>
+										<div>
+											<p className='font-medium'>État des images</p>
+											<p className='text-muted-foreground text-sm'>
+												Lecture de l’inventaire du miroir…
+											</p>
+										</div>
+										<SkeletonBlock className='h-2 w-full rounded-full' />
+										<div className='grid gap-2 sm:grid-cols-3'>
+											<SkeletonBlock className='h-16 w-full' />
+											<SkeletonBlock className='h-16 w-full' />
+											<SkeletonBlock className='h-16 w-full' />
+										</div>
+									</CardContent>
+								</Card>
+							) : (
+								<ImageSyncPanel
+									available={Boolean(imageInventory.data)}
+									inventoryError={imageInventory.error as Error | null}
+									rows={imageRows}
+									computing={localImageChecksums.computing}
+									computeProgress={localImageChecksums.progress}
+									computeError={localImageChecksums.error}
+									onCompute={(visibles) =>
+										localImageChecksums.compute(visibles.map((r) => r.entity))
+									}
+									onCancel={localImageChecksums.cancel}
+									onSendAll={sendAllImages}
+									sendAllProgress={bulkProgress}
+									onCancelSendAll={cancelSendAll}
+									disk={imageInventory.data?.disk}
+									onRefresh={() => imageInventory.refetch()}
+									sending={sendingImages}
+									sendError={sendImages.error}
+									onSend={sendEntityImages}
+								/>
+							)}
 						</TabsContent>
 					</Tabs>
 
@@ -1149,6 +1212,119 @@ export function CatalogueEnLignePage() {
 					<EditorialDialog target={editing} onClose={() => setEditing(null)} />
 				</>
 			)}
+		</div>
+	)
+}
+
+function CatalogueHeader() {
+	return (
+		<div className='mb-6'>
+			<div className='mb-2 flex items-center gap-3'>
+				<div className='flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10'>
+					<Globe className='h-6 w-6 text-primary' />
+				</div>
+				<h1 className='font-bold text-3xl'>Catalogue en ligne</h1>
+			</div>
+			<p className='text-muted-foreground'>
+				Ce qui part vers axemusique.shop. Un produit est en ligne si son statut
+				est <strong>publié</strong> ; catégories et marques suivent
+				automatiquement. Les produits grisés ne sont pas encore dans la base du
+				site.
+			</p>
+		</div>
+	)
+}
+
+function SkeletonBlock({ className }: { className: string }) {
+	return (
+		<div
+			aria-hidden='true'
+			className={`animate-pulse rounded bg-muted ${className}`}
+		/>
+	)
+}
+
+/**
+ * Le cadre de l'écran, visible avant les données. Chaque zone garde sa forme
+ * finale : décomptes, état du site, filtres, onglets, arbre et cartes.
+ */
+function CatalogueLoadingState() {
+	return (
+		<div role='status' aria-live='polite' aria-label='Lecture du catalogue'>
+			<div className='mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4'>
+				{[
+					'Produits en ligne',
+					'Catégories en ligne',
+					'Marques en ligne',
+					'Sans catégorie',
+				].map((label) => (
+					<Card key={label}>
+						<CardContent className='pt-6'>
+							<p className='text-muted-foreground text-xs uppercase tracking-wide'>
+								{label}
+							</p>
+							<SkeletonBlock className='mt-2 h-7 w-16' />
+							<SkeletonBlock className='mt-2 h-3 w-24' />
+						</CardContent>
+					</Card>
+				))}
+			</div>
+
+			<Card className='mb-6'>
+				<CardContent className='pt-6'>
+					<div className='mb-3 flex items-center justify-between gap-3 text-sm'>
+						<div>
+							<p className='font-medium'>Catalogue et état du site</p>
+							<p className='text-muted-foreground'>
+								Préparation des données du catalogue…
+							</p>
+						</div>
+						<SkeletonBlock className='h-8 w-32' />
+					</div>
+					<SkeletonBlock className='h-2 w-full rounded-full' />
+				</CardContent>
+			</Card>
+
+			<div className='mb-4 flex flex-col gap-2 sm:flex-row'>
+				<SkeletonBlock className='h-10 flex-1' />
+				<SkeletonBlock className='h-10 w-44' />
+			</div>
+
+			<Tabs defaultValue='structure'>
+				<TabsList>
+					<TabsTrigger value='structure' disabled>
+						Arborescence
+					</TabsTrigger>
+					<TabsTrigger value='brands' disabled>
+						Marques
+					</TabsTrigger>
+					<TabsTrigger value='images' disabled>
+						Images
+					</TabsTrigger>
+				</TabsList>
+				<TabsContent value='structure' className='mt-4'>
+					<div className='grid gap-4 lg:grid-cols-[320px_1fr]'>
+						<Card className='h-fit'>
+							<CardContent className='space-y-3 p-4'>
+								{Array.from({ length: 8 }, (_, index) => (
+									<SkeletonBlock
+										key={index}
+										className={`h-5 ${index % 3 === 0 ? 'w-3/4' : 'w-full'}`}
+									/>
+								))}
+							</CardContent>
+						</Card>
+						<div>
+							<SkeletonBlock className='mb-3 h-6 w-52' />
+							<div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'>
+								{Array.from({ length: 10 }, (_, index) => (
+									<SkeletonBlock key={index} className='aspect-[3/4] w-full' />
+								))}
+							</div>
+						</div>
+					</div>
+				</TabsContent>
+			</Tabs>
 		</div>
 	)
 }

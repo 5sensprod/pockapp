@@ -45,6 +45,7 @@ import { usePocketBase } from '@/lib/use-pocketbase'
 import { useExportCatalog } from '@/modules/site/hooks/use-catalog-sync'
 import {
 	computeEntityImageChecksum,
+	toImageBearing,
 	toProductImageBearing,
 	useSendEntityImages,
 } from '@/modules/site/hooks/use-image-sync'
@@ -126,7 +127,10 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 
 		const bilan = {
 			produits: 0,
+			categories: 0,
+			marques: 0,
 			images: 0,
+			fichesImages: 0,
 			rejets: [] as SyncQueueState['rejets'],
 			echecs: [] as string[],
 		}
@@ -163,6 +167,13 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 				const selection = job.productIds
 					.map((id) => parId.get(id))
 					.filter((p): p is CatalogProduct => Boolean(p))
+				const categoriesSelectionnees = (job.categoryIds ?? [])
+					.map((id) =>
+						(categories as CatalogCategory[]).find(
+							(category) => category.id === id,
+						),
+					)
+					.filter((category): category is CatalogCategory => Boolean(category))
 
 				// ⚠️ UN PRODUIT DEMANDÉ QUI NE SE RÉSOUT PAS EST UNE PANNE, PAS UN
 				// CAS NORMAL. Sans cette garde, une sélection vide traversait toute
@@ -173,6 +184,13 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 					const manquants = job.productIds.length - selection.length
 					bilan.echecs.push(
 						`${job.label} : ${manquants} produit(s) introuvable(s) dans le catalogue du site — rien envoyé pour eux.`,
+					)
+				}
+				if (categoriesSelectionnees.length < (job.categoryIds?.length ?? 0)) {
+					const manquantes =
+						(job.categoryIds?.length ?? 0) - categoriesSelectionnees.length
+					bilan.echecs.push(
+						`${job.label} : ${manquantes} catégorie(s) introuvable(s) dans le catalogue du site — rien envoyé pour elles.`,
 					)
 				}
 
@@ -194,8 +212,17 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 					// produits ont obligés. Indexés par id, donc jamais en double.
 					const parIdCategorie = new Map(input.categories.map((c) => [c.id, c]))
 					for (const id of job.categoryIds ?? []) {
-						const c = (categories as CatalogCategory[]).find((x) => x.id === id)
-						if (c) parIdCategorie.set(c.id, c)
+						let courant: string | undefined = id
+						const visites = new Set<string>()
+						while (courant && !visites.has(courant)) {
+							visites.add(courant)
+							const c = (categories as CatalogCategory[]).find(
+								(x) => x.id === courant,
+							)
+							if (!c) break
+							parIdCategorie.set(c.id, c)
+							courant = c.parent || undefined
+						}
 					}
 					const parIdMarque = new Map(input.brands.map((b) => [b.id, b]))
 					for (const id of job.brandIds ?? []) {
@@ -218,6 +245,8 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 						try {
 							const outcome = await exportRef.current.mutateAsync(aEnvoyer)
 							bilan.produits += outcome.written.products
+							bilan.categories += outcome.written.categories
+							bilan.marques += outcome.written.brands
 							bilan.rejets.push(...outcome.rejected)
 							console.info(
 								`[sync] « ${job.label} » — ${outcome.batches} lot(s) envoyé(s), écrits : ${outcome.written.products} produit(s), ${outcome.written.categories} catégorie(s), ${outcome.written.brands} marque(s), ${outcome.rejected.length} refus.`,
@@ -235,11 +264,19 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 
 				// ── Étape 2 : les IMAGES, entité par entité ─────────────────────
 				if (job.images && !arret.current) {
-					// Un produit sans aucun fichier n'a rien à envoyer : il compterait
-					// dans la progression sans rien faire.
-					const porteuses = selection.filter(
-						(p) => p.image || (p.gallery?.length ?? 0) > 0,
-					)
+					// Une entité SANS fichier doit elle aussi partir : sa liste vide dit au
+					// miroir de retirer l'ancienne image. L'écarter transformerait une
+					// suppression locale en photo fantôme sur le site.
+					const porteuses = [
+						...selection.map((product) => ({
+							kind: 'products' as const,
+							entity: toProductImageBearing(pb, product),
+						})),
+						...categoriesSelectionnees.map((category) => ({
+							kind: 'categories' as const,
+							entity: toImageBearing(pb, category),
+						})),
+					]
 
 					setEtat((e) => ({
 						...e,
@@ -248,9 +285,9 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 					}))
 
 					let echecsDeSuite = 0
-					for (const [position, product] of porteuses.entries()) {
+					for (const [position, porteuse] of porteuses.entries()) {
 						if (arret.current) break
-						const entity = toProductImageBearing(pb, product)
+						const { entity, kind } = porteuse
 						setEtat((e) => ({ ...e, courant: entity.name }))
 
 						try {
@@ -258,7 +295,7 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 							// deux côtés, sans quoi elles pourraient diverger.
 							const checksum = await computeEntityImageChecksum(entity)
 							const outcome = await imagesRef.current.mutateAsync({
-								kind: 'products',
+								kind,
 								entity,
 								imageChecksum: checksum,
 								// Sans ce drapeau, chaque envoi réussi relirait
@@ -267,6 +304,7 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 								skipInvalidate: true,
 							})
 							bilan.images += outcome.paths.length
+							bilan.fichesImages++
 							echecsDeSuite = 0
 						} catch (cause) {
 							echecsDeSuite++
@@ -320,7 +358,14 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 			// de quoi aller voir le détail.
 			const resume = [
 				bilan.produits > 0 ? `${bilan.produits} produit(s) en ligne` : null,
+				bilan.categories > 0
+					? `${bilan.categories} catégorie(s) en ligne`
+					: null,
+				bilan.marques > 0 ? `${bilan.marques} marque(s) en ligne` : null,
 				bilan.images > 0 ? `${bilan.images} image(s) envoyée(s)` : null,
+				bilan.fichesImages > 0 && bilan.images === 0
+					? `${bilan.fichesImages} retrait(s) d’image synchronisé(s)`
+					: null,
 			]
 				.filter(Boolean)
 				.join(' · ')

@@ -10,6 +10,40 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## PocketApp pose aussi le slug des catégories — 2026-08-27
+
+**Une catégorie créée dans PocketApp reçoit désormais son slug dans la couche
+d’accès, avant l’écriture PocketBase, par la même règle que les produits.** Le
+serveur du site continue de ne rien inventer, et un slug non vide ne se
+retouche jamais.
+
+**Cause établie.** `useCreateCategory` posait `legacy_id`, mais aucun slug ;
+`toExportCategory` transmettait ensuite la chaîne vide sous forme `null`. Le
+PHP respectait le contrat en la conservant, puis la lecture publique rendait
+une catégorie sans adresse. Ce n’est donc ni une règle d’export ni un défaut à
+corriger côté site.
+
+**Mesuré en lecture seule dans la base active le 27 août 2026 :** 462
+catégories, **une seule sans slug**, « La catégorie du Test ». Elle est citée
+directement par un produit publié. La base porte **198 catégories directement
+citées** et **206 destinées au site** en comptant leurs ancêtres.
+`BackfillCategorySlugs`, migration idempotente inscrite dans `RunMigrations`,
+lui donne `la-categorie-du-test`. Une empreinte de catégorie change donc ; cette
+catégorie repasse « modifiée » et doit être renvoyée.
+
+**Écarté — fabriquer le slug dans `products-sync.php` ou dans le site :** le
+serveur recevrait alors une question au lieu du résultat décidé par PocketApp,
+en contradiction avec le §2 du contrat catalogue. **Écarté — recalculer au
+renommage :** cela déplacerait une page déjà indexée. **Écarté — ne corriger
+que la ligne observée :** une installation portant une autre catégorie vide
+resterait cassée ; le backfill traite la propriété, pas l’exemple.
+
+**Ce qui pourrait la remettre en cause :** une opération explicite de
+changement d’URL, avec redirection et reprise des liens. Elle n’existe pas
+aujourd’hui.
+
+---
+
 ## `solde` / `promo` sont un champ à part, pas des valeurs de `commercial_state` — 2026-08-27
 
 **L'état commercial d'un produit se dit désormais sur DEUX axes indépendants.**

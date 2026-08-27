@@ -24,6 +24,7 @@ import type {
 } from '@/lib/queries/catalog-shapes'
 import { type ImageIntent, buildWritePayload } from '@/lib/queries/image-upload'
 import { withLegacyKey } from '@/lib/queries/legacy-key'
+import { slugLibreDansCollection } from '@/lib/queries/slug'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -163,12 +164,22 @@ export function useCreateCategory() {
 
 	return useMutation({
 		mutationFn: async (data: CategoryWrite) => {
+			const slug = await slugLibreDansCollection(pb, 'categories', data.name)
+			if (slug === '') {
+				throw new Error(
+					'Le nom doit contenir au moins une lettre ou un chiffre pour former son adresse.',
+				)
+			}
+
 			// Clé stable posée par la couche, jamais par l'écran : c'est l'absence de
 			// cette clé qui a fait refuser une catégorie à l'export le 13 août 2026,
-			// et disparaître en silence le rattachement du produit qui la citait.
+			// et disparaître en silence le rattachement du produit qui la citait. Le
+			// slug suit la même règle : PocketApp le pose, le serveur ne décide rien.
 			return await pb
 				.collection('categories')
-				.create<CatalogCategoryShape>(buildWritePayload(withLegacyKey(data)))
+				.create<CatalogCategoryShape>(
+					buildWritePayload(withLegacyKey({ ...data, slug })),
+				)
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['categories'] })

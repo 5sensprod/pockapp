@@ -375,14 +375,19 @@ try {
     // ── Liste des catégories qui portent des produits ───────────────────────
     if ($action === 'categories') {
         $rows = $pdo->query(sprintf(
-            'SELECT c.legacy_id, c.name, c.slug, c.parent, COUNT(pc.product_legacy_id) AS product_count
+            'SELECT c.legacy_id, c.name, c.slug, c.description, c.parent,
+                    c.is_featured, c.image_paths,
+                    COUNT(pc.product_legacy_id) AS product_count
                FROM `%s` c
-               LEFT JOIN `%s` pc ON pc.category_legacy_id = c.legacy_id
-              GROUP BY c.legacy_id, c.name, c.slug, c.parent
-             HAVING product_count > 0
+               JOIN `%s` pc ON pc.category_legacy_id = c.legacy_id
+               JOIN `%s` p ON p.legacy_id = pc.product_legacy_id AND p.status = %s
+              GROUP BY c.legacy_id, c.name, c.slug, c.description, c.parent,
+                       c.is_featured, c.image_paths
               ORDER BY product_count DESC, c.name ASC',
             $T_CATEGORIES,
-            $T_PRODCAT
+            $T_PRODCAT,
+            $T_PRODUCTS,
+            $pdo->quote('published')
         ))->fetchAll();
 
         respond(200, [
@@ -392,8 +397,47 @@ try {
                     'id'            => (string) $row['legacy_id'],
                     'name'          => (string) $row['name'],
                     'slug'          => $row['slug'] !== null ? (string) $row['slug'] : null,
+                    'description'   => $row['description'] !== null ? (string) $row['description'] : '',
                     'parent'        => $row['parent'] !== null ? (string) $row['parent'] : null,
+                    'is_featured'   => (bool) $row['is_featured'],
+                    'image'         => media_urls(
+                        $row['image_paths'] !== null ? (string) $row['image_paths'] : null
+                    )[0] ?? null,
                     'product_count' => (int) $row['product_count'],
+                ];
+            }, $rows),
+        ]);
+    }
+
+    // ── Catégories choisies pour l'accueil ─────────────────────────────────
+    //
+    // Ce n'est PAS un sous-ensemble de `action=categories` : un rayon parent
+    // peut ne porter aucun produit directement, tout en avoir dans sa
+    // descendance. La page catégorie sait agréger cette descendance ; masquer
+    // ici un rayon explicitement marqué `is_featured` contredirait donc le
+    // choix éditorial fait dans PocketApp.
+    if ($action === 'featured-categories') {
+        $rows = $pdo->query(sprintf(
+            'SELECT legacy_id, name, slug, description, parent, image_paths
+               FROM `%s`
+              WHERE is_featured = 1
+              ORDER BY name ASC',
+            $T_CATEGORIES
+        ))->fetchAll();
+
+        respond(200, [
+            'ok'         => true,
+            'categories' => array_map(static function (array $row): array {
+                return [
+                    'id'          => (string) $row['legacy_id'],
+                    'name'        => (string) $row['name'],
+                    'slug'        => $row['slug'] !== null ? (string) $row['slug'] : null,
+                    'description' => $row['description'] !== null ? (string) $row['description'] : '',
+                    'parent'      => $row['parent'] !== null ? (string) $row['parent'] : null,
+                    'is_featured' => true,
+                    'image'       => media_urls(
+                        $row['image_paths'] !== null ? (string) $row['image_paths'] : null
+                    )[0] ?? null,
                 ];
             }, $rows),
         ]);
@@ -936,7 +980,7 @@ try {
         ]);
     }
 
-    fail(400, 'Action inconnue. Attendues : category, categories, brands, latest, product, search, stats.');
+    fail(400, 'Action inconnue. Attendues : category, categories, featured-categories, brands, latest, product, search, stats.');
 } catch (PDOException $e) {
     fail(500, 'Lecture du catalogue impossible.');
 }

@@ -6,6 +6,7 @@
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import type { CatalogBrand, CatalogProduct } from '@/lib/queries/site-catalog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
@@ -20,6 +21,7 @@ import {
 	RefreshCw,
 	ScanSearch,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import type { SyncState } from '../../lib/catalog-export'
 import { catalogImageUrl } from '../../lib/catalog-image'
@@ -28,6 +30,11 @@ const euros = new Intl.NumberFormat('fr-FR', {
 	style: 'currency',
 	currency: 'EUR',
 })
+
+// Une carte produit est un sous-arbre React conséquent (image, badges et
+// actions). Les créer toutes dans le même commit peut retenir la navigation
+// quand le cache rend immédiatement les quelque 2 400 produits publiés.
+const PRODUCT_RENDER_BATCH = 40
 
 type Props = {
 	products: CatalogProduct[]
@@ -93,6 +100,19 @@ export function OnlineProductGrid({
 }: Props) {
 	const pb = usePocketBase() as any
 	const navigate = useNavigate()
+	const [visibleCount, setVisibleCount] = useState(() =>
+		Math.min(PRODUCT_RENDER_BATCH, products.length),
+	)
+
+	useEffect(() => {
+		if (visibleCount >= products.length) return
+		const frame = window.requestAnimationFrame(() => {
+			setVisibleCount((current) =>
+				Math.min(current + PRODUCT_RENDER_BATCH, products.length),
+			)
+		})
+		return () => window.cancelAnimationFrame(frame)
+	}, [products.length, visibleCount])
 
 	if (!products.length) {
 		return (
@@ -102,9 +122,30 @@ export function OnlineProductGrid({
 		)
 	}
 
+	const visibleProducts = products.slice(0, visibleCount)
+	const isRevealing = visibleProducts.length < products.length
+
 	return (
 		<div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'>
-			{products.map((product) => {
+			{isRevealing && (
+				<div
+					className='col-span-full mb-3 space-y-1.5'
+					role='status'
+					aria-live='polite'
+				>
+					<div className='flex items-center justify-between text-muted-foreground text-xs'>
+						<span>Affichage des produits…</span>
+						<span className='tabular-nums'>
+							{visibleProducts.length} / {products.length}
+						</span>
+					</div>
+					<Progress
+						value={(visibleProducts.length / products.length) * 100}
+						className='h-2'
+					/>
+				</div>
+			)}
+			{visibleProducts.map((product) => {
 				const openProduct = () =>
 					navigate({
 						to: '/stock/produits/$productId',

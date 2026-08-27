@@ -35,11 +35,15 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import type { CatalogProduct } from '@/lib/queries/site-catalog'
+import type {
+	CatalogCategory,
+	CatalogProduct,
+} from '@/lib/queries/site-catalog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useCatalogInventory } from '@/modules/site/hooks/use-catalog-sync'
 import {
 	computeEntityImageChecksum,
+	toImageBearing,
 	toProductImageBearing,
 	useImageInventory,
 } from '@/modules/site/hooks/use-image-sync'
@@ -60,6 +64,12 @@ type EtatImages =
 type CibleSynchro = {
 	product: CatalogProduct
 	imagesModified: boolean
+}
+
+type CibleSynchroCategorie = {
+	category: CatalogCategory
+	dataModified: boolean
+	imageModified: boolean
 }
 
 /**
@@ -130,6 +140,70 @@ export function useSyncAfterSave(enabled: boolean): {
 			<SyncAfterSaveDialog
 				product={cible.product}
 				imagesModified={cible.imagesModified}
+				onClose={() => setCible(null)}
+			/>
+		) : null,
+	}
+}
+
+/**
+ * Variante catégorie du raccourci après enregistrement.
+ *
+ * Comme pour les produits, une création n'est jamais proposée : seule une
+ * catégorie que l'inventaire distant connaît déjà a une page à rafraîchir.
+ * `imageModified` distingue les données du second tuyau, celui du miroir.
+ */
+export function useCategorySyncAfterSave(enabled: boolean): {
+	proposer: (
+		category: CatalogCategory,
+		changes: { dataModified: boolean; imageModified: boolean },
+	) => Promise<boolean>
+	dialogue: ReactNode
+} {
+	const inventaire = useCatalogInventory(enabled)
+	const [cible, setCible] = useState<CibleSynchroCategorie | null>(null)
+
+	const proposer = useCallback(
+		async (
+			category: CatalogCategory,
+			changes: { dataModified: boolean; imageModified: boolean },
+		) => {
+			let enLigne = inventaire.data?.categories
+
+			if (!enLigne) {
+				try {
+					enLigne = (await inventaire.refetch()).data?.categories
+				} catch {
+					// Le silence est expliqué juste en dessous, comme pour un produit.
+				}
+			}
+
+			if (!enLigne) {
+				console.info(
+					'[sync] inventaire du site indisponible : pas de proposition de synchro de catégorie.',
+				)
+				return false
+			}
+			if (!(category.legacy_id in enLigne)) {
+				console.info(
+					`[sync] catégorie ${category.legacy_id || '(sans legacy_id)'} inconnue du site : pas de proposition de synchro.`,
+				)
+				return false
+			}
+
+			setCible({ category, ...changes })
+			return true
+		},
+		[inventaire],
+	)
+
+	return {
+		proposer,
+		dialogue: cible ? (
+			<CategorySyncAfterSaveDialog
+				category={cible.category}
+				dataModified={cible.dataModified}
+				imageModified={cible.imageModified}
 				onClose={() => setCible(null)}
 			/>
 		) : null,
@@ -277,6 +351,148 @@ export function SyncAfterSaveDialog({
 							className='cursor-pointer'
 						>
 							Envoyer les images
+							<span className='block text-muted-foreground text-xs'>
+								{mentionImages}
+							</span>
+						</label>
+					</div>
+				</div>
+
+				<DialogFooter>
+					<Button type='button' variant='outline' onClick={onClose}>
+						Plus tard
+					</Button>
+					<Button
+						type='button'
+						onClick={synchroniser}
+						disabled={!donnees && !images}
+					>
+						Synchroniser
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	)
+}
+
+function CategorySyncAfterSaveDialog({
+	category,
+	dataModified,
+	imageModified,
+	onClose,
+}: {
+	category: CatalogCategory
+	dataModified: boolean
+	imageModified: boolean
+	onClose: () => void
+}) {
+	const pb = usePocketBase()
+	const { enqueue } = useSyncQueue()
+	const imageInventory = useImageInventory(imageModified)
+
+	const [donnees, setDonnees] = useState(dataModified)
+	const [images, setImages] = useState(false)
+	const [etatImages, setEtatImages] = useState<EtatImages>('calcul')
+
+	const aUneImage = Boolean(category.image)
+	const distante = imageInventory.data?.categories?.[category.legacy_id]
+
+	useEffect(() => {
+		if (!imageModified) {
+			setEtatImages('non-modifiees')
+			setImages(false)
+			return
+		}
+		if (imageInventory.isLoading) return
+
+		let vivant = true
+		void (async () => {
+			try {
+				// Une liste vide est calculée elle aussi : c'est ainsi qu'un retrait
+				// d'image devient un état à envoyer, et pas une opération ignorée.
+				const locale = await computeEntityImageChecksum(
+					toImageBearing(pb, category),
+				)
+				if (!vivant) return
+				const differe = locale !== distante
+				setEtatImages(differe ? 'modifiees' : 'a-jour')
+				setImages(differe)
+			} catch {
+				if (vivant) setEtatImages('inconnu')
+			}
+		})()
+
+		return () => {
+			vivant = false
+		}
+	}, [pb, category, distante, imageInventory.isLoading, imageModified])
+
+	const mentionImages = (() => {
+		if (!imageModified) return 'non modifiée pendant cette édition'
+		if (etatImages === 'calcul') return 'vérification…'
+		if (etatImages === 'modifiees') {
+			return aUneImage
+				? 'modifiée depuis le dernier envoi'
+				: 'photo retirée — retrait à répercuter en ligne'
+		}
+		if (etatImages === 'a-jour') return 'déjà à jour en ligne'
+		return 'état en ligne non mesuré'
+	})()
+
+	const synchroniser = () => {
+		enqueue({
+			label: category.name,
+			productIds: [],
+			categoryIds: [category.id],
+			donnees,
+			images,
+		})
+		onClose()
+	}
+
+	return (
+		<Dialog open onOpenChange={(ouvert) => !ouvert && onClose()}>
+			<DialogContent className='max-w-md'>
+				<DialogHeader>
+					<DialogTitle>Cette catégorie est en ligne.</DialogTitle>
+					<DialogDescription>
+						Son nom, sa description et sa mise en avant restent inchangés sur le
+						site tant que rien n'est envoyé.
+					</DialogDescription>
+				</DialogHeader>
+
+				<div className='space-y-3 py-2'>
+					<div className='flex items-start gap-3 text-sm'>
+						<Checkbox
+							id='sync-categorie-apres-enregistrement-donnees'
+							checked={donnees}
+							onCheckedChange={(valeur) => setDonnees(valeur === true)}
+							className='mt-0.5'
+						/>
+						<label
+							htmlFor='sync-categorie-apres-enregistrement-donnees'
+							className='cursor-pointer'
+						>
+							Envoyer la catégorie
+							<span className='block text-muted-foreground text-xs'>
+								nom, description, parent, mise en avant…
+							</span>
+						</label>
+					</div>
+
+					<div className='flex items-start gap-3 text-sm'>
+						<Checkbox
+							id='sync-categorie-apres-enregistrement-image'
+							checked={images}
+							onCheckedChange={(valeur) => setImages(valeur === true)}
+							disabled={etatImages !== 'modifiees'}
+							className='mt-0.5'
+						/>
+						<label
+							htmlFor='sync-categorie-apres-enregistrement-image'
+							className='cursor-pointer'
+						>
+							Envoyer la photo
 							<span className='block text-muted-foreground text-xs'>
 								{mentionImages}
 							</span>

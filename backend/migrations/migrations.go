@@ -111,6 +111,11 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// MigrateCatalogV2, qui recrée `products` — et idempotente, donc sans
 		// effet aux démarrages suivants.
 		BackfillProductNameFromDesignation,
+
+		// 17. Réparation de DONNÉES : une catégorie créée dans PocketApp sans
+		// slug partait en ligne avec `slug: null`. Ne touche jamais un slug non
+		// vide ; le checksum de chaque catégorie réparée change volontairement.
+		BackfillCategorySlugs,
 	}
 
 	for _, migrate := range migrations {
