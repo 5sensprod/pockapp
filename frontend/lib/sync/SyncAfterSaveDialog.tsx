@@ -36,6 +36,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import type {
+	CatalogBrand,
 	CatalogCategory,
 	CatalogProduct,
 } from '@/lib/queries/site-catalog'
@@ -68,6 +69,12 @@ type CibleSynchro = {
 
 type CibleSynchroCategorie = {
 	category: CatalogCategory
+	dataModified: boolean
+	imageModified: boolean
+}
+
+type CibleSynchroMarque = {
+	brand: CatalogBrand
 	dataModified: boolean
 	imageModified: boolean
 }
@@ -200,8 +207,69 @@ export function useCategorySyncAfterSave(enabled: boolean): {
 	return {
 		proposer,
 		dialogue: cible ? (
-			<CategorySyncAfterSaveDialog
-				category={cible.category}
+			<RelationSyncAfterSaveDialog
+				kind='categories'
+				entity={cible.category}
+				dataModified={cible.dataModified}
+				imageModified={cible.imageModified}
+				onClose={() => setCible(null)}
+			/>
+		) : null,
+	}
+}
+
+/** Même règle pour une marque : uniquement si elle existe déjà dans
+ * l'inventaire du site, et uniquement lorsqu'un champ exporté a changé. */
+export function useBrandSyncAfterSave(enabled: boolean): {
+	proposer: (
+		brand: CatalogBrand,
+		changes: { dataModified: boolean; imageModified: boolean },
+	) => Promise<boolean>
+	dialogue: ReactNode
+} {
+	const inventaire = useCatalogInventory(enabled)
+	const [cible, setCible] = useState<CibleSynchroMarque | null>(null)
+
+	const proposer = useCallback(
+		async (
+			brand: CatalogBrand,
+			changes: { dataModified: boolean; imageModified: boolean },
+		) => {
+			let enLigne = inventaire.data?.brands
+
+			if (!enLigne) {
+				try {
+					enLigne = (await inventaire.refetch()).data?.brands
+				} catch {
+					// Même comportement silencieux et diagnostiqué que les autres fiches.
+				}
+			}
+
+			if (!enLigne) {
+				console.info(
+					'[sync] inventaire du site indisponible : pas de proposition de synchro de marque.',
+				)
+				return false
+			}
+			if (!(brand.legacy_id in enLigne)) {
+				console.info(
+					`[sync] marque ${brand.legacy_id || '(sans legacy_id)'} inconnue du site : pas de proposition de synchro.`,
+				)
+				return false
+			}
+
+			setCible({ brand, ...changes })
+			return true
+		},
+		[inventaire],
+	)
+
+	return {
+		proposer,
+		dialogue: cible ? (
+			<RelationSyncAfterSaveDialog
+				kind='brands'
+				entity={cible.brand}
 				dataModified={cible.dataModified}
 				imageModified={cible.imageModified}
 				onClose={() => setCible(null)}
@@ -300,6 +368,7 @@ export function SyncAfterSaveDialog({
 		enqueue({
 			label: product.name,
 			productIds: [product.id],
+			relationImages: true,
 			donnees,
 			images,
 		})
@@ -375,13 +444,15 @@ export function SyncAfterSaveDialog({
 	)
 }
 
-function CategorySyncAfterSaveDialog({
-	category,
+function RelationSyncAfterSaveDialog({
+	kind,
+	entity,
 	dataModified,
 	imageModified,
 	onClose,
 }: {
-	category: CatalogCategory
+	kind: 'categories' | 'brands'
+	entity: CatalogCategory | CatalogBrand
 	dataModified: boolean
 	imageModified: boolean
 	onClose: () => void
@@ -394,8 +465,11 @@ function CategorySyncAfterSaveDialog({
 	const [images, setImages] = useState(false)
 	const [etatImages, setEtatImages] = useState<EtatImages>('calcul')
 
-	const aUneImage = Boolean(category.image)
-	const distante = imageInventory.data?.categories?.[category.legacy_id]
+	const estCategorie = kind === 'categories'
+	const nomEntite = estCategorie ? 'catégorie' : 'marque'
+	const nomImage = estCategorie ? 'photo' : 'logo'
+	const aUneImage = Boolean(entity.image)
+	const distante = imageInventory.data?.[kind]?.[entity.legacy_id]
 
 	useEffect(() => {
 		if (!imageModified) {
@@ -411,7 +485,7 @@ function CategorySyncAfterSaveDialog({
 				// Une liste vide est calculée elle aussi : c'est ainsi qu'un retrait
 				// d'image devient un état à envoyer, et pas une opération ignorée.
 				const locale = await computeEntityImageChecksum(
-					toImageBearing(pb, category),
+					toImageBearing(pb, entity),
 				)
 				if (!vivant) return
 				const differe = locale !== distante
@@ -425,7 +499,7 @@ function CategorySyncAfterSaveDialog({
 		return () => {
 			vivant = false
 		}
-	}, [pb, category, distante, imageInventory.isLoading, imageModified])
+	}, [pb, entity, distante, imageInventory.isLoading, imageModified])
 
 	const mentionImages = (() => {
 		if (!imageModified) return 'non modifiée pendant cette édition'
@@ -433,7 +507,7 @@ function CategorySyncAfterSaveDialog({
 		if (etatImages === 'modifiees') {
 			return aUneImage
 				? 'modifiée depuis le dernier envoi'
-				: 'photo retirée — retrait à répercuter en ligne'
+				: `${nomImage} retiré${estCategorie ? 'e' : ''} — retrait à répercuter en ligne`
 		}
 		if (etatImages === 'a-jour') return 'déjà à jour en ligne'
 		return 'état en ligne non mesuré'
@@ -441,9 +515,10 @@ function CategorySyncAfterSaveDialog({
 
 	const synchroniser = () => {
 		enqueue({
-			label: category.name,
+			label: entity.name,
 			productIds: [],
-			categoryIds: [category.id],
+			categoryIds: estCategorie ? [entity.id] : undefined,
+			brandIds: estCategorie ? undefined : [entity.id],
 			donnees,
 			images,
 		})
@@ -454,45 +529,48 @@ function CategorySyncAfterSaveDialog({
 		<Dialog open onOpenChange={(ouvert) => !ouvert && onClose()}>
 			<DialogContent className='max-w-md'>
 				<DialogHeader>
-					<DialogTitle>Cette catégorie est en ligne.</DialogTitle>
+					<DialogTitle>Cette {nomEntite} est en ligne.</DialogTitle>
 					<DialogDescription>
-						Son nom, sa description et sa mise en avant restent inchangés sur le
-						site tant que rien n'est envoyé.
+						{estCategorie
+							? "Son nom, sa description et sa mise en avant restent inchangés sur le site tant que rien n'est envoyé."
+							: "Son nom et sa description restent inchangés sur le site tant que rien n'est envoyé."}
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className='space-y-3 py-2'>
 					<div className='flex items-start gap-3 text-sm'>
 						<Checkbox
-							id='sync-categorie-apres-enregistrement-donnees'
+							id={`sync-${kind}-apres-enregistrement-donnees`}
 							checked={donnees}
 							onCheckedChange={(valeur) => setDonnees(valeur === true)}
 							className='mt-0.5'
 						/>
 						<label
-							htmlFor='sync-categorie-apres-enregistrement-donnees'
+							htmlFor={`sync-${kind}-apres-enregistrement-donnees`}
 							className='cursor-pointer'
 						>
-							Envoyer la catégorie
+							Envoyer la {nomEntite}
 							<span className='block text-muted-foreground text-xs'>
-								nom, description, parent, mise en avant…
+								{estCategorie
+									? 'nom, description, parent, mise en avant…'
+									: 'nom, description…'}
 							</span>
 						</label>
 					</div>
 
 					<div className='flex items-start gap-3 text-sm'>
 						<Checkbox
-							id='sync-categorie-apres-enregistrement-image'
+							id={`sync-${kind}-apres-enregistrement-image`}
 							checked={images}
 							onCheckedChange={(valeur) => setImages(valeur === true)}
 							disabled={etatImages !== 'modifiees'}
 							className='mt-0.5'
 						/>
 						<label
-							htmlFor='sync-categorie-apres-enregistrement-image'
+							htmlFor={`sync-${kind}-apres-enregistrement-image`}
 							className='cursor-pointer'
 						>
-							Envoyer la photo
+							Envoyer {estCategorie ? 'la photo' : 'le logo'}
 							<span className='block text-muted-foreground text-xs'>
 								{mentionImages}
 							</span>

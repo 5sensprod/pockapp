@@ -350,6 +350,16 @@ des pages produit.
   `product.image` et `product.gallery` en URL complètes à partir de la colonne
   `image_paths` et de `media_base_url`. Mesuré le 20 août 2026 : 179 des 218
   marques en ligne portent un logo.
+
+  **Première publication d'une relation — 27 août 2026.** Quand l'envoi d'un
+  produit introduit une marque ou une catégorie dont le logo ou la photo est
+  absent de l'inventaire d'images distant, la file orchestre les deux mécanismes
+  dans leur ordre obligatoire : fiche SQL d'abord, puis logo/photo par
+  `images-sync.php`. Cette lecture répare aussi une relation dont la fiche avait
+  été envoyée auparavant sans son image. Elle ne joint jamais les octets au lot
+  JSON et n'envoie pas automatiquement les images du produit. Une relation dont
+  l'image est déjà connue garde le parcours différentiel normal : modale après
+  édition ou panneau Images.
 - **Le retrait** d'une entité, cf. §2.
 - **Les 257 produits** dont l'état de publication bascule
   (`docs/DECISIONS.md`, 11 août 2026) : ils s'exportent comme les autres, la

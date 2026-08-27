@@ -27,6 +27,8 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useCreateBrand, useUpdateBrand } from '@/lib/queries/brands'
 import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
+import type { CatalogBrand } from '@/lib/queries/site-catalog'
+import { useBrandSyncAfterSave } from '@/lib/sync/SyncAfterSaveDialog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 
@@ -61,6 +63,7 @@ export function BrandDialog({
 	const createBrand = useCreateBrand()
 	const updateBrand = useUpdateBrand()
 	const pb = usePocketBase()
+	const syncApresEnregistrement = useBrandSyncAfterSave(open && isEdit)
 
 	// L'image vit hors du formulaire : react-hook-form sérialise ses valeurs, et
 	// un `File` n'y survit pas.
@@ -101,11 +104,26 @@ export function BrandDialog({
 			image: imageFile,
 			removeImage: imageRemoved,
 		}
+		const donneesModifiees = Boolean(
+			brand &&
+				(payload.name !== brand.name ||
+					payload.description !== (brand.description ?? '')),
+		)
+		const imageModifiee = imageFile !== null || imageRemoved
 
 		try {
 			if (isEdit && brand) {
-				await updateBrand.mutateAsync({ id: brand.id, data: payload })
+				const enregistree = await updateBrand.mutateAsync({
+					id: brand.id,
+					data: payload,
+				})
 				toast.success('Marque modifiée')
+				if (donneesModifiees || imageModifiee) {
+					await syncApresEnregistrement.proposer(enregistree as CatalogBrand, {
+						dataModified: donneesModifiees,
+						imageModified: imageModifiee,
+					})
+				}
 			} else {
 				if (!activeCompanyId) {
 					toast.error('Aucune entreprise active')
@@ -123,84 +141,87 @@ export function BrandDialog({
 	}
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className='max-w-md'>
-				<DialogHeader>
-					<DialogTitle>
-						{isEdit ? 'Modifier la marque' : 'Nouvelle marque'}
-					</DialogTitle>
-					<DialogDescription>
-						{isEdit
-							? 'Modifiez les informations'
-							: 'Ajoutez une nouvelle marque'}
-					</DialogDescription>
-				</DialogHeader>
+		<>
+			<Dialog open={open} onOpenChange={onOpenChange}>
+				<DialogContent className='max-w-md'>
+					<DialogHeader>
+						<DialogTitle>
+							{isEdit ? 'Modifier la marque' : 'Nouvelle marque'}
+						</DialogTitle>
+						<DialogDescription>
+							{isEdit
+								? 'Modifiez les informations'
+								: 'Ajoutez une nouvelle marque'}
+						</DialogDescription>
+					</DialogHeader>
 
-				<Form {...form}>
-					<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
-						<ImageField
-							label='Logo de la marque'
-							currentUrl={imageUrl}
-							value={imageFile}
-							onChange={setImageFile}
-							removed={imageRemoved}
-							onRemovedChange={setImageRemoved}
-							disabled={createBrand.isPending || updateBrand.isPending}
-							// 512 px : le site affiche le logo dans un cadre de 248×248
-							// (`BrandBadge`), on garde la marge des écrans haute densité.
-							optimize={{ maxSide: 512 }}
-						/>
-
-						<FormField
-							control={form.control}
-							name='name'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Nom *</FormLabel>
-									<FormControl>
-										<Input placeholder='Yamaha' {...field} />
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<FormField
-							control={form.control}
-							name='description'
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Description</FormLabel>
-									<FormControl>
-										<Textarea
-											placeholder='Description de la marque...'
-											rows={3}
-											{...field}
-										/>
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-
-						<div className='flex justify-end gap-3 pt-4'>
-							<Button
-								type='button'
-								variant='outline'
-								onClick={() => onOpenChange(false)}
-							>
-								Annuler
-							</Button>
-							<Button
-								type='submit'
+					<Form {...form}>
+						<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+							<ImageField
+								label='Logo de la marque'
+								currentUrl={imageUrl}
+								value={imageFile}
+								onChange={setImageFile}
+								removed={imageRemoved}
+								onRemovedChange={setImageRemoved}
 								disabled={createBrand.isPending || updateBrand.isPending}
-							>
-								{isEdit ? 'Modifier' : 'Créer'}
-							</Button>
-						</div>
-					</form>
-				</Form>
-			</DialogContent>
-		</Dialog>
+								// 512 px : le site affiche le logo dans un cadre de 248×248
+								// (`BrandBadge`), on garde la marge des écrans haute densité.
+								optimize={{ maxSide: 512 }}
+							/>
+
+							<FormField
+								control={form.control}
+								name='name'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Nom *</FormLabel>
+										<FormControl>
+											<Input placeholder='Yamaha' {...field} />
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							<FormField
+								control={form.control}
+								name='description'
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Description</FormLabel>
+										<FormControl>
+											<Textarea
+												placeholder='Description de la marque...'
+												rows={3}
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							<div className='flex justify-end gap-3 pt-4'>
+								<Button
+									type='button'
+									variant='outline'
+									onClick={() => onOpenChange(false)}
+								>
+									Annuler
+								</Button>
+								<Button
+									type='submit'
+									disabled={createBrand.isPending || updateBrand.isPending}
+								>
+									{isEdit ? 'Modifier' : 'Créer'}
+								</Button>
+							</div>
+						</form>
+					</Form>
+				</DialogContent>
+			</Dialog>
+			{syncApresEnregistrement.dialogue}
+		</>
 	)
 }

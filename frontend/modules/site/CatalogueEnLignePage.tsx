@@ -749,6 +749,7 @@ function CatalogueEnLigneContent({
 			sync.enqueue({
 				label: label ?? `${selection.length} produit(s)`,
 				productIds: selection.map((p) => p.id),
+				relationImages: true,
 				donnees: true,
 				images: false,
 			})

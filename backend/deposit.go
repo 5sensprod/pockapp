@@ -12,13 +12,13 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 
 	"pocket-react/backend/hash"
+	"pocket-react/backend/numbering"
 )
 
 // ============================================================================
@@ -44,12 +44,6 @@ type BalanceInvoiceResult struct {
 	BalanceInvoice *models.Record
 	ParentUpdated  *models.Record
 }
-
-// ============================================================================
-// CONSTANTES
-// ============================================================================
-
-const depositNumberPadding = 6
 
 // ============================================================================
 // CreateDepositInvoice
@@ -516,64 +510,27 @@ func getLastInvoiceForDeposit(dao *daos.Dao, ownerCompany string) (*models.Recor
 	return records[0], nil
 }
 
-// generateDepositNumber génère le prochain numéro ACC-YYYY-XXXXXX
+// generateDepositNumber génère le prochain numéro ACC-YYYY-XXXXXX.
+//
+// Un seul chemin de numérotation : backend/numbering. Filtrait auparavant sur
+// `invoice_type = 'deposit'` sans borner la série, triait sur
+// `-sequence_number` et retombait sur 1 en silence — mêmes défauts que
+// generateBalanceNumber ci-dessous, qui les a payés.
 func generateDepositNumber(dao *daos.Dao, ownerCompany string, fiscalYear int) (string, error) {
-	prefix := fmt.Sprintf("ACC-%d-", fiscalYear)
-
-	records, err := dao.FindRecordsByFilter(
-		"invoices",
-		fmt.Sprintf(
-			"owner_company = '%s' && invoice_type = 'deposit' && fiscal_year = %d",
-			ownerCompany, fiscalYear,
-		),
-		"-sequence_number",
-		1,
-		0,
-	)
-
-	var nextSeq int
-	if err != nil || len(records) == 0 {
-		nextSeq = 1
-	} else {
-		lastNumber := records[0].GetString("number")
-		nextSeq = extractDepositSeq(lastNumber, prefix) + 1
-	}
-
-	return fmt.Sprintf("%s%0*d", prefix, depositNumberPadding, nextSeq), nil
+	serie := numbering.Serie("ACC", fiscalYear)
+	return numbering.Suivant(dao, "invoices", numbering.Filtre(ownerCompany, fiscalYear, serie), serie)
 }
 
-// generateBalanceNumber génère le prochain numéro FAC-YYYY-XXXXXX standard
+// generateBalanceNumber génère le prochain numéro FAC-YYYY-XXXXXX standard.
+//
+// ⚠️ C'est cette fonction qui a produit les 106 factures en double de 2026.
+// Elle filtrait sur `invoice_type = 'invoice'` SANS borner la série — or un
+// ticket de caisse porte lui aussi `invoice_type = 'invoice'`, il ne s'en
+// distingue que par `is_pos_ticket`. Le 3 juin 2026 à 14h50, triant sur
+// `-sequence_number`, elle a relu TIK-2026-000547, n'y a pas trouvé le préfixe
+// `FAC-2026-`, et est repartie de 000001 alors que la série en était à 000173.
+// Ne pas réintroduire de requête maison ici.
 func generateBalanceNumber(dao *daos.Dao, ownerCompany string, fiscalYear int) (string, error) {
-	prefix := fmt.Sprintf("FAC-%d-", fiscalYear)
-
-	records, err := dao.FindRecordsByFilter(
-		"invoices",
-		fmt.Sprintf(
-			"owner_company = '%s' && fiscal_year = %d && invoice_type = 'invoice'",
-			ownerCompany, fiscalYear,
-		),
-		"-sequence_number",
-		1,
-		0,
-	)
-
-	var nextSeq int
-	if err != nil || len(records) == 0 {
-		nextSeq = 1
-	} else {
-		lastNumber := records[0].GetString("number")
-		nextSeq = extractDepositSeq(lastNumber, prefix) + 1
-	}
-
-	return fmt.Sprintf("%s%0*d", prefix, depositNumberPadding, nextSeq), nil
-}
-
-func extractDepositSeq(number, prefix string) int {
-	if !strings.HasPrefix(number, prefix) {
-		return 0
-	}
-	seqStr := strings.TrimPrefix(number, prefix)
-	var seq int
-	fmt.Sscanf(seqStr, "%d", &seq)
-	return seq
+	serie := numbering.Serie("FAC", fiscalYear)
+	return numbering.Suivant(dao, "invoices", numbering.Filtre(ownerCompany, fiscalYear, serie), serie)
 }

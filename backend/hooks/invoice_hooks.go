@@ -16,6 +16,7 @@ import (
 	"github.com/pocketbase/pocketbase/models"
 
 	"pocket-react/backend/hash"
+	"pocket-react/backend/numbering"
 )
 
 // ============================================================================
@@ -836,45 +837,18 @@ func generateDocumentNumber(app *pocketbase.PocketBase, ownerCompany, invoiceTyp
 
 	switch {
 	case invoiceType == "credit_note":
-		prefix = fmt.Sprintf("AVO-%d-", fiscalYear)
+		prefix = numbering.Serie("AVO", fiscalYear)
 	case isPOS:
-		prefix = fmt.Sprintf("TIK-%d-", fiscalYear)
+		prefix = numbering.Serie("TIK", fiscalYear)
 	default:
-		prefix = fmt.Sprintf("FAC-%d-", fiscalYear)
+		prefix = numbering.Serie("FAC", fiscalYear)
 	}
 
-	filter := fmt.Sprintf(
-		"owner_company = '%s' && fiscal_year = %d && number ~ '%s'",
-		ownerCompany, fiscalYear, prefix,
-	)
-
-	records, err := app.Dao().FindRecordsByFilter(
-		"invoices",
-		filter,
-		"-sequence_number",
-		1,
-		0,
-	)
-
-	var nextSeq int
-	if err != nil || len(records) == 0 {
-		nextSeq = 1
-	} else {
-		lastNumber := records[0].GetString("number")
-		nextSeq = extractSequenceFromNumber(lastNumber, prefix) + 1
-	}
-
-	return fmt.Sprintf("%s%0*d", prefix, NumberPadding, nextSeq), nil
-}
-
-func extractSequenceFromNumber(number, prefix string) int {
-	if !strings.HasPrefix(number, prefix) {
-		return 0
-	}
-	seqStr := strings.TrimPrefix(number, prefix)
-	var seq int
-	fmt.Sscanf(seqStr, "%d", &seq)
-	return seq
+	// Un seul chemin de numérotation : backend/numbering. Ne pas réintroduire
+	// ici une requête maison — le tri sur `-sequence_number` et le repli
+	// silencieux sur 1 ont coûté 106 factures en double en 2026.
+	return numbering.Suivant(app.Dao(), "invoices",
+		numbering.Filtre(ownerCompany, fiscalYear, prefix), prefix)
 }
 
 func isValidDocumentNumber(number string, fiscalYear int) bool {
@@ -1299,28 +1273,11 @@ func RegisterQuoteHooks(app *pocketbase.PocketBase) {
 func generateQuoteNumber(app *pocketbase.PocketBase, ownerCompany string, fiscalYear int) (string, error) {
 	prefix := fmt.Sprintf("DEV-%d-", fiscalYear)
 
-	filter := fmt.Sprintf(
-		"owner_company = '%s' && number ~ '%s'",
-		ownerCompany, prefix,
-	)
-
-	records, err := app.Dao().FindRecordsByFilter(
-		"quotes",
-		filter,
-		"-created",
-		1,
-		0,
-	)
-
-	var nextSeq int
-	if err != nil || len(records) == 0 {
-		nextSeq = 1
-	} else {
-		lastNumber := records[0].GetString("number")
-		nextSeq = extractSequenceFromNumber(lastNumber, prefix) + 1
-	}
-
-	return fmt.Sprintf("%s%0*d", prefix, NumberPadding, nextSeq), nil
+	// Même chemin que les factures. La collection `quotes` ne porte pas
+	// `fiscal_year` : l'exercice est déjà dans la série. Triait auparavant sur
+	// `-created`, qui n'est pas l'ordre des numéros.
+	return numbering.Suivant(app.Dao(), "quotes",
+		numbering.FiltreSansExercice(ownerCompany, prefix), prefix)
 }
 
 // ============================================================================

@@ -44,7 +44,10 @@ import { router } from '@/lib/router'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useExportCatalog } from '@/modules/site/hooks/use-catalog-sync'
 import {
+	type ImageBearing,
+	type ImageInventory,
 	computeEntityImageChecksum,
+	imageInventoryQueryOptions,
 	toImageBearing,
 	toProductImageBearing,
 	useSendEntityImages,
@@ -174,6 +177,15 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 						),
 					)
 					.filter((category): category is CatalogCategory => Boolean(category))
+				const marquesSelectionnees = (job.brandIds ?? [])
+					.map((id) =>
+						(marques as CatalogBrand[]).find((brand) => brand.id === id),
+					)
+					.filter((brand): brand is CatalogBrand => Boolean(brand))
+				let imagesRelationsNouvelles: Array<{
+					kind: 'categories' | 'brands'
+					entity: ImageBearing
+				}> = []
 
 				// ⚠️ UN PRODUIT DEMANDÉ QUI NE SE RÉSOUT PAS EST UNE PANNE, PAS UN
 				// CAS NORMAL. Sans cette garde, une sélection vide traversait toute
@@ -193,6 +205,13 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 						`${job.label} : ${manquantes} catégorie(s) introuvable(s) dans le catalogue du site — rien envoyé pour elles.`,
 					)
 				}
+				if (marquesSelectionnees.length < (job.brandIds?.length ?? 0)) {
+					const manquantes =
+						(job.brandIds?.length ?? 0) - marquesSelectionnees.length
+					bilan.echecs.push(
+						`${job.label} : ${manquantes} marque(s) introuvable(s) dans le catalogue du site — rien envoyé pour elles.`,
+					)
+				}
 
 				console.info(
 					`[sync] « ${job.label} » — ${selection.length}/${job.productIds.length} produit(s) résolu(s), données=${job.donnees}, images=${job.images}`,
@@ -202,6 +221,19 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 
 				// ── Étape 1 : les DONNÉES, en lots ──────────────────────────────
 				if (job.donnees) {
+					let inventaireImagesAvant: ImageInventory | undefined
+					if (job.relationImages) {
+						try {
+							inventaireImagesAvant = await queryClient.fetchQuery(
+								imageInventoryQueryOptions(pb),
+							)
+						} catch (cause) {
+							bilan.echecs.push(
+								`${job.label} : inventaire d’images indisponible avant l’envoi — les logos et photos manquants des relations n’ont pas pu être déterminés (${cause instanceof Error ? cause.message : String(cause)}).`,
+							)
+						}
+					}
+
 					const input = collectExportInput(
 						selection,
 						categories as CatalogCategory[],
@@ -248,6 +280,32 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 							bilan.categories += outcome.written.categories
 							bilan.marques += outcome.written.brands
 							bilan.rejets.push(...outcome.rejected)
+							if (inventaireImagesAvant) {
+								imagesRelationsNouvelles = [
+									...aEnvoyer.categories
+										.filter(
+											(category) =>
+												Boolean(category.image) &&
+												!(
+													category.legacy_id in inventaireImagesAvant.categories
+												),
+										)
+										.map((category) => ({
+											kind: 'categories' as const,
+											entity: toImageBearing(pb, category),
+										})),
+									...aEnvoyer.brands
+										.filter(
+											(brand) =>
+												Boolean(brand.image) &&
+												!(brand.legacy_id in inventaireImagesAvant.brands),
+										)
+										.map((brand) => ({
+											kind: 'brands' as const,
+											entity: toImageBearing(pb, brand),
+										})),
+								]
+							}
 							console.info(
 								`[sync] « ${job.label} » — ${outcome.batches} lot(s) envoyé(s), écrits : ${outcome.written.products} produit(s), ${outcome.written.categories} catégorie(s), ${outcome.written.brands} marque(s), ${outcome.rejected.length} refus.`,
 							)
@@ -263,19 +321,33 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 				}
 
 				// ── Étape 2 : les IMAGES, entité par entité ─────────────────────
-				if (job.images && !arret.current) {
+				if (
+					(job.images || imagesRelationsNouvelles.length > 0) &&
+					!arret.current
+				) {
 					// Une entité SANS fichier doit elle aussi partir : sa liste vide dit au
 					// miroir de retirer l'ancienne image. L'écarter transformerait une
 					// suppression locale en photo fantôme sur le site.
 					const porteuses = [
-						...selection.map((product) => ({
-							kind: 'products' as const,
-							entity: toProductImageBearing(pb, product),
-						})),
-						...categoriesSelectionnees.map((category) => ({
-							kind: 'categories' as const,
-							entity: toImageBearing(pb, category),
-						})),
+						...(job.images
+							? selection.map((product) => ({
+									kind: 'products' as const,
+									entity: toProductImageBearing(pb, product),
+								}))
+							: []),
+						...(job.images
+							? categoriesSelectionnees.map((category) => ({
+									kind: 'categories' as const,
+									entity: toImageBearing(pb, category),
+								}))
+							: []),
+						...(job.images
+							? marquesSelectionnees.map((brand) => ({
+									kind: 'brands' as const,
+									entity: toImageBearing(pb, brand),
+								}))
+							: []),
+						...imagesRelationsNouvelles,
 					]
 
 					setEtat((e) => ({

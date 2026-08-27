@@ -26,6 +26,10 @@ export type SyncJob = {
 	 *  ancêtres compris (`collectExportInput`). */
 	categoryIds?: string[]
 	brandIds?: string[]
+	/** Après l'envoi des données d'un produit, envoyer aussi les images des
+	 * catégories et marques qui n'existaient pas encore sur le site. Ne couvre
+	 * jamais les images produit : elles restent un choix explicite. */
+	relationImages?: boolean
 	donnees: boolean
 	images: boolean
 }

@@ -118,8 +118,18 @@ export function useImageInventory(enabled: boolean) {
 	const pb = usePocketBase() as { authStore: { token: string } }
 
 	return useQuery<ImageInventory>({
-		queryKey: ['site-images', 'inventory'],
+		...imageInventoryQueryOptions(pb),
 		enabled,
+	})
+}
+
+/** Même lecture hors composant. La file la prend avant l'export des données
+ * pour repérer les logos/photos absents qui doivent suivre les relations. */
+export function imageInventoryQueryOptions(pb: {
+	authStore: { token: string }
+}) {
+	return {
+		queryKey: ['site-images', 'inventory'],
 		retry: false,
 		staleTime: 30_000,
 		queryFn: async () => {
@@ -130,7 +140,7 @@ export function useImageInventory(enabled: boolean) {
 				'/api/site/images/inventory',
 			)
 		},
-	})
+	}
 }
 
 // ---------------------------------------------------------------------------
