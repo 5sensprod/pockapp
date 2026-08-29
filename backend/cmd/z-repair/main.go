@@ -118,8 +118,16 @@ func main() {
 			}
 		}
 
-		if e.Erreur == "" && !e.Change {
-			continue // on n'affiche que ce qui bouge
+		// On n'affiche que ce qui bouge — mais « bouger » ne veut pas dire
+		// « changer de hash ». Le rapprochement espèces n'entre PAS dans le
+		// hash (backend/reports/z_repair.go:189-196) : un rapport dont seul le
+		// tiroir attendu est corrigé a `Change` à false. Le filtre d'origine le
+		// comptait dans « aux MONTANTS corrigés » sans jamais le montrer, et
+		// c'est le seul chiffre que le commerçant confronte à son tiroir.
+		// Constaté le 29 août 2026 : le dépôt de 100 € repris sur le 22/08
+		// corrigeait le Z-060 en silence.
+		if e.Erreur == "" && !e.Change && !e.ValeursChangees && !e.Enrichi {
+			continue
 		}
 
 		fmt.Printf("%-16s %-11s %10.2f %10.2f %9.2f | %10.2f %10.2f %10.2f %9.2f  %s\n",

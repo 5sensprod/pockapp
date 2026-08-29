@@ -48,9 +48,18 @@ type ClotureManquante struct {
 // GenererCloturesManquantes émet un Z par journée de fermeture non clôturée.
 //
 // apply = false : simulation, aucune écriture.
+//
+// `journee` borne le traitement à UNE journée (AAAA-MM-JJ) ; vide, elles sont
+// toutes examinées. Le besoin est né le 29 août 2026 : après la reprise des
+// ventes du client, la simulation annonçait DEUX rapports — celui du 25 août,
+// attendu, et un second pour une session de test VIDE, 0 ticket et 0,00 €.
+// L'émettre aurait scellé un document fiscal numéroté et haché ne portant pas
+// un centime, et un Z ne se supprime pas. Borner est la seule protection : on
+// ne devine pas ce qui mérite une clôture, on le désigne.
 func GenererCloturesManquantes(
 	app *pocketbase.PocketBase,
 	ownerCompany string,
+	journee string,
 	apply bool,
 ) ([]ClotureManquante, error) {
 	dao := app.Dao()
@@ -76,6 +85,9 @@ func GenererCloturesManquantes(
 	for _, s := range sessions {
 		k := cle{s.GetString("cash_register"), jourDe(s.GetString("closed_at"))}
 		if k.jour == "" {
+			continue
+		}
+		if journee != "" && k.jour != journee {
 			continue
 		}
 		entree, vu := parJour[k]

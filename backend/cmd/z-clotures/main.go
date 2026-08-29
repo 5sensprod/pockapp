@@ -25,6 +25,7 @@ func main() {
 
 	dataDir := flag.String("data", defaut, "dossier pb_data")
 	company := flag.String("company", "", "id de la société (par défaut : la première)")
+	journee := flag.String("jour", "", "borner à une journée (AAAA-MM-JJ) ; vide : toutes")
 	apply := flag.Bool("apply", false, "émettre (sinon : simulation)")
 	flag.Parse()
 
@@ -51,7 +52,7 @@ func main() {
 	}
 	fmt.Printf("\nBase : %s\nMode : %s\n\n", *dataDir, mode)
 
-	clotures, err := reports.GenererCloturesManquantes(app, societe, *apply)
+	clotures, err := reports.GenererCloturesManquantes(app, societe, *journee, *apply)
 	if err != nil {
 		fmt.Printf("❌ %v\n", err)
 		os.Exit(1)

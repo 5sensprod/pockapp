@@ -57,6 +57,21 @@ func SessionDuJour(dao *daos.Dao, ownerCompany, cashRegisterID, utilisateurID st
 	return sessionDuJourA(dao, ownerCompany, cashRegisterID, utilisateurID, time.Now())
 }
 
+// SessionDuJourLe est SessionDuJour à une journée DONNÉE, et non à aujourd'hui.
+//
+// Elle sert à rejouer une journée passée — la reprise d'une copie de production
+// (backend/reprise). La règle ne change pas d'un iota : c'est la même fonction,
+// avec la date en paramètre au lieu de time.Now(). Écrire un second chemin
+// d'ouverture, ici, produirait des sessions que SessionDuJour ne reconnaîtrait
+// pas.
+func SessionDuJourLe(
+	dao *daos.Dao,
+	ownerCompany, cashRegisterID, utilisateurID string,
+	jour time.Time,
+) (*models.Record, error) {
+	return sessionDuJourA(dao, ownerCompany, cashRegisterID, utilisateurID, jour)
+}
+
 // sessionDuJourA porte la règle, à une date injectée. SessionDuJour est sa seule
 // forme publique ; la date se passe pour que les gardiens puissent franchir
 // minuit sans attendre demain.
@@ -136,6 +151,16 @@ func sessionDuJourA(
 
 	log.Printf("✅ Session du jour ouverte automatiquement (%s, caisse %s, fonds reporté %.2f€)", jour, cashRegisterID, fonds)
 	return rec, nil
+}
+
+// FermerAuPassageDeJournee est fermerAuPassageDeJournee, exportée pour la
+// reprise d'une copie de production (backend/reprise) : rejouer une journée
+// passée demande de la refermer À SA PROPRE DATE, faute de quoi le Z de cette
+// journée-là ne la verrait pas. Aucune règle n'est dupliquée — c'est la même
+// fonction, et c'est bien elle qui pose `closed_at` à la fin de la journée
+// d'ouverture plutôt qu'à l'heure courante.
+func FermerAuPassageDeJournee(dao *daos.Dao, session *models.Record) error {
+	return fermerAuPassageDeJournee(dao, session)
 }
 
 // fermerAuPassageDeJournee clôt une session restée ouverte d'une journée

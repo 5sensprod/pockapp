@@ -10,6 +10,78 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Les ventes du client se reprennent par l'id, jamais par le numéro — 2026-08-29
+
+**Décision.** Ramener dans notre base ce que la caisse du client a produit depuis
+la divergence est une opération RÉCURRENTE : elle passe par un outil,
+`backend/cmd/reprise-production`, simulation par défaut, et sa règle vit dans
+`backend/reprise`. Appliqué le 29 août 2026 : **8 documents du 25/08, 2 clients,
+2 mouvements de caisse**, puis `Z-2026-000061` (1 350,56 €).
+
+**L'identité est l'id PocketBase, pas le numéro — mesuré.** Aucun des documents à
+reprendre ne portait un id déjà présent chez nous ; **quatre portaient un numéro
+déjà attribué** (`FAC-2026-000107` à `000110`). La base du client **fabrique
+encore des doublons** — 118 numéros pour 236 documents — parce qu'elle tourne sur
+un build antérieur à `backend/numbering` : ses `z_reports` n'ont aucune colonne
+v4+. Reprendre par le numéro aurait recréé le défaut des 114 doublons du 28 août.
+C'est aussi ce qui rend l'outil **idempotent sans mémoire** : un second passage
+retrouve les id et ne trouve plus rien.
+
+**Le numéro, la séquence et le hash sont posés CHEZ NOUS, jamais recopiés.** Un
+`previous_hash` venu d'une autre chaîne produirait un maillon incohérent sans
+aucune erreur. Les relations, elles, se résolvent par l'id : l'avoir
+`AVO-2026-000041` annulait `tacc49ewf6nyf46`, que nous avions déjà — sous un
+AUTRE numéro depuis la renumérotation.
+
+**Les tickets se rattachent à la session de LEUR journée**, ouverte par
+`SessionDuJourLe` puis refermée par `FermerAuPassageDeJournee` — deux fonctions
+existantes simplement exportées, aucune règle dupliquée. Leur session d'origine
+était close chez nous depuis le 23/08 et scellée dans le Z-060 :
+`GenerateRapportZ` ne retient que les sessions fermées DANS la journée du
+rapport (`cash_reports.go:1490-1496`), le Z du 25 ne les aurait jamais vus.
+
+**Un mouvement suit son document quand ce document est dans le lot** (par
+`related_invoice`) ; sinon il garde la session de la source. Le dépôt banque de
+100 € du 22/08 reste ainsi sur la session que le Z-060 couvre, plutôt que de se
+voir inventer une journée de clôture qui n'a jamais existé.
+
+**Écarté — reprendre la vente de 2 000 € du 22/08 et son avoir.** Le client avait
+facturé DEUX FOIS la même vente à 37 minutes d'intervalle (16:30 et 17:07, même
+client, même chèque) puis annulé la première le 25 — celle que nous avons déjà,
+scellée dans le Z-060. Reprendre l'avoir seul aurait annulé une vraie vente déjà
+déclarée. Les deux sont écartés ; le total TTC de notre base tombe au centime sur
+celui du client, 121 471,38 €.
+
+**Trois défauts trouvés en chemin, tous corrigés.**
+
+1. **`created` n'était pas recopié.** PocketBase ne le repose que s'il est vide
+   (`daos/base.go:317`) ; la boucle ne parcourait que les champs du schéma. Sans
+   effet sur un document — le Z, le journal et le hash lisent `date` — mais un
+   **mouvement de caisse est daté par `created`** : les deux mouvements repris se
+   sont retrouvés au 29 août dans le journal des espèces. L'outil sait désormais
+   **recaler** ce qu'une reprise antérieure a mal daté.
+2. **`z-clotures` proposait d'émettre un Z VIDE** — 0 ticket, 0,00 € — pour une
+   session de test. Un Z est numéroté, haché, et ne se supprime pas. D'où un
+   drapeau **`-jour`** : on ne devine pas ce qui mérite une clôture, on le
+   désigne.
+3. **`z-repair` n'affichait que les rapports dont le HASH change.** Or le
+   rapprochement espèces n'entre pas dans le hash (`z_repair.go:189-196`) : un
+   rapport « aux MONTANTS corrigés » était compté sans jamais être montré. C'est
+   exactement ce qui masquait la correction du Z-060.
+
+**Assumé — le Z-060 affiche désormais +100 € d'excédent** (attendu 127,68 €,
+compté 227,68 €). Deux autres voies ont été écartées : corriger le comptage à
+127,68 € reviendrait à inventer un comptage que personne n'a fait — chez le
+client cette session n'a JAMAIS été comptée (`counted_cash_total = 0`, encore
+ouverte) et nos 227,68 € valent exactement le théorique `198,20 + 21,00 + 8,48` ;
+supprimer le mouvement effacerait un retrait réel. Sans effet sur le CA ni la
+TVA : le rapprochement n'est pas haché.
+
+**Remise en cause si :** le poste du client est mis à jour. Il cesserait alors de
+produire des doublons de numéro, et ses `z_reports` porteraient enfin les
+colonnes v4 à v6 — la reprise resterait la même, mais son principal danger
+disparaîtrait.
+
 ## La journée s'ouvre d'un geste, mais son fonds ne se saisit plus — 2026-08-29
 
 **Décision, prise après essai en production le jour même.** L'ouverture
