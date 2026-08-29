@@ -464,9 +464,10 @@ func TestLeTotalEncaisseEgaleLaSommeDesQuatreLignes(t *testing.T) {
 			sommeMoyens, totaux.CollectedTTC)
 	}
 
-	if totaux.SchemaVersion != 2 {
-		t.Errorf("schema_version = %d, attendu 2 : sans lui, un Z relu dans six mois "+
-			"ne dira pas sous quelle règle son total_ht a été produit", totaux.SchemaVersion)
+	if totaux.SchemaVersion != ZSchemaVersionCourante {
+		t.Errorf("schema_version = %d, attendu %d : sans lui, un Z relu dans six mois "+
+			"ne dira pas sous quelle règle son total_ht a été produit",
+			totaux.SchemaVersion, ZSchemaVersionCourante)
 	}
 }
 
@@ -887,5 +888,529 @@ func TestLesPeriodesDeDeuxZNeSeRecouvrentPas(t *testing.T) {
 	if totauxSecond.CollectedTTC != 120.00 {
 		t.Errorf("le second Z encaisse %.2f, attendu 120,00 : la facture tombe dans "+
 			"sa période", totauxSecond.CollectedTTC)
+	}
+}
+
+// ============================================================================
+// Contrat du Z v3 — 27 août 2026
+// frontend/modules/cash/PocketCash-docs/05-le-z-v3-et-le-journal-especes.md
+// ============================================================================
+
+// Le Z ne connaît pas les mouvements de caisse.
+//
+// Décision du propriétaire du 27 août 2026 : un apport de fonds n'est ni une
+// vente, ni un encaissement de vente. La mesure du contrat le confirme côté
+// code — `z_lignes.go` classe des DOCUMENTS, jamais des mouvements, et un
+// mouvement ne peut donc pas entrer dans une des quatre lignes.
+//
+// Ce gardien fige la propriété, parce qu'elle est aujourd'hui structurelle et
+// qu'une future lecture de `cash_movements` dans l'agrégation la briserait sans
+// aucune erreur visible : une remise en banque de 300 € se mettrait à retrancher
+// du chiffre d'affaires. 18 des 23 mouvements libres mesurés en production sont
+// des remises en banque — c'est le cas le plus courant, pas un cas limite.
+func TestUneRemiseEnBanqueNeToucheAucuneDesQuatreLignes(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	caisse, session, jour := caisseEtSessionDuJour(t, app)
+
+	// Une vente de 50 € en espèces : la seule source des quatre lignes.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"total_ht": 41.67, "total_tva": 8.33, "total_ttc": 50.00,
+		"payment_method": "especes", "payment_method_label": "especes",
+	})
+	// Et une remise en banque de 60 €, qui n'est ni une vente ni un encaissement.
+	//
+	// Une journée ne porte qu'UN Z : GenerateRapportZ rend le rapport existant
+	// sans rien y ajouter (cash_reports.go, et 04-refonte-du-z.md §7). On ne peut
+	// donc pas comparer deux générations — les quatre lignes sont vérifiées en
+	// valeurs explicites, celles de la vente seule.
+	creerEnregistrement(t, app, "cash_movements", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"movement_type": "cash_out", "amount": 60.00, "reason": "Remise en banque",
+	})
+
+	totaux := genererZ(t, app, caisse.Id, jour)
+
+	if totaux.TotalHT != 41.67 || totaux.TotalTVA != 8.33 || totaux.TotalTTC != 50.00 {
+		t.Errorf("ligne 1 = %.2f HT / %.2f TVA / %.2f TTC, attendu 41,67 / 8,33 / 50,00 "+
+			"— une remise en banque n'est pas une vente",
+			totaux.TotalHT, totaux.TotalTVA, totaux.TotalTTC)
+	}
+	if totaux.CollectedTTC != 50.00 {
+		t.Errorf("total encaissé = %.2f, attendu 50,00 : l'argent remis en banque a "+
+			"bien été encaissé, le retrancher du total le ferait disparaître",
+			totaux.CollectedTTC)
+	}
+	if totaux.CollectedFromReceivablesTTC != 0 ||
+		totaux.CollectedDepositsTTC != 0 ||
+		totaux.RefundsTTC != 0 {
+		t.Errorf("lignes 2/3/4 = %.2f/%.2f/%.2f, attendu 0/0/0 : une remise en banque "+
+			"n'est ni un règlement, ni un acompte, ni un remboursement",
+			totaux.CollectedFromReceivablesTTC, totaux.CollectedDepositsTTC,
+			totaux.RefundsTTC)
+	}
+
+	// En revanche elle sort bien du tiroir. Le rapprochement n'est plus AFFICHÉ
+	// dans le Z, mais il reste calculé et stocké — c'est lui que vérifient le
+	// comptage de CloseSessionDialog et le rapport X.
+	const attenduTiroir = 40.00 // 100 (fonds) − 60 (remise)
+	if totaux.TotalCashExpected != attenduTiroir {
+		t.Errorf("espèces attendues = %.2f, attendu %.2f : la remise doit sortir du "+
+			"tiroir même si elle ne touche aucune ligne",
+			totaux.TotalCashExpected, attenduTiroir)
+	}
+}
+
+// L'attendu du tiroir reste `opening_float + mouvements`, et rien d'autre.
+//
+// C'est l'invariant que le contrat v3 met en avant (§3.1) : le rapprochement
+// n'est pas une affaire de chiffre d'affaires, c'est une équation de tiroir.
+// Chacun de ses termes est indispensable QUELLE QUE SOIT sa nature comptable.
+//
+// Il est gardé ici parce que le v3 retire le rapprochement de l'AFFICHAGE du Z :
+// plus personne ne le regarde sur ce document, donc plus personne ne verrait
+// une régression dessus à l'œil. La contre-simulation du §3 chiffre ce que
+// coûterait la faute la plus tentante — retirer les mouvements libres de
+// l'attendu : +7 686,14 € d'écart FICTIF sur 17 rapports.
+func TestLAttenduDuTiroirEstLeFondsPlusLesMouvements(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	caisse, session, jour := caisseEtSessionDuJour(t, app)
+
+	// Une vente espèces de 80 €, matérialisée par son mouvement, comme le fait
+	// pos_routes.go à raison d'un mouvement par ligne espèces.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"total_ht": 66.67, "total_tva": 13.33, "total_ttc": 80.00,
+		"payment_method": "especes", "payment_method_label": "especes",
+	})
+	creerEnregistrement(t, app, "cash_movements", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"movement_type": "cash_in", "amount": 80.00, "reason": "vente espèces",
+	})
+	// Un apport libre de 20 €, et une remise en banque de 50 €.
+	creerEnregistrement(t, app, "cash_movements", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"movement_type": "cash_in", "amount": 20.00, "reason": "apport de monnaie",
+	})
+	creerEnregistrement(t, app, "cash_movements", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"movement_type": "safe_drop", "amount": 50.00, "reason": "pour la banque",
+	})
+
+	totaux := genererZ(t, app, caisse.Id, jour)
+
+	const attendu = 150.00 // 100 + 80 + 20 − 50
+	if totaux.TotalCashExpected != attendu {
+		t.Errorf("espèces attendues = %.2f, attendu %.2f (fonds 100 + vente 80 "+
+			"+ apport 20 − remise 50)", totaux.TotalCashExpected, attendu)
+	}
+
+	// Et la vente espèces n'est comptée qu'UNE fois dans le total encaissé :
+	// c'est le document qui la porte, pas son mouvement.
+	if totaux.CollectedTTC != 80.00 {
+		t.Errorf("total encaissé = %.2f, attendu 80,00 : le cash_in de la vente ne "+
+			"doit pas s'ajouter au document qui l'a produit", totaux.CollectedTTC)
+	}
+}
+
+// Un rapport se relit sous la règle qui l'a produit.
+//
+// `schema_version` entre dans computeZReportHash (cash_reports.go) : c'est ce
+// qui distingue deux rapports aux mêmes chiffres produits sous des contrats
+// différents. Sans ce gardien, faire évoluer le contrat sans toucher la version
+// laisserait deux règles indiscernables dans la chaîne d'intégrité — et
+// l'affichage, qui branche sur un seuil, montrerait un v3 comme un v1.
+func TestLaVersionCouranteEstCelleDuContratV3(t *testing.T) {
+	if ZSchemaVersionCourante < 3 {
+		t.Fatalf("ZSchemaVersionCourante = %d : le contrat du 27 août 2026, où le Z "+
+			"ne porte plus le rapprochement espèces, vaut 3", ZSchemaVersionCourante)
+	}
+
+	base := &RapportZ{
+		Number:       "Z-2026-000001",
+		Date:         "2026-08-27",
+		CashRegister: CashRegisterInfo{ID: "c1"},
+		DailyTotals:  DailyTotalsSummary{SchemaVersion: ZSchemaVersionCourante},
+	}
+	ancien := &RapportZ{
+		Number:       base.Number,
+		Date:         base.Date,
+		CashRegister: base.CashRegister,
+		DailyTotals:  DailyTotalsSummary{SchemaVersion: 2},
+	}
+
+	hBase, err := computeZReportHash(base)
+	if err != nil {
+		t.Fatalf("hash v%d: %v", ZSchemaVersionCourante, err)
+	}
+	hAncien, err := computeZReportHash(ancien)
+	if err != nil {
+		t.Fatalf("hash v2: %v", err)
+	}
+	if hBase == hAncien {
+		t.Error("deux rapports aux mêmes chiffres mais de versions différentes " +
+			"ont le même hash : schema_version n'entre pas dans l'empreinte")
+	}
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Contrat du 28 août 2026 — le Z compte les documents de vente qu'il agrège.
+//
+// invoice_count mêlait deux populations que le commerçant ne compte pas
+// ensemble : les tickets passés au comptoir et les factures faites hors caisse.
+// Le v4 les scinde SANS changer invoice_count, et l'invariant testé ici est
+// celui qui garantit que la scission n'a rien perdu ni rien inventé.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Le cas complet : deux tickets, une facture hors caisse du jour, un avoir, une
+// conversion de ticket et une créance antérieure. Seuls les trois premiers
+// documents sont des ventes du jour ; les compteurs doivent le dire.
+func TestLesCompteursDeVenteScindentLaLigne1SansRienPerdre(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	caisse, session, jour := caisseEtSessionDuJour(t, app)
+	veille := time.Now().AddDate(0, 0, -10).Format("2006-01-02")
+
+	// Deux tickets de caisse — ligne 1, population « tickets ».
+	for _, ttc := range []float64{50.00, 30.00} {
+		creerEnregistrement(t, app, "invoices", map[string]any{
+			"owner_company": societeDeTest, "session": session.Id,
+			"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+			"total_ht": ttc / 1.2, "total_tva": ttc - ttc/1.2, "total_ttc": ttc,
+			"payment_method": "cb", "payment_method_label": "cb",
+		})
+	}
+
+	// Une facture hors caisse émise ET encaissée ce jour — ligne 1, population
+	// « factures ».
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"date": jour + " 11:00:00.000Z", "paid_at": jour + " 11:00:00.000Z",
+		"total_ht": 100.00, "total_tva": 20.00, "total_ttc": 120.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	// Un avoir de caisse — ligne 4. Ce n'est pas une vente.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "credit_note",
+		"total_ttc": -20.00, "refund_method": "cb",
+	})
+
+	// Une conversion de ticket en facture — dans AUCUNE ligne (z_lignes.go,
+	// estConversionDeTicket). Elle ne doit donc être ni un ticket, ni une
+	// facture : son chiffre d'affaires est déjà celui du ticket d'origine.
+	ticketConverti := creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"total_ht": 10.00, "total_tva": 2.00, "total_ttc": 12.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"original_invoice_id": ticketConverti.Id,
+		"date":                jour + " 12:00:00.000Z", "paid_at": jour + " 12:00:00.000Z",
+		"total_ht": 10.00, "total_tva": 2.00, "total_ttc": 12.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	// Une créance antérieure encaissée aujourd'hui — ligne 2, TTC seul. Ce
+	// n'est pas une vente du jour : son chiffre d'affaires a été déclaré à
+	// l'émission.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"date": veille + " 10:00:00.000Z", "paid_at": jour + " 14:00:00.000Z",
+		"total_ht": 250.00, "total_tva": 50.00, "total_ttc": 300.00,
+		"payment_method": "virement", "payment_method_label": "virement",
+	})
+
+	totaux := genererZ(t, app, caisse.Id, jour)
+
+	// Trois tickets sont passés au comptoir, mais l'un d'eux a été converti :
+	// le classificateur écarte la FACTURE de conversion, pas le ticket. Le
+	// ticket reste donc une vente du jour, et il est compté une fois.
+	if totaux.PosTicketCount != 3 {
+		t.Errorf("tickets = %d, attendu 3", totaux.PosTicketCount)
+	}
+	if totaux.ExternalInvoiceCount != 1 {
+		t.Errorf("factures hors caisse = %d, attendu 1 (la conversion et la "+
+			"créance n'en sont pas)", totaux.ExternalInvoiceCount)
+	}
+	if totaux.InvoiceCount != 4 {
+		t.Errorf("invoice_count = %d, attendu 4", totaux.InvoiceCount)
+	}
+	// L'invariant : la scission ne perd rien et n'invente rien.
+	if totaux.PosTicketCount+totaux.ExternalInvoiceCount != totaux.InvoiceCount {
+		t.Errorf("%d tickets + %d factures ≠ %d documents de la ligne 1",
+			totaux.PosTicketCount, totaux.ExternalInvoiceCount, totaux.InvoiceCount)
+	}
+	// Et un avoir n'est jamais une vente.
+	if totaux.CreditNotesCount != 1 {
+		t.Errorf("avoirs = %d, attendu 1", totaux.CreditNotesCount)
+	}
+}
+
+// Un rapport produit sous une règle antérieure ne prétend pas porter les
+// compteurs : ses champs valent zéro, et c'est `schema_version` — pas la valeur
+// des champs — qui dit s'il faut les lire. Un affichage qui branche sur « le
+// champ vaut 0 » lirait « aucune vente ce jour-là ».
+func TestUnRapportAnterieurNePretendPasPorterLesCompteurs(t *testing.T) {
+	if ZSchemaVersionCourante < 4 {
+		t.Fatalf("ZSchemaVersionCourante = %d : le contrat du 28 août 2026, où "+
+			"le Z compte ses tickets et ses factures, vaut 4", ZSchemaVersionCourante)
+	}
+
+	ancien := DailyTotalsSummary{SchemaVersion: 3, InvoiceCount: 12}
+	if ancien.PosTicketCount != 0 || ancien.ExternalInvoiceCount != 0 {
+		t.Fatalf("un rapport v3 relu porterait des compteurs : %d / %d",
+			ancien.PosTicketCount, ancien.ExternalInvoiceCount)
+	}
+	if ancien.SchemaVersion >= ZSchemaVersionCourante {
+		t.Errorf("un rapport v%d serait lu comme un v%d",
+			ancien.SchemaVersion, ZSchemaVersionCourante)
+	}
+}
+
+// Les compteurs entrent dans le hash. Sans cela, on pourrait réécrire le nombre
+// de tickets d'un document scellé sans rompre sa chaîne d'intégrité.
+func TestLesCompteursDeVenteEntrentDansLeHash(t *testing.T) {
+	base := func() *RapportZ {
+		return &RapportZ{
+			Number:      "Z-2026-000001",
+			Date:        "2026-08-28",
+			GeneratedAt: time.Unix(0, 0).UTC(),
+			DailyTotals: DailyTotalsSummary{
+				SchemaVersion:        ZSchemaVersionCourante,
+				InvoiceCount:         4,
+				PosTicketCount:       3,
+				ExternalInvoiceCount: 1,
+			},
+		}
+	}
+
+	reference, err := computeZReportHash(base())
+	if err != nil {
+		t.Fatalf("hash de référence: %v", err)
+	}
+
+	// Même invoice_count, scission différente : le hash doit changer.
+	autre := base()
+	autre.DailyTotals.PosTicketCount = 1
+	autre.DailyTotals.ExternalInvoiceCount = 3
+
+	hachéAutre, err := computeZReportHash(autre)
+	if err != nil {
+		t.Fatalf("hash comparé: %v", err)
+	}
+	if hachéAutre == reference {
+		t.Error("deux rapports aux compteurs différents ont le même hash : " +
+			"la scission n'est pas scellée")
+	}
+}
+
+// La liste des pièces doit être le détail EXACT des compteurs, et sa somme le
+// total de la ligne 1. Sinon le document se contredirait lui-même : un nombre
+// en tête, une liste en dessous, et pas le même argent.
+func TestLaListeDesDocumentsEstLeDetailExactDeLaLigne1(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	caisse, session, jour := caisseEtSessionDuJour(t, app)
+
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"number":   "TCK-001",
+		"date":     jour + " 10:00:00.000Z",
+		"total_ht": 41.67, "total_tva": 8.33, "total_ttc": 50.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"number": "FAC-001",
+		"date":   jour + " 11:00:00.000Z", "paid_at": jour + " 11:00:00.000Z",
+		"total_ht": 100.00, "total_tva": 20.00, "total_ttc": 120.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+	// Un avoir : il n'est pas une vente, il n'entre pas dans la liste.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "credit_note",
+		"number": "AV-001", "total_ttc": -20.00, "refund_method": "cb",
+	})
+
+	totaux := genererZ(t, app, caisse.Id, jour)
+
+	// Depuis le 28 août 2026 la liste couvre les QUATRE lignes : on isole la
+	// ligne 1 pour la confronter aux compteurs, qui ne parlent que d'elle.
+	ligne1 := make([]SalesDocument, 0)
+	var avoirs int
+	for _, doc := range totaux.SalesDocuments {
+		if doc.Line == LigneVentesDuJour.String() {
+			ligne1 = append(ligne1, doc)
+			continue
+		}
+		if doc.Line == LigneRemboursements.String() {
+			avoirs++
+			if doc.TotalHT != 0 || doc.TotalTVA != 0 {
+				t.Errorf("la pièce %s de la ligne 4 porte une base HT (%.2f / %.2f) : "+
+					"les lignes 2 à 4 sont en TTC seul", doc.Number, doc.TotalHT, doc.TotalTVA)
+			}
+		}
+	}
+
+	if len(ligne1) != totaux.InvoiceCount {
+		t.Fatalf("%d pièces en ligne 1 pour %d documents comptés",
+			len(ligne1), totaux.InvoiceCount)
+	}
+	if avoirs != 1 {
+		t.Errorf("%d avoirs listés, attendu 1 : la liste couvre les quatre lignes", avoirs)
+	}
+
+	var sommeTTC float64
+	var tickets, factures int
+	for _, doc := range ligne1 {
+		sommeTTC += doc.TotalTTC
+		switch doc.Kind {
+		case "ticket":
+			tickets++
+		case "facture":
+			factures++
+		default:
+			t.Errorf("pièce %s de nature inattendue en ligne 1 : %q", doc.Number, doc.Kind)
+		}
+	}
+
+	if roundAmount(sommeTTC) != totaux.TotalTTC {
+		t.Errorf("somme des pièces de la ligne 1 = %.2f, ligne 1 = %.2f",
+			roundAmount(sommeTTC), totaux.TotalTTC)
+	}
+	if tickets != totaux.PosTicketCount || factures != totaux.ExternalInvoiceCount {
+		t.Errorf("liste : %d tickets / %d factures ; compteurs : %d / %d",
+			tickets, factures, totaux.PosTicketCount, totaux.ExternalInvoiceCount)
+	}
+}
+
+// L'ordre de la liste est une condition du hash : PocketBase ne promet aucun
+// ordre à FindRecordsByFilter, et deux rejeux du même rapport doivent produire
+// le même hash. Le tri (date, numéro, id) est donc du calcul, pas de la
+// présentation.
+func TestLaListeDesDocumentsEstTrieeEtEntreDansLeHash(t *testing.T) {
+	base := func(docs []SalesDocument) *RapportZ {
+		return &RapportZ{
+			Number:      "Z-2026-000001",
+			Date:        "2026-08-28",
+			GeneratedAt: time.Unix(0, 0).UTC(),
+			DailyTotals: DailyTotalsSummary{
+				SchemaVersion:  ZSchemaVersionCourante,
+				InvoiceCount:   2,
+				SalesDocuments: docs,
+			},
+		}
+	}
+
+	avec := []SalesDocument{
+		{ID: "a", Number: "TCK-001", Kind: "ticket", TotalTTC: 50},
+		{ID: "b", Number: "FAC-001", Kind: "invoice", TotalTTC: 120},
+	}
+	sans := []SalesDocument{
+		{ID: "a", Number: "TCK-001", Kind: "ticket", TotalTTC: 50},
+		{ID: "b", Number: "FAC-001", Kind: "invoice", TotalTTC: 999},
+	}
+
+	hAvec, err := computeZReportHash(base(avec))
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	hSans, err := computeZReportHash(base(sans))
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	if hAvec == hSans {
+		t.Error("réécrire le montant d'une pièce listée ne change pas le hash : " +
+			"la liste n'est pas scellée")
+	}
+
+	// Et le tri est bien celui qu'annonce aggregateZ : deux ordres d'entrée
+	// différents doivent produire la MÊME liste, donc le même hash.
+	app := nouvelleAppDeTest(t)
+	caisse, session, jour := caisseEtSessionDuJour(t, app)
+	for _, num := range []string{"TCK-003", "TCK-001", "TCK-002"} {
+		creerEnregistrement(t, app, "invoices", map[string]any{
+			"owner_company": societeDeTest, "session": session.Id,
+			"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+			"number": num, "date": jour + " 10:00:00.000Z",
+			"total_ht": 10.00, "total_tva": 2.00, "total_ttc": 12.00,
+			"payment_method": "cb", "payment_method_label": "cb",
+		})
+	}
+
+	totaux := genererZ(t, app, caisse.Id, jour)
+	for i := 1; i < len(totaux.SalesDocuments); i++ {
+		if totaux.SalesDocuments[i-1].Number > totaux.SalesDocuments[i].Number {
+			t.Fatalf("liste non triée : %q avant %q",
+				totaux.SalesDocuments[i-1].Number, totaux.SalesDocuments[i].Number)
+		}
+	}
+}
+
+// La liste couvre les quatre lignes, comme le journal des ventes — et une
+// conversion de ticket n'y figure pas, parce qu'elle n'est comptée dans aucune
+// ligne. Le gardien qui compte lit les mêmes règles que celui qui liste : le
+// classificateur décide une fois, pour les deux.
+func TestLaListeCouvreLesQuatreLignesEtPasLesConversions(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+	caisse, session, jour := caisseEtSessionDuJour(t, app)
+	veille := time.Now().AddDate(0, 0, -10).Format("2006-01-02")
+
+	// Ligne 1 — un ticket, converti ensuite en facture.
+	ticket := creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": session.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"number": "TCK-001", "date": jour + " 10:00:00.000Z",
+		"total_ht": 41.67, "total_tva": 8.33, "total_ttc": 50.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"number": "FAC-CONV", "original_invoice_id": ticket.Id,
+		"date": jour + " 10:30:00.000Z", "paid_at": jour + " 10:30:00.000Z",
+		"total_ht": 41.67, "total_tva": 8.33, "total_ttc": 50.00,
+		"payment_method": "cb", "payment_method_label": "cb",
+	})
+
+	// Ligne 2 — une facture d'un jour antérieur, encaissée aujourd'hui.
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "is_pos_ticket": false,
+		"status": "issued", "invoice_type": "invoice", "is_paid": true,
+		"number": "FAC-ANC", "date": veille + " 09:00:00.000Z",
+		"paid_at":  jour + " 14:00:00.000Z",
+		"total_ht": 250.00, "total_tva": 50.00, "total_ttc": 300.00,
+		"payment_method": "virement", "payment_method_label": "virement",
+	})
+
+	totaux := genererZ(t, app, caisse.Id, jour)
+
+	parLigne := make(map[string]int)
+	for _, doc := range totaux.SalesDocuments {
+		parLigne[doc.Line]++
+		if doc.Number == "FAC-CONV" {
+			t.Error("une conversion de ticket est listée : elle n'est comptée " +
+				"dans aucune ligne, elle ne doit se lire nulle part")
+		}
+		if doc.Heure == "" {
+			t.Errorf("pièce %s sans heure", doc.Number)
+		}
+	}
+
+	if parLigne[LigneVentesDuJour.String()] != 1 {
+		t.Errorf("ligne 1 : %d pièces, attendu 1", parLigne[LigneVentesDuJour.String()])
+	}
+	if parLigne[LigneCreances.String()] != 1 {
+		t.Errorf("ligne 2 : %d pièces, attendu 1", parLigne[LigneCreances.String()])
 	}
 }

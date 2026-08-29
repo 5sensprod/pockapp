@@ -1,17 +1,10 @@
 // frontend/modules/cash/CashTerminalPage.tsx
-import { useNavigate, useParams } from '@tanstack/react-router'
-import {
-	Loader2,
-	Monitor,
-	Package,
-	ShieldAlert,
-	ShoppingCart,
-	Vault,
-} from 'lucide-react'
+import { useParams } from '@tanstack/react-router'
+import { Loader2, Monitor, Package, ShoppingCart, Vault } from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 
-import { EmptyState } from '@/components/module-ui'
+import { Button } from '@/components/ui/button'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { releaseControl, takeControl, useDisplay } from '@/lib/pos/display'
 import { openReceiptPreviewWindow } from '@/lib/pos/posPreview'
@@ -22,7 +15,9 @@ import { useCustomerDisplay } from '@/lib/pos/useCustomerDisplay'
 import {
 	getOrCreateDefaultCustomer,
 	useActiveCashSession,
-	useCashRegisters,
+	useFondsDuJour,
+	useOpenCashSession,
+	useZReportList,
 } from '@/lib/queries/cash'
 import {
 	type CatalogProductShape,
@@ -32,11 +27,11 @@ import { type Company, getLogoUrl, useCompany } from '@/lib/queries/companies'
 import { fetchAsDataUrl } from '@/lib/queries/logoToDataUrl'
 import { cartItemToPosItem, useCreatePosTicket } from '@/lib/queries/pos'
 import { recordSale } from '@/lib/queries/stock-adjust'
-import { clearLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import { CreateProductDialog } from '@/modules/cash/CreateProductDialog'
 import { CashModuleShell } from './CashModuleShell'
+import { OpenSessionDialog } from './components/sessions/OpenSessionDialog'
 
 import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
 import {
@@ -80,7 +75,6 @@ function TerminalDrawerButton() {
 }
 
 export function CashTerminalPage() {
-	const navigate = useNavigate()
 	const { cashRegisterId } = useParams({
 		from: '/cash/terminal/$cashRegisterId/',
 	})
@@ -111,9 +105,40 @@ export function CashTerminalPage() {
 
 	const searchInputRef = React.useRef<HTMLInputElement>(null)
 
-	const { data: registers } = useCashRegisters(activeCompanyId ?? undefined)
 	const { data: activeSession, isLoading: isSessionLoading } =
 		useActiveCashSession(cashRegisterId)
+
+	// ── Le rituel du matin (E-5, 29 août 2026) ───────────────────────────────
+	//
+	// Tant que la journée n'a pas commencé, le terminal n'affiche pas les
+	// produits : il affiche le dernier Z et un bouton. Le fonds proposé est le
+	// tiroir de la veille au soir — calculé, jamais ressaisi
+	// (backend/reports/fonds_reporte.go).
+	const isSessionOpen = activeSession?.status === 'open'
+	const { data: zReports } = useZReportList(cashRegisterId, { limit: 1 })
+	const { data: fondsDuJour } = useFondsDuJour(activeCompanyId ?? undefined)
+	const openSession = useOpenCashSession()
+	const [showOuvertureDialog, setShowOuvertureDialog] = React.useState(false)
+
+	const dernierZ = zReports?.[0] ?? null
+
+	const handleCommencerLaJournee = React.useCallback(
+		async (openingFloat: number) => {
+			if (!activeCompanyId) {
+				toast.error('Entreprise manquante')
+				return
+			}
+			await openSession.mutateAsync({
+				ownerCompanyId: activeCompanyId,
+				cashRegisterId,
+				openingFloat,
+				openedBy: user?.id,
+			})
+			setShowOuvertureDialog(false)
+			toast.success('Journée ouverte')
+		},
+		[activeCompanyId, cashRegisterId, openSession, user?.id],
+	)
 
 	// Le catalogue vient de PocketBase depuis le 19 août 2026 (front E) : plus
 	// de connexion à attendre pour encaisser, et la recherche part au serveur —
@@ -142,8 +167,6 @@ export function CashTerminalPage() {
 	)
 
 	const createPosTicket = useCreatePosTicket()
-	const currentRegister = registers?.find((r) => r.id === cashRegisterId)
-	const isSessionOpen = activeSession?.status === 'open'
 
 	const { data: activeCompany } = useCompany(activeCompanyId ?? undefined)
 
@@ -468,8 +491,8 @@ export function CashTerminalPage() {
 
 	const handleConfirmPayment = React.useCallback(
 		async (finalEntries?: PaymentEntry[]) => {
-			if (!activeCompanyId || !activeSession) {
-				toast.error('Session ou entreprise manquante')
+			if (!activeCompanyId) {
+				toast.error('Entreprise manquante')
 				return
 			}
 			const entries = finalEntries ?? paymentEntries
@@ -499,7 +522,9 @@ export function CashTerminalPage() {
 				const result = await createPosTicket.mutateAsync({
 					owner_company: activeCompanyId,
 					cash_register: cashRegisterId,
-					session_id: activeSession.id,
+					// Facultatif depuis le 29 août 2026 : sans session connue, le
+					// backend ouvre — ou retrouve — celle du jour (E-1).
+					session_id: activeSession?.id,
 					customer_id: defaultCustomerId,
 					items: cartManager.cart.map(cartItemToPosItem),
 					payment_method: mainMethodCode,
@@ -603,6 +628,10 @@ export function CashTerminalPage() {
 		)
 	}
 
+	// ── La journée n'a pas commencé ──────────────────────────────────────────
+	//
+	// Le geste du matin est explicite — décision du propriétaire, 29 août 2026 —
+	// mais il ne demande AUCUNE saisie de mémoire : le fonds est proposé.
 	if (!isSessionOpen) {
 		return (
 			<CashModuleShell
@@ -610,21 +639,55 @@ export function CashTerminalPage() {
 				pageTitle='Terminal'
 				pageIcon={Monitor}
 			>
-				<EmptyState
-					icon={ShieldAlert}
-					title='Aucune session ouverte'
-					description={`La caisse "${currentRegister?.name ?? cashRegisterId}" n'a pas de session active. Ouvrez une session avant d'accéder au terminal.`}
-					fullPage
-					actions={[
-						{
-							label: 'Configurer la caisse',
-							variant: 'secondary' as const,
-							onClick: () => {
-								clearLastRouteForModule('cash')
-								navigate({ to: '/cash' })
-							},
-						},
-					]}
+				<div className='flex flex-1 flex-col items-center justify-center gap-6 py-24'>
+					<div className='text-center space-y-2'>
+						<h2 className='text-xl font-semibold'>
+							La journée n'a pas commencé
+						</h2>
+						{dernierZ ? (
+							<p className='text-sm text-muted-foreground'>
+								Dernière clôture :{' '}
+								<span className='font-medium text-foreground'>
+									{dernierZ.number}
+								</span>{' '}
+								du{' '}
+								{new Date(dernierZ.date).toLocaleDateString('fr-FR', {
+									day: '2-digit',
+									month: 'long',
+									year: 'numeric',
+								})}
+							</p>
+						) : (
+							<p className='text-sm text-muted-foreground'>
+								Aucun rapport Z n'a encore été émis sur cette caisse.
+							</p>
+						)}
+						{fondsDuJour && (
+							<p className='text-sm text-muted-foreground'>
+								Tiroir de la veille au soir :{' '}
+								<span className='font-medium text-foreground'>
+									{fondsDuJour.fonds.toFixed(2)} €
+								</span>
+							</p>
+						)}
+					</div>
+
+					<Button size='lg' onClick={() => setShowOuvertureDialog(true)}>
+						Commencer la journée
+					</Button>
+				</div>
+
+				<OpenSessionDialog
+					open={showOuvertureDialog}
+					onOpenChange={setShowOuvertureDialog}
+					onSubmit={handleCommencerLaJournee}
+					lastKnownFloat={fondsDuJour?.fonds ?? null}
+					lastClosedAtLabel={
+						dernierZ
+							? new Date(dernierZ.date).toLocaleDateString('fr-FR')
+							: null
+					}
+					isSubmitting={openSession.isPending}
 				/>
 			</CashModuleShell>
 		)

@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // ============================================================================
@@ -58,11 +60,17 @@ func parsePocketBaseDate(dateStr string) time.Time {
 }
 
 func getUserName(app *pocketbase.PocketBase, userId string) string {
+	return getUserNameDao(app.Dao(), userId)
+}
+
+// getUserNameDao est la même règle, sans app : le journal des espèces et le
+// fonds reporté (backend/session_du_jour.go) n'ont qu'un dao sous la main.
+func getUserNameDao(dao *daos.Dao, userId string) string {
 	if userId == "" {
 		return ""
 	}
 
-	user, err := app.Dao().FindRecordById("users", userId)
+	user, err := dao.FindRecordById("users", userId)
 	if err != nil {
 		return userId
 	}
@@ -749,9 +757,65 @@ type SessionSummary struct {
 	VATByRate         map[string]VATDetail `json:"vat_by_rate"` // 🆕
 }
 
+// SalesDocument est une pièce de la ligne 1 — une vente du jour, telle que le
+// rapport l'a agrégée au moment de sa clôture.
+//
+// Contrat du 28 août 2026. La liste est STOCKÉE dans le document et HACHÉE, et
+// non rechargée à l'affichage : jusqu'ici le PDF listait les tickets en
+// interrogeant /api/pos/session/:id/tickets à l'impression, si bien qu'un
+// document modifié après la clôture changeait le PDF sans rompre la chaîne
+// d'intégrité. Une pièce citée dans un document scellé doit être celle qui a
+// été comptée, pas celle qu'on retrouve aujourd'hui.
+//
+// Élargie le 28 août 2026 aux QUATRE lignes, sur le modèle du journal des
+// ventes : `Kind` est la nature (`ticket`, `facture`, `acompte`, `solde`,
+// `avoir`) et `Line` la ligne du Z où la pièce a été comptée. Les deux viennent
+// des fonctions déjà partagées — `natureDe`, `heureDe` (journal.go) et
+// `LigneZ.String()` (z_lignes.go) : le Z et le journal nomment les mêmes choses
+// des mêmes mots, parce qu'ils appellent le même code.
+//
+// `TotalTTC` est le montant COMPTÉ dans sa ligne, pas le total du document :
+// pour une parente amputée de ses acomptes, les deux diffèrent. Pour les lignes
+// 2 à 4, `TotalHT` et `TotalTVA` valent 0 — ces lignes sont en TTC seul, et
+// leur donner une base HT rouvrirait l'addition que le contrat interdit.
+//
+// `Customer` est FIGÉ à la clôture. Un client renommé ou effacé gardera son
+// ancien nom dans les Z passés : c'est ce qu'on attend d'un document scellé,
+// et c'est une donnée nominative de plus dans z_reports.
+type SalesDocument struct {
+	ID       string  `json:"id"`
+	Number   string  `json:"number"`
+	Kind     string  `json:"kind"`
+	Line     string  `json:"line"`
+	Customer string  `json:"customer"`
+	IssuedAt string  `json:"issued_at"`
+	Heure    string  `json:"heure"`
+	Method   string  `json:"method"`
+	TotalHT  float64 `json:"total_ht"`
+	TotalTVA float64 `json:"total_tva"`
+	TotalTTC float64 `json:"total_ttc"`
+}
+
 type DailyTotalsSummary struct {
-	SessionsCount       int                             `json:"sessions_count"`
-	InvoiceCount        int                             `json:"invoice_count"`
+	SessionsCount int `json:"sessions_count"`
+	InvoiceCount  int `json:"invoice_count"`
+	// ── Les deux populations de la ligne 1 (contrat du 28 août 2026) ────────
+	// InvoiceCount ne change ni de nom ni de valeur : il reste le nombre de
+	// documents de la ligne 1. Les deux champs ci-dessous le SCINDENT, parce
+	// que le commerçant ne compte pas de la même façon ce qui est passé au
+	// comptoir et ce qui a été facturé hors caisse.
+	//
+	// Invariant : PosTicketCount + ExternalInvoiceCount = InvoiceCount. Ni les
+	// avoirs (ligne 4), ni les conversions de ticket (LigneAucune), ni les
+	// créances (ligne 2), ni les acomptes (ligne 3) n'entrent dans l'un des
+	// trois. Gardiens : cash_reports_test.go.
+	PosTicketCount       int `json:"pos_ticket_count"`
+	ExternalInvoiceCount int `json:"external_invoice_count"`
+
+	// Le détail derrière ces deux nombres, dans un ordre stable (date, numéro,
+	// id) — l'ordre EST une condition du hash : FindRecordsByFilter n'en promet
+	// aucun, et deux rejeux ne doivent pas produire deux hash.
+	SalesDocuments      []SalesDocument                 `json:"sales_documents"`
 	TotalHT             float64                         `json:"total_ht"`
 	TotalTVA            float64                         `json:"total_tva"`
 	TotalTTC            float64                         `json:"total_ttc"`
@@ -791,9 +855,20 @@ type DailyTotalsSummary struct {
 }
 
 // ZSchemaVersionCourante dit sous quelle règle un rapport a été produit.
-// 1 = règle d'origine ; 2 = contrat « un total, quatre lignes » du 23 août 2026.
-// Sans elle, un Z relu dans six mois ne dirait pas ce que son total_ht recouvre.
-const ZSchemaVersionCourante = 2
+// 1 = règle d'origine ; 2 = contrat « un total, quatre lignes » du 23 août 2026 ;
+// 3 = contrat du 27 août 2026, où le Z ne porte plus le rapprochement espèces ;
+// 4 = contrat du 28 août 2026, où le Z ne porte plus le détail par session mais
+// compte séparément ses tickets et ses factures hors caisse ; 5 = même jour, le
+// Z porte en outre la LISTE des documents de sa ligne 1 ; 6 = la liste couvre
+// les QUATRE lignes, avec heure, client et ligne — le modèle du journal.
+// Sans elle, un Z relu dans six mois ne dirait pas ce que son total_ht recouvre,
+// ni si l'absence de rapprochement est un contrat ou une donnée perdue.
+//
+// ⚠️ Elle entre dans computeZReportHash : la faire passer de 2 à 3 refait les
+// hash de tous les rapports rejoués, sans déplacer un centime — le
+// rapprochement, lui, n'a jamais été haché (voir z_repair.go, « Écrire dès que
+// le CONTENU diffère »).
+const ZSchemaVersionCourante = 6
 
 // ============================================================================
 // AGRÉGATION D'UN RAPPORT Z
@@ -828,6 +903,9 @@ func aggregateZ(
 	var sessionsSummaries []SessionSummary
 	var sessionIds []string
 	var totalInvoiceCount int
+	// La liste des pièces de la ligne 1, remplie dans les deux boucles
+	// ci-dessous puis triée. Un document n'y entre que s'il est compté.
+	salesDocuments := make([]SalesDocument, 0)
 	var totalHT, totalTVA, totalTTC float64
 	var totalCashExpected, totalCashCounted, totalCashDifference float64
 	var totalDiscounts float64
@@ -869,6 +947,7 @@ func aggregateZ(
 		customerTypeCacheZ[customerID] = ct
 		return ct
 	}
+	nomDuClient := resolveurNomClient(app)
 	globalByCustomerType := make(map[string]*CustomerTypeSummary)
 	ensureGlobalCustomerType := func(ct string) {
 		if _, ok := globalByCustomerType[ct]; !ok {
@@ -928,6 +1007,18 @@ func aggregateZ(
 					}
 					sessionRefundsByMethod[rm] += amt
 					refundsByMethod[rm] += amt
+
+					salesDocuments = append(salesDocuments, SalesDocument{
+						ID:       inv.Id,
+						Number:   inv.GetString("number"),
+						Kind:     natureDe(inv),
+						Line:     LigneRemboursements.String(),
+						Customer: nomDuClient(inv.GetString("customer")),
+						IssuedAt: inv.GetString("date"),
+						Heure:    heureDe(inv),
+						Method:   rm,
+						TotalTTC: roundAmount(amt),
+					})
 					// Ligne 4 : les remboursements viennent EN DÉDUCTION du
 					// total encaissé.
 					collectedByMethod[rm] -= amt
@@ -960,6 +1051,20 @@ func aggregateZ(
 						cashFromSales += ttc
 					}
 				}
+
+				salesDocuments = append(salesDocuments, SalesDocument{
+					ID:       inv.Id,
+					Number:   inv.GetString("number"),
+					Kind:     "ticket",
+					Line:     LigneVentesDuJour.String(),
+					Customer: nomDuClient(inv.GetString("customer")),
+					IssuedAt: inv.GetString("date"),
+					Heure:    heureDe(inv),
+					Method:   libelleMoyenPaiement(inv),
+					TotalHT:  roundAmount(ht),
+					TotalTVA: roundAmount(tva),
+					TotalTTC: roundAmount(ttc),
+				})
 
 				// Déléguer l'agrégation globale (totaux, VAT global, remises, moyens)
 				aggregateInvoiceIntoTotals(
@@ -1129,6 +1234,37 @@ func aggregateZ(
 	for _, inv := range b2bInvoices {
 		ligne, montant := classificateur.classer(inv)
 
+		// La pièce entre dans la liste dès qu'elle entre dans une ligne, et
+		// avec le montant COMPTÉ — celui du classificateur, qui peut être
+		// inférieur au total du document (parente amputée de ses acomptes).
+		// LigneAucune ne produit rien : une conversion de ticket n'est comptée
+		// nulle part, elle ne se lit donc nulle part.
+		if ligne != LigneAucune {
+			moyen := libelleMoyenPaiement(inv)
+			if ligne == LigneRemboursements {
+				if rm := inv.GetString("refund_method"); rm != "" {
+					moyen = rm
+				}
+			}
+			piece := SalesDocument{
+				ID:       inv.Id,
+				Number:   inv.GetString("number"),
+				Kind:     natureDe(inv),
+				Line:     ligne.String(),
+				Customer: nomDuClient(inv.GetString("customer")),
+				IssuedAt: inv.GetString("date"),
+				Heure:    heureDe(inv),
+				Method:   moyen,
+				TotalTTC: roundAmount(montant),
+			}
+			// Seule la ligne 1 porte une base HT — les autres sont en TTC seul.
+			if ligne == LigneVentesDuJour {
+				piece.TotalHT = roundAmount(inv.GetFloat("total_ht"))
+				piece.TotalTVA = roundAmount(inv.GetFloat("total_tva"))
+			}
+			salesDocuments = append(salesDocuments, piece)
+		}
+
 		switch ligne {
 		case LigneAucune:
 			// Conversion de ticket, parente dont le solde est facturé, ou avoir
@@ -1174,8 +1310,16 @@ func aggregateZ(
 
 		case LigneCreances:
 			// Émise un jour antérieur : encaissement, JAMAIS du chiffre
-			// d'affaires du jour. Sa TVA a déjà été déclarée à l'émission ; la
-			// fondre dans la ligne 1 la ferait déclarer deux fois.
+			// d'affaires du jour. Sa TVA relève de la période d'exigibilité du
+			// document d'origine — à la livraison pour un bien, à
+			// l'encaissement pour une prestation sans option pour les débits
+			// (CGI art. 269-2) ; la fondre dans la ligne 1 la rattacherait au
+			// mauvais mois dans les deux cas. La ligne 2 est en TTC seul, ce
+			// qui reste juste sous les deux régimes : le Z n'affirme rien sur
+			// cette TVA, il refuse seulement de la remettre dans la ligne 1.
+			// Question ouverte au comptable, 28 août 2026 : si des prestations
+			// sont concernées, le Z devra porter une TVA de ligne 2 qu'il ne
+			// calcule pas aujourd'hui.
 			ligneCreances.ajouter(montant)
 			collectedByMethod[libelleMoyenPaiement(inv)] += montant
 
@@ -1187,7 +1331,10 @@ func aggregateZ(
 		}
 	}
 
-	// Fusionner dans les compteurs globaux
+	// Fusionner dans les compteurs globaux.
+	// posTicketCount est figé AVANT la fusion : après, totalInvoiceCount porte
+	// les deux populations et la scission ne serait plus reconstructible.
+	posTicketCount := totalInvoiceCount
 	totalInvoiceCount += b2bInvoiceCount
 	creditNotesCount += b2bCreditNotesCount
 	creditNotesTotal += b2bCreditNotesTotal
@@ -1237,6 +1384,22 @@ func aggregateZ(
 	for k, v := range collectedByMethod {
 		collectedByMethod[k] = roundAmount(v)
 	}
+	// Ordre stable. FindRecordsByFilter est appelée sans tri (sort "") et
+	// PocketBase n'en promet aucun : sans ce tri, deux rejeux du MÊME rapport
+	// produiraient deux listes différemment ordonnées, donc deux hash — la
+	// chaîne d'intégrité se romprait sans qu'un centime ait bougé. L'id
+	// départage, parce que deux tickets peuvent partager date et numéro vide.
+	sort.Slice(salesDocuments, func(i, j int) bool {
+		a, b := salesDocuments[i], salesDocuments[j]
+		if a.IssuedAt != b.IssuedAt {
+			return a.IssuedAt < b.IssuedAt
+		}
+		if a.Number != b.Number {
+			return a.Number < b.Number
+		}
+		return a.ID < b.ID
+	})
+
 	collectedTTC := roundAmount(
 		totalTTC + ligneCreances.TTC + ligneAcomptes.TTC - creditNotesTotal,
 	)
@@ -1245,22 +1408,25 @@ func aggregateZ(
 		Sessions:   sessionsSummaries,
 		SessionIDs: sessionIds,
 		DailyTotals: DailyTotalsSummary{
-			SessionsCount:       len(sessions),
-			InvoiceCount:        totalInvoiceCount,
-			TotalHT:             totalHT,
-			TotalTVA:            totalTVA,
-			TotalTTC:            totalTTC,
-			NetTTC:              roundAmount(totalTTC - creditNotesTotal),
-			ByMethod:            totalsByMethod,
-			VATByRate:           globalVATByRate,
-			TotalCashExpected:   totalCashExpected,
-			TotalCashCounted:    totalCashCounted,
-			TotalCashDifference: totalCashDifference,
-			TotalDiscounts:      totalDiscounts,
-			CreditNotesCount:    creditNotesCount,
-			CreditNotesTotal:    creditNotesTotal,
-			RefundsByMethod:     refundsByMethod,
-			ByCustomerType:      globalByCustomerType,
+			SessionsCount:        len(sessions),
+			InvoiceCount:         totalInvoiceCount,
+			PosTicketCount:       posTicketCount,
+			ExternalInvoiceCount: b2bInvoiceCount,
+			SalesDocuments:       salesDocuments,
+			TotalHT:              totalHT,
+			TotalTVA:             totalTVA,
+			TotalTTC:             totalTTC,
+			NetTTC:               roundAmount(totalTTC - creditNotesTotal),
+			ByMethod:             totalsByMethod,
+			VATByRate:            globalVATByRate,
+			TotalCashExpected:    totalCashExpected,
+			TotalCashCounted:     totalCashCounted,
+			TotalCashDifference:  totalCashDifference,
+			TotalDiscounts:       totalDiscounts,
+			CreditNotesCount:     creditNotesCount,
+			CreditNotesTotal:     creditNotesTotal,
+			RefundsByMethod:      refundsByMethod,
+			ByCustomerType:       globalByCustomerType,
 
 			SchemaVersion:               ZSchemaVersionCourante,
 			CollectedTTC:                collectedTTC,
@@ -1664,6 +1830,15 @@ func computeZReportHash(rapport *RapportZ) (string, error) {
 		// règles différentes seraient indiscernables. Les collected_* scellent
 		// l'argent que la seule ligne 1 ne dit pas — sans eux, la moitié du
 		// total encaissé resterait hors de la chaîne d'intégrité.
+		// Contrat du 28 août 2026. Les deux compteurs entrent dans la chaîne
+		// d'intégrité : un Z scellé doit se relire sans qu'on recalcule quoi que
+		// ce soit sur des documents qui ont pu changer depuis.
+		"pos_ticket_count":       rapport.DailyTotals.PosTicketCount,
+		"external_invoice_count": rapport.DailyTotals.ExternalInvoiceCount,
+		// La liste entre dans le hash : sans elle, les pièces citées par un
+		// document scellé pourraient être réécrites sans rompre la chaîne.
+		"sales_documents": rapport.DailyTotals.SalesDocuments,
+
 		"schema_version":                 rapport.DailyTotals.SchemaVersion,
 		"collected_ttc":                  rapport.DailyTotals.CollectedTTC,
 		"collected_by_method":            rapport.DailyTotals.CollectedByMethod,
@@ -1721,6 +1896,9 @@ func saveZReport(app *pocketbase.PocketBase, rapport *RapportZ, ownerCompany str
 	record.Set("session_ids", sessionIds)
 	record.Set("sessions_count", rapport.DailyTotals.SessionsCount)
 	record.Set("invoice_count", rapport.DailyTotals.InvoiceCount)
+	record.Set("pos_ticket_count", rapport.DailyTotals.PosTicketCount)
+	record.Set("external_invoice_count", rapport.DailyTotals.ExternalInvoiceCount)
+	record.Set("sales_documents", rapport.DailyTotals.SalesDocuments)
 	record.Set("total_ht", rapport.DailyTotals.TotalHT)
 	record.Set("total_tva", rapport.DailyTotals.TotalTVA)
 	record.Set("total_ttc", rapport.DailyTotals.TotalTTC)
@@ -1817,6 +1995,19 @@ func ListZReports(app *pocketbase.PocketBase, cashRegisterID string, limit int) 
 	return items, nil
 }
 
+// getMetaMap lit le champ JSON `meta` d'un enregistrement.
+//
+// ⚠️ Il ne suffit PAS de tenter `raw.(map[string]any)` : PocketBase rend un
+// champ JSON sous la forme `types.JsonRaw` — des octets —, jamais une map. La
+// version précédente ne testait que la map, rendait donc toujours nil, et
+// `isCashInFromSale`, sa seule cliente, aurait classé tous les mouvements comme
+// « pas une vente » si elle avait jamais été appelée. Elle ne l'était pas —
+// aucun appelant, contrat v3 §6 question D : le défaut n'a donc jamais eu
+// d'effet, et il en aurait eu un le jour où on l'aurait branchée. Mesuré le
+// 28 août 2026 en branchant la règle dans le journal des espèces : 0 mouvement
+// de vente reconnu au lieu de tous. `isCashInFromSale` est supprimée, et la
+// règle vit désormais dans `estMouvementDeVente` (journal_especes.go), qui lit
+// `related_invoice` OU `meta` — la question D est refermée par là.
 func getMetaMap(rec *models.Record) map[string]any {
 	raw := rec.Get("meta")
 	if raw == nil {
@@ -1825,22 +2016,27 @@ func getMetaMap(rec *models.Record) map[string]any {
 	if m, ok := raw.(map[string]any); ok {
 		return m
 	}
-	return nil
-}
 
-func isCashInFromSale(mov *models.Record) bool {
-	meta := getMetaMap(mov)
-	if meta == nil {
-		return false
+	var octets []byte
+	switch v := raw.(type) {
+	case types.JsonRaw:
+		octets = v
+	case []byte:
+		octets = v
+	case string:
+		octets = []byte(v)
+	default:
+		return nil
 	}
-	// ✅ Ton cas: meta.invoice_id / meta.invoice_number
-	if v, ok := meta["invoice_id"].(string); ok && v != "" {
-		return true
+	if len(octets) == 0 {
+		return nil
 	}
-	if v, ok := meta["invoice_number"].(string); ok && v != "" {
-		return true
+
+	var m map[string]any
+	if err := json.Unmarshal(octets, &m); err != nil {
+		return nil
 	}
-	return false
+	return m
 }
 
 // libelleMoyenPaiement rend le moyen de paiement d'un document, ou « Non précisé »

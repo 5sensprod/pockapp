@@ -1,17 +1,19 @@
+import {
+	useActiveCashSession,
+	useCloseCashSession,
+	useLastClosedCashSession,
+	useOpenCashSession,
+} from '@/lib/queries/cash'
 // frontend/modules/cash/components/hooks/useSessionManager.ts
 import * as React from 'react'
 import { toast } from 'sonner'
-import {
-	useActiveCashSession,
-	useLastClosedCashSession,
-	useOpenCashSession,
-	useCloseCashSession,
-} from '@/lib/queries/cash'
 import { toFiniteNumber } from '../types/denominations'
 
 interface UseSessionManagerProps {
 	selectedRegisterId?: string
 	userId?: string
+	/** Nom de l'utilisateur connecté — il REMPLACE la session dans les écrans. */
+	userName?: string
 	ownerCompanyId?: string
 	isAuthenticated: boolean
 }
@@ -22,6 +24,7 @@ interface UseSessionManagerProps {
 export function useSessionManager({
 	selectedRegisterId,
 	userId,
+	userName,
 	ownerCompanyId,
 	isAuthenticated,
 }: UseSessionManagerProps) {
@@ -44,9 +47,13 @@ export function useSessionManager({
 	const isMutatingSession =
 		openSessionMutation.isPending || closeSessionMutation.isPending
 
-	const canToggleSession =
+	// Le comptage du tiroir est un geste FACULTATIF (E-3) : il n'est possible
+	// que si la journée a une session, c'est-à-dire s'il y a eu au moins un
+	// encaissement. Il n'ouvre ni ne ferme plus rien.
+	const canCountDrawer =
 		isAuthenticated &&
 		!!selectedRegisterId &&
+		isSessionOpen &&
 		!isMutatingSession &&
 		!isSessionLoading
 
@@ -86,14 +93,17 @@ export function useSessionManager({
 		})
 	}, [lastClosedSession])
 
-	// Label de status
+	// Le badge nomme l'UTILISATEUR, plus la session (E-3, 29 août 2026).
+	//
+	// Les sessions sont devenues implicites : « Aucune session ouverte » ne
+	// désignait plus une anomalie mais une journée sans encaissement, et le
+	// commerçant n'a rien à en faire. Ce qu'il veut lire, c'est QUI tient la
+	// caisse — c'est aussi ce que porte le ticket (`sold_by` / `cashier_id`).
 	const sessionLabel = React.useMemo(() => {
 		if (!isAuthenticated) return 'Utilisateur non connecté'
-		if (isSessionLoading || isSessionFetching)
-			return 'Chargement de la session...'
-		if (isSessionOpen) return 'Session en cours'
-		return 'Aucune session ouverte'
-	}, [isAuthenticated, isSessionLoading, isSessionFetching, isSessionOpen])
+		if (isSessionLoading || isSessionFetching) return 'Chargement…'
+		return userName?.trim() || 'Caisse'
+	}, [isAuthenticated, isSessionLoading, isSessionFetching, userName])
 
 	// Couleurs du badge
 	const sessionPillColor = isSessionOpen ? 'bg-emerald-500' : 'bg-slate-400'
@@ -158,7 +168,7 @@ export function useSessionManager({
 		isSessionLoading,
 		isSessionFetching,
 		isMutatingSession,
-		canToggleSession,
+		canCountDrawer,
 
 		// Dernière session fermée
 		lastClosedSession,

@@ -311,6 +311,83 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 	)
 
 	// ----------------------------------------------------------------------
+	// FONDS PROPOSÉ POUR LA JOURNÉE — lecture seule
+	// ----------------------------------------------------------------------
+	//
+	// Ce que le tiroir devrait contenir ce matin : le dernier comptage réel,
+	// augmenté des flux écoulés depuis (backend/reports/fonds_reporte.go, E-2).
+	// L'écran « Commencer la journée » le PROPOSE, prérempli et modifiable — le
+	// commerçant peut avoir ajusté son fonds entre-temps.
+	//
+	// Aucun calcul de tiroir ici : on appelle FondsReporte, qui lit lui-même le
+	// journal des espèces. Un second calcul, c'est une seconde vérité.
+	router.GET("/api/cash/fonds-du-jour", func(c echo.Context) error {
+		ownerCompany := c.QueryParam("owner_company")
+		if ownerCompany == "" {
+			return apis.NewBadRequestError("owner_company requis", nil)
+		}
+
+		jour := c.QueryParam("date")
+		if jour == "" {
+			jour = time.Now().Format("2006-01-02")
+		}
+
+		fonds, err := reports.FondsReporte(app.Dao(), ownerCompany, jour)
+		if err != nil {
+			return apis.NewApiError(500, "Calcul du fonds impossible", err)
+		}
+
+		return c.JSON(http.StatusOK, echo.Map{
+			"date":  jour,
+			"fonds": fonds,
+		})
+	},
+		apis.RequireRecordAuth(),
+	)
+
+	// ----------------------------------------------------------------------
+	// COMPTAGE DU TIROIR — geste FACULTATIF, qui ne clôture rien (E-3)
+	// ----------------------------------------------------------------------
+	//
+	// Depuis le 29 août 2026, les sessions sont implicites : une par journée,
+	// ouverte au premier encaissement (backend/session_du_jour.go). Le comptage
+	// du tiroir cesse donc d'être une condition pour clôturer — mais il ne peut
+	// PAS passer par /close, et c'est structurel : une session fermée en milieu
+	// de journée serait immédiatement remplacée par une seconde au prochain
+	// encaissement, et la journée porterait deux sessions au lieu d'une.
+	//
+	// Cette route écrit `counted_cash_total` et RIEN d'autre. La fermeture
+	// appartient au rapport Z (E-4) et au passage de journée.
+	router.POST("/api/cash/session/:id/count", func(c echo.Context) error {
+		dao := app.Dao()
+		id := c.PathParam("id")
+
+		rec, err := dao.FindRecordById("cash_sessions", id)
+		if err != nil {
+			return apis.NewNotFoundError("Session introuvable", err)
+		}
+		if rec.GetString("status") != "open" {
+			return apis.NewBadRequestError(
+				"Session déjà clôturée : son comptage ne peut plus être modifié", nil)
+		}
+
+		var payload CloseSessionInput
+		if err := c.Bind(&payload); err != nil {
+			return apis.NewBadRequestError("Corps invalide", err)
+		}
+
+		rec.Set("counted_cash_total", payload.CountedCashTotal)
+
+		if err := dao.SaveRecord(rec); err != nil {
+			return apis.NewApiError(500, "Impossible d'enregistrer le comptage", err)
+		}
+
+		return c.JSON(http.StatusOK, rec)
+	},
+		apis.RequireRecordAuth(),
+	)
+
+	// ----------------------------------------------------------------------
 	// MOUVEMENT DE CAISSE
 	// ----------------------------------------------------------------------
 	router.POST("/api/cash/movements", func(c echo.Context) error {

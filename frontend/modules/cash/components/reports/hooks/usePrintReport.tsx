@@ -1,5 +1,4 @@
 import type { RapportZ } from '@/lib/types/cash.types'
-import { usePocketBase } from '@/lib/use-pocketbase'
 import { pdf } from '@react-pdf/renderer'
 // frontend/modules/cash/components/reports/hooks/usePrintReport.tsx
 import { useCallback } from 'react'
@@ -10,81 +9,46 @@ import { ZReportPDF } from '../ZReportPDF'
  * Hook pour gérer l'impression et l'export de rapports
  */
 export function usePrintReport() {
-	const pb = usePocketBase()
-
 	const handlePrint = useCallback(() => {
 		window.print()
 	}, [])
 
-	const handleExport = useCallback(
-		async (rapport?: RapportZ) => {
-			if (!rapport) {
-				toast.error('Aucun rapport à exporter')
-				return
-			}
+	const handleExport = useCallback(async (rapport?: RapportZ) => {
+		if (!rapport) {
+			toast.error('Aucun rapport à exporter')
+			return
+		}
 
-			try {
-				toast.info('Chargement des tickets...')
+		try {
+			// Contrat du 28 août 2026 : les pièces sont DANS le rapport
+			// (`daily_totals.sales_documents`), scellées avec lui. On ne les
+			// recharge plus depuis `/api/pos/session/:id/tickets` : cette
+			// liste-là était celle d'aujourd'hui, pas celle qui avait été
+			// comptée, et elle ignorait les factures hors caisse.
+			toast.info('Génération du PDF en cours...')
 
-				// Charger les tickets de chaque session
-				const sessionsWithTickets = await Promise.all(
-					rapport.sessions.map(async (session) => {
-						try {
-							const response = await pb.send(
-								`/api/pos/session/${session.id}/tickets`,
-								{ method: 'GET' },
-							)
-							return {
-								...session,
-								tickets: response.tickets || [],
-							}
-						} catch (error) {
-							console.error(
-								`Erreur chargement tickets session ${session.id}:`,
-								error,
-							)
-							return {
-								...session,
-								tickets: [],
-							}
-						}
-					}),
-				)
+			// Générer le PDF avec @react-pdf/renderer
+			const blob = await pdf(<ZReportPDF rapport={rapport} />).toBlob()
 
-				// Créer un rapport enrichi avec les tickets
-				const enrichedRapport = {
-					...rapport,
-					sessions: sessionsWithTickets,
-				}
+			// Créer un nom de fichier avec le numéro du rapport et la date
+			const fileName = `${rapport.number}_${rapport.date}.pdf`
 
-				toast.info('Génération du PDF en cours...')
+			// Créer un lien de téléchargement
+			const url = URL.createObjectURL(blob)
+			const link = document.createElement('a')
+			link.href = url
+			link.download = fileName
+			link.click()
 
-				// Générer le PDF avec @react-pdf/renderer
-				const blob = await pdf(
-					<ZReportPDF rapport={enrichedRapport} />,
-				).toBlob()
+			// Nettoyer
+			URL.revokeObjectURL(url)
 
-				// Créer un nom de fichier avec le numéro du rapport et la date
-				const fileName = `${rapport.number}_${rapport.date}.pdf`
-
-				// Créer un lien de téléchargement
-				const url = URL.createObjectURL(blob)
-				const link = document.createElement('a')
-				link.href = url
-				link.download = fileName
-				link.click()
-
-				// Nettoyer
-				URL.revokeObjectURL(url)
-
-				toast.success('PDF exporté avec succès')
-			} catch (error) {
-				console.error('Erreur export PDF:', error)
-				toast.error("Erreur lors de l'export PDF")
-			}
-		},
-		[pb],
-	)
+			toast.success('PDF exporté avec succès')
+		} catch (error) {
+			console.error('Erreur export PDF:', error)
+			toast.error("Erreur lors de l'export PDF")
+		}
+	}, [])
 
 	return {
 		handlePrint,

@@ -23,7 +23,10 @@ export interface PosItemInput {
 export interface PosTicketInput {
 	owner_company: string
 	cash_register: string
-	session_id: string
+	// Facultatif depuis le 29 août 2026 : sans lui, le backend ouvre — ou
+	// retrouve — la session du jour (backend/session_du_jour.go, E-1). L'écran
+	// n'a plus à en connaître une.
+	session_id?: string
 	customer_id?: string
 	items: PosItemInput[]
 
@@ -159,7 +162,6 @@ export function useCreatePosTicket() {
 		mutationFn: async (input: PosTicketInput): Promise<PosTicketResult> => {
 			if (!input.owner_company) throw new Error('owner_company requis')
 			if (!input.cash_register) throw new Error('cash_register requis')
-			if (!input.session_id) throw new Error('session_id requis')
 			if (!input.items || input.items.length === 0) {
 				throw new Error('Le panier est vide')
 			}
@@ -176,16 +178,23 @@ export function useCreatePosTicket() {
 			return response as PosTicketResult
 		},
 		onSuccess: (_data, variables) => {
+			// La session n'est plus forcément connue de l'écran : c'est le backend
+			// qui l'a ouverte ou retrouvée (E-1). On lit donc celle du ticket
+			// RENDU, et on retombe sur celle envoyée quand elle existe encore.
+			const sessionId =
+				(_data as { ticket?: { session?: string } })?.ticket?.session ??
+				variables.session_id
+
 			queryClient.invalidateQueries({ queryKey: ['invoices'] })
 			queryClient.invalidateQueries({ queryKey: ['tickets'] })
 			queryClient.invalidateQueries({
-				queryKey: ['cash_movements', variables.session_id],
+				queryKey: ['cash_movements', sessionId],
 			})
 			queryClient.invalidateQueries({
-				queryKey: ['session_tickets', variables.session_id],
+				queryKey: ['session_tickets', sessionId],
 			})
 			queryClient.invalidateQueries({
-				queryKey: ['x_report', variables.session_id],
+				queryKey: ['x_report', sessionId],
 			})
 			queryClient.invalidateQueries({
 				queryKey: ['cash_session', variables.cash_register],

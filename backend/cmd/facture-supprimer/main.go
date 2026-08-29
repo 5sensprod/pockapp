@@ -16,7 +16,7 @@
 //  2. aucun document ne pointe sur son hash ;
 //  3. aucun avoir, acompte ou facture de solde ne s'y rattache ;
 //  4. aucun mouvement de caisse ne s'y réfère ;
-//  5. elle n'appartient à aucune session de caisse.
+//  5. sa session de caisse — s'il y en a une — n'est scellée dans aucun rapport Z.
 //
 // ⚠️ La suppression est DÉFINITIVE. Sauvegarder d'abord, PocketApp fermé. Et
 // enchaîner avec `z-repair -apply` : le rapport Z qui la comptait doit être
@@ -70,6 +70,13 @@ func main() {
 
 	var refus []string
 
+	// Le document est-il hors de toute clôture ? Un ticket dont la session n'est
+	// dans aucun Z n'a JAMAIS été compté par un rapport : le rejeu qui suit la
+	// suppression n'a alors rien à corriger. Réclamer un `z-repair` dans ce
+	// cas-là serait une fausse alerte sur l'outil même qu'on consulte — le
+	// travers relevé sur `facture-doublons` le 28 août 2026.
+	sessionSansZ := false
+
 	// 1. Est-elle le dernier maillon de sa partition ?
 	suivants, _ := dao.FindRecordsByFilter("invoices", fmt.Sprintf(
 		"owner_company = '%s' && fiscal_year = %d && sequence_number > %d",
@@ -111,9 +118,37 @@ func main() {
 			len(mouvements)))
 	}
 
-	// 5. Appartient-elle à une session ?
+	// 5. Sa session est-elle déjà scellée dans un rapport Z ?
+	//
+	// ⚠️ Ce contrôle a changé le 29 août 2026. Il refusait TOUT document portant
+	// une session — « c'est un ticket, pas une facture hors caisse ». Ce refus
+	// datait d'un temps où une session se créait à la main : depuis que la
+	// session du jour est implicite (backend/session_du_jour.go), TOUT ticket en
+	// porte une, et le contrôle interdisait de retirer le moindre ticket, y
+	// compris le dernier, y compris jamais clôturé.
+	//
+	// Ce qui compte n'est pas qu'il y ait une session : c'est que cette session
+	// soit ENTRÉE DANS UN Z. Un Z est un document scellé et haché ; retirer un
+	// ticket qu'il a compté rendrait son montant faux jusqu'au rejeu, et son
+	// rejeu réécrirait un document déjà remis. Tant que la session n'est dans
+	// aucun Z, rien n'est scellé et la suppression ne touche que la chaîne des
+	// factures, dont le contrôle 1 garantit qu'on n'en retire que le dernier
+	// maillon.
 	if s := cible.GetString("session"); s != "" {
-		refus = append(refus, "elle appartient à une session de caisse : c'est un ticket, pas une facture hors caisse")
+		session, err := dao.FindRecordById("cash_sessions", s)
+		switch {
+		case err != nil || session == nil:
+			refus = append(refus, fmt.Sprintf(
+				"sa session %s est introuvable — on ne supprime pas dans le doute", s))
+		case session.GetString("z_report_id") != "":
+			refus = append(refus, fmt.Sprintf(
+				"sa session est scellée dans le rapport Z %s — ce Z l'a comptée",
+				session.GetString("z_report_id")))
+		default:
+			sessionSansZ = true
+			fmt.Printf("  session   %s (ouverte le %s, dans aucun Z)\n\n",
+				session.Id, session.GetString("opened_at"))
+		}
 	}
 
 	if len(refus) > 0 {
@@ -126,14 +161,22 @@ func main() {
 	}
 
 	fmt.Println("✅ Aucune dépendance : dernier maillon, rien ne pointe dessus, aucun document")
-	fmt.Println("   rattaché, aucun mouvement de caisse, aucune session.")
+	fmt.Println("   rattaché, aucun mouvement de caisse, aucune session scellée dans un Z.")
+
+	// Aucun Z ne l'a comptée si elle n'a pas de session, ou si sa session n'est
+	// rattachée à aucun rapport : le rejeu n'aurait alors rien à corriger.
+	horsCloture := sessionSansZ || cible.GetString("session") == ""
 
 	if !*apply {
 		fmt.Printf("\nVérifications seules. Pour supprimer :\n")
 		fmt.Printf("  1. fermer PocketApp\n")
 		fmt.Printf("  2. sauvegarder %s\n", *dataDir)
 		fmt.Printf("  3. go run ./backend/cmd/facture-supprimer -id %s -apply\n", *id)
-		fmt.Printf("  4. go run ./backend/cmd/z-repair -apply   ← indispensable\n\n")
+		if horsCloture {
+			fmt.Printf("\nAucun rapport Z ne l'a comptée : pas de z-repair à lancer ensuite.\n\n")
+		} else {
+			fmt.Printf("  4. go run ./backend/cmd/z-repair -apply   ← indispensable\n\n")
+		}
 		return
 	}
 
@@ -143,6 +186,10 @@ func main() {
 	}
 
 	fmt.Printf("\n✅ %s supprimée définitivement.\n", cible.GetString("number"))
-	fmt.Printf("\n⚠️ Le rapport Z qui la comptait annonce encore son montant :\n")
-	fmt.Printf("   go run ./backend/cmd/z-repair -apply\n\n")
+	if horsCloture {
+		fmt.Printf("\nAucun rapport Z ne la comptait : rien d'autre à faire.\n\n")
+	} else {
+		fmt.Printf("\n⚠️ Le rapport Z qui la comptait annonce encore son montant :\n")
+		fmt.Printf("   go run ./backend/cmd/z-repair -apply\n\n")
+	}
 }

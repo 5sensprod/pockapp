@@ -33,6 +33,10 @@ export function useCashModule() {
 	const sessionManager = useSessionManager({
 		selectedRegisterId: registerManager.selectedRegisterId,
 		userId: user?.id,
+		// Le nom de l'utilisateur remplace la session dans les écrans (E-3).
+		userName:
+			(user as { name?: string; email?: string } | null | undefined)?.name ||
+			(user as { email?: string } | null | undefined)?.email,
 		ownerCompanyId,
 		isAuthenticated,
 	})
@@ -41,7 +45,6 @@ export function useCashModule() {
 	const [showCloseDialog, setShowCloseDialog] = React.useState(false)
 	const [showRapportX, setShowRapportX] = React.useState(false)
 	const [showMovement, setShowMovement] = React.useState(false)
-	const [showOpenDialog, setShowOpenDialog] = React.useState(false)
 
 	// ── Rapport X ─────────────────────────────────────────────────────────────
 	const sessionId = sessionManager.activeSession?.id
@@ -60,17 +63,17 @@ export function useCashModule() {
 	})
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
-	const handleToggleSession = () => {
-		if (sessionManager.isSessionOpen && sessionManager.activeSession) {
-			setShowCloseDialog(true)
-		} else {
-			setShowOpenDialog(true)
-		}
-	}
-
-	const handleOpenSession = async (openingFloat: number) => {
-		await sessionManager.handleOpenSession(openingFloat)
-		setShowOpenDialog(false)
+	//
+	// Plus d'ouverture ni de fermeture manuelles depuis le 29 août 2026 (E-3) :
+	// la session du jour est ouverte par le premier encaissement
+	// (backend/session_du_jour.go).
+	//
+	// Le seul geste de caisse qui reste est la CLÔTURE DE LA JOURNÉE (E-4) : elle
+	// ouvre la modale de comptage du tiroir, puis ferme la session et génère le
+	// Z. Le comptage n'est plus un geste isolé — il apparaît au moment où on
+	// clôture, et il reste facultatif : on peut clôturer sans avoir compté.
+	const handleCloturerLaJournee = () => {
+		if (sessionManager.activeSession) setShowCloseDialog(true)
 	}
 
 	const handleShowRapportX = () => {
@@ -108,14 +111,11 @@ export function useCashModule() {
 		activeSession: sessionManager.activeSession,
 		sessionLabel: sessionManager.sessionLabel,
 		sessionVariant: toStatusVariant(sessionManager.sessionPillColor),
-		canToggleSession: sessionManager.canToggleSession,
+		canCloturerLaJournee: sessionManager.canCountDrawer,
 		lastKnownFloat: sessionManager.lastKnownFloat,
 		lastClosedAtLabel: sessionManager.lastClosedAtLabel,
-		openSessionMutationPending: sessionManager.openSessionMutation.isPending,
 
 		// Dialogs state
-		showOpenDialog,
-		setShowOpenDialog,
 		showCloseDialog,
 		setShowCloseDialog,
 		showRapportX,
@@ -124,8 +124,7 @@ export function useCashModule() {
 		setShowMovement,
 
 		// Handlers
-		handleToggleSession,
-		handleOpenSession,
+		handleCloturerLaJournee,
 		handleShowRapportX,
 		handleShowMovement: () => setShowMovement(true),
 

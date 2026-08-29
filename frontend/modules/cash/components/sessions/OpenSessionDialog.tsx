@@ -1,4 +1,19 @@
 // frontend/modules/cash/components/sessions/OpenSessionDialog.tsx
+//
+// COMMENCER LA JOURNÉE — le rituel du matin (E-5, 29 août 2026).
+//
+// Ce dialogue a été débranché quelques heures, quand la session était totalement
+// implicite ; le propriétaire a demandé qu'un geste explicite subsiste le matin.
+// Il est REMONTÉ, mais son fonds n'est plus une saisie de mémoire : il est
+// PRÉREMPLI avec le tiroir de la veille au soir (backend/reports/fonds_reporte.go)
+// et seulement modifiable.
+//
+// C'est toute la différence avec l'ancienne version : celle-ci proposait un
+// champ vide qu'il fallait remplir de tête. C'est cette saisie-là qui a produit
+// deux tiroirs négatifs, −154,04 € et −170,24 €
+// (frontend/modules/cash/PocketCash-docs/04-refonte-du-z.md §7), et 32 fonds à
+// zéro sur 65 sessions.
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -33,6 +48,7 @@ interface OpenSessionDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
 	onSubmit: (openingFloat: number) => Promise<void>
+	/** Le tiroir de la veille au soir — prérempli, modifiable. */
 	lastKnownFloat: number | null
 	lastClosedAtLabel: string | null
 	isSubmitting?: boolean
@@ -69,14 +85,22 @@ export function OpenSessionDialog({
 		}, 0)
 	}, [watched])
 
-	const finalAmount = openingOverride ?? countedTotal
+	// Dès qu'une dénomination est saisie, c'est le comptage qui fait foi : on
+	// vient de recompter le tiroir, la proposition ne vaut plus.
+	const finalAmount = countedTotal > 0 ? countedTotal : (openingOverride ?? 0)
 
+	// À l'ouverture, le fonds de la veille est DÉJÀ retenu : le cas courant est
+	// « rien n'a bougé depuis hier soir », et il ne doit demander aucun geste.
+	// Recompter reste possible — les dénominations ci-dessous reprennent la main
+	// dès qu'on en saisit une.
 	React.useEffect(() => {
-		if (!open) {
-			setOpeningOverride(null)
-			form.reset()
+		if (open) {
+			setOpeningOverride(lastKnownFloat)
+			return
 		}
-	}, [open, form])
+		setOpeningOverride(null)
+		form.reset()
+	}, [open, form, lastKnownFloat])
 
 	const handleSubmit = async () => {
 		try {
@@ -95,7 +119,7 @@ export function OpenSessionDialog({
 		>
 			<DialogContent className='max-w-3xl max-h-[90vh] overflow-y-auto'>
 				<DialogHeader className='flex-row items-center justify-between gap-4 pr-8'>
-					<DialogTitle>Ouvrir une session de caisse</DialogTitle>
+					<DialogTitle>Commencer la journée</DialogTitle>
 					<Button
 						type='button'
 						variant='outline'
@@ -122,7 +146,7 @@ export function OpenSessionDialog({
 					<div className='flex items-center justify-between rounded-md border bg-slate-50 px-3 py-2'>
 						<div className='text-xs text-muted-foreground leading-tight'>
 							<div>
-								Dernier fond connu :{' '}
+								Tiroir de la veille au soir :{' '}
 								<span className='font-medium text-slate-900'>
 									{lastKnownFloat.toFixed(2)} €
 								</span>
@@ -130,9 +154,12 @@ export function OpenSessionDialog({
 
 							{lastClosedAtLabel && (
 								<div className='text-[11px] text-slate-500'>
-									Session clôturée le {lastClosedAtLabel}
+									Dernière clôture le {lastClosedAtLabel}
 								</div>
 							)}
+							<div className='text-[11px] text-slate-500'>
+								Retenu par défaut — comptez ci-dessous pour le corriger.
+							</div>
 						</div>
 
 						<Button
@@ -140,9 +167,12 @@ export function OpenSessionDialog({
 							variant='outline'
 							size='sm'
 							className='h-7 text-xs'
-							onClick={() => setOpeningOverride(lastKnownFloat)}
+							onClick={() => {
+								form.reset()
+								setOpeningOverride(lastKnownFloat)
+							}}
 						>
-							Utiliser
+							Reprendre
 						</Button>
 					</div>
 				)}
@@ -223,7 +253,7 @@ export function OpenSessionDialog({
 
 								<div className='flex justify-between items-center'>
 									<span className='font-medium'>
-										Total repris (session précédente)
+										Total repris (tiroir de la veille)
 									</span>
 									<span>{formatCurrency(openingOverride ?? 0)}</span>
 								</div>
@@ -231,7 +261,7 @@ export function OpenSessionDialog({
 								<Separator />
 
 								<div className='flex justify-between font-semibold text-lg'>
-									<span>Montant retenu pour l'ouverture</span>
+									<span>Fonds de caisse retenu</span>
 									<span>{formatCurrency(finalAmount)}</span>
 								</div>
 							</CardContent>
@@ -247,7 +277,7 @@ export function OpenSessionDialog({
 								Annuler
 							</Button>
 							<Button type='submit' disabled={isSubmitting}>
-								{isSubmitting ? 'Ouverture...' : 'Ouvrir'}
+								{isSubmitting ? 'Ouverture...' : 'Commencer la journée'}
 							</Button>
 						</div>
 					</form>

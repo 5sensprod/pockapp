@@ -17,6 +17,7 @@ import (
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 
+	"pocket-react/backend"
 	"pocket-react/backend/hash"
 )
 
@@ -186,9 +187,6 @@ func RegisterPosRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		if input.CashRegister == "" {
 			return apis.NewBadRequestError("cash_register requis", nil)
 		}
-		if input.SessionID == "" {
-			return apis.NewBadRequestError("session_id requis", nil)
-		}
 		if input.CustomerID == "" {
 			return apis.NewBadRequestError("customer_id requis", nil)
 		}
@@ -196,16 +194,39 @@ func RegisterPosRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			return apis.NewBadRequestError("items requis (panier vide)", nil)
 		}
 
-		// 3) Vérifier que la session est ouverte
-		session, err := dao.FindRecordById("cash_sessions", input.SessionID)
-		if err != nil || session == nil {
-			return apis.NewNotFoundError("Session introuvable", err)
-		}
-		if session.GetString("status") != "open" {
-			return apis.NewBadRequestError("La session de caisse n'est pas ouverte", nil)
-		}
-		if session.GetString("cash_register") != input.CashRegister {
-			return apis.NewBadRequestError("La session n'appartient pas à cette caisse", nil)
+		// 3) La session du jour — implicite depuis le 29 août 2026
+		//
+		// Personne n'ouvre plus de session à la main (E-1,
+		// frontend/modules/cash/PocketCash-docs/07-sortir-des-sessions.md) :
+		// `session_id` est devenu FACULTATIF, et sans lui la session de la
+		// journée est ouverte automatiquement au premier encaissement. Le champ
+		// reste accepté tant que l'écran l'envoie encore ; il est vérifié comme
+		// avant dans ce cas, pour ne pas rattacher un ticket à une session
+		// fermée ou à une autre caisse.
+		var session *models.Record
+		if input.SessionID != "" {
+			var err error
+			session, err = dao.FindRecordById("cash_sessions", input.SessionID)
+			if err != nil || session == nil {
+				return apis.NewNotFoundError("Session introuvable", err)
+			}
+			if session.GetString("status") != "open" {
+				return apis.NewBadRequestError("La session de caisse n'est pas ouverte", nil)
+			}
+			if session.GetString("cash_register") != input.CashRegister {
+				return apis.NewBadRequestError("La session n'appartient pas à cette caisse", nil)
+			}
+		} else {
+			var utilisateur string
+			if info.AuthRecord != nil {
+				utilisateur = info.AuthRecord.Id
+			}
+			var err error
+			session, err = backend.SessionDuJour(dao, input.OwnerCompany, input.CashRegister, utilisateur)
+			if err != nil {
+				return apis.NewApiError(500, "Impossible d'ouvrir la session du jour", err)
+			}
+			input.SessionID = session.Id
 		}
 
 		// 4) Vérifier que la caisse existe et est active

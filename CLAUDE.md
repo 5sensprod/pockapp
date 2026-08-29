@@ -340,6 +340,24 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   Z-045, pendant trois mois, sur un document fiscal. Ne jamais recalculer ces
   règles côté React : l'écran affiche ce que le Go a calculé. Gardiens :
   `backend/reports/cash_reports_test.go`.
+- **Une `cash_session` ne s'efface JAMAIS**, ni la collection, ni un
+  enregistrement (29 août 2026). `recalculerRapport`
+  (`backend/reports/z_repair.go:224-231`) relit `session_ids` et **échoue si une
+  session manque** : effacer les sessions rendrait les 60 rapports Z
+  **irréparables** — plus de vérification par recalcul, plus de correction, et
+  `z-repair` renverrait 60 erreurs. Depuis cette date les sessions sont sorties
+  de l'usage : **une par journée**, ouverte par « Commencer la journée » sur le
+  terminal (`CashTerminalPage.tsx`) ou, en filet, par `SessionDuJour`
+  (`backend/session_du_jour.go`) au premier encaissement — c'est ce filet qui
+  empêche `CreateCashMovementIfEspeces` de **perdre** un mouvement espèces reçu
+  hors session, ce qu'il faisait en silence jusque-là. Le fonds ne se saisit
+  plus : il est **reporté** (`backend/reports/fonds_reporte.go`), le dernier
+  tiroir compté augmenté des flux lus dans le journal des espèces. Et une
+  session fermée par passage de journée porte un `closed_at` à la **fin de sa
+  propre journée** : `GenerateRapportZ` ne retient que les sessions closes dans
+  la journée du rapport (`cash_reports.go:1490-1496`), un `closed_at` du
+  lendemain les ferait sortir de toute clôture **sans erreur**. Contrat :
+  `frontend/modules/cash/PocketCash-docs/07-sortir-des-sessions.md`.
 - **Les conversions de ticket s'excluent par une résolution nommée**, pas par
   `original_invoice_id = ''`. Ce filtre disait vouloir écarter les conversions
   et écartait AUSSI les acomptes et les factures de solde, qui portent le même

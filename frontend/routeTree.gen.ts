@@ -22,6 +22,7 @@ import { Route as SettingsIndexImport } from './routes/settings/index'
 import { Route as InventoryAppposIndexImport } from './routes/inventory-apppos/index'
 import { Route as ConnectIndexImport } from './routes/connect/index'
 import { Route as CashIndexImport } from './routes/cash/index'
+import { Route as StatsEspecesImport } from './routes/stats/especes'
 import { Route as SiteMenuImport } from './routes/site/menu'
 import { Route as SiteCatalogueImport } from './routes/site/catalogue'
 import { Route as SettingsUsersImport } from './routes/settings/users'
@@ -124,6 +125,12 @@ const ConnectIndexRoute = ConnectIndexImport.update({
 const CashIndexRoute = CashIndexImport.update({
   id: '/cash/',
   path: '/cash/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const StatsEspecesRoute = StatsEspecesImport.update({
+  id: '/stats/especes',
+  path: '/stats/especes',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -423,6 +430,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SiteMenuImport
       parentRoute: typeof rootRoute
     }
+    '/stats/especes': {
+      id: '/stats/especes'
+      path: '/stats/especes'
+      fullPath: '/stats/especes'
+      preLoaderRoute: typeof StatsEspecesImport
+      parentRoute: typeof rootRoute
+    }
     '/cash/': {
       id: '/cash/'
       path: '/cash'
@@ -698,6 +712,7 @@ export interface FileRoutesByFullPath {
   '/settings/users': typeof SettingsUsersRoute
   '/site/catalogue': typeof SiteCatalogueRoute
   '/site/menu': typeof SiteMenuRoute
+  '/stats/especes': typeof StatsEspecesRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
   '/inventory-apppos': typeof InventoryAppposIndexRoute
@@ -748,6 +763,7 @@ export interface FileRoutesByTo {
   '/settings/users': typeof SettingsUsersRoute
   '/site/catalogue': typeof SiteCatalogueRoute
   '/site/menu': typeof SiteMenuRoute
+  '/stats/especes': typeof StatsEspecesRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
   '/inventory-apppos': typeof InventoryAppposIndexRoute
@@ -799,6 +815,7 @@ export interface FileRoutesById {
   '/settings/users': typeof SettingsUsersRoute
   '/site/catalogue': typeof SiteCatalogueRoute
   '/site/menu': typeof SiteMenuRoute
+  '/stats/especes': typeof StatsEspecesRoute
   '/cash/': typeof CashIndexRoute
   '/connect/': typeof ConnectIndexRoute
   '/inventory-apppos/': typeof InventoryAppposIndexRoute
@@ -851,6 +868,7 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/site/catalogue'
     | '/site/menu'
+    | '/stats/especes'
     | '/cash'
     | '/connect'
     | '/inventory-apppos'
@@ -900,6 +918,7 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/site/catalogue'
     | '/site/menu'
+    | '/stats/especes'
     | '/cash'
     | '/connect'
     | '/inventory-apppos'
@@ -949,6 +968,7 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/site/catalogue'
     | '/site/menu'
+    | '/stats/especes'
     | '/cash/'
     | '/connect/'
     | '/inventory-apppos/'
@@ -1000,6 +1020,7 @@ export interface RootRouteChildren {
   SettingsUsersRoute: typeof SettingsUsersRoute
   SiteCatalogueRoute: typeof SiteCatalogueRoute
   SiteMenuRoute: typeof SiteMenuRoute
+  StatsEspecesRoute: typeof StatsEspecesRoute
   CashIndexRoute: typeof CashIndexRoute
   ConnectIndexRoute: typeof ConnectIndexRoute
   InventoryAppposIndexRoute: typeof InventoryAppposIndexRoute
@@ -1050,6 +1071,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsUsersRoute: SettingsUsersRoute,
   SiteCatalogueRoute: SiteCatalogueRoute,
   SiteMenuRoute: SiteMenuRoute,
+  StatsEspecesRoute: StatsEspecesRoute,
   CashIndexRoute: CashIndexRoute,
   ConnectIndexRoute: ConnectIndexRoute,
   InventoryAppposIndexRoute: InventoryAppposIndexRoute,
@@ -1112,6 +1134,7 @@ export const routeTree = rootRoute
         "/settings/users",
         "/site/catalogue",
         "/site/menu",
+        "/stats/especes",
         "/cash/",
         "/connect/",
         "/inventory-apppos/",
@@ -1180,6 +1203,9 @@ export const routeTree = rootRoute
     },
     "/site/menu": {
       "filePath": "site/menu.tsx"
+    },
+    "/stats/especes": {
+      "filePath": "stats/especes.tsx"
     },
     "/cash/": {
       "filePath": "cash/index.tsx"

@@ -8,6 +8,10 @@ import {
 	type CustomerTypeSummary,
 	aggregateEreporting,
 	estZQuatreLignes,
+	estZCompteLesDocuments,
+	estZListeLesDocuments,
+	estZSansDetailSessions,
+	estZSansRapprochementEspeces,
 	getPaymentMethodLabel,
 } from '@/lib/types/cash.types'
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
@@ -193,6 +197,22 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 	// bonne : un document scellé se relit sous la règle qui l'a produit.
 	const t = rapport.daily_totals
 	const quatreLignes = estZQuatreLignes(t)
+	// Contrat du 27 août 2026 : le tiroir sort du Z. Un rapport scellé AVANT ce
+	// contrat garde son bloc espèces — le PDF part chez le comptable, il doit
+	// montrer le document tel qu'il a été produit, pas tel qu'on le produirait
+	// aujourd'hui.
+	const sansTiroir = estZSansRapprochementEspeces(t)
+	// Contrat du 28 août 2026 : le détail par session sort du document — une
+	// session peut chevaucher plusieurs journées alors que le Z couvre la
+	// période depuis la clôture précédente. Le PDF part chez le comptable : il
+	// ne doit pas montrer un découpage qui n'est pas le sien.
+	const sansDetailSessions = estZSansDetailSessions(t)
+	const compteDocuments = estZCompteLesDocuments(t)
+	// La liste est celle que le rapport a scellée, pas celle qu'on retrouverait
+	// aujourd'hui : plus aucun chargement à l'impression.
+	const listeDocuments = estZListeLesDocuments(t)
+		? (t.sales_documents ?? [])
+		: []
 	const encaisse = t.collected_ttc ?? t.total_ttc
 	const parMoyen = quatreLignes
 		? (t.collected_by_method ?? t.by_method)
@@ -249,10 +269,23 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 						</View>
 
 						<View style={s.grid}>
-							<View style={s.col}>
-								<Text style={s.label}>Sessions</Text>
-								<Text style={s.value}>{t.sessions_count}</Text>
-							</View>
+							{compteDocuments ? (
+								<>
+									<View style={s.col}>
+										<Text style={s.label}>Tickets de caisse</Text>
+										<Text style={s.value}>{t.pos_ticket_count ?? 0}</Text>
+									</View>
+									<View style={s.col}>
+										<Text style={s.label}>Factures hors caisse</Text>
+										<Text style={s.value}>{t.external_invoice_count ?? 0}</Text>
+									</View>
+								</>
+							) : (
+								<View style={s.col}>
+									<Text style={s.label}>Sessions</Text>
+									<Text style={s.value}>{t.sessions_count}</Text>
+								</View>
+							)}
 							<View style={s.col}>
 								<Text style={s.label}>Ventes du jour (documents)</Text>
 								<Text style={s.value}>{t.invoice_count}</Text>
@@ -268,8 +301,9 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 						</View>
 						<Text style={{ ...s.subtitle, marginTop: 4, marginBottom: 0 }}>
 							Seules les ventes du jour portent du chiffre d'affaires. Les trois
-							autres lignes sont des encaissements, en TTC : leur TVA a déjà été
-							déclarée, ou ne leur revient pas.
+							autres lignes sont des encaissements, en TTC : leur TVA relève de
+							la période d'exigibilité du document d'origine, ou ne leur revient
+							pas.
 						</Text>
 					</View>
 				) : (
@@ -513,36 +547,44 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 					</View>
 				)}
 
-				{/* Espèces */}
+				{/* Espèces — sorties du Z par le contrat du 27 août 2026. Les
+				    remises ne sont pas du tiroir : elles restent, seules. */}
 				<View style={s.section}>
-					<Text style={s.sectionTitle}>GESTION ESPÈCES</Text>
+					<Text style={s.sectionTitle}>
+						{sansTiroir ? 'REMISES' : 'GESTION ESPÈCES'}
+					</Text>
 					<View style={s.grid}>
-						<View style={s.col}>
-							<Text style={s.label}>Attendues</Text>
-							<Text style={s.value}>
-								{fc(rapport.daily_totals.total_cash_expected)}
-							</Text>
-						</View>
-						<View style={s.col}>
-							<Text style={s.label}>Comptées</Text>
-							<Text style={s.value}>
-								{fc(rapport.daily_totals.total_cash_counted)}
-							</Text>
-						</View>
-						<View style={s.col}>
-							<Text style={s.label}>Écart</Text>
-							<Text
-								style={{
-									fontWeight: 'bold',
-									color:
-										Math.abs(rapport.daily_totals.total_cash_difference) > 0.5
-											? '#c00'
-											: '#1a6b3c',
-								}}
-							>
-								{fc(rapport.daily_totals.total_cash_difference)}
-							</Text>
-						</View>
+						{!sansTiroir && (
+							<>
+								<View style={s.col}>
+									<Text style={s.label}>Attendues</Text>
+									<Text style={s.value}>
+										{fc(rapport.daily_totals.total_cash_expected)}
+									</Text>
+								</View>
+								<View style={s.col}>
+									<Text style={s.label}>Comptées</Text>
+									<Text style={s.value}>
+										{fc(rapport.daily_totals.total_cash_counted)}
+									</Text>
+								</View>
+								<View style={s.col}>
+									<Text style={s.label}>Écart</Text>
+									<Text
+										style={{
+											fontWeight: 'bold',
+											color:
+												Math.abs(rapport.daily_totals.total_cash_difference) >
+												0.5
+													? '#c00'
+													: '#1a6b3c',
+										}}
+									>
+										{fc(rapport.daily_totals.total_cash_difference)}
+									</Text>
+								</View>
+							</>
+						)}
 						<View style={s.col}>
 							<Text style={s.label}>Remises</Text>
 							<Text style={s.value}>
@@ -552,193 +594,254 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 					</View>
 				</View>
 
-				{/* Sessions */}
-				<View style={s.section}>
-					<Text style={s.sectionTitle}>
-						DÉTAIL SESSIONS ({rapport.sessions.length})
-					</Text>
-					{rapport.sessions.map((session, index) => (
-						<View key={session.id} style={s.session}>
-							<View style={s.sessionHeader}>
-								<View>
-									<Text style={{ fontWeight: 'bold', fontSize: 9 }}>
-										Session #{index + 1}
-									</Text>
-									<Text>
-										{fdt(session.opened_at.toString())} →{' '}
-										{fdt(session.closed_at.toString())}
-									</Text>
-									<Text style={{ fontSize: 7, color: '#666', marginTop: 1 }}>
-										{session.opened_by_name} / {session.closed_by_name}
-									</Text>
-								</View>
-								<View style={{ textAlign: 'right' }}>
-									<Text style={{ fontWeight: 'bold', fontSize: 10 }}>
-										{session.invoice_count} tickets
-									</Text>
-									<Text style={{ fontSize: 7 }}>
-										HT : {fc(session.total_ht)}
-									</Text>
-									<Text style={{ fontSize: 7 }}>
-										TVA : {fc(session.total_tva)}
-									</Text>
-									<Text style={{ fontWeight: 'bold', fontSize: 9 }}>
-										{fc(session.total_ttc)}
-									</Text>
-								</View>
-							</View>
-
-							{/* Moyens de paiement session */}
-							{session.totals_by_method &&
-								Object.keys(session.totals_by_method).length > 0 && (
-									<View style={{ marginBottom: 4 }}>
-										<Text
-											style={{
-												fontSize: 8,
-												fontWeight: 'bold',
-												marginBottom: 2,
-											}}
-										>
-											Encaissements :
-										</Text>
-										<View style={s.grid}>
-											{Object.entries(session.totals_by_method).map(
-												([method, amount]) => (
-													<View key={method} style={s.col}>
-														<Text style={s.label}>
-															{getPaymentMethodLabel(method)}
-														</Text>
-														<Text style={s.value}>{fc(amount)}</Text>
-													</View>
-												),
-											)}
-										</View>
-									</View>
-								)}
-
-							{/* B2C/B2B session si disponible */}
-							{session.by_customer_type &&
-								Object.keys(session.by_customer_type).length > 0 && (
-									<View style={{ marginBottom: 4 }}>
-										<Text
-											style={{
-												fontSize: 8,
-												fontWeight: 'bold',
-												marginBottom: 2,
-											}}
-										>
-											Par nature :
-										</Text>
-										{CUSTOMER_TYPE_ORDER.filter(
-											(ct) => session.by_customer_type?.[ct],
-										).map((ct) => {
-											const sum = session.by_customer_type?.[ct]
-											if (!sum) return null
-											const tag = CUSTOMER_TYPE_EREPORTING[ct]
-											return (
-												<View key={ct} style={s.rowMuted}>
-													<Text style={tag === 'B2C' ? s.badgeB2C : s.badgeB2B}>
-														[{tag}]
-													</Text>
-													<Text style={{ flex: 3, marginLeft: 4 }}>
-														{CUSTOMER_TYPE_LABELS[ct]}
-													</Text>
-													<Text>{fc(sum.total_ttc)}</Text>
-												</View>
-											)
-										})}
-									</View>
-								)}
-
-							{/* Tickets */}
-							{session.tickets && session.tickets.length > 0 && (
-								<View style={{ marginBottom: 4 }}>
-									<Text
-										style={{ fontSize: 8, fontWeight: 'bold', marginBottom: 2 }}
-									>
-										Détail des tickets :
-									</Text>
-									{session.tickets.map((ticket) => (
-										<View
-											key={ticket.id}
-											style={{
-												display: 'flex',
-												flexDirection: 'row',
-												justifyContent: 'space-between',
-												marginBottom: 1,
-												paddingVertical: 1,
-											}}
-										>
-											<Text style={{ flex: 1 }}>
-												{ticket.number ?? ticket.id.substring(0, 8)}
-											</Text>
-											<Text
-												style={{ flex: 1, textAlign: 'left', color: '#666' }}
-											>
-												{getPaymentMethodLabel(
-													ticket.payment_method_label ??
-														ticket.payment_method ??
-														'autre',
-												)}
-											</Text>
-											<Text
-												style={{
-													flex: 1,
-													textAlign: 'right',
-													fontWeight: 'bold',
-												}}
-											>
-												{fc(ticket.total_ttc ?? 0)}
-											</Text>
-										</View>
-									))}
-								</View>
-							)}
-
-							{/* Espèces session */}
+				{/* Documents du rapport — les quatre lignes, pièce par pièce. Lue
+				    dans le document, hachée avec lui. */}
+				{listeDocuments.length > 0 && (
+					<View style={s.section}>
+						<Text style={s.sectionTitle}>
+							DOCUMENTS ({listeDocuments.length})
+						</Text>
+						{listeDocuments.map((doc) => (
 							<View
+								key={doc.id}
 								style={{
-									marginTop: 4,
-									paddingTop: 4,
-									borderTop: '1pt solid #ddd',
+									display: 'flex',
+									flexDirection: 'row',
+									paddingVertical: 1,
 								}}
 							>
-								<View style={s.grid}>
-									<View style={s.col}>
-										<Text style={s.label}>Fond</Text>
-										<Text style={s.value}>{fc(session.opening_float)}</Text>
-									</View>
-									<View style={s.col}>
-										<Text style={s.label}>Attendues</Text>
-										<Text style={s.value}>
-											{fc(session.expected_cash_total)}
+								<Text style={{ fontSize: 8, width: '8%' }}>{doc.heure}</Text>
+								<Text style={{ fontSize: 8, width: '12%' }}>{doc.kind}</Text>
+								<Text style={{ fontSize: 8, width: '20%' }}>
+									{doc.number || '—'}
+								</Text>
+								<Text style={{ fontSize: 8, width: '25%' }}>
+									{doc.customer}
+								</Text>
+								<Text style={{ fontSize: 8, width: '20%' }}>
+									{doc.method || '—'}
+								</Text>
+								<Text
+									style={{
+										fontSize: 8,
+										width: '15%',
+										textAlign: 'right',
+										fontWeight: 'bold',
+									}}
+								>
+									{doc.kind === 'avoir' ? '−' : ''}
+									{fc(doc.total_ttc)}
+								</Text>
+							</View>
+						))}
+						<Text style={{ ...s.subtitle, marginTop: 4, marginBottom: 0 }}>
+							Les quatre lignes du rapport, pièce par pièce. Le montant est
+							celui compté dans sa ligne, qui peut différer du total du document
+							— une facture parente entre déduite de ses acomptes.
+						</Text>
+					</View>
+				)}
+
+				{/* Sessions — retirées du document à partir de la v4 : le tableau
+				    reste calculé et stocké dans full_report, la statistique du
+				    module `stats` le redécoupera par journée. */}
+				{!sansDetailSessions && (
+					<View style={s.section}>
+						<Text style={s.sectionTitle}>
+							DÉTAIL SESSIONS ({rapport.sessions.length})
+						</Text>
+						{rapport.sessions.map((session, index) => (
+							<View key={session.id} style={s.session}>
+								<View style={s.sessionHeader}>
+									<View>
+										<Text style={{ fontWeight: 'bold', fontSize: 9 }}>
+											Session #{index + 1}
+										</Text>
+										<Text>
+											{fdt(session.opened_at.toString())} →{' '}
+											{fdt(session.closed_at.toString())}
+										</Text>
+										<Text style={{ fontSize: 7, color: '#666', marginTop: 1 }}>
+											{session.opened_by_name} / {session.closed_by_name}
 										</Text>
 									</View>
-									<View style={s.col}>
-										<Text style={s.label}>Comptées</Text>
-										<Text style={s.value}>
-											{fc(session.counted_cash_total)}
+									<View style={{ textAlign: 'right' }}>
+										<Text style={{ fontWeight: 'bold', fontSize: 10 }}>
+											{session.invoice_count} tickets
 										</Text>
-									</View>
-									<View style={s.col}>
-										<Text style={s.label}>Écart</Text>
-										<Text
-											style={{
-												fontWeight: 'bold',
-												color:
-													Math.abs(session.cash_difference) > 0.5
-														? '#c00'
-														: '#1a6b3c',
-											}}
-										>
-											{fc(session.cash_difference)}
+										<Text style={{ fontSize: 7 }}>
+											HT : {fc(session.total_ht)}
+										</Text>
+										<Text style={{ fontSize: 7 }}>
+											TVA : {fc(session.total_tva)}
+										</Text>
+										<Text style={{ fontWeight: 'bold', fontSize: 9 }}>
+											{fc(session.total_ttc)}
 										</Text>
 									</View>
 								</View>
+
+								{/* Moyens de paiement session */}
+								{session.totals_by_method &&
+									Object.keys(session.totals_by_method).length > 0 && (
+										<View style={{ marginBottom: 4 }}>
+											<Text
+												style={{
+													fontSize: 8,
+													fontWeight: 'bold',
+													marginBottom: 2,
+												}}
+											>
+												Encaissements :
+											</Text>
+											<View style={s.grid}>
+												{Object.entries(session.totals_by_method).map(
+													([method, amount]) => (
+														<View key={method} style={s.col}>
+															<Text style={s.label}>
+																{getPaymentMethodLabel(method)}
+															</Text>
+															<Text style={s.value}>{fc(amount)}</Text>
+														</View>
+													),
+												)}
+											</View>
+										</View>
+									)}
+
+								{/* B2C/B2B session si disponible */}
+								{session.by_customer_type &&
+									Object.keys(session.by_customer_type).length > 0 && (
+										<View style={{ marginBottom: 4 }}>
+											<Text
+												style={{
+													fontSize: 8,
+													fontWeight: 'bold',
+													marginBottom: 2,
+												}}
+											>
+												Par nature :
+											</Text>
+											{CUSTOMER_TYPE_ORDER.filter(
+												(ct) => session.by_customer_type?.[ct],
+											).map((ct) => {
+												const sum = session.by_customer_type?.[ct]
+												if (!sum) return null
+												const tag = CUSTOMER_TYPE_EREPORTING[ct]
+												return (
+													<View key={ct} style={s.rowMuted}>
+														<Text
+															style={tag === 'B2C' ? s.badgeB2C : s.badgeB2B}
+														>
+															[{tag}]
+														</Text>
+														<Text style={{ flex: 3, marginLeft: 4 }}>
+															{CUSTOMER_TYPE_LABELS[ct]}
+														</Text>
+														<Text>{fc(sum.total_ttc)}</Text>
+													</View>
+												)
+											})}
+										</View>
+									)}
+
+								{/* Tickets */}
+								{session.tickets && session.tickets.length > 0 && (
+									<View style={{ marginBottom: 4 }}>
+										<Text
+											style={{
+												fontSize: 8,
+												fontWeight: 'bold',
+												marginBottom: 2,
+											}}
+										>
+											Détail des tickets :
+										</Text>
+										{session.tickets.map((ticket) => (
+											<View
+												key={ticket.id}
+												style={{
+													display: 'flex',
+													flexDirection: 'row',
+													justifyContent: 'space-between',
+													marginBottom: 1,
+													paddingVertical: 1,
+												}}
+											>
+												<Text style={{ flex: 1 }}>
+													{ticket.number ?? ticket.id.substring(0, 8)}
+												</Text>
+												<Text
+													style={{ flex: 1, textAlign: 'left', color: '#666' }}
+												>
+													{getPaymentMethodLabel(
+														ticket.payment_method_label ??
+															ticket.payment_method ??
+															'autre',
+													)}
+												</Text>
+												<Text
+													style={{
+														flex: 1,
+														textAlign: 'right',
+														fontWeight: 'bold',
+													}}
+												>
+													{fc(ticket.total_ttc ?? 0)}
+												</Text>
+											</View>
+										))}
+									</View>
+								)}
+
+								{/* Espèces session — même contrat que le bloc global : le
+							    tiroir sort du Z. */}
+								{!sansTiroir && (
+									<View
+										style={{
+											marginTop: 4,
+											paddingTop: 4,
+											borderTop: '1pt solid #ddd',
+										}}
+									>
+										<View style={s.grid}>
+											<View style={s.col}>
+												<Text style={s.label}>Fond</Text>
+												<Text style={s.value}>{fc(session.opening_float)}</Text>
+											</View>
+											<View style={s.col}>
+												<Text style={s.label}>Attendues</Text>
+												<Text style={s.value}>
+													{fc(session.expected_cash_total)}
+												</Text>
+											</View>
+											<View style={s.col}>
+												<Text style={s.label}>Comptées</Text>
+												<Text style={s.value}>
+													{fc(session.counted_cash_total)}
+												</Text>
+											</View>
+											<View style={s.col}>
+												<Text style={s.label}>Écart</Text>
+												<Text
+													style={{
+														fontWeight: 'bold',
+														color:
+															Math.abs(session.cash_difference) > 0.5
+																? '#c00'
+																: '#1a6b3c',
+													}}
+												>
+													{fc(session.cash_difference)}
+												</Text>
+											</View>
+										</View>
+									</View>
+								)}
 							</View>
-						</View>
-					))}
-				</View>
+						))}
+					</View>
+				)}
 
 				{/* Bloc e-reporting */}
 				{ereporting &&

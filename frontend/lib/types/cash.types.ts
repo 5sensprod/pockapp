@@ -238,6 +238,32 @@ export interface RapportZSession {
 	vat_by_rate: VATByRate // 🆕
 }
 
+/**
+ * Une pièce du rapport, telle qu'elle a été comptée à sa clôture.
+ *
+ * Élargie le 28 août 2026 aux quatre lignes, sur le modèle du journal des
+ * ventes : `kind` est la nature, `line` la ligne où la pièce a été comptée.
+ * Les libellés viennent du Go — `natureDe` et `LigneZ.String()` — pour que le Z
+ * et le journal nomment les mêmes choses des mêmes mots.
+ *
+ * `total_ttc` est le montant COMPTÉ dans sa ligne, pas le total du document.
+ * `total_ht` / `total_tva` ne valent quelque chose que sur la ligne 1 : les
+ * lignes 2 à 4 sont en TTC seul.
+ */
+export interface SalesDocument {
+	id: string
+	number: string
+	kind: string
+	line: string
+	customer: string
+	issued_at: string
+	heure: string
+	method: string
+	total_ht: number
+	total_tva: number
+	total_ttc: number
+}
+
 export interface RapportZDailyTotals {
 	sessions_count: number
 	invoice_count: number
@@ -270,7 +296,26 @@ export interface RapportZDailyTotals {
 	// et c'est sur elle que l'affichage doit brancher.
 	//   absent ou 1 = règle d'origine, total_ttc est un total mêlé
 	//   2           = total_ttc ne porte que la ligne 1, les ventes du jour
+	//   3           = idem, et le Z ne porte plus le rapprochement espèces
+	//   4           = idem, et le Z ne porte plus le détail par session ; il
+	//                 compte en revanche ses tickets et ses factures hors caisse
+	//   5           = idem, et le Z porte la LISTE des documents de sa ligne 1
+	//   6           = la liste couvre les QUATRE lignes, avec heure et client
 	schema_version?: number
+
+	// ── Contrat du 28 août 2026 ─────────────────────────────────────────────
+	// Les deux populations de la ligne 1, scindées côté Go. Optionnels : un
+	// rapport antérieur ne les porte pas, et lire un 0 comme « aucun ticket »
+	// serait faux. Brancher sur `estZCompteLesDocuments`, jamais sur la valeur.
+	// Invariant garanti par le backend :
+	//   pos_ticket_count + external_invoice_count = invoice_count
+	pos_ticket_count?: number
+	external_invoice_count?: number
+
+	// Les pièces du rapport, telles qu'il les a agrégées à sa clôture — les
+	// quatre lignes depuis la v6. Stockée et hachée côté Go : ce n'est PAS une
+	// liste à recharger, et rien ici ne se recalcule.
+	sales_documents?: SalesDocument[]
 	collected_ttc?: number
 	collected_by_method?: Record<string, number>
 	collected_from_receivables_ttc?: number
@@ -288,6 +333,96 @@ export function estZQuatreLignes(totals: {
 	schema_version?: number
 }): boolean {
 	return (totals.schema_version ?? 1) >= 2
+}
+
+/**
+ * estZSansRapprochementEspeces dit si le Z a cessé de porter le tiroir.
+ *
+ * Contrat du 27 août 2026 : le rapport Z n'a pas à connaître les mouvements de
+ * caisse — un apport de fonds n'est ni une vente, ni un encaissement de vente.
+ * Le rapprochement espèces sort donc du Z ; il reste là où on le vérifie
+ * réellement, c'est-à-dire au moment du comptage du tiroir
+ * (`CloseSessionDialog`) et dans le rapport X (`ExpectedCashCard`), et son
+ * détail ligne à ligne ira au journal espèces du module `stats`.
+ *
+ * Les trois chiffres `total_cash_*` restent CALCULÉS et STOCKÉS : ils sont
+ * justes, ils portent 2 930,08 € d'écart cumulé sur les 60 rapports, et ils
+ * n'ont jamais été hachés — les effacer d'un document scellé serait détruire de
+ * la donnée sans y être contraint. Ce prédicat ne dit pas qu'ils sont absents,
+ * il dit qu'on ne les MONTRE plus.
+ *
+ * ⚠️ Ne PAS l'écrire `=== 3`. Un prédicat par égalité oblige à repasser sur
+ * l'écran et le PDF à chaque version — et le premier oublié affichera un
+ * rapport v4 comme un rapport v1, sans erreur.
+ *
+ * Deux branchements, et deux seulement : `RapportZPage.tsx` et `ZReportPDF.tsx`.
+ * Le dialogue X n'en est PAS un : le X garde son rapprochement et son journal,
+ * il n'est pas un document scellé mais l'aperçu d'une session en cours.
+ */
+export function estZSansRapprochementEspeces(totals: {
+	schema_version?: number
+}): boolean {
+	return (totals.schema_version ?? 1) >= 3
+}
+
+/**
+ * estZSansDetailSessions dit si le Z a cessé de montrer ses sessions une à une.
+ *
+ * Contrat du 28 août 2026 : un Z couvre la PÉRIODE écoulée depuis la clôture
+ * précédente, et non sa seule date (04-refonte-du-z.md, §7). Une session peut
+ * donc s'étendre sur plusieurs journées, et le bloc « Détail des sessions »
+ * donnait à lire un découpage qui ne correspondait pas au document. Comme le
+ * rapprochement espèces avant lui, ce n'est pas une donnée fausse : elle est
+ * hors sujet dans un document fiscal, et elle aura sa propre statistique dans
+ * le module `stats`, redécoupée par journée.
+ *
+ * `sessions_count` disparaît de l'affichage pour la même raison, et le tableau
+ * `sessions` reste CALCULÉ et STOCKÉ dans `full_report` : c'est la statistique
+ * qui le relira. On cache, on n'efface pas.
+ *
+ * ⚠️ Ne PAS l'écrire `=== 4`. Un prédicat par égalité oblige à repasser sur
+ * l'écran et le PDF à chaque version — et le premier oublié affichera un
+ * rapport v5 comme un rapport v1, sans erreur.
+ *
+ * Deux branchements, et deux seulement : `RapportZPage.tsx` et `ZReportPDF.tsx`.
+ */
+export function estZSansDetailSessions(totals: {
+	schema_version?: number
+}): boolean {
+	return (totals.schema_version ?? 1) >= 4
+}
+
+/**
+ * estZCompteLesDocuments dit si le Z porte le nombre de tickets et de factures
+ * hors caisse qu'il agrège. Même seuil que ci-dessus, autre question : l'un
+ * retire un bloc, l'autre en ajoute un. Les nommer séparément évite qu'un futur
+ * contrat ne puisse plus les dissocier.
+ */
+export function estZCompteLesDocuments(totals: {
+	schema_version?: number
+}): boolean {
+	return (totals.schema_version ?? 1) >= 4
+}
+
+/**
+ * estZListeLesDocuments dit si le rapport porte lui-même les pièces qu'il
+ * agrège — `sales_documents`, stockée et hachée à la clôture.
+ *
+ * Contrat du 28 août 2026. Avant lui, le PDF listait les tickets en
+ * interrogeant `/api/pos/session/:id/tickets` au moment de l'impression
+ * (`usePrintReport.tsx`) : la liste imprimée était donc celle d'aujourd'hui, pas
+ * celle qui avait été comptée, et un document modifié après la clôture changeait
+ * le PDF sans rompre le hash du Z. Les factures hors caisse, elles, n'y ont
+ * jamais figuré.
+ *
+ * ⚠️ Seuil, jamais `=== 5`. Et rien ne se recalcule ici : si le rapport ne porte
+ * pas la liste, on n'en reconstruit pas une — on n'affiche rien.
+ */
+export function estZListeLesDocuments(totals: {
+	schema_version?: number
+	sales_documents?: SalesDocument[]
+}): boolean {
+	return (totals.schema_version ?? 1) >= 5 && !!totals.sales_documents?.length
 }
 
 // ============================================================================

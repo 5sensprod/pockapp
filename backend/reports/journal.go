@@ -34,6 +34,7 @@ package reports
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -555,4 +556,36 @@ func SessionsEnAttenteDeZ(
 	}
 
 	return attente, nil
+}
+
+// resolveurNomClient rend une fonction qui nomme un client, avec un cache : un
+// même client revient sur tous ses documents.
+//
+// Partagée entre le journal des ventes et l'agrégation du Z (`aggregateZ`)
+// depuis le 28 août 2026, quand le Z s'est mis à citer ses pièces. Deux
+// résolutions du même nom finiraient par diverger — un `company_name` ici, un
+// `firstname lastname` là — et les deux écrans nommeraient différemment le même
+// document.
+func resolveurNomClient(app *pocketbase.PocketBase) func(string) string {
+	dao := app.Dao()
+	cache := make(map[string]string)
+
+	return func(id string) string {
+		if id == "" {
+			return ""
+		}
+		if n, ok := cache[id]; ok {
+			return n
+		}
+		n := ""
+		if c, err := dao.FindRecordById("customers", id); err == nil && c != nil {
+			n = c.GetString("company_name")
+			if n == "" {
+				n = strings.TrimSpace(fmt.Sprintf("%s %s",
+					c.GetString("firstname"), c.GetString("lastname")))
+			}
+		}
+		cache[id] = n
+		return n
+	}
 }

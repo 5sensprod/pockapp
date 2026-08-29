@@ -306,6 +306,11 @@ func ecrireRapport(app *pocketbase.PocketBase, rec *models.Record, r *RapportZ) 
 
 	rec.Set("sessions_count", t.SessionsCount)
 	rec.Set("invoice_count", t.InvoiceCount)
+	// Contrat du 28 août 2026 — mêmes raisons que les collected_* ci-dessous :
+	// le hash les scelle, les colonnes doivent les porter.
+	rec.Set("pos_ticket_count", t.PosTicketCount)
+	rec.Set("external_invoice_count", t.ExternalInvoiceCount)
+	rec.Set("sales_documents", t.SalesDocuments)
 	rec.Set("total_ht", t.TotalHT)
 	rec.Set("total_tva", t.TotalTVA)
 	rec.Set("total_ttc", t.TotalTTC)

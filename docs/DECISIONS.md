@@ -10,6 +10,580 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## La journée s'ouvre d'un geste, mais son fonds ne se saisit plus — 2026-08-29
+
+**Décision, prise après essai en production le jour même.** L'ouverture
+totalement invisible ne convient pas : le terminal affiche, tant que la journée
+n'a pas commencé, **le numéro du dernier Z, le tiroir de la veille au soir, et
+un bouton « Commencer la journée »**. Au clic, une modale propose le fonds
+**prérempli**, modifiable — soit on garde le tiroir de la veille, soit on
+recompte.
+
+**Ce qui a été gardé de la version invisible, et c'était l'essentiel :** le
+fonds n'est **jamais ressaisi de mémoire**. C'est cette saisie à blanc qui a
+produit 32 fonds à zéro sur 65 sessions et deux tiroirs négatifs
+(−154,04 € et −170,24 €). Le geste explicite ne la réintroduit pas : il valide
+une proposition.
+
+**Dès qu'une dénomination est saisie, le comptage l'emporte** sur la
+proposition : on vient de recompter le tiroir, la valeur calculée ne vaut plus.
+
+**`OpenSessionDialog` a été remonté** — il avait été débranché quelques heures
+par E-3. C'est l'argument pratique de la règle « on débranche, on n'efface
+pas » : le fichier était intact, il a suffi de le rebrancher et de préremplir
+son champ.
+
+**`SessionDuJour` reste, en filet.** Elle sert toujours à
+`CreateCashMovementIfEspeces` : un encaissement espèces hors caisse, un jour où
+personne n'a ouvert le terminal, doit avoir une session — sinon il est **perdu**,
+comme avant le 29 août. Le terminal, lui, demande le geste explicite.
+
+**Un défaut de fuseau trouvé sur la première session implicite de production.**
+`opened_at` valait `11:26:24Z` pour un ticket créé à `09:26:24Z` : l'heure
+**locale** écrite avec un « Z » qui la fait passer pour de l'UTC, **deux heures
+inventées**. Sans effet en pleine journée ; entre minuit et 2 h, la journée
+stockée aurait été la suivante. L'instant est désormais en UTC comme tout ce
+que PocketBase écrit, et la **journée reste locale** — c'est la journée
+commerciale. Gardien : `TestLaJourneeEstCelleDuCommercantPasCelleDUTC`.
+
+**`facture-supprimer` corrigé, sur le bon critère.** Il refusait **tout**
+document portant une session — un refus qui datait d'un temps où une session se
+créait à la main. Depuis que tout ticket en porte une, il interdisait d'en
+retirer le moindre, **même le dernier, même jamais clôturé**. Le critère devient
+« sa session est-elle scellée dans un rapport Z ? » : un Z est haché, et le
+rejouer réécrirait un document déjà remis. L'outil ne réclame plus non plus un
+`z-repair` quand aucun Z n'est concerné — même fausse alerte que celle relevée
+sur `facture-doublons` le 28 août.
+
+**Appliqué :** `TIK-2026-000830` (2,90 €, **carte**, donc aucun mouvement de
+caisse, séquence 1201, dernier maillon, session dans aucun Z) supprimé le 29 août
+2026, application fermée, après sauvegarde. Aucun rejeu nécessaire.
+
+**Remise en cause si :** le geste du matin devient une gêne sur un poste
+secondaire. Le filet existe déjà — `SessionDuJour` ouvrirait la journée au
+premier encaissement — mais le terminal, lui, l'exige.
+
+## Le comptage du tiroir est une étape de la clôture, pas un geste à part — 2026-08-29
+
+**Décision, prise par le propriétaire après avoir essayé la version précédente
+le jour même.** Le bouton « Compter le tiroir » de E-3 est remplacé par
+**« Clôturer la journée »**, et c'est la modale de clôture qui propose le
+comptage. Ses mots : « le matin j'ouvre la caisse et le soir je dois faire le Z
+pour clore la journée, et c'est à ce moment que s'affiche la modale pour compter
+ce qu'il y a en caisse ».
+
+**Ce que E-3 avait mal compris.** Sortir le comptage de la clôture l'avait rendu
+autonome — un bouton qu'il aurait fallu penser à presser, sans moment naturel
+pour le faire. Le comptage n'est pas une action : c'est **une étape** du seul
+geste de fin de journée. « Facultatif » veut dire qu'on peut clôturer sans avoir
+compté, pas que le comptage vit ailleurs.
+
+**Le comptage seul survit en action secondaire** — « Enregistrer sans
+clôturer » — pour un contrôle en cours de journée. Il écrit
+`counted_cash_total` sans rien fermer, par la route `/count`.
+
+**Le découpage du Z n'a pas bougé d'une ligne.** `bornesDeLaPeriodeZ`,
+`session_ids` et `GenerateRapportZ` sont intacts : c'est ce qui rend le rejeu
+par `z-repair` possible, donc la vérification d'un document déjà remis.
+
+**Le gardien qui couvre toute la chaîne.**
+`TestUneJourneeImpliciteEntreDansLeZDeSaJournee` rejoue une journée entièrement
+implicite — ouverture au premier encaissement, un ticket de 50 €, fermeture au
+passage de journée — et exige que le Z de cette journée porte **50,00 € et un
+ticket**. Si la fermeture automatique posait l'heure courante au lieu de la fin
+de la journée de la session, **ce Z serait vide et personne ne le saurait** :
+`GenerateRapportZ` filtre sur `closed_at` dans sa journée.
+
+**Écarté — annuler le ticket de test par un avoir.** Proposé puis retiré : un
+avoir enregistre un remboursement qui n'a jamais eu lieu, sur un document
+fiscal. On ne fabrique pas un mouvement d'argent pour effacer une erreur de
+saisie.
+
+**Remise en cause si :** deux postes clôturent en même temps. La modale vérifie
+déjà qu'aucune autre session n'est ouverte et qu'aucun Z n'existe pour la
+journée, mais la vérification est côté écran.
+
+## Compter le tiroir ne clôture plus, et l'écran nomme l'utilisateur — 2026-08-29
+
+**Décision.** L'ouverture et la fermeture manuelles de session disparaissent des
+écrans (E-3). Le bouton « Ouvrir / Clôturer » devient **« Compter le tiroir »**,
+le terminal encaisse sans qu'aucune session soit ouverte à la main, et le badge
+de l'en-tête affiche **le nom de l'utilisateur** au lieu de l'état de la session.
+
+**Le comptage passe par une route neuve, `POST /api/cash/session/:id/count`**,
+qui écrit `counted_cash_total` et rien d'autre. **Il ne pouvait pas passer par
+`/close`** : `SessionDuJour` cherche une session *ouverte*, donc une session
+fermée en milieu de journée serait remplacée par une seconde au prochain
+encaissement et la journée en porterait **deux au lieu d'une** — exactement ce
+que le gardien de E-1 interdit. Le comptage cesse donc d'être une clôture ; la
+fermeture appartient au Z et au passage de journée.
+
+**Pourquoi le badge nomme l'utilisateur.** « Aucune session ouverte » ne
+désignait plus une anomalie mais une journée sans encaissement, et le commerçant
+n'a rien à en faire. Ce qu'il veut lire, c'est **qui tient la caisse** — la même
+donnée que le ticket porte déjà en `sold_by` / `cashier_id`.
+
+**Écarté — supprimer `OpenSessionDialog`, `useOpenCashSession` et
+`/api/cash/session/open`.** Vérifié par grep : le dialogue n'avait qu'un
+appelant, `CashModuleShell`. Ils sont **débranchés, pas effacés**, et le fichier
+porte un en-tête qui dit pourquoi le remonter réintroduirait la saisie manuelle
+du fonds. Même geste que pour le rapprochement espèces du v3 et le détail des
+sessions du v4.
+
+**Un défaut trouvé en débranchant.** Les invalidations de cache qui suivent la
+création d'un ticket lisaient `variables.session_id` — désormais possiblement
+absent, puisque c'est le backend qui ouvre la session. Elles lisent maintenant
+la session du **ticket rendu**. Sans cela, le rapport X et le journal des
+mouvements seraient restés périmés après une vente, **sans erreur**.
+
+**Code mort signalé, non touché :** `TerminalHeader.tsx` affiche « Session
+ouverte » et un `sessionIdShort`, et n'a **aucun appelant** — ni avant ni après
+cette mission.
+
+**Remise en cause si :** un poste doit pouvoir constater un écart de caisse en
+milieu de journée et repartir d'un tiroir neuf. Le comptage n'ouvre plus de
+nouvelle session ; il faudrait alors un geste distinct, qui n'existe pas.
+
+## Le fonds de caisse ne se saisit plus : c'est le tiroir compté, sinon le théorique — 2026-08-29
+
+**Décision.** L'`opening_float` d'une session n'est plus une saisie. Il vaut le
+**dernier tiroir COMPTÉ**, augmenté des flux des journées écoulées depuis ; sans
+aucun comptage en base, il vaut le **solde théorique**. Le calcul est
+`FondsReporte` (`backend/reports/fonds_reporte.go`), appelé par `SessionDuJour`.
+
+**La saisie n'apportait aucune information — mesuré.** Le fonds saisi EST déjà
+le tiroir compté de la session précédente : 285,40 puis 263,01 se recopient
+exactement d'une session à l'autre sur la base de production. Elle apportait en
+revanche ses fautes : **0,50 € de frappe le 21/08** (198,20 saisi pour 198,70
+compté), **32 fonds à zéro sur 65** alors que le tiroir précédent n'était pas
+vide, et surtout les deux tiroirs **négatifs** de −154,04 € et −170,24 €
+(`04-refonte-du-z.md` §7), où le fonds saisi était déjà net d'une remise que le
+mouvement retranchait une seconde fois.
+
+**Écarté — toujours le solde théorique**, ce que prescrivait la mission. Un
+écart constaté le soir — compté 227,68 pour un théorique de 230 — se reporterait
+**indéfiniment** au lieu d'être soldé le jour où il a été mesuré. Le comptage est
+le seul point de contact avec le tiroir réel : on s'y ancre.
+
+**Écarté — toujours le comptage.** **23 sessions sur 65 n'en ont aucun.** Le
+fonds tomberait à zéro ces jours-là, c'est-à-dire exactement le défaut qu'on
+répare.
+
+**Aucune seconde implémentation du tiroir.** Les flux sont lus dans le journal
+des espèces, chemin unique depuis le 28 août : ni les signes des mouvements, ni
+le discriminant vente / tiroir ne sont réécrits. `JournalDesEspeces` a été
+scindée en une enveloppe (signature `app` inchangée) et un cœur
+`JournalDesEspecesDao` qui ne prend qu'un dao, parce que `SessionDuJour` n'a pas
+d'app sous la main. C'est la règle de `aggregateZ`, appliquée au tiroir.
+
+**Les FLUX seulement, jamais les soldes.** Le `SoldeOuverture` des journées
+traversées n'entre pas dans le cumul : l'ajouter compterait comme un apport
+l'argent déjà présent dans le tiroir. Un gardien le chiffre — **220 € attendus,
+420 € si l'on se trompe.**
+
+**Le fonds est borné à zéro.** Un tiroir négatif n'existe pas : un calcul qui en
+produirait un signale une anomalie de données en amont, pas un fonds. On rend 0
+plutôt que de la propager dans une session neuve, et le journal des espèces la
+montre.
+
+**Limite assumée :** un mouvement enregistré le jour du comptage mais APRÈS la
+fermeture n'est pas repris dans le report. Il suppose qu'on encaisse après avoir
+compté et fermé ; le comptage du lendemain le solde.
+
+**Remise en cause si :** le comptage du tiroir, devenu facultatif en E-3, cesse
+d'être fait pendant des semaines. Le report resterait juste — il retomberait sur
+le théorique — mais plus rien ne le confronterait au réel.
+
+## La session de caisse devient implicite, et aucune n'est jamais effacée — 2026-08-29
+
+**Décision.** Les sessions de caisse sortent de l'usage : plus personne n'en
+ouvre ni n'en ferme une à la main. Une session est ouverte **automatiquement au
+premier encaissement de la journée** (`backend/session_du_jour.go`,
+`SessionDuJour`), et c'est le nom de l'utilisateur connecté, non la session, qui
+dit qui a encaissé. Une seule caisse, deux postes.
+
+**Et la collection reste, avec tous ses enregistrements.** `recalculerRapport`
+(`z_repair.go:224-231`) relit `session_ids` et **échoue si une session manque** :
+effacer les `cash_sessions` rendrait les 60 rapports Z irréparables — plus de
+vérification par recalcul, plus de correction, et `z-repair` renverrait 60
+erreurs. C'est l'outil qui a réparé la régression du 20 mai et qui a servi trois
+fois le 28 août. **On cache, on n'efface pas** — même geste que pour les
+`total_cash_*` du v3 et le détail des sessions du v4.
+
+**Le constat qui rend la refonte sûre**, mesuré le 29 août 2026 sur la base de
+production, en lecture seule : **65 sessions, toutes fermées**, 0 ouverte, 0
+fermée sans Z, **0 ticket sans session, 0 mouvement sans session**. Et 48
+journées sur 56 (86 %) ne portent déjà qu'une session. La reprise des sessions
+restées ouvertes — l'étape qu'on redoutait — est donc **sans objet**.
+
+**Une porte se ferme, et elle perdait de l'argent.**
+`CreateCashMovementIfEspeces` cherchait une session ouverte et **abandonnait en
+silence** s'il n'en trouvait pas. Un encaissement espèces reçu hors session
+n'était pas orphelin : il était **perdu**, aucun mouvement n'était écrit et le
+tiroir ne le voyait jamais (`04-refonte-du-z.md` §2). Il ouvre désormais la
+session du jour. Aucun cas en base aujourd'hui — mais 8 jours se sont écoulés
+depuis la dernière session, du 21 au 29 août, avec de l'activité hors caisse.
+
+**Le piège de `closed_at`, trouvé en lisant le code.** `GenerateRapportZ` ne
+retient que les sessions dont le `closed_at` tombe **dans la journée du
+rapport** (`cash_reports.go:1490-1496`). Une session de la veille fermée à
+l'instant du premier encaissement du lendemain porterait un `closed_at` du
+lendemain, et le Z de la veille ne la verrait plus : **ses tickets sortiraient
+de toute clôture, sans erreur**. La fermeture par passage de journée pose donc
+`closed_at` à la fin de la journée de la session, jamais à l'heure courante. Un
+gardien le vérifie.
+
+**Ce que le report du fonds va corriger, et il ne l'invente pas.** Le fonds
+d'ouverture d'une session **est déjà** le tiroir compté de la précédente —
+285,40 puis 263,01 se recopient exactement d'une session à l'autre. Mais à la
+main : **0,50 € de faute de frappe** le 21/08 (198,20 saisi pour 198,70 compté)
+et **32 sessions sur 65 à fonds zéro** alors que le tiroir précédent n'était pas
+vide. Le report automatique (E-2) supprime les deux. Il partira du **solde
+théorique** du journal des espèces, jamais du comptage : **23 sessions sur 65
+n'ont aucun comptage**.
+
+**Écarté — supprimer les `cash_sessions`.** C'était la lecture littérale de
+« sortir des sessions ». Elle casse le rejeu des 60 Z, c'est-à-dire la seule
+manière de vérifier et de corriger un document fiscal déjà remis.
+
+**Écarté — `opened_by` comme « qui a encaissé » pour l'historique.** Les 65
+sessions ne portent **qu'un seul** `opened_by` : le champ ne distingue personne
+sur le passé. C'est `sold_by` / `cashier_id`, posés par ticket
+(`pos_routes.go:376-379`), qui nomment le vendeur.
+
+**Remise en cause si :** une seconde caisse apparaît. `SessionDuJour` résout
+aujourd'hui « la caisse active de la société » et n'en attend qu'une ; deux
+caisses simultanées demanderaient une session par caisse, ce que la fonction
+sait faire (le paramètre existe) mais que les appelants ne renseignent pas
+tous.
+
+## Le journal des espèces, par journée, et la question D refermée — 2026-08-28
+
+**Décision.** Le journal des espèces (ticket B-1 du contrat v3) existe :
+`GET /api/reports/journal-especes`, écran `/stats/especes`. Il lit
+**tous** les mouvements du tiroir — espèces des ventes comprises —, **par
+journée**, et décompose le solde. Route locale, lecture seule : pas de nouvelle
+sortie réseau.
+
+**Pourquoi tous les mouvements, et pas seulement les libres.** C'est la seule
+vue qui reconstitue le tiroir : `fonds + espèces des ventes + apports − sorties
+− remises − remboursements`. Ne montrer que les 23 mouvements libres donnerait
+un journal plus court dont le solde ne se vérifie contre rien.
+
+**Le fonds d'ouverture est un SOLDE, jamais un flux.** Il est celui de la
+première session ouverte ce jour-là, et il est affiché à part. Le compter comme
+un apport ferait entrer chaque jour l'argent qui était déjà là la veille. Le
+journal rend visible le défaut inverse — 7 Z portent un `total_cash_expected`
+négatif, un fonds saisi déjà net d'une remise — mais ne le crée pas : un solde
+négatif est affiché en rouge avec sa cause probable.
+
+**Un seul signe pour un seul tiroir.** La ventilation suit exactement celle
+d'`aggregateZ` : `cash_in` et `adjustment` entrent, `cash_out`, `refund_out` et
+`safe_drop` sortent. Deux signes différents pour la même donnée, ce serait deux
+vérités sur le même tiroir.
+
+**Question D du contrat v3, refermée.** `isCashInFromSale` était morte depuis
+des mois (aucun appelant). Elle est **supprimée** ; la règle vit dans
+`estMouvementDeVente`, **branchée**, et son critère est `related_invoice` **OU**
+`meta` — arbitrage du 27 août.
+
+**Et un défaut trouvé en la branchant, qui ne s'était jamais vu.** `getMetaMap`
+ne testait que `raw.(map[string]any)`, alors que PocketBase rend un champ JSON
+en `types.JsonRaw` — des octets. Elle rendait donc **toujours nil**, et
+`isCashInFromSale`, sa seule cliente, aurait classé **tous** les mouvements
+comme « pas une vente ». Le défaut n'a jamais eu d'effet parce que la fonction
+n'était jamais appelée : il en aurait eu un le jour où on l'aurait branchée.
+Mesuré en la branchant : 0 mouvement de vente reconnu au lieu de tous.
+`getMetaMap` décode désormais `JsonRaw`, `[]byte` et `string`.
+
+**Écarté — un journal par session.** Cohérent avec le Z, mais une session peut
+s'étendre sur plusieurs journées et le commerçant compte son tiroir par jour.
+Arbitré le 27 août (§6 question B).
+
+**Remise en cause si :** des mouvements apparaissent hors de toute session —
+`CreateCashMovementIfEspeces` abandonne aujourd'hui en silence sans session
+ouverte, et un tel mouvement est perdu, pas orphelin. Le journal, qui lit par
+journée, les verrait le jour où ils existeraient.
+
+## La liste du Z couvre les quatre lignes, comme le journal des ventes — 2026-08-28
+
+**Décision.** `sales_documents` ne se limite plus à la ligne 1 : elle porte les
+**quatre lignes** — ventes du jour, créances, acomptes, avoirs — et chaque pièce
+porte son **heure**, son **client** et **sa ligne**, exactement comme le journal
+des ventes. `schema_version` passe à **6**.
+
+**Pourquoi les quatre lignes.** La liste explique alors le **total encaissé**,
+qui est le nombre que le commerçant reconnaît, et non le seul chiffre
+d'affaires. C'est déjà ce que fait le journal ; un Z qui listerait autre chose
+que le journal, sur la même période, serait un second récit des mêmes faits.
+
+**Un seul vocabulaire, parce qu'un seul code.** `Kind` vient de `natureDe`,
+`Heure` de `heureDe` (`journal.go`), `Line` de `LigneZ.String()`
+(`z_lignes.go`) — toutes déjà partagées. Le nom du client était la seule règle
+en double : `resolveurNomClient` est extraite de `journal.go` et appelée par
+`aggregateZ`. Deux résolutions auraient fini par diverger (un `company_name`
+ici, un `firstname lastname` là) et les deux écrans auraient nommé
+différemment le même document.
+
+**Le montant listé est celui COMPTÉ, pas le total du document.** Pour une
+facture parente amputée de ses acomptes, les deux diffèrent — c'est le
+classificateur qui tranche, et la liste lit sa décision plutôt que de relire le
+document. Corollaire : les pièces des lignes 2 à 4 n'ont **ni base HT ni TVA**,
+ce qui interdit de les additionner à la ligne 1 depuis la liste, comme le
+contrat du 23 août l'interdit depuis les totaux. Un gardien le vérifie.
+
+**Une conversion de ticket n'est listée nulle part**, puisqu'elle n'est comptée
+dans aucune ligne (`LigneAucune`). Elle ne doit pas se lire, sinon le lecteur la
+compterait de l'œil.
+
+**Le nom du client est FIGÉ à la clôture.** Un client renommé ou effacé gardera
+son ancien nom dans les Z passés. C'est ce qu'on attend d'un document scellé —
+il reflète ce qui a été comptabilisé — mais c'est une donnée nominative de plus
+dans `z_reports`, sur un poste partagé. Accepté sciemment.
+
+**Remise en cause si :** la liste devient trop longue pour un PDF envoyé au
+comptable — auquel cas c'est la pagination qu'il faut traiter, pas le périmètre.
+
+## Le Z porte lui-même la liste de ses pièces, et cesse d'affirmer quand la TVA est due — 2026-08-28
+
+**Décision.** Le rapport Z stocke `sales_documents` — la liste des documents de
+sa ligne 1, pièce par pièce — dans le document et **dans son hash**.
+`schema_version` passe à **5**. Et le libellé « leur TVA a déjà été déclarée à
+l'émission » est retiré des écrans : il affirmait une règle fiscale qui n'est
+vraie que pour une partie des ventes.
+
+**Pourquoi stockée, et non rechargée.** Le PDF listait déjà les tickets, mais en
+interrogeant `/api/pos/session/:id/tickets` **au moment de l'impression**
+(`usePrintReport.tsx`). Trois défauts, tous dans le même geste : la liste
+imprimée était celle d'**aujourd'hui** et non celle qui avait été comptée ; un
+document modifié après la clôture changeait donc le PDF **sans rompre le hash**
+du Z ; et les factures hors caisse n'y figuraient pas, alors qu'elles sont dans
+la ligne 1. Ce chargement est supprimé.
+
+**L'ordre de la liste est du calcul, pas de la présentation.**
+`FindRecordsByFilter` est appelée sans tri et PocketBase n'en promet aucun :
+sans tri explicite (date, numéro, id), deux rejeux du même rapport produiraient
+deux hash. Le tri est dans `aggregateZ`, et un gardien le vérifie.
+
+**Écarté — rechargée à l'affichage.** Aucune migration, aucun rejeu, mais on
+gardait un document scellé dont le contenu imprimé pouvait changer après coup.
+C'est précisément ce que la chaîne d'intégrité existe pour interdire.
+
+**Ce que le Z citait jusqu'ici.** Aucun numéro de pièce — mesuré le 28 août
+2026, 0 occurrence de `FAC-…` dans les 60 `full_report`. Ce contrat change cela
+délibérément : à partir de la v5, un Z **nomme** les pièces qu'il agrège.
+
+**La TVA des créances : une affirmation trop générale.** Le code disait « sa TVA
+a déjà été déclarée à son émission ». Vrai pour une **livraison de biens**
+(exigible à la livraison), **faux pour une prestation de services**, exigible à
+l'encaissement sauf option pour les débits (CGI art. 269-2). Le doute vient du
+propriétaire, il est fondé.
+
+**Le calcul n'est pas en cause :** la ligne 2 est en **TTC seul**. Le Z
+n'affirme rien sur cette TVA, il refuse seulement de la remettre dans la
+ligne 1 — position juste sous les deux régimes. Seule la **justification
+écrite** change : « leur TVA relève de la période d'exigibilité du document
+d'origine ». **Question ouverte au comptable** : si des prestations sont
+concernées, le Z devra porter une TVA de ligne 2 qu'il ne calcule pas
+aujourd'hui.
+
+**Remise en cause si :** le comptable confirme que des prestations relèvent de
+l'exigibilité à l'encaissement — la ligne 2 devra alors porter une base HT et
+une TVA, ce qui rouvre la décision « les lignes 2 à 4 sont en TTC seul » du
+23 août.
+
+## Le Z sort le détail des sessions et compte ses documents de vente — 2026-08-28
+
+**Décision.** Le rapport Z cesse d'afficher le bloc « Détail des sessions » et
+`sessions_count` ; il affiche à la place **combien de tickets de caisse** et
+**combien de factures hors caisse** composent sa ligne 1. `schema_version` passe
+à **4**, les deux compteurs entrent dans le hash, et les rapports existants sont
+rejoués.
+
+**Pourquoi le détail des sessions part.** Un Z couvre la **période écoulée
+depuis la clôture précédente**, pas sa seule date (`04-refonte-du-z.md`, §7, et
+le commentaire de `GenerateRapportZ`). Une session peut donc s'étendre sur
+plusieurs journées, et le détail par session donnait à lire un découpage qui
+n'est pas celui du document. Comme le rapprochement espèces la veille, la donnée
+n'est pas fausse : elle est **hors sujet dans un document fiscal**, et le PDF du
+Z part chez le comptable. Elle aura sa propre statistique dans `/stats`, où un Z
+étalé sur trois jours se relira en trois journées — décision du propriétaire,
+c'est ce redécoupage qui rend le retrait sans perte.
+
+**On cache, on n'efface pas.** `SessionSummary` reste calculée, reste dans
+`full_report`, `sessions_count` reste stocké et haché. C'est la statistique qui
+les relira. Même geste que pour les `total_cash_*` du v3.
+
+**Ce que comptent les deux compteurs neufs.** `pos_ticket_count` = tickets de
+caisse des sessions du Z ; `external_invoice_count` = factures hors caisse
+**émises ET encaissées le jour**, celles que le classificateur range en
+`LigneVentesDuJour`. Invariant, et il est testé :
+`pos_ticket_count + external_invoice_count = invoice_count`. `invoice_count` ne
+change ni de nom ni de valeur — il mêlait déjà les deux populations
+(`cash_reports.go:1047` puis `:1198`) ; le v4 le **scinde**, il ne le corrige
+pas.
+
+N'entrent dans aucun des trois compteurs : les avoirs (ligne 4), les créances
+(ligne 2), les acomptes (ligne 3), et les conversions de ticket en facture, que
+`estConversionDeTicket` (`z_lignes.go:139-145`) range en `LigneAucune` — mesuré
+le 28 août 2026 : 35 conversions payées, 6 581,36 €, exactement ce qui serait
+compté deux fois sans cette règle.
+
+**Écarté — « factures créées dans connect » au sens littéral.** Le module
+`frontend/modules/connect` **n'écrit aucun marqueur d'origine** sur `invoices` :
+le seul discriminant existant est `is_pos_ticket`
+(`backend/hooks/invoice_hooks.go:402-409`). Compter « ce qui vient de connect »
+aurait demandé un champ neuf, une migration et une reprise des 1204 documents
+existants, qui n'en portent aucun — c'est-à-dire une donnée inventée
+rétroactivement sur un document fiscal. « Hors caisse » est la seule lecture que
+la base permet.
+
+**Écarté — compteurs de simple affichage, calculés à la lecture.** Un Z scellé
+doit se relire **sans recalcul** : recalculer aujourd'hui sur des documents qui
+ont pu changer depuis, c'est exactement ce que la chaîne de hachage existe pour
+interdire. D'où : dans le hash, `schema_version = 4`, rejeu par `z-repair`.
+
+**Écarté — un prédicat par égalité (`=== 4`).** Deux branchements seulement,
+`RapportZPage.tsx` et `ZReportPDF.tsx`, et par **seuil** — `estZSansDetailSessions`
+et `estZCompteLesDocuments`, `>= 4`. Une égalité afficherait un futur rapport v5
+comme un v1, sans erreur.
+
+**Aucun montant ne bouge.** Le v4 n'ajoute que deux entiers et retire de
+l'affichage un bloc déjà calculé. Le rejeu ne déplace pas un centime ; il refait
+60 hash, mécaniquement, parce que `schema_version` est haché.
+
+**Remise en cause si :** la statistique des sessions (ticket C) montre que le
+découpage par journée perd une information que seul le découpage par session
+portait.
+
+## Les 114 numéros de facture en double sont renumérotés — 2026-08-28
+
+**Les 228 documents portant un numéro déjà utilisé ont été séparés : le premier
+émis garde son numéro, les 114 autres passent à la suite de leur série.**
+`FAC-2026-` va désormais jusqu'à `000279`, `FAC-2025-` jusqu'à `000028`.
+Appliqué en production le 28 août 2026, application fermée, après sauvegarde
+dans `pb_data-sauvegarde-avant-RENUM-20260828-115440`.
+
+**Ce n'étaient pas des doublons de saisie.** Les 114 paires ont toutes des
+dates ET des montants différents : 228 factures réelles et distinctes.
+Supprimer l'une d'elles aurait détruit une vraie facture. Mesuré : les numéros
+avaient été attribués une première fois de décembre 2025 à avril 2026, puis
+réattribués depuis 1 entre juin et août 2026.
+
+**La cause était déjà fermée** (`backend/numbering`, tri sur `-number`, refus
+d'inventer). Ces 228 documents étaient les séquelles, que rien n'avait
+reprises : `facture-doublons` est un diagnostic sans `-apply`, par choix.
+
+**Résultat, mesuré avant/après :** 114 → **0** numéro en double, **1204
+documents** (aucun perdu), somme TTC **120 305,72 € inchangée au centime**, et
+la chaîne de hachage passe de **1 maillon rompu à 0** — la rupture du
+10/12/2025, où `FAC-2025-000004` portait le GENESIS_HASH, est réparée au
+passage. 1196 documents rehachés, 0 erreur, « toute la chaîne est intègre ».
+
+**Trois erreurs de documentation corrigées en chemin, chacune mesurée.**
+
+1. **`facture-doublons` criait au loup.** Son §1 simulait l'ANCIEN hook, trié
+   sur `-sequence_number`, et annonçait « la prochaine facture sortira sur un
+   numéro DÉJÀ UTILISÉ » alors que la cause était fermée. La fausse alerte
+   vivait sur l'outil même qu'on consulte pour savoir si le problème est réglé.
+2. **La chaîne de hachage est GLOBALE, tickets compris.** `getLastInvoice`
+   (`invoice_hooks.go:1287`) ne filtre que sur `owner_company` et trie sur
+   `-sequence_number`. Mesuré : la chaîne globale portait **1 maillon rompu sur
+   1198**, celle « sans tickets POS » en portait **209** — c'est la première qui
+   existe. **`migrate_invoices_only.go` est donc inadapté** à toute reprise de
+   chaîne : il aurait réécrit 369 documents sur une chaîne fictive. Le bon
+   chemin est `hash.MigrateRecalculateAllHashes`.
+3. **Les rapports Z ne citent aucun numéro de pièce.** Les deux outils
+   annonçaient qu'un `z-repair -apply` serait nécessaire ensuite. Mesuré : **0
+   occurrence de `FAC-…` dans les 60 `full_report`**, et un `z-repair` lancé
+   après renumérotation sur copie n'a réécrit **aucun** rapport. Un Z agrège des
+   montants, il ne cite pas ses pièces.
+
+**Un paquet partagé plutôt que deux règles.** `backend/renumbering` porte le
+plan, utilisé par `facture-doublons` (qui le montre) ET `facture-renumeroter`
+(qui l'exécute) : écrire la règle deux fois, c'est accepter qu'un jour l'une
+renumérote autrement que ce que l'autre annonçait, sur des documents fiscaux
+déjà remis. Même consigne que pour `aggregateZ` et `backend/numbering`. Six
+gardiens dans `renumbering_test.go`.
+
+**Options écartées.**
+
+- **Supprimer un document de chaque paire** : ce sont des factures distinctes,
+  pas des copies.
+- **Combler les trous de la série** : un numéro remis à un client lui
+  appartient ; le rendre à un autre document produirait deux pièces différentes
+  portant la même référence chez deux clients — ce qu'on répare.
+- **Renuméroter le plus ancien** : c'est celui dont le papier circule depuis le
+  plus longtemps.
+
+**Ce qu'il faut savoir et assumer.** Les 114 documents renumérotés ont été
+remis à des clients avec leur ANCIEN numéro imprimé dessus : la base et le
+papier divergent pour ceux-là. C'est inévitable — deux pièces ne peuvent pas
+garder le même numéro — et c'est le prix de la réparation, accepté par le
+propriétaire le 28 août 2026.
+
+---
+
+## Le rapport Z ne porte plus le rapprochement espèces — 2026-08-27
+
+**Le Z devient un document purement fiscal : un total, quatre lignes, la TVA.
+Le tiroir en sort — attendu, compté, écart, et leur déclinaison par session
+disparaissent de l'écran et du PDF.** `schema_version` passe à **3**.
+
+**Pourquoi.** Un apport de fonds n'est ni une vente, ni un encaissement de
+vente. Décision du propriétaire, mesurée avant d'être appliquée
+(`frontend/modules/cash/PocketCash-docs/05-le-z-v3-et-le-journal-especes.md`,
+sur copie lecture seule de la base de production).
+
+**Ce que la mesure a établi.** Les mouvements de caisse ne touchaient **déjà**
+aucune des quatre lignes : `collectedTTC` vaut `totalTTC + créances + acomptes
+− avoirs` (`cash_reports.go:1241`), et `z_lignes.go` classe des documents,
+jamais des mouvements. Ils n'alimentaient que `expectedCash` (`:1032`), et le Z
+n'en stockait aucun champ. Le retrait ne déplace donc **pas un centime** :
+simulation sur les 60 rapports, **0 aux montants corrigés**, 60 enrichis, cumul
+encaissé inchangé à 95 216,85 €, toutes lignes équilibrées.
+
+**Le rapprochement ne disparaît de nulle part.** Il reste là où on le vérifie :
+`CloseSessionDialog.tsx:376-408` l'affiche **au moment du comptage du tiroir**,
+en lisant le rapport X comme source de vérité, et `ExpectedCashCard`
+(`RapportXDialog.tsx:202`) le porte déjà décomposé — fonds, ventes espèces,
+mouvements, total. Son détail ligne à ligne ira au journal espèces de `/stats`.
+
+**Les trois champs `total_cash_*` restent calculés et stockés.** Ils sont
+justes, portent 2 930,08 € d'écart cumulé, et **n'ont jamais été hachés**
+(`computeZReportHash` ne les contient pas ; `z_repair.go:189` l'écrit). Les
+effacer d'un document scellé serait détruire de la donnée sans y être
+contraint. Le contrat dit qu'on ne les **montre** plus, pas qu'ils n'existent
+plus — d'où un prédicat de seuil, `estZSansRapprochementEspeces` (`>= 3`,
+jamais `=== 3`), et deux branchements seulement : `RapportZPage` et
+`ZReportPDF`. Le dialogue X n'en est pas un : il n'est pas un document scellé.
+
+**Options écartées.**
+
+- **Retirer les mouvements libres de l'attendu** tout en gardant le
+  rapprochement dans le Z : **+7 686,14 € d'écart FICTIF sur 17 rapports**,
+  dont cinq au-dessus de 900 €. Le `Z-2026-000034`, ramené à 1,35 € d'écart au
+  prix de trois outils et d'une sauvegarde le 24 août, serait reparti à
+  301,35 €. Le rapprochement est une équation de tiroir : chacun de ses termes
+  y est indispensable quelle que soit sa nature comptable.
+- **Afficher le tiroir décomposé dans le Z** (recommandation du §3.2 du
+  contrat) : écartée par le propriétaire — la fiscalité n'en a pas besoin, et
+  le X porte déjà cette décomposition.
+- **Poser `cash_from_sales` et `cash_drawer_movements` sur `z_reports`**
+  (ticket V-1) : **abandonné**. Leur seul objet était de décomposer un attendu
+  affiché ; sans affichage, aucun lecteur — et le journal espèces, décidé **par
+  journée**, lira les `cash_movements` directement, pas les `z_reports`. Pas de
+  migration : le champ `schema_version` existe depuis
+  `z_reports_collected.go`.
+- **Effacer les trois champs du rapprochement** : non demandé, et destructeur
+  sur 60 documents scellés.
+
+**Ce qui pourrait la remettre en cause.** Le jour où le journal espèces
+n'existe toujours pas et où un écart de caisse doit se constater a posteriori
+sur un document scellé : le Z ne le dira plus, seule la session le dira.
+
+---
+
 ## PocketApp pose aussi le slug des catégories — 2026-08-27
 
 **Une catégorie créée dans PocketApp reçoit désormais son slug dans la couche

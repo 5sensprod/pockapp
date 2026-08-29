@@ -25,7 +25,6 @@ import { MoreHorizontal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import * as React from 'react'
-import { OpenSessionDialog } from './components'
 import { CashMovementDialog } from './components/movements/CashMovementDialog'
 import { RapportXDialog } from './components/reports/RapportXDialog'
 import { CloseSessionDialog } from './components/sessions/CloseSessionDialog'
@@ -198,13 +197,16 @@ export function CashModuleShell({
 						</>
 					)}
 
-					{/* Bouton principal — toujours visible */}
+					{/* Le seul geste de caisse qui reste (E-4, 29 août 2026).
+					    Le matin, la caisse s'ouvre seule au premier encaissement ;
+					    le soir, on clôture la journée — et c'est À CE MOMENT que le
+					    comptage du tiroir est proposé, jamais avant. */}
 					<Button
 						size='sm'
-						onClick={cash.handleToggleSession}
-						disabled={!cash.canToggleSession}
+						onClick={cash.handleCloturerLaJournee}
+						disabled={!cash.canCloturerLaJournee}
 					>
-						{cash.isSessionOpen ? 'Clôturer' : 'Ouvrir'}
+						Clôturer la journée
 					</Button>
 				</>
 			)}
@@ -221,16 +223,9 @@ export function CashModuleShell({
 			hideTitle={hideTitle}
 			hideIcon={hideIcon}
 		>
-			{/* Dialogs session — toujours montés, contrôlés par useCashModule */}
-			<OpenSessionDialog
-				open={cash.showOpenDialog}
-				onOpenChange={cash.setShowOpenDialog}
-				onSubmit={cash.handleOpenSession}
-				lastKnownFloat={cash.lastKnownFloat}
-				lastClosedAtLabel={cash.lastClosedAtLabel}
-				isSubmitting={cash.openSessionMutationPending}
-			/>
-
+			{/* Dialogs — contrôlés par useCashModule.
+			    OpenSessionDialog n'est plus monté depuis E-3 : le fonds ne se
+			    saisit plus (il est reporté) et la session s'ouvre toute seule. */}
 			{cash.activeSession && cash.selectedRegisterId && (
 				<>
 					<CloseSessionDialog

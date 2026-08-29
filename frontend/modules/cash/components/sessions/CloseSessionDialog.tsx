@@ -24,6 +24,7 @@ import { useOpenCashDrawerMutation } from '@/lib/pos/printerQueries'
 import {
 	useCashSessionHistory,
 	useCloseCashSession,
+	useCountCashSession,
 	useXReport,
 	useZReportCheck,
 } from '@/lib/queries/cash'
@@ -55,7 +56,12 @@ export function CloseSessionDialog({
 	session,
 }: CloseSessionDialogProps) {
 	const navigate = useNavigate()
-	const { mutate: closeSession, isPending } = useCloseCashSession()
+	const { mutate: closeSession, isPending: isClosing } = useCloseCashSession()
+	// Le comptage seul n'écrit que `counted_cash_total` : il ne clôture RIEN.
+	// Fermer la session en milieu de journée en ferait naître une seconde au
+	// prochain encaissement, et la journée en porterait deux (E-3).
+	const { mutate: countSession, isPending: isCounting } = useCountCashSession()
+	const isPending = isClosing || isCounting
 	const [showConfirm, setShowConfirm] = useState(false)
 	// 🆕 Mémorise l'intention de l'utilisateur : fermer simplement la session,
 	// ou la fermer puis générer/afficher directement le rapport Z du jour.
@@ -179,7 +185,7 @@ export function CloseSessionDialog({
 				toast.error(
 					"Un rapport Z existe déjà pour cette caisse aujourd'hui. " +
 						'La session ne peut pas être ajoutée à un Z déjà verrouillé. ' +
-						'Fermez la session normalement avec "Fermer la session" si besoin.',
+						'Vous pouvez tout de même enregistrer le comptage du tiroir.',
 				)
 			} else {
 				toast.error(
@@ -196,6 +202,30 @@ export function CloseSessionDialog({
 
 	const handleFinalSubmit = () => {
 		const action = pendingAction
+
+		// Comptage seul : on enregistre le tiroir et on s'arrête là.
+		if (action === 'close') {
+			countSession(
+				{
+					sessionId: session.id,
+					cashRegisterId: (session as any).cash_register,
+					countedCashTotal: countedTotal,
+				},
+				{
+					onSuccess: () => {
+						form.reset()
+						setShowConfirm(false)
+						toast.success('Comptage du tiroir enregistré')
+						onOpenChange(false)
+					},
+					onError: (error: any) => {
+						toast.error(`Erreur: ${error?.message ?? 'Comptage impossible'}`)
+					},
+				},
+			)
+			return
+		}
+
 		closeSession(
 			{
 				sessionId: session.id,
@@ -254,9 +284,11 @@ export function CloseSessionDialog({
 			<DialogContent className='max-w-3xl max-h-[90vh] overflow-y-auto'>
 				<DialogHeader className='flex-row items-center justify-between gap-4 pr-8'>
 					<div>
-						<DialogTitle>Fermer la session de caisse</DialogTitle>
+						<DialogTitle>Clôturer la journée</DialogTitle>
 						<DialogDescription>
-							Comptez les espèces présentes dans la caisse
+							Comptez les espèces présentes dans la caisse, puis clôturez la
+							journée. Le comptage reste facultatif : vous pouvez clôturer sans
+							l'avoir fait.
 						</DialogDescription>
 					</div>
 					{!showConfirm && (
@@ -452,10 +484,10 @@ export function CloseSessionDialog({
 									{isPending && pendingAction === 'close' ? (
 										<>
 											<Loader2 className='mr-2 h-4 w-4 animate-spin' />
-											Fermeture...
+											Enregistrement...
 										</>
 									) : (
-										'Fermer la session'
+										'Enregistrer sans clôturer'
 									)}
 								</Button>
 								<Button
@@ -489,7 +521,7 @@ export function CloseSessionDialog({
 									) : (
 										<>
 											<FileCheck2 className='mr-2 h-4 w-4' />
-											Clôturer et générer le Z
+											Clôturer la journée et générer le Z
 										</>
 									)}
 								</Button>
@@ -502,7 +534,7 @@ export function CloseSessionDialog({
 							<AlertTriangle className='h-4 w-4' />
 							<AlertDescription>
 								Écart important détecté ({formatCurrency(Math.abs(difference))}
-								). Confirmer la fermeture ?
+								). Confirmer ?
 							</AlertDescription>
 						</Alert>
 
@@ -559,7 +591,7 @@ export function CloseSessionDialog({
 										Confirmer et générer le Z
 									</>
 								) : (
-									'Confirmer la fermeture'
+									'Confirmer le comptage'
 								)}
 							</Button>
 						</DialogFooter>

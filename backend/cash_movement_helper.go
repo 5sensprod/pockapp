@@ -11,7 +11,6 @@
 package backend
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/pocketbase/pocketbase/daos"
@@ -38,10 +37,15 @@ func CreateCashMovementIfEspeces(dao *daos.Dao, paymentMethod string, params Cas
 		return nil
 	}
 
-	// Trouver la session ouverte pour cette company
-	session := findActiveSessionForCompany(dao, params.OwnerCompany)
-	if session == nil {
-		log.Printf("⚠️ cash_movement ignoré: aucune session ouverte pour company %s", params.OwnerCompany)
+	// La session du jour, créée au besoin (backend/session_du_jour.go, E-1).
+	//
+	// ⚠️ Jusqu'au 29 août 2026, cette fonction ABANDONNAIT EN SILENCE quand
+	// aucune session n'était ouverte : le mouvement n'était pas orphelin, il
+	// était PERDU, et l'argent espèces reçu ce jour-là n'entrait dans aucun
+	// tiroir (04-refonte-du-z.md §2). C'est la porte que E-1 ferme.
+	session, err := SessionDuJour(dao, params.OwnerCompany, "", params.CreatedBy)
+	if err != nil {
+		log.Printf("⚠️ cash_movement ignoré: session du jour indisponible (%v)", err)
 		return nil
 	}
 
@@ -77,15 +81,4 @@ func CreateCashMovementIfEspeces(dao *daos.Dao, paymentMethod string, params Cas
 	log.Printf("✅ cash_movement créé: %s %.2f€ (session %s)",
 		params.MovementType, params.Amount, session.Id)
 	return cm
-}
-
-// findActiveSessionForCompany trouve la session de caisse ouverte
-// pour une company donnée. Retourne nil si aucune session n'est ouverte.
-func findActiveSessionForCompany(dao *daos.Dao, ownerCompany string) *models.Record {
-	filter := fmt.Sprintf("owner_company = '%s' && status = 'open'", ownerCompany)
-	session, err := dao.FindFirstRecordByFilter("cash_sessions", filter)
-	if err != nil || session == nil {
-		return nil
-	}
-	return session
 }

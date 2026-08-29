@@ -229,10 +229,13 @@ func main() {
 	fmt.Printf("  Le plus ancien touché porte `sequence_number` %d.\n", minSeqTouche)
 	fmt.Printf("  `number` entre dans le hash (backend/hash/hash.go:93) : la chaîne serait\n")
 	fmt.Printf("  rompue à partir de là, donc %d document(s) à rehacher jusqu'au dernier\n", aRehacher)
-	fmt.Printf("  maillon (backend/hash/migrate_invoices_only.go).\n")
-	fmt.Printf("  Les rapports Z qui citent ces numéros sont scellés : ils continueraient\n")
-	fmt.Printf("  d'annoncer l'ancien numéro. `z-repair -apply` les rejouerait.\n")
-	fmt.Printf("\n  Vérifications seules : cette commande n'écrit pas, et n'a pas de -apply.\n\n")
+	fmt.Printf("  maillon - par hash.MigrateRecalculateAllHashes, qui suit la chaine\n")
+	fmt.Printf("  GLOBALE, et NON migrate_invoices_only.go qui exclut les tickets.\n")
+	fmt.Printf("  Les rapports Z ne sont PAS concernés : mesuré le 28/08/2026,\n")
+	fmt.Printf("  aucun des 60 `full_report` ne cite de numéro de piece, et un\n")
+	fmt.Printf("  z-repair apres renumerotation sur copie n'a reecrit aucun Z.\n")
+	fmt.Printf("\n  Verifications seules. Pour executer ce plan :\n")
+	fmt.Printf("  go run ./backend/cmd/facture-renumeroter -apply\n\n")
 }
 
 func lire(r *models.Record) doc {
@@ -329,20 +332,30 @@ func prevoir(tous []doc, plafond map[string]int) {
 			if !existe {
 				continue
 			}
-			relu := dernierDeSerie[k]
-			prochain := relu.rang + 1
+			// numbering.Suivant relit le plus grand NUMERO de la serie : c'est
+			// exactement `atteint`, deja calcule plus haut. Avant le 28/08/2026
+			// cette ligne simulait l'ANCIEN hook, trie sur `-sequence_number`,
+			// et criait donc au doublon sur une cause deja fermee.
+			prochain := atteint + 1
 			marque := "ok"
 			if prochain <= atteint {
 				marque = fmt.Sprintf("⚠️ DOUBLON (%s%0*d existe déjà)", serie, padding, prochain)
 				risque = true
 			}
-			fmt.Printf("      %-12s plus haut atteint %0*d · le hook relit %s (seq %d) et donnerait %0*d  %s\n",
-				serie, padding, atteint, relu.number, relu.seq, padding, prochain, marque)
+			fmt.Printf("      %-12s plus haut atteint %0*d - numbering.Suivant relit %s%0*d et donnera %0*d  %s\n",
+				serie, padding, atteint, serie, padding, atteint, padding, prochain, marque)
 		}
 	}
 	if risque {
-		fmt.Printf("\n  ⚠️ La prochaine facture sortira sur un numéro DÉJÀ UTILISÉ.\n")
-		fmt.Printf("     Cause : le tri `-sequence_number` de generateDocumentNumber\n")
-		fmt.Printf("     (backend/hooks/invoice_hooks.go:845) — voir l'en-tête de ce fichier.\n")
+		fmt.Printf("\n  [!] La prochaine piece sortirait sur un numero DEJA UTILISE.\n")
+		fmt.Printf("     Sous numbering.Suivant c'est impossible par construction :\n")
+		fmt.Printf("     si ce message s'affiche, un chemin de numerotation a echappe\n")
+		fmt.Printf("     au paquet. Les quatre connus : invoice_hooks.go:850 et :1279,\n")
+		fmt.Printf("     deposit.go:521 et :535.\n")
+	} else {
+		fmt.Printf("\n  [ok] Aucune serie ne redonnerait un numero deja utilise.\n")
+		fmt.Printf("     Les doublons ci-dessous sont ANTERIEURS au correctif : la\n")
+		fmt.Printf("     cause est fermee (numbering.Suivant, tri sur `-number`), les\n")
+		fmt.Printf("     documents deja emis ne se reparent pas pour autant.\n")
 	}
 }

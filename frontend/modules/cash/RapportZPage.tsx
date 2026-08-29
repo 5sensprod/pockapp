@@ -30,6 +30,10 @@ import {
 	type CustomerTypeSummary,
 	aggregateEreporting,
 	estZQuatreLignes,
+	estZCompteLesDocuments,
+	estZListeLesDocuments,
+	estZSansDetailSessions,
+	estZSansRapprochementEspeces,
 	getPaymentMethodLabel,
 } from '@/lib/types/cash.types'
 import { useNavigate, useSearch } from '@tanstack/react-router'
@@ -409,6 +413,21 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 	// présenter sous la forme du nouveau contrat lui ferait dire ce qu'il ne dit
 	// pas — sur un document scellé, c'est inacceptable.
 	const quatreLignes = estZQuatreLignes(totals)
+	// Contrat du 27 août 2026 : le Z ne porte plus le tiroir. Un rapport scellé
+	// AVANT ce contrat garde son rapprochement à l'écran — il se relit sous la
+	// règle qui l'a produit.
+	const sansTiroir = estZSansRapprochementEspeces(totals)
+	// Contrat du 28 août 2026 : le détail par session sort du Z — une session
+	// peut chevaucher plusieurs journées et le découpage affiché ne
+	// correspondait pas à la période du document. Le calcul reste, l'affichage
+	// part ; la statistique du module `stats` le redécoupera par journée.
+	const sansDetailSessions = estZSansDetailSessions(totals)
+	const compteDocuments = estZCompteLesDocuments(totals)
+	// La liste vient du document lui-même, hachée à la clôture. Si elle n'y est
+	// pas, on n'en reconstruit pas une : on n'affiche rien.
+	const listeDocuments = estZListeLesDocuments(totals)
+		? (totals.sales_documents ?? [])
+		: []
 
 	// Sur un rapport v2, la ventilation qui compte est celle du TOTAL encaissé :
 	// `by_method` ne couvre plus que la ligne 1, l'afficher sous le libellé
@@ -488,13 +507,42 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 								}}
 								tvaVentesDuJour={totals.total_tva}
 							/>
-							<div className='grid grid-cols-3 gap-4 text-sm'>
-								<div>
-									<div className='text-xs text-muted-foreground'>Sessions</div>
-									<div className='text-lg font-medium'>
-										{totals.sessions_count}
+							<div
+								className={
+									compteDocuments
+										? 'grid grid-cols-4 gap-4 text-sm'
+										: 'grid grid-cols-3 gap-4 text-sm'
+								}
+							>
+								{compteDocuments ? (
+									<>
+										<div>
+											<div className='text-xs text-muted-foreground'>
+												Tickets de caisse
+											</div>
+											<div className='text-lg font-medium'>
+												{totals.pos_ticket_count ?? 0}
+											</div>
+										</div>
+										<div>
+											<div className='text-xs text-muted-foreground'>
+												Factures hors caisse
+											</div>
+											<div className='text-lg font-medium'>
+												{totals.external_invoice_count ?? 0}
+											</div>
+										</div>
+									</>
+								) : (
+									<div>
+										<div className='text-xs text-muted-foreground'>
+											Sessions
+										</div>
+										<div className='text-lg font-medium'>
+											{totals.sessions_count}
+										</div>
 									</div>
-								</div>
+								)}
 								<div>
 									<div className='text-xs text-muted-foreground'>
 										Ventes du jour (documents)
@@ -693,36 +741,48 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 
 					<Separator />
 
-					{/* Espèces */}
-					<div className='grid grid-cols-4 gap-4'>
-						<div>
-							<div className='text-xs text-muted-foreground'>
-								Espèces attendues
-							</div>
-							<div className='text-lg font-medium'>
-								{formatCurrency(totals.total_cash_expected)}
-							</div>
-						</div>
-						<div>
-							<div className='text-xs text-muted-foreground'>
-								Espèces comptées
-							</div>
-							<div className='text-lg font-medium'>
-								{formatCurrency(totals.total_cash_counted)}
-							</div>
-						</div>
-						<div>
-							<div className='text-xs text-muted-foreground'>Écart total</div>
-							<div
-								className={`text-lg font-bold ${
-									isCashDifferenceSignificant(totals.total_cash_difference)
-										? 'text-destructive'
-										: 'text-emerald-600'
-								}`}
-							>
-								{formatCurrency(totals.total_cash_difference)}
-							</div>
-						</div>
+					{/* Espèces — retirées du Z par le contrat du 27 août 2026.
+					    Le rapprochement se vérifie au comptage du tiroir
+					    (CloseSessionDialog) et dans le rapport X ; son détail ira
+					    au journal espèces. Les remises, elles, ne sont pas du
+					    tiroir et restent. */}
+					<div
+						className={`grid gap-4 ${sansTiroir ? 'grid-cols-1' : 'grid-cols-4'}`}
+					>
+						{!sansTiroir && (
+							<>
+								<div>
+									<div className='text-xs text-muted-foreground'>
+										Espèces attendues
+									</div>
+									<div className='text-lg font-medium'>
+										{formatCurrency(totals.total_cash_expected)}
+									</div>
+								</div>
+								<div>
+									<div className='text-xs text-muted-foreground'>
+										Espèces comptées
+									</div>
+									<div className='text-lg font-medium'>
+										{formatCurrency(totals.total_cash_counted)}
+									</div>
+								</div>
+								<div>
+									<div className='text-xs text-muted-foreground'>
+										Écart total
+									</div>
+									<div
+										className={`text-lg font-bold ${
+											isCashDifferenceSignificant(totals.total_cash_difference)
+												? 'text-destructive'
+												: 'text-emerald-600'
+										}`}
+									>
+										{formatCurrency(totals.total_cash_difference)}
+									</div>
+								</div>
+							</>
+						)}
 						<div>
 							<div className='text-xs text-muted-foreground'>Remises</div>
 							<div className='text-lg font-medium text-amber-600'>
@@ -822,138 +882,202 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 				</Card>
 			)}
 
-			{/* Détail des sessions */}
-			<Card>
-				<CardHeader>
-					<CardTitle className='text-base'>
-						Détail des sessions ({rapport.sessions.length})
-					</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<div className='space-y-4'>
-						{rapport.sessions.map((session, index) => (
-							<div key={session.id} className='p-4 border rounded-lg space-y-3'>
-								<div className='flex items-center justify-between'>
-									<div>
-										<div className='font-medium'>Session #{index + 1}</div>
-										<div className='text-xs text-muted-foreground'>
-											{formatDateTime(session.opened_at)} →{' '}
-											{formatDateTime(session.closed_at)}
-										</div>
-										<div className='flex items-center gap-4 mt-1'>
-											{session.opened_by_name && (
-												<div className='flex items-center gap-1 text-xs text-muted-foreground'>
-													<User className='h-3 w-3' />
-													<span>Ouvert : </span>
-													<span className='font-medium text-foreground'>
-														{session.opened_by_name}
-													</span>
-												</div>
-											)}
-											{session.closed_by_name && (
-												<div className='flex items-center gap-1 text-xs text-muted-foreground'>
-													<User className='h-3 w-3' />
-													<span>Fermé : </span>
-													<span className='font-medium text-foreground'>
-														{session.closed_by_name}
-													</span>
-												</div>
-											)}
-										</div>
-									</div>
-									<div className='text-right'>
-										<div className='text-sm font-medium'>
-											{session.invoice_count} tickets
-										</div>
-										<div className='text-xs text-muted-foreground'>
-											HT : {formatCurrency(session.total_ht)} · TVA :{' '}
-											{formatCurrency(session.total_tva)}
-										</div>
-										<div className='text-lg font-bold text-emerald-600'>
-											{formatCurrency(session.total_ttc)}
-										</div>
-									</div>
+			{/* Documents du rapport — les quatre lignes, pièce par pièce, telles
+			    que le Z les a scellées. Même présentation que le journal des
+			    ventes ; aucun recalcul : `sales_documents` est lue dans le
+			    document et entre dans son hash. */}
+			{listeDocuments.length > 0 && (
+				<Card>
+					<CardHeader>
+						<CardTitle className='text-base'>
+							Documents ({listeDocuments.length})
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div className='space-y-1'>
+							{listeDocuments.map((doc) => (
+								<div
+									key={doc.id}
+									className='flex items-center gap-3 text-sm py-1 border-b last:border-0'
+								>
+									<span className='w-14 text-xs text-muted-foreground shrink-0'>
+										{doc.heure}
+									</span>
+									<Badge variant='outline' className='text-xs shrink-0'>
+										{doc.kind}
+									</Badge>
+									<span className='font-mono text-xs shrink-0'>
+										{doc.number || '—'}
+									</span>
+									<span className='min-w-0 flex-1 truncate text-muted-foreground'>
+										{doc.customer}
+									</span>
+									<span className='text-xs text-muted-foreground shrink-0 hidden lg:inline'>
+										{doc.line}
+									</span>
+									<span className='w-20 text-right text-xs text-muted-foreground shrink-0'>
+										{doc.method}
+									</span>
+									<span
+										className={`w-24 text-right font-medium tabular-nums shrink-0 ${
+											doc.kind === 'avoir' ? 'text-red-600' : ''
+										}`}
+									>
+										{doc.kind === 'avoir' ? '−' : ''}
+										{formatCurrency(doc.total_ttc)}
+									</span>
 								</div>
+							))}
+						</div>
+					</CardContent>
+				</Card>
+			)}
 
-								{/* Espèces session */}
-								<div className='grid grid-cols-4 gap-3 text-sm bg-slate-50 p-3 rounded'>
-									<div>
-										<div className='text-xs text-muted-foreground'>
-											Fond de caisse
-										</div>
-										<div className='font-medium'>
-											{formatCurrency(session.opening_float)}
-										</div>
-									</div>
-									<div>
-										<div className='text-xs text-muted-foreground'>
-											Espèces attendues
-										</div>
-										<div className='font-medium'>
-											{formatCurrency(session.expected_cash_total)}
-										</div>
-									</div>
-									<div>
-										<div className='text-xs text-muted-foreground'>
-											Espèces comptées
-										</div>
-										<div className='font-medium'>
-											{formatCurrency(session.counted_cash_total)}
-										</div>
-									</div>
-									<div>
-										<div className='text-xs text-muted-foreground'>Écart</div>
-										<div
-											className={`font-medium ${
-												isCashDifferenceSignificant(session.cash_difference)
-													? 'text-destructive'
-													: 'text-emerald-600'
-											}`}
-										>
-											{formatCurrency(session.cash_difference)}
-										</div>
-									</div>
-								</div>
-
-								{/* TVA session */}
-								{session.vat_by_rate &&
-									Object.keys(session.vat_by_rate).length > 0 && (
-										<div className='text-sm'>
-											<div className='text-xs text-muted-foreground mb-2'>
-												TVA collectée
+			{/* Détail des sessions — retiré à partir de la v4 : une session peut
+			    s'étendre sur plusieurs journées alors que le Z couvre la période
+			    depuis la clôture précédente. Le tableau reste dans `full_report`
+			    et sera relu par la statistique des sessions. */}
+			{!sansDetailSessions && (
+				<Card>
+					<CardHeader>
+						<CardTitle className='text-base'>
+							Détail des sessions ({rapport.sessions.length})
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div className='space-y-4'>
+							{rapport.sessions.map((session, index) => (
+								<div
+									key={session.id}
+									className='p-4 border rounded-lg space-y-3'
+								>
+									<div className='flex items-center justify-between'>
+										<div>
+											<div className='font-medium'>Session #{index + 1}</div>
+											<div className='text-xs text-muted-foreground'>
+												{formatDateTime(session.opened_at)} →{' '}
+												{formatDateTime(session.closed_at)}
 											</div>
-											<div className='grid grid-cols-4 gap-2'>
-												{Object.entries(session.vat_by_rate).map(
-													([rate, detail]) => (
-														<div key={rate} className='flex justify-between'>
-															<span className='text-muted-foreground'>
-																{rate}%
-															</span>
-															<span className='font-medium'>
-																{formatCurrency(detail.vat_amount)}
-															</span>
-														</div>
-													),
+											<div className='flex items-center gap-4 mt-1'>
+												{session.opened_by_name && (
+													<div className='flex items-center gap-1 text-xs text-muted-foreground'>
+														<User className='h-3 w-3' />
+														<span>Ouvert : </span>
+														<span className='font-medium text-foreground'>
+															{session.opened_by_name}
+														</span>
+													</div>
+												)}
+												{session.closed_by_name && (
+													<div className='flex items-center gap-1 text-xs text-muted-foreground'>
+														<User className='h-3 w-3' />
+														<span>Fermé : </span>
+														<span className='font-medium text-foreground'>
+															{session.closed_by_name}
+														</span>
+													</div>
 												)}
 											</div>
 										</div>
-									)}
+										<div className='text-right'>
+											<div className='text-sm font-medium'>
+												{session.invoice_count} tickets
+											</div>
+											<div className='text-xs text-muted-foreground'>
+												HT : {formatCurrency(session.total_ht)} · TVA :{' '}
+												{formatCurrency(session.total_tva)}
+											</div>
+											<div className='text-lg font-bold text-emerald-600'>
+												{formatCurrency(session.total_ttc)}
+											</div>
+										</div>
+									</div>
 
-								{/* Moyens de paiement session */}
-								{session.totals_by_method &&
-									Object.keys(session.totals_by_method).length > 0 && (
-										<div className='text-sm'>
-											<PaymentMethodBreakdown
-												byMethod={session.totals_by_method}
-												label='Par moyen de paiement'
-											/>
+									{/* Espèces session — même contrat que le bloc global : le
+								    tiroir sort du Z. */}
+									{!sansTiroir && (
+										<div className='grid grid-cols-4 gap-3 text-sm bg-slate-50 p-3 rounded'>
+											<div>
+												<div className='text-xs text-muted-foreground'>
+													Fond de caisse
+												</div>
+												<div className='font-medium'>
+													{formatCurrency(session.opening_float)}
+												</div>
+											</div>
+											<div>
+												<div className='text-xs text-muted-foreground'>
+													Espèces attendues
+												</div>
+												<div className='font-medium'>
+													{formatCurrency(session.expected_cash_total)}
+												</div>
+											</div>
+											<div>
+												<div className='text-xs text-muted-foreground'>
+													Espèces comptées
+												</div>
+												<div className='font-medium'>
+													{formatCurrency(session.counted_cash_total)}
+												</div>
+											</div>
+											<div>
+												<div className='text-xs text-muted-foreground'>
+													Écart
+												</div>
+												<div
+													className={`font-medium ${
+														isCashDifferenceSignificant(session.cash_difference)
+															? 'text-destructive'
+															: 'text-emerald-600'
+													}`}
+												>
+													{formatCurrency(session.cash_difference)}
+												</div>
+											</div>
 										</div>
 									)}
-							</div>
-						))}
-					</div>
-				</CardContent>
-			</Card>
+
+									{/* TVA session */}
+									{session.vat_by_rate &&
+										Object.keys(session.vat_by_rate).length > 0 && (
+											<div className='text-sm'>
+												<div className='text-xs text-muted-foreground mb-2'>
+													TVA collectée
+												</div>
+												<div className='grid grid-cols-4 gap-2'>
+													{Object.entries(session.vat_by_rate).map(
+														([rate, detail]) => (
+															<div key={rate} className='flex justify-between'>
+																<span className='text-muted-foreground'>
+																	{rate}%
+																</span>
+																<span className='font-medium'>
+																	{formatCurrency(detail.vat_amount)}
+																</span>
+															</div>
+														),
+													)}
+												</div>
+											</div>
+										)}
+
+									{/* Moyens de paiement session */}
+									{session.totals_by_method &&
+										Object.keys(session.totals_by_method).length > 0 && (
+											<div className='text-sm'>
+												<PaymentMethodBreakdown
+													byMethod={session.totals_by_method}
+													label='Par moyen de paiement'
+												/>
+											</div>
+										)}
+								</div>
+							))}
+						</div>
+					</CardContent>
+				</Card>
+			)}
 
 			{/* Note de verrouillage */}
 			<Card className='border-amber-200 bg-amber-50'>

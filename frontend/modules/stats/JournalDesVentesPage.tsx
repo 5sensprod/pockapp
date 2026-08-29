@@ -245,8 +245,9 @@ export function JournalDesVentesPage() {
 						</div>
 						<p className='text-xs text-muted-foreground'>
 							Seules les ventes du jour sont du chiffre d'affaires. Les trois
-							autres lignes sont de l'argent encaissé : leur TVA a déjà été
-							déclarée, ou ne leur revient pas.
+							autres lignes sont de l'argent encaissé : leur TVA relève de la
+							période d'exigibilité du document d'origine, ou ne leur revient
+							pas.
 						</p>
 					</CardContent>
 				</Card>

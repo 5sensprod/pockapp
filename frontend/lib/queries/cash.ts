@@ -553,6 +553,105 @@ export function useCloseCashSession() {
 }
 
 // ============================================================================
+// LE FONDS PROPOSÉ POUR LA JOURNÉE
+// ============================================================================
+
+/**
+ * useFondsDuJour rend ce que le tiroir devrait contenir ce matin : le dernier
+ * comptage réel, augmenté des flux écoulés depuis.
+ *
+ * Il est PROPOSÉ, pas imposé : l'écran « Commencer la journée » le préremplit
+ * et le laisse modifier. Le calcul vit dans backend/reports/fonds_reporte.go et
+ * lit le journal des espèces — rien n'est recalculé ici.
+ */
+export function useFondsDuJour(ownerCompanyId?: string) {
+	const pb = usePocketBase()
+
+	return useQuery({
+		queryKey: ['cash', 'fonds-du-jour', ownerCompanyId],
+		queryFn: async () => {
+			const token = pb.authStore.token
+			const res = await fetch(
+				`/api/cash/fonds-du-jour?owner_company=${encodeURIComponent(
+					ownerCompanyId ?? '',
+				)}`,
+				{ headers: { Authorization: token ? `Bearer ${token}` : '' } },
+			)
+
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}))
+				throw new Error(err.message || 'Erreur calcul du fonds du jour')
+			}
+
+			return (await res.json()) as { date: string; fonds: number }
+		},
+		enabled: !!ownerCompanyId,
+		staleTime: 1000 * 60,
+	})
+}
+
+// ============================================================================
+// MUTATION : COMPTAGE DU TIROIR — facultatif, ne clôture rien
+// ============================================================================
+
+/**
+ * useCountCashSession enregistre le comptage du tiroir SANS fermer la session.
+ *
+ * Depuis le 29 août 2026, les sessions sont implicites — une par journée,
+ * ouverte au premier encaissement (backend/session_du_jour.go). Compter le
+ * tiroir ne doit donc plus clôturer : une session fermée en milieu de journée
+ * serait remplacée par une seconde au prochain encaissement, et la journée en
+ * porterait deux au lieu d'une.
+ *
+ * La fermeture appartient au rapport Z et au passage de journée.
+ */
+export function useCountCashSession() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (params: {
+			sessionId: string
+			cashRegisterId?: string
+			countedCashTotal: number
+		}) => {
+			const token = pb.authStore.token
+
+			const res = await fetch(
+				`/api/cash/session/${encodeURIComponent(params.sessionId)}/count`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: token ? `Bearer ${token}` : '',
+					},
+					body: JSON.stringify({
+						counted_cash_total: params.countedCashTotal,
+					}),
+				},
+			)
+
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}))
+				throw new Error(
+					err.message || "Erreur lors de l'enregistrement du comptage",
+				)
+			}
+
+			return (await res.json()) as CashSession
+		},
+		onSuccess: (_, params) => {
+			queryClient.invalidateQueries({
+				queryKey: cashKeys.activeSession(params.cashRegisterId),
+			})
+			queryClient.invalidateQueries({
+				queryKey: cashKeys.sessionHistory(params.cashRegisterId),
+			})
+		},
+	})
+}
+
+// ============================================================================
 // MUTATION : CRÉATION CAISSE
 // ============================================================================
 
