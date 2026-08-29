@@ -160,3 +160,55 @@ func TestLeDiscriminantDesMouvementsDeVenteLitLesDeuxSources(t *testing.T) {
 		t.Errorf("mouvements de tiroir = %.2f, attendu 7,00", natures["tiroir"])
 	}
 }
+
+// Une session fermée sans Z mais SANS AUCUN DOCUMENT ne doit pas alerter.
+//
+// Le bandeau du journal des ventes existe pour dire « de l'argent est hors
+// clôture ». Une session vide n'en porte aucun — et son alerte serait
+// indéracinable : on ne peut ni générer un Z vide, ni supprimer la session
+// (z_repair.go relit session_ids). Constaté le 29 août 2026 : « 1 session(s)
+// fermée(s) sans rapport Z — 0,00 € ».
+func TestUneSessionVideNAlertePas(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+
+	caisse := creerEnregistrement(t, app, "cash_registers", map[string]any{
+		"owner_company": societeDeTest, "code": "C1", "name": "Comptoir",
+	})
+	jour := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+
+	// Une session vide, fermée, sans Z.
+	creerEnregistrement(t, app, "cash_sessions", map[string]any{
+		"owner_company": societeDeTest, "cash_register": caisse.Id,
+		"status":    "closed",
+		"opened_at": jour + " 08:00:00.000Z", "closed_at": jour + " 19:00:00.000Z",
+		"opening_float": 227.68, "z_report_id": "",
+	})
+
+	// Une seconde, fermée sans Z elle aussi, mais qui porte un ticket.
+	avecTicket := creerEnregistrement(t, app, "cash_sessions", map[string]any{
+		"owner_company": societeDeTest, "cash_register": caisse.Id,
+		"status":    "closed",
+		"opened_at": jour + " 08:00:00.000Z", "closed_at": jour + " 19:30:00.000Z",
+		"opening_float": 100.0, "z_report_id": "",
+	})
+	creerEnregistrement(t, app, "invoices", map[string]any{
+		"owner_company": societeDeTest, "session": avecTicket.Id,
+		"is_pos_ticket": true, "status": "issued", "invoice_type": "invoice",
+		"number": "TCK-950", "date": jour + " 10:00:00.000Z",
+		"total_ht": 41.67, "total_tva": 8.33, "total_ttc": 50.00,
+		"payment_method": "especes", "payment_method_label": "especes",
+	})
+
+	attente, err := SessionsEnAttenteDeZ(app, societeDeTest)
+	if err != nil {
+		t.Fatalf("sessions en attente: %v", err)
+	}
+
+	if len(attente) != 1 {
+		t.Fatalf("%d session(s) signalée(s), attendu 1 — la session vide alerte "+
+			"pour 0,00 €, et son alerte serait indéracinable", len(attente))
+	}
+	if attente[0].TTC != 50.00 {
+		t.Fatalf("la session signalée porte %.2f €, attendu 50,00", attente[0].TTC)
+	}
+}

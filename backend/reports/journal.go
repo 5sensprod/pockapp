@@ -541,6 +541,23 @@ func SessionsEnAttenteDeZ(
 			ttc += inv.GetFloat("total_ttc")
 		}
 
+		// Une session VIDE n'a rien à signaler : ce bandeau existe pour dire
+		// « de l'argent est hors clôture », et une session sans document ne
+		// porte aucun argent. Depuis que les sessions sont implicites (29 août
+		// 2026), il s'en ouvre une par journée dès le premier encaissement — et
+		// une journée dont les documents ont été retirés, ou qui n'a servi qu'à
+		// un mouvement de tiroir, laisserait une alerte à 0,00 € que personne ne
+		// peut faire disparaître : générer un Z vide n'est pas possible
+		// (GenerateRapportZ refuse une période sans session utile), et supprimer
+		// la session est interdit (z_repair relit session_ids).
+		//
+		// Constaté le 29 août 2026 : « 1 session(s) de caisse fermée(s) sans
+		// rapport Z — 0,00 € de tickets », sur une session dont l'unique ticket
+		// de test avait été supprimé.
+		if nb == 0 {
+			continue
+		}
+
 		jourFermeture := jourDe(s.GetString("closed_at"))
 		numero := zDuJour[jourFermeture]
 
