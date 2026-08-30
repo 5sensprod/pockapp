@@ -88,18 +88,45 @@ func CreateDepositInvoice(dao *daos.Dao, input DepositInput, soldByID string) (*
 		return nil, fmt.Errorf("impossible de créer un acompte sur un brouillon — validez d'abord la facture")
 	}
 
+	// Une facture déjà réglée ne peut plus recevoir d'acompte : l'argent est
+	// encaissé et sa TVA déclarée. Sans ce contrôle, le serveur acceptait un
+	// acompte de 100 % sur une facture soldée — le seul rempart était côté
+	// client (invoice.types.ts:431), contournable par appel direct à la route.
+	// La parente ressortait avec is_paid = true ET balance_due > 0.
+	if parent.GetBool("is_paid") {
+		return nil, fmt.Errorf("impossible de créer un acompte sur une facture déjà réglée — le montant est encaissé et sa TVA déclarée")
+	}
+
+	// Le dossier est clos dès qu'une facture de solde a été émise : y ajouter
+	// un acompte fausserait ses lignes déductives, déjà scellées.
+	if solde, err := findBalanceInvoice(dao, input.ParentID); err == nil && solde != nil {
+		return nil, fmt.Errorf("une facture de solde existe déjà pour cette facture (%s) — aucun acompte ne peut plus s'y ajouter", solde.GetString("number"))
+	}
+
 	parentTotal := math.Round(math.Abs(parent.GetFloat("total_ttc"))*100) / 100
 	if parentTotal == 0 {
 		return nil, fmt.Errorf("la facture parente a un montant nul")
 	}
 
-	// Calculer le solde restant disponible
-	existingDepositsTotal := math.Round(parent.GetFloat("deposits_total_ttc")*100) / 100
-	balanceAvailable := math.Round((parentTotal-existingDepositsTotal)*100) / 100
+	// Calculer le solde restant disponible.
+	//
+	// La disponibilité s'assied sur le total NET des acomptes ENCAISSÉS
+	// (computeNetDepositsTotal, backend/refund.go) et non sur le champ
+	// dénormalisé `deposits_total_ttc`, qui a trois sémantiques divergentes
+	// selon le chemin d'écriture. Un acompte remboursé (avoir lié) ne consomme
+	// donc pas de solde ; un acompte émis mais non encaissé, si — c'est un
+	// document scellé, il engage la facture.
+	depositsEngages := computeEngagedDepositsTotal(dao, input.ParentID)
+	balanceAvailable := math.Round((parentTotal-depositsEngages)*100) / 100
 
 	if balanceAvailable <= 0.01 {
-		return nil, fmt.Errorf("aucun solde disponible pour un acompte (déjà %.2f€ versés sur %.2f€)", existingDepositsTotal, parentTotal)
+		return nil, fmt.Errorf("aucun solde disponible pour un acompte (déjà %.2f€ engagés sur %.2f€)", depositsEngages, parentTotal)
 	}
+
+	// Le champ dénormalisé reste la base de la mise à jour de la parente (§8),
+	// pour ne pas changer ce que lisent les écrans en même temps que ce
+	// correctif.
+	existingDepositsTotal := math.Round(parent.GetFloat("deposits_total_ttc")*100) / 100
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// 3. Calculer le montant de l'acompte
@@ -343,10 +370,7 @@ func CreateBalanceInvoice(dao *daos.Dao, parentID string, soldByID string) (*Bal
 	}
 
 	// Vérifier qu'il n'existe pas déjà une facture de solde
-	existing, err := dao.FindFirstRecordByFilter(
-		"invoices",
-		fmt.Sprintf("invoice_type = 'invoice' && original_invoice_id = '%s'", parentID),
-	)
+	existing, err := findBalanceInvoice(dao, parentID)
 	if err == nil && existing != nil {
 		return nil, fmt.Errorf("une facture de solde existe déjà pour cette facture (%s)", existing.GetString("number"))
 	}
@@ -493,6 +517,61 @@ func CreateBalanceInvoice(dao *daos.Dao, parentID string, soldByID string) (*Bal
 // ============================================================================
 
 const genesisHashDeposit = "0000000000000000000000000000000000000000000000000000000000000000"
+
+// findBalanceInvoice retourne la facture de solde d'une parente, ou nil.
+//
+// Une facture de solde est une facture standard (`invoice_type = 'invoice'`)
+// qui pointe sa parente par `original_invoice_id` — c'est le seul document de
+// ce type à le faire. Un seul chemin de requête, partagé par
+// computeEngagedDepositsTotal rend le total des acomptes ENGAGÉS sur une
+// facture : encaissés ET émis en attente, nets des avoirs qui les portent.
+//
+// À ne pas confondre avec computeNetDepositsTotal (backend/refund.go), qui ne
+// compte que les acomptes ENCAISSÉS. Les deux règles sont distinctes et le
+// restent :
+//
+//   - encaissé  → ce qui est déduit du reste à payer, et ce que la comptabilité
+//     reconnaît (la TVA d'un acompte est exigible à l'encaissement) ;
+//   - engagé    → ce qui est déjà promis par un document émis, scellé et
+//     numéroté, donc ce qui n'est plus disponible pour un NOUVEL acompte.
+//
+// Asseoir la disponibilité sur le net encaissé laisserait empiler des acomptes
+// impayés dont la somme dépasse la facture — chacun étant un document
+// irréversible. C'est le comportement qu'assurait `deposits_total_ttc`,
+// incrémenté dès la création, avant que ce champ ne devienne inutilisable.
+func computeEngagedDepositsTotal(dao *daos.Dao, parentID string) float64 {
+	deposits, err := dao.FindRecordsByFilter(
+		"invoices",
+		fmt.Sprintf("invoice_type = 'deposit' && original_invoice_id = '%s'", parentID),
+		"",
+		500,
+		0,
+	)
+	if err != nil {
+		return 0
+	}
+
+	total := 0.0
+	for _, d := range deposits {
+		depositTTC := math.Round(math.Abs(d.GetFloat("total_ttc"))*100) / 100
+		// Un acompte remboursé libère le solde qu'il retenait.
+		creditNotes := sumCreditNotesForDocument(dao, d.Id)
+		net := math.Round((depositTTC-creditNotes)*100) / 100
+		if net > 0 {
+			total += net
+		}
+	}
+	return math.Round(total*100) / 100
+}
+
+// CreateBalanceInvoice (qui refuse d'en créer une seconde) et par
+// CreateDepositInvoice (qui refuse d'ajouter un acompte à un dossier clos).
+func findBalanceInvoice(dao *daos.Dao, parentID string) (*models.Record, error) {
+	return dao.FindFirstRecordByFilter(
+		"invoices",
+		fmt.Sprintf("invoice_type = 'invoice' && original_invoice_id = '%s'", parentID),
+	)
+}
 
 // getLastInvoiceForDeposit retourne la dernière facture dans la chaîne ISCA
 // (tous types confondus) pour assurer le chaînage correct des séquences.

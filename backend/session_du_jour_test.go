@@ -241,6 +241,13 @@ func nouvelleAppDeTestCaisse(t *testing.T) *pocketbase.PocketBase {
 		"total_ht": num, "total_tva": num, "total_ttc": num,
 		"cart_discount_ttc": num, "line_discounts_total_ttc": num,
 		"vat_breakdown": jsn, "items": jsn,
+		// Champs acomptes / solde / chaîne ISCA (deposit_guard_test.go)
+		"deposits_total_ttc": num, "balance_due": num,
+		"deposit_percentage": num, "deposit_amount_ttc": num,
+		"has_credit_note": bul, "is_locked": bul,
+		"hash": txt, "previous_hash": txt,
+		"sequence_number": num, "fiscal_year": num,
+		"currency": txt, "notes": txt, "sold_by": txt, "due_date": txt,
 	})
 	creerCollectionDeTest(t, app, "z_reports", map[string]string{
 		"number": txt, "owner_company": txt, "cash_register": txt, "date": txt,
