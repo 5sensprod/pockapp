@@ -212,3 +212,53 @@ func TestUneSessionVideNAlertePas(t *testing.T) {
 		t.Fatalf("la session signalée porte %.2f €, attendu 50,00", attente[0].TTC)
 	}
 }
+
+// Une journée qui n'a QU'UN solde d'ouverture ne s'affiche pas.
+//
+// Depuis que les sessions sont implicites, une session s'ouvre dès qu'on
+// commence la journée — même si aucune vente ne suit. Le journal des espèces
+// s'arrêtait alors à AUJOURD'HUI au lieu du dernier jour d'activité, sur une
+// ligne annonçant un tiroir et pas un mouvement. Constaté le 29 août 2026.
+func TestUneJourneeSansMouvementNiComptageNApparaitPas(t *testing.T) {
+	app := nouvelleAppDeTest(t)
+
+	caisse := creerEnregistrement(t, app, "cash_registers", map[string]any{
+		"owner_company": societeDeTest, "code": "C1", "name": "Comptoir",
+	})
+
+	// Lundi : une vraie journée, un mouvement.
+	active := creerEnregistrement(t, app, "cash_sessions", map[string]any{
+		"owner_company": societeDeTest, "cash_register": caisse.Id,
+		"status": "closed", "opening_float": 100.0,
+		"opened_at": "2026-08-24 08:00:00.000Z", "closed_at": "2026-08-24 19:00:00.000Z",
+	})
+	creerEnregistrement(t, app, "cash_movements", map[string]any{
+		"owner_company": societeDeTest, "session": active.Id,
+		"movement_type": "cash_in", "amount": 30.0, "reason": "apport",
+		"created": "2026-08-24 10:00:00.000Z",
+	})
+
+	// Mardi : la journée est ouverte, et rien ne s'y passe.
+	creerEnregistrement(t, app, "cash_sessions", map[string]any{
+		"owner_company": societeDeTest, "cash_register": caisse.Id,
+		"status": "closed", "opening_float": 227.68, "counted_cash_total": 0,
+		"opened_at": "2026-08-25 08:00:00.000Z", "closed_at": "2026-08-25 23:59:59.000Z",
+	})
+
+	jours, _, err := JournalDesEspeces(app, societeDeTest, "2026-08-24", "2026-08-25")
+	if err != nil {
+		t.Fatalf("journal des espèces: %v", err)
+	}
+
+	for _, j := range jours {
+		if j.Date == "2026-08-25" {
+			t.Fatalf("la journée du 25 s'affiche avec %d mouvement(s) et un solde "+
+				"d'ouverture de %.2f € : un tiroir ouvert sans usage n'est pas une "+
+				"journée, et le journal semble s'arrêter plus tard qu'il ne devrait",
+				j.NbMouvements, j.SoldeOuverture)
+		}
+	}
+	if len(jours) != 1 || jours[0].Date != "2026-08-24" {
+		t.Fatalf("%d journée(s) rendues, attendu la seule du 24", len(jours))
+	}
+}

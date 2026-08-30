@@ -295,6 +295,26 @@ func JournalDesEspecesDao(
 	var totaux TotauxEspeces
 
 	for _, j := range journees {
+		// Une journée qui ne porte QU'UN solde d'ouverture n'est pas une
+		// journée de tiroir : rien n'est entré, rien n'est sorti, personne n'a
+		// compté. Elle naît d'une session ouverte sans usage — et depuis que les
+		// sessions sont implicites (29 août 2026), il s'en ouvre une par journée
+		// dès qu'on commence la journée, même si aucune vente ne suit.
+		//
+		// Constaté le 29 août 2026 : le journal des espèces s'arrêtait à
+		// AUJOURD'HUI au lieu du dernier jour d'activité, sur une seule ligne
+		// annonçant 227,68 € au tiroir et pas un mouvement. C'est le même défaut
+		// que le bandeau « session fermée sans Z » corrigé le matin même, à
+		// l'autre bout du module.
+		//
+		// Le solde d'ouverture ne se perd pas : il n'est PAS un flux (voir
+		// l'en-tête de ce fichier), il ne compte donc pour rien dans les cumuls
+		// ni dans FondsReporte, qui ne lit que les flux. Et une journée
+		// réellement comptée garde ComptageConnu, donc sa ligne.
+		if j.NbMouvements == 0 && !j.ComptageConnu {
+			continue
+		}
+
 		j.SoldeTheorique = roundAmount(
 			j.SoldeOuverture + j.EspecesDesVentes + j.Apports -
 				j.Sorties - j.RemisesEnBanque - j.Remboursements,
