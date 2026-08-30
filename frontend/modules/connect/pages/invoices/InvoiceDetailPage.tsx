@@ -24,9 +24,6 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
-import { useDepositsForInvoice } from '@/lib/queries/deposits'
-import { useCreditNotesForInvoice, useInvoice } from '@/lib/queries/invoices'
-import { useOrder } from '@/lib/queries/orders'
 import { navigationActions } from '@/lib/stores/navigationStore'
 import { canCreateBalanceInvoice } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
@@ -47,6 +44,7 @@ import { InvoicePaymentDialog } from '../../components/InvoicePaymentDialog'
 import { SendInvoiceEmailDialog } from '../../dialogs/SendInvoiceEmailDialog'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 import { useInvoiceActions } from '../../hooks/useInvoiceActions'
+import { useInvoiceDossier } from '../../hooks/useInvoiceDossier'
 import {
 	formatCurrency,
 	formatDate,
@@ -113,7 +111,8 @@ export function InvoiceDetailPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase() as any
 
-	const { data: invoice, isLoading } = useInvoice(invoiceId)
+	const dossier = useInvoiceDossier(invoiceId)
+	const { invoice, isLoading } = dossier
 	const [company, setCompany] = useState<CompaniesResponse | null>(null)
 
 	// ── Actions ───────────────────────────────────────────────────────────────
@@ -127,14 +126,15 @@ export function InvoiceDetailPage() {
 	)
 	const originalId = (invoice as any)?.original_invoice_id
 
-	const { data: depositsData } = useDepositsForInvoice(
-		!isCreditNote && !isDeposit ? invoiceId : undefined,
-	)
-	const { data: linkedCreditNotes } = useCreditNotesForInvoice(
-		!isCreditNote ? invoiceId : undefined,
-	)
-	const sourceOrderId = (invoice as any)?.source_order_id ?? null
-	const { data: sourceOrder } = useOrder(sourceOrderId ?? undefined)
+	// Le dossier est désormais résolu par useInvoiceDossier : une facture de
+	// solde interroge sa PARENTE, un ticket n'interroge plus rien. Le bloc
+	// « acomptes » reste réservé au rôle 'parent' (ci-dessous), ce qui préserve
+	// le rendu actuel — aujourd'hui il ne s'affiche pas sur une facture de
+	// solde, faute de données.
+	const depositsData = dossier.depositsData
+	const linkedCreditNotes = dossier.creditNotes
+	const sourceOrderId = invoice?.source_order_id ?? null
+	const sourceOrder = dossier.sourceOrder as { number?: string } | undefined
 
 	useEffect(() => {
 		const loadCompany = async () => {
@@ -212,8 +212,13 @@ export function InvoiceDetailPage() {
 		actions,
 		goBack,
 		isCreditNote: invoice?.invoice_type === 'credit_note',
-		depositsTotal: depositsData?.depositsTotal,
-		balanceDue: depositsData?.balanceDue,
+		// Réservés au rôle 'parent' : le dossier étant désormais résolu sur la
+		// parente, une facture de solde recevrait sinon un badge « Acompte ·
+		// Solde » qu'elle n'affichait pas.
+		depositsTotal:
+			dossier.role === 'parent' ? depositsData?.depositsTotal : undefined,
+		balanceDue:
+			dossier.role === 'parent' ? depositsData?.balanceDue : undefined,
 		isDeposit: invoice?.invoice_type === 'deposit',
 		isTicket: !!(invoice?.is_pos_ticket || invoice?.number?.startsWith('TIK-')),
 		remainingAmount,
@@ -563,7 +568,14 @@ export function InvoiceDetailPage() {
 										</div>
 									)}
 
-									{depositsData && depositsData.depositsCount > 0 && (
+									{/* La liste vient du dossier, désormais résolu sur la
+									    PARENTE : sur une facture de solde elle porterait les
+									    acomptes du dossier, alors qu'elle était vide jusqu'ici.
+									    On la réserve au rôle 'parent' pour ne rien changer à
+									    l'écran à cette étape. */}
+									{dossier.role === 'parent' &&
+										depositsData &&
+										depositsData.depositsCount > 0 && (
 										<div className='space-y-2'>
 											{depositsData.deposits.map((dep) => (
 												<div
