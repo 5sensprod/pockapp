@@ -1,3 +1,4 @@
+import { findSidebarItemByPath } from '@/lib/sidebar-navigation'
 import { setLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
 import { allModules } from '@/modules/_registry'
 import { useLocation } from '@tanstack/react-router'
@@ -35,15 +36,15 @@ export function useSaveModuleRoute() {
 		// Sauvegarde par module (comportement existant)
 		setLastRouteForModule(moduleId, location.pathname)
 
-		// Sauvegarde par section (clé = moduleId:sectionPath)
-		// Permet à la sidebar de restaurer la bonne page par section cliquée
-		for (const group of module.sidebarMenu ?? []) {
-			for (const item of group.items ?? []) {
-				const sectionPath = normalizePath(item.to)
-				if (location.pathname.startsWith(sectionPath)) {
-					setLastRouteForModule(`${moduleId}:${sectionPath}`, location.pathname)
-				}
-			}
+		// Sauvegarde uniquement dans la section la plus précise. Par exemple,
+		// `/stats/especes` ne doit jamais devenir la dernière route de `/stats`.
+		const matchedItem = findSidebarItemByPath(
+			module.sidebarMenu ?? [],
+			location.pathname,
+		)?.item
+		if (matchedItem) {
+			const sectionPath = normalizePath(matchedItem.to)
+			setLastRouteForModule(`${moduleId}:${sectionPath}`, location.pathname)
 		}
 	}, [location.pathname])
 }

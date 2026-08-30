@@ -27,8 +27,15 @@
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import { getLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
 import { navigationActions } from '@/lib/stores/navigationStore'
+import {
+	findSidebarGroupByPath,
+	findSidebarItemByPath,
+} from '@/lib/sidebar-navigation'
 import { cn } from '@/lib/utils'
-import type { ModuleManifest, SidebarGroup } from '@/modules/_registry'
+import {
+	type ModuleManifest,
+	type SidebarGroup,
+} from '@/modules/_registry'
 import { homeDashboardManifest } from '@/modules/home'
 import {
 	Link,
@@ -83,12 +90,10 @@ export function Sidebar({
 
 	const normPath = normalizePath(pathname)
 	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
+	const urlGroupId = findSidebarGroupByPath(sidebarMenu, normPath)?.id
 
 	const groupMatchesUrl = (group: SidebarGroup): boolean =>
-		!!group.items?.some((item) => {
-			const t = normalizePath(item.to)
-			return normPath === t || normPath.startsWith(t)
-		})
+		group.id === urlGroupId
 
 	// Navigue vers un item de la sidebar.
 	// Consulte la clé de section (moduleId:sectionPath) pour restaurer
@@ -99,7 +104,11 @@ export function Sidebar({
 		if (currentModule?.id) {
 			const sectionKey = `${currentModule.id}:${normalizePath(itemTo)}`
 			const lastRoute = getLastRouteForModule(sectionKey)
-			if (lastRoute?.startsWith(normalizePath(itemTo))) {
+			const targetItem = findSidebarItemByPath(sidebarMenu, itemTo)?.item
+			const lastRouteItem = lastRoute
+				? findSidebarItemByPath(sidebarMenu, lastRoute)?.item
+				: undefined
+			if (lastRoute && targetItem === lastRouteItem) {
 				router.navigate({ to: lastRoute as any })
 				return
 			}
@@ -113,7 +122,11 @@ export function Sidebar({
 		navigationActions.clear()
 		const sectionKey = `${moduleId}:${normalizePath(itemTo)}`
 		const lastRoute = getLastRouteForModule(sectionKey)
-		if (lastRoute?.startsWith(normalizePath(itemTo))) {
+		const targetItem = findSidebarItemByPath(homeSidebarMenu, itemTo)?.item
+		const lastRouteItem = lastRoute
+			? findSidebarItemByPath(homeSidebarMenu, lastRoute)?.item
+			: undefined
+		if (lastRoute && targetItem === lastRouteItem) {
 			router.navigate({ to: lastRoute as any })
 			return
 		}

@@ -15,6 +15,7 @@ import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import { useSetupCheck } from '@/lib/hooks/useSetupCheck'
 import { useNotifications } from '@/lib/notifications'
 import { usePresenceEvents } from '@/lib/presence/use-presence-events'
+import { findSidebarGroupByPath } from '@/lib/sidebar-navigation'
 import { isWails, tryWailsSub, tryWailsVoid } from '@/lib/wails-bridge'
 import { poles } from '@/modules/_registry'
 import type { ModuleManifest } from '@/modules/_registry'
@@ -116,12 +117,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		lastSyncedPath.current = normPath
 
 		if (manuallyClosed) return
-		const matchingGroup = sidebarMenu.find((group) =>
-			group.items?.some((item) => {
-				const t = normalizePath(item.to)
-				return normPath === t || normPath.startsWith(t)
-			}),
-		)
+		const matchingGroup = findSidebarGroupByPath(sidebarMenu, normPath)
 		if (matchingGroup) setActiveGroup(matchingGroup.id)
 	}, [pathname, sidebarMenu, manuallyClosed])
 

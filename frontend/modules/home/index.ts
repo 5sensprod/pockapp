@@ -4,6 +4,7 @@ import {
 	BarChart3,
 	Building2,
 	ClipboardList,
+	Coins,
 	FileImage,
 	FilePen,
 	Globe,
@@ -110,7 +111,10 @@ export const manifest: ModuleManifest = {
 			id: 'stats',
 			label: 'PocketStats',
 			icon: BarChart3,
-			items: [{ label: 'Journal des ventes', to: '/stats', icon: BarChart3 }],
+			items: [
+				{ label: 'Journal des ventes', to: '/stats', icon: BarChart3 },
+				{ label: 'Journal des espèces', to: '/stats/especes', icon: Coins },
+			],
 		},
 	],
 }

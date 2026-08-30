@@ -20,7 +20,11 @@
 //   BottomNav est rendu en fixed, hors du flux du <main>
 
 import { cn } from '@/lib/utils'
-import type { ModuleManifest, SidebarGroup } from '@/modules/_registry'
+import { findSidebarGroupByPath } from '@/lib/sidebar-navigation'
+import {
+  type ModuleManifest,
+  type SidebarGroup,
+} from '@/modules/_registry'
 import { homeDashboardManifest } from '@/modules/home'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { LayoutDashboard } from 'lucide-react'
@@ -51,12 +55,10 @@ export function BottomNav({ currentModule }: BottomNavProps) {
 
   // Groupes affichés dans la barre (limités à MAX_RAIL_ITEMS)
   const visibleGroups = sidebarMenu.slice(0, MAX_RAIL_ITEMS)
+  const activeGroupId = findSidebarGroupByPath(sidebarMenu, normPath)?.id
 
   const groupIsActive = (group: SidebarGroup) =>
-    group.items?.some((item) => {
-      const t = normalizePath(item.to)
-      return normPath === t || normPath.startsWith(t)
-    }) ?? false
+    group.id === activeGroupId
 
   const handleGroupTap = (group: SidebarGroup) => {
     if (group.items?.length === 1) {

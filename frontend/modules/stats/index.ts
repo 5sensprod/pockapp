@@ -21,11 +21,16 @@ export const manifest: ModuleManifest = {
 
 	sidebarMenu: [
 		{
-			id: 'journal',
+			id: 'journal-ventes',
 			label: 'Journal des ventes',
 			icon: BarChart3,
+			items: [{ label: 'Journal des ventes', to: '/stats', icon: BarChart3 }],
+		},
+		{
+			id: 'journal-especes',
+			label: 'Journal des espèces',
+			icon: Coins,
 			items: [
-				{ label: 'Journal des ventes', to: '/stats', icon: BarChart3 },
 				{ label: 'Journal des espèces', to: '/stats/especes', icon: Coins },
 			],
 		},
