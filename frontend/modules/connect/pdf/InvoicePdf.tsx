@@ -16,7 +16,12 @@ import {
 	Text,
 	View,
 } from '@react-pdf/renderer'
-import { getUnitPriceTtcBeforeDiscount, round2 } from '../utils/formatters'
+import {
+	getUnitPriceTtcBeforeDiscount,
+	resolvePaymentMethodLabel,
+	round2,
+	type PaymentMethodLabelSource,
+} from '../utils/formatters'
 
 const styles = StyleSheet.create({
 	page: {
@@ -279,6 +284,7 @@ export interface InvoicePdfProps {
 	company?: CompaniesResponse
 	companyLogoUrl?: string | null
 	depositPdfData?: DepositPdfData // 🆕
+	paymentMethods?: readonly PaymentMethodLabelSource[]
 }
 
 // ✅ Type pour la ventilation TVA
@@ -313,6 +319,7 @@ export function InvoicePdfDocument({
 	company,
 	companyLogoUrl,
 	depositPdfData,
+	paymentMethods = [],
 }: InvoicePdfProps) {
 	const formatCurrency = (amount: number | string) => {
 		const num = typeof amount === 'string' ? Number.parseFloat(amount) : amount
@@ -944,17 +951,8 @@ export function InvoicePdfDocument({
 				{invoice.is_paid &&
 					invoice.payment_method &&
 					(() => {
-						const PAYMENT_LABELS: Record<string, string> = {
-							virement: 'Virement bancaire',
-							cb: 'Carte bancaire',
-							especes: 'Espèces',
-							cheque: 'Chèque',
-							autre: 'Autre',
-						}
 						const formatMethod = (method: string, label?: string) => {
-							if (label) return label
-							if (method === 'autre') return 'Autre'
-							return PAYMENT_LABELS[method] ?? method
+							return resolvePaymentMethodLabel(method, label, paymentMethods)
 						}
 						const paidAtLabel = invoice.paid_at
 							? new Date(invoice.paid_at).toLocaleDateString('fr-FR', {

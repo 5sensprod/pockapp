@@ -24,7 +24,7 @@ export function formatCurrency(amount: number, currency = 'EUR'): string {
 
 // ── Ajouts Connect ────────────────────────────────────────────────────────────
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
 	especes: 'Espèces',
 	cb: 'Carte bancaire',
 	cheque: 'Chèque',
@@ -35,9 +35,34 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 /**
  * Retourne le libellé lisible d'un moyen de paiement ou de remboursement.
  */
-export function formatPaymentMethod(method?: string | null): string {
+export interface PaymentMethodLabelSource {
+	code: string
+	name: string
+}
+
+/**
+ * Résout un libellé dans l'ordre qui préserve les documents scellés : le nom
+ * enregistré sur le document, le réglage courant, puis le vocabulaire legacy.
+ */
+export function resolvePaymentMethodLabel(
+	method?: string | null,
+	methodLabel?: string | null,
+	paymentMethods: readonly PaymentMethodLabelSource[] = [],
+): string {
+	const savedLabel = methodLabel?.trim()
+	if (savedLabel) return savedLabel
 	if (!method) return '-'
-	return PAYMENT_METHOD_LABELS[method] ?? method
+	return (
+		paymentMethods.find((paymentMethod) => paymentMethod.code === method)
+			?.name ?? PAYMENT_METHOD_LABELS[method] ?? method
+	)
+}
+
+export function formatPaymentMethod(
+	method?: string | null,
+	paymentMethods: readonly PaymentMethodLabelSource[] = [],
+): string {
+	return resolvePaymentMethodLabel(method, undefined, paymentMethods)
 }
 
 /**

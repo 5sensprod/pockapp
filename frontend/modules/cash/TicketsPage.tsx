@@ -26,7 +26,9 @@ import { useDebounce } from '@/lib/hooks/useDebounce'
 import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
 import { useReprintTicket } from '@/lib/pos/useReprintTicket'
 import { useInvoices } from '@/lib/queries/invoices'
+import { usePaymentMethods } from '@/lib/queries/payment-methods'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
+import { resolvePaymentMethodLabel } from '@/modules/connect/utils/formatters'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
 import {
 	StockReclassificationDialog,
@@ -71,17 +73,6 @@ function formatTime(dateStr: string) {
 		hour: '2-digit',
 		minute: '2-digit',
 	})
-}
-
-function getPaymentMethodLabel(method: string, label?: string) {
-	if (label) return label
-	const map: Record<string, string> = {
-		cb: 'CB',
-		especes: 'Espèces',
-		cheque: 'Chèque',
-		virement: 'Virement',
-	}
-	return map[method] || method
 }
 
 function getItemsPreview(ticket: any) {
@@ -130,6 +121,7 @@ const PER_PAGE = 30
 export function TicketsPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
+	const { paymentMethods = [] } = usePaymentMethods(activeCompanyId)
 
 	const [search, setSearch] = useState('')
 	const [page, setPage] = useState(1)
@@ -378,10 +370,11 @@ export function TicketsPage() {
 
 														<TableCell className='text-sm text-muted-foreground'>
 															{ticket.payment_method
-																? getPaymentMethodLabel(
-																		ticket.payment_method,
-																		(ticket as any).payment_method_label,
-																	)
+										? resolvePaymentMethodLabel(
+												ticket.payment_method,
+												(ticket as any).payment_method_label,
+												paymentMethods,
+											)
 																: '-'}
 														</TableCell>
 													</TableRow>

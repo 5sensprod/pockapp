@@ -142,6 +142,9 @@ export function useInvoiceActions(
 		}
 		setIsDownloading(true)
 		try {
+			const paymentMethods = await pb
+				.collection('payment_methods')
+				.getFullList({ filter: `company = "${activeCompanyId}"` })
 			let logoDataUrl: string | null = null
 			let currentCompany = company
 
@@ -215,6 +218,7 @@ export function useInvoiceActions(
 					company={currentCompany || undefined}
 					companyLogoUrl={logoDataUrl}
 					depositPdfData={depositPdfData}
+					paymentMethods={paymentMethods}
 				/>,
 			).toBlob()
 

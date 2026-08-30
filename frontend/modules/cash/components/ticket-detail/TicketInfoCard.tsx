@@ -7,12 +7,14 @@
 import { ModuleCard } from '@/components/module-ui/ModuleCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { usePaymentMethods } from '@/lib/queries/payment-methods'
 
 import {
 	canCreateBalanceInvoice,
 	canCreateDeposit,
 } from '@/lib/types/invoice.types'
-import { formatCurrency, formatDate } from '@/modules/connect/utils/formatters'
+import { formatCurrency, formatDate, resolvePaymentMethodLabel } from '@/modules/connect/utils/formatters'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	Banknote,
@@ -38,23 +40,6 @@ function getRefundMethodLabel(method?: string): string {
 	return (method && map[method]) || method || '-'
 }
 
-function getPaymentMethodLabel(invoice: any): string {
-	const label = (invoice?.payment_method_label || '').trim()
-	if (label) return label
-	const map: Record<string, string> = {
-		especes: 'Espèces',
-		cb: 'Carte bancaire',
-		cheque: 'Chèque',
-		virement: 'Virement',
-		autre: 'Autre',
-	}
-	return (
-		(invoice?.payment_method && map[invoice.payment_method]) ||
-		invoice?.payment_method ||
-		'-'
-	)
-}
-
 interface TicketInfoCardProps {
 	data: TicketDetailData
 	actions: TicketActionsState
@@ -70,6 +55,8 @@ export function TicketInfoCard({
 	getDetailRoute,
 }: TicketInfoCardProps) {
 	const navigate = useNavigate()
+	const { activeCompanyId } = useActiveCompany()
+	const { paymentMethods = [] } = usePaymentMethods(activeCompanyId)
 	const {
 		invoice,
 		isCreditNote,
@@ -127,7 +114,7 @@ export function TicketInfoCard({
 											Moyen de paiement
 										</p>
 										<p className='text-sm font-medium'>
-											{getPaymentMethodLabel(invoice)}
+											{resolvePaymentMethodLabel(invoice.payment_method, (invoice as any).payment_method_label, paymentMethods)}
 										</p>
 									</div>
 									<div>

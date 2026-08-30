@@ -174,6 +174,9 @@ export async function downloadInvoicePdf({
 		const { company, logoDataUrl } = companyData
 
 		const customer = (invoice as any).expand?.customer ?? null
+		const paymentMethods = await pb
+			.collection('payment_methods')
+			.getFullList({ filter: `company = "${activeCompanyId}"` })
 
 		// ── depositPdfData — 3 cas ───────────────────────────────────────────
 		//  1. deposit  : facture d'acompte → facture parente
@@ -230,6 +233,7 @@ export async function downloadInvoicePdf({
 				company={company}
 				companyLogoUrl={logoDataUrl}
 				depositPdfData={depositPdfData}
+				paymentMethods={paymentMethods}
 			/>
 		)
 

@@ -156,10 +156,17 @@ interface ZReportPDFProps {
 	rapport: RapportZWithTickets
 }
 
-const fc = (amount: number) =>
-	new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(
-		amount,
-	)
+// @react-pdf/renderer avec Helvetica ne couvre pas le séparateur fin insécable
+// produit par Intl (« »). Il le dessine comme une barre oblique.
+export const formatZCurrency = (amount: number) => {
+	if (!Number.isFinite(amount)) return '0,00 €'
+	const fixed = Math.abs(amount).toFixed(2)
+	const [integer, decimals] = fixed.split('.')
+	const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')
+	return `${amount < 0 ? '-' : ''}${grouped},${decimals} €`
+}
+
+const fc = formatZCurrency
 
 const fdt = (dateStr: string) =>
 	new Date(dateStr).toLocaleString('fr-FR', {

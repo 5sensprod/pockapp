@@ -187,6 +187,9 @@ export function SendInvoiceEmailDialog({
 				}
 
 				let companyLogoUrl: string | null = null
+				const paymentMethods = await pb
+					.collection('payment_methods')
+					.getFullList({ filter: `company = "${activeCompanyId}"` })
 				if (company?.logo) {
 					companyLogoUrl = pb.files.getUrl(company, company.logo)
 				}
@@ -197,6 +200,7 @@ export function SendInvoiceEmailDialog({
 						customer={customer as any}
 						company={company}
 						companyLogoUrl={companyLogoUrl}
+						paymentMethods={paymentMethods}
 					/>,
 				).toBlob()
 

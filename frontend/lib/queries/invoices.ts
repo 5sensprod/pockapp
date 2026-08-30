@@ -634,7 +634,13 @@ export function useRecordPayment() {
 					payment_method: isSplit ? 'multi' : paymentMethod || 'autre',
 					payment_method_label: isSplit ? '' : paymentMethodLabel || '',
 					paid_at: paidAt || '',
-					...(isSplit && { split_payments: splitPayments }),
+					...(isSplit && {
+						split_payments: splitPayments.map((payment) => ({
+							method: payment.method,
+							method_label: payment.methodLabel,
+							amount: payment.amount,
+						})),
+					}),
 				}),
 			})
 

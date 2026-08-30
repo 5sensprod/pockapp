@@ -2,7 +2,7 @@
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-interface PaymentMethod {
+export interface PaymentMethod {
 	id: string
 	company: string
 	code: string

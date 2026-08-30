@@ -3,8 +3,13 @@
 // Date, echeance, vendeur, reglement, motif, notes. Extrait tel quel de
 // InvoiceDetailPage : aucun changement de rendu.
 
-import type { InvoiceResponse, PaymentMethod } from '@/lib/types/invoice.types'
-import { formatDate, formatPaymentMethod } from '../../../utils/formatters'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { usePaymentMethods } from '@/lib/queries/payment-methods'
+import type { InvoiceResponse } from '@/lib/types/invoice.types'
+import {
+	formatDate,
+	resolvePaymentMethodLabel,
+} from '../../../utils/formatters'
 
 interface Props {
 	invoice: InvoiceResponse
@@ -19,6 +24,8 @@ export function InvoiceInfoGrid({
 	isTicket,
 	soldByLabel,
 }: Props) {
+	const { activeCompanyId } = useActiveCompany()
+	const { paymentMethods = [] } = usePaymentMethods(activeCompanyId)
 	return (
 		<div className='grid grid-cols-2 gap-4'>
 			<div>
@@ -51,15 +58,22 @@ export function InvoiceInfoGrid({
 							<div className='space-y-0.5'>
 								{invoice.split_payments.map((sp, i) => (
 									<p key={`${sp.method}-${i}`} className='font-medium text-sm'>
-										{sp.method_label ??
-											formatPaymentMethod(sp.method as PaymentMethod)}{' '}
+										{resolvePaymentMethodLabel(
+											sp.method,
+											sp.method_label,
+											paymentMethods,
+										)}{' '}
 										— {sp.amount.toFixed(2)} €
 									</p>
 								))}
 							</div>
 						) : (
 							<p className='font-medium'>
-								{formatPaymentMethod(invoice.payment_method)}
+								{resolvePaymentMethodLabel(
+									invoice.payment_method,
+									(invoice as any).payment_method_label,
+									paymentMethods,
+								)}
 							</p>
 						)}
 					</div>
@@ -75,7 +89,7 @@ export function InvoiceInfoGrid({
 						Moyen de remboursement
 					</p>
 					<p className='font-medium'>
-						{formatPaymentMethod(invoice.refund_method)}
+						{resolvePaymentMethodLabel(invoice.refund_method, undefined, paymentMethods)}
 					</p>
 				</div>
 			)}

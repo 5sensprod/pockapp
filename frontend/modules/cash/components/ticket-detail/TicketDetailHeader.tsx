@@ -13,6 +13,8 @@
 //   Télécharger          (toujours visible, primaire)
 
 import { Button } from '@/components/ui/button'
+import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { usePaymentMethods } from '@/lib/queries/payment-methods'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -20,7 +22,10 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatDate } from '@/modules/connect/utils/formatters'
+import {
+	formatDate,
+	resolvePaymentMethodLabel,
+} from '@/modules/connect/utils/formatters'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	ArrowLeft,
@@ -36,23 +41,6 @@ import {
 } from 'lucide-react'
 import type { TicketActionsState } from './useTicketActions'
 import type { TicketDetailData } from './useTicketDetail'
-
-function getPaymentMethodLabel(invoice: any): string {
-	const label = (invoice?.payment_method_label || '').trim()
-	if (label) return label
-	const map: Record<string, string> = {
-		especes: 'Espèces',
-		cb: 'CB',
-		cheque: 'Chèque',
-		virement: 'Virement',
-		autre: 'Autre',
-	}
-	return (
-		(invoice?.payment_method && map[invoice.payment_method]) ||
-		invoice?.payment_method ||
-		'-'
-	)
-}
 
 interface TicketHeaderSlots {
 	headerLeft: React.ReactNode
@@ -73,6 +61,8 @@ export function useTicketDetailHeader({
 	invoiceId,
 }: TicketDetailHeaderProps): TicketHeaderSlots {
 	const navigate = useNavigate()
+	const { activeCompanyId } = useActiveCompany()
+	const { paymentMethods = [] } = usePaymentMethods(activeCompanyId)
 	const { invoice, isTicket, remainingAmount, soldByLabel } = data
 
 	if (!invoice) return { headerLeft: null, headerRight: null }
@@ -117,7 +107,7 @@ export function useTicketDetailHeader({
 								<>
 									<span className='opacity-40 shrink-0'>·</span>
 									<span className='truncate'>
-										{getPaymentMethodLabel(invoice)}
+										{resolvePaymentMethodLabel(invoice.payment_method, (invoice as any).payment_method_label, paymentMethods)}
 									</span>
 								</>
 							)}
