@@ -216,3 +216,60 @@ describe('resolveDossierRole / resolveDossierId', () => {
 		expect(resolveDossierId(ticket)).toBeUndefined()
 	})
 })
+
+describe("une facture réglée ne doit plus rien", () => {
+	it("n'affiche pas « Reste à payer » égal au total sur une facture payée", () => {
+		// Vu à l'écran le 30 août 2026 : facture de 681,30 € encaissée le 25/08
+		// en deux moyens, affichant « Reste à payer 681,30 € » — pendant que la
+		// zone d'action, elle, annonçait « Facture soldée ». La synthèse ne
+		// regardait pas `is_paid` : sans acompte ni avoir, sa soustraction
+		// rendait le total.
+		const parent = facture({ is_paid: true, total_ttc: 681.3 })
+		const s = computeInvoiceSummary({
+			current: parent,
+			parent,
+			deposits: [],
+			creditNotes: [],
+		})
+
+		expect(s.remainingTtc).toBe(0)
+		expect(s.amountToCollectTtc).toBe(0)
+
+		// Et on ne montre pas une soustraction dont le résultat est zéro :
+		// on dit ce qui a été encaissé.
+		const derniere = s.lines.find((l) => l.key === 'remaining')
+		expect(derniere?.label).toBe('Déjà encaissé')
+		expect(derniere?.amount).toBe(681.3)
+	})
+
+	it('reste cohérente sur une facture réglée APRÈS acomptes', () => {
+		const parent = facture({ is_paid: true, total_ttc: 1200 })
+		const s = computeInvoiceSummary({
+			current: parent,
+			parent,
+			deposits: [acompte({ id: 'a1', is_paid: true })],
+			creditNotes: [],
+		})
+
+		expect(s.remainingTtc).toBe(0)
+		// Ici la soustraction garde du sens : l'acompte s'affiche.
+		expect(s.lines.find((l) => l.key === 'deposits_collected')).toBeTruthy()
+		expect(s.lines.find((l) => l.key === 'remaining')?.label).toBe(
+			'Reste à payer',
+		)
+	})
+
+	it("un acompte NON réglé reste dû, même si sa parente est payée", () => {
+		// Le document courant est l'acompte : c'est lui qui s'encaisse.
+		const parent = facture({ is_paid: true })
+		const dep = acompte({ is_paid: false })
+		const s = computeInvoiceSummary({
+			current: dep,
+			parent,
+			deposits: [dep],
+			creditNotes: [],
+		})
+
+		expect(s.amountToCollectTtc).toBe(180)
+	})
+})

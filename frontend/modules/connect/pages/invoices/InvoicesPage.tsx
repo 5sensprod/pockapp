@@ -25,7 +25,6 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useDebounce } from '@/lib/hooks/useDebounce'
-import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import {
 	type ChainVerificationResult,
 	type DocumentType,
@@ -37,22 +36,15 @@ import {
 
 import { PeriodSelector } from '@/components/PeriodSelector'
 import { usePeriodFilter } from '@/lib/hooks/usePeriodFilter'
-import { useCreateDeposit } from '@/lib/queries/deposits'
 import {
 	useCancelInvoice,
 	useDeleteDraftInvoice,
 	useInvoiceStats,
 	useInvoices,
-	useMarkInvoiceAsSent,
-	useRecordPayment,
 	useRefundDeposit,
-	useValidateInvoice,
 } from '@/lib/queries/invoices'
-import { usePaymentMethods } from '@/lib/queries/payment-methods'
-import { recordSale } from '@/lib/queries/stock-adjust'
 import type { InvoiceResponse, InvoiceStatus } from '@/lib/types/invoice.types'
 import { isOverdue } from '@/lib/types/invoice.types'
-import { canCreateDeposit } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { RefundInvoiceDialog } from '@/modules/common/RefundInvoiceDialog'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
@@ -60,12 +52,9 @@ import {
 	StockReclassificationDialog,
 	type StockReclassificationItem,
 } from '@/modules/common/StockReclassificationDialog'
-import { pdf } from '@react-pdf/renderer'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
-	Banknote,
-	CheckCircle,
 	FileText,
 	Plus,
 	RotateCcw,
@@ -74,13 +63,10 @@ import {
 	ShieldCheck,
 	XCircle,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { SendInvoiceEmailDialog } from '../../dialogs/SendInvoiceEmailDialog'
 import { InvoicesTable } from '../../features/invoices/InvoicesTable'
-import { type DepositPdfData, InvoicePdfDocument } from '../../pdf/InvoicePdf'
 import { formatCurrency, formatDate } from '../../utils/formatters'
-import { toPngDataUrl } from '../../utils/images' // Uniquement dans InvoicesPage (et QuotesPage si besoin)
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -96,8 +82,6 @@ const PER_PAGE = 30
 export function InvoicesPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
-	const { paymentMethods } = usePaymentMethods(activeCompanyId)
-	const enabledMethods = paymentMethods?.filter((m) => m.enabled) || []
 	const pb = usePocketBase() as any
 
 	// États filtres
@@ -154,23 +138,11 @@ export function InvoicesPage() {
 		useState<InvoiceResponse | null>(null)
 	const [cancelReason, setCancelReason] = useState('')
 
-	const [sendEmailDialogOpen, setSendEmailDialogOpen] = useState(false)
-	const [invoiceToEmail, setInvoiceToEmail] = useState<InvoiceResponse | null>(
-		null,
-	)
 
-	const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
-	const [invoiceToPay, setInvoiceToPay] = useState<InvoiceResponse | null>(null)
-	const [, setPaymentMethod] = useState('virement')
-	const [selectedMethodId, setSelectedMethodId] = useState<string>('')
-
-	const [paymentMode, setPaymentMode] = useState<'full' | 'deposit'>('full')
-	const [depositPercentage, setDepositPercentage] = useState<number>(30)
-	const [depositInputMode, setDepositInputMode] = useState<
-		'percent' | 'amount'
-	>('percent')
-	const [depositAmount, setDepositAmount] = useState<number>(0)
-	const createDeposit = useCreateDeposit()
+	// Sept fonctions et sept etats sont morts ici le 30 aout 2026, avec le
+	// dialogue d'encaissement inatteignable qu'ils servaient. Ils n'etaient
+	// joignables que par des props qu'InvoicesTable declarait sans les lire.
+	// L'encaissement se fait depuis le detail d'une facture.
 
 	const [refundDepositOpen, setRefundDepositOpen] = useState(false)
 	const [refundDepositReason, setRefundDepositReason] = useState('')
@@ -185,7 +157,6 @@ export function InvoicesPage() {
 		null,
 	)
 
-	const [company, setCompany] = useState<CompaniesResponse | null>(null)
 
 	const [refundTicketDialogOpen, setRefundTicketDialogOpen] = useState(false)
 	const [ticketToRefund, setTicketToRefund] = useState<InvoiceResponse | null>(
@@ -215,9 +186,6 @@ export function InvoicesPage() {
 	// Mutations
 	const cancelInvoice = useCancelInvoice()
 	const deleteDraftInvoice = useDeleteDraftInvoice()
-	const recordPayment = useRecordPayment()
-	const validateInvoice = useValidateInvoice()
-	const markAsSent = useMarkInvoiceAsSent()
 	const performDailyClosure = usePerformDailyClosure()
 	const verifyChain = useVerifyInvoiceChain()
 
@@ -262,19 +230,8 @@ export function InvoicesPage() {
 	// 	navigationActions.clear()
 	// }, [])
 
-	// Charger la société active
-	useEffect(() => {
-		const loadCompany = async () => {
-			if (!activeCompanyId) return
-			try {
-				const result = await pb.collection('companies').getOne(activeCompanyId)
-				setCompany(result as CompaniesResponse)
-			} catch (err) {
-				console.error('Erreur chargement company', err)
-			}
-		}
-		void loadCompany()
-	}, [activeCompanyId, pb])
+	// Le chargement de la societe active servait le PDF, genere depuis cette
+	// page par un handler devenu injoignable. Retire avec lui.
 
 	// Stats globales
 	const { data: invoiceStats } = useInvoiceStats(activeCompanyId ?? undefined, {
@@ -302,16 +259,6 @@ export function InvoicesPage() {
 
 	// === HANDLERS ===
 
-	const handleOpenSendEmailDialog = (invoice: InvoiceResponse) => {
-		setInvoiceToEmail(invoice)
-		setSendEmailDialogOpen(true)
-	}
-
-	const handleOpenDeleteDraftDialog = (invoice: InvoiceResponse) => {
-		setDraftToDelete(invoice)
-		setDeleteDraftDialogOpen(true)
-	}
-
 	const handleConfirmDeleteDraft = async () => {
 		if (!draftToDelete) return
 		try {
@@ -323,116 +270,6 @@ export function InvoicesPage() {
 		} catch (error: any) {
 			toast.error(error.message || 'Erreur lors de la suppression du brouillon')
 		}
-	}
-
-	const handleValidate = async (invoice: InvoiceResponse) => {
-		try {
-			await validateInvoice.mutateAsync(invoice.id)
-			toast.success(`Facture ${invoice.number} validée`)
-			await refetchInvoices()
-		} catch (error: any) {
-			toast.error(error.message || 'Erreur lors de la validation')
-		}
-	}
-
-	const handleMarkAsSent = async (invoice: InvoiceResponse) => {
-		try {
-			await markAsSent.mutateAsync(invoice.id)
-			toast.success(`Facture ${invoice.number} marquée comme envoyée`)
-			await refetchInvoices()
-		} catch (error: any) {
-			toast.error(error.message || 'Erreur lors de la mise à jour')
-		}
-	}
-
-	const handleOpenPaymentDialog = (invoice: InvoiceResponse) => {
-		setInvoiceToPay(invoice)
-		setPaymentMethod('')
-		setPaymentMode('full')
-		setDepositPercentage(30)
-		setDepositInputMode('percent')
-		setDepositAmount(0)
-		setSelectedMethodId('')
-		setPaymentDialogOpen(true)
-	}
-
-	const handleRecordPayment = async () => {
-		if (paymentMode === 'deposit') {
-			if (!invoiceToPay) return
-			try {
-				await createDeposit.mutateAsync(
-					depositInputMode === 'percent'
-						? { parentId: invoiceToPay.id, percentage: depositPercentage }
-						: { parentId: invoiceToPay.id, amount: depositAmount },
-				)
-				const label =
-					depositInputMode === 'percent'
-						? `Acompte de ${depositPercentage}% créé`
-						: `Acompte de ${formatCurrency(depositAmount)} créé`
-				toast.success(label)
-				setPaymentDialogOpen(false)
-			} catch (err: any) {
-				toast.error(err?.message || "Erreur lors de la création de l'acompte")
-			}
-			return
-		}
-		if (!invoiceToPay || !selectedMethodId) return
-
-		const method = enabledMethods.find((m) => m.id === selectedMethodId)
-		if (!method) return
-
-		const mapping: Record<string, string> = {
-			card: 'cb',
-			cash: 'especes',
-			check: 'cheque',
-			transfer: 'virement',
-		}
-		const code =
-			method.type === 'default' ? mapping[method.code] || method.code : 'autre'
-		const label = method.type === 'custom' ? method.name : undefined
-
-		await recordPayment.mutateAsync({
-			invoiceId: invoiceToPay.id,
-			paymentMethod: code,
-			paymentMethodLabel: label,
-		})
-
-		setPaymentDialogOpen(false)
-		setSelectedMethodId('')
-
-		if (invoiceToPay.items?.length) {
-			const stockItems = buildStockItemsFromInvoice(invoiceToPay.items)
-			if (stockItems.length > 0) {
-				try {
-					const resultats = await recordSale(pb, stockItems, {
-						sourceId: invoiceToPay.id,
-					})
-					// Un produit introuvable ne doit pas passer pour un succès : la
-					// facture est payée, la marchandise est sortie, et le stock non.
-					const echecs = resultats.filter((r) => r.error)
-					if (echecs.length > 0) {
-						toast.warning(
-							`Stock : ${echecs.length} produit(s) introuvable(s) en base`,
-						)
-					} else {
-						toast.success('Stock mis à jour', {
-							description: `${resultats.length} produit(s)`,
-						})
-					}
-				} catch (err) {
-					console.error('❌ Erreur mouvement de stock:', err)
-					toast.warning(
-						'Paiement enregistré mais erreur de synchronisation du stock',
-					)
-				}
-			}
-		}
-	}
-
-	const handleOpenCancelDialog = (invoice: InvoiceResponse) => {
-		setInvoiceToCancel(invoice)
-		setCancelReason('')
-		setCancelDialogOpen(true)
 	}
 
 	const handleCancelInvoice = async () => {
@@ -469,87 +306,6 @@ export function InvoicesPage() {
 			}
 		} catch (error: any) {
 			toast.error(error.message || "Erreur lors de la création de l'avoir")
-		}
-	}
-
-	const handleDownloadPdf = async (invoice: InvoiceResponse) => {
-		try {
-			const customer = invoice.expand?.customer
-			let logoDataUrl: string | null = null
-
-			if (company && (company as any).logo) {
-				const fileUrl = pb.files.getUrl(company, (company as any).logo)
-				try {
-					logoDataUrl = await toPngDataUrl(fileUrl)
-				} catch (err) {
-					console.warn('Erreur conversion logo', err)
-				}
-			}
-
-			let depositPdfData: DepositPdfData | undefined
-
-			if (invoice.invoice_type === 'deposit' && invoice.original_invoice_id) {
-				try {
-					const parent = (await pb
-						.collection('invoices')
-						.getOne(invoice.original_invoice_id)) as InvoiceResponse
-					depositPdfData = { type: 'deposit', parentInvoice: parent }
-				} catch (err) {
-					console.warn('Facture parente non trouvée:', err)
-				}
-			} else if (
-				invoice.invoice_type === 'invoice' &&
-				invoice.original_invoice_id
-			) {
-				try {
-					const parent = (await pb
-						.collection('invoices')
-						.getOne(invoice.original_invoice_id)) as InvoiceResponse
-					const deposits = (await pb.collection('invoices').getFullList({
-						filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.original_invoice_id}"`,
-						sort: '+created',
-					})) as InvoiceResponse[]
-					depositPdfData = { type: 'balance', parentInvoice: parent, deposits }
-				} catch (err) {
-					console.warn('Données solde non trouvées:', err)
-				}
-			} else if (
-				invoice.invoice_type === 'invoice' &&
-				!invoice.original_invoice_id &&
-				(invoice.deposits_total_ttc ?? 0) > 0
-			) {
-				try {
-					const deposits = (await pb.collection('invoices').getFullList({
-						filter: `invoice_type = "deposit" && original_invoice_id = "${invoice.id}"`,
-						sort: '+created',
-					})) as InvoiceResponse[]
-					depositPdfData = { type: 'parent', deposits }
-				} catch (err) {
-					console.warn('Acomptes non trouvés:', err)
-				}
-			}
-
-			const blob = await pdf(
-				<InvoicePdfDocument
-					invoice={invoice}
-					customer={customer as any}
-					company={company || undefined}
-					companyLogoUrl={logoDataUrl}
-					depositPdfData={depositPdfData}
-				/>,
-			).toBlob()
-
-			const url = URL.createObjectURL(blob)
-			const link = document.createElement('a')
-			link.href = url
-			link.download = `${invoice.number}.pdf`
-			document.body.appendChild(link)
-			link.click()
-			document.body.removeChild(link)
-			URL.revokeObjectURL(url)
-		} catch (error) {
-			console.error('Erreur génération PDF', error)
-			toast.error('Erreur lors de la génération du PDF')
 		}
 	}
 
@@ -771,26 +527,6 @@ export function InvoicesPage() {
 				totalItems={invoicesData?.totalItems ?? 0}
 				perPage={PER_PAGE}
 				onPageChange={setPage}
-				onDownloadPdf={handleDownloadPdf}
-				onOpenSendEmail={handleOpenSendEmailDialog}
-				onValidate={handleValidate}
-				onMarkAsSent={handleMarkAsSent}
-				onOpenPayment={handleOpenPaymentDialog}
-				onOpenCancel={handleOpenCancelDialog}
-				onOpenDeleteDraft={handleOpenDeleteDraftDialog}
-				onOpenRefundTicket={(ticket) => {
-					setTicketToRefund(ticket)
-					setRefundTicketDialogOpen(true)
-				}}
-				onOpenRefundInvoice={(invoice) => {
-					setInvoiceToRefund(invoice)
-					setRefundInvoiceOpen(true)
-				}}
-				onOpenRefundDeposit={(invoice) => {
-					setDepositToRefund(invoice)
-					setRefundDepositReason('')
-					setRefundDepositOpen(true)
-				}}
 			/>
 
 			{/* ── Dialogs ─────────────────────────────────────────────────────── */}
@@ -1103,201 +839,16 @@ export function InvoicesPage() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Enregistrer paiement */}
-			<Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Enregistrer un paiement</DialogTitle>
-						<DialogDescription>
-							{formatCurrency(
-								invoiceToPay?.deposits_total_ttc
-									? (invoiceToPay?.balance_due ?? 0)
-									: (invoiceToPay?.total_ttc ?? 0),
-							)}
-						</DialogDescription>
-					</DialogHeader>
-					<div className='space-y-4 py-4'>
-						{invoiceToPay &&
-							invoiceToPay.invoice_type !== 'deposit' &&
-							canCreateDeposit(invoiceToPay) && (
-								<div className='flex rounded-lg border overflow-hidden'>
-									<button
-										type='button'
-										onClick={() => setPaymentMode('full')}
-										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${paymentMode === 'full' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
-									>
-										<CheckCircle className='h-4 w-4 inline mr-2' />
-										Paiement total
-									</button>
-									<button
-										type='button'
-										onClick={() => setPaymentMode('deposit')}
-										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${paymentMode === 'deposit' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
-									>
-										<Banknote className='h-4 w-4 inline mr-2' />
-										Acompte
-									</button>
-								</div>
-							)}
-						{paymentMode === 'full' ? (
-							<div className='space-y-2'>
-								<Label>Méthode de paiement</Label>
-								<Select
-									value={selectedMethodId}
-									onValueChange={setSelectedMethodId}
-								>
-									<SelectTrigger>
-										<SelectValue placeholder='Sélectionner' />
-									</SelectTrigger>
-									<SelectContent>
-										{enabledMethods.map((method) => (
-											<SelectItem key={method.id} value={method.id}>
-												{method.name}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-								{invoiceToPay && (
-									<div className='bg-green-50 dark:bg-green-950/20 rounded-lg p-3 text-sm space-y-1'>
-										<p>
-											<strong>Montant :</strong>{' '}
-											{formatCurrency(
-												invoiceToPay.invoice_type === 'deposit'
-													? invoiceToPay.total_ttc
-													: invoiceToPay.deposits_total_ttc
-														? (invoiceToPay.balance_due ??
-															invoiceToPay.total_ttc)
-														: invoiceToPay.total_ttc,
-											)}
-										</p>
-										<p>
-											<strong>Client :</strong>{' '}
-											{invoiceToPay.expand?.customer?.name}
-										</p>
-									</div>
-								)}
-							</div>
-						) : (
-							<div className='space-y-3'>
-								<div className='flex rounded-lg border overflow-hidden'>
-									<button
-										type='button'
-										onClick={() => setDepositInputMode('percent')}
-										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${depositInputMode === 'percent' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
-									>
-										Pourcentage
-									</button>
-									<button
-										type='button'
-										onClick={() => setDepositInputMode('amount')}
-										className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${depositInputMode === 'amount' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
-									>
-										Montant fixe
-									</button>
-								</div>
-								{depositInputMode === 'percent' ? (
-									<>
-										<Label>Pourcentage de l'acompte</Label>
-										<div className='flex items-center gap-3'>
-											<input
-												type='range'
-												min={10}
-												max={90}
-												step={5}
-												value={depositPercentage}
-												onChange={(e) =>
-													setDepositPercentage(Number(e.target.value))
-												}
-												className='flex-1'
-											/>
-											<span className='w-12 text-right font-semibold'>
-												{depositPercentage}%
-											</span>
-										</div>
-									</>
-								) : (
-									<>
-										<Label>Montant de l'acompte (TTC)</Label>
-										<Input
-											type='number'
-											min={0.01}
-											step={0.01}
-											placeholder='Ex: 500.00'
-											value={depositAmount || ''}
-											onChange={(e) => setDepositAmount(Number(e.target.value))}
-										/>
-									</>
-								)}
-								{invoiceToPay && (
-									<div className='bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 text-sm space-y-1'>
-										{(() => {
-											const base = invoiceToPay.deposits_total_ttc
-												? (invoiceToPay.balance_due ?? invoiceToPay.total_ttc)
-												: invoiceToPay.total_ttc
-											const acompte =
-												depositInputMode === 'percent'
-													? (base * depositPercentage) / 100
-													: depositAmount
-											return (
-												<>
-													<p>
-														<strong>Acompte :</strong> {formatCurrency(acompte)}
-													</p>
-													<p>
-														<strong>Solde restant :</strong>{' '}
-														{formatCurrency(Math.max(0, base - acompte))}
-													</p>
-													<p>
-														<strong>Client :</strong>{' '}
-														{invoiceToPay.expand?.customer?.name}
-													</p>
-												</>
-											)
-										})()}
-									</div>
-								)}
-							</div>
-						)}
-					</div>
-					<DialogFooter>
-						<Button
-							variant='outline'
-							onClick={() => setPaymentDialogOpen(false)}
-						>
-							Annuler
-						</Button>
-						<Button
-							onClick={handleRecordPayment}
-							disabled={
-								paymentMode === 'full'
-									? !selectedMethodId || recordPayment.isPending
-									: createDeposit.isPending ||
-										(depositInputMode === 'amount' &&
-											(depositAmount <= 0 ||
-												depositAmount >
-													(invoiceToPay?.balance_due &&
-													invoiceToPay.balance_due > 0
-														? invoiceToPay.balance_due
-														: (invoiceToPay?.total_ttc ?? 0)))) ||
-										(depositInputMode === 'percent' && depositPercentage <= 0)
-							}
-							className={
-								paymentMode === 'full' ? 'bg-green-600 hover:bg-green-700' : ''
-							}
-						>
-							{paymentMode === 'full'
-								? recordPayment.isPending
-									? 'Enregistrement...'
-									: 'Confirmer le paiement'
-								: createDeposit.isPending
-									? 'Création...'
-									: depositInputMode === 'percent'
-										? `Créer l'acompte ${depositPercentage}%`
-										: `Créer l'acompte ${formatCurrency(depositAmount)}`}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			{/* Le dialogue d'encaissement qui vivait ici a été supprimé le
+			    30 août 2026. Il était INATTEIGNABLE : son ouverture ne passait que
+			    par `onOpenPayment`, une prop qu'InvoicesTable déclarait sans jamais
+			    la lire. C'était de surcroît un doublon d'InvoicePaymentDialog, au
+			    vocabulaire divergent et SANS son verrouillage de fermeture — donc
+			    sans sa protection contre la double facturation.
+
+			    L'encaissement est gouverné depuis le détail d'une facture, et la
+			    liste n'a pas vocation à encaisser. Si ce besoin réapparaît, il se
+			    rouvre avec le composant partagé, pas avec cette copie. */}
 
 			{/* Rembourser un acompte */}
 			<Dialog open={refundDepositOpen} onOpenChange={setRefundDepositOpen}>
@@ -1469,14 +1020,8 @@ export function InvoicesPage() {
 					setStockDocumentNumber(undefined)
 				}}
 			/>
-			<SendInvoiceEmailDialog
-				open={sendEmailDialogOpen}
-				onOpenChange={setSendEmailDialogOpen}
-				invoice={invoiceToEmail}
-				onSuccess={async () => {
-					await refetchInvoices()
-				}}
-			/>
+			{/* Le dialogue d'envoi par email a suivi le meme sort : son ouverture
+			    ne passait que par une prop qu'InvoicesTable ne lisait pas. */}
 		</div>
 	)
 }

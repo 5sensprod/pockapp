@@ -16,7 +16,6 @@ import {
 	getDisplayStatus,
 	isOverdue,
 } from '@/lib/types/invoice.types'
-import { useNavigate } from '@tanstack/react-router'
 import {
 	AlertTriangle,
 	ArrowLeft,
@@ -38,6 +37,14 @@ import {
 import type { InvoiceActionsState } from '../../hooks/useInvoiceActions'
 
 interface InvoiceDetailHeaderProps {
+	/**
+	 * Passé par l'appelant, et non obtenu par `useNavigate()` ici : c'est ce
+	 * qui fait de cette fonction une fonction ORDINAIRE et non un hook. Elle
+	 * peut donc être appelée APRÈS les guards de chargement, ce qui rend
+	 * `invoice` non optionnel dans la page et supprime les `as any` qui en
+	 * découlaient. Voir l'audit §13.
+	 */
+	navigate: (opts: any) => void
 	invoice: InvoiceResponse | undefined
 	invoiceId: string
 	actions: InvoiceActionsState
@@ -58,7 +65,8 @@ interface HeaderSlots {
 	headerRight: React.ReactNode
 }
 
-export function useInvoiceDetailHeader({
+export function buildInvoiceDetailHeader({
+	navigate,
 	invoice,
 	invoiceId,
 	actions,
@@ -73,8 +81,6 @@ export function useInvoiceDetailHeader({
 	balanceDue,
 	canGenerateBalance,
 }: InvoiceDetailHeaderProps): HeaderSlots {
-	const navigate = useNavigate()
-
 	// ── Guard ────────────────────────────────────────────────────────────────────
 	if (!invoice) {
 		return {

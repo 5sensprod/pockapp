@@ -37,17 +37,11 @@ export interface InvoicesTableProps {
 	totalItems: number
 	perPage: number
 	onPageChange: (page: number) => void
-	// Props conservées pour compatibilité avec InvoicesPage (non utilisées dans la table)
-	onDownloadPdf?: (invoice: InvoiceResponse) => void
-	onOpenSendEmail?: (invoice: InvoiceResponse) => void
-	onValidate?: (invoice: InvoiceResponse) => void
-	onMarkAsSent?: (invoice: InvoiceResponse) => void
-	onOpenPayment?: (invoice: InvoiceResponse) => void
-	onOpenCancel?: (invoice: InvoiceResponse) => void
-	onOpenDeleteDraft?: (invoice: InvoiceResponse) => void
-	onOpenRefundTicket?: (invoice: InvoiceResponse) => void
-	onOpenRefundInvoice?: (invoice: InvoiceResponse) => void
-	onOpenRefundDeposit?: (invoice: InvoiceResponse) => void
+	// Dix props avaient été « conservées pour compatibilité » sans jamais être
+	// lues. Elles maintenaient en vie, côté InvoicesPage, un dialogue
+	// d'encaissement que personne ne pouvait ouvrir. Supprimées le 30 août 2026
+	// avec lui : une prop qu'on ne lit pas ne documente rien, elle cache du
+	// code mort.
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────

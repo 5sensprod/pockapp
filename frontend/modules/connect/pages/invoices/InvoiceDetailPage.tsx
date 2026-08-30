@@ -1,107 +1,37 @@
 // frontend/modules/connect/pages/invoices/InvoiceDetailPage.tsx
+//
+// Orchestration seule. Cette page ne calcule plus rien et ne rend plus de
+// dialogue : elle lit son dossier par un hook, place sept zones, et associe
+// les actions a leurs gestes.
 
 import { EmptyState } from '@/components/module-ui'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import type { CompaniesResponse } from '@/lib/pocketbase-types'
 import { navigationActions } from '@/lib/stores/navigationStore'
 import { canCreateBalanceInvoice } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
-import { RefundInvoiceDialog } from '@/modules/common/RefundInvoiceDialog'
-import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
-import { StockReclassificationDialog } from '@/modules/common/StockReclassificationDialog'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import {
-	Banknote,
-	ClipboardList,
-	CreditCard,
-	FileText,
-	RefreshCcw,
-} from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { FileText } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
-import { InvoicePaymentDialog } from '../../components/InvoicePaymentDialog'
-import { SendInvoiceEmailDialog } from '../../dialogs/SendInvoiceEmailDialog'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
 import { useInvoiceActions } from '../../hooks/useInvoiceActions'
 import { useInvoiceDossier } from '../../hooks/useInvoiceDossier'
+import { buildInvoiceDetailHeader } from './InvoiceDetailHeader'
+import { creerExecuteurAction } from './invoice-action-dispatch'
 import {
-	formatCurrency,
-	formatDate,
-	formatPaymentMethod,
-	getUnitPriceTtcBeforeDiscount,
-	round2,
-} from '../../utils/formatters'
-import { useInvoiceDetailHeader } from './InvoiceDetailHeader'
-
-// ── Types locaux ─────────────────────────────────────────────────────────────
-type VatBreakdown = {
-	rate: number
-	base_ht: number
-	vat: number
-	total_ttc: number
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function getLineDiscountLabel(item: any): {
-	label: string
-	hasDiscount: boolean
-} {
-	const mode = item?.line_discount_mode
-	const value = item?.line_discount_value
-	if (!mode || value == null) return { label: '-', hasDiscount: false }
-
-	if (mode === 'percent') {
-		const p = Math.max(0, Math.min(100, Number(value) || 0))
-		if (p <= 0) return { label: '-', hasDiscount: false }
-		return { label: `-${p}%`, hasDiscount: true }
-	}
-
-	const beforeUnitTtc = Number(item?.unit_price_ttc_before_discount)
-	const unitHt = Number(item?.unit_price_ht ?? 0)
-	const tvaRate = Number(item?.tva_rate ?? 20)
-	const effectiveUnitTtc = round2(unitHt * (1 + tvaRate / 100))
-
-	if (Number.isFinite(beforeUnitTtc) && beforeUnitTtc > 0) {
-		const diff = round2(Math.max(0, beforeUnitTtc - effectiveUnitTtc))
-		if (diff <= 0) return { label: '-', hasDiscount: false }
-		return { label: `-${diff.toFixed(2)} €/u`, hasDiscount: true }
-	}
-
-	const v = round2(Math.max(0, Number(value) || 0))
-	if (v <= 0) return { label: '-', hasDiscount: false }
-	return { label: `-${v.toFixed(2)} €`, hasDiscount: true }
-}
-
-function getSoldByLabel(invoice: any): string {
-	const soldBy = invoice?.expand?.sold_by
-	return (
-		soldBy?.name ||
-		soldBy?.username ||
-		soldBy?.email ||
-		(invoice?.sold_by ? String(invoice.sold_by) : '-')
-	)
-}
+	computeDiscounts,
+	computeVatBreakdown,
+	getSoldByLabel,
+} from './invoice-detail.presenters'
+import { InvoiceCustomerCard } from './sections/InvoiceCustomerCard'
+import { InvoiceDialogs } from './sections/InvoiceDialogs'
+import { InvoiceDossierSections } from './sections/InvoiceDossierSections'
+import { InvoiceInfoGrid } from './sections/InvoiceInfoGrid'
+import { InvoiceLinesCard } from './sections/InvoiceLinesCard'
+import { InvoiceNextAction } from './sections/InvoiceNextAction'
+import { InvoiceSummaryCard } from './sections/InvoiceSummaryCard'
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 export function InvoiceDetailPage() {
@@ -118,24 +48,6 @@ export function InvoiceDetailPage() {
 	// ── Actions ───────────────────────────────────────────────────────────────
 	const actions = useInvoiceActions(invoice, company)
 
-	// ── Données liées à la facture — AVANT les guards ─────────────────────────
-	const isCreditNote = invoice?.invoice_type === 'credit_note'
-	const isDeposit = invoice?.invoice_type === 'deposit'
-	const isTicket = !!(
-		invoice?.is_pos_ticket || invoice?.number?.startsWith('TIK-')
-	)
-	const originalId = (invoice as any)?.original_invoice_id
-
-	// Le dossier est désormais résolu par useInvoiceDossier : une facture de
-	// solde interroge sa PARENTE, un ticket n'interroge plus rien. Le bloc
-	// « acomptes » reste réservé au rôle 'parent' (ci-dessous), ce qui préserve
-	// le rendu actuel — aujourd'hui il ne s'affiche pas sur une facture de
-	// solde, faute de données.
-	const depositsData = dossier.depositsData
-	const linkedCreditNotes = dossier.creditNotes
-	const sourceOrderId = invoice?.source_order_id ?? null
-	const sourceOrder = dossier.sourceOrder as { number?: string } | undefined
-
 	useEffect(() => {
 		const loadCompany = async () => {
 			if (!activeCompanyId) return
@@ -148,89 +60,6 @@ export function InvoiceDetailPage() {
 		}
 		void loadCompany()
 	}, [activeCompanyId, pb])
-
-	// ── État & Calculs — AVANT les guards ─────────────────────────────────────
-	const remainingAmount =
-		typeof (invoice as any)?.remaining_amount === 'number'
-			? (invoice as any).remaining_amount
-			: (invoice?.total_ttc ?? 0) - ((invoice as any)?.credit_notes_total ?? 0)
-
-	const hasCancellationCreditNote = !!(
-		linkedCreditNotes && linkedCreditNotes.length > 0
-	)
-
-	const vatBreakdown = useMemo<VatBreakdown[]>(() => {
-		const inv = invoice as any
-		const items = Array.isArray(inv?.items) ? inv.items : []
-		const map = new Map<number, VatBreakdown>()
-		for (const it of items) {
-			const rate = Number(it?.tva_rate ?? 20)
-			const ht = Number(it?.total_ht ?? 0)
-			const ttc = Number(it?.total_ttc ?? 0)
-			const vat = ttc - ht
-			let entry = map.get(rate)
-			if (!entry) {
-				entry = { rate, base_ht: 0, vat: 0, total_ttc: 0 }
-				map.set(rate, entry)
-			}
-			entry.base_ht = round2(entry.base_ht + ht)
-			entry.vat = round2(entry.vat + vat)
-			entry.total_ttc = round2(entry.total_ttc + ttc)
-		}
-		return Array.from(map.values()).sort((a, b) => a.rate - b.rate)
-	}, [invoice])
-
-	const discounts = useMemo(() => {
-		const inv: any = invoice as any
-		const totalTtc = Number(inv?.total_ttc ?? 0)
-		const lineDiscountsTtc = Number(inv?.line_discounts_total_ttc ?? 0)
-		const cartDiscountTtc = Number(inv?.cart_discount_ttc ?? 0)
-		const subtotalAfterLine = round2(totalTtc + cartDiscountTtc)
-		const grandSubtotal = round2(subtotalAfterLine + lineDiscountsTtc)
-		const hasAnyDiscount = lineDiscountsTtc > 0 || cartDiscountTtc > 0
-		let cartDiscountLabel = ''
-		const mode = inv?.cart_discount_mode
-		const value = inv?.cart_discount_value
-		if (cartDiscountTtc > 0 && mode && value != null) {
-			if (mode === 'percent') cartDiscountLabel = `(${Number(value) || 0}%)`
-			else cartDiscountLabel = `(${round2(Number(value) || 0).toFixed(2)} €)`
-		}
-		return {
-			hasAnyDiscount,
-			totalTtc: round2(totalTtc),
-			grandSubtotal,
-			lineDiscountsTtc: round2(lineDiscountsTtc),
-			cartDiscountTtc: round2(cartDiscountTtc),
-			cartDiscountLabel,
-		}
-	}, [invoice])
-
-	// ── Header — AVANT les guards ─────────────────────────────────────────────
-	const { headerLeft, headerRight } = useInvoiceDetailHeader({
-		invoice,
-		invoiceId,
-		actions,
-		goBack,
-		isCreditNote: invoice?.invoice_type === 'credit_note',
-		// Réservés au rôle 'parent' : le dossier étant désormais résolu sur la
-		// parente, une facture de solde recevrait sinon un badge « Acompte ·
-		// Solde » qu'elle n'affichait pas.
-		depositsTotal:
-			dossier.role === 'parent' ? depositsData?.depositsTotal : undefined,
-		balanceDue:
-			dossier.role === 'parent' ? depositsData?.balanceDue : undefined,
-		isDeposit: invoice?.invoice_type === 'deposit',
-		isTicket: !!(invoice?.is_pos_ticket || invoice?.number?.startsWith('TIK-')),
-		remainingAmount,
-		hasCancellationCreditNote,
-		search: search as Record<string, string>,
-		canGenerateBalance: !!(
-			invoice &&
-			canCreateBalanceInvoice(invoice) &&
-			!depositsData?.balanceInvoice &&
-			depositsData?.pendingCount === 0
-		),
-	})
 
 	// ── Helpers Locaux ────────────────────────────────────────────────────────
 	const pushCurrentToStore = (label: string) => {
@@ -245,7 +74,26 @@ export function InvoiceDetailPage() {
 		})
 	}
 
-	// ── Guards ────────────────────────────────────────────────────────────────
+	// ── Guards — EN TÊTE, avant tout calcul ──────────────────────────────────
+	//
+	// `buildInvoiceDetailHeader` n'est plus un hook (il reçoit `navigate` en
+	// paramètre) : les guards peuvent donc précéder toute la logique. À partir
+	// d'ici `invoice` n'est plus optionnel, ce qui supprime les `?.` et les
+	// `as any` qui en découlaient.
+	const headerDeChargement = buildInvoiceDetailHeader({
+		navigate,
+		invoice: undefined,
+		invoiceId,
+		actions,
+		goBack,
+		isCreditNote: false,
+		isDeposit: false,
+		isTicket: false,
+		remainingAmount: 0,
+		hasCancellationCreditNote: false,
+		search: search as Record<string, string>,
+	}).headerLeft
+
 	if (isLoading) {
 		return (
 			<ConnectModuleShell
@@ -253,7 +101,7 @@ export function InvoiceDetailPage() {
 				hideTitle
 				hideIcon
 				hideBadge
-				headerLeft={headerLeft}
+				headerLeft={headerDeChargement}
 				primaryAction={null}
 			>
 				<EmptyState icon={FileText} title='Chargement...' fullPage />
@@ -268,7 +116,7 @@ export function InvoiceDetailPage() {
 				hideTitle
 				hideIcon
 				hideBadge
-				headerLeft={headerLeft}
+				headerLeft={headerDeChargement}
 				primaryAction={null}
 			>
 				<EmptyState
@@ -288,10 +136,90 @@ export function InvoiceDetailPage() {
 		)
 	}
 
+	// ── Données dérivées du document — après les guards ──────────────────────
+	const isCreditNote = invoice.invoice_type === 'credit_note'
+	const isDeposit = invoice.invoice_type === 'deposit'
+	const isTicket = !!(
+		invoice.is_pos_ticket || invoice.number?.startsWith('TIK-')
+	)
+	const originalId = invoice.original_invoice_id
+
+	// Le dossier est résolu par useInvoiceDossier : une facture de solde
+	// interroge sa PARENTE, un ticket n'interroge plus rien. La liste des
+	// acomptes reste réservée au rôle 'parent', ce qui préserve le rendu
+	// actuel — aujourd'hui elle est vide sur une facture de solde.
+	const depositsData = dossier.depositsData
+	const linkedCreditNotes = dossier.creditNotes
+	const sourceOrderId = invoice.source_order_id ?? null
+	const sourceOrder = dossier.sourceOrder as { number?: string } | undefined
+
+	// ── Calculs — APRÈS les guards : `invoice` est garanti ───────────────────
+	const remainingAmount =
+		typeof invoice.remaining_amount === 'number'
+			? invoice.remaining_amount
+			: invoice.total_ttc - (invoice.credit_notes_total ?? 0)
+
+	const hasCancellationCreditNote = !!(
+		linkedCreditNotes && linkedCreditNotes.length > 0
+	)
+
+	// Appels ORDINAIRES, pas des hooks : ils viennent après les guards, et un
+	// hook placé après un `return` fait varier le nombre de hooks d'un rendu à
+	// l'autre — « Rendered more hooks than during the previous render ».
+	// Ces deux calculs sont de toute façon des sommes sur quelques lignes ;
+	// `useMemo` n'y mémoïsait rien, `invoice` changeant de référence à chaque
+	// réponse de requête.
+	const vatBreakdown = computeVatBreakdown(invoice.items ?? [])
+	const discounts = computeDiscounts(invoice)
+
+	// ── Header ───────────────────────────────────────────────────────────────
+	// `headerRight` n'est plus rendu : les actions vivent dans la zone
+	// « prochaine action », hiérarchisées, et les y laisser en double
+	// recréerait les CTA concurrents que cette refonte supprime.
+	const { headerLeft } = buildInvoiceDetailHeader({
+		navigate,
+		invoice,
+		invoiceId,
+		actions,
+		goBack,
+		isCreditNote,
+		// Réservés au rôle 'parent' : le dossier étant désormais résolu sur la
+		// parente, une facture de solde recevrait sinon un badge « Acompte ·
+		// Solde » qu'elle n'affichait pas.
+		depositsTotal:
+			dossier.role === 'parent' ? depositsData?.depositsTotal : undefined,
+		balanceDue:
+			dossier.role === 'parent' ? depositsData?.balanceDue : undefined,
+		isDeposit,
+		isTicket,
+		remainingAmount,
+		hasCancellationCreditNote,
+		search: search as Record<string, string>,
+		canGenerateBalance: !!(
+			canCreateBalanceInvoice(invoice) &&
+			!depositsData?.balanceInvoice &&
+			depositsData?.pendingCount === 0
+		),
+	})
+
+	// `resolveNextAction` décide QUOI proposer ; `creerExecuteurAction` dit
+	// COMMENT le faire. Les deux sont séparés pour que la première reste
+	// testable sans DOM.
+	const executerAction = creerExecuteurAction({
+		invoice,
+		invoiceId,
+		balanceInvoice: dossier.balanceInvoice,
+		originalId,
+		actions,
+		navigate,
+		search: search as Record<string, string>,
+		pushCurrentToStore,
+	})
+
 	// ── Données dérivées (post-guard) ─────────────────────────────────────────
-	const customer = (invoice as any)?.expand?.customer ?? null
-	const soldByLabel = getSoldByLabel(invoice as any)
-	const originalDocument = (invoice as any)?.expand?.original_invoice_id
+	const customer = invoice.expand?.customer ?? null
+	const soldByLabel = getSoldByLabel(invoice)
+	const originalDocument = invoice.expand?.original_invoice_id
 	const originalNumber = originalDocument?.number
 
 	return (
@@ -301,778 +229,90 @@ export function InvoiceDetailPage() {
 				hideIcon
 				hideBadge
 				headerLeft={headerLeft}
-				headerRight={headerRight}
 				primaryAction={null}
 			>
 				<div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
+					{/* Zone 2 — la synthèse : lecture seule, aucune action */}
+					{dossier.summary && (
+						<div className='lg:col-span-1'>
+							<InvoiceSummaryCard summary={dossier.summary} />
+						</div>
+					)}
+
+					{/* Zone 3 — la prochaine action, et elle seule */}
+					{dossier.nextAction && (
+						<div className='lg:col-span-2'>
+							<InvoiceNextAction
+								resolution={dossier.nextAction}
+								onAction={executerAction}
+							/>
+						</div>
+					)}
+
 					{/* ── Infos générales ───────────────────────────────────────── */}
 					<Card className='lg:col-span-2'>
 						<CardContent className='p-6 space-y-4'>
-							<div className='grid grid-cols-2 gap-4'>
-								<div>
-									<p className='text-sm text-muted-foreground'>Date</p>
-									<p className='font-medium'>{formatDate(invoice.date)}</p>
-								</div>
-								{!isCreditNote && (
-									<div>
-										<p className='text-sm text-muted-foreground'>
-											{isTicket ? 'Vendeur / Caissier' : 'Vendeur'}
-										</p>
-										<p className='font-medium'>{soldByLabel}</p>
-									</div>
-								)}
-								{invoice.due_date && (
-									<div>
-										<p className='text-sm text-muted-foreground'>Échéance</p>
-										<p className='font-medium'>
-											{formatDate(invoice.due_date)}
-										</p>
-									</div>
-								)}
-								{!isCreditNote && invoice.is_paid && (
-									<>
-										<div>
-											<p className='text-sm text-muted-foreground'>
-												Moyen de paiement
-											</p>
-											{(invoice as any).payment_method === 'multi' &&
-											Array.isArray((invoice as any).split_payments) &&
-											(invoice as any).split_payments.length > 0 ? (
-												<div className='space-y-0.5'>
-													{(
-														(invoice as any).split_payments as {
-															method: string
-															method_label?: string
-															amount: number
-														}[]
-													).map((sp, i) => (
-														<p
-															key={`${sp.method}-${i}`}
-															className='font-medium text-sm'
-														>
-															{sp.method_label ??
-																formatPaymentMethod(sp.method as any)}{' '}
-															— {sp.amount.toFixed(2)} €
-														</p>
-													))}
-												</div>
-											) : (
-												<p className='font-medium'>
-													{formatPaymentMethod((invoice as any).payment_method)}
-												</p>
-											)}
-										</div>
-										<div>
-											<p className='text-sm text-muted-foreground'>Payée le</p>
-											<p className='font-medium'>
-												{formatDate((invoice as any).paid_at)}
-											</p>
-										</div>
-									</>
-								)}
-								{isCreditNote && (invoice as any).refund_method && (
-									<div>
-										<p className='text-sm text-muted-foreground'>
-											Moyen de remboursement
-										</p>
-										<p className='font-medium'>
-											{formatPaymentMethod((invoice as any).refund_method)}
-										</p>
-									</div>
-								)}
-								{isCreditNote && (invoice as any).cancellation_reason && (
-									<div className='col-span-2'>
-										<p className='text-sm text-muted-foreground'>
-											Motif du remboursement
-										</p>
-										<p className='font-medium text-destructive'>
-											{(invoice as any).cancellation_reason}
-										</p>
-									</div>
-								)}
-								{invoice.notes && (
-									<div className='col-span-2'>
-										<p className='text-sm text-muted-foreground'>Notes</p>
-										<p className='font-medium'>{invoice.notes}</p>
-									</div>
-								)}
-							</div>
+							<InvoiceInfoGrid
+								invoice={invoice}
+								isCreditNote={isCreditNote}
+								isTicket={isTicket}
+								soldByLabel={soldByLabel}
+							/>
 
-							{/* ── Documents Originaux (Avoirs / Acomptes) ──────────────── */}
-							{isCreditNote && originalId && (
-								<div className='border-t pt-4 space-y-2'>
-									<p className='text-sm text-muted-foreground mb-2'>
-										Document original
-									</p>
-									<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
-										<div className='flex items-center gap-2'>
-											<FileText className='h-4 w-4 text-muted-foreground' />
-											<span className='font-medium text-sm'>
-												{originalNumber || 'Document'}
-											</span>
-										</div>
-										<Button
-											variant='outline'
-											size='sm'
-											onClick={() => {
-												pushCurrentToStore(`Avoir ${invoice.number}`)
-												navigate({
-													to: '/connect/invoices/$invoiceId',
-													params: { invoiceId: originalId },
-												})
-											}}
-										>
-											Voir
-										</Button>
-									</div>
-								</div>
-							)}
-
-							{isDeposit && originalId && (
-								<div className='border-t pt-4 space-y-2'>
-									<p className='text-sm text-muted-foreground mb-2'>
-										Facture principale
-									</p>
-									<div className='flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200 dark:border-blue-900'>
-										<div className='flex items-center gap-2'>
-											<FileText className='h-4 w-4 text-blue-600' />
-											<span className='font-medium text-sm'>
-												{originalNumber || 'Document'}
-											</span>
-										</div>
-										<Button
-											variant='outline'
-											size='sm'
-											onClick={() => {
-												pushCurrentToStore(`Acompte ${invoice.number}`)
-												navigate({
-													to: '/connect/invoices/$invoiceId',
-													params: { invoiceId: originalId },
-												})
-											}}
-										>
-											Voir
-										</Button>
-									</div>
-								</div>
-							)}
-
-							{/* ── Avoirs associés ────────────────────────────────────────── */}
-							{!isCreditNote &&
-								linkedCreditNotes &&
-								linkedCreditNotes.length > 0 && (
-									<div className='border-t pt-4 space-y-2'>
-										<p className='text-sm text-muted-foreground mb-2'>
-											{linkedCreditNotes.length === 1
-												? 'Avoir associé'
-												: 'Avoirs associés'}
-										</p>
-										<div className='space-y-2'>
-											{linkedCreditNotes.map((cn) => (
-												<div
-													key={cn.id}
-													className='flex items-center justify-between bg-red-50 dark:bg-red-950/20 rounded-lg p-3 border border-red-200 dark:border-red-900'
-												>
-													<div className='flex items-center gap-2'>
-														<RefreshCcw className='h-4 w-4 text-red-600' />
-														<div className='flex flex-col'>
-															<span className='font-medium text-sm text-red-700 dark:text-red-400'>
-																{cn.number}
-															</span>
-															<span className='text-xs text-muted-foreground'>
-																{formatDate(cn.date)} •{' '}
-																{formatCurrency(cn.total_ttc)}
-															</span>
-														</div>
-													</div>
-													<Button
-														variant='outline'
-														size='sm'
-														onClick={() => {
-															pushCurrentToStore(`Facture ${invoice.number}`)
-															navigate({
-																to: '/connect/invoices/$invoiceId',
-																params: { invoiceId: cn.id },
-															})
-														}}
-													>
-														Voir
-													</Button>
-												</div>
-											))}
-										</div>
-									</div>
-								)}
-
-							{/* ── Ticket converti ────────────────────────────────────────── */}
-							{isTicket &&
-								invoice.converted_to_invoice &&
-								invoice.converted_invoice_id && (
-									<div className='border-t pt-4 space-y-2'>
-										<p className='text-sm text-muted-foreground mb-2'>
-											Facture associée
-										</p>
-										<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
-											<div className='flex items-center gap-2'>
-												<FileText className='h-4 w-4 text-muted-foreground' />
-												<span className='font-medium text-sm'>
-													Converti en facture
-												</span>
-											</div>
-											<Button
-												variant='outline'
-												size='sm'
-												onClick={() => {
-													const id = invoice.converted_invoice_id
-													if (id)
-														navigate({
-															to: '/connect/invoices/$invoiceId',
-															params: { invoiceId: id },
-														})
-												}}
-											>
-												Voir
-											</Button>
-										</div>
-									</div>
-								)}
-
-							{/* ── Acomptes liés (Facture B2B) ────────────────────────────── */}
-							{!isCreditNote && !isDeposit && !isTicket && (
-								<div className='border-t pt-4 space-y-3'>
-									{(invoice.deposits_total_ttc ?? 0) > 0 && (
-										<div className='space-y-1'>
-											<p className='text-sm font-medium text-muted-foreground'>
-												Acomptes
-											</p>
-											<div className='flex justify-between text-sm'>
-												<span className='text-muted-foreground'>Versés</span>
-												<span className='font-medium text-emerald-600'>
-													{formatCurrency(
-														invoice.deposits_total_ttc ?? 0,
-														invoice.currency,
-													)}
-												</span>
-											</div>
-											<div className='flex justify-between text-sm'>
-												<span className='text-muted-foreground'>
-													Solde restant
-												</span>
-												<span className='font-semibold'>
-													{formatCurrency(
-														invoice.balance_due ?? invoice.total_ttc,
-														invoice.currency,
-													)}
-												</span>
-											</div>
-										</div>
-									)}
-
-									{/* La liste vient du dossier, désormais résolu sur la
-									    PARENTE : sur une facture de solde elle porterait les
-									    acomptes du dossier, alors qu'elle était vide jusqu'ici.
-									    On la réserve au rôle 'parent' pour ne rien changer à
-									    l'écran à cette étape. */}
-									{dossier.role === 'parent' &&
-										depositsData &&
-										depositsData.depositsCount > 0 && (
-										<div className='space-y-2'>
-											{depositsData.deposits.map((dep) => (
-												<div
-													key={dep.id}
-													className='flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200 dark:border-blue-900'
-												>
-													<div className='flex items-center gap-2'>
-														<Banknote className='h-4 w-4 text-blue-600' />
-														<div className='flex flex-col'>
-															<span className='font-medium text-sm text-blue-700 dark:text-blue-400'>
-																{dep.number}
-															</span>
-															<span className='text-xs text-muted-foreground'>
-																{formatDate(dep.date)} •{' '}
-																{formatCurrency(dep.total_ttc)} •{' '}
-																{dep.is_paid ? (
-																	<span className='text-emerald-600'>
-																		Réglé
-																	</span>
-																) : (
-																	<span className='text-amber-600'>
-																		En attente
-																	</span>
-																)}
-															</span>
-														</div>
-													</div>
-													<Button
-														variant='outline'
-														size='sm'
-														onClick={() => {
-															pushCurrentToStore(`Facture ${invoice.number}`)
-															navigate({
-																to: '/connect/invoices/$invoiceId',
-																params: { invoiceId: dep.id },
-															})
-														}}
-													>
-														Voir
-													</Button>
-												</div>
-											))}
-											{depositsData.balanceInvoice && (
-												<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3 border'>
-													<div className='flex items-center gap-2'>
-														<CreditCard className='h-4 w-4 text-muted-foreground' />
-														<div className='flex flex-col'>
-															<span className='font-medium text-sm'>
-																{depositsData.balanceInvoice.number}
-															</span>
-															<span className='text-xs text-muted-foreground'>
-																Facture de solde •{' '}
-																{formatDate(depositsData.balanceInvoice.date)} •{' '}
-																{formatCurrency(
-																	depositsData.balanceInvoice.total_ttc,
-																)}{' '}
-																•{' '}
-																{depositsData.balanceInvoice.is_paid ? (
-																	<span className='text-emerald-600'>
-																		Réglé
-																	</span>
-																) : (
-																	<span className='text-amber-600'>
-																		En attente
-																	</span>
-																)}
-															</span>
-														</div>
-													</div>
-													<Button
-														variant='outline'
-														size='sm'
-														onClick={() => {
-															if (depositsData.balanceInvoice) {
-																pushCurrentToStore(`Facture ${invoice.number}`)
-																navigate({
-																	to: '/connect/invoices/$invoiceId',
-																	params: {
-																		invoiceId: depositsData.balanceInvoice.id,
-																	},
-																})
-															}
-														}}
-													>
-														Voir
-													</Button>
-												</div>
-											)}
-										</div>
-									)}
-								</div>
-							)}
-
-							{/* ── Bon de commande source ─────────────────────────────────── */}
-							{sourceOrderId && (
-								<div className='border-t pt-4 space-y-2'>
-									<p className='text-sm text-muted-foreground mb-2'>
-										Bon de commande source
-									</p>
-									<div className='flex items-center justify-between bg-muted/50 rounded-lg p-3'>
-										<div className='flex items-center gap-2'>
-											<ClipboardList className='h-4 w-4 text-muted-foreground' />
-											<span className='font-medium text-sm'>
-												{sourceOrder?.number ?? '…'}
-											</span>
-										</div>
-										<Button
-											variant='outline'
-											size='sm'
-											onClick={() => {
-												pushCurrentToStore(`Facture ${invoice.number}`)
-												navigate({
-													to: '/connect/orders/$orderId',
-													params: { orderId: sourceOrderId },
-													search:
-														Object.keys(search).length > 0
-															? (search as Record<string, string>)
-															: undefined,
-												})
-											}}
-										>
-											Voir
-										</Button>
-									</div>
-								</div>
-							)}
+							<InvoiceDossierSections
+								invoice={invoice}
+								isCreditNote={isCreditNote}
+								isDeposit={isDeposit}
+								isTicket={isTicket}
+								estParente={dossier.role === 'parent'}
+								originalId={originalId}
+								originalNumber={originalNumber}
+								linkedCreditNotes={linkedCreditNotes}
+								depositsData={depositsData}
+								sourceOrderId={sourceOrderId}
+								sourceOrder={sourceOrder}
+								pushCurrentToStore={pushCurrentToStore}
+								onOpenInvoice={(id) =>
+									navigate({
+										to: '/connect/invoices/$invoiceId',
+										params: { invoiceId: id },
+									})
+								}
+								onOpenOrder={(orderId) =>
+									navigate({
+										to: '/connect/orders/$orderId',
+										params: { orderId },
+										search:
+											Object.keys(search).length > 0
+												? (search as Record<string, string>)
+												: undefined,
+									})
+								}
+							/>
 						</CardContent>
 					</Card>
 
-					{/* ── Client ────────────────────────────────────────────────── */}
-					<Card>
-						<CardContent className='p-6'>
-							{customer ? (
-								<div className='space-y-2'>
-									<button
-										type='button'
-										className='font-semibold text-foreground hover:text-primary hover:underline text-left'
-										onClick={() =>
-											navigate({
-												to: '/connect/customers/$customerId',
-												params: { customerId: customer.id },
-											})
-										}
-									>
-										{customer.name}
-									</button>
-									{customer.company && (
-										<p className='text-sm text-muted-foreground'>
-											{customer.company}
-										</p>
-									)}
-									{customer.email && (
-										<p className='text-sm text-muted-foreground'>
-											{customer.email}
-										</p>
-									)}
-									{customer.phone && (
-										<p className='text-sm text-muted-foreground'>
-											{customer.phone}
-										</p>
-									)}
-									{customer.address && (
-										<p className='text-sm text-muted-foreground'>
-											{customer.address}
-										</p>
-									)}
-								</div>
-							) : (
-								<p className='text-muted-foreground'>Client inconnu</p>
-							)}
-						</CardContent>
-					</Card>
+					{/* Client */}
+					<InvoiceCustomerCard
+						customer={customer}
+						onOpenCustomer={(customerId) =>
+							navigate({
+								to: '/connect/customers/$customerId',
+								params: { customerId },
+							})
+						}
+					/>
 
-					{/* ── Lignes ────────────────────────────────────────────────── */}
-					<Card className='lg:col-span-3'>
-						<CardContent className='p-6'>
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Article</TableHead>
-										<TableHead className='text-center w-20'>Qté</TableHead>
-										<TableHead className='text-right'>P.U. TTC</TableHead>
-										<TableHead className='text-right'>Remise</TableHead>
-										<TableHead className='text-right'>TVA</TableHead>
-										<TableHead className='text-right'>Total TTC</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{invoice.items.map((item: any, idx: number) => {
-										const promo = getLineDiscountLabel(item)
-										// P.U. TTC d'origine (avant remise ligne) : champ
-										// persiste, ou reconstruction pour les documents legacy
-										const unitTtcBefore = getUnitPriceTtcBeforeDiscount(item)
-										const coef = 1 + Number(item?.tva_rate ?? 20) / 100
-										const unitTtcNet = round2(
-											Number(item?.unit_price_ht ?? 0) * coef,
-										)
-										return (
-											<TableRow key={`${item.name}-${idx}`}>
-												<TableCell className='font-medium'>
-													{item.name}
-												</TableCell>
-												<TableCell className='text-center'>
-													{item.quantity}
-												</TableCell>
-												<TableCell className='text-right'>
-													{promo.hasDiscount ? (
-														<div className='flex flex-col items-end'>
-															<span className='text-xs text-muted-foreground line-through'>
-																{unitTtcBefore.toFixed(2)} €
-															</span>
-															<span>{unitTtcNet.toFixed(2)} €</span>
-														</div>
-													) : (
-														<span>{unitTtcNet.toFixed(2)} €</span>
-													)}
-												</TableCell>
-												<TableCell className='text-right'>
-													{promo.label}
-												</TableCell>
-												<TableCell className='text-right'>
-													{item.tva_rate}%
-												</TableCell>
-												<TableCell className='text-right'>
-													{Number(item.total_ttc ?? 0).toFixed(2)} €
-												</TableCell>
-											</TableRow>
-										)
-									})}
-								</TableBody>
-							</Table>
-
-							{/* Totaux */}
-							<div className='mt-6 flex justify-end'>
-								<div className='w-72 space-y-2 text-sm'>
-									{discounts.hasAnyDiscount && (
-										<>
-											<div className='flex justify-between'>
-												<span className='text-muted-foreground'>
-													Sous-total TTC
-												</span>
-												<span>
-													{formatCurrency(
-														discounts.grandSubtotal,
-														invoice.currency,
-													)}
-												</span>
-											</div>
-											{discounts.lineDiscountsTtc > 0 && (
-												<div className='flex justify-between'>
-													<span className='text-muted-foreground'>
-														Remises lignes
-													</span>
-													<span>
-														-
-														{formatCurrency(
-															discounts.lineDiscountsTtc,
-															invoice.currency,
-														)}
-													</span>
-												</div>
-											)}
-											{discounts.cartDiscountTtc > 0 && (
-												<div className='flex justify-between'>
-													<span className='text-muted-foreground'>
-														Remise globale {discounts.cartDiscountLabel}
-													</span>
-													<span>
-														-
-														{formatCurrency(
-															discounts.cartDiscountTtc,
-															invoice.currency,
-														)}
-													</span>
-												</div>
-											)}
-											<div className='border-t pt-2' />
-										</>
-									)}
-									<div className='flex justify-between'>
-										<span className='text-muted-foreground'>Total HT</span>
-										<span>
-											{formatCurrency(invoice.total_ht, invoice.currency)}
-										</span>
-									</div>
-									<div className='flex justify-between'>
-										<span className='text-muted-foreground'>TVA</span>
-										<span>
-											{formatCurrency(invoice.total_tva, invoice.currency)}
-										</span>
-									</div>
-									{vatBreakdown.length > 0 && (
-										<div className='pt-1'>
-											{vatBreakdown.map((vb) => (
-												<div
-													key={vb.rate}
-													className='flex justify-between text-xs text-muted-foreground'
-												>
-													<span>
-														TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
-													</span>
-													<span>{vb.vat.toFixed(2)} €</span>
-												</div>
-											))}
-										</div>
-									)}
-									<div className='flex justify-between font-bold text-lg border-t pt-2'>
-										<span>Total TTC</span>
-										<span>
-											{formatCurrency(invoice.total_ttc, invoice.currency)}
-										</span>
-									</div>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
+					{/* Lignes et totaux */}
+					<InvoiceLinesCard
+						invoice={invoice}
+						vatBreakdown={vatBreakdown}
+						discounts={discounts}
+					/>
 				</div>
 			</ConnectModuleShell>
 
-			{/* ── Dialogs ──────────────────────────────────────────────────────── */}
-			<SendInvoiceEmailDialog
-				open={actions.emailDialogOpen}
-				onOpenChange={actions.setEmailDialogOpen}
-				invoice={invoice}
-				onSuccess={() => actions.setEmailDialogOpen(false)}
-			/>
-
-			<Dialog
-				open={actions.cancelDialogOpen}
-				onOpenChange={actions.setCancelDialogOpen}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Créer un avoir</DialogTitle>
-						<DialogDescription>
-							Un avoir sera créé pour annuler la facture{' '}
-							<strong>{invoice.number}</strong>.
-						</DialogDescription>
-					</DialogHeader>
-					<div className='space-y-2 py-4'>
-						<Label>Motif d'annulation *</Label>
-						<Textarea
-							value={actions.cancelReason}
-							onChange={(e) => actions.setCancelReason(e.target.value)}
-							placeholder='Ex: Erreur de facturation, retour client...'
-							rows={3}
-						/>
-					</div>
-					<DialogFooter>
-						<Button
-							variant='outline'
-							onClick={() => actions.setCancelDialogOpen(false)}
-						>
-							Annuler
-						</Button>
-						<Button
-							variant='destructive'
-							disabled={!actions.cancelReason.trim() || actions.isCancelling}
-							onClick={actions.handleCancelInvoice}
-						>
-							{actions.isCancelling ? 'Création...' : "Créer l'avoir"}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			{/* ✅ Composant partagé — même comportement que dans le flux de création
-			    (fermeture verrouillée tant que le paiement n'est pas confirmé,
-			    bouton "Payer plus tard" au lieu d'"Annuler") */}
-			<InvoicePaymentDialog
-				invoice={invoice}
-				open={actions.paymentDialogOpen}
-				onOpenChange={actions.setPaymentDialogOpen}
-				onPaid={() => actions.setPaymentDialogOpen(false)}
-				onSkip={() => actions.setPaymentDialogOpen(false)}
-			/>
-
-			<Dialog
-				open={actions.deleteDraftDialogOpen}
-				onOpenChange={actions.setDeleteDraftDialogOpen}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Supprimer le brouillon</DialogTitle>
-						<DialogDescription>
-							Cette action va <strong>supprimer définitivement</strong> le
-							brouillon <strong>{invoice.number}</strong>. Cette opération est
-							irréversible.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter>
-						<Button
-							variant='outline'
-							onClick={() => actions.setDeleteDraftDialogOpen(false)}
-						>
-							Annuler
-						</Button>
-						<Button
-							variant='destructive'
-							onClick={actions.handleConfirmDeleteDraft}
-							disabled={actions.isDeletingDraft}
-						>
-							{actions.isDeletingDraft
-								? 'Suppression...'
-								: 'Supprimer le brouillon'}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			<Dialog
-				open={actions.refundDepositOpen}
-				onOpenChange={actions.setRefundDepositOpen}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Rembourser l'acompte</DialogTitle>
-						<DialogDescription>
-							Un avoir sera créé pour annuler l'acompte{' '}
-							<strong>{invoice.number}</strong> de{' '}
-							<strong>{formatCurrency(invoice.total_ttc)}</strong>.
-						</DialogDescription>
-					</DialogHeader>
-					<div className='space-y-2 py-4'>
-						<Label>Motif du remboursement *</Label>
-						<Textarea
-							value={actions.refundDepositReason}
-							onChange={(e) => actions.setRefundDepositReason(e.target.value)}
-							placeholder='Ex: Annulation de commande, litige client...'
-							rows={3}
-						/>
-					</div>
-					<DialogFooter>
-						<Button
-							variant='outline'
-							onClick={() => {
-								actions.setRefundDepositOpen(false)
-								actions.setRefundDepositReason('')
-							}}
-						>
-							Annuler
-						</Button>
-						<Button
-							variant='destructive'
-							disabled={
-								!actions.refundDepositReason.trim() ||
-								actions.isRefundingDeposit
-							}
-							onClick={actions.handleRefundDeposit}
-						>
-							{actions.isRefundingDeposit ? 'Création...' : "Créer l'avoir"}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			<RefundTicketDialog
-				open={actions.refundTicketDialogOpen}
-				onOpenChange={(o) => {
-					if (!o) actions.setRefundTicketDialogOpen(false)
-					else actions.setRefundTicketDialogOpen(true)
-				}}
-				ticket={invoice}
-				onSuccess={(stockItems) => {
-					actions.setRefundTicketDialogOpen(false)
-					if (stockItems && stockItems.length > 0) {
-						actions.setStockItemsToReclassify(stockItems)
-						actions.setStockDocumentNumber(invoice.number)
-						actions.setStockReclassifyOpen(true)
-					}
-				}}
-			/>
-
-			<RefundInvoiceDialog
-				open={actions.refundInvoiceOpen}
-				invoice={invoice}
-				onClose={() => actions.setRefundInvoiceOpen(false)}
-				onSuccess={(stockItems) => {
-					if (stockItems && stockItems.length > 0) {
-						actions.setStockItemsToReclassify(stockItems)
-						actions.setStockDocumentNumber(invoice.number)
-						actions.setStockReclassifyOpen(true)
-					}
-				}}
-			/>
-
-			<StockReclassificationDialog
-				open={actions.stockReclassifyOpen}
-				onOpenChange={actions.setStockReclassifyOpen}
-				items={actions.stockItemsToReclassify}
-				documentNumber={actions.stockDocumentNumber}
-				onComplete={() => {
-					actions.setStockReclassifyOpen(false)
-					actions.setStockItemsToReclassify([])
-					actions.setStockDocumentNumber(undefined)
-				}}
-			/>
+			<InvoiceDialogs invoice={invoice} actions={actions} />
 		</>
 	)
 }

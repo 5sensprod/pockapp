@@ -127,16 +127,23 @@ export function computeInvoiceSummary(
 	// déduirait deux fois.
 	const creditNotesTtc = round2(Math.abs(parent.credit_notes_total ?? 0))
 
-	const remainingTtc = Math.max(
-		0,
-		round2(totalTtc - depositsCollectedTtc - creditNotesTtc),
-	)
+	// Un document RÉGLÉ ne doit plus rien, quelle que soit la soustraction.
+	// Sans ce test, une facture payée sans acompte ni avoir affichait
+	// « Reste à payer » égal à son total — pendant que la zone d'action, elle,
+	// annonçait « Facture soldée ». Deux chiffres qui se contredisent sur le
+	// même écran, devant le client.
+	const estRegle = (parent.is_paid ?? false) && role !== 'deposit'
+	const remainingTtc = estRegle
+		? 0
+		: Math.max(0, round2(totalTtc - depositsCollectedTtc - creditNotesTtc))
 
 	// Un acompte ou une facture de solde s'encaisse pour SON montant ; la
 	// parente, pour ce qu'il reste.
 	const amountToCollectTtc =
 		role === 'deposit' || role === 'balance'
-			? round2(Math.abs(current.total_ttc ?? 0))
+			? current.is_paid
+				? 0
+				: round2(Math.abs(current.total_ttc ?? 0))
 			: remainingTtc
 
 	const isTrivial =
@@ -174,13 +181,26 @@ export function computeInvoiceSummary(
 		})
 	}
 
-	lines.push({
-		key: 'remaining',
-		label: 'Reste à payer',
-		amount: remainingTtc,
-		sign: '=',
-		belowLine: false,
-	})
+	// Sur un document réglé sans acompte ni avoir, une soustraction à deux
+	// lignes dont la seconde est zéro n'apprend rien. On dit ce qui a été
+	// encaissé.
+	if (estRegle && depositsCollectedTtc === 0 && creditNotesTtc === 0) {
+		lines.push({
+			key: 'remaining',
+			label: 'Déjà encaissé',
+			amount: totalTtc,
+			sign: '=',
+			belowLine: false,
+		})
+	} else {
+		lines.push({
+			key: 'remaining',
+			label: 'Reste à payer',
+			amount: remainingTtc,
+			sign: '=',
+			belowLine: false,
+		})
+	}
 
 	if (depositsPendingTtc > 0) {
 		lines.push({

@@ -168,7 +168,11 @@ describe('les mouvements de stock ont un seul chemin', () => {
 		for (const fichier of [
 			'modules/cash/CashTerminalPage.tsx',
 			'modules/connect/components/InvoicePaymentDialog.tsx',
-			'modules/connect/pages/invoices/InvoicesPage.tsx',
+			// `InvoicesPage.tsx` a quitté cette liste le 30 août 2026 : son
+			// dialogue d'encaissement — inatteignable depuis longtemps — a été
+			// supprimé, et la liste des factures ne vend plus rien. La règle
+			// n'est pas assouplie : elle ne s'applique qu'aux fichiers qui
+			// décrémentent réellement du stock.
 			'lib/queries/invoices.ts',
 			'lib/queries/quotes.ts',
 		]) {

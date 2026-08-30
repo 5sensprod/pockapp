@@ -11,6 +11,7 @@
 package backend
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -260,5 +261,136 @@ func verifierAucunAcompte(t *testing.T, app *pocketbase.PocketBase, parentID str
 	}
 	if len(acomptes) != 0 {
 		t.Fatalf("%d acompte(s) écrit(s) malgré le refus", len(acomptes))
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FACTURE DE SOLDE — les gardes que seul le client posait
+//
+// Constaté en production locale le 30 août 2026 : une facture PAYÉE portant
+// encore balance_due > 0 a laissé générer une facture de solde de 20 €. Le
+// document était numéroté, scellé et chaîné ; il a fallu facture-supprimer
+// pour le retirer. canCreateBalanceInvoice testait bien is_paid — côté client
+// seulement, et la route est joignable par tout utilisateur authentifié.
+// ═══════════════════════════════════════════════════════════════════════════
+
+func TestPasDeFactureDeSoldeSurUneFactureDejaReglee(t *testing.T) {
+	app := nouvelleAppDeTestCaisse(t)
+	parente := creerFactureParente(t, app, 1000)
+
+	nouvelleFacture(t, app, map[string]any{
+		"number": "ACC-2026-000001", "invoice_type": "deposit",
+		"status": "validated", "is_paid": true,
+		"total_ttc": 700.0, "total_ht": 700.0,
+		"original_invoice_id": parente.Id,
+	})
+
+	// L'état exact rencontré : payée, et un solde résiduel dans le champ.
+	parente.Set("is_paid", true)
+	parente.Set("deposits_total_ttc", 700.0)
+	parente.Set("balance_due", 300.0)
+	enregistrer(t, app, parente)
+
+	if _, err := CreateBalanceInvoice(app.Dao(), parente.Id, "user1"); err == nil {
+		t.Fatal("une facture de solde a été générée sur une facture déjà réglée")
+	}
+	verifierAucuneFactureDeSolde(t, app, parente.Id)
+}
+
+func TestPasDeFactureDeSoldeSurUnTicketDeCaisse(t *testing.T) {
+	app := nouvelleAppDeTestCaisse(t)
+	ticket := creerFactureParente(t, app, 1000)
+	ticket.Set("is_pos_ticket", true)
+	enregistrer(t, app, ticket)
+
+	nouvelleFacture(t, app, map[string]any{
+		"number": "ACC-2026-000001", "invoice_type": "deposit",
+		"status": "validated", "is_paid": true,
+		"total_ttc": 400.0, "total_ht": 400.0,
+		"original_invoice_id": ticket.Id,
+	})
+
+	if _, err := CreateBalanceInvoice(app.Dao(), ticket.Id, "user1"); err == nil {
+		t.Fatal("une facture de solde a été générée depuis un ticket de caisse")
+	}
+}
+
+func TestUneFactureDeSoldeNeSeResoldePas(t *testing.T) {
+	app := nouvelleAppDeTestCaisse(t)
+	parente := creerFactureParente(t, app, 1000)
+
+	solde := nouvelleFacture(t, app, map[string]any{
+		"number": "FAC-2026-000002", "invoice_type": "invoice",
+		"status": "validated", "is_paid": false,
+		"total_ttc": 300.0, "total_ht": 300.0,
+		"original_invoice_id": parente.Id,
+	})
+
+	if _, err := CreateBalanceInvoice(app.Dao(), solde.Id, "user1"); err == nil {
+		t.Fatal("une facture de solde a été générée depuis une facture de solde")
+	}
+}
+
+// Un acompte remboursé ne doit ni produire de ligne déductive, ni entrer dans
+// le solde. Sans quoi le document ne s'additionne plus : sa ligne retire un
+// argent qui est ressorti, pendant que deposits_total_ttc, lui, a déjà été
+// décrémenté par la route d'avoir.
+func TestUnAcompteRembourseNEntrePasDansLaFactureDeSolde(t *testing.T) {
+	app := nouvelleAppDeTestCaisse(t)
+	parente := creerFactureParente(t, app, 1000)
+
+	nouvelleFacture(t, app, map[string]any{
+		"number": "ACC-2026-000001", "invoice_type": "deposit",
+		"status": "validated", "is_paid": true, "has_credit_note": false,
+		"total_ttc": 300.0, "total_ht": 300.0,
+		"original_invoice_id": parente.Id,
+	})
+	nouvelleFacture(t, app, map[string]any{
+		"number": "ACC-2026-000002", "invoice_type": "deposit",
+		"status": "validated", "is_paid": true, "has_credit_note": true,
+		"total_ttc": 200.0, "total_ht": 200.0,
+		"original_invoice_id": parente.Id,
+	})
+
+	// Le champ dénormalisé porte volontairement une valeur incohérente :
+	// c'est celle qu'un avoir sur acompte y laisse.
+	parente.Set("deposits_total_ttc", 300.0)
+	enregistrer(t, app, parente)
+
+	res, err := CreateBalanceInvoice(app.Dao(), parente.Id, "user1")
+	if err != nil {
+		t.Fatalf("facture de solde refusée à tort : %v", err)
+	}
+
+	// 1000 − 300 (le seul acompte non remboursé) = 700.
+	if got := res.BalanceInvoice.GetFloat("total_ttc"); got != 700 {
+		t.Fatalf("solde de %.2f€, attendu 700.00€", got)
+	}
+
+	// Et une seule ligne déductive, pour l'acompte non remboursé.
+	// Le champ `items` revient sérialisé : on le relit en texte plutôt que de
+	// parier sur son type Go.
+	brut, err := json.Marshal(res.BalanceInvoice.Get("items"))
+	if err != nil {
+		t.Fatalf("lecture des items: %v", err)
+	}
+	texte := string(brut)
+	if !strings.Contains(texte, "ACC-2026-000001") {
+		t.Fatalf("aucune ligne déductive pour l'acompte encaissé — items: %s", texte)
+	}
+	if strings.Contains(texte, "ACC-2026-000002") {
+		t.Fatalf("l'acompte REMBOURSÉ a produit une ligne déductive — items: %s", texte)
+	}
+}
+
+func verifierAucuneFactureDeSolde(t *testing.T, app *pocketbase.PocketBase, parentID string) {
+	t.Helper()
+	soldes, err := app.Dao().FindRecordsByFilter("invoices",
+		"invoice_type = 'invoice' && original_invoice_id = '"+parentID+"'", "", 0, 0)
+	if err != nil {
+		t.Fatalf("relecture des factures de solde: %v", err)
+	}
+	if len(soldes) != 0 {
+		t.Fatalf("%d facture(s) de solde écrite(s) malgré le refus", len(soldes))
 	}
 }

@@ -344,6 +344,25 @@ func CreateBalanceInvoice(dao *daos.Dao, parentID string, soldByID string) (*Bal
 		return nil, fmt.Errorf("impossible de générer une facture de solde depuis un brouillon")
 	}
 
+	// Trois contrôles que seul le client faisait (invoice.types.ts,
+	// canCreateBalanceInvoice). Le serveur ne les avait pas, et la route est
+	// joignable par tout utilisateur authentifié.
+	//
+	// Le premier a été constaté en production locale le 30 août 2026 : une
+	// facture PAYÉE portant encore `balance_due > 0` — l'état incohérent
+	// décrit au §10 Q3 de l'audit — a laissé générer une facture de solde de
+	// 20 € sur un dossier déjà réglé. Le document était numéroté, scellé et
+	// chaîné ; il a fallu la commande facture-supprimer pour le retirer.
+	if parent.GetBool("is_paid") {
+		return nil, fmt.Errorf("cette facture est déjà réglée — il n'y a pas de solde à facturer")
+	}
+	if parent.GetBool("is_pos_ticket") {
+		return nil, fmt.Errorf("un ticket de caisse ne porte pas d'acompte, donc pas de facture de solde")
+	}
+	if parent.GetString("original_invoice_id") != "" {
+		return nil, fmt.Errorf("ce document est déjà une facture de solde — un solde ne se resolde pas")
+	}
+
 	// ─────────────────────────────────────────────────────────────────────────
 	// 2. Récupérer tous les acomptes liés
 	// ─────────────────────────────────────────────────────────────────────────
@@ -361,7 +380,26 @@ func CreateBalanceInvoice(dao *daos.Dao, parentID string, soldByID string) (*Bal
 		return nil, fmt.Errorf("aucun acompte trouvé pour cette facture")
 	}
 
-	// Vérifier que tous les acomptes sont payés
+	// Un acompte REMBOURSÉ garde is_paid = true : la route d'avoir sur acompte
+	// (backend/routes/deposit_routes.go) pose has_credit_note sans toucher
+	// is_paid. Le laisser dans la liste lui ferait produire une ligne
+	// déductive alors que l'argent est ressorti — et alors que
+	// `deposits_total_ttc` a, lui, déjà été décrémenté. Le document ne
+	// s'additionnerait plus.
+	acomptesRetenus := make([]*models.Record, 0, len(deposits))
+	for _, d := range deposits {
+		if d.GetBool("has_credit_note") {
+			continue
+		}
+		acomptesRetenus = append(acomptesRetenus, d)
+	}
+	deposits = acomptesRetenus
+
+	if len(deposits) == 0 {
+		return nil, fmt.Errorf("tous les acomptes de cette facture ont été remboursés — il n'y a pas de solde à facturer")
+	}
+
+	// Vérifier que tous les acomptes restants sont payés
 	for _, d := range deposits {
 		if !d.GetBool("is_paid") {
 			return nil, fmt.Errorf("l'acompte %s n'est pas encore payé — tous les acomptes doivent être réglés avant de générer la facture de solde",
@@ -379,7 +417,15 @@ func CreateBalanceInvoice(dao *daos.Dao, parentID string, soldByID string) (*Bal
 	// 3. Calculer le solde dû
 	// ─────────────────────────────────────────────────────────────────────────
 	parentTotal := math.Round(math.Abs(parent.GetFloat("total_ttc"))*100) / 100
-	depositsTotal := math.Round(parent.GetFloat("deposits_total_ttc")*100) / 100
+	// Le solde s'assied sur la MÊME liste que les lignes déductives construites
+	// plus bas, et non sur `deposits_total_ttc` : ce champ a trois sémantiques
+	// selon le chemin d'écriture emprunté (§10 de l'audit), et un écart entre
+	// les deux rendrait un document dont les lignes ne font pas le total.
+	depositsTotal := 0.0
+	for _, d := range deposits {
+		depositsTotal += math.Abs(d.GetFloat("total_ttc"))
+	}
+	depositsTotal = math.Round(depositsTotal*100) / 100
 	balanceDue := math.Round((parentTotal-depositsTotal)*100) / 100
 
 	if balanceDue <= 0 {

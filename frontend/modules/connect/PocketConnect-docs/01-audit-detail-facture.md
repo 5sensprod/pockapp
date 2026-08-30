@@ -944,3 +944,41 @@ Deux conséquences directes sur le plan :
   — est **confirmé** : la liste n'a pas vocation à encaisser. Le rebrancher irait
   contre cette règle.
 
+
+---
+
+## 17. État du plan au 30 août 2026
+
+| # | Étape | État | Poussé |
+|---|---|---|---|
+| — | Faille §10 Q3 (backend) | fait, 6 gardiens | `dfdbdac` |
+| 1 | Type + commentaire menteur | fait | `d2cd69b` |
+| 2 | `dossier-summary` + `dossier-id` | fait, 10 gardiens | `d2cd69b` |
+| 3 | `next-action` | fait, 20 gardiens | `18bcc49` |
+| 4 | `useInvoiceDossier` branché | fait | `6dec43f` |
+| 5 | Guards en tête, `as any` supprimés | fait, 3 gardiens | non |
+| 6 | Zones 4 et 5 extraites, presenters | fait, 13 gardiens | non |
+| 7 | Zones 2 et 3, dialogues conditionnels | fait | non |
+| 8 | Dialogue mort supprimé | **partiel** | non |
+
+`InvoiceDetailPage.tsx` : **1066 → 352 lignes**. 325 tests, `tsc` muet.
+
+### Ce que l'étape 8 laisse derrière elle
+
+La suppression du dialogue inatteignable et des dix props mortes d'`InvoicesTable`
+orpheline **sept fonctions** dans `InvoicesPage.tsx`, qui n'ont plus qu'une seule
+référence — leur propre définition :
+
+`handleDownloadPdf`, `handleOpenSendEmailDialog`, `handleValidate`,
+`handleMarkAsSent`, `handleOpenCancelDialog`, `handleOpenDeleteDraftDialog`,
+`handleRecordPayment`.
+
+Elles ne sont pas supprimées ici : chacune touche des états partagés avec les
+dialogues encore vivants de la page, et l'enchaînement demande une vérification
+que cette session n'a pas faite. **À traiter comme une tâche propre.**
+
+### Non vérifié
+
+**L'application n'a jamais été lancée.** L'étape 7 change l'écran :
+zone « synthèse », zone « prochaine action », menu d'en-tête retiré. Rien de
+tout cela n'a été observé au rendu — seulement compilé et testé en unités.
