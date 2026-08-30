@@ -94,6 +94,21 @@ export interface InvoiceCreateDto
 	is_paid?: boolean
 }
 
+// Un moyen de règlement parmi plusieurs, quand `payment_method === 'multi'`.
+export interface SplitPayment {
+	method: PaymentMethod | string
+	method_label?: string
+	amount: number
+}
+
+// L'utilisateur qui a vendu, tel qu'expandé par PocketBase.
+export interface SoldByExpand {
+	id: string
+	name?: string
+	username?: string
+	email?: string
+}
+
 // Réponse complète avec champs système et intégrité
 export interface InvoiceResponse extends InvoiceBase {
 	id: string
@@ -112,6 +127,7 @@ export interface InvoiceResponse extends InvoiceBase {
 	expand?: {
 		customer?: CustomerExpand
 		original_invoice_id?: InvoiceResponse
+		sold_by?: SoldByExpand
 	}
 	converted_to_invoice: boolean
 	converted_invoice_id?: string
@@ -119,10 +135,22 @@ export interface InvoiceResponse extends InvoiceBase {
 	has_credit_note?: boolean
 	credit_notes_total?: number
 	remaining_amount?: number
+	// Règlement
+	// Plusieurs MOYENS pour un encaissement intégral — jamais un paiement
+	// partiel : celui-ci n'existe que sous forme d'acompte.
+	split_payments?: SplitPayment[]
+	refund_method?: PaymentMethod // sur un avoir uniquement
+	source_order_id?: string | null // bon de commande d'origine
 	// 🆕 Acomptes
 	deposit_percentage?: number // % de l'acompte (sur une facture deposit)
-	deposits_total_ttc?: number // somme des acomptes versés (sur la facture parente)
-	balance_due?: number // solde restant à payer (sur la facture parente)
+	// Somme des acomptes CRÉÉS, encaissés ou NON — le champ est incrémenté à la
+	// création (backend/deposit.go). Sa sémantique change ensuite selon le
+	// chemin d'écriture d'un avoir : ne JAMAIS l'utiliser pour un montant
+	// montré au client. Le total encaissé se somme depuis la liste des
+	// acomptes, où `is_paid && !has_credit_note`.
+	// Voir frontend/modules/connect/PocketConnect-docs/01-audit-detail-facture.md §10 et §14.
+	deposits_total_ttc?: number
+	balance_due?: number // total_ttc − deposits_total_ttc, remis à 0 par pay.go quand la facture est soldée
 }
 
 export interface CustomerExpand {

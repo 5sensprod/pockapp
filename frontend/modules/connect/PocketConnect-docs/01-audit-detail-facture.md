@@ -356,7 +356,7 @@ Ordre de priorité — premier prédicat vrai :
 ```
 1. status === 'draft'                          -> Valider
 2. isTicket && !converted_to_invoice           -> Convertir en facture
-3. canMarkAsPaid && !hasCancellationCreditNote -> Encaisser
+3. canMarkAsPaid && remainingTtc > 0           -> Encaisser   (corrigé §16-2)
 4. canGenerateBalance                          -> Générer la facture de solde
 5. canCreateDeposit && !balanceInvoice         -> Créer un acompte
 6. sinon                                       -> aucun primaire + raison
@@ -374,7 +374,7 @@ Libellés provisoires — le lexique relève de l'expertise C.
 | 4 | Acomptes tous encaissés, pas de solde émis | **Générer la facture de solde** | PDF · Encaisser le solde | — |
 | 5 | Facture de solde existante, impayée | **Ouvrir la facture de solde** | PDF | « Une facture de solde a été émise : le dossier est clos à l'acompte. » |
 | 6 | Entièrement soldée | *aucun* | PDF · Email | « Facture soldée le JJ/MM. Plus rien à encaisser. » |
-| 7 | Avec avoir d'annulation | *aucun* | PDF · Ouvrir l'avoir | « Cette facture est annulée par l'avoir A-…. Elle ne s'encaisse plus. » |
+| 7 | Avec avoir d'annulation | **Encaisser** si un reste à payer subsiste — **corrigé §16-2** | PDF · Ouvrir l'avoir | message seulement si le reste à payer est nul |
 | 8 | Acompte seul, non payé | **Encaisser** | PDF · Retour à la facture | — |
 | 9 | Acompte seul, payé | *aucun* | PDF · **Retour à la facture** | « Acompte réglé le JJ/MM. La suite se passe sur la facture F-…. » |
 | 10 | Avoir seul | *aucun* | PDF · Retour au document remboursé | « Un avoir est un document scellé : rien à encaisser ni à modifier. » |
@@ -539,7 +539,14 @@ celui du client. L'interface parle au commerçant.
 | Fermer | **Fermer** | `Annuler` partout — collision frontale avec « avoir d'annulation » |
 | Différer | **Encaisser plus tard** | `Payer plus tard` (`InvoicePaymentDialog.tsx:546`) |
 
-### Un seul badge par document
+### Les badges — **corrigé le 30 août 2026, voir §16**
+
+*La règle « un seul badge » ci-dessous perdrait le statut « Envoyée », qui est
+aujourd'hui affiché et n'est porté par rien d'autre. Elle est remplacée par deux
+axes distincts (§16-1). La table ci-dessous reste valable pour l'axe
+encaissement seul.*
+
+### Un seul badge par document (axe encaissement)
 
 | Nature | Badge unique |
 |---|---|
@@ -835,3 +842,105 @@ Six, tous passants, chaque refus vérifiant en plus qu'**aucun document n'a ét�
   soustrait sans vérifier `is_paid`.
 - Le prédicat client `invoice.types.ts:431` reste — il n'est simplement plus le
   seul rempart.
+
+---
+
+## 16. Quatre vérifications imposées par le propriétaire (30 août 2026)
+
+Demandées **avant** toute modification de comportement. Chacune a été vérifiée
+dans le code ; deux corrigent une recommandation d'expertise.
+
+### 16-1. « Envoyée » garde son badge — le §12 avait tort
+
+**Vérifié.** Le badge de workflow est bien rendu aujourd'hui :
+`InvoiceDetailHeader.tsx:138-140` affiche `displayStatus.label` dès qu'il vaut
+autre chose que « Payée ». Sur une facture envoyée non réglée, l'écran porte
+donc **« Envoyée » ET « Non payée »** — deux informations, deux axes.
+
+Et `sent` est **terminal** dans le workflow
+(`ALLOWED_STATUS_TRANSITIONS`, `invoice.types.ts:326-332` :
+`draft → validated → sent → ∅`). Aucun autre champ ne porte l'information
+d'envoi : la faire disparaître du badge la ferait disparaître tout court.
+
+**Règle retenue — deux axes, jamais fusionnés :**
+
+| Axe | Valeurs | Source |
+|---|---|---|
+| **Workflow** | Brouillon · Validée · Envoyée | `status` |
+| **Encaissement** | À encaisser · Partiellement encaissée · Encaissée · En retard | `is_paid`, synthèse, `isOverdue` |
+
+Au plus **deux** badges, un par axe — pas quatre comme aujourd'hui, pas un seul
+comme le proposait le §12. Ce qui disparaît reste : le composite
+« Acompte X · Solde Y » (`:154-162`, invisible en mobile, son montant remonte
+dans la synthèse) et les doublons `Réglé` / `Remboursé` (`:117`, `:126`, `:132`).
+
+**Défaut existant à corriger au passage** : `:138` masque le libellé de workflow
+dès que la facture est payée. Une facture **envoyée puis encaissée** perd donc
+« Envoyée » aujourd'hui. Les deux axes étant indépendants, ce masquage n'a plus
+lieu d'être.
+
+### 16-2. Un avoir ne bloque pas l'encaissement — le §11 avait tort
+
+**Vérifié, et le blocage est purement d'interface.**
+
+Côté serveur, `backend/pay.go:66-78` ne refuse que trois choses : un brouillon,
+un document **qui est** un avoir, une facture **déjà encaissée**. Il n'existe
+**aucun contrôle** refusant d'encaisser une facture qui **porte** un avoir.
+
+Le blocage vient d'une seule ligne côté client :
+`InvoiceDetailHeader.tsx:264`, `canMarkAsPaid(invoice) && !hasCancellationCreditNote`.
+Et `hasCancellationCreditNote` (`InvoiceDetailPage.tsx:158-160`) vaut vrai dès
+qu'**un** avoir existe, **quel que soit son montant** — la requête qui l'alimente
+ne filtre que sur le type et le document d'origine
+(`invoices.ts:872-874`), jamais sur une notion d'annulation totale.
+
+**Conséquence mesurée par lecture :** un avoir de 50 € sur une facture de
+1 200 € rend aujourd'hui l'encaissement des 1 150 € restants **impossible depuis
+l'écran**, alors que le serveur l'accepterait.
+
+**Règle retenue :** l'encaissement se gouverne par le **reste à payer**, pas par
+l'existence d'un avoir.
+
+```
+Encaisser proposé  ⇔  canMarkAsPaid(invoice) && remainingTtc > 0
+```
+
+Le cas « annulée par avoir » n'est plus un état à part : c'est le cas particulier
+`remainingTtc === 0`, où l'action tombe d'elle-même, pour la même raison qu'une
+facture soldée. Le §11 état 7 est corrigé en conséquence.
+
+**Encaissement en cours :** rien dans le flux n'interrompt un dialogue de
+paiement ouvert. Il ne peut être fermé ni par Échap, ni par clic extérieur, ni
+par la croix (`InvoicePaymentDialog.tsx:298-313`), et son état vit en local
+(`:76-79`). *Reste à vérifier avant l'étape 7* : le temps réel invalide
+`invoiceKeys.all` à chaque écriture — si la prop `invoice` change pendant que le
+dialogue est ouvert, le montant à encaisser (`:113-118`) se recalcule sous les
+doigts de l'utilisateur. Lu dans le code, **non observé à l'exécution**.
+
+### 16-3. La synthèse reste en lecture
+
+Elle a un rôle unique : **comprendre la situation en quelques secondes**. Elle
+n'évolue pas au-delà de ça.
+
+- Aucune action, aucun bouton, aucun lien d'action **dans** la synthèse.
+- Aucune interaction : ni dépliage, ni filtre, ni saisie.
+- Elle ne calcule rien elle-même : elle rend les lignes que
+  `computeInvoiceSummary` lui donne (§13).
+
+Cela restreint la zone 2 du §7 : c'est un **bloc de lecture**, pas un tableau de
+bord.
+
+### 16-4. L'encaissement reste gouverné depuis Invoice Details
+
+Les actions de paiement — encaisser, demander un acompte, facturer le solde —
+**restent où elles sont** : sur la page de détail, dans la zone 3 « prochaine
+action ». Elles ne sont **ni déplacées dans la synthèse, ni dupliquées ailleurs**.
+
+Deux conséquences directes sur le plan :
+
+- La zone 2 (synthèse) et la zone 3 (actions) restent **deux blocs distincts**,
+  même s'ils se touchent visuellement.
+- Le §13 étape 8 — supprimer le dialogue d'encaissement mort de `InvoicesPage`
+  — est **confirmé** : la liste n'a pas vocation à encaisser. Le rebrancher irait
+  contre cette règle.
+
