@@ -25,28 +25,45 @@
 //   currentModule, activeGroup, onToggleGroup, onClosePanel, onHomePanelChange
 
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
-import { getLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
-import { navigationActions } from '@/lib/stores/navigationStore'
 import {
 	findSidebarGroupByPath,
 	findSidebarItemByPath,
 } from '@/lib/sidebar-navigation'
+import { getLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
+import { navigationActions } from '@/lib/stores/navigationStore'
 import { cn } from '@/lib/utils'
 import {
 	type ModuleManifest,
 	type SidebarGroup,
+	getModule,
 } from '@/modules/_registry'
 import { homeDashboardManifest } from '@/modules/home'
 import {
-	Link,
 	useLocation,
 	useNavigate,
 	useRouter,
 } from '@tanstack/react-router'
-import { LayoutDashboard, X } from 'lucide-react'
+import { ChevronDown, LayoutDashboard, X } from 'lucide-react'
 import * as React from 'react'
 
 const normalizePath = (path: string) => (path || '/').replace(/\/+$/, '') || '/'
+
+const SIDEBAR_TINT_BY_ICON_COLOR: Record<string, string> = {
+	'text-blue-600': 'bg-blue-500/10',
+	'text-orange-500': 'bg-orange-500/10',
+	'text-purple-600': 'bg-purple-500/10',
+	'text-emerald-600': 'bg-emerald-500/10',
+}
+
+function getModuleSidebarAccent(moduleId: string) {
+	const module = getModule(moduleId)
+	const text = module?.iconColor ?? module?.color ?? 'text-panel-item-icon'
+	return {
+		text,
+		background:
+			SIDEBAR_TINT_BY_ICON_COLOR[text] ?? 'bg-panel-item-active',
+	}
+}
 
 interface SidebarProps {
 	currentModule: ModuleManifest | null
@@ -258,10 +275,6 @@ export function Sidebar({
 						groups={homeSidebarMenu}
 						normPath={normPath}
 						onClose={() => setHomePanelWithNotify(false)}
-						onNavigate={() => {
-							navigationActions.clear()
-							setHomePanelWithNotify(false)
-						}}
 						onSectionNavigate={(itemTo, moduleId) => {
 							setHomePanelWithNotify(false)
 							handleHomeSectionNavigate(itemTo, moduleId)
@@ -342,15 +355,19 @@ function HomePanel({
 	groups,
 	normPath,
 	onClose,
-	onNavigate,
 	onSectionNavigate,
 }: {
 	groups: SidebarGroup[]
 	normPath: string
 	onClose: () => void
-	onNavigate: () => void
 	onSectionNavigate: (itemTo: string, moduleId: string) => void
 }) {
+	const activeGroupId = findSidebarGroupByPath(groups, normPath)?.id ?? null
+	const activeItem = findSidebarItemByPath(groups, normPath)?.item
+	const [openGroupId, setOpenGroupId] = React.useState<string | null>(
+		activeGroupId,
+	)
+
 	return (
 		<div className='w-panel bg-panel flex flex-col shadow-2xl'>
 			<div className='h-header px-4 bg-panel-header flex items-center justify-between shrink-0'>
@@ -370,42 +387,49 @@ function HomePanel({
 			<nav className='flex-1 overflow-y-auto p-2'>
 				{groups.map((group) => {
 					const GroupIcon = group.icon
-					const mainRoute = group.items?.[0]?.to ?? '/'
-					const isModuleActive =
-						group.items?.some((item) => {
-							const t = normalizePath(item.to)
-							return normPath === t || normPath.startsWith(t)
-						}) ?? false
+					const isOpen = group.id === openGroupId
+					const accent = getModuleSidebarAccent(group.id)
 
 					return (
 						<div key={group.id} className='mb-1'>
-							{/* Lien principal du module → liste racine, pas de restauration */}
-							<Link
-								to={mainRoute as any}
-								onClick={onNavigate}
+							<button
+								type='button'
+								onClick={() =>
+									setOpenGroupId((current) =>
+										current === group.id ? null : group.id,
+									)
+								}
 								className={cn(
-									'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-									isModuleActive
-										? 'bg-panel-item-active text-foreground'
+									'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+									isOpen
+										? `${accent.background} ${accent.text}`
 										: 'text-panel-item-text hover:bg-panel-header',
 								)}
+								aria-expanded={isOpen}
 							>
 								<GroupIcon
+									className={cn('h-4 w-4 shrink-0', accent.text)}
+								/>
+								<span className='flex-1 text-left'>{group.label}</span>
+								<ChevronDown
 									className={cn(
-										'h-4 w-4 shrink-0',
-										isModuleActive ? 'text-foreground' : 'text-panel-item-icon',
+										'h-4 w-4 shrink-0 transition-transform duration-150',
+										isOpen && 'rotate-180',
 									)}
 								/>
-								<span>{group.label}</span>
-							</Link>
+							</button>
 
 							{/* Sous-items → restauration par section */}
-							{group.items && group.items.length > 1 && (
-								<div className='ml-4 mt-0.5 mb-1 border-l border-panel-item-divider pl-3 flex flex-col gap-0.5'>
+							{isOpen && group.items?.length > 0 && (
+								<div
+									className={cn(
+										'ml-4 mt-0.5 mb-1 border-l border-current/20 pl-3 flex flex-col gap-0.5',
+										accent.text,
+									)}
+								>
 									{group.items.map((item) => {
 										const ItemIcon = item.icon
-										const t = normalizePath(item.to)
-										const isActive = normPath === t || normPath.startsWith(t)
+										const isActive = item === activeItem
 										return (
 											<button
 												key={item.to}
@@ -414,7 +438,7 @@ function HomePanel({
 												className={cn(
 													'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors',
 													isActive
-														? 'bg-panel-item-active text-foreground font-semibold'
+														? `${accent.background} ${accent.text} font-semibold`
 														: 'text-panel-item-icon hover:bg-panel-header hover:text-panel-item-text',
 												)}
 											>

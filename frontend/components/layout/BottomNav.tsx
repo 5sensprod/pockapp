@@ -19,15 +19,18 @@
 //   <main> reçoit pb-bottom-nav pour que le contenu ne soit pas masqué
 //   BottomNav est rendu en fixed, hors du flux du <main>
 
+import {
+  findSidebarGroupByPath,
+  findSidebarItemByPath,
+} from '@/lib/sidebar-navigation'
 import { cn } from '@/lib/utils'
-import { findSidebarGroupByPath } from '@/lib/sidebar-navigation'
 import {
   type ModuleManifest,
   type SidebarGroup,
 } from '@/modules/_registry'
 import { homeDashboardManifest } from '@/modules/home'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
-import { LayoutDashboard } from 'lucide-react'
+import { ChevronDown, LayoutDashboard } from 'lucide-react'
 import * as React from 'react'
 import { BottomSheet } from './BottomSheet'
 
@@ -253,37 +256,76 @@ function SheetHomeItems({
   normPath: string
   onNavigate: () => void
 }) {
+  const activeGroupId = findSidebarGroupByPath(groups, normPath)?.id ?? null
+  const activeItem = findSidebarItemByPath(groups, normPath)?.item
+  const [openGroupId, setOpenGroupId] = React.useState<string | null>(
+    activeGroupId,
+  )
+
   return (
     <div className='flex flex-col gap-1 py-1'>
       {groups.map((group) => {
         const Icon = group.icon
-        const mainRoute = group.items?.[0]?.to ?? '/'
-        const isActive =
-          group.items?.some((item) => {
-            const t = normalizePath(item.to)
-            return normPath === t || normPath.startsWith(t)
-          }) ?? false
+        const isActive = group.id === activeGroupId
+        const isOpen = group.id === openGroupId
 
         return (
-          <Link
-            key={group.id}
-            to={mainRoute as any}
-            onClick={onNavigate}
-            className={cn(
-              'flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors min-h-[48px]',
-              isActive
-                ? 'bg-panel-item-active text-foreground'
-                : 'text-panel-item-text hover:bg-panel-header active:bg-panel-item-active',
-            )}
-          >
-            <Icon
+          <div key={group.id}>
+            <button
+              type='button'
+              onClick={() =>
+                setOpenGroupId((current) =>
+                  current === group.id ? null : group.id,
+                )
+              }
               className={cn(
-                'h-5 w-5 shrink-0',
-                isActive ? 'text-foreground' : 'text-panel-item-icon',
+                'w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors min-h-[48px]',
+                isActive
+                  ? 'bg-panel-item-active text-foreground'
+                  : 'text-panel-item-text hover:bg-panel-header active:bg-panel-item-active',
               )}
-            />
-            <span>{group.label}</span>
-          </Link>
+              aria-expanded={isOpen}
+            >
+              <Icon
+                className={cn(
+                  'h-5 w-5 shrink-0',
+                  isActive ? 'text-foreground' : 'text-panel-item-icon',
+                )}
+              />
+              <span className='flex-1 text-left'>{group.label}</span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 shrink-0 transition-transform duration-150',
+                  isOpen && 'rotate-180',
+                )}
+              />
+            </button>
+
+            {isOpen && (
+              <div className='ml-5 border-l border-panel-item-divider pl-3 py-1 flex flex-col gap-1'>
+                {group.items.map((item) => {
+                  const ItemIcon = item.icon
+                  const isItemActive = item === activeItem
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to as any}
+                      onClick={onNavigate}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm min-h-[44px] transition-colors',
+                        isItemActive
+                          ? 'bg-panel-item-active text-foreground font-semibold'
+                          : 'text-panel-item-icon hover:bg-panel-header hover:text-panel-item-text active:bg-panel-item-active',
+                      )}
+                    >
+                      <ItemIcon className='h-4 w-4 shrink-0' />
+                      <span>{item.label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         )
       })}
     </div>

@@ -54,13 +54,13 @@ export const manifest: ModuleManifest = {
 			icon: Users,
 			items: [
 				{ label: 'Clients', to: '/connect/customers/', icon: Users },
+				{ label: 'Factures', to: '/connect/invoices/', icon: Receipt },
 				{ label: 'Devis', to: '/connect/quotes/', icon: FilePen },
 				{
 					label: 'Bons de commande',
 					to: '/connect/orders/',
 					icon: ClipboardList,
-				}, // ← ajouter
-				{ label: 'Factures', to: '/connect/invoices/', icon: Receipt },
+				},
 			],
 		},
 

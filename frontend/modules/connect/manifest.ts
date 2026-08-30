@@ -29,6 +29,12 @@ export const manifest: ModuleManifest = {
 			items: [{ label: 'Clients', to: '/connect/customers/', icon: Users }],
 		},
 		{
+			id: 'invoices',
+			label: 'Factures',
+			icon: Receipt,
+			items: [{ label: 'Factures', to: '/connect/invoices/', icon: Receipt }],
+		},
+		{
 			id: 'quotes',
 			label: 'Devis',
 			icon: FilePen,
@@ -45,12 +51,6 @@ export const manifest: ModuleManifest = {
 					icon: ClipboardList,
 				},
 			],
-		},
-		{
-			id: 'invoices',
-			label: 'Factures',
-			icon: Receipt,
-			items: [{ label: 'Factures', to: '/connect/invoices/', icon: Receipt }],
 		},
 	],
 }
