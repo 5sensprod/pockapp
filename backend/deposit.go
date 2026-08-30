@@ -26,14 +26,23 @@ import (
 // ============================================================================
 
 type DepositInput struct {
-	OwnerCompany       string
-	ParentID           string  // ID de la facture parente (invoice_type="invoice")
-	Percentage         float64 // Pourcentage de l'acompte (ex: 30 pour 30%) — exclusif avec Amount
-	Amount             float64 // Montant TTC fixe — exclusif avec Percentage
-	PaymentMethod      string
-	PaymentMethodLabel string
-	SoldBy             string
+	OwnerCompany string
+	ParentID     string  // ID de la facture parente (invoice_type="invoice")
+	Percentage   float64 // Pourcentage de l'acompte (ex: 30 pour 30%) — exclusif avec Amount
+	Amount       float64 // Montant TTC fixe — exclusif avec Percentage
+	SoldBy       string
 }
+
+// Pas de moyen de paiement ici, et c'est délibéré (arbitrage du 30 août 2026,
+// 08-creer-un-acompte-n-encaisse-pas.md) : ÉMETTRE un acompte et l'ENCAISSER
+// sont deux gestes. L'encaissement a un seul chemin, RecordPayment (pay.go),
+// qui pose `is_paid`, `paid_at` ET le mouvement de caisse ensemble. La
+// création écrivait le mouvement SANS poser is_paid : le tiroir disait
+// « argent entré » quand le document disait « non encaissé », et le Z — qui
+// sélectionne sur is_paid/paid_at (cash_reports.go:653) — ne rattrapait pas
+// l'écart. Ne pas réintroduire ces champs : un geste unique au comptoir, si
+// on le veut un jour, s'écrit en appelant CreateDepositInvoice PUIS
+// RecordPayment, pas en dupliquant l'encaissement ici.
 
 type DepositResult struct {
 	Deposit       *models.Record // La facture d'acompte créée
@@ -248,13 +257,7 @@ func CreateDepositInvoice(dao *daos.Dao, input DepositInput, soldByID string) (*
 	deposit.Set("deposit_amount_ttc", depositAmountTTC)
 	deposit.Set("original_invoice_id", input.ParentID)
 
-	// Paiement
-	if input.PaymentMethod != "" {
-		deposit.Set("payment_method", input.PaymentMethod)
-	}
-	if input.PaymentMethodLabel != "" {
-		deposit.Set("payment_method_label", input.PaymentMethodLabel)
-	}
+	// Pas de moyen de paiement : l'acompte naît non encaissé (voir DepositInput).
 
 	// Vendeur
 	if soldByID != "" {
@@ -280,24 +283,9 @@ func CreateDepositInvoice(dao *daos.Dao, input DepositInput, soldByID string) (*
 	log.Printf("✅ Acompte %s créé: %.2f€ (%.0f%% de %s)",
 		depositNumber, depositAmountTTC, depositPercentage, parentNumber)
 
-	// ─────────────────────────────────────────────────────────────────────────
-	// Créer un mouvement de caisse si acompte payé en espèces
-	// ─────────────────────────────────────────────────────────────────────────
-	CreateCashMovementIfEspeces(dao, input.PaymentMethod, CashMovementParams{
-		OwnerCompany:   deposit.GetString("owner_company"),
-		MovementType:   "cash_in",
-		Amount:         depositAmountTTC,
-		Reason:         fmt.Sprintf("Acompte %s (facture %s)", depositNumber, parentNumber),
-		RelatedInvoice: deposit.Id,
-		CreatedBy:      soldByID,
-		Meta: map[string]any{
-			"source":         "b2b_deposit",
-			"deposit_id":     deposit.Id,
-			"deposit_number": depositNumber,
-			"parent_invoice": input.ParentID,
-			"parent_number":  parentNumber,
-		},
-	})
+	// Aucun mouvement de caisse ici : rien n'est encaissé à l'émission. Le
+	// cash_in est posé par RecordPayment (pay.go:122), en même temps que
+	// is_paid et paid_at.
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// 8. Mettre à jour la facture parente

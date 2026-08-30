@@ -1,5 +1,6 @@
 // frontend/modules/connect/pages/orders/OrdersPage.tsx
 
+import { PeriodSelector } from '@/components/PeriodSelector'
 import { ModulePageShell } from '@/components/module-ui/ModulePageShell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +20,10 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import {
+	PERIOD_PREFERENCE_KEYS,
+	usePeriodFilter,
+} from '@/lib/hooks/usePeriodFilter'
 import { useOrders } from '@/lib/queries/orders'
 import type { OrderStatus } from '@/lib/queries/orders'
 import { useNavigate } from '@tanstack/react-router'
@@ -50,10 +55,16 @@ export function OrdersPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const [search, setSearch] = useState('')
 	const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
+	const { period, setPeriod, dateRange } = usePeriodFilter(
+		'all',
+		PERIOD_PREFERENCE_KEYS.orders,
+	)
 
 	const { data, isLoading } = useOrders({
 		companyId: activeCompanyId ?? undefined,
 		status: statusFilter === 'all' ? undefined : statusFilter,
+		dateFrom: dateRange.from,
+		dateTo: dateRange.to,
 	})
 
 	const orders = data?.items ?? []
@@ -108,6 +119,7 @@ export function OrdersPage() {
 							))}
 						</SelectContent>
 					</Select>
+					<PeriodSelector period={period} onPeriodChange={setPeriod} />
 				</div>
 
 				{/* ── Contenu ────────────────────────────────────────────────── */}

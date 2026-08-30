@@ -37,6 +37,8 @@ export function useQuotes(options: QuotesListOptions = {}) {
 		sort,
 		page = 1,
 		perPage = 50,
+		dateFrom,
+		dateTo,
 	} = options
 
 	return useQuery({
@@ -47,6 +49,8 @@ export function useQuotes(options: QuotesListOptions = {}) {
 			if (companyId) filters.push(`owner_company = "${companyId}"`)
 			if (customerId) filters.push(`customer = "${customerId}"`)
 			if (status) filters.push(`status = "${status}"`)
+			if (dateFrom) filters.push(`date >= "${dateFrom}"`)
+			if (dateTo) filters.push(`date <= "${dateTo} 23:59:59"`)
 			if (filter) filters.push(filter)
 
 			const finalFilter = filters.length ? filters.join(' && ') : undefined

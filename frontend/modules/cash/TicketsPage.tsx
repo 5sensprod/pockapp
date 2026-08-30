@@ -1,5 +1,6 @@
 // frontend/modules/cash/TicketsPage.tsx
 
+import { PeriodSelector } from '@/components/PeriodSelector'
 import { EmptyState } from '@/components/module-ui'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,10 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useDebounce } from '@/lib/hooks/useDebounce'
+import {
+	PERIOD_PREFERENCE_KEYS,
+	usePeriodFilter,
+} from '@/lib/hooks/usePeriodFilter'
 import { loadPosPrinterSettings } from '@/lib/pos/printerSettings'
 import { useReprintTicket } from '@/lib/pos/useReprintTicket'
 import { useInvoices } from '@/lib/queries/invoices'
@@ -125,6 +130,10 @@ export function TicketsPage() {
 
 	const [search, setSearch] = useState('')
 	const [page, setPage] = useState(1)
+	const { period, setPeriod, dateRange } = usePeriodFilter(
+		'all',
+		PERIOD_PREFERENCE_KEYS.tickets,
+	)
 	const debouncedSearch = useDebounce(search, 400)
 	const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -148,6 +157,8 @@ export function TicketsPage() {
 		companyId: activeCompanyId ?? undefined,
 		filter: searchFilter,
 		sort: '-created',
+		dateFrom: dateRange.from,
+		dateTo: dateRange.to,
 		page,
 		perPage: PER_PAGE,
 	})
@@ -255,6 +266,15 @@ export function TicketsPage() {
 			headerRight={headerRight}
 		>
 			<div className='container mx-auto px-6 py-6'>
+				<div className='flex justify-end mb-3'>
+					<PeriodSelector
+						period={period}
+						onPeriodChange={(nextPeriod) => {
+							setPeriod(nextPeriod)
+							setPage(1)
+						}}
+					/>
+				</div>
 				<Card className='shadow-sm border-muted/60'>
 					<CardContent className='p-0'>
 						<Table>

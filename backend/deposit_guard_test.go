@@ -205,6 +205,59 @@ func TestUnAcompteEmisNonEncaisseConsommeDuSolde(t *testing.T) {
 	}
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. Créer un acompte ne l'encaisse pas.
+//
+// Arbitrage du 30 août 2026
+// (frontend/modules/cash/PocketCash-docs/08-creer-un-acompte-n-encaisse-pas.md).
+// CreateDepositInvoice acceptait un `payment_method` et posait alors un
+// mouvement de caisse `cash_in` — SANS jamais poser is_paid. Le tiroir disait
+// « argent entré » quand le document disait « non encaissé », et le Z, qui
+// sélectionne le hors caisse sur is_paid/paid_at (cash_reports.go:653), ne
+// rattrapait pas l'écart : le mouvement partait dans le journal des espèces et
+// le fonds reporté, en silence.
+//
+// Ce gardien fige les trois conséquences : un acompte naît NON payé, SANS moyen
+// de paiement, et SANS mouvement de caisse. L'encaissement a un seul chemin,
+// RecordPayment (pay.go), qui pose is_paid, paid_at et le cash_in ensemble.
+// ─────────────────────────────────────────────────────────────────────────────
+func TestCreerUnAcompteNEncaissePas(t *testing.T) {
+	app := nouvelleAppDeTestCaisse(t)
+	parente := creerFactureParente(t, app, 1000)
+
+	res, err := CreateDepositInvoice(app.Dao(), DepositInput{
+		OwnerCompany: "co1", ParentID: parente.Id, Percentage: 30,
+	}, "user1")
+	if err != nil {
+		t.Fatalf("acompte légitime refusé : %v", err)
+	}
+
+	if res.Deposit.GetBool("is_paid") {
+		t.Fatal("l'acompte naît is_paid = true — la création ne doit pas encaisser")
+	}
+	if got := res.Deposit.GetString("paid_at"); got != "" {
+		t.Fatalf("paid_at = %q sur un acompte non encaissé", got)
+	}
+	if got := res.Deposit.GetString("payment_method"); got != "" {
+		t.Fatalf("payment_method = %q — l'émission ne choisit pas de moyen", got)
+	}
+	if got := res.Deposit.GetString("payment_method_label"); got != "" {
+		t.Fatalf("payment_method_label = %q — l'émission ne choisit pas de moyen", got)
+	}
+
+	// Aucun mouvement de caisse, quel que soit le moyen : rien n'est entré au
+	// tiroir. `DepositInput` n'a plus de champ pour en demander un, et il ne
+	// doit pas en retrouver.
+	mouvements, err := app.Dao().FindRecordsByFilter("cash_movements",
+		"related_invoice = '"+res.Deposit.Id+"'", "", 0, 0)
+	if err != nil {
+		t.Fatalf("relecture des mouvements de caisse: %v", err)
+	}
+	if len(mouvements) != 0 {
+		t.Fatalf("%d mouvement(s) de caisse pour un acompte non encaissé", len(mouvements))
+	}
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════════════

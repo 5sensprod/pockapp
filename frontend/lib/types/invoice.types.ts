@@ -230,6 +230,8 @@ export interface QuotesListOptions {
 	sort?: string
 	page?: number
 	perPage?: number
+	dateFrom?: string // "YYYY-MM-DD"
+	dateTo?: string // "YYYY-MM-DD"
 }
 
 // ============================================================================

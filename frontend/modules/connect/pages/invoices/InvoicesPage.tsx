@@ -35,7 +35,10 @@ import {
 } from '@/lib/queries/closures'
 
 import { PeriodSelector } from '@/components/PeriodSelector'
-import { usePeriodFilter } from '@/lib/hooks/usePeriodFilter'
+import {
+	PERIOD_PREFERENCE_KEYS,
+	usePeriodFilter,
+} from '@/lib/hooks/usePeriodFilter'
 import {
 	useCancelInvoice,
 	useDeleteDraftInvoice,
@@ -194,7 +197,10 @@ export function InvoicesPage() {
 		closureType: 'daily',
 	})
 
-	const { period, setPeriod, dateRange } = usePeriodFilter('all')
+	const { period, setPeriod, dateRange } = usePeriodFilter(
+		'all',
+		PERIOD_PREFERENCE_KEYS.invoices,
+	)
 
 	// Query principale avec pagination serveur
 	const {
@@ -429,7 +435,13 @@ export function InvoicesPage() {
 
 			{/* Filtre de période */}
 			<div className='flex items-center justify-between mb-3'>
-				<PeriodSelector period={period} onPeriodChange={setPeriod} />
+				<PeriodSelector
+					period={period}
+					onPeriodChange={(nextPeriod) => {
+						setPeriod(nextPeriod)
+						setPage(1)
+					}}
+				/>
 			</div>
 
 			{/* Stats */}

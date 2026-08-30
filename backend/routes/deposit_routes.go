@@ -30,12 +30,13 @@ import (
 // DTOs
 // ============================================================================
 
+// DepositCreateInput n'accepte PAS de moyen de paiement : créer un acompte ne
+// l'encaisse pas (08-creer-un-acompte-n-encaisse-pas.md). L'encaissement passe
+// par POST /api/invoices/:id/pay, sur l'acompte lui-même.
 type DepositCreateInput struct {
-	ParentID           string  `json:"parent_id"`
-	Percentage         float64 `json:"percentage"`           // ex: 30 pour 30%
-	Amount             float64 `json:"amount"`               // montant TTC fixe
-	PaymentMethod      string  `json:"payment_method"`       // virement|cb|especes|cheque|autre
-	PaymentMethodLabel string  `json:"payment_method_label"` // si payment_method = "autre"
+	ParentID   string  `json:"parent_id"`
+	Percentage float64 `json:"percentage"` // ex: 30 pour 30%
+	Amount     float64 `json:"amount"`     // montant TTC fixe
 }
 
 type BalanceCreateInput struct {
@@ -84,12 +85,10 @@ func RegisterDepositRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		}
 
 		input := backend.DepositInput{
-			ParentID:           payload.ParentID,
-			Percentage:         payload.Percentage,
-			Amount:             payload.Amount,
-			PaymentMethod:      payload.PaymentMethod,
-			PaymentMethodLabel: payload.PaymentMethodLabel,
-			SoldBy:             soldByID,
+			ParentID:   payload.ParentID,
+			Percentage: payload.Percentage,
+			Amount:     payload.Amount,
+			SoldBy:     soldByID,
 		}
 
 		result, err := backend.CreateDepositInvoice(dao, input, soldByID)

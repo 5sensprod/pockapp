@@ -97,6 +97,8 @@ export interface OrdersListOptions {
 	sort?: string
 	page?: number
 	perPage?: number
+	dateFrom?: string // "YYYY-MM-DD", appliqué à la date de création PocketBase
+	dateTo?: string // "YYYY-MM-DD", appliqué à la date de création PocketBase
 }
 
 // ── DTO de patch statut ──────────────────────────────────────────────────────
@@ -135,6 +137,8 @@ export function useOrders(options: OrdersListOptions = {}) {
 		sort,
 		page = 1,
 		perPage = 50,
+		dateFrom,
+		dateTo,
 	} = options
 
 	return useQuery({
@@ -145,6 +149,10 @@ export function useOrders(options: OrdersListOptions = {}) {
 			if (companyId) filters.push(`owner_company = "${companyId}"`)
 			if (customerId) filters.push(`customer = "${customerId}"`)
 			if (status) filters.push(`status = "${status}"`)
+			// La liste affiche déjà `created` comme sa date. C'est la seule borne
+			// totale, y compris pour les brouillons non encore confirmés.
+			if (dateFrom) filters.push(`created >= "${dateFrom}"`)
+			if (dateTo) filters.push(`created <= "${dateTo} 23:59:59"`)
 
 			const finalFilter = filters.length ? filters.join(' && ') : undefined
 

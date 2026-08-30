@@ -1,6 +1,7 @@
 // frontend/modules/connect/components/QuotesPage.tsx
 // Page de gestion des devis — pagination serveur + debounce + recherche client
 
+import { PeriodSelector } from '@/components/PeriodSelector'
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -30,6 +31,10 @@ import {
 } from '@/components/ui/select'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useDebounce } from '@/lib/hooks/useDebounce'
+import {
+	PERIOD_PREFERENCE_KEYS,
+	usePeriodFilter,
+} from '@/lib/hooks/usePeriodFilter'
 import {
 	useConvertQuoteToInvoice,
 	useDeleteQuote,
@@ -65,6 +70,10 @@ export function QuotesPage() {
 
 	// Pagination
 	const [page, setPage] = useState(1)
+	const { period, setPeriod, dateRange } = usePeriodFilter(
+		'all',
+		PERIOD_PREFERENCE_KEYS.quotes,
+	)
 	// const prevDebouncedRef = useRef('')
 	const debouncedSearch = useDebounce(searchTerm, 400)
 
@@ -120,6 +129,8 @@ export function QuotesPage() {
 		companyId: activeCompanyId ?? undefined,
 		status: statusFilter !== 'all' ? statusFilter : undefined,
 		filter: searchFilter,
+		dateFrom: dateRange.from,
+		dateTo: dateRange.to,
 		page,
 		perPage: PER_PAGE,
 	})
@@ -285,6 +296,13 @@ export function QuotesPage() {
 						<SelectItem value='rejected'>Refusés</SelectItem>
 					</SelectContent>
 				</Select>
+				<PeriodSelector
+					period={period}
+					onPeriodChange={(nextPeriod) => {
+						setPeriod(nextPeriod)
+						setPage(1)
+					}}
+				/>
 			</div>
 
 			{/* Table — spinner géré dans QuotesTable, pas de early return */}

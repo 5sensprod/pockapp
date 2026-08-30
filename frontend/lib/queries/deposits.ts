@@ -11,12 +11,14 @@ import { invoiceKeys } from './invoices'
 // TYPES
 // ============================================================================
 
+// Pas de moyen de paiement : créer un acompte ne l'encaisse pas
+// (frontend/modules/cash/PocketCash-docs/08-creer-un-acompte-n-encaisse-pas.md).
+// L'encaissement se fait ensuite sur l'acompte lui-même, par « Encaisser »
+// (next-action.ts, état 8) → useRecordPayment.
 export interface CreateDepositInput {
 	parentId: string
 	percentage?: number // ex: 30 pour 30% — exclusif avec amount
 	amount?: number // montant TTC fixe — exclusif avec percentage
-	paymentMethod?: 'virement' | 'cb' | 'especes' | 'cheque' | 'autre'
-	paymentMethodLabel?: string // si paymentMethod = 'autre'
 }
 
 export interface DepositResult {
@@ -84,10 +86,6 @@ export function useCreateDeposit() {
 			}
 			if (input.percentage) payload.percentage = input.percentage
 			if (input.amount) payload.amount = input.amount
-			if (input.paymentMethod) payload.payment_method = input.paymentMethod
-			if (input.paymentMethodLabel) {
-				payload.payment_method_label = input.paymentMethodLabel
-			}
 
 			const res = await pb.send('/api/invoices/deposit', {
 				method: 'POST',
