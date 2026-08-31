@@ -2039,6 +2039,39 @@ func getMetaMap(rec *models.Record) map[string]any {
 	return m
 }
 
+// libellesDesCodesHerites traduit les codes bruts que portent les documents
+// dépourvus de `payment_method_label` vers le libellé du référentiel
+// `payment_methods`.
+//
+// POURQUOI CETTE TABLE EXISTE — mesuré le 31 août 2026 sur la base de
+// production : 347 documents portent `cb` sans aucun libellé, pour
+// 53 617,97 €, quand 512 autres portent `card` avec « Carte bancaire ». Le
+// MÊME moyen de paiement apparaissait donc sur DEUX lignes de ventilation, dans
+// le Z, dans le X et dans le journal des ventes — et `cb` en est la plus grosse,
+// devant « Carte bancaire ». Même défaut pour `especes` (51 documents),
+// `cheque` (10) et `virement` (1).
+//
+// CE QU'ELLE NE TRADUIT PAS, ET C'EST VOLONTAIRE : `autre` (21 documents,
+// 4 301,99 €) et `multi` (17, 7 804,25 €) sans libellé ne sont pas des
+// synonymes mal orthographiés, ce sont de vraies ABSENCES d'information. Les
+// repeindre en « Autre » ou « Multiple » donnerait à 12 106 € l'apparence d'un
+// moyen de paiement connu.
+//
+// Elle ne traduit que la LECTURE. Aucun code stocké n'est réécrit : le schéma
+// de `invoices.payment_method` n'accepte que les codes hérités
+// (`["virement","cb","especes","cheque","autre","multi"]`), les documents
+// portant `card` ayant été écrits par une route qui contourne cette validation.
+var libellesDesCodesHerites = map[string]string{
+	"cb":       "Carte bancaire",
+	"card":     "Carte bancaire",
+	"especes":  "Espèces",
+	"cash":     "Espèces",
+	"cheque":   "Chèque",
+	"check":    "Chèque",
+	"virement": "Virement",
+	"transfer": "Virement",
+}
+
 // libelleMoyenPaiement rend le moyen de paiement d'un document, ou « Non précisé »
 // quand il n'en porte aucun.
 //
@@ -2047,11 +2080,18 @@ func getMetaMap(rec *models.Record) map[string]any {
 // somme de ses propres ventilations, qui est notre invariant de vérification.
 // Cas réel : FAC-2026-000165, 499 €, payée le 3 juin 2026, `payment_method` et
 // `payment_method_label` tous deux vides.
+//
+// C'est le point de passage UNIQUE du libellé : le Z, le X et le journal des
+// ventes l'appellent tous les trois. La normalisation des codes hérités y vit
+// donc, et nulle part ailleurs.
 func libelleMoyenPaiement(inv *models.Record) string {
 	if m := inv.GetString("payment_method_label"); m != "" {
 		return m
 	}
 	if m := inv.GetString("payment_method"); m != "" {
+		if libelle, connu := libellesDesCodesHerites[m]; connu {
+			return libelle
+		}
 		return m
 	}
 	return "Non précisé"

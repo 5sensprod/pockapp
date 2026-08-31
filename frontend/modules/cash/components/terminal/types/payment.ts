@@ -170,11 +170,19 @@ export function getPaymentMethodCode(
 /**
  * Retourne le label d'un moyen unique (rétrocompat).
  * Pour le multipaiement, utiliser getMultiPaymentLabel().
+ *
+ * Le nom est rendu pour les moyens `default` AUSSI, et c'est le correctif du
+ * 31 août 2026. Auparavant ils repartaient sans libellé, si bien qu'un
+ * règlement de facture par carte n'était stocké que sous son code hérité
+ * `cb` — et se ventilait sur sa propre ligne, à côté de « Carte bancaire »
+ * qu'écrivent les tickets. 347 documents, 53 617,97 €. Le code stocké ne
+ * change pas : le schéma de `invoices.payment_method` n'accepte que les codes
+ * hérités, et c'est le libellé que lisent le Z, le X et le journal.
  */
 export function getPaymentMethodLabel(
 	method: PaymentMethod,
 ): string | undefined {
-	return method.type === 'custom' ? method.name : undefined
+	return method.name || undefined
 }
 
 /**
