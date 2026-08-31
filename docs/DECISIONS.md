@@ -10,6 +10,62 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Deuxième reprise de production — 24 documents du 26 au 29 août — 2026-08-31
+
+**Fait, pas décidé.** Application de la règle du 29 août (« Les ventes du client
+se reprennent par l'id, jamais par le numéro ») à la copie
+`pb_data_31_08` du poste client. Aucune ligne de code modifiée : l'outil a servi
+tel quel, ce qui était son but.
+
+**Le lot :** 24 documents, **1 416,92 € TTC**, du 26 au 29 août — 19 tickets,
+5 factures —, **3 clients** (`CL-000281` à `CL-000283`) et **4 mouvements de
+caisse** espèces du 26/08 (123,00 €). Séquences 1209 à 1232 chez nous.
+
+**La règle de l'id a encore payé.** Aucun id du delta n'existait chez nous ;
+**trois numéros étaient déjà pris** — `FAC-2026-000111` à `000113`, devenus
+`FAC-2026-000283` à `000285`. Les tickets, eux, ont gardé leurs numéros parce
+qu'ils étaient libres. La base du client porte toujours **122 numéros dupliqués
+sur 1238 documents** : son poste n'a pas été mis à jour.
+
+**Rien à écarter cette fois** : aucun doublon client sur la période, aucun avoir,
+aucune journée déjà couverte par un de nos Z (le dernier était le Z-061 du 25).
+Les deux seuls documents du delta laissés dehors sont **la double facturation de
+2 000 € du 22/08 et son avoir du 25/08**, écartés le 29 août et toujours
+écartés.
+
+**Quatre Z émis, un par journée, `-jour` à chaque fois :** `Z-2026-000062`
+(26/08, 481,48 €), `000063` (27/08, 530,21 €), `000064` (28/08, 229,17 €),
+`000065` (29/08, 176,06 €) — somme **1 416,92 €**, le lot exact. Les trois
+factures hors caisse tombent en ligne 1 de leur journée, émises et encaissées le
+même jour.
+
+**La session vide du 29/08 n'a pas gêné.** Notre base portait déjà
+`rutysxyxdtd0hwu`, fermée et sans un document — née de l'essai du 29. La
+journée a été clôturée sur **deux sessions**, 5 tickets, 176,06 € : le total ne
+bouge pas, une session vide n'apporte rien. C'était le seul point ouvert avant
+l'écriture, et il est refermé par la mesure.
+
+**Vérifications sur la base finale :** `z-repair` en simulation rend
+**0 corrigé / 0 enrichi / 0 rechaîné / 0 en erreur** sur 65 rapports, et « tous
+les rapports égalent la somme de leurs quatre lignes » ; **0 numéro en double**,
+**0 séquence en double** ; les 4 mouvements repris sont datés au **26/08**, leur
+propre journée, pas à celle de la reprise — le défaut de `created` corrigé le
+29 août ne s'est pas reproduit. **Le total TTC tombe au centime sur celui du
+client : 122 888,30 € des deux côtés**, 1236 documents contre 1238, l'écart
+étant exactement la paire à ±2 000 € écartée.
+
+**Un maillon « rompu » subsiste, et il préexistait :** `FAC-2025-000004`, en
+séquence 5, porte un `previous_hash` de genèse alors qu'aucun document ne
+porte la séquence 4. Il était déjà là avant la reprise ; `z-repair` ne le
+signale pas.
+
+**Le journal des ventes et celui des espèces n'ont rien demandé.** Ils lisent
+les documents et les mouvements jour par jour (`/api/reports/journal`), pas les
+`z_reports` : reprendre les documents suffit à les faire apparaître.
+
+**Remise en cause si :** le poste du client est mis à jour — même remarque
+qu'au 29 août.
+
 ## Les ventes du client se reprennent par l'id, jamais par le numéro — 2026-08-29
 
 **Décision.** Ramener dans notre base ce que la caisse du client a produit depuis
