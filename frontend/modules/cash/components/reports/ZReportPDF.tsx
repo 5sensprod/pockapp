@@ -10,6 +10,7 @@ import {
 	estZQuatreLignes,
 	estZCompteLesDocuments,
 	estZListeLesDocuments,
+	estZPorteLaTVADesAcomptes,
 	estZSansDetailSessions,
 	estZSansRapprochementEspeces,
 	getPaymentMethodLabel,
@@ -81,6 +82,8 @@ const s = StyleSheet.create({
 	col: { flex: 1 },
 	label: { color: '#666', fontSize: 8 },
 	value: { fontWeight: 'bold' },
+	// Une donnée rangée SOUS une ligne, et hors de tous les totaux.
+	sousLigne: { color: '#64748b' },
 	total: {
 		fontSize: 12,
 		fontWeight: 'bold',
@@ -267,6 +270,18 @@ export function ZReportPDF({ rapport }: ZReportPDFProps) {
 								<Text>Acomptes</Text>
 								<Text style={s.value}>{fc(t.collected_deposits_ttc ?? 0)}</Text>
 							</View>
+							{estZPorteLaTVADesAcomptes(t) && (t.deposits_vat ?? 0) !== 0 && (
+								// Sous la ligne 3, et hors de tous les totaux : la TVA
+								// d'un acompte est exigible dès son encaissement
+								// (CGI art. 269-2-a bis). La verser dans « TVA
+								// collectée » romprait HT + TVA = TTC sur la ligne 1.
+								<View style={s.row}>
+									<Text style={s.sousLigne}>
+										{'    '}dont TVA exigible sur ces acomptes
+									</Text>
+									<Text style={s.value}>{fc(t.deposits_vat ?? 0)}</Text>
+								</View>
+							)}
 							<View style={s.row}>
 								<Text>Remboursements</Text>
 								<Text style={{ ...s.value, color: '#c00' }}>

@@ -149,6 +149,12 @@ type SalesSummaryX struct {
 	CollectedFromReceivables    LigneTTC           `json:"collected_from_receivables"`
 	CollectedFromReceivablesTTC float64            `json:"collected_from_receivables_ttc"`
 	RefundsTTC                  float64            `json:"refunds_ttc"`
+
+	// La TVA des acomptes, comme dans le Z — le X en est l'aperçu, les deux
+	// doivent présenter le même argent de la même façon. Même fonction
+	// d'accumulation, jamais une seconde (schema_version 7).
+	DepositsVAT       float64              `json:"deposits_vat"`
+	DepositsVATByRate map[string]VATDetail `json:"deposits_vat_by_rate"`
 }
 
 type MovementsSummary struct {
@@ -307,6 +313,10 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	var depositsTTC float64
 	// Ligne 2 — règlements de factures antérieures.
 	var ligneCreances LigneTTC
+
+	// La TVA des acomptes de l'aperçu — hors des totaux, comme dans le Z.
+	var depositsVATX float64
+	depositsVATByRateX := map[string]VATDetail{}
 	collectedByMethod := make(map[string]float64)
 
 	// Même classificateur que le Z (z_lignes.go). Le X est l'aperçu du Z : les
@@ -360,6 +370,9 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			depositsCount++
 			depositsTTC += montant
 			collectedByMethod[method] += montant
+			if inv.GetString("invoice_type") == "deposit" {
+				ajouterTVADAcompte(depositsVATByRateX, &depositsVATX, inv, +1)
+			}
 			continue
 		}
 
@@ -521,6 +534,8 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			SchemaVersion:               ZSchemaVersionCourante,
 			DepositsCount:               depositsCount,
 			DepositsTTC:                 depositsTTC,
+			DepositsVAT:                 roundAmount(depositsVATX),
+			DepositsVATByRate:           depositsVATByRateX,
 			CollectedTTC:                collectedTTC,
 			CollectedByMethod:           collectedByMethod,
 			CollectedFromReceivables:    ligneCreances,
@@ -841,6 +856,35 @@ type DailyTotalsSummary struct {
 	CollectedDeposits           LigneTTC           `json:"collected_deposits"`
 	CollectedDepositsTTC        float64            `json:"collected_deposits_ttc"`
 	RefundsTTC                  float64            `json:"refunds_ttc"`
+
+	// ── LA TVA DES ACOMPTES, ET ELLE SEULE (schema_version 7, 1er sept. 2026)
+	//
+	// La TVA d'un acompte devient exigible à SON ENCAISSEMENT — CGI
+	// art. 269-2-a bis, livraisons de biens, depuis le 1er janvier 2023. Elle
+	// est donc due au titre du mois de l'acompte, et non à la livraison.
+	// Jusqu'ici le Z ne la portait nulle part : la ligne 3 est en TTC seul, et
+	// un comptable qui reprend `total_tva` ne la voyait pas.
+	//
+	// ⚠️ ELLE RESTE HORS DE `TotalTVA`, ET C'EST DÉLIBÉRÉ. L'y verser romprait
+	// `TotalHT + TotalTVA = TotalTTC` — sur la journée du 31 août 2026 : 2,42
+	// + 0,48 = 2,90, et y ajouter les 3,34 € de l'acompte ACC-2026-000021
+	// donnerait 2,42 + 3,82 ≠ 2,90. Sur un document que le comptable
+	// additionne, un triplet incohérent est pire qu'une TVA absente. Et verser
+	// aussi le HT et le TTC de l'acompte dans la ligne 1 appellerait « ventes
+	// du jour » un encaissement qui n'est pas du chiffre d'affaires — la
+	// séparation même que le contrat des quatre lignes protège.
+	//
+	// PÉRIMÈTRE — les `invoice_type = 'deposit'` seuls. La ligne 3 regroupe
+	// TROIS documents (z_lignes.go) : l'acompte, la facture de solde et la
+	// parente amputée. Les deux derniers sont des factures ordinaires, dont la
+	// TVA est exigible à l'émission comme celles de la ligne 2 — et la facture
+	// de solde porte déjà une TVA NETTE des acomptes (deposit.go:455-459,
+	// `balanceTVA = balanceDue − balanceHT`) : rien n'est déclaré deux fois.
+	//
+	// Un acompte REMBOURSÉ retire sa TVA, au jour de l'avoir : une TVA
+	// encaissée puis rendue ne reste pas déclarée.
+	DepositsVAT       float64              `json:"deposits_vat"`
+	DepositsVATByRate map[string]VATDetail `json:"deposits_vat_by_rate"`
 }
 
 // ZSchemaVersionCourante dit sous quelle règle un rapport a été produit.
@@ -849,7 +893,9 @@ type DailyTotalsSummary struct {
 // 4 = contrat du 28 août 2026, où le Z ne porte plus le détail par session mais
 // compte séparément ses tickets et ses factures hors caisse ; 5 = même jour, le
 // Z porte en outre la LISTE des documents de sa ligne 1 ; 6 = la liste couvre
-// les QUATRE lignes, avec heure, client et ligne — le modèle du journal.
+// les QUATRE lignes, avec heure, client et ligne — le modèle du journal ;
+// 7 = contrat du 1er septembre 2026, où le Z déclare la TVA des ACOMPTES
+// encaissés, dans un bloc à part et JAMAIS dans total_tva.
 // Sans elle, un Z relu dans six mois ne dirait pas ce que son total_ht recouvre,
 // ni si l'absence de rapprochement est un contrat ou une donnée perdue.
 //
@@ -857,7 +903,7 @@ type DailyTotalsSummary struct {
 // hash de tous les rapports rejoués, sans déplacer un centime — le
 // rapprochement, lui, n'a jamais été haché (voir z_repair.go, « Écrire dès que
 // le CONTENU diffère »).
-const ZSchemaVersionCourante = 6
+const ZSchemaVersionCourante = 7
 
 // ============================================================================
 // AGRÉGATION D'UN RAPPORT Z
@@ -913,6 +959,10 @@ func aggregateZ(
 	// la ventilation de la seule ligne 1, pour que le rapport continue d'égaler
 	// la somme de ses propres ventilations.
 	var ligneCreances, ligneAcomptes LigneTTC
+
+	// La TVA des acomptes encaissés — hors de totalTVA, toujours (§ struct).
+	var depositsVAT float64
+	depositsVATByRate := map[string]VATDetail{}
 	collectedByMethod := make(map[string]float64)
 
 	// Cache customer_type pour la ventilation e-reporting (Z)
@@ -1263,6 +1313,12 @@ func aggregateZ(
 			refundsByMethod[rm] += montant
 			collectedByMethod[rm] -= montant
 
+			// Un acompte remboursé retire la TVA qu'il avait rendue exigible.
+			// Sans cela, une TVA encaissée puis rendue resterait déclarée.
+			if classificateur.EstUnAcompteRembourse(inv) {
+				ajouterTVADAcompte(depositsVATByRate, &depositsVAT, inv, -1)
+			}
+
 		case LigneVentesDuJour:
 			// Émise ET encaissée le même jour : commercialement un ticket avec
 			// le nom du client dessus. 240 factures sur 263 sont dans ce cas —
@@ -1306,6 +1362,14 @@ func aggregateZ(
 			// total. Trésorerie pure, TTC seul.
 			ligneAcomptes.ajouter(montant)
 			collectedByMethod[libelleMoyenPaiement(inv)] += montant
+
+			// … mais sa TVA est exigible dès maintenant (schema_version 7).
+			// Les `deposit` SEULS : la ligne 3 porte aussi les factures de
+			// solde et les parentes amputées, dont la TVA relève de leur
+			// émission — et le solde est déjà net des acomptes.
+			if inv.GetString("invoice_type") == "deposit" {
+				ajouterTVADAcompte(depositsVATByRate, &depositsVAT, inv, +1)
+			}
 		}
 	}
 
@@ -1359,6 +1423,14 @@ func aggregateZ(
 	// ── Le total encaissé : la somme des quatre lignes ──────────────────────
 	ligneCreances.arrondir()
 	ligneAcomptes.arrondir()
+
+	depositsVAT = roundAmount(depositsVAT)
+	for k, v := range depositsVATByRate {
+		v.BaseHT = roundAmount(v.BaseHT)
+		v.VATAmount = roundAmount(v.VATAmount)
+		v.TotalTTC = roundAmount(v.TotalTTC)
+		depositsVATByRate[k] = v
+	}
 	for k, v := range collectedByMethod {
 		collectedByMethod[k] = roundAmount(v)
 	}
@@ -1414,6 +1486,8 @@ func aggregateZ(
 			CollectedDeposits:           ligneAcomptes,
 			CollectedDepositsTTC:        ligneAcomptes.TTC,
 			RefundsTTC:                  creditNotesTotal,
+			DepositsVAT:                 depositsVAT,
+			DepositsVATByRate:           depositsVATByRate,
 		},
 	}, nil
 }
@@ -1822,6 +1896,18 @@ func computeZReportHash(rapport *RapportZ) (string, error) {
 		"collected_by_method":            rapport.DailyTotals.CollectedByMethod,
 		"collected_from_receivables_ttc": rapport.DailyTotals.CollectedFromReceivablesTTC,
 		"collected_deposits_ttc":         rapport.DailyTotals.CollectedDepositsTTC,
+
+		// schema_version 7 : la TVA des acomptes est une donnée FISCALE, pas un
+		// affichage. Elle entre donc dans la chaîne d'intégrité, avec sa
+		// ventilation — un Z scellé doit se relire sans qu'on la recalcule sur
+		// des documents qui ont pu changer depuis.
+		//
+		// Elle vit dans `full_report` et n'a PAS de colonne dédiée : le schéma
+		// PocketBase d'une base déjà installée ne se modifie que par une
+		// nouvelle migration (`ensure*Collection` sort si la collection
+		// existe), et rien ici n'a besoin de la requêter en SQL.
+		"deposits_vat":         rapport.DailyTotals.DepositsVAT,
+		"deposits_vat_by_rate": rapport.DailyTotals.DepositsVATByRate,
 		"refunds_ttc":                    rapport.DailyTotals.RefundsTTC,
 	}
 
@@ -2103,4 +2189,41 @@ func libelleMoyenRemboursement(inv *models.Record) string {
 		}
 	}
 	return "autre"
+}
+
+
+// ajouterTVADAcompte porte la TVA d'un acompte dans le bloc dédié du Z.
+//
+// `sens` vaut +1 pour un acompte encaissé, −1 pour l'avoir qui le rembourse.
+//
+// Le taux se DÉDUIT du document plutôt que de se lire dans ses items : un
+// acompte est un prorata de sa parente (deposit.go), ses lignes ne portent pas
+// forcément de taux, et son HT comme sa TVA sont déjà calculés à l'écriture.
+// Un acompte à HT nul — donc sans taux déductible — n'est pas rangé par taux
+// mais entre tout de même dans le total : mieux vaut une TVA non ventilée
+// qu'une TVA perdue.
+func ajouterTVADAcompte(
+	parTaux map[string]VATDetail,
+	total *float64,
+	inv *models.Record,
+	sens float64,
+) {
+	ht := abs(inv.GetFloat("total_ht")) * sens
+	tva := abs(inv.GetFloat("total_tva")) * sens
+	ttc := abs(inv.GetFloat("total_ttc")) * sens
+
+	*total += tva
+
+	if ht == 0 {
+		return
+	}
+	taux := roundAmount(tva / ht * 100)
+	cle := fmt.Sprintf("%.1f", taux)
+
+	detail := parTaux[cle]
+	detail.Rate = taux
+	detail.BaseHT += ht
+	detail.VATAmount += tva
+	detail.TotalTTC += ttc
+	parTaux[cle] = detail
 }

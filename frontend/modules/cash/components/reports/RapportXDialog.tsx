@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator'
 import {
 	type RapportX,
 	aggregateEreporting,
+	estZPorteLaTVADesAcomptes,
 	estZQuatreLignes,
 } from '@/lib/types/cash.types'
 import {
@@ -131,6 +132,9 @@ export function RapportXDialog({
 													encaisse:
 														rapport.sales.collected_ttc ??
 														rapport.sales.total_ttc,
+													tvaAcomptes: estZPorteLaTVADesAcomptes(rapport.sales)
+														? rapport.sales.deposits_vat
+														: undefined,
 												}}
 												tvaVentesDuJour={rapport.sales.total_tva}
 											/>

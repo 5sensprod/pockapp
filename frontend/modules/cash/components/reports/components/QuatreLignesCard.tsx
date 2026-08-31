@@ -31,6 +31,12 @@ export interface QuatreLignes {
 	remboursements: number
 	/** Le total encaissé, tel que le backend l'a calculé et haché. */
 	encaisse: number
+	/**
+	 * La TVA rendue exigible par les acomptes de la ligne 3, quand le rapport
+	 * la porte (schema_version ≥ 7). `undefined` sur un rapport antérieur : on
+	 * n'affiche alors rien, on ne la recalcule pas.
+	 */
+	tvaAcomptes?: number
 }
 
 function Ligne({
@@ -107,6 +113,20 @@ export function QuatreLignesCard({
 					montant={lignes.acomptes}
 					precision='trésorerie, pas du chiffre d’affaires'
 				/>
+				{lignes.tvaAcomptes !== undefined && lignes.tvaAcomptes !== 0 && (
+					// Sous la ligne 3, décalée : elle n'entre dans AUCUN des
+					// totaux au-dessus. La TVA d'un acompte est exigible dès son
+					// encaissement (CGI art. 269-2-a bis) ; la fondre dans la
+					// TVA collectée romprait HT + TVA = TTC sur la ligne 1.
+					<div className='flex items-baseline justify-between gap-4 pl-4'>
+						<span className='text-xs text-muted-foreground'>
+							dont TVA exigible sur ces acomptes
+						</span>
+						<span className='text-xs tabular-nums text-blue-600'>
+							{formatCurrency(lignes.tvaAcomptes)}
+						</span>
+					</div>
+				)}
 				<Ligne
 					libelle='Remboursements'
 					montant={lignes.remboursements}
@@ -121,7 +141,8 @@ export function QuatreLignesCard({
 						<span className='text-sm'>
 							TVA collectée{' '}
 							<span className='text-xs text-muted-foreground'>
-								sur les ventes du jour, et elles seules
+								sur les ventes du jour, et elles seules — la TVA des acomptes
+								est comptée à part, ci-dessus
 							</span>
 						</span>
 						<span className='font-semibold tabular-nums text-blue-600'>

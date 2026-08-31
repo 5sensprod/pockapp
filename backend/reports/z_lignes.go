@@ -145,6 +145,26 @@ func (c *classificateurZ) estConversionDeTicket(inv *models.Record) bool {
 	return origine != nil && origine.GetBool("is_pos_ticket")
 }
 
+// EstUnAcompteRembourse dit si un avoir porte sur un ACOMPTE, et non sur une
+// facture ordinaire.
+//
+// La TVA d'un acompte devient exigible à son encaissement (CGI art. 269-2-a bis,
+// livraisons de biens, depuis le 1er janvier 2023) : le Z la déclare donc au
+// jour où l'acompte est encaissé. Si cet acompte est ensuite remboursé, la TVA
+// doit être retirée le jour de l'avoir — sans quoi une TVA encaissée puis
+// rendue resterait déclarée.
+//
+// La résolution est NOMMÉE, comme partout ici : `original_invoice_id` est du
+// TEXTE, pas une relation, et ne peut pas se déréférencer dans un filtre.
+func (c *classificateurZ) EstUnAcompteRembourse(inv *models.Record) bool {
+	parentID := inv.GetString("original_invoice_id")
+	if parentID == "" {
+		return false
+	}
+	origine := c.origine(parentID)
+	return origine != nil && origine.GetString("invoice_type") == "deposit"
+}
+
 // dossierAcompte charge les acomptes et l'éventuelle facture de solde rattachés
 // à une facture parente.
 func (c *classificateurZ) dossierAcompte(parentID string) (acomptes []*models.Record, aUnSolde bool) {

@@ -146,6 +146,9 @@ export interface SalesSummaryX {
 	by_customer_type: Record<CustomerType, CustomerTypeSummary> // ventilation e-reporting
 	deposits_count: number
 	deposits_ttc: number
+	/** La TVA des acomptes de la ligne 3 — hors des totaux (schema_version 7). */
+	deposits_vat?: number
+	deposits_vat_by_rate?: Record<string, VATDetail>
 	by_method_labels?: Record<string, string>
 
 	// ── Contrat « un total, quatre lignes » (ticket Z-6) ─────────────────────
@@ -320,6 +323,12 @@ export interface RapportZDailyTotals {
 	collected_by_method?: Record<string, number>
 	collected_from_receivables_ttc?: number
 	collected_deposits_ttc?: number
+	/**
+	 * La TVA rendue exigible par les ACOMPTES encaissés — hors de `total_tva`,
+	 * toujours. Contrat schema_version 7, 1er septembre 2026.
+	 */
+	deposits_vat?: number
+	deposits_vat_by_rate?: Record<string, VATDetail>
 	refunds_ttc?: number
 }
 
@@ -423,6 +432,28 @@ export function estZListeLesDocuments(totals: {
 	sales_documents?: SalesDocument[]
 }): boolean {
 	return (totals.schema_version ?? 1) >= 5 && !!totals.sales_documents?.length
+}
+
+/**
+ * estZPorteLaTVADesAcomptes dit si le rapport déclare lui-même la TVA rendue
+ * exigible par les acomptes qu'il a encaissés.
+ *
+ * Contrat du 1er septembre 2026 (`schema_version` 7). La TVA d'un acompte
+ * devient exigible à SON encaissement — CGI art. 269-2-a bis, livraisons de
+ * biens, depuis le 1er janvier 2023 —, et jusque-là le Z ne la portait nulle
+ * part : sa ligne 3 est en TTC seul.
+ *
+ * ⚠️ Elle ne s'ajoute JAMAIS à `total_tva`, sous peine de rompre
+ * `total_ht + total_tva = total_ttc`. Elle s'affiche sous la ligne 3, à part.
+ *
+ * ⚠️ Seuil, jamais `=== 7`. Et rien ne se recalcule ici : un Z antérieur ne
+ * porte pas cette donnée, on n'en reconstruit pas une — on n'affiche rien.
+ */
+export function estZPorteLaTVADesAcomptes(totals: {
+	schema_version?: number
+	deposits_vat?: number
+}): boolean {
+	return (totals.schema_version ?? 1) >= 7 && totals.deposits_vat !== undefined
 }
 
 // ============================================================================

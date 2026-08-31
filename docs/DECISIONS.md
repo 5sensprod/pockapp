@@ -10,6 +10,70 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le Z déclare la TVA des acomptes, hors de `total_tva` — 2026-09-01
+
+**Décision.** `schema_version` **7**. Le rapport Z porte `deposits_vat` et sa
+ventilation par taux : la TVA rendue exigible par les **acomptes** qu'il a
+encaissés. Elle est hachée, affichée sous la ligne 3, et **jamais** ajoutée à
+`total_tva`.
+
+**Pourquoi.** La TVA d'un acompte devient exigible à **son encaissement** — CGI
+art. 269-2-a bis, livraisons de biens, depuis le 1er janvier 2023. Elle est donc
+due au titre du mois de l'acompte. Jusqu'ici le Z ne la portait nulle part : sa
+ligne 3 est en TTC seul, et un comptable qui reprend `total_tva` ne la voyait
+pas. Elle restait lisible sur le document d'acompte lui-même — le Z n'a jamais
+été la base TVA complète —, mais la confusion est facile et coûteuse.
+
+**Écarté — la verser dans `total_tva`.** C'était la demande initiale, et elle
+rompt `total_ht + total_tva = total_ttc`. Sur une journée à 2,90 € de ticket et
+un acompte de 20,00 € (16,66 HT / 3,34 TVA) : 2,42 + 0,48 = 2,90, mais
+2,42 + 3,82 ≠ 2,90. Sur un document que le comptable additionne, un triplet
+incohérent est pire qu'une TVA absente.
+
+**Écarté — y verser aussi le HT et le TTC de l'acompte.** Le triplet
+redeviendrait cohérent, mais « ventes du jour » désignerait alors un
+encaissement qui n'est pas du chiffre d'affaires : la séparation même que le
+contrat des quatre lignes protège.
+
+**Périmètre — les `invoice_type = 'deposit'` seuls.** La ligne 3 regroupe TROIS
+documents (`z_lignes.go`) : l'acompte, la facture de solde et la parente
+amputée. Les deux derniers sont des factures ordinaires, dont la TVA est
+exigible à l'émission comme celles de la ligne 2. Et la facture de solde porte
+déjà une TVA **nette des acomptes** — `deposit.go:455-459`,
+`balanceTVA = balanceDue − balanceHT` : l'y compter déclarerait deux fois la
+même TVA. C'était la question posée par le propriétaire, et c'est elle qui a
+fixé le périmètre.
+
+**Un acompte remboursé retire sa TVA**, au jour de l'avoir. Sans cela, une TVA
+encaissée puis rendue resterait déclarée. La résolution de l'origine est
+NOMMÉE (`EstUnAcompteRembourse`) : `original_invoice_id` est du TEXTE, pas une
+relation, et ne se déréférence pas dans un filtre.
+
+**Pas de colonne SQL.** La donnée vit dans `full_report` et dans le hash. Le
+schéma d'une base installée ne se modifie que par une nouvelle migration
+(`ensure*Collection` sort si la collection existe), et rien n'a besoin de la
+requêter en SQL.
+
+**Le X porte la même donnée, par la même fonction** (`ajouterTVADAcompte`). Le X
+est l'aperçu du Z : deux implémentations finiraient par diverger, c'est la leçon
+du 20 mai 2026 transposée.
+
+**Rejeu appliqué le 1er septembre 2026 sur la base de production.** Sauvegarde
+préalable dans `pb_data_sans_storage/avant_rejeu_tva_acomptes_2026-09-01`,
+application fermée. Mesuré : **66 rapports examinés, 0 aux montants corrigés,
+66 enrichis, 0 en erreur, correction cumulée +0,00 €**, et « tous les rapports
+égalent la somme de leurs quatre lignes ». Relu ensuite dans la base :
+**66/66 en `schema_version` 7**, **0 violation de `total_ht + total_tva =
+total_ttc`**, et **six rapports portent une TVA d'acompte**, 288,25 € au total —
+Z-023 (168,79), Z-024 (10,00), Z-034 (41,50), Z-044 (8,33), Z-053 (16,66) et
+Z-057 (42,97).
+
+**Gardiens.** `backend/reports/tva_acomptes_test.go` — la TVA déclarée hors de
+`total_tva` avec l'invariant vérifié, l'acompte remboursé qui la retire, et la
+facture de solde qui n'en ajoute pas.
+
+---
+
 ## Deux listes de Z ne partagent pas une case de cache — 2026-09-01
 
 **Décision.** La limite entre dans la clé TanStack Query :

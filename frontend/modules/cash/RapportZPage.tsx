@@ -29,6 +29,7 @@ import {
 	type CustomerType,
 	type CustomerTypeSummary,
 	aggregateEreporting,
+	estZPorteLaTVADesAcomptes,
 	estZQuatreLignes,
 	estZCompteLesDocuments,
 	estZListeLesDocuments,
@@ -505,6 +506,12 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 									acomptes: totals.collected_deposits_ttc ?? 0,
 									remboursements: totals.refunds_ttc ?? 0,
 									encaisse: totals.collected_ttc ?? totals.total_ttc,
+									// `undefined` sur un Z antérieur au contrat du
+									// 1er septembre 2026 : on n'affiche alors rien, et
+									// surtout on ne la recalcule pas.
+									tvaAcomptes: estZPorteLaTVADesAcomptes(totals)
+										? totals.deposits_vat
+										: undefined,
 								}}
 								tvaVentesDuJour={totals.total_tva}
 							/>
