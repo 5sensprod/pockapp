@@ -1,6 +1,7 @@
 // frontend/modules/connect/components/QuotesPage.tsx
 // Page de gestion des devis — pagination serveur + debounce + recherche client
 
+import { DocumentSearchInput } from '@/components/DocumentSearchInput'
 import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import {
 	AlertDialog,
@@ -21,7 +22,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import {
 	Select,
 	SelectContent,
@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useDebounce } from '@/lib/hooks/useDebounce'
+import { useDocumentSearchFilter } from '@/lib/hooks/useDocumentSearchFilter'
 import {
 	PERIOD_PREFERENCE_KEYS,
 	usePeriodFilter,
@@ -47,10 +48,9 @@ import {
 import type { QuoteResponse, QuoteStatus } from '@/lib/types/invoice.types'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { pdf } from '@react-pdf/renderer'
-import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { SendQuoteEmailDialog } from '../../dialogs/SendQuoteEmailDialog'
 import { QuotesTable } from '../../features/quotes/QuotesTable'
@@ -81,33 +81,11 @@ export function QuotesPage() {
 	// 	if (page !== 1) setPage(1)
 	// }
 
-	// Résolution des IDs clients correspondant au terme recherché
-	const { data: matchingCustomerIds } = useQuery({
-		queryKey: ['customer-search-ids-quotes', activeCompanyId, debouncedSearch],
-		queryFn: async () => {
-			if (!debouncedSearch || !activeCompanyId) return []
-			const result = await pb.collection('customers').getFullList({
-				filter: `owner_company = "${activeCompanyId}" && name ~ "${debouncedSearch}"`,
-				fields: 'id',
-			})
-			return result.map((c: any) => c.id as string)
-		},
-		enabled: !!debouncedSearch && !!activeCompanyId,
-		staleTime: 10_000,
+	const searchFilter = useDocumentSearchFilter({
+		term: debouncedSearch,
+		companyId: activeCompanyId ?? undefined,
+		searchCustomers: true,
 	})
-
-	// Filtre combiné : numéro OU clients correspondants
-	const searchFilter = useMemo(() => {
-		if (!debouncedSearch) return undefined
-		const parts: string[] = [`number ~ "${debouncedSearch}"`]
-		if (matchingCustomerIds && matchingCustomerIds.length > 0) {
-			const customerFilter = matchingCustomerIds
-				.map((id: string) => `customer = "${id}"`)
-				.join(' || ')
-			parts.push(`(${customerFilter})`)
-		}
-		return `(${parts.join(' || ')})`
-	}, [debouncedSearch, matchingCustomerIds])
 
 	// Dialogs
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -283,12 +261,11 @@ export function QuotesPage() {
 				}}
 				filters={
 					<>
-						<Input
-							placeholder='Rechercher par numéro ou nom du client...'
-							className='min-w-[260px] flex-1'
+						<DocumentSearchInput
+							placeholder='N°, client, description ou montant…'
 							value={searchTerm}
-							onChange={(event) => {
-								setSearchTerm(event.target.value)
+							onValueChange={(value) => {
+								setSearchTerm(value)
 								setPage(1)
 							}}
 						/>

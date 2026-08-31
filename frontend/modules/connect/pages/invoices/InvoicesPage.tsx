@@ -11,10 +11,10 @@ import {
 } from '@/components/ui/dialog'
 // import { navigationActions } from '@/lib/stores/navigationStore'
 
+import { DocumentSearchInput } from '@/components/DocumentSearchInput'
 import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
 	Select,
@@ -26,6 +26,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useDebounce } from '@/lib/hooks/useDebounce'
+import { useDocumentSearchFilter } from '@/lib/hooks/useDocumentSearchFilter'
 import {
 	type ChainVerificationResult,
 	type DocumentType,
@@ -48,14 +49,12 @@ import {
 } from '@/lib/queries/invoices'
 import type { InvoiceResponse, InvoiceStatus } from '@/lib/types/invoice.types'
 import { isOverdue } from '@/lib/types/invoice.types'
-import { usePocketBase } from '@/lib/use-pocketbase'
 import { RefundInvoiceDialog } from '@/modules/common/RefundInvoiceDialog'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
 import {
 	StockReclassificationDialog,
 	type StockReclassificationItem,
 } from '@/modules/common/StockReclassificationDialog'
-import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	FileText,
@@ -66,7 +65,7 @@ import {
 	ShieldCheck,
 	XCircle,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { InvoicesTable } from '../../features/invoices/InvoicesTable'
 import { formatCurrency, formatDate } from '../../utils/formatters'
@@ -85,7 +84,6 @@ const PER_PAGE = 30
 export function InvoicesPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
-	const pb = usePocketBase() as any
 
 	// États filtres
 	const [searchTerm, setSearchTerm] = useState('')
@@ -105,35 +103,11 @@ export function InvoicesPage() {
 	// 	if (page !== 1) setPage(1)
 	// }
 
-	// Résolution des IDs clients correspondant au terme recherché.
-	// PocketBase ne supporte pas customer.name ~ "x" en filtre cross-collection fiable,
-	// on cherche d'abord les IDs dans la collection customers, puis on filtre les factures.
-	const { data: matchingCustomerIds } = useQuery({
-		queryKey: ['customer-search-ids', activeCompanyId, debouncedSearch],
-		queryFn: async () => {
-			if (!debouncedSearch || !activeCompanyId) return []
-			const result = await pb.collection('customers').getFullList({
-				filter: `owner_company = "${activeCompanyId}" && name ~ "${debouncedSearch}"`,
-				fields: 'id',
-			})
-			return result.map((c: any) => c.id as string)
-		},
-		enabled: !!debouncedSearch && !!activeCompanyId,
-		staleTime: 10_000,
+	const searchFilter = useDocumentSearchFilter({
+		term: debouncedSearch,
+		companyId: activeCompanyId ?? undefined,
+		searchCustomers: true,
 	})
-
-	// Filtre combiné : numéro OU clients correspondants
-	const searchFilter = useMemo(() => {
-		if (!debouncedSearch) return undefined
-		const parts: string[] = [`number ~ "${debouncedSearch}"`]
-		if (matchingCustomerIds && matchingCustomerIds.length > 0) {
-			const customerFilter = matchingCustomerIds
-				.map((id: string) => `customer = "${id}"`)
-				.join(' || ')
-			parts.push(`(${customerFilter})`)
-		}
-		return `(${parts.join(' || ')})`
-	}, [debouncedSearch, matchingCustomerIds])
 
 	// États dialogs
 	const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
@@ -448,12 +422,11 @@ export function InvoicesPage() {
 				className='mb-6'
 				filters={
 					<>
-						<Input
-							placeholder='Rechercher par numéro ou nom du client...'
-							className='min-w-[260px] flex-1'
+						<DocumentSearchInput
+							placeholder='N°, client, description ou montant…'
 							value={searchTerm}
-							onChange={(event) => {
-								setSearchTerm(event.target.value)
+							onValueChange={(value) => {
+								setSearchTerm(value)
 								setPage(1)
 							}}
 						/>

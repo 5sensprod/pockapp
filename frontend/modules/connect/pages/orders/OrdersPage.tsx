@@ -1,9 +1,9 @@
 // frontend/modules/connect/pages/orders/OrdersPage.tsx
 
+import { DocumentSearchInput } from '@/components/DocumentSearchInput'
 import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import { ModulePageShell } from '@/components/module-ui/ModulePageShell'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
 	Select,
 	SelectContent,
@@ -20,6 +20,8 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { useDebounce } from '@/lib/hooks/useDebounce'
+import { useDocumentSearchFilter } from '@/lib/hooks/useDocumentSearchFilter'
 import {
 	PERIOD_PREFERENCE_KEYS,
 	usePeriodFilter,
@@ -27,7 +29,7 @@ import {
 import { useOrders } from '@/lib/queries/orders'
 import type { OrderStatus } from '@/lib/queries/orders'
 import { useNavigate } from '@tanstack/react-router'
-import { ClipboardList, FilePen, Loader2, Plus, Search } from 'lucide-react'
+import { ClipboardList, FilePen, Loader2, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { OrderStatusBadge } from '../../components/orders/OrderStatusBadge'
 import { manifest } from '../../manifest'
@@ -54,27 +56,24 @@ export function OrdersPage() {
 	const navigate = useNavigate()
 	const { activeCompanyId } = useActiveCompany()
 	const [search, setSearch] = useState('')
+	const debouncedSearch = useDebounce(search, 400)
 	const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
 	const { period, setPeriod, setDateFrom, setDateTo, dateRange } =
 		usePeriodFilter('trente-jours', PERIOD_PREFERENCE_KEYS.orders)
+	const searchFilter = useDocumentSearchFilter({
+		term: debouncedSearch,
+		textFields: ['number', 'customer_name', 'notes', 'items'],
+	})
 
 	const { data, isLoading } = useOrders({
 		companyId: activeCompanyId ?? undefined,
 		status: statusFilter === 'all' ? undefined : statusFilter,
+		filter: searchFilter,
 		dateFrom: dateRange.from,
 		dateTo: dateRange.to,
 	})
 
 	const orders = data?.items ?? []
-
-	// Filtre local sur la recherche texte (référence / nom client)
-	const filtered = orders.filter((o) => {
-		const q = search.toLowerCase()
-		return (
-			o.number.toLowerCase().includes(q) ||
-			o.customer_name.toLowerCase().includes(q)
-		)
-	})
 
 	return (
 		<ModulePageShell
@@ -99,15 +98,11 @@ export function OrdersPage() {
 					onToChange={setDateTo}
 					filters={
 						<>
-							<div className='relative min-w-[260px] flex-1'>
-								<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-								<Input
-									placeholder='Rechercher un bon, un client…'
-									className='pl-9'
-									value={search}
-									onChange={(event) => setSearch(event.target.value)}
-								/>
-							</div>
+							<DocumentSearchInput
+								placeholder='N°, client, description ou montant…'
+								value={search}
+								onValueChange={setSearch}
+							/>
 							<Select
 								value={statusFilter}
 								onValueChange={(value) =>
@@ -135,7 +130,7 @@ export function OrdersPage() {
 					<div className='flex justify-center py-16'>
 						<Loader2 className='h-6 w-6 animate-spin text-muted-foreground' />
 					</div>
-				) : filtered.length === 0 ? (
+				) : orders.length === 0 ? (
 					<EmptyOrdersState
 						onNew={() => navigate({ to: '/connect/orders/new' })}
 					/>
@@ -155,7 +150,7 @@ export function OrdersPage() {
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{filtered.map((order) => (
+								{orders.map((order) => (
 									<TableRow
 										key={order.id}
 										className='cursor-pointer hover:bg-muted/30 transition-colors'

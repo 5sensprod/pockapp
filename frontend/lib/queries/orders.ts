@@ -94,6 +94,7 @@ export interface OrdersListOptions {
 	companyId?: string
 	customerId?: string
 	status?: OrderStatus
+	filter?: string
 	sort?: string
 	page?: number
 	perPage?: number
@@ -134,6 +135,7 @@ export function useOrders(options: OrdersListOptions = {}) {
 		companyId,
 		customerId,
 		status,
+		filter,
 		sort,
 		page = 1,
 		perPage = 50,
@@ -153,6 +155,7 @@ export function useOrders(options: OrdersListOptions = {}) {
 			// totale, y compris pour les brouillons non encore confirmés.
 			if (dateFrom) filters.push(`created >= "${dateFrom}"`)
 			if (dateTo) filters.push(`created <= "${dateTo} 23:59:59"`)
+			if (filter) filters.push(`(${filter})`)
 
 			const finalFilter = filters.length ? filters.join(' && ') : undefined
 

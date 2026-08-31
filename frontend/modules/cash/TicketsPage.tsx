@@ -1,5 +1,6 @@
 // frontend/modules/cash/TicketsPage.tsx
 
+import { DocumentSearchInput } from '@/components/DocumentSearchInput'
 import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import { EmptyState } from '@/components/module-ui'
 import { Badge } from '@/components/ui/badge'
@@ -13,7 +14,6 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import {
 	Table,
 	TableBody,
@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/table'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useDebounce } from '@/lib/hooks/useDebounce'
+import { useDocumentSearchFilter } from '@/lib/hooks/useDocumentSearchFilter'
 import {
 	PERIOD_PREFERENCE_KEYS,
 	usePeriodFilter,
@@ -49,7 +50,6 @@ import {
 	Receipt,
 	RotateCcw,
 	Search,
-	X,
 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { CashModuleShell } from './CashModuleShell'
@@ -145,11 +145,12 @@ export function TicketsPage() {
 	}, [])
 
 	// ── Données ───────────────────────────────────────────────────────────────
-	const searchFilter = useMemo(() => {
-		const parts: string[] = ['is_pos_ticket = true']
-		if (debouncedSearch) parts.push(`number ~ "${debouncedSearch}"`)
-		return parts.join(' && ')
-	}, [debouncedSearch])
+	const documentSearchFilter = useDocumentSearchFilter({
+		term: debouncedSearch,
+	})
+	const searchFilter = documentSearchFilter
+		? `is_pos_ticket = true && (${documentSearchFilter})`
+		: 'is_pos_ticket = true'
 
 	const { data: invoicesData, isLoading } = useInvoices({
 		companyId: activeCompanyId ?? undefined,
@@ -255,28 +256,17 @@ export function TicketsPage() {
 					}}
 					className='mb-4'
 					filters={
-						<div className='relative min-w-[280px] flex-1'>
-							<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-							<Input
-								ref={searchInputRef}
-								placeholder='Rechercher un N° de ticket...'
-								value={search}
-								onChange={(event) => {
-									setSearch(event.target.value)
-									setPage(1)
-								}}
-								className='h-10 pl-9 pr-9'
-							/>
-							{search && (
-								<button
-									type='button'
-									onClick={handleResetSearch}
-									className='absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors'
-								>
-									<X className='h-4 w-4' />
-								</button>
-							)}
-						</div>
+						<DocumentSearchInput
+							ref={searchInputRef}
+							placeholder='N° de ticket, article ou montant…'
+							value={search}
+							onValueChange={(value) => {
+								setSearch(value)
+								setPage(1)
+							}}
+							onClear={handleResetSearch}
+							className='min-w-[280px]'
+						/>
 					}
 				/>
 				<Card className='shadow-sm border-muted/60'>
