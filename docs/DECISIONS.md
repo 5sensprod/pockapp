@@ -10,6 +10,65 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Un moyen de paiement, une seule ligne de ventilation — 2026-08-31
+
+**Décision.** Les codes hérités que portent les documents — `cb`, `especes`,
+`cheque`, `virement` — se lisent sous le libellé du référentiel
+`payment_methods`. La table vit dans `libelleMoyenPaiement`
+(`cash_reports.go`), point de passage UNIQUE du Z, du X et du journal des
+ventes ; elle ne réécrit aucun code stocké.
+
+**Le défaut, mesuré le 31 août 2026 sur la base de production :** 347 documents
+portaient `cb` **sans aucun libellé**, pour **53 617,97 €** — plus que les 512
+documents « Carte bancaire », 19 239,90 €. Le même moyen occupait donc DEUX
+lignes de ventilation, et `cb` était la plus grosse ligne de la base. Même
+défaut pour `especes` (51 documents, 8 563,29 €), `cheque` (10) et `virement`
+(1). Le dernier `cb` datait du **27 août 2026** : un vestige encore vivant.
+
+**La source est corrigée aussi.** `getPaymentMethodLabel`
+(`frontend/modules/cash/components/terminal/types/payment.ts`) ne rendait le
+nom que pour les moyens `custom` ; un règlement de facture par carte repartait
+donc sans libellé, et c'est précisément ce qui fabriquait les `cb` nus. Les
+tickets, eux, n'ont jamais eu le défaut : la route POS reçoit `payments[]` avec
+le nom dedans.
+
+**Écarté — réécrire les codes stockés.** Le schéma de `invoices.payment_method`
+n'accepte que `["virement","cb","especes","cheque","autre","multi"]` : `card`
+n'y figure pas, et les 512 documents qui le portent ont été écrits par une
+route qui contourne cette validation (`dao.SaveRecord`, sans formulaire).
+Normaliser les codes demanderait donc de trancher d'abord quel jeu fait foi, et
+de migrer 1236 documents scellés pour un gain que la lecture obtient seule.
+
+**Écarté — traduire `autre` et `multi`.** 21 et 17 documents, 12 106 € : ce ne
+sont pas des synonymes mal orthographiés mais des ABSENCES d'information. Les
+repeindre en « Autre » leur donnerait l'apparence d'un moyen connu.
+
+**Le remboursement suivait l'autre moitié du chemin, et il a fallu un second
+passage.** Quatre endroits lisaient `refund_method` en direct, chacun avec son
+propre repli — sept rapports ventilaient encore un remboursement sous `cb` ou
+`especes`, en négatif, à côté des libellés. Ils passent tous par
+`libelleMoyenRemboursement`, dont l'ordre de résolution (libellé du document,
+puis `refund_method`, puis `payment_method`, puis « autre ») englobe les quatre.
+Le X résout désormais son moyen par `libelleMoyenPaiement` comme le Z : les deux
+rapports affichent la même ventilation le même jour, ils ne peuvent pas la
+nommer autrement.
+
+**Les 65 rapports ont été rejoués, en deux fois** (`by_method` et
+`collected_by_method` entrent dans le hash, `cash_reports.go:1815` et `:1841`).
+**Aucun montant n'a bougé** : ni HT, ni TVA, ni TTC, ni aucun `collected_*`, ni
+le rapprochement espèces — vérifié colonne par colonne contre une copie prise
+avant chaque rejeu. **Total encaissé identique, 97 984,33 €**, et `z-repair` en
+simulation rend **0 / 0 / 0** avec les quatre lignes équilibrées partout.
+
+**Un mot sur `montantsDifferents`** (`z_repair.go:423`) : il compare AUSSI
+`ByMethod` et `RefundsByMethod`, si bien qu'un rejeu qui ne change que des clés
+s'annonce « aux MONTANTS corrigés ». L'étiquette inquiète à tort ; c'est le
+contrôle avant/après sur les colonnes de montants qui tranche, pas elle.
+
+**Remise en cause si :** on décide un jour de n'avoir qu'un seul jeu de codes en
+base. La table de lecture resterait nécessaire pour l'historique, mais cesserait
+de s'allonger.
+
 ## Deuxième reprise de production — 24 documents du 26 au 29 août — 2026-08-31
 
 **Fait, pas décidé.** Application de la règle du 29 août (« Les ventes du client
