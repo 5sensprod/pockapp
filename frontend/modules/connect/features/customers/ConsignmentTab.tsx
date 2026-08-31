@@ -239,13 +239,19 @@ export function ConsignmentTab({
 				})
 				toast.success('Produit mis à jour')
 			} else {
-				await createItem.mutateAsync({
+				const { customerTagUpdateFailed } = await createItem.mutateAsync({
 					...data,
 					status: 'available',
 					customer: customerId,
 					owner_company: ownerCompanyId,
 				})
-				toast.success('Produit ajouté')
+				if (customerTagUpdateFailed) {
+					toast.warning(
+						'Produit ajouté, mais le tag déposant du client n’a pas pu être posé',
+					)
+				} else {
+					toast.success('Produit ajouté')
+				}
 			}
 			setDialogOpen(false)
 		} catch (err) {

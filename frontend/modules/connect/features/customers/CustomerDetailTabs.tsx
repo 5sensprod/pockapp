@@ -16,9 +16,10 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import type {
-	CompaniesResponse,
-	CustomersResponse,
+import {
+	type CompaniesResponse,
+	type CustomersResponse,
+	CustomersTagsOptions,
 } from '@/lib/pocketbase-types'
 import type { InvoiceResponse, QuoteResponse } from '@/lib/types/invoice.types'
 import {
@@ -87,6 +88,11 @@ export function CustomerDetailTabs({
 }: CustomerDetailTabsProps) {
 	const { goToDetail: goToInvoice } = useDocumentNavigation('invoice')
 	const { goToDetail: goToQuote } = useDocumentNavigation('quote')
+	const showConsignmentTab =
+		customer.tags?.includes(CustomersTagsOptions.deposant) ||
+		consignmentCount > 0
+	const displayedTab =
+		activeTab === 'consignment' && !showConsignmentTab ? 'invoices' : activeTab
 
 	// ── DESIGN DES ONGLETS ───────────────────────────────────────────────────
 	const sharedTabsList = (
@@ -121,21 +127,29 @@ export function CustomerDetailTabs({
 				Commandes
 			</TabsTrigger>
 
-			{/* biome-ignore lint/a11y/useFocusableInteractive: <explanation> */}
-			<div role='separator' className='h-5 w-px bg-border' />
+			{showConsignmentTab && (
+				<>
+					{/* biome-ignore lint/a11y/useFocusableInteractive: <explanation> */}
+					<div role='separator' className='h-5 w-px bg-border' />
 
-			<TabsTrigger
-				value='consignment'
-				className='p-0 gap-2 text-base sm:text-lg font-semibold tracking-tight text-muted-foreground hover:text-foreground data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none transition-colors'
-			>
-				<Guitar className='h-5 w-5' />
-				Occasion {consignmentCount > 0 && `(${consignmentCount})`}
-			</TabsTrigger>
+					<TabsTrigger
+						value='consignment'
+						className='p-0 gap-2 text-base sm:text-lg font-semibold tracking-tight text-muted-foreground hover:text-foreground data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none transition-colors'
+					>
+						<Guitar className='h-5 w-5' />
+						Occasion {consignmentCount > 0 && `(${consignmentCount})`}
+					</TabsTrigger>
+				</>
+			)}
 		</TabsList>
 	)
 
 	return (
-		<Tabs value={activeTab} onValueChange={onTabChange} className='space-y-4'>
+		<Tabs
+			value={displayedTab}
+			onValueChange={onTabChange}
+			className='space-y-4'
+		>
 			{/* ── Tab Factures ─────────────────────────────────────────────────── */}
 			<TabsContent value='invoices' className='mt-0'>
 				<Card>

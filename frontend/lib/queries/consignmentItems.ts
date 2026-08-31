@@ -2,6 +2,13 @@
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+export const DEPOSITOR_TAG = 'déposant'
+
+/** Ajoute le tag déposant sans perdre les autres tags ni créer de doublon. */
+export function withDepositorTag(tags: readonly string[] = []): string[] {
+	return Array.from(new Set([...tags, DEPOSITOR_TAG]))
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type ConsignmentStatus = 'available' | 'sold' | 'returned'
@@ -39,6 +46,11 @@ export interface UpdateConsignmentItemDto {
 	commission_rate?: number
 	status?: ConsignmentStatus
 	notes?: string
+}
+
+export interface CreateConsignmentItemResult {
+	item: ConsignmentItemDto
+	customerTagUpdateFailed: boolean
 }
 
 // ─── Query Keys ──────────────────────────────────────────────────────────────
@@ -83,13 +95,40 @@ export function useCreateConsignmentItem() {
 
 	return useMutation({
 		mutationFn: async (data: CreateConsignmentItemDto) => {
-			const result = await pb.collection('consignment_items').create(data)
-			return result as ConsignmentItemDto
+			const item = (await pb
+				.collection('consignment_items')
+				.create(data)) as ConsignmentItemDto
+
+			try {
+				const customer = (await pb
+					.collection('customers')
+					.getOne(data.customer, { fields: 'tags' })) as { tags?: string[] }
+				const currentTags = customer.tags ?? []
+				const nextTags = withDepositorTag(currentTags)
+
+				if (!currentTags.includes(DEPOSITOR_TAG)) {
+					await pb.collection('customers').update(data.customer, {
+						tags: nextTags,
+					})
+				}
+
+				return { item, customerTagUpdateFailed: false }
+			} catch (error) {
+				console.error(
+					`Le dépôt ${item.id} a été créé, mais le tag déposant du client ${data.customer} n'a pas pu être posé.`,
+					error,
+				)
+				return { item, customerTagUpdateFailed: true }
+			}
 		},
-		onSuccess: (_: ConsignmentItemDto, variables: CreateConsignmentItemDto) => {
+		onSuccess: (
+			_: CreateConsignmentItemResult,
+			variables: CreateConsignmentItemDto,
+		) => {
 			queryClient.invalidateQueries({
 				queryKey: consignmentKeys.byCustomer(variables.customer),
 			})
+			queryClient.invalidateQueries({ queryKey: ['customers'] })
 		},
 	})
 }
