@@ -126,7 +126,16 @@ export function OpenSessionDialog({
 		try {
 			await onSubmit(finalAmount)
 		} catch {
-			// géré dans le hook
+			// L'appelant AFFICHE l'erreur (CashTerminalPage). On l'attrape ici
+			// pour ne pas laisser une promesse rejetée, et pour rien d'autre.
+			//
+			// ⚠️ Ce `catch` disait « géré dans le hook », et le hook ne gérait
+			// rien : un refus du serveur — « la journée est déjà clôturée »,
+			// 400 — ne produisait AUCUN message. Le bouton « Commencer la
+			// journée » paraissait simplement mort. Signalé le 1er septembre
+			// 2026, et c'est un défaut plus grave que le refus lui-même : un
+			// refus expliqué se comprend, un bouton inerte fait douter du
+			// logiciel entier.
 		}
 	}
 

@@ -128,12 +128,24 @@ export function CashTerminalPage() {
 				toast.error('Entreprise manquante')
 				return
 			}
-			await openSession.mutateAsync({
-				ownerCompanyId: activeCompanyId,
-				cashRegisterId,
-				openingFloat,
-				openedBy: user?.id,
-			})
+			try {
+				await openSession.mutateAsync({
+					ownerCompanyId: activeCompanyId,
+					cashRegisterId,
+					openingFloat,
+					openedBy: user?.id,
+				})
+			} catch (error) {
+				// Le message vient du serveur et il est explicite — « la journée
+				// du 31 août est clôturée par Z-2026-000066 ». Sans ce toast,
+				// le refus était MUET et le bouton paraissait mort.
+				toast.error(
+					error instanceof Error
+						? error.message
+						: "Impossible d'ouvrir la journée",
+				)
+				throw error
+			}
 			setShowOuvertureDialog(false)
 			toast.success('Journée ouverte')
 		},

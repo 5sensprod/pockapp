@@ -42,6 +42,18 @@ quand seule la CLÔTURE a lieu après minuit, les ventes de la soirée portent d
 la date de la veille. Aligner les journaux demanderait de déplacer aussi leurs
 bornes SQL ; le faire à moitié perdrait des documents aux bords.
 
+**Suite, le 1er septembre 2026 — un refus muet vaut un bouton mort.** Après une
+clôture faite à 01 h 29, « Commencer la journée » ne faisait plus rien. Le
+serveur répondait pourtant correctement : 400, « la journée du 31 août est
+clôturée par Z-2026-000066 » — la bascule ayant bien rattaché la clôture au 31,
+et le 31 restant la journée commerciale jusqu'à 4 h. Mais
+`OpenSessionDialog.handleSubmit` attrapait l'erreur dans un `catch {}` vide
+commenté « géré dans le hook », et le hook ne gérait rien : aucun message
+n'atteignait l'écran. Le terminal affiche désormais le message du serveur, et
+celui-ci nomme l'heure de bascule au lieu de promettre « demain ». Un refus
+expliqué se comprend ; un bouton inerte fait douter du logiciel entier. Gardien
+dans `frontend/modules/cash/cloture-journee.test.ts`.
+
 **Écarté — assouplir le refus de réouverture.** Les ventes suivantes seraient
 ressorties « à clôturer » sans jamais pouvoir entrer dans un Z, un seul rapport
 existant par journée. C'était déplacer le trou, pas le boucher.

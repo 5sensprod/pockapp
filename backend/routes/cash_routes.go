@@ -240,9 +240,13 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		// à 00 h 30, « aujourd'hui » est encore la journée de la veille.
 		jour := backend.JourCommercialDe(time.Now())
 		if numero, cloturee := backend.JourneeEstCloturee(dao, payload.CashRegister, jour); cloturee {
+			// Le message DIT l'heure de bascule : sans elle, « demain » est
+			// faux et incompréhensible. Une clôture faite à 01 h 29 scelle la
+			// journée de la veille, et la suivante ne commence qu'à 4 h — pas
+			// à minuit.
 			return apis.NewBadRequestError(fmt.Sprintf(
-				"La journée du %s est clôturée par le rapport %s : elle ne se rouvre pas. La prochaine journée s'ouvrira demain.",
-				jour, numero,
+				"La journée commerciale du %s est clôturée par le rapport %s : elle ne se rouvre pas. La journée suivante commence à %dh00.",
+				jour, numero, backend.HeureDeBascule,
 			), nil)
 		}
 

@@ -131,3 +131,21 @@ describe('deux listes de Z ne partagent pas une case de cache', () => {
 		)
 	})
 })
+
+describe("un refus d'ouverture ne reste jamais muet", () => {
+	it('le terminal affiche le message du serveur', () => {
+		// Le catch du dialogue disait « géré dans le hook », et le hook ne
+		// gérait rien : un 400 « la journée est déjà clôturée » ne produisait
+		// AUCUN message, et le bouton « Commencer la journée » paraissait mort.
+		// Un refus expliqué se comprend ; un bouton inerte fait douter du
+		// logiciel entier.
+		const terminal = lire('modules/cash/CashTerminalPage.tsx')
+		const debut = terminal.indexOf('const handleCommencerLaJournee')
+		expect(debut).toBeGreaterThan(-1)
+		// La fenêtre couvre largement le callback, sans dépendre du code qui
+		// le suit — un repère de fin nommé se déplacerait au prochain refactor.
+		const bloc = terminal.slice(debut, debut + 1400)
+		expect(bloc).toMatch(/catch \(error\)/)
+		expect(bloc).toMatch(/toast\.error/)
+	})
+})
