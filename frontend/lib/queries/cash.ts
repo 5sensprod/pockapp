@@ -532,8 +532,14 @@ export function useCloseCashSession() {
 				)
 			}
 
-			const session = (await res.json()) as CashSession
-			return session
+			// Depuis le 31 août 2026, la route CLÔTURE ET ÉMET LE Z : elle rend
+			// la session fermée, la journée clôturée et le rapport. Le front ne
+			// déclenche plus la génération — voir backend/routes/cash_routes.go.
+			return (await res.json()) as {
+				session: CashSession
+				date: string
+				z_report: RapportZ
+			}
 		},
 		onSuccess: (_, params) => {
 			queryClient.invalidateQueries({

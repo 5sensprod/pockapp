@@ -4,6 +4,7 @@
 package routes
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -228,6 +229,21 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 				"Une session est déjà ouverte pour cette caisse", nil)
 		}
 
+		// UNE JOURNÉE CLÔTURÉE NE SE ROUVRE PAS (31 août 2026).
+		//
+		// « Commencer la journée » est un geste délibéré : on le refuse. Le
+		// filet de backend.SessionDuJour, lui, n'est PAS refusé — un
+		// encaissement espèces sans session est perdu en silence
+		// (backend/session_du_jour.go). Le lendemain du Z, cette caisse n'a
+		// plus de Z à sa date et l'ouverture repasse.
+		jour := time.Now().Format("2006-01-02")
+		if numero, cloturee := backend.JourneeEstCloturee(dao, payload.CashRegister, jour); cloturee {
+			return apis.NewBadRequestError(fmt.Sprintf(
+				"La journée du %s est clôturée par le rapport %s : elle ne se rouvre pas. La prochaine journée s'ouvrira demain.",
+				jour, numero,
+			), nil)
+		}
+
 		collection, _ := dao.FindCollectionByNameOrId("cash_sessions")
 		rec := models.NewRecord(collection)
 		rec.Set("owner_company", payload.OwnerCompany)
@@ -276,36 +292,35 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 	// ----------------------------------------------------------------------
 	router.POST("/api/cash/session/:id/close", func(c echo.Context) error {
 		info := apis.RequestInfo(c)
-		dao := app.Dao()
 		id := c.PathParam("id")
-
-		rec, err := dao.FindRecordById("cash_sessions", id)
-		if err != nil {
-			return apis.NewNotFoundError("Session introuvable", err)
-		}
-
-		if rec.GetString("status") != "open" {
-			return apis.NewBadRequestError("Session déjà fermée", nil)
-		}
 
 		var payload CloseSessionInput
 		_ = c.Bind(&payload)
 
-		rec.Set("closed_at", time.Now())
-		rec.Set("status", "closed")
-
-		if payload.CountedCashTotal > 0 {
-			rec.Set("counted_cash_total", payload.CountedCashTotal)
-		}
+		utilisateur := ""
 		if info.AuthRecord != nil {
-			rec.Set("closed_by", info.AuthRecord.Id)
+			utilisateur = info.AuthRecord.Id
 		}
 
-		if err := dao.SaveRecord(rec); err != nil {
-			return apis.NewApiError(500, "Impossible de fermer la session", err)
+		// LA CLÔTURE FERME ET ÉMET LE Z, D'UN SEUL GESTE (31 août 2026).
+		// La règle vit dans backend/cloture_journee.go — cette route n'est
+		// qu'une enveloppe, pour que le rejeu d'une journée exerce le MÊME
+		// code que le bouton.
+		resultat, err := backend.CloturerLaJournee(app, id, payload.CountedCashTotal, utilisateur)
+		if err != nil {
+			var refus *backend.ErreurCloture
+			if errors.As(err, &refus) && refus.Refus {
+				// Rien n'a été écrit : la session est intacte.
+				return apis.NewBadRequestError(refus.Message, nil)
+			}
+			return apis.NewApiError(500, err.Error(), err)
 		}
 
-		return c.JSON(http.StatusOK, rec)
+		return c.JSON(http.StatusOK, echo.Map{
+			"session":  resultat.Session,
+			"date":     resultat.Jour,
+			"z_report": resultat.Rapport,
+		})
 	},
 		apis.RequireRecordAuth(),
 	)

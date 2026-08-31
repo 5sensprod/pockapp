@@ -109,6 +109,22 @@ func sessionDuJourA(
 		cashRegisterID = caisse.Id
 	}
 
+	// ─── 1 bis. La journée est-elle déjà clôturée ? ─────────────────────────
+	//
+	// On le SIGNALE, on ne le refuse pas. Refuser ici rendrait à
+	// CreateCashMovementIfEspeces la porte que ce fichier a fermée : un
+	// encaissement espèces sans session est perdu, sans erreur et sans trace.
+	// Le geste délibéré, lui, est bien refusé — POST /api/cash/session/open
+	// (backend/routes/cash_routes.go). Les tickets de cette session rouverte
+	// ressortiront « à clôturer » dans le journal des ventes, et `z-clotures
+	// -jour` sait les sceller.
+	if numero, cloturee := JourneeEstCloturee(dao, cashRegisterID, jour); cloturee {
+		log.Printf(
+			"⚠️ Journée %s déjà clôturée par %s : session rouverte par le filet — ses tickets resteront hors Z jusqu'à une clôture manuelle",
+			jour, numero,
+		)
+	}
+
 	col, err := dao.FindCollectionByNameOrId("cash_sessions")
 	if err != nil {
 		return nil, fmt.Errorf("collection cash_sessions introuvable: %w", err)
@@ -241,4 +257,33 @@ func jourLocalDe(brut string) string {
 	// Date illisible : on retombe sur ce qui est écrit, plutôt que de rendre
 	// vide et de provoquer une fermeture impossible.
 	return jourDeLaDate(brut)
+}
+
+// JourLocalDe est jourLocalDe, exportée pour les routes : la clôture délibérée
+// (backend/routes/cash_routes.go) doit rattacher une session à SA journée
+// commerciale, exactement comme le fait le passage de journée. Deux lectures de
+// la date, ce serait deux journées possibles pour une même session.
+func JourLocalDe(brut string) string {
+	return jourLocalDe(brut)
+}
+
+// JourneeEstCloturee dit si une caisse porte déjà un rapport Z pour une journée.
+//
+// C'est la règle du 31 août 2026 : une journée clôturée ne se rouvre pas. Elle
+// s'applique au GESTE DÉLIBÉRÉ — « Commencer la journée » — et JAMAIS au filet
+// de sessionDuJourA : un encaissement espèces qui ne trouve pas de session est
+// PERDU EN SILENCE (voir l'en-tête de ce fichier), et une journée que le journal
+// des ventes signale « à clôturer » vaut mieux qu'un euro sans trace.
+func JourneeEstCloturee(dao *daos.Dao, cashRegisterID, jour string) (string, bool) {
+	if cashRegisterID == "" || jour == "" {
+		return "", false
+	}
+	z, err := dao.FindFirstRecordByFilter(
+		"z_reports",
+		fmt.Sprintf("cash_register = '%s' && date ~ '%s'", cashRegisterID, jour),
+	)
+	if err != nil || z == nil {
+		return "", false
+	}
+	return z.GetString("number"), true
 }

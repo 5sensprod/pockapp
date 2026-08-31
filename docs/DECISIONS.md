@@ -10,6 +10,95 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## La clôture de la journée émet son Z, dans la même route — 2026-08-31
+
+**Décision.** `POST /api/cash/session/:id/close` ferme la session **et** émet le
+rapport Z, d'un seul geste. La règle vit dans `backend/cloture_journee.go`
+(`CloturerLaJournee`) ; la route n'est qu'une enveloppe, et le front ne
+déclenche plus aucune génération. Une journée close sans Z n'est plus possible.
+
+**Le défaut, mesuré sur la base de production le 31 août 2026.** La clôture ne
+créait aucun rapport : session `6746j18fjydlegi` restée `open`, avec un
+`counted_cash_total` de **350 €**, et son unique ticket `TIK-2026-000855`
+(2,90 €) hors de toute clôture — le journal des ventes affichait « 1 ticket à
+clôturer » indéfiniment. Le dernier Z de la base datait du 29 août.
+
+**La cause immédiate est une lecture d'état React périmée.**
+`CloseSessionDialog.tsx` appelait `setPendingAction('closeAndZ')` puis
+`handleFirstSubmit()` **dans le même gestionnaire** ; `handleFirstSubmit` étant
+la closure du rendu courant, elle lisait `pendingAction` valant encore
+`'close'`. Le bouton « Clôturer la journée et générer le Z » exécutait donc le
+chemin du **comptage** : `useCountCashSession`, qui n'écrit que
+`counted_cash_total` et ne ferme rien. D'où, au centime, l'état mesuré. Le
+défaut ne se voyait ni au compilateur — les deux branches sont bien typées — ni
+à l'écran, où le toast « Comptage du tiroir enregistré » passe pour une
+confirmation. Il ne se déclenchait qu'au **premier** clic après ouverture de la
+modale, et un écart de caisse supérieur à 10 € le masquait : le passage par
+l'écran de confirmation provoquait le re-rendu manquant.
+
+**La cause de fond est l'architecture du flux.** Avant ce jour, la route de
+clôture se contentait de fermer. Le Z n'était produit que si le navigateur
+atteignait ensuite `/cash/rapport-z` avec `autoGenerate`, ce qui déclenchait
+`GET /api/cash/reports/z` — **un GET qui scelle un document fiscal**, au terme
+d'une chaîne d'effets React à six conditions. Une navigation interrompue, un
+onglet fermé, un rendu manqué produisaient la même journée orpheline par un
+autre chemin. Corriger le seul état React aurait laissé cette porte ouverte.
+
+**Une journée clôturée ne se rouvre pas — mais le filet, lui, n'est pas repris.**
+`POST /api/cash/session/open` (« Commencer la journée ») refuse si la caisse
+porte déjà un Z à cette date ; la journée suivante s'ouvre normalement, n'ayant
+pas de Z. `backend.SessionDuJour`, en revanche, **crée quand même** la session
+et se contente de le journaliser. C'est l'arbitrage rendu par le propriétaire le
+31 août : ce filet sert `CreateCashMovementIfEspeces`, et un encaissement
+espèces qui ne trouve pas de session est **perdu en silence** — la porte que
+`backend/session_du_jour.go` a été écrit pour fermer. Une journée que le journal
+des ventes signale « à clôturer » — visible, et rattrapable par
+`z-clotures -jour` — vaut mieux qu'un euro sans trace. Le refus porte donc sur
+le **geste délibéré**, jamais sur le filet.
+
+**Un Z à 0 est légitime.** Décision du propriétaire le même jour : une journée
+sans vente se clôture comme les autres, et son rapport porte 0,00 €. La
+protection posée le 29 août — « n'émets jamais de Z pour une journée sans
+activité » — visait `z-clotures`, qui **balaie le passé** sans qu'on désigne
+rien, et qui avait failli sceller un Z vide sur une session de test ; d'où son
+drapeau `-jour`. Ici, quelqu'un a cliqué « Clôturer la journée » : le geste
+désigne la journée.
+
+**Deux refus précèdent toute écriture.** Un Z déjà émis pour la journée, ou une
+autre session encore ouverte sur la caisse, font échouer la clôture **avant**
+que la session ne soit fermée. On ne ferme pas une session pour découvrir
+ensuite qu'elle ne pourra jamais entrer dans un Z verrouillé. Et le `closed_at`
+posé reste celui de **sa propre journée** quand la session est d'hier : la règle
+de `fermerAuPassageDeJournee` n'est pas dupliquée, elle est appliquée.
+
+**Écarté — corriger seulement le front.** Une ligne aurait suffi à faire repartir
+le bouton. Elle laissait un document fiscal dépendre d'une navigation React.
+
+**Écarté — faire générer le Z par un hook PocketBase à la fermeture de session.**
+Il se serait déclenché aussi sur `fermerAuPassageDeJournee`, donc au premier
+encaissement du lendemain, et aurait scellé les Z sans qu'aucun humain ne les
+demande. La clôture est un geste, pas un effet de bord.
+
+**Écarté — supprimer la session restée ouverte du 31 août.** Une `cash_session`
+ne s'efface jamais : `recalculerRapport` (`z_repair.go:224-231`) relit
+`session_ids` et échoue si une session manque.
+
+**Rien n'est recalculé.** `GenerateRapportZ`, donc `aggregateZ` et
+`z_lignes.go`, restent le chemin unique — une seconde implémentation des mêmes
+règles est ce qui a produit la régression du 20 mai 2026.
+
+**Ce qui la remettrait en cause :** plusieurs caisses par société. Le refus de
+réouverture est posé par caisse et par journée, ce qui reste juste, mais le
+message d'erreur, lui, parle de « la journée ».
+
+**Gardiens.** `backend/cloture_journee_test.go` (le rejeu complet : ouvrir,
+encaisser 2,90 €, clôturer, Z émis et haché, journal sans badge, refus de
+rouvrir, lendemain ouvrable ; plus le Z à 0 et le filet non repris) et
+`frontend/modules/cash/cloture-journee.test.ts` (l'action se passe en
+paramètre, jamais relue dans l'état ; plus aucun `autoGenerate`).
+
+---
+
 ## Un moyen de paiement, une seule ligne de ventilation — 2026-08-31
 
 **Décision.** Les codes hérités que portent les documents — `cb`, `especes`,

@@ -174,13 +174,24 @@ export function CloseSessionDialog({
 	const difference = countedTotal - expectedCash
 	const isDifferenceHigh = Math.abs(difference) > 10
 
-	const handleFirstSubmit = () => {
+	// ⚠️ L'ACTION SE PASSE EN PARAMÈTRE, ELLE NE SE LIT PAS DANS L'ÉTAT.
+	//
+	// Le défaut du 31 août 2026 est né exactement là : handleCloseAndGenerateZ
+	// appelait setPendingAction('closeAndZ') puis handleFirstSubmit() dans le
+	// MÊME gestionnaire. handleFirstSubmit est la closure du rendu courant, où
+	// pendingAction valait encore 'close' : le bouton « Clôturer la journée et
+	// générer le Z » exécutait le chemin du comptage, la session restait
+	// ouverte et aucun Z n'était jamais demandé. Mesuré en production : session
+	// 6746j18fjydlegi, counted_cash_total 350 €, status 'open', 1 ticket hors Z.
+	//
+	// `pendingAction` ne sert plus qu'aux libellés des boutons.
+	const handleFirstSubmit = (action: 'close' | 'closeAndZ') => {
 		// 🆕 Garde-fou : si l'utilisateur a choisi "Clôturer et générer le Z"
 		// mais qu'un Z existe déjà pour cette caisse aujourd'hui (ou qu'une
 		// autre session est encore ouverte), on bloque AVANT de fermer la
 		// session — un Z déjà généré est verrouillé (NF525) et ne pourra
 		// jamais inclure les ventes de cette session après coup.
-		if (pendingAction === 'closeAndZ' && !canGenerateZAfterClose) {
+		if (action === 'closeAndZ' && !canGenerateZAfterClose) {
 			if (zAlreadyExistsForToday) {
 				toast.error(
 					"Un rapport Z existe déjà pour cette caisse aujourd'hui. " +
@@ -197,12 +208,10 @@ export function CloseSessionDialog({
 		}
 
 		if (isDifferenceHigh) setShowConfirm(true)
-		else handleFinalSubmit()
+		else handleFinalSubmit(action)
 	}
 
-	const handleFinalSubmit = () => {
-		const action = pendingAction
-
+	const handleFinalSubmit = (action: 'close' | 'closeAndZ') => {
 		// Comptage seul : on enregistre le tiroir et on s'arrête là.
 		if (action === 'close') {
 			countSession(
@@ -233,33 +242,32 @@ export function CloseSessionDialog({
 				countedCashTotal: countedTotal,
 			},
 			{
-				onSuccess: () => {
+				onSuccess: (result) => {
 					form.reset()
 					setShowConfirm(false)
 
-					if (action === 'closeAndZ') {
-						toast.success('Session fermée — génération du Z…')
-						setIsGeneratingZRedirect(true)
+					// Le Z est DÉJÀ ÉMIS : la route de clôture le fait elle-même
+					// (backend/routes/cash_routes.go). On ne navigue plus avec
+					// `autoGenerate` — plus aucun rendu React ne se tient entre
+					// une journée close et son document fiscal.
+					toast.success(
+						`Journée clôturée — rapport ${result.z_report?.number ?? 'Z'} émis`,
+					)
+					setIsGeneratingZRedirect(true)
 
-						// 🔧 On navigue AVANT de fermer la modale : fermer la modale
-						// déclenche un re-render de CashModuleShell qui démonte ce
-						// composant (cash.activeSession devient null), ce qui peut
-						// interrompre l'appel navigate() s'il est passé après.
-						navigate({
-							to: '/cash/rapport-z',
-							search: () => ({
-								register: (session as any).cash_register,
-								date: sessionDate,
-								autoGenerate: true,
-							}),
-						}).finally(() => {
-							onOpenChange(false)
-						})
-						return
-					}
-
-					toast.success('Session fermée avec succès')
-					onOpenChange(false)
+					// 🔧 On navigue AVANT de fermer la modale : fermer la modale
+					// déclenche un re-render de CashModuleShell qui démonte ce
+					// composant (cash.activeSession devient null), ce qui peut
+					// interrompre l'appel navigate() s'il est passé après.
+					navigate({
+						to: '/cash/rapport-z',
+						search: () => ({
+							register: (session as any).cash_register,
+							date: result.date ?? sessionDate,
+						}),
+					}).finally(() => {
+						onOpenChange(false)
+					})
 				},
 				onError: (error: any) => {
 					setIsGeneratingZRedirect(false)
@@ -271,12 +279,12 @@ export function CloseSessionDialog({
 
 	const handleCloseOnly = () => {
 		setPendingAction('close')
-		handleFirstSubmit()
+		handleFirstSubmit('close')
 	}
 
 	const handleCloseAndGenerateZ = () => {
 		setPendingAction('closeAndZ')
-		handleFirstSubmit()
+		handleFirstSubmit('closeAndZ')
 	}
 
 	return (
@@ -572,7 +580,7 @@ export function CloseSessionDialog({
 							</Button>
 							<Button
 								variant='destructive'
-								onClick={handleFinalSubmit}
+								onClick={() => handleFinalSubmit(pendingAction)}
 								disabled={
 									isPending ||
 									(pendingAction === 'closeAndZ' && !canGenerateZAfterClose)
