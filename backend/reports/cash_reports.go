@@ -340,37 +340,26 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		if ligne == LigneRemboursements {
 			creditNotesCount++
 			refundsTotalTTC += montant
-			rm := inv.GetString("payment_method_label")
-			if rm == "" {
-				rm = inv.GetString("refund_method")
-				if rm == "" {
-					rm = "autre"
-				}
-			}
+			rm := libelleMoyenRemboursement(inv)
 			refundsByMethod[rm] += montant
 			collectedByMethod[rm] -= montant
 			continue
 		}
 
-		method := inv.GetString("payment_method_label")
-		if method == "" {
-			method = inv.GetString("payment_method")
-		}
+		// Même résolution que dans le Z : le X et le Z affichent la même
+		// ventilation le même jour, ils ne peuvent pas la nommer autrement.
+		method := libelleMoyenPaiement(inv)
 
 		if ligne == LigneCreances {
 			ligneCreances.ajouter(montant)
-			if method != "" {
-				collectedByMethod[method] += montant
-			}
+			collectedByMethod[method] += montant
 			continue
 		}
 
 		if ligne == LigneAcomptes {
 			depositsCount++
 			depositsTTC += montant
-			if method != "" {
-				collectedByMethod[method] += montant
-			}
+			collectedByMethod[method] += montant
 			continue
 		}
 
@@ -1001,10 +990,7 @@ func aggregateZ(
 					creditNotesTotal += amt
 
 					// ✅ remboursements par mode
-					rm := inv.GetString("refund_method")
-					if rm == "" {
-						rm = "autre"
-					}
+					rm := libelleMoyenRemboursement(inv)
 					sessionRefundsByMethod[rm] += amt
 					refundsByMethod[rm] += amt
 
@@ -1242,9 +1228,7 @@ func aggregateZ(
 		if ligne != LigneAucune {
 			moyen := libelleMoyenPaiement(inv)
 			if ligne == LigneRemboursements {
-				if rm := inv.GetString("refund_method"); rm != "" {
-					moyen = rm
-				}
+				moyen = libelleMoyenRemboursement(inv)
 			}
 			piece := SalesDocument{
 				ID:       inv.Id,
@@ -1275,13 +1259,7 @@ func aggregateZ(
 			b2bCreditNotesCount++
 			b2bCreditNotesTotal += montant
 
-			rm := inv.GetString("refund_method")
-			if rm == "" {
-				rm = inv.GetString("payment_method")
-			}
-			if rm == "" {
-				rm = "autre"
-			}
+			rm := libelleMoyenRemboursement(inv)
 			refundsByMethod[rm] += montant
 			collectedByMethod[rm] -= montant
 
@@ -2095,4 +2073,34 @@ func libelleMoyenPaiement(inv *models.Record) string {
 		return m
 	}
 	return "Non précisé"
+}
+
+// libelleMoyenRemboursement rend le moyen par lequel un avoir a été remboursé.
+//
+// POURQUOI ELLE EXISTE — le 31 août 2026, quatre endroits lisaient
+// `refund_method` en direct, chacun avec son propre repli : le total des
+// remboursements du Z, la boucle des sessions, la branche B2B, et le journal
+// des ventes. Aucun ne passait par la table des codes hérités : sept rapports
+// ventilaient encore un remboursement sous `cb` ou `especes`, à côté de
+// « Carte bancaire » et « Espèces » — le défaut exact que la table venait de
+// corriger sur les encaissements, sur l'autre moitié du chemin.
+//
+// L'ordre de résolution est celui de `libelleMoyenPaiement`, prolongé : le
+// libellé porté par le document d'abord — c'est lui qui distingue « Pass
+// Culture » —, puis le moyen de remboursement, puis le moyen d'encaissement
+// d'origine, et « autre » en dernier recours. Les quatre replis d'avant sont
+// des sous-ensembles de celui-ci.
+func libelleMoyenRemboursement(inv *models.Record) string {
+	if m := inv.GetString("payment_method_label"); m != "" {
+		return m
+	}
+	for _, champ := range []string{"refund_method", "payment_method"} {
+		if m := inv.GetString(champ); m != "" {
+			if libelle, connu := libellesDesCodesHerites[m]; connu {
+				return libelle
+			}
+			return m
+		}
+	}
+	return "autre"
 }

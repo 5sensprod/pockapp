@@ -198,12 +198,8 @@ func JournalDesVentes(
 			j.ParMoyen[moyen] += montant
 		case LigneRemboursements:
 			j.Remboursements += montant
-			rm := inv.GetString("refund_method")
-			if rm == "" {
-				rm = moyen
-			}
-			moyen = rm
-			j.ParMoyen[rm] -= montant
+			moyen = libelleMoyenRemboursement(inv)
+			j.ParMoyen[moyen] -= montant
 		default:
 			return
 		}

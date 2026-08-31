@@ -72,3 +72,44 @@ func TestLeLibelleDuDocumentLEmporteSurLaTable(t *testing.T) {
 		t.Errorf("%q au lieu de « 3XCB »", got)
 	}
 }
+
+func avoirRembourse(refund, paiement, libelle string) *models.Record {
+	rec := documentAvecMoyen(paiement, libelle)
+	rec.Set("refund_method", refund)
+	return rec
+}
+
+// Un remboursement se ventile sous le MÊME libellé que l'encaissement.
+// Mesuré le 31 août 2026 : sept rapports portaient encore `cb` ou `especes` en
+// négatif, à côté de « Carte bancaire » et « Espèces » — quatre endroits
+// lisaient `refund_method` en direct, sans passer par la table.
+func TestUnRemboursementSeVentileSousLeMemeLibelleQuUnEncaissement(t *testing.T) {
+	cas := []struct{ refund, attend string }{
+		{"cb", "Carte bancaire"},
+		{"especes", "Espèces"},
+		{"cheque", "Chèque"},
+		{"virement", "Virement"},
+	}
+	for _, c := range cas {
+		if got := libelleMoyenRemboursement(avoirRembourse(c.refund, "", "")); got != c.attend {
+			t.Errorf("refund_method %q : %q au lieu de %q", c.refund, got, c.attend)
+		}
+	}
+}
+
+// L'ordre de résolution : le libellé du document, puis le moyen de
+// remboursement, puis le moyen d'encaissement d'origine, puis « autre ».
+func TestLeMoyenDeRemboursementSeResoutDansCetOrdre(t *testing.T) {
+	if got := libelleMoyenRemboursement(avoirRembourse("cb", "especes", "Pass Culture")); got != "Pass Culture" {
+		t.Errorf("le libellé du document doit primer, obtenu %q", got)
+	}
+	if got := libelleMoyenRemboursement(avoirRembourse("", "cb", "")); got != "Carte bancaire" {
+		t.Errorf("sans refund_method, le moyen d'origine ; obtenu %q", got)
+	}
+	if got := libelleMoyenRemboursement(avoirRembourse("", "", "")); got != "autre" {
+		t.Errorf("sans rien : %q au lieu de « autre »", got)
+	}
+	if got := libelleMoyenRemboursement(avoirRembourse("autre", "", "")); got != "autre" {
+		t.Errorf("un `autre` explicite reste « autre », obtenu %q", got)
+	}
+}
