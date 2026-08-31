@@ -152,6 +152,7 @@ func cloturerLaJourneeA(
 	// sinon on retombe sur la fin de la journée, comme fermerAuPassageDeJournee.
 	instant := maintenant.UTC().Format("2006-01-02 15:04:05.000Z")
 	if jourDeLaDate(instant) == jour {
+		// L'instant s'écrit bien dans la journée du rapport.
 		session.Set("closed_at", instant)
 	} else {
 		session.Set("closed_at", jour+" 23:59:59.000Z")

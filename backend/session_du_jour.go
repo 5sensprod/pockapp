@@ -84,7 +84,10 @@ func sessionDuJourA(
 		return nil, fmt.Errorf("owner_company requis pour ouvrir la session du jour")
 	}
 
-	jour := maintenant.Format("2006-01-02")
+	// La journée COMMERCIALE, bascule de 4 h comprise — jamais
+	// `maintenant.Format("2006-01-02")`, qui ferait naître une session du
+	// lendemain pour un encaissement de 00 h 30.
+	jour := JourCommercialDe(maintenant)
 
 	// ─── 1. Une session est-elle déjà ouverte ? ─────────────────────────────
 	ouverte := sessionOuverte(dao, ownerCompany)
@@ -237,12 +240,62 @@ func jourDeLaDate(brut string) string {
 	return brut[:10]
 }
 
+// HeureDeBascule est l'heure à laquelle la JOURNÉE COMMERCIALE change.
+//
+// ── POURQUOI ELLE EXISTE (1er septembre 2026) ─────────────────────────────
+// Une journée de commerce ne se termine pas à minuit : elle se termine quand le
+// commerçant ferme. Sans bascule, un ticket passé à 00 h 32 appartenait au
+// LENDEMAIN, et le clôturer à 00 h 33 scellait un jour qui n'avait pas encore
+// commencé. Mesuré ce jour-là sur la base de production : Z-2026-000066 daté du
+// 1er septembre, émis à 00 h 33 pour un ticket de 2,90 €, et « Commencer la
+// journée » refusant ensuite d'ouvrir le 1er — à raison, puisqu'il portait un Z.
+//
+// Le trou était plus profond que le blocage : GenerateRapportZ n'admet qu'UN Z
+// par caisse et par journée. Une journée scellée à 00 h 33 n'aurait plus jamais
+// pu accueillir une vente dans un rapport. Le garde-fou « une journée clôturée
+// ne se rouvre pas » n'a pas créé ce trou ; il l'a rendu visible au lieu de
+// silencieux.
+//
+// 04 h 00, arbitré par le propriétaire le 1er septembre 2026 — l'usage courant
+// en caisse. Tout ce qui est encaissé entre minuit et 4 h appartient à la
+// journée de la veille.
+//
+// ── LA PORTÉE, ET SA LIMITE CONNUE ────────────────────────────────────────
+// La bascule vaut pour la JOURNÉE DE SESSION : à quelle journée un encaissement
+// se rattache, quelle date porte son Z, et quelle journée « Commencer la
+// journée » ouvre. Elle NE change PAS le rangement du journal des ventes ni
+// celui du journal des espèces, qui bucketisent sur les dix premiers caractères
+// de `date` / `created`, écrits en UTC (journal.go, journal_especes.go:231).
+//
+// Conséquence assumée : une vente réellement passée entre 2 h et 4 h du matin
+// entre dans le Z de la veille — son ticket suit sa session, et aggregateZ
+// collecte par session — mais s'affiche au journal à la date du lendemain. Le
+// cas courant, lui, est couvert sans écart : quand la clôture seule a lieu après
+// minuit, les ventes de la soirée portent déjà la date de la veille.
+// Aligner les journaux demanderait de déplacer aussi leurs bornes SQL ; c'est un
+// second chantier, et le faire à moitié perdrait des documents aux bords.
+const HeureDeBascule = 4
+
+// JourCommercialDe rend la journée commerciale d'un instant, à l'heure locale.
+//
+// C'est le point de passage UNIQUE de la bascule : `jourLocalDe` s'y ramène, et
+// tout ce qui a besoin de « quel jour sommes-nous ? » côté caisse doit passer
+// par ici plutôt que par `time.Now().Format("2006-01-02")`. Une seconde lecture
+// de la journée, c'est une seconde vérité — et c'est ce qui a produit trois mois
+// de Z faux le 20 mai 2026, transposé au calendrier.
+func JourCommercialDe(t time.Time) string {
+	return t.Local().Add(-HeureDeBascule * time.Hour).Format("2006-01-02")
+}
+
 // jourLocalDe rend la JOURNÉE COMMERCIALE d'un instant stocké en UTC.
 //
 // Une caisse ne raisonne pas en UTC : « aujourd'hui » est la journée du
 // commerçant. Un encaissement du 29 août à 00 h 30 (heure de Paris) est stocké
 // « 2026-08-28 22:30:00Z » ; lire ses dix premiers caractères le rattacherait au
 // 28 et ferait rouvrir une session pour rien.
+//
+// Et depuis le 1er septembre 2026 la bascule de 4 h s'applique : ce même
+// encaissement de 00 h 30 appartient à la journée du 28, pas du 29.
 func jourLocalDe(brut string) string {
 	for _, forme := range []string{
 		"2006-01-02 15:04:05.000Z",
@@ -251,7 +304,7 @@ func jourLocalDe(brut string) string {
 		"2006-01-02T15:04:05Z07:00",
 	} {
 		if t, err := time.Parse(forme, brut); err == nil {
-			return t.Local().Format("2006-01-02")
+			return JourCommercialDe(t)
 		}
 	}
 	// Date illisible : on retombe sur ce qui est écrit, plutôt que de rendre

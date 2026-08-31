@@ -10,6 +10,57 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## La journée commerciale bascule à 4 h du matin — 2026-09-01
+
+**Décision.** `HeureDeBascule = 4` (`backend/session_du_jour.go`). Tout ce qui
+est encaissé entre minuit et 4 h appartient à la journée de la VEILLE.
+`JourCommercialDe` est le point de passage unique ; `jourLocalDe` s'y ramène, et
+plus rien côté caisse ne lit `time.Now().Format("2006-01-02")`.
+
+**Le défaut, mesuré sur la base de production.** Un ticket de test passé à
+**00 h 32** heure locale ouvrait une session datée du **lendemain**. Le clôturer
+à 00 h 33 a scellé `Z-2026-000066` sur le **1er septembre**, et « Commencer la
+journée » a ensuite refusé d'ouvrir le 1er — `400 Bad Request` sur
+`/api/cash/session/open`, à raison : la journée portait un Z.
+
+**Le trou était plus profond que le blocage.** `GenerateRapportZ` n'admet qu'UN
+rapport par caisse et par journée — son `existingFilter` rend le Z existant au
+lieu d'en créer un second. Une journée scellée à 00 h 33 n'aurait donc **plus
+jamais** pu accueillir une vente dans un rapport. Ce trou est antérieur au
+garde-fou « une journée clôturée ne se rouvre pas » : celui-ci ne l'a pas créé,
+il l'a rendu visible au lieu de silencieux. C'est la raison d'être du garde-fou.
+
+**Portée, et limite connue.** La bascule vaut pour la JOURNÉE DE SESSION : à
+quelle journée un encaissement se rattache, quelle date porte son Z, quelle
+journée « Commencer la journée » ouvre. Elle ne change PAS le rangement du
+journal des ventes ni celui du journal des espèces, qui bucketisent sur les dix
+premiers caractères de `date` / `created`, écrits en UTC. Conséquence assumée :
+une vente réellement passée entre 2 h et 4 h entre dans le Z de la veille — son
+ticket suit sa session, et `aggregateZ` collecte par session — mais s'affiche au
+journal à la date du lendemain. Le cas courant, lui, est couvert sans écart :
+quand seule la CLÔTURE a lieu après minuit, les ventes de la soirée portent déjà
+la date de la veille. Aligner les journaux demanderait de déplacer aussi leurs
+bornes SQL ; le faire à moitié perdrait des documents aux bords.
+
+**Écarté — assouplir le refus de réouverture.** Les ventes suivantes seraient
+ressorties « à clôturer » sans jamais pouvoir entrer dans un Z, un seul rapport
+existant par journée. C'était déplacer le trou, pas le boucher.
+
+**Écarté — supprimer le Z mal daté.** Un Z ne s'efface pas. Le propriétaire a
+restauré sa sauvegarde `lundi_31_08` — 65 rapports, 1236 factures, dernière
+pièce au 29 août ; la seule pièce perdue est `TIK-2026-000855`, son propre
+ticket de test à 2,90 €. Les 65 rapports ont été rejoués ensuite :
+**0 aux montants corrigés, 65 enrichis, +0,00 € de correction cumulée.**
+
+**Gardiens.** `TestUneVenteDuPetitMatinAppartientALaVeille` — 00 h 32 rendu
+comme la veille, une seule session du soir au petit matin, le Z émis sur la
+bonne journée, et le lendemain resté ouvrable.
+`TestLaJourneeEstCelleDuCommercantPasCelleDUTC` a été réécrit : son témoin était
+00 h 30, que la bascule rattache maintenant à la veille ; la règle « locale, pas
+UTC » se prouve désormais à 05 h 00, du bon côté de la bascule.
+
+---
+
 ## Le Z déclare la TVA des acomptes, hors de `total_tva` — 2026-09-01
 
 **Décision.** `schema_version` **7**. Le rapport Z porte `deposits_vat` et sa

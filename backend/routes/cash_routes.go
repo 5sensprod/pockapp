@@ -236,7 +236,9 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		// encaissement espèces sans session est perdu en silence
 		// (backend/session_du_jour.go). Le lendemain du Z, cette caisse n'a
 		// plus de Z à sa date et l'ouverture repasse.
-		jour := time.Now().Format("2006-01-02")
+		// La journée COMMERCIALE (bascule de 4 h), pas la date du calendrier :
+		// à 00 h 30, « aujourd'hui » est encore la journée de la veille.
+		jour := backend.JourCommercialDe(time.Now())
 		if numero, cloturee := backend.JourneeEstCloturee(dao, payload.CashRegister, jour); cloturee {
 			return apis.NewBadRequestError(fmt.Sprintf(
 				"La journée du %s est clôturée par le rapport %s : elle ne se rouvre pas. La prochaine journée s'ouvrira demain.",
@@ -344,7 +346,7 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 
 		jour := c.QueryParam("date")
 		if jour == "" {
-			jour = time.Now().Format("2006-01-02")
+			jour = backend.JourCommercialDe(time.Now())
 		}
 
 		// La PROVENANCE part avec le montant (31 août 2026). L'écran annonçait

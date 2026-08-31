@@ -144,7 +144,11 @@ func TestUneJourneeImpliciteEntreDansLeZDeSaJournee(t *testing.T) {
 	app := nouvelleAppDeTestCaisse(t)
 	caisse := creerCaisse(t, app, "co1")
 
-	veille := time.Now().AddDate(0, 0, -1)
+	// Dates FIXES : avec la bascule de 4 h, un test lancé entre minuit et 4 h
+	// verrait `time.Now()` tomber dans la journée de la veille, et les deux
+	// sessions n'en feraient qu'une. La règle testée n'a rien à voir avec
+	// l'heure d'exécution — mesuré le 1er septembre 2026 à 01 h.
+	veille := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
 	jourVeille := veille.Format("2006-01-02")
 
 	// 1. Le premier encaissement de la veille ouvre la session, tout seul.
@@ -177,7 +181,8 @@ func TestUneJourneeImpliciteEntreDansLeZDeSaJournee(t *testing.T) {
 
 	// 2. Le lendemain, le premier encaissement ferme la veille et en ouvre une
 	//    nouvelle — sans que personne n'ait cliqué sur quoi que ce soit.
-	if _, err := sessionDuJourA(app.Dao(), "co1", caisse.Id, "user1", time.Now()); err != nil {
+	lendemain := veille.AddDate(0, 0, 1)
+	if _, err := sessionDuJourA(app.Dao(), "co1", caisse.Id, "user1", lendemain); err != nil {
 		t.Fatalf("session du lendemain: %v", err)
 	}
 
@@ -299,21 +304,27 @@ func creerCaisse(t *testing.T, app *pocketbase.PocketBase, societe string) *mode
 	return rec
 }
 
-// Un encaissement à 00 h 30 appartient à la journée du COMMERÇANT, pas à celle
-// d'UTC. Mesuré le 29 août 2026 : `opened_at` s'écrivait en heure locale
+// Un encaissement du petit matin appartient à la journée du COMMERÇANT, pas à
+// celle d'UTC. Mesuré le 29 août 2026 : `opened_at` s'écrivait en heure locale
 // suffixée d'un « Z », soit deux heures inventées par rapport au `created` du
 // ticket. Corrigé — l'instant est stocké en UTC, la journée reste locale.
+//
+// ⚠️ Réécrit le 1er septembre 2026 : le témoin était 00 h 30, or la bascule de
+// 4 h le rattache désormais à la VEILLE. La règle testée ici — la journée est
+// locale, pas UTC — vaut toujours ; on la prouve maintenant à 05 h 00, du bon
+// côté de la bascule. La bascule elle-même a son propre gardien ci-dessous.
 func TestLaJourneeEstCelleDuCommercantPasCelleDUTC(t *testing.T) {
 	app := nouvelleAppDeTestCaisse(t)
 	caisse := creerCaisse(t, app, "co1")
 
-	// 00 h 30, heure locale : en été à Paris, c'est 22 h 30 UTC la VEILLE.
-	minuitPasse := time.Date(2026, 8, 30, 0, 30, 0, 0, time.Local)
+	// 05 h 00, heure locale : en été à Paris, c'est 03 h 00 UTC — même jour.
+	// Le témoin ne vaudrait rien à 09 h ; c'est près des bords qu'il mord.
+	tot := time.Date(2026, 8, 30, 5, 0, 0, 0, time.Local)
 	matin := time.Date(2026, 8, 30, 9, 0, 0, 0, time.Local)
 
-	premiere, err := sessionDuJourA(app.Dao(), "co1", caisse.Id, "user1", minuitPasse)
+	premiere, err := sessionDuJourA(app.Dao(), "co1", caisse.Id, "user1", tot)
 	if err != nil {
-		t.Fatalf("encaissement de 00 h 30: %v", err)
+		t.Fatalf("encaissement de 05 h 00: %v", err)
 	}
 	seconde, err := sessionDuJourA(app.Dao(), "co1", caisse.Id, "user1", matin)
 	if err != nil {
@@ -321,7 +332,7 @@ func TestLaJourneeEstCelleDuCommercantPasCelleDUTC(t *testing.T) {
 	}
 
 	if premiere.Id != seconde.Id {
-		t.Fatalf("00 h 30 et 9 h du MÊME jour ont donné deux sessions : la journée " +
+		t.Fatalf("05 h et 9 h du MÊME jour ont donné deux sessions : la journée " +
 			"a été lue en UTC et non en heure locale")
 	}
 
@@ -329,5 +340,58 @@ func TestLaJourneeEstCelleDuCommercantPasCelleDUTC(t *testing.T) {
 	if jourLocalDe(premiere.GetString("opened_at")) != "2026-08-30" {
 		t.Fatalf("opened_at = %q ne se relit pas comme le 30 août local",
 			premiere.GetString("opened_at"))
+	}
+}
+
+// LA BASCULE DE 4 H — une vente du petit matin appartient à la veille.
+//
+// Défaut du 1er septembre 2026 : un ticket passé à 00 h 32 ouvrait une session
+// datée du LENDEMAIN, et le clôturer à 00 h 33 scellait un jour qui n'avait pas
+// commencé. Comme GenerateRapportZ n'admet qu'UN Z par caisse et par journée,
+// plus aucune vente de ce jour-là n'aurait jamais pu entrer dans un rapport.
+func TestUneVenteDuPetitMatinAppartientALaVeille(t *testing.T) {
+	app := nouvelleAppDeTestCaisse(t)
+	caisse := creerCaisse(t, app, "co1")
+
+	soir := time.Date(2026, 8, 30, 21, 0, 0, 0, time.Local)
+	apresMinuit := time.Date(2026, 8, 31, 0, 32, 0, 0, time.Local)
+	apresLaBascule := time.Date(2026, 8, 31, 8, 0, 0, 0, time.Local)
+
+	if j := JourCommercialDe(apresMinuit); j != "2026-08-30" {
+		t.Fatalf("00 h 32 le 31 rendu comme journée %q, attendu 2026-08-30", j)
+	}
+	if j := JourCommercialDe(apresLaBascule); j != "2026-08-31" {
+		t.Fatalf("08 h 00 le 31 rendu comme journée %q, attendu 2026-08-31", j)
+	}
+
+	// La soirée et le ticket de 00 h 32 sont la MÊME journée : une seule session.
+	session, err := sessionDuJourA(app.Dao(), "co1", caisse.Id, "user1", soir)
+	if err != nil {
+		t.Fatalf("session du soir: %v", err)
+	}
+	tardive, err := sessionDuJourA(app.Dao(), "co1", caisse.Id, "user1", apresMinuit)
+	if err != nil {
+		t.Fatalf("encaissement de 00 h 32: %v", err)
+	}
+	if session.Id != tardive.Id {
+		t.Fatalf("le ticket de 00 h 32 a ouvert une SECONDE session : il serait " +
+			"rattaché au lendemain, et le clôturer scellerait un jour à peine commencé")
+	}
+
+	// Et la clôture faite à 00 h 33 émet le Z du 30, pas du 31.
+	creerTicket(t, app, session, "2026-08-30", "TIK-BASCULE", 2.90)
+	resultat, err := cloturerLaJourneeA(app, session.Id, 0, "user1",
+		time.Date(2026, 8, 31, 0, 33, 0, 0, time.Local))
+	if err != nil {
+		t.Fatalf("clôture à 00 h 33: %v", err)
+	}
+	if resultat.Jour != "2026-08-30" {
+		t.Fatalf("le Z porte la journée %q au lieu du 2026-08-30 : la journée du "+
+			"31 serait scellée avant d'avoir commencé", resultat.Jour)
+	}
+
+	// Le 31 reste ouvrable — c'est tout l'enjeu.
+	if _, cloturee := JourneeEstCloturee(app.Dao(), caisse.Id, "2026-08-31"); cloturee {
+		t.Fatalf("le 31 août est déclaré clôturé : « Commencer la journée » le refuserait")
 	}
 }
