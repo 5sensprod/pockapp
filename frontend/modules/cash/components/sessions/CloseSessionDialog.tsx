@@ -264,6 +264,9 @@ export function CloseSessionDialog({
 						search: () => ({
 							register: (session as any).cash_register,
 							date: result.date ?? sessionDate,
+							// Ouvrir le rapport, pas le fabriquer : il est déjà
+							// émis par la route de clôture, et déjà dans le cache.
+							afficher: true,
 						}),
 					}).finally(() => {
 						onOpenChange(false)

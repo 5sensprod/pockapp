@@ -541,18 +541,51 @@ export function useCloseCashSession() {
 				z_report: RapportZ
 			}
 		},
-		onSuccess: (_, params) => {
+		onSuccess: (data, params) => {
 			queryClient.invalidateQueries({
 				queryKey: cashKeys.activeSession(params.cashRegisterId),
 			})
 			queryClient.invalidateQueries({
 				queryKey: cashKeys.sessionHistory(params.cashRegisterId),
 			})
-			// 🆕 Invalider les vérifications Z car une nouvelle session est disponible
-			if (params.cashRegisterId) {
-				queryClient.invalidateQueries({
-					queryKey: cashKeys.zReports(),
-				})
+
+			if (!params.cashRegisterId) return
+
+			// ⚠️ `refetchType: 'all'`, ET C'EST LE POINT.
+			//
+			// Par défaut, invalidateQueries ne REFAIT que les requêtes actives.
+			// L'historique des Z (`zReportList`) ne l'est pas au moment de la
+			// clôture : on est encore sur le terminal, la page Rapport Z n'est
+			// pas montée. Elle était donc seulement marquée périmée, et selon
+			// l'ordre du montage et de la navigation la liste s'affichait telle
+			// qu'elle était AVANT la clôture — d'où « je dois rafraîchir la page
+			// pour voir tous les Z ». 'all' la refait tout de suite, montée ou
+			// non.
+			queryClient.invalidateQueries({
+				queryKey: cashKeys.zReports(),
+				refetchType: 'all',
+			})
+
+			// Le rapport est DANS la réponse : on le pose dans le cache plutôt
+			// que d'aller le redemander. La page Rapport Z l'affiche alors sans
+			// une seule requête — et sans qu'aucun rendu n'ait à le fabriquer.
+			// Après l'invalidation, jamais avant : l'inverse le marquerait
+			// périmé aussitôt posé.
+			if (data.z_report && data.date) {
+				queryClient.setQueryData(
+					cashKeys.zReportGenerate(params.cashRegisterId, data.date),
+					data.z_report,
+				)
+				queryClient.setQueryData(
+					cashKeys.zReportCheck(params.cashRegisterId, data.date),
+					{
+						exists: true,
+						can_generate: false,
+						available_sessions: 0,
+						number: data.z_report.number,
+						message: 'Rapport Z déjà généré pour cette date',
+					} satisfies ZReportCheckResponse,
+				)
 			}
 		},
 	})

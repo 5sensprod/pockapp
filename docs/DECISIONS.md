@@ -71,6 +71,17 @@ ensuite qu'elle ne pourra jamais entrer dans un Z verrouillé. Et le `closed_at`
 posé reste celui de **sa propre journée** quand la session est d'hier : la règle
 de `fermerAuPassageDeJournee` n'est pas dupliquée, elle est appliquée.
 
+**Suite, le même jour — l'historique des Z ne se rafraîchissait pas.** Le Z était
+bien émis, mais la page Rapport Z affichait la liste telle qu'elle était avant
+la clôture ; un F5 la corrigeait. Cause : `invalidateQueries` ne **refait** que
+les requêtes **actives**, et `zReportList` ne l'est pas au moment de la clôture
+— on est encore sur le terminal, la page Rapport Z n'est pas montée. Elle était
+seulement marquée périmée. D'où `refetchType: 'all'`. Et puisque le rapport est
+désormais **dans la réponse** de la route, il est posé directement dans le cache
+(`setQueryData`) : la page l'ouvre sans une seule requête. Le search param
+`autoGenerate` devient `afficher` — il n'y a plus rien à générer à l'arrivée, et
+le nom ne doit pas laisser croire le contraire.
+
 **Écarté — corriger seulement le front.** Une ligne aurait suffi à faire repartir
 le bouton. Elle laissait un document fiscal dépendre d'une navigation React.
 

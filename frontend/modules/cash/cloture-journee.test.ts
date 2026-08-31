@@ -55,6 +55,8 @@ describe('la clôture de journée ne peut plus perdre son Z', () => {
 			.join(String.fromCharCode(10))
 		expect(code).not.toMatch(/autoGenerate/)
 		expect(dialogue).toMatch(/result\.z_report/)
+		// Elle navigue en demandant d'OUVRIR le rapport, pas de le produire.
+		expect(code).toMatch(/afficher: true/)
 	})
 })
 
@@ -69,5 +71,21 @@ describe('la mutation de clôture rend le rapport émis', () => {
 		expect(bloc).toMatch(/z_report: RapportZ/)
 		// La clôture ne passe plus par le GET qui génère.
 		expect(bloc).not.toMatch(/reports\/z\?/)
+	})
+
+	it("l'historique des Z est refait même s'il n'est pas monté", () => {
+		// Sans refetchType 'all', invalidateQueries ne refait que les requêtes
+		// ACTIVES. L'historique ne l'est pas au moment de la clôture — on est
+		// encore sur le terminal — et la page Rapport Z l'affichait tel qu'il
+		// était avant. Signalé le 31 août 2026 : « je dois rafraîchir la page
+		// pour voir tous les Z ».
+		const bloc = requetes.slice(
+			requetes.indexOf('export function useCloseCashSession'),
+			requetes.indexOf('export function useFondsDuJour'),
+		)
+		expect(bloc).toMatch(/refetchType: 'all'/)
+		// Et le rapport reçu est posé dans le cache : la page l'affiche sans
+		// une seule requête.
+		expect(bloc).toMatch(/setQueryData\(\s*cashKeys\.zReportGenerate/)
 	})
 })
