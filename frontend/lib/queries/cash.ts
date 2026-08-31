@@ -50,8 +50,19 @@ export const cashKeys = {
 		[...cashKeys.zReports(), 'generate', cashRegisterId, date] as const,
 	zReportCheck: (cashRegisterId: string, date: string) =>
 		[...cashKeys.zReports(), 'check', cashRegisterId, date] as const,
-	zReportList: (cashRegisterId: string) =>
-		[...cashKeys.zReports(), 'list', cashRegisterId] as const,
+	// ⚠️ LA LIMITE FAIT PARTIE DE LA CLÉ, ET CE N'EST PAS UN DÉTAIL.
+	//
+	// Sans elle, deux requêtes DIFFÉRENTES partageaient une même case de cache :
+	// le terminal demande `limit: 1` pour afficher le dernier Z du rituel du
+	// matin (CashTerminalPage.tsx), la page Rapport Z demande tout l'historique.
+	// Celui qui répondait le dernier écrasait l'autre — d'où une page Rapport Z
+	// n'affichant qu'UN rapport, et l'historique complet qui revenait en
+	// changeant de page puis en revenant. Signalé les 31 août et 1er septembre
+	// 2026 ; ni le refetch forcé ni la limite portée à 500 n'y changeaient rien,
+	// puisque les deux requêtes étaient fraîches — elles n'étaient simplement
+	// pas la même.
+	zReportList: (cashRegisterId: string, limit?: number) =>
+		[...cashKeys.zReports(), 'list', cashRegisterId, limit ?? 'tous'] as const,
 	zReportById: (id: string) => [...cashKeys.zReports(), 'detail', id] as const,
 }
 
@@ -392,7 +403,7 @@ export function useZReportList(
 	const pb = usePocketBase()
 
 	return useQuery({
-		queryKey: cashKeys.zReportList(cashRegisterId),
+		queryKey: cashKeys.zReportList(cashRegisterId, options?.limit),
 		queryFn: async () => {
 			const token = pb.authStore.token
 			const limit = options?.limit ?? Z_PAR_DEFAUT

@@ -112,3 +112,22 @@ describe("l'historique des Z ne se sert jamais du cache", () => {
 		expect(requetes).not.toMatch(/options\?\.limit \?\? 50/)
 	})
 })
+
+describe('deux listes de Z ne partagent pas une case de cache', () => {
+	const requetes = lire('lib/queries/cash.ts')
+
+	it('la limite entre dans la clé', () => {
+		// Le terminal demande limit: 1 (dernier Z du rituel du matin), la page
+		// Rapport Z demande tout l'historique. Avec une clé commune, celui qui
+		// répondait le dernier écrasait l'autre : la page Rapport Z n'affichait
+		// qu'UN rapport, et l'historique revenait en changeant de page puis en
+		// revenant. Ni le refetch forcé ni la limite à 500 n'y pouvaient rien —
+		// les deux requêtes étaient fraîches, elles n'étaient pas la même.
+		expect(requetes).toMatch(
+			/zReportList: \(cashRegisterId: string, limit\?: number\)/,
+		)
+		expect(requetes).toMatch(
+			/cashKeys\.zReportList\(cashRegisterId, options\?\.limit\)/,
+		)
+	})
+})

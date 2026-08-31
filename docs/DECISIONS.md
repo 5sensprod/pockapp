@@ -10,6 +10,39 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Deux listes de Z ne partagent pas une case de cache — 2026-09-01
+
+**Décision.** La limite entre dans la clé TanStack Query :
+`zReportList(cashRegisterId, limit)`.
+
+**La cause, et elle explique tout le reste.** `useZReportList` était appelée à
+deux endroits avec deux besoins opposés — le terminal demande **`limit: 1`**
+pour afficher le dernier Z du rituel du matin
+(`CashTerminalPage.tsx:118`), la page Rapport Z demande **tout l'historique**
+(`useZReportGenerator.ts:39`) — et la clé ne portait que la caisse. Les deux
+requêtes écrivaient donc dans la MÊME case, et celle qui répondait la dernière
+écrasait l'autre. D'où une page Rapport Z n'affichant qu'un seul rapport, et
+l'historique complet qui revenait en changeant de page puis en revenant.
+
+**Ce qui a été essayé et n'a rien changé, faute d'avoir nommé la cause :** le
+`refetchType: 'all'` du 31 août, puis le `staleTime: 0` +
+`refetchOnMount: 'always'` et la limite portée à 500 du 1er septembre. Aucun ne
+pouvait aider : les deux requêtes étaient **fraîches** — elles n'étaient
+simplement pas la même. Les trois restent justes pour ce qu'ils traitent (la
+péremption après une clôture, la troncature à 50 sur 66 rapports), mais ils ne
+traitaient pas ce défaut-là. Une correction posée sans cause mesurée en cache
+une autre.
+
+**Écarté — retirer la navigation automatique vers la page du Z après la
+clôture.** C'était le contournement envisagé, et il aurait marché : sans
+navigation, la page Rapport Z ne se montait plus juste après le terminal, et la
+collision ne se voyait plus. Elle serait restée entière, et se serait
+manifestée ailleurs — le rituel du matin lit la même clé.
+
+**Gardien.** `frontend/modules/cash/cloture-journee.test.ts`.
+
+---
+
 ## Une clôture après minuit reste dans sa journée — 2026-09-01
 
 **Décision.** `closed_at` ne prend l'heure courante que si elle **s'écrit** dans
