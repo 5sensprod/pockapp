@@ -14,9 +14,17 @@ export function useConnectModule() {
 	const navigate = useNavigate()
 
 	const [searchTerm, setSearchTerm] = useState('')
+	const [onlyDepositors, setOnlyDepositors] = useState(false)
 	const [page, setPage] = useState(1)
 
 	const debouncedSearch = useDebounce(searchTerm, 400)
+
+	const serverFilters = [
+		debouncedSearch
+			? `(name ~ "${debouncedSearch}" || email ~ "${debouncedSearch}" || phone ~ "${debouncedSearch}" || company ~ "${debouncedSearch}" || customer_number ~ "${debouncedSearch}")`
+			: '',
+		onlyDepositors ? 'tags ~ "déposant"' : '',
+	].filter(Boolean)
 
 	const {
 		data: customersData,
@@ -24,9 +32,7 @@ export function useConnectModule() {
 		refetch,
 	} = useCustomers({
 		companyId: activeCompanyId ?? undefined,
-		filter: debouncedSearch
-			? `name ~ "${debouncedSearch}" || email ~ "${debouncedSearch}" || phone ~ "${debouncedSearch}" || company ~ "${debouncedSearch}" || customer_number ~ "${debouncedSearch}"`
-			: '',
+		filter: serverFilters.join(' && '),
 		page,
 		perPage: PER_PAGE,
 	})
@@ -62,8 +68,13 @@ export function useConnectModule() {
 		isLoading,
 		hasNoCustomers: !isLoading && customers.length === 0,
 		searchTerm,
+		onlyDepositors,
 		setSearchTerm: (term: string) => {
 			setSearchTerm(term)
+			setPage(1)
+		},
+		setOnlyDepositors: (only: boolean) => {
+			setOnlyDepositors(only)
 			setPage(1)
 		},
 		page,

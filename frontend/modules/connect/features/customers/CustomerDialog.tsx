@@ -38,6 +38,7 @@ import {
 	useUpdateCustomer,
 } from '@/lib/queries/customers'
 import { toast } from 'sonner'
+import { CustomerTagsPicker } from './CustomerTagsPicker'
 
 const customerSchema = z
 	.object({
@@ -152,12 +153,10 @@ export function CustomerDialog({
 
 	const onSubmit = async (data: CustomerFormValues) => {
 		try {
-			const singleTag = data.tags?.[0]
-
 			if (isEdit && customer) {
 				const payload: Partial<CustomerDto> = {
 					...data,
-					tags: singleTag,
+					tags: data.tags,
 					payment_terms: isIndividual ? undefined : data.payment_terms,
 				}
 
@@ -171,7 +170,7 @@ export function CustomerDialog({
 
 				const payload: CustomerDto = {
 					...data,
-					tags: singleTag,
+					tags: data.tags,
 					owner_company: activeCompanyId,
 					payment_terms: isIndividual ? undefined : data.payment_terms,
 				}
@@ -362,30 +361,20 @@ export function CustomerDialog({
 							/>
 						)}
 
-						{/* Statut / tags */}
+						{/* Tags */}
 						<FormField
 							control={form.control}
 							name='tags'
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Statut</FormLabel>
-									<Select
-										onValueChange={(value) => field.onChange([value])}
-										value={field.value?.[0]}
-									>
-										<FormControl>
-											<SelectTrigger>
-												<SelectValue placeholder='Sélectionner un statut' />
-											</SelectTrigger>
-										</FormControl>
-										<SelectContent>
-											<SelectItem value='prospect'>Prospect</SelectItem>
-											<SelectItem value='actif'>Actif</SelectItem>
-											<SelectItem value='vip'>VIP</SelectItem>
-											<SelectItem value='inactif'>Inactif</SelectItem>
-										</SelectContent>
-									</Select>
-									<FormDescription>Catégorisez votre client</FormDescription>
+									<FormLabel>Tags</FormLabel>
+									<CustomerTagsPicker
+										value={field.value}
+										onChange={field.onChange}
+									/>
+									<FormDescription>
+										Un client peut cumuler plusieurs tags.
+									</FormDescription>
 									<FormMessage />
 								</FormItem>
 							)}

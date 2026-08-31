@@ -43,6 +43,7 @@ import {
 	User,
 	Users,
 } from 'lucide-react'
+import { getTagClassName } from '../../utils/statusConfig'
 import type { Customer } from './CustomerDialog'
 
 interface CustomerTableProps {
@@ -229,19 +230,13 @@ export function CustomerTable({
 					: raw
 						? [raw as string]
 						: []
-				const tagColors: Record<string, string> = {
-					vip: 'bg-yellow-100 text-yellow-800',
-					prospect: 'bg-blue-100 text-blue-800',
-					actif: 'bg-green-100 text-green-800',
-					inactif: 'bg-gray-100 text-gray-800',
-				}
 				return (
 					<div className='flex gap-1 flex-wrap'>
 						{tags.map((tag) => (
 							<Badge
 								key={tag}
 								variant='secondary'
-								className={tagColors[tag] || ''}
+								className={getTagClassName(tag)}
 							>
 								{tag}
 							</Badge>

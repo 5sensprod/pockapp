@@ -112,6 +112,9 @@ export type CatalogProductShape = PocketBaseRecord & {
 	brand?: string
 	/** Relation simple vers `suppliers`. */
 	supplier?: string
+	/** Particulier qui a confié l'article. Relation facultative vers
+	 * `customers`, jamais vers `suppliers`. */
+	consignor?: string
 	/** Relation multiple vers `categories`. */
 	categories?: string[]
 	company?: string
@@ -130,7 +133,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,categories'
+	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,consignor,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -355,6 +358,9 @@ export type CatalogProductWrite = ImageIntent &
 		manage_stock?: boolean
 		brand?: string
 		supplier?: string
+		/** Particulier qui a confié l'article. Relation facultative vers
+		 * `customers`, distincte de `supplier`. */
+		consignor?: string
 		categories?: string[]
 		company?: string
 	}

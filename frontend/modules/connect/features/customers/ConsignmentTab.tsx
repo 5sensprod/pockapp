@@ -56,6 +56,7 @@ import {
 	Guitar,
 	Mail,
 	MoreHorizontal,
+	PackagePlus,
 	Pencil,
 	Plus,
 	Trash2,
@@ -68,6 +69,7 @@ import { SendConsignmentEmailDialog } from '../../dialogs/SendConsignmentEmailDi
 import { ConsignmentPdfDocument } from '../../pdf/ConsignmentPdf'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { getConsignmentStatus } from '../../utils/statusConfig'
+import { ConsignmentCatalogProductDialog } from './ConsignmentCatalogProductDialog'
 
 // ============================================================================
 // SCHEMA
@@ -148,6 +150,9 @@ export function ConsignmentTab({
 		null,
 	)
 	const [emailItem, setEmailItem] = useState<ConsignmentItemDto | null>(null)
+	const [catalogItem, setCatalogItem] = useState<ConsignmentItemDto | null>(
+		null,
+	)
 
 	const { data, isLoading } = useConsignmentItems(customerId)
 	const createItem = useCreateConsignmentItem()
@@ -364,6 +369,17 @@ export function ConsignmentTab({
 													</Button>
 												</DropdownMenuTrigger>
 												<DropdownMenuContent align='end'>
+													{item.status === 'available' && (
+														<DropdownMenuItem
+															onClick={() => setCatalogItem(item)}
+														>
+															<PackagePlus className='h-4 w-4 mr-2' />
+															Créer la fiche catalogue
+														</DropdownMenuItem>
+													)}
+													{item.status === 'available' && (
+														<DropdownMenuSeparator />
+													)}
 													{company && (
 														<DropdownMenuItem asChild>
 															<PDFDownloadLink
@@ -635,6 +651,16 @@ export function ConsignmentTab({
 					</Form>
 				</DialogContent>
 			</Dialog>
+
+			{/* Création de la fiche catalogue depuis le dépôt sélectionné */}
+			<ConsignmentCatalogProductDialog
+				open={!!catalogItem}
+				onOpenChange={(open) => {
+					if (!open) setCatalogItem(null)
+				}}
+				item={catalogItem}
+				companyId={ownerCompanyId}
+			/>
 
 			{/* Dialog Email bordereau */}
 			{company && emailItem && (

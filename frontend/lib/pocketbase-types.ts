@@ -110,10 +110,8 @@ export type CompaniesRecord = {
 
 // CUSTOMERS
 export enum CustomersTagsOptions {
-	vip = 'vip',
 	prospect = 'prospect',
-	actif = 'actif',
-	inactif = 'inactif',
+	deposant = 'déposant',
 }
 
 export type CustomersRecord = {

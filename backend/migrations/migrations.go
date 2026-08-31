@@ -79,6 +79,9 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 
 		// 9. 🆕 Dépôt-vente instruments d'occasion (dépend de customers + companies)
 		EnsureConsignmentItemsCollection,
+		// Le select multi-valeurs des clients et le rattrapage des déposants
+		// dépendent tous deux de consignment_items.
+		MigrateCustomerTags,
 
 		// 10. 🆕 Garanties (dépend de companies)
 		AddWarrantiesToCompanies,
@@ -110,13 +113,18 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// d'ordre : après MigrateCatalogV2, qui recrée `products`.
 		AddSaleStateToProducts,
 
-		// 16. Réparation de DONNÉES, pas de schéma : les fiches dont le nom EN
+		// 16. Le déposant d'un produit d'occasion est un client, jamais un
+		// fournisseur. Relation facultative, après MigrateCatalogV2 qui recrée
+		// `products`.
+		AddConsignorToProducts,
+
+		// 17. Réparation de DONNÉES, pas de schéma : les fiches dont le nom EN
 		// LIGNE n'est que le `sku`, séquelle de l'import AppPos. Après
 		// MigrateCatalogV2, qui recrée `products` — et idempotente, donc sans
 		// effet aux démarrages suivants.
 		BackfillProductNameFromDesignation,
 
-		// 17. Réparation de DONNÉES : une catégorie créée dans PocketApp sans
+		// 18. Réparation de DONNÉES : une catégorie créée dans PocketApp sans
 		// slug partait en ligne avec `slug: null`. Ne touche jamais un slug non
 		// vide ; le checksum de chaque catégorie réparée change volontairement.
 		BackfillCategorySlugs,

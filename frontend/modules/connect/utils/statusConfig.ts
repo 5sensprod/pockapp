@@ -111,6 +111,7 @@ export function getConsignmentStatus(
 const TAG_COLORS: Record<string, string> = {
 	vip: 'bg-yellow-100 text-yellow-800',
 	prospect: 'bg-blue-100 text-blue-800',
+	déposant: 'bg-amber-100 text-amber-900',
 	actif: 'bg-green-100 text-green-800',
 	inactif: 'bg-gray-100 text-gray-800',
 }

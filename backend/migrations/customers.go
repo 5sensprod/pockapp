@@ -87,7 +87,7 @@ func ensureCustomersCollection(app *pocketbase.PocketBase) error {
 				Type: schema.FieldTypeSelect,
 				Options: &schema.SelectOptions{
 					MaxSelect: 10,
-					Values:    []string{"vip", "prospect", "actif", "inactif"},
+					Values:    CustomerTagValues,
 				},
 			},
 

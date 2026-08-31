@@ -5,10 +5,10 @@
 // Après : shell gère header/badge/CTA — la page ne fait qu'afficher la table.
 
 import { EmptyState } from '@/components/module-ui'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 // import { navigationActions } from '@/lib/stores/navigationStore'
-import { Search } from 'lucide-react'
-import { Users } from 'lucide-react'
+import { Search, Tag, Users } from 'lucide-react'
 // import { useEffect } from 'react'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { CustomerTable } from '../../features/customers/CustomerTable'
@@ -25,14 +25,26 @@ export function CustomersPage() {
 			hideBadge
 			// Barre de recherche dans la zone centre du subheader
 			headerCenter={
-				<div className='relative w-full max-w-sm'>
-					<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-					<Input
-						placeholder='Rechercher un client...'
-						value={connect.searchTerm}
-						onChange={(e) => connect.setSearchTerm(e.target.value)}
-						className='pl-10 h-8 text-sm'
-					/>
+				<div className='flex w-full max-w-xl items-center gap-2'>
+					<div className='relative min-w-0 flex-1'>
+						<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+						<Input
+							placeholder='Rechercher un client...'
+							value={connect.searchTerm}
+							onChange={(e) => connect.setSearchTerm(e.target.value)}
+							className='pl-10 h-8 text-sm'
+						/>
+					</div>
+					<Button
+						type='button'
+						size='sm'
+						variant={connect.onlyDepositors ? 'default' : 'outline'}
+						aria-pressed={connect.onlyDepositors}
+						onClick={() => connect.setOnlyDepositors(!connect.onlyDepositors)}
+					>
+						<Tag className='mr-2 h-4 w-4' />
+						Déposants
+					</Button>
 				</div>
 			}
 		>
@@ -45,14 +57,18 @@ export function CustomersPage() {
 					<EmptyState
 						icon={Users}
 						title={
-							connect.searchTerm
-								? 'Aucun résultat'
-								: 'Aucun client pour le moment'
+							connect.onlyDepositors
+								? 'Aucun déposant'
+								: connect.searchTerm
+									? 'Aucun résultat'
+									: 'Aucun client pour le moment'
 						}
 						description={
-							connect.searchTerm
-								? `Aucun client ne correspond à "${connect.searchTerm}".`
-								: 'Commencez par ajouter votre premier client.'
+							connect.onlyDepositors
+								? 'Aucun client portant le tag déposant ne correspond aux filtres.'
+								: connect.searchTerm
+									? `Aucun client ne correspond à "${connect.searchTerm}".`
+									: 'Commencez par ajouter votre premier client.'
 						}
 						fullPage
 					/>

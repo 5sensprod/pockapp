@@ -81,6 +81,7 @@ var apresCatalogV2 = []string{
 	"FixSupplierJsonMaxSize",
 	"AddCommercialStateToProducts",
 	"AddSaleStateToProducts",
+	"AddConsignorToProducts",
 }
 
 func TestLesMigrationsDuCatalogueSontInscritesEtApresLaRecreation(t *testing.T) {
@@ -106,6 +107,25 @@ func TestLesMigrationsDuCatalogueSontInscritesEtApresLaRecreation(t *testing.T) 
 					"suivant, sans erreur", nom)
 			}
 		})
+	}
+}
+
+func TestLaMigrationDesTagsClientsEstInscriteApresLesDepots(t *testing.T) {
+	src := lireSourceSansCommentaires(t, "migrations.go")
+
+	depots := strings.Index(src, "EnsureConsignmentItemsCollection,")
+	if depots < 0 {
+		t.Fatal("EnsureConsignmentItemsCollection n'est plus inscrite dans RunMigrations")
+	}
+
+	tags := strings.Index(src, "MigrateCustomerTags,")
+	if tags < 0 {
+		t.Fatal("MigrateCustomerTags n'est pas inscrite dans RunMigrations : le " +
+			"schéma et le rattrapage des déposants ne s'exécuteraient jamais")
+	}
+	if tags < depots {
+		t.Fatal("MigrateCustomerTags doit passer après EnsureConsignmentItemsCollection, " +
+			"dont son rattrapage lit les enregistrements")
 	}
 }
 
@@ -137,6 +157,25 @@ func TestLEtatCommercialEstUnChampDuProduitEtNonUneCategorie(t *testing.T) {
 			t.Fatalf("la valeur %q est annoncée par CommercialStateValues mais "+
 				"n'est pas dans le schéma", v)
 		}
+	}
+}
+
+func TestLeDeposantEstUneRelationFacultativeVersCustomers(t *testing.T) {
+	src := lireSourceSansCommentaires(t, "add_consignor_to_products.go")
+
+	if !strings.Contains(src, `Name: "consignor"`) {
+		t.Fatal("le champ produit doit s'appeler consignor")
+	}
+	if !strings.Contains(src, "FieldTypeRelation") ||
+		!strings.Contains(src, `FindCollectionByNameOrId("customers")`) {
+		t.Fatal("consignor doit relier le produit à customers : un nom en texte " +
+			"libre deviendrait orphelin au premier changement de nom")
+	}
+	if !strings.Contains(src, "MaxSelect: types.Pointer(1)") {
+		t.Fatal("un produit ne peut porter qu'un déposant")
+	}
+	if strings.Contains(src, "Required: true") {
+		t.Fatal("consignor doit rester facultatif : presque aucun produit n'est un dépôt")
 	}
 }
 

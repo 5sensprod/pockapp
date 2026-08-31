@@ -29,6 +29,7 @@ import { type CustomerDto, useCreateCustomer } from '@/lib/queries/customers'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, User } from 'lucide-react'
 import { toast } from 'sonner'
+import { CustomerTagsPicker } from '../../features/customers/CustomerTagsPicker'
 
 // ─────────────────────────────────────────────────
 // Schéma de validation dynamique
@@ -110,11 +111,9 @@ export function CustomerCreatePage() {
 		}
 
 		try {
-			const singleTag = data.tags?.[0]
-
 			const payload: CustomerDto = {
 				...data,
-				tags: singleTag,
+				tags: data.tags,
 				owner_company: activeCompanyId,
 				// Ne pas envoyer payment_terms si particulier
 				payment_terms: isIndividual ? undefined : data.payment_terms,
@@ -321,30 +320,20 @@ export function CustomerCreatePage() {
 								/>
 							)}
 
-							{/* Statut / tags */}
+							{/* Tags */}
 							<FormField
 								control={form.control}
 								name='tags'
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Statut</FormLabel>
-										<Select
-											onValueChange={(value) => field.onChange([value])}
-											value={field.value?.[0] ?? ''}
-										>
-											<FormControl>
-												<SelectTrigger>
-													<SelectValue placeholder='Sélectionner un statut' />
-												</SelectTrigger>
-											</FormControl>
-											<SelectContent>
-												<SelectItem value='prospect'>Prospect</SelectItem>
-												<SelectItem value='actif'>Actif</SelectItem>
-												<SelectItem value='vip'>VIP</SelectItem>
-												<SelectItem value='inactif'>Inactif</SelectItem>
-											</SelectContent>
-										</Select>
-										<FormDescription>Catégorisez votre client.</FormDescription>
+										<FormLabel>Tags</FormLabel>
+										<CustomerTagsPicker
+											value={field.value}
+											onChange={field.onChange}
+										/>
+										<FormDescription>
+											Un client peut cumuler plusieurs tags.
+										</FormDescription>
 										<FormMessage />
 									</FormItem>
 								)}

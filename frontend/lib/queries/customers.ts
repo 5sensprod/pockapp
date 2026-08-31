@@ -11,7 +11,7 @@ export interface CustomerDto {
 	company?: string
 	address?: string
 	notes?: string
-	tags?: string
+	tags?: string[]
 	customer_type?:
 		| 'individual'
 		| 'professional'
