@@ -119,28 +119,3 @@ export function useJournalDesVentes(params: {
 		enabled: !!ownerCompanyId && !!du && !!au,
 	})
 }
-
-/** Les bornes des périodes proposées à l'écran. */
-export function bornesDePeriode(
-	choix: 'sept-jours' | 'trente-jours' | 'mois-en-cours',
-): { du: string; au: string } {
-	// ⚠️ Surtout PAS toISOString() : il rend la date en UTC. Passé 22 h en heure
-	// d'été française, « aujourd'hui » y est encore hier — le journal serait
-	// arrêté à la veille et n'afficherait pas la journée en cours, qui est
-	// justement celle que le commerçant regarde.
-	const jour = (d: Date) =>
-		`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-			d.getDate(),
-		).padStart(2, '0')}`
-	const aujourdhui = new Date()
-
-	if (choix === 'mois-en-cours') {
-		const premier = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 1)
-		return { du: jour(premier), au: jour(aujourdhui) }
-	}
-
-	const recul = choix === 'sept-jours' ? 6 : 29
-	const debut = new Date(aujourdhui)
-	debut.setDate(debut.getDate() - recul)
-	return { du: jour(debut), au: jour(aujourdhui) }
-}

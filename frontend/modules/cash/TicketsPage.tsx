@@ -1,6 +1,6 @@
 // frontend/modules/cash/TicketsPage.tsx
 
-import { PeriodSelector } from '@/components/PeriodSelector'
+import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import { EmptyState } from '@/components/module-ui'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,12 +33,12 @@ import { useReprintTicket } from '@/lib/pos/useReprintTicket'
 import { useInvoices } from '@/lib/queries/invoices'
 import { usePaymentMethods } from '@/lib/queries/payment-methods'
 import type { InvoiceResponse } from '@/lib/types/invoice.types'
-import { resolvePaymentMethodLabel } from '@/modules/connect/utils/formatters'
 import { RefundTicketDialog } from '@/modules/common/RefundTicketDialog'
 import {
 	StockReclassificationDialog,
 	type StockReclassificationItem,
 } from '@/modules/common/StockReclassificationDialog'
+import { resolvePaymentMethodLabel } from '@/modules/connect/utils/formatters'
 import { useNavigate } from '@tanstack/react-router'
 import {
 	ChevronLeft,
@@ -130,10 +130,8 @@ export function TicketsPage() {
 
 	const [search, setSearch] = useState('')
 	const [page, setPage] = useState(1)
-	const { period, setPeriod, dateRange } = usePeriodFilter(
-		'all',
-		PERIOD_PREFERENCE_KEYS.tickets,
-	)
+	const { period, setPeriod, setDateFrom, setDateTo, dateRange } =
+		usePeriodFilter('trente-jours', PERIOD_PREFERENCE_KEYS.tickets)
 	const debouncedSearch = useDebounce(search, 400)
 	const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -190,32 +188,6 @@ export function TicketsPage() {
 
 	// ── Slots header ──────────────────────────────────────────────────────────
 
-	// Centre : barre de recherche
-	const headerCenter = (
-		<div className='relative w-[350px] transition-all focus-within:w-[400px]'>
-			<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-			<Input
-				ref={searchInputRef}
-				placeholder='Rechercher un N° de ticket...'
-				value={search}
-				onChange={(e) => {
-					setSearch(e.target.value)
-					setPage(1)
-				}}
-				className='h-9 pl-9 pr-9 bg-background/50 focus-visible:bg-background border-muted-foreground/20 shadow-sm transition-all text-sm'
-			/>
-			{search && (
-				<button
-					type='button'
-					onClick={handleResetSearch}
-					className='absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors'
-				>
-					<X className='h-4 w-4' />
-				</button>
-			)}
-		</div>
-	)
-
 	// Droite : compteur + pagination (avant le badge session)
 	const headerRight = (
 		<div className='flex items-center gap-3'>
@@ -262,19 +234,51 @@ export function TicketsPage() {
 			pageTitle='Tickets de caisse'
 			pageIcon={Receipt}
 			hideSessionActions
-			headerCenter={headerCenter}
 			headerRight={headerRight}
 		>
 			<div className='container mx-auto px-6 py-6'>
-				<div className='flex justify-end mb-3'>
-					<PeriodSelector
-						period={period}
-						onPeriodChange={(nextPeriod) => {
-							setPeriod(nextPeriod)
-							setPage(1)
-						}}
-					/>
-				</div>
+				<PeriodFilterCard
+					period={period}
+					from={dateRange.from ?? ''}
+					to={dateRange.to ?? ''}
+					onPeriodChange={(nextPeriod) => {
+						setPeriod(nextPeriod)
+						setPage(1)
+					}}
+					onFromChange={(from) => {
+						setDateFrom(from)
+						setPage(1)
+					}}
+					onToChange={(to) => {
+						setDateTo(to)
+						setPage(1)
+					}}
+					className='mb-4'
+					filters={
+						<div className='relative min-w-[280px] flex-1'>
+							<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+							<Input
+								ref={searchInputRef}
+								placeholder='Rechercher un N° de ticket...'
+								value={search}
+								onChange={(event) => {
+									setSearch(event.target.value)
+									setPage(1)
+								}}
+								className='h-10 pl-9 pr-9'
+							/>
+							{search && (
+								<button
+									type='button'
+									onClick={handleResetSearch}
+									className='absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors'
+								>
+									<X className='h-4 w-4' />
+								</button>
+							)}
+						</div>
+					}
+				/>
 				<Card className='shadow-sm border-muted/60'>
 					<CardContent className='p-0'>
 						<Table>
@@ -390,11 +394,11 @@ export function TicketsPage() {
 
 														<TableCell className='text-sm text-muted-foreground'>
 															{ticket.payment_method
-										? resolvePaymentMethodLabel(
-												ticket.payment_method,
-												(ticket as any).payment_method_label,
-												paymentMethods,
-											)
+																? resolvePaymentMethodLabel(
+																		ticket.payment_method,
+																		(ticket as any).payment_method_label,
+																		paymentMethods,
+																	)
 																: '-'}
 														</TableCell>
 													</TableRow>

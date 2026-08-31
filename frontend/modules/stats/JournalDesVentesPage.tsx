@@ -11,8 +11,8 @@
 //
 // Cet écran n'effectue AUCUN calcul. Tout vient de /api/reports/journal.
 
+import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
 	Card,
 	CardContent,
@@ -20,18 +20,17 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import {
+	PERIOD_PREFERENCE_KEYS,
+	formatLocalDateInputValue,
+	usePeriodFilter,
+} from '@/lib/hooks/usePeriodFilter'
 import { AlertCircle, ChevronDown, ChevronRight, Lock } from 'lucide-react'
 import { useState } from 'react'
 
-import {
-	type JournalJour,
-	bornesDePeriode,
-	useJournalDesVentes,
-} from './useJournalDesVentes'
+import { type JournalJour, useJournalDesVentes } from './useJournalDesVentes'
 
 const euros = (montant: number) =>
 	new Intl.NumberFormat('fr-FR', {
@@ -46,25 +45,17 @@ const jourLong = (iso: string) =>
 		month: 'long',
 	})
 
-type Periode = 'sept-jours' | 'trente-jours' | 'mois-en-cours' | 'libre'
-
 export function JournalDesVentesPage() {
 	const { activeCompanyId } = useActiveCompany()
 
-	const [periode, setPeriode] = useState<Periode>('trente-jours')
-	const initial = bornesDePeriode('trente-jours')
-	const [du, setDu] = useState(initial.du)
-	const [au, setAu] = useState(initial.au)
+	const { period, setPeriod, setDateFrom, setDateTo, dateRange } =
+		usePeriodFilter('trente-jours', PERIOD_PREFERENCE_KEYS.salesJournal)
+	const du = dateRange.from ?? ''
+	const au = dateRange.to ?? ''
+	const requeteDu = period === 'toutes' ? '0001-01-01' : du
+	const requeteAu =
+		period === 'toutes' ? formatLocalDateInputValue(new Date()) : au
 	const [deplies, setDeplies] = useState<Set<string>>(new Set())
-
-	const choisirPeriode = (p: Periode) => {
-		setPeriode(p)
-		if (p !== 'libre') {
-			const bornes = bornesDePeriode(p)
-			setDu(bornes.du)
-			setAu(bornes.au)
-		}
-	}
 
 	const basculer = (date: string) => {
 		setDeplies((actuels) => {
@@ -80,8 +71,8 @@ export function JournalDesVentesPage() {
 
 	const { data, isLoading, isError, error } = useJournalDesVentes({
 		ownerCompanyId: activeCompanyId ?? undefined,
-		du,
-		au,
+		du: requeteDu,
+		au: requeteAu,
 	})
 
 	const jours = data?.jours ?? []
@@ -98,64 +89,14 @@ export function JournalDesVentesPage() {
 				</p>
 			</div>
 
-			{/* Période */}
-			<Card>
-				<CardContent className='pt-6'>
-					<div className='flex flex-wrap items-end gap-4'>
-						<div className='flex gap-2'>
-							{(
-								[
-									['sept-jours', '7 jours'],
-									['trente-jours', '30 jours'],
-									['mois-en-cours', 'Ce mois'],
-								] as const
-							).map(([valeur, libelle]) => (
-								<Button
-									key={valeur}
-									size='sm'
-									variant={periode === valeur ? 'default' : 'outline'}
-									onClick={() => choisirPeriode(valeur)}
-								>
-									{libelle}
-								</Button>
-							))}
-						</div>
-
-						<Separator orientation='vertical' className='h-9' />
-
-						<div className='space-y-1'>
-							<Label htmlFor='du' className='text-xs'>
-								Du
-							</Label>
-							<Input
-								id='du'
-								type='date'
-								value={du}
-								className='w-40'
-								onChange={(e) => {
-									setDu(e.target.value)
-									setPeriode('libre')
-								}}
-							/>
-						</div>
-						<div className='space-y-1'>
-							<Label htmlFor='au' className='text-xs'>
-								Au
-							</Label>
-							<Input
-								id='au'
-								type='date'
-								value={au}
-								className='w-40'
-								onChange={(e) => {
-									setAu(e.target.value)
-									setPeriode('libre')
-								}}
-							/>
-						</div>
-					</div>
-				</CardContent>
-			</Card>
+			<PeriodFilterCard
+				period={period}
+				from={du}
+				to={au}
+				onPeriodChange={setPeriod}
+				onFromChange={setDateFrom}
+				onToChange={setDateTo}
+			/>
 
 			{isError && (
 				<Card className='border-destructive'>

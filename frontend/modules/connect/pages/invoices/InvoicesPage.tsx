@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 // import { navigationActions } from '@/lib/stores/navigationStore'
 
+import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,7 +35,6 @@ import {
 	useVerifyInvoiceChain,
 } from '@/lib/queries/closures'
 
-import { PeriodSelector } from '@/components/PeriodSelector'
 import {
 	PERIOD_PREFERENCE_KEYS,
 	usePeriodFilter,
@@ -141,7 +141,6 @@ export function InvoicesPage() {
 		useState<InvoiceResponse | null>(null)
 	const [cancelReason, setCancelReason] = useState('')
 
-
 	// Sept fonctions et sept etats sont morts ici le 30 aout 2026, avec le
 	// dialogue d'encaissement inatteignable qu'ils servaient. Ils n'etaient
 	// joignables que par des props qu'InvoicesTable declarait sans les lire.
@@ -159,7 +158,6 @@ export function InvoicesPage() {
 	const [draftToDelete, setDraftToDelete] = useState<InvoiceResponse | null>(
 		null,
 	)
-
 
 	const [refundTicketDialogOpen, setRefundTicketDialogOpen] = useState(false)
 	const [ticketToRefund, setTicketToRefund] = useState<InvoiceResponse | null>(
@@ -197,10 +195,8 @@ export function InvoicesPage() {
 		closureType: 'daily',
 	})
 
-	const { period, setPeriod, dateRange } = usePeriodFilter(
-		'all',
-		PERIOD_PREFERENCE_KEYS.invoices,
-	)
+	const { period, setPeriod, setDateFrom, setDateTo, dateRange } =
+		usePeriodFilter('trente-jours', PERIOD_PREFERENCE_KEYS.invoices)
 
 	// Query principale avec pagination serveur
 	const {
@@ -433,16 +429,74 @@ export function InvoicesPage() {
 				</div>
 			</div>
 
-			{/* Filtre de période */}
-			<div className='flex items-center justify-between mb-3'>
-				<PeriodSelector
-					period={period}
-					onPeriodChange={(nextPeriod) => {
-						setPeriod(nextPeriod)
-						setPage(1)
-					}}
-				/>
-			</div>
+			<PeriodFilterCard
+				period={period}
+				from={dateRange.from ?? ''}
+				to={dateRange.to ?? ''}
+				onPeriodChange={(nextPeriod) => {
+					setPeriod(nextPeriod)
+					setPage(1)
+				}}
+				onFromChange={(from) => {
+					setDateFrom(from)
+					setPage(1)
+				}}
+				onToChange={(to) => {
+					setDateTo(to)
+					setPage(1)
+				}}
+				className='mb-6'
+				filters={
+					<>
+						<Input
+							placeholder='Rechercher par numéro ou nom du client...'
+							className='min-w-[260px] flex-1'
+							value={searchTerm}
+							onChange={(event) => {
+								setSearchTerm(event.target.value)
+								setPage(1)
+							}}
+						/>
+						<Select
+							value={statusFilter}
+							onValueChange={(value: StatusFilter) => {
+								setStatusFilter(value)
+								setPage(1)
+							}}
+						>
+							<SelectTrigger className='w-[160px]'>
+								<SelectValue placeholder='Statut' />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value='all'>Tous les statuts</SelectItem>
+								<SelectItem value='draft'>Brouillon</SelectItem>
+								<SelectItem value='validated'>Validée</SelectItem>
+								<SelectItem value='sent'>Envoyée</SelectItem>
+								<SelectItem value='cancelled'>Annulée</SelectItem>
+								<SelectItem value='unpaid'>Impayée</SelectItem>
+								<SelectItem value='overdue'>En retard</SelectItem>
+							</SelectContent>
+						</Select>
+
+						<Select
+							value={typeFilter}
+							onValueChange={(value: 'all' | 'invoice' | 'credit_note') => {
+								setTypeFilter(value)
+								setPage(1)
+							}}
+						>
+							<SelectTrigger className='w-[160px]'>
+								<SelectValue placeholder='Type' />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value='all'>Factures + avoirs</SelectItem>
+								<SelectItem value='invoice'>Factures uniquement</SelectItem>
+								<SelectItem value='credit_note'>Avoirs uniquement</SelectItem>
+							</SelectContent>
+						</Select>
+					</>
+				}
+			/>
 
 			{/* Stats */}
 			<div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
@@ -474,59 +528,6 @@ export function InvoicesPage() {
 					<p className='text-xl font-bold text-red-600'>
 						{formatCurrency(stats.overdue || 0)}
 					</p>
-				</div>
-			</div>
-
-			{/* Filtres */}
-			<div className='flex flex-col md:flex-row gap-4 mb-6'>
-				<div className='flex-1'>
-					<Input
-						placeholder='Rechercher par numéro ou nom du client...'
-						value={searchTerm}
-						onChange={(e) => {
-							setSearchTerm(e.target.value)
-							setPage(1) // <-- Retour instantané à la page 1 !
-						}}
-					/>
-				</div>
-				<div className='flex gap-2'>
-					<Select
-						value={statusFilter}
-						onValueChange={(value: StatusFilter) => {
-							setStatusFilter(value)
-							setPage(1)
-						}}
-					>
-						<SelectTrigger className='w-[160px]'>
-							<SelectValue placeholder='Statut' />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value='all'>Tous les statuts</SelectItem>
-							<SelectItem value='draft'>Brouillon</SelectItem>
-							<SelectItem value='validated'>Validée</SelectItem>
-							<SelectItem value='sent'>Envoyée</SelectItem>
-							<SelectItem value='cancelled'>Annulée</SelectItem>
-							<SelectItem value='unpaid'>Impayée</SelectItem>
-							<SelectItem value='overdue'>En retard</SelectItem>
-						</SelectContent>
-					</Select>
-
-					<Select
-						value={typeFilter}
-						onValueChange={(value: 'all' | 'invoice' | 'credit_note') => {
-							setTypeFilter(value)
-							setPage(1)
-						}}
-					>
-						<SelectTrigger className='w-[160px]'>
-							<SelectValue placeholder='Type' />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value='all'>Factures + avoirs</SelectItem>
-							<SelectItem value='invoice'>Factures uniquement</SelectItem>
-							<SelectItem value='credit_note'>Avoirs uniquement</SelectItem>
-						</SelectContent>
-					</Select>
 				</div>
 			</div>
 

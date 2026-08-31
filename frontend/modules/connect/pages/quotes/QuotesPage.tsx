@@ -1,7 +1,7 @@
 // frontend/modules/connect/components/QuotesPage.tsx
 // Page de gestion des devis — pagination serveur + debounce + recherche client
 
-import { PeriodSelector } from '@/components/PeriodSelector'
+import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -70,10 +70,8 @@ export function QuotesPage() {
 
 	// Pagination
 	const [page, setPage] = useState(1)
-	const { period, setPeriod, dateRange } = usePeriodFilter(
-		'all',
-		PERIOD_PREFERENCE_KEYS.quotes,
-	)
+	const { period, setPeriod, setDateFrom, setDateTo, dateRange } =
+		usePeriodFilter('trente-jours', PERIOD_PREFERENCE_KEYS.quotes)
 	// const prevDebouncedRef = useRef('')
 	const debouncedSearch = useDebounce(searchTerm, 400)
 
@@ -267,43 +265,54 @@ export function QuotesPage() {
 				</Button>
 			</div>
 
-			{/* Filtres — pas de early return sur isLoading, focus préservé */}
-			<div className='flex gap-4'>
-				<Input
-					placeholder='Rechercher par numéro ou nom du client...'
-					value={searchTerm}
-					onChange={(e) => {
-						setSearchTerm(e.target.value)
-						setPage(1) // <-- Le retour instantané à la page 1 !
-					}}
-					className='max-w-sm'
-				/>
-				<Select
-					value={statusFilter}
-					onValueChange={(v) => {
-						setStatusFilter(v as QuoteStatus | 'all')
-						setPage(1)
-					}}
-				>
-					<SelectTrigger className='w-[200px]'>
-						<SelectValue placeholder='Statut' />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value='all'>Tous les statuts</SelectItem>
-						<SelectItem value='draft'>Brouillons</SelectItem>
-						<SelectItem value='sent'>Envoyés</SelectItem>
-						<SelectItem value='accepted'>Acceptés</SelectItem>
-						<SelectItem value='rejected'>Refusés</SelectItem>
-					</SelectContent>
-				</Select>
-				<PeriodSelector
-					period={period}
-					onPeriodChange={(nextPeriod) => {
-						setPeriod(nextPeriod)
-						setPage(1)
-					}}
-				/>
-			</div>
+			<PeriodFilterCard
+				period={period}
+				from={dateRange.from ?? ''}
+				to={dateRange.to ?? ''}
+				onPeriodChange={(nextPeriod) => {
+					setPeriod(nextPeriod)
+					setPage(1)
+				}}
+				onFromChange={(from) => {
+					setDateFrom(from)
+					setPage(1)
+				}}
+				onToChange={(to) => {
+					setDateTo(to)
+					setPage(1)
+				}}
+				filters={
+					<>
+						<Input
+							placeholder='Rechercher par numéro ou nom du client...'
+							className='min-w-[260px] flex-1'
+							value={searchTerm}
+							onChange={(event) => {
+								setSearchTerm(event.target.value)
+								setPage(1)
+							}}
+						/>
+						<Select
+							value={statusFilter}
+							onValueChange={(value) => {
+								setStatusFilter(value as QuoteStatus | 'all')
+								setPage(1)
+							}}
+						>
+							<SelectTrigger className='w-[200px]'>
+								<SelectValue placeholder='Statut' />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value='all'>Tous les statuts</SelectItem>
+								<SelectItem value='draft'>Brouillons</SelectItem>
+								<SelectItem value='sent'>Envoyés</SelectItem>
+								<SelectItem value='accepted'>Acceptés</SelectItem>
+								<SelectItem value='rejected'>Refusés</SelectItem>
+							</SelectContent>
+						</Select>
+					</>
+				}
+			/>
 
 			{/* Table — spinner géré dans QuotesTable, pas de early return */}
 			<QuotesTable

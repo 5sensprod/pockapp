@@ -1,6 +1,6 @@
 // frontend/modules/connect/pages/orders/OrdersPage.tsx
 
-import { PeriodSelector } from '@/components/PeriodSelector'
+import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import { ModulePageShell } from '@/components/module-ui/ModulePageShell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -55,10 +55,8 @@ export function OrdersPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const [search, setSearch] = useState('')
 	const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
-	const { period, setPeriod, dateRange } = usePeriodFilter(
-		'all',
-		PERIOD_PREFERENCE_KEYS.orders,
-	)
+	const { period, setPeriod, setDateFrom, setDateTo, dateRange } =
+		usePeriodFilter('trente-jours', PERIOD_PREFERENCE_KEYS.orders)
 
 	const { data, isLoading } = useOrders({
 		companyId: activeCompanyId ?? undefined,
@@ -92,35 +90,45 @@ export function OrdersPage() {
 			}
 		>
 			<div className='space-y-4'>
-				{/* ── Filtres ────────────────────────────────────────────────── */}
-				<div className='flex flex-col sm:flex-row gap-3'>
-					<div className='relative flex-1'>
-						<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-						<Input
-							placeholder='Rechercher un bon, un client…'
-							className='pl-9'
-							value={search}
-							onChange={(e) => setSearch(e.target.value)}
-						/>
-					</div>
-					<Select
-						value={statusFilter}
-						onValueChange={(v) => setStatusFilter(v as OrderStatus | 'all')}
-					>
-						<SelectTrigger className='w-full sm:w-48'>
-							<SelectValue placeholder='Tous les statuts' />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value='all'>Tous les statuts</SelectItem>
-							{ALL_STATUSES.map(([value, label]) => (
-								<SelectItem key={value} value={value}>
-									{label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<PeriodSelector period={period} onPeriodChange={setPeriod} />
-				</div>
+				<PeriodFilterCard
+					period={period}
+					from={dateRange.from ?? ''}
+					to={dateRange.to ?? ''}
+					onPeriodChange={setPeriod}
+					onFromChange={setDateFrom}
+					onToChange={setDateTo}
+					filters={
+						<>
+							<div className='relative min-w-[260px] flex-1'>
+								<Search className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+								<Input
+									placeholder='Rechercher un bon, un client…'
+									className='pl-9'
+									value={search}
+									onChange={(event) => setSearch(event.target.value)}
+								/>
+							</div>
+							<Select
+								value={statusFilter}
+								onValueChange={(value) =>
+									setStatusFilter(value as OrderStatus | 'all')
+								}
+							>
+								<SelectTrigger className='w-full sm:w-48'>
+									<SelectValue placeholder='Tous les statuts' />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value='all'>Tous les statuts</SelectItem>
+									{ALL_STATUSES.map(([value, label]) => (
+										<SelectItem key={value} value={value}>
+											{label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</>
+					}
+				/>
 
 				{/* ── Contenu ────────────────────────────────────────────────── */}
 				{isLoading ? (
