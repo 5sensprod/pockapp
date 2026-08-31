@@ -682,6 +682,7 @@ export function CashTerminalPage() {
 					onOpenChange={setShowOuvertureDialog}
 					onSubmit={handleCommencerLaJournee}
 					lastKnownFloat={fondsDuJour?.fonds ?? null}
+					origineDuFonds={fondsDuJour ?? null}
 					lastClosedAtLabel={
 						dernierZ
 							? new Date(dernierZ.date).toLocaleDateString('fr-FR')

@@ -134,10 +134,26 @@ func cloturerLaJourneeA(
 	}
 
 	// ─── 1. Fermer ──────────────────────────────────────────────────────────
-	if jour == maintenant.Format("2006-01-02") {
-		session.Set("closed_at", maintenant.UTC().Format("2006-01-02 15:04:05.000Z"))
+	//
+	// ⚠️ L'INSTANT COURANT NE CONVIENT QUE S'IL S'ÉCRIT DANS LA BONNE JOURNÉE.
+	//
+	// GenerateRapportZ borne les sessions par une comparaison de CHAÎNES sur
+	// `closed_at` — « >= '<jour> 00:00:00' && < '<lendemain> 00:00:00' » — et
+	// tout est stocké en UTC, alors que la journée est celle du commerçant.
+	// Entre minuit et 2 h en été, les deux divergent : une clôture faite le
+	// 31 août à 00 h 03 (Paris) s'écrirait « 2026-08-30 22:03 » et sortirait de
+	// la journée du 31, donc de son propre Z. Mesuré le 1er septembre 2026 à
+	// 00 h 03, quand l'horloge a franchi minuit pendant les tests : la session
+	// était fermée, le Z échouait sur « aucune session fermée disponible », et
+	// la journée se retrouvait close SANS clôture — exactement le défaut qu'on
+	// vient de corriger, par une autre porte.
+	//
+	// On ne retient donc l'heure courante que si elle S'ÉCRIT dans `jour` ;
+	// sinon on retombe sur la fin de la journée, comme fermerAuPassageDeJournee.
+	instant := maintenant.UTC().Format("2006-01-02 15:04:05.000Z")
+	if jourDeLaDate(instant) == jour {
+		session.Set("closed_at", instant)
 	} else {
-		// Même règle que fermerAuPassageDeJournee : la fin de SA journée.
 		session.Set("closed_at", jour+" 23:59:59.000Z")
 	}
 	session.Set("status", "closed")

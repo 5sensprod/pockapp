@@ -53,15 +53,63 @@ import (
 // pas un fonds — on rend alors zéro plutôt que de propager l'absurdité dans une
 // session neuve.
 func FondsReporte(dao *daos.Dao, ownerCompany string, jour string) (float64, error) {
+	detail, err := FondsReporteDetail(dao, ownerCompany, jour)
+	if err != nil {
+		return 0, err
+	}
+	return detail.Fonds, nil
+}
+
+// OrigineDuFonds dit D'OÙ vient le fonds proposé, et non seulement combien il
+// vaut.
+//
+// Le besoin est né le 31 août 2026 : l'écran « Commencer la journée » annonçait
+// « Total repris (tiroir de la veille) : 352,38 € » alors que le dernier
+// comptage réel datait du 23 août (227,68 €) et que les huit journées écoulées
+// depuis avaient été ajoutées. Le montant était juste — c'est la règle « le
+// tiroir COMPTÉ, sinon le THÉORIQUE » —, mais le libellé affirmait une
+// provenance qu'il n'avait pas, et le commerçant a légitimement cru à une
+// erreur de calcul. Un écran qui se trompe de mot coûte la confiance qu'un
+// écran juste devait donner.
+type OrigineDuFonds struct {
+	// Fonds est le montant proposé pour le tiroir du matin.
+	Fonds float64 `json:"fonds"`
+	// Comptage est le dernier tiroir réellement compté, point de départ du
+	// calcul. Zéro si aucune session n'a jamais été comptée.
+	Comptage float64 `json:"comptage"`
+	// JourDuComptage est la journée de ce comptage ("2026-08-23"), vide si
+	// aucun comptage n'a jamais eu lieu.
+	JourDuComptage string `json:"jour_du_comptage"`
+	// Flux est ce que les journées écoulées depuis ont ajouté ou retiré.
+	// Zéro quand le comptage est celui de la veille : le fonds EST le comptage.
+	Flux float64 `json:"flux"`
+	// JoursDeFlux compte ces journées. Zéro = report direct de la veille.
+	JoursDeFlux int `json:"jours_de_flux"`
+}
+
+// EstLeTiroirDeLaVeille dit si le fonds est, tel quel, le tiroir compté la
+// veille — le seul cas où l'écran peut l'annoncer ainsi.
+func (o OrigineDuFonds) EstLeTiroirDeLaVeille() bool {
+	return o.JourDuComptage != "" && o.JoursDeFlux == 0
+}
+
+// FondsReporteDetail est FondsReporte, en rendant aussi sa provenance.
+// Une seule et même règle : FondsReporte l'appelle et n'en garde que le
+// montant.
+func FondsReporteDetail(dao *daos.Dao, ownerCompany string, jour string) (OrigineDuFonds, error) {
+	var vide OrigineDuFonds
 	if ownerCompany == "" {
-		return 0, fmt.Errorf("owner_company requis")
+		return vide, fmt.Errorf("owner_company requis")
 	}
 	if _, err := time.Parse("2006-01-02", jour); err != nil {
-		return 0, fmt.Errorf("journée illisible %q: %w", jour, err)
+		return vide, fmt.Errorf("journée illisible %q: %w", jour, err)
 	}
 
 	// ─── 1. Le dernier point sûr : le dernier tiroir COMPTÉ ─────────────────
 	ancrage, jourDAncrage := dernierComptageAvant(dao, ownerCompany, jour)
+
+	origine := OrigineDuFonds{Comptage: ancrage, JourDuComptage: jourDAncrage}
+	depart := ancrage
 
 	// ─── 2. Les flux écoulés depuis, lus dans le journal des espèces ────────
 	//
@@ -85,8 +133,9 @@ func FondsReporte(dao *daos.Dao, ownerCompany string, jour string) (float64, err
 	if debut <= fin {
 		jours, _, err := JournalDesEspecesDao(dao, ownerCompany, debut, fin)
 		if err != nil {
-			return 0, fmt.Errorf("lecture du journal des espèces: %w", err)
+			return vide, fmt.Errorf("lecture du journal des espèces: %w", err)
 		}
+		origine.JoursDeFlux = len(jours)
 		for _, j := range jours {
 			// Les FLUX seulement. Le SoldeOuverture de ces journées n'entre
 			// jamais : c'est un solde, et l'ajouter compterait comme un apport
@@ -98,10 +147,15 @@ func FondsReporte(dao *daos.Dao, ownerCompany string, jour string) (float64, err
 	}
 
 	ancrage = roundAmount(ancrage)
+	origine.Flux = roundAmount(ancrage - depart)
 	if ancrage < 0 {
-		return 0, nil
+		// Un tiroir négatif n'existe pas : on rend zéro, et la provenance dit
+		// que le calcul a dérivé — l'écran ne doit pas l'annoncer « compté ».
+		origine.Fonds = 0
+		return origine, nil
 	}
-	return ancrage, nil
+	origine.Fonds = ancrage
+	return origine, nil
 }
 
 // dernierComptageAvant rend le dernier comptage réel du tiroir strictement

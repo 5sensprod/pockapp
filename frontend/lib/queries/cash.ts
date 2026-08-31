@@ -376,6 +376,15 @@ export function useZReport(
 // 🆕 RAPPORT Z - LISTE
 // ============================================================================
 
+// LIMITE PAR DÉFAUT : 500, ET C'EST DÉLIBÉRÉ.
+//
+// Elle valait 50. La base de production porte 66 rapports Z au 1er septembre
+// 2026 : seize n'étaient PAS affichés, sans message ni pagination — l'écran
+// disait simplement « historique des rapports Z » et en montrait une partie.
+// Un historique fiscal tronqué en silence est pire qu'une requête un peu plus
+// grosse ; à un Z par jour, 500 couvre seize mois.
+const Z_PAR_DEFAUT = 500
+
 export function useZReportList(
 	cashRegisterId: string,
 	options?: { limit?: number; enabled?: boolean },
@@ -386,7 +395,7 @@ export function useZReportList(
 		queryKey: cashKeys.zReportList(cashRegisterId),
 		queryFn: async () => {
 			const token = pb.authStore.token
-			const limit = options?.limit ?? 50
+			const limit = options?.limit ?? Z_PAR_DEFAUT
 
 			const res = await fetch(
 				`/api/cash/reports/z/list?cash_register=${encodeURIComponent(cashRegisterId)}&limit=${limit}`,
@@ -406,7 +415,16 @@ export function useZReportList(
 			return data.reports as ZReportListItem[]
 		},
 		enabled: options?.enabled ?? !!cashRegisterId,
-		staleTime: 1000 * 60, // 1 minute
+		// ⚠️ TOUJOURS REFAIT AU MONTAGE, ET SANS FRAÎCHEUR.
+		//
+		// Un Z est émis par la clôture, depuis un AUTRE écran (le terminal) et
+		// parfois depuis un autre poste. Une liste servie depuis le cache y
+		// arrive donc systématiquement en retard, et c'est ce qui obligeait à
+		// recharger la page pour voir les derniers Z — signalé les 31 août et
+		// 1er septembre 2026. La liste est courte et le coût d'une requête est
+		// sans commune mesure avec un historique fiscal incomplet à l'écran.
+		staleTime: 0,
+		refetchOnMount: 'always',
 	})
 }
 
@@ -622,7 +640,18 @@ export function useFondsDuJour(ownerCompanyId?: string) {
 				throw new Error(err.message || 'Erreur calcul du fonds du jour')
 			}
 
-			return (await res.json()) as { date: string; fonds: number }
+			// La PROVENANCE accompagne le montant depuis le 1er septembre 2026 :
+			// l'écran annonçait « tiroir de la veille » un report théorique de
+			// huit journées. Voir backend/reports/fonds_reporte.go.
+			return (await res.json()) as {
+				date: string
+				fonds: number
+				comptage: number
+				jour_du_comptage: string
+				flux: number
+				jours_de_flux: number
+				tiroir_de_la_veille: boolean
+			}
 		},
 		enabled: !!ownerCompanyId,
 		staleTime: 1000 * 60,

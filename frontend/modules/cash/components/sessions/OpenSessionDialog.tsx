@@ -48,9 +48,28 @@ interface OpenSessionDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
 	onSubmit: (openingFloat: number) => Promise<void>
-	/** Le tiroir de la veille au soir — prérempli, modifiable. */
+	/** Le fonds proposé pour ce matin — prérempli, modifiable. */
 	lastKnownFloat: number | null
 	lastClosedAtLabel: string | null
+	/**
+	 * D'OÙ vient ce fonds. La règle est « le tiroir COMPTÉ, sinon le
+	 * THÉORIQUE » (backend/reports/fonds_reporte.go) : quand aucun tiroir n'a
+	 * été compté depuis plusieurs jours, le montant proposé est un report
+	 * calculé, et l'annoncer « tiroir de la veille » est faux.
+	 *
+	 * Mesuré le 31 août 2026 : l'écran affichait « tiroir de la veille
+	 * 352,38 € » alors que le dernier comptage réel datait du 23 août
+	 * (227,68 €) et que huit journées de flux avaient été ajoutées. Le montant
+	 * était juste ; le mot ne l'était pas, et le commerçant a conclu à une
+	 * erreur de calcul.
+	 */
+	origineDuFonds?: {
+		comptage: number
+		jour_du_comptage: string
+		flux: number
+		jours_de_flux: number
+		tiroir_de_la_veille: boolean
+	} | null
 	isSubmitting?: boolean
 }
 
@@ -60,6 +79,7 @@ export function OpenSessionDialog({
 	onSubmit,
 	lastKnownFloat,
 	lastClosedAtLabel,
+	origineDuFonds,
 	isSubmitting = false,
 }: OpenSessionDialogProps) {
 	const [openingOverride, setOpeningOverride] = React.useState<number | null>(
@@ -251,11 +271,30 @@ export function OpenSessionDialog({
 									<span>{formatCurrency(countedTotal)}</span>
 								</div>
 
-								<div className='flex justify-between items-center'>
+								<div className='flex justify-between items-start gap-4'>
 									<span className='font-medium'>
-										Total repris (tiroir de la veille)
+										{origineDuFonds?.tiroir_de_la_veille
+											? 'Total repris (tiroir compté hier soir)'
+											: 'Total repris (report calculé)'}
+										{origineDuFonds && !origineDuFonds.tiroir_de_la_veille && (
+											<span className='block text-xs font-normal text-muted-foreground mt-0.5'>
+												{origineDuFonds.jour_du_comptage
+													? `Dernier tiroir compté le ${formatJourCourt(
+															origineDuFonds.jour_du_comptage,
+														)} : ${formatCurrency(origineDuFonds.comptage)}, plus ${
+															origineDuFonds.jours_de_flux
+														} journée${
+															origineDuFonds.jours_de_flux > 1 ? 's' : ''
+														} de mouvements (${
+															origineDuFonds.flux >= 0 ? '+' : '−'
+														}${formatCurrency(Math.abs(origineDuFonds.flux))}).`
+													: "Aucun tiroir n'a jamais été compté : ce report est entièrement théorique."}
+											</span>
+										)}
 									</span>
-									<span>{formatCurrency(openingOverride ?? 0)}</span>
+									<span className='shrink-0'>
+										{formatCurrency(openingOverride ?? 0)}
+									</span>
 								</div>
 
 								<Separator />
@@ -285,4 +324,12 @@ export function OpenSessionDialog({
 			</DialogContent>
 		</Dialog>
 	)
+}
+
+// formatJourCourt rend « 23/08 » à partir de « 2026-08-23 ». Pas de `new Date`
+// sur une date nue : elle serait lue en UTC et reculerait d'un jour à l'ouest
+// de Greenwich.
+function formatJourCourt(jour: string): string {
+	const [, mois, jourDuMois] = jour.split('-')
+	return mois && jourDuMois ? `${jourDuMois}/${mois}` : jour
 }

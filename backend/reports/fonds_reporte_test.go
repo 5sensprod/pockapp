@@ -50,9 +50,19 @@ func TestLeFondsReporteNEstJamaisCompteCommeUnApport(t *testing.T) {
 	caisse := creerEnregistrement(t, app, "cash_registers", map[string]any{
 		"owner_company": societeDeTest, "code": "C1", "name": "Comptoir",
 	})
-	veille := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	aujourdhui := time.Now().Format("2006-01-02")
-	demain := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	// ⚠️ LES JOURNÉES SE COMPTENT EN UTC ICI, ET C'EST OBLIGATOIRE.
+	//
+	// Les cash_movements de ce test portent le `created` de PocketBase, écrit
+	// en UTC, et le journal des espèces les range par les dix premiers
+	// caractères de ce champ (journal_especes.go:231). Entre minuit et 2 h
+	// heure de Paris, l'UTC est encore la veille : des journées calculées en
+	// local rangeaient les mouvements hors de la fenêtre demandée, et le test
+	// échouait — mesuré le 1er septembre 2026 à 00 h 03, sur un code inchangé.
+	// La règle testée, elle, n'a rien à voir avec les fuseaux.
+	maintenant := time.Now().UTC()
+	veille := maintenant.AddDate(0, 0, -1).Format("2006-01-02")
+	aujourdhui := maintenant.Format("2006-01-02")
+	demain := maintenant.AddDate(0, 0, 1).Format("2006-01-02")
 
 	// La veille : tiroir compté à 200,00 €. C'est le dernier point sûr.
 	creerEnregistrement(t, app, "cash_sessions", map[string]any{

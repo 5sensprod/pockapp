@@ -10,6 +10,84 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Une clôture après minuit reste dans sa journée — 2026-09-01
+
+**Décision.** `closed_at` ne prend l'heure courante que si elle **s'écrit** dans
+la journée du rapport ; sinon il retombe sur `<jour> 23:59:59`, comme
+`fermerAuPassageDeJournee`.
+
+**Mesuré le 1er septembre 2026 à 00 h 03**, quand l'horloge a franchi minuit
+pendant l'exécution des tests. `GenerateRapportZ` borne les sessions par une
+comparaison de **chaînes** sur `closed_at` — tout est stocké en UTC, alors que
+la journée est celle du commerçant. Une clôture faite le 31 août à 00 h 03
+heure de Paris s'écrivait « 2026-08-30 22:03 » et sortait de la journée du 31 :
+la session était fermée, le Z échouait sur « aucune session fermée
+disponible », et la journée se retrouvait **close sans clôture**. Le défaut du
+31 août, par une autre porte — et introduit par son propre correctif.
+
+**Écarté — convertir les bornes du Z en UTC.** Elles sont partout, et
+`fermerAuPassageDeJournee` écrit déjà ses `closed_at` sur la journée
+commerciale depuis le 29 août. Changer la convention aurait déplacé 66 rapports
+scellés ; la faire respecter par le nouveau chemin ne déplace rien.
+
+**Gardien.** `TestUneClotureApresMinuitResteDansSaJournee`.
+
+**Au passage, `TestLeFondsReporteNEstJamaisCompteCommeUnApport` échouait pour la
+même raison** — sur un code inchangé, vérifié par `git stash`. Ses journées se
+calculaient en heure locale alors que le journal des espèces range les
+mouvements par les dix premiers caractères de `created`, écrit en UTC
+(`journal_especes.go:231`). Les journées du test se comptent désormais en UTC.
+
+---
+
+## Le fonds proposé dit d'où il vient — 2026-09-01
+
+**Décision.** `GET /api/cash/fonds-du-jour` rend, avec le montant, sa
+**provenance** : le dernier tiroir compté, sa date, les flux ajoutés depuis et
+leur nombre de journées (`FondsReporteDetail`). L'écran « Commencer la journée »
+annonce « tiroir compté hier soir » **ou** « report calculé », en détaillant.
+
+**Le défaut n'était pas dans le nombre.** Le 31 août 2026, l'écran affichait
+« Total repris (tiroir de la veille) : 352,38 € », et le propriétaire y a vu un
+montant théorique substitué au comptage réel. Mesuré sur la base de production :
+le dernier tiroir réellement compté datait du **23 août, 227,68 €** — les
+sessions des 27, 28 et 29 août portent toutes `counted_cash_total = 0` —, et les
+huit journées écoulées depuis portaient le report à 352,38 €. C'est **exactement**
+la règle arbitrée le 29 août, « le tiroir COMPTÉ, sinon le THÉORIQUE ». Le
+calcul était juste ; le libellé affirmait une provenance qu'il n'avait pas.
+
+**Ce que ça change concrètement :** la journée du 31 août ayant été comptée à
+375,00 €, l'ouverture du 1er septembre propose 375,00 € annoncés « tiroir compté
+hier soir ». Le doute ne peut plus se reformer.
+
+**Écarté — changer la règle pour n'utiliser que le comptage.** 23 sessions sur
+65 n'ont aucun comptage : le fonds tomberait à zéro ces jours-là, c'est-à-dire
+le défaut que la règle du 29 août répare.
+
+**Écarté — masquer le report théorique.** C'est l'information la plus utile de
+l'écran : elle dit qu'on n'a pas compté le tiroir depuis huit jours.
+
+---
+
+## L'historique des Z n'était pas seulement périmé, il était tronqué — 2026-09-01
+
+**Décision.** `useZReportList` passe en `staleTime: 0` + `refetchOnMount:
+'always'`, et sa limite par défaut passe de **50 à 500**.
+
+**Mesuré :** la base de production porte **66 rapports Z** au 1er septembre 2026.
+La liste en demandait 50 : seize n'étaient pas affichés, **sans message ni
+pagination** — l'écran disait « historique des rapports Z » et en montrait une
+partie. Le `refetchType: 'all'` posé le 31 août ne traitait que la péremption,
+pas la troncature ; c'est probablement ce qui restait visible sous « je dois
+rafraîchir la page pour voir le reste de la liste ». À un Z par jour, 500 couvre
+seize mois.
+
+**Écarté — paginer.** Un historique fiscal se lit en entier ou se cherche ; une
+pagination sur une liste qui grandit d'une ligne par jour ajoute un geste sans
+rien résoudre. À revoir si la liste dépasse quelques centaines de lignes.
+
+---
+
 ## La clôture de la journée émet son Z, dans la même route — 2026-08-31
 
 **Décision.** `POST /api/cash/session/:id/close` ferme la session **et** émet le

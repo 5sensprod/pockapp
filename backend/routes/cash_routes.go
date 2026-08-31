@@ -347,14 +347,23 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			jour = time.Now().Format("2006-01-02")
 		}
 
-		fonds, err := reports.FondsReporte(app.Dao(), ownerCompany, jour)
+		// La PROVENANCE part avec le montant (31 août 2026). L'écran annonçait
+		// « tiroir de la veille » un report théorique de huit journées, et le
+		// commerçant a cru à une erreur de calcul : il n'y en avait pas, il y
+		// avait un mot faux.
+		origine, err := reports.FondsReporteDetail(app.Dao(), ownerCompany, jour)
 		if err != nil {
 			return apis.NewApiError(500, "Calcul du fonds impossible", err)
 		}
 
 		return c.JSON(http.StatusOK, echo.Map{
-			"date":  jour,
-			"fonds": fonds,
+			"date":                jour,
+			"fonds":               origine.Fonds,
+			"comptage":            origine.Comptage,
+			"jour_du_comptage":    origine.JourDuComptage,
+			"flux":                origine.Flux,
+			"jours_de_flux":       origine.JoursDeFlux,
+			"tiroir_de_la_veille": origine.EstLeTiroirDeLaVeille(),
 		})
 	},
 		apis.RequireRecordAuth(),

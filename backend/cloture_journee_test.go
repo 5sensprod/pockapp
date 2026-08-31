@@ -285,3 +285,47 @@ func TestUneJourneeSansVenteProduitUnZAZero(t *testing.T) {
 		t.Fatalf("la journée n'est pas clôturée alors que son Z est émis")
 	}
 }
+
+// UNE CLÔTURE FAITE APRÈS MINUIT RESTE DANS SA JOURNÉE.
+//
+// Défaut mesuré le 1er septembre 2026 à 00 h 03, quand l'horloge a franchi
+// minuit pendant l'exécution des tests. `closed_at` prenait l'heure courante en
+// UTC ; à 00 h 03 heure de Paris, cela s'écrit « 2026-08-30 22:03 ». La session
+// sortait alors de la fenêtre de son propre Z — GenerateRapportZ compare des
+// CHAÎNES sur la journée — et la clôture échouait sur « aucune session fermée
+// disponible », laissant la journée close SANS rapport. Le défaut du 31 août,
+// par une autre porte.
+func TestUneClotureApresMinuitResteDansSaJournee(t *testing.T) {
+	app := nouvelleAppDeTestCaisse(t)
+	caisse := creerCaisse(t, app, "co1")
+
+	// Une journée ouverte le matin, clôturée à 00 h 03 le lendemain — l'heure à
+	// laquelle un commerçant termine sa caisse après une soirée.
+	jour := "2026-08-31"
+	ouverture := time.Date(2026, 8, 31, 9, 0, 0, 0, time.Local)
+	apresMinuit := time.Date(2026, 9, 1, 0, 3, 0, 0, time.Local)
+
+	session, err := sessionDuJourA(app.Dao(), "co1", caisse.Id, "user1", ouverture)
+	if err != nil {
+		t.Fatalf("ouverture: %v", err)
+	}
+	creerTicket(t, app, session, jour, "TIK-2026-000900", 50.00)
+
+	resultat, err := cloturerLaJourneeA(app, session.Id, 0, "user1", apresMinuit)
+	if err != nil {
+		t.Fatalf("clôture après minuit: %v — la session est sortie de sa propre journée", err)
+	}
+	if resultat.Jour != jour {
+		t.Fatalf("le Z porte la journée %q au lieu de %q", resultat.Jour, jour)
+	}
+	if resultat.Rapport.DailyTotals.TotalTTC != 50.00 {
+		t.Fatalf("le Z porte %.2f € au lieu de 50,00 € : sa session lui a échappé",
+			resultat.Rapport.DailyTotals.TotalTTC)
+	}
+
+	relue, _ := app.Dao().FindRecordById("cash_sessions", session.Id)
+	if jourDeLaDate(relue.GetString("closed_at")) != jour {
+		t.Fatalf("closed_at = %q s'écrit hors du %s : la comparaison de chaînes du "+
+			"Z ne le verra pas", relue.GetString("closed_at"), jour)
+	}
+}

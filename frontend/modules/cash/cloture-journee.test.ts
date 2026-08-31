@@ -89,3 +89,26 @@ describe('la mutation de clôture rend le rapport émis', () => {
 		expect(bloc).toMatch(/setQueryData\(\s*cashKeys\.zReportGenerate/)
 	})
 })
+
+describe("l'historique des Z ne se sert jamais du cache", () => {
+	const requetes = lire('lib/queries/cash.ts')
+
+	it('la liste est refaite au montage, sans fraîcheur', () => {
+		// Un Z est émis depuis le terminal, parfois depuis un autre poste : une
+		// liste servie du cache y arrive toujours en retard, et il fallait
+		// recharger la page pour voir les derniers Z.
+		const bloc = requetes.slice(
+			requetes.indexOf('export function useZReportList'),
+			requetes.indexOf('export function useZReportById'),
+		)
+		expect(bloc).toMatch(/staleTime: 0/)
+		expect(bloc).toMatch(/refetchOnMount: 'always'/)
+	})
+
+	it("l'historique n'est plus tronqué en silence", () => {
+		// 66 Z en production au 1er septembre 2026, la limite valait 50 :
+		// seize n'étaient pas affichés, sans message ni pagination.
+		expect(requetes).toMatch(/const Z_PAR_DEFAUT = 500/)
+		expect(requetes).not.toMatch(/options\?\.limit \?\? 50/)
+	})
+})
