@@ -456,6 +456,32 @@ export function estZPorteLaTVADesAcomptes(totals: {
 	return (totals.schema_version ?? 1) >= 7 && totals.deposits_vat !== undefined
 }
 
+/**
+ * estZReconnaitLeSolde dit si le rapport range les factures de SOLDE en ligne 1,
+ * avec leur HT et leur TVA — donc si son chiffre d'affaires couvre les dossiers
+ * acompte / solde soldés pendant la période.
+ *
+ * Contrat du 1er septembre 2026 (`schema_version` 8). Sous les versions 1 à 7,
+ * la facture de solde partait en ligne 3 avec les acomptes, en TTC seul : le CA
+ * d'un dossier soldé n'était reconnu NULLE PART — la parente est hors lignes
+ * (règle anti-doublon), l'acompte et le solde n'avaient pas de base HT — et la
+ * TVA du solde n'était déclarée ni par `total_tva` ni par `deposits_vat`.
+ *
+ * Un solde facture une LIVRAISON : son HT et sa TVA sont le complément exact de
+ * ceux des acomptes du dossier, et rien n'est compté deux fois.
+ *
+ * ⚠️ Les rapports antérieurs ne sont PAS rejoués : ils gardent leur contenu et
+ * leur hash, et se relisent sous leur propre règle. Ce prédicat sert à ne pas
+ * affirmer, sur un Z de 2026-08, un CA qu'il n'a jamais porté.
+ *
+ * ⚠️ Seuil, jamais `=== 8`.
+ */
+export function estZReconnaitLeSolde(totals: {
+	schema_version?: number
+}): boolean {
+	return (totals.schema_version ?? 1) >= 8
+}
+
 // ============================================================================
 // 🆕 LISTE DES RAPPORTS Z
 // ============================================================================

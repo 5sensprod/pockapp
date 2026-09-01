@@ -29,10 +29,11 @@ import {
 	type CustomerType,
 	type CustomerTypeSummary,
 	aggregateEreporting,
-	estZPorteLaTVADesAcomptes,
-	estZQuatreLignes,
 	estZCompteLesDocuments,
 	estZListeLesDocuments,
+	estZPorteLaTVADesAcomptes,
+	estZQuatreLignes,
+	estZReconnaitLeSolde,
 	estZSansDetailSessions,
 	estZSansRapprochementEspeces,
 	getPaymentMethodLabel,
@@ -512,6 +513,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 									tvaAcomptes: estZPorteLaTVADesAcomptes(totals)
 										? totals.deposits_vat
 										: undefined,
+									reconnaitLeSolde: estZReconnaitLeSolde(totals),
 								}}
 								tvaVentesDuJour={totals.total_tva}
 							/>

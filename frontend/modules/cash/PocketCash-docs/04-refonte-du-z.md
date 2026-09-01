@@ -571,3 +571,54 @@ Gardiens : `backend/reports/z_rattachement_test.go` (le lien se pose des deux
 côtés, ne se pose pas deux fois, et une journée sans Z n'est pas l'affaire de
 cet outil) et `backend/reports/session_fonds_test.go` (le mouvement n'est pas
 altéré, et une session déjà scellée dans un Z est refusée).
+
+---
+
+## 8. Le solde d'un dossier d'acompte rejoint la ligne 1 — 1er septembre 2026
+
+`schema_version` **8**. Le §1 et le §2 restent le contrat ; ce paragraphe en
+corrige un point, et un seul.
+
+**Ce qui change.** La facture de **solde** quitte la ligne 3 pour la **ligne 1**,
+avec son HT et sa TVA. Elle n'a plus de traitement à part : elle emprunte le même
+test de date que toute facture — émise et encaissée le même jour, vente du jour ;
+émise avant, règlement de créance (ligne 2, TTC seul).
+
+**Ce qui ne change pas.** La parente d'un dossier soldé reste **hors lignes**
+(§2, règle anti-doublon). L'acompte reste en ligne 3, en TTC seul, sa TVA dans
+`deposits_vat` (§7 du contrat 7). Le total encaissé, `collected_ttc`, est le
+même qu'avant au centime — seul change la ligne sous laquelle le commerçant lit
+une partie de cet argent.
+
+**Pourquoi.** Sous les versions 1 à 7, le CA d'un dossier soldé n'était reconnu
+nulle part : parente exclue, acompte et solde en TTC seul. Le Z du
+1er septembre 2026 annonçait 0,00 € de ventes sur le dossier `FAC-2026-000286`
+(acompte `ACC-2026-000021` 10,00 € + solde `FAC-2026-000287` 19,90 €), et la TVA
+du solde n'était déclarée par aucun champ. Mesuré sur la production : 6 factures
+de solde encaissées, 1 464,01 € HT et 187,79 € de TVA invisibles.
+
+**Le dossier reste couvert exactement une fois**, et c'est vérifiable au centime :
+le HT et la TVA d'un solde sont le complément exact de ceux des acomptes
+(8,33 + 16,59 = 24,92 ; 1,67 + 3,31 = 4,98), parce que `deposit.go:455-459`
+calcule le solde au prorata du reste à payer.
+
+| | avant (v7) | après (v8) |
+|---|---|---|
+| Ligne 1 — ventes du jour | 0,00 | **16,59 / 3,31 / 19,90** |
+| Ligne 3 — acomptes | 29,90 | **10,00** |
+| `total_tva` | 0,00 | **3,31** |
+| `deposits_vat` | 1,67 | 1,67 |
+| `collected_ttc` | 29,90 | 29,90 |
+
+**Limite assumée.** La ligne 1 reconnaît le CA au **prorata du reste à payer** :
+la part déjà versée en acompte n'entre dans le `total_ht` d'aucun Z. La ligne 1
+reste « ce qui est encaissé aujourd'hui ».
+
+**Aucun rejeu.** Les rapports antérieurs gardent leur contenu et leur hash, et se
+relisent sous leur propre règle — prédicat `estZReconnaitLeSolde`
+(`frontend/lib/types/cash.types.ts`), un **seuil**. Les libellés du Z et du X
+s'adaptent : sur un rapport en v8 la ligne 1 annonce « et factures de solde »,
+sur un rapport antérieur elle ne le dit pas, parce que ce serait faux.
+
+Décision, options écartées et mesures : `docs/DECISIONS.md`, bloc « Le solde
+d'un dossier d'acompte est du chiffre d'affaires ».

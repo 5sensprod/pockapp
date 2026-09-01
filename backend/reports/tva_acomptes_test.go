@@ -102,8 +102,10 @@ func TestLaTVADUnAcompteEstDeclareeMaisPasDansTotalTVA(t *testing.T) {
 		t.Fatalf("ventilation par taux absente ou fausse : %+v", totaux.DepositsVATByRate)
 	}
 
-	if totaux.SchemaVersion != 7 {
-		t.Fatalf("schema_version = %d au lieu de 7", totaux.SchemaVersion)
+	// Le contrat de la TVA des acomptes est né en 7 ; il tient toujours sous 8,
+	// qui n'a déplacé que la facture de solde. SEUIL, jamais égalité.
+	if totaux.SchemaVersion < 7 {
+		t.Fatalf("schema_version = %d, en deçà de 7", totaux.SchemaVersion)
 	}
 }
 
@@ -163,7 +165,8 @@ func TestLaFactureDeSoldeNAjoutePasDeTVADAcompte(t *testing.T) {
 	acompteEncaisse(t, app, session, jour, "ACC-901", parente.Id, 25.00, 5.00, 30.00)
 
 	// La facture de solde : 90 € TTC, soit 75 HT et 15 de TVA — le RESTE, déjà
-	// net de l'acompte. Elle entre en ligne 3 pour son TTC, sans TVA.
+	// net de l'acompte. Depuis le contrat 8 elle entre en LIGNE 1, avec son HT
+	// et sa TVA ; ce qu'elle n'alimente pas, c'est `deposits_vat`.
 	creerEnregistrement(t, app, "invoices", map[string]any{
 		"owner_company": societeDeTest, "session": session.Id,
 		"is_pos_ticket": false, "is_paid": true, "status": "validated",
@@ -182,9 +185,19 @@ func TestLaFactureDeSoldeNAjoutePasDeTVADAcompte(t *testing.T) {
 			"ajouté sa propre TVA, déjà nette des acomptes — elle serait "+
 			"déclarée deux fois", totaux.DepositsVAT)
 	}
-	// Les deux documents sont bien encaissés, en TTC, sur la ligne 3.
-	if totaux.CollectedDepositsTTC != 120.00 {
-		t.Fatalf("ligne 3 = %.2f au lieu de 120,00 (30 d'acompte + 90 de solde)",
-			totaux.CollectedDepositsTTC)
+	// Contrat 8 : la ligne 3 ne porte plus que l'acompte. Le solde est parti en
+	// ligne 1, et sa TVA avec lui — d'où 5,00 en `deposits_vat` et 15,00 en
+	// `total_tva` : les 20,00 € du dossier, déclarés une fois chacun.
+	if totaux.CollectedDepositsTTC != 30.00 {
+		t.Fatalf("ligne 3 = %.2f au lieu de 30,00 : le solde y est resté alors "+
+			"qu'il facture une livraison (contrat 8)", totaux.CollectedDepositsTTC)
+	}
+	if totaux.TotalTVA != 15.00 {
+		t.Fatalf("total_tva = %.2f au lieu de 15,00 : la TVA du solde n'est pas "+
+			"déclarée", totaux.TotalTVA)
+	}
+	if roundAmount(totaux.DepositsVAT+totaux.TotalTVA) != 20.00 {
+		t.Fatalf("TVA déclarée %.2f + %.2f ≠ 20,00 : le dossier n'est pas couvert "+
+			"exactement une fois", totaux.DepositsVAT, totaux.TotalTVA)
 	}
 }

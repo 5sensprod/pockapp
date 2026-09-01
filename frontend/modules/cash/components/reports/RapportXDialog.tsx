@@ -18,6 +18,7 @@ import {
 	aggregateEreporting,
 	estZPorteLaTVADesAcomptes,
 	estZQuatreLignes,
+	estZReconnaitLeSolde,
 } from '@/lib/types/cash.types'
 import {
 	FileText,
@@ -135,6 +136,7 @@ export function RapportXDialog({
 													tvaAcomptes: estZPorteLaTVADesAcomptes(rapport.sales)
 														? rapport.sales.deposits_vat
 														: undefined,
+													reconnaitLeSolde: estZReconnaitLeSolde(rapport.sales),
 												}}
 												tvaVentesDuJour={rapport.sales.total_tva}
 											/>

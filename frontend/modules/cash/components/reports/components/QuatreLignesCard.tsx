@@ -25,7 +25,10 @@ export interface QuatreLignes {
 	ventesDuJour: number
 	/** Ligne 2 — règlements de factures émises un jour antérieur. */
 	creances: number
-	/** Ligne 3 — acomptes, factures de solde, parentes amputées. */
+	/**
+	 * Ligne 3 — acomptes et parentes amputées. Les factures de SOLDE en sont
+	 * sorties pour la ligne 1 sous le contrat 8 (voir `reconnaitLeSolde`).
+	 */
 	acomptes: number
 	/** Ligne 4 — remboursements, en déduction. */
 	remboursements: number
@@ -37,6 +40,14 @@ export interface QuatreLignes {
 	 * n'affiche alors rien, on ne la recalcule pas.
 	 */
 	tvaAcomptes?: number
+	/**
+	 * Vrai si le rapport range les factures de SOLDE en ligne 1 avec leur HT et
+	 * leur TVA (`schema_version` ≥ 8). N'affecte QUE les libellés : les montants
+	 * viennent du backend et ne se recalculent pas ici. Sur un rapport
+	 * antérieur, dire « soldes compris » en ligne 1 serait un mensonge — ils
+	 * étaient en ligne 3, en TTC seul.
+	 */
+	reconnaitLeSolde?: boolean
 }
 
 function Ligne({
@@ -101,7 +112,11 @@ export function QuatreLignesCard({
 				<Ligne
 					libelle='Ventes du jour'
 					montant={lignes.ventesDuJour}
-					precision='tickets et factures encaissées le jour de leur émission'
+					precision={
+						lignes.reconnaitLeSolde
+							? 'tickets, factures encaissées le jour de leur émission, et factures de solde'
+							: 'tickets et factures encaissées le jour de leur émission'
+					}
 				/>
 				<Ligne
 					libelle='Règlements de factures antérieures'
@@ -111,7 +126,11 @@ export function QuatreLignesCard({
 				<Ligne
 					libelle='Acomptes'
 					montant={lignes.acomptes}
-					precision='trésorerie, pas du chiffre d’affaires'
+					precision={
+						lignes.reconnaitLeSolde
+							? 'trésorerie, pas du chiffre d’affaires — le solde d’un dossier est en ventes du jour'
+							: 'trésorerie, pas du chiffre d’affaires'
+					}
 				/>
 				{lignes.tvaAcomptes !== undefined && lignes.tvaAcomptes !== 0 && (
 					// Sous la ligne 3, décalée : elle n'entre dans AUCUN des

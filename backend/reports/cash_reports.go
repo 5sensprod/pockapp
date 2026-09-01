@@ -874,12 +874,15 @@ type DailyTotalsSummary struct {
 	// du jour » un encaissement qui n'est pas du chiffre d'affaires — la
 	// séparation même que le contrat des quatre lignes protège.
 	//
-	// PÉRIMÈTRE — les `invoice_type = 'deposit'` seuls. La ligne 3 regroupe
-	// TROIS documents (z_lignes.go) : l'acompte, la facture de solde et la
-	// parente amputée. Les deux derniers sont des factures ordinaires, dont la
-	// TVA est exigible à l'émission comme celles de la ligne 2 — et la facture
-	// de solde porte déjà une TVA NETTE des acomptes (deposit.go:455-459,
-	// `balanceTVA = balanceDue − balanceHT`) : rien n'est déclaré deux fois.
+	// PÉRIMÈTRE — les `invoice_type = 'deposit'` seuls. Depuis le contrat 8 la
+	// ligne 3 ne regroupe plus que DEUX documents (z_lignes.go) : l'acompte et
+	// la parente amputée. La facture de solde en est sortie pour la ligne 1 :
+	// elle facture une livraison, sa TVA est du chiffre d'affaires du jour et
+	// elle est portée par `TotalTVA`. Rien n'est déclaré deux fois, parce que
+	// cette TVA est déjà NETTE des acomptes (deposit.go:455-459,
+	// `balanceTVA = balanceDue − balanceHT`) : sur le dossier
+	// FAC-2026-000286, 1,67 € en `DepositsVAT` + 3,31 € en `TotalTVA` = les
+	// 4,98 € du dossier, au centime.
 	//
 	// Un acompte REMBOURSÉ retire sa TVA, au jour de l'avoir : une TVA
 	// encaissée puis rendue ne reste pas déclarée.
@@ -895,7 +898,13 @@ type DailyTotalsSummary struct {
 // Z porte en outre la LISTE des documents de sa ligne 1 ; 6 = la liste couvre
 // les QUATRE lignes, avec heure, client et ligne — le modèle du journal ;
 // 7 = contrat du 1er septembre 2026, où le Z déclare la TVA des ACOMPTES
-// encaissés, dans un bloc à part et JAMAIS dans total_tva.
+// encaissés, dans un bloc à part et JAMAIS dans total_tva ;
+// 8 = même jour, la facture de SOLDE quitte la ligne 3 pour la ligne 1 — elle
+// facture une livraison, donc du chiffre d'affaires, et sa TVA entre dans
+// total_tva. Sous les versions 1 à 7, le CA d'un dossier acompte/solde
+// n'était reconnu NULLE PART : la parente est hors lignes, l'acompte et le
+// solde étaient en TTC seul. Les rapports antérieurs ne sont PAS rejoués et
+// se relisent sous leur propre règle (arbitré le 1er septembre 2026).
 // Sans elle, un Z relu dans six mois ne dirait pas ce que son total_ht recouvre,
 // ni si l'absence de rapprochement est un contrat ou une donnée perdue.
 //
@@ -903,7 +912,7 @@ type DailyTotalsSummary struct {
 // hash de tous les rapports rejoués, sans déplacer un centime — le
 // rapprochement, lui, n'a jamais été haché (voir z_repair.go, « Écrire dès que
 // le CONTENU diffère »).
-const ZSchemaVersionCourante = 7
+const ZSchemaVersionCourante = 8
 
 // ============================================================================
 // AGRÉGATION D'UN RAPPORT Z

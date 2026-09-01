@@ -493,9 +493,11 @@ func TestUnDossierAcompteNEstComptePasDeuxFois(t *testing.T) {
 		{"FAC-2026-000165", 249.00, 250.00, 499.00},
 	}
 
-	var attendu float64
+	var attendu, attenduSoldes, attenduAcomptes float64
 	for _, d := range dossiers {
 		attendu += d.attenduDuDossier
+		attenduSoldes += d.solde
+		attenduAcomptes += d.acompte
 
 		// La parente porte le TOTAL du dossier, et elle est marquée payée.
 		parente := creerEnregistrement(t, app, "invoices", map[string]any{
@@ -524,16 +526,29 @@ func TestUnDossierAcompteNEstComptePasDeuxFois(t *testing.T) {
 
 	totaux := genererZ(t, app, caisse.Id, jour)
 
-	if totaux.CollectedDepositsTTC != roundAmount(attendu) {
-		t.Errorf("ligne 3 = %.2f, attendu %.2f (%.2f = les parentes comptées en plus)",
-			totaux.CollectedDepositsTTC, attendu, attendu*2)
+	// Depuis le contrat 8 le dossier se lit sur DEUX lignes : le solde en
+	// ligne 1 — il facture une livraison, c'est du chiffre d'affaires —,
+	// l'acompte en ligne 3. Ce que la règle anti-doublon protège est inchangé :
+	// la parente n'entre nulle part, et le total encaissé reste celui des
+	// dossiers, pas son double.
+	if totaux.CollectedDepositsTTC != roundAmount(attenduAcomptes) {
+		t.Errorf("ligne 3 = %.2f, attendu %.2f (les acomptes seuls)",
+			totaux.CollectedDepositsTTC, attenduAcomptes)
 	}
-	if totaux.TotalTTC != 0 {
-		t.Errorf("ligne 1 = %.2f, attendu 0 : une parente porteuse d'acomptes n'est pas une vente du jour",
-			totaux.TotalTTC)
+	if totaux.TotalTTC != roundAmount(attenduSoldes) {
+		t.Errorf("ligne 1 = %.2f, attendu %.2f : le CA des dossiers soldés doit "+
+			"être reconnu, et la parente en rester exclue",
+			totaux.TotalTTC, attenduSoldes)
 	}
 	if totaux.CollectedTTC != roundAmount(attendu) {
-		t.Errorf("total encaissé = %.2f, attendu %.2f", totaux.CollectedTTC, attendu)
+		t.Errorf("total encaissé = %.2f, attendu %.2f (%.2f = les parentes "+
+			"comptées en plus)", totaux.CollectedTTC, attendu, attendu*2)
+	}
+	// Les deux lignes se recomposent en le total des dossiers, au centime :
+	// aucun euro n'est perdu entre elles.
+	if roundAmount(totaux.TotalTTC+totaux.CollectedDepositsTTC) != roundAmount(attendu) {
+		t.Errorf("ligne 1 %.2f + ligne 3 %.2f ≠ %.2f", totaux.TotalTTC,
+			totaux.CollectedDepositsTTC, attendu)
 	}
 }
 

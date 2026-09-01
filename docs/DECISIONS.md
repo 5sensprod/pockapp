@@ -10,6 +10,114 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Le solde d'un dossier d'acompte est du chiffre d'affaires — 2026-09-01
+
+**Décision.** La facture de solde quitte la ligne 3 pour la **ligne 1**, avec son
+HT et sa TVA. `schema_version` passe à **8**. Une seule règle déplacée, dans
+`classerAuJour` (`backend/reports/z_lignes.go`) : un solde n'a plus de sortie
+anticipée, il emprunte le **même test de date** que n'importe quelle facture —
+émis et encaissé le même jour, c'est une vente du jour ; émis avant, c'est un
+règlement de créance. Le Z, le X et le journal des ventes partagent ce
+classificateur : ils sont corrigés ensemble, sans seconde implémentation.
+
+**Le défaut.** Un dossier acompte / solde ne produisait de chiffre d'affaires
+nulle part. La parente est hors lignes (règle anti-doublon du 24 août, et elle
+ne bouge pas) ; l'acompte et le solde partaient tous deux en ligne 3, en TTC
+seul. Le Z du 1er septembre annonçait donc **0,00 € de ventes** sur une journée
+où 29,90 € avaient été facturés et encaissés — dossier `FAC-2026-000286`, acompte
+`ACC-2026-000021` de 10,00 € puis solde `FAC-2026-000287` de 19,90 €. La TVA du
+solde n'était déclarée ni par `total_tva` (il n'était pas en ligne 1) ni par
+`deposits_vat` (il n'est pas un `invoice_type = 'deposit'`).
+
+**Mesuré sur la base de production le 1er septembre 2026.** 7 factures de solde,
+dont **6 encaissées** : 1 464,01 € HT, 187,79 € de TVA, 1 651,80 € TTC restés
+invisibles. La septième (`FAC-2026-000105`, 64,93 €) n'est pas payée et n'entrait
+dans aucun Z — à raison. Et **aucun dossier de la base n'est à cheval sur deux
+journées** : les 6 acomptes sont encaissés le jour même de leur solde, y compris
+`ACC-2026-000008` (émis le 02/05, encaissé le 23/07).
+
+**Ce qui rend le modèle sûr, et qui a été vérifié au centime.** Le HT et la TVA
+d'un solde sont le **complément exact** de ceux des acomptes du dossier :
+8,33 + 16,59 = 24,92 et 1,67 + 3,31 = 4,98. Le prorata de `deposit.go:455-459`
+(`balanceHT = parentHT × balanceDue / parentTotal`) ne perd rien et ne double
+rien. La TVA du dossier est donc déclarée **une fois et une seule** : la part
+acompte dans `deposits_vat` au jour de l'acompte, la part solde dans `total_tva`
+au jour du solde. `total_ht + total_tva = total_ttc` tient, et `collected_ttc`
+reste la somme des quatre lignes.
+
+**Ce qu'on accepte.** La ligne 1 reconnaît le CA **au prorata du reste à payer**,
+pas le total de la commande : les 8,33 € de base HT déjà versés en acompte
+n'entrent dans le `total_ht` d'aucun Z. C'est le prix de « ligne 1 = ce qui est
+encaissé aujourd'hui ». Sur les 6 dossiers, cela représente 594,00 € TTC
+d'acomptes dont seule la TVA est déclarée.
+
+**Écarté — reconnaître le dossier entier au jour du solde** (le CA est acquis à
+la livraison). Comptablement le plus orthodoxe, et le seul qui fasse apparaître
+les 29,90 € d'un coup. Il exige une ligne **négative** « acomptes imputés » pour
+que `collected_ttc` reste juste quand l'acompte tombe un autre jour, un
+`deposits_vat` négatif de reprise, et une résolution du dossier complet dans
+`z-repair`. Surtout, il est **incompatible avec l'absence de rejeu** : le Z d'un
+solde encaissé après le basculement devrait reprendre une TVA déclarée sous la
+règle 7, donc corriger un document scellé sous une autre règle.
+
+**Écarté — une cinquième ligne « soldes de commande »**, typée HT/TVA/TTC, hors
+de la ligne 1. Elle distingue le mieux, mais laisse `total_tva` à 0,00 alors que
+de la TVA de livraison a été encaissée — exactement le reproche qui a motivé
+`deposits_vat` deux blocs plus haut —, et ferait passer de deux à trois blocs de
+TVA à additionner à la main.
+
+**Écarté — exposer aussi la base HT des acomptes** (`deposits_ht`, à côté de
+`deposits_vat`), pour que `total_ht + deposits_ht` rende le CA livré sur une
+période. Deux champs, aucune règle nouvelle : reste disponible si le comptable le
+demande, non retenu faute de besoin exprimé.
+
+**Pas de rejeu, et c'est la décision du propriétaire.** L'objectif est d'avoir
+des données cohérentes **à partir des nouveaux Z**, pas de corriger les
+antérieurs. Les 65 rapports existants gardent leur contenu et leur hash ; ils se
+relisent sous leur propre règle, et continueront d'annoncer 0,00 € de CA sur les
+6 dossiers concernés. C'est précisément ce à quoi sert `schema_version`, et
+pourquoi les prédicats `estZ*` sont des **seuils**. Un dossier à cheval sur le
+basculement est sans danger sous ce modèle : l'acompte a été traité sous la
+règle 7, le solde l'est sous la règle 8, aucune des deux ne relit l'autre.
+
+**Ce qui pourrait la remettre en cause.** Un comptable qui exigerait de
+reconstituer le CA d'une commande sur une seule ligne — il faudrait alors le
+modèle écarté ci-dessus, et un rejeu. Ou une facture de solde qui cesserait de
+porter un HT au prorata : tout le raisonnement repose sur la complémentarité
+exacte acompte + solde = parente.
+
+**Rejeu : mesuré, non appliqué.** `z-repair` sans `-apply` a été lancé le
+1er septembre 2026 sur une COPIE de la base de production, deux fois — avec le
+code de `HEAD` puis avec le contrat 8 — pour isoler l'effet de la seule règle
+déplacée. Résultat : **5 rapports sur 65 diffèrent**, Z-2026-000019 (17/03),
+000023 (16/04), 000024 (30/04), 000034 (03/06) et 000053 (23/07). Dans chacun,
+ce qui sort de la ligne 3 entre dans la ligne 1 au centime, pour exactement le
+montant du solde de la journée — 525,00 + 398,00 + 5,90 + 250,00 + 453,00 =
+**1 631,90 €** au cumul, et **la colonne « encaissé » est identique dans les
+deux rejeux**, cumul compris (97 984,33 €). Les deux passes finissent sur
+« tous les rapports égalent la somme de leurs quatre lignes », 0 erreur, 0 hash
+rompu. Rien n'a été écrit : le propriétaire a confirmé le 1er septembre que les
+Z antérieurs restent en l'état.
+
+⚠️ `z-repair -apply` ne pourrait PAS n'appliquer que ces 5 rapports : la même
+passe annonce « 60 enrichis », c'est-à-dire les 60 autres réécrits en v8 avec
+un hash refait. Le rejeu est global ou nul.
+
+⚠️ La ligne « Correction cumulée de l'argent encaissé : +2 021,73 € » du rapport
+de simulation ne vient PAS de cette décision. `z-repair` ne somme cet écart que
+sur les rapports marqués « VALEURS CORRIGÉES » (`backend/cmd/z-repair/main.go:94`)
+: les 5 rapports le devenant, leur écart PRÉEXISTANT entre dans ce total. Au
+rejeu `HEAD`, les mêmes 5 étaient marqués « enrichi » et le total affichait
+0,00 €, avec les mêmes écarts dessous.
+
+**Gardiens.** `backend/reports/solde_ca_test.go` — le CA d'un dossier soldé est
+reconnu, il ne l'est qu'une fois (parente encaissée comprise), et un solde émis
+la veille reste un règlement de créance. Plus l'alignement de
+`TestUnDossierAcompteNEstComptePasDeuxFois` et de
+`TestLaFactureDeSoldeNAjoutePasDeTVADAcompte`.
+
+---
+
 ## La journée commerciale bascule à 4 h du matin — 2026-09-01
 
 **Décision.** `HeureDeBascule = 4` (`backend/session_du_jour.go`). Tout ce qui

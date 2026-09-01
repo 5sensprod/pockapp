@@ -5,7 +5,8 @@
 //
 //	ENCAISSÉ AUJOURD'HUI
 //	  1. Ventes du jour ............ tickets de la session + factures hors caisse
-//	                                 émises ET payées le même jour. SEULE ligne
+//	                                 émises ET payées le même jour, factures de
+//	                                 SOLDE comprises (contrat 8). SEULE ligne
 //	                                 qui porte du HT et de la TVA.
 //	  2. Règlements de factures antérieures ... TTC seul
 //	  3. Acomptes ............................. TTC seul
@@ -39,8 +40,10 @@ const (
 	LigneVentesDuJour
 	// LigneCreances est la ligne 2 : encaissement d'une facture émise avant.
 	LigneCreances
-	// LigneAcomptes est la ligne 3 : acomptes, factures de solde, et parentes
-	// amputées de leurs acomptes.
+	// LigneAcomptes est la ligne 3 : acomptes et parentes amputées de leurs
+	// acomptes. Les factures de SOLDE en sont sorties le 1er septembre 2026
+	// (contrat 8) : elles facturent une livraison, donc du chiffre d'affaires,
+	// et rejoignent la ligne 1 ou la ligne 2 selon leur date d'émission.
 	LigneAcomptes
 	// LigneRemboursements est la ligne 4, en déduction.
 	LigneRemboursements
@@ -242,9 +245,31 @@ func (c *classificateurZ) classerAuJour(inv *models.Record, jour string) (LigneZ
 			return LigneAucune, 0
 		}
 		// Une facture rattachée à une facture, ce n'est pas une conversion :
-		// c'est une facture de SOLDE (deposit.go, CreateBalanceInvoice). Elle
-		// porte le reste à payer d'un dossier d'acompte → ligne 3.
-		return LigneAcomptes, ttc
+		// c'est une facture de SOLDE (deposit.go, CreateBalanceInvoice).
+		//
+		// ── Contrat 8, 1er septembre 2026 — le solde est du CHIFFRE D'AFFAIRES
+		// Elle partait en ligne 3 avec les acomptes, et c'était un défaut de
+		// classement, pas d'affichage : une ligne 3 est en TTC seul, donc le CA
+		// du dossier n'était reconnu NULLE PART et la TVA du solde n'était
+		// déclarée ni par `total_tva` (le solde n'était pas en ligne 1) ni par
+		// `deposits_vat` (il n'est pas un `invoice_type = 'deposit'`). Mesuré
+		// sur la base de production le 1er septembre 2026 : 6 factures de solde
+		// encaissées, 1 464,01 € HT et 187,79 € de TVA invisibles.
+		//
+		// Un solde facture une LIVRAISON : son HT et sa TVA sont les siens, et
+		// ils sont exactement le complément de ceux des acomptes — vérifié au
+		// centime sur le dossier FAC-2026-000286 : 8,33 + 16,59 = 24,92 et
+		// 1,67 + 3,31 = 4,98 (le prorata de deposit.go:455-459 ne perd rien).
+		// Il n'y a donc aucun double compte : l'acompte porte sa part en TTC
+		// seul et déclare sa TVA dans `deposits_vat`, le solde porte la sienne
+		// en ligne 1. La part déjà versée en acompte n'entre pas dans le
+		// `total_ht` du jour du solde, et c'est voulu : la ligne 1 reste « ce
+		// qui est encaissé aujourd'hui ».
+		//
+		// Elle passe par le MÊME test de date que les autres factures : un
+		// solde émis un jour antérieur et encaissé aujourd'hui est un règlement
+		// de créance, comme n'importe quelle facture. Aucun cas particulier.
+		return c.ligneParLaDate(inv, jour), ttc
 	}
 
 	// ── Règle anti-doublon parente / acompte / solde (§2) ───────────────────
@@ -284,10 +309,20 @@ func (c *classificateurZ) classerAuJour(inv *models.Record, jour string) (LigneZ
 	}
 
 	// ── Lignes 1 et 2 — la date d'émission tranche ──────────────────────────
+	return c.ligneParLaDate(inv, jour), ttc
+}
+
+// ligneParLaDate départage les lignes 1 et 2 : émis ET encaissé le même jour,
+// c'est une vente du jour ; émis avant, c'est le règlement d'une créance.
+//
+// Extraite pour que la facture de solde emprunte le MÊME test que les factures
+// ordinaires (contrat 8) : deux endroits qui départagent les lignes 1 et 2 sont
+// exactement la forme qu'avait la régression du 20 mai 2026.
+func (c *classificateurZ) ligneParLaDate(inv *models.Record, jour string) LigneZ {
 	if jourDe(inv.GetString("date")) == jour {
-		return LigneVentesDuJour, ttc
+		return LigneVentesDuJour
 	}
-	return LigneCreances, ttc
+	return LigneCreances
 }
 
 // jourDe rend la journée d'une date PocketBase, au format "2006-01-02".
