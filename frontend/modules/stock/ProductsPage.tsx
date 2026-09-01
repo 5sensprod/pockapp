@@ -54,12 +54,14 @@ import {
 	Package,
 	Plus,
 	Search,
+	SlidersHorizontal,
 	X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { CatalogProductDialog } from './components/CatalogProductDialog'
 import { ProductTable } from './components/ProductTable'
+import { HelpTooltip } from './components/detail/detail-primitives'
 
 const PER_PAGE = 25
 const NO_RELATION_FILTER = '__none__'
@@ -246,13 +248,83 @@ export function ProductsPage() {
 		setPage(1)
 	}
 
-	const filtresActifs = !!(
-		brandId ||
-		categoryId ||
-		supplierId ||
-		missingImage ||
-		missingDescription
-	)
+	const activeFilterTags: {
+		key: string
+		label: string
+		clear: () => void
+	}[] = []
+	if (brandId) {
+		activeFilterTags.push({
+			key: 'brand',
+			label:
+				brandId === NO_RELATION_FILTER
+					? 'Aucune marque'
+					: `Marque · ${brandById.get(brandId) ?? 'Sélectionnée'}`,
+			clear: () => {
+				setBrandId('')
+				setPage(1)
+			},
+		})
+	}
+	if (categoryId) {
+		activeFilterTags.push({
+			key: 'category',
+			label:
+				categoryId === NO_RELATION_FILTER
+					? 'Aucune catégorie'
+					: `Catégorie · ${categoryById.get(categoryId) ?? 'Sélectionnée'}`,
+			clear: () => {
+				setCategoryId('')
+				setPage(1)
+			},
+		})
+	}
+	if (supplierId) {
+		activeFilterTags.push({
+			key: 'supplier',
+			label:
+				supplierId === NO_RELATION_FILTER
+					? 'Aucun fournisseur'
+					: `Fournisseur · ${supplierById.get(supplierId) ?? 'Sélectionné'}`,
+			clear: () => {
+				setSupplierId('')
+				setPage(1)
+			},
+		})
+	}
+	if (missingImage) {
+		activeFilterTags.push({
+			key: 'missing-image',
+			label: 'Sans image',
+			clear: () => {
+				setMissingImage(false)
+				setPage(1)
+			},
+		})
+	}
+	if (missingDescription) {
+		activeFilterTags.push({
+			key: 'missing-description',
+			label: 'Sans description',
+			clear: () => {
+				setMissingDescription(false)
+				setPage(1)
+			},
+		})
+	}
+	const filterCount = activeFilterTags.length
+	const filtresActifs = filterCount > 0
+	const sortValue = sorting[0]
+		? `${sorting[0].id}:${sorting[0].desc ? 'desc' : 'asc'}`
+		: 'created:desc'
+	const changeSortSelect = (value: string) => {
+		const [id, direction] = value.split(':')
+		changeSorting([{ id, desc: direction === 'desc' }])
+	}
+
+	const filterHelp =
+		'Les filtres se cumulent : marque, catégorie et fournisseur réduisent le catalogue. « Sans image » et « Sans description » repèrent les fiches à compléter. Les tags permettent de retirer un filtre précis ; Réinitialiser conserve la recherche et le statut.'
+
 	const clearFilters = () => {
 		setBrandId('')
 		setCategoryId('')
@@ -267,17 +339,29 @@ export function ProductsPage() {
 
 	return (
 		<div className='container mx-auto px-6 py-8'>
-			<div className='mb-6'>
-				<div className='mb-2 flex items-center gap-3'>
-					<div className='flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10'>
-						<Package className='h-6 w-6 text-primary' />
+			<div className='mb-6 flex items-start justify-between gap-4'>
+				<div>
+					<div className='mb-2 flex items-center gap-3'>
+						<div className='flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10'>
+							<Package className='h-6 w-6 text-primary' />
+						</div>
+						<div className='flex items-baseline gap-3'>
+							<h1 className='font-bold text-3xl'>Produits</h1>
+							<span className='text-muted-foreground text-sm tabular-nums'>
+								{products.isLoading ? '…' : `${total} au total`}
+							</span>
+						</div>
 					</div>
-					<h1 className='font-bold text-3xl'>Produits</h1>
+					<p className='text-muted-foreground'>
+						Le catalogue commun à la caisse, au stock et au site. Cliquez une
+						ligne pour consulter ou modifier sa fiche.
+					</p>
 				</div>
-				<p className='text-muted-foreground'>
-					Le catalogue commun à la caisse, au stock et au site. Cliquez une
-					ligne pour consulter ou modifier sa fiche.
-				</p>
+
+				<Button className='shrink-0' onClick={openCreate}>
+					<Plus className='mr-2 h-4 w-4' />
+					Nouveau produit
+				</Button>
 			</div>
 
 			{products.error && (
@@ -294,100 +378,184 @@ export function ProductsPage() {
 				</Card>
 			)}
 
-			<div className='mb-4 flex flex-wrap items-center gap-3'>
-				<div className='relative min-w-[280px] flex-1'>
-					<Search className='-translate-y-1/2 absolute top-1/2 left-3 h-4 w-4 text-muted-foreground' />
-					<Input
-						value={search}
-						onChange={(e) => changeSearch(e.target.value)}
-						placeholder='Nom, référence ou code-barres…'
-						className='pl-9'
-					/>
+			<Card className='mb-3 border-sky-200 shadow-sm'>
+				<CardContent className='p-3'>
+					<div className='grid items-stretch gap-3 xl:grid-cols-[minmax(360px,1fr)_auto]'>
+						<div className='relative'>
+							<Search className='-translate-y-1/2 absolute top-1/2 left-4 h-5 w-5 text-sky-700' />
+							<Input
+								autoFocus
+								value={search}
+								onChange={(e) => changeSearch(e.target.value)}
+								placeholder='Rechercher un produit par nom, référence ou code-barres…'
+								aria-label='Rechercher un produit'
+								className='h-14 border-2 border-sky-500 bg-background pr-44 pl-12 text-base shadow-sm focus-visible:ring-sky-200'
+							/>
+							<span className='-translate-y-1/2 pointer-events-none absolute top-1/2 right-3 rounded-md bg-sky-50 px-2 py-1 font-medium text-sky-700 text-xs'>
+								Recherche instantanée
+							</span>
+						</div>
+
+						<div className='grid grid-cols-3 gap-1 rounded-xl border bg-background p-1'>
+							<FilterButton
+								active={status === undefined}
+								onClick={() => changeStatus(undefined)}
+								className='min-w-28'
+							>
+								Tous
+							</FilterButton>
+							<FilterButton
+								active={status === 'published'}
+								onClick={() => changeStatus('published')}
+								className='min-w-28'
+							>
+								Publiés
+							</FilterButton>
+							<FilterButton
+								active={status === 'draft'}
+								onClick={() => changeStatus('draft')}
+								className='min-w-28'
+							>
+								Brouillons
+							</FilterButton>
+						</div>
+					</div>
+				</CardContent>
+			</Card>
+
+			<Card className='mb-4 border-sky-100 bg-gradient-to-r from-sky-50/90 via-background to-amber-50/70 shadow-sm'>
+				<CardContent className='p-3'>
+					<div className='mb-2 flex items-center justify-between gap-3'>
+						<div className='flex items-center gap-1.5 font-semibold text-sm'>
+							<SlidersHorizontal className='h-4 w-4 text-sky-700' />
+							<span>Filtres</span>
+							<HelpTooltip text={filterHelp} />
+							{filtresActifs && (
+								<span className='ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-primary-foreground text-xs tabular-nums'>
+									{filterCount}
+								</span>
+							)}
+						</div>
+
+						{filtresActifs && (
+							<Button variant='ghost' size='sm' onClick={clearFilters}>
+								<X className='mr-1 h-4 w-4' />
+								Réinitialiser
+							</Button>
+						)}
+					</div>
+
+					<div className='flex flex-wrap items-end gap-2'>
+						<FilterField label='Marque'>
+							<FilterSelect
+								value={brandId}
+								onChange={changeFilter(setBrandId)}
+								vide='Toutes les marques'
+								noneLabel='Aucune marque'
+								recherche='Rechercher une marque…'
+								options={brands.data ?? []}
+							/>
+						</FilterField>
+						<FilterField label='Catégorie'>
+							<FilterSelect
+								value={categoryId}
+								onChange={changeFilter(setCategoryId)}
+								vide='Toutes les catégories'
+								noneLabel='Aucune catégorie'
+								recherche='Rechercher une catégorie…'
+								options={categoryOptions}
+								loading={categories.isLoading || catalogCounts.isLoading}
+							/>
+						</FilterField>
+						<FilterField label='Fournisseur'>
+							<FilterSelect
+								value={supplierId}
+								onChange={changeFilter(setSupplierId)}
+								vide='Tous les fournisseurs'
+								noneLabel='Aucun fournisseur'
+								recherche='Rechercher un fournisseur…'
+								options={suppliers.data ?? []}
+							/>
+						</FilterField>
+
+						<FilterButton
+							active={missingImage}
+							onClick={() => {
+								setMissingImage((current) => !current)
+								setPage(1)
+							}}
+							className='h-10 text-amber-800'
+						>
+							<ImageOff className='mr-1.5 inline h-4 w-4' />
+							Sans image
+						</FilterButton>
+						<FilterButton
+							active={missingDescription}
+							onClick={() => {
+								setMissingDescription((current) => !current)
+								setPage(1)
+							}}
+							className='h-10 text-sky-800'
+						>
+							<FileText className='mr-1.5 inline h-4 w-4' />
+							Sans description
+						</FilterButton>
+					</div>
+
+					{filtresActifs && (
+						<div className='mt-3 flex flex-wrap items-center gap-2 border-sky-100 border-t pt-3'>
+							<span className='font-medium text-muted-foreground text-xs'>
+								Filtres actifs
+							</span>
+							{activeFilterTags.map((filter) => (
+								<button
+									type='button'
+									key={filter.key}
+									onClick={filter.clear}
+									aria-label={`Retirer le filtre ${filter.label}`}
+									className='inline-flex min-h-8 items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 font-medium text-primary text-xs transition-colors hover:border-primary/40 hover:bg-primary/15'
+								>
+									{filter.label}
+									<X className='h-3.5 w-3.5' />
+								</button>
+							))}
+						</div>
+					)}
+				</CardContent>
+			</Card>
+
+			<div className='mb-2 flex items-center justify-between gap-3 px-1'>
+				<div className='flex items-center gap-2 font-medium text-sm'>
+					<span className='h-2 w-2 rounded-full bg-emerald-600' />
+					<span className='tabular-nums'>
+						{products.isLoading
+							? '…'
+							: `${total} produit${total > 1 ? 's' : ''}`}
+					</span>
+					<span className='text-muted-foreground'>
+						{filtresActifs
+							? `· ${filterCount} filtre${filterCount > 1 ? 's' : ''} actif${filterCount > 1 ? 's' : ''}`
+							: '· Aucun filtre complémentaire'}
+					</span>
 				</div>
 
-				<div className='flex items-center gap-1'>
-					<FilterButton
-						active={status === undefined}
-						onClick={() => changeStatus(undefined)}
+				<label className='flex items-center gap-2 text-muted-foreground text-sm'>
+					<span>Tri du tableau</span>
+					<select
+						value={sortValue}
+						onChange={(event) => changeSortSelect(event.target.value)}
+						className='h-9 rounded-md border border-input bg-background px-3 text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 					>
-						Tous
-					</FilterButton>
-					<FilterButton
-						active={status === 'published'}
-						onClick={() => changeStatus('published')}
-					>
-						Publiés
-					</FilterButton>
-					<FilterButton
-						active={status === 'draft'}
-						onClick={() => changeStatus('draft')}
-					>
-						Brouillons
-					</FilterButton>
-				</div>
-
-				<FilterSelect
-					value={brandId}
-					onChange={changeFilter(setBrandId)}
-					vide='Toutes les marques'
-					noneLabel='Aucune marque'
-					recherche='Rechercher une marque…'
-					options={brands.data ?? []}
-				/>
-				<FilterSelect
-					value={categoryId}
-					onChange={changeFilter(setCategoryId)}
-					vide='Toutes les catégories'
-					noneLabel='Aucune catégorie'
-					recherche='Rechercher une catégorie…'
-					options={categoryOptions}
-					loading={categories.isLoading || catalogCounts.isLoading}
-				/>
-				<FilterSelect
-					value={supplierId}
-					onChange={changeFilter(setSupplierId)}
-					vide='Tous les fournisseurs'
-					noneLabel='Aucun fournisseur'
-					recherche='Rechercher un fournisseur…'
-					options={suppliers.data ?? []}
-				/>
-
-				<FilterButton
-					active={missingImage}
-					onClick={() => {
-						setMissingImage((current) => !current)
-						setPage(1)
-					}}
-				>
-					<ImageOff className='mr-1.5 inline h-4 w-4' />
-					Sans image
-				</FilterButton>
-				<FilterButton
-					active={missingDescription}
-					onClick={() => {
-						setMissingDescription((current) => !current)
-						setPage(1)
-					}}
-				>
-					<FileText className='mr-1.5 inline h-4 w-4' />
-					Sans description
-				</FilterButton>
-
-				{filtresActifs && (
-					<Button variant='ghost' size='sm' onClick={clearFilters}>
-						<X className='mr-1 h-4 w-4' />
-						Retirer les filtres
-					</Button>
-				)}
-
-				<span className='text-muted-foreground text-sm tabular-nums'>
-					{products.isLoading ? '…' : `${total} produit${total > 1 ? 's' : ''}`}
-				</span>
-
-				<Button onClick={openCreate}>
-					<Plus className='mr-2 h-4 w-4' />
-					Nouveau produit
-				</Button>
+						<option value='created:desc'>Ajout récent</option>
+						<option value='created:asc'>Ajout ancien</option>
+						<option value='name:asc'>Produit · A à Z</option>
+						<option value='name:desc'>Produit · Z à A</option>
+						<option value='price_ttc:asc'>Prix · croissant</option>
+						<option value='price_ttc:desc'>Prix · décroissant</option>
+						<option value='healthScore:desc'>Santé · meilleure</option>
+						<option value='healthScore:asc'>Santé · à compléter</option>
+					</select>
+				</label>
 			</div>
 
 			<Card>
@@ -488,22 +656,45 @@ function FilterButton({
 	active,
 	onClick,
 	children,
+	className,
 }: {
 	active: boolean
 	onClick: () => void
 	children: React.ReactNode
+	className?: string
 }) {
 	return (
 		<button
 			type='button'
 			onClick={onClick}
+			aria-pressed={active}
 			className={cn(
-				'rounded-md border px-3 py-1.5 text-sm transition-colors',
-				active ? 'border-primary bg-accent font-medium' : 'hover:bg-accent/50',
+				'min-h-10 rounded-md border bg-background px-3 py-2 text-sm transition-colors',
+				className,
+				active
+					? 'border-primary bg-primary font-medium text-primary-foreground shadow-sm hover:bg-primary/90'
+					: 'hover:border-primary/40 hover:bg-accent/50',
 			)}
 		>
 			{children}
 		</button>
+	)
+}
+
+function FilterField({
+	label,
+	children,
+}: {
+	label: string
+	children: React.ReactNode
+}) {
+	return (
+		<div className='min-w-0'>
+			<p className='mb-1 ml-0.5 font-medium text-muted-foreground text-xs'>
+				{label}
+			</p>
+			{children}
+		</div>
 	)
 }
 
