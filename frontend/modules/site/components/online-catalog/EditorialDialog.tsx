@@ -22,9 +22,9 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { HtmlContentEditor } from '@/components/ui/html-content'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Loader2, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -230,12 +230,12 @@ export function EditorialDialog({ target, onClose, onApply }: Props) {
 
 						<div className='space-y-1.5'>
 							<Label htmlFor='editorial-description'>Description</Label>
-							<Textarea
+							<HtmlContentEditor
 								id='editorial-description'
 								value={description}
 								maxLength={DESCRIPTION_MAX}
-								rows={10}
-								onChange={(e) => setDescription(e.target.value)}
+								onChange={setDescription}
+								ariaLabel='Description affichée sur le site'
 								placeholder='Le texte lu par le visiteur sur la page.'
 							/>
 							<p className='text-right text-muted-foreground text-xs tabular-nums'>

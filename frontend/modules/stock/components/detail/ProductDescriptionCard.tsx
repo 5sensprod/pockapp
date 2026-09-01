@@ -10,12 +10,19 @@ import {
 	FormLabel,
 	FormMessage,
 } from '@/components/ui/form'
-import { Textarea } from '@/components/ui/textarea'
+import {
+	HtmlContentEditor,
+	HtmlContentPreview,
+} from '@/components/ui/html-content'
+import { Input } from '@/components/ui/input'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 
-import { DetailCard } from './detail-primitives'
-import type { ProductDetailValues } from './product-detail-form'
 import { ProductOnlineEditorialDialog } from './ProductOnlineEditorialDialog'
+import { DetailCard, HelpTooltip, ReadValue } from './detail-primitives'
+import {
+	type ProductDetailValues,
+	nomFicheParDefaut,
+} from './product-detail-form'
 
 export function ProductDescriptionCard({
 	product,
@@ -31,6 +38,8 @@ export function ProductDescriptionCard({
 		name: '',
 		description: '',
 	})
+	const nomFicheRepris =
+		nomFicheParDefaut(product) !== (product.name ?? '').trim()
 
 	const openAssistant = () => {
 		setAssistantDraft({
@@ -42,28 +51,65 @@ export function ProductDescriptionCard({
 
 	return (
 		<>
-			<DetailCard title='Description'>
-				{editing ? (
-					<FormField
-						control={form.control}
-						name='description'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Texte du produit</FormLabel>
-								<FormControl>
-									<Textarea rows={8} {...field} />
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-				) : product.description ? (
-					<p className='whitespace-pre-wrap text-sm leading-relaxed'>
-						{product.description}
-					</p>
-				) : (
-					<p className='text-muted-foreground text-sm'>Aucune description.</p>
-				)}
+			<DetailCard title='Fiche sur le site'>
+				<div className='space-y-4'>
+					{editing ? (
+						<FormField
+							control={form.control}
+							name='name'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel className='flex items-center'>
+										Nom de la fiche en ligne *
+										<HelpTooltip text='Ce nom titre la page du produit sur axemusique.shop, et c’est de lui qu’est dérivée son adresse.' />
+									</FormLabel>
+									<FormControl>
+										<Input placeholder='Guitare folk Alvarez' {...field} />
+									</FormControl>
+									{nomFicheRepris && (
+										<p className='text-muted-foreground text-xs'>
+											Le nom du ticket a été repris car l’ancien nom en ligne
+											était vide ou identique à la référence. Enregistrer fixera
+											ce titre pour le site.
+										</p>
+									)}
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+					) : (
+						<ReadValue label='Nom de la fiche en ligne' value={product.name} />
+					)}
+
+					{editing ? (
+						<FormField
+							control={form.control}
+							name='description'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Description affichée sur le site</FormLabel>
+									<HtmlContentEditor
+										value={field.value ?? ''}
+										onChange={field.onChange}
+										onBlur={field.onBlur}
+										maxLength={20000}
+										ariaLabel='Description affichée sur le site'
+										placeholder='Saisissez la description visible sur le site…'
+									/>
+									<p className='text-muted-foreground text-xs'>
+										La mise en forme HTML est conservée pour le site ; les
+										balises restent invisibles ici.
+									</p>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+					) : product.description ? (
+						<HtmlContentPreview value={product.description} />
+					) : (
+						<p className='text-muted-foreground text-sm'>Aucune description.</p>
+					)}
+				</div>
 				<span
 					className='mt-4 block'
 					title={
