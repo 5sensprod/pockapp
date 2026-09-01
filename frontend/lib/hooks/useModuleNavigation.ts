@@ -10,8 +10,15 @@ const normalizePath = (path: string) => (path || '/').replace(/\/+$/, '') || '/'
 
 function getModuleIdFromPath(pathname: string): string | null {
 	for (const m of allModules) {
-		if (pathname === m.route || pathname.startsWith(`${m.route}/`)) {
-			return m.id
+		// Les alias comptent : le module `stock` a pour route `/stock/produits`,
+		// si bien que `/stock/marques` ne serait rattaché à AUCUN module et que
+		// rien n'y serait mémorisé.
+		const bases = [m.route, ...(m.aliases ?? [])]
+		for (const base of bases) {
+			if (!base || base === '/') continue
+			if (pathname === base || pathname.startsWith(`${base}/`)) {
+				return m.id
+			}
 		}
 	}
 	return null
@@ -24,20 +31,30 @@ export function useSaveModuleRoute() {
 		const moduleId = getModuleIdFromPath(location.pathname)
 		if (!moduleId) return
 
-		// ✅ Ne pas sauvegarder la route racine du module (évite les boucles)
 		const module = allModules.find((m) => m.id === moduleId)
-		if (
-			!module ||
+		if (!module) return
+
+		// La route racine du module ne devient pas SA dernière route (évite les
+		// boucles de redirection : `/cash` relit cette clé pour rediriger).
+		const estRacineDuModule =
 			location.pathname === module.route ||
 			location.pathname === `${module.route}/`
-		)
-			return
 
-		// Sauvegarde par module (comportement existant)
-		setLastRouteForModule(moduleId, location.pathname)
+		if (!estRacineDuModule) {
+			setLastRouteForModule(moduleId, location.pathname)
+		}
 
 		// Sauvegarde uniquement dans la section la plus précise. Par exemple,
 		// `/stats/especes` ne doit jamais devenir la dernière route de `/stats`.
+		//
+		// ⚠️ Cette sauvegarde-là se fait MÊME sur la racine du module, et c'est
+		// tout l'objet du correctif : trois modules ont pour racine une page de
+		// liste qui est AUSSI une entrée de la barre latérale — `stock`
+		// (`/stock/produits`), `stats` (`/stats`) et `stick` (`/stick`). Le
+		// retour tôt d'avant faisait qu'y revenir n'écrasait jamais la clé de
+		// section : la fiche produit ouverte auparavant restait la « dernière
+		// vue », et le clic sur « Catalogue produits » y ramenait alors que
+		// l'utilisateur avait bel et bien fini sur la table.
 		const matchedItem = findSidebarItemByPath(
 			module.sidebarMenu ?? [],
 			location.pathname,
