@@ -4,6 +4,7 @@
 // ✅ IMPORT: On récupère le type de ventilation TVA défini dans invoices
 import type { VatBreakdownItem } from '@/lib/queries/invoices'
 import { recordSale, toSoldLines } from '@/lib/queries/stock-adjust'
+import { useStockSync } from '@/lib/sync/stock-sync'
 import type {
 	QuoteCreateDto,
 	QuoteResponse,
@@ -200,6 +201,9 @@ export function useSendQuoteEmail() {
 export function useConvertQuoteToInvoice() {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
+	// La conversion crée une facture VALIDÉE : le stock part, le site doit
+	// pouvoir suivre. Même toast qu'en caisse, jamais une modale.
+	const { proposerApresMouvement } = useStockSync()
 
 	return useMutation({
 		mutationFn: async (quoteId: string) => {
@@ -261,9 +265,11 @@ export function useConvertQuoteToInvoice() {
 
 			// ✅ Décrémenter le stock — facture créée directement en validated
 			if (quote.items?.length) {
-				await recordSale(pb, toSoldLines(quote.items), {
-					sourceId: invoice.id,
-				})
+				const lignes = toSoldLines(quote.items)
+				await recordSale(pb, lignes, { sourceId: invoice.id })
+				// Sans `await` : la conversion doit encore lier le devis à sa
+				// facture, et cette écriture-là ne s'attend pas derrière le site.
+				void proposerApresMouvement(lignes, { reference: invoice.id })
 			}
 
 			// 3. Mettre à jour le devis :

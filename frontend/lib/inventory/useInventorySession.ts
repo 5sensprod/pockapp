@@ -14,6 +14,7 @@
 
 import { fetchCatalogSnapshot } from '@/lib/queries/catalog-snapshot'
 import { setCountedStock } from '@/lib/queries/stock-adjust'
+import { useStockSync } from '@/lib/sync/stock-sync'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { usePocketBase } from '../use-pocketbase'
@@ -134,6 +135,8 @@ export function useInventoryEntriesByCategory(
 export function useInventorySession(sessionId: string | undefined) {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
+	// Le stock compté part vers le site tout seul, comptage par comptage.
+	const stockSync = useStockSync()
 
 	const { data: entries = [], isLoading: entriesLoading } =
 		useInventoryEntries(sessionId)
@@ -247,9 +250,16 @@ export function useInventorySession(sessionId: string | undefined) {
 					},
 				}),
 			),
-		onSuccess: () => {
+		onSuccess: (_resultat, { entry }) => {
 			queryClient.invalidateQueries({
 				queryKey: inventoryKeys.entries(sessionId ?? ''),
+			})
+			// SANS QUESTION, contrairement à la caisse : compter est déjà l'acte de
+			// décision, et une modale par ligne rendrait un inventaire de 300
+			// produits impraticable. Le hook se tait si la fiche n'est pas en ligne.
+			void stockSync.synchroniserApresComptage({
+				productId: entry.product_id,
+				productName: entry.product_name,
 			})
 		},
 	})

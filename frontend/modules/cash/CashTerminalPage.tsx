@@ -27,6 +27,7 @@ import { type Company, getLogoUrl, useCompany } from '@/lib/queries/companies'
 import { fetchAsDataUrl } from '@/lib/queries/logoToDataUrl'
 import { cartItemToPosItem, useCreatePosTicket } from '@/lib/queries/pos'
 import { recordSale } from '@/lib/queries/stock-adjust'
+import { useStockSync } from '@/lib/sync/stock-sync'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useAuth } from '@/modules/auth/AuthProvider'
 import { CreateProductDialog } from '@/modules/cash/CreateProductDialog'
@@ -203,6 +204,8 @@ export function CashTerminalPage() {
 	}, [])
 
 	const cartManager = useCartManager(cashRegisterId)
+	// Le stock vendu part vers le site par un toast, après l'encaissement.
+	const { proposerApresMouvement } = useStockSync()
 	const { subtotalTtc, totalTtc, totalVat, discountAmount, vatBreakdown } =
 		useCartCalculations({
 			cart: cartManager.cart,
@@ -573,6 +576,18 @@ export function CashTerminalPage() {
 					)
 				}
 
+				// Le site, lui, affiche encore l'ancien stock. La question se pose
+				// dans un toast qui attend — jamais une modale : la caisse doit
+				// rester utilisable, et le client suivant peut déjà être là.
+				// **Sans `await`** : l'encaissement n'attend pas une réponse du site.
+				void proposerApresMouvement(
+					cartManager.cart.map((item) => ({
+						productId: item.productId,
+						productName: item.name ?? '',
+					})),
+					{ reference: ticket.number },
+				)
+
 				if (printerSettings.enabled && printerSettings.printerName) {
 					if (printerSettings.autoPrint) {
 						const receiptPayload = await buildReceiptPayload({
@@ -621,6 +636,7 @@ export function CashTerminalPage() {
 			createPosTicket,
 			paymentEntries,
 			pb,
+			proposerApresMouvement,
 			totalTtc,
 		],
 	)

@@ -20,10 +20,10 @@ import { useSyncAfterSave } from '@/lib/sync/SyncAfterSaveDialog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 
 import {
+	type ProductDetailValues,
 	productDetailPayload,
 	productDetailSchema,
 	productDetailValues,
-	type ProductDetailValues,
 } from './product-detail-form'
 
 export function useProductDetailEditor(product: CatalogProductShape) {
@@ -104,6 +104,10 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 			}
 
 			const syncImages = imagesTouched
+			// L'état d'AVANT, pris sur la fiche telle qu'elle était en base : le
+			// filtre de `proposer` n'ouvre la modale que si un champ qui atteint la
+			// page publique a bougé. Un prix d'achat ou un fournisseur ne compte pas.
+			const avant = product
 			form.reset(productDetailValues(saved))
 			setGallery(saved.gallery ?? [])
 			setBaseGallery(saved.gallery ?? [])
@@ -116,6 +120,7 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 			await syncAfterSave.proposer(
 				saved as unknown as CatalogProduct,
 				syncImages,
+				avant,
 			)
 		} catch (error) {
 			toast.error(`Enregistrement refusé : ${pocketbaseErrorMessage(error)}`)

@@ -388,3 +388,84 @@ export function buildExportBatches(
 
 	return batches
 }
+
+// ---------------------------------------------------------------------------
+// CE QUI, DANS UNE FICHE, INTÉRESSE LE SITE
+// ---------------------------------------------------------------------------
+
+/**
+ * Les champs de `products` qui atteignent réellement la page publique.
+ *
+ * **C'est la même liste que celle que compose `toExportProduct`**, moins
+ * `legacy_id` (la clé, elle ne change pas) et `site_title` (constant à `null`
+ * depuis le 27 août 2026). Un gardien l'exige — `catalog-export.test.ts` —
+ * parce que la faute qui guette n'est pas d'en avoir trop, c'est d'oublier
+ * d'inscrire ici un champ ajouté là-bas : la modale d'après-enregistrement se
+ * tairait alors sur un changement qui doit partir, et la page publique
+ * garderait l'ancienne valeur sans que rien ne le signale.
+ *
+ * `brand` et `categories` sont comparés en identifiants PocketBase, quand
+ * l'export les envoie en `legacy_id` : la correspondance est de un à un, donc
+ * « a changé ici » et « a changé là-bas » disent la même chose.
+ *
+ * Les huit autres champs du formulaire — `designation`, `barcode`,
+ * `purchase_price_ht`, `min_stock`, `manage_stock`, `type`,
+ * `commercial_state`, `supplier` — n'ont AUCUN effet en ligne. C'est pour eux
+ * que ce filtre existe.
+ */
+export const CHAMPS_PRODUIT_EXPORTES = [
+	'name',
+	'sku',
+	'slug',
+	'description',
+	'price_ttc',
+	'tax_rate',
+	'stock',
+	'status',
+	'sale_state',
+	'brand',
+	'categories',
+] as const
+
+type ChampExporte = (typeof CHAMPS_PRODUIT_EXPORTES)[number]
+
+/** La fiche vue par ce filtre : tout est optionnel, une fiche fraîchement
+ *  créée n'ayant pas encore la moitié de ces champs. */
+export type ProduitComparable = Partial<
+	Pick<CatalogProduct, Exclude<ChampExporte, 'categories'>>
+> & { categories?: string[] }
+
+/**
+ * Normalise avant de comparer. `undefined`, `null` et `''` sont le même vide
+ * côté contrat (`nullable`), et `undefined` vaut `0` pour un prix
+ * (`price_ttc ?? 0` dans `toExportProduct`) : sans cela, ouvrir puis
+ * enregistrer une fiche dont un champ était absent la déclarerait modifiée.
+ */
+function normaliser(valeur: unknown): unknown {
+	if (valeur === undefined || valeur === null || valeur === '') return null
+	return valeur
+}
+
+/**
+ * Un champ qui voyage vers le site a-t-il changé entre ces deux états ?
+ *
+ * ⚠️ **Les catégories sont comparées DANS LEUR ORDRE**, comme le checksum
+ * d'export : `canonical()` sérialise un tableau tel quel, donc un simple
+ * réordonnancement change l'empreinte et doit repartir.
+ *
+ * Ne dit RIEN des images : elles ont leur propre empreinte, exprès (§4.2 du
+ * contrat) — c'est `imagesTouched` qui les gouverne, pas ce filtre.
+ */
+export function produitChangeAExporter(
+	avant: ProduitComparable,
+	apres: ProduitComparable,
+): boolean {
+	return CHAMPS_PRODUIT_EXPORTES.some((champ) => {
+		if (champ === 'categories') {
+			const a = avant.categories ?? []
+			const b = apres.categories ?? []
+			return a.length !== b.length || a.some((valeur, i) => valeur !== b[i])
+		}
+		return normaliser(avant[champ]) !== normaliser(apres[champ])
+	})
+}

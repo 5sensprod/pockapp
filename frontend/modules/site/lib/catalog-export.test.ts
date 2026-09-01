@@ -15,12 +15,14 @@ import type { CatalogProduct } from '@/lib/queries/site-catalog'
 import { describe, expect, it } from 'vitest'
 import {
 	CATALOG_CONTRACT_VERSION,
+	CHAMPS_PRODUIT_EXPORTES,
 	type ExportBrand,
 	type ExportCategory,
 	type ExportProduct,
 	aSynchroniser,
 	buildExportBatches,
 	checksumOf,
+	produitChangeAExporter,
 	sealed,
 	syncStateOf,
 	toExportProduct,
@@ -415,5 +417,68 @@ describe('aSynchroniser', () => {
 		const source = [ligne('a', 'absent', 'e1'), ligne('b', 'synced', 'e2')]
 		aSynchroniser(source)
 		expect(source).toHaveLength(2)
+	})
+})
+
+describe('produitChangeAExporter', () => {
+	it('couvre EXACTEMENT ce que compose toExportProduct', () => {
+		// LE gardien du filtre. Ajouter un champ au contrat sans l'inscrire dans
+		// `CHAMPS_PRODUIT_EXPORTES` rendrait la modale d'après-enregistrement
+		// muette sur un changement qui doit partir : la page publique garderait
+		// l'ancienne valeur, sans erreur et sans compteur.
+		const composes = Object.keys(toExportProduct(product(), [], null))
+			// La clé ne change pas, et `site_title` vaut `null` en dur.
+			.filter((champ) => champ !== 'legacy_id' && champ !== 'site_title')
+			.sort()
+		expect(composes).toEqual([...CHAMPS_PRODUIT_EXPORTES].sort())
+	})
+
+	it('ignore les champs qui ne vont pas en ligne', () => {
+		// Le cas signalé au comptoir : le prix d'achat n'existe pas côté site.
+		// Ni le fournisseur, ni le code-barres, ni le stock mini.
+		const avant = product()
+		const apres = {
+			...avant,
+			purchase_price_ht: 12,
+			supplier: 'pb-f1',
+			barcode: '3700',
+			designation: 'Uku soprano',
+		} as CatalogProduct
+		expect(produitChangeAExporter(avant, apres)).toBe(false)
+	})
+
+	it('voit chacun des champs qui atteignent la page publique', () => {
+		const changements: Partial<CatalogProduct>[] = [
+			{ name: 'Ukulélé ténor' },
+			{ sku: 'UKU-2' },
+			{ slug: 'ukulele-tenor' },
+			{ description: 'Table épicéa' },
+			{ price_ttc: 69.9 },
+			{ tax_rate: 5.5 },
+			{ stock: 3 },
+			{ status: 'draft' },
+			{ sale_state: 'promo' },
+			{ brand: 'pb-m1' },
+			{ categories: ['pb-c1'] },
+		]
+		for (const change of changements) {
+			expect(produitChangeAExporter(product(), product(change))).toBe(true)
+		}
+	})
+
+	it('voit un simple RÉORDONNANCEMENT des catégories', () => {
+		// `canonical()` sérialise un tableau tel quel : l'ordre entre dans
+		// l'empreinte, donc il doit repartir.
+		const avant = product({ categories: ['a', 'b'] })
+		const apres = product({ categories: ['b', 'a'] })
+		expect(produitChangeAExporter(avant, apres)).toBe(true)
+	})
+
+	it('traite absent, vide et nul comme le même vide', () => {
+		// Sinon ouvrir puis enregistrer une fiche sans description — le cas de
+		// figure le plus ordinaire — la déclarerait modifiée à chaque fois.
+		const avant = product()
+		const apres = product({ description: '', sku: '', slug: '' })
+		expect(produitChangeAExporter(avant, apres)).toBe(false)
 	})
 })

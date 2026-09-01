@@ -294,9 +294,12 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 				// envoi de galerie, seul le retour de PocketBase porte les noms de
 				// fichiers réels, et c'est d'eux que dépend l'empreinte d'images.
 				// `proposer` se tait si le site ne connaît pas ce produit.
+				// Le troisième argument est l'état d'AVANT : la question n'est posée
+				// que si un champ qui voyage vers le site a changé (ou une image).
 				await syncApresEnregistrement.proposer(
 					enregistre as unknown as CatalogProduct,
 					imagesTouched,
+					product,
 				)
 			} else {
 				if (!activeCompanyId) {
@@ -407,6 +410,29 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 	 *  chercher un fournisseur absent. */
 	const suppliersFilteredByBrand =
 		Boolean(currentBrandId) && suppliersDistributingBrand.length > 0
+
+	/** Aucun fournisseur ne déclare cette marque : la liste entière revient. Ça
+	 *  se DIT, sinon le filtre passe pour cassé alors que c'est la donnée qui
+	 *  est muette — `suppliers.brands` est le seul sens de la relation
+	 *  (`backend/migrations/catalog.go:234`), et tous les fournisseurs ne le
+	 *  renseignent pas. */
+	const brandWithoutSupplier =
+		Boolean(currentBrandId) && suppliersDistributingBrand.length === 0
+
+	// Un seul fournisseur distribue cette marque : le poser. On ne le fait que
+	// si le champ est VIDE — remplacer un fournisseur déjà choisi serait écraser
+	// une décision prise, et le filtre garde de toute façon l'existant dans la
+	// liste.
+	const soleSupplierId =
+		suppliersDistributingBrand.length === 1
+			? suppliersDistributingBrand[0].id
+			: undefined
+
+	useEffect(() => {
+		if (!soleSupplierId) return
+		if (selectedSupplierId) return
+		form.setValue('supplier', soleSupplierId, { shouldDirty: true })
+	}, [soleSupplierId, selectedSupplierId, form])
 
 	return (
 		<>
@@ -698,6 +724,12 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 													{supplierOptions.length} fournisseur(s) distribuant
 													cette marque. Retirez la marque pour voir toute la
 													liste.
+												</p>
+											)}
+											{brandWithoutSupplier && (
+												<p className='text-muted-foreground text-xs'>
+													Aucun fournisseur ne déclare cette marque : toute la
+													liste reste proposée.
 												</p>
 											)}
 											<FormMessage />

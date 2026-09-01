@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
 import {
@@ -61,6 +62,59 @@ export function ProductLinksCard({
 			supplierBrandIds.includes(brand.id) ||
 			brand.id === brandId,
 	)
+
+	/** Vrai quand la liste des marques est effectivement restreinte : une liste
+	 *  silencieusement raccourcie ferait chercher une marque absente. */
+	const brandsFilteredBySupplier =
+		Boolean(supplierId) && Boolean(supplierBrandIds?.length)
+
+	// ── ... et le fournisseur suit la marque ─────────────────────────────────
+	// Même règle que dans `CatalogProductDialog` — ces deux écrans éditent les
+	// mêmes champs, ils ne doivent pas proposer des couples différents. Le lien
+	// `suppliers.brands` (backend/migrations/catalog.go:234) est le SEUL sens de
+	// la relation ; on le lit dans les deux.
+	//
+	// Garde-fous, symétriques de ceux du filtre ci-dessus :
+	//
+	//  • aucun fournisseur ne déclare cette marque — et tous ne renseignent pas
+	//    `brands` — la liste entière revient plutôt qu'un champ vide, et ça se
+	//    DIT, sinon le filtre passe pour cassé alors que c'est la donnée qui est
+	//    muette ;
+	//  • le fournisseur DÉJÀ enregistré reste proposé même s'il ne déclare pas
+	//    la marque, pour qu'un enregistrement ne l'efface pas en silence.
+	const suppliersDistributingBrand = (suppliers.data ?? []).filter(
+		(supplier) => Boolean(brandId) && supplier.brands?.includes(brandId as string),
+	)
+
+	const supplierOptions = (suppliers.data ?? []).filter((supplier) => {
+		if (!brandId) return true
+		if (!suppliersDistributingBrand.length) return true
+		return (
+			supplier.brands?.includes(brandId as string) ||
+			supplier.id === supplierId
+		)
+	})
+
+	const suppliersFilteredByBrand =
+		Boolean(brandId) && suppliersDistributingBrand.length > 0
+
+	const brandWithoutSupplier =
+		Boolean(brandId) && suppliersDistributingBrand.length === 0
+
+	// Un seul fournisseur distribue cette marque : le poser. Uniquement si le
+	// champ est VIDE — remplacer un fournisseur déjà choisi serait écraser une
+	// décision prise —, et seulement en édition, pour ne rien salir en lecture.
+	const soleSupplierId =
+		suppliersDistributingBrand.length === 1
+			? suppliersDistributingBrand[0].id
+			: undefined
+
+	useEffect(() => {
+		if (!editing) return
+		if (!soleSupplierId) return
+		if (supplierId) return
+		form.setValue('supplier', soleSupplierId, { shouldDirty: true })
+	}, [editing, soleSupplierId, supplierId, form])
 	const names = {
 		brand: brands.data?.find((item) => item.id === product.brand)?.name,
 		supplier: suppliers.data?.find((item) => item.id === product.supplier)
@@ -75,7 +129,16 @@ export function ProductLinksCard({
 		<DetailCard title='Rattachements'>
 			{editing ? (
 				<div className='grid gap-4 sm:grid-cols-2'>
-					<SelectField form={form} name='brand' label='Marque'>
+					<SelectField
+						form={form}
+						name='brand'
+						label='Marque'
+						hint={
+							brandsFilteredBySupplier
+								? `${brandOptions.length} marque(s) distribuée(s) par ce fournisseur. Retirez le fournisseur pour voir tout le catalogue.`
+								: undefined
+						}
+					>
 						<option value=''>— Aucune —</option>
 						{brandOptions.map((brand) => (
 							<option key={brand.id} value={brand.id}>
@@ -83,9 +146,20 @@ export function ProductLinksCard({
 							</option>
 						))}
 					</SelectField>
-					<SelectField form={form} name='supplier' label='Fournisseur'>
+					<SelectField
+						form={form}
+						name='supplier'
+						label='Fournisseur'
+						hint={
+							suppliersFilteredByBrand
+								? `${supplierOptions.length} fournisseur(s) distribuant cette marque. Retirez la marque pour voir toute la liste.`
+								: brandWithoutSupplier
+									? 'Aucun fournisseur ne déclare cette marque : toute la liste reste proposée.'
+									: undefined
+						}
+					>
 						<option value=''>— Aucun —</option>
-						{(suppliers.data ?? []).map((supplier) => (
+						{supplierOptions.map((supplier) => (
 							<option key={supplier.id} value={supplier.id}>
 								{supplier.name}
 							</option>
@@ -174,11 +248,13 @@ function SelectField({
 	name,
 	label,
 	children,
+	hint,
 }: {
 	form: UseFormReturn<ProductDetailValues>
 	name: 'brand' | 'supplier'
 	label: string
 	children: React.ReactNode
+	hint?: string
 }) {
 	return (
 		<FormField
@@ -190,6 +266,7 @@ function SelectField({
 					<FormControl>
 						<NativeSelect {...field}>{children}</NativeSelect>
 					</FormControl>
+					{hint && <p className='text-muted-foreground text-xs'>{hint}</p>}
 					<FormMessage />
 				</FormItem>
 			)}

@@ -48,6 +48,10 @@ import {
 	toProductImageBearing,
 	useImageInventory,
 } from '@/modules/site/hooks/use-image-sync'
+import {
+	type ProduitComparable,
+	produitChangeAExporter,
+} from '@/modules/site/lib/catalog-export'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 
 import { useSyncQueue } from './sync-queue-context'
@@ -64,6 +68,7 @@ type EtatImages =
 
 type CibleSynchro = {
 	product: CatalogProduct
+	dataModified: boolean
 	imagesModified: boolean
 }
 
@@ -88,11 +93,18 @@ type CibleSynchroMarque = {
  * relit, on ne la recalcule pas.
  */
 export function useSyncAfterSave(enabled: boolean): {
-	/** À appeler avec la fiche TELLE QU'ENREGISTRÉE. Rend `true` si la question
-	 *  a été posée. */
+	/**
+	 * À appeler avec la fiche TELLE QU'ENREGISTRÉE, et avec son état d'AVANT.
+	 * Rend `true` si la question a été posée.
+	 *
+	 * `avant` est ce qui rend le filtre possible : sans lui on ne peut pas
+	 * savoir si le changement atteint le site. L'omettre revient à dire « je ne
+	 * sais pas », et la question est alors posée comme avant.
+	 */
 	proposer: (
 		product: CatalogProduct,
 		imagesModified?: boolean,
+		avant?: ProduitComparable,
 	) => Promise<boolean>
 	dialogue: ReactNode
 } {
@@ -100,7 +112,24 @@ export function useSyncAfterSave(enabled: boolean): {
 	const [cible, setCible] = useState<CibleSynchro | null>(null)
 
 	const proposer = useCallback(
-		async (product: CatalogProduct, imagesModified = false) => {
+		async (
+			product: CatalogProduct,
+			imagesModified = false,
+			avant?: ProduitComparable,
+		) => {
+			// ── LE FILTRE ────────────────────────────────────────────────────────
+			// Huit champs du formulaire ne vont NULLE PART en ligne — prix d'achat,
+			// fournisseur, code-barres, stock mini… Poser la question pour eux
+			// apprend à cliquer « Plus tard » sans lire, et c'est ce qui fait rater
+			// la vraie fois. Les images gardent leur propre empreinte : un geste
+			// image seul suffit à poser la question, même si aucune donnée ne bouge.
+			const donneesModifiees = avant
+				? produitChangeAExporter(avant, product)
+				: true
+			if (!donneesModifiees && !imagesModified) {
+				return false
+			}
+
 			let enLigne = inventaire.data?.products
 
 			// ⚠️ « Pas encore arrivé » n'est PAS « pas en ligne ». L'inventaire ne
@@ -135,7 +164,7 @@ export function useSyncAfterSave(enabled: boolean): {
 				return false
 			}
 
-			setCible({ product, imagesModified })
+			setCible({ product, dataModified: donneesModifiees, imagesModified })
 			return true
 		},
 		[inventaire],
@@ -146,6 +175,7 @@ export function useSyncAfterSave(enabled: boolean): {
 		dialogue: cible ? (
 			<SyncAfterSaveDialog
 				product={cible.product}
+				dataModified={cible.dataModified}
 				imagesModified={cible.imagesModified}
 				onClose={() => setCible(null)}
 			/>
@@ -280,10 +310,14 @@ export function useBrandSyncAfterSave(enabled: boolean): {
 
 export function SyncAfterSaveDialog({
 	product,
+	dataModified,
 	imagesModified,
 	onClose,
 }: {
 	product: CatalogProduct
+	/** Un champ qui atteint la page publique a-t-il changé ? Décoche la case
+	 *  quand la modale n'a été ouverte que pour des images. */
+	dataModified: boolean
 	imagesModified: boolean
 	onClose: () => void
 }) {
@@ -291,7 +325,7 @@ export function SyncAfterSaveDialog({
 	const { enqueue } = useSyncQueue()
 	const imageInventory = useImageInventory(imagesModified)
 
-	const [donnees, setDonnees] = useState(true)
+	const [donnees, setDonnees] = useState(dataModified)
 	const [images, setImages] = useState(false)
 	const [etatImages, setEtatImages] = useState<EtatImages>('calcul')
 

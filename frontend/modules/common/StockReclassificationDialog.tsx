@@ -32,6 +32,7 @@ import {
 	type ReturnDestination as StockReturnDestination,
 	applyStockMovements,
 } from '@/lib/queries/stock-adjust'
+import { useStockSync } from '@/lib/sync/stock-sync'
 import { usePocketBase } from '@/lib/use-pocketbase'
 
 // ============================================================================
@@ -123,6 +124,9 @@ export function StockReclassificationDialog({
 	onComplete,
 }: StockReclassificationDialogProps) {
 	const pb = usePocketBase()
+	// Un retour remis en stock change un chiffre que le site affiche : même
+	// toast qu'après une vente, avec le mot juste.
+	const { proposerApresMouvement } = useStockSync()
 
 	const [choices, setChoices] = useState<Record<string, ItemChoice>>({})
 	const [isProcessing, setIsProcessing] = useState(false)
@@ -204,6 +208,32 @@ export function StockReclassificationDialog({
 					console.error('[retour] produits non retrouvés en base', echecs)
 					toast.error(
 						`${echecs.length} produit(s) introuvable(s) : stock non remis`,
+					)
+				}
+
+				// ⚠️ SEUL « restock » est proposé au site. SAV et Stock B sortent la
+				// marchandise du stock vendable : ils se journalisent, mais ne
+				// changent aucun chiffre que la page publique affiche — proposer
+				// l'envoi pour eux ferait repartir une fiche inchangée.
+				//
+				// Et on écarte les échecs : un produit dont le mouvement a été
+				// refusé n'a pas de nouveau stock à exporter.
+				const enEchec = new Set(echecs.map((r) => r.productId).filter(Boolean))
+				const aProposer = aRemettreEnStock.filter(
+					(it) => !enEchec.has(it.product_id),
+				)
+				if (aProposer.length > 0) {
+					// Sans `await` : la journalisation SAV / Stock B suit juste après,
+					// et elle ne s'attend pas derrière une lecture du site.
+					void proposerApresMouvement(
+						aProposer.map((it) => ({
+							productId: it.product_id,
+							productName: it.name,
+						})),
+						{
+							reference: documentId ?? documentNumber ?? undefined,
+							motif: 'retour',
+						},
 					)
 				}
 

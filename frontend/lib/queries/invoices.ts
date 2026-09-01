@@ -4,6 +4,7 @@
 // ✅ FIX: Ajout des champs optionnels pour les tickets POS
 // ✅ AJOUT: Support vat_breakdown pour ventilation TVA multi-taux
 import { recordSale, toSoldLines } from '@/lib/queries/stock-adjust'
+import { useStockSync } from '@/lib/sync/stock-sync'
 import type {
 	InvoiceCreateDto,
 	InvoiceItem as InvoiceItemType,
@@ -407,6 +408,8 @@ export function useInvoice(invoiceId?: string) {
 export function useCreateInvoice() {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
+	// Le stock décrémenté ici est celui du site aussi : même toast qu'en caisse.
+	const { proposerApresMouvement } = useStockSync()
 
 	return useMutation({
 		mutationFn: async (data: CreateInvoiceParams) => {
@@ -427,9 +430,11 @@ export function useCreateInvoice() {
 				!invoiceData.original_invoice_id &&
 				invoiceData.items?.length
 			) {
-				await recordSale(pb, toSoldLines(invoiceData.items), {
-					sourceId: result.id,
-				})
+				const lignes = toSoldLines(invoiceData.items)
+				await recordSale(pb, lignes, { sourceId: result.id })
+				// Sans `await`, comme en caisse : la facture est déjà écrite, une
+				// lecture du site ne doit pas retarder son retour à l'écran.
+				void proposerApresMouvement(lignes, { reference: result.id })
 			}
 
 			return result as unknown as InvoiceResponse
@@ -496,6 +501,7 @@ export function useUpdateDraft() {
 export function useValidateInvoice() {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
+	const { proposerApresMouvement } = useStockSync()
 
 	return useMutation({
 		mutationFn: async (invoiceId: string) => {
@@ -519,9 +525,9 @@ export function useValidateInvoice() {
 				!existing.original_invoice_id &&
 				existing.items?.length
 			) {
-				await recordSale(pb, toSoldLines(existing.items), {
-					sourceId: invoiceId,
-				})
+				const lignes = toSoldLines(existing.items)
+				await recordSale(pb, lignes, { sourceId: invoiceId })
+				void proposerApresMouvement(lignes, { reference: invoiceId })
 			}
 
 			return result as unknown as InvoiceResponse
