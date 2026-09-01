@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -68,16 +69,65 @@ function renderableHtml(value: string) {
 export function HtmlContentPreview({
 	value,
 	className,
+	collapsible = false,
+	collapsedHeight = 240,
 }: {
 	value: string
 	className?: string
+	collapsible?: boolean
+	collapsedHeight?: number
 }) {
 	const preview = useRef<HTMLDivElement>(null)
 	const html = useMemo(() => renderableHtml(value), [value])
+	const [expanded, setExpanded] = useState(false)
+	const [overflowing, setOverflowing] = useState(false)
+
 	useLayoutEffect(() => {
-		if (preview.current) preview.current.innerHTML = html
-	}, [html])
-	return <div ref={preview} className={cn(htmlContentStyles, className)} />
+		if (!preview.current) return
+		setExpanded(false)
+		preview.current.innerHTML = html
+		setOverflowing(preview.current.scrollHeight > collapsedHeight + 4)
+	}, [html, collapsedHeight])
+
+	return (
+		<div>
+			<div className='relative'>
+				<div
+					ref={preview}
+					className={cn(
+						htmlContentStyles,
+						collapsible && !expanded && 'overflow-hidden',
+						className,
+					)}
+					style={
+						collapsible && !expanded
+							? { maxHeight: collapsedHeight }
+							: undefined
+					}
+				/>
+				{collapsible && overflowing && !expanded && (
+					<div className='pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent' />
+				)}
+			</div>
+			{collapsible && overflowing && (
+				<button
+					type='button'
+					className='mt-2 flex w-full items-center justify-center gap-1 rounded-md py-1.5 font-medium text-primary text-xs hover:bg-muted'
+					onClick={() => setExpanded((current) => !current)}
+				>
+					{expanded ? (
+						<>
+							<ChevronUp className='h-3.5 w-3.5' /> Réduire
+						</>
+					) : (
+						<>
+							<ChevronDown className='h-3.5 w-3.5' /> Lire la suite
+						</>
+					)}
+				</button>
+			)}
+		</div>
+	)
 }
 
 export function HtmlContentEditor({
@@ -86,6 +136,7 @@ export function HtmlContentEditor({
 	onChange,
 	onBlur,
 	maxLength,
+	maxHeight,
 	className,
 	ariaLabel = 'Contenu HTML mis en forme',
 	placeholder = 'Saisissez le texte visible sur le site…',
@@ -95,6 +146,7 @@ export function HtmlContentEditor({
 	onChange: (value: string) => void
 	onBlur?: () => void
 	maxLength?: number
+	maxHeight?: number
 	className?: string
 	ariaLabel?: string
 	placeholder?: string
@@ -134,6 +186,7 @@ export function HtmlContentEditor({
 					'min-h-52 overflow-y-auto rounded-md border border-input bg-background px-3 py-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
 					className,
 				)}
+				style={maxHeight ? { maxHeight } : undefined}
 				onInput={(event) => {
 					const next = event.currentTarget.innerHTML
 					if (maxLength && next.length > maxLength) {

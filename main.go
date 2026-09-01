@@ -209,6 +209,7 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterSSERoutes(pb, e.Router) // ← AJOUT SSE
 		routes.RegisterStockRoutes(pb, e.Router)
 		routes.RegisterCatalogCountsRoutes(pb, e.Router)
+		routes.RegisterCatalogHealthRoutes(pb, e.Router)
 		routes.RegisterProductImageRoutes(pb, e.Router)
 
 		// SPA handler (doit rester en dernier)

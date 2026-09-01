@@ -13,11 +13,11 @@ export function DetailCard({
 	children,
 }: { title: string; children: React.ReactNode }) {
 	return (
-		<Card>
-			<CardHeader className='pb-3'>
-				<CardTitle className='text-base'>{title}</CardTitle>
+		<Card className='overflow-hidden shadow-sm'>
+			<CardHeader className='border-b bg-muted/20 px-4 py-2.5'>
+				<CardTitle className='font-semibold text-sm'>{title}</CardTitle>
 			</CardHeader>
-			<CardContent>{children}</CardContent>
+			<CardContent className='p-4'>{children}</CardContent>
 		</Card>
 	)
 }

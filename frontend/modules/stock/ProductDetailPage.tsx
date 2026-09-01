@@ -9,9 +9,9 @@ import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import { useNavigate, useParams } from '@tanstack/react-router'
 
-import { ProductIdentityCard } from './components/detail/ProductIdentityCard'
 import { ProductDescriptionCard } from './components/detail/ProductDescriptionCard'
 import { ProductDetailHeader } from './components/detail/ProductDetailHeader'
+import { ProductIdentityCard } from './components/detail/ProductIdentityCard'
 import { ProductLinksCard } from './components/detail/ProductLinksCard'
 import { ProductMediaPanel } from './components/detail/ProductMediaPanel'
 import { ProductOnlinePanel } from './components/detail/ProductOnlinePanel'
@@ -96,10 +96,8 @@ function ProductDetailContent({
 					onCancel={editor.cancel}
 				/>
 
-				<main className='container mx-auto grid gap-5 px-6 py-6 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]'>
-					<div
-						className={cn('grid gap-5', !editor.editing && 'xl:grid-cols-2')}
-					>
+				<main className='container mx-auto grid gap-4 px-6 py-5 lg:grid-cols-[minmax(0,1.8fr)_minmax(340px,0.9fr)]'>
+					<div className={cn('grid gap-4 xl:grid-cols-2')}>
 						<div className='xl:col-span-2'>
 							<ProductIdentityCard
 								product={product}
@@ -125,7 +123,7 @@ function ProductDetailContent({
 							/>
 						</div>
 					</div>
-					<aside className='space-y-5'>
+					<aside className='space-y-4'>
 						<ProductMediaPanel
 							product={product}
 							editing={editor.editing}

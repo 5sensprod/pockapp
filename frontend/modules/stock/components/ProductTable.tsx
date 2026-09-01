@@ -45,6 +45,7 @@ import {
 	ArrowUpDown,
 	Barcode,
 	Building2,
+	HeartPulse,
 	ImageIcon,
 	MoreHorizontal,
 	Tags,
@@ -271,6 +272,43 @@ export function ProductTable({
 					<span className='whitespace-nowrap text-sm'>
 						{dateFormatter.format(date)}
 					</span>
+				)
+			},
+		},
+		{
+			accessorKey: 'healthScore',
+			header: ({ column }) => (
+				<Button
+					variant='ghost'
+					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+				>
+					Santé
+					<ArrowUpDown className='ml-2 h-4 w-4' />
+				</Button>
+			),
+			cell: ({ row }) => {
+				const score = row.original.healthScore
+				const max = row.original.healthMax
+				const missing = row.original.healthMissing
+				const tone =
+					score === max
+						? 'bg-emerald-500'
+						: score >= Math.ceil(max / 2)
+							? 'bg-amber-500'
+							: 'bg-destructive'
+				return (
+					<div
+						className='inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-1 text-xs tabular-nums'
+						title={
+							missing.length
+								? `À compléter : ${missing.join(', ')}`
+								: 'Fiche prête pour le site'
+						}
+					>
+						<HeartPulse className='h-3.5 w-3.5 text-muted-foreground' />
+						<span className={`h-2 w-2 rounded-full ${tone}`} />
+						{score}/{max}
+					</div>
 				)
 			},
 		},

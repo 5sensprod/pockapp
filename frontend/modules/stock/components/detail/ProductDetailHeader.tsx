@@ -46,7 +46,7 @@ export function ProductDetailHeader(props: Props) {
 
 	return (
 		<header className='sticky top-header z-40 border-b bg-background/95 backdrop-blur'>
-			<div className='container mx-auto flex items-center gap-4 px-6 py-3'>
+			<div className='container mx-auto flex items-center gap-3 px-6 py-2.5'>
 				<Button
 					type='button'
 					variant='ghost'
@@ -56,7 +56,7 @@ export function ProductDetailHeader(props: Props) {
 				>
 					<ArrowLeft className='h-5 w-5' />
 				</Button>
-				<div className='flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
+				<div className='flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
 					{props.imageUrl ? (
 						<img
 							src={props.imageUrl}

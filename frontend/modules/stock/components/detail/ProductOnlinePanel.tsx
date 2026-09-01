@@ -2,7 +2,9 @@ import { Loader2, RefreshCw, ScanSearch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { productHealth } from '@/lib/queries/catalog-health'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 import {
 	type CatalogProduct,
@@ -21,9 +23,9 @@ import {
 } from '@/modules/site/hooks/use-image-sync'
 import { syncStateOf } from '@/modules/site/lib/catalog-export'
 
+import { ProductPublicationControl } from './ProductPublicationControl'
 import { DetailCard } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
-import { ProductPublicationControl } from './ProductPublicationControl'
 
 const NONE: never[] = []
 type ImageState = 'checking' | 'modified' | 'synced' | 'unknown'
@@ -50,6 +52,23 @@ export function ProductOnlinePanel({
 		Boolean(inventory.data),
 	)
 	const [imageState, setImageState] = useState<ImageState>('unknown')
+	const editedHealthValues = form.watch([
+		'name',
+		'description',
+		'categories',
+		'price_ttc',
+	])
+	const health = productHealth({
+		...product,
+		...(editing
+			? {
+					name: editedHealthValues[0],
+					description: editedHealthValues[1],
+					categories: editedHealthValues[2],
+					price_ttc: editedHealthValues[3],
+				}
+			: {}),
+	})
 	const imageCount = (product.image ? 1 : 0) + (product.gallery?.length ?? 0)
 	const dataState = inventory.data
 		? syncStateOf(
@@ -59,6 +78,7 @@ export function ProductOnlinePanel({
 			)
 		: undefined
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: une nouvelle fiche doit remettre cette vérification locale à zéro
 	useEffect(() => {
 		setImageState('unknown')
 	}, [product.id])
@@ -110,7 +130,29 @@ export function ProductOnlinePanel({
 
 	return (
 		<DetailCard title='En ligne'>
-			<div className='space-y-4 text-sm'>
+			<div className='space-y-3 text-sm'>
+				<div className='rounded-md border bg-muted/20 p-2.5'>
+					<div className='flex items-center justify-between gap-3'>
+						<span className='font-medium'>Santé de la fiche</span>
+						<Badge
+							variant={
+								health.score < health.max / 2 ? 'destructive' : 'outline'
+							}
+							className={
+								health.score === health.max
+									? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
+									: undefined
+							}
+						>
+							{health.score}/{health.max}
+						</Badge>
+					</div>
+					<p className='mt-1 text-muted-foreground text-xs'>
+						{health.missing.length
+							? `À compléter : ${health.missing.join(', ')}.`
+							: 'Tous les éléments nécessaires au site sont présents.'}
+					</p>
+				</div>
 				<ProductPublicationControl
 					product={product}
 					editing={editing}

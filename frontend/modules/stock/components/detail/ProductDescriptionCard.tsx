@@ -93,6 +93,7 @@ export function ProductDescriptionCard({
 										onChange={field.onChange}
 										onBlur={field.onBlur}
 										maxLength={20000}
+										maxHeight={280}
 										ariaLabel='Description affichée sur le site'
 										placeholder='Saisissez la description visible sur le site…'
 									/>
@@ -105,7 +106,11 @@ export function ProductDescriptionCard({
 							)}
 						/>
 					) : product.description ? (
-						<HtmlContentPreview value={product.description} />
+						<HtmlContentPreview
+							value={product.description}
+							collapsible
+							collapsedHeight={220}
+						/>
 					) : (
 						<p className='text-muted-foreground text-sm'>Aucune description.</p>
 					)}

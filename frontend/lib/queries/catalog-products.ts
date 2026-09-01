@@ -74,6 +74,8 @@ export type CatalogCommercialState = '' | 'used' | 'rental'
 export type CatalogSaleState = '' | 'sale' | 'promo'
 
 export type CatalogProductShape = PocketBaseRecord & {
+	/** Calculé par la route de tri de santé ; absent des lectures ordinaires. */
+	health_score?: number
 	legacy_id: string
 	/** **LE NOM DE LA FICHE PRODUIT SUR INTERNET** — c'est lui qui titre la page
 	 *  publique : `toExportProduct` l'envoie dans `name`, et `catalog.php` ne
@@ -145,13 +147,18 @@ export type CatalogProductQuery = {
 	status?: CatalogProductStatus
 	/** Identifiant PocketBase d'une marque. */
 	brandId?: string
+	withoutBrand?: boolean
 	/** Les catégories retenues — une BRANCHE entière, racine comprise
 	 *  (`category-tree.ts`, `collectBranchIds`). Un produit est rattaché à ses
 	 *  feuilles, jamais à leurs ancêtres : filtrer sur la seule racine cacherait
 	 *  tout ce qui est rangé dessous. Liste vide = pas de filtre. */
 	categoryIds?: string[]
+	withoutCategory?: boolean
 	/** Identifiant PocketBase d'un fournisseur. */
 	supplierId?: string
+	withoutSupplier?: boolean
+	missingImage?: boolean
+	missingDescription?: boolean
 	sort?: string
 }
 
@@ -164,8 +171,13 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 		search,
 		status,
 		brandId,
+		withoutBrand,
 		categoryIds,
+		withoutCategory,
 		supplierId,
+		withoutSupplier,
+		missingImage,
+		missingDescription,
 		sort,
 	} = query
 
@@ -178,8 +190,13 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			search,
 			status,
 			brandId,
+			withoutBrand,
 			categoryIds?.join(',') ?? '',
+			withoutCategory,
 			supplierId,
+			withoutSupplier,
+			missingImage,
+			missingDescription,
 			sort,
 		],
 		// Sans cela, changer de page vide la table le temps de la requête et la
@@ -198,11 +215,13 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			if (brandId) {
 				clauses.push(pb.filter('brand = {:brand}', { brand: brandId }))
 			}
+			if (withoutBrand) clauses.push('brand:length = 0')
 			if (supplierId) {
 				clauses.push(
 					pb.filter('supplier = {:supplier}', { supplier: supplierId }),
 				)
 			}
+			if (withoutSupplier) clauses.push('supplier:length = 0')
 			if (categoryIds?.length) {
 				// `categories` est une relation MULTIPLE : `=` ne vaudrait que pour un
 				// produit rattaché à cette seule catégorie. `~` teste l'appartenance.
@@ -213,6 +232,9 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 					.join(' || ')
 				clauses.push(`(${ou})`)
 			}
+			if (withoutCategory) clauses.push('categories:length = 0')
+			if (missingImage) clauses.push('image:length = 0')
+			if (missingDescription) clauses.push("description = ''")
 
 			const term = search?.trim()
 			if (term) {
@@ -226,8 +248,22 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 				)
 			}
 
+			const filter = clauses.length ? clauses.join(' && ') : undefined
+			if (sort === 'health' || sort === '-health') {
+				const params = new URLSearchParams({
+					page: String(page),
+					perPage: String(perPage),
+					direction: sort.startsWith('-') ? 'desc' : 'asc',
+				})
+				if (filter) params.set('filter', filter)
+				return (await pb.send(
+					`/api/catalog/products/health?${params.toString()}`,
+					{ method: 'GET' },
+				)) as CatalogProductPage
+			}
+
 			const result = await pb.collection('products').getList(page, perPage, {
-				filter: clauses.length ? clauses.join(' && ') : undefined,
+				filter,
 				fields: PRODUCT_FIELDS,
 				sort: sort || 'name',
 			})

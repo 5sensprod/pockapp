@@ -13,6 +13,7 @@
 // construit plus aucune URL : elle en recevait une d'AppPos jusqu'au 18 août
 // 2026, ce qui suffisait à faire d'elle un fichier à deux provenances.
 
+import { productHealth } from '@/lib/queries/catalog-health'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 
 /** Ce que la table LIT — et rien d'autre. Aucun champ ne nomme une base. */
@@ -27,6 +28,9 @@ export interface StockProductRow {
 	purchase_price_ht?: number | null
 	stock?: number | null
 	status?: 'draft' | 'published'
+	healthScore: number
+	healthMax: number
+	healthMissing: string[]
 	/** URL prête à poser dans un `<img src>`, ou `null` s'il n'y a pas d'image. */
 	imageUrl?: string | null
 	brandName?: string | null
@@ -47,6 +51,7 @@ export function toStockRow(
 	product: CatalogProductShape,
 	ctx: CatalogRowContext,
 ): StockProductRow {
+	const health = productHealth(product)
 	return {
 		id: product.id,
 		name: product.name,
@@ -57,6 +62,9 @@ export function toStockRow(
 		purchase_price_ht: product.purchase_price_ht,
 		stock: product.stock,
 		status: product.status,
+		healthScore: health.score,
+		healthMax: health.max,
+		healthMissing: health.missing,
 		// `image` est un NOM DE FICHIER, pas une URL : seul `pb.files.getUrl` sait
 		// en faire une, et il lui faut aussi `collectionId` et `id` — d'où leur
 		// présence dans les champs demandés par `catalog-products.ts`.

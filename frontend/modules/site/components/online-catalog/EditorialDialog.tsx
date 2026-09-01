@@ -234,6 +234,7 @@ export function EditorialDialog({ target, onClose, onApply }: Props) {
 								id='editorial-description'
 								value={description}
 								maxLength={DESCRIPTION_MAX}
+								maxHeight={360}
 								onChange={setDescription}
 								ariaLabel='Description affichée sur le site'
 								placeholder='Le texte lu par le visiteur sur la page.'

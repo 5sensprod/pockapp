@@ -48,6 +48,8 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	ChevronsUpDown,
+	FileText,
+	ImageOff,
 	Loader2,
 	Package,
 	Plus,
@@ -60,6 +62,7 @@ import { CatalogProductDialog } from './components/CatalogProductDialog'
 import { ProductTable } from './components/ProductTable'
 
 const PER_PAGE = 25
+const NO_RELATION_FILTER = '__none__'
 
 export function ProductsPage() {
 	const { activeCompanyId } = useActiveCompany()
@@ -73,6 +76,8 @@ export function ProductsPage() {
 	const [brandId, setBrandId] = useState<string>('')
 	const [categoryId, setCategoryId] = useState<string>('')
 	const [supplierId, setSupplierId] = useState<string>('')
+	const [missingImage, setMissingImage] = useState(false)
+	const [missingDescription, setMissingDescription] = useState(false)
 	const [sorting, setSorting] = useState<SortingState>([
 		{ id: 'created', desc: true },
 	])
@@ -100,6 +105,8 @@ export function ProductsPage() {
 		setBrandId('')
 		setCategoryId('')
 		setSupplierId('')
+		setMissingImage(false)
+		setMissingDescription(false)
 		setPage(1)
 	}, [activeCompanyId])
 
@@ -115,7 +122,7 @@ export function ProductsPage() {
 	// produits sous une catégorie qui n'en a aucun. Il sert deux fois — pendant
 	// le chargement des catégories, et si la catégorie choisie a disparu.
 	const categoryBranch = useMemo(() => {
-		if (!categoryId) return undefined
+		if (!categoryId || categoryId === NO_RELATION_FILTER) return undefined
 		const branche = collectBranchIds(categories.data ?? [], categoryId)
 		return branche.length ? branche : [categoryId]
 	}, [categories.data, categoryId])
@@ -151,7 +158,8 @@ export function ProductsPage() {
 	// import. Elle disparaît alors des choix et ne doit pas rester sélectionnée
 	// comme un filtre invisible.
 	useEffect(() => {
-		if (!categoryId || !catalogCounts.data) return
+		if (!categoryId || categoryId === NO_RELATION_FILTER || !catalogCounts.data)
+			return
 		if (populatedCategoryIds.has(categoryId)) return
 		setCategoryId('')
 		setPage(1)
@@ -163,9 +171,15 @@ export function ProductsPage() {
 		perPage: PER_PAGE,
 		search: debounced || undefined,
 		status,
-		brandId: brandId || undefined,
+		brandId: brandId && brandId !== NO_RELATION_FILTER ? brandId : undefined,
+		withoutBrand: brandId === NO_RELATION_FILTER,
 		categoryIds: categoryBranch,
-		supplierId: supplierId || undefined,
+		withoutCategory: categoryId === NO_RELATION_FILTER,
+		supplierId:
+			supplierId && supplierId !== NO_RELATION_FILTER ? supplierId : undefined,
+		withoutSupplier: supplierId === NO_RELATION_FILTER,
+		missingImage,
+		missingDescription,
 		sort: toCatalogSort(sorting),
 	})
 
@@ -232,11 +246,19 @@ export function ProductsPage() {
 		setPage(1)
 	}
 
-	const filtresActifs = !!(brandId || categoryId || supplierId)
+	const filtresActifs = !!(
+		brandId ||
+		categoryId ||
+		supplierId ||
+		missingImage ||
+		missingDescription
+	)
 	const clearFilters = () => {
 		setBrandId('')
 		setCategoryId('')
 		setSupplierId('')
+		setMissingImage(false)
+		setMissingDescription(false)
 		setPage(1)
 	}
 
@@ -308,6 +330,7 @@ export function ProductsPage() {
 					value={brandId}
 					onChange={changeFilter(setBrandId)}
 					vide='Toutes les marques'
+					noneLabel='Aucune marque'
 					recherche='Rechercher une marque…'
 					options={brands.data ?? []}
 				/>
@@ -315,6 +338,7 @@ export function ProductsPage() {
 					value={categoryId}
 					onChange={changeFilter(setCategoryId)}
 					vide='Toutes les catégories'
+					noneLabel='Aucune catégorie'
 					recherche='Rechercher une catégorie…'
 					options={categoryOptions}
 					loading={categories.isLoading || catalogCounts.isLoading}
@@ -323,9 +347,31 @@ export function ProductsPage() {
 					value={supplierId}
 					onChange={changeFilter(setSupplierId)}
 					vide='Tous les fournisseurs'
+					noneLabel='Aucun fournisseur'
 					recherche='Rechercher un fournisseur…'
 					options={suppliers.data ?? []}
 				/>
+
+				<FilterButton
+					active={missingImage}
+					onClick={() => {
+						setMissingImage((current) => !current)
+						setPage(1)
+					}}
+				>
+					<ImageOff className='mr-1.5 inline h-4 w-4' />
+					Sans image
+				</FilterButton>
+				<FilterButton
+					active={missingDescription}
+					onClick={() => {
+						setMissingDescription((current) => !current)
+						setPage(1)
+					}}
+				>
+					<FileText className='mr-1.5 inline h-4 w-4' />
+					Sans description
+				</FilterButton>
 
 				{filtresActifs && (
 					<Button variant='ghost' size='sm' onClick={clearFilters}>
@@ -422,14 +468,20 @@ export function ProductsPage() {
 	)
 }
 
-const CATALOG_SORT_FIELDS = new Set(['created', 'name', 'price_ttc'])
+const CATALOG_SORT_FIELDS: Record<string, string> = {
+	created: 'created',
+	name: 'name',
+	price_ttc: 'price_ttc',
+	healthScore: 'health',
+}
 
 /** Traduit le tri de la table vers la syntaxe PocketBase. Le repli garde le
  * catalogue sur le plus récent même si la table retire momentanément son tri. */
 function toCatalogSort(sorting: SortingState) {
 	const current = sorting[0]
-	if (!current || !CATALOG_SORT_FIELDS.has(current.id)) return '-created'
-	return `${current.desc ? '-' : ''}${current.id}`
+	const field = current && CATALOG_SORT_FIELDS[current.id]
+	if (!current || !field) return '-created'
+	return `${current.desc ? '-' : ''}${field}`
 }
 
 function FilterButton({
@@ -462,6 +514,7 @@ function FilterSelect({
 	value,
 	onChange,
 	vide,
+	noneLabel,
 	recherche,
 	options,
 	loading = false,
@@ -469,6 +522,7 @@ function FilterSelect({
 	value: string
 	onChange: (value: string) => void
 	vide: string
+	noneLabel?: string
 	recherche: string
 	options: { id: string; name: string; depth?: number }[]
 	loading?: boolean
@@ -476,6 +530,8 @@ function FilterSelect({
 	const [open, setOpen] = useState(false)
 	const [search, setSearch] = useState('')
 	const selected = options.find((option) => option.id === value)
+	const selectedLabel =
+		value === NO_RELATION_FILTER ? noneLabel : (selected?.name ?? vide)
 
 	const filteredOptions = useMemo(() => {
 		const terme = normalizeFilterText(search.trim())
@@ -518,7 +574,7 @@ function FilterSelect({
 					aria-haspopup='listbox'
 					className='min-w-[190px] max-w-[260px] justify-between px-2 font-normal'
 				>
-					<span className='truncate'>{selected?.name ?? vide}</span>
+					<span className='truncate'>{selectedLabel}</span>
 					<ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
 				</Button>
 			</PopoverTrigger>
@@ -553,6 +609,21 @@ function FilterSelect({
 						/>
 						{vide}
 					</button>
+					{noneLabel && (
+						<button
+							type='button'
+							onClick={() => select(NO_RELATION_FILTER)}
+							className='flex w-full items-center rounded-sm border-b px-2 py-1.5 text-left text-sm hover:bg-accent'
+						>
+							<Check
+								className={cn(
+									'mr-2 h-4 w-4 shrink-0',
+									value === NO_RELATION_FILTER ? 'opacity-100' : 'opacity-0',
+								)}
+							/>
+							{noneLabel}
+						</button>
+					)}
 
 					{loading ? (
 						<p className='px-2 py-3 text-center text-muted-foreground text-sm'>

@@ -42,8 +42,8 @@ export function ProductMediaPanel(props: Props) {
 					optimize={{ maxSide: 1600 }}
 				/>
 			) : (
-				<div className='space-y-4'>
-					<div className='flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
+				<div className='space-y-3'>
+					<div className='flex h-44 items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
 						{mainUrl ? (
 							<img
 								src={mainUrl}
