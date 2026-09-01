@@ -18,6 +18,7 @@ type Props = {
 	promoting: boolean
 	removingMain: boolean
 	disabled: boolean
+	embedded?: boolean
 }
 
 export function ProductMediaPanel(props: Props) {
@@ -26,8 +27,8 @@ export function ProductMediaPanel(props: Props) {
 	const mainName = props.currentImage ?? props.product.image ?? ''
 	const mainUrl = mainName ? urlOf(mainName) : null
 
-	return (
-		<DetailCard title='Images'>
+	const content = (
+		<>
 			{props.editing ? (
 				<GalleryField
 					mainUrl={mainUrl}
@@ -42,8 +43,8 @@ export function ProductMediaPanel(props: Props) {
 					optimize={{ maxSide: 1600 }}
 				/>
 			) : (
-				<div className='space-y-3'>
-					<div className='flex h-44 items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
+				<div className='grid grid-cols-[112px_minmax(0,1fr)] gap-3'>
+					<div className='flex aspect-square items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
 						{mainUrl ? (
 							<img
 								src={mainUrl}
@@ -54,13 +55,13 @@ export function ProductMediaPanel(props: Props) {
 							<ImageOff className='h-10 w-10 text-muted-foreground/50' />
 						)}
 					</div>
-					<div>
-						<p className='mb-2 flex items-center gap-2 text-muted-foreground text-xs'>
+					<div className='min-w-0'>
+						<p className='mb-2 flex items-center gap-1.5 text-muted-foreground text-xs'>
 							<Images className='h-3.5 w-3.5' />
 							{props.gallery.length} image{props.gallery.length > 1 ? 's' : ''}{' '}
 							en galerie
 						</p>
-						<div className='grid grid-cols-4 gap-2'>
+						<div className='grid grid-cols-4 gap-1.5'>
 							{props.gallery.map(
 								(entry) =>
 									typeof entry === 'string' && (
@@ -68,7 +69,7 @@ export function ProductMediaPanel(props: Props) {
 											key={entry}
 											src={urlOf(entry)}
 											alt=''
-											className='aspect-square w-full rounded-md border object-contain'
+											className='aspect-square w-full rounded border object-contain'
 										/>
 									),
 							)}
@@ -76,6 +77,12 @@ export function ProductMediaPanel(props: Props) {
 					</div>
 				</div>
 			)}
-		</DetailCard>
+		</>
+	)
+
+	return props.embedded ? (
+		content
+	) : (
+		<DetailCard title='Images'>{content}</DetailCard>
 	)
 }

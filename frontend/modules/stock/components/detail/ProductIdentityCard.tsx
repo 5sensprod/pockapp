@@ -32,16 +32,16 @@ export function ProductIdentityCard({
 					<TextField
 						form={form}
 						name='designation'
-						label='Nom sur le ticket'
-						help='Ce libellé s’imprime sur le ticket de caisse. Il ne part jamais vers le site.'
-						placeholder='Libellé court, imprimé sur le ticket'
+						label='Désignation'
+						help='Ce libellé apparaît sur le ticket de caisse et la facture.'
+						placeholder='Libellé court pour le ticket et la facture'
 					/>
 					<TextField form={form} name='sku' label='Référence' />
 					<TextField form={form} name='barcode' label='Code-barres' />
 				</div>
 			) : (
 				<div className='grid gap-4 sm:grid-cols-3'>
-					<ReadValue label='Nom sur le ticket' value={product.designation} />
+					<ReadValue label='Désignation' value={product.designation} />
 					<ReadValue label='Référence' value={product.sku} />
 					<ReadValue label='Code-barres' value={product.barcode} />
 				</div>

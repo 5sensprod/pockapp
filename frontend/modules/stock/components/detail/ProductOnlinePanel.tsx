@@ -34,10 +34,12 @@ export function ProductOnlinePanel({
 	product,
 	editing,
 	form,
+	embedded = false,
 }: {
 	product: CatalogProductShape
 	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
+	embedded?: boolean
 }) {
 	const pb = usePocketBase()
 	const inventory = useCatalogInventory(true)
@@ -128,72 +130,72 @@ export function ProductOnlinePanel({
 						? `${imageCount} image${imageCount > 1 ? 's' : ''} — déjà à jour en ligne`
 						: `${imageCount} image${imageCount > 1 ? 's' : ''} — état non mesuré`
 
-	return (
-		<DetailCard title='En ligne'>
-			<div className='space-y-3 text-sm'>
-				<div className='rounded-md border bg-muted/20 p-2.5'>
-					<div className='flex items-center justify-between gap-3'>
-						<span className='font-medium'>Santé de la fiche</span>
-						<Badge
-							variant={
-								health.score < health.max / 2 ? 'destructive' : 'outline'
-							}
-							className={
-								health.score === health.max
-									? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
-									: undefined
-							}
-						>
-							{health.score}/{health.max}
-						</Badge>
-					</div>
-					<p className='mt-1 text-muted-foreground text-xs'>
-						{health.missing.length
-							? `À compléter : ${health.missing.join(', ')}.`
-							: 'Tous les éléments nécessaires au site sont présents.'}
-					</p>
-				</div>
-				<ProductPublicationControl
-					product={product}
-					editing={editing}
-					form={form}
-				/>
+	const content = (
+		<div className='space-y-3 text-sm'>
+			<div className='rounded-md border bg-muted/20 p-2.5'>
 				<div className='flex items-center justify-between gap-3'>
-					<span>Fiche</span>
-					<span className='text-right text-muted-foreground'>{dataLabel}</span>
+					<span className='font-medium'>Santé de la fiche</span>
+					<Badge
+						variant={health.score < health.max / 2 ? 'destructive' : 'outline'}
+						className={
+							health.score === health.max
+								? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
+								: undefined
+						}
+					>
+						{health.score}/{health.max}
+					</Badge>
 				</div>
-				<div className='space-y-2'>
-					<div className='flex items-start justify-between gap-3'>
-						<span>Images</span>
-						<span className='text-right text-muted-foreground'>
-							{imageLabel}
-						</span>
-					</div>
-					{imageCount > 0 && (
-						<Button
-							type='button'
-							variant='outline'
-							size='sm'
-							className='w-full'
-							onClick={checkImages}
-							disabled={imageState === 'checking'}
-						>
-							{imageState === 'checking' ? (
-								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
-							) : (
-								<ScanSearch className='mr-2 h-4 w-4' />
-							)}
-							Vérifier les images
-						</Button>
-					)}
+				<p className='mt-1 text-muted-foreground text-xs'>
+					{health.missing.length
+						? `À compléter : ${health.missing.join(', ')}.`
+						: 'Tous les éléments nécessaires au site sont présents.'}
+				</p>
+			</div>
+			<ProductPublicationControl
+				product={product}
+				editing={editing}
+				form={form}
+			/>
+			<div className='flex items-center justify-between gap-3'>
+				<span>Fiche</span>
+				<span className='text-right text-muted-foreground'>{dataLabel}</span>
+			</div>
+			<div className='space-y-2'>
+				<div className='flex items-start justify-between gap-3'>
+					<span>Images</span>
+					<span className='text-right text-muted-foreground'>{imageLabel}</span>
 				</div>
-				{inventory.error && (
-					<p className='text-muted-foreground text-xs'>
-						<RefreshCw className='mr-1 inline h-3 w-3' />
-						État du site indisponible.
-					</p>
+				{imageCount > 0 && (
+					<Button
+						type='button'
+						variant='outline'
+						size='sm'
+						className='w-full'
+						onClick={checkImages}
+						disabled={imageState === 'checking'}
+					>
+						{imageState === 'checking' ? (
+							<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+						) : (
+							<ScanSearch className='mr-2 h-4 w-4' />
+						)}
+						Vérifier les images
+					</Button>
 				)}
 			</div>
-		</DetailCard>
+			{inventory.error && (
+				<p className='text-muted-foreground text-xs'>
+					<RefreshCw className='mr-1 inline h-3 w-3' />
+					État du site indisponible.
+				</p>
+			)}
+		</div>
+	)
+
+	return embedded ? (
+		content
+	) : (
+		<DetailCard title='En ligne'>{content}</DetailCard>
 	)
 }

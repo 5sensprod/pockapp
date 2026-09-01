@@ -9,13 +9,11 @@ import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import { useNavigate, useParams } from '@tanstack/react-router'
 
-import { ProductDescriptionCard } from './components/detail/ProductDescriptionCard'
 import { ProductDetailHeader } from './components/detail/ProductDetailHeader'
 import { ProductIdentityCard } from './components/detail/ProductIdentityCard'
 import { ProductLinksCard } from './components/detail/ProductLinksCard'
-import { ProductMediaPanel } from './components/detail/ProductMediaPanel'
-import { ProductOnlinePanel } from './components/detail/ProductOnlinePanel'
 import { ProductPricingCard } from './components/detail/ProductPricingCard'
+import { ProductSitePanel } from './components/detail/ProductSitePanel'
 import { ProductStockCard } from './components/detail/ProductStockCard'
 import { useProductDetailEditor } from './components/detail/useProductDetailEditor'
 
@@ -96,8 +94,10 @@ function ProductDetailContent({
 					onCancel={editor.cancel}
 				/>
 
-				<main className='container mx-auto grid gap-4 px-6 py-5 lg:grid-cols-[minmax(0,1.8fr)_minmax(340px,0.9fr)]'>
-					<div className={cn('grid gap-4 xl:grid-cols-2')}>
+				<main className='container mx-auto grid items-start gap-4 px-6 py-5 lg:grid-cols-[minmax(0,1.8fr)_minmax(340px,0.9fr)]'>
+					<div
+						className={cn('grid content-start gap-4 self-start xl:grid-cols-2')}
+					>
 						<div className='xl:col-span-2'>
 							<ProductIdentityCard
 								product={product}
@@ -123,10 +123,11 @@ function ProductDetailContent({
 							/>
 						</div>
 					</div>
-					<aside className='space-y-4'>
-						<ProductMediaPanel
+					<aside className='self-start'>
+						<ProductSitePanel
 							product={product}
 							editing={editor.editing}
+							form={editor.form}
 							gallery={editor.gallery}
 							onGalleryChange={editor.setGallery}
 							currentImage={editor.currentImage}
@@ -135,16 +136,6 @@ function ProductDetailContent({
 							promoting={editor.promoting}
 							removingMain={editor.removingMain}
 							disabled={editor.pending}
-						/>
-						<ProductDescriptionCard
-							product={product}
-							editing={editor.editing}
-							form={editor.form}
-						/>
-						<ProductOnlinePanel
-							product={product}
-							editing={editor.editing}
-							form={editor.form}
 						/>
 					</aside>
 				</main>

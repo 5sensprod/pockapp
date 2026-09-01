@@ -7,18 +7,45 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 
 export function DetailCard({
 	title,
 	children,
-}: { title: string; children: React.ReactNode }) {
+	className,
+	contentClassName,
+}: {
+	title: string
+	children: React.ReactNode
+	className?: string
+	contentClassName?: string
+}) {
 	return (
-		<Card className='overflow-hidden shadow-sm'>
+		<Card className={cn('overflow-hidden shadow-sm', className)}>
 			<CardHeader className='border-b bg-muted/20 px-4 py-2.5'>
 				<CardTitle className='font-semibold text-sm'>{title}</CardTitle>
 			</CardHeader>
-			<CardContent className='p-4'>{children}</CardContent>
+			<CardContent className={cn('p-4', contentClassName)}>
+				{children}
+			</CardContent>
 		</Card>
+	)
+}
+
+export function DetailSection({
+	title,
+	children,
+}: {
+	title: string
+	children: React.ReactNode
+}) {
+	return (
+		<section className='px-4 py-3.5'>
+			<h3 className='mb-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide'>
+				{title}
+			</h3>
+			{children}
+		</section>
 	)
 }
 
@@ -27,18 +54,21 @@ export function ReadValue({
 	value,
 	wide = false,
 }: { label: string; value?: React.ReactNode; wide?: boolean }) {
+	const displayValue =
+		value === null || value === undefined || value === '' ? '—' : value
+
 	return (
 		<div className={wide ? 'sm:col-span-2' : undefined}>
 			<p className='text-muted-foreground text-xs'>{label}</p>
-			<div className='mt-0.5 min-h-5 text-sm'>{value || '—'}</div>
+			<div className='mt-0.5 min-h-5 text-sm'>{displayValue}</div>
 		</div>
 	)
 }
 
 export function HelpTooltip({ text }: { text: string }) {
 	return (
-		<TooltipProvider>
-			<Tooltip>
+		<TooltipProvider delayDuration={100} skipDelayDuration={0}>
+			<Tooltip delayDuration={100}>
 				<TooltipTrigger asChild>
 					<button
 						type='button'

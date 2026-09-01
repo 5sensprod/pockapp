@@ -81,9 +81,9 @@ import { toast } from 'sonner'
 import { CategoryPicker } from './CategoryPicker'
 import {
 	EMPTY_PRODUCT_DETAIL_VALUES,
-	productDetailSchema,
 	type ProductDetailValues,
 	nomFicheParDefaut,
+	productDetailSchema,
 } from './detail/product-detail-form'
 
 // La modale de création rapide et la fiche complète partagent volontairement
@@ -512,7 +512,7 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 								name='designation'
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Nom sur le ticket</FormLabel>
+										<FormLabel>Désignation</FormLabel>
 										<FormControl>
 											<Input
 												placeholder='Libellé court, imprimé sur le ticket'
@@ -754,8 +754,8 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 											</NativeSelect>
 										</FormControl>
 										<p className='text-muted-foreground text-xs'>
-											Se cumule avec l’état commercial, et ne change aucun prix :
-											c’est une étiquette, pas une remise.
+											Se cumule avec l’état commercial, et ne change aucun prix
+											: c’est une étiquette, pas une remise.
 										</p>
 										<FormMessage />
 									</FormItem>
