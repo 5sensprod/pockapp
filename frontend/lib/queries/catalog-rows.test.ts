@@ -76,4 +76,9 @@ describe('toStockRow', () => {
 			'draft',
 		)
 	})
+
+	it("recopie la date d'ajout utilisée par le tri du catalogue", () => {
+		const created = '2026-08-31 14:25:00.000Z'
+		expect(toStockRow(produit({ created }), contexte).created).toBe(created)
+	})
 })

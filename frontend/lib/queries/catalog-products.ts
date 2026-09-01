@@ -133,7 +133,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,consignor,categories'
+	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,consignor,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string

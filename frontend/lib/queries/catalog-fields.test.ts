@@ -43,6 +43,10 @@ describe('PRODUCT_FIELDS', () => {
 		expect(demandes).toContain('collectionId')
 		expect(demandes).toContain('collectionName')
 	})
+
+	it('demande la date de création utilisée par le tri et la table', () => {
+		expect(PRODUCT_FIELDS.split(',')).toContain('created')
+	})
 })
 
 // ═══════════════════════════════════════════════════════════════════════════

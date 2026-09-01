@@ -374,13 +374,39 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 	const brandsFilteredBySupplier =
 		Boolean(selectedSupplierId) && Boolean(supplierBrandIds?.length)
 
-	/** La marque en place n'est pas distribuée par le fournisseur choisi. Ce
-	 *  n'est pas une erreur — les données héritées en portent —, mais ça se
-	 *  signale. */
-	const brandOutsideSupplier =
-		brandsFilteredBySupplier &&
-		Boolean(currentBrandId) &&
-		!supplierBrandIds?.includes(currentBrandId as string)
+	// ── ... et le fournisseur suit la marque ─────────────────────────────────
+	// Le lien `suppliers.brands` se lit dans les deux sens : choisir une marque
+	// restreint les fournisseurs à ceux qui la distribuent. C'est ce qui
+	// remplace l'ancien avertissement « la marque n'est pas déclarée chez ce
+	// fournisseur » — plutôt que de signaler l'incohérence après coup, on ne
+	// propose plus que des couples cohérents.
+	//
+	// Mêmes garde-fous, symétriques :
+	//
+	//  • aucun fournisseur ne déclare cette marque — cas des marques orphelines
+	//    — la liste entière revient plutôt qu'un champ vide ;
+	//  • le fournisseur DÉJÀ enregistré reste proposé même s'il ne déclare pas
+	//    la marque, pour qu'un enregistrement ne l'efface pas en silence.
+	const suppliersDistributingBrand = (suppliers.data ?? []).filter(
+		(supplier) =>
+			Boolean(currentBrandId) &&
+			supplier.brands?.includes(currentBrandId as string),
+	)
+
+	const supplierOptions = (suppliers.data ?? []).filter((supplier) => {
+		if (!currentBrandId) return true
+		if (!suppliersDistributingBrand.length) return true
+		return (
+			supplier.brands?.includes(currentBrandId as string) ||
+			supplier.id === selectedSupplierId
+		)
+	})
+
+	/** Vrai quand la liste des fournisseurs est effectivement restreinte : même
+	 *  raison que pour les marques, une liste raccourcie en silence ferait
+	 *  chercher un fournisseur absent. */
+	const suppliersFilteredByBrand =
+		Boolean(currentBrandId) && suppliersDistributingBrand.length > 0
 
 	return (
 		<>
@@ -647,12 +673,6 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 													catalogue.
 												</p>
 											)}
-											{brandOutsideSupplier && (
-												<p className='text-amber-600 text-xs'>
-													La marque en place n’est pas déclarée chez ce
-													fournisseur. Elle est conservée telle quelle.
-												</p>
-											)}
 											<FormMessage />
 										</FormItem>
 									)}
@@ -666,13 +686,20 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 											<FormControl>
 												<NativeSelect {...field}>
 													<option value=''>— Aucun —</option>
-													{(suppliers.data ?? []).map((supplier) => (
+													{supplierOptions.map((supplier) => (
 														<option key={supplier.id} value={supplier.id}>
 															{supplier.name}
 														</option>
 													))}
 												</NativeSelect>
 											</FormControl>
+											{suppliersFilteredByBrand && (
+												<p className='text-muted-foreground text-xs'>
+													{supplierOptions.length} fournisseur(s) distribuant
+													cette marque. Retirez la marque pour voir toute la
+													liste.
+												</p>
+											)}
 											<FormMessage />
 										</FormItem>
 									)}

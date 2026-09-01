@@ -41,6 +41,7 @@ import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import { useNavigate } from '@tanstack/react-router'
+import type { SortingState } from '@tanstack/react-table'
 import {
 	AlertTriangle,
 	Check,
@@ -72,6 +73,9 @@ export function ProductsPage() {
 	const [brandId, setBrandId] = useState<string>('')
 	const [categoryId, setCategoryId] = useState<string>('')
 	const [supplierId, setSupplierId] = useState<string>('')
+	const [sorting, setSorting] = useState<SortingState>([
+		{ id: 'created', desc: true },
+	])
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const previousCompanyId = useRef(activeCompanyId)
 
@@ -162,6 +166,7 @@ export function ProductsPage() {
 		brandId: brandId || undefined,
 		categoryIds: categoryBranch,
 		supplierId: supplierId || undefined,
+		sort: toCatalogSort(sorting),
 	})
 
 	const brands = useBrands({ companyId: activeCompanyId ?? undefined })
@@ -219,6 +224,11 @@ export function ProductsPage() {
 
 	const changeFilter = (setter: (v: string) => void) => (value: string) => {
 		setter(value)
+		setPage(1)
+	}
+
+	const changeSorting = (nextSorting: SortingState) => {
+		setSorting(nextSorting)
 		setPage(1)
 	}
 
@@ -369,6 +379,8 @@ export function ProductsPage() {
 						<ProductTable
 							data={rows}
 							paginated={false}
+							sorting={sorting}
+							onSortingChange={changeSorting}
 							onRowClick={(row) => openRow(row.id)}
 						/>
 					)}
@@ -408,6 +420,16 @@ export function ProductsPage() {
 			</div>
 		</div>
 	)
+}
+
+const CATALOG_SORT_FIELDS = new Set(['created', 'name', 'price_ttc'])
+
+/** Traduit le tri de la table vers la syntaxe PocketBase. Le repli garde le
+ * catalogue sur le plus récent même si la table retire momentanément son tri. */
+function toCatalogSort(sorting: SortingState) {
+	const current = sorting[0]
+	if (!current || !CATALOG_SORT_FIELDS.has(current.id)) return '-created'
+	return `${current.desc ? '-' : ''}${current.id}`
 }
 
 function FilterButton({

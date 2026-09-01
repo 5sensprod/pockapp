@@ -60,14 +60,25 @@ interface ProductTableProps {
 	onRowClick?: (product: StockProductRow) => void
 	/** `false` quand l'appelant pagine côté serveur — c'est le cas du catalogue. */
 	paginated?: boolean
+	/** Tri contrôlé par l'appelant quand les pages sont chargées par le serveur. */
+	sorting?: SortingState
+	onSortingChange?: (sorting: SortingState) => void
 }
+
+const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
+	dateStyle: 'short',
+	timeStyle: 'short',
+})
 
 export function ProductTable({
 	data,
 	onRowClick,
 	paginated = true,
+	sorting: controlledSorting,
+	onSortingChange,
 }: ProductTableProps) {
-	const [sorting, setSorting] = useState<SortingState>([])
+	const [localSorting, setLocalSorting] = useState<SortingState>([])
+	const sorting = controlledSorting ?? localSorting
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 	const [pagination, setPagination] = useState<PaginationState>({
 		pageIndex: 0,
@@ -239,6 +250,31 @@ export function ProductTable({
 			},
 		},
 		{
+			accessorKey: 'created',
+			header: ({ column }) => (
+				<Button
+					variant='ghost'
+					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+				>
+					Ajouté le
+					<ArrowUpDown className='ml-2 h-4 w-4' />
+				</Button>
+			),
+			cell: ({ row }) => {
+				const created = row.getValue<string | null>('created')
+				if (!created) return <span className='text-muted-foreground'>-</span>
+
+				const date = new Date(created)
+				return Number.isNaN(date.getTime()) ? (
+					<span className='text-muted-foreground'>-</span>
+				) : (
+					<span className='whitespace-nowrap text-sm'>
+						{dateFormatter.format(date)}
+					</span>
+				)
+			},
+		},
+		{
 			accessorKey: 'status',
 			header: 'Statut',
 			cell: ({ row }) => {
@@ -286,7 +322,13 @@ export function ProductTable({
 		...(paginated ? { getPaginationRowModel: getPaginationRowModel() } : {}),
 		getSortedRowModel: getSortedRowModel(),
 		getFilteredRowModel: getFilteredRowModel(),
-		onSortingChange: setSorting,
+		onSortingChange: (updater) => {
+			const nextSorting =
+				typeof updater === 'function' ? updater(sorting) : updater
+			if (onSortingChange) onSortingChange(nextSorting)
+			else setLocalSorting(nextSorting)
+		},
+		manualSorting: controlledSorting !== undefined,
 		onColumnFiltersChange: setColumnFilters,
 		onPaginationChange: setPagination,
 		state: { sorting, columnFilters, pagination },

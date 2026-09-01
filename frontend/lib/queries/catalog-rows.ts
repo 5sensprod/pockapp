@@ -19,6 +19,8 @@ import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 export interface StockProductRow {
 	id: string
 	name: string
+	/** Date de création PocketBase, utilisée comme date d'ajout au catalogue. */
+	created?: string | null
 	sku?: string | null
 	barcode?: string | null
 	price_ttc?: number | null
@@ -48,6 +50,7 @@ export function toStockRow(
 	return {
 		id: product.id,
 		name: product.name,
+		created: product.created,
 		sku: product.sku,
 		barcode: product.barcode,
 		price_ttc: product.price_ttc,
