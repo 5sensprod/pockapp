@@ -128,6 +128,13 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// slug partait en ligne avec `slug: null`. Ne touche jamais un slug non
 		// vide ; le checksum de chaque catégorie réparée change volontairement.
 		BackfillCategorySlugs,
+
+		// 19. Le tri « Produit · A à Z » du catalogue sortait dans l'ordre des
+		// octets — majuscules d'abord, accents après « Z ». `name_sort` porte la
+		// forme triable du nom ; le hook `RegisterProductNameSortHook` la tient
+		// à jour, sans quoi seules les fiches d'hier seraient bien classées.
+		// Après MigrateCatalogV2, qui recrée `products`.
+		AddNameSortToProducts,
 	}
 
 	for _, migrate := range migrations {

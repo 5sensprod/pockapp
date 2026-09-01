@@ -265,7 +265,10 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			const result = await pb.collection('products').getList(page, perPage, {
 				filter,
 				fields: PRODUCT_FIELDS,
-				sort: sort || 'name',
+				// Repli sur la clé de tri, jamais sur `name` : SQLite trierait en
+				// BINARY (majuscules d'abord, accents après « Z »). Voir
+				// `backend/catalog/sortkey`.
+				sort: sort || 'name_sort',
 			})
 
 			return {

@@ -55,7 +55,10 @@ export function useSuppliers(options: SuppliersListOptions = {}) {
 			return await pb
 				.collection('suppliers')
 				.getFullList<CatalogSupplierShape>({
-					sort: sort || 'name',
+					// `name_sort`, pas `name` : SQLite trie en BINARY — toutes les
+					// majuscules avant toutes les minuscules, accents après « Z ».
+					// La clé est calculée à l'écriture (`backend/catalog/sortkey`).
+					sort: sort || 'name_sort',
 					expand: 'brands',
 					filter: finalFilter,
 					...otherOptions,

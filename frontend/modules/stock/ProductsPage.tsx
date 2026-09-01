@@ -638,7 +638,11 @@ export function ProductsPage() {
 
 const CATALOG_SORT_FIELDS: Record<string, string> = {
 	created: 'created',
-	name: 'name',
+	// `name_sort`, pas `name` : SQLite trie en BINARY, donc majuscules d'abord
+	// et accents après « Z ». La clé dérivée est calculée à l'écriture par
+	// `backend/hooks/product_name_sort_hook.go`. La colonne AFFICHE toujours
+	// `name` — la clé ne sert qu'à l'ORDER BY.
+	name: 'name_sort',
 	price_ttc: 'price_ttc',
 	healthScore: 'health',
 }

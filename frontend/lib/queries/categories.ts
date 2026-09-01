@@ -66,7 +66,10 @@ export function useCategories(options: CategoriesListOptions = {}) {
 			return await pb
 				.collection('categories')
 				.getFullList<CatalogCategoryShape>({
-					sort: sort || 'name',
+					// `name_sort`, pas `name` : SQLite trie en BINARY — toutes les
+					// majuscules avant toutes les minuscules, accents après « Z ».
+					// La clé est calculée à l'écriture (`backend/catalog/sortkey`).
+					sort: sort || 'name_sort',
 					expand: expand || 'parent',
 					filter: finalFilter,
 					...otherOptions,
@@ -100,7 +103,7 @@ export function useRootCategories(companyId?: string) {
 				.collection('categories')
 				.getFullList<CatalogCategoryShape>({
 					filter: filters.join(' && '),
-					sort: 'name',
+					sort: 'name_sort',
 				})
 		},
 		enabled: !!companyId,
@@ -133,7 +136,7 @@ export function useChildCategories(parentId?: string, companyId?: string) {
 				.collection('categories')
 				.getFullList<CatalogCategoryShape>({
 					filter: filters.join(' && '),
-					sort: 'name',
+					sort: 'name_sort',
 				})
 		},
 		enabled: !!parentId && !!companyId,

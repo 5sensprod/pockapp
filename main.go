@@ -101,6 +101,7 @@ func main() {
 	hooks.RegisterOrderHooks(pb)
 	hooks.RegisterCompanyHooks(pb)
 	hooks.RegisterCustomerNumberHook(pb)
+	hooks.RegisterProductNameSortHook(pb)
 
 	app := NewApp(pb)
 

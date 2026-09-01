@@ -14,6 +14,7 @@
 
 import { PeriodFilterCard } from '@/components/PeriodFilterCard'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
 	Card,
 	CardContent,
@@ -21,6 +22,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import {
@@ -33,6 +35,7 @@ import { useState } from 'react'
 
 import {
 	type JourneeEspeces,
+	type MouvementEspeces,
 	libelleTypeMouvement,
 	useJournalDesEspeces,
 } from './useJournalDesEspeces'
@@ -50,6 +53,17 @@ const jourLong = (iso: string) =>
 		month: 'long',
 	})
 
+/**
+ * Une sortie, c'est un mouvement qui QUITTE le tiroir : `sens < 0`. C'est le
+ * serveur qui l'a écrit (useJournalDesEspeces, champ `sens`) ; on le lit, on ne
+ * le redéduit pas du type de mouvement.
+ */
+const estSortie = (mvt: MouvementEspeces) => mvt.sens < 0
+
+/** Une journée « avec sortie » est une journée qui porte au moins un tel mouvement. */
+const journeeAvecSortie = (jour: JourneeEspeces) =>
+	(jour.mouvements ?? []).some(estSortie)
+
 export function JournalDesEspecesPage() {
 	const { activeCompanyId } = useActiveCompany()
 
@@ -61,6 +75,7 @@ export function JournalDesEspecesPage() {
 	const requeteAu =
 		period === 'toutes' ? formatLocalDateInputValue(new Date()) : au
 	const [deplies, setDeplies] = useState<Set<string>>(new Set())
+	const [sortiesSeules, setSortiesSeules] = useState(false)
 
 	const basculer = (date: string) => {
 		setDeplies((actuels) => {
@@ -80,7 +95,13 @@ export function JournalDesEspecesPage() {
 		au: requeteAu,
 	})
 
-	const jours = data?.jours ?? []
+	const tousLesJours = data?.jours ?? []
+	// Filtre d'AFFICHAGE seulement : les totaux restent ceux de la période
+	// entière, tels que la route les a calculés. Les amputer ici reviendrait à
+	// recalculer côté React ce que le Go a déjà agrégé.
+	const jours = sortiesSeules
+		? tousLesJours.filter(journeeAvecSortie)
+		: tousLesJours
 	const totaux = data?.totaux
 
 	return (
@@ -100,6 +121,24 @@ export function JournalDesEspecesPage() {
 				onFromChange={setDateFrom}
 				onToChange={setDateTo}
 			/>
+
+			<div className='flex items-center gap-2'>
+				<Checkbox
+					id='sorties-seules'
+					checked={sortiesSeules}
+					onCheckedChange={(coche) => setSortiesSeules(coche === true)}
+				/>
+				<Label htmlFor='sorties-seules' className='text-sm font-normal'>
+					Seulement les journées avec une sortie
+				</Label>
+				{sortiesSeules && (
+					<span className='text-xs text-muted-foreground'>
+						{jours.length} journée{jours.length > 1 ? 's' : ''} sur{' '}
+						{tousLesJours.length} — les totaux ci-dessous restent ceux de toute
+						la période.
+					</span>
+				)}
+			</div>
 
 			{isError && (
 				<Card className='border-red-200 bg-red-50'>
@@ -155,7 +194,9 @@ export function JournalDesEspecesPage() {
 				<Card>
 					<CardContent className='pt-6'>
 						<p className='text-sm text-muted-foreground'>
-							Aucun mouvement d'espèces sur cette période.
+							{sortiesSeules
+								? "Aucune sortie d'espèces sur cette période."
+								: "Aucun mouvement d'espèces sur cette période."}
 						</p>
 					</CardContent>
 				</Card>
@@ -166,6 +207,7 @@ export function JournalDesEspecesPage() {
 					key={jour.date}
 					jour={jour}
 					deplie={deplies.has(jour.date)}
+					sortiesSeules={sortiesSeules}
 					basculer={() => basculer(jour.date)}
 				/>
 			))}
@@ -176,13 +218,18 @@ export function JournalDesEspecesPage() {
 function Journee({
 	jour,
 	deplie,
+	sortiesSeules,
 	basculer,
 }: {
 	jour: JourneeEspeces
 	deplie: boolean
+	sortiesSeules: boolean
 	basculer: () => void
 }) {
-	const mouvements = jour.mouvements ?? []
+	const tousLesMouvements = jour.mouvements ?? []
+	const mouvements = sortiesSeules
+		? tousLesMouvements.filter(estSortie)
+		: tousLesMouvements
 	// Un tiroir négatif n'existe pas : c'est le signe d'un fonds d'ouverture
 	// saisi déjà net d'une remise en banque (04-refonte-du-z.md, §7). L'écran le
 	// montre, il ne le corrige pas.
@@ -204,7 +251,9 @@ function Journee({
 					)}
 					<span className='font-medium capitalize'>{jourLong(jour.date)}</span>
 					<span className='text-sm text-muted-foreground'>
-						{jour.nb_mouvements} mouvement{jour.nb_mouvements > 1 ? 's' : ''}
+						{sortiesSeules
+							? `${mouvements.length} sortie${mouvements.length > 1 ? 's' : ''}`
+							: `${jour.nb_mouvements} mouvement${jour.nb_mouvements > 1 ? 's' : ''}`}
 					</span>
 					<span className='ml-auto font-semibold tabular-nums'>
 						{euros(jour.solde_theorique)}
@@ -213,128 +262,138 @@ function Journee({
 			</CardHeader>
 
 			<CardContent className='pt-0'>
-				{/* Le tiroir décomposé : fonds + ventes + apports − sorties − remises
-				    − remboursements. La décomposition est le seul affichage qui rende
-				    un fonds d'ouverture faux visible à l'œil. */}
-				<div className='grid grid-cols-2 md:grid-cols-6 gap-3 text-sm'>
-					<Colonne
-						libelle='Fonds d’ouverture'
-						valeur={jour.solde_ouverture}
-						absent={!jour.ouverture_connue}
-					/>
-					<Colonne
-						libelle='Espèces des ventes'
-						valeur={jour.especes_des_ventes}
-					/>
-					<Colonne libelle='Apports' valeur={jour.apports} />
-					<Colonne libelle='Sorties' valeur={jour.sorties} sortie />
-					<Colonne
-						libelle='Remises en banque'
-						valeur={jour.remises_en_banque}
-						sortie
-					/>
-					<Colonne
-						libelle='Remboursements'
-						valeur={jour.remboursements}
-						sortie
-					/>
-				</div>
-
-				<Separator className='my-3' />
-
-				<div className='flex flex-wrap items-center gap-x-8 gap-y-2 text-sm'>
-					<span>
-						<span className='text-muted-foreground'>
-							Devrait être au tiroir :{' '}
-						</span>
-						<span
-							className={`font-semibold tabular-nums ${
-								soldeImpossible ? 'text-red-600' : ''
-							}`}
-						>
-							{euros(jour.solde_theorique)}
-						</span>
-					</span>
-					{jour.comptage_connu ? (
-						<>
-							<span>
-								<span className='text-muted-foreground'>Compté : </span>
-								<span className='font-semibold tabular-nums'>
-									{euros(jour.compte)}
-								</span>
-							</span>
-							<span>
-								<span className='text-muted-foreground'>Écart : </span>
-								<span
-									className={`font-semibold tabular-nums ${
-										ecartNotable ? 'text-red-600' : ''
-									}`}
-								>
-									{euros(jour.ecart)}
-								</span>
-							</span>
-						</>
-					) : (
-						<span className='text-xs text-muted-foreground'>
-							Tiroir non compté ce jour-là — aucun écart à lire.
-						</span>
-					)}
-				</div>
-
-				{soldeImpossible && (
-					<p className='text-xs text-red-700 mt-2'>
-						Solde négatif : un tiroir ne peut pas l'être. Le fonds d'ouverture a
-						probablement été saisi déjà net d'une remise en banque, qui se
-						retranche alors une seconde fois.
-					</p>
-				)}
-
+				{/* Ce qu'on vient lire ici, c'est le MOTIF de chaque mouvement : il est
+				    donc toujours à l'écran. Le rapprochement du tiroir — décomposition,
+				    solde théorique, comptage, écart — se déplie, parce qu'il ne se
+				    consulte qu'en cas de doute. */}
 				{deplie && (
 					<>
+						{/* Le tiroir décomposé : fonds + ventes + apports − sorties − remises
+				    − remboursements. La décomposition est le seul affichage qui rende
+				    un fonds d'ouverture faux visible à l'œil. */}
+						<div className='grid grid-cols-2 md:grid-cols-6 gap-3 text-sm'>
+							<Colonne
+								libelle='Fonds d’ouverture'
+								valeur={jour.solde_ouverture}
+								absent={!jour.ouverture_connue}
+							/>
+							<Colonne
+								libelle='Espèces des ventes'
+								valeur={jour.especes_des_ventes}
+							/>
+							<Colonne libelle='Apports' valeur={jour.apports} />
+							<Colonne libelle='Sorties' valeur={jour.sorties} sortie />
+							<Colonne
+								libelle='Remises en banque'
+								valeur={jour.remises_en_banque}
+								sortie
+							/>
+							<Colonne
+								libelle='Remboursements'
+								valeur={jour.remboursements}
+								sortie
+							/>
+						</div>
+
 						<Separator className='my-3' />
-						{mouvements.length === 0 ? (
-							<p className='text-sm text-muted-foreground'>Aucun mouvement.</p>
-						) : (
-							<div className='space-y-1'>
-								{mouvements.map((mvt) => (
-									<div
-										key={mvt.id}
-										className='flex items-center gap-3 text-sm py-1 border-b last:border-0'
-									>
-										<span className='w-14 text-xs text-muted-foreground shrink-0'>
-											{mvt.heure}
+
+						<div className='flex flex-wrap items-center gap-x-8 gap-y-2 text-sm'>
+							<span>
+								<span className='text-muted-foreground'>
+									Devrait être au tiroir :{' '}
+								</span>
+								<span
+									className={`font-semibold tabular-nums ${
+										soldeImpossible ? 'text-red-600' : ''
+									}`}
+								>
+									{euros(jour.solde_theorique)}
+								</span>
+							</span>
+							{jour.comptage_connu ? (
+								<>
+									<span>
+										<span className='text-muted-foreground'>Compté : </span>
+										<span className='font-semibold tabular-nums'>
+											{euros(jour.compte)}
 										</span>
-										<Badge variant='outline' className='text-xs shrink-0'>
-											{libelleTypeMouvement(mvt.type)}
-										</Badge>
-										<Badge
-											variant={mvt.nature === 'vente' ? 'secondary' : 'outline'}
-											className='text-xs shrink-0'
-										>
-											{mvt.nature}
-										</Badge>
-										<span className='font-mono text-xs shrink-0'>
-											{mvt.document}
-										</span>
-										<span className='min-w-0 flex-1 truncate text-muted-foreground'>
-											{mvt.motif}
-										</span>
-										<span className='text-xs text-muted-foreground shrink-0 hidden lg:inline'>
-											{mvt.auteur}
-										</span>
+									</span>
+									<span>
+										<span className='text-muted-foreground'>Écart : </span>
 										<span
-											className={`w-24 text-right font-medium tabular-nums shrink-0 ${
-												mvt.sens < 0 ? 'text-red-600' : ''
+											className={`font-semibold tabular-nums ${
+												ecartNotable ? 'text-red-600' : ''
 											}`}
 										>
-											{mvt.sens < 0 ? '−' : ''}
-											{euros(mvt.montant)}
+											{euros(jour.ecart)}
 										</span>
-									</div>
-								))}
-							</div>
+									</span>
+								</>
+							) : (
+								<span className='text-xs text-muted-foreground'>
+									Tiroir non compté ce jour-là — aucun écart à lire.
+								</span>
+							)}
+						</div>
+
+						{soldeImpossible && (
+							<p className='text-xs text-red-700 mt-2'>
+								Solde négatif : un tiroir ne peut pas l'être. Le fonds
+								d'ouverture a probablement été saisi déjà net d'une remise en
+								banque, qui se retranche alors une seconde fois.
+							</p>
 						)}
+
+						<Separator className='my-3' />
 					</>
+				)}
+
+				{mouvements.length === 0 ? (
+					<p className='text-sm text-muted-foreground'>
+						{sortiesSeules ? 'Aucune sortie.' : 'Aucun mouvement.'}
+					</p>
+				) : (
+					<div className='space-y-1'>
+						{mouvements.map((mvt) => (
+							<div
+								key={mvt.id}
+								className='flex items-center gap-3 text-sm py-1 border-b last:border-0'
+							>
+								<span className='w-14 text-xs text-muted-foreground shrink-0'>
+									{mvt.heure}
+								</span>
+								<Badge variant='outline' className='text-xs shrink-0'>
+									{libelleTypeMouvement(mvt.type)}
+								</Badge>
+								<Badge
+									variant={mvt.nature === 'vente' ? 'secondary' : 'outline'}
+									className='text-xs shrink-0'
+								>
+									{mvt.nature}
+								</Badge>
+								<span className='font-mono text-xs shrink-0'>
+									{mvt.document}
+								</span>
+								<span
+									className='min-w-0 flex-1 truncate text-muted-foreground'
+									title={mvt.motif}
+								>
+									{mvt.motif}
+								</span>
+								<span className='text-xs text-muted-foreground shrink-0 hidden lg:inline'>
+									{mvt.auteur}
+								</span>
+								<span
+									className={`w-24 text-right font-medium tabular-nums shrink-0 ${
+										mvt.sens < 0 ? 'text-red-600' : ''
+									}`}
+								>
+									{mvt.sens < 0 ? '−' : ''}
+									{euros(mvt.montant)}
+								</span>
+							</div>
+						))}
+					</div>
 				)}
 			</CardContent>
 		</Card>

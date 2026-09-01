@@ -53,7 +53,10 @@ export function useBrands(options: BrandsListOptions = {}) {
 			const finalFilter = filters.length > 0 ? filters.join(' && ') : undefined
 
 			return await pb.collection('brands').getFullList<CatalogBrandShape>({
-				sort: sort || 'name',
+				// `name_sort`, pas `name` : SQLite trie en BINARY — toutes les
+				// majuscules avant toutes les minuscules, accents après « Z ».
+				// La clé est calculée à l'écriture (`backend/catalog/sortkey`).
+				sort: sort || 'name_sort',
 				filter: finalFilter,
 				...otherOptions,
 			})
