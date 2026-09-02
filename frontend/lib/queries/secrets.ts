@@ -392,9 +392,31 @@ export interface BackupStatus {
 	endpoint_url: string
 	/** Une clé de chiffrement EXISTE. Sa valeur n'est jamais dans cette réponse. */
 	encryption_configured: boolean
+	/**
+	 * Une clé super-admin est présente sur CE poste. C'est elle qui fait
+	 * apparaître l'inventaire distant — et, sur le poste d'un client, ce qu'il
+	 * faut penser à effacer en repartant.
+	 */
+	super_configured: boolean
+	admin_url: string
 	interval_hours: number
 	enabled: boolean
 	state: BackupState
+}
+
+/** Une ligne de l'inventaire distant, telle que le mini-SaaS la rend. */
+export interface SnapshotDistant {
+	client_id: string
+	client_name: string
+	snapshot_id: string
+	status: string
+	plain_size: number
+	plain_sha256: string
+	chunk_count: number
+	app_version: string
+	origin: string
+	created_at: string
+	uploaded_at: string
 }
 
 export function useBackupStatus() {
@@ -421,6 +443,8 @@ export function useSetBackupSettings() {
 			endpointUrl?: string
 			apiKey?: string
 			encryptionKey?: string
+			superKey?: string
+			adminUrl?: string
 			intervalHours?: number
 			enabled?: boolean
 		}) => {
@@ -430,6 +454,8 @@ export function useSetBackupSettings() {
 					endpoint_url: data.endpointUrl,
 					api_key: data.apiKey,
 					encryption_key: data.encryptionKey,
+					super_key: data.superKey,
+					admin_url: data.adminUrl,
 					interval_hours: data.intervalHours,
 					enabled: data.enabled,
 				}),
@@ -487,6 +513,154 @@ export function useRevealEncryptionKey() {
 	return useMutation<{ encryption_key: string; warning: string }>({
 		mutationFn: async () => {
 			return await fetchWithAuth(pb, '/api/backup/encryption-key')
+		},
+	})
+}
+
+/**
+ * Effacer la clé super-admin de CE poste.
+ *
+ * Le geste de fin d'intervention. Il a sa propre mutation, et pas un champ
+ * vidé dans le formulaire, parce qu'il doit être atteignable en un clic : une
+ * clé oubliée sur le poste d'un magasin ouvre les sauvegardes de tous les
+ * autres clients.
+ */
+export function useDeleteSuperKey() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async () => {
+			return await fetchWithAuth(pb, '/api/backup/super-key', {
+				method: 'DELETE',
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['backup-status'] })
+			queryClient.removeQueries({ queryKey: ['backup-remote'] })
+		},
+	})
+}
+
+/**
+ * L'inventaire des snapshots que le serveur détient.
+ *
+ * `enabled` conditionné à la présence de la clé : sans elle la route répond
+ * 412, et on ne veut pas d'un message d'erreur permanent sur un écran dont
+ * c'est le fonctionnement normal.
+ */
+export function useRemoteSnapshots(actif: boolean) {
+	const pb = usePocketBase() as any
+
+	return useQuery<{ snapshots: SnapshotDistant[] }>({
+		queryKey: ['backup-remote'],
+		queryFn: async () => {
+			return await fetchWithAuth(pb, '/api/backup/remote')
+		},
+		enabled: actif,
+		// L'inventaire traverse le réseau jusqu'au mutualisé : inutile de le
+		// redemander à chaque montage d'écran.
+		staleTime: 60_000,
+	})
+}
+
+/** Supprimer un snapshot distant. Sans retour possible. */
+export function useDeleteRemoteSnapshot() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (data: { clientId: string; snapshotId: string }) => {
+			return await fetchWithAuth(pb, '/api/backup/remote/delete', {
+				method: 'POST',
+				body: JSON.stringify({
+					client_id: data.clientId,
+					snapshot_id: data.snapshotId,
+					// Redemandée ici ET par le serveur : deux gardes, pour qu'un
+					// appel programmatique n'efface pas une sauvegarde par accident.
+					confirm: data.snapshotId,
+				}),
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['backup-remote'] })
+		},
+	})
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESTAURATION — EN DEUX TEMPS
+// ═══════════════════════════════════════════════════════════════════════════
+// Ce que l'écran appelle « restaurer » ne remplace RIEN tout de suite : le
+// serveur télécharge, déchiffre, vérifie l'empreinte et dépose la base à côté.
+// L'échange a lieu au démarrage suivant, avant que PocketBase n'ouvre le
+// fichier — sous Windows, un fichier ouvert ne se remplace pas.
+//
+// D'où le `pending` : entre les deux, il y a un état à afficher, et une
+// possibilité de changer d'avis.
+
+export interface RestaurationEnAttente {
+	snapshot_id: string
+	client_id: string
+	client_name: string
+	origin: string
+	plain_sha256: string
+	plain_size: number
+	created_at: string
+	prepared_at: string
+}
+
+export function useRestoreStatus() {
+	const pb = usePocketBase() as any
+
+	return useQuery<{ pending: RestaurationEnAttente | null }>({
+		queryKey: ['backup-restore-status'],
+		queryFn: async () => {
+			return await fetchWithAuth(pb, '/api/backup/restore/status')
+		},
+	})
+}
+
+/** Prépare une restauration. Ne remplace rien : arme le démarrage suivant. */
+export function usePrepareRestore() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (snap: SnapshotDistant) => {
+			return await fetchWithAuth(pb, '/api/backup/restore', {
+				method: 'POST',
+				body: JSON.stringify({
+					client_id: snap.client_id,
+					client_name: snap.client_name,
+					snapshot_id: snap.snapshot_id,
+					origin: snap.origin,
+					created_at: snap.created_at,
+					// Retapé par l'utilisateur, revérifié par le serveur : ce geste
+					// remplace la base d'un magasin, il n'a pas de raccourci.
+					confirm: snap.snapshot_id,
+				}),
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['backup-restore-status'] })
+		},
+	})
+}
+
+/** Désarme une restauration préparée mais pas encore appliquée. */
+export function useCancelRestore() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async () => {
+			return await fetchWithAuth(pb, '/api/backup/restore', {
+				method: 'DELETE',
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['backup-restore-status'] })
 		},
 	})
 }

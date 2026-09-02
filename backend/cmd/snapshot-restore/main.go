@@ -43,8 +43,8 @@ import (
 
 func main() {
 	var (
-		endpoint   = flag.String("endpoint", env("BACKUP_ADMIN_URL", "https://pocketapp.5sensprod.com/api/admin/backups.php"), "endpoint admin des sauvegardes")
-		cookie     = flag.String("cookie", os.Getenv("BACKUP_ADMIN_COOKIE"), "cookie de session admin (PHPSESSID=…)")
+		endpoint   = flag.String("endpoint", env("BACKUP_ADMIN_URL", "https://pocketapp.5sensprod.com/api/backup-admin.php"), "endpoint super-admin des sauvegardes")
+		superKey   = flag.String("super-key", os.Getenv("BACKUP_SUPER_KEY"), "clé super-admin (en-tête X-Super-Key)")
 		cleHex     = flag.String("key", os.Getenv("BACKUP_ENCRYPTION_KEY"), "clé de déchiffrement, 64 caractères hexadécimaux")
 		snapshotID = flag.String("snapshot", "", "identifiant du snapshot à restaurer")
 		clientID   = flag.String("client", os.Getenv("BACKUP_CLIENT_ID"), "identifiant du client propriétaire du snapshot")
@@ -55,7 +55,7 @@ func main() {
 	flag.Parse()
 
 	if *lister {
-		if err := listerSnapshots(*endpoint, *cookie); err != nil {
+		if err := listerSnapshots(*endpoint, *superKey); err != nil {
 			echouer(err)
 		}
 		return
@@ -92,7 +92,7 @@ func main() {
 			echouer(fmt.Errorf("-client est requis pour télécharger (ou utiliser -file)"))
 		}
 		fmt.Printf("⬇️  téléchargement de %s…\n", *snapshotID)
-		r, err := telecharger(*endpoint, *cookie, *clientID, *snapshotID)
+		r, err := telecharger(*endpoint, *superKey, *clientID, *snapshotID)
 		if err != nil {
 			echouer(err)
 		}
@@ -180,11 +180,12 @@ type ligneSnapshot struct {
 	PlainSize   int64  `json:"plain_size"`
 	PlainSHA256 string `json:"plain_sha256"`
 	AppVersion  string `json:"app_version"`
+	Origin      string `json:"origin"`
 	CreatedAt   string `json:"created_at"`
 }
 
-func listerSnapshots(endpoint, cookie string) error {
-	corps, err := appelAdmin(endpoint, cookie, url.Values{"action": {"list"}})
+func listerSnapshots(endpoint, superKey string) error {
+	corps, err := appelAdmin(endpoint, superKey, url.Values{"action": {"liste"}})
 	if err != nil {
 		return err
 	}
@@ -217,21 +218,25 @@ func listerSnapshots(endpoint, cookie string) error {
 	return nil
 }
 
-func telecharger(endpoint, cookie, clientID, snapshotID string) (io.ReadCloser, error) {
-	return appelAdmin(endpoint, cookie, url.Values{
-		"action":      {"download"},
+func telecharger(endpoint, superKey, clientID, snapshotID string) (io.ReadCloser, error) {
+	return appelAdmin(endpoint, superKey, url.Values{
+		"action":      {"telecharger"},
 		"client_id":   {clientID},
 		"snapshot_id": {snapshotID},
 	})
 }
 
-func appelAdmin(endpoint, cookie string, params url.Values) (io.ReadCloser, error) {
+func appelAdmin(endpoint, superKey string, params url.Values) (io.ReadCloser, error) {
+	if strings.TrimSpace(superKey) == "" {
+		return nil, fmt.Errorf("clé super-admin absente : passer -super-key ou définir BACKUP_SUPER_KEY")
+	}
+
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("endpoint illisible : %w", err)
 	}
 	if u.Scheme != "https" && !strings.HasPrefix(u.Host, "127.0.0.1") && !strings.HasPrefix(u.Host, "localhost") {
-		return nil, fmt.Errorf("l'endpoint admin doit être en HTTPS (le cookie de session y voyage)")
+		return nil, fmt.Errorf("l'endpoint admin doit être en HTTPS (la clé super-admin y voyage)")
 	}
 	u.RawQuery = params.Encode()
 
@@ -239,9 +244,9 @@ func appelAdmin(endpoint, cookie string, params url.Values) (io.ReadCloser, erro
 	if err != nil {
 		return nil, err
 	}
-	if cookie != "" {
-		req.Header.Set("Cookie", cookie)
-	}
+	// En-tête, jamais en paramètre d'URL : cette clé ouvre les sauvegardes de
+	// TOUS les clients, elle n'a rien à faire dans les journaux d'accès.
+	req.Header.Set("X-Super-Key", superKey)
 	req.Header.Set("User-Agent", backup.AgentUtilisateur)
 
 	resp, err := (&http.Client{Timeout: 10 * time.Minute}).Do(req)
@@ -257,9 +262,20 @@ func appelAdmin(endpoint, cookie string, params url.Values) (io.ReadCloser, erro
 	// sans ce contrôle, on écrirait la page de login dans data.db.
 	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "text/html") {
 		resp.Body.Close()
-		return nil, fmt.Errorf("réponse HTML — session admin absente ou expirée ; passer -cookie \"PHPSESSID=…\"")
+		return nil, fmt.Errorf("réponse HTML au lieu du fichier attendu — vérifier l'URL de l'endpoint")
 	}
 	return resp.Body, nil
+}
+
+// tronquer coupe proprement une colonne de tableau.
+func tronquer(s string, n int) string {
+	if s == "" {
+		return "—"
+	}
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 func env(cle, defaut string) string {

@@ -226,7 +226,7 @@ func (p *Planificateur) executerUneFois() error {
 	endpoint, _ := p.sm.GetSetting(secrets.SettingBackupURL)
 	cleAPI, _ := p.sm.GetSecret(secrets.KeyBackupAPI)
 
-	client, err := NouveauClient(endpoint, cleAPI, p.appVersion)
+	client, err := NouveauClient(endpoint, cleAPI, p.appVersion, p.origine())
 	if err != nil {
 		return err
 	}
@@ -298,6 +298,20 @@ func (p *Planificateur) CleChiffrement() ([]byte, error) {
 	}
 	log.Println("🔑 sauvegarde : clé de chiffrement générée. À EXPORTER hors du poste — sans elle, aucune sauvegarde n'est restaurable.")
 	return cle, nil
+}
+
+// origine rend le nom du poste, qu'un réglage peut remplacer.
+//
+// Le réglage existe pour le cas où le nom de machine ne dit rien d'utile
+// (« DESKTOP-4F7K2P »), mais il n'est pas obligatoire : sans lui, on a quand
+// même une étiquette, ce qui vaut infiniment mieux qu'un champ vide.
+func (p *Planificateur) origine() string {
+	if v, err := p.sm.GetSetting(secrets.SettingBackupOrigine); err == nil {
+		if v = strings.TrimSpace(v); v != "" {
+			return v
+		}
+	}
+	return NomDuPoste()
 }
 
 // LireEtat rend le dernier état connu.

@@ -124,6 +124,22 @@ const (
 	// l'écran des réglages puisse dire « dernière sauvegarde le … » sans
 	// interroger le serveur. Purement informatif.
 	SettingBackupDernierEtat = "backup_last_state"
+
+	// SettingBackupOrigine remplace le nom de machine dans le manifeste.
+	//
+	// Facultatif : sans lui, le nom de machine sert d'étiquette. Il existe pour
+	// les cas où ce nom ne dit rien à personne (« DESKTOP-4F7K2P ») ou lorsque
+	// deux postes portent le même.
+	SettingBackupOrigine = "backup_origin"
+
+	// SettingBackupAdminURL est l'endpoint SUPER-ADMIN, typiquement
+	// https://pocketapp.5sensprod.com/api/backup-admin.php.
+	//
+	// Distinct de SettingBackupURL, et pas par goût du rangement : ce sont deux
+	// scripts, avec deux authentifications et deux pouvoirs. Celui-ci LIT et
+	// SUPPRIME, l'autre DÉPOSE. Vide, il est déduit de SettingBackupURL en
+	// remplaçant `backup.php` par `backup-admin.php`.
+	SettingBackupAdminURL = "backup_admin_url"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -147,6 +163,16 @@ const (
 	// clé, c'est perdre toutes les sauvegardes. Elle doit être conservée
 	// ailleurs que sur le poste qu'elle sauvegarde.
 	KeyBackupChiffrement = "backup_encryption_key"
+
+	// KeyBackupSuperAdmin est la clé super-admin de l'ÉDITEUR. Elle donne accès
+	// aux sauvegardes de TOUS les clients — lister, télécharger, supprimer —
+	// mais ne permet PAS d'en déposer.
+	//
+	// ⚠️ Sur le poste d'un client, elle est saisie pour une intervention et doit
+	// être EFFACÉE en repartant : c'est la clé qui ouvre les sauvegardes de
+	// tous les autres clients. D'où une route de suppression dédiée, et un
+	// avertissement à l'écran tant qu'elle est présente.
+	KeyBackupSuperAdmin = "backup_super_key"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -65,6 +65,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { CatalogProductDialog } from './components/CatalogProductDialog'
+import {
+	DeleteProductDialog,
+	type ProduitASupprimer,
+} from './components/DeleteProductDialog'
 import { ProductTable } from './components/ProductTable'
 import { HelpTooltip } from './components/detail/detail-primitives'
 
@@ -122,6 +126,12 @@ export function ProductsPage() {
 		{ id: 'created', desc: true },
 	])
 	const [dialogOpen, setDialogOpen] = useState(false)
+	/** La fiche dont on demande la suppression. `null` = aucune confirmation
+	 *  ouverte. On garde l'ENREGISTREMENT et non la ligne de table : la
+	 *  suppression a besoin du `legacy_id`, que `StockProductRow` ne porte pas —
+	 *  les documents anciens désignent le produit par son identifiant NeDB. */
+	const [produitASupprimer, setProduitASupprimer] =
+		useState<ProduitASupprimer | null>(null)
 	const previousCompanyId = useRef(activeCompanyId)
 
 	const openCreate = () => {
@@ -765,6 +775,19 @@ export function ProductsPage() {
 							sorting={sorting}
 							onSortingChange={changeSorting}
 							onRowClick={(row) => openRow(row.id)}
+							onDelete={(row) => {
+								// La ligne de table ne porte pas `legacy_id` : on retrouve
+								// l'enregistrement de la page courante, qui l'a.
+								const record = products.data?.items.find(
+									(item) => item.id === row.id,
+								)
+								setProduitASupprimer({
+									id: row.id,
+									name: row.name,
+									legacy_id: record?.legacy_id,
+									status: row.status,
+								})
+							}}
 						/>
 					)}
 				</CardContent>
@@ -799,6 +822,11 @@ export function ProductsPage() {
 					open={dialogOpen}
 					onOpenChange={setDialogOpen}
 					product={null}
+				/>
+
+				<DeleteProductDialog
+					produit={produitASupprimer}
+					onOpenChange={(ouvert) => !ouvert && setProduitASupprimer(null)}
 				/>
 			</div>
 		</div>

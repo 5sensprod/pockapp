@@ -78,6 +78,16 @@ type Manifeste struct {
 	// AppVersion sert au diagnostic : savoir quel build a produit un snapshot
 	// répond à la moitié des questions quand on cherche à reproduire un bogue.
 	AppVersion string `json:"app_version,omitempty"`
+
+	// Origine nomme le POSTE qui a produit le snapshot — le nom de machine,
+	// par défaut.
+	//
+	// Sans elle, deux postes déposant dans le même espace produisent des
+	// snapshots que rien ne distingue : on ne sait plus lequel vient du
+	// comptoir et lequel vient du poste de développement, et on restaure le
+	// mauvais. C'est de l'IDENTITÉ, pas de l'autorité : elle ne donne aucun
+	// droit, elle dit seulement d'où ça vient.
+	Origine string `json:"origin,omitempty"`
 }
 
 // Etat est la réponse de `?action=etat` : ce que le serveur a déjà.
@@ -93,6 +103,7 @@ type Client struct {
 	Endpoint   string
 	CleAPI     string
 	AppVersion string
+	Origine    string
 
 	http *http.Client
 }
@@ -103,7 +114,7 @@ type Client struct {
 // corps transporte des factures chiffrées, mais la clé d'API, elle, voyage en
 // clair dans un en-tête. Sur du HTTP simple, elle est lisible par le réseau du
 // magasin. On refuse donc de partir.
-func NouveauClient(endpoint, cleAPI, appVersion string) (*Client, error) {
+func NouveauClient(endpoint, cleAPI, appVersion, origine string) (*Client, error) {
 	endpoint = strings.TrimSpace(endpoint)
 	if endpoint == "" {
 		return nil, fmt.Errorf("URL de sauvegarde non configurée")
@@ -123,8 +134,27 @@ func NouveauClient(endpoint, cleAPI, appVersion string) (*Client, error) {
 		Endpoint:   endpoint,
 		CleAPI:     cleAPI,
 		AppVersion: appVersion,
+		Origine:    origine,
 		http:       &http.Client{Timeout: delaiTranche},
 	}, nil
+}
+
+// NomDuPoste rend l'identité par défaut d'une installation : son nom de
+// machine.
+//
+// Automatique, délibérément. Un réglage à saisir serait laissé vide par
+// quiconque n'a pas lu la documentation — c'est-à-dire toujours, sur le poste
+// d'un client —, et l'étiquette ne servirait justement pas dans le seul cas où
+// elle compte. Le nom de machine est déjà là et distingue déjà les postes.
+func NomDuPoste() string {
+	nom, err := os.Hostname()
+	if err != nil || strings.TrimSpace(nom) == "" {
+		return "poste-inconnu"
+	}
+	if len(nom) > 64 {
+		nom = nom[:64]
+	}
+	return nom
 }
 
 // requete pose les en-têtes communs. La clé part en EN-TÊTE, jamais en
@@ -295,6 +325,7 @@ func (c *Client) Envoyer(snap *Snapshot) error {
 		TailleChiff: snap.TailleChiffree,
 		NbTranches:  snap.NbTranches,
 		AppVersion:  c.AppVersion,
+		Origine:     c.Origine,
 	}
 
 	etat, err := c.Init(m)

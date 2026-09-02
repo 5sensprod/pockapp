@@ -548,6 +548,202 @@ export function useUpdateCatalogProduct() {
 	})
 }
 
+// ---------------------------------------------------------------------------
+// SUPPRESSION — et ce qu'elle casserait
+// ---------------------------------------------------------------------------
+// ⚠️ **AUCUNE collection ne pointe vers `products` par une RELATION.** Vérifié :
+// les lignes d'un document de vente vivent dans un champ JSON `items`
+// (`backend/migrations/invoices.go:141-146`), et elles y désignent le produit
+// par une CHAÎNE, `product_id` (`frontend/lib/types/invoice.types.ts:42`). Même
+// chose pour l'inventaire (`backend/migrations/migrate_inventory.go:192`, texte)
+// et pour le journal `product_events`
+// (`backend/migrations/ensure_product_events.go:57`, texte).
+//
+// Conséquence directe : **PocketBase ne refusera JAMAIS la suppression**, et
+// rien ne se mettra à jour en cascade. Une fiche effacée laisse derrière elle
+// exactement ce que le dépôt a déjà mesuré — 95 entrées d'historique
+// d'inventaire qui ne désignent plus aucun produit et s'affichent « produit
+// absent du catalogue » (docs/DECISIONS.md, 2026-08-19).
+//
+// D'où la règle posée ici, et elle est dans le code, pas dans l'intention :
+//
+//   • un produit cité par une FACTURE, un DEVIS ou une COMMANDE **ne se
+//     supprime pas**. Ces documents sont scellés et partent chez le comptable ;
+//     leur retirer le référent du produit ne se rattrape pas. La suppression
+//     échoue, et l'écran propose à la place de le passer en BROUILLON — le
+//     geste d'archivage que le schéma porte déjà (`status`, et « dépublier un
+//     produit, c'est l'exporter en draft », CLAUDE.md) ;
+//   • un produit cité seulement par l'inventaire ou par `product_events` se
+//     supprime, mais le nombre d'entrées orphelines est ANNONCÉ avant de
+//     confirmer ;
+//   • le décompte est REFAIT dans la mutation, pas seulement à l'affichage :
+//     une garde qui ne vit que dans la boîte de dialogue n'est pas une garde.
+//
+// Le produit est cherché sous ses DEUX identités — l'identifiant PocketBase et
+// le `legacy_id` — parce que les documents anciens portent l'identifiant NeDB
+// (`frontend/lib/queries/stock-adjust.ts:189` et son test résolvent déjà les
+// deux).
+
+export type ProductReferences = {
+	/** Factures, tickets de caisse et avoirs : la collection `invoices`. */
+	invoices: number
+	quotes: number
+	orders: number
+	/** Lignes de comptage physique. Orphelines après suppression, pas perdues. */
+	inventoryEntries: number
+	/** Journal append-only. Orphelin après suppression. */
+	events: number
+	/** Ce qui INTERDIT la suppression : les documents de vente. */
+	bloquantes: number
+	/** Ce qui sera cassé sans l'interdire. */
+	orphelines: number
+}
+
+const REFERENCES_VIDES: ProductReferences = {
+	invoices: 0,
+	quotes: 0,
+	orders: 0,
+	inventoryEntries: 0,
+	events: 0,
+	bloquantes: 0,
+	orphelines: 0,
+}
+
+/** Compte une collection sans en rapatrier le contenu : `getList(1, 1)` rend
+ *  `totalItems`, et `fields: 'id'` évite de tirer des `items` de 1 Mio.
+ *
+ *  Une collection absente d'une base — `product_events` n'existe pas partout —
+ *  vaut zéro et non une erreur : on ne bloque pas un geste légitime sur une
+ *  table qu'on n'a pas. */
+async function compter(
+	pb: any,
+	collection: string,
+	filter: string,
+): Promise<number> {
+	try {
+		const page = await pb.collection(collection).getList(1, 1, {
+			filter,
+			fields: 'id',
+			requestKey: `refs-${collection}-${Math.random()}`,
+		})
+		return (page.totalItems as number) ?? 0
+	} catch {
+		return 0
+	}
+}
+
+/**
+ * Ce qui cite ce produit ailleurs dans la base.
+ *
+ * ⚠️ Les documents de vente sont cherchés par `items ~ id` : `items` est du
+ * JSON, il n'y a pas de jointure possible, donc c'est un LIKE sur le texte
+ * sérialisé. C'est APPROXIMATIF PAR EXCÈS — un identifiant de 15 caractères
+ * pourrait théoriquement apparaître ailleurs dans la ligne — et c'est le sens
+ * dans lequel on veut se tromper : le doute retient la suppression.
+ */
+export async function compterReferencesProduit(
+	pb: any,
+	produit: { id: string; legacy_id?: string },
+): Promise<ProductReferences> {
+	const ids = [produit.id, produit.legacy_id].filter(
+		(valeur): valeur is string => !!valeur && valeur.trim() !== '',
+	)
+	if (ids.length === 0) return REFERENCES_VIDES
+
+	const dansItems = ids
+		.map((valeur) => pb.filter('items ~ {:id}', { id: valeur }))
+		.join(' || ')
+	const surProductId = ids
+		.map((valeur) => pb.filter('product_id = {:id}', { id: valeur }))
+		.join(' || ')
+
+	const [invoices, quotes, orders, inventoryEntries, events] =
+		await Promise.all([
+			compter(pb, 'invoices', dansItems),
+			compter(pb, 'quotes', dansItems),
+			compter(pb, 'orders', dansItems),
+			compter(pb, 'inventory_entries', surProductId),
+			compter(pb, 'product_events', surProductId),
+		])
+
+	return {
+		invoices,
+		quotes,
+		orders,
+		inventoryEntries,
+		events,
+		bloquantes: invoices + quotes + orders,
+		orphelines: inventoryEntries + events,
+	}
+}
+
+/** Lecture pour l'écran de confirmation. Ne part que si un produit est désigné
+ *  — la boîte de dialogue est fermée le reste du temps. */
+export function useProductReferences(produit?: {
+	id: string
+	legacy_id?: string
+}) {
+	const pb = usePocketBase() as any
+
+	return useQuery<ProductReferences>({
+		queryKey: ['catalog-products', 'references', produit?.id],
+		enabled: !!produit?.id,
+		// Rien à garder : on relit à chaque ouverture de la confirmation.
+		staleTime: 0,
+		gcTime: 0,
+		queryFn: async () =>
+			compterReferencesProduit(pb, produit as { id: string }),
+	})
+}
+
+/** L'erreur levée quand un produit est cité par un document de vente. Elle
+ *  porte le décompte pour que l'écran puisse le dire sans le recompter. */
+export class ProduitReferenceError extends Error {
+	readonly references: ProductReferences
+
+	constructor(references: ProductReferences) {
+		super(
+			`Ce produit est cité par ${references.bloquantes} document(s) de vente : il ne peut pas être supprimé.`,
+		)
+		this.name = 'ProduitReferenceError'
+		this.references = references
+	}
+}
+
+/**
+ * SUPPRIMER UN PRODUIT — définitivement, images comprises.
+ *
+ * PocketBase efface aussi les fichiers du dossier du produit : `image` et
+ * `gallery` partent avec la fiche, et rien ne les rend. Le miroir distant, lui,
+ * n'est PAS touché — le ménage des images en ligne n'a lieu qu'à l'envoi d'une
+ * entité (point 7 de CLAUDE.md) ; une fiche supprimée ici laisse ses octets sur
+ * le mutualisé et sa ligne dans la base SQL distante. **Dépublier d'abord
+ * (`status: 'draft'`) reste donc le seul geste qui retire la page du site.**
+ *
+ * La garde de référence est refaite ICI : l'écran l'affiche, la couche la fait
+ * respecter.
+ */
+export function useDeleteCatalogProduct() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (produit: { id: string; legacy_id?: string }) => {
+			const references = await compterReferencesProduit(pb, produit)
+			if (references.bloquantes > 0) throw new ProduitReferenceError(references)
+
+			await pb.collection('products').delete(produit.id)
+			return references
+		},
+		// `invalidateCatalog` périme la liste paginée ET `catalog-counts` : un
+		// produit supprimé change le décompte de sa marque et de ses catégories,
+		// et ce décompte est persisté sur le disque (`main.tsx`). Les autres
+		// postes l'apprennent par le temps réel : `products` est surveillée, et
+		// elle périme les mêmes clés (`catalog-realtime.ts`).
+		onSuccess: () => invalidateCatalog(queryClient),
+	})
+}
+
 /**
  * SUPPRIMER L'IMAGE PRINCIPALE, sans toucher à la galerie.
  *

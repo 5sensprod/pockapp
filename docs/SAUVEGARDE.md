@@ -167,8 +167,19 @@ L'outil **refuse** d'écrire dans un dossier contenant déjà un `data.db`, et
 refuse nommément `%LOCALAPPDATA%\PocketReact\pb_data` — celui qu'on risque le
 plus de désigner par habitude, un soir de diagnostic.
 
-Il faut la clé, dans `-key` ou `BACKUP_ENCRYPTION_KEY`, et un cookie de session
-admin dans `-cookie` (ou `-file` sur un `.bin` déjà téléchargé).
+Il faut **deux clés**, et ce n'est pas une lourdeur : ce sont deux serrures
+distinctes, et c'est ce qui fait tenir le dispositif.
+
+| Clé | Donne | Passée par |
+|---|---|---|
+| **super-admin** | l'accès aux OCTETS — lister, télécharger, supprimer | `-super-key` ou `BACKUP_SUPER_KEY` |
+| **chiffrement** | l'accès au CONTENU | `-key` ou `BACKUP_ENCRYPTION_KEY` |
+
+Avoir la première sans la seconde ne donne qu'un fichier illisible. C'est
+exactement ce qu'on veut : le mini-SaaS détient les octets et ne peut rien en
+faire.
+
+(`-file` restaure depuis un `.bin` déjà téléchargé, sans toucher au serveur.)
 
 ### ⚠️ Sauvegarder la clé
 
@@ -275,6 +286,32 @@ service, et servir de témoin de mesure — c'est lui que
 
 ---
 
+## 7 ter. Les trois clés, et pourquoi elles sont trois
+
+C'est le point qu'on se remet le plus souvent en tête, alors le voici en un
+tableau.
+
+| Clé | Où elle vit | Ce qu'elle permet | Ce qu'elle ne permet PAS |
+|---|---|---|---|
+| **API du client** (`clients.api_key`) | sur le poste, et en clair dans le mini-SaaS | **déposer** un snapshot, dans SON espace | ni lire, ni télécharger, ni supprimer |
+| **super-admin** (`backup_super_keys`) | chez l'éditeur ; en **empreinte** côté serveur | lister, télécharger, supprimer, chez TOUS les clients | **déposer** — elle ne peut pas fabriquer de fausse sauvegarde |
+| **chiffrement** | sur le poste, JAMAIS sur le serveur | **lire** le contenu | rien d'autre : elle n'ouvre aucun accès réseau |
+
+Les pouvoirs ne se croisent jamais, et c'est délibéré : un poste compromis ne
+rapatrie pas l'historique, une clé super-admin volée ne falsifie rien, et le
+mini-SaaS entier ne lit rien.
+
+L'empreinte plutôt que la clé, pour la super-admin : `clients.api_key` est en
+clair parce que l'interface doit la réafficher pour configurer un poste ;
+celle-ci se copie une fois et ne se réaffiche jamais. La stocker en clair
+ferait d'une lecture de cette base un accès à toutes les sauvegardes de tous
+les clients.
+
+Chaque usage d'une clé super-admin est **journalisé** (`backup_super_log`) —
+lectures comprises. Pour une suppression, c'est la seule trace qui restera.
+
+---
+
 ## 8. Où est quoi
 
 | Fichier | Rôle |
@@ -287,5 +324,8 @@ service, et servir de témoin de mesure — c'est lui que
 | `backend/cmd/snapshot-restore/` | la restauration, hors application |
 | `pocketApp_minisaas/api/backup.php` | la réception |
 | `pocketApp_minisaas/api/backup-config.php` | où atterrissent les octets, et les bornes |
-| `pocketApp_minisaas/api/admin/backups.php` | lister et récupérer |
+| `pocketApp_minisaas/api/backup-admin.php` | lister, télécharger, supprimer — par clé super-admin, pour les OUTILS |
+| `pocketApp_minisaas/api/admin/backups.php` | idem sous session admin, pour le navigateur |
+| `pocketApp_minisaas/api/admin/backup-diag.php` | diagnostic de mise en service |
+| `pocketApp_minisaas/schema-super-keys.sql` | les tables `backup_super_keys` et `backup_super_log` |
 | `pocketApp_minisaas/schema-backups.sql` | la table `backups` |

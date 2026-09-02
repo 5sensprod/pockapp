@@ -27,9 +27,15 @@ import {
 	useBackupStatus,
 	useDeleteBackupKey,
 	useDeleteNotificationKey,
+	useDeleteRemoteSnapshot,
 	useDeleteSiteCatalogKey,
 	useDeleteSitePublishKey,
 	useNotificationKeyStatus,
+	useCancelRestore,
+	useDeleteSuperKey,
+	usePrepareRestore,
+	useRemoteSnapshots,
+	useRestoreStatus,
 	useRevealEncryptionKey,
 	useRunBackup,
 	useSetBackupSettings,
@@ -50,7 +56,11 @@ import {
 	Key,
 	Loader2,
 	Play,
+	History,
+	Power,
+	RefreshCw,
 	Settings2,
+	ShieldAlert,
 	Trash2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -697,8 +707,20 @@ function BackupSection() {
 	const [endpointUrl, setEndpointUrl] = useState('')
 	const [urlTouched, setUrlTouched] = useState(false)
 	const [revealedKey, setRevealedKey] = useState('')
+	const [superKey, setSuperKey] = useState('')
+	const [showSuperKey, setShowSuperKey] = useState(false)
 
-	const { data: status, isLoading: statusLoading } = useBackupStatus()
+	const {
+		data: status,
+		isLoading: statusLoading,
+		error: statusError,
+	} = useBackupStatus()
+	const distants = useRemoteSnapshots(!!status?.super_configured)
+	const supprimerSuperKey = useDeleteSuperKey()
+	const supprimerDistant = useDeleteRemoteSnapshot()
+	const restauration = useRestoreStatus()
+	const preparerRestauration = usePrepareRestore()
+	const annulerRestauration = useCancelRestore()
 	const save = useSetBackupSettings()
 	const deleteKey = useDeleteBackupKey()
 	const run = useRunBackup()
@@ -711,13 +733,17 @@ function BackupSection() {
 
 	// Rien de configuré : la configuration s'ouvre d'elle-même. Sinon l'écran
 	// n'afficherait qu'un bouton grisé sans dire quoi faire.
+	//
+	// Conditionné à `status` reçu, et pas à son absence : sur une erreur, on ne
+	// sait pas si c'est configuré, et ouvrir le panneau inviterait à ressaisir
+	// des clés qui sont déjà là.
 	useEffect(() => {
 		if (status && !status.configured) setConfigOuverte(true)
 	}, [status])
 
 	const urlChanged = endpointUrl.trim() !== (status?.endpoint_url ?? '')
 	const hasSomethingToSave =
-		!!apiKey.trim() || !!encryptionKey.trim() || urlChanged
+		!!apiKey.trim() || !!encryptionKey.trim() || !!superKey.trim() || urlChanged
 
 	const handleSave = async () => {
 		const url = endpointUrl.trim()
@@ -739,17 +765,26 @@ function BackupSection() {
 			return
 		}
 
+		const superCle = superKey.trim()
+		if (superCle && !/^[0-9a-fA-F]{64}$/.test(superCle)) {
+			toast.error('La clé super-admin doit faire 64 caractères hexadécimaux')
+			return
+		}
+
 		try {
 			await save.mutateAsync({
 				apiKey: apiKey.trim() || undefined,
 				encryptionKey: cle || undefined,
+				superKey: superCle || undefined,
 				endpointUrl: urlChanged ? url : undefined,
 			})
 			toast.success('Paramètres de sauvegarde enregistrés')
 			setApiKey('')
 			setEncryptionKey('')
+			setSuperKey('')
 			setShowApiKey(false)
 			setShowEncryptionKey(false)
+			setShowSuperKey(false)
 		} catch (error: any) {
 			toast.error(error.message || 'Erreur lors de la sauvegarde')
 		}
@@ -777,6 +812,76 @@ function BackupSection() {
 			setRevealedKey(res.encryption_key)
 		} catch (error: any) {
 			toast.error(error.message || 'Clé introuvable')
+		}
+	}
+
+	const handleEffacerSuperKey = async () => {
+		if (
+			!confirm(
+				"Effacer la clé super-admin de ce poste ?\n\nÀ faire systématiquement en repartant d'une intervention : cette clé ouvre les sauvegardes de TOUS vos clients.",
+			)
+		)
+			return
+		try {
+			await supprimerSuperKey.mutateAsync()
+			toast.success('Clé super-admin effacée de ce poste')
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la suppression')
+		}
+	}
+
+	const handleSupprimerDistant = async (snap: any) => {
+		// L'identifiant est retapé, pas juste confirmé : c'est le seul geste
+		// qui distingue « je supprime CELUI-CI » de « j'ai cliqué ».
+		const saisi = prompt(
+			`Supprimer définitivement ce snapshot ?\n\n${snap.client_name} — ${snap.origin || 'poste inconnu'}\n\nRetapez son identifiant pour confirmer :`,
+		)
+		if (saisi !== snap.snapshot_id) {
+			if (saisi !== null) toast.error('Identifiant incorrect, rien supprimé')
+			return
+		}
+		try {
+			await supprimerDistant.mutateAsync({
+				clientId: snap.client_id,
+				snapshotId: snap.snapshot_id,
+			})
+			toast.success('Snapshot supprimé')
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la suppression')
+		}
+	}
+
+	const handleRestaurer = async (snap: any) => {
+		// L'identifiant est RETAPÉ. C'est le geste le plus destructeur de
+		// l'application — il remplace la base du magasin — et il ne doit pas
+		// pouvoir être fait par un clic distrait.
+		const saisi = prompt(
+			`RESTAURER cette sauvegarde ?\n\n` +
+				`${snap.client_name} — ${snap.origin || 'poste inconnu'}\n` +
+				`base du ${snap.created_at} (UTC), ${Math.round(snap.plain_size / 1024)} Kio\n\n` +
+				`⚠️ La base ACTUELLE sera remplacée. Tout ce qui a été saisi depuis ce snapshot sera perdu.\n` +
+				`(l'ancienne base est archivée à côté, jamais effacée)\n\n` +
+				`Retapez l'identifiant du snapshot pour confirmer :`,
+		)
+		if (saisi !== snap.snapshot_id) {
+			if (saisi !== null) toast.error('Identifiant incorrect, rien préparé')
+			return
+		}
+		try {
+			await preparerRestauration.mutateAsync(snap)
+			toast.success("Restauration préparée — redémarrez l'application")
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la préparation')
+		}
+	}
+
+	const handleAnnulerRestauration = async () => {
+		if (!confirm('Annuler la restauration préparée ?')) return
+		try {
+			await annulerRestauration.mutateAsync()
+			toast.success('Restauration annulée')
+		} catch (error: any) {
+			toast.error(error.message || "Erreur lors de l'annulation")
 		}
 	}
 
@@ -816,11 +921,66 @@ function BackupSection() {
 			</CardHeader>
 
 			<CardContent className='space-y-4'>
+				{/* ── Restauration armée : le bandeau le plus important de l'écran
+				    ───────────────────────────────────────────────────────────────
+				    Il est EN PREMIER et en rouge parce que l'application tourne
+				    encore sur l'ancienne base : tout ce qui sera saisi d'ici au
+				    redémarrage sera emporté par l'échange. */}
+				{restauration.data?.pending && (
+					<div className='space-y-3 rounded-md border-2 border-destructive bg-destructive/5 p-4'>
+						<p className='flex items-center gap-2 font-medium text-destructive'>
+							<Power className='h-5 w-5' />
+							Redémarrez l'application pour appliquer la restauration
+						</p>
+						<p className='text-sm'>
+							La base sera remplacée par le snapshot{' '}
+							<code className='text-xs'>
+								{restauration.data.pending.snapshot_id}
+							</code>{' '}
+							({restauration.data.pending.client_name} —{' '}
+							{restauration.data.pending.origin || 'poste inconnu'}, base du{' '}
+							{restauration.data.pending.created_at}).
+						</p>
+						<p className='text-sm text-destructive'>
+							<strong>
+								Tout ce qui sera saisi d'ici au redémarrage sera perdu.
+							</strong>{' '}
+							L'échange a lieu au lancement, avant l'ouverture de la base —
+							c'est le seul moment où le fichier n'est pas verrouillé. La base
+							actuelle sera archivée à côté, jamais effacée.
+						</p>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={handleAnnulerRestauration}
+							disabled={annulerRestauration.isPending}
+						>
+							{annulerRestauration.isPending ? (
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							) : (
+								<Trash2 className='mr-2 h-4 w-4' />
+							)}
+							Annuler la restauration
+						</Button>
+					</div>
+				)}
+
 				{/* ── La seule chose qu'on vient voir : où ça en est ──────────── */}
 				<div className='flex flex-wrap items-center justify-between gap-3'>
 					<div className='text-sm'>
 						{statusLoading ? (
 							<Loader2 className='h-4 w-4 animate-spin' />
+						) : statusError ? (
+							/* Sans ce cas, une requête d'état en échec faisait dire à
+							   l'écran « Non configurée » — c'est-à-dire exactement le
+							   contraire de la vérité, puisqu'on ne sait rien. La session
+							   PocketBase étant effacée à chaque démarrage (main.tsx),
+							   c'était le message vu au lancement, avant connexion. */
+							<span className='flex items-center gap-2 text-amber-600'>
+								<AlertCircle className='h-4 w-4' />
+								Configuration illisible :{' '}
+								{(statusError as any).message || 'erreur inconnue'}
+							</span>
 						) : etat?.running ? (
 							<span className='flex items-center gap-2 text-blue-600'>
 								<Loader2 className='h-4 w-4 animate-spin' />
@@ -870,6 +1030,32 @@ function BackupSection() {
 					</div>
 				</div>
 
+				{/* La présence de la super-clé est SIGNALÉE en permanence, sans
+				    avoir à déplier : elle est normale sur le poste de l'éditeur,
+				    et c'est un oubli à réparer sur celui d'un client. */}
+				{status?.super_configured && (
+					<div className='flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-400 bg-amber-50 p-3'>
+						<span className='flex items-center gap-2 text-sm text-amber-900'>
+							<ShieldAlert className='h-4 w-4' />
+							Clé super-admin présente sur ce poste — à effacer après une
+							intervention.
+						</span>
+						<Button
+							variant='outline'
+							size='sm'
+							onClick={handleEffacerSuperKey}
+							disabled={supprimerSuperKey.isPending}
+						>
+							{supprimerSuperKey.isPending ? (
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							) : (
+								<Trash2 className='mr-2 h-4 w-4' />
+							)}
+							Effacer
+						</Button>
+					</div>
+				)}
+
 				{/* Un échec est la seule autre chose qui mérite d'être vue sans
 				    déplier : c'est le cas où il faut agir. */}
 				{!etat?.running && etat?.last_error && (
@@ -886,13 +1072,16 @@ function BackupSection() {
 				{configOuverte && (
 					<div className='space-y-4 rounded-md border p-4'>
 						<div className='flex flex-wrap items-center gap-4'>
+							{/* `loading` couvre AUSSI le cas d'erreur : un badge qui
+							    annonce « manquante » quand la réponse n'est pas arrivée
+							    envoie corriger une configuration qui va très bien. */}
 							<ConfiguredBadge
-								loading={statusLoading}
+								loading={statusLoading || !!statusError}
 								configured={!!status?.configured}
 								labels={['Clé API enregistrée', 'Clé API manquante']}
 							/>
 							<ConfiguredBadge
-								loading={statusLoading}
+								loading={statusLoading || !!statusError}
 								configured={!!status?.encryption_configured}
 								labels={['Chiffrement actif', 'Clé de chiffrement manquante']}
 							/>
@@ -1030,6 +1219,49 @@ function BackupSection() {
 							</p>
 						</div>
 
+						{/* ── Clé super-admin ─────────────────────────────────
+						    Rien à voir avec les deux précédentes : celles-là
+						    concernent CE poste, celle-ci est la clé de
+						    l'ÉDITEUR et vaut pour tous les clients. */}
+						<div className='space-y-2 border-t pt-4'>
+							<Label htmlFor='backup-super-key'>
+								Clé super-admin{' '}
+								<span className='font-normal text-muted-foreground'>
+									(optionnelle)
+								</span>
+							</Label>
+							<div className='relative'>
+								<Input
+									id='backup-super-key'
+									type={showSuperKey ? 'text' : 'password'}
+									placeholder='64 caractères hexadécimaux'
+									value={superKey}
+									onChange={(e) => setSuperKey(e.target.value)}
+									className='pr-10 font-mono'
+									autoComplete='off'
+								/>
+								<Button
+									type='button'
+									variant='ghost'
+									size='icon'
+									className='absolute right-0 top-0 h-full px-3'
+									onClick={() => setShowSuperKey(!showSuperKey)}
+								>
+									{showSuperKey ? (
+										<EyeOff className='h-4 w-4' />
+									) : (
+										<Eye className='h-4 w-4' />
+									)}
+								</Button>
+							</div>
+							<p className='text-xs text-muted-foreground'>
+								Créée dans le mini-SaaS, onglet « Clés super-admin ». Elle
+								permet de <strong>lire et supprimer</strong> les sauvegardes de
+								tous les clients — jamais d'en déposer. Sa présence fait
+								apparaître l'inventaire distant ci-dessous.
+							</p>
+						</div>
+
 						<div className='flex items-center justify-between gap-2'>
 							{status?.configured ? (
 								<Button
@@ -1060,6 +1292,119 @@ function BackupSection() {
 								Enregistrer
 							</Button>
 						</div>
+					</div>
+				)}
+				{/* ── Ce que le serveur détient ───────────────────────────────
+				    N'apparaît qu'avec la clé super-admin : c'est ce qu'elle
+				    débloque, et sa seule raison d'être sur un poste. */}
+				{status?.super_configured && (
+					<div className='space-y-3 rounded-md border p-4'>
+						<div className='flex items-center justify-between gap-2'>
+							<h4 className='text-sm font-medium'>
+								Sauvegardes sur le serveur
+							</h4>
+							<Button
+								variant='ghost'
+								size='sm'
+								onClick={() => distants.refetch()}
+								disabled={distants.isFetching}
+							>
+								<RefreshCw
+									className={`mr-2 h-4 w-4 ${distants.isFetching ? 'animate-spin' : ''}`}
+								/>
+								Actualiser
+							</Button>
+						</div>
+
+						{distants.isLoading ? (
+							<Loader2 className='h-4 w-4 animate-spin' />
+						) : distants.error ? (
+							<p className='text-sm text-amber-600'>
+								{(distants.error as any).message || 'Inventaire indisponible'}
+							</p>
+						) : !distants.data?.snapshots?.length ? (
+							<p className='text-sm text-muted-foreground'>
+								Aucune sauvegarde sur le serveur.
+							</p>
+						) : (
+							<div className='overflow-x-auto'>
+								<table className='w-full text-sm'>
+									<thead>
+										<tr className='text-left text-xs text-muted-foreground'>
+											<th className='pb-2 pr-3'>Identifiant</th>
+											<th className='pb-2 pr-3'>Client</th>
+											<th className='pb-2 pr-3'>Poste</th>
+											<th className='pb-2 pr-3'>Taille</th>
+											<th className='pb-2 pr-3'>Créé le (UTC)</th>
+											<th className='pb-2' />
+										</tr>
+									</thead>
+									<tbody>
+										{distants.data.snapshots.map((snap) => (
+											<tr key={snap.snapshot_id} className='border-t'>
+												{/* Affiché en entier et sélectionnable : c'est ce
+												    qu'il faut retaper pour confirmer une
+												    restauration ou une suppression. Le cacher
+												    rendait les deux gestes impossibles. */}
+												<td className='py-2 pr-3 font-mono text-xs select-all'>
+													{snap.snapshot_id}
+												</td>
+												<td className='py-2 pr-3'>{snap.client_name}</td>
+												<td className='py-2 pr-3 text-muted-foreground'>
+													{snap.origin || '—'}
+												</td>
+												<td className='py-2 pr-3'>
+													{Math.round(snap.plain_size / 1024)} Kio
+												</td>
+												<td className='py-2 pr-3 font-mono text-xs'>
+													{snap.created_at}
+												</td>
+												<td className='py-2 text-right whitespace-nowrap'>
+													<Button
+														variant='ghost'
+														size='sm'
+														onClick={() => handleRestaurer(snap)}
+														disabled={
+															preparerRestauration.isPending ||
+															!!restauration.data?.pending
+														}
+														title={
+															restauration.data?.pending
+																? 'Une restauration est déjà préparée'
+																: 'Restaurer cette sauvegarde'
+														}
+													>
+														{preparerRestauration.isPending ? (
+															<Loader2 className='h-4 w-4 animate-spin' />
+														) : (
+															<History className='h-4 w-4' />
+														)}
+													</Button>
+													<Button
+														variant='ghost'
+														size='sm'
+														className='text-destructive hover:text-destructive'
+														onClick={() => handleSupprimerDistant(snap)}
+														disabled={supprimerDistant.isPending}
+													>
+														<Trash2 className='h-4 w-4' />
+													</Button>
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+						)}
+
+						<p className='text-xs text-muted-foreground'>
+							L'icône <History className='inline h-3 w-3' /> prépare une{' '}
+							<strong>restauration</strong> : le snapshot est téléchargé,
+							déchiffré et son empreinte vérifiée, puis déposé à côté de la
+							base. Le remplacement a lieu <strong>au redémarrage</strong> — une
+							base ouverte ne se remplace pas. L'ancienne est archivée, jamais
+							effacée.
+						</p>
 					</div>
 				)}
 			</CardContent>

@@ -19,6 +19,7 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -49,6 +50,7 @@ import {
 	ImageIcon,
 	MoreHorizontal,
 	Tags,
+	Trash2,
 	Truck,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -61,6 +63,12 @@ interface ProductTableProps {
 	onRowClick?: (product: StockProductRow) => void
 	/** `false` quand l'appelant pagine côté serveur — c'est le cas du catalogue. */
 	paginated?: boolean
+	/** Demander la suppression d'une ligne. Absent = l'entrée n'est pas proposée.
+	 *  La table ne supprime RIEN elle-même : elle a porté les deux bases jusqu'au
+	 *  18 août 2026, et c'est ce qui a laissé « Supprimer » appeler une
+	 *  suppression PocketBase avec un identifiant NeDB. Elle rend la ligne,
+	 *  l'appelant confirme et écrit. */
+	onDelete?: (product: StockProductRow) => void
 	/** Tri contrôlé par l'appelant quand les pages sont chargées par le serveur. */
 	sorting?: SortingState
 	onSortingChange?: (sorting: SortingState) => void
@@ -74,6 +82,7 @@ const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
 export function ProductTable({
 	data,
 	onRowClick,
+	onDelete,
 	paginated = true,
 	sorting: controlledSorting,
 	onSortingChange,
@@ -346,6 +355,23 @@ export function ProductTable({
 							>
 								Copier le code-barres
 							</DropdownMenuItem>
+							{onDelete ? (
+								<>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem
+										className='text-destructive focus:text-destructive'
+										onClick={(event) => {
+											// La ligne est cliquable et ouvre la fiche : sans cela,
+											// demander la suppression ouvrirait AUSSI le produit.
+											event.stopPropagation()
+											onDelete(product)
+										}}
+									>
+										<Trash2 className='mr-2 h-4 w-4' />
+										Supprimer…
+									</DropdownMenuItem>
+								</>
+							) : null}
 						</DropdownMenuContent>
 					</DropdownMenu>
 				)

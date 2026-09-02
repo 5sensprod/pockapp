@@ -100,6 +100,20 @@ func main() {
 		log.Println("MkdirAll error:", err)
 	}
 
+	// ⚠️ AVANT d'instancier PocketBase, et nulle part ailleurs.
+	//
+	// Si une restauration a été préparée par l'écran des réglages, c'est ICI
+	// qu'elle est appliquée : c'est le seul instant où personne ne tient
+	// `data.db`. Une fois PocketBase construit, le fichier est verrouillé et
+	// l'échange devient impossible — sous Windows, il échouerait, ou pire,
+	// réussirait à moitié.
+	//
+	// La fonction ne rend jamais d'erreur fatale : une restauration qui échoue
+	// laisse démarrer sur la base existante. Un magasin qui ne peut plus
+	// encaisser parce qu'une restauration a mal tourné serait un remède pire
+	// que le mal.
+	backup.AppliquerRestaurationEnAttente(dataDir)
+
 	pb := pocketbase.NewWithConfig(pocketbase.Config{
 		DefaultDataDir: dataDir,
 	})
