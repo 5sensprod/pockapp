@@ -370,3 +370,123 @@ export function useDeleteSitePublishKey() {
 		},
 	})
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SAUVEGARDE DE LA BASE VERS LE MINI-SAAS
+// ═══════════════════════════════════════════════════════════════════════════
+// Conception : docs/SAUVEGARDE.md. Ce que l'écran manipule ici, c'est la
+// configuration du poste — l'URL, la clé qui l'identifie auprès du mini-SaaS,
+// et la clé de chiffrement des snapshots.
+
+export interface BackupState {
+	last_success?: string
+	last_snapshot_id?: string
+	last_plain_size?: number
+	last_failure?: string
+	last_error?: string
+	running: boolean
+}
+
+export interface BackupStatus {
+	configured: boolean
+	endpoint_url: string
+	/** Une clé de chiffrement EXISTE. Sa valeur n'est jamais dans cette réponse. */
+	encryption_configured: boolean
+	interval_hours: number
+	enabled: boolean
+	state: BackupState
+}
+
+export function useBackupStatus() {
+	const pb = usePocketBase() as any
+
+	return useQuery<BackupStatus>({
+		queryKey: ['backup-status'],
+		queryFn: async () => {
+			return await fetchWithAuth(pb, '/api/settings/backup/status')
+		},
+		// Une sauvegarde en cours dure quelques secondes ; sans rafraîchissement
+		// l'écran resterait sur « en cours » jusqu'à ce qu'on change d'onglet.
+		refetchInterval: (query) =>
+			query.state.data?.state?.running ? 2000 : false,
+	})
+}
+
+export function useSetBackupSettings() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (data: {
+			endpointUrl?: string
+			apiKey?: string
+			encryptionKey?: string
+			intervalHours?: number
+			enabled?: boolean
+		}) => {
+			return await fetchWithAuth(pb, '/api/settings/backup', {
+				method: 'POST',
+				body: JSON.stringify({
+					endpoint_url: data.endpointUrl,
+					api_key: data.apiKey,
+					encryption_key: data.encryptionKey,
+					interval_hours: data.intervalHours,
+					enabled: data.enabled,
+				}),
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['backup-status'] })
+			queryClient.invalidateQueries({ queryKey: ['settings'] })
+		},
+	})
+}
+
+/** Supprimer la clé API. La clé de CHIFFREMENT est conservée, délibérément. */
+export function useDeleteBackupKey() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async () => {
+			return await fetchWithAuth(pb, '/api/settings/backup', {
+				method: 'DELETE',
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['backup-status'] })
+		},
+	})
+}
+
+/** Lancer une sauvegarde tout de suite. Répond avant qu'elle soit finie. */
+export function useRunBackup() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async () => {
+			return await fetchWithAuth(pb, '/api/backup/run', { method: 'POST' })
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['backup-status'] })
+		},
+	})
+}
+
+/**
+ * Révéler la clé de chiffrement de CE poste.
+ *
+ * Volontairement une mutation et non une requête : on ne veut pas qu'elle
+ * parte au montage de l'écran, ni qu'elle traîne dans le cache. Elle se
+ * demande, une fois, par un geste explicite.
+ */
+export function useRevealEncryptionKey() {
+	const pb = usePocketBase() as any
+
+	return useMutation<{ encryption_key: string; warning: string }>({
+		mutationFn: async () => {
+			return await fetchWithAuth(pb, '/api/backup/encryption-key')
+		},
+	})
+}

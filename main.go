@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"pocket-react/backend"
+	"pocket-react/backend/backup"
 	"pocket-react/backend/hooks"
 	"pocket-react/backend/migrations"
 	"pocket-react/backend/routes"
@@ -34,6 +35,12 @@ var logFile *os.File
 const (
 	appPort     = 8090
 	serviceName = "PocketReact"
+
+	// appVersion accompagne chaque snapshot dans son manifeste. Savoir quel
+	// build a produit une base répond à la moitié des questions quand on
+	// cherche à reproduire un bogue chez le client — le poste du magasin n'est
+	// pas toujours à jour. À tenir aligné sur package.json.
+	appVersion = "2.1.6"
 )
 
 func initLogging(baseDir string) {
@@ -212,6 +219,19 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterCatalogCountsRoutes(pb, e.Router)
 		routes.RegisterCatalogHealthRoutes(pb, e.Router)
 		routes.RegisterProductImageRoutes(pb, e.Router)
+
+		// ── Sauvegarde distante ─────────────────────────────────────────────
+		//
+		// Le planificateur est construit ICI, dans le hook de démarrage du
+		// serveur, et pas dans main() : il lit ses réglages par le
+		// SecretManager, qui a besoin d'une base ouverte. Construit trop tôt,
+		// il ne trouverait aucun réglage et se croirait non configuré.
+		//
+		// Une seule instance, partagée entre la boucle de fond et les routes :
+		// c'est elle qui porte le verrou « une seule sauvegarde à la fois ».
+		planificateurSauvegarde := backup.NouveauPlanificateur(pb, appVersion)
+		routes.RegisterBackupRoutes(pb, e.Router, planificateurSauvegarde)
+		planificateurSauvegarde.Demarrer()
 
 		// SPA handler (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))

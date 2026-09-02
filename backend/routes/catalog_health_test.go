@@ -130,3 +130,55 @@ func TestProductHealthSQLTrieAvantPagination(t *testing.T) {
 		t.Fatalf("sans description = %#v, attendu Faible", products)
 	}
 }
+
+func TestProductHealthSQLFiltreUneNoteExacte(t *testing.T) {
+	app, collection, categoryID := baseCatalogHealth(t)
+	saveHealthProduct(t, app, collection, productHealthValues{Name: "Faible"})
+	saveHealthProduct(t, app, collection, productHealthValues{
+		Name:        "Complète",
+		Description: "<p>Prête.</p>",
+		Image:       "image.webp",
+		Categories:  []string{categoryID},
+		PriceTTC:    100,
+		Slug:        "complete",
+	})
+
+	query, err := filteredProductQuery(app, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := applyProductHealthFilter(query, "6"); err != nil {
+		t.Fatalf("filtre santé: %v", err)
+	}
+	var products []*models.Record
+	if err := query.All(&products); err != nil {
+		t.Fatalf("lecture filtrée: %v", err)
+	}
+	if len(products) != 1 || products[0].GetString("name") != "Complète" {
+		t.Fatalf("note 6/6 = %#v, attendu Complète", products)
+	}
+}
+
+func TestProductHealthFilterRefuseUneNoteInvalide(t *testing.T) {
+	for _, score := range []string{"-1", "7", "abc"} {
+		t.Run(score, func(t *testing.T) {
+			app, _, _ := baseCatalogHealth(t)
+			query, err := filteredProductQuery(app, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := applyProductHealthFilter(query, score); err == nil {
+				t.Fatalf("la note %q aurait dû être refusée", score)
+			}
+		})
+	}
+}
+
+func TestCatalogProductOrderUtiliseUneListeBlanche(t *testing.T) {
+	if got := catalogProductOrder("-created", "")[0]; got != "products.created DESC" {
+		t.Fatalf("tri créé descendant = %q", got)
+	}
+	if got := catalogProductOrder("name; DROP TABLE products", "")[0]; got != "products.name_sort ASC" {
+		t.Fatalf("repli du tri inconnu = %q", got)
+	}
+}

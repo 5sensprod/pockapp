@@ -105,6 +105,17 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    rendu (`cleaned`) puis affiché. L'inventaire rend aussi l'espace disque du
    mutualisé (§9 de la conception).
 
+8. **Sauvegarde de la base vers le mini-SaaS** — `backend/backup/envoi.go` —
+   `https://pocketapp.5sensprod.com/api/backup.php`, en-tête `X-API-Key` et
+   `User-Agent` explicite. Quatre actions (`init`, `etat`, `tranche`,
+   `valider`), tranches de 1 Mio, reprise après coupure. Ce qui part est un
+   **`VACUUM INTO` de `data.db`**, gzippé puis **chiffré en AES-256-GCM sur le
+   poste** : le serveur n'a pas la clé et ne peut rien lire. Sans `storage/`
+   (déjà miroité, point 7) ni `logs.db`. Réglages `backup_url`,
+   `backup_interval_hours`, `backup_enabled` ; secrets `backup_api_key` et
+   `backup_encryption_key`. Le client **refuse de partir hors HTTPS**.
+   Conception : `docs/SAUVEGARDE.md`.
+
 ## Commandes
 
 ```bash

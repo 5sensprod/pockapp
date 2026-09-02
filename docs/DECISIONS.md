@@ -10,6 +10,77 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## La sauvegarde du client est un snapshot chiffré de `data.db` — 2026-09-01
+
+**Décision.** La base du client part vers le mini-SaaS sous la forme d'un
+**`VACUUM INTO` de `data.db`**, gzippé puis **chiffré en AES-256-GCM sur le
+poste**, découpé en tranches de 1 Mio et déposé dans un espace privé par
+installation. Sans `storage/` ni `logs.db`. Un snapshot restauré **est** une
+PocketBase : on le pose dans un `pb_data` et il démarre. Conception :
+[`SAUVEGARDE.md`](SAUVEGARDE.md).
+
+**Pourquoi un snapshot complet, et pas un miroir incrémental par collections.**
+Deux besoins étaient en jeu : sauvegarder les factures, et disposer des données
+réelles en développement. Un flux incrémental vers des tables MySQL — sur le
+modèle de `products-sync.php` — aurait servi le premier correctement et le
+second mal : la copie n'aurait pas été une base PocketBase, la rejouer aurait
+demandé un importateur de plus, et il aurait fallu écrire puis **maintenir** un
+mapping par collection. Le snapshot n'a aucun mapping : ce qu'on restaure est
+ce que le client a. Ce qu'on paie en échange est la fraîcheur — une sauvegarde
+par jour, pas par minute — et c'est le bon prix pour l'usage visé.
+
+**Pourquoi `VACUUM INTO`, et pas une copie de fichier.** `data.db` est en mode
+WAL. Copier le seul `data.db` donne une base **en retard** ; copier les trois
+fichiers pendant une vente donne une base **incohérente**. Les deux
+silencieusement. `VACUUM INTO` écrit une base cohérente depuis une transaction
+de lecture, sans bloquer les écritures. Mesuré, pas supposé : un test monte une
+PocketBase, la sauvegarde, la restaure, la redémarre et y relit ses lignes
+(`backend/backup/snapshot_test.go`).
+
+**Pourquoi le chiffrement est fait sur le poste.** L'hébergement est un
+mutualisé, et le dépôt contient l'intégralité des factures d'un commerce. Le
+serveur ne reçoit que de l'opaque et n'a pas la clé : une fuite de
+l'hébergement ne livre rien. Le corollaire est le point de rupture du
+dispositif et il est explicite dans la documentation : **perdre la clé, c'est
+perdre toutes les sauvegardes**, elle doit vivre ailleurs que sur le poste
+qu'elle sauvegarde.
+
+**Pourquoi chaque tranche porte un marqueur de fin.** Sceller des tranches
+indépendantes rend possible la reprise après coupure, mais ouvre la
+troncature : un envoi interrompu pourrait passer pour une sauvegarde complète.
+Le marqueur est dans les données authentifiées, donc un flux amputé échoue à la
+restauration au lieu de rendre une base à moitié pleine. Une sauvegarde qui se
+restaure à moitié en silence est pire que pas de sauvegarde, parce qu'on lui
+fait confiance.
+
+**Pourquoi aucune restauration dans l'application.** Un bouton « restaurer » sur
+une caisse en service ne peut que détruire une journée de ventes. La
+restauration vit dans `backend/cmd/snapshot-restore`, et refuse même d'écrire
+dans le `pb_data` de l'application.
+
+**Écarté aussi : `app.CreateBackup()` de PocketBase.** Il zippe `pb_data`
+**entier**, soit 1,7 Gio d'images déjà miroitées vers axemusique.shop. Sans
+option d'exclusion, il transporterait cent fois le volume utile.
+
+**Ce qui pourrait la remettre en cause.** Une base qui grossirait au point que
+le transfert quotidien pèse sur la liaison du magasin — le calcul se refait
+alors, et un flux incrémental sur les seules factures redevient discutable. Ou
+un besoin de fraîcheur à la minute, que ce mécanisme ne sert pas.
+
+**Mesuré le jour même**, sur le miroir de la base du client au 31 août
+(1236 factures, 3028 produits) : 15 184 Kio de base → **3 754 Kio chiffrés en
+4 tranches**, fabriqués en 1,5 s, restaurés en 228 ms, et les 1236 factures
+relues dans la base restaurée. `logs.db`, exclu, pesait à lui seul 28,9 Mio.
+
+**Non vérifié à la date de la décision :** le protocole HTTP n'a pas été exercé
+contre le vrai serveur — il demande MySQL et un dépôt FTP.
+
+*(Une première rédaction de ce bloc annonçait HTTPS inactif sur le mini-SaaS, en
+se fiant au commentaire de son `.htaccess`. C'est faux : HTTPS est actif, le
+commentaire est périmé.)*
+
+---
+
 ## Le solde d'un dossier d'acompte est du chiffre d'affaires — 2026-09-01
 
 **Décision.** La facture de solde quitte la ligne 3 pour la **ligne 1**, avec son

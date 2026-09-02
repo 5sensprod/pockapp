@@ -122,6 +122,51 @@ func filteredProductQuery(app *pocketbase.PocketBase, filter string) (*dbx.Selec
 	return query, nil
 }
 
+func applyProductHealthFilter(query *dbx.SelectQuery, rawScore string) error {
+	if strings.TrimSpace(rawScore) == "" {
+		return nil
+	}
+	score, err := strconv.Atoi(rawScore)
+	if err != nil || score < 0 || score > productHealthMax {
+		return errors.New("note de santé invalide")
+	}
+	query.AndWhere(dbx.NewExp(
+		productHealthSQL+" = {:health}",
+		dbx.Params{"health": score},
+	))
+	return nil
+}
+
+// La route santé sert aussi quand la note est un filtre mais que le tableau
+// reste trié par une colonne ordinaire. La liste blanche évite de transformer
+// le paramètre de tri en fragment SQL libre.
+func catalogProductOrder(sortValue, legacyDirection string) []string {
+	if sortValue == "" {
+		sortValue = "health"
+		if strings.EqualFold(legacyDirection, "desc") {
+			sortValue = "-health"
+		}
+	}
+
+	orders := map[string]string{
+		"health":     productHealthSQL + " ASC",
+		"-health":    productHealthSQL + " DESC",
+		"name":       "products.name ASC",
+		"-name":      "products.name DESC",
+		"name_sort":  "products.name_sort ASC",
+		"-name_sort": "products.name_sort DESC",
+		"price_ttc":  "products.price_ttc ASC",
+		"-price_ttc": "products.price_ttc DESC",
+		"created":    "products.created ASC",
+		"-created":   "products.created DESC",
+	}
+	order, ok := orders[sortValue]
+	if !ok {
+		order = orders["name_sort"]
+	}
+	return []string{order, "products.name ASC"}
+}
+
 func RegisterCatalogHealthRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 	router.GET("/api/catalog/products/health", func(c echo.Context) error {
 		page, _ := strconv.Atoi(c.QueryParam("page"))
@@ -135,15 +180,15 @@ func RegisterCatalogHealthRoutes(app *pocketbase.PocketBase, router *echo.Echo) 
 		if perPage > 100 {
 			perPage = 100
 		}
-		direction := "ASC"
-		if strings.EqualFold(c.QueryParam("direction"), "desc") {
-			direction = "DESC"
-		}
 		filter := c.QueryParam("filter")
+		health := c.QueryParam("health")
 
 		countQuery, err := filteredProductQuery(app, filter)
 		if err != nil {
 			return apis.NewBadRequestError("filtre catalogue invalide", err)
+		}
+		if err := applyProductHealthFilter(countQuery, health); err != nil {
+			return apis.NewBadRequestError("note de santé invalide", err)
 		}
 		var count struct {
 			Total int `db:"total"`
@@ -159,8 +204,12 @@ func RegisterCatalogHealthRoutes(app *pocketbase.PocketBase, router *echo.Echo) 
 		if err != nil {
 			return apis.NewBadRequestError("filtre catalogue invalide", err)
 		}
+		if err := applyProductHealthFilter(productsQuery, health); err != nil {
+			return apis.NewBadRequestError("note de santé invalide", err)
+		}
+		orders := catalogProductOrder(c.QueryParam("sort"), c.QueryParam("direction"))
 		productsQuery.
-			AndOrderBy(productHealthSQL+" "+direction, "products.name ASC").
+			AndOrderBy(orders...).
 			Limit(int64(perPage)).
 			Offset(int64((page - 1) * perPage))
 

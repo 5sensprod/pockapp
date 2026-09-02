@@ -26,8 +26,11 @@ import {
 } from '@/components/ui/popover'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
+import { PRODUCT_HEALTH_MAX } from '@/lib/queries/catalog-health'
 import {
+	type CatalogCommercialStateFilter,
 	type CatalogProductStatus,
+	type CatalogSaleStateFilter,
 	useCatalogProducts,
 } from '@/lib/queries/catalog-products'
 import { toStockRow } from '@/lib/queries/catalog-rows'
@@ -48,10 +51,12 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	ChevronsUpDown,
+	CircleDollarSign,
 	FileText,
 	ImageOff,
 	Loader2,
 	Package,
+	PackageX,
 	Plus,
 	Search,
 	SlidersHorizontal,
@@ -65,6 +70,32 @@ import { HelpTooltip } from './components/detail/detail-primitives'
 
 const PER_PAGE = 25
 const NO_RELATION_FILTER = '__none__'
+const HEALTH_OPTIONS = Array.from(
+	{ length: PRODUCT_HEALTH_MAX + 1 },
+	(_, index) => {
+		const score = PRODUCT_HEALTH_MAX - index
+		const detail =
+			score === PRODUCT_HEALTH_MAX
+				? 'Prête'
+				: score === 0
+					? 'Fiche vide'
+					: `${PRODUCT_HEALTH_MAX - score} élément${PRODUCT_HEALTH_MAX - score > 1 ? 's' : ''} à compléter`
+		return {
+			value: String(score),
+			label: `${score}/${PRODUCT_HEALTH_MAX} · ${detail}`,
+		}
+	},
+)
+const COMMERCIAL_STATE_LABELS: Record<CatalogCommercialStateFilter, string> = {
+	new: 'Neuf',
+	used: 'Occasion',
+	rental: 'Location',
+}
+const SALE_STATE_LABELS: Record<CatalogSaleStateFilter, string> = {
+	regular: 'Plein tarif',
+	sale: 'Soldé',
+	promo: 'Promotion',
+}
 
 export function ProductsPage() {
 	const { activeCompanyId } = useActiveCompany()
@@ -80,6 +111,13 @@ export function ProductsPage() {
 	const [supplierId, setSupplierId] = useState<string>('')
 	const [missingImage, setMissingImage] = useState(false)
 	const [missingDescription, setMissingDescription] = useState(false)
+	const [missingPurchasePrice, setMissingPurchasePrice] = useState(false)
+	const [emptyStock, setEmptyStock] = useState(false)
+	const [healthScore, setHealthScore] = useState('')
+	const [commercialState, setCommercialState] = useState<
+		CatalogCommercialStateFilter | ''
+	>('')
+	const [saleState, setSaleState] = useState<CatalogSaleStateFilter | ''>('')
 	const [sorting, setSorting] = useState<SortingState>([
 		{ id: 'created', desc: true },
 	])
@@ -109,6 +147,11 @@ export function ProductsPage() {
 		setSupplierId('')
 		setMissingImage(false)
 		setMissingDescription(false)
+		setMissingPurchasePrice(false)
+		setEmptyStock(false)
+		setHealthScore('')
+		setCommercialState('')
+		setSaleState('')
 		setPage(1)
 	}, [activeCompanyId])
 
@@ -182,6 +225,11 @@ export function ProductsPage() {
 		withoutSupplier: supplierId === NO_RELATION_FILTER,
 		missingImage,
 		missingDescription,
+		missingPurchasePrice,
+		emptyStock,
+		commercialState: commercialState || undefined,
+		saleState: saleState || undefined,
+		healthScore: healthScore === '' ? undefined : Number(healthScore),
 		sort: toCatalogSort(sorting),
 	})
 
@@ -312,6 +360,56 @@ export function ProductsPage() {
 			},
 		})
 	}
+	if (missingPurchasePrice) {
+		activeFilterTags.push({
+			key: 'missing-purchase-price',
+			label: 'Sans prix d’achat',
+			clear: () => {
+				setMissingPurchasePrice(false)
+				setPage(1)
+			},
+		})
+	}
+	if (emptyStock) {
+		activeFilterTags.push({
+			key: 'empty-stock',
+			label: 'Stock vide ou à 0',
+			clear: () => {
+				setEmptyStock(false)
+				setPage(1)
+			},
+		})
+	}
+	if (healthScore !== '') {
+		activeFilterTags.push({
+			key: 'health',
+			label: `Santé · ${healthScore}/${PRODUCT_HEALTH_MAX}`,
+			clear: () => {
+				setHealthScore('')
+				setPage(1)
+			},
+		})
+	}
+	if (commercialState) {
+		activeFilterTags.push({
+			key: 'commercial-state',
+			label: `État · ${COMMERCIAL_STATE_LABELS[commercialState]}`,
+			clear: () => {
+				setCommercialState('')
+				setPage(1)
+			},
+		})
+	}
+	if (saleState) {
+		activeFilterTags.push({
+			key: 'sale-state',
+			label: `Opération · ${SALE_STATE_LABELS[saleState]}`,
+			clear: () => {
+				setSaleState('')
+				setPage(1)
+			},
+		})
+	}
 	const filterCount = activeFilterTags.length
 	const filtresActifs = filterCount > 0
 	const sortValue = sorting[0]
@@ -323,7 +421,7 @@ export function ProductsPage() {
 	}
 
 	const filterHelp =
-		'Les filtres se cumulent : marque, catégorie et fournisseur réduisent le catalogue. « Sans image » et « Sans description » repèrent les fiches à compléter. Les tags permettent de retirer un filtre précis ; Réinitialiser conserve la recherche et le statut.'
+		'Les filtres se cumulent. La santé mesure les six éléments nécessaires à une fiche prête pour le site. Les filtres « Sans… » repèrent les données manquantes ; état et opération commerciale sont deux axes distincts. Les tags retirent un critère précis.'
 
 	const clearFilters = () => {
 		setBrandId('')
@@ -331,6 +429,11 @@ export function ProductsPage() {
 		setSupplierId('')
 		setMissingImage(false)
 		setMissingDescription(false)
+		setMissingPurchasePrice(false)
+		setEmptyStock(false)
+		setHealthScore('')
+		setCommercialState('')
+		setSaleState('')
 		setPage(1)
 	}
 
@@ -477,6 +580,50 @@ export function ProductsPage() {
 								options={suppliers.data ?? []}
 							/>
 						</FilterField>
+						<FilterField label='Santé'>
+							<ChoiceFilter
+								value={healthScore}
+								onChange={(value) => {
+									setHealthScore(value)
+									setPage(1)
+								}}
+								ariaLabel='Filtrer par santé'
+								emptyLabel='Toutes les notes'
+								options={HEALTH_OPTIONS}
+							/>
+						</FilterField>
+						<FilterField label='État commercial'>
+							<ChoiceFilter
+								value={commercialState}
+								onChange={(value) => {
+									setCommercialState(value as CatalogCommercialStateFilter | '')
+									setPage(1)
+								}}
+								ariaLabel='Filtrer par état commercial'
+								emptyLabel='Tous les états'
+								options={[
+									{ value: 'new', label: 'Neuf' },
+									{ value: 'used', label: 'Occasion' },
+									{ value: 'rental', label: 'Location' },
+								]}
+							/>
+						</FilterField>
+						<FilterField label='Opération commerciale'>
+							<ChoiceFilter
+								value={saleState}
+								onChange={(value) => {
+									setSaleState(value as CatalogSaleStateFilter | '')
+									setPage(1)
+								}}
+								ariaLabel='Filtrer par opération commerciale'
+								emptyLabel='Toutes les opérations'
+								options={[
+									{ value: 'regular', label: 'Plein tarif' },
+									{ value: 'sale', label: 'Soldé' },
+									{ value: 'promo', label: 'Promotion' },
+								]}
+							/>
+						</FilterField>
 
 						<FilterButton
 							active={missingImage}
@@ -499,6 +646,28 @@ export function ProductsPage() {
 						>
 							<FileText className='mr-1.5 inline h-4 w-4' />
 							Sans description
+						</FilterButton>
+						<FilterButton
+							active={missingPurchasePrice}
+							onClick={() => {
+								setMissingPurchasePrice((current) => !current)
+								setPage(1)
+							}}
+							className='h-10 text-amber-800'
+						>
+							<CircleDollarSign className='mr-1.5 inline h-4 w-4' />
+							Sans prix d’achat
+						</FilterButton>
+						<FilterButton
+							active={emptyStock}
+							onClick={() => {
+								setEmptyStock((current) => !current)
+								setPage(1)
+							}}
+							className='h-10 text-rose-800'
+						>
+							<PackageX className='mr-1.5 inline h-4 w-4' />
+							Stock vide ou à 0
 						</FilterButton>
 					</div>
 
@@ -699,6 +868,36 @@ function FilterField({
 			</p>
 			{children}
 		</div>
+	)
+}
+
+function ChoiceFilter({
+	value,
+	onChange,
+	ariaLabel,
+	emptyLabel,
+	options,
+}: {
+	value: string
+	onChange: (value: string) => void
+	ariaLabel: string
+	emptyLabel: string
+	options: readonly { value: string; label: string }[]
+}) {
+	return (
+		<select
+			value={value}
+			onChange={(event) => onChange(event.target.value)}
+			aria-label={ariaLabel}
+			className='h-10 min-w-[190px] max-w-[260px] rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+		>
+			<option value=''>{emptyLabel}</option>
+			{options.map((option) => (
+				<option key={option.value} value={option.value}>
+					{option.label}
+				</option>
+			))}
+		</select>
 	)
 }
 

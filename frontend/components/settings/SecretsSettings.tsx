@@ -24,10 +24,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import {
+	useBackupStatus,
+	useDeleteBackupKey,
 	useDeleteNotificationKey,
 	useDeleteSiteCatalogKey,
 	useDeleteSitePublishKey,
 	useNotificationKeyStatus,
+	useRevealEncryptionKey,
+	useRunBackup,
+	useSetBackupSettings,
 	useSetNotificationKey,
 	useSetSiteCatalog,
 	useSetSitePublish,
@@ -41,8 +46,11 @@ import {
 	Eye,
 	EyeOff,
 	Globe,
+	HardDriveDownload,
 	Key,
 	Loader2,
+	Play,
+	Settings2,
 	Trash2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -68,6 +76,10 @@ export default function SecretsSettings() {
 			<SitePublishSection />
 			<Separator />
 			<SiteCatalogSection />
+
+			<Separator />
+
+			<BackupSection />
 		</div>
 	)
 }
@@ -649,6 +661,407 @@ function SiteCatalogSection() {
 						Enregistrer
 					</Button>
 				</div>
+			</CardContent>
+		</Card>
+	)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SAUVEGARDE DE LA BASE
+// ═══════════════════════════════════════════════════════════════════════════
+// Conception : docs/SAUVEGARDE.md.
+//
+// ─── Pourquoi la configuration est repliée ─────────────────────────────────
+// Une sauvegarde bien réglée se règle UNE FOIS et ne se retouche jamais. Ce
+// qu'on vient voir ici, cent fois sur cent, c'est « est-ce que ça tourne
+// encore » — pas l'URL de l'endpoint. La première version montrait les trois
+// champs, deux paragraphes d'avertissement et cinq boutons en permanence ;
+// l'information utile s'y noyait.
+//
+// Deux règles conservées de cette version, et elles ne sont pas décoratives :
+//
+//  1. la clé de chiffrement se FOURNIT plutôt qu'elle ne se génère sur le
+//     poste — une clé qu'on saisit est une clé qu'on détient déjà ailleurs ;
+//  2. la clé API et la clé de chiffrement n'ont RIEN à voir. La première
+//     identifie le poste auprès du serveur ; la seconde protège le contenu
+//     DU serveur. Les confondre reviendrait à donner la seconde au serveur.
+
+const DEFAULT_BACKUP_URL = 'https://pocketapp.5sensprod.com/api/backup.php'
+
+function BackupSection() {
+	const [configOuverte, setConfigOuverte] = useState(false)
+	const [apiKey, setApiKey] = useState('')
+	const [showApiKey, setShowApiKey] = useState(false)
+	const [encryptionKey, setEncryptionKey] = useState('')
+	const [showEncryptionKey, setShowEncryptionKey] = useState(false)
+	const [endpointUrl, setEndpointUrl] = useState('')
+	const [urlTouched, setUrlTouched] = useState(false)
+	const [revealedKey, setRevealedKey] = useState('')
+
+	const { data: status, isLoading: statusLoading } = useBackupStatus()
+	const save = useSetBackupSettings()
+	const deleteKey = useDeleteBackupKey()
+	const run = useRunBackup()
+	const reveal = useRevealEncryptionKey()
+
+	useEffect(() => {
+		if (urlTouched || !status) return
+		setEndpointUrl(status.endpoint_url || DEFAULT_BACKUP_URL)
+	}, [status, urlTouched])
+
+	// Rien de configuré : la configuration s'ouvre d'elle-même. Sinon l'écran
+	// n'afficherait qu'un bouton grisé sans dire quoi faire.
+	useEffect(() => {
+		if (status && !status.configured) setConfigOuverte(true)
+	}, [status])
+
+	const urlChanged = endpointUrl.trim() !== (status?.endpoint_url ?? '')
+	const hasSomethingToSave =
+		!!apiKey.trim() || !!encryptionKey.trim() || urlChanged
+
+	const handleSave = async () => {
+		const url = endpointUrl.trim()
+
+		if (!url) {
+			toast.error("L'URL de sauvegarde est obligatoire")
+			return
+		}
+		// Refusé ici AUSSI, pour dire pourquoi tout de suite : le corps est
+		// chiffré, mais la clé API voyage en clair dans un en-tête.
+		if (!/^https:\/\//.test(url)) {
+			toast.error("L'URL de sauvegarde doit être en HTTPS")
+			return
+		}
+
+		const cle = encryptionKey.trim()
+		if (cle && !/^[0-9a-fA-F]{64}$/.test(cle)) {
+			toast.error('La clé de chiffrement doit faire 64 caractères hexadécimaux')
+			return
+		}
+
+		try {
+			await save.mutateAsync({
+				apiKey: apiKey.trim() || undefined,
+				encryptionKey: cle || undefined,
+				endpointUrl: urlChanged ? url : undefined,
+			})
+			toast.success('Paramètres de sauvegarde enregistrés')
+			setApiKey('')
+			setEncryptionKey('')
+			setShowApiKey(false)
+			setShowEncryptionKey(false)
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la sauvegarde')
+		}
+	}
+
+	const handleGenerate = () => {
+		// Générée DANS LE NAVIGATEUR, par le générateur cryptographique de la
+		// plateforme, et affichée pour être copiée AVANT enregistrement : c'est
+		// tout l'intérêt de la fournir plutôt que de la laisser naître sur le
+		// poste, où elle n'existerait qu'à un seul exemplaire.
+		const octets = new Uint8Array(32)
+		crypto.getRandomValues(octets)
+		setEncryptionKey(
+			Array.from(octets)
+				.map((o) => o.toString(16).padStart(2, '0'))
+				.join(''),
+		)
+		setShowEncryptionKey(true)
+		toast.info("Copiez la clé AVANT d'enregistrer")
+	}
+
+	const handleReveal = async () => {
+		try {
+			const res = await reveal.mutateAsync()
+			setRevealedKey(res.encryption_key)
+		} catch (error: any) {
+			toast.error(error.message || 'Clé introuvable')
+		}
+	}
+
+	const handleRun = async () => {
+		try {
+			await run.mutateAsync()
+			toast.success('Sauvegarde lancée')
+		} catch (error: any) {
+			toast.error(error.message || 'Impossible de lancer la sauvegarde')
+		}
+	}
+
+	const handleDelete = async () => {
+		if (!confirm('Supprimer la clé API de sauvegarde ?')) return
+		try {
+			await deleteKey.mutateAsync()
+			toast.success('Clé API supprimée (la clé de chiffrement est conservée)')
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la suppression')
+		}
+	}
+
+	const etat = status?.state
+	const pret = !!status?.configured && !!status?.encryption_configured
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle className='flex items-center gap-2'>
+					<HardDriveDownload className='h-5 w-5' />
+					Sauvegarde de la base
+				</CardTitle>
+				<CardDescription>
+					Copie chiffrée de la base, envoyée chaque jour au mini-SaaS. Sans les
+					images ni les journaux.
+				</CardDescription>
+			</CardHeader>
+
+			<CardContent className='space-y-4'>
+				{/* ── La seule chose qu'on vient voir : où ça en est ──────────── */}
+				<div className='flex flex-wrap items-center justify-between gap-3'>
+					<div className='text-sm'>
+						{statusLoading ? (
+							<Loader2 className='h-4 w-4 animate-spin' />
+						) : etat?.running ? (
+							<span className='flex items-center gap-2 text-blue-600'>
+								<Loader2 className='h-4 w-4 animate-spin' />
+								Sauvegarde en cours…
+							</span>
+						) : etat?.last_success ? (
+							<span className='flex items-center gap-2 text-green-600'>
+								<CheckCircle2 className='h-4 w-4' />
+								Dernière sauvegarde le{' '}
+								{new Date(etat.last_success).toLocaleString('fr-FR')}
+								{etat.last_plain_size
+									? ` — ${Math.round(etat.last_plain_size / 1024)} Kio`
+									: ''}
+							</span>
+						) : (
+							<span className='flex items-center gap-2 text-amber-600'>
+								<AlertCircle className='h-4 w-4' />
+								{pret ? 'Aucune sauvegarde encore' : 'Non configurée'}
+							</span>
+						)}
+					</div>
+
+					<div className='flex gap-2'>
+						{pret && (
+							<Button
+								variant='outline'
+								size='sm'
+								onClick={handleRun}
+								disabled={run.isPending || etat?.running}
+							>
+								{run.isPending || etat?.running ? (
+									<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+								) : (
+									<Play className='mr-2 h-4 w-4' />
+								)}
+								Sauvegarder maintenant
+							</Button>
+						)}
+						<Button
+							variant='ghost'
+							size='sm'
+							onClick={() => setConfigOuverte(!configOuverte)}
+						>
+							<Settings2 className='mr-2 h-4 w-4' />
+							{configOuverte ? 'Masquer' : 'Configurer'}
+						</Button>
+					</div>
+				</div>
+
+				{/* Un échec est la seule autre chose qui mérite d'être vue sans
+				    déplier : c'est le cas où il faut agir. */}
+				{!etat?.running && etat?.last_error && (
+					<p className='text-sm text-amber-600'>
+						Dernier échec
+						{etat.last_failure
+							? ` le ${new Date(etat.last_failure).toLocaleString('fr-FR')}`
+							: ''}{' '}
+						: {etat.last_error}
+					</p>
+				)}
+
+				{/* ── Tout le reste, replié ──────────────────────────────────── */}
+				{configOuverte && (
+					<div className='space-y-4 rounded-md border p-4'>
+						<div className='flex flex-wrap items-center gap-4'>
+							<ConfiguredBadge
+								loading={statusLoading}
+								configured={!!status?.configured}
+								labels={['Clé API enregistrée', 'Clé API manquante']}
+							/>
+							<ConfiguredBadge
+								loading={statusLoading}
+								configured={!!status?.encryption_configured}
+								labels={['Chiffrement actif', 'Clé de chiffrement manquante']}
+							/>
+						</div>
+
+						<div className='space-y-2'>
+							<Label htmlFor='backup-url'>URL de l'endpoint</Label>
+							<Input
+								id='backup-url'
+								type='url'
+								value={endpointUrl}
+								onChange={(e) => {
+									setUrlTouched(true)
+									setEndpointUrl(e.target.value)
+								}}
+							/>
+						</div>
+
+						<div className='space-y-2'>
+							<Label htmlFor='backup-api-key'>
+								{status?.configured ? 'Remplacer la clé API' : 'Clé X-API-Key'}
+							</Label>
+							<div className='relative'>
+								<Input
+									id='backup-api-key'
+									type={showApiKey ? 'text' : 'password'}
+									placeholder='64 caractères hexadécimaux'
+									value={apiKey}
+									onChange={(e) => setApiKey(e.target.value)}
+									className='pr-10'
+									autoComplete='off'
+								/>
+								<Button
+									type='button'
+									variant='ghost'
+									size='icon'
+									className='absolute right-0 top-0 h-full px-3'
+									onClick={() => setShowApiKey(!showApiKey)}
+								>
+									{showApiKey ? (
+										<EyeOff className='h-4 w-4' />
+									) : (
+										<Eye className='h-4 w-4' />
+									)}
+								</Button>
+							</div>
+							<p className='text-xs text-muted-foreground'>
+								Celle de la ligne <code>clients</code> du mini-SaaS : c'est elle
+								qui détermine l'espace de dépôt.
+							</p>
+						</div>
+
+						<div className='space-y-2'>
+							<Label htmlFor='backup-encryption-key'>
+								{status?.encryption_configured
+									? 'Remplacer la clé de chiffrement'
+									: 'Clé de chiffrement'}
+							</Label>
+							<div className='relative'>
+								<Input
+									id='backup-encryption-key'
+									type={showEncryptionKey ? 'text' : 'password'}
+									placeholder='64 caractères hexadécimaux'
+									value={encryptionKey}
+									onChange={(e) => setEncryptionKey(e.target.value)}
+									className='pr-10 font-mono'
+									autoComplete='off'
+								/>
+								<Button
+									type='button'
+									variant='ghost'
+									size='icon'
+									className='absolute right-0 top-0 h-full px-3'
+									onClick={() => setShowEncryptionKey(!showEncryptionKey)}
+								>
+									{showEncryptionKey ? (
+										<EyeOff className='h-4 w-4' />
+									) : (
+										<Eye className='h-4 w-4' />
+									)}
+								</Button>
+							</div>
+
+							<div className='flex flex-wrap gap-2'>
+								<Button
+									type='button'
+									variant='outline'
+									size='sm'
+									onClick={handleGenerate}
+								>
+									<Key className='mr-2 h-4 w-4' />
+									Générer
+								</Button>
+								{status?.encryption_configured && (
+									<Button
+										type='button'
+										variant='outline'
+										size='sm'
+										onClick={handleReveal}
+										disabled={reveal.isPending}
+									>
+										{reveal.isPending ? (
+											<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+										) : (
+											<Eye className='mr-2 h-4 w-4' />
+										)}
+										Afficher celle de ce poste
+									</Button>
+								)}
+							</div>
+
+							{revealedKey && (
+								<div className='space-y-2 rounded-md border border-amber-400 bg-amber-50 p-3'>
+									<code className='block break-all font-mono text-xs'>
+										{revealedKey}
+									</code>
+									<Button
+										type='button'
+										variant='outline'
+										size='sm'
+										onClick={() => {
+											navigator.clipboard.writeText(revealedKey)
+											toast.success('Clé copiée')
+										}}
+									>
+										Copier
+									</Button>
+								</div>
+							)}
+
+							<p className='text-xs text-amber-600'>
+								Le serveur ne l'a pas —{' '}
+								<strong>la perdre perd toutes les sauvegardes</strong>. À
+								conserver hors de ce poste.
+							</p>
+						</div>
+
+						<div className='flex items-center justify-between gap-2'>
+							{status?.configured ? (
+								<Button
+									variant='ghost'
+									size='sm'
+									onClick={handleDelete}
+									disabled={deleteKey.isPending}
+									className='text-destructive hover:text-destructive'
+								>
+									{deleteKey.isPending ? (
+										<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+									) : (
+										<Trash2 className='mr-2 h-4 w-4' />
+									)}
+									Supprimer la clé API
+								</Button>
+							) : (
+								<span />
+							)}
+
+							<Button
+								onClick={handleSave}
+								disabled={save.isPending || !hasSomethingToSave}
+							>
+								{save.isPending && (
+									<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+								)}
+								Enregistrer
+							</Button>
+						</div>
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	)

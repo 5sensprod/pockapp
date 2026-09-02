@@ -73,6 +73,11 @@ export type CatalogCommercialState = '' | 'used' | 'rental'
  *  Schéma : `backend/migrations/add_sale_state_to_products.go`. */
 export type CatalogSaleState = '' | 'sale' | 'promo'
 
+/** Valeurs d'interface : les chaînes métier vides ont un libellé explicite
+ * pour rester distinguables de l'absence de filtre. */
+export type CatalogCommercialStateFilter = 'new' | 'used' | 'rental'
+export type CatalogSaleStateFilter = 'regular' | 'sale' | 'promo'
+
 export type CatalogProductShape = PocketBaseRecord & {
 	/** Calculé par la route de tri de santé ; absent des lectures ordinaires. */
 	health_score?: number
@@ -159,6 +164,12 @@ export type CatalogProductQuery = {
 	withoutSupplier?: boolean
 	missingImage?: boolean
 	missingDescription?: boolean
+	missingPurchasePrice?: boolean
+	emptyStock?: boolean
+	commercialState?: CatalogCommercialStateFilter
+	saleState?: CatalogSaleStateFilter
+	/** Note éditoriale exacte, de 0 à 6. */
+	healthScore?: number
 	sort?: string
 }
 
@@ -178,6 +189,11 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 		withoutSupplier,
 		missingImage,
 		missingDescription,
+		missingPurchasePrice,
+		emptyStock,
+		commercialState,
+		saleState,
+		healthScore,
 		sort,
 	} = query
 
@@ -197,6 +213,11 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			withoutSupplier,
 			missingImage,
 			missingDescription,
+			missingPurchasePrice,
+			emptyStock,
+			commercialState,
+			saleState,
+			healthScore,
 			sort,
 		],
 		// Sans cela, changer de page vide la table le temps de la requête et la
@@ -235,6 +256,22 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			if (withoutCategory) clauses.push('categories:length = 0')
 			if (missingImage) clauses.push('image:length = 0')
 			if (missingDescription) clauses.push("description = ''")
+			if (missingPurchasePrice) clauses.push('purchase_price_ht = 0')
+			if (emptyStock) clauses.push('stock = 0')
+			if (commercialState === 'new') {
+				clauses.push("commercial_state = ''")
+			} else if (commercialState) {
+				clauses.push(
+					pb.filter('commercial_state = {:commercialState}', {
+						commercialState,
+					}),
+				)
+			}
+			if (saleState === 'regular') {
+				clauses.push("sale_state = ''")
+			} else if (saleState) {
+				clauses.push(pb.filter('sale_state = {:saleState}', { saleState }))
+			}
 
 			const term = search?.trim()
 			if (term) {
@@ -249,13 +286,20 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			}
 
 			const filter = clauses.length ? clauses.join(' && ') : undefined
-			if (sort === 'health' || sort === '-health') {
+			if (
+				healthScore !== undefined ||
+				sort === 'health' ||
+				sort === '-health'
+			) {
 				const params = new URLSearchParams({
 					page: String(page),
 					perPage: String(perPage),
-					direction: sort.startsWith('-') ? 'desc' : 'asc',
+					sort: sort || 'name_sort',
 				})
 				if (filter) params.set('filter', filter)
+				if (healthScore !== undefined) {
+					params.set('health', String(healthScore))
+				}
 				return (await pb.send(
 					`/api/catalog/products/health?${params.toString()}`,
 					{ method: 'GET' },

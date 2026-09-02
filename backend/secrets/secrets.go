@@ -102,6 +102,51 @@ const (
 	// PocketSite-docs/16-conception-images.md). La CLÉ, elle, est partagée avec
 	// l'export du catalogue : même base, même portée d'écriture.
 	SettingSiteImagesURL = "site_images_url"
+
+	// SettingBackupURL est l'URL du point d'entrée de sauvegarde du mini-SaaS,
+	// typiquement https://pocketapp.5sensprod.com/api/backup.php.
+	//
+	// Le client REFUSE de partir si elle n'est pas en HTTPS
+	// (backend/backup/envoi.go, NouveauClient) : le corps est chiffré, mais la
+	// clé d'API voyage en clair dans un en-tête, et sur du HTTP simple elle
+	// est lisible par le réseau du magasin.
+	SettingBackupURL = "backup_url"
+
+	// SettingBackupIntervalHeures est l'écart minimal entre deux sauvegardes,
+	// en heures. Vide ou illisible vaut 24.
+	SettingBackupIntervalHeures = "backup_interval_hours"
+
+	// SettingBackupActif vaut "1" ou "0". Absent vaut ACTIF : une sauvegarde
+	// qui ne démarre pas parce qu'un réglage manque n'est pas une sauvegarde.
+	SettingBackupActif = "backup_enabled"
+
+	// SettingBackupDernierEtat porte le dernier résultat, en JSON, pour que
+	// l'écran des réglages puisse dire « dernière sauvegarde le … » sans
+	// interroger le serveur. Purement informatif.
+	SettingBackupDernierEtat = "backup_last_state"
+)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONSTANTES - SECRETS DE LA SAUVEGARDE
+// ═══════════════════════════════════════════════════════════════════════════
+
+const (
+	// KeyBackupAPI est la clé d'API qui identifie CETTE installation auprès du
+	// mini-SaaS. C'est elle qui détermine dans quel espace privé le snapshot
+	// atterrit : le serveur ne lit jamais d'identifiant de client dans le
+	// corps de la requête, il le DÉDUIT de la clé. Un poste ne peut donc pas
+	// écrire — ni lire — dans l'espace d'un autre, même en le demandant.
+	KeyBackupAPI = "backup_api_key"
+
+	// KeyBackupChiffrement est la clé AES-256 des snapshots, en hexadécimal
+	// (64 caractères). Elle ne quitte JAMAIS le poste et n'est jamais envoyée
+	// au serveur : c'est ce qui rend le dépôt distant inexploitable en cas de
+	// fuite de l'hébergement mutualisé.
+	//
+	// ⚠️ Corollaire à ne pas découvrir le jour d'un sinistre : PERDRE cette
+	// clé, c'est perdre toutes les sauvegardes. Elle doit être conservée
+	// ailleurs que sur le poste qu'elle sauvegarde.
+	KeyBackupChiffrement = "backup_encryption_key"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
