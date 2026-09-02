@@ -312,6 +312,114 @@ lectures comprises. Pour une suppression, c'est la seule trace qui restera.
 
 ---
 
+## 9. Le miroir des images — n'envoyer que ce que l'autre n'a pas
+
+Le snapshot ne porte **aucun octet d'image** (§1). Le miroir comble ce trou,
+sans jamais retransporter les 1,6 Gio que l'éditeur détient déjà.
+
+### Trois faits mesurés le 2 septembre 2026
+
+| | |
+|---|---|
+| fichiers dans `storage/` | **9422** (4712 originaux + autant de `.attrs`) |
+| volume | **1591 Mio** |
+| vignettes `thumbs_*` | 96 — **dérivées, non transportées** |
+
+### Le chemin est l'identité
+
+PocketBase suffixe chaque fichier d'un aléa à l'upload
+(`methode_1754471692119_wDmqA0HWAM.png`) : remplacer une image n'écrase pas le
+fichier, elle en crée un autre. **Un chemin donné a donc toujours le même
+contenu.**
+
+C'est ce qui permet d'inventorier **sans lire un seul octet**. Sans cette
+propriété, chaque synchronisation devrait hacher 1,6 Gio sur une caisse en
+service. ⚠️ **C'est LA supposition à revérifier** avant toute évolution : si
+PocketBase réécrivait un jour un fichier en place, il faudrait une empreinte.
+
+### Pourquoi un inventaire, et pas une date de coupure
+
+« Les images ajoutées depuis le 29 août » suppose de se fier aux dates des
+fichiers. Or copier ou restaurer un `storage/` les remet à zéro — et le jour où
+ça arrive, on ne s'en aperçoit pas : on croit sauvegarder et on ne sauvegarde
+rien. Le serveur tient donc la liste de ce qu'il **connaît**, et le poste
+n'envoie que l'écart.
+
+### Le socle : la ligne sans octets
+
+Une ligne de `backup_storage` peut exister avec `has_bytes = 0` : le serveur
+**sait** que le fichier existe, ne l'a pas, et ne le demandera jamais — parce
+que l'éditeur le détient. C'est toute l'astuce du dispositif.
+
+> ⚠️ **Déclarer le socle AVANT la première sauvegarde d'un poste.** Sans lui,
+> celui-ci croit devoir tout envoyer et commence à téléverser 1,6 Gio par
+> paquets de 500 fichiers.
+
+Déclarer est réservé à la **clé super-admin** : un poste qui pourrait affirmer
+« j'ai déjà tout » cesserait de sauvegarder ses images sans que personne ne le
+remarque. Seul celui qui détient vraiment les fichiers peut l'affirmer.
+
+### Ce que ça donne
+
+Mesuré le 2 septembre 2026, bout en bout : socle déclaré (9422 chemins, zéro
+octet), une image ajoutée à un produit, sauvegarde → **2 fichiers envoyés**
+(l'image et son `.attrs`). Produit supprimé, base restaurée, « Rapatrier les
+images » → **2 fichiers écrits**, vérifiés sur le disque.
+
+Le `.attrs` part avec l'image, et ce n'est pas un détail : il porte le type
+MIME, et sans lui PocketBase sert le fichier en `application/octet-stream`.
+
+### Un piège de vérification, rencontré le jour même
+
+Après restauration, la fiche produit **affichait son image alors que le fichier
+n'était pas sur le disque** : le navigateur la resservait depuis son cache,
+l'URL étant identique. Un faux positif parfait sur la seule chose que le test
+devait prouver.
+
+**Vérifier sur le système de fichiers, jamais à l'écran** — et recharger par
+Ctrl+F5.
+
+### Supprimer
+
+Un produit supprimé emporte son image **localement**, mais **le miroir la
+garde** : un snapshot antérieur la référence encore, et le serveur ne peut pas
+le savoir — il ne sait pas lire ce qu'il stocke. La purge du miroir est donc un
+geste séparé et explicite (`storage-supprimer`), qui désigne les chemins un par
+un.
+
+---
+
+## 10. Une sauvegarde après chaque rapport Z
+
+Depuis le 2 septembre 2026, un rapport Z scellé déclenche une sauvegarde
+(`backend/backup/apres_z.go`).
+
+**Pourquoi le Z** : c'est le seul instant où l'on SAIT qu'une journée est
+finie. La sauvegarde qui le suit capture une journée entière et cohérente,
+plutôt qu'un instant arbitraire choisi par une horloge.
+
+**Complément, jamais remplacement** : un poste dont la journée n'est jamais
+clôturée doit continuer d'être sauvegardé — et 69 % de l'argent hors caisse
+tombe justement de journées sans clôture.
+
+Accroché aux événements de **modèle**, pas aux requêtes REST : le Z est scellé
+par du Go (`saveZReport`, `cash_reports.go:1952`), invisible aux hooks de
+requête. Même leçon que `product_name_sort_hook.go`.
+
+Trois précautions, chacune réparant un défaut prévisible :
+
+| | |
+|---|---|
+| **différé de 2 min** | le hook s'exécute dans la transaction qui scelle le Z ; un `VACUUM` à cet instant ferait travailler SQLite contre lui-même, et le caissier attend son ticket |
+| **non bloquant** | la clôture ne doit jamais échouer parce qu'un mutualisé est lent — c'est un document fiscal |
+| **amorti 30 min** | rejouer 60 rapports Z (`z-repair`) ne doit pas déclencher 60 sauvegardes |
+
+Le hook ne rend **jamais** d'erreur : dans PocketBase, la valeur de retour d'un
+hook `After` peut faire échouer l'opération appelante, et aucune défaillance de
+sauvegarde ne doit empêcher un Z d'être scellé.
+
+---
+
 ## 8. Où est quoi
 
 | Fichier | Rôle |
@@ -319,6 +427,12 @@ lectures comprises. Pour une suppression, c'est la seule trace qui restera.
 | `backend/backup/snapshot.go` | `VACUUM INTO`, gzip, chiffrement, et le chemin inverse |
 | `backend/backup/envoi.go` | le protocole côté poste, avec reprise |
 | `backend/backup/planificateur.go` | l'horloge, le verrou, l'état |
+| `backend/backup/apres_z.go` | le déclenchement après chaque rapport Z |
+| `backend/backup/storage.go` | l'inventaire et l'envoi différentiel des images |
+| `backend/backup/super.go` | la clé super-admin : lister, télécharger, socle, rapatriement |
+| `backend/backup/restauration.go` | la restauration en deux temps |
+| `backend/backup/restauration_test.go` | ses cinq gardiens, dont celui du WAL |
+| `backend/backup/storage_test.go` | `.attrs` transportés, vignettes exclues, chemins en `/` |
 | `backend/backup/snapshot_test.go` | les gardiens : aller-retour, troncature, mauvaise clé, réordonnancement |
 | `backend/routes/backup_routes.go` | `GET /api/backup/status`, `POST /api/backup/run` |
 | `backend/cmd/snapshot-restore/` | la restauration, hors application |
@@ -328,4 +442,6 @@ lectures comprises. Pour une suppression, c'est la seule trace qui restera.
 | `pocketApp_minisaas/api/admin/backups.php` | idem sous session admin, pour le navigateur |
 | `pocketApp_minisaas/api/admin/backup-diag.php` | diagnostic de mise en service |
 | `pocketApp_minisaas/schema-super-keys.sql` | les tables `backup_super_keys` et `backup_super_log` |
+| `pocketApp_minisaas/api/backup-storage.php` | la réception des images |
+| `pocketApp_minisaas/schema-storage.sql` | la table `backup_storage` |
 | `pocketApp_minisaas/schema-backups.sql` | la table `backups` |

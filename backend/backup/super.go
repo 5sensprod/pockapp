@@ -11,21 +11,26 @@
 // cachette et la mettrait dans le bundle, dans les journaux réseau du poste,
 // et dans le presse-papier de qui inspecte la page. Le Go la garde et relaie.
 //
-// ─── Ce que ce fichier ne fait pas ─────────────────────────────────────────
-// Il ne restaure rien. Télécharger un snapshot et REMPLACER la base vivante
-// sont deux gestes très différents : le second demande que PocketBase lâche
-// son fichier, ce qu'il ne fait pas tant que l'application tourne. La
-// restauration reste dans backend/cmd/snapshot-restore.
+// ─── Le miroir des images passe aussi par ici ─────────────────────────────
+// Déclarer un socle, lister le miroir, rapatrier un fichier : trois gestes de
+// l'ÉDITEUR, donc trois actions sous la clé super-admin. Déclarer un socle en
+// particulier ne peut pas être laissé au poste — un poste qui pourrait
+// affirmer « j'ai déjà tout » cesserait de sauvegarder ses images sans que
+// personne ne s'en aperçoive.
 // ═══════════════════════════════════════════════════════════════════════════
 
 package backup
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -198,4 +203,228 @@ func (c *ClientSuper) Supprimer(clientID, snapshotID string) error {
 		return fmt.Errorf("suppression : %w", err)
 	}
 	return nil
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MIROIR DES IMAGES
+// ═══════════════════════════════════════════════════════════════════════════
+
+// StatsStorage résume l'état du miroir d'un client.
+type StatsStorage struct {
+	AvecOctets int   `json:"with_bytes"`
+	Socle      int   `json:"baseline"`
+	Octets     int64 `json:"bytes"`
+}
+
+// FichierMiroir est une entrée du miroir, telle que le serveur la rend.
+type FichierMiroir struct {
+	Chemin      string `json:"path"`
+	Taille      int64  `json:"size"`
+	TailleStock int64  `json:"stored_size"`
+	AOctets     int    `json:"has_bytes"`
+	CreeLe      string `json:"created_at"`
+}
+
+// DeclarerSocle annonce au serveur les fichiers que l'ÉDITEUR détient déjà.
+//
+// Elle n'envoie AUCUN octet : seulement des chemins. C'est ce qui évite de
+// transporter 1,6 Gio, et c'est le geste à faire AVANT la première
+// synchronisation d'un poste — sinon celui-ci croira devoir tout envoyer.
+//
+// Idempotente : redéclarer un socle n'écrase jamais le fait que le serveur
+// détient déjà les octets d'un fichier (INSERT IGNORE côté PHP).
+func (c *ClientSuper) DeclarerSocle(clientID string, fichiers []FichierStorage) (declares int, err error) {
+	charge, err := json.Marshal(map[string]any{"files": fichiers})
+	if err != nil {
+		return 0, err
+	}
+
+	var compresse bytes.Buffer
+	if err := gzipVers(&compresse, charge); err != nil {
+		return 0, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, c.url("storage-socle", url.Values{
+		"client_id": {clientID},
+	}), bytes.NewReader(compresse.Bytes()))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("X-Super-Key", c.CleSuper)
+	req.Header.Set("User-Agent", AgentUtilisateur)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+
+	// Déclarer 4712 chemins tient en une requête, mais elle traverse un
+	// mutualisé et écrit autant de lignes : le délai par défaut est trop court.
+	cl := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := cl.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("déclaration du socle : %w", err)
+	}
+	corps, err := lireReponse(resp)
+	if err != nil {
+		return 0, fmt.Errorf("déclaration du socle : %w", err)
+	}
+
+	var reponse struct {
+		Declares int `json:"declared"`
+		Ignores  int `json:"skipped"`
+	}
+	if err := json.Unmarshal(corps, &reponse); err != nil {
+		return 0, fmt.Errorf("réponse illisible : %w", err)
+	}
+	if reponse.Ignores > 0 {
+		log.Printf("⚠️  socle : %d chemins ignorés (forme inattendue)", reponse.Ignores)
+	}
+	return reponse.Declares, nil
+}
+
+// ListerStorage rend l'inventaire du miroir d'un client.
+func (c *ClientSuper) ListerStorage(clientID string) ([]FichierMiroir, StatsStorage, error) {
+	resp, err := c.appeler(http.MethodGet, "storage-liste", url.Values{
+		"client_id": {clientID},
+	}, nil)
+	if err != nil {
+		return nil, StatsStorage{}, fmt.Errorf("inventaire du miroir : %w", err)
+	}
+	corps, err := lireReponse(resp)
+	if err != nil {
+		return nil, StatsStorage{}, fmt.Errorf("inventaire du miroir : %w", err)
+	}
+
+	var reponse struct {
+		Fichiers []FichierMiroir `json:"files"`
+		Stats    StatsStorage    `json:"stats"`
+	}
+	if err := json.Unmarshal(corps, &reponse); err != nil {
+		return nil, StatsStorage{}, fmt.Errorf("inventaire illisible : %w", err)
+	}
+	return reponse.Fichiers, reponse.Stats, nil
+}
+
+// TelechargerFichierStorage rapatrie les octets CHIFFRÉS d'un fichier.
+func (c *ClientSuper) TelechargerFichierStorage(clientID, chemin string) ([]byte, error) {
+	resp, err := c.appeler(http.MethodGet, "storage-fichier", url.Values{
+		"client_id": {clientID},
+		"path":      {chemin},
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		extrait, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return nil, fmt.Errorf("%d : %s", resp.StatusCode, strings.TrimSpace(string(extrait)))
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, TailleMaxFichier+1024))
+}
+
+// url compose une URL d'action. Extrait de `appeler` parce que DeclarerSocle a
+// besoin de son propre client HTTP, au délai plus généreux.
+func (c *ClientSuper) url(action string, params url.Values) string {
+	u, err := url.Parse(c.Endpoint)
+	if err != nil {
+		return c.Endpoint
+	}
+	if params == nil {
+		params = url.Values{}
+	}
+	params.Set("action", action)
+	u.RawQuery = params.Encode()
+	return u.String()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RAPATRIER LE MIROIR DANS UN `storage/` LOCAL
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ResultatRapatriement résume ce qu'un rapatriement a fait.
+type ResultatRapatriement struct {
+	Distants int
+	Ecrits   int
+	DejaLa   int
+	Echecs   int
+	Octets   int64
+}
+
+// RapatrierStorage télécharge les fichiers du miroir et les écrit dans le
+// `storage/` local, à leur place exacte.
+//
+// Ne réécrit JAMAIS un fichier déjà présent : le chemin étant l'identité du
+// contenu (voir storage.go), un fichier local a forcément le même contenu que
+// son homonyme distant. Retélécharger serait du réseau dépensé pour écrire
+// deux fois les mêmes octets.
+//
+// C'est ce qui rend l'opération reprenable sans état : coupée à mi-chemin,
+// elle repart et saute ce qu'elle a déjà écrit.
+func (c *ClientSuper) RapatrierStorage(clientID, dataDir string, cle []byte) (*ResultatRapatriement, error) {
+	if len(cle) != 32 {
+		return nil, fmt.Errorf("clé de chiffrement : 32 octets attendus")
+	}
+
+	fichiers, _, err := c.ListerStorage(clientID)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &ResultatRapatriement{Distants: len(fichiers)}
+	racine := filepath.Join(dataDir, "storage")
+	debut := time.Now()
+
+	for _, f := range fichiers {
+		if f.AOctets == 0 {
+			continue // ligne de socle : l'éditeur les a déjà, par définition
+		}
+
+		destination := filepath.Join(racine, filepath.FromSlash(f.Chemin))
+		if _, err := os.Stat(destination); err == nil {
+			res.DejaLa++
+			continue
+		}
+
+		chiffre, err := c.TelechargerFichierStorage(clientID, f.Chemin)
+		if err != nil {
+			log.Printf("⚠️  miroir : %s non téléchargé (%v)", f.Chemin, err)
+			res.Echecs++
+			continue
+		}
+
+		// Le chemin sert d'identifiant dans les données authentifiées : un
+		// fichier présenté sous le nom d'un autre échoue ici, et non après
+		// avoir été écrit sur la mauvaise fiche.
+		var clair bytes.Buffer
+		if _, err := Restaurer(bytes.NewReader(chiffre), &clair, cle, f.Chemin); err != nil {
+			log.Printf("⚠️  miroir : %s non déchiffré (%v)", f.Chemin, err)
+			res.Echecs++
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+			res.Echecs++
+			continue
+		}
+		// Temporaire puis rename : une écriture coupée laisserait un fichier
+		// tronqué que le passage suivant considérerait comme « déjà là ».
+		temporaire := destination + ".tmp"
+		if err := os.WriteFile(temporaire, clair.Bytes(), 0o600); err != nil {
+			log.Printf("⚠️  miroir : %s non écrit (%v)", f.Chemin, err)
+			res.Echecs++
+			continue
+		}
+		if err := os.Rename(temporaire, destination); err != nil {
+			os.Remove(temporaire)
+			res.Echecs++
+			continue
+		}
+
+		res.Ecrits++
+		res.Octets += int64(clair.Len())
+	}
+
+	log.Printf("🖼️  miroir rapatrié : %d écrits, %d déjà présents, %d échecs, %d Kio, en %s",
+		res.Ecrits, res.DejaLa, res.Echecs, res.Octets/1024, time.Since(debut).Round(time.Second))
+
+	return res, nil
 }

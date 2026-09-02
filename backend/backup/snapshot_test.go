@@ -26,7 +26,8 @@ import (
 	"testing"
 
 	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+	"github.com/pocketbase/pocketbase/migrations"
+	"github.com/pocketbase/pocketbase/tools/migrate"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
@@ -62,7 +63,19 @@ func nouvelleAppDeTest(t *testing.T) *pocketbase.PocketBase {
 		t.Fatalf("bootstrap : %v", err)
 	}
 	t.Cleanup(func() { app.ResetBootstrapState() })
-	_ = migratecmd.MustRegister // garde l'import utile si le patron évolue
+
+	// Bootstrap ouvre la base mais ne pose PAS les tables système : c'est
+	// app.Start() qui le fait en fonctionnement. D'où ce runner explicite —
+	// même patron que backend/reports/cash_reports_test.go. Sans lui,
+	// `_collections` n'existe pas et aucune collection ne peut être créée.
+	runner, err := migrate.NewRunner(app.DB(), migrations.AppMigrations)
+	if err != nil {
+		t.Fatalf("runner de migrations : %v", err)
+	}
+	if _, err := runner.Up(); err != nil {
+		t.Fatalf("migrations système : %v", err)
+	}
+
 	return app
 }
 

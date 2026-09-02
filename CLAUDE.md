@@ -114,6 +114,15 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    (déjà miroité, point 7) ni `logs.db`. Réglages `backup_url`,
    `backup_interval_hours`, `backup_enabled` ; secrets `backup_api_key` et
    `backup_encryption_key`. Le client **refuse de partir hors HTTPS**.
+   Déclenchée par l'horloge ET **après chaque rapport Z**
+   (`backend/backup/apres_z.go`, hook de modèle, différé et amorti).
+   Les **images** ont leur propre miroir différentiel, par la même porte
+   (`storage-diff` / `storage-fichier`) : le CHEMIN est l'identité du contenu —
+   PocketBase suffixe chaque fichier d'un aléa —, donc aucun hachage, et un
+   « socle » déclaré par la clé super-admin évite de transporter les 1,6 Gio
+   que l'éditeur détient déjà. Un troisième pouvoir existe, la **clé
+   super-admin** (`backup-admin.php`) : elle lit, télécharge et supprime chez
+   tous les clients, mais ne peut **pas** déposer.
    Conception : `docs/SAUVEGARDE.md`.
 
 ## Commandes

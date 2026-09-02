@@ -14,6 +14,9 @@
 //   POST   /api/backup/restore         → ARME une restauration (deux temps)
 //   GET    /api/backup/restore/status  → ce qui attend le prochain démarrage
 //   DELETE /api/backup/restore         → désarme
+//   GET    /api/backup/storage         → l'inventaire LOCAL du storage
+//   POST   /api/backup/storage/baseline → déclare ce storage comme socle
+//   POST   /api/backup/storage/pull    → rapatrie le miroir d'un client
 //
 // ─── La restauration ne remplace RIEN tout de suite ────────────────────────
 // `POST /api/backup/restore` télécharge, déchiffre, VÉRIFIE l'empreinte, et
@@ -524,6 +527,139 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 		return c.JSON(http.StatusOK, map[string]any{
 			"success": true,
 			"message": "Restauration annulée",
+		})
+	}, requireAdmin)
+
+	// ── GET /api/backup/storage ─────────────────────────────────────────────
+	//
+	// Ce que CE poste détient. Sert à mesurer avant de déclarer un socle : on
+	// ne déclare pas 4712 fichiers sans les avoir comptés d'abord.
+	router.GET("/api/backup/storage", func(c echo.Context) error {
+		fichiers, err := backup.InventorierStorage(pb.DataDir())
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		}
+		var octets int64
+		for _, f := range fichiers {
+			octets += f.Taille
+		}
+		return c.JSON(http.StatusOK, map[string]any{
+			"count": len(fichiers),
+			"bytes": octets,
+		})
+	}, requireAdmin)
+
+	// ── GET /api/backup/storage/mirror ──────────────────────────────────────
+	//
+	// Ce que le serveur détient POUR UN CLIENT : combien de fichiers déclarés
+	// au socle, combien dont il a réellement les octets.
+	//
+	// Sans cette route, rien à l'écran ne distingue « socle déclaré » de
+	// « socle jamais déclaré » — et c'est précisément la confusion qui coûte
+	// un téléversement de 1,6 Gio.
+	router.GET("/api/backup/storage/mirror", func(c echo.Context) error {
+		clientID := strings.TrimSpace(c.QueryParam("client_id"))
+		if clientID == "" {
+			return c.JSON(http.StatusBadRequest, map[string]any{"error": "client_id requis"})
+		}
+
+		cs, err := clientSuper()
+		if err != nil {
+			return c.JSON(http.StatusPreconditionFailed, map[string]any{"error": err.Error()})
+		}
+
+		_, stats, err := cs.ListerStorage(clientID)
+		if err != nil {
+			return c.JSON(http.StatusBadGateway, map[string]any{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, stats)
+	}, requireAdmin)
+
+	// ── POST /api/backup/storage/baseline ───────────────────────────────────
+	//
+	// Déclare le `storage/` de CE poste comme déjà détenu, pour un client
+	// donné. AUCUN octet ne part : seulement des chemins.
+	//
+	// C'est le geste qui évite de transporter 1,6 Gio, et il doit être fait
+	// AVANT la première synchronisation du poste concerné — sinon celui-ci
+	// croira devoir tout envoyer.
+	router.POST("/api/backup/storage/baseline", func(c echo.Context) error {
+		var req struct {
+			ClientID string `json:"client_id"`
+		}
+		if err := c.Bind(&req); err != nil || strings.TrimSpace(req.ClientID) == "" {
+			return c.JSON(http.StatusBadRequest, map[string]any{
+				"error": "client_id requis : le client dont on déclare détenir le storage",
+			})
+		}
+
+		cs, err := clientSuper()
+		if err != nil {
+			return c.JSON(http.StatusPreconditionFailed, map[string]any{"error": err.Error()})
+		}
+
+		fichiers, err := backup.InventorierStorage(pb.DataDir())
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		}
+		if len(fichiers) == 0 {
+			return c.JSON(http.StatusBadRequest, map[string]any{
+				"error": "Aucun fichier dans le storage de ce poste : rien à déclarer",
+			})
+		}
+
+		declares, err := cs.DeclarerSocle(req.ClientID, fichiers)
+		if err != nil {
+			return c.JSON(http.StatusBadGateway, map[string]any{"error": err.Error()})
+		}
+
+		log.Printf("🖼️  socle déclaré pour %s : %d nouvelles lignes sur %d fichiers",
+			req.ClientID, declares, len(fichiers))
+
+		return c.JSON(http.StatusOK, map[string]any{
+			"success":   true,
+			"inventory": len(fichiers),
+			"declared":  declares,
+			"message": fmt.Sprintf(
+				"%d fichiers déclarés comme déjà détenus (%d nouveaux). Le poste ne les enverra jamais.",
+				len(fichiers), declares),
+		})
+	}, requireAdmin)
+
+	// ── POST /api/backup/storage/pull ───────────────────────────────────────
+	//
+	// Rapatrie les images du miroir dans le `storage/` de CE poste.
+	//
+	// Écrit directement dans le storage en service — mais SANS jamais écraser
+	// un fichier existant, et sans toucher à la base. Ajouter des octets sous
+	// des chemins que PocketBase ne référence pas encore est inoffensif : au
+	// pire ils dorment. C'est ce qui permet de le faire à chaud, contrairement
+	// à la restauration de `data.db`.
+	router.POST("/api/backup/storage/pull", func(c echo.Context) error {
+		var req struct {
+			ClientID string `json:"client_id"`
+		}
+		if err := c.Bind(&req); err != nil || strings.TrimSpace(req.ClientID) == "" {
+			return c.JSON(http.StatusBadRequest, map[string]any{"error": "client_id requis"})
+		}
+
+		cs, err := clientSuper()
+		if err != nil {
+			return c.JSON(http.StatusPreconditionFailed, map[string]any{"error": err.Error()})
+		}
+		cle, err := planificateur.CleChiffrement()
+		if err != nil {
+			return c.JSON(http.StatusPreconditionFailed, map[string]any{"error": err.Error()})
+		}
+
+		res, err := cs.RapatrierStorage(req.ClientID, pb.DataDir(), cle)
+		if err != nil {
+			return c.JSON(http.StatusBadGateway, map[string]any{"error": err.Error()})
+		}
+
+		return c.JSON(http.StatusOK, map[string]any{
+			"success": true,
+			"result":  res,
 		})
 	}, requireAdmin)
 

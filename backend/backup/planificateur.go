@@ -256,6 +256,19 @@ func (p *Planificateur) executerUneFois() error {
 
 	log.Printf("💾 sauvegarde : snapshot %s déposé (%d Kio de base)", snap.ID, snap.TailleClaire/1024)
 
+	// ── Miroir des images ───────────────────────────────────────────────────
+	//
+	// APRÈS le snapshot, et son échec n'annule pas le succès de celui-ci : ce
+	// sont deux choses de valeur très différente. Une base sauvegardée sans
+	// ses images reste une sauvegarde de toutes les ventes et de toutes les
+	// factures ; l'inverse ne serait rien. On ne perd donc jamais un snapshot
+	// valide parce qu'une image n'est pas passée.
+	if res, err := client.SynchroniserStorage(p.pb.DataDir(), cle); err != nil {
+		log.Printf("🖼️  storage : synchronisation échouée — %v", err)
+	} else if res.Envoyes > 0 || res.Echecs > 0 {
+		log.Printf("🖼️  storage : %d/%d envoyés", res.Envoyes, res.Manquants)
+	}
+
 	p.mu.Lock()
 	etat := p.lireEtatSansVerrou()
 	p.mu.Unlock()

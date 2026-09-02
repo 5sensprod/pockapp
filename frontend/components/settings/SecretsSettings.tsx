@@ -32,10 +32,14 @@ import {
 	useDeleteSitePublishKey,
 	useNotificationKeyStatus,
 	useCancelRestore,
+	useDeclareBaseline,
+	useMirrorStats,
 	useDeleteSuperKey,
 	usePrepareRestore,
+	usePullStorage,
 	useRemoteSnapshots,
 	useRestoreStatus,
+	useStorageLocal,
 	useRevealEncryptionKey,
 	useRunBackup,
 	useSetBackupSettings,
@@ -57,6 +61,7 @@ import {
 	Loader2,
 	Play,
 	History,
+	Images,
 	Power,
 	RefreshCw,
 	Settings2,
@@ -698,6 +703,81 @@ function SiteCatalogSection() {
 
 const DEFAULT_BACKUP_URL = 'https://pocketapp.5sensprod.com/api/backup.php'
 
+/**
+ * Une ligne du miroir, par client.
+ *
+ * Composant à part parce qu'il porte SON hook : React interdit d'appeler un
+ * hook dans une boucle, et l'état du miroir se lit client par client.
+ */
+function LigneMiroirClient({
+	clientId,
+	clientNom,
+	actif,
+	onDeclarer,
+	onRapatrier,
+	declarationEnCours,
+	rapatriementEnCours,
+}: {
+	clientId: string
+	clientNom: string
+	actif: boolean
+	onDeclarer: () => void
+	onRapatrier: () => void
+	declarationEnCours: boolean
+	rapatriementEnCours: boolean
+}) {
+	const miroir = useMirrorStats(clientId, actif)
+	const socleDeclare = (miroir.data?.baseline ?? 0) > 0
+
+	return (
+		<div className='flex flex-wrap items-center justify-between gap-2 border-t pt-3'>
+			<div className='text-sm'>
+				<div>{clientNom}</div>
+				<div className='text-xs text-muted-foreground'>
+					{miroir.isLoading ? (
+						'…'
+					) : miroir.error ? (
+						'état du miroir indisponible'
+					) : socleDeclare ? (
+						<>
+							socle déclaré ({miroir.data?.baseline} fichiers) ·{' '}
+							{miroir.data?.with_bytes ?? 0} image(s) sur le serveur
+						</>
+					) : (
+						<span className='text-amber-600'>
+							socle NON déclaré — ce poste téléverserait tout
+						</span>
+					)}
+				</div>
+			</div>
+			<div className='flex gap-2'>
+				<Button
+					variant={socleDeclare ? 'ghost' : 'outline'}
+					size='sm'
+					onClick={onDeclarer}
+					disabled={declarationEnCours}
+				>
+					{declarationEnCours && (
+						<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+					)}
+					{socleDeclare ? 'Redéclarer le socle' : 'Déclarer le socle'}
+				</Button>
+				<Button
+					variant='outline'
+					size='sm'
+					onClick={onRapatrier}
+					disabled={rapatriementEnCours}
+				>
+					{rapatriementEnCours && (
+						<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+					)}
+					Rapatrier les images
+				</Button>
+			</div>
+		</div>
+	)
+}
+
 function BackupSection() {
 	const [configOuverte, setConfigOuverte] = useState(false)
 	const [apiKey, setApiKey] = useState('')
@@ -721,6 +801,9 @@ function BackupSection() {
 	const restauration = useRestoreStatus()
 	const preparerRestauration = usePrepareRestore()
 	const annulerRestauration = useCancelRestore()
+	const storageLocal = useStorageLocal()
+	const declarerSocle = useDeclareBaseline()
+	const rapatrier = usePullStorage()
 	const save = useSetBackupSettings()
 	const deleteKey = useDeleteBackupKey()
 	const run = useRunBackup()
@@ -882,6 +965,44 @@ function BackupSection() {
 			toast.success('Restauration annulée')
 		} catch (error: any) {
 			toast.error(error.message || "Erreur lors de l'annulation")
+		}
+	}
+
+	const handleDeclarerSocle = async (clientId: string, clientNom: string) => {
+		const nb = storageLocal.data?.count ?? 0
+		if (
+			!confirm(
+				`Déclarer les ${nb} fichiers de CE poste comme déjà détenus, pour « ${clientNom} » ?\n\n` +
+					`Aucun octet ne part : seulement les chemins.\n\n` +
+					`Effet : le poste de ce client n'enverra JAMAIS ces fichiers-là. ` +
+					`Ne le faites que si vous détenez vraiment ces images.`,
+			)
+		)
+			return
+		try {
+			const res = await declarerSocle.mutateAsync({ clientId })
+			toast.success(res.message)
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la déclaration')
+		}
+	}
+
+	const handleRapatrier = async (clientId: string, clientNom: string) => {
+		if (
+			!confirm(
+				`Rapatrier les images de « ${clientNom} » dans le storage de ce poste ?\n\n` +
+					`Les fichiers déjà présents ne sont pas retéléchargés, et aucun n'est écrasé.`,
+			)
+		)
+			return
+		try {
+			const { result } = await rapatrier.mutateAsync({ clientId })
+			toast.success(
+				`${result.Ecrits} images écrites, ${result.DejaLa} déjà présentes` +
+					(result.Echecs ? `, ${result.Echecs} échecs` : ''),
+			)
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors du rapatriement')
 		}
 	}
 
@@ -1404,6 +1525,65 @@ function BackupSection() {
 							base. Le remplacement a lieu <strong>au redémarrage</strong> — une
 							base ouverte ne se remplace pas. L'ancienne est archivée, jamais
 							effacée.
+						</p>
+					</div>
+				)}
+
+				{/* ── Miroir des images ───────────────────────────────────────
+				    Le snapshot ne porte AUCUN octet d'image. Ce bloc gère le
+				    complément : déclarer ce qu'on détient déjà, et rapatrier
+				    ce qu'on n'a pas. */}
+				{status?.super_configured && (
+					<div className='space-y-3 rounded-md border p-4'>
+						<h4 className='flex items-center gap-2 text-sm font-medium'>
+							<Images className='h-4 w-4' />
+							Images (miroir différentiel)
+						</h4>
+
+						<p className='text-sm text-muted-foreground'>
+							{storageLocal.isLoading ? (
+								<Loader2 className='h-4 w-4 animate-spin' />
+							) : storageLocal.error ? (
+								'Inventaire local indisponible'
+							) : (
+								<>
+									Ce poste détient{' '}
+									<strong>{storageLocal.data?.count ?? 0} fichiers</strong> (
+									{Math.round((storageLocal.data?.bytes ?? 0) / 1048576)} Mio).
+								</>
+							)}
+						</p>
+
+						{/* Un client par ligne, déduit de l'inventaire des snapshots :
+						    ce sont exactement ceux dont on détient quelque chose. */}
+						{Array.from(
+							new Map(
+								(distants.data?.snapshots ?? []).map((snap) => [
+									snap.client_id,
+									snap.client_name,
+								]),
+							).entries(),
+						).map(([clientId, clientNom]) => (
+							<LigneMiroirClient
+								key={clientId}
+								clientId={clientId}
+								clientNom={clientNom}
+								actif={!!status?.super_configured}
+								declarationEnCours={declarerSocle.isPending}
+								rapatriementEnCours={rapatrier.isPending}
+								onDeclarer={() => handleDeclarerSocle(clientId, clientNom)}
+								onRapatrier={() => handleRapatrier(clientId, clientNom)}
+							/>
+						))}
+
+						<p className='text-xs text-muted-foreground'>
+							<strong>Déclarer le socle</strong> annonce au serveur que vous
+							détenez déjà ces fichiers : aucun octet ne part, seulement les
+							chemins, et le poste de ce client ne les enverra jamais. À faire{' '}
+							<strong>avant</strong> sa première sauvegarde, sinon il
+							téléversera tout. <strong>Rapatrier</strong> descend les images
+							que le serveur détient et que ce poste n'a pas — sans jamais
+							écraser un fichier existant.
 						</p>
 					</div>
 				)}

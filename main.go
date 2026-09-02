@@ -247,6 +247,13 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterBackupRoutes(pb, e.Router, planificateurSauvegarde)
 		planificateurSauvegarde.Demarrer()
 
+		// Et une sauvegarde après chaque rapport Z. Le Z est le seul instant
+		// où l'on SAIT qu'une journée est finie : la sauvegarde qui le suit
+		// capture une journée entière, pas un instant choisi par une horloge.
+		// Complément de la sauvegarde périodique, jamais son remplacement — un
+		// poste dont la journée n'est jamais clôturée doit rester sauvegardé.
+		planificateurSauvegarde.SurRapportZ(pb)
+
 		// SPA handler (doit rester en dernier)
 		e.Router.GET("/*", StaticSPAHandler(distFS))
 

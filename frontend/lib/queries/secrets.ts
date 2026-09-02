@@ -664,3 +664,124 @@ export function useCancelRestore() {
 		},
 	})
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MIROIR DES IMAGES
+// ═══════════════════════════════════════════════════════════════════════════
+// Le snapshot de la base ne contient aucun octet d'image. Le miroir comble ce
+// trou en ne transportant QUE ce que l'éditeur n'a pas déjà — d'où la notion
+// de « socle » : la liste des fichiers qu'il détient, déclarée une fois.
+
+export interface StorageLocal {
+	count: number
+	bytes: number
+}
+
+export function useStorageLocal() {
+	const pb = usePocketBase() as any
+
+	return useQuery<StorageLocal>({
+		queryKey: ['backup-storage-local'],
+		queryFn: async () => {
+			return await fetchWithAuth(pb, '/api/backup/storage')
+		},
+		// Un parcours de 9400 fichiers : inutile de le refaire à chaque montage.
+		staleTime: 5 * 60_000,
+	})
+}
+
+/**
+ * Déclarer le storage de CE poste comme socle pour un client.
+ *
+ * N'envoie aucun octet : seulement des chemins. C'est ce qui évite de
+ * transporter 1,6 Gio, et ça doit être fait AVANT la première synchronisation
+ * du poste concerné.
+ */
+export function useDeclareBaseline() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation<
+		{ inventory: number; declared: number; message: string },
+		Error,
+		{ clientId: string }
+	>({
+		mutationFn: async ({ clientId }) => {
+			return await fetchWithAuth(pb, '/api/backup/storage/baseline', {
+				method: 'POST',
+				body: JSON.stringify({ client_id: clientId }),
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['backup-storage-local'] })
+			// Et l'ÉTAT DU MIROIR : sans ça, l'écran continue d'afficher
+			// « socle NON déclaré » après une déclaration réussie, et invite à
+			// refaire un geste qui vient d'être fait.
+			queryClient.invalidateQueries({ queryKey: ['backup-mirror'] })
+		},
+	})
+}
+
+/** Rapatrier les images du miroir dans le storage de ce poste. */
+export function usePullStorage() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation<
+		{
+			result: {
+				Distants: number
+				Ecrits: number
+				DejaLa: number
+				Echecs: number
+				Octets: number
+			}
+		},
+		Error,
+		{ clientId: string }
+	>({
+		mutationFn: async ({ clientId }) => {
+			return await fetchWithAuth(pb, '/api/backup/storage/pull', {
+				method: 'POST',
+				body: JSON.stringify({ client_id: clientId }),
+			})
+		},
+		onSuccess: () => {
+			// Le poste détient de nouveaux fichiers : son inventaire local a
+			// changé, et l'écran l'affiche.
+			queryClient.invalidateQueries({ queryKey: ['backup-storage-local'] })
+		},
+	})
+}
+
+/** Ce que le serveur détient du storage d'un client. */
+export interface StatsMiroir {
+	/** Fichiers dont le serveur a réellement les octets. */
+	with_bytes: number
+	/** Fichiers déclarés au socle : connus, mais détenus par l'éditeur. */
+	baseline: number
+	bytes: number
+}
+
+/**
+ * L'état du miroir, par client.
+ *
+ * Sans cette lecture, rien à l'écran ne distingue « socle déclaré » de « socle
+ * jamais déclaré » — et c'est exactement la confusion qui coûte un
+ * téléversement de 1,6 Gio.
+ */
+export function useMirrorStats(clientId: string, actif: boolean) {
+	const pb = usePocketBase() as any
+
+	return useQuery<StatsMiroir>({
+		queryKey: ['backup-mirror', clientId],
+		queryFn: async () => {
+			return await fetchWithAuth(
+				pb,
+				`/api/backup/storage/mirror?client_id=${encodeURIComponent(clientId)}`,
+			)
+		},
+		enabled: actif && !!clientId,
+		staleTime: 60_000,
+	})
+}
