@@ -37,17 +37,18 @@ import (
 
 // SnapshotDistant est une ligne de l'inventaire du serveur.
 type SnapshotDistant struct {
-	ClientID    string `json:"client_id"`
-	ClientName  string `json:"client_name"`
-	SnapshotID  string `json:"snapshot_id"`
-	Statut      string `json:"status"`
-	TailleClair int64  `json:"plain_size"`
-	SHA256Clair string `json:"plain_sha256"`
-	NbTranches  int    `json:"chunk_count"`
-	AppVersion  string `json:"app_version"`
-	Origine     string `json:"origin"`
-	CreeLe      string `json:"created_at"`
-	DeposeLe    string `json:"uploaded_at"`
+	ClientID     string `json:"client_id"`
+	ClientName   string `json:"client_name"`
+	SnapshotID   string `json:"snapshot_id"`
+	Statut       string `json:"status"`
+	TailleClair  int64  `json:"plain_size"`
+	SHA256Clair  string `json:"plain_sha256"`
+	NbTranches   int    `json:"chunk_count"`
+	AppVersion   string `json:"app_version"`
+	Origine      string `json:"origin"`
+	EmpreinteCle string `json:"key_fingerprint"`
+	CreeLe       string `json:"created_at"`
+	DeposeLe     string `json:"uploaded_at"`
 }
 
 // ClientSuper parle à l'endpoint super-admin.
@@ -334,6 +335,69 @@ func (c *ClientSuper) url(action string, params url.Values) string {
 	params.Set("action", action)
 	u.RawQuery = params.Encode()
 	return u.String()
+}
+
+// PurgerStorage efface du miroir les fichiers dont le serveur détient les
+// octets, pour un client. Les lignes de SOCLE sont épargnées.
+//
+// ─── À quoi ça sert, concrètement ──────────────────────────────────────────
+// Un fichier envoyé sous une clé de chiffrement, puis la clé change : le
+// serveur le « connaît » toujours, donc il ne le redemande jamais — et il
+// reste illisible pour toujours. Purger le rend inconnu, et le poste le
+// renvoie au passage suivant, sous la bonne clé.
+//
+// ─── Pourquoi épargner le socle ────────────────────────────────────────────
+// Les lignes sans octets déclarent ce que l'ÉDITEUR détient. Les effacer
+// ferait croire au poste qu'il doit tout renvoyer : 1,6 Gio sur un mutualisé.
+// La purge ne touche donc QUE ce que le serveur a réellement reçu.
+func (c *ClientSuper) PurgerStorage(clientID string) (int, error) {
+	// ListerStorage ne rend, par défaut, que les fichiers AVEC octets : c'est
+	// exactement l'ensemble à purger, et le socle en est absent par
+	// construction plutôt que par un filtre qu'on pourrait oublier.
+	fichiers, _, err := c.ListerStorage(clientID)
+	if err != nil {
+		return 0, err
+	}
+
+	var chemins []string
+	for _, f := range fichiers {
+		if f.AOctets == 1 {
+			chemins = append(chemins, f.Chemin)
+		}
+	}
+	if len(chemins) == 0 {
+		return 0, nil
+	}
+
+	charge, err := json.Marshal(map[string]any{
+		"paths":   chemins,
+		"confirm": "supprimer",
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := c.appeler(http.MethodPost, "storage-supprimer", url.Values{
+		"client_id": {clientID},
+	}, bytes.NewReader(charge))
+	if err != nil {
+		return 0, fmt.Errorf("purge du miroir : %w", err)
+	}
+	corps, err := lireReponse(resp)
+	if err != nil {
+		return 0, fmt.Errorf("purge du miroir : %w", err)
+	}
+
+	var reponse struct {
+		Supprimes int `json:"deleted"`
+	}
+	if err := json.Unmarshal(corps, &reponse); err != nil {
+		return 0, fmt.Errorf("réponse de purge illisible : %w", err)
+	}
+
+	log.Printf("🖼️  miroir purgé pour %s : %d fichiers effacés, socle conservé",
+		clientID, reponse.Supprimes)
+	return reponse.Supprimes, nil
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

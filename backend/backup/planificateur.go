@@ -226,12 +226,31 @@ func (p *Planificateur) executerUneFois() error {
 	endpoint, _ := p.sm.GetSetting(secrets.SettingBackupURL)
 	cleAPI, _ := p.sm.GetSecret(secrets.KeyBackupAPI)
 
-	client, err := NouveauClient(endpoint, cleAPI, p.appVersion, p.origine())
+	// La clé AVANT le client : celui-ci annonce son empreinte au serveur, ce
+	// qui permet de dire plus tard quel snapshot est lisible par quelle clé.
+	cle, err := p.CleChiffrement()
 	if err != nil {
 		return err
 	}
 
-	cle, err := p.CleChiffrement()
+	// ── La clé de chiffrement ne doit JAMAIS être la clé API ────────────────
+	//
+	// `clients.api_key` est stockée EN CLAIR dans la base du mini-SaaS et
+	// affichée dans son interface d'administration. Si la clé de chiffrement
+	// porte la même valeur, le serveur détient de quoi déchiffrer les
+	// sauvegardes — et la propriété centrale du dispositif, « une fuite de
+	// l'hébergement ne livre aucune facture », ne tient plus.
+	//
+	// Le contrôle est ici, sur le chemin d'EXÉCUTION, et pas seulement à la
+	// saisie : c'est le seul endroit qui rattrape un poste déjà configuré de
+	// travers. Il vaut mieux ne pas sauvegarder du tout que sauvegarder en
+	// donnant la clé au serveur — l'erreur remonte à l'écran, elle ne passe
+	// pas inaperçue.
+	if err := clesDistinctes(hex.EncodeToString(cle), cleAPI); err != nil {
+		return err
+	}
+
+	client, err := NouveauClient(endpoint, cleAPI, p.appVersion, p.origine(), cle)
 	if err != nil {
 		return err
 	}
@@ -362,4 +381,22 @@ func (p *Planificateur) noter(err error) {
 		etat.DerniereErreur = err.Error()
 	}
 	p.ecrireEtat(etat)
+}
+
+// clesDistinctes refuse une clé de chiffrement égale à la clé API.
+//
+// Comparaison insensible à la casse : les deux sont de l'hexadécimal, et
+// `AB12` et `ab12` désignent les mêmes octets. Une comparaison stricte
+// laisserait passer une majuscule.
+func clesDistinctes(cleChiffrement, cleAPI string) error {
+	a := strings.ToLower(strings.TrimSpace(cleChiffrement))
+	b := strings.ToLower(strings.TrimSpace(cleAPI))
+	if a != "" && a == b {
+		return fmt.Errorf(
+			"la clé de chiffrement est identique à la clé API : le serveur la connaît " +
+				"et pourrait déchiffrer les sauvegardes. Générez une clé DISTINCTE " +
+				"(Réglages > Sauvegarde > Configurer > Générer), posez-la sur tous les " +
+				"postes, puis effacez les sauvegardes déjà déposées")
+	}
+	return nil
 }

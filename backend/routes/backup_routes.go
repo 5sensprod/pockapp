@@ -157,6 +157,15 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 		}
 
 		if req.APIKey != "" {
+			// Le même refus, dans l'autre sens : on peut aussi arriver à
+			// l'égalité en changeant la clé API après coup.
+			if cleChiffrement, e := sm.GetSecret(secrets.KeyBackupChiffrement); e == nil {
+				if strings.EqualFold(strings.TrimSpace(req.APIKey), strings.TrimSpace(cleChiffrement)) {
+					return c.JSON(http.StatusBadRequest, map[string]any{
+						"error": "Cette clé API est identique à la clé de chiffrement de ce poste. Elles doivent être distinctes : la clé API est connue du serveur.",
+					})
+				}
+			}
 			if err := sm.SetSecret(secrets.KeyBackupAPI, req.APIKey); err != nil {
 				log.Printf("❌ backup : clé API non enregistrée : %v", err)
 				return c.JSON(http.StatusInternalServerError, map[string]any{
@@ -174,6 +183,21 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 				return c.JSON(http.StatusBadRequest, map[string]any{
 					"error": "La clé de chiffrement doit faire exactement 64 caractères hexadécimaux (256 bits)",
 				})
+			}
+
+			// Refus net si elle vaut la clé API. Celle-ci est stockée EN CLAIR
+			// dans le mini-SaaS : leur donner la même valeur reviendrait à
+			// confier la clé de déchiffrement au serveur qu'elle protège.
+			//
+			// Le piège est réel — il s'est produit le 2 septembre 2026 : les deux
+			// champs se ressemblent (64 caractères hexadécimaux), rien ne les
+			// distinguait à l'œil, et la sauvegarde fonctionnait parfaitement.
+			if cleAPIExistante, e := sm.GetSecret(secrets.KeyBackupAPI); e == nil {
+				if strings.EqualFold(strings.TrimSpace(req.EncryptionKey), strings.TrimSpace(cleAPIExistante)) {
+					return c.JSON(http.StatusBadRequest, map[string]any{
+						"error": "La clé de chiffrement ne peut pas être la clé API : le serveur la connaît en clair et pourrait déchiffrer vos sauvegardes. Utilisez « Générer » pour en obtenir une distincte.",
+					})
+				}
 			}
 
 			// Changer la clé n'invalide PAS les snapshots déjà déposés : ils
@@ -283,6 +307,9 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 			"configured":            sm.HasSecret(secrets.KeyBackupAPI),
 			"endpoint_url":          url,
 			"encryption_configured": sm.HasSecret(secrets.KeyBackupChiffrement),
+			// L'empreinte de la clé de CE poste. Comparée à celle de chaque
+			// snapshot, elle dit d'un coup d'œil lesquels sont lisibles ici.
+			"encryption_fingerprint": empreinteCleLocale(sm),
 			// La présence de la clé super-admin est ce qui fait apparaître
 			// l'interface de restauration. Sa VALEUR n'est jamais rendue.
 			"super_configured": sm.HasSecret(secrets.KeyBackupSuperAdmin),
@@ -626,6 +653,46 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 		})
 	}, requireAdmin)
 
+	// ── POST /api/backup/storage/purge ──────────────────────────────────────
+	//
+	// Efface du miroir les images dont le serveur a les octets, pour un client.
+	// Le SOCLE est épargné — l'effacer ferait renvoyer 1,6 Gio.
+	//
+	// Le cas qui l'exige : des images envoyées sous une clé de chiffrement qui
+	// a changé depuis. Le serveur les « connaît », donc ne les redemande
+	// jamais, et elles restent illisibles pour toujours.
+	router.POST("/api/backup/storage/purge", func(c echo.Context) error {
+		var req struct {
+			ClientID string `json:"client_id"`
+			Confirm  string `json:"confirm"`
+		}
+		if err := c.Bind(&req); err != nil || strings.TrimSpace(req.ClientID) == "" {
+			return c.JSON(http.StatusBadRequest, map[string]any{"error": "client_id requis"})
+		}
+		if req.Confirm != "purger" {
+			return c.JSON(http.StatusPreconditionRequired, map[string]any{
+				"error": "Confirmation manquante",
+			})
+		}
+
+		cs, err := clientSuper()
+		if err != nil {
+			return c.JSON(http.StatusPreconditionFailed, map[string]any{"error": err.Error()})
+		}
+
+		n, err := cs.PurgerStorage(req.ClientID)
+		if err != nil {
+			return c.JSON(http.StatusBadGateway, map[string]any{"error": err.Error()})
+		}
+
+		return c.JSON(http.StatusOK, map[string]any{
+			"success": true,
+			"deleted": n,
+			"message": fmt.Sprintf(
+				"%d image(s) effacée(s) du serveur. Le poste les renverra à sa prochaine sauvegarde.", n),
+		})
+	}, requireAdmin)
+
 	// ── POST /api/backup/storage/pull ───────────────────────────────────────
 	//
 	// Rapatrie les images du miroir dans le `storage/` de CE poste.
@@ -664,4 +731,21 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 	}, requireAdmin)
 
 	log.Println("✅ Backup routes registered successfully")
+}
+
+// empreinteCleLocale rend l'empreinte de la clé de chiffrement de ce poste,
+// ou une chaîne vide s'il n'en a pas.
+//
+// Ne lève jamais : c'est une information d'affichage, et l'écran doit se
+// charger même sans clé configurée.
+func empreinteCleLocale(sm *secrets.SecretManager) string {
+	brut, err := sm.GetSecret(secrets.KeyBackupChiffrement)
+	if err != nil || strings.TrimSpace(brut) == "" {
+		return ""
+	}
+	cle, err := hex.DecodeString(strings.TrimSpace(brut))
+	if err != nil {
+		return ""
+	}
+	return backup.EmpreinteCle(cle)
 }

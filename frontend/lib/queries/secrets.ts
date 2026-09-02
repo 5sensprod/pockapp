@@ -398,6 +398,12 @@ export interface BackupStatus {
 	 * faut penser à effacer en repartant.
 	 */
 	super_configured: boolean
+	/**
+	 * Empreinte de la clé de chiffrement de CE poste — huit caractères dérivés,
+	 * jamais la clé. Comparée à celle de chaque snapshot, elle dit lesquels
+	 * sont lisibles ici.
+	 */
+	encryption_fingerprint: string
 	admin_url: string
 	interval_hours: number
 	enabled: boolean
@@ -415,6 +421,8 @@ export interface SnapshotDistant {
 	chunk_count: number
 	app_version: string
 	origin: string
+	/** Empreinte de la clé qui a scellé ce snapshot. Vide sur les anciens. */
+	key_fingerprint: string
 	created_at: string
 	uploaded_at: string
 }
@@ -783,5 +791,36 @@ export function useMirrorStats(clientId: string, actif: boolean) {
 		},
 		enabled: actif && !!clientId,
 		staleTime: 60_000,
+	})
+}
+
+/**
+ * Purger les images du miroir, pour un client.
+ *
+ * Le cas qui l'exige : des images envoyées sous une clé de chiffrement qui a
+ * changé depuis. Le serveur les « connaît », donc ne les redemande jamais, et
+ * elles restent illisibles pour toujours. Les purger les rend inconnues, et le
+ * poste les renvoie sous la bonne clé.
+ *
+ * Le SOCLE n'est pas touché : l'effacer ferait renvoyer 1,6 Gio.
+ */
+export function usePurgeStorage() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation<
+		{ deleted: number; message: string },
+		Error,
+		{ clientId: string }
+	>({
+		mutationFn: async ({ clientId }) => {
+			return await fetchWithAuth(pb, '/api/backup/storage/purge', {
+				method: 'POST',
+				body: JSON.stringify({ client_id: clientId, confirm: 'purger' }),
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['backup-mirror'] })
+		},
 	})
 }

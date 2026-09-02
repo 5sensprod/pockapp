@@ -307,6 +307,55 @@ celle-ci se copie une fois et ne se réaffiche jamais. La stocker en clair
 ferait d'une lecture de cette base un accès à toutes les sauvegardes de tous
 les clients.
 
+### ⛔ La clé de chiffrement ne doit JAMAIS valoir la clé API
+
+C'est le défaut le plus dangereux rencontré sur ce mécanisme, parce qu'il **ne
+produit aucun symptôme** : les sauvegardes partent, se restaurent, les
+empreintes concordent — et la protection n'existe plus.
+
+`clients.api_key` est stockée **en clair** dans la base du mini-SaaS et
+affichée dans son interface d'administration. Si la clé de chiffrement porte la
+même valeur, **le serveur détient de quoi déchiffrer ce qu'il stocke**, et la
+propriété centrale du dispositif tombe.
+
+Arrivé le 2 septembre 2026 : les deux champs se ressemblent — 64 caractères
+hexadécimaux chacun — et rien à l'écran ne les distinguait.
+
+Trois gardes désormais :
+
+- **refus à la saisie**, dans les deux sens (poser une clé API égale à la clé
+  de chiffrement est refusé aussi) ;
+- **refus à l'exécution** (`clesDistinctes`, `planificateur.go`) — c'est celui
+  qui compte, il rattrape un poste déjà configuré de travers, et il vaut mieux
+  ne pas sauvegarder du tout que sauvegarder en donnant la clé au serveur ;
+- **quatre tests** (`cles_test.go`), dont la comparaison insensible à la casse :
+  `AB12` et `ab12` désignent les mêmes octets, une comparaison stricte
+  rouvrirait le trou.
+
+**Réparation, si le cas se présente** : générer une clé neuve, la poser sur
+tous les postes, puis **effacer tout ce qui est déjà sur le serveur** —
+snapshots et images. Ce qui a été déposé sous l'ancienne valeur reste
+déchiffrable par quiconque lit la base du mini-SaaS.
+
+### L'empreinte de clé
+
+Chaque snapshot annonce l'empreinte de la clé qui l'a scellé — huit caractères
+dérivés par SHA-256, jamais la clé. L'écran marque alors les lignes illisibles
+ici :
+
+```
+20260902T163012Z-…  AXE-CAISSE                      ← lisible
+20260902T161045Z-…  AXE-CAISSE  ⚠ autre clé (ab12cd34)
+```
+
+Sans elle, une clé qui ne correspond pas ne se manifeste que par « sceau
+invalide » au moment de restaurer : un message exact, et inutilisable — il ne
+dit ni quelle clé manque, ni lesquels des snapshots sont lisibles. Deux postes
+peuvent aussi comparer leurs empreintes pour vérifier qu'ils partagent la même
+clé, sans jamais se la montrer.
+
+---
+
 Chaque usage d'une clé super-admin est **journalisé** (`backup_super_log`) —
 lectures comprises. Pour une suppression, c'est la seule trace qui restera.
 
@@ -428,6 +477,7 @@ sauvegarde ne doit empêcher un Z d'être scellé.
 | `backend/backup/envoi.go` | le protocole côté poste, avec reprise |
 | `backend/backup/planificateur.go` | l'horloge, le verrou, l'état |
 | `backend/backup/apres_z.go` | le déclenchement après chaque rapport Z |
+| `backend/backup/cles_test.go` | le gardien « chiffrement ≠ clé API » |
 | `backend/backup/storage.go` | l'inventaire et l'envoi différentiel des images |
 | `backend/backup/super.go` | la clé super-admin : lister, télécharger, socle, rapatriement |
 | `backend/backup/restauration.go` | la restauration en deux temps |

@@ -113,6 +113,23 @@ func (s *Snapshot) Nettoyer() {
 	}
 }
 
+// EmpreinteCle rend huit caractères qui identifient une clé SANS la révéler.
+//
+// C'est un SHA-256 de la clé, tronqué. On ne peut pas remonter à la clé, mais
+// deux postes peuvent comparer d'un coup d'œil s'ils partagent la même — et
+// un snapshot peut annoncer avec quelle clé il a été scellé.
+//
+// Sans elle, une clé qui ne correspond pas ne se manifeste que par « sceau
+// invalide » au moment de la restauration : un message exact, et inutilisable.
+// On ne sait ni quelle clé manque, ni lesquels des snapshots sont lisibles.
+func EmpreinteCle(cle []byte) string {
+	if len(cle) == 0 {
+		return ""
+	}
+	somme := sha256.Sum256(cle)
+	return hex.EncodeToString(somme[:4])
+}
+
 // NouvelID fabrique un identifiant de snapshot lisible et triable.
 // Forme : 20260901T173000Z-a1b2c3d4
 func NouvelID(t time.Time) string {

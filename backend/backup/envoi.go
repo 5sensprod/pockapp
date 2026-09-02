@@ -88,6 +88,12 @@ type Manifeste struct {
 	// mauvais. C'est de l'IDENTITÉ, pas de l'autorité : elle ne donne aucun
 	// droit, elle dit seulement d'où ça vient.
 	Origine string `json:"origin,omitempty"`
+
+	// EmpreinteCle identifie la clé qui a scellé ce snapshot, sans la révéler
+	// (huit caractères dérivés). Elle permet de dire à l'écran « celui-ci a été
+	// chiffré avec une AUTRE clé » au lieu de laisser découvrir un « sceau
+	// invalide » au moment où l'on croyait restaurer.
+	EmpreinteCle string `json:"key_fingerprint,omitempty"`
 }
 
 // Etat est la réponse de `?action=etat` : ce que le serveur a déjà.
@@ -105,6 +111,11 @@ type Client struct {
 	AppVersion string
 	Origine    string
 
+	// cle sert UNIQUEMENT à calculer l'empreinte annoncée au serveur. Le
+	// chiffrement, lui, se fait ailleurs (snapshot.go) : ce client ne chiffre
+	// rien, il transporte.
+	cle []byte
+
 	http *http.Client
 }
 
@@ -114,7 +125,7 @@ type Client struct {
 // corps transporte des factures chiffrées, mais la clé d'API, elle, voyage en
 // clair dans un en-tête. Sur du HTTP simple, elle est lisible par le réseau du
 // magasin. On refuse donc de partir.
-func NouveauClient(endpoint, cleAPI, appVersion, origine string) (*Client, error) {
+func NouveauClient(endpoint, cleAPI, appVersion, origine string, cle []byte) (*Client, error) {
 	endpoint = strings.TrimSpace(endpoint)
 	if endpoint == "" {
 		return nil, fmt.Errorf("URL de sauvegarde non configurée")
@@ -135,6 +146,7 @@ func NouveauClient(endpoint, cleAPI, appVersion, origine string) (*Client, error
 		CleAPI:     cleAPI,
 		AppVersion: appVersion,
 		Origine:    origine,
+		cle:        cle,
 		http:       &http.Client{Timeout: delaiTranche},
 	}, nil
 }
@@ -317,15 +329,16 @@ func (c *Client) Valider(idSnapshot string) error {
 // tranche sur vingt ne réexpédie que les cinq dernières.
 func (c *Client) Envoyer(snap *Snapshot) error {
 	m := Manifeste{
-		IDSnapshot:  snap.ID,
-		CreeLe:      snap.CreeLe.UTC().Format(time.RFC3339),
-		Algo:        AlgoChiffrement,
-		TailleClair: snap.TailleClaire,
-		SHA256Clair: snap.SHA256Clair,
-		TailleChiff: snap.TailleChiffree,
-		NbTranches:  snap.NbTranches,
-		AppVersion:  c.AppVersion,
-		Origine:     c.Origine,
+		IDSnapshot:   snap.ID,
+		CreeLe:       snap.CreeLe.UTC().Format(time.RFC3339),
+		Algo:         AlgoChiffrement,
+		TailleClair:  snap.TailleClaire,
+		SHA256Clair:  snap.SHA256Clair,
+		TailleChiff:  snap.TailleChiffree,
+		NbTranches:   snap.NbTranches,
+		AppVersion:   c.AppVersion,
+		Origine:      c.Origine,
+		EmpreinteCle: EmpreinteCle(c.cle),
 	}
 
 	etat, err := c.Init(m)

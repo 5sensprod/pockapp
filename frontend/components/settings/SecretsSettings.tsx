@@ -37,6 +37,7 @@ import {
 	useDeleteSuperKey,
 	usePrepareRestore,
 	usePullStorage,
+	usePurgeStorage,
 	useRemoteSnapshots,
 	useRestoreStatus,
 	useStorageLocal,
@@ -715,16 +716,20 @@ function LigneMiroirClient({
 	actif,
 	onDeclarer,
 	onRapatrier,
+	onPurger,
 	declarationEnCours,
 	rapatriementEnCours,
+	purgeEnCours,
 }: {
 	clientId: string
 	clientNom: string
 	actif: boolean
 	onDeclarer: () => void
 	onRapatrier: () => void
+	onPurger: () => void
 	declarationEnCours: boolean
 	rapatriementEnCours: boolean
+	purgeEnCours: boolean
 }) {
 	const miroir = useMirrorStats(clientId, actif)
 	const socleDeclare = (miroir.data?.baseline ?? 0) > 0
@@ -773,6 +778,22 @@ function LigneMiroirClient({
 					)}
 					Rapatrier les images
 				</Button>
+				{(miroir.data?.with_bytes ?? 0) > 0 && (
+					<Button
+						variant='ghost'
+						size='sm'
+						className='text-destructive hover:text-destructive'
+						onClick={onPurger}
+						disabled={purgeEnCours}
+						title="Effacer les images du serveur pour qu'elles soient renvoyées"
+					>
+						{purgeEnCours ? (
+							<Loader2 className='h-4 w-4 animate-spin' />
+						) : (
+							<Trash2 className='h-4 w-4' />
+						)}
+					</Button>
+				)}
 			</div>
 		</div>
 	)
@@ -804,6 +825,7 @@ function BackupSection() {
 	const storageLocal = useStorageLocal()
 	const declarerSocle = useDeclareBaseline()
 	const rapatrier = usePullStorage()
+	const purger = usePurgeStorage()
 	const save = useSetBackupSettings()
 	const deleteKey = useDeleteBackupKey()
 	const run = useRunBackup()
@@ -874,6 +896,26 @@ function BackupSection() {
 	}
 
 	const handleGenerate = () => {
+		// Un avertissement, et pas une simple génération.
+		//
+		// Ce bouton a coûté une demi-journée le 2 septembre 2026 : cliqué sur le
+		// poste d'un client, il y a créé une clé propre à cette machine. Les
+		// sauvegardes partaient, se voyaient dans l'inventaire, et n'étaient
+		// lisibles par personne d'autre. Le geste juste, sur tout poste sauf le
+		// premier, est de COLLER la clé de l'éditeur.
+		if (
+			!confirm(
+				status?.encryption_configured
+					? 'Générer une NOUVELLE clé ?\n\n' +
+							"Les sauvegardes déjà déposées resteront chiffrées avec l'ANCIENNE et deviendront illisibles ici.\n\n" +
+							"Pour partager les sauvegardes entre postes, collez plutôt la clé de l'éditeur dans le champ ci-dessus."
+					: 'Générer une clé propre à CE poste ?\n\n' +
+							'À ne faire que sur le PREMIER poste du parc.\n\n' +
+							"Sur le poste d'un client, collez plutôt la clé de l'éditeur : sinon ses sauvegardes ne seront lisibles que par cette machine — celle qui tombera en panne.",
+			)
+		)
+			return
+
 		// Générée DANS LE NAVIGATEUR, par le générateur cryptographique de la
 		// plateforme, et affichée pour être copiée AVANT enregistrement : c'est
 		// tout l'intérêt de la fournir plutôt que de la laisser naître sur le
@@ -1003,6 +1045,29 @@ function BackupSection() {
 			)
 		} catch (error: any) {
 			toast.error(error.message || 'Erreur lors du rapatriement')
+		}
+	}
+
+	const handlePurger = async (clientId: string, clientNom: string) => {
+		if (
+			!confirm(
+				`Effacer les images de « ${clientNom} » du serveur ?
+
+` +
+					`Le socle n'est PAS touché.
+
+` +
+					`À faire quand ces images ont été envoyées sous une ancienne clé de chiffrement : ` +
+					`le serveur les connaît, donc ne les redemande jamais, et elles restent illisibles. ` +
+					`Après la purge, le poste les renverra sous la bonne clé.`,
+			)
+		)
+			return
+		try {
+			const res = await purger.mutateAsync({ clientId })
+			toast.success(res.message)
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la purge')
 		}
 	}
 
@@ -1333,6 +1398,14 @@ function BackupSection() {
 								</div>
 							)}
 
+							{status?.encryption_fingerprint && (
+								<p className='text-xs text-muted-foreground'>
+									Empreinte de la clé de ce poste :{' '}
+									<code>{status.encryption_fingerprint}</code> — à comparer avec
+									celle des autres postes.
+								</p>
+							)}
+
 							<p className='text-xs text-amber-600'>
 								Le serveur ne l'a pas —{' '}
 								<strong>la perdre perd toutes les sauvegardes</strong>. À
@@ -1473,6 +1546,17 @@ function BackupSection() {
 												<td className='py-2 pr-3'>{snap.client_name}</td>
 												<td className='py-2 pr-3 text-muted-foreground'>
 													{snap.origin || '—'}
+													{/* L'avertissement qui manquait : une clé qui ne
+													    correspond pas ne se manifestait que par un
+													    « sceau invalide » AU MOMENT de restaurer. */}
+													{snap.key_fingerprint &&
+														status?.encryption_fingerprint &&
+														snap.key_fingerprint !==
+															status.encryption_fingerprint && (
+															<div className='text-xs text-amber-600'>
+																⚠ autre clé ({snap.key_fingerprint})
+															</div>
+														)}
 												</td>
 												<td className='py-2 pr-3'>
 													{Math.round(snap.plain_size / 1024)} Kio
@@ -1573,6 +1657,8 @@ function BackupSection() {
 								rapatriementEnCours={rapatrier.isPending}
 								onDeclarer={() => handleDeclarerSocle(clientId, clientNom)}
 								onRapatrier={() => handleRapatrier(clientId, clientNom)}
+								onPurger={() => handlePurger(clientId, clientNom)}
+								purgeEnCours={purger.isPending}
 							/>
 						))}
 
