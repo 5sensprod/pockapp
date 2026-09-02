@@ -246,7 +246,7 @@ func (p *Planificateur) executerUneFois() error {
 	// travers. Il vaut mieux ne pas sauvegarder du tout que sauvegarder en
 	// donnant la clé au serveur — l'erreur remonte à l'écran, elle ne passe
 	// pas inaperçue.
-	if err := clesDistinctes(hex.EncodeToString(cle), cleAPI); err != nil {
+	if err := ClesDistinctes(hex.EncodeToString(cle), cleAPI); err != nil {
 		return err
 	}
 
@@ -383,12 +383,12 @@ func (p *Planificateur) noter(err error) {
 	p.ecrireEtat(etat)
 }
 
-// clesDistinctes refuse une clé de chiffrement égale à la clé API.
+// ClesDistinctes refuse une clé de chiffrement égale à la clé API.
 //
 // Comparaison insensible à la casse : les deux sont de l'hexadécimal, et
 // `AB12` et `ab12` désignent les mêmes octets. Une comparaison stricte
 // laisserait passer une majuscule.
-func clesDistinctes(cleChiffrement, cleAPI string) error {
+func ClesDistinctes(cleChiffrement, cleAPI string) error {
 	a := strings.ToLower(strings.TrimSpace(cleChiffrement))
 	b := strings.ToLower(strings.TrimSpace(cleAPI))
 	if a != "" && a == b {

@@ -136,6 +136,34 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 			})
 		}
 
+		// ── Les deux clés doivent rester DISTINCTES ─────────────────────────
+		//
+		// `clients.api_key` est stockée EN CLAIR dans le mini-SaaS et affichée
+		// dans son interface : leur donner la même valeur reviendrait à confier
+		// la clé de déchiffrement au serveur qu'elle protège.
+		//
+		// Le contrôle porte sur l'état FINAL, pas sur ce qui est en base.
+		// Comparer une clé soumise à l'ANCIENNE valeur de l'autre refusait la
+		// correction elle-même : saisir les deux clés ensemble, précisément
+		// pour sortir d'une configuration fautive, était rejeté parce que la
+		// nouvelle clé API valait l'ancienne clé de chiffrement. Mesuré le
+		// 3 septembre 2026.
+		//
+		// Et il a lieu AVANT toute écriture : valider au fil de l'eau laissait
+		// la première clé enregistrée et la seconde refusée, donc le poste dans
+		// un état que personne n'avait demandé.
+		finaleAPI := req.APIKey
+		if finaleAPI == "" {
+			finaleAPI, _ = sm.GetSecret(secrets.KeyBackupAPI)
+		}
+		finaleChiffrement := req.EncryptionKey
+		if finaleChiffrement == "" {
+			finaleChiffrement, _ = sm.GetSecret(secrets.KeyBackupChiffrement)
+		}
+		if err := backup.ClesDistinctes(finaleChiffrement, finaleAPI); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		}
+
 		if req.EndpointURL != "" {
 			// HTTPS exigé ici AUSSI, et pas seulement au moment de l'envoi.
 			// Refuser à la saisie dit pourquoi tout de suite, au lieu de
@@ -157,15 +185,6 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 		}
 
 		if req.APIKey != "" {
-			// Le même refus, dans l'autre sens : on peut aussi arriver à
-			// l'égalité en changeant la clé API après coup.
-			if cleChiffrement, e := sm.GetSecret(secrets.KeyBackupChiffrement); e == nil {
-				if strings.EqualFold(strings.TrimSpace(req.APIKey), strings.TrimSpace(cleChiffrement)) {
-					return c.JSON(http.StatusBadRequest, map[string]any{
-						"error": "Cette clé API est identique à la clé de chiffrement de ce poste. Elles doivent être distinctes : la clé API est connue du serveur.",
-					})
-				}
-			}
 			if err := sm.SetSecret(secrets.KeyBackupAPI, req.APIKey); err != nil {
 				log.Printf("❌ backup : clé API non enregistrée : %v", err)
 				return c.JSON(http.StatusInternalServerError, map[string]any{
@@ -183,21 +202,6 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 				return c.JSON(http.StatusBadRequest, map[string]any{
 					"error": "La clé de chiffrement doit faire exactement 64 caractères hexadécimaux (256 bits)",
 				})
-			}
-
-			// Refus net si elle vaut la clé API. Celle-ci est stockée EN CLAIR
-			// dans le mini-SaaS : leur donner la même valeur reviendrait à
-			// confier la clé de déchiffrement au serveur qu'elle protège.
-			//
-			// Le piège est réel — il s'est produit le 2 septembre 2026 : les deux
-			// champs se ressemblent (64 caractères hexadécimaux), rien ne les
-			// distinguait à l'œil, et la sauvegarde fonctionnait parfaitement.
-			if cleAPIExistante, e := sm.GetSecret(secrets.KeyBackupAPI); e == nil {
-				if strings.EqualFold(strings.TrimSpace(req.EncryptionKey), strings.TrimSpace(cleAPIExistante)) {
-					return c.JSON(http.StatusBadRequest, map[string]any{
-						"error": "La clé de chiffrement ne peut pas être la clé API : le serveur la connaît en clair et pourrait déchiffrer vos sauvegardes. Utilisez « Générer » pour en obtenir une distincte.",
-					})
-				}
 			}
 
 			// Changer la clé n'invalide PAS les snapshots déjà déposés : ils
