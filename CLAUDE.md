@@ -85,8 +85,17 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    utilisent `gemini-3.1-flash-lite` ; Google Search utilise
    `gemini-2.5-flash-lite`, dont le niveau gratuit accepte le grounding. Le
    renderer appelle la route locale authentifiée et restitue les sources. La
-   clé `GEMINI_API_KEY` reste dans le processus Go et part dans l'en-tête
-   `x-goog-api-key`, jamais dans le bundle ni dans l'URL.
+   clé reste dans le processus Go et part dans l'en-tête `x-goog-api-key`,
+   jamais dans le bundle ni dans l'URL. Depuis le 2026-09-03 elle est un
+   **secret chiffré** (`secrets.KeyGeminiAPI`, `gemini_api_key`), saisi dans
+   « Clés API & Secrets » et servi par `/api/settings/gemini` ; la variable
+   d'environnement `GEMINI_API_KEY` n'est plus qu'un **repli**, pour le poste
+   de développement qui a un `.env`. Avant cette date elle n'était lue QUE
+   dans l'environnement : sur un poste client, où aucun `.env` n'accompagne
+   l'exécutable, toutes les routes `/api/ai/*` répondaient « Gemini n'est pas
+   configuré sur ce poste » — y compris avec la clé des notifications
+   renseignée, qui est un autre service et ne sert qu'à DÉCLARER les jetons
+   consommés à `usage.php`.
 
 7. **Miroir des images du catalogue** — `backend/routes/site_images_routes.go` —
    `https://axemusique.shop/server/api/images-sync.php`, en-tête `X-API-Key` et

@@ -49,6 +49,7 @@ import {
 	HeartPulse,
 	ImageIcon,
 	MoreHorizontal,
+	Printer,
 	Tags,
 	Trash2,
 	Truck,
@@ -56,6 +57,7 @@ import {
 import { useState } from 'react'
 
 import type { StockProductRow } from '@/lib/queries/catalog-rows'
+import { PrintLabelDialog } from './PrintLabelDialog'
 
 interface ProductTableProps {
 	data: StockProductRow[]
@@ -87,6 +89,9 @@ export function ProductTable({
 	sorting: controlledSorting,
 	onSortingChange,
 }: ProductTableProps) {
+	// La ligne dont on imprime l'étiquette. Une seule boîte pour toute la
+	// table : chaque ligne n'a qu'à dire laquelle.
+	const [labelRow, setLabelRow] = useState<StockProductRow | null>(null)
 	const [localSorting, setLocalSorting] = useState<SortingState>([])
 	const sorting = controlledSorting ?? localSorting
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -349,6 +354,17 @@ export function ProductTable({
 						<DropdownMenuContent align='end'>
 							<DropdownMenuLabel>Actions</DropdownMenuLabel>
 							<DropdownMenuItem
+								onClick={(event) => {
+									// La ligne est cliquable et ouvre la fiche : sans cela,
+									// imprimer ouvrirait AUSSI le produit.
+									event.stopPropagation()
+									setLabelRow(product)
+								}}
+							>
+								<Printer className='mr-2 h-4 w-4' />
+								Imprimer l’étiquette…
+							</DropdownMenuItem>
+							<DropdownMenuItem
 								onClick={() =>
 									navigator.clipboard.writeText(product.barcode || '')
 								}
@@ -524,6 +540,19 @@ export function ProductTable({
 					</div>
 				</div>
 			)}
+
+			<PrintLabelDialog
+				product={{
+					designation: labelRow?.designation ?? undefined,
+					sku: labelRow?.sku ?? undefined,
+					barcode: labelRow?.barcode ?? undefined,
+					price_ttc: labelRow?.price_ttc ?? undefined,
+				}}
+				open={labelRow !== null}
+				onOpenChange={(open) => {
+					if (!open) setLabelRow(null)
+				}}
+			/>
 		</div>
 	)
 }

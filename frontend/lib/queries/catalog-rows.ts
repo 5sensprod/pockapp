@@ -20,6 +20,10 @@ import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 export interface StockProductRow {
 	id: string
 	name: string
+	/** LE NOM DU COMPTOIR — celui du ticket de caisse ET de l'étiquette
+	 *  produit. `name` est le titre de la page du site : il ne s'imprime
+	 *  jamais (`catalog-products.ts:94`). */
+	designation?: string | null
 	/** Date de création PocketBase, utilisée comme date d'ajout au catalogue. */
 	created?: string | null
 	sku?: string | null
@@ -55,6 +59,7 @@ export function toStockRow(
 	return {
 		id: product.id,
 		name: product.name,
+		designation: product.designation,
 		created: product.created,
 		sku: product.sku,
 		barcode: product.barcode,

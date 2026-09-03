@@ -270,6 +270,21 @@ func geminiErrorDetail(raw []byte) string {
 	return truncateRunes(compactWhitespace(string(raw)), 500)
 }
 
+// resoudreCleGemini rend la clé Google à utiliser pour ce poste.
+//
+// Le réglage chiffré (app_settings) prime, la variable d'environnement sert de
+// repli : le poste de développement continue de fonctionner avec son `.env`,
+// et une installation client se configure depuis l'écran des réglages, sans
+// fichier à déposer à côté de l'exécutable.
+func resoudreCleGemini(pb *pocketbase.PocketBase) string {
+	if cle, err := secrets.NewSecretManager(pb).GetSecret(secrets.KeyGeminiAPI); err == nil {
+		if cle = strings.TrimSpace(cle); cle != "" {
+			return cle
+		}
+	}
+	return strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
+}
+
 func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 	client := &http.Client{Timeout: geminiTimeout}
 	usageClient := &http.Client{Timeout: pocketAppUsageTimeout}
@@ -280,7 +295,7 @@ func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 			return apis.NewForbiddenError("Non authentifié", nil)
 		}
 
-		apiKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
+		apiKey := resoudreCleGemini(pb)
 		if apiKey == "" {
 			return c.JSON(http.StatusServiceUnavailable, map[string]string{
 				"error": "Gemini n'est pas configuré sur ce poste.",
@@ -312,7 +327,7 @@ func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 					})
 				case http.StatusUnauthorized, http.StatusForbidden:
 					return c.JSON(http.StatusServiceUnavailable, map[string]string{
-						"error": "La clé Gemini est refusée. Vérifie GEMINI_API_KEY.",
+						"error": "La clé Gemini est refusée. Vérifie la clé saisie dans les réglages.",
 					})
 				}
 			}
@@ -361,7 +376,7 @@ func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 			return apis.NewForbiddenError("Non authentifié", nil)
 		}
 
-		apiKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
+		apiKey := resoudreCleGemini(pb)
 		if apiKey == "" {
 			return c.JSON(http.StatusServiceUnavailable, map[string]string{
 				"error": "Gemini n'est pas configuré sur ce poste.",
@@ -410,7 +425,7 @@ func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 					})
 				case http.StatusUnauthorized, http.StatusForbidden:
 					return c.JSON(http.StatusServiceUnavailable, map[string]string{
-						"error": "La clé Gemini est refusée. Vérifie GEMINI_API_KEY.",
+						"error": "La clé Gemini est refusée. Vérifie la clé saisie dans les réglages.",
 					})
 				}
 			}

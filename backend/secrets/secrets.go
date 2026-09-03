@@ -72,6 +72,19 @@ const (
 	// DANS LA BASE DE DONNÉES du catalogue. Révoquer l'une ne doit pas
 	// condamner l'autre.
 	KeySiteCatalogAPI = "site_catalog_api_key"
+
+	// KeyGeminiAPI est la clé Google (x-goog-api-key) de l'assistant éditorial.
+	//
+	// Elle était lue UNIQUEMENT dans l'environnement, donc dans un `.env` posé
+	// à côté de l'exécutable — ce qu'aucune installation client n'a : chez le
+	// client, toutes les routes /api/ai/* répondaient « Gemini n'est pas
+	// configuré sur ce poste », y compris avec la clé des notifications
+	// renseignée, qui est un autre service (elle ne sert qu'à DÉCLARER les
+	// jetons consommés à usage.php, jamais à appeler Google).
+	//
+	// La variable d'environnement reste acceptée en repli, pour le poste de
+	// développement, mais le réglage prime.
+	KeyGeminiAPI = "gemini_api_key"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════

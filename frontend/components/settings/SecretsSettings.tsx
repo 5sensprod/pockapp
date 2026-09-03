@@ -25,30 +25,33 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import {
 	useBackupStatus,
+	useCancelRestore,
+	useDeclareBaseline,
 	useDeleteBackupKey,
+	useDeleteGeminiKey,
 	useDeleteNotificationKey,
 	useDeleteRemoteSnapshot,
 	useDeleteSiteCatalogKey,
 	useDeleteSitePublishKey,
-	useNotificationKeyStatus,
-	useCancelRestore,
-	useDeclareBaseline,
-	useMirrorStats,
 	useDeleteSuperKey,
+	useGeminiStatus,
+	useMirrorStats,
+	useNotificationKeyStatus,
 	usePrepareRestore,
 	usePullStorage,
 	usePurgeStorage,
 	useRemoteSnapshots,
 	useRestoreStatus,
-	useStorageLocal,
 	useRevealEncryptionKey,
 	useRunBackup,
 	useSetBackupSettings,
+	useSetGeminiKey,
 	useSetNotificationKey,
 	useSetSiteCatalog,
 	useSetSitePublish,
 	useSiteCatalogStatus,
 	useSitePublishStatus,
+	useStorageLocal,
 } from '@/lib/queries/secrets'
 import {
 	AlertCircle,
@@ -58,15 +61,16 @@ import {
 	EyeOff,
 	Globe,
 	HardDriveDownload,
+	History,
+	Images,
 	Key,
 	Loader2,
 	Play,
-	History,
-	Images,
 	Power,
 	RefreshCw,
 	Settings2,
 	ShieldAlert,
+	Sparkles,
 	Trash2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -92,6 +96,8 @@ export default function SecretsSettings() {
 			<SitePublishSection />
 			<Separator />
 			<SiteCatalogSection />
+			<Separator />
+			<GeminiSection />
 
 			<Separator />
 
@@ -670,6 +676,151 @@ function SiteCatalogSection() {
 					<Button
 						onClick={handleSave}
 						disabled={save.isPending || !hasSomethingToSave}
+					>
+						{save.isPending && (
+							<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+						)}
+						Enregistrer
+					</Button>
+				</div>
+			</CardContent>
+		</Card>
+	)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOUS-COMPOSANT - CLÉ GEMINI
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Cette clé n'était lue que dans l'environnement : sur un poste client, où
+// aucun `.env` n'accompagne l'exécutable, l'assistant répondait « Gemini n'est
+// pas configuré sur ce poste » même avec la clé des notifications renseignée —
+// qui est un autre service, et ne sert qu'à déclarer les jetons consommés.
+
+function GeminiSection() {
+	const { data: status, isLoading: statusLoading } = useGeminiStatus()
+	const save = useSetGeminiKey()
+	const deleteKey = useDeleteGeminiKey()
+
+	const [apiKey, setApiKey] = useState('')
+	const [showKey, setShowKey] = useState(false)
+
+	const handleSave = async () => {
+		const cle = apiKey.trim()
+		if (!cle) {
+			toast.error('La clé API est obligatoire')
+			return
+		}
+
+		try {
+			await save.mutateAsync(cle)
+			toast.success('Clé Gemini enregistrée')
+			setApiKey('')
+			setShowKey(false)
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la sauvegarde')
+		}
+	}
+
+	const handleDelete = async () => {
+		if (!confirm('Supprimer la clé Gemini ?')) return
+
+		try {
+			await deleteKey.mutateAsync()
+			toast.success('Clé Gemini supprimée')
+		} catch (error: any) {
+			toast.error(error.message || 'Erreur lors de la suppression')
+		}
+	}
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle className='flex items-center gap-2'>
+					<Sparkles className='h-5 w-5' />
+					Assistant éditorial (Gemini)
+				</CardTitle>
+				<CardDescription>
+					Clé Google utilisée pour rédiger les titres et les fiches produit.{' '}
+					<strong>Ce n'est pas la clé des notifications</strong> : celle-là
+					identifie le poste auprès du mini-SaaS et ne sert qu'à déclarer les
+					jetons consommés.
+				</CardDescription>
+			</CardHeader>
+			<CardContent className='space-y-4'>
+				<div className='flex items-center gap-2'>
+					<ConfiguredBadge
+						loading={statusLoading}
+						configured={!!status?.configured}
+						labels={['Assistant disponible', 'Clé non enregistrée']}
+					/>
+					{!statusLoading && status?.source === 'env' && (
+						<span className='text-xs text-muted-foreground'>
+							Clé lue dans le fichier <code>.env</code> du poste. Enregistrer
+							une clé ici la remplacera.
+						</span>
+					)}
+				</div>
+
+				<div className='space-y-2'>
+					<Label htmlFor='gemini-key'>
+						{status?.source === 'setting'
+							? "Nouvelle clé (remplacera l'actuelle)"
+							: 'Clé API Google'}
+					</Label>
+					<div className='relative'>
+						<Input
+							id='gemini-key'
+							type={showKey ? 'text' : 'password'}
+							placeholder='AIza…'
+							value={apiKey}
+							onChange={(e) => setApiKey(e.target.value)}
+							className='pr-10'
+							autoComplete='off'
+						/>
+						<Button
+							type='button'
+							variant='ghost'
+							size='icon'
+							className='absolute right-0 top-0 h-full px-3'
+							onClick={() => setShowKey(!showKey)}
+						>
+							{showKey ? (
+								<EyeOff className='h-4 w-4' />
+							) : (
+								<Eye className='h-4 w-4' />
+							)}
+						</Button>
+					</div>
+					<p className='text-xs text-muted-foreground'>
+						Celle du projet Google AI Studio. Enregistrée chiffrée, jamais
+						réaffichée, et elle ne descend jamais dans le navigateur : les
+						appels partent du processus Go.
+					</p>
+				</div>
+
+				<div className='flex items-center justify-between gap-2'>
+					{status?.source === 'setting' ? (
+						<Button
+							variant='destructive'
+							size='sm'
+							onClick={handleDelete}
+							disabled={deleteKey.isPending}
+						>
+							{deleteKey.isPending ? (
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							) : (
+								<Trash2 className='mr-2 h-4 w-4' />
+							)}
+							Supprimer la clé
+						</Button>
+					) : (
+						<span />
+					)}
+
+					<Button
+						onClick={handleSave}
+						disabled={save.isPending || !apiKey.trim()}
 					>
 						{save.isPending && (
 							<Loader2 className='mr-2 h-4 w-4 animate-spin' />

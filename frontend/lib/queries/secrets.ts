@@ -333,6 +333,67 @@ export function useSetSiteCatalog() {
 	})
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CLÉ GEMINI — ASSISTANT ÉDITORIAL
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Encore une clé distincte, et pour une raison mesurée : jusqu'ici elle n'était
+// lue QUE dans l'environnement (`.env` à côté de l'exécutable), qu'aucune
+// installation client ne porte. La clé des notifications, saisissable elle,
+// n'ouvre pas Gemini — elle ne sert qu'à déclarer les jetons consommés.
+//
+// `source` distingue le réglage du repli par variable d'environnement, pour
+// que le poste de développement ne s'affiche pas « non configuré ».
+
+export function useGeminiStatus() {
+	const pb = usePocketBase() as any
+
+	return useQuery<{
+		configured: boolean
+		source: 'setting' | 'env' | 'none'
+	}>({
+		queryKey: ['gemini-status'],
+		queryFn: async () => {
+			return await fetchWithAuth(pb, '/api/settings/gemini/status')
+		},
+	})
+}
+
+export function useSetGeminiKey() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (apiKey: string) => {
+			return await fetchWithAuth(pb, '/api/settings/gemini', {
+				method: 'POST',
+				body: JSON.stringify({ api_key: apiKey }),
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['gemini-status'] })
+			queryClient.invalidateQueries({ queryKey: ['settings'] })
+		},
+	})
+}
+
+export function useDeleteGeminiKey() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async () => {
+			return await fetchWithAuth(pb, '/api/settings/gemini', {
+				method: 'DELETE',
+			})
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['gemini-status'] })
+			queryClient.invalidateQueries({ queryKey: ['settings'] })
+		},
+	})
+}
+
 export function useDeleteSiteCatalogKey() {
 	const pb = usePocketBase() as any
 	const queryClient = useQueryClient()

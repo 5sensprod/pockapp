@@ -12,6 +12,7 @@ package routes
 import (
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"pocket-react/backend/secrets"
@@ -494,6 +495,85 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success": true,
 			"message": "Clé API d'export du catalogue supprimée",
+		})
+	}, requireAdmin)
+
+	// ─────────────────────────────────────────────────────────────────────
+	// CLÉ GEMINI (assistant éditorial)
+	// ─────────────────────────────────────────────────────────────────────
+	//
+	// Avant ces trois routes, la clé n'existait que dans l'environnement : un
+	// `.env` à côté de l'exécutable, absent de toute installation client. La
+	// clé des notifications, elle, était bien saisissable — d'où la confusion,
+	// puisqu'elle n'ouvre pas Gemini mais seulement la déclaration d'usage.
+
+	// POST /api/settings/gemini - Enregistrer la clé Gemini
+	router.POST("/api/settings/gemini", func(c echo.Context) error {
+		var req struct {
+			APIKey string `json:"api_key"`
+		}
+
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "Données invalides",
+			})
+		}
+
+		req.APIKey = strings.TrimSpace(req.APIKey)
+		if req.APIKey == "" {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "La clé API est requise",
+			})
+		}
+
+		if err := sm.SetSecret(secrets.KeyGeminiAPI, req.APIKey); err != nil {
+			log.Printf("❌ Error saving Gemini key: %v", err)
+			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+				"error": "Erreur lors de la sauvegarde de la clé API",
+			})
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "Clé Gemini enregistrée",
+		})
+	}, requireAdmin)
+
+	// GET /api/settings/gemini/status - État de la configuration
+	//
+	// `configured` dit si l'assistant répondra, quelle que soit la provenance
+	// de la clé ; `source` dit laquelle des deux sert, pour que l'écran
+	// n'affiche pas « non configuré » sur un poste qui marche par son `.env`.
+	router.GET("/api/settings/gemini/status", func(c echo.Context) error {
+		parReglage := sm.HasSecret(secrets.KeyGeminiAPI)
+		parEnv := strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) != ""
+
+		source := "none"
+		if parReglage {
+			source = "setting"
+		} else if parEnv {
+			source = "env"
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"configured": parReglage || parEnv,
+			"source":     source,
+		})
+	}, requireAdmin)
+
+	// DELETE /api/settings/gemini - Supprimer la clé
+	router.DELETE("/api/settings/gemini", func(c echo.Context) error {
+		log.Println("🗑️ DELETE /api/settings/gemini")
+
+		if err := sm.DeleteSecret(secrets.KeyGeminiAPI); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]interface{}{
+				"error": "Clé API non trouvée",
+			})
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "Clé Gemini supprimée",
 		})
 	}, requireAdmin)
 
