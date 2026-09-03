@@ -176,7 +176,7 @@ export function resolveNextAction(
 			secondary: [PDF, action('open_converted', 'Ouvrir la facture issue')],
 			menu: [
 				EMAIL,
-				...(current.is_paid && summary.remainingTtc > 0
+				...(current.is_paid && summary.refundableTtc > 0
 					? [action('refund_ticket', 'Rembourser le client')]
 					: []),
 			],
@@ -312,7 +312,7 @@ export function resolveNextAction(
 			: 'Facture soldée. Plus rien à encaisser.',
 		secondary: [PDF, EMAIL],
 		menu: [
-			...(summary.remainingTtc > 0
+			...(summary.refundableTtc > 0
 				? [action('refund_invoice', 'Rembourser le client')]
 				: []),
 			action('create_deposit', 'Demander un acompte', {

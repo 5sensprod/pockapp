@@ -73,6 +73,13 @@ export interface InvoiceFinancialSummary {
 	/** total − acomptes encaissés − avoirs. Le seul chiffre annoncé au client. */
 	readonly remainingTtc: number
 
+	/**
+	 * Ce qui peut encore être REMBOURSÉ : total − avoirs déjà émis.
+	 * À ne pas confondre avec `remainingTtc`, qui tombe à zéro dès que le
+	 * document est réglé — c'est précisément le cas où l'on rembourse.
+	 */
+	readonly refundableTtc: number
+
 	/** Le montant que l'encaissement doit demander pour CE document. */
 	readonly amountToCollectTtc: number
 
@@ -136,6 +143,10 @@ export function computeInvoiceSummary(
 	const remainingTtc = estRegle
 		? 0
 		: Math.max(0, round2(totalTtc - depositsCollectedTtc - creditNotesTtc))
+
+	// Un remboursement ne regarde pas ce qui reste DÛ mais ce qui a été
+	// encaissé et n'a pas encore été rendu : total − avoirs.
+	const refundableTtc = Math.max(0, round2(totalTtc - creditNotesTtc))
 
 	// Un acompte ou une facture de solde s'encaisse pour SON montant ; la
 	// parente, pour ce qu'il reste.
@@ -224,6 +235,7 @@ export function computeInvoiceSummary(
 		creditNotesTtc,
 		creditNotesCount: creditNotes.length,
 		remainingTtc,
+		refundableTtc,
 		amountToCollectTtc,
 		isTrivial,
 		lines,

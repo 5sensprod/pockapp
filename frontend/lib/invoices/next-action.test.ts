@@ -134,6 +134,23 @@ describe('resolveNextAction — les treize états', () => {
 		expect(r.absenceReason).toMatch(/soldée/i)
 	})
 
+	// Régression : « Rembourser le client » avait disparu d'une facture payée
+	// au comptant. Le menu se fondait sur `remainingTtc`, qui vaut ZÉRO dès
+	// qu'un document est réglé — c'est-à-dire exactement quand on rembourse.
+	// Le bon chiffre est `refundableTtc` : total − avoirs déjà émis.
+	it('6. soldée : le remboursement reste offert', () => {
+		const r = resoudre({ current: facture({ is_paid: true }) })
+		expect(r.menu.map((a) => a.id)).toContain('refund_invoice')
+	})
+
+	it('7. avoir couvrant tout : plus rien à rembourser', () => {
+		const r = resoudre({
+			current: facture({ is_paid: true, credit_notes_total: 1200 }),
+			creditNotes: [facture({ id: 'av1', invoice_type: 'credit_note' })],
+		})
+		expect(r.menu.map((a) => a.id)).not.toContain('refund_invoice')
+	})
+
 	it("7. avoir couvrant tout : plus rien à encaisser, et on le dit", () => {
 		const r = resoudre({
 			current: facture({ credit_notes_total: 1200 }),

@@ -242,6 +242,11 @@ export function QuoteEditPage() {
 	const [customerSearch, setCustomerSearch] = useState('')
 	const [productPickerOpen, setProductPickerOpen] = useState(false)
 	const [productSearch, setProductSearch] = useState('')
+	// Ligne libre : produit hors catalogue, prix TTC saisi à la main.
+	const [freeItemDialogOpen, setFreeItemDialogOpen] = useState(false)
+	const [freeName, setFreeName] = useState('')
+	const [freePriceRaw, setFreePriceRaw] = useState('')
+	const [freeTva, setFreeTva] = useState('20')
 	const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
 
 	// Queries
@@ -394,6 +399,48 @@ export function QuoteEditPage() {
 		setItems((prev) => [...prev, { ...draft, ...totals }])
 		setProductPickerOpen(false)
 		setProductSearch('')
+	}
+
+	// Ajoute une ligne sans `product_id` : hors catalogue, donc hors mouvement
+	// de stock — les conversions filtrent déjà sur `product_id`.
+	const addFreeItem = () => {
+		const name = freeName.trim()
+		if (!name) {
+			toast.error('Veuillez saisir une désignation')
+			return
+		}
+		const parsed = parseDecimalInput(freePriceRaw)
+		if (parsed === null || parsed < 0) {
+			toast.error('Veuillez saisir un prix TTC valide')
+			return
+		}
+		const unitTtc = round2(parsed)
+		const id = `item-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+		const draft: UiQuoteItem = {
+			id,
+			name,
+			designation: name,
+			sku: '',
+			displayMode: 'name',
+			quantity: 1,
+			tva_rate: Number(freeTva),
+			unit_price_ttc: unitTtc,
+			unitPriceRaw: unitTtc.toString(),
+			lineDiscountMode: 'percent',
+			lineDiscountValue: 0,
+			lineDiscountRaw: '',
+			unit_price_ht: 0,
+			total_ht: 0,
+			total_ttc: 0,
+		}
+
+		const totals = computeLineTotals(draft)
+		setItems((prev) => [...prev, { ...draft, ...totals }])
+		setFreeItemDialogOpen(false)
+		setFreeName('')
+		setFreePriceRaw('')
+		setFreeTva('20')
 	}
 
 	const updateQuantity = (itemId: string, delta: number) => {
@@ -984,14 +1031,25 @@ export function QuoteEditPage() {
 				<Card>
 					<CardHeader className='flex flex-row items-center justify-between'>
 						<CardTitle className='text-lg'>Produits</CardTitle>
-						<Button
-							size='sm'
-							className='gap-2'
-							onClick={() => setProductPickerOpen(true)}
-						>
-							<Plus className='h-4 w-4' />
-							Ajouter
-						</Button>
+						<div className='flex items-center gap-2'>
+							<Button
+								size='sm'
+								variant='outline'
+								className='gap-2'
+								onClick={() => setFreeItemDialogOpen(true)}
+							>
+								<Plus className='h-4 w-4' />
+								Hors catalogue
+							</Button>
+							<Button
+								size='sm'
+								className='gap-2'
+								onClick={() => setProductPickerOpen(true)}
+							>
+								<Plus className='h-4 w-4' />
+								Ajouter
+							</Button>
+						</div>
 					</CardHeader>
 					<CardContent>
 						{items.length === 0 ? (
@@ -1324,6 +1382,47 @@ export function QuoteEditPage() {
 								</ul>
 							)}
 						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
+			<Dialog open={freeItemDialogOpen} onOpenChange={setFreeItemDialogOpen}>
+				<DialogContent className='max-w-lg'>
+					<DialogHeader>
+						<DialogTitle>Produit hors catalogue</DialogTitle>
+						<DialogDescription>
+							Saisissez une désignation et son prix de vente TTC.
+						</DialogDescription>
+					</DialogHeader>
+					<div className='space-y-3'>
+						<Input
+							placeholder='Désignation'
+							value={freeName}
+							onChange={(e) => setFreeName(e.target.value)}
+						/>
+						<div className='flex gap-2'>
+							<Input
+								className='flex-1'
+								inputMode='decimal'
+								placeholder='Prix TTC'
+								value={freePriceRaw}
+								onChange={(e) => setFreePriceRaw(e.target.value)}
+							/>
+							<Select value={freeTva} onValueChange={setFreeTva}>
+								<SelectTrigger className='w-32'>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value='20'>TVA 20 %</SelectItem>
+									<SelectItem value='10'>TVA 10 %</SelectItem>
+									<SelectItem value='5.5'>TVA 5,5 %</SelectItem>
+									<SelectItem value='0'>TVA 0 %</SelectItem>
+								</SelectContent>
+							</Select>
+						</div>
+						<Button type='button' className='w-full' onClick={addFreeItem}>
+							<Plus className='h-4 w-4 mr-2' />
+							Ajouter cette ligne
+						</Button>
 					</div>
 				</DialogContent>
 			</Dialog>
