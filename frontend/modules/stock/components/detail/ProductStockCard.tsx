@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 
 import {
 	DetailCard,
@@ -20,18 +19,19 @@ import {
 import type { ProductDetailValues } from './product-detail-form'
 
 export function ProductStockCard({
-	product,
 	editing,
 	form,
+	embedded = false,
 }: {
-	product: CatalogProductShape
 	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
+	embedded?: boolean
 }) {
-	return (
-		<DetailCard title='Stock'>
+	const values = form.watch(['stock', 'min_stock', 'type', 'manage_stock'])
+	const content = (
+		<>
 			{editing ? (
-				<div className='grid gap-4 sm:grid-cols-2'>
+				<div className='grid items-end gap-5 sm:grid-cols-2 xl:grid-cols-[150px_150px_180px_minmax(0,1fr)]'>
 					<NumberField form={form} name='stock' label='Stock' />
 					<NumberField
 						form={form}
@@ -47,7 +47,7 @@ export function ProductStockCard({
 								<FormLabel>Type</FormLabel>
 								<FormControl>
 									<NativeSelect {...field}>
-										<option value='simple'>Article</option>
+										<option value='simple'>Produit</option>
 										<option value='service'>Service</option>
 									</NativeSelect>
 								</FormControl>
@@ -58,11 +58,16 @@ export function ProductStockCard({
 						control={form.control}
 						name='manage_stock'
 						render={({ field }) => (
-							<FormItem className='flex items-center justify-between rounded-lg border p-3'>
-								<FormLabel className='flex items-center'>
-									Suivi du stock
-									<HelpTooltip text='À désactiver pour un service dont la quantité ne doit pas être suivie.' />
-								</FormLabel>
+							<FormItem className='flex min-h-10 items-center justify-between gap-4 xl:justify-end'>
+								<div>
+									<FormLabel className='flex items-center text-foreground'>
+										Suivi du stock
+										<HelpTooltip text='À désactiver pour un service dont la quantité ne doit pas être suivie.' />
+									</FormLabel>
+									<p className='mt-1 text-muted-foreground text-[10px]'>
+										Met à jour automatiquement la disponibilité.
+									</p>
+								</div>
 								<FormControl>
 									<Switch
 										checked={field.value}
@@ -74,21 +79,28 @@ export function ProductStockCard({
 					/>
 				</div>
 			) : (
-				<div className='grid grid-cols-2 gap-4 sm:grid-cols-4'>
-					<ReadValue label='Stock' value={product.stock ?? 0} />
-					<ReadValue label='Minimum' value={product.min_stock ?? 0} />
+				<div className='grid grid-cols-2 items-start gap-5 sm:grid-cols-4'>
+					<ReadValue
+						label='Stock'
+						value={values[0] ?? 0}
+						valueClassName='font-semibold text-primary/90 text-lg'
+					/>
+					<ReadValue
+						label='Minimum'
+						value={values[1] ?? 0}
+						valueClassName='font-semibold text-primary/90 text-lg'
+					/>
 					<ReadValue
 						label='Type'
-						value={product.type === 'service' ? 'Service' : 'Article'}
+						value={values[2] === 'service' ? 'Service' : 'Produit'}
 					/>
-					<ReadValue
-						label='Suivi'
-						value={product.manage_stock ? 'Activé' : 'Désactivé'}
-					/>
+					<ReadValue label='Suivi' value={values[3] ? 'Activé' : 'Désactivé'} />
 				</div>
 			)}
-		</DetailCard>
+		</>
 	)
+
+	return embedded ? content : <DetailCard title='Stock'>{content}</DetailCard>
 }
 
 function NumberField({

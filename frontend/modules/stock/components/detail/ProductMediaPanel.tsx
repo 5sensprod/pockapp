@@ -14,6 +14,8 @@ type Props = {
 	onGalleryChange: (value: GalleryEntry[]) => void
 	currentImage: string | null
 	onPromote: (filename: string) => void
+	onDesignateMain: (entry: GalleryEntry) => void
+	pendingMain: File | null
 	onRemoveMain: () => void
 	promoting: boolean
 	removingMain: boolean
@@ -36,6 +38,8 @@ export function ProductMediaPanel(props: Props) {
 					onChange={props.onGalleryChange}
 					urlDe={urlOf}
 					onPromote={props.onPromote}
+					onDesignateMain={props.onDesignateMain}
+					pendingMain={props.pendingMain}
 					promoting={props.promoting}
 					onRemoveMain={props.onRemoveMain}
 					removingMain={props.removingMain}
@@ -43,7 +47,7 @@ export function ProductMediaPanel(props: Props) {
 					optimize={{ maxSide: 1600 }}
 				/>
 			) : (
-				<div className='grid grid-cols-[112px_minmax(0,1fr)] gap-3'>
+				<div className='grid grid-cols-[130px_minmax(0,1fr)] gap-3'>
 					<div className='flex aspect-square items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
 						{mainUrl ? (
 							<img

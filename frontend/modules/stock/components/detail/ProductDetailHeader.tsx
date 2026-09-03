@@ -1,4 +1,4 @@
-import { ArrowLeft, ImageOff, Pencil, Save, X } from 'lucide-react'
+import { ArrowLeft, ImageOff, Save } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,13 +17,13 @@ const euros = new Intl.NumberFormat('fr-FR', {
 
 type Props = {
 	product: CatalogProductShape
+	designation?: string
+	status: 'draft' | 'published'
 	brandName?: string
 	imageUrl: string | null
-	editing: boolean
+	canSave: boolean
 	pending: boolean
 	onBack: () => void
-	onEdit: () => void
-	onCancel: () => void
 }
 
 export function ProductDetailHeader(props: Props) {
@@ -68,7 +68,9 @@ export function ProductDetailHeader(props: Props) {
 					)}
 				</div>
 				<div className='min-w-0 flex-1'>
-					<h1 className='truncate font-bold text-xl'>{props.product.name}</h1>
+					<h1 className='truncate font-bold text-xl'>
+						{props.designation?.trim() || 'Sans désignation'}
+					</h1>
 					<p className='truncate text-muted-foreground text-sm'>
 						{[props.product.sku, props.brandName].filter(Boolean).join(' · ') ||
 							'Sans référence ni marque'}
@@ -91,38 +93,18 @@ export function ProductDetailHeader(props: Props) {
 						<strong>{euros.format(props.product.price_ttc ?? 0)}</strong>
 						<span>Stock {props.product.stock ?? 0}</span>
 						<Badge
-							variant={
-								props.product.status === 'published' ? 'default' : 'secondary'
-							}
+							variant={props.status === 'published' ? 'default' : 'secondary'}
 						>
-							{props.product.status === 'published' ? 'Publié' : 'Brouillon'}
+							{props.status === 'published' ? 'Publié' : 'Brouillon'}
 						</Badge>
 						{commercial && <Badge variant='outline'>{commercial}</Badge>}
 						{operation && <Badge variant='destructive'>{operation}</Badge>}
 					</div>
 				</div>
-				{props.editing ? (
-					<div className='flex gap-2'>
-						<Button
-							type='button'
-							variant='outline'
-							onClick={props.onCancel}
-							disabled={props.pending}
-						>
-							<X className='mr-2 h-4 w-4' />
-							Annuler
-						</Button>
-						<Button type='submit' disabled={props.pending}>
-							<Save className='mr-2 h-4 w-4' />
-							Enregistrer
-						</Button>
-					</div>
-				) : (
-					<Button type='button' onClick={props.onEdit}>
-						<Pencil className='mr-2 h-4 w-4' />
-						Modifier
-					</Button>
-				)}
+				<Button type='submit' disabled={props.pending || !props.canSave}>
+					<Save className='mr-2 h-4 w-4' />
+					Enregistrer
+				</Button>
 			</div>
 		</header>
 	)

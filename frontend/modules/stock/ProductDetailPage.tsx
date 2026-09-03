@@ -1,4 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
+import { useEffect } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Form } from '@/components/ui/form'
@@ -6,7 +7,6 @@ import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
 import { useCatalogProduct } from '@/lib/queries/catalog-products'
 import { usePocketBase } from '@/lib/use-pocketbase'
-import { cn } from '@/lib/utils'
 import { useNavigate, useParams } from '@tanstack/react-router'
 
 import { ProductDetailHeader } from './components/detail/ProductDetailHeader'
@@ -15,7 +15,11 @@ import { ProductLinksCard } from './components/detail/ProductLinksCard'
 import { ProductPricingCard } from './components/detail/ProductPricingCard'
 import { ProductSitePanel } from './components/detail/ProductSitePanel'
 import { ProductStockCard } from './components/detail/ProductStockCard'
-import { useProductDetailEditor } from './components/detail/useProductDetailEditor'
+import { EditableDetailCard } from './components/detail/detail-primitives'
+import {
+	type ProductDetailSection,
+	useProductDetailEditor,
+} from './components/detail/useProductDetailEditor'
 
 export function ProductDetailPage() {
 	const { productId } = useParams({ from: '/stock/produits/$productId' })
@@ -80,58 +84,130 @@ function ProductDetailContent({
 	onBack: () => void
 }) {
 	const editor = useProductDetailEditor(product)
+	const dirty = editor.form.formState.dirtyFields
+	const dirtySections: Record<ProductDetailSection, boolean> = {
+		identity: Boolean(
+			dirty.designation ||
+				dirty.sku ||
+				dirty.barcode ||
+				dirty.brand ||
+				dirty.supplier ||
+				dirty.categories ||
+				dirty.commercial_state ||
+				dirty.sale_state,
+		),
+		pricing: Boolean(
+			dirty.price_ttc || dirty.purchase_price_ht || dirty.tax_rate,
+		),
+		stock: Boolean(
+			dirty.stock || dirty.min_stock || dirty.type || dirty.manage_stock,
+		),
+		content: Boolean(dirty.name || dirty.description),
+		visuals: editor.galleryDirty || editor.imagesTouched,
+	}
+
+	useEffect(() => {
+		if (editor.activeSection === null) return
+		const closeOutside = (event: PointerEvent) => {
+			if (!(event.target instanceof Element)) return
+			if (event.target.closest('[data-editable-card]')) return
+			// ⚠️ `role="alertdialog"` est aussi indispensable que `role="dialog"` :
+			// la confirmation de suppression de l'image principale en est une, et
+			// sans elle le `pointerdown` fermait la carte « Visuels » — donc
+			// démontait la boîte — AVANT que le `click` sur « Supprimer
+			// définitivement » ne l'atteigne. La seule image du produit devenait
+			// alors impossible à supprimer, sans le moindre message.
+			if (
+				event.target.closest(
+					'[role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper], [data-sonner-toast]',
+				)
+			) {
+				return
+			}
+			editor.close()
+		}
+		document.addEventListener('pointerdown', closeOutside)
+		return () => document.removeEventListener('pointerdown', closeOutside)
+	}, [editor.activeSection, editor.close])
+
 	return (
 		<Form {...editor.form}>
 			<form onSubmit={editor.form.handleSubmit(editor.submit)}>
 				<ProductDetailHeader
 					product={product}
+					designation={editor.form.watch('designation')}
+					status={editor.form.watch('status')}
 					brandName={brandName}
 					imageUrl={imageUrl}
-					editing={editor.editing}
+					canSave={editor.hasChanges}
 					pending={editor.pending}
 					onBack={onBack}
-					onEdit={editor.start}
-					onCancel={editor.cancel}
 				/>
 
-				<main className='container mx-auto grid items-start gap-4 px-6 py-5 lg:grid-cols-[minmax(0,1.8fr)_minmax(340px,0.9fr)]'>
-					<div
-						className={cn('grid content-start gap-4 self-start xl:grid-cols-2')}
-					>
-						<div className='xl:col-span-2'>
-							<ProductIdentityCard
-								product={product}
-								editing={editor.editing}
+				<main className='container mx-auto grid items-start gap-5 px-6 py-5 lg:grid-cols-[minmax(0,1fr)_430px]'>
+					<div className='grid content-start gap-4 self-start'>
+						<EditableDetailCard
+							title='Identité du produit'
+							banner='Vous pouvez maintenant modifier les informations du produit.'
+							editing={editor.activeSection === 'identity'}
+							dirty={dirtySections.identity}
+							onEdit={() => editor.start('identity')}
+						>
+							<div className='grid gap-x-7 gap-y-5 md:grid-cols-3'>
+								<ProductIdentityCard
+									editing={editor.activeSection === 'identity'}
+									form={editor.form}
+									embedded
+								/>
+								<ProductLinksCard
+									editing={editor.activeSection === 'identity'}
+									form={editor.form}
+									embedded
+								/>
+							</div>
+						</EditableDetailCard>
+
+						<EditableDetailCard
+							title='Prix et marge'
+							banner='Modifiez les tarifs. La marge est recalculée automatiquement.'
+							editing={editor.activeSection === 'pricing'}
+							dirty={dirtySections.pricing}
+							onEdit={() => editor.start('pricing')}
+						>
+							<ProductPricingCard
+								editing={editor.activeSection === 'pricing'}
 								form={editor.form}
+								embedded
 							/>
-						</div>
-						<ProductPricingCard
-							product={product}
-							editing={editor.editing}
-							form={editor.form}
-						/>
-						<ProductStockCard
-							product={product}
-							editing={editor.editing}
-							form={editor.form}
-						/>
-						<div className='xl:col-span-2'>
-							<ProductLinksCard
-								product={product}
-								editing={editor.editing}
+						</EditableDetailCard>
+
+						<EditableDetailCard
+							title='Stock et disponibilité'
+							banner='Vous pouvez modifier la quantité et les paramètres de suivi.'
+							editing={editor.activeSection === 'stock'}
+							dirty={dirtySections.stock}
+							onEdit={() => editor.start('stock')}
+						>
+							<ProductStockCard
+								editing={editor.activeSection === 'stock'}
 								form={editor.form}
+								embedded
 							/>
-						</div>
+						</EditableDetailCard>
 					</div>
-					<aside className='self-start'>
+					<aside className='self-start lg:sticky lg:top-[104px]'>
 						<ProductSitePanel
 							product={product}
-							editing={editor.editing}
+							activeSection={editor.activeSection}
+							dirtySections={dirtySections}
+							onEdit={editor.start}
 							form={editor.form}
 							gallery={editor.gallery}
 							onGalleryChange={editor.setGallery}
 							currentImage={editor.currentImage}
 							onPromote={editor.promoteImage}
+							onDesignateMain={editor.designateMain}
+							pendingMain={editor.pendingMain}
 							onRemoveMain={editor.removeMainImage}
 							promoting={editor.promoting}
 							removingMain={editor.removingMain}

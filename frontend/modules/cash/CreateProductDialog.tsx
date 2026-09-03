@@ -36,7 +36,7 @@ interface CreateProductDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
 	initialBarcode?: string
-	initialName?: string // 🆕 Pour pré-remplir le nom
+	initialName?: string // 🆕 Pré-remplit la DÉSIGNATION (le nom du ticket)
 	onProductCreated?: (product: any) => void
 }
 
@@ -76,7 +76,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 		if (open) {
 			setFormData((prev) => ({
 				...prev,
-				name: initialName || prev.name,
+				designation: initialName || prev.designation,
 				barcode: initialBarcode || prev.barcode,
 			}))
 		}
@@ -84,12 +84,12 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 
 	const resetForm = React.useCallback(() => {
 		setFormData({
-			name: initialName || '',
+			name: '',
 			price_ttc: 0,
 			tax_rate: 20,
 			barcode: initialBarcode || '',
 			sku: '',
-			designation: '',
+			designation: initialName || '',
 			description: '',
 			stock: 0,
 			min_stock: 0,
@@ -100,8 +100,9 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 		async (e: React.FormEvent) => {
 			e.preventDefault()
 
-			if (!formData.name.trim()) {
-				toast.error('Le nom du produit est obligatoire')
+			const designation = formData.designation.trim()
+			if (!designation) {
+				toast.error('La désignation du produit est obligatoire')
 				return
 			}
 
@@ -119,8 +120,14 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 				// `status: 'published'` — sans quoi le produit tout juste créé serait
 				// invisible du sélecteur de la caisse, qui écarte les brouillons.
 				// `legacy_id` est posé par la couche, pas ici.
+				// Ce qui est tapé au comptoir est la DÉSIGNATION, celle du ticket.
+				// `name` titre la fiche en ligne : on ne le reprend que si le
+				// vendeur n'a rien saisi, pour ne pas laisser une page sans titre
+				// ni un produit sans slug (`resoudreSlugProduit` le dérive de `name`).
 				const product = await createProduct.mutateAsync({
 					...formData,
+					designation,
+					name: formData.name.trim() || designation,
 					company: activeCompanyId,
 					status: 'published',
 					type: 'simple',
@@ -186,43 +193,47 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 						</div>
 					)}
 
-					{/* Nom du produit (OBLIGATOIRE) */}
-					<div className='space-y-2'>
-						<Label
-							htmlFor='name'
-							className='flex items-center gap-1 text-sm font-semibold'
-						>
-							Nom du produit
-							<span className='text-red-500'>*</span>
-						</Label>
-						<Input
-							id='name'
-							placeholder='Ex: Coca-Cola 33cl'
-							value={formData.name}
-							onChange={(e) => handleFieldChange('name', e.target.value)}
-							required
-							autoFocus
-							className='h-11 text-base'
-						/>
-					</div>
-
-					{/* Désignation (optionnel mais recommandé) */}
+					{/* Désignation (OBLIGATOIRE) — c'est le nom du ticket */}
 					<div className='space-y-2'>
 						<Label
 							htmlFor='designation'
 							className='flex items-center gap-1 text-sm font-semibold'
 						>
 							Désignation (ticket)
+							<span className='text-red-500'>*</span>
 						</Label>
 						<Input
 							id='designation'
-							placeholder='Ex: Coca-Cola 33cl (pour le ticket)'
+							placeholder='Ex: Coca-Cola 33cl'
 							value={formData.designation}
 							onChange={(e) => handleFieldChange('designation', e.target.value)}
+							required
+							autoFocus
 							className='h-11 text-base'
 						/>
 						<p className='text-xs text-slate-500'>
-							Sera affiché sur le ticket si différent du nom
+							Affichée sur le ticket de caisse.
+						</p>
+					</div>
+
+					{/* Nom de la fiche en ligne (optionnel) */}
+					<div className='space-y-2'>
+						<Label
+							htmlFor='name'
+							className='flex items-center gap-1 text-sm font-semibold'
+						>
+							Nom de la fiche en ligne
+						</Label>
+						<Input
+							id='name'
+							placeholder='Laisser vide pour reprendre la désignation'
+							value={formData.name}
+							onChange={(e) => handleFieldChange('name', e.target.value)}
+							className='h-11 text-base'
+						/>
+						<p className='text-xs text-slate-500'>
+							Titre de la page produit sur le site ; se retouche depuis la
+							fiche.
 						</p>
 					</div>
 

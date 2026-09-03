@@ -2,7 +2,6 @@ import { Loader2, RefreshCw, ScanSearch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { productHealth } from '@/lib/queries/catalog-health'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
@@ -23,7 +22,6 @@ import {
 } from '@/modules/site/hooks/use-image-sync'
 import { syncStateOf } from '@/modules/site/lib/catalog-export'
 
-import { ProductPublicationControl } from './ProductPublicationControl'
 import { DetailCard } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
 
@@ -32,12 +30,10 @@ type ImageState = 'checking' | 'modified' | 'synced' | 'unknown'
 
 export function ProductOnlinePanel({
 	product,
-	editing,
 	form,
 	embedded = false,
 }: {
 	product: CatalogProductShape
-	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
 }) {
@@ -62,14 +58,10 @@ export function ProductOnlinePanel({
 	])
 	const health = productHealth({
 		...product,
-		...(editing
-			? {
-					name: editedHealthValues[0],
-					description: editedHealthValues[1],
-					categories: editedHealthValues[2],
-					price_ttc: editedHealthValues[3],
-				}
-			: {}),
+		name: editedHealthValues[0],
+		description: editedHealthValues[1],
+		categories: editedHealthValues[2],
+		price_ttc: editedHealthValues[3],
 	})
 	const imageCount = (product.image ? 1 : 0) + (product.gallery?.length ?? 0)
 	const dataState = inventory.data
@@ -132,31 +124,21 @@ export function ProductOnlinePanel({
 
 	const content = (
 		<div className='space-y-3 text-sm'>
-			<div className='rounded-md border bg-muted/20 p-2.5'>
-				<div className='flex items-center justify-between gap-3'>
-					<span className='font-medium'>Santé de la fiche</span>
-					<Badge
-						variant={health.score < health.max / 2 ? 'destructive' : 'outline'}
-						className={
-							health.score === health.max
-								? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
-								: undefined
-						}
-					>
-						{health.score}/{health.max}
-					</Badge>
+			<div className='flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] p-3'>
+				<div className='grid h-11 w-11 shrink-0 place-items-center rounded-full bg-background font-extrabold text-emerald-700 text-xs shadow-sm'>
+					{health.score}/{health.max}
 				</div>
-				<p className='mt-1 text-muted-foreground text-xs'>
-					{health.missing.length
-						? `À compléter : ${health.missing.join(', ')}.`
-						: 'Tous les éléments nécessaires au site sont présents.'}
-				</p>
+				<div>
+					<p className='font-semibold text-sm'>
+						{health.missing.length ? 'Fiche à compléter' : 'Fiche complète'}
+					</p>
+					<p className='mt-0.5 text-emerald-900/65 text-[11px]'>
+						{health.missing.length
+							? `À compléter : ${health.missing.join(', ')}.`
+							: 'Tous les éléments nécessaires au site sont présents.'}
+					</p>
+				</div>
 			</div>
-			<ProductPublicationControl
-				product={product}
-				editing={editing}
-				form={form}
-			/>
 			<div className='flex items-center justify-between gap-3'>
 				<span>Fiche</span>
 				<span className='text-right text-muted-foreground'>{dataLabel}</span>

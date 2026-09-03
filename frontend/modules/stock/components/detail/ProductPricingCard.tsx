@@ -8,7 +8,6 @@ import {
 	FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 
 import { DetailCard, ReadValue } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
@@ -25,23 +24,21 @@ function marge(priceTtc = 0, purchaseHt = 0, taxRate = 0) {
 }
 
 export function ProductPricingCard({
-	product,
 	editing,
 	form,
+	embedded = false,
 }: {
-	product: CatalogProductShape
 	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
+	embedded?: boolean
 }) {
 	const values = form.watch(['price_ttc', 'purchase_price_ht', 'tax_rate'])
-	const margin = editing
-		? marge(values[0], values[1], values[2])
-		: marge(product.price_ttc, product.purchase_price_ht, product.tax_rate)
+	const margin = marge(values[0], values[1], values[2])
 
-	return (
-		<DetailCard title='Prix et marge'>
+	const content = (
+		<>
 			{editing ? (
-				<div className='grid gap-4 sm:grid-cols-3'>
+				<div className='grid gap-5 sm:grid-cols-2 xl:grid-cols-4'>
 					<NumberField
 						form={form}
 						name='price_ttc'
@@ -55,28 +52,41 @@ export function ProductPricingCard({
 						step='0.01'
 					/>
 					<NumberField form={form} name='tax_rate' label='TVA (%)' step='0.1' />
-					<p className='text-muted-foreground text-sm sm:col-span-3'>
-						Marge calculée : {margin === null ? '—' : `${margin.toFixed(1)} %`}
-					</p>
+					<div>
+						<p className='mb-2 font-medium text-muted-foreground text-xs'>
+							Marge calculée
+						</p>
+						<p className='font-semibold text-emerald-700 text-lg leading-10'>
+							{margin === null ? '—' : `${margin.toFixed(1)} %`}
+						</p>
+						<p className='text-muted-foreground text-[10px]'>
+							Recalculée automatiquement
+						</p>
+					</div>
 				</div>
 			) : (
 				<div className='grid grid-cols-2 gap-4 sm:grid-cols-4'>
 					<ReadValue
 						label='Prix TTC'
-						value={euros.format(product.price_ttc ?? 0)}
+						value={euros.format(values[0] ?? 0)}
+						valueClassName='font-semibold text-primary/90 text-base'
 					/>
-					<ReadValue
-						label='Achat HT'
-						value={euros.format(product.purchase_price_ht ?? 0)}
-					/>
-					<ReadValue label='TVA' value={`${product.tax_rate ?? 0} %`} />
+					<ReadValue label='Achat HT' value={euros.format(values[1] ?? 0)} />
+					<ReadValue label='TVA' value={`${values[2] ?? 0} %`} />
 					<ReadValue
 						label='Marge'
 						value={margin === null ? '—' : `${margin.toFixed(1)} %`}
+						valueClassName='font-semibold text-emerald-700 text-lg'
 					/>
 				</div>
 			)}
-		</DetailCard>
+		</>
+	)
+
+	return embedded ? (
+		content
+	) : (
+		<DetailCard title='Prix et marge'>{content}</DetailCard>
 	)
 }
 

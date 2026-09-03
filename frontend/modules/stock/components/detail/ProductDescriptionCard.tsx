@@ -42,6 +42,8 @@ export function ProductDescriptionCard({
 	})
 	const nomFicheRepris =
 		nomFicheParDefaut(product) !== (product.name ?? '').trim()
+	const draftName = form.watch('name')
+	const draftDescription = form.watch('description')
 
 	const openAssistant = () => {
 		setAssistantDraft({
@@ -79,7 +81,7 @@ export function ProductDescriptionCard({
 						)}
 					/>
 				) : (
-					<ReadValue label='Nom de la fiche en ligne' value={product.name} />
+					<ReadValue label='Nom de la fiche en ligne' value={draftName} />
 				)}
 
 				{editing ? (
@@ -106,9 +108,9 @@ export function ProductDescriptionCard({
 							</FormItem>
 						)}
 					/>
-				) : product.description ? (
+				) : draftDescription ? (
 					<HtmlContentPreview
-						value={product.description}
+						value={draftDescription}
 						collapsible
 						collapsedHeight={150}
 					/>

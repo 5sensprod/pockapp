@@ -100,6 +100,13 @@ interface GalleryFieldProps {
 	/** Promouvoir une entrée enregistrée. Absent = produit pas encore créé. */
 	onPromote?: (nom: string) => void
 	promoting?: boolean
+	/** Désigner une image PAS ENCORE ENVOYÉE comme principale. Le geste ne peut
+	 *  pas partir tout de suite — la route serveur ne sait désigner qu'un nom de
+	 *  fichier existant —, il attend donc « Enregistrer » comme le reste de la
+	 *  galerie. Absent = seules les images déjà en base sont promouvables. */
+	onDesignateMain?: (entree: GalleryEntry) => void
+	/** L'entrée désignée principale et pas encore enregistrée. */
+	pendingMain?: GalleryEntry | null
 	/** Supprimer définitivement la principale. Absent = produit pas encore créé. */
 	onRemoveMain?: () => void
 	removingMain?: boolean
@@ -118,6 +125,8 @@ export function GalleryField({
 	urlDe,
 	onPromote,
 	promoting,
+	onDesignateMain,
+	pendingMain,
 	onRemoveMain,
 	removingMain,
 	disabled,
@@ -191,6 +200,13 @@ export function GalleryField({
 
 	const plein = value.length >= MAX_GALERIE
 
+	// La désignation en attente prime sur l'image enregistrée : c'est elle qui
+	// sera principale après « Enregistrer », et l'écran doit le montrer plutôt
+	// que d'afficher une vedette que l'utilisateur vient de remplacer.
+	const attenteUrl =
+		pendingMain instanceof File ? apercus.get(pendingMain) : undefined
+	const vedetteUrl = attenteUrl ?? mainUrl
+
 	return (
 		<div className='space-y-2'>
 			<div className='flex items-baseline justify-between gap-2'>
@@ -208,14 +224,15 @@ export function GalleryField({
 					<div
 						className={cn(
 							'flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border-2',
-							mainUrl
+							vedetteUrl
 								? 'border-primary border-solid'
 								: 'border-dashed bg-muted/50',
+							attenteUrl && 'border-dashed',
 						)}
 					>
-						{mainUrl ? (
+						{vedetteUrl ? (
 							<img
-								src={mainUrl}
+								src={vedetteUrl}
 								alt='Vue principale du produit'
 								className='h-full w-full object-contain'
 							/>
@@ -226,9 +243,9 @@ export function GalleryField({
 					<figcaption className='flex h-6 w-24 items-center justify-center gap-0.5 text-primary text-xs'>
 						<span className='flex items-center gap-1'>
 							<Star className='h-3 w-3 fill-current' />
-							Principale
+							{attenteUrl ? 'À enregistrer' : 'Principale'}
 						</span>
-						{mainUrl && onRemoveMain && (
+						{!attenteUrl && mainUrl && onRemoveMain && (
 							<Button
 								type='button'
 								variant='ghost'
@@ -271,24 +288,48 @@ export function GalleryField({
 							{/* Le geste principal est NOMMÉ, les autres sont des icônes :
 							    « définir comme principale » n'était pas trouvable sous une
 							    étoile muette — signalé à l'usage le 19 août 2026. */}
-							<Button
-								type='button'
-								variant='outline'
-								size='sm'
-								className='h-6 w-24 px-1 text-xs'
-								title={
-									estPromouvable(entree)
-										? 'Devient l’image principale tout de suite'
-										: 'Enregistrez d’abord : cette image n’est pas encore en base'
-								}
-								disabled={
-									disabled || promoting || !onPromote || !estPromouvable(entree)
-								}
-								onClick={() => estPromouvable(entree) && onPromote?.(entree)}
-							>
-								<Star className='mr-1 h-3 w-3' />
-								Principale
-							</Button>
+							{(() => {
+								// Deux gestes derrière un seul bouton, et deux temporalités :
+								// une image EN BASE se promeut tout de suite par la route
+								// serveur ; une image tout juste choisie n'a pas encore de nom
+								// de fichier, elle ne peut qu'être DÉSIGNÉE et attendre
+								// l'enregistrement. Sans cette seconde voie il fallait
+								// enregistrer une première fois pour pouvoir changer la
+								// vedette — signalé à l'usage.
+								const enBase = estPromouvable(entree)
+								const designable = !enBase && Boolean(onDesignateMain)
+								const designee = pendingMain === entree
+								return (
+									<Button
+										type='button'
+										variant={designee ? 'default' : 'outline'}
+										size='sm'
+										className='h-6 w-24 px-1 text-xs'
+										title={
+											designee
+												? 'Deviendra l’image principale à l’enregistrement'
+												: enBase
+													? 'Devient l’image principale tout de suite'
+													: designable
+														? 'Sera l’image principale une fois enregistrée'
+														: 'Enregistrez d’abord : cette image n’est pas encore en base'
+										}
+										disabled={
+											disabled ||
+											promoting ||
+											designee ||
+											(enBase ? !onPromote : !designable)
+										}
+										onClick={() => {
+											if (enBase) onPromote?.(entree)
+											else onDesignateMain?.(entree)
+										}}
+									>
+										<Star className='mr-1 h-3 w-3' />
+										Principale
+									</Button>
+								)
+							})()}
 
 							<div className='flex items-center justify-center gap-0.5'>
 								<Button

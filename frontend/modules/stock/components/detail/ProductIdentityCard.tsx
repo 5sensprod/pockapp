@@ -8,7 +8,6 @@ import {
 	FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 
 import { DetailCard, HelpTooltip, ReadValue } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
@@ -17,22 +16,25 @@ import type { ProductDetailValues } from './product-detail-form'
 // sa description et l'assistant, dans la colonne « Fiche sur le site » : le
 // laisser ici mélangeait ce qui sert au comptoir et ce qui part en ligne.
 export function ProductIdentityCard({
-	product,
 	editing,
 	form,
+	embedded = false,
 }: {
-	product: CatalogProductShape
 	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
+	embedded?: boolean
 }) {
-	return (
-		<DetailCard title='Identité du produit'>
+	const values = form.watch(['designation', 'sku', 'barcode'])
+	const content = (
+		<>
 			{editing ? (
-				<div className='grid gap-4 sm:grid-cols-3'>
+				<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
 					<TextField
 						form={form}
 						name='designation'
 						label='Désignation'
+						wide
+						emphasis
 						help='Ce libellé apparaît sur le ticket de caisse et la facture.'
 						placeholder='Libellé court pour le ticket et la facture'
 					/>
@@ -40,13 +42,24 @@ export function ProductIdentityCard({
 					<TextField form={form} name='barcode' label='Code-barres' />
 				</div>
 			) : (
-				<div className='grid gap-4 sm:grid-cols-3'>
-					<ReadValue label='Désignation' value={product.designation} />
-					<ReadValue label='Référence' value={product.sku} />
-					<ReadValue label='Code-barres' value={product.barcode} />
+				<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
+					<ReadValue
+						label='Désignation'
+						value={values[0]}
+						valueClassName='font-semibold text-base text-primary/90'
+						wide
+					/>
+					<ReadValue label='Référence' value={values[1]} />
+					<ReadValue label='Code-barres' value={values[2]} />
 				</div>
 			)}
-		</DetailCard>
+		</>
+	)
+
+	return embedded ? (
+		content
+	) : (
+		<DetailCard title='Identité du produit'>{content}</DetailCard>
 	)
 }
 
@@ -57,6 +70,8 @@ function TextField({
 	help,
 	hint,
 	placeholder,
+	wide,
+	emphasis,
 }: {
 	form: UseFormReturn<ProductDetailValues>
 	name: 'designation' | 'sku' | 'barcode'
@@ -64,19 +79,27 @@ function TextField({
 	help?: string
 	hint?: string
 	placeholder?: string
+	wide?: boolean
+	emphasis?: boolean
 }) {
 	return (
 		<FormField
 			control={form.control}
 			name={name}
 			render={({ field }) => (
-				<FormItem>
+				<FormItem className={wide ? 'sm:col-span-2' : undefined}>
 					<FormLabel className='flex items-center'>
 						{label}
 						{help && <HelpTooltip text={help} />}
 					</FormLabel>
 					<FormControl>
-						<Input placeholder={placeholder} {...field} />
+						<Input
+							placeholder={placeholder}
+							className={
+								emphasis ? 'font-semibold text-base text-primary' : undefined
+							}
+							{...field}
+						/>
 					</FormControl>
 					{hint && <p className='text-muted-foreground text-xs'>{hint}</p>}
 					<FormMessage />

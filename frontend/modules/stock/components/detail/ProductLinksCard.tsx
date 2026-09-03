@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/form'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
-import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 import { useCategories } from '@/lib/queries/categories'
 import { useSuppliers } from '@/lib/queries/suppliers'
 
@@ -38,13 +37,13 @@ const operation = {
 } as const
 
 export function ProductLinksCard({
-	product,
 	editing,
 	form,
+	embedded = false,
 }: {
-	product: CatalogProductShape
 	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
+	embedded?: boolean
 }) {
 	const { activeCompanyId } = useActiveCompany()
 	const brands = useBrands({ companyId: activeCompanyId ?? undefined })
@@ -52,6 +51,9 @@ export function ProductLinksCard({
 	const categories = useCategories({ companyId: activeCompanyId ?? undefined })
 	const supplierId = form.watch('supplier')
 	const brandId = form.watch('brand')
+	const categoryIds = form.watch('categories')
+	const commercialState = form.watch('commercial_state')
+	const saleState = form.watch('sale_state')
 	const supplierBrandIds = suppliers.data?.find(
 		(item) => item.id === supplierId,
 	)?.brands
@@ -83,15 +85,15 @@ export function ProductLinksCard({
 	//  • le fournisseur DÉJÀ enregistré reste proposé même s'il ne déclare pas
 	//    la marque, pour qu'un enregistrement ne l'efface pas en silence.
 	const suppliersDistributingBrand = (suppliers.data ?? []).filter(
-		(supplier) => Boolean(brandId) && supplier.brands?.includes(brandId as string),
+		(supplier) =>
+			Boolean(brandId) && supplier.brands?.includes(brandId as string),
 	)
 
 	const supplierOptions = (suppliers.data ?? []).filter((supplier) => {
 		if (!brandId) return true
 		if (!suppliersDistributingBrand.length) return true
 		return (
-			supplier.brands?.includes(brandId as string) ||
-			supplier.id === supplierId
+			supplier.brands?.includes(brandId as string) || supplier.id === supplierId
 		)
 	})
 
@@ -116,19 +118,17 @@ export function ProductLinksCard({
 		form.setValue('supplier', soleSupplierId, { shouldDirty: true })
 	}, [editing, soleSupplierId, supplierId, form])
 	const names = {
-		brand: brands.data?.find((item) => item.id === product.brand)?.name,
-		supplier: suppliers.data?.find((item) => item.id === product.supplier)
-			?.name,
-		categories: (product.categories ?? [])
+		brand: brands.data?.find((item) => item.id === brandId)?.name,
+		supplier: suppliers.data?.find((item) => item.id === supplierId)?.name,
+		categories: categoryIds
 			.map((id) => categories.data?.find((item) => item.id === id)?.name)
-			.filter(Boolean)
-			.join(', '),
+			.filter((name): name is string => Boolean(name)),
 	}
 
-	return (
-		<DetailCard title='Rattachements'>
+	const content = (
+		<>
 			{editing ? (
-				<div className='grid gap-4 sm:grid-cols-2'>
+				<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
 					<SelectField
 						form={form}
 						name='brand'
@@ -167,6 +167,26 @@ export function ProductLinksCard({
 					</SelectField>
 					<FormField
 						control={form.control}
+						name='categories'
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel>Catégories</FormLabel>
+								<CategoryPicker
+									value={field.value}
+									onChange={(value) =>
+										field.onChange(Array.isArray(value) ? value : [value])
+									}
+									multiple
+									searchPlaceholder='Rechercher une catégorie…'
+									maxHeight='200px'
+									companyId={activeCompanyId ?? undefined}
+								/>
+								<FormMessage />
+							</FormItem>
+						)}
+					/>
+					<FormField
+						control={form.control}
 						name='commercial_state'
 						render={({ field }) => (
 							<FormItem>
@@ -203,43 +223,59 @@ export function ProductLinksCard({
 							</FormItem>
 						)}
 					/>
-					<FormField
-						control={form.control}
-						name='categories'
-						render={({ field }) => (
-							<FormItem className='sm:col-span-2'>
-								<FormLabel>Catégories</FormLabel>
-								<CategoryPicker
-									value={field.value}
-									onChange={(value) =>
-										field.onChange(Array.isArray(value) ? value : [value])
-									}
-									multiple
-									searchPlaceholder='Rechercher une catégorie…'
-									maxHeight='200px'
-									companyId={activeCompanyId ?? undefined}
-								/>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
 				</div>
 			) : (
-				<div className='grid gap-4 sm:grid-cols-2'>
-					<ReadValue label='Marque' value={names.brand} />
-					<ReadValue label='Fournisseur' value={names.supplier} />
+				<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
 					<ReadValue
+						label='Marque'
+						value={names.brand}
+						valueClassName='text-indigo-700 dark:text-indigo-300'
+					/>
+					<ReadValue
+						label='Fournisseur'
+						value={names.supplier}
+						valueClassName='text-sky-700 dark:text-sky-300'
+					/>
+					<ReadTags label='Catégories' values={names.categories} />
+					<ReadTags
 						label='État commercial'
-						value={commercial[product.commercial_state ?? '']}
+						values={[commercial[commercialState]]}
 					/>
-					<ReadValue
+					<ReadTags
 						label='Opération commerciale'
-						value={operation[product.sale_state ?? '']}
+						values={[operation[saleState]]}
 					/>
-					<ReadValue label='Catégories' value={names.categories} wide />
 				</div>
 			)}
-		</DetailCard>
+		</>
+	)
+
+	return embedded ? (
+		content
+	) : (
+		<DetailCard title='Rattachements'>{content}</DetailCard>
+	)
+}
+
+function ReadTags({ label, values }: { label: string; values: string[] }) {
+	return (
+		<div>
+			<p className='font-medium text-muted-foreground text-xs'>{label}</p>
+			<div className='mt-2 flex min-h-7 flex-wrap gap-2'>
+				{values.length ? (
+					values.map((value) => (
+						<span
+							key={value}
+							className='inline-flex min-h-7 items-center rounded-full bg-primary px-3 py-1 font-medium text-primary-foreground text-xs shadow-sm'
+						>
+							{value}
+						</span>
+					))
+				) : (
+					<span className='text-muted-foreground text-sm'>—</span>
+				)}
+			</div>
+		</div>
 	)
 }
 
