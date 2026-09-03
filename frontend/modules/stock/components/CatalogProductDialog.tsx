@@ -306,10 +306,32 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 					toast.error('Aucune entreprise active')
 					return
 				}
-				await createProduct.mutateAsync({
+				const cree = await createProduct.mutateAsync({
 					...payload,
 					company: activeCompanyId,
 				})
+				// UNE FICHE NEUVE PREND SA VEDETTE. Tout entre par `gallery` — la
+				// principale se DÉSIGNE (CLAUDE.md) —, si bien qu'un produit créé
+				// avec des photos n'en avait aucune en tête de page tant que
+				// personne ne revenait cliquer « Principale ». La première image
+				// est donc promue tout de suite, par la route dédiée : seul le nom
+				// rendu par PocketBase peut l'être. Même geste que
+				// `ConsignmentCatalogProductDialog`.
+				const premiere = cree.gallery?.[0]
+				if (premiere) {
+					try {
+						await promote.mutateAsync({
+							productId: cree.id,
+							filename: premiere,
+						})
+					} catch (error) {
+						// La fiche existe : on ne la déclare pas ratée pour une vedette
+						// non désignée, elle reste à un clic.
+						toast.warning(
+							`Produit créé, mais la photo principale reste à désigner : ${pocketbaseErrorMessage(error)}`,
+						)
+					}
+				}
 				toast.success('Produit créé')
 			}
 			onOpenChange(false)

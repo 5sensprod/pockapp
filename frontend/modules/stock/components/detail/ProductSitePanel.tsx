@@ -35,6 +35,29 @@ export function ProductSitePanel(props: Props) {
 
 	return (
 		<div className='grid gap-4'>
+			<EditableDetailCard
+				title='Visuels'
+				banner='Vous pouvez maintenant ajouter ou réorganiser les images.'
+				editing={props.activeSection === 'visuals'}
+				dirty={props.dirtySections.visuals}
+				onEdit={() => props.onEdit('visuals')}
+			>
+				<ProductMediaPanel
+					product={props.product}
+					editing={props.activeSection === 'visuals'}
+					gallery={props.gallery}
+					onGalleryChange={props.onGalleryChange}
+					currentImage={props.currentImage}
+					onPromote={props.onPromote}
+					onDesignateMain={props.onDesignateMain}
+					pendingMain={props.pendingMain}
+					onRemoveMain={props.onRemoveMain}
+					promoting={props.promoting}
+					removingMain={props.removingMain}
+					disabled={props.disabled}
+					embedded
+				/>
+			</EditableDetailCard>
 			<DetailStatusCard
 				title='Publication'
 				dirty={Boolean(props.form.formState.dirtyFields.status)}
@@ -84,30 +107,6 @@ export function ProductSitePanel(props: Props) {
 					product={props.product}
 					editing={props.activeSection === 'content'}
 					form={props.form}
-					embedded
-				/>
-			</EditableDetailCard>
-
-			<EditableDetailCard
-				title='Visuels'
-				banner='Vous pouvez maintenant ajouter ou réorganiser les images.'
-				editing={props.activeSection === 'visuals'}
-				dirty={props.dirtySections.visuals}
-				onEdit={() => props.onEdit('visuals')}
-			>
-				<ProductMediaPanel
-					product={props.product}
-					editing={props.activeSection === 'visuals'}
-					gallery={props.gallery}
-					onGalleryChange={props.onGalleryChange}
-					currentImage={props.currentImage}
-					onPromote={props.onPromote}
-					onDesignateMain={props.onDesignateMain}
-					pendingMain={props.pendingMain}
-					onRemoveMain={props.onRemoveMain}
-					promoting={props.promoting}
-					removingMain={props.removingMain}
-					disabled={props.disabled}
 					embedded
 				/>
 			</EditableDetailCard>

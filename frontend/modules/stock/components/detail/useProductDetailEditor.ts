@@ -225,11 +225,22 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 		gallery,
 		setGallery: (value: GalleryEntry[]) => {
 			setGallery(value)
-			// Retirer l'image qu'on venait de désigner annule la désignation :
-			// sinon elle serait promue au rang d'une autre après enregistrement.
-			setPendingMain((actuel) =>
-				actuel && !value.includes(actuel) ? null : actuel,
-			)
+			setPendingMain((actuel) => {
+				// Retirer l'image qu'on venait de désigner annule la désignation :
+				// sinon elle serait promue au rang d'une autre après enregistrement.
+				if (actuel && value.includes(actuel)) return actuel
+				// UNE FICHE SANS VEDETTE EN PREND UNE. Le premier fichier importé
+				// devient l'image mise en avant par défaut — sans cela, un produit
+				// né en caisse partait en ligne avec des photos mais sans visuel de
+				// tête, et il fallait un second geste que personne ne fait. Ce n'est
+				// qu'un DÉFAUT : l'étoile d'une autre tuile le remplace, et un
+				// produit qui a déjà une principale n'est jamais touché.
+				const vedette = currentImage ?? product.image ?? ''
+				if (vedette !== '') return null
+				return (
+					value.find((entree): entree is File => entree instanceof File) ?? null
+				)
+			})
 		},
 		currentImage,
 		promoteImage,

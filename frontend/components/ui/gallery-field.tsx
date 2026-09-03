@@ -134,6 +134,7 @@ export function GalleryField({
 }: GalleryFieldProps) {
 	const inputRef = useRef<HTMLInputElement>(null)
 	const [confirmationSuppression, setConfirmationSuppression] = useState(false)
+	const [survol, setSurvol] = useState(false)
 
 	// Les aperçus locaux : une URL d'objet par fichier neuf, révoquée à la
 	// sortie. Sans révocation, le fichier reste en mémoire tant que l'onglet
@@ -153,12 +154,10 @@ export function GalleryField({
 
 	const choisir = () => inputRef.current?.click()
 
-	const auChangement = async (e: React.ChangeEvent<HTMLInputElement>) => {
-		const fichiers = Array.from(e.target.files ?? [])
-		// Sans cela, rechoisir le MÊME fichier ne déclenche aucun événement.
-		// Fait AVANT l'attente : l'input est réutilisable pendant la
-		// vérification, et `e.target` ne survivrait pas à l'`await`.
-		e.target.value = ''
+	// Le pipeline d'entrée, partagé par le sélecteur de fichiers ET par le
+	// glisser-déposer : un fichier lâché sur la zone doit passer exactement les
+	// mêmes contrôles que celui choisi au clic.
+	const accepter = async (fichiers: File[]) => {
 		if (fichiers.length === 0) return
 
 		// ⚠️ Une extension n'est pas un format. `accept` et `file.type` se
@@ -198,6 +197,15 @@ export function GalleryField({
 		onChange(ajouter(value, aAjouter))
 	}
 
+	const auChangement = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const fichiers = Array.from(e.target.files ?? [])
+		// Sans cela, rechoisir le MÊME fichier ne déclenche aucun événement.
+		// Fait AVANT l'attente : l'input est réutilisable pendant la
+		// vérification, et `e.target` ne survivrait pas à l'`await`.
+		e.target.value = ''
+		await accepter(fichiers)
+	}
+
 	const plein = value.length >= MAX_GALERIE
 
 	// La désignation en attente prime sur l'image enregistrée : c'est elle qui
@@ -207,27 +215,21 @@ export function GalleryField({
 		pendingMain instanceof File ? apercus.get(pendingMain) : undefined
 	const vedetteUrl = attenteUrl ?? mainUrl
 
-	return (
-		<div className='space-y-2'>
-			<div className='flex items-baseline justify-between gap-2'>
-				<span className='font-medium text-sm'>Images</span>
-				<span className='text-muted-foreground text-xs'>
-					{value.length}/{MAX_GALERIE} en galerie
-				</span>
-			</div>
+	const restant = MAX_GALERIE - value.length
 
-			<div className='flex flex-wrap items-start gap-3'>
-				{/* L'image principale n'a pas de bouton « Changer » : on importe,
-				    puis on désigne. C'est ce qui garantit qu'aucune image n'est
-				    écrasée. */}
-				<figure className='space-y-1'>
+	return (
+		<div className='space-y-4'>
+			{/* ── LA VEDETTE, EN GRAND ─────────────────────────────────────────
+			    Elle occupe une tuile à part, plus large que les autres : c'est
+			    l'image que le site affichera en tête de page, et la hiérarchie de
+			    l'écran doit dire la même chose que celle du catalogue. */}
+			<div className='flex gap-4'>
+				<figure className='w-40 shrink-0 space-y-1.5'>
 					<div
 						className={cn(
-							'flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border-2',
-							vedetteUrl
-								? 'border-primary border-solid'
-								: 'border-dashed bg-muted/50',
-							attenteUrl && 'border-dashed',
+							'group relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border-2 bg-muted/20',
+							vedetteUrl ? 'border-primary/60' : 'border-dashed',
+							attenteUrl && 'border-dashed border-primary',
 						)}
 					>
 						{vedetteUrl ? (
@@ -237,142 +239,224 @@ export function GalleryField({
 								className='h-full w-full object-contain'
 							/>
 						) : (
-							<ImagePlus className='h-8 w-8 text-muted-foreground' />
+							<div className='px-3 text-center text-muted-foreground'>
+								<ImagePlus className='mx-auto h-7 w-7' />
+								<p className='mt-1.5 text-xs'>Aucune image principale</p>
+							</div>
 						)}
-					</div>
-					<figcaption className='flex h-6 w-24 items-center justify-center gap-0.5 text-primary text-xs'>
-						<span className='flex items-center gap-1'>
+
+						<span className='absolute top-2 left-2 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 font-medium text-[11px] text-primary-foreground shadow-sm'>
 							<Star className='h-3 w-3 fill-current' />
 							{attenteUrl ? 'À enregistrer' : 'Principale'}
 						</span>
+
+						{/* La suppression n'apparaît qu'au survol : c'est un geste
+						    définitif, il n'a pas à occuper l'écran en permanence. */}
 						{!attenteUrl && mainUrl && onRemoveMain && (
 							<Button
 								type='button'
-								variant='ghost'
+								variant='secondary'
 								size='icon'
-								className='h-6 w-6 shrink-0 text-destructive hover:text-destructive'
+								className='absolute top-1.5 right-1.5 h-7 w-7 opacity-0 shadow-sm transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100'
 								title='Supprimer définitivement l’image principale'
 								aria-label='Supprimer définitivement l’image principale'
 								disabled={disabled || removingMain}
 								onClick={() => setConfirmationSuppression(true)}
 							>
-								<Trash2 className='h-3 w-3' />
+								<Trash2 className='h-3.5 w-3.5' />
 							</Button>
 						)}
+					</div>
+					<figcaption className='text-center text-muted-foreground text-xs'>
+						{attenteUrl
+							? 'Sera la vedette après enregistrement'
+							: 'Affichée en tête de la fiche en ligne'}
 					</figcaption>
 				</figure>
 
-				{value.map((entree, index) => {
-					const nom = nomEntree(entree)
-					// Une chaîne vide dans `<img src>` recharge la page courante :
-					// on ne rend l'image que quand l'URL existe vraiment.
-					const url =
-						entree instanceof File
-							? apercus.get(entree)
-							: urlDe(nom) || undefined
-
-					return (
-						<figure key={cleEntree(entree)} className='space-y-1'>
-							<div className='flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
-								{url ? (
-									<img
-										src={url}
-										alt={nom}
-										className='h-full w-full object-contain'
-									/>
-								) : (
-									<ImagePlus className='h-6 w-6 text-muted-foreground' />
-								)}
-							</div>
-
-							{/* Le geste principal est NOMMÉ, les autres sont des icônes :
-							    « définir comme principale » n'était pas trouvable sous une
-							    étoile muette — signalé à l'usage le 19 août 2026. */}
-							{(() => {
-								// Deux gestes derrière un seul bouton, et deux temporalités :
-								// une image EN BASE se promeut tout de suite par la route
-								// serveur ; une image tout juste choisie n'a pas encore de nom
-								// de fichier, elle ne peut qu'être DÉSIGNÉE et attendre
-								// l'enregistrement. Sans cette seconde voie il fallait
-								// enregistrer une première fois pour pouvoir changer la
-								// vedette — signalé à l'usage.
-								const enBase = estPromouvable(entree)
-								const designable = !enBase && Boolean(onDesignateMain)
-								const designee = pendingMain === entree
-								return (
-									<Button
-										type='button'
-										variant={designee ? 'default' : 'outline'}
-										size='sm'
-										className='h-6 w-24 px-1 text-xs'
-										title={
-											designee
-												? 'Deviendra l’image principale à l’enregistrement'
-												: enBase
-													? 'Devient l’image principale tout de suite'
-													: designable
-														? 'Sera l’image principale une fois enregistrée'
-														: 'Enregistrez d’abord : cette image n’est pas encore en base'
-										}
-										disabled={
-											disabled ||
-											promoting ||
-											designee ||
-											(enBase ? !onPromote : !designable)
-										}
-										onClick={() => {
-											if (enBase) onPromote?.(entree)
-											else onDesignateMain?.(entree)
-										}}
-									>
-										<Star className='mr-1 h-3 w-3' />
-										Principale
-									</Button>
-								)
-							})()}
-
-							<div className='flex items-center justify-center gap-0.5'>
-								<Button
-									type='button'
-									variant='ghost'
-									size='icon'
-									className='h-6 w-6'
-									title='Déplacer vers la gauche'
-									disabled={disabled || index === 0}
-									onClick={() => onChange(deplacer(value, index, index - 1))}
-								>
-									<ArrowLeft className='h-3 w-3' />
-								</Button>
-								<span className='text-muted-foreground text-xs tabular-nums'>
-									{index + 1}
-								</span>
-								<Button
-									type='button'
-									variant='ghost'
-									size='icon'
-									className='h-6 w-6'
-									title='Déplacer vers la droite'
-									disabled={disabled || index === value.length - 1}
-									onClick={() => onChange(deplacer(value, index, index + 1))}
-								>
-									<ArrowRight className='h-3 w-3' />
-								</Button>
-								<Button
-									type='button'
-									variant='ghost'
-									size='icon'
-									className='h-6 w-6 text-destructive hover:text-destructive'
-									title='Retirer cette image du produit'
-									disabled={disabled}
-									onClick={() => onChange(retirer(value, index))}
-								>
-									<Trash2 className='h-3 w-3' />
-								</Button>
-							</div>
-						</figure>
-					)
-				})}
+				{/* ── LA ZONE D'IMPORT ────────────────────────────────────────────
+				    Cliquable ET réceptive au glisser-déposer, le second passant par
+				    exactement les mêmes contrôles que le premier (`accepter`). */}
+				<button
+					type='button'
+					onClick={choisir}
+					disabled={disabled || plein}
+					onDragOver={(e) => {
+						if (disabled || plein) return
+						e.preventDefault()
+						setSurvol(true)
+					}}
+					onDragLeave={() => setSurvol(false)}
+					onDrop={(e) => {
+						e.preventDefault()
+						setSurvol(false)
+						if (disabled || plein) return
+						void accepter(Array.from(e.dataTransfer.files))
+					}}
+					className={cn(
+						'flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors',
+						survol
+							? 'border-primary bg-primary/5'
+							: 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/40',
+						(disabled || plein) &&
+							'cursor-not-allowed opacity-60 hover:border-muted-foreground/25 hover:bg-transparent',
+					)}
+				>
+					<span className='flex h-10 w-10 items-center justify-center rounded-full bg-muted'>
+						<Upload className='h-4 w-4 text-muted-foreground' />
+					</span>
+					<span className='font-medium text-sm'>
+						{plein ? 'Galerie pleine' : 'Glissez vos photos ici'}
+					</span>
+					<span className='text-muted-foreground text-xs'>
+						{plein
+							? `${MAX_GALERIE} images au maximum.`
+							: `ou cliquez pour parcourir · JPEG, PNG, WebP, AVIF · ${restant} restante${restant > 1 ? 's' : ''}`}
+					</span>
+				</button>
 			</div>
+
+			{/* ── LA GALERIE ──────────────────────────────────────────────────
+			    Une grille de tuiles carrées ; les gestes se posent EN SURIMPRESSION
+			    au survol plutôt qu'en trois rangées de boutons sous chaque
+			    vignette. Ils restent atteignables au clavier (`focus-within`). */}
+			{value.length > 0 && (
+				<div>
+					<div className='mb-2 flex items-baseline justify-between gap-2'>
+						<span className='font-medium text-sm'>Galerie</span>
+						<span className='text-muted-foreground text-xs'>
+							{value.length}/{MAX_GALERIE} · l’ordre est celui du site
+						</span>
+					</div>
+
+					<div className='grid grid-cols-3 gap-3 sm:grid-cols-4'>
+						{value.map((entree, index) => {
+							const nom = nomEntree(entree)
+							// Une chaîne vide dans `<img src>` recharge la page courante :
+							// on ne rend l'image que quand l'URL existe vraiment.
+							const url =
+								entree instanceof File
+									? apercus.get(entree)
+									: urlDe(nom) || undefined
+
+							// Deux gestes derrière un seul bouton, et deux temporalités :
+							// une image EN BASE se promeut tout de suite par la route
+							// serveur ; une image tout juste choisie n'a pas encore de nom
+							// de fichier, elle ne peut qu'être DÉSIGNÉE et attendre
+							// l'enregistrement. Sans cette seconde voie il fallait
+							// enregistrer une première fois pour pouvoir changer la
+							// vedette — signalé à l'usage.
+							const enBase = estPromouvable(entree)
+							const designable = !enBase && Boolean(onDesignateMain)
+							const designee = pendingMain === entree
+
+							return (
+								<figure
+									key={cleEntree(entree)}
+									className='group relative aspect-square overflow-hidden rounded-lg border bg-muted/20 focus-within:ring-2 focus-within:ring-ring'
+								>
+									{url ? (
+										<img
+											src={url}
+											alt={nom}
+											className='h-full w-full object-contain'
+										/>
+									) : (
+										<div className='flex h-full items-center justify-center'>
+											<ImagePlus className='h-5 w-5 text-muted-foreground' />
+										</div>
+									)}
+
+									<span className='absolute top-1.5 left-1.5 rounded bg-background/85 px-1.5 font-medium text-[11px] tabular-nums shadow-sm'>
+										{index + 1}
+									</span>
+									{entree instanceof File && (
+										<span className='absolute top-1.5 right-1.5 rounded bg-amber-500/90 px-1.5 font-medium text-[11px] text-white shadow-sm'>
+											Nouvelle
+										</span>
+									)}
+
+									<div className='absolute inset-x-0 bottom-0 flex items-center justify-between gap-0.5 bg-gradient-to-t from-background/95 to-background/0 p-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100'>
+										<Button
+											type='button'
+											variant='ghost'
+											size='icon'
+											className='h-7 w-7'
+											title='Déplacer vers la gauche'
+											aria-label='Déplacer vers la gauche'
+											disabled={disabled || index === 0}
+											onClick={() =>
+												onChange(deplacer(value, index, index - 1))
+											}
+										>
+											<ArrowLeft className='h-3.5 w-3.5' />
+										</Button>
+										<Button
+											type='button'
+											variant={designee ? 'default' : 'ghost'}
+											size='icon'
+											className='h-7 w-7'
+											title={
+												designee
+													? 'Deviendra l’image principale à l’enregistrement'
+													: enBase
+														? 'Définir comme image principale (tout de suite)'
+														: designable
+															? 'Définir comme image principale (à l’enregistrement)'
+															: 'Enregistrez d’abord : cette image n’est pas encore en base'
+											}
+											aria-label='Définir comme image principale'
+											disabled={
+												disabled ||
+												promoting ||
+												designee ||
+												(enBase ? !onPromote : !designable)
+											}
+											onClick={() => {
+												if (enBase) onPromote?.(entree)
+												else onDesignateMain?.(entree)
+											}}
+										>
+											<Star
+												className={cn(
+													'h-3.5 w-3.5',
+													designee && 'fill-current',
+												)}
+											/>
+										</Button>
+										<Button
+											type='button'
+											variant='ghost'
+											size='icon'
+											className='h-7 w-7'
+											title='Déplacer vers la droite'
+											aria-label='Déplacer vers la droite'
+											disabled={disabled || index === value.length - 1}
+											onClick={() =>
+												onChange(deplacer(value, index, index + 1))
+											}
+										>
+											<ArrowRight className='h-3.5 w-3.5' />
+										</Button>
+										<Button
+											type='button'
+											variant='ghost'
+											size='icon'
+											className='h-7 w-7 text-destructive hover:text-destructive'
+											title='Retirer cette image du produit'
+											aria-label='Retirer cette image du produit'
+											disabled={disabled}
+											onClick={() => onChange(retirer(value, index))}
+										>
+											<Trash2 className='h-3.5 w-3.5' />
+										</Button>
+									</div>
+								</figure>
+							)
+						})}
+					</div>
+				</div>
+			)}
 
 			{value.length === 0 && (
 				<p className='text-muted-foreground text-xs'>
@@ -391,35 +475,17 @@ export function GalleryField({
 				disabled={disabled}
 			/>
 
-			<div className='flex items-center gap-3'>
-				<Button
-					type='button'
-					variant='outline'
-					size='sm'
-					onClick={choisir}
-					disabled={disabled || plein}
-				>
-					<Upload className='mr-2 h-4 w-4' />
-					Importer
-				</Button>
-				<div className='space-y-0.5 text-muted-foreground text-xs'>
-					<p>
-						{plein
-							? `Galerie pleine : ${MAX_GALERIE} images au maximum.`
-							: 'JPEG, PNG, WebP ou AVIF. Une image importée se place en fin de galerie.'}
-					</p>
-					{/* LES DEUX TEMPORALITÉS. Elles ne se devinent pas, et les
-					    confondre a produit un enregistrement refusé. */}
-					<p>
-						<strong>
-							« Principale » et sa suppression s’appliquent tout de suite.
-						</strong>{' '}
-						Promouvoir ne supprime rien. Supprimer est définitif après
-						confirmation. Les ajouts, retraits et déplacements de la galerie
-						attendent « Enregistrer ».
-					</p>
-				</div>
-			</div>
+			{/* LES DEUX TEMPORALITÉS. Elles ne se devinent pas, et les confondre a
+			    produit un enregistrement refusé. */}
+			<p className='rounded-lg bg-muted/50 px-3 py-2 text-muted-foreground text-xs leading-relaxed'>
+				<strong className='text-foreground'>
+					Sur une image déjà enregistrée, « principale » et la suppression
+					s’appliquent tout de suite.
+				</strong>{' '}
+				Promouvoir ne supprime rien ; supprimer est définitif après
+				confirmation. Les imports, retraits et déplacements attendent «
+				Enregistrer ».
+			</p>
 
 			<AlertDialog
 				open={confirmationSuppression}
