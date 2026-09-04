@@ -317,3 +317,65 @@ func TestReportPocketAppUsage(t *testing.T) {
 		t.Fatalf("corps inattendu: %#v", body)
 	}
 }
+
+// Le code-barres n'est une piste de recherche QUE s'il en est une : un EAN
+// désigne l'article chez tous les revendeurs, un code imprimé au comptoir ne
+// désigne rien dehors et ferait porter la recherche sur un nombre sans
+// propriétaire.
+func TestCodeBarresMondial(t *testing.T) {
+	mondiaux := map[string]string{
+		"3760207770158":   "3760207770158", // EAN-13
+		"12345670":        "12345670",      // EAN-8
+		"012345678905":    "012345678905",  // UPC-A
+		"10012345678902":  "10012345678902",
+		" 3760207770158 ": "3760207770158",
+		"376-0207770158":  "3760207770158",
+	}
+	for entree, attendu := range mondiaux {
+		if obtenu := codeBarresMondial(entree); obtenu != attendu {
+			t.Errorf("codeBarresMondial(%q) = %q, attendu %q", entree, obtenu, attendu)
+		}
+	}
+
+	internes := []string{"", "AX-0042", "123", "1234567890", "abcdefgh", "376020777015800"}
+	for _, entree := range internes {
+		if obtenu := codeBarresMondial(entree); obtenu != "" {
+			t.Errorf("codeBarresMondial(%q) = %q, attendu vide", entree, obtenu)
+		}
+	}
+}
+
+// Un GTIN suffit à identifier un produit : la fiche sans marque ni catégorie
+// qui en porte un ne doit PAS recevoir le message « il manque tout ».
+func TestContexteProduitMaigre(t *testing.T) {
+	nu := ProductSheetRequest{Name: "earthwood 11/52"}
+	if !contexteProduitMaigre(nu) {
+		t.Fatal("un nom seul doit être jugé maigre")
+	}
+	if contexteProduitMaigre(ProductSheetRequest{Name: "earthwood 11/52", Barcode: "3760207770158"}) {
+		t.Fatal("un code-barres mondial identifie le produit")
+	}
+	if contexteProduitMaigre(ProductSheetRequest{Name: "earthwood 11/52", Barcode: "AX-0042"}) == false {
+		t.Fatal("un code interne n'identifie rien")
+	}
+	if contexteProduitMaigre(ProductSheetRequest{Name: "P-145", Brand: "Yamaha"}) {
+		t.Fatal("une marque identifie le produit")
+	}
+}
+
+// La requête web commence par le GTIN quand il existe : une recherche sur un
+// EAN tombe sur la fiche du fabricant, un nom générique sur un forum.
+func TestPreferredQueryCommenceParLeGTIN(t *testing.T) {
+	payload, err := buildGeminiProductSheetRequest(ProductSheetRequest{
+		Name:      "earthwood 11/52",
+		Barcode:   "3760207770158",
+		WebSearch: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := payload.Contents[0].Parts[0].Text
+	if !strings.Contains(prompt, "3760207770158") {
+		t.Fatalf("le GTIN n'est pas dans la requête: %s", prompt)
+	}
+}

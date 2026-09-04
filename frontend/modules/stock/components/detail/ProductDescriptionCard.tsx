@@ -41,7 +41,7 @@ export function ProductDescriptionCard({
 	brandName?: string
 	/** Enregistre la fiche entière. Le studio s'en sert pour tenir sa promesse
 	 *  d'un seul geste final ; sans lui, il n'ouvrirait qu'un brouillon. */
-	onSaveNow?: () => Promise<unknown>
+	onSaveNow?: () => Promise<boolean>
 	saving?: boolean
 }) {
 	const [studioOpen, setStudioOpen] = useState(false)
@@ -166,8 +166,10 @@ export function ProductDescriptionCard({
 						shouldTouch: true,
 						shouldValidate: true,
 					})
-					await onSaveNow?.()
-					setStudioOpen(false)
+					// Un refus PocketBase laisse la modale OUVERTE, avec son texte :
+					// la refermer sur un échec perdrait la génération.
+					const enregistre = await onSaveNow?.()
+					if (enregistre !== false) setStudioOpen(false)
 				}}
 			/>
 		</>

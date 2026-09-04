@@ -1,13 +1,23 @@
-import { ArrowLeft } from 'lucide-react'
-import { useEffect } from 'react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Form } from '@/components/ui/form'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
 import { useCatalogProduct } from '@/lib/queries/catalog-products'
 import { usePocketBase } from '@/lib/use-pocketbase'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useBlocker, useNavigate, useParams } from '@tanstack/react-router'
 
 import { ProductDetailHeader } from './components/detail/ProductDetailHeader'
 import { ProductIdentityCard } from './components/detail/ProductIdentityCard'
@@ -104,6 +114,70 @@ function ProductDetailContent({
 		),
 		content: Boolean(dirty.name || dirty.description),
 		visuals: editor.galleryDirty || editor.imagesTouched,
+	}
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// QUITTER LA FICHE SANS L'ENREGISTRER
+	// ═══════════════════════════════════════════════════════════════════════
+	// Le bandeau « Enregistrer » ne protège rien si la page peut disparaître
+	// sous lui : un clic sur « Retour », une entrée de menu, et le travail est
+	// perdu sans un mot.
+	//
+	// **Une seule interception suffit.** Le bouton « Retour » du bandeau ne fait
+	// pas exception : il appelle `navigate()`, donc il passe par l'historique du
+	// routeur comme le menu. L'intercepter EN PLUS rouvrait la question juste
+	// après y avoir répondu — on l'a essayé, et c'était le bug.
+	// Reste `beforeunload` pour la fermeture de la fenêtre, hors du routeur :
+	// le navigateur pose alors sa propre phrase, qu'on ne peut pas formuler.
+	//
+	// « Enregistrer et quitter » ne quitte QUE si l'enregistrement a réussi :
+	// `saveNow` rend un booléen exprès (voir `useProductDetailEditor`). Un refus
+	// PocketBase laisse la fiche à l'écran, avec son texte.
+	const [enregistrementEnCours, setEnregistrementEnCours] = useState(false)
+	const [sortieAmorcee, setSortieAmorcee] = useState(false)
+	// ⚠️ **LA CONDITION RESTE VRAIE PENDANT L'ENREGISTREMENT**, et pas seulement
+	// tant qu'il y a des modifications. Mesuré : `useBlocker` retire son
+	// abonnement à l'historique dès que `condition` repasse à `false`
+	// (`useBlocker.js`, le `return` de l'effet), MAIS son `resolver` reste
+	// `blocked` tant que la promesse n'est pas résolue. « Enregistrer et
+	// quitter » faisait donc tomber la condition — plus rien de modifié — AVANT
+	// d'appeler `proceed()` : l'abonnement était déjà parti, la navigation
+	// perdue, et la boîte restait à l'écran sur une fiche pourtant enregistrée.
+	const blocage = useBlocker({
+		condition: editor.hasChanges || sortieAmorcee,
+	})
+
+	useEffect(() => {
+		if (!editor.hasChanges) return
+		const avertir = (event: BeforeUnloadEvent) => {
+			event.preventDefault()
+			// Les navigateurs ignorent le texte fourni depuis 2016 et affichent
+			// leur propre phrase ; `returnValue` reste ce qui DÉCLENCHE la boîte.
+			event.returnValue = ''
+		}
+		window.addEventListener('beforeunload', avertir)
+		return () => window.removeEventListener('beforeunload', avertir)
+	}, [editor.hasChanges])
+
+	const quitterVraiment = () => {
+		setSortieAmorcee(false)
+		blocage.proceed()
+	}
+
+	const resterIci = () => {
+		setSortieAmorcee(false)
+		blocage.reset()
+	}
+
+	const enregistrerPuisQuitter = async () => {
+		// Posé AVANT l'attente : c'est ce drapeau qui tient l'abonnement du
+		// bloqueur en vie pendant que l'enregistrement fait tomber `hasChanges`.
+		setSortieAmorcee(true)
+		setEnregistrementEnCours(true)
+		const enregistre = await editor.saveNow()
+		setEnregistrementEnCours(false)
+		if (enregistre) quitterVraiment()
+		else resterIci()
 	}
 
 	useEffect(() => {
@@ -220,6 +294,57 @@ function ProductDetailContent({
 				</main>
 			</form>
 			{editor.dialogue}
+
+			<AlertDialog
+				open={blocage.status === 'blocked'}
+				onOpenChange={(ouvert) => {
+					if (!ouvert) resterIci()
+				}}
+			>
+				<AlertDialogContent className='sm:max-w-[560px]'>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Cette fiche n’est pas enregistrée
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							Le texte, les prix ou les images modifiés seront perdus si tu
+							quittes maintenant.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					{/* Une seule rangée, alignée à droite, dans l'ordre de gravité
+					    croissante : rester, partir, enregistrer. Le pied par défaut
+					    empile en colonne sous 640 px — c'est voulu, la boîte reste
+					    lisible sur un écran de caisse étroit. */}
+					<AlertDialogFooter className='gap-2 sm:justify-end'>
+						<AlertDialogCancel className='mt-0' onClick={resterIci}>
+							Rester sur la fiche
+						</AlertDialogCancel>
+						<Button
+							type='button'
+							variant='outline'
+							className='text-destructive hover:text-destructive'
+							onClick={quitterVraiment}
+							disabled={enregistrementEnCours}
+						>
+							Quitter sans enregistrer
+						</Button>
+						<AlertDialogAction
+							onClick={(event) => {
+								// Sans cela, Radix referme la boîte AVANT la fin de
+								// l'enregistrement, et un refus n'aurait plus où s'afficher.
+								event.preventDefault()
+								void enregistrerPuisQuitter()
+							}}
+							disabled={enregistrementEnCours}
+						>
+							{enregistrementEnCours && (
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							)}
+							Enregistrer et quitter
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</Form>
 	)
 }

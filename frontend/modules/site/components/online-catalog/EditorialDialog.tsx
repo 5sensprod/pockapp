@@ -239,8 +239,14 @@ export function EditorialDialog({ target, onClose, onApply }: Props) {
 								ariaLabel='Description affichée sur le site'
 								placeholder='Le texte lu par le visiteur sur la page.'
 							/>
+							{/* Le plafond du schéma n'est pas un objectif : affiché en
+							    permanence, « 0 / 20000 » fait passer une fiche de la bonne
+							    taille pour un travail à peine commencé. Il n'apparaît qu'en
+							    approche. */}
 							<p className='text-right text-muted-foreground text-xs tabular-nums'>
-								{description.length} / {DESCRIPTION_MAX}
+								{description.length > DESCRIPTION_MAX * 0.9
+									? `${description.length} / ${DESCRIPTION_MAX}`
+									: `${description.length} caractères`}
 							</p>
 						</div>
 

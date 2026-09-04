@@ -179,6 +179,10 @@ export function ProductSheetStudio({
 		name: titre.trim() || product.name,
 		designation: product.designation,
 		sku: product.sku,
+		// Le meilleur terme de recherche quand c'en est un : un EAN désigne
+		// l'article chez tous les revendeurs. Le serveur écarte lui-même les
+		// codes internes (`codeBarresMondial`), l'écran n'a pas à trier.
+		barcode: product.barcode,
 		brand: brandName,
 		categories: categoryNames,
 		currentDescription: description,
@@ -191,8 +195,14 @@ export function ProductSheetStudio({
 	// après, l'échec ressemble à une panne alors que c'est la fiche qui est
 	// vide. Le SKU ne compte pas : une référence interne n'identifie rien
 	// dehors.
+	const gtin = /^\d{8}$|^\d{12,14}$/.test(
+		(product.barcode ?? '').replace(/[\s-]/g, ''),
+	)
 	const contexteMaigre =
-		!brandName && (categoryNames ?? []).length === 0 && fichiers.length === 0
+		!brandName &&
+		(categoryNames ?? []).length === 0 &&
+		!gtin &&
+		fichiers.length === 0
 
 	const suggestions: Suggestion[] =
 		fichiers.length > 0
@@ -568,8 +578,22 @@ export function ProductSheetStudio({
 								Ajouter une section
 							</Button>
 
-							<p className='text-muted-foreground text-xs'>
-								{description.length} / {DESCRIPTION_MAX} caractères
+							{/* 20 000 est le plafond du schéma (`catalog_v2.go`), pas un
+							    objectif : l'afficher en permanence donnait « 0 / 20000 » sous
+							    un champ vide, et faisait passer une fiche de 2 000 signes —
+							    la bonne taille — pour un travail à peine commencé. On compte
+							    ce qui est écrit ; le plafond n'apparaît qu'en approche. */}
+							<p
+								className={cn(
+									'text-xs',
+									description.length > DESCRIPTION_MAX * 0.9
+										? 'font-medium text-amber-600'
+										: 'text-muted-foreground',
+								)}
+							>
+								{description.length > DESCRIPTION_MAX * 0.9
+									? `${description.length} / ${DESCRIPTION_MAX} caractères`
+									: `${description.length} caractère${description.length > 1 ? 's' : ''}`}
 							</p>
 						</div>
 					</div>

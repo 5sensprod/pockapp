@@ -84,6 +84,7 @@ type ProductTitleRequest struct {
 	Name               string   `json:"name"`
 	Designation        string   `json:"designation,omitempty"`
 	SKU                string   `json:"sku,omitempty"`
+	Barcode            string   `json:"barcode,omitempty"`
 	Brand              string   `json:"brand,omitempty"`
 	Categories         []string `json:"categories,omitempty"`
 	CurrentDescription string   `json:"currentDescription,omitempty"`
@@ -93,6 +94,7 @@ type ProductSheetRequest struct {
 	Name               string             `json:"name"`
 	Designation        string             `json:"designation,omitempty"`
 	SKU                string             `json:"sku,omitempty"`
+	Barcode            string             `json:"barcode,omitempty"`
 	Brand              string             `json:"brand,omitempty"`
 	Categories         []string           `json:"categories,omitempty"`
 	CurrentDescription string             `json:"currentDescription,omitempty"`
@@ -113,6 +115,7 @@ type productTitleContext struct {
 	CurrentName string   `json:"current_name"`
 	Designation string   `json:"designation,omitempty"`
 	SKU         string   `json:"sku,omitempty"`
+	GTIN        string   `json:"gtin,omitempty"`
 	Brand       string   `json:"brand,omitempty"`
 	Categories  []string `json:"categories,omitempty"`
 	Description string   `json:"description,omitempty"`
@@ -122,6 +125,8 @@ type productSheetContext struct {
 	CurrentName        string   `json:"current_name"`
 	Designation        string   `json:"designation,omitempty"`
 	SKU                string   `json:"sku,omitempty"`
+	// Le code-barres N'ENTRE QUE s'il est un EAN/UPC — voir `codeBarresMondial`.
+	GTIN               string   `json:"gtin,omitempty"`
 	Brand              string   `json:"brand,omitempty"`
 	Categories         []string `json:"categories,omitempty"`
 	CurrentDescription string   `json:"current_description,omitempty"`
@@ -591,6 +596,7 @@ func buildGeminiProductSheetRequest(input ProductSheetRequest) (geminiGenerateRe
 		CurrentName:        name,
 		Designation:        truncateRunes(compactWhitespace(input.Designation), 255),
 		SKU:                truncateRunes(compactWhitespace(input.SKU), 128),
+		GTIN:               codeBarresMondial(input.Barcode),
 		Brand:              truncateRunes(compactWhitespace(input.Brand), 255),
 		Categories:         cleanCategories(input.Categories),
 		CurrentDescription: cleanDescriptionForPrompt(input.CurrentDescription),
@@ -731,8 +737,43 @@ func validateProductSheetFiles(files []productSheetFile) ([]geminiPart, error) {
 	return parts, nil
 }
 
+// codeBarresMondial : le code-barres, mais SEULEMENT s'il en est un.
+//
+// Un EAN-13, EAN-8, UPC-A ou GTIN-14 désigne un article chez TOUS les
+// revendeurs de la planète : c'est le meilleur terme de recherche possible,
+// meilleur qu'une marque et un modèle approximatifs. Le champ `barcode` de
+// PocketApp porte cependant AUSSI des codes internes — une étiquette imprimée
+// au comptoir —, qui ne désignent rien dehors et empoisonneraient la recherche
+// en la faisant porter sur un nombre sans propriétaire.
+//
+// On ne garde donc que ce qui a la forme d'un code mondial : uniquement des
+// chiffres, et une longueur normalisée. Aucune clé de contrôle n'est vérifiée
+// — un code juste par la forme suffit à décider s'il vaut la peine d'être
+// cherché, et un EAN mal recopié ne rendra simplement aucun résultat.
+func codeBarresMondial(barcode string) string {
+	valeur := compactWhitespace(barcode)
+	valeur = strings.ReplaceAll(valeur, " ", "")
+	valeur = strings.ReplaceAll(valeur, "-", "")
+	if valeur == "" {
+		return ""
+	}
+	for _, caractere := range valeur {
+		if caractere < '0' || caractere > '9' {
+			return ""
+		}
+	}
+	switch len(valeur) {
+	case 8, 12, 13, 14:
+		return valeur
+	default:
+		return ""
+	}
+}
+
 func preferredProductSearchQuery(context productSheetContext) string {
-	values := []string{context.Brand, context.Designation, context.CurrentName, context.SKU}
+	// Le GTIN passe DEVANT tout le reste : une recherche sur un EAN tombe sur la
+	// bonne page produit là où « earthwood 11/52 » tombe sur un forum.
+	values := []string{context.GTIN, context.Brand, context.Designation, context.CurrentName, context.SKU}
 	if len(context.Categories) > 0 {
 		values = append(values, context.Categories[0])
 	}
@@ -941,11 +982,14 @@ func extractGeminiProductSheet(raw []byte) (productSheetGeneration, error) {
 // contexteProduitMaigre : rien d'autre qu'un nom n'identifie l'article.
 //
 // Le SKU n'entre pas dans le compte, et c'est délibéré : une référence interne
-// ne dit rien à Google Search ni au modèle. Ce qui identifie un produit, c'est
-// la marque, la catégorie, ou une source apportée par l'utilisateur.
+// ne dit rien à Google Search ni au modèle. Un code-barres MONDIAL, lui, compte
+// — il désigne l'article chez tous les revendeurs (`codeBarresMondial`). Ce qui
+// identifie un produit, c'est donc la marque, la catégorie, un GTIN, ou une
+// source apportée par l'utilisateur.
 func contexteProduitMaigre(input ProductSheetRequest) bool {
 	return compactWhitespace(input.Brand) == "" &&
 		len(cleanCategories(input.Categories)) == 0 &&
+		codeBarresMondial(input.Barcode) == "" &&
 		strings.TrimSpace(input.SourceText) == "" &&
 		len(input.Files) == 0
 }

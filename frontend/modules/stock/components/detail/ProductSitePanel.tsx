@@ -24,7 +24,7 @@ type Props = {
 	onDesignateMain: (entry: GalleryEntry) => void
 	pendingMain: File | null
 	brandName?: string
-	onSaveNow?: () => Promise<unknown>
+	onSaveNow?: () => Promise<boolean>
 	saving?: boolean
 	onRemoveMain: () => void
 	promoting: boolean

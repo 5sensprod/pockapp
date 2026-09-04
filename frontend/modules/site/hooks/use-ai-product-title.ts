@@ -11,6 +11,9 @@ export type ProductTitleDraft = {
 	name: string
 	designation?: string
 	sku?: string
+	/** Le code-barres tel qu'il est en base. Le serveur ne le retient que s'il a
+	 *  la forme d'un EAN/UPC : un code interne n'identifie rien sur le web. */
+	barcode?: string
 	brand?: string
 	categories?: string[]
 	currentDescription?: string

@@ -102,8 +102,8 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 	// modification attend d'être sauvée, pas seulement pendant l'édition visible.
 	const syncAfterSave = useSyncAfterSave(activeSection !== null || hasChanges)
 
-	const submit = async (data: ProductDetailValues) => {
-		if (!hasChanges) return
+	const submit = async (data: ProductDetailValues): Promise<boolean> => {
+		if (!hasChanges) return true
 		try {
 			const slug = product.slug
 				? ''
@@ -180,8 +180,10 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 				syncImages,
 				avant,
 			)
+			return true
 		} catch (error) {
 			toast.error(`Enregistrement refusé : ${pocketbaseErrorMessage(error)}`)
+			return false
 		}
 	}
 
@@ -224,7 +226,19 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 		 * garanti : l'ajustement de stock, le slug réparé, et la proposition de
 		 * synchronisation vers le site.
 		 */
-		saveNow: () => form.handleSubmit(submit)(),
+		saveNow: async () => {
+			// ⚠️ **Le résultat doit REMONTER.** `handleSubmit` rend `void` : sans
+			// cette variable, un appelant ne peut pas distinguer un enregistrement
+			// réussi d'un refus PocketBase — et le studio se refermait, ou la
+			// navigation se poursuivait, sur un travail perdu. Une validation RHF
+			// en échec n'appelle pas le callback : `ok` reste faux, ce qui est la
+			// bonne réponse.
+			let ok = false
+			await form.handleSubmit(async (data) => {
+				ok = await submit(data)
+			})()
+			return ok
+		},
 		activeSection,
 		start: (section: ProductDetailSection) => setActiveSection(section),
 		close: () => setActiveSection(null),
