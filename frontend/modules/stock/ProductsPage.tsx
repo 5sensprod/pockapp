@@ -64,6 +64,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { useEtatPersistant } from '@/lib/hooks/useEtatPersistant'
+
 import { CatalogProductDialog } from './components/CatalogProductDialog'
 import {
 	DeleteProductDialog,
@@ -101,30 +103,115 @@ const SALE_STATE_LABELS: Record<CatalogSaleStateFilter, string> = {
 	promo: 'Promotion',
 }
 
+// Les gardes de la mémoire d'écran. Elles ne défendent pas contre l'utilisateur
+// mais contre NOUS : une valeur écrite par une version antérieure — un filtre
+// retiré, une colonne de tri renommée — partirait au serveur et rendrait une
+// liste vide sans expliquer pourquoi. Rejetée, elle repart de la valeur
+// initiale.
+const estChaine = (valeur: unknown) => typeof valeur === 'string'
+const estBooleen = (valeur: unknown) => typeof valeur === 'boolean'
+const estPageValide = (valeur: unknown) =>
+	typeof valeur === 'number' && Number.isInteger(valeur) && valeur >= 1
+const estStatutValide = (valeur: unknown) =>
+	valeur === undefined || valeur === 'draft' || valeur === 'published'
+const estScoreSanteValide = (valeur: unknown) =>
+	typeof valeur === 'string' &&
+	(valeur === '' || HEALTH_OPTIONS.some((option) => option.value === valeur))
+const estEtatCommercialValide = (valeur: unknown) =>
+	valeur === '' ||
+	(typeof valeur === 'string' && valeur in COMMERCIAL_STATE_LABELS)
+const estEtatVenteValide = (valeur: unknown) =>
+	valeur === '' || (typeof valeur === 'string' && valeur in SALE_STATE_LABELS)
+const estTriValide = (valeur: unknown) =>
+	Array.isArray(valeur) &&
+	valeur.every(
+		(entree) =>
+			typeof entree === 'object' &&
+			entree !== null &&
+			typeof (entree as { id?: unknown }).id === 'string' &&
+			typeof (entree as { desc?: unknown }).desc === 'boolean' &&
+			(entree as { id: string }).id in CATALOG_SORT_FIELDS,
+	)
+
 export function ProductsPage() {
 	const { activeCompanyId } = useActiveCompany()
 	const pb = usePocketBase()
 	const navigate = useNavigate()
 
-	const [search, setSearch] = useState('')
-	const [debounced, setDebounced] = useState('')
-	const [page, setPage] = useState(1)
-	const [status, setStatus] = useState<CatalogProductStatus | undefined>()
-	const [brandId, setBrandId] = useState<string>('')
-	const [categoryId, setCategoryId] = useState<string>('')
-	const [supplierId, setSupplierId] = useState<string>('')
-	const [missingImage, setMissingImage] = useState(false)
-	const [missingDescription, setMissingDescription] = useState(false)
-	const [missingPurchasePrice, setMissingPurchasePrice] = useState(false)
-	const [emptyStock, setEmptyStock] = useState(false)
-	const [healthScore, setHealthScore] = useState('')
-	const [commercialState, setCommercialState] = useState<
+	// TOUT CE QUI CIRCONSCRIT LA LISTE SURVIT À LA SORTIE DE L'ÉCRAN
+	// (4 septembre 2026). Ouvrir une fiche produit démonte cette page : sans
+	// mémoire, on revenait page 1, sans recherche et sans filtre, à chaque
+	// retour. Une clé par état, toutes relues sous validation — voir
+	// `useEtatPersistant`. Le dialogue de création, lui, n'est PAS persisté :
+	// rouvrir une modale toute seule au montage serait une surprise, pas un
+	// confort.
+	const [search, setSearch] = useEtatPersistant(
+		'stock-produits-recherche',
+		'',
+		estChaine,
+	)
+	// Le débounce ne repart pas de vide : la valeur restaurée est déjà « posée »,
+	// sinon le premier rendu demanderait les 2999 produits avant de se corriger.
+	const [debounced, setDebounced] = useState(search)
+	const [page, setPage] = useEtatPersistant(
+		'stock-produits-page',
+		1,
+		estPageValide,
+	)
+	const [status, setStatus] = useEtatPersistant<
+		CatalogProductStatus | undefined
+	>('stock-produits-statut', undefined, estStatutValide)
+	const [brandId, setBrandId] = useEtatPersistant(
+		'stock-produits-marque',
+		'',
+		estChaine,
+	)
+	const [categoryId, setCategoryId] = useEtatPersistant(
+		'stock-produits-categorie',
+		'',
+		estChaine,
+	)
+	const [supplierId, setSupplierId] = useEtatPersistant(
+		'stock-produits-fournisseur',
+		'',
+		estChaine,
+	)
+	const [missingImage, setMissingImage] = useEtatPersistant(
+		'stock-produits-sans-image',
+		false,
+		estBooleen,
+	)
+	const [missingDescription, setMissingDescription] = useEtatPersistant(
+		'stock-produits-sans-description',
+		false,
+		estBooleen,
+	)
+	const [missingPurchasePrice, setMissingPurchasePrice] = useEtatPersistant(
+		'stock-produits-sans-prix-achat',
+		false,
+		estBooleen,
+	)
+	const [emptyStock, setEmptyStock] = useEtatPersistant(
+		'stock-produits-stock-vide',
+		false,
+		estBooleen,
+	)
+	const [healthScore, setHealthScore] = useEtatPersistant(
+		'stock-produits-sante',
+		'',
+		estScoreSanteValide,
+	)
+	const [commercialState, setCommercialState] = useEtatPersistant<
 		CatalogCommercialStateFilter | ''
-	>('')
-	const [saleState, setSaleState] = useState<CatalogSaleStateFilter | ''>('')
-	const [sorting, setSorting] = useState<SortingState>([
-		{ id: 'created', desc: true },
-	])
+	>('stock-produits-etat-commercial', '', estEtatCommercialValide)
+	const [saleState, setSaleState] = useEtatPersistant<
+		CatalogSaleStateFilter | ''
+	>('stock-produits-etat-vente', '', estEtatVenteValide)
+	const [sorting, setSorting] = useEtatPersistant<SortingState>(
+		'stock-produits-tri',
+		[{ id: 'created', desc: true }],
+		estTriValide,
+	)
 	const [dialogOpen, setDialogOpen] = useState(false)
 	/** La fiche dont on demande la suppression. `null` = aucune confirmation
 	 *  ouverte. On garde l'ENREGISTREMENT et non la ligne de table : la
@@ -163,7 +250,23 @@ export function ProductsPage() {
 		setCommercialState('')
 		setSaleState('')
 		setPage(1)
-	}, [activeCompanyId])
+		// Les setters de `useEtatPersistant` sont ceux de `useState` : stables
+		// pour la vie du composant. Ils sont listés parce que le linter ne les
+		// reconnaît plus comme tels, pas parce qu'ils changent.
+	}, [
+		activeCompanyId,
+		setBrandId,
+		setCategoryId,
+		setSupplierId,
+		setMissingImage,
+		setMissingDescription,
+		setMissingPurchasePrice,
+		setEmptyStock,
+		setHealthScore,
+		setCommercialState,
+		setSaleState,
+		setPage,
+	])
 
 	const categories = useCategories({ companyId: activeCompanyId ?? undefined })
 	const catalogCounts = useCatalogCounts(activeCompanyId ?? undefined)
@@ -218,7 +321,13 @@ export function ProductsPage() {
 		if (populatedCategoryIds.has(categoryId)) return
 		setCategoryId('')
 		setPage(1)
-	}, [categoryId, populatedCategoryIds, catalogCounts.data])
+	}, [
+		categoryId,
+		populatedCategoryIds,
+		catalogCounts.data,
+		setCategoryId,
+		setPage,
+	])
 
 	const products = useCatalogProducts({
 		companyId: activeCompanyId ?? undefined,
