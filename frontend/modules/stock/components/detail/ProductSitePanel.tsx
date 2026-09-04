@@ -23,7 +23,6 @@ type Props = {
 	onPromote: (filename: string) => void
 	onDesignateMain: (entry: GalleryEntry) => void
 	pendingMain: File | null
-	brandName?: string
 	onSaveNow?: () => Promise<boolean>
 	saving?: boolean
 	onRemoveMain: () => void
@@ -111,7 +110,6 @@ export function ProductSitePanel(props: Props) {
 					editing={props.activeSection === 'content'}
 					form={props.form}
 					embedded
-					brandName={props.brandName}
 					onSaveNow={props.onSaveNow}
 					saving={props.saving}
 				/>

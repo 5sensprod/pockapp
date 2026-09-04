@@ -73,6 +73,15 @@ suggestion, enregistrer.
   pourrait déclencher une recherche Google non demandée (quota séparé). Seul
   l'ÉTAT sert de repli : fichiers joints → documents, sinon → web.
 
+**L'assistant lit le BROUILLON, pas la base** (4 septembre 2026). Désignation,
+référence, code-barres, marque, catégories, prix et stock viennent de
+`form.watch()`, donc **avant tout enregistrement**. C'est la seule forme
+cohérente : « Enregistrer la fiche » écrit le formulaire entier (`saveNow`), ce
+que l'assistant lit est donc exactement ce qui partira en base. La marque et les
+catégories sont résolues en NOMS par l'appelant — le formulaire porte des
+identifiants PocketBase, qui ne disent rien à un modèle de langue. `product` ne
+sert plus qu'à l'identité de la fiche et à ses images déjà en base.
+
 **Structure** : à gauche l'aperçu (images, titre éditable + IA, prix, badge
 stock, marque, catégories, SKU), puis les blocs de description — titre
 modifiable, éditeur HTML, régénérer, supprimer, ajouter. À droite l'assistant.
@@ -111,6 +120,15 @@ processus Go (secret chiffré `gemini_api_key`, repli `GEMINI_API_KEY`).
   modale l'annonce AVANT le clic (encart ambre).
 - Les échecs remontent un `detail` **affiché** (motif + `finishReason`
   traduit) : sur un poste client, personne ne lit les journaux de l'exécutable.
+- **`/api/ai/product-images`** (4 septembre 2026) rend des **adresses** de
+  photos du produit, jamais des octets : ni téléchargement, ni entrée dans la
+  galerie, ni question de droits tranchée à la place du commerçant. Une URL
+  d'image est ce qu'un modèle invente le mieux et le serveur ne les vérifie
+  pas — **c'est le navigateur qui tranche** : la vignette qui ne charge pas est
+  retirée de l'écran (`onError`). Il revient donc plus de propositions qu'il
+  n'en reste affichées, et c'est normal. Filtre serveur : `https` seulement
+  (le `http` serait bloqué comme contenu mixte), hôte réel, pas de `data:`,
+  six au maximum. Gardien : `TestURLImageRetenue`.
 
 ---
 

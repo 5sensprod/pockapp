@@ -108,3 +108,45 @@ export function useGenerateProductSheet() {
 		},
 	})
 }
+
+/** Une photo proposée par la recherche : deux adresses, et rien d'autre. Aucun
+ *  octet ne transite par PocketApp, rien n'entre dans la galerie. */
+export type ProductImageCandidate = {
+	imageUrl: string
+	pageUrl?: string
+	title?: string
+}
+
+export type GeneratedProductImages = {
+	candidates: ProductImageCandidate[]
+	searchQueries: string[]
+	model: string
+}
+
+/**
+ * Chercher des photos du produit sur le web.
+ *
+ * ⚠️ **Les adresses rendues ne sont pas vérifiées.** Une URL d'image est ce
+ * qu'un modèle de langue invente le mieux, et le serveur ne va pas chercher
+ * chaque fichier pour le savoir — ce serait une sortie réseau vers des
+ * domaines arbitraires depuis le poste du client, pour un simple aperçu.
+ * **C'est l'affichage qui tranche** : la vignette qui ne charge pas est
+ * retirée de l'écran (`onError`). Attendre moins de propositions à l'écran
+ * qu'il n'en revient d'ici est donc normal.
+ */
+export function useSearchProductImages() {
+	const pb = usePocketBase() as any
+
+	return useMutation<GeneratedProductImages, Error, ProductTitleDraft>({
+		mutationFn: async (draft) => {
+			try {
+				return (await pb.send('/api/ai/product-images', {
+					method: 'POST',
+					body: draft,
+				})) as GeneratedProductImages
+			} catch (cause) {
+				throw generationError(cause)
+			}
+		},
+	})
+}

@@ -379,3 +379,29 @@ func TestPreferredQueryCommenceParLeGTIN(t *testing.T) {
 		t.Fatalf("le GTIN n'est pas dans la requête: %s", prompt)
 	}
 }
+
+// Les adresses proposées par le modèle traversent un filtre grossier — le
+// navigateur tranchera le reste en chargeant, ou pas, la vignette. Ce qui est
+// refusé ici l'est pour une raison, pas par prudence vague : `http` serait
+// bloqué comme contenu mixte et afficherait une proposition morte sans
+// explication, et une `data:` signifie que le modèle a fabriqué l'image.
+func TestURLImageRetenue(t *testing.T) {
+	if urlImageRetenue("https://www.thomann.de/photo.jpg") == "" {
+		t.Fatal("une URL https doit être retenue")
+	}
+	refusees := []string{
+		"",
+		"   ",
+		"http://exemple.fr/photo.jpg",
+		"data:image/png;base64,AAAA",
+		"ftp://exemple.fr/photo.jpg",
+		"https://",
+		"photo.jpg",
+		"https://exemple.fr/" + strings.Repeat("a", 700),
+	}
+	for _, adresse := range refusees {
+		if obtenu := urlImageRetenue(adresse); obtenu != "" {
+			t.Errorf("urlImageRetenue(%.40q) = %q, attendu vide", adresse, obtenu)
+		}
+	}
+}

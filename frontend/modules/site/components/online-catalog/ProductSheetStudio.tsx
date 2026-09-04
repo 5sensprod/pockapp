@@ -55,6 +55,8 @@ import { cn } from '@/lib/utils'
 import {
 	AlertTriangle,
 	Bot,
+	Camera,
+	Copy,
 	ExternalLink,
 	FileText,
 	Globe2,
@@ -72,9 +74,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
+	type ProductImageCandidate,
 	type ProductSheetSource,
 	useGenerateProductSheet,
 	useGenerateProductTitle,
+	useSearchProductImages,
 } from '../../hooks/use-ai-product-title'
 import {
 	type BlocFiche,
@@ -102,15 +106,40 @@ type Suggestion = {
 	icone: 'web' | 'document' | 'plume'
 }
 
+/**
+ * ── LE BROUILLON, ET NON LA BASE ──────────────────────────────────────────
+ *
+ * ⚠️ **Tout ce qui nourrit l'assistant vient du FORMULAIRE**, y compris ce qui
+ * n'a pas encore été enregistré. C'est la seule forme cohérente : « Enregistrer
+ * la fiche » écrit le formulaire ENTIER (`saveNow`), donc ce que l'assistant
+ * lit est exactement ce qui partira en base. Faire autrement obligeait à
+ * enregistrer une désignation ou une marque *avant* de pouvoir s'en servir —
+ * deux allers-retours pour une information déjà saisie à l'écran.
+ *
+ * `product` ne sert plus qu'à ce que le formulaire ne porte pas : l'identité de
+ * la fiche et ses images déjà en base.
+ */
+export type SheetDraft = {
+	name: string
+	description: string
+	designation?: string
+	sku?: string
+	barcode?: string
+	/** Le NOM de la marque choisie dans le formulaire, résolu par l'appelant :
+	 *  le formulaire porte un identifiant, et un identifiant PocketBase ne dit
+	 *  rien à un modèle de langue. */
+	brandName?: string
+	categoryNames?: string[]
+	priceTTC?: number
+	stock?: number
+}
+
 type Props = {
 	open: boolean
 	onClose: () => void
 	product: CatalogProductShape
-	brandName?: string
-	categoryNames?: string[]
-	/** Les valeurs COURANTES du formulaire, pas celles de la base : la modale
-	 *  s'ouvre sur ce que l'utilisateur a déjà tapé sans enregistrer. */
-	draft: { name: string; description: string }
+	/** Les valeurs COURANTES du formulaire, pas celles de la base. */
+	draft: SheetDraft
 	saving?: boolean
 	onSave: (valeurs: {
 		name: string
@@ -129,8 +158,6 @@ export function ProductSheetStudio({
 	open,
 	onClose,
 	product,
-	brandName,
-	categoryNames,
 	draft,
 	saving,
 	onSave,
@@ -138,6 +165,7 @@ export function ProductSheetStudio({
 	const pb = usePocketBase()
 	const genererFiche = useGenerateProductSheet()
 	const genererTitre = useGenerateProductTitle()
+	const chercherImages = useSearchProductImages()
 	const fileInput = useRef<HTMLInputElement>(null)
 
 	const [titre, setTitre] = useState(draft.name)
@@ -150,6 +178,10 @@ export function ProductSheetStudio({
 	const [requetes, setRequetes] = useState<string[]>([])
 	// Le bloc en cours de régénération, pour n'animer QUE son bouton.
 	const [blocEnCours, setBlocEnCours] = useState<string | null>(null)
+	const [photos, setPhotos] = useState<ProductImageCandidate[] | null>(null)
+	// Les adresses dont le navigateur n'a rien tiré. Voir `useSearchProductImages` :
+	// c'est le chargement réel qui fait foi, pas la parole du modèle.
+	const [photosMortes, setPhotosMortes] = useState<string[]>([])
 
 	// Le brouillon du formulaire, lu SANS être suivi : le studio part de ce qui
 	// est à l'écran au moment où il s'ouvre, puis vit sa vie. Le suivre ferait
@@ -169,20 +201,31 @@ export function ProductSheetStudio({
 		setFichiers([])
 		setSources([])
 		setRequetes([])
+		setPhotos(null)
+		setPhotosMortes([])
 	}, [open, product.id])
 
 	const description = useMemo(() => recomposerBlocs(blocs), [blocs])
 	const enCours = genererFiche.isPending || genererTitre.isPending
 	const gele = enCours || Boolean(saving)
 
+	// Toutes ces valeurs viennent du formulaire, enregistrées ou non.
+	const designation = draft.designation ?? product.designation
+	const sku = draft.sku ?? product.sku
+	const barcode = draft.barcode ?? product.barcode
+	const brandName = draft.brandName
+	const categoryNames = draft.categoryNames ?? []
+	const prix = draft.priceTTC ?? product.price_ttc
+	const stock = draft.stock ?? product.stock ?? 0
+
 	const contexte = {
 		name: titre.trim() || product.name,
-		designation: product.designation,
-		sku: product.sku,
+		designation,
+		sku,
 		// Le meilleur terme de recherche quand c'en est un : un EAN désigne
 		// l'article chez tous les revendeurs. Le serveur écarte lui-même les
 		// codes internes (`codeBarresMondial`), l'écran n'a pas à trier.
-		barcode: product.barcode,
+		barcode,
 		brand: brandName,
 		categories: categoryNames,
 		currentDescription: description,
@@ -195,14 +238,9 @@ export function ProductSheetStudio({
 	// après, l'échec ressemble à une panne alors que c'est la fiche qui est
 	// vide. Le SKU ne compte pas : une référence interne n'identifie rien
 	// dehors.
-	const gtin = /^\d{8}$|^\d{12,14}$/.test(
-		(product.barcode ?? '').replace(/[\s-]/g, ''),
-	)
+	const gtin = /^\d{8}$|^\d{12,14}$/.test((barcode ?? '').replace(/[\s-]/g, ''))
 	const contexteMaigre =
-		!brandName &&
-		(categoryNames ?? []).length === 0 &&
-		!gtin &&
-		fichiers.length === 0
+		!brandName && categoryNames.length === 0 && !gtin && fichiers.length === 0
 
 	const suggestions: Suggestion[] =
 		fichiers.length > 0
@@ -319,6 +357,24 @@ export function ProductSheetStudio({
 		}
 	}
 
+	const proposerPhotos = async () => {
+		if (gele || chercherImages.isPending) return
+		try {
+			setPhotosMortes([])
+			const trouvees = await chercherImages.mutateAsync(contexte)
+			setPhotos(trouvees.candidates)
+			if (trouvees.searchQueries.length > 0) setRequetes(trouvees.searchQueries)
+			if (trouvees.candidates.length === 0) {
+				toast.info('Aucune photo sûre trouvée pour ce produit.')
+			}
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : 'Recherche impossible.',
+				{ duration: 12000, className: 'whitespace-pre-line' },
+			)
+		}
+	}
+
 	const proposerTitre = async () => {
 		if (gele) return
 		try {
@@ -361,7 +417,7 @@ export function ProductSheetStudio({
 	const galerie = (product.gallery ?? []).filter(
 		(entree): entree is string => typeof entree === 'string',
 	)
-	const enStock = (product.stock ?? 0) > 0
+	const enStock = stock > 0
 
 	return (
 		<Dialog open={open} onOpenChange={(ouvert) => !ouvert && onClose()}>
@@ -423,9 +479,7 @@ export function ProductSheetStudio({
 
 								{/* Ce qui MEUBLE la fiche : lu, jamais modifié ici. */}
 								<div className='flex flex-wrap items-center gap-2 pt-1'>
-									<span className='font-bold text-lg'>
-										{formatPrix(product.price_ttc)}
-									</span>
+									<span className='font-bold text-lg'>{formatPrix(prix)}</span>
 									<Badge
 										variant='outline'
 										className={cn(
@@ -438,14 +492,14 @@ export function ProductSheetStudio({
 										{enStock ? 'En stock' : 'Réappro'}
 									</Badge>
 									{brandName && <Badge variant='secondary'>{brandName}</Badge>}
-									{(categoryNames ?? []).slice(0, 3).map((nom) => (
+									{categoryNames.slice(0, 3).map((nom) => (
 										<Badge key={nom} variant='outline'>
 											{nom}
 										</Badge>
 									))}
-									{product.sku && (
+									{sku && (
 										<span className='font-mono text-muted-foreground text-xs'>
-											{product.sku}
+											{sku}
 										</span>
 									)}
 								</div>
@@ -749,6 +803,106 @@ export function ProductSheetStudio({
 								PDF, JPEG, PNG ou WebP · {MAX_FILES} au maximum. Avec des
 								documents joints, l’assistant n’interroge pas le web.
 							</p>
+						</div>
+
+						{/* ── DES PHOTOS, PAS DES FICHIERS ────────────────────────────
+						    On rend des ADRESSES : rien n'est téléchargé, rien n'entre
+						    dans la galerie. Importer supposerait de rapatrier les octets
+						    depuis un domaine tiers — une sortie réseau de plus, et une
+						    question de droits que l'écran ne peut pas trancher à la
+						    place du commerçant. Il ouvre, il juge, il enregistre
+						    lui-même s'il le veut. */}
+						<div className='mt-4 border-t pt-4'>
+							<Button
+								type='button'
+								variant='outline'
+								size='sm'
+								className='w-full'
+								disabled={gele || chercherImages.isPending}
+								onClick={proposerPhotos}
+							>
+								{chercherImages.isPending ? (
+									<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+								) : (
+									<Camera className='mr-2 h-4 w-4' />
+								)}
+								Chercher des photos sur le net
+							</Button>
+
+							{photos !== null && (
+								<div className='mt-3 space-y-2'>
+									{photos
+										.filter((photo) => !photosMortes.includes(photo.imageUrl))
+										.map((photo) => (
+											<div
+												key={photo.imageUrl}
+												className='rounded-lg border bg-background p-2'
+											>
+												<img
+													src={photo.imageUrl}
+													alt={photo.title || ''}
+													referrerPolicy='no-referrer'
+													loading='lazy'
+													className='h-28 w-full rounded object-contain'
+													onError={() =>
+														setPhotosMortes((mortes) => [
+															...mortes,
+															photo.imageUrl,
+														])
+													}
+												/>
+												<p className='mt-1.5 break-all font-mono text-[11px] text-muted-foreground leading-tight'>
+													{photo.imageUrl}
+												</p>
+												<div className='mt-1.5 flex items-center gap-1'>
+													<Button
+														type='button'
+														variant='ghost'
+														size='sm'
+														className='h-7 px-2 text-xs'
+														onClick={() => {
+															void navigator.clipboard
+																.writeText(photo.imageUrl)
+																.then(() => toast.success('Adresse copiée'))
+																.catch(() =>
+																	toast.error('Copie impossible sur ce poste'),
+																)
+														}}
+													>
+														<Copy className='mr-1 h-3 w-3' />
+														Copier l’adresse
+													</Button>
+													{photo.pageUrl && (
+														<a
+															href={photo.pageUrl}
+															target='_blank'
+															rel='noreferrer'
+															className='flex items-center gap-1 px-2 text-primary text-xs hover:underline'
+														>
+															<ExternalLink className='h-3 w-3' />
+															La page
+														</a>
+													)}
+												</div>
+											</div>
+										))}
+
+									{photos.filter(
+										(photo) => !photosMortes.includes(photo.imageUrl),
+									).length === 0 && (
+										<p className='text-muted-foreground text-xs'>
+											Aucune des adresses proposées ne répond. Les images
+											trouvées sur le web disparaissent souvent : réessaie, ou
+											va la chercher sur la page du fabricant.
+										</p>
+									)}
+
+									<p className='text-muted-foreground text-xs'>
+										Propositions seulement : rien n’est importé dans la galerie,
+										et les droits d’usage restent à vérifier.
+									</p>
+								</div>
+							)}
 						</div>
 
 						{(sources.length > 0 || requetes.length > 0) && (

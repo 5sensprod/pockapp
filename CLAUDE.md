@@ -90,7 +90,15 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    **secret chiffré** (`secrets.KeyGeminiAPI`, `gemini_api_key`), saisi dans
    « Clés API & Secrets » et servi par `/api/settings/gemini` ; la variable
    d'environnement `GEMINI_API_KEY` n'est plus qu'un **repli**, pour le poste
-   de développement qui a un `.env`. Avant cette date elle n'était lue QUE
+   de développement qui a un `.env`.
+   ⚠️ Depuis le 2026-09-04, `/api/ai/product-images` rend des **adresses de
+   photos** trouvées par Google Search. Rien n'est téléchargé par le Go — mais
+   **le renderer, lui, charge ces images depuis des domaines tiers
+   arbitraires** pour les afficher en vignette. C'est la seule sortie réseau du
+   dépôt dont la destination n'est pas connue d'avance ; elle est en lecture
+   seule, en `https` uniquement (`urlImageRetenue`), sans cookie ni referrer
+   (`referrerPolicy='no-referrer'`), et rien de ce qui est chargé n'entre dans
+   la galerie. Avant cette date elle n'était lue QUE
    dans l'environnement : sur un poste client, où aucun `.env` n'accompagne
    l'exécutable, toutes les routes `/api/ai/*` répondaient « Gemini n'est pas
    configuré sur ce poste » — y compris avec la clé des notifications

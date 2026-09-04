@@ -15,6 +15,7 @@ import {
 	HtmlContentPreview,
 } from '@/components/ui/html-content'
 import { Input } from '@/components/ui/input'
+import { useBrands } from '@/lib/queries/brands'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 import { useCategories } from '@/lib/queries/categories'
 import { ProductSheetStudio } from '@/modules/site/components/online-catalog/ProductSheetStudio'
@@ -30,7 +31,6 @@ export function ProductDescriptionCard({
 	editing,
 	form,
 	embedded = false,
-	brandName,
 	onSaveNow,
 	saving,
 }: {
@@ -38,7 +38,6 @@ export function ProductDescriptionCard({
 	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
-	brandName?: string
 	/** Enregistre la fiche entière. Le studio s'en sert pour tenir sa promesse
 	 *  d'un seul geste final ; sans lui, il n'ouvrirait qu'un brouillon. */
 	onSaveNow?: () => Promise<boolean>
@@ -46,6 +45,23 @@ export function ProductDescriptionCard({
 }) {
 	const [studioOpen, setStudioOpen] = useState(false)
 	const categories = useCategories()
+	const brands = useBrands()
+
+	// ── LE BROUILLON COMPLET, POUR L'ASSISTANT ──────────────────────────────
+	// `watch` et non `getValues` : une désignation ou une marque tout juste
+	// choisie doit atteindre le studio SANS enregistrement préalable, et
+	// `getValues` ne redéclenche aucun rendu. Le formulaire est déjà la source
+	// de ce qui sera écrit — « Enregistrer la fiche » l'enregistre en entier —,
+	// il doit donc être aussi la source de ce que l'assistant lit.
+	const brouillon = form.watch()
+	const marqueDuBrouillon = (brands.data ?? []).find(
+		(marque: { id: string }) => marque.id === brouillon.brand,
+	) as { name?: string } | undefined
+	const categoriesDuBrouillon = (categories.data ?? [])
+		.filter((categorie: { id: string }) =>
+			(brouillon.categories ?? []).includes(categorie.id),
+		)
+		.map((categorie: { name: string }) => categorie.name)
 	const nomFicheRepris =
 		nomFicheParDefaut(product) !== (product.name ?? '').trim()
 	const draftName = form.watch('name')
@@ -142,15 +158,16 @@ export function ProductDescriptionCard({
 				open={studioOpen}
 				onClose={() => setStudioOpen(false)}
 				product={product}
-				brandName={brandName}
-				categoryNames={(categories.data ?? [])
-					.filter((categorie: { id: string }) =>
-						(form.getValues('categories') ?? []).includes(categorie.id),
-					)
-					.map((categorie: { name: string }) => categorie.name)}
 				draft={{
-					name: form.getValues('name'),
-					description: form.getValues('description') ?? '',
+					name: brouillon.name,
+					description: brouillon.description ?? '',
+					designation: brouillon.designation,
+					sku: brouillon.sku,
+					barcode: brouillon.barcode,
+					brandName: marqueDuBrouillon?.name,
+					categoryNames: categoriesDuBrouillon,
+					priceTTC: brouillon.price_ttc,
+					stock: brouillon.stock,
 				}}
 				saving={saving}
 				onSave={async ({ name, description }) => {

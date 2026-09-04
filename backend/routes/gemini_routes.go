@@ -380,6 +380,83 @@ func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		})
 	}, apis.ActivityLogger(pb))
 
+	router.POST("/api/ai/product-images", func(c echo.Context) error {
+		info := apis.RequestInfo(c)
+		if info.AuthRecord == nil {
+			return apis.NewForbiddenError("Non authentifié", nil)
+		}
+
+		apiKey := resoudreCleGemini(pb)
+		if apiKey == "" {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{
+				"error": "Gemini n'est pas configuré sur ce poste.",
+			})
+		}
+
+		c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, geminiRequestMaxBytes)
+		var input ProductImagesRequest
+		if err := c.Bind(&input); err != nil {
+			return apis.NewBadRequestError("Données produit invalides", err)
+		}
+
+		payload, err := buildGeminiProductImagesRequest(input)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		generation, err := requestGeminiProductImages(c.Request().Context(), client, apiKey, payload)
+		if err != nil {
+			var remote *geminiHTTPError
+			if errors.As(err, &remote) {
+				if remote.RetryAfter != "" {
+					c.Response().Header().Set("Retry-After", remote.RetryAfter)
+				}
+				switch remote.Status {
+				case http.StatusTooManyRequests:
+					return c.JSON(http.StatusTooManyRequests, map[string]string{
+						"error": "Quota quotidien de recherche Web atteint. Réessaie demain.",
+					})
+				case http.StatusUnauthorized, http.StatusForbidden:
+					return c.JSON(http.StatusServiceUnavailable, map[string]string{
+						"error": "La clé Gemini est refusée. Vérifie la clé saisie dans les réglages.",
+					})
+				}
+			}
+			pb.Logger().Error("Recherche d'images Gemini refusée", "error", err)
+			return c.JSON(http.StatusBadGateway, map[string]string{
+				"detail": truncateRunes(err.Error(), 300),
+				"error":  "Gemini n'a pas rendu de proposition d'image exploitable.",
+			})
+		}
+
+		if generation.InputTokens > 0 || generation.OutputTokens > 0 {
+			notificationAPIKey, keyErr := secrets.NewSecretManager(pb).GetSecret(secrets.KeyNotificationAPI)
+			if keyErr == nil && strings.TrimSpace(notificationAPIKey) != "" {
+				go func(inputTokens, outputTokens int, reportingKey string) {
+					ctx, cancel := context.WithTimeout(context.Background(), pocketAppUsageTimeout)
+					defer cancel()
+					if reportErr := reportPocketAppUsage(
+						ctx,
+						usageClient,
+						pocketAppUsageURL,
+						reportingKey,
+						inputTokens,
+						outputTokens,
+						"product images web",
+					); reportErr != nil {
+						pb.Logger().Warn("Reporting Gemini échoué", "error", reportErr)
+					}
+				}(generation.InputTokens, generation.OutputTokens, notificationAPIKey)
+			}
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"candidates":    generation.Candidates,
+			"searchQueries": generation.SearchQueries,
+			"model":         geminiWebModel,
+		})
+	}, apis.ActivityLogger(pb))
+
 	router.POST("/api/ai/product-sheet", func(c echo.Context) error {
 		info := apis.RequestInfo(c)
 		if info.AuthRecord == nil {
@@ -427,7 +504,12 @@ func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 				case http.StatusTooManyRequests:
 					if input.WebSearch {
 						return c.JSON(http.StatusTooManyRequests, map[string]string{
-							"error": "Quota quotidien de recherche Web atteint. Réessaie demain ou utilise « Mes sources ».",
+							// « Mes sources » nommait un onglet de l'ancien assistant, disparu
+							// avec le studio : le message envoyait chercher un bouton qui
+							// n'existe plus. Et le quota de grounding est PARTAGÉ par toutes
+							// les recherches du projet — fiches et photos —, ce que personne
+							// ne peut deviner depuis l'écran.
+							"error": "Quota quotidien de recherche Web atteint : 500 requêtes par jour au niveau gratuit, partagées avec la recherche de photos. Réessaie demain, ou joins un document à l'assistant.",
 						})
 					}
 					return c.JSON(http.StatusTooManyRequests, map[string]string{
@@ -802,6 +884,219 @@ func preferredProductSearchQuery(context productSheetContext) string {
 		terms = append(terms, value)
 	}
 	return truncateRunes(strings.Join(terms, " "), 320)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DES PHOTOS TROUVÉES SUR LE WEB — des PROPOSITIONS, pas un import
+// ═══════════════════════════════════════════════════════════════════════════
+// Ce que cette route rend, ce sont des ADRESSES : l'URL d'une image et celle de
+// la page où elle a été vue. Rien n'est téléchargé, rien n'entre dans la
+// galerie, aucun octet ne traverse PocketApp.
+//
+// ⚠️ **Une URL d'image est exactement ce qu'un modèle de langue invente le
+// mieux.** Le grounding lui donne des pages, pas un index d'images : il
+// recopie ce qu'il a vu, parfois il complète de mémoire, et l'adresse ne
+// répond plus. On ne peut pas le vérifier ici sans aller chercher chaque
+// fichier — une sortie réseau vers des domaines arbitraires, depuis le poste
+// du client, pour un simple aperçu. **C'est donc le NAVIGATEUR qui tranche :**
+// il charge la vignette, et l'écran ne garde que ce qui s'affiche vraiment
+// (`onError` retire la proposition). Le filtre ci-dessous ne fait que le
+// travail grossier — https seulement, hôte réel, pas de doublon.
+//
+// Conséquence assumée : la liste rendue est plus longue que ce que l'écran
+// montrera. C'est voulu, et c'est pour cela qu'on en demande plusieurs.
+
+type ProductImagesRequest struct {
+	Name        string   `json:"name"`
+	Designation string   `json:"designation,omitempty"`
+	SKU         string   `json:"sku,omitempty"`
+	Barcode     string   `json:"barcode,omitempty"`
+	Brand       string   `json:"brand,omitempty"`
+	Categories  []string `json:"categories,omitempty"`
+}
+
+type productImageCandidate struct {
+	ImageURL string `json:"imageUrl"`
+	PageURL  string `json:"pageUrl,omitempty"`
+	Title    string `json:"title,omitempty"`
+}
+
+type productImagesGeneration struct {
+	Candidates    []productImageCandidate
+	SearchQueries []string
+	InputTokens   int
+	OutputTokens  int
+}
+
+const productImagesSystemInstruction = `Tu cherches des photographies d'un produit précis pour un magasin de musique.
+
+Règles impératives :
+- N'invente JAMAIS une adresse. Ne rends qu'une URL vue dans les résultats de recherche.
+- Une seule photo par page source, la plus représentative du produit.
+- Écarte les logos, bannières, visuels de catégorie et photos d'un autre modèle.
+- Préfère le site du fabricant, puis les revendeurs spécialisés.
+- Si tu n'es pas certain qu'une image montre CE produit, ne la rends pas.
+- Rends une liste vide plutôt qu'une liste douteuse.
+
+Retourne uniquement l'objet JSON demandé.`
+
+func buildGeminiProductImagesRequest(input ProductImagesRequest) (geminiGenerateRequest, error) {
+	name := compactWhitespace(input.Name)
+	if name == "" {
+		return geminiGenerateRequest{}, errors.New("Le nom du produit est requis")
+	}
+	if len(input.Categories) > 20 {
+		return geminiGenerateRequest{}, errors.New("Le produit porte trop de catégories")
+	}
+
+	contextData := productSheetContext{
+		CurrentName: truncateRunes(name, 255),
+		Designation: truncateRunes(compactWhitespace(input.Designation), 255),
+		SKU:         truncateRunes(compactWhitespace(input.SKU), 128),
+		GTIN:        codeBarresMondial(input.Barcode),
+		Brand:       truncateRunes(compactWhitespace(input.Brand), 255),
+		Categories:  cleanCategories(input.Categories),
+	}
+	contextData.PreferredWebQuery = preferredProductSearchQuery(contextData)
+
+	contextJSON, err := json.Marshal(contextData)
+	if err != nil {
+		return geminiGenerateRequest{}, fmt.Errorf("contexte produit invalide: %w", err)
+	}
+
+	prompt := "Trouve des photographies de ce produit :\n" + string(contextJSON) +
+		"\nUtilise Google Search en commençant par preferred_web_query." +
+		"\nRetourne au plus 6 propositions, exactement ce JSON : " +
+		`{"images":[{"image_url":"","page_url":"","title":""}]}.`
+
+	return geminiGenerateRequest{
+		SystemInstruction: geminiContent{Parts: []geminiPart{{Text: productImagesSystemInstruction}}},
+		Contents:          []geminiContent{{Role: "user", Parts: []geminiPart{{Text: prompt}}}},
+		GenerationConfig: geminiGenerationConfig{
+			MaxOutputTokens: 1200,
+		},
+		// Le grounding impose le modèle 2.5 et interdit le schéma de sortie :
+		// même contrainte que le mode Web de la fiche.
+		Tools: []geminiTool{{GoogleSearch: &struct{}{}}},
+	}, nil
+}
+
+// urlImageRetenue : http**s** uniquement, hôte réel, taille raisonnable.
+//
+// Le `s` n'est pas un détail : PocketApp est servi en https par Wails comme au
+// navigateur, et une image en http y serait bloquée comme contenu mixte —
+// l'utilisateur verrait une proposition qui ne s'affiche jamais, sans savoir
+// pourquoi. Les `data:` sont écartées : un modèle qui en fabrique une a
+// inventé l'image elle-même.
+func urlImageRetenue(valeur string) string {
+	brut := strings.TrimSpace(valeur)
+	if brut == "" || len(brut) > 600 {
+		return ""
+	}
+	analysee, err := url.Parse(brut)
+	if err != nil || analysee.Scheme != "https" || analysee.Host == "" {
+		return ""
+	}
+	return analysee.String()
+}
+
+func extractGeminiProductImages(raw []byte) (productImagesGeneration, error) {
+	var response geminiGenerateResponse
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return productImagesGeneration{}, fmt.Errorf("réponse Gemini invalide: %w", err)
+	}
+	if len(response.Candidates) == 0 {
+		return productImagesGeneration{}, errors.New("Gemini n'a renvoyé aucun candidat")
+	}
+
+	raison := response.Candidates[0].FinishReason
+	var textParts []string
+	for _, part := range response.Candidates[0].Content.Parts {
+		if !part.Thought && strings.TrimSpace(part.Text) != "" {
+			textParts = append(textParts, part.Text)
+		}
+	}
+	if len(textParts) == 0 {
+		return productImagesGeneration{}, fmt.Errorf("Gemini n'a renvoyé aucun texte (arrêt : %s)", raisonLisible(raison))
+	}
+
+	var brut struct {
+		Images []struct {
+			ImageURL string `json:"image_url"`
+			PageURL  string `json:"page_url"`
+			Title    string `json:"title"`
+		} `json:"images"`
+	}
+	if err := json.Unmarshal(extractJSONObject(strings.Join(textParts, "")), &brut); err != nil {
+		return productImagesGeneration{}, fmt.Errorf("propositions Gemini non structurées (arrêt : %s): %w", raisonLisible(raison), err)
+	}
+
+	candidates := make([]productImageCandidate, 0, len(brut.Images))
+	vues := make(map[string]struct{}, len(brut.Images))
+	for _, image := range brut.Images {
+		adresse := urlImageRetenue(image.ImageURL)
+		if adresse == "" {
+			continue
+		}
+		if _, existe := vues[adresse]; existe {
+			continue
+		}
+		vues[adresse] = struct{}{}
+		candidates = append(candidates, productImageCandidate{
+			ImageURL: adresse,
+			PageURL:  urlImageRetenue(image.PageURL),
+			Title:    truncateRunes(compactWhitespace(image.Title), 160),
+		})
+		if len(candidates) == 6 {
+			break
+		}
+	}
+
+	metadata := response.Candidates[0].GroundingMetadata
+	return productImagesGeneration{
+		Candidates:    candidates,
+		SearchQueries: cleanGeneratedStrings(metadata.WebSearchQueries, 6, 320),
+		InputTokens:   response.UsageMetadata.PromptTokenCount,
+		OutputTokens:  response.UsageMetadata.CandidatesTokenCount,
+	}, nil
+}
+
+func requestGeminiProductImages(
+	ctx context.Context,
+	client *http.Client,
+	apiKey string,
+	payload geminiGenerateRequest,
+) (productImagesGeneration, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return productImagesGeneration{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, geminiWebGenerateURL, bytes.NewReader(body))
+	if err != nil {
+		return productImagesGeneration{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey)
+	req.Header.Set("User-Agent", "PocketApp/1.0 (assistant fiche catalogue)")
+
+	response, err := client.Do(req)
+	if err != nil {
+		return productImagesGeneration{}, err
+	}
+	defer response.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(response.Body, 1024*1024))
+	if err != nil {
+		return productImagesGeneration{}, err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return productImagesGeneration{}, &geminiHTTPError{
+			Status:     response.StatusCode,
+			RetryAfter: response.Header.Get("Retry-After"),
+			Detail:     geminiErrorDetail(raw),
+		}
+	}
+	return extractGeminiProductImages(raw)
 }
 
 func requestGeminiProductTitle(
