@@ -48,14 +48,31 @@ func TestBuildGeminiProductSheetRequestEnablesOneOptionalWebTool(t *testing.T) {
 	}
 }
 
-func TestBuildGeminiProductSheetRequestSeparatesWebAndDocuments(t *testing.T) {
-	_, err := buildGeminiProductSheetRequest(ProductSheetRequest{
+func TestBuildGeminiProductSheetRequestCombinesWebAndDocuments(t *testing.T) {
+	payload, err := buildGeminiProductSheetRequest(ProductSheetRequest{
 		Name:       "P-145",
 		SourceText: "Documentation technique",
-		WebSearch:  true,
+		Files: []productSheetFile{{
+			Name:     "notice.pdf",
+			MIMEType: "application/pdf",
+			Data:     base64.StdEncoding.EncodeToString([]byte("%PDF test")),
+		}},
+		Instructions: "Insiste sur les usages en répétition.",
+		WebSearch:    true,
 	})
-	if err == nil || !strings.Contains(err.Error(), "soit la recherche web") {
-		t.Fatalf("mélange web/documents accepté: %v", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Tools) != 1 || payload.Tools[0].GoogleSearch == nil {
+		t.Fatal("Google Search n'est pas activé avec les sources")
+	}
+	if len(payload.Contents[0].Parts) != 2 || payload.Contents[0].Parts[1].InlineData == nil {
+		t.Fatal("le document a été écarté quand le web est actif")
+	}
+	prompt := payload.Contents[0].Parts[0].Text
+	if !strings.Contains(prompt, "Documentation technique") ||
+		!strings.Contains(prompt, "Insiste sur les usages") {
+		t.Fatalf("source ou conversation absente du prompt: %s", prompt)
 	}
 }
 
@@ -87,14 +104,18 @@ func TestBuildGeminiProductSheetRequestUsesEconomicalShortFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payload.GenerationConfig.MaxOutputTokens != 350 {
-		t.Fatalf("maxOutputTokens court = %d, attendu 350", payload.GenerationConfig.MaxOutputTokens)
+	if payload.GenerationConfig.MaxOutputTokens != 450 {
+		t.Fatalf("maxOutputTokens court = %d, attendu 450", payload.GenerationConfig.MaxOutputTokens)
 	}
 	if payload.GenerationConfig.ResponseSchema == nil {
 		t.Fatal("schéma court absent")
 	}
-	if len(payload.GenerationConfig.ResponseSchema.Properties) != 1 {
-		t.Fatalf("le schéma court contient des sections inutiles: %#v", payload.GenerationConfig.ResponseSchema.Properties)
+	// L'intro, plus le doute sur le format : rien d'autre. Une section de plus
+	// dans ce schéma, c'est un tableau de caractéristiques sur une pile bouton.
+	for nom := range payload.GenerationConfig.ResponseSchema.Properties {
+		if nom != "intro" && nom != "format_note" && nom != "suggested_format" {
+			t.Fatalf("le schéma court contient une section inutile: %s", nom)
+		}
 	}
 	if _, hasTitle := payload.GenerationConfig.ResponseSchema.Properties["title"]; hasTitle {
 		t.Fatal("la fiche ne doit jamais demander un titre à Gemini")

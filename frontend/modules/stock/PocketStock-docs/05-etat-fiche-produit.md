@@ -71,7 +71,15 @@ suggestion, enregistrer.
 - **le texte libre instruit** — il part dans `instructions`. Déduire « courte »
   ou « d'après le PDF » de ses mots casserait au premier « pas trop courte » et
   pourrait déclencher une recherche Google non demandée (quota séparé). Seul
-  l'ÉTAT sert de repli : fichiers joints → documents, sinon → web.
+  l'ÉTAT sert de repli : une source fournie → documents, sinon → web.
+
+**Trois formes de source**, toutes équivalentes pour le serveur et toutes
+exclusives de la recherche web (`aDesDocuments`) : un **PDF**, une **photo**
+(étiquette, notice, capture — jointe au bouton, lâchée sur le panneau, ou
+COLLÉE au presse-papier), et un **texte collé** (`sourceText`, 12 000
+caractères, plafond serveur). Le collage de texte n'est pas intercepté par le
+panneau : sans fichier dans le presse-papier, l'événement poursuit sa route
+jusqu'au champ visé.
 
 **L'assistant lit le BROUILLON, pas la base** (4 septembre 2026). Désignation,
 référence, code-barres, marque, catégories, prix et stock viennent de

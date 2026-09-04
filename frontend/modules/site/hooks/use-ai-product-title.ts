@@ -2,8 +2,8 @@
 //
 // Le renderer ne connaît ni la clé Gemini ni l'URL distante. Il parle aux
 // routes Go locales, authentifiées, qui gardent le secret dans Wails. La fiche
-// complète peut partir de documents OU de Google Search, jamais des deux dans
-// la même requête : c'est une garde de coût autant qu'une règle d'interface.
+// complète part du contexte et des sources jointes ; Google Search peut s'y
+// ajouter explicitement lorsque l'utilisateur active le tag Web.
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation } from '@tanstack/react-query'
 
@@ -17,6 +17,10 @@ export type ProductTitleDraft = {
 	brand?: string
 	categories?: string[]
 	currentDescription?: string
+	/** Les mêmes pièces jointes que la fiche. Le titre s'en sert pour lire le
+	 *  modèle exact sur un emballage ou une capture de page produit ; sans
+	 *  elles, il ne peut que reformuler le nom déjà saisi. */
+	files?: ProductSheetFile[]
 }
 
 export type GeneratedProductTitle = {
@@ -48,6 +52,13 @@ export type GeneratedProductSheet = {
 	sources: ProductSheetSource[]
 	searchQueries: string[]
 	searchEntryPointHtml?: string
+	/** Le doute du modèle sur le format demandé, quand il en a un : une phrase
+	 *  adressée à l'utilisateur. Le modèle ne change JAMAIS le format de
+	 *  lui-même — une fiche est un texte que le magasin publie, et c'est celui
+	 *  qui la relit qui tranche. Vide quand le format demandé convient. */
+	formatNote?: string
+	/** Le format que le modèle aurait choisi. Vide s'il est d'accord. */
+	suggestedFormat?: 'short' | 'detailed' | ''
 	model: string
 }
 

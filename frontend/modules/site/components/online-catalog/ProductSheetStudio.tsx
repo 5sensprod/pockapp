@@ -11,18 +11,15 @@
 // information : ils existaient parce que le texte traversait trois contenants
 // successifs, et chaque frontière voulait son bouton.
 //
-// Ici il n'y en a plus qu'un : on ouvre, on clique une suggestion, on
+// Ici il n'y en a plus qu'un : on ouvre, on échange avec l'assistant, on
 // enregistre.
 //
 // ── DEUX RÈGLES QUI TIENNENT L'ASSISTANT ──────────────────────────────────
-//  1. **LES SUGGESTIONS DÉCIDENT.** Chacune porte ses paramètres (`webSearch`,
-//     `descriptionFormat`) et lance la génération sans étape intermédiaire.
-//  2. **LE TEXTE LIBRE INSTRUIT, il ne décide pas.** Il part dans
-//     `instructions`, comme avant. Déduire « courte » ou « d'après le PDF » de
-//     ses mots casserait au premier « pas trop courte », et pourrait lancer une
-//     recherche Google que personne n'a demandée — le grounding a son propre
-//     quota (`gemini_routes.go`). Seul l'ÉTAT sert de repli quand rien n'est
-//     précisé : des fichiers joints → documents, sinon → web.
+//  1. **LE WEB EST UN COMPLÉMENT EXPLICITE.** Les sources jointes et la
+//     conversation restent toujours disponibles ; le tag `webSearch` ajoute
+//     seulement Google Search quand l'utilisateur le demande.
+//  2. **LE TEXTE LIBRE INSTRUIT.** Il part toujours dans `instructions`, que le
+//     web soit actif ou non. Il ne doit jamais devenir une source à résumer.
 //
 // ── CE QUI EST MODIFIABLE, ET CE QUI MEUBLE ───────────────────────────────
 // Le titre et les blocs de description s'éditent. Les images, le prix, le
@@ -70,7 +67,13 @@ import {
 	Trash2,
 	X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+	type ClipboardEvent,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -89,21 +92,53 @@ import {
 import {
 	ACCEPT_ATTRIBUTE,
 	MAX_FILES,
+	allegerToutes,
 	encoderPiecesJointes,
 	trierPiecesJointes,
 } from '../../lib/sheet-files'
 
 const NAME_MAX = 255
 const DESCRIPTION_MAX = 20000
-const INSTRUCTIONS_MAX = 600
+const CHAT_MESSAGE_MAX = 12000
 
 type Format = 'short' | 'detailed'
 
-type Suggestion = {
-	libelle: string
-	format: Format
-	web: boolean
-	icone: 'web' | 'document' | 'plume'
+type MessageAssistant = {
+	id: string
+	auteur: 'utilisateur' | 'assistant'
+	texte: string
+	fichiers?: File[]
+	/** Une relance proposée par l'assistant — il doute du format demandé et
+	 *  propose l'autre. Rien ne part tant que personne n'a cliqué. */
+	proposition?: { format: Format; web: boolean; libelle: string }
+}
+
+/** Le bouton qui tranche le doute de l'assistant sur le format. Composant à
+ *  part parce que TypeScript perd le rétrécissement de `item.proposition` dans
+ *  la fermeture du `onClick` : le passer en propriété évite l'assertion. */
+function BoutonProposition({
+	proposition,
+	gele,
+	lancer,
+}: {
+	proposition: NonNullable<MessageAssistant['proposition']>
+	gele: boolean
+	lancer: (options: { format: Format; web: boolean }) => Promise<void>
+}) {
+	return (
+		<Button
+			type='button'
+			size='sm'
+			variant='outline'
+			className='mt-2'
+			disabled={gele}
+			onClick={() =>
+				void lancer({ format: proposition.format, web: proposition.web })
+			}
+		>
+			{proposition.libelle}
+		</Button>
+	)
 }
 
 /**
@@ -147,11 +182,42 @@ type Props = {
 	}) => void | Promise<void>
 }
 
+/** Aperçu local d'une image jointe. L'URL temporaire est libérée dès que la
+ * pièce disparaît afin qu'une succession de captures ne gonfle pas le renderer. */
+function ApercuPieceJointe({ fichier }: { fichier: File }) {
+	const [url, setUrl] = useState<string | null>(null)
+
+	useEffect(() => {
+		if (!fichier.type.startsWith('image/')) {
+			setUrl(null)
+			return
+		}
+		const prochaineUrl = URL.createObjectURL(fichier)
+		setUrl(prochaineUrl)
+		return () => URL.revokeObjectURL(prochaineUrl)
+	}, [fichier])
+
+	if (!url)
+		return <FileText className='h-3.5 w-3.5 shrink-0 text-muted-foreground' />
+	return (
+		<img
+			src={url}
+			alt='Aperçu de la capture jointe'
+			className='h-10 w-10 shrink-0 rounded border bg-muted object-cover'
+		/>
+	)
+}
+
 function formatPrix(valeur: number | undefined): string {
 	return new Intl.NumberFormat('fr-FR', {
 		style: 'currency',
 		currency: 'EUR',
 	}).format(valeur ?? 0)
+}
+
+function ajusterHauteurMessage(champ: HTMLTextAreaElement) {
+	champ.style.height = '0px'
+	champ.style.height = `${Math.min(champ.scrollHeight, 180)}px`
 }
 
 export function ProductSheetStudio({
@@ -167,13 +233,17 @@ export function ProductSheetStudio({
 	const genererTitre = useGenerateProductTitle()
 	const chercherImages = useSearchProductImages()
 	const fileInput = useRef<HTMLInputElement>(null)
+	const messageInput = useRef<HTMLTextAreaElement>(null)
 
 	const [titre, setTitre] = useState(draft.name)
 	const [blocs, setBlocs] = useState<BlocFiche[]>(() =>
 		decouperEnBlocs(draft.description),
 	)
-	const [instruction, setInstruction] = useState('')
+	const [message, setMessage] = useState('')
 	const [fichiers, setFichiers] = useState<File[]>([])
+	const [rechercheWebActive, setRechercheWebActive] = useState(false)
+	const [depotActif, setDepotActif] = useState(false)
+	const [conversation, setConversation] = useState<MessageAssistant[]>([])
 	const [sources, setSources] = useState<ProductSheetSource[]>([])
 	const [requetes, setRequetes] = useState<string[]>([])
 	// Le bloc en cours de régénération, pour n'animer QUE son bouton.
@@ -197,8 +267,12 @@ export function ProductSheetStudio({
 		if (!open) return
 		setTitre(brouillon.current.name)
 		setBlocs(decouperEnBlocs(brouillon.current.description))
-		setInstruction('')
+		setMessage('')
+		if (messageInput.current) messageInput.current.style.height = '44px'
 		setFichiers([])
+		setRechercheWebActive(false)
+		setDepotActif(false)
+		setConversation([])
 		setSources([])
 		setRequetes([])
 		setPhotos(null)
@@ -242,73 +316,42 @@ export function ProductSheetStudio({
 	const contexteMaigre =
 		!brandName && categoryNames.length === 0 && !gtin && fichiers.length === 0
 
-	const suggestions: Suggestion[] =
-		fichiers.length > 0
-			? [
-					{
-						libelle: 'Fiche détaillée d’après les documents joints',
-						format: 'detailed',
-						web: false,
-						icone: 'document',
-					},
-					{
-						libelle: 'Fiche courte d’après les documents joints',
-						format: 'short',
-						web: false,
-						icone: 'document',
-					},
-				]
-			: [
-					{
-						libelle: 'Recherche le produit sur le net',
-						format: 'detailed',
-						web: true,
-						icone: 'web',
-					},
-					{
-						libelle: 'Fiche courte trouvée sur le net',
-						format: 'short',
-						web: true,
-						icone: 'web',
-					},
-					...(description.trim() !== ''
-						? [
-								{
-									libelle: 'Réécris le texte actuel, sans source',
-									format: 'detailed' as Format,
-									web: false,
-									icone: 'plume' as const,
-								},
-							]
-						: []),
-				]
-
 	const lancer = async (options: {
 		format: Format
 		web: boolean
+		conversation?: boolean
 		/** Régénérer une seule section : son titre, ou `null` pour l'intro. */
 		cible?: { id: string; titre: string | null }
 	}) => {
 		if (gele) return
 		try {
-			const consigne = options.cible
-				? [
-						options.cible.titre
-							? `Réécris uniquement la section « ${options.cible.titre} ».`
-							: 'Réécris uniquement l’introduction.',
-						instruction.trim(),
-					]
-						.filter(Boolean)
-						.join(' ')
-				: instruction.trim()
+			const historique = options.conversation
+				? conversation
+						.filter((item) => item.auteur === 'utilisateur')
+						.map((item) => `Utilisateur : ${item.texte}`)
+				: []
+			const consigneComplete = [
+				options.cible
+					? options.cible.titre
+						? `Réécris uniquement la section « ${options.cible.titre} ».`
+						: 'Réécris uniquement l’introduction.'
+					: null,
+				...historique,
+				message.trim() ? `Utilisateur : ${message.trim()}` : null,
+			]
+				.filter(Boolean)
+				.join('\n')
+			// On conserve la fin : dans une longue conversation, la demande la plus
+			// récente est celle qui doit survivre au plafond.
+			const consigne = consigneComplete.slice(-CHAT_MESSAGE_MAX)
 
 			setBlocEnCours(options.cible?.id ?? null)
 			const generation = await genererFiche.mutateAsync({
 				...contexte,
 				descriptionFormat: options.format,
-				instructions: consigne.slice(0, INSTRUCTIONS_MAX),
+				instructions: consigne || undefined,
 				files:
-					options.web || fichiers.length === 0
+					fichiers.length === 0
 						? undefined
 						: await encoderPiecesJointes(fichiers),
 				webSearch: options.web,
@@ -345,6 +388,46 @@ export function ProductSheetStudio({
 
 			setBlocs(decouperEnBlocs(generation.description))
 			toast.success('Fiche proposée')
+
+			// Le modèle a rendu ce qui était demandé, mais il doute du format :
+			// une visserie n'a pas de points forts, un ampli mérite mieux que
+			// trois phrases. On le dit, et l'utilisateur tranche d'un clic.
+			const note = generation.formatNote?.trim()
+			const autreFormat =
+				generation.suggestedFormat === 'short' ||
+				generation.suggestedFormat === 'detailed'
+					? generation.suggestedFormat
+					: null
+			if (note && autreFormat && autreFormat !== options.format) {
+				setConversation((messages) => [
+					...messages,
+					{
+						id: crypto.randomUUID(),
+						auteur: 'assistant',
+						texte: note,
+						proposition: {
+							format: autreFormat,
+							web: options.web,
+							libelle:
+								autreFormat === 'short'
+									? 'Refaire en fiche courte'
+									: 'Refaire en fiche détaillée',
+						},
+					},
+				])
+			}
+
+			if (options.conversation) {
+				setConversation((messages) => [
+					...messages,
+					{
+						id: crypto.randomUUID(),
+						auteur: 'assistant',
+						texte:
+							'J’ai proposé une fiche dans l’éditeur. Tu peux la relire et la modifier avant de l’enregistrer.',
+					},
+				])
+			}
 		} catch (error) {
 			// Le message vient de la route et peut expliquer ce qui manque : on le
 			// laisse s'afficher en entier plutôt que le tronquer sur une ligne.
@@ -378,7 +461,17 @@ export function ProductSheetStudio({
 	const proposerTitre = async () => {
 		if (gele) return
 		try {
-			const generation = await genererTitre.mutateAsync(contexte)
+			const images = fichiers.filter((fichier) =>
+				fichier.type.startsWith('image/'),
+			)
+			const generation = await genererTitre.mutateAsync({
+				...contexte,
+				// Le modèle exact est souvent SUR l'emballage ou dans la capture, et
+				// nulle part ailleurs : sans elles, le titre ne peut que reformuler
+				// le nom déjà saisi.
+				files:
+					images.length > 0 ? await encoderPiecesJointes(images) : undefined,
+			})
 			setTitre(generation.title)
 			toast.success('Titre proposé')
 		} catch (error) {
@@ -388,10 +481,54 @@ export function ProductSheetStudio({
 		}
 	}
 
-	const ajouterFichiers = (choisis: File[]) => {
-		const { retenus, refus } = trierPiecesJointes(fichiers, choisis)
+	const ajouterFichiers = async (choisis: File[]) => {
+		// On allège AVANT de mesurer : une capture pleine page dépasse
+		// couramment le plafond, et la refuser pour sa taille alors qu'elle est
+		// parfaitement lisible une fois réduite n'apprend rien à personne.
+		const allegees = await allegerToutes(choisis)
+		const { retenus, refus } = trierPiecesJointes(fichiers, allegees)
 		if (refus.length > 0) toast.error(refus.join('\n'))
 		setFichiers(retenus)
+	}
+
+	const envoyerMessage = () => {
+		const texte = message.trim()
+		const piecesJointes = [...fichiers]
+		if (!texte && piecesJointes.length === 0) {
+			toast.error('Écris un message ou ajoute une source avant d’envoyer.')
+			return
+		}
+		setConversation((messages) => [
+			...messages,
+			{
+				id: crypto.randomUUID(),
+				auteur: 'utilisateur',
+				texte:
+					texte ||
+					(rechercheWebActive
+						? 'Recherche ce produit sur le web.'
+						: 'Analyse les sources jointes.'),
+				fichiers: piecesJointes,
+			},
+		])
+		setMessage('')
+		if (messageInput.current) messageInput.current.style.height = '44px'
+		setFichiers([])
+		void lancer({
+			format: 'detailed',
+			web: rechercheWebActive,
+			conversation: true,
+		})
+	}
+
+	const collerDansLeChat = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+		const fichiersColles = Array.from(event.clipboardData.items)
+			.filter((item) => item.kind === 'file')
+			.map((item) => item.getAsFile())
+			.filter((file): file is File => file !== null)
+		if (fichiersColles.length === 0) return
+		event.preventDefault()
+		void ajouterFichiers(fichiersColles)
 	}
 
 	const enregistrer = async () => {
@@ -522,8 +659,8 @@ export function ProductSheetStudio({
 						<div className='mt-5 space-y-4'>
 							{blocs.length === 0 && (
 								<p className='rounded-lg border border-dashed px-4 py-8 text-center text-muted-foreground text-sm'>
-									Aucun texte pour l’instant. Choisis une suggestion à droite,
-									ou écris la fiche à la main.
+									Aucun texte pour l’instant. Demande une proposition à
+									l’assistant, ou écris la fiche à la main.
 								</p>
 							)}
 
@@ -682,127 +819,183 @@ export function ProductSheetStudio({
 							</div>
 						)}
 
-						<div className='mt-4 space-y-2'>
-							{suggestions.map((suggestion) => (
-								<button
-									key={suggestion.libelle}
-									type='button'
-									disabled={gele}
-									onClick={() =>
-										lancer({ format: suggestion.format, web: suggestion.web })
-									}
-									className='flex w-full items-center gap-2 rounded-lg border bg-background px-3 py-2.5 text-left text-sm transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60'
-								>
-									{suggestion.icone === 'web' && (
-										<Globe2 className='h-4 w-4 shrink-0 text-muted-foreground' />
-									)}
-									{suggestion.icone === 'document' && (
-										<FileText className='h-4 w-4 shrink-0 text-muted-foreground' />
-									)}
-									{suggestion.icone === 'plume' && (
-										<Sparkles className='h-4 w-4 shrink-0 text-muted-foreground' />
-									)}
-									<span className='min-w-0 flex-1'>{suggestion.libelle}</span>
-								</button>
-							))}
-						</div>
-
-						<div className='mt-4 space-y-2'>
-							<Textarea
-								value={instruction}
-								maxLength={INSTRUCTIONS_MAX}
-								disabled={gele}
-								placeholder='Demande à l’assistant (facultatif) — ex. insiste sur le jeu aux doigts'
-								onChange={(e) => setInstruction(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === 'Enter' && !e.shiftKey) {
-										e.preventDefault()
-										// Le texte libre n'ARBITRE pas la source : elle se déduit
-										// de l'état — des fichiers joints, ou le web.
-										void lancer({
-											format: 'detailed',
-											web: fichiers.length === 0,
-										})
-									}
-								}}
-								className='min-h-[76px] resize-none bg-background text-sm'
-							/>
-
-							<div className='flex items-center gap-2'>
-								<Button
-									type='button'
-									variant='outline'
-									size='sm'
-									disabled={gele || fichiers.length >= MAX_FILES}
-									onClick={() => fileInput.current?.click()}
-								>
-									<Paperclip className='mr-2 h-4 w-4' />
-									Joindre
-								</Button>
-								<Button
-									type='button'
-									size='sm'
-									className='flex-1'
-									disabled={gele}
-									onClick={() =>
-										lancer({ format: 'detailed', web: fichiers.length === 0 })
-									}
-								>
-									{genererFiche.isPending && blocEnCours === null ? (
-										<Loader2 className='mr-2 h-4 w-4 animate-spin' />
-									) : (
-										<Send className='mr-2 h-4 w-4' />
-									)}
-									{fichiers.length > 0
-										? 'Depuis les documents'
-										: 'Depuis le web'}
-								</Button>
-							</div>
-
-							<input
-								ref={fileInput}
-								type='file'
-								multiple
-								accept={ACCEPT_ATTRIBUTE}
-								className='hidden'
-								onChange={(e) => {
-									ajouterFichiers(Array.from(e.target.files ?? []))
-									e.target.value = ''
-								}}
-							/>
-
-							{fichiers.length > 0 && (
-								<ul className='space-y-1'>
-									{fichiers.map((fichier) => (
-										<li
-											key={`${fichier.name}-${fichier.size}`}
-											className='flex items-center gap-2 rounded border bg-background px-2 py-1 text-xs'
-										>
-											<FileText className='h-3.5 w-3.5 shrink-0 text-muted-foreground' />
-											<span className='min-w-0 flex-1 truncate'>
-												{fichier.name}
-											</span>
-											<button
-												type='button'
-												aria-label={`Retirer ${fichier.name}`}
-												disabled={gele}
-												onClick={() =>
-													setFichiers((actuels) =>
-														actuels.filter((autre) => autre !== fichier),
-													)
-												}
-											>
-												<X className='h-3.5 w-3.5' />
-											</button>
-										</li>
-									))}
-								</ul>
+						<div
+							className={cn(
+								'mt-4 flex min-h-[260px] flex-1 flex-col rounded-3xl border bg-background p-3 transition-colors',
+								depotActif && 'border-primary bg-primary/5',
 							)}
+							onDragEnter={(event) => {
+								event.preventDefault()
+								setDepotActif(true)
+							}}
+							onDragOver={(event) => event.preventDefault()}
+							onDragLeave={(event) => {
+								if (event.currentTarget === event.target) setDepotActif(false)
+							}}
+							onDrop={(event) => {
+								event.preventDefault()
+								setDepotActif(false)
+								void ajouterFichiers(Array.from(event.dataTransfer.files))
+							}}
+						>
+							{conversation.length > 0 && (
+								<div
+									className='mb-3 max-h-64 space-y-2 overflow-y-scroll px-1 pr-2'
+									style={{ scrollbarGutter: 'stable' }}
+								>
+									{conversation.map((item) => (
+										<div
+											key={item.id}
+											className={cn(
+												'rounded-2xl px-3 py-2 text-sm',
+												item.auteur === 'utilisateur'
+													? 'ml-6 rounded-br-sm bg-primary text-primary-foreground'
+													: 'mr-6 rounded-bl-sm bg-muted text-foreground',
+											)}
+										>
+											<p className='whitespace-pre-wrap'>{item.texte}</p>
+											{item.proposition && (
+												<BoutonProposition
+													proposition={item.proposition}
+													gele={gele}
+													lancer={lancer}
+												/>
+											)}
+											{item.fichiers && item.fichiers.length > 0 && (
+												<div className='mt-2 flex flex-wrap gap-1.5'>
+													{item.fichiers.map((fichier) => (
+														<div
+															key={`${fichier.name}-${fichier.size}`}
+															className='flex items-center gap-1 rounded-md bg-background/20 p-1'
+														>
+															<ApercuPieceJointe fichier={fichier} />
+															<span className='max-w-28 truncate text-xs'>
+																{fichier.name}
+															</span>
+														</div>
+													))}
+												</div>
+											)}
+										</div>
+									))}
+								</div>
+							)}
+							<div className='mt-auto flex flex-col'>
+								<Textarea
+									ref={messageInput}
+									value={message}
+									maxLength={CHAT_MESSAGE_MAX}
+									disabled={gele}
+									placeholder='Envoyez un message…'
+									onChange={(event) => {
+										setMessage(event.target.value)
+										ajusterHauteurMessage(event.target)
+									}}
+									onKeyDown={(event) => {
+										if (
+											event.key === 'Enter' &&
+											!event.shiftKey &&
+											!event.nativeEvent.isComposing
+										) {
+											event.preventDefault()
+											envoyerMessage()
+										}
+									}}
+									onPaste={collerDansLeChat}
+									rows={1}
+									className='min-h-11 max-h-[180px] resize-none overflow-y-auto border-0 px-3 py-2.5 text-base shadow-none focus-visible:ring-0'
+								/>
 
-							<p className='text-muted-foreground text-xs'>
-								PDF, JPEG, PNG ou WebP · {MAX_FILES} au maximum. Avec des
-								documents joints, l’assistant n’interroge pas le web.
-							</p>
+								<input
+									ref={fileInput}
+									type='file'
+									multiple
+									accept={ACCEPT_ATTRIBUTE}
+									className='hidden'
+									onChange={(e) => {
+										void ajouterFichiers(Array.from(e.target.files ?? []))
+										e.target.value = ''
+									}}
+								/>
+
+								{fichiers.length > 0 && (
+									<ul className='mb-2 space-y-1 px-2'>
+										{fichiers.map((fichier) => (
+											<li
+												key={`${fichier.name}-${fichier.size}`}
+												className='flex items-center gap-2 rounded-lg bg-muted p-2 text-xs'
+											>
+												<ApercuPieceJointe fichier={fichier} />
+												<span className='min-w-0 flex-1 truncate'>
+													{fichier.name}
+												</span>
+												<button
+													type='button'
+													aria-label={`Retirer ${fichier.name}`}
+													disabled={gele}
+													onClick={() =>
+														setFichiers((actuels) =>
+															actuels.filter((autre) => autre !== fichier),
+														)
+													}
+												>
+													<X className='h-3.5 w-3.5' />
+												</button>
+											</li>
+										))}
+									</ul>
+								)}
+
+								<div className='flex items-center gap-2'>
+									<Button
+										type='button'
+										variant='ghost'
+										size='icon'
+										className='h-10 w-10 shrink-0 rounded-full text-muted-foreground'
+										disabled={gele || fichiers.length >= MAX_FILES}
+										onClick={() => fileInput.current?.click()}
+										aria-label='Joindre un fichier'
+										title={`Joindre une image, un PDF ou un TXT (${MAX_FILES} maximum)`}
+									>
+										<Paperclip className='h-5 w-5' />
+									</Button>
+									<Button
+										type='button'
+										variant={rechercheWebActive ? 'secondary' : 'outline'}
+										size='sm'
+										className={cn(
+											'h-10 rounded-full px-4 font-normal text-sm',
+											rechercheWebActive && 'border-primary/40 text-primary',
+										)}
+										disabled={gele}
+										onClick={() => setRechercheWebActive((active) => !active)}
+										aria-pressed={rechercheWebActive}
+										title={
+											rechercheWebActive
+												? 'Désactiver la recherche web'
+												: 'Activer la recherche web en complément'
+										}
+									>
+										<Globe2 className='mr-2 h-4 w-4' />
+										Recherche web
+									</Button>
+									<Button
+										type='button'
+										size='icon'
+										className='ml-auto h-11 w-11 shrink-0 rounded-xl'
+										disabled={gele}
+										onClick={envoyerMessage}
+										aria-label='Envoyer à l’assistant'
+										title='Envoyer à l’assistant'
+									>
+										{genererFiche.isPending && blocEnCours === null ? (
+											<Loader2 className='h-4 w-4 animate-spin' />
+										) : (
+											<Send className='h-4 w-4' />
+										)}
+									</Button>
+								</div>
+							</div>
 						</div>
 
 						{/* ── DES PHOTOS, PAS DES FICHIERS ────────────────────────────
@@ -817,9 +1010,10 @@ export function ProductSheetStudio({
 								type='button'
 								variant='outline'
 								size='sm'
-								className='w-full'
-								disabled={gele || chercherImages.isPending}
+								className='w-full cursor-not-allowed bg-muted text-muted-foreground opacity-60 hover:bg-muted hover:text-muted-foreground'
+								disabled
 								onClick={proposerPhotos}
+								title='Recherche de photos temporairement indisponible'
 							>
 								{chercherImages.isPending ? (
 									<Loader2 className='mr-2 h-4 w-4 animate-spin' />

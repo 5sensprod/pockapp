@@ -1,6 +1,5 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -30,10 +29,10 @@ const MAX_FILES = 3
 const MAX_FILE_BYTES = 2 * 1024 * 1024
 const MAX_TOTAL_BYTES = 5 * 1024 * 1024
 const SOURCE_TEXT_MAX = 12000
-const INSTRUCTIONS_MAX = 600
 
 const ACCEPTED_MIME_TYPES = new Set([
 	'application/pdf',
+	'text/plain',
 	'image/jpeg',
 	'image/png',
 	'image/webp',
@@ -64,6 +63,7 @@ function fileMIMEType(file: File): string {
 	if (file.type) return file.type.toLowerCase()
 	const extension = file.name.split('.').pop()?.toLowerCase()
 	if (extension === 'pdf') return 'application/pdf'
+	if (extension === 'txt') return 'text/plain'
 	if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg'
 	if (extension === 'png') return 'image/png'
 	if (extension === 'webp') return 'image/webp'
@@ -116,14 +116,14 @@ export function ProductSheetAssistant({
 	const [mode, setMode] = useState<SourceMode>('documents')
 	const [descriptionFormat, setDescriptionFormat] =
 		useState<DescriptionFormat | null>(null)
-	const [instructions, setInstructions] = useState('')
 	const [sourceText, setSourceText] = useState('')
 	const [files, setFiles] = useState<
 		Array<ProductSheetFile & { size: number }>
 	>([])
 	const [applied, setApplied] = useState(false)
+	const [isDragging, setIsDragging] = useState(false)
 
-	const addFiles = async (selected: FileList | null) => {
+	const addFiles = async (selected: FileList | File[] | null) => {
 		if (!selected?.length) return
 		const candidates = [...selected]
 		if (files.length + candidates.length > MAX_FILES) {
@@ -141,7 +141,7 @@ export function ProductSheetAssistant({
 			const mimeType = fileMIMEType(file)
 			if (!ACCEPTED_MIME_TYPES.has(mimeType)) {
 				toast.error(
-					`${file.name} : utilise une image JPG, PNG, WebP ou un PDF.`,
+					`${file.name} : utilise une image JPG, PNG, WebP, un PDF ou un TXT.`,
 				)
 				return
 			}
@@ -172,6 +172,11 @@ export function ProductSheetAssistant({
 		}
 	}
 
+	const addDroppedFiles = (selected: FileList | null) => {
+		setIsDragging(false)
+		void addFiles(selected)
+	}
+
 	const askAssistant = () => {
 		if (!descriptionFormat) {
 			toast.error('Choisis une description courte ou une fiche détaillée.')
@@ -188,7 +193,6 @@ export function ProductSheetAssistant({
 				categories: product.categories,
 				currentDescription,
 				descriptionFormat,
-				instructions: instructions.trim() || undefined,
 				sourceText:
 					mode === 'documents' ? sourceText.trim() || undefined : undefined,
 				files:
@@ -306,38 +310,62 @@ export function ProductSheetAssistant({
 					</TabsList>
 
 					<TabsContent value='documents' className='space-y-3'>
-						<div className='space-y-1.5'>
-							<Label htmlFor='assistant-source'>Texte à analyser</Label>
-							<Textarea
-								id='assistant-source'
-								value={sourceText}
-								onChange={(event) => setSourceText(event.target.value)}
-								maxLength={SOURCE_TEXT_MAX}
-								rows={4}
-								placeholder='Colle ici la documentation, les caractéristiques ou un texte technique…'
-							/>
-						</div>
-						<div className='flex flex-wrap items-center gap-2'>
+						<div
+							className={`rounded-xl border bg-background p-2 transition-colors ${
+								isDragging ? 'border-primary bg-primary/5' : ''
+							}`}
+							onDragEnter={(event) => {
+								event.preventDefault()
+								setIsDragging(true)
+							}}
+							onDragOver={(event) => event.preventDefault()}
+							onDragLeave={(event) => {
+								if (event.currentTarget === event.target) setIsDragging(false)
+							}}
+							onDrop={(event) => {
+								event.preventDefault()
+								addDroppedFiles(event.dataTransfer.files)
+							}}
+						>
 							<input
 								ref={fileInput}
 								type='file'
 								className='hidden'
-								accept='.pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp'
+								accept='.pdf,.txt,.jpg,.jpeg,.png,.webp,application/pdf,text/plain,image/jpeg,image/png,image/webp'
 								multiple
 								onChange={(event) => void addFiles(event.target.files)}
 							/>
-							<Button
-								type='button'
-								variant='outline'
-								size='sm'
-								onClick={() => fileInput.current?.click()}
-								disabled={files.length >= MAX_FILES || generate.isPending}
-							>
-								<Paperclip /> Joindre une photo ou un PDF
-							</Button>
-							<span className='text-muted-foreground text-xs'>
-								3 fichiers · 2 Mo chacun
-							</span>
+							<div className='flex items-end gap-2'>
+								<Textarea
+									id='assistant-source'
+									value={sourceText}
+									onChange={(event) => setSourceText(event.target.value)}
+									maxLength={SOURCE_TEXT_MAX}
+									rows={4}
+									className='min-h-24 resize-none border-0 shadow-none focus-visible:ring-0'
+									placeholder='Écris ou colle les informations à analyser… Tu peux aussi déposer ou coller une image, un PDF ou un fichier texte.'
+									onPaste={(event) => {
+										const images = [...event.clipboardData.files].filter(
+											(file) => file.type.startsWith('image/'),
+										)
+										if (images.length) void addFiles(images)
+									}}
+								/>
+								<Button
+									type='button'
+									variant='ghost'
+									size='icon'
+									onClick={() => fileInput.current?.click()}
+									disabled={files.length >= MAX_FILES || generate.isPending}
+									aria-label='Ajouter une pièce jointe'
+									title='Ajouter une image, un PDF ou un TXT'
+								>
+									<Paperclip />
+								</Button>
+							</div>
+							<p className='px-2 pb-1 text-muted-foreground text-xs'>
+								Glisse-dépose, colle ou joins jusqu’à 3 fichiers · 2 Mo chacun
+							</p>
 						</div>
 						{files.length > 0 && (
 							<div className='flex flex-wrap gap-2'>
@@ -389,29 +417,6 @@ export function ProductSheetAssistant({
 						</div>
 					</TabsContent>
 				</Tabs>
-
-				<div className='space-y-1.5'>
-					<Label htmlFor='assistant-instructions'>
-						Demande à l’assistant (facultatif)
-					</Label>
-					<Input
-						id='assistant-instructions'
-						value={instructions}
-						onChange={(event) => setInstructions(event.target.value)}
-						maxLength={INSTRUCTIONS_MAX}
-						placeholder='Ex. insiste sur la facilité de transport'
-						onKeyDown={(event) => {
-							if (
-								event.key === 'Enter' &&
-								!event.shiftKey &&
-								!generate.isPending
-							) {
-								event.preventDefault()
-								askAssistant()
-							}
-						}}
-					/>
-				</div>
 
 				<Button
 					type='button'
