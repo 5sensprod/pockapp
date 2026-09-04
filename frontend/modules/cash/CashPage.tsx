@@ -13,7 +13,9 @@ export function CashPage() {
 
 	return (
 		<CashModuleShell pageTitle='Configuration' pageIcon={Settings}>
-			<CashView {...cash} />
+			<div className='container mx-auto px-6'>
+				<CashView {...cash} />
+			</div>
 		</CashModuleShell>
 	)
 }

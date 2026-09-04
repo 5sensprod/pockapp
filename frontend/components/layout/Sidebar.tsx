@@ -13,13 +13,17 @@
 // Elle est ouverte par défaut, ses groupes dépliés, et l'utilisateur seul la
 // ferme — l'état est tenu par `layout.tsx` et persisté (`localStorage`).
 //
-// Elle SURVOLE toujours le contenu : ouvrir ou fermer le menu ne déplace pas
-// la page (aucune marge, aucune transition dans `layout.tsx`).
+// Ouverture et fermeture : elle GLISSE, par `transform` — une propriété
+// composée par le GPU, sans calcul de mise en page ni repeint. Elle reste
+// montée en permanence (fermée, elle est simplement hors champ) : la fermer
+// ne démonte plus six groupes de React, et la rouvrir ne les reconstruit pas.
+// Fermée, elle est aussi retirée du focus clavier (`inert`) — hors champ ne
+// veut pas dire hors d'atteinte à la tabulation.
 //
 // Modes (useBreakpoint) :
 //   mobile  (<768px)   → non rendue, BottomNav prend le relais
-//   tablet  (768–1023) → backdrop, et refermeture après un saut
-//   desktop (≥1024px)  → pas de backdrop, elle reste ouverte
+//   tablet  (768–1023) → backdrop, refermeture après un saut, pas de push
+//   desktop (≥1024px)  → pas de backdrop, elle pousse le contenu et reste ouverte
 //
 // Tokens : bg-panel, bg-panel-header, bg-panel-item-active, text-panel-*,
 //          w-panel, h-header (tailwind.config.cjs)
@@ -67,6 +71,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 	const router = useRouter()
 	const { isMobile, isTablet } = useBreakpoint()
 
+	// `inert` n'existe pas comme prop React en 18 — on le pose sur le nœud.
+	// Sans lui, la barre fermée reste tabulable : on sortirait du champ visible
+	// en trois tabulations, sur des boutons invisibles.
+	const navRef = React.useRef<HTMLElement>(null)
+	React.useEffect(() => {
+		navRef.current?.toggleAttribute('inert', !open)
+	}, [open])
+
 	// Groupes dépliés par défaut : la barre est assez haute pour tout montrer,
 	// et un item visible vaut mieux qu'un item à chercher. Replier reste
 	// possible, groupe par groupe.
@@ -76,7 +88,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 	const normPath = normalizePath(pathname)
 
 	// ── Mobile : rien — BottomNav prend le relais ──────────────────────────
-	if (isMobile || !groups.length || !open) return null
+	// (Fermée, elle reste montée : c'est le `transform` qui la sort du champ.)
+	if (isMobile || !groups.length) return null
 
 	const activeItem = findSidebarItemByPath(groups, normPath)?.item
 	const activeGroupId = findSidebarGroupByPath(groups, normPath)?.id ?? null
@@ -112,7 +125,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 	return (
 		<>
 			{/* ── Backdrop tablette — ferme la barre au clic extérieur ─────────── */}
-			{isTablet && (
+			{isTablet && open && (
 				<div
 					className='fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]'
 					style={{ top: 'var(--header-h)' }}
@@ -128,9 +141,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 			)}
 
 			<nav
-				className='fixed left-0 bottom-0 z-50 w-panel bg-panel flex flex-col shadow-2xl'
+				ref={navRef}
+				className={cn(
+					'fixed left-0 bottom-0 z-50 w-panel bg-panel flex flex-col shadow-2xl',
+					'transition-transform duration-200 ease-out motion-reduce:transition-none',
+					open ? 'translate-x-0' : '-translate-x-full',
+				)}
 				style={{ top: 'var(--header-h)' }}
 				aria-label='Navigation principale'
+				aria-hidden={!open}
 			>
 				<div className='h-header px-4 bg-panel-header flex items-center justify-between shrink-0'>
 					<span className='text-[10px] uppercase tracking-widest font-bold text-panel-item-icon'>

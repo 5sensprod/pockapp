@@ -69,7 +69,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const { pathname } = useLocation()
 	const navigate = useNavigate()
 	const { isAuthenticated } = useAuth()
-	const { isMobile } = useBreakpoint()
+	const { isMobile, isDesktop } = useBreakpoint()
 
 	const [sidebarOpen, setSidebarOpen] = useState<boolean>(readSidebarOpen)
 
@@ -110,9 +110,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		}
 	}
 
-	// ── Padding <main> ──────────────────────────────────────────────────────
-	// La barre SURVOLE le contenu, à tous les formats : ouvrir ou fermer le menu
-	// ne déplace plus la page et n'anime plus rien.
+	// ── Marge et padding <main> ─────────────────────────────────────────────
+	// Seul le desktop pousse le contenu ; sur tablette la barre survole, faute
+	// de largeur. La marge est animée sur la même durée et la même courbe que le
+	// glissement de la barre (`Sidebar.tsx`), sinon les deux se décalent à l'œil.
+	// C'est le SEUL élément qui transitionne une propriété de mise en page — la
+	// barre, elle, glisse par `transform`, sans reflow.
+	const mainMargin = isDesktop && sidebarOpen ? 'ml-panel' : 'ml-0'
+
 	// pb-bottom-nav : évite que le contenu soit masqué par la BottomNav fixe
 	const mainPadding = isMobile && hasBottomNav ? 'pb-bottom-nav' : ''
 
@@ -205,8 +210,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				onClose={() => setSidebarOpenPersisted(false)}
 			/>
 
-			{/* Contenu principal — jamais décalé : la barre passe par-dessus */}
-			<main className={['flex-1', mainPadding].filter(Boolean).join(' ')}>
+			{/*
+        Contenu principal
+          mobile  → ml-0,    pb-bottom-nav (espace sous la BottomNav)
+          tablet  → ml-0     (la barre survole)
+          desktop → ml-panel quand la barre est ouverte, sinon ml-0
+      */}
+			<main
+				className={[
+					'flex-1',
+					mainMargin,
+					mainPadding,
+					isDesktop
+						? 'transition-[margin-left] duration-200 ease-out motion-reduce:transition-none'
+						: '',
+				]
+					.filter(Boolean)
+					.join(' ')}
+			>
 				{children}
 			</main>
 
