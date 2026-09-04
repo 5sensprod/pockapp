@@ -16,8 +16,9 @@ import {
 } from '@/components/ui/html-content'
 import { Input } from '@/components/ui/input'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
+import { useCategories } from '@/lib/queries/categories'
+import { ProductSheetStudio } from '@/modules/site/components/online-catalog/ProductSheetStudio'
 
-import { ProductOnlineEditorialDialog } from './ProductOnlineEditorialDialog'
 import { DetailCard, HelpTooltip, ReadValue } from './detail-primitives'
 import {
 	type ProductDetailValues,
@@ -29,29 +30,26 @@ export function ProductDescriptionCard({
 	editing,
 	form,
 	embedded = false,
+	brandName,
+	onSaveNow,
+	saving,
 }: {
 	product: CatalogProductShape
 	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
+	brandName?: string
+	/** Enregistre la fiche entière. Le studio s'en sert pour tenir sa promesse
+	 *  d'un seul geste final ; sans lui, il n'ouvrirait qu'un brouillon. */
+	onSaveNow?: () => Promise<unknown>
+	saving?: boolean
 }) {
-	const [assistantOpen, setAssistantOpen] = useState(false)
-	const [assistantDraft, setAssistantDraft] = useState({
-		name: '',
-		description: '',
-	})
+	const [studioOpen, setStudioOpen] = useState(false)
+	const categories = useCategories()
 	const nomFicheRepris =
 		nomFicheParDefaut(product) !== (product.name ?? '').trim()
 	const draftName = form.watch('name')
 	const draftDescription = form.watch('description')
-
-	const openAssistant = () => {
-		setAssistantDraft({
-			name: form.getValues('name'),
-			description: form.getValues('description') ?? '',
-		})
-		setAssistantOpen(true)
-	}
 
 	const content = (
 		<>
@@ -118,25 +116,18 @@ export function ProductDescriptionCard({
 					<p className='text-muted-foreground text-sm'>Aucune description.</p>
 				)}
 			</div>
-			<span
-				className='mt-4 block'
-				title={
-					!editing
-						? 'Activez « Modifier » pour utiliser l’assistant'
-						: undefined
-				}
+			{/* Le studio EST l'éditeur : il n'a pas à attendre qu'on ait ouvert la
+			    carte, et il enregistre lui-même. C'est ce qui fait tomber le
+			    parcours de sept gestes à trois. */}
+			<Button
+				type='button'
+				variant='outline'
+				className='mt-4 w-full'
+				onClick={() => setStudioOpen(true)}
 			>
-				<Button
-					type='button'
-					variant='outline'
-					className='w-full'
-					onClick={openAssistant}
-					disabled={!editing}
-				>
-					<Sparkles className='mr-2 h-4 w-4' />
-					Assistant Gemini
-				</Button>
-			</span>
+				<Sparkles className='mr-2 h-4 w-4' />
+				Rédiger la fiche du site
+			</Button>
 		</>
 	)
 
@@ -147,13 +138,25 @@ export function ProductDescriptionCard({
 			) : (
 				<DetailCard title='Fiche sur le site'>{content}</DetailCard>
 			)}
-			<ProductOnlineEditorialDialog
+			<ProductSheetStudio
+				open={studioOpen}
+				onClose={() => setStudioOpen(false)}
 				product={product}
-				draft={assistantDraft}
-				open={assistantOpen && editing}
-				onClose={() => setAssistantOpen(false)}
-				onApply={({ name, description }) => {
-					form.setValue('name', name ?? form.getValues('name'), {
+				brandName={brandName}
+				categoryNames={(categories.data ?? [])
+					.filter((categorie: { id: string }) =>
+						(form.getValues('categories') ?? []).includes(categorie.id),
+					)
+					.map((categorie: { name: string }) => categorie.name)}
+				draft={{
+					name: form.getValues('name'),
+					description: form.getValues('description') ?? '',
+				}}
+				saving={saving}
+				onSave={async ({ name, description }) => {
+					// Les valeurs entrent dans le formulaire — chemin d'écriture
+					// unique — puis on déclenche l'enregistrement de la fiche.
+					form.setValue('name', name, {
 						shouldDirty: true,
 						shouldTouch: true,
 						shouldValidate: true,
@@ -163,6 +166,8 @@ export function ProductDescriptionCard({
 						shouldTouch: true,
 						shouldValidate: true,
 					})
+					await onSaveNow?.()
+					setStudioOpen(false)
 				}}
 			/>
 		</>

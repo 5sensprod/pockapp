@@ -53,17 +53,23 @@ type APIError = {
 	response?: {
 		error?: string
 		message?: string
+		/** Le motif technique, quand la route en connaît un (`gemini_routes.go`).
+		 *  Il est AFFICHÉ : sur un poste client personne ne lit les journaux de
+		 *  l'exécutable, et sans lui « réessaie dans un instant » invite à
+		 *  réessayer une demande qui ne peut pas aboutir. */
+		detail?: string
 	}
 }
 
 function generationError(cause: unknown): Error {
 	const apiError = cause as APIError
-	return new Error(
+	const message =
 		apiError?.response?.error ??
-			apiError?.response?.message ??
-			apiError?.message ??
-			'Génération du titre impossible.',
-	)
+		apiError?.response?.message ??
+		apiError?.message ??
+		'Génération du titre impossible.'
+	const detail = apiError?.response?.detail
+	return new Error(detail ? `${message}\n${detail}` : message)
 }
 
 export function useGenerateProductTitle() {

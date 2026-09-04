@@ -114,7 +114,9 @@ export function ProductTable({
 						{imageUrl ? (
 							<img
 								src={imageUrl}
-								alt={row.original.name}
+								alt={
+									row.original.designation?.trim() || 'Produit sans désignation'
+								}
 								className='w-full h-full object-cover'
 								onError={(e) => {
 									e.currentTarget.style.display = 'none'
@@ -139,12 +141,12 @@ export function ProductTable({
 					variant='ghost'
 					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 				>
-					Produit
+					Désignation
 					<ArrowUpDown className='ml-2 h-4 w-4' />
 				</Button>
 			),
 			cell: ({ row }) => {
-				const name = row.getValue<string>('name')
+				const designation = row.original.designation?.trim() || 'Sans désignation'
 				const product = row.original
 
 				// ✅ Utilise les nouvelles fonctions qui gèrent AppPOS et PocketBase
@@ -157,7 +159,7 @@ export function ProductTable({
 
 				return (
 					<div className='space-y-0.5'>
-						<div className='font-medium'>{name}</div>
+						<div className='font-medium'>{designation}</div>
 
 						{hasCategories && (
 							<div className='flex items-center gap-1 text-xs text-muted-foreground'>

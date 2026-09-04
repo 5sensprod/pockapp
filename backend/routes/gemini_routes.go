@@ -175,7 +175,12 @@ type geminiTool struct {
 
 type geminiGenerateResponse struct {
 	Candidates []struct {
-		Content           geminiContent           `json:"content"`
+		Content geminiContent `json:"content"`
+		// Pourquoi le modèle s'est arrêté : STOP, MAX_TOKENS, SAFETY,
+		// RECITATION… Sans elle, une réponse coupée et une réponse refusée
+		// rendent le même « pas de fiche exploitable », et rien ne permet de
+		// choisir entre rallonger la sortie et changer la demande.
+		FinishReason      string                  `json:"finishReason"`
 		GroundingMetadata geminiGroundingMetadata `json:"groundingMetadata"`
 	} `json:"candidates"`
 	UsageMetadata struct {
@@ -431,8 +436,25 @@ func RegisterGeminiRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 			}
 
 			pb.Logger().Error("Génération de la fiche Gemini refusée", "error", err)
+			// ⚠️ « Réessaie dans un instant » est un mauvais conseil quand rien
+			// n'identifie le produit. Un nom seul — ni marque, ni catégorie, ni
+			// document — ne permet ni à Google Search de trouver le bon article,
+			// ni au modèle d'écrire sans inventer, ce que ses règles lui
+			// interdisent : la même demande échouera autant de fois qu'on la
+			// relancera. On dit alors ce qui manque, pas d'attendre.
+			if contexteProduitMaigre(input) {
+				return c.JSON(http.StatusBadGateway, map[string]string{
+					"detail": truncateRunes(err.Error(), 300),
+					"error":  "Ce produit n'a ni marque, ni catégorie, ni document joint : l'assistant n'a pas de quoi l'identifier. Renseigne la marque ou la catégorie sur la fiche, ou joins une documentation — recommencer tel quel donnera le même résultat.",
+				})
+			}
 			return c.JSON(http.StatusBadGateway, map[string]string{
-				"error": "Gemini n'a pas produit de fiche exploitable. Réessaie dans un instant.",
+				// Le motif part À L'ÉCRAN, et pas seulement au journal : sur un
+				// poste client, personne ne lit les logs de l'exécutable, et
+				// « réessaie dans un instant » a envoyé plusieurs fois réessayer
+				// une demande qui ne pouvait pas aboutir.
+				"detail": truncateRunes(err.Error(), 300),
+				"error":  "Gemini n'a pas produit de fiche exploitable. Réessaie dans un instant.",
 			})
 		}
 
@@ -627,6 +649,14 @@ Format DÉTAILLÉ : introduction, paragraphe d'usage, points forts, caractérist
 		PropertyOrdering: []string{"intro", "details", "highlights", "specifications", "usage_tips"},
 	}
 	maxOutputTokens := 1400
+	if input.WebSearch {
+		// Sans `ResponseSchema` — 2.5 Flash-Lite avec Google Search ne le prend
+		// pas —, le modèle encadre volontiers son JSON de prose. À 1400 jetons
+		// il se faisait couper AVANT l'accolade fermante, et l'extraction
+		// rendait « fiche non structurée » sans que rien ne soit en cause côté
+		// clé ni côté quota.
+		maxOutputTokens = 2400
+	}
 	if descriptionFormat == "short" {
 		responseSchema = geminiSchema{
 			Type: "OBJECT",
@@ -861,6 +891,8 @@ func extractGeminiProductSheet(raw []byte) (productSheetGeneration, error) {
 		return productSheetGeneration{}, errors.New("Gemini n'a renvoyé aucun candidat")
 	}
 
+	raison := response.Candidates[0].FinishReason
+
 	var textParts []string
 	for _, part := range response.Candidates[0].Content.Parts {
 		if !part.Thought && strings.TrimSpace(part.Text) != "" {
@@ -868,12 +900,15 @@ func extractGeminiProductSheet(raw []byte) (productSheetGeneration, error) {
 		}
 	}
 	if len(textParts) == 0 {
-		return productSheetGeneration{}, errors.New("Gemini n'a renvoyé aucun texte")
+		return productSheetGeneration{}, fmt.Errorf("Gemini n'a renvoyé aucun texte (arrêt : %s)", raisonLisible(raison))
 	}
 
 	var generated generatedProductSheet
 	if err := json.Unmarshal(extractJSONObject(strings.Join(textParts, "")), &generated); err != nil {
-		return productSheetGeneration{}, fmt.Errorf("fiche Gemini non structurée: %w", err)
+		// Le cas le plus fréquent en mode Web : le schéma de réponse n'y est pas
+		// applicable (2.5 Flash-Lite + Google Search), le modèle répond donc en
+		// prose ou se fait couper au milieu de son JSON.
+		return productSheetGeneration{}, fmt.Errorf("fiche Gemini non structurée (arrêt : %s): %w", raisonLisible(raison), err)
 	}
 
 	generated.Intro = truncateRunes(compactWhitespace(generated.Intro), 1200)
@@ -882,7 +917,7 @@ func extractGeminiProductSheet(raw []byte) (productSheetGeneration, error) {
 	generated.Highlights = cleanGeneratedStrings(generated.Highlights, 6, 500)
 	generated.Specifications = cleanGeneratedSpecifications(generated.Specifications, 10)
 	if generated.Intro == "" && generated.Details == "" {
-		return productSheetGeneration{}, errors.New("Gemini a renvoyé une description vide")
+		return productSheetGeneration{}, fmt.Errorf("Gemini a renvoyé une description vide (arrêt : %s)", raisonLisible(raison))
 	}
 
 	description := renderProductSheetDescription(generated)
@@ -899,6 +934,37 @@ func extractGeminiProductSheet(raw []byte) (productSheetGeneration, error) {
 		InputTokens:          response.UsageMetadata.PromptTokenCount,
 		OutputTokens:         response.UsageMetadata.CandidatesTokenCount,
 	}, nil
+}
+
+// raisonLisible nomme l'arrêt du modèle pour un message d'écran. Une réponse
+// vide n'est jamais dite « inconnue » quand Google a donné sa raison.
+// contexteProduitMaigre : rien d'autre qu'un nom n'identifie l'article.
+//
+// Le SKU n'entre pas dans le compte, et c'est délibéré : une référence interne
+// ne dit rien à Google Search ni au modèle. Ce qui identifie un produit, c'est
+// la marque, la catégorie, ou une source apportée par l'utilisateur.
+func contexteProduitMaigre(input ProductSheetRequest) bool {
+	return compactWhitespace(input.Brand) == "" &&
+		len(cleanCategories(input.Categories)) == 0 &&
+		strings.TrimSpace(input.SourceText) == "" &&
+		len(input.Files) == 0
+}
+
+func raisonLisible(finishReason string) string {
+	switch strings.ToUpper(strings.TrimSpace(finishReason)) {
+	case "":
+		return "non précisé"
+	case "STOP":
+		return "fin normale"
+	case "MAX_TOKENS":
+		return "réponse trop longue, coupée"
+	case "SAFETY":
+		return "refus de sécurité"
+	case "RECITATION":
+		return "refus pour citation"
+	default:
+		return finishReason
+	}
 }
 
 func extractJSONObject(value string) []byte {

@@ -33,7 +33,11 @@ func TestBuildGeminiProductSheetRequestEnablesOneOptionalWebTool(t *testing.T) {
 		!strings.Contains(payload.Contents[0].Parts[0].Text, "Piano numérique P-145") {
 		t.Fatalf("requête ciblée absente: %s", payload.Contents[0].Parts[0].Text)
 	}
-	if payload.GenerationConfig.MaxOutputTokens != 1400 {
+	// Le mode Web a PLUS de marge que les 1400 jetons du mode documents : sans
+	// schéma de sortie, le modèle encadre son JSON de prose, et à 1400 il se
+	// faisait couper avant l accolade fermante — l extraction rendait alors
+	// « fiche non structurée » sans que la clé ni le quota soient en cause.
+	if payload.GenerationConfig.MaxOutputTokens != 2400 {
 		t.Fatalf("maxOutputTokens = %d", payload.GenerationConfig.MaxOutputTokens)
 	}
 	if payload.GenerationConfig.ResponseSchema != nil || payload.GenerationConfig.ResponseMIMEType != "" {

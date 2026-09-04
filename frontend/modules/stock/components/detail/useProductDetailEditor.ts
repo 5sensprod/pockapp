@@ -214,6 +214,17 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 
 	return {
 		form,
+		/**
+		 * Enregistrer sans passer par le bouton du bandeau.
+		 *
+		 * C'est ce qui permet au studio de fiche (`ProductSheetStudio`) de tenir
+		 * sa promesse — ouvrir, cliquer une suggestion, enregistrer — SANS
+		 * ouvrir un second chemin d'écriture : il pose ses valeurs dans le
+		 * formulaire, puis appelle ceci. Tout ce que `submit` garantit reste
+		 * garanti : l'ajustement de stock, le slug réparé, et la proposition de
+		 * synchronisation vers le site.
+		 */
+		saveNow: () => form.handleSubmit(submit)(),
 		activeSection,
 		start: (section: ProductDetailSection) => setActiveSection(section),
 		close: () => setActiveSection(null),

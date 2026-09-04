@@ -23,6 +23,9 @@ type Props = {
 	onPromote: (filename: string) => void
 	onDesignateMain: (entry: GalleryEntry) => void
 	pendingMain: File | null
+	brandName?: string
+	onSaveNow?: () => Promise<unknown>
+	saving?: boolean
 	onRemoveMain: () => void
 	promoting: boolean
 	removingMain: boolean
@@ -108,6 +111,9 @@ export function ProductSitePanel(props: Props) {
 					editing={props.activeSection === 'content'}
 					form={props.form}
 					embedded
+					brandName={props.brandName}
+					onSaveNow={props.onSaveNow}
+					saving={props.saving}
 				/>
 			</EditableDetailCard>
 		</div>

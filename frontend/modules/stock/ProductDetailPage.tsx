@@ -208,6 +208,9 @@ function ProductDetailContent({
 							onPromote={editor.promoteImage}
 							onDesignateMain={editor.designateMain}
 							pendingMain={editor.pendingMain}
+							brandName={brandName}
+							onSaveNow={editor.saveNow}
+							saving={editor.pending}
 							onRemoveMain={editor.removeMainImage}
 							promoting={editor.promoting}
 							removingMain={editor.removingMain}
