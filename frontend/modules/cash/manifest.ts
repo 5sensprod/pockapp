@@ -55,5 +55,4 @@ export const manifest: ModuleManifest = {
 			],
 		},
 	],
-	sidebarOverlay: true,
 }

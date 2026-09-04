@@ -25,6 +25,7 @@ import {
 	PopoverTrigger,
 } from '@/components/ui/popover'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { LAYOUT } from '@/lib/layout-tokens'
 import { useBrands } from '@/lib/queries/brands'
 import { PRODUCT_HEALTH_MAX } from '@/lib/queries/catalog-health'
 import {
@@ -221,6 +222,38 @@ export function ProductsPage() {
 		useState<ProduitASupprimer | null>(null)
 	const previousCompanyId = useRef(activeCompanyId)
 
+	// LA BARRE DE COMMANDE SE COLLE ET SE REPLIE, 4 septembre 2026.
+	//
+	// La pagination était en bas de page : avec 25 lignes, changer de page
+	// demandait de descendre tout le tableau, puis de remonter pour lire la
+	// première ligne de la page suivante. Elle vit maintenant dans une barre
+	// collée sous l'en-tête de l'application.
+	//
+	// `estCollee` est mesuré par une SENTINELLE d'un pixel placée juste au-dessus
+	// de la barre, pas par un écouteur de défilement : un `scroll` se déclenche
+	// des dizaines de fois par seconde et ferait rendre la table à chaque cran.
+	//
+	// Et la barre garde EXACTEMENT la même hauteur dans les deux états : seul
+	// son contenu change. Replier en retirant de la hauteur raccourcirait le
+	// document, le navigateur remonterait, la sentinelle réapparaîtrait — et la
+	// barre battrait entre ses deux états sans jamais se stabiliser.
+	const sentinelle = useRef<HTMLDivElement | null>(null)
+	const [estCollee, setEstCollee] = useState(false)
+
+	useEffect(() => {
+		const cible = sentinelle.current
+		if (!cible || typeof IntersectionObserver === 'undefined') return
+		const observateur = new IntersectionObserver(
+			([entree]) => setEstCollee(!entree.isIntersecting),
+			// La sentinelle passe sous l'en-tête de l'application bien avant de
+			// sortir de l'écran : sans cette marge, la barre ne se replierait qu'une
+			// fois déjà cachée derrière lui.
+			{ rootMargin: `-${LAYOUT.HEADER_H}px 0px 0px 0px`, threshold: 0 },
+		)
+		observateur.observe(cible)
+		return () => observateur.disconnect()
+	}, [])
+
 	const openCreate = () => {
 		setDialogOpen(true)
 	}
@@ -408,6 +441,13 @@ export function ProductsPage() {
 	const changeFilter = (setter: (v: string) => void) => (value: string) => {
 		setter(value)
 		setPage(1)
+	}
+
+	// Changer de page sans remonter laisserait l'œil au milieu d'un tableau dont
+	// les 25 lignes ont toutes changé. On remonte à la SENTINELLE, pas à 0 : le
+	// tableau se retrouve juste sous la barre, sans repasser par le titre.
+	const remonterAuTableau = () => {
+		sentinelle.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 	}
 
 	const changeSorting = (nextSorting: SortingState) => {
@@ -812,38 +852,153 @@ export function ProductsPage() {
 				</CardContent>
 			</Card>
 
-			<div className='mb-2 flex items-center justify-between gap-3 px-1'>
-				<div className='flex items-center gap-2 font-medium text-sm'>
-					<span className='h-2 w-2 rounded-full bg-emerald-600' />
-					<span className='tabular-nums'>
+			{/* La sentinelle est le seul rôle de ce pixel : elle dit quand la barre
+			    ci-dessous s'est collée. */}
+			<div
+				ref={sentinelle}
+				aria-hidden='true'
+				className='h-px'
+				style={{ scrollMarginTop: LAYOUT.HEADER_H_CSS }}
+			/>
+
+			<div
+				style={{ top: LAYOUT.HEADER_H_CSS }}
+				// `-mx-6 px-6` : la barre déborde jusqu'aux bords du conteneur, sinon
+				// le tableau se verrait passer dans la gouttière une fois collée.
+				// Hauteur FIXE dans les deux états — voir le commentaire d'`estCollee`.
+				className={cn(
+					'-mx-6 sticky z-30 mb-2 flex h-16 items-center justify-between gap-3 border-b bg-background px-6 transition-shadow',
+					estCollee ? 'border-border shadow-sm' : 'border-transparent',
+				)}
+			>
+				<div className='flex min-w-0 items-center gap-2 font-medium text-sm'>
+					<span className='h-2 w-2 shrink-0 rounded-full bg-emerald-600' />
+					<span className='shrink-0 tabular-nums'>
 						{products.isLoading
 							? '…'
 							: `${total} produit${total > 1 ? 's' : ''}`}
 					</span>
-					<span className='text-muted-foreground'>
-						{filtresActifs
-							? `· ${filterCount} filtre${filterCount > 1 ? 's' : ''} actif${filterCount > 1 ? 's' : ''}`
-							: '· Aucun filtre complémentaire'}
-					</span>
+
+					{estCollee ? (
+						/* Repliée, la barre reprend le strict nécessaire : chercher,
+						   revenir aux filtres, changer de page. Le champ pilote le MÊME
+						   état que la grande recherche — il n'y a pas deux recherches. */
+						<>
+							<div className='relative hidden min-w-0 sm:block'>
+								<Search className='-translate-y-1/2 absolute top-1/2 left-2.5 h-4 w-4 text-muted-foreground' />
+								<Input
+									value={search}
+									onChange={(e) => changeSearch(e.target.value)}
+									placeholder='Rechercher…'
+									aria-label='Rechercher un produit'
+									className='h-9 w-44 pl-8 lg:w-64'
+								/>
+							</div>
+							<Button
+								variant='outline'
+								size='sm'
+								className='shrink-0'
+								// Remonter plutôt que rouvrir le panneau ici : les filtres
+								// prennent trois lignes, les dupliquer dans la barre en
+								// ferait deux jeux de contrôles pour un seul état.
+								onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+							>
+								<SlidersHorizontal className='mr-1.5 h-4 w-4' />
+								Filtres
+								{filtresActifs && (
+									<span className='ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-primary-foreground text-xs tabular-nums'>
+										{filterCount}
+									</span>
+								)}
+							</Button>
+
+							{/* Tous / Publiés / Brouillons suit la barre : c'est le
+							    filtre le plus utilisé, et le seul qui n'ait aucun
+							    équivalent dans les tags. Même état que le grand
+							    groupe au-dessus, en plus serré. */}
+							<div className='hidden shrink-0 items-center gap-1 rounded-lg border bg-background p-0.5 lg:flex'>
+								<StatusChip
+									active={status === undefined}
+									onClick={() => changeStatus(undefined)}
+								>
+									Tous
+								</StatusChip>
+								<StatusChip
+									active={status === 'published'}
+									onClick={() => changeStatus('published')}
+								>
+									Publiés
+								</StatusChip>
+								<StatusChip
+									active={status === 'draft'}
+									onClick={() => changeStatus('draft')}
+								>
+									Brouillons
+								</StatusChip>
+							</div>
+						</>
+					) : (
+						<span className='truncate text-muted-foreground'>
+							{filtresActifs
+								? `· ${filterCount} filtre${filterCount > 1 ? 's' : ''} actif${filterCount > 1 ? 's' : ''}`
+								: '· Aucun filtre complémentaire'}
+						</span>
+					)}
 				</div>
 
-				<label className='flex items-center gap-2 text-muted-foreground text-sm'>
-					<span>Tri du tableau</span>
-					<select
-						value={sortValue}
-						onChange={(event) => changeSortSelect(event.target.value)}
-						className='h-9 rounded-md border border-input bg-background px-3 text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-					>
-						<option value='created:desc'>Ajout récent</option>
-						<option value='created:asc'>Ajout ancien</option>
-						<option value='name:asc'>Produit · A à Z</option>
-						<option value='name:desc'>Produit · Z à A</option>
-						<option value='price_ttc:asc'>Prix · croissant</option>
-						<option value='price_ttc:desc'>Prix · décroissant</option>
-						<option value='healthScore:desc'>Santé · meilleure</option>
-						<option value='healthScore:asc'>Santé · à compléter</option>
-					</select>
-				</label>
+				<div className='flex shrink-0 items-center gap-3'>
+					<label className='flex items-center gap-2 text-muted-foreground text-sm'>
+						<span className={cn(estCollee && 'sr-only')}>Tri du tableau</span>
+						<select
+							value={sortValue}
+							onChange={(event) => changeSortSelect(event.target.value)}
+							className='h-9 rounded-md border border-input bg-background px-2 text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+						>
+							<option value='created:desc'>Ajout récent</option>
+							<option value='created:asc'>Ajout ancien</option>
+							<option value='name:asc'>Produit · A à Z</option>
+							<option value='name:desc'>Produit · Z à A</option>
+							<option value='price_ttc:asc'>Prix · croissant</option>
+							<option value='price_ttc:desc'>Prix · décroissant</option>
+							<option value='healthScore:desc'>Santé · meilleure</option>
+							<option value='healthScore:asc'>Santé · à compléter</option>
+						</select>
+					</label>
+
+					{/* La pagination n'est plus en bas de page : elle suit le défilement.
+					    Un seul jeu de boutons, ici. */}
+					<div className='flex items-center gap-2'>
+						<span className='whitespace-nowrap text-muted-foreground text-sm tabular-nums'>
+							Page {page} / {Math.max(totalPages, 1)}
+						</span>
+						<Button
+							variant='outline'
+							size='icon'
+							className='h-9 w-9'
+							aria-label='Page précédente'
+							disabled={page <= 1 || products.isFetching}
+							onClick={() => {
+								setPage((p) => Math.max(1, p - 1))
+								remonterAuTableau()
+							}}
+						>
+							<ChevronLeft className='h-4 w-4' />
+						</Button>
+						<Button
+							variant='outline'
+							size='icon'
+							className='h-9 w-9'
+							aria-label='Page suivante'
+							disabled={page >= totalPages || products.isFetching}
+							onClick={() => {
+								setPage((p) => p + 1)
+								remonterAuTableau()
+							}}
+						>
+							<ChevronRight className='h-4 w-4' />
+						</Button>
+					</div>
+				</div>
 			</div>
 
 			<Card>
@@ -902,42 +1057,16 @@ export function ProductsPage() {
 				</CardContent>
 			</Card>
 
-			<div className='mt-4 flex items-center justify-between'>
-				<span className='text-muted-foreground text-sm tabular-nums'>
-					Page {page} sur {Math.max(totalPages, 1)}
-				</span>
-				<div className='flex gap-2'>
-					<Button
-						variant='outline'
-						size='sm'
-						disabled={page <= 1 || products.isFetching}
-						onClick={() => setPage((p) => Math.max(1, p - 1))}
-					>
-						<ChevronLeft className='mr-1 h-4 w-4' />
-						Précédent
-					</Button>
-					<Button
-						variant='outline'
-						size='sm'
-						disabled={page >= totalPages || products.isFetching}
-						onClick={() => setPage((p) => p + 1)}
-					>
-						Suivant
-						<ChevronRight className='ml-1 h-4 w-4' />
-					</Button>
-				</div>
+			<CatalogProductDialog
+				open={dialogOpen}
+				onOpenChange={setDialogOpen}
+				product={null}
+			/>
 
-				<CatalogProductDialog
-					open={dialogOpen}
-					onOpenChange={setDialogOpen}
-					product={null}
-				/>
-
-				<DeleteProductDialog
-					produit={produitASupprimer}
-					onOpenChange={(ouvert) => !ouvert && setProduitASupprimer(null)}
-				/>
-			</div>
+			<DeleteProductDialog
+				produit={produitASupprimer}
+				onOpenChange={(ouvert) => !ouvert && setProduitASupprimer(null)}
+			/>
 		</div>
 	)
 }
@@ -960,6 +1089,35 @@ function toCatalogSort(sorting: SortingState) {
 	const field = current && CATALOG_SORT_FIELDS[current.id]
 	if (!current || !field) return '-created'
 	return `${current.desc ? '-' : ''}${field}`
+}
+
+/** La version serrée du groupe de statut, pour la barre repliée. Elle ne
+ * réutilise pas `FilterButton` : celui-ci fait 40 px de haut, ce qui ne tient
+ * pas dans une barre qui doit rester d'une seule ligne. */
+function StatusChip({
+	active,
+	onClick,
+	children,
+}: {
+	active: boolean
+	onClick: () => void
+	children: React.ReactNode
+}) {
+	return (
+		<button
+			type='button'
+			onClick={onClick}
+			aria-pressed={active}
+			className={cn(
+				'rounded-md px-2.5 py-1 font-medium text-xs transition-colors',
+				active
+					? 'bg-primary text-primary-foreground shadow-sm'
+					: 'text-muted-foreground hover:bg-muted',
+			)}
+		>
+			{children}
+		</button>
+	)
 }
 
 function FilterButton({

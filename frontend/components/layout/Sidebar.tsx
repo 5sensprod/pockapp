@@ -1,28 +1,28 @@
 // frontend/components/layout/Sidebar.tsx
 //
-// Sidebar responsive — 3 modes pilotés par useBreakpoint() :
+// Navigation UNIQUE de l'application — 4 septembre 2026.
 //
-//   mobile  (<768px)   → composant non rendu (null)
-//                         la navigation est assurée par BottomNav
-//   tablet  (768–1023) → rail visible + panel en OVERLAY (backdrop, pas de push)
-//   desktop (≥1024px)  → rail visible + panel PUSH (comportement actuel)
+// Il n'y a plus qu'un seul menu. Avant, la barre changeait de contenu selon
+// qu'on était sur l'accueil ou dans un module : un rail d'icônes propre au
+// module, un panneau par groupe, PLUS un bouton « Tous les modules » qui
+// ouvrait un second panneau par-dessus. Deux navigations concurrentes pour un
+// même écran, et rien qui dise où l'on se trouve. Le rail et le panneau de
+// module sont supprimés : la barre affiche TOUJOURS l'arbre complet
+// (`homeDashboardManifest.sidebarMenu`), quelle que soit la page.
 //
-// Tokens utilisés (définis dans tailwind.config.cjs) :
-//   bg-rail              → #283044 (fond rail)
-//   bg-rail-active       → bg icône sélectionnée
-//   bg-rail-hover        → bg icône au survol
-//   text-rail-icon       → icône inactive
-//   text-rail-icon-active → icône active
-//   bg-rail-separator    → séparateur rail
-//   bg-panel             → fond panneau
-//   bg-panel-header      → header panneau
-//   bg-panel-item-active → item sélectionné
-//   text-panel-item-text → texte item
-//   text-panel-item-icon → icône item
-//   w-rail / h-header    → dimensions tokenisées
+// Elle est ouverte par défaut, ses groupes dépliés, et l'utilisateur seul la
+// ferme — l'état est tenu par `layout.tsx` et persisté (`localStorage`).
 //
-// Props (inchangées pour compatibilité avec Layout.tsx) :
-//   currentModule, activeGroup, onToggleGroup, onClosePanel, onHomePanelChange
+// Elle SURVOLE toujours le contenu : ouvrir ou fermer le menu ne déplace pas
+// la page (aucune marge, aucune transition dans `layout.tsx`).
+//
+// Modes (useBreakpoint) :
+//   mobile  (<768px)   → non rendue, BottomNav prend le relais
+//   tablet  (768–1023) → backdrop, et refermeture après un saut
+//   desktop (≥1024px)  → pas de backdrop, elle reste ouverte
+//
+// Tokens : bg-panel, bg-panel-header, bg-panel-item-active, text-panel-*,
+//          w-panel, h-header (tailwind.config.cjs)
 
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import {
@@ -32,18 +32,10 @@ import {
 import { getLastRouteForModule } from '@/lib/stores/moduleNavigationStore'
 import { navigationActions } from '@/lib/stores/navigationStore'
 import { cn } from '@/lib/utils'
-import {
-	type ModuleManifest,
-	type SidebarGroup,
-	getModule,
-} from '@/modules/_registry'
+import { type SidebarGroup, getModule } from '@/modules/_registry'
 import { homeDashboardManifest } from '@/modules/home'
-import {
-	useLocation,
-	useNavigate,
-	useRouter,
-} from '@tanstack/react-router'
-import { ChevronDown, LayoutDashboard, X } from 'lucide-react'
+import { useLocation, useNavigate, useRouter } from '@tanstack/react-router'
+import { ChevronDown, X } from 'lucide-react'
 import * as React from 'react'
 
 const normalizePath = (path: string) => (path || '/').replace(/\/+$/, '') || '/'
@@ -60,401 +52,166 @@ function getModuleSidebarAccent(moduleId: string) {
 	const text = module?.iconColor ?? module?.color ?? 'text-panel-item-icon'
 	return {
 		text,
-		background:
-			SIDEBAR_TINT_BY_ICON_COLOR[text] ?? 'bg-panel-item-active',
+		background: SIDEBAR_TINT_BY_ICON_COLOR[text] ?? 'bg-panel-item-active',
 	}
 }
 
 interface SidebarProps {
-	currentModule: ModuleManifest | null
-	activeGroup: string | null
-	onToggleGroup: (groupId: string) => void
-	onClosePanel: () => void
-	onHomePanelChange?: (open: boolean) => void
+	open: boolean
+	onClose: () => void
 }
 
-export function Sidebar({
-	currentModule,
-	activeGroup,
-	onToggleGroup,
-	onClosePanel,
-	onHomePanelChange,
-}: SidebarProps) {
+export function Sidebar({ open, onClose }: SidebarProps) {
 	const { pathname } = useLocation()
 	const navigate = useNavigate()
 	const router = useRouter()
 	const { isMobile, isTablet } = useBreakpoint()
 
-	const [homePanel, setHomePanel] = React.useState(false)
+	// Groupes dépliés par défaut : la barre est assez haute pour tout montrer,
+	// et un item visible vaut mieux qu'un item à chercher. Replier reste
+	// possible, groupe par groupe.
+	const [collapsed, setCollapsed] = React.useState<Set<string>>(() => new Set())
 
-	const setHomePanelWithNotify = React.useCallback(
-		(val: boolean | ((v: boolean) => boolean)) => {
-			setHomePanel((prev) => {
-				const next = typeof val === 'function' ? val(prev) : val
-				onHomePanelChange?.(next)
-				return next
-			})
-		},
-		[onHomePanelChange],
-	)
-
-	const isHomePage = pathname === '/'
-	const sidebarMenu = currentModule?.sidebarMenu || []
-	const homeSidebarMenu = homeDashboardManifest.sidebarMenu || []
-
-	// ── Mobile : on ne rend rien — BottomNav prend le relais ───────────────
-	if (isMobile || !sidebarMenu.length) return null
-
+	const groups = homeDashboardManifest.sidebarMenu || []
 	const normPath = normalizePath(pathname)
-	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
-	const urlGroupId = findSidebarGroupByPath(sidebarMenu, normPath)?.id
 
-	const groupMatchesUrl = (group: SidebarGroup): boolean =>
-		group.id === urlGroupId
+	// ── Mobile : rien — BottomNav prend le relais ──────────────────────────
+	if (isMobile || !groups.length || !open) return null
 
-	// Navigue vers un item de la sidebar.
-	// Consulte la clé de section (moduleId:sectionPath) pour restaurer
-	// la dernière page visitée dans cette section (ex: fiche client).
-	// Si aucune lastRoute pour cette section → navigue vers la liste (itemTo).
-	const handleSidebarNavigate = (itemTo: string) => {
-		navigationActions.clear()
-		if (currentModule?.id) {
-			const sectionKey = `${currentModule.id}:${normalizePath(itemTo)}`
-			const lastRoute = getLastRouteForModule(sectionKey)
-			const targetItem = findSidebarItemByPath(sidebarMenu, itemTo)?.item
-			const lastRouteItem = lastRoute
-				? findSidebarItemByPath(sidebarMenu, lastRoute)?.item
-				: undefined
-			if (lastRoute && targetItem === lastRouteItem) {
-				router.navigate({ to: lastRoute as any })
-				return
-			}
-		}
-		navigate({ to: itemTo as any })
-	}
+	const activeItem = findSidebarItemByPath(groups, normPath)?.item
+	const activeGroupId = findSidebarGroupByPath(groups, normPath)?.id ?? null
 
-	// Navigue depuis le HomePanel — pas de currentModule disponible,
-	// donc on cherche le moduleId depuis l'itemTo directement.
-	const handleHomeSectionNavigate = (itemTo: string, moduleId: string) => {
+	// Restaure la dernière page visitée DANS la section visée (ex : la fiche
+	// client ouverte plutôt que la liste), sous réserve qu'elle désigne bien
+	// le même item de menu.
+	const handleNavigate = (itemTo: string, moduleId: string) => {
 		navigationActions.clear()
 		const sectionKey = `${moduleId}:${normalizePath(itemTo)}`
 		const lastRoute = getLastRouteForModule(sectionKey)
-		const targetItem = findSidebarItemByPath(homeSidebarMenu, itemTo)?.item
+		const targetItem = findSidebarItemByPath(groups, itemTo)?.item
 		const lastRouteItem = lastRoute
-			? findSidebarItemByPath(homeSidebarMenu, lastRoute)?.item
+			? findSidebarItemByPath(groups, lastRoute)?.item
 			: undefined
 		if (lastRoute && targetItem === lastRouteItem) {
 			router.navigate({ to: lastRoute as any })
-			return
+		} else {
+			navigate({ to: itemTo as any })
 		}
-		navigate({ to: itemTo as any })
+		// Sur tablette la barre survole le contenu : elle se referme après le saut.
+		if (isTablet) onClose()
 	}
 
-	const handleGroupClick = (group: SidebarGroup) => {
-		setHomePanelWithNotify(false)
-		onToggleGroup(group.id)
-		if (group.items?.length === 1) {
-			handleSidebarNavigate(group.items[0].to)
-		}
-	}
-
-	const handleHomePanelToggle = () => {
-		if (activeGroup) onClosePanel()
-		setHomePanelWithNotify((v) => !v)
-	}
-
-	const showHomePanel = homePanel && !isHomePage
-	const showModulePanel =
-		!showHomePanel &&
-		activeGroupData !== null &&
-		(activeGroupData.items?.length ?? 0) > 1
-
-	const panelIsOverlay = isTablet
-
-	const handleClose = () => {
-		onClosePanel()
-		setHomePanelWithNotify(false)
-	}
+	const toggleGroup = (groupId: string) =>
+		setCollapsed((prev) => {
+			const next = new Set(prev)
+			if (next.has(groupId)) next.delete(groupId)
+			else next.add(groupId)
+			return next
+		})
 
 	return (
 		<>
-			{/* ── Backdrop tablette — ferme le panel au clic extérieur ─────────── */}
-			{panelIsOverlay && (showModulePanel || showHomePanel) && (
+			{/* ── Backdrop tablette — ferme la barre au clic extérieur ─────────── */}
+			{isTablet && (
 				<div
 					className='fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]'
 					style={{ top: 'var(--header-h)' }}
-					onClick={handleClose}
+					onClick={onClose}
 					onKeyDown={(e) => {
 						if (e.key === 'Enter' || e.key === ' ') {
 							e.preventDefault()
-							handleClose()
+							onClose()
 						}
 					}}
 					aria-hidden='true'
 				/>
 			)}
 
-			<div
-				className='fixed left-0 bottom-0 flex z-50'
+			<nav
+				className='fixed left-0 bottom-0 z-50 w-panel bg-panel flex flex-col shadow-2xl'
 				style={{ top: 'var(--header-h)' }}
+				aria-label='Navigation principale'
 			>
-				{/* ── Rail ───────────────────────────────────────────────────────── */}
-				<div className='w-rail bg-rail flex flex-col items-center py-3 shrink-0'>
-					{/* Icône home — hors home page */}
-					{!isHomePage && (
-						<>
-							<button
-								type='button'
-								onClick={handleHomePanelToggle}
-								title='Tous les modules'
-								className={cn(
-									'relative w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-150 mb-1',
-									showHomePanel
-										? 'text-rail-icon-active bg-rail-active'
-										: 'text-rail-icon hover:text-rail-icon-active hover:bg-rail-hover',
-								)}
-							>
-								<LayoutDashboard className='h-4 w-4' />
-								{showHomePanel && (
-									<span className='absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-rail-indicator' />
-								)}
-							</button>
-							<div className='w-6 h-px bg-rail-separator mb-2 shrink-0' />
-						</>
-					)}
-
-					{/* Icônes module */}
-					<div className='flex flex-col items-center gap-1 flex-1'>
-						{sidebarMenu.map((group) => {
-							const Icon = group.icon
-							const isActive =
-								!showHomePanel &&
-								(activeGroup === group.id || groupMatchesUrl(group))
-
-							return (
-								<button
-									key={group.id}
-									type='button'
-									onClick={() => handleGroupClick(group)}
-									title={
-										group.items?.length === 1
-											? group.items[0].label
-											: group.label
-									}
-									className={cn(
-										'relative w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-150',
-										isActive
-											? 'text-rail-icon-active bg-rail-active'
-											: 'text-rail-icon hover:text-rail-icon-active hover:bg-rail-hover',
-									)}
-								>
-									<Icon className='h-5 w-5' />
-									{isActive && (
-										<span className='absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-rail-indicator' />
-									)}
-								</button>
-							)
-						})}
-					</div>
+				<div className='h-header px-4 bg-panel-header flex items-center justify-between shrink-0'>
+					<span className='text-[10px] uppercase tracking-widest font-bold text-panel-item-icon'>
+						Tous les modules
+					</span>
+					<button
+						type='button'
+						onClick={onClose}
+						className='rounded-md p-1.5 hover:bg-panel-item-active transition-colors'
+						title='Fermer le menu'
+					>
+						<X className='h-4 w-4 text-panel-close-btn' />
+					</button>
 				</div>
 
-				{/* ── Panel module ─────────────────────────────────────────────── */}
-				{showModulePanel && activeGroupData && (
-					<ModulePanel
-						group={activeGroupData}
-						normPath={normPath}
-						moduleId={currentModule?.id}
-						onClose={onClosePanel}
-						onNavigate={handleSidebarNavigate}
-					/>
-				)}
+				<div className='flex-1 overflow-y-auto p-2'>
+					{groups.map((group: SidebarGroup) => {
+						const GroupIcon = group.icon
+						const isOpen = !collapsed.has(group.id)
+						const isCurrent = group.id === activeGroupId
+						const accent = getModuleSidebarAccent(group.id)
 
-				{/* ── Panel home global ────────────────────────────────────────── */}
-				{showHomePanel && (
-					<HomePanel
-						groups={homeSidebarMenu}
-						normPath={normPath}
-						onClose={() => setHomePanelWithNotify(false)}
-						onSectionNavigate={(itemTo, moduleId) => {
-							setHomePanelWithNotify(false)
-							handleHomeSectionNavigate(itemTo, moduleId)
-						}}
-					/>
-				)}
-			</div>
-		</>
-	)
-}
-
-// ── Panneau d'un groupe module ────────────────────────────────────────────────
-function ModulePanel({
-	group,
-	normPath,
-	// moduleId,
-	onClose,
-	onNavigate,
-}: {
-	group: SidebarGroup
-	normPath: string
-	moduleId: string | undefined
-	onClose: () => void
-	onNavigate: (itemTo: string) => void
-}) {
-	return (
-		<div className='w-panel bg-panel flex flex-col shadow-2xl'>
-			<div className='h-header px-4 bg-panel-header flex items-center justify-between shrink-0'>
-				<h2 className='text-sm font-semibold text-panel-header-text'>
-					{group.label}
-				</h2>
-				<button
-					type='button'
-					onClick={onClose}
-					className='rounded-md p-1.5 hover:bg-panel-item-active transition-colors'
-					title='Fermer'
-				>
-					<X className='h-4 w-4 text-panel-close-btn' />
-				</button>
-			</div>
-
-			<nav className='flex-1 overflow-y-auto p-2'>
-				{group.items?.map((item) => {
-					const ItemIcon = item.icon
-					const t = normalizePath(item.to)
-					const isActive = normPath === t || normPath.startsWith(t)
-					return (
-						<button
-							key={item.to}
-							type='button'
-							onClick={() => onNavigate(item.to)}
-							className={cn(
-								'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-								isActive
-									? 'bg-panel-item-active text-foreground font-semibold'
-									: 'text-panel-item-text hover:bg-panel-header',
-							)}
-						>
-							{ItemIcon && (
-								<ItemIcon
+						return (
+							<div key={group.id} className='mb-1'>
+								<button
+									type='button'
+									onClick={() => toggleGroup(group.id)}
 									className={cn(
-										'h-4 w-4 shrink-0',
-										isActive ? 'text-foreground' : 'text-panel-item-icon',
+										'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+										isCurrent
+											? `${accent.background} ${accent.text}`
+											: 'text-panel-item-text hover:bg-panel-header',
 									)}
-								/>
-							)}
-							<span>{item.label}</span>
-						</button>
-					)
-				})}
-			</nav>
-		</div>
-	)
-}
-
-// ── Panneau home global ───────────────────────────────────────────────────────
-function HomePanel({
-	groups,
-	normPath,
-	onClose,
-	onSectionNavigate,
-}: {
-	groups: SidebarGroup[]
-	normPath: string
-	onClose: () => void
-	onSectionNavigate: (itemTo: string, moduleId: string) => void
-}) {
-	const activeGroupId = findSidebarGroupByPath(groups, normPath)?.id ?? null
-	const activeItem = findSidebarItemByPath(groups, normPath)?.item
-	const [openGroupId, setOpenGroupId] = React.useState<string | null>(
-		activeGroupId,
-	)
-
-	return (
-		<div className='w-panel bg-panel flex flex-col shadow-2xl'>
-			<div className='h-header px-4 bg-panel-header flex items-center justify-between shrink-0'>
-				<span className='text-[10px] uppercase tracking-widest font-bold text-panel-item-icon'>
-					Tous les modules
-				</span>
-				<button
-					type='button'
-					onClick={onClose}
-					className='rounded-md p-1.5 hover:bg-panel-item-active transition-colors'
-					title='Fermer'
-				>
-					<X className='h-4 w-4 text-panel-close-btn' />
-				</button>
-			</div>
-
-			<nav className='flex-1 overflow-y-auto p-2'>
-				{groups.map((group) => {
-					const GroupIcon = group.icon
-					const isOpen = group.id === openGroupId
-					const accent = getModuleSidebarAccent(group.id)
-
-					return (
-						<div key={group.id} className='mb-1'>
-							<button
-								type='button'
-								onClick={() =>
-									setOpenGroupId((current) =>
-										current === group.id ? null : group.id,
-									)
-								}
-								className={cn(
-									'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-									isOpen
-										? `${accent.background} ${accent.text}`
-										: 'text-panel-item-text hover:bg-panel-header',
-								)}
-								aria-expanded={isOpen}
-							>
-								<GroupIcon
-									className={cn('h-4 w-4 shrink-0', accent.text)}
-								/>
-								<span className='flex-1 text-left'>{group.label}</span>
-								<ChevronDown
-									className={cn(
-										'h-4 w-4 shrink-0 transition-transform duration-150',
-										isOpen && 'rotate-180',
-									)}
-								/>
-							</button>
-
-							{/* Sous-items → restauration par section */}
-							{isOpen && group.items?.length > 0 && (
-								<div
-									className={cn(
-										'ml-4 mt-0.5 mb-1 border-l border-current/20 pl-3 flex flex-col gap-0.5',
-										accent.text,
-									)}
+									aria-expanded={isOpen}
 								>
-									{group.items.map((item) => {
-										const ItemIcon = item.icon
-										const isActive = item === activeItem
-										return (
-											<button
-												key={item.to}
-												type='button'
-												onClick={() => onSectionNavigate(item.to, group.id)}
-												className={cn(
-													'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors',
-													isActive
-														? `${accent.background} ${accent.text} font-semibold`
-														: 'text-panel-item-icon hover:bg-panel-header hover:text-panel-item-text',
-												)}
-											>
-												{ItemIcon && (
-													<ItemIcon className='h-3.5 w-3.5 shrink-0' />
-												)}
-												<span>{item.label}</span>
-											</button>
-										)
-									})}
-								</div>
-							)}
-						</div>
-					)
-				})}
+									<GroupIcon className={cn('h-4 w-4 shrink-0', accent.text)} />
+									<span className='flex-1 text-left'>{group.label}</span>
+									<ChevronDown
+										className={cn(
+											'h-4 w-4 shrink-0 transition-transform duration-150',
+											isOpen && 'rotate-180',
+										)}
+									/>
+								</button>
+
+								{isOpen && group.items?.length > 0 && (
+									<div
+										className={cn(
+											'ml-4 mt-0.5 mb-1 border-l border-current/20 pl-3 flex flex-col gap-0.5',
+											accent.text,
+										)}
+									>
+										{group.items.map((item) => {
+											const ItemIcon = item.icon
+											const isActive = item === activeItem
+											return (
+												<button
+													key={item.to}
+													type='button'
+													onClick={() => handleNavigate(item.to, group.id)}
+													className={cn(
+														'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors',
+														isActive
+															? `${accent.background} ${accent.text} font-semibold`
+															: 'text-panel-item-icon hover:bg-panel-header hover:text-panel-item-text',
+													)}
+												>
+													{ItemIcon && (
+														<ItemIcon className='h-3.5 w-3.5 shrink-0' />
+													)}
+													<span>{item.label}</span>
+												</button>
+											)
+										})}
+									</div>
+								)}
+							</div>
+						)
+					})}
+				</div>
 			</nav>
-		</div>
+		</>
 	)
 }

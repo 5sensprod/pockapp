@@ -1,12 +1,16 @@
 // frontend/layout.tsx
 //
-// Changements vs étape 2 :
-//   - Import et rendu de BottomNav (mobile uniquement)
-//   - <main> reçoit pb-bottom-nav sur mobile (contenu jamais masqué)
-//   - token layout-tokens mis à jour avec bottom-nav
+// Navigation : une seule barre, tenue ici.
+//   - `sidebarOpen` est l'unique état de navigation (persisté dans
+//     localStorage, ouvert par défaut). Le bouton qui le bascule est dans le
+//     Header ; la barre elle-même n'affiche plus que l'arbre complet.
+//   - Le suivi de groupe actif (`activeGroup`, `manuallyClosed`) a disparu
+//     avec le rail et les panneaux de module : plus rien à synchroniser avec
+//     l'URL, c'est le chemin courant qui met en évidence l'item.
+//   - Mobile inchangé : BottomNav, la Sidebar ne se rend pas.
 
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Footer, Header, Sidebar } from '@/components/layout'
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -15,7 +19,6 @@ import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
 import { useSetupCheck } from '@/lib/hooks/useSetupCheck'
 import { useNotifications } from '@/lib/notifications'
 import { usePresenceEvents } from '@/lib/presence/use-presence-events'
-import { findSidebarGroupByPath } from '@/lib/sidebar-navigation'
 import { isWails, tryWailsSub, tryWailsVoid } from '@/lib/wails-bridge'
 import { poles } from '@/modules/_registry'
 import type { ModuleManifest } from '@/modules/_registry'
@@ -26,7 +29,16 @@ import { toast } from 'sonner'
 import { CheckForUpdates } from '@/wailsjs/go/main/App'
 import { EventsOn } from '@/wailsjs/runtime/runtime'
 
-const normalizePath = (path: string) => (path || '/').replace(/\/+$/, '') || '/'
+const SIDEBAR_OPEN_KEY = 'pocketapp:sidebar-open'
+
+function readSidebarOpen(): boolean {
+	if (typeof window === 'undefined') return true
+	try {
+		return window.localStorage.getItem(SIDEBAR_OPEN_KEY) !== '0'
+	} catch {
+		return true
+	}
+}
 
 function findModuleByPath(pathname: string): ModuleManifest | null {
 	if (pathname === '/') return homeDashboardManifest
@@ -57,17 +69,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const { pathname } = useLocation()
 	const navigate = useNavigate()
 	const { isAuthenticated } = useAuth()
-	const { isMobile, isTablet, canPushContent } = useBreakpoint()
+	const { isMobile } = useBreakpoint()
 
-	const [activeGroup, setActiveGroup] = useState<string | null>(null)
-	const [manuallyClosed, setManuallyClosed] = useState(false)
-	const [homePanelOpen, setHomePanelOpen] = useState(false)
+	const [sidebarOpen, setSidebarOpen] = useState<boolean>(readSidebarOpen)
 
 	const { needsSetup, loading: setupLoading } = useSetupCheck()
 	const currentModule = useMemo(() => findModuleByPath(pathname), [pathname])
-	const isHomePage = pathname === '/'
-	const hasSidebar = !!currentModule?.sidebarMenu?.length
-	const sidebarMenu = currentModule?.sidebarMenu || []
+	const hasBottomNav = !!currentModule?.sidebarMenu?.length
 
 	const {
 		activeCompanyId,
@@ -93,84 +101,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		onNotification: upsertNotification,
 	})
 
-	// ── Sync activeGroup avec l'URL ─────────────────────────────────────────
-	//
-	// ⚠️ CET EFFET NE DOIT S'EXÉCUTER QU'AU CHANGEMENT D'URL, jamais en réaction
-	// à `activeGroup`.
-	//
-	// Il avait `activeGroup` en dépendance, et se rappelait donc lui-même : un
-	// groupe ouvert À LA MAIN sans changer d'URL était immédiatement réaligné sur
-	// le groupe de l'URL courante — le panneau se refermait dans la foulée du
-	// clic. Le défaut était invisible tant que chaque groupe n'avait qu'UN item,
-	// car cliquer un groupe naviguait aussitôt (`Sidebar.tsx:126`) et l'URL
-	// donnait raison au clic. Ajouter « Marques » au groupe Stock, donc un second
-	// item, l'a rendu visible : depuis l'inventaire, ouvrir Stock ne navigue plus,
-	// et le panneau se rabattait sur « Inventaire ».
-	//
-	// La garde est le chemin déjà synchronisé : une URL n'est alignée qu'une
-	// fois, et un clic manuel ne peut plus être annulé par cet effet.
-	const lastSyncedPath = useRef<string | null>(null)
-	useEffect(() => {
-		if (!sidebarMenu.length) return
-		const normPath = normalizePath(pathname)
-		if (lastSyncedPath.current === normPath) return
-		lastSyncedPath.current = normPath
-
-		if (manuallyClosed) return
-		const matchingGroup = findSidebarGroupByPath(sidebarMenu, normPath)
-		if (matchingGroup) setActiveGroup(matchingGroup.id)
-	}, [pathname, sidebarMenu, manuallyClosed])
-
-	// ── Reset sur changement de module ─────────────────────────────────────
-	useEffect(() => {
-		if (currentModule?.id !== undefined) {
-			setManuallyClosed(false)
-			setActiveGroup(null)
+	const setSidebarOpenPersisted = (next: boolean) => {
+		setSidebarOpen(next)
+		try {
+			window.localStorage.setItem(SIDEBAR_OPEN_KEY, next ? '1' : '0')
+		} catch {
+			// stockage indisponible — la préférence vaut pour la session seule
 		}
-	}, [currentModule?.id])
-
-	const handleToggleGroup = (groupId: string) => {
-		const group = sidebarMenu.find((g) => g.id === groupId)
-		const isSingleItem = (group?.items?.length ?? 0) === 1
-		if (activeGroup === groupId && !isSingleItem) {
-			setManuallyClosed(true)
-			setActiveGroup(null)
-			return
-		}
-		setManuallyClosed(false)
-		setActiveGroup(groupId)
 	}
 
-	const handleClosePanel = () => {
-		setManuallyClosed(true)
-		setActiveGroup(null)
-	}
-
-	const activeGroupData = sidebarMenu.find((g) => g.id === activeGroup) || null
-
-	// Dans un module, le menu principal survole toujours la page : son ouverture
-	// ne doit pas déplacer le contenu. Home conserve son comportement historique
-	// (panel avec push sur desktop). Un manifest peut encore expliciter ce choix.
-	// Sur tablette, le panel reste toujours un overlay faute de largeur.
-	const sidebarOverlay =
-		(currentModule?.sidebarOverlay ?? !isHomePage) || isTablet
-
-	// ── Marge et padding <main> ─────────────────────────────────────────────
-	// isPanelOpen → push du contenu uniquement sur desktop, manifest non-overlay
-	const isPanelOpen =
-		!sidebarOverlay &&
-		canPushContent &&
-		(homePanelOpen ||
-			(activeGroupData !== null && (activeGroupData.items?.length ?? 0) > 1))
-
-	const mainMargin = (() => {
-		if (!hasSidebar || isMobile) return ''
-		if (isTablet) return 'ml-rail'
-		return isPanelOpen ? 'ml-sidebar-open' : 'ml-rail'
-	})()
-
+	// ── Padding <main> ──────────────────────────────────────────────────────
+	// La barre SURVOLE le contenu, à tous les formats : ouvrir ou fermer le menu
+	// ne déplace plus la page et n'anime plus rien.
 	// pb-bottom-nav : évite que le contenu soit masqué par la BottomNav fixe
-	const mainPadding = isMobile && hasSidebar ? 'pb-bottom-nav' : ''
+	const mainPadding = isMobile && hasBottomNav ? 'pb-bottom-nav' : ''
 
 	// ── Redirections ────────────────────────────────────────────────────────
 	useEffect(() => {
@@ -246,7 +190,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		<div className='min-h-screen flex flex-col bg-background'>
 			<Header
 				currentModule={currentModule}
-				isHomePage={isHomePage}
+				sidebarOpen={sidebarOpen}
+				onToggleSidebar={() => setSidebarOpenPersisted(!sidebarOpen)}
 				notifications={notifications}
 				unreadCount={unreadCount}
 				markAllRead={markAllRead}
@@ -254,42 +199,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				deleteNotification={deleteNotification}
 			/>
 
-			{/* Sidebar desktop/tablet — nulle sur mobile (géré en interne) */}
-			{hasSidebar && (
-				<Sidebar
-					currentModule={currentModule}
-					activeGroup={activeGroup}
-					onToggleGroup={handleToggleGroup}
-					onClosePanel={handleClosePanel}
-					onHomePanelChange={setHomePanelOpen}
-				/>
-			)}
+			{/* Menu unique — desktop/tablet ; nul sur mobile (géré en interne) */}
+			<Sidebar
+				open={sidebarOpen}
+				onClose={() => setSidebarOpenPersisted(false)}
+			/>
 
-			{/*
-        Contenu principal
-          mobile  → ml-0,        pb-bottom-nav (espace sous la BottomNav)
-          tablet  → ml-rail,     pas de pb
-          desktop → ml-rail/ml-sidebar-open, transition margin, pas de pb
-      */}
-			<main
-				className={[
-					'flex-1',
-					mainMargin,
-					mainPadding,
-					canPushContent && hasSidebar
-						? 'transition-[margin] duration-200 ease-in-out'
-						: '',
-				]
-					.filter(Boolean)
-					.join(' ')}
-			>
+			{/* Contenu principal — jamais décalé : la barre passe par-dessus */}
+			<main className={['flex-1', mainPadding].filter(Boolean).join(' ')}>
 				{children}
 			</main>
 
 			<Footer />
 
 			{/* BottomNav — visible uniquement sur mobile, si le module a un menu */}
-			{isMobile && hasSidebar && <BottomNav currentModule={currentModule} />}
+			{isMobile && hasBottomNav && <BottomNav currentModule={currentModule} />}
 		</div>
 	)
 }

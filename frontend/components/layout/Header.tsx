@@ -19,15 +19,15 @@ import {
 	Bell,
 	Building2,
 	ChevronDown,
-	ChevronLeft,
 	LogOut,
+	Menu,
+	PanelLeftClose,
 	RefreshCw,
 	Settings,
 	Trash2,
 	User,
 	Wallet,
 } from 'lucide-react'
-import type { ComponentType } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,22 +59,14 @@ import type { AppNotification } from '@/lib/notifications'
 
 interface HeaderProps {
 	currentModule: ModuleManifest | null
-	isHomePage: boolean
+	/** État du menu unique — le bouton ci-dessous est son seul déclencheur. */
+	sidebarOpen: boolean
+	onToggleSidebar: () => void
 	notifications: AppNotification[]
 	unreadCount: number
 	markAllRead: () => void
 	markRead: (id: string) => void
 	deleteNotification: (id: string) => void
-}
-
-function getModuleHomeRoute(module: ModuleManifest): string {
-	const menu = module.sidebarMenu
-	if (!menu?.length) return module.route
-	const configGroup = menu.find((g) =>
-		['config', 'settings', 'configuration'].includes(g.id.toLowerCase()),
-	)
-	const firstItem = (configGroup ?? menu[0])?.items?.[0]
-	return firstItem?.to ?? module.route
 }
 
 function formatNotifTime(ts: number): string {
@@ -92,7 +84,8 @@ function formatNotifTime(ts: number): string {
 
 export function Header({
 	currentModule,
-	isHomePage,
+	sidebarOpen,
+	onToggleSidebar,
 	notifications,
 	unreadCount,
 	markAllRead,
@@ -105,11 +98,6 @@ export function Header({
 	const { companies, activeCompanyId, setActiveCompanyId } = useActiveCompany()
 
 	const brand = currentModule?.name ?? 'PocketApp'
-	const moduleMenu = currentModule?.topbarMenu || []
-
-	const moduleHomeRoute = currentModule
-		? getModuleHomeRoute(currentModule)
-		: '/'
 
 	const activeCompany =
 		companies.find((c: CompanyItem) => c.id === activeCompanyId) ?? companies[0]
@@ -208,27 +196,40 @@ export function Header({
 	)
 
 	return (
-		// Stitch : glassmorphism header — bg/95 + backdrop-blur
+		// L'en-tête est OPAQUE depuis le 4 septembre 2026. Le verre poli laissait
+		// remonter le contenu qui passe dessous, et la page produits — qui colle
+		// sa propre barre juste en dessous — en faisait une bouillie illisible.
 		// No-Line rule : pas de border-b, séparation assurée par bg-muted du ModulePageShell
-		<header className='sticky top-0 z-50 w-full min-w-[200px] bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
+		<header className='sticky top-0 z-50 w-full min-w-[200px] bg-background'>
 			<div className='flex h-header items-center justify-between px-4 tablet:px-6 desktop:px-8'>
-				{/* ══ GAUCHE : brand + nav module ══════════════════════════════════ */}
-				<div className='flex flex-1 items-center gap-3 min-w-0 tablet:gap-4 desktop:gap-8'>
-					{/* Bouton retour — tablet+ seulement, via JS (cohérent avec le reste) */}
-					{currentModule && !isHomePage && !isMobile && (
+				{/* ══ GAUCHE : menu unique + brand ═════════════════════════════════ */}
+				<div className='flex flex-1 items-center gap-3 min-w-0 tablet:gap-4'>
+					{/* Seul bouton de navigation de l'application — il ouvre et ferme la
+					    barre latérale, qui contient TOUT le menu. Il n'y a plus de rail
+					    d'icônes ni de flèche « retour » : le contenu de la barre ne
+					    dépend pas de la page où l'on se trouve. Absent sur mobile, où la
+					    BottomNav tient ce rôle. */}
+					{!isMobile && (
 						<Button
 							variant='ghost'
 							size='icon'
 							className='h-9 w-9 shrink-0'
-							onClick={() => navigate({ to: '/' })}
+							onClick={onToggleSidebar}
+							aria-expanded={sidebarOpen}
+							aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+							title={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
 						>
-							<ChevronLeft className='h-5 w-5' />
+							{sidebarOpen ? (
+								<PanelLeftClose className='h-5 w-5' />
+							) : (
+								<Menu className='h-5 w-5' />
+							)}
 						</Button>
 					)}
 
-					{/* Logo + brand name */}
+					{/* Logo + nom du module courant — le logo ramène toujours à l'accueil */}
 					<Link
-						to={currentModule ? (moduleHomeRoute as any) : '/'}
+						to='/'
 						className='flex items-center gap-2 font-medium text-base text-foreground min-w-0 overflow-hidden'
 					>
 						{/* bg-primary = #1E1B4B via token shadcn */}
@@ -240,17 +241,6 @@ export function Header({
 							{brand}
 						</span>
 					</Link>
-
-					{/* Nav topbarMenu — desktop uniquement */}
-					{isDesktop && moduleMenu.length > 0 && (
-						<nav className='flex gap-1'>
-							{moduleMenu.map((item) => (
-								<NavLink key={item.to} to={item.to} icon={item.icon}>
-									{item.label}
-								</NavLink>
-							))}
-						</nav>
-					)}
 				</div>
 
 				{/* ══ DROITE : crédits + entreprise + notifs + user ════════════════ */}
@@ -554,28 +544,5 @@ export function Header({
 				</div>
 			</div>
 		</header>
-	)
-}
-
-interface NavLinkProps {
-	to: string
-	icon?: ComponentType<{ className?: string }>
-	children: React.ReactNode
-}
-
-function NavLink({ to, icon: Icon, children }: NavLinkProps) {
-	return (
-		<Link
-			to={to}
-			className={cn(
-				'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-				'text-muted-foreground hover:bg-accent hover:text-foreground',
-				'[&.active]:bg-accent [&.active]:text-foreground',
-			)}
-			activeProps={{ className: 'bg-accent text-foreground' }}
-		>
-			{Icon && <Icon className='h-4 w-4' />}
-			{children}
-		</Link>
 	)
 }
