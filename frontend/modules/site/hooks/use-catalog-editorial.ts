@@ -32,6 +32,7 @@ import { usePocketBase } from '@/lib/use-pocketbase'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import type { EditorialPatch } from '../lib/catalog-edit'
+import { slugAReparer } from '../lib/slug-editorial'
 
 /** Les trois collections éditables. */
 export type EditableKind = 'product' | 'category' | 'brand'
@@ -67,6 +68,10 @@ export function useUpdateCatalogEditorial() {
 			const body: Record<string, string> = { description: patch.description }
 			if (kind === 'product' && patch.name !== undefined) {
 				body.name = patch.name
+			}
+			if (kind === 'product') {
+				const slug = await slugAReparer(pb, id, patch.name)
+				if (slug) body.slug = slug
 			}
 			await pb.collection(COLLECTION[kind]).update(id, body)
 		},

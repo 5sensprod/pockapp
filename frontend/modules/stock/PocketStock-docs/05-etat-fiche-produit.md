@@ -140,8 +140,9 @@ répondu.
 |---|---|
 | Champs séparés pour les blocs (ou tables) | **Décidé pour après la release.** Le découpage HTML est un choix de vitesse ; il vit dans un seul fichier, `sheet-blocks.ts`, pour n'avoir qu'un endroit à retirer. Coût du passage : migration PocketBase, contrat d'export, `products-sync.php`, `catalog.php`, rendu du site |
 | Route IA « une seule section » | Pas écrite. Voir §3 |
-| `ProductOnlineEditorialDialog.tsx` | **Plus aucun appelant** depuis que le studio a pris sa place. Non supprimé |
-| `EditorialDialog` / `ProductSheetAssistant` | Toujours utilisés par `/site/catalogue`. Le studio ne les remplace QUE sur la fiche produit — deux interfaces coexistent donc pour le même travail |
+| `ProductOnlineEditorialDialog.tsx` | **Supprimé le 4 septembre 2026** — il n'avait plus aucun appelant depuis que le studio a pris sa place. `tsc -b --force` et les 397 tests passent sans lui |
+| `EditorialDialog` / `ProductSheetAssistant` | Toujours utilisés par `/site/catalogue`. Le studio ne les remplace QUE sur la fiche produit — deux interfaces coexistent, et **elles n'écrivent pas pareil** : `useUpdateCatalogEditorial` écrit `name` et `description` en direct dans PocketBase, sans l'ajustement de stock ni la proposition de synchronisation. Ce n'est pas dangereux (ce chemin ne touche ni `stock` ni `gallery`), mais aucun gardien ne le couvre |
+| Slug réparé des deux côtés | **Fait le 4 septembre 2026.** `/site/catalogue` ne réparait pas le slug : un produit né en caisse avant le 20 août 2026 retouché là puis exporté partait avec une adresse vide et sa page rendait « Produit introuvable ». `frontend/modules/site/lib/slug-editorial.ts` (+ `.test.ts`) ne comble QUE le vide — une adresse en ligne ne se retouche jamais |
 | Vérification à l'écran | Le studio, le garde-fou de sortie et la galerie n'ont **pas** été ouverts dans un navigateur par l'agent : `tsc -b --force`, 397 tests front et `go test ./backend/...` passent, c'est tout ce qui est prouvé |
 
 ---
