@@ -275,13 +275,16 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 
 			const term = search?.trim()
 			if (term) {
-				// `pb.filter` échappe la valeur : une apostrophe dans un nom de
-				// produit — il y en a — ne peut pas casser la requête, ni servir à
-				// en injecter une autre.
+				// `pb.filter` échappe la valeur : une apostrophe dans une désignation
+				// ou un nom de produit ne peut pas casser la requête, ni servir à en
+				// injecter une autre.
 				clauses.push(
-					pb.filter('(name ~ {:q} || sku ~ {:q} || barcode ~ {:q})', {
-						q: term,
-					}),
+					pb.filter(
+						'(designation ~ {:q} || name ~ {:q} || sku ~ {:q} || barcode ~ {:q})',
+						{
+							q: term,
+						},
+					),
 				)
 			}
 
