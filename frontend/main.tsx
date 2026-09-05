@@ -66,7 +66,9 @@ createRoot(rootElement).render(
 				// précédente. À changer si la forme d'une de ces réponses change —
 				// sinon un ancien objet serait rendu à du code qui ne l'attend
 				// plus, et l'écran casserait sans requête réseau pour l'expliquer.
-				buster: 'catalogue-v1',
+				// v2 (5 septembre 2026) : `catalog-counts` porte désormais les
+				// manques (`par_manque`).
+				buster: 'catalogue-v2',
 				dehydrateOptions: {
 					shouldDehydrateQuery: (query) =>
 						query.state.status === 'success' &&

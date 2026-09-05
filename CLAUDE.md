@@ -253,6 +253,18 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   `frontend/lib/realtime/catalog-realtime.test.ts`, qui exige que
   `catalog-counts` soit périmée par `products` ET par `categories` (déplacer
   une catégorie change deux branches sans qu'aucun produit ne bouge).
+  Depuis le 2026-09-05 la même réponse porte aussi **les manques**
+  (`par_manque` : sans image, sans description, sans prix d'achat, stock à 0),
+  pour que le panneau de filtres cesse de poser ses questions à l'aveugle. Ces
+  comptages passent par `filteredProductQuery` avec **les chaînes de filtre du
+  client** (`CLAUSES_MANQUE`, `catalog-products.ts`) et non par du SQL écrit à
+  la main : c'est ce qui garantit que « Sans image · 437 » et la liste obtenue
+  en cliquant annoncent le même nombre. Gardien :
+  `frontend/lib/queries/catalog-gap-filters.test.ts`.
+  **La note de santé ne se FILTRE plus depuis l'écran** (même date) : elle reste
+  une colonne triable, et `/api/catalog/products/health` ne sert plus qu'à
+  ORDONNER — SQLite trie sur les six prérequis, React ne trierait que les 25
+  lignes visibles. Le paramètre `health` de cette route n'a plus d'appelant.
 - **Le cache TanStack Query est persisté, mais PAS en entier** (25 août 2026).
   `frontend/main.tsx` monte un `PersistQueryClientProvider` sur `localStorage`
   — sans lui, un simple rechargement vidait tout et les écrans repartaient de
@@ -262,7 +274,8 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   un poste partagé, alors que `main.tsx` efface déjà la session PocketBase à
   chaque démarrage. Élargir cette liste, c'est décider d'écrire ces données sur
   le disque du poste : le faire sciemment, et changer le `buster` si la forme
-  d'une réponse persistée change.
+  d'une réponse persistée change. Fait le 2026-09-05 (`catalogue-v2`) quand
+  `catalog-counts` a gagné `par_manque` et `par_sante`.
 - **Le catalogue se met à jour d'un poste à l'autre sans rechargement**
   (19 août 2026) : `frontend/lib/realtime/` s'abonne au temps réel natif de
   PocketBase sur `products`, `categories`, `brands`, `suppliers`, et invalide

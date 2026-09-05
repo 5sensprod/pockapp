@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/popover'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
-import { PRODUCT_HEALTH_MAX } from '@/lib/queries/catalog-health'
 import {
 	type CatalogCommercialStateFilter,
 	type CatalogProductStatus,
@@ -75,22 +74,6 @@ import { ProductTable } from './components/ProductTable'
 
 const PER_PAGE = 25
 const NO_RELATION_FILTER = '__none__'
-const HEALTH_OPTIONS = Array.from(
-	{ length: PRODUCT_HEALTH_MAX + 1 },
-	(_, index) => {
-		const score = PRODUCT_HEALTH_MAX - index
-		const detail =
-			score === PRODUCT_HEALTH_MAX
-				? 'Prête'
-				: score === 0
-					? 'Fiche vide'
-					: `${PRODUCT_HEALTH_MAX - score} élément${PRODUCT_HEALTH_MAX - score > 1 ? 's' : ''} à compléter`
-		return {
-			value: String(score),
-			label: `${score}/${PRODUCT_HEALTH_MAX} · ${detail}`,
-		}
-	},
-)
 const COMMERCIAL_STATE_LABELS: Record<CatalogCommercialStateFilter, string> = {
 	new: 'Neuf',
 	used: 'Occasion',
@@ -123,9 +106,6 @@ const estPageValide = (valeur: unknown) =>
 	typeof valeur === 'number' && Number.isInteger(valeur) && valeur >= 1
 const estStatutValide = (valeur: unknown) =>
 	valeur === undefined || valeur === 'draft' || valeur === 'published'
-const estScoreSanteValide = (valeur: unknown) =>
-	typeof valeur === 'string' &&
-	(valeur === '' || HEALTH_OPTIONS.some((option) => option.value === valeur))
 const estEtatCommercialValide = (valeur: unknown) =>
 	valeur === '' ||
 	(typeof valeur === 'string' && valeur in COMMERCIAL_STATE_LABELS)
@@ -205,11 +185,6 @@ export function ProductsPage() {
 		false,
 		estBooleen,
 	)
-	const [healthScore, setHealthScore] = useEtatPersistant(
-		'stock-produits-sante',
-		'',
-		estScoreSanteValide,
-	)
 	const [commercialState, setCommercialState] = useEtatPersistant<
 		CatalogCommercialStateFilter | ''
 	>('stock-produits-etat-commercial', '', estEtatCommercialValide)
@@ -221,6 +196,7 @@ export function ProductsPage() {
 		[{ id: 'created', desc: true }],
 		estTriValide,
 	)
+	const [panneauOuvert, setPanneauOuvert] = useState(false)
 	const [dialogOpen, setDialogOpen] = useState(false)
 	/** La fiche dont on demande la suppression. `null` = aucune confirmation
 	 *  ouverte. On garde l'ENREGISTREMENT et non la ligne de table : la
@@ -255,7 +231,6 @@ export function ProductsPage() {
 		setMissingDescription(false)
 		setMissingPurchasePrice(false)
 		setEmptyStock(false)
-		setHealthScore('')
 		setCommercialState('')
 		setSaleState('')
 		setPage(1)
@@ -271,7 +246,6 @@ export function ProductsPage() {
 		setMissingDescription,
 		setMissingPurchasePrice,
 		setEmptyStock,
-		setHealthScore,
 		setCommercialState,
 		setSaleState,
 		setPage,
@@ -352,9 +326,13 @@ export function ProductsPage() {
 		emptyStock,
 		commercialState: commercialState || undefined,
 		saleState: saleState || undefined,
-		healthScore: healthScore === '' ? undefined : Number(healthScore),
 		sort: toCatalogSort(sorting),
 	})
+
+	// Les manques viennent du serveur avec les autres décomptes : les compter
+	// ici demanderait les 2999 produits au navigateur, ce que la route
+	// `/api/catalog/counts` existe précisément pour éviter.
+	const manques = catalogCounts.data?.parManque
 
 	const brands = useBrands({ companyId: activeCompanyId ?? undefined })
 	const suppliers = useSuppliers({ companyId: activeCompanyId ?? undefined })
@@ -433,10 +411,24 @@ export function ProductsPage() {
 		setPage(1)
 	}
 
-	const changeFilter = (setter: (v: string) => void) => (value: string) => {
-		setter(value)
+	// APPLIQUER UN FILTRE REFERME LE PANNEAU (5 septembre 2026).
+	//
+	// Il restait ouvert par-dessus le tableau, c'est-à-dire par-dessus le seul
+	// endroit où lire l'effet de ce qu'on venait de choisir. Reposer un second
+	// filtre coûte un clic de plus ; ne pas voir le résultat du premier coûtait
+	// la fermeture manuelle, à chaque fois. Les filtres se retirent d'ailleurs
+	// depuis leur tag, sans rouvrir le panneau.
+	//
+	// Tout ce que le panneau change passe par ici : le retour page 1 et la
+	// fermeture ne peuvent pas être oubliés dans un handler.
+	const appliquerFiltre = (changement: () => void) => {
+		changement()
 		setPage(1)
+		setPanneauOuvert(false)
 	}
+
+	const changeFilter = (setter: (v: string) => void) => (value: string) =>
+		appliquerFiltre(() => setter(value))
 
 	// Changer de page sans remonter laisserait l'œil au milieu d'un tableau dont
 	// les 25 lignes ont toutes changé. Ce n'est plus la PAGE qu'on remonte — elle
@@ -532,20 +524,14 @@ export function ProductsPage() {
 			},
 		})
 	}
-	if (healthScore !== '') {
-		activeFilterTags.push({
-			key: 'health',
-			label: `Santé · ${healthScore}/${PRODUCT_HEALTH_MAX}`,
-			clear: () => {
-				setHealthScore('')
-				setPage(1)
-			},
-		})
-	}
 	if (commercialState) {
 		activeFilterTags.push({
 			key: 'commercial-state',
-			label: `État · ${COMMERCIAL_STATE_LABELS[commercialState]}`,
+			// Sans préfixe : « Neuf » ne se confond avec rien. Marque, catégorie
+			// et fournisseur gardent le leur — une marque s'appelle BOSTON et une
+			// catégorie « Location », le mot seul ne dirait pas de quel filtre il
+			// s'agit.
+			label: COMMERCIAL_STATE_LABELS[commercialState],
 			clear: () => {
 				setCommercialState('')
 				setPage(1)
@@ -555,7 +541,7 @@ export function ProductsPage() {
 	if (saleState) {
 		activeFilterTags.push({
 			key: 'sale-state',
-			label: `Opération · ${SALE_STATE_LABELS[saleState]}`,
+			label: SALE_STATE_LABELS[saleState],
 			clear: () => {
 				setSaleState('')
 				setPage(1)
@@ -565,6 +551,7 @@ export function ProductsPage() {
 	const filterCount = activeFilterTags.length
 	const filtresActifs = filterCount > 0
 	const clearFilters = () => {
+		setPanneauOuvert(false)
 		setBrandId('')
 		setCategoryId('')
 		setSupplierId('')
@@ -572,7 +559,6 @@ export function ProductsPage() {
 		setMissingDescription(false)
 		setMissingPurchasePrice(false)
 		setEmptyStock(false)
-		setHealthScore('')
 		setCommercialState('')
 		setSaleState('')
 		setPage(1)
@@ -627,7 +613,7 @@ export function ProductsPage() {
 						/>
 					</div>
 
-					<Popover>
+					<Popover open={panneauOuvert} onOpenChange={setPanneauOuvert}>
 						<PopoverTrigger asChild>
 							<Button
 								variant='outline'
@@ -685,80 +671,80 @@ export function ProductsPage() {
 										/>
 									</CompactFilterField>
 								</div>
-								<CompactFilterField label='Santé'>
-									<ChoiceFilter
-										value={healthScore}
-										onChange={(value) => {
-											setHealthScore(value)
-											setPage(1)
-										}}
-										ariaLabel='Filtrer par santé'
-										emptyLabel='Toutes les notes'
-										options={HEALTH_OPTIONS}
-									/>
-								</CompactFilterField>
 								{/* Ni titre ni « Tous les états » : trois mots posés côte à
 								    côte disent déjà de quoi il s'agit, et le libellé vide
 								    était une quatrième ligne pour dire « pas de filtre » —
 								    ce que l'absence de sélection dit toute seule. */}
 								<SegmentedFilter
 									value={commercialState}
-									onChange={(value) => {
-										setCommercialState(
-											value as CatalogCommercialStateFilter | '',
+									onChange={(value) =>
+										appliquerFiltre(() =>
+											setCommercialState(
+												value as CatalogCommercialStateFilter | '',
+											),
 										)
-										setPage(1)
-									}}
+									}
 									ariaLabel='État commercial'
 									options={COMMERCIAL_STATE_OPTIONS}
 								/>
 								<SegmentedFilter
 									value={saleState}
-									onChange={(value) => {
-										setSaleState(value as CatalogSaleStateFilter | '')
-										setPage(1)
-									}}
+									onChange={(value) =>
+										appliquerFiltre(() =>
+											setSaleState(value as CatalogSaleStateFilter | ''),
+										)
+									}
 									ariaLabel='Opération commerciale'
 									options={SALE_STATE_OPTIONS}
 								/>
 							</div>
 							<div className='my-1 h-px bg-border' />
+							{/* CE QUI MANQUE, ET COMBIEN (5 septembre 2026).
+							    Ces quatre cases posaient leurs questions à l'aveugle :
+							    « Sans image » ne disait pas s'il en restait quatre ou
+							    douze cents, donc rien ne disait s'il valait la peine de
+							    cliquer. Les nombres viennent de `/api/catalog/counts`,
+							    comptés avec les MÊMES clauses que celles envoyées en
+							    filtrant — c'est ce qui les rend fiables plutôt
+							    qu'indicatifs. Ils portent sur tout le catalogue, pas sur
+							    les filtres en cours : même contrat que les décomptes de
+							    marque et de catégorie. */}
 							<div className='space-y-1 p-1'>
 								<CompactBooleanFilter
 									checked={missingImage}
-									onChange={(checked) => {
-										setMissingImage(checked)
-										setPage(1)
-									}}
+									onChange={(checked) =>
+										appliquerFiltre(() => setMissingImage(checked))
+									}
 									icon={<ImageOff />}
 									label='Sans image'
+									count={manques?.sansImage}
 								/>
 								<CompactBooleanFilter
 									checked={missingDescription}
-									onChange={(checked) => {
-										setMissingDescription(checked)
-										setPage(1)
-									}}
+									onChange={(checked) =>
+										appliquerFiltre(() => setMissingDescription(checked))
+									}
 									icon={<FileText />}
 									label='Sans description'
+									count={manques?.sansDescription}
 								/>
 								<CompactBooleanFilter
 									checked={missingPurchasePrice}
-									onChange={(checked) => {
-										setMissingPurchasePrice(checked)
-										setPage(1)
-									}}
+									onChange={(checked) =>
+										appliquerFiltre(() => setMissingPurchasePrice(checked))
+									}
 									icon={<CircleDollarSign />}
 									label='Sans prix d’achat'
+									count={manques?.sansPrixAchat}
 								/>
 								<CompactBooleanFilter
 									checked={emptyStock}
-									onChange={(checked) => {
-										setEmptyStock(checked)
-										setPage(1)
-									}}
+									onChange={(checked) =>
+										appliquerFiltre(() => setEmptyStock(checked))
+									}
 									icon={<PackageX />}
 									label='Stock vide ou à 0'
+									count={manques?.stockVide}
 								/>
 							</div>
 							{filtresActifs && (
@@ -829,10 +815,11 @@ export function ProductsPage() {
 									key={filter.key}
 									onClick={filter.clear}
 									aria-label={`Retirer le filtre ${filter.label}`}
-									className={cn(
-										'inline-flex h-6 max-w-56 items-center gap-1 rounded-full border border-primary/20 px-2 font-medium text-[11px] text-primary transition-colors hover:border-primary/40',
-										filterTagTone(filter.key),
-									)}
+									// Le bleu nuit du statut actif : dans cet écran, « ceci
+									// est retenu » se dit d'une seule façon. Les six
+									// pastels d'avant classaient les filtres par famille,
+									// une information que personne ne cherchait.
+									className='inline-flex h-6 max-w-56 items-center gap-1 rounded-md bg-primary px-2 font-medium text-[11px] text-primary-foreground shadow-sm transition-colors hover:bg-primary/90'
 								>
 									<span className='truncate'>{filter.label}</span>
 									<X className='h-3 w-3 shrink-0' />
@@ -1017,24 +1004,6 @@ function StatusChip({
 	)
 }
 
-/** Les filtres de même nature partagent une couleur, ce qui permet de repérer
- * leur famille sans transformer la barre en arc-en-ciel décoratif. */
-function filterTagTone(key: string) {
-	if (key === 'brand' || key === 'category' || key === 'supplier') {
-		return 'bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/45'
-	}
-	if (key.startsWith('missing-') || key === 'empty-stock') {
-		return 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/45'
-	}
-	if (key === 'health') {
-		return 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/45'
-	}
-	if (key === 'commercial-state') {
-		return 'bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/45'
-	}
-	return 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/45'
-}
-
 function CompactFilterField({
 	label,
 	children,
@@ -1057,11 +1026,16 @@ function CompactBooleanFilter({
 	onChange,
 	icon,
 	label,
+	count,
 }: {
 	checked: boolean
 	onChange: (checked: boolean) => void
 	icon: React.ReactNode
 	label: string
+	/** Combien de fiches ce manque concerne. `undefined` tant que les décomptes
+	 *  ne sont pas là — la ligne s'affiche alors sans nombre plutôt qu'avec un
+	 *  zéro, qui se lirait « rien à corriger ». */
+	count?: number
 }) {
 	return (
 		<button
@@ -1074,7 +1048,17 @@ function CompactBooleanFilter({
 			)}
 		>
 			{icon}
-			<span className='flex-1'>{label}</span>
+			<span className='min-w-0 flex-1 truncate'>{label}</span>
+			{count !== undefined && (
+				<span
+					className={cn(
+						'shrink-0 text-xs tabular-nums',
+						count === 0 ? 'text-emerald-600' : 'text-muted-foreground',
+					)}
+				>
+					{count}
+				</span>
+			)}
 			{checked && <Check />}
 		</button>
 	)
@@ -1130,36 +1114,6 @@ function SegmentedFilter({
 				)
 			})}
 		</fieldset>
-	)
-}
-
-function ChoiceFilter({
-	value,
-	onChange,
-	ariaLabel,
-	emptyLabel,
-	options,
-}: {
-	value: string
-	onChange: (value: string) => void
-	ariaLabel: string
-	emptyLabel: string
-	options: readonly { value: string; label: string }[]
-}) {
-	return (
-		<select
-			value={value}
-			onChange={(event) => onChange(event.target.value)}
-			aria-label={ariaLabel}
-			className='h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-		>
-			<option value=''>{emptyLabel}</option>
-			{options.map((option) => (
-				<option key={option.value} value={option.value}>
-					{option.label}
-				</option>
-			))}
-		</select>
 	)
 }
 

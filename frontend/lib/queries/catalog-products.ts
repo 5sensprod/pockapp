@@ -168,10 +168,27 @@ export type CatalogProductQuery = {
 	emptyStock?: boolean
 	commercialState?: CatalogCommercialStateFilter
 	saleState?: CatalogSaleStateFilter
-	/** Note éditoriale exacte, de 0 à 6. */
-	healthScore?: number
 	sort?: string
 }
+
+/**
+ * LES QUATRE MANQUES, ÉCRITS UNE FOIS.
+ *
+ * Ces chaînes partent au serveur telles quelles, et le serveur COMPTE avec
+ * elles : `backend/routes/catalog_counts_routes.go` les porte à l'identique et
+ * les compile par le même chemin, pour que « Sans image · 437 » et la liste
+ * obtenue en cliquant annoncent le même nombre. Les recopier de part et
+ * d'autre marcherait aujourd'hui et mentirait le jour où l'une des deux
+ * bougerait — sans erreur, avec un compteur simplement faux.
+ *
+ * Gardien : `catalog-gap-filters.test.ts`.
+ */
+export const CLAUSES_MANQUE = {
+	image: 'image:length = 0',
+	description: "description = ''",
+	prixAchat: 'purchase_price_ht = 0',
+	stock: 'stock = 0',
+} as const
 
 export function useCatalogProducts(query: CatalogProductQuery) {
 	const pb = usePocketBase() as any
@@ -193,7 +210,6 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 		emptyStock,
 		commercialState,
 		saleState,
-		healthScore,
 		sort,
 	} = query
 
@@ -217,7 +233,6 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			emptyStock,
 			commercialState,
 			saleState,
-			healthScore,
 			sort,
 		],
 		// Sans cela, changer de page vide la table le temps de la requête et la
@@ -254,10 +269,10 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 				clauses.push(`(${ou})`)
 			}
 			if (withoutCategory) clauses.push('categories:length = 0')
-			if (missingImage) clauses.push('image:length = 0')
-			if (missingDescription) clauses.push("description = ''")
-			if (missingPurchasePrice) clauses.push('purchase_price_ht = 0')
-			if (emptyStock) clauses.push('stock = 0')
+			if (missingImage) clauses.push(CLAUSES_MANQUE.image)
+			if (missingDescription) clauses.push(CLAUSES_MANQUE.description)
+			if (missingPurchasePrice) clauses.push(CLAUSES_MANQUE.prixAchat)
+			if (emptyStock) clauses.push(CLAUSES_MANQUE.stock)
 			if (commercialState === 'new') {
 				clauses.push("commercial_state = ''")
 			} else if (commercialState) {
@@ -289,20 +304,17 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			}
 
 			const filter = clauses.length ? clauses.join(' && ') : undefined
-			if (
-				healthScore !== undefined ||
-				sort === 'health' ||
-				sort === '-health'
-			) {
+			// La route santé ne sert plus qu'à TRIER : la note ne se filtre plus
+			// depuis l'écran (5 septembre 2026). SQLite ordonne sur les six
+			// prérequis, ce que React ne pourrait faire que sur les 25 lignes
+			// visibles.
+			if (sort === 'health' || sort === '-health') {
 				const params = new URLSearchParams({
 					page: String(page),
 					perPage: String(perPage),
 					sort: sort || 'name_sort',
 				})
 				if (filter) params.set('filter', filter)
-				if (healthScore !== undefined) {
-					params.set('health', String(healthScore))
-				}
 				return (await pb.send(
 					`/api/catalog/products/health?${params.toString()}`,
 					{ method: 'GET' },

@@ -67,6 +67,23 @@ type CategoryCounts struct {
 	Total int `json:"total"`
 }
 
+// CatalogGapCounts — ce qui MANQUE, en nombre de fiches.
+//
+// Le panneau de filtres posait quatre questions à l'aveugle : « Sans image »
+// ne disait pas s'il en restait 4 ou 1200, donc personne ne savait s'il valait
+// la peine de cliquer. Ces nombres-là sont la réponse, et ils arrivent avec
+// les décomptes de marque et de catégorie, dans la même requête déjà en cache.
+//
+// Un nombre par manque, et rien de plus : leur intersection s'obtient en
+// cochant deux cases — les clauses se combinent en ET — et n'a pas besoin
+// d'être comptée à part.
+type CatalogGapCounts struct {
+	SansImage       int `json:"sans_image"`
+	SansDescription int `json:"sans_description"`
+	SansPrixAchat   int `json:"sans_prix_achat"`
+	StockVide       int `json:"stock_vide"`
+}
+
 type CatalogCountsOutput struct {
 	ParMarque    map[string]int            `json:"par_marque"`
 	ParCategorie map[string]CategoryCounts `json:"par_categorie"`
@@ -74,7 +91,30 @@ type CatalogCountsOutput struct {
 	// l'appelant l'a sous la main gratuitement et qu'il évite une requête de
 	// plus pour afficher « n produits ».
 	TotalProduits int `json:"total_produits"`
+	// Les manques. Ils ne tiennent PAS compte des autres filtres actifs —
+	// marque, catégorie, recherche : c'est le même contrat que `ParMarque` et
+	// `ParCategorie`, qui annoncent eux aussi ce que porte le catalogue entier.
+	ParManque CatalogGapCounts `json:"par_manque"`
 }
+
+// LES QUATRE MANQUES, ÉCRITS EN SYNTAXE DE FILTRE POCKETBASE — PAS EN SQL.
+//
+// C'est le point de tout ce qui suit. La liste des produits envoie exactement
+// ces chaînes (`frontend/lib/queries/catalog-products.ts`, `CLAUSES_MANQUE`) ;
+// les compiler ICI par le même chemin est la seule façon de garantir que
+// « Sans image · 437 » et la liste qu'on obtient en cliquant disent le même
+// nombre. Un `COUNT(*) WHERE image = ”` écrit à la main dériverait au premier
+// `:length`, au premier NULL, ou le jour où le champ deviendra multiple — et il
+// dériverait SANS ERREUR, en affichant un nombre faux.
+//
+// Gardien : `frontend/lib/queries/catalog-gap-filters.test.ts`, qui lit ce
+// fichier et vérifie que les deux côtés portent bien les mêmes chaînes.
+const (
+	filtreSansImage       = "image:length = 0"
+	filtreSansDescription = "description = ''"
+	filtreSansPrixAchat   = "purchase_price_ht = 0"
+	filtreStockVide       = "stock = 0"
+)
 
 // ligneProduit — le strict nécessaire. `sql.NullString` parce que les deux
 // colonnes sont nulles pour un produit sans marque ni catégorie, et qu'un
@@ -131,7 +171,62 @@ func computeCatalogCounts(app *pocketbase.PocketBase, companyID string) (*Catalo
 		return nil, err
 	}
 
-	return agregerDecomptes(produits, parentDe), nil
+	sortie := agregerDecomptes(produits, parentDe)
+
+	manques, err := compterManques(app, companyID)
+	if err != nil {
+		return nil, err
+	}
+	sortie.ParManque = manques
+
+	return sortie, nil
+}
+
+// compterProduits — le nombre de fiches que rendrait CE filtre.
+//
+// Il passe par `filteredProductQuery` (route santé, même paquet), donc par le
+// compilateur de filtres de PocketBase : le comptage et la liste empruntent le
+// même chemin, et ne peuvent pas se contredire.
+func compterProduits(app *pocketbase.PocketBase, companyID, filtre string) (int, error) {
+	query, err := filteredProductQuery(app, filtre)
+	if err != nil {
+		return 0, err
+	}
+	if companyID != "" {
+		query.AndWhere(dbx.HashExp{"products.company": companyID})
+	}
+
+	var compte struct {
+		Total int `db:"total"`
+	}
+	if err := query.
+		Select("COUNT(DISTINCT products.id) AS total").
+		One(&compte); err != nil {
+		return 0, err
+	}
+	return compte.Total, nil
+}
+
+func compterManques(app *pocketbase.PocketBase, companyID string) (CatalogGapCounts, error) {
+	var manques CatalogGapCounts
+
+	for _, cas := range []struct {
+		filtre string
+		vers   *int
+	}{
+		{filtreSansImage, &manques.SansImage},
+		{filtreSansDescription, &manques.SansDescription},
+		{filtreSansPrixAchat, &manques.SansPrixAchat},
+		{filtreStockVide, &manques.StockVide},
+	} {
+		total, err := compterProduits(app, companyID, cas.filtre)
+		if err != nil {
+			return manques, err
+		}
+		*cas.vers = total
+	}
+
+	return manques, nil
 }
 
 // agregerDecomptes — la RÈGLE, séparée de la base pour être testée seule.
