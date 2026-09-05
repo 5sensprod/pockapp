@@ -81,6 +81,7 @@ import {
 	DeleteProductDialog,
 	type ProduitASupprimer,
 } from './components/DeleteProductDialog'
+import { ProductCategoryFilterTree } from './components/ProductCategoryFilterTree'
 import { ProductTable } from './components/ProductTable'
 import { HelpTooltip } from './components/detail/detail-primitives'
 
@@ -349,13 +350,9 @@ export function ProductsPage() {
 		return branche.length ? branche : [categoryId]
 	}, [categories.data, categoryId])
 
-	// Les catégories dans l'ordre de l'arbre, sans les branches réellement
-	// vides. Un parent sans produit direct reste visible dès qu'une feuille sous
-	// lui en porte : masquer ce parent casserait le contexte de l'arbre.
-	// `total` compte déjà toute la sous-arborescence : le serveur a remonté
-	// l'arbre, il n'y a plus rien à remonter ici. Un parent sans produit direct
-	// reste donc visible dès qu'une feuille sous lui en porte, ce qui était
-	// exactement l'objet de `collectPopulatedCategoryIds`.
+	// Les branches vides disparaissent de l'arbre latéral. `total` compte déjà
+	// toute la sous-arborescence : le serveur a remonté l'information, il n'y a
+	// plus rien à recalculer depuis les produits dans le navigateur.
 	const populatedCategoryIds = useMemo(() => {
 		const peuplees = new Set<string>()
 		for (const [id, compte] of Object.entries(
@@ -365,15 +362,14 @@ export function ProductsPage() {
 		}
 		return peuplees
 	}, [catalogCounts.data])
-
 	const categoryOptions = useMemo(
 		() =>
 			catalogCounts.data
-				? toCategoryOptions(categories.data ?? []).filter((categorie) =>
-						populatedCategoryIds.has(categorie.id),
+				? toCategoryOptions(categories.data ?? []).filter((category) =>
+						populatedCategoryIds.has(category.id),
 					)
 				: [],
-		[categories.data, populatedCategoryIds, catalogCounts.data],
+		[categories.data, catalogCounts.data, populatedCategoryIds],
 	)
 
 	// Une catégorie peut devenir vide après une réaffectation ou un nouvel
@@ -661,7 +657,7 @@ export function ProductsPage() {
 	}
 
 	const filterHelp =
-		'Ajoutez uniquement les critères utiles : ils se cumulent. La santé mesure les six éléments nécessaires à une fiche prête pour le site. Les choix « Sans… » repèrent directement les données manquantes. Retirer un champ retire aussi sa valeur.'
+		'Sur grand écran, la catégorie se choisit dans l’arbre à gauche du tableau. Sur un écran plus étroit, elle rejoint ce menu. Ajoutez uniquement les critères utiles : ils se cumulent. Les choix « Sans… » repèrent directement les données manquantes.'
 
 	const clearFilters = () => {
 		setBrandId('')
@@ -794,6 +790,9 @@ export function ProductsPage() {
 									{FILTER_FIELD_OPTIONS.map((option) => (
 										<DropdownMenuCheckboxItem
 											key={option.key}
+											className={
+												option.key === 'category' ? 'xl:hidden' : undefined
+											}
 											checked={isFilterFieldVisible(option.key)}
 											onCheckedChange={(checked) =>
 												changeFilterFieldVisibility(
@@ -876,20 +875,22 @@ export function ProductsPage() {
 							</FilterField>
 						)}
 						{isFilterFieldVisible('category') && (
-							<FilterField
-								label='Catégorie'
-								onRemove={() => hideFilterField('category')}
-							>
-								<FilterSelect
-									value={categoryId}
-									onChange={changeFilter(setCategoryId)}
-									vide='Toutes les catégories'
-									noneLabel='Aucune catégorie'
-									recherche='Rechercher une catégorie…'
-									options={categoryOptions}
-									loading={categories.isLoading || catalogCounts.isLoading}
-								/>
-							</FilterField>
+							<div className='xl:hidden'>
+								<FilterField
+									label='Catégorie'
+									onRemove={() => hideFilterField('category')}
+								>
+									<FilterSelect
+										value={categoryId}
+										onChange={changeFilter(setCategoryId)}
+										vide='Toutes les catégories'
+										noneLabel='Aucune catégorie'
+										recherche='Rechercher une catégorie…'
+										options={categoryOptions}
+										loading={categories.isLoading || catalogCounts.isLoading}
+									/>
+								</FilterField>
+							</div>
 						)}
 						{isFilterFieldVisible('supplier') && (
 							<FilterField
@@ -1140,61 +1141,77 @@ export function ProductsPage() {
 				</div>
 			</div>
 
-			<Card>
-				<CardContent
-					// La page précédente reste lisible pendant le chargement de la
-					// suivante, grisée : la table ne se vide pas et la page ne saute pas.
-					className={cn('p-4', products.isFetching && 'opacity-60')}
-				>
-					{/* Un écran vide doit dire POURQUOI il est vide. Sans ces trois cas,
+			<div className='grid items-start gap-3 xl:grid-cols-[17rem_minmax(0,1fr)]'>
+				<div className='hidden xl:contents'>
+					<ProductCategoryFilterTree
+						categories={categories.data ?? []}
+						counts={catalogCounts.data}
+						value={categoryId}
+						noneValue={NO_RELATION_FILTER}
+						onChange={(value) => {
+							setCategoryId(value)
+							setPage(1)
+						}}
+						loading={categories.isLoading || catalogCounts.isLoading}
+					/>
+				</div>
+
+				<Card className='min-w-0'>
+					<CardContent
+						// La page précédente reste lisible pendant le chargement de la
+						// suivante, grisée : la table ne se vide pas et la page ne saute pas.
+						className={cn('p-4', products.isFetching && 'opacity-60')}
+					>
+						{/* Un écran vide doit dire POURQUOI il est vide. Sans ces trois cas,
 					    « aucune entreprise active », « lecture en cours » et « 0 résultat
 					    pour ces filtres » se ressemblent tous : une table sans ligne. */}
-					{!activeCompanyId ? (
-						<p className='py-12 text-center text-muted-foreground'>
-							Aucune entreprise active — sélectionnez-en une pour voir le
-							catalogue.
-						</p>
-					) : products.isLoading ? (
-						<div className='flex items-center justify-center gap-3 py-12 text-muted-foreground'>
-							<Loader2 className='h-5 w-5 animate-spin' />
-							<span className='text-sm'>Lecture du catalogue…</span>
-						</div>
-					) : rows.length === 0 ? (
-						<div className='py-12 text-center text-muted-foreground'>
-							<p>Aucun produit ne correspond.</p>
-							<p className='mt-1 text-sm'>
-								{filtresActifs || debounced || status
-									? 'Des filtres sont actifs.'
-									: `Le catalogue en compte ${total}.`}
+						{!activeCompanyId ? (
+							<p className='py-12 text-center text-muted-foreground'>
+								Aucune entreprise active — sélectionnez-en une pour voir le
+								catalogue.
 							</p>
-						</div>
-					) : (
-						/* `paginated={false}` : la page vient du serveur. Paginer une
-						   seconde fois en mémoire afficherait « 1–10 sur 25 » sous une
-						   table qui en montre 25. */
-						<ProductTable
-							data={rows}
-							paginated={false}
-							sorting={sorting}
-							onSortingChange={changeSorting}
-							onRowClick={(row) => openRow(row.id)}
-							onDelete={(row) => {
-								// La ligne de table ne porte pas `legacy_id` : on retrouve
-								// l'enregistrement de la page courante, qui l'a.
-								const record = products.data?.items.find(
-									(item) => item.id === row.id,
-								)
-								setProduitASupprimer({
-									id: row.id,
-									name: row.name,
-									legacy_id: record?.legacy_id,
-									status: row.status,
-								})
-							}}
-						/>
-					)}
-				</CardContent>
-			</Card>
+						) : products.isLoading ? (
+							<div className='flex items-center justify-center gap-3 py-12 text-muted-foreground'>
+								<Loader2 className='h-5 w-5 animate-spin' />
+								<span className='text-sm'>Lecture du catalogue…</span>
+							</div>
+						) : rows.length === 0 ? (
+							<div className='py-12 text-center text-muted-foreground'>
+								<p>Aucun produit ne correspond.</p>
+								<p className='mt-1 text-sm'>
+									{filtresActifs || debounced || status
+										? 'Des filtres sont actifs.'
+										: `Le catalogue en compte ${total}.`}
+								</p>
+							</div>
+						) : (
+							/* `paginated={false}` : la page vient du serveur. Paginer une
+					   seconde fois en mémoire afficherait « 1–10 sur 25 » sous une
+					   table qui en montre 25. */
+							<ProductTable
+								data={rows}
+								paginated={false}
+								sorting={sorting}
+								onSortingChange={changeSorting}
+								onRowClick={(row) => openRow(row.id)}
+								onDelete={(row) => {
+									// La ligne de table ne porte pas `legacy_id` : on retrouve
+									// l'enregistrement de la page courante, qui l'a.
+									const record = products.data?.items.find(
+										(item) => item.id === row.id,
+									)
+									setProduitASupprimer({
+										id: row.id,
+										name: row.name,
+										legacy_id: record?.legacy_id,
+										status: row.status,
+									})
+								}}
+							/>
+						)}
+					</CardContent>
+				</Card>
+			</div>
 
 			<CatalogProductDialog
 				open={dialogOpen}

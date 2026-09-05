@@ -46,7 +46,6 @@ import {
 	ArrowUpDown,
 	Barcode,
 	Building2,
-	HeartPulse,
 	ImageIcon,
 	MoreHorizontal,
 	Printer,
@@ -80,6 +79,15 @@ const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
 	dateStyle: 'short',
 	timeStyle: 'short',
 })
+
+// Ces colonnes portent des valeurs très courtes. Leur padding générique de
+// 16 px de chaque côté leur donnait plus de place qu'à leur contenu, au moment
+// où l'arbre des catégories réduit justement la largeur disponible au tableau.
+const COMPACT_COLUMN_CLASS: Record<string, string> = {
+	stock: 'w-px whitespace-nowrap px-2',
+	healthScore: 'w-px whitespace-nowrap px-1.5',
+	status: 'w-px whitespace-nowrap px-2',
+}
 
 export function ProductTable({
 	data,
@@ -146,7 +154,8 @@ export function ProductTable({
 				</Button>
 			),
 			cell: ({ row }) => {
-				const designation = row.original.designation?.trim() || 'Sans désignation'
+				const designation =
+					row.original.designation?.trim() || 'Sans désignation'
 				const product = row.original
 
 				// ✅ Utilise les nouvelles fonctions qui gèrent AppPOS et PocketBase
@@ -247,7 +256,7 @@ export function ProductTable({
 		},
 		{
 			accessorKey: 'stock',
-			header: 'Stock',
+			header: () => <span className='text-xs'>Stock</span>,
 			cell: ({ row }) => {
 				const stock = row.getValue<number | null>('stock') ?? undefined
 
@@ -257,6 +266,7 @@ export function ProductTable({
 
 				return (
 					<Badge
+						className='min-w-6 justify-center px-1.5 py-0.5 tabular-nums'
 						variant={
 							stock > 10 ? 'default' : stock > 0 ? 'secondary' : 'destructive'
 						}
@@ -296,10 +306,11 @@ export function ProductTable({
 			header: ({ column }) => (
 				<Button
 					variant='ghost'
+					className='h-8 px-0 text-xs'
 					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 				>
 					Santé
-					<ArrowUpDown className='ml-2 h-4 w-4' />
+					<ArrowUpDown className='ml-1 h-3 w-3' />
 				</Button>
 			),
 			cell: ({ row }) => {
@@ -314,15 +325,14 @@ export function ProductTable({
 							: 'bg-destructive'
 				return (
 					<div
-						className='inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-1 text-xs tabular-nums'
+						className='inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-xs tabular-nums'
 						title={
 							missing.length
 								? `À compléter : ${missing.join(', ')}`
 								: 'Fiche prête pour le site'
 						}
 					>
-						<HeartPulse className='h-3.5 w-3.5 text-muted-foreground' />
-						<span className={`h-2 w-2 rounded-full ${tone}`} />
+						<span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
 						{score}/{max}
 					</div>
 				)
@@ -330,13 +340,16 @@ export function ProductTable({
 		},
 		{
 			accessorKey: 'status',
-			header: 'Statut',
+			header: () => <span className='text-xs'>Statut</span>,
 			cell: ({ row }) => {
 				// L'intention de publication du catalogue en ligne — pas un « actif /
 				// inactif », qui n'existe plus au schéma depuis `catalog_v2`.
 				const publie = row.getValue<string>('status') === 'published'
 				return (
-					<Badge variant={publie ? 'default' : 'secondary'}>
+					<Badge
+						variant={publie ? 'default' : 'secondary'}
+						className='px-1.5 py-0.5 font-medium'
+					>
 						{publie ? 'Publié' : 'Brouillon'}
 					</Badge>
 				)
@@ -423,7 +436,10 @@ export function ProductTable({
 						{table.getHeaderGroups().map((headerGroup) => (
 							<TableRow key={headerGroup.id}>
 								{headerGroup.headers.map((header) => (
-									<TableHead key={header.id}>
+									<TableHead
+										key={header.id}
+										className={COMPACT_COLUMN_CLASS[header.column.id]}
+									>
 										{header.isPlaceholder
 											? null
 											: flexRender(
@@ -446,7 +462,10 @@ export function ProductTable({
 									}
 								>
 									{row.getVisibleCells().map((cell) => (
-										<TableCell key={cell.id}>
+										<TableCell
+											key={cell.id}
+											className={COMPACT_COLUMN_CLASS[cell.column.id]}
+										>
 											{flexRender(
 												cell.column.columnDef.cell,
 												cell.getContext(),
