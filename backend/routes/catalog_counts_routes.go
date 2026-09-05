@@ -85,8 +85,9 @@ type CatalogGapCounts struct {
 }
 
 type CatalogCountsOutput struct {
-	ParMarque    map[string]int            `json:"par_marque"`
-	ParCategorie map[string]CategoryCounts `json:"par_categorie"`
+	ParMarque      map[string]int            `json:"par_marque"`
+	ParFournisseur map[string]int            `json:"par_fournisseur"`
+	ParCategorie   map[string]CategoryCounts `json:"par_categorie"`
 	// Le catalogue entier, sous le même filtre d'entreprise. Rendu parce que
 	// l'appelant l'a sous la main gratuitement et qu'il évite une requête de
 	// plus pour afficher « n produits ».
@@ -121,6 +122,7 @@ const (
 // `string` échouerait au scan.
 type ligneProduit struct {
 	Brand      sql.NullString `db:"brand"`
+	Supplier   sql.NullString `db:"supplier"`
 	Categories sql.NullString `db:"categories"`
 }
 
@@ -161,9 +163,9 @@ func computeCatalogCounts(app *pocketbase.PocketBase, companyID string) (*Catalo
 		parentDe[categorie.ID] = decodeUnRelation(categorie.Parent)
 	}
 
-	// ── Les produits, en une requête et deux colonnes ──────────────────────
+	// ── Les produits, en une requête et trois colonnes ─────────────────────
 	var produits []ligneProduit
-	requeteProduits := db.Select("brand", "categories").From("products")
+	requeteProduits := db.Select("brand", "supplier", "categories").From("products")
 	if companyID != "" {
 		requeteProduits = requeteProduits.Where(dbx.HashExp{"company": companyID})
 	}
@@ -233,9 +235,10 @@ func compterManques(app *pocketbase.PocketBase, companyID string) (CatalogGapCou
 // Tout ce qui pouvait diverger d'un comptage à l'autre est ici.
 func agregerDecomptes(produits []ligneProduit, parentDe map[string]string) *CatalogCountsOutput {
 	sortie := &CatalogCountsOutput{
-		ParMarque:     map[string]int{},
-		ParCategorie:  map[string]CategoryCounts{},
-		TotalProduits: len(produits),
+		ParMarque:      map[string]int{},
+		ParFournisseur: map[string]int{},
+		ParCategorie:   map[string]CategoryCounts{},
+		TotalProduits:  len(produits),
 	}
 
 	// Réutilisé d'un produit à l'autre pour ne pas rallouer 2999 fois.
@@ -244,6 +247,9 @@ func agregerDecomptes(produits []ligneProduit, parentDe map[string]string) *Cata
 	for _, produit := range produits {
 		if marque := decodeUnRelation(produit.Brand); marque != "" {
 			sortie.ParMarque[marque]++
+		}
+		if fournisseur := decodeUnRelation(produit.Supplier); fournisseur != "" {
+			sortie.ParFournisseur[fournisseur]++
 		}
 
 		directes := decodeRelationMultiple(produit.Categories)

@@ -92,6 +92,25 @@ func TestAgregerDecomptes(t *testing.T) {
 		}
 	})
 
+	t.Run("les fournisseurs se comptent", func(t *testing.T) {
+		sortie := agregerDecomptes([]ligneProduit{
+			{Supplier: texte("algam")},
+			{Supplier: texte(`["algam"]`)},
+			{Supplier: texte("saico")},
+			{Supplier: sql.NullString{}}, // sans fournisseur
+		}, arbreDeTest)
+
+		if got := sortie.ParFournisseur["algam"]; got != 2 {
+			t.Errorf("algam = %d, attendu 2", got)
+		}
+		if got := sortie.ParFournisseur["saico"]; got != 1 {
+			t.Errorf("saico = %d, attendu 1", got)
+		}
+		if _, present := sortie.ParFournisseur[""]; present {
+			t.Error("un produit sans fournisseur ne doit pas créer un fournisseur vide")
+		}
+	})
+
 	// Sans la garde, la remontée tournerait sans fin et la requête resterait
 	// pendue — écran figé, pas message d'erreur.
 	t.Run("un cycle dans l'arbre ne fige pas la remontée", func(t *testing.T) {

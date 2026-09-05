@@ -53,6 +53,7 @@ const MANQUES_VIDES: CatalogGapCounts = {
 
 export interface CatalogCounts {
 	parMarque: Record<string, number>
+	parFournisseur: Record<string, number>
 	parCategorie: Record<string, CategoryCounts>
 	totalProduits: number
 	parManque: CatalogGapCounts
@@ -61,6 +62,7 @@ export interface CatalogCounts {
 /** La forme rendue par `GET /api/catalog/counts`. */
 interface ReponseDecomptes {
 	par_marque: Record<string, number>
+	par_fournisseur?: Record<string, number>
 	par_categorie: Record<string, CategoryCounts>
 	total_produits: number
 	par_manque?: {
@@ -88,6 +90,9 @@ export function useCatalogCounts(companyId?: string) {
 
 			return {
 				parMarque: reponse.par_marque ?? {},
+				// Réponse optionnelle pour accepter le cache persistant écrit par une
+				// version antérieure de l'application.
+				parFournisseur: reponse.par_fournisseur ?? {},
 				parCategorie: reponse.par_categorie ?? {},
 				totalProduits: reponse.total_produits ?? 0,
 				// Le repli n'est pas décoratif : cette réponse est PERSISTÉE dans

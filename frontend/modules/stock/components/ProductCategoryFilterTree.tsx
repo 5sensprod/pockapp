@@ -23,6 +23,9 @@ import { useEffect, useMemo, useState } from 'react'
 
 type ExplorerView = 'category' | 'brand' | 'supplier'
 
+const SELECTED_ITEM_CLASS =
+	'bg-violet-50/80 text-primary shadow-sm hover:bg-violet-100 dark:bg-violet-950/35 dark:text-foreground dark:hover:bg-violet-900/55'
+
 interface NamedOption {
 	id: string
 	name: string
@@ -359,7 +362,7 @@ export function ProductCategoryFilterTree({
 						className={cn(
 							'mb-0.5 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left font-medium text-sm transition-colors',
 							currentView.value === ''
-								? 'bg-primary text-primary-foreground'
+								? SELECTED_ITEM_CLASS
 								: 'hover:bg-accent',
 						)}
 					>
@@ -375,7 +378,7 @@ export function ProductCategoryFilterTree({
 						className={cn(
 							'mb-1.5 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors',
 							currentView.value === noneValue
-								? 'bg-primary text-primary-foreground'
+								? SELECTED_ITEM_CLASS
 								: 'text-muted-foreground hover:bg-accent hover:text-foreground',
 						)}
 					>
@@ -413,9 +416,7 @@ export function ProductCategoryFilterTree({
 										aria-expanded={hasChildren ? expanded : undefined}
 										className={cn(
 											'group mb-0.5 flex min-w-0 items-center rounded-md transition-colors',
-											selected
-												? 'bg-primary text-primary-foreground'
-												: 'hover:bg-accent',
+											selected ? SELECTED_ITEM_CLASS : 'hover:bg-accent',
 										)}
 										style={{ paddingLeft: `${4 + option.depth * 13}px` }}
 									>
@@ -483,16 +484,17 @@ export function ProductCategoryFilterTree({
 										: []
 								const supplierExpanded =
 									view === 'supplier' && expandedSupplierIds.has(option.id)
-								const productCount =
-									view === 'brand' ? counts?.parMarque[option.id] : undefined
+								const productCount = counts
+									? view === 'brand'
+										? (counts.parMarque[option.id] ?? 0)
+										: (counts.parFournisseur[option.id] ?? 0)
+									: undefined
 								return (
 									<div key={option.id} className='mb-0.5'>
 										<div
 											className={cn(
 												'flex min-w-0 items-center rounded-md transition-colors',
-												selected
-													? 'bg-primary text-primary-foreground'
-													: 'hover:bg-accent',
+												selected ? SELECTED_ITEM_CLASS : 'hover:bg-accent',
 											)}
 										>
 											{view === 'supplier' && (
