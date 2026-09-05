@@ -88,7 +88,7 @@ const timeFormatter = new Intl.DateTimeFormat('fr-FR', {
 // 16 px de chaque côté leur donnait plus de place qu'à leur contenu, au moment
 // où l'arbre des catégories réduit justement la largeur disponible au tableau.
 const COMPACT_COLUMN_CLASS: Record<string, string> = {
-	image: 'w-14 min-w-14 max-w-14 px-1.5 py-2',
+	image: 'w-24 min-w-24 max-w-24 p-1',
 	name: 'w-52 min-w-44 max-w-52 px-2',
 	price_ttc: 'w-px whitespace-nowrap px-2',
 	stock: 'w-px whitespace-nowrap px-2',
@@ -138,18 +138,18 @@ function ProductThumb({ row }: { row: StockProductRow }) {
 	const imageUrl = row.imageUrl
 
 	return (
-		<div className='flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted'>
+		<div className='flex h-24 w-full flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-white'>
 			{imageUrl && adresseCassee !== imageUrl ? (
 				<img
 					src={imageUrl}
 					alt={row.designation?.trim() || 'Produit sans désignation'}
 					loading='lazy'
 					decoding='async'
-					className='h-full w-full object-cover'
+					className='h-full w-full object-contain'
 					onError={() => setAdresseCassee(imageUrl)}
 				/>
 			) : (
-				<ImageIcon className='h-5 w-5 text-muted-foreground' />
+				<ImageIcon className='h-6 w-6 text-muted-foreground' />
 			)}
 		</div>
 	)
