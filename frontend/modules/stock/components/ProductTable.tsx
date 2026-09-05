@@ -53,9 +53,10 @@ import {
 	Trash2,
 	Truck,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { StockProductRow } from '@/lib/queries/catalog-rows'
+import { cn } from '@/lib/utils'
 import { PrintLabelDialog } from './PrintLabelDialog'
 
 interface ProductTableProps {
@@ -97,6 +98,63 @@ const COMPACT_COLUMN_CLASS: Record<string, string> = {
 	actions: 'w-px whitespace-nowrap px-1',
 }
 
+/** Le tri se choisit dans les colonnes elles-mêmes. La colonne active reprend
+ * le bleu nuit de l'action principale afin d'être repérable immédiatement. */
+function SortIndicator({
+	active,
+	compact = false,
+}: {
+	active: boolean
+	compact?: boolean
+}) {
+	return (
+		<span
+			className={cn(
+				'inline-flex shrink-0 items-center justify-center rounded-md transition-colors',
+				compact ? 'ml-1 h-6 w-6' : 'ml-2 h-7 w-7',
+				active
+					? 'bg-primary text-primary-foreground shadow-sm'
+					: 'text-muted-foreground',
+			)}
+		>
+			<ArrowUpDown className={compact ? 'h-3 w-3' : 'h-4 w-4'} />
+		</span>
+	)
+}
+
+/** La vignette et son repli.
+ *
+ * Le repli passait par une mutation directe du DOM — `display:none` sur
+ * l'image puis `parent.innerHTML = '<svg…>'`. React possède ce nœud : au
+ * rendu suivant (un tri, une page, un `isFetching`) il réécrivait ses enfants
+ * et l'image cassée revenait, invisible ou non selon ce qu'il avait réconcilié.
+ * Un état par vignette dit la même chose sans mentir au rendu. */
+function ProductThumb({ row }: { row: StockProductRow }) {
+	// L'ADRESSE qui a échoué, pas un simple booléen : les lignes de TanStack
+	// sont indexées par position, donc la même vignette sert le 3e produit de
+	// la page 1 puis celui de la page 2. Un booléen resterait allumé et
+	// masquerait une image parfaitement valide.
+	const [adresseCassee, setAdresseCassee] = useState<string | null>(null)
+	const imageUrl = row.imageUrl
+
+	return (
+		<div className='flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted'>
+			{imageUrl && adresseCassee !== imageUrl ? (
+				<img
+					src={imageUrl}
+					alt={row.designation?.trim() || 'Produit sans désignation'}
+					loading='lazy'
+					decoding='async'
+					className='h-full w-full object-cover'
+					onError={() => setAdresseCassee(imageUrl)}
+				/>
+			) : (
+				<ImageIcon className='h-5 w-5 text-muted-foreground' />
+			)}
+		</div>
+	)
+}
+
 export function ProductTable({
 	data,
 	onRowClick,
@@ -115,137 +173,138 @@ export function ProductTable({
 		pageIndex: 0,
 		pageSize: 10,
 	})
+	const zoneDefilante = useRef<HTMLDivElement | null>(null)
 
-	const columns: ColumnDef<StockProductRow>[] = [
-		// ✅ COLONNE IMAGE
-		{
-			id: 'image',
-			header: '',
-			size: 60,
-			cell: ({ row }) => {
-				const imageUrl = row.original.imageUrl
+	// De nouvelles lignes commencent en haut. Changer de page en restant au
+	// milieu de l'ancienne laisserait l'œil au 14e produit d'une liste dont les
+	// 25 ont changé. C'est la ZONE qui remonte, pas la page : la page ne défile
+	// plus. `data` est mémorisé par l'appelant, donc son identité ne change
+	// qu'avec les lignes — un simple `isFetching` ne déclenche rien.
+	useEffect(() => {
+		if (data.length === 0) return
+		zoneDefilante.current?.scrollTo({ top: 0 })
+	}, [data])
 
-				return (
-					<div className='flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted'>
-						{imageUrl ? (
-							<img
-								src={imageUrl}
-								alt={
-									row.original.designation?.trim() || 'Produit sans désignation'
-								}
-								className='w-full h-full object-cover'
-								onError={(e) => {
-									e.currentTarget.style.display = 'none'
-									const parent = e.currentTarget.parentElement
-									if (parent) {
-										parent.innerHTML =
-											'<svg class="h-5 w-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'
-									}
-								}}
-							/>
-						) : (
-							<ImageIcon className='h-5 w-5 text-muted-foreground' />
-						)}
-					</div>
-				)
+	// Reconstruire les colonnes à chaque rendu invalide les caches internes de
+	// TanStack Table pour les 25 lignes affichées. Elles ne dépendent que de
+	// `onDelete` — que l'appelant stabilise.
+	const columns: ColumnDef<StockProductRow>[] = useMemo(
+		() => [
+			// ✅ COLONNE IMAGE
+			{
+				id: 'image',
+				header: '',
+				size: 60,
+				cell: ({ row }) => <ProductThumb row={row.original} />,
 			},
-		},
-		{
-			accessorKey: 'name',
-			header: ({ column }) => (
-				<Button
-					variant='ghost'
-					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-				>
-					Désignation
-					<ArrowUpDown className='ml-2 h-4 w-4' />
-				</Button>
-			),
-			cell: ({ row }) => {
-				const designation =
-					row.original.designation?.trim() || 'Sans désignation'
-				const product = row.original
+			{
+				accessorKey: 'name',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+					>
+						Désignation
+						<SortIndicator active={Boolean(column.getIsSorted())} />
+					</Button>
+				),
+				cell: ({ row }) => {
+					const designation =
+						row.original.designation?.trim() || 'Sans désignation'
+					const product = row.original
 
-				// ✅ Utilise les nouvelles fonctions qui gèrent AppPOS et PocketBase
-				const categoryPaths = product.categoryNames
-				const brandName = product.brandName
-				const supplierName = product.supplierName
+					// ✅ Utilise les nouvelles fonctions qui gèrent AppPOS et PocketBase
+					const categoryPaths = product.categoryNames
+					const brandName = product.brandName
+					const supplierName = product.supplierName
 
-				const hasCategories = categoryPaths.length > 0
-				const hasBrandOrSupplier = brandName || supplierName
+					const hasCategories = categoryPaths.length > 0
+					const hasBrandOrSupplier = brandName || supplierName
 
-				return (
-					<div className='min-w-0 space-y-0.5'>
-						<div
-							className='line-clamp-2 whitespace-normal break-words font-medium text-sm leading-snug lg:text-[13px] xl:text-sm'
-							title={designation}
-						>
-							{designation}
+					return (
+						<div className='min-w-0 space-y-0.5'>
+							<div
+								className='line-clamp-2 whitespace-normal break-words font-medium text-sm leading-snug lg:text-[13px] xl:text-sm'
+								title={designation}
+							>
+								{designation}
+							</div>
+
+							{hasCategories && (
+								<div className='flex min-w-0 items-center gap-1 text-xs text-muted-foreground'>
+									<Tags className='h-3 w-3 flex-shrink-0' />
+									<span className='truncate' title={categoryPaths.join(' • ')}>
+										{categoryPaths.join(' • ')}
+									</span>
+								</div>
+							)}
+
+							{hasBrandOrSupplier && (
+								<div className='flex min-w-0 items-center gap-3 overflow-hidden text-xs'>
+									{brandName && (
+										<div className='flex min-w-0 items-center gap-1 text-blue-600'>
+											<Building2 className='h-3 w-3 shrink-0' />
+											<span className='truncate' title={brandName}>
+												{brandName}
+											</span>
+										</div>
+									)}
+									{supplierName && (
+										<div className='flex min-w-0 items-center gap-1 text-orange-600'>
+											<Truck className='h-3 w-3 shrink-0' />
+											<span className='truncate' title={supplierName}>
+												{supplierName}
+											</span>
+										</div>
+									)}
+								</div>
+							)}
+
+							{product.barcode && (
+								<div className='flex min-w-0 items-center gap-1 font-mono text-[11px] text-muted-foreground'>
+									<Barcode className='h-3 w-3 shrink-0' />
+									<span className='truncate' title={product.barcode}>
+										{product.barcode}
+									</span>
+								</div>
+							)}
 						</div>
-
-						{hasCategories && (
-							<div className='flex min-w-0 items-center gap-1 text-xs text-muted-foreground'>
-								<Tags className='h-3 w-3 flex-shrink-0' />
-								<span className='truncate' title={categoryPaths.join(' • ')}>
-									{categoryPaths.join(' • ')}
-								</span>
-							</div>
-						)}
-
-						{hasBrandOrSupplier && (
-							<div className='flex min-w-0 items-center gap-3 overflow-hidden text-xs'>
-								{brandName && (
-									<div className='flex min-w-0 items-center gap-1 text-blue-600'>
-										<Building2 className='h-3 w-3 shrink-0' />
-										<span className='truncate' title={brandName}>
-											{brandName}
-										</span>
-									</div>
-								)}
-								{supplierName && (
-									<div className='flex min-w-0 items-center gap-1 text-orange-600'>
-										<Truck className='h-3 w-3 shrink-0' />
-										<span className='truncate' title={supplierName}>
-											{supplierName}
-										</span>
-									</div>
-								)}
-							</div>
-						)}
-
-						{product.barcode && (
-							<div className='flex min-w-0 items-center gap-1 font-mono text-[11px] text-muted-foreground'>
-								<Barcode className='h-3 w-3 shrink-0' />
-								<span className='truncate' title={product.barcode}>
-									{product.barcode}
-								</span>
-							</div>
-						)}
-					</div>
-				)
+					)
+				},
 			},
-		},
-		{
-			accessorKey: 'price_ttc',
-			header: ({ column }) => (
-				<Button
-					variant='ghost'
-					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-				>
-					Prix
-					<ArrowUpDown className='ml-2 h-4 w-4' />
-				</Button>
-			),
-			cell: ({ row }) => {
-				// Les valeurs arrivent typées depuis PocketBase. Les conversions
-				// défensives d'avant venaient d'AppPos, qui rendait des chaînes.
-				const price = row.getValue<number | null>('price_ttc') ?? undefined
-				const cost = row.original.purchase_price_ht ?? undefined
+			{
+				accessorKey: 'price_ttc',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+					>
+						Prix
+						<SortIndicator active={Boolean(column.getIsSorted())} />
+					</Button>
+				),
+				cell: ({ row }) => {
+					// Les valeurs arrivent typées depuis PocketBase. Les conversions
+					// défensives d'avant venaient d'AppPos, qui rendait des chaînes.
+					const price = row.getValue<number | null>('price_ttc') ?? undefined
+					const cost = row.original.purchase_price_ht ?? undefined
 
-				if (price == null || Number.isNaN(price)) {
+					if (price == null || Number.isNaN(price)) {
+						return (
+							<div>
+								<div className='text-muted-foreground'>-</div>
+								{cost != null && !Number.isNaN(cost) && cost > 0 && (
+									<div className='text-xs text-muted-foreground'>
+										Achat: {cost.toFixed(2)} €
+									</div>
+								)}
+							</div>
+						)
+					}
+
 					return (
 						<div>
-							<div className='text-muted-foreground'>-</div>
+							<div className='font-medium'>{price.toFixed(2)} €</div>
 							{cost != null && !Number.isNaN(cost) && cost > 0 && (
 								<div className='text-xs text-muted-foreground'>
 									Achat: {cost.toFixed(2)} €
@@ -253,190 +312,180 @@ export function ProductTable({
 							)}
 						</div>
 					)
-				}
+				},
+			},
+			{
+				accessorKey: 'stock',
+				header: () => (
+					<span className='inline-flex h-8 items-center text-xs leading-none'>
+						Stock
+					</span>
+				),
+				cell: ({ row }) => {
+					const stock = row.getValue<number | null>('stock') ?? undefined
 
-				return (
-					<div>
-						<div className='font-medium'>{price.toFixed(2)} €</div>
-						{cost != null && !Number.isNaN(cost) && cost > 0 && (
-							<div className='text-xs text-muted-foreground'>
-								Achat: {cost.toFixed(2)} €
+					if (stock == null || Number.isNaN(stock)) {
+						return <span className='text-muted-foreground'>-</span>
+					}
+
+					return (
+						<Badge
+							className='min-w-6 justify-center px-1.5 py-0.5 tabular-nums'
+							variant={
+								stock > 10 ? 'default' : stock > 0 ? 'secondary' : 'destructive'
+							}
+						>
+							{stock}
+						</Badge>
+					)
+				},
+			},
+			{
+				accessorKey: 'created',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						className='h-8 justify-start px-0 text-xs leading-none'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+					>
+						Ajouté le
+						<SortIndicator compact active={Boolean(column.getIsSorted())} />
+					</Button>
+				),
+				cell: ({ row }) => {
+					const created = row.getValue<string | null>('created')
+					if (!created) return <span className='text-muted-foreground'>-</span>
+
+					const date = new Date(created)
+					return Number.isNaN(date.getTime()) ? (
+						<span className='text-muted-foreground'>-</span>
+					) : (
+						<div
+							className='whitespace-nowrap text-xs leading-tight tabular-nums'
+							title={`${dateFormatter.format(date)} à ${timeFormatter.format(date)}`}
+						>
+							<div>{dateFormatter.format(date)}</div>
+							<div className='mt-0.5 text-[11px] text-muted-foreground'>
+								{timeFormatter.format(date)}
 							</div>
-						)}
-					</div>
-				)
-			},
-		},
-		{
-			accessorKey: 'stock',
-			header: () => (
-				<span className='inline-flex h-8 items-center text-xs leading-none'>
-					Stock
-				</span>
-			),
-			cell: ({ row }) => {
-				const stock = row.getValue<number | null>('stock') ?? undefined
-
-				if (stock == null || Number.isNaN(stock)) {
-					return <span className='text-muted-foreground'>-</span>
-				}
-
-				return (
-					<Badge
-						className='min-w-6 justify-center px-1.5 py-0.5 tabular-nums'
-						variant={
-							stock > 10 ? 'default' : stock > 0 ? 'secondary' : 'destructive'
-						}
-					>
-						{stock}
-					</Badge>
-				)
-			},
-		},
-		{
-			accessorKey: 'created',
-			header: ({ column }) => (
-				<Button
-					variant='ghost'
-					className='h-8 justify-start px-0 text-xs leading-none'
-					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-				>
-					Ajouté le
-					<ArrowUpDown className='ml-1 h-3 w-3' />
-				</Button>
-			),
-			cell: ({ row }) => {
-				const created = row.getValue<string | null>('created')
-				if (!created) return <span className='text-muted-foreground'>-</span>
-
-				const date = new Date(created)
-				return Number.isNaN(date.getTime()) ? (
-					<span className='text-muted-foreground'>-</span>
-				) : (
-					<div
-						className='whitespace-nowrap text-xs leading-tight tabular-nums'
-						title={`${dateFormatter.format(date)} à ${timeFormatter.format(date)}`}
-					>
-						<div>{dateFormatter.format(date)}</div>
-						<div className='mt-0.5 text-[11px] text-muted-foreground'>
-							{timeFormatter.format(date)}
 						</div>
-					</div>
-				)
+					)
+				},
 			},
-		},
-		{
-			accessorKey: 'healthScore',
-			header: ({ column }) => (
-				<Button
-					variant='ghost'
-					className='h-8 justify-start px-0 text-xs leading-none'
-					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-				>
-					Santé
-					<ArrowUpDown className='ml-1 h-3 w-3' />
-				</Button>
-			),
-			cell: ({ row }) => {
-				const score = row.original.healthScore
-				const max = row.original.healthMax
-				const missing = row.original.healthMissing
-				const tone =
-					score === max
-						? 'bg-emerald-500'
-						: score >= Math.ceil(max / 2)
-							? 'bg-amber-500'
-							: 'bg-destructive'
-				return (
-					<div
-						className='inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-xs tabular-nums'
-						title={
-							missing.length
-								? `À compléter : ${missing.join(', ')}`
-								: 'Fiche prête pour le site'
-						}
+			{
+				accessorKey: 'healthScore',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						className='h-8 justify-start px-0 text-xs leading-none'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 					>
-						<span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
-						{score}/{max}
-					</div>
-				)
+						Santé
+						<SortIndicator compact active={Boolean(column.getIsSorted())} />
+					</Button>
+				),
+				cell: ({ row }) => {
+					const score = row.original.healthScore
+					const max = row.original.healthMax
+					const missing = row.original.healthMissing
+					const tone =
+						score === max
+							? 'bg-emerald-500'
+							: score >= Math.ceil(max / 2)
+								? 'bg-amber-500'
+								: 'bg-destructive'
+					return (
+						<div
+							className='inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-xs tabular-nums'
+							title={
+								missing.length
+									? `À compléter : ${missing.join(', ')}`
+									: 'Fiche prête pour le site'
+							}
+						>
+							<span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
+							{score}/{max}
+						</div>
+					)
+				},
 			},
-		},
-		{
-			accessorKey: 'status',
-			header: () => (
-				<span className='inline-flex h-8 items-center text-xs leading-none'>
-					Statut
-				</span>
-			),
-			cell: ({ row }) => {
-				// L'intention de publication du catalogue en ligne — pas un « actif /
-				// inactif », qui n'existe plus au schéma depuis `catalog_v2`.
-				const publie = row.getValue<string>('status') === 'published'
-				return (
-					<Badge
-						variant={publie ? 'default' : 'secondary'}
-						className='px-1.5 py-0.5 font-medium'
-					>
-						{publie ? 'Publié' : 'Brouillon'}
-					</Badge>
-				)
+			{
+				accessorKey: 'status',
+				header: () => (
+					<span className='inline-flex h-8 items-center text-xs leading-none'>
+						Statut
+					</span>
+				),
+				cell: ({ row }) => {
+					// L'intention de publication du catalogue en ligne — pas un « actif /
+					// inactif », qui n'existe plus au schéma depuis `catalog_v2`.
+					const publie = row.getValue<string>('status') === 'published'
+					return (
+						<Badge
+							variant={publie ? 'default' : 'secondary'}
+							className='px-1.5 py-0.5 font-medium'
+						>
+							{publie ? 'Publié' : 'Brouillon'}
+						</Badge>
+					)
+				},
 			},
-		},
-		{
-			id: 'actions',
-			cell: ({ row }) => {
-				const product = row.original
-				return (
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button variant='ghost' className='h-8 w-8 p-0'>
-								<MoreHorizontal className='h-4 w-4' />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align='end'>
-							<DropdownMenuLabel>Actions</DropdownMenuLabel>
-							<DropdownMenuItem
-								onClick={(event) => {
-									// La ligne est cliquable et ouvre la fiche : sans cela,
-									// imprimer ouvrirait AUSSI le produit.
-									event.stopPropagation()
-									setLabelRow(product)
-								}}
-							>
-								<Printer className='mr-2 h-4 w-4' />
-								Imprimer l’étiquette…
-							</DropdownMenuItem>
-							<DropdownMenuItem
-								onClick={() =>
-									navigator.clipboard.writeText(product.barcode || '')
-								}
-							>
-								Copier le code-barres
-							</DropdownMenuItem>
-							{onDelete ? (
-								<>
-									<DropdownMenuSeparator />
-									<DropdownMenuItem
-										className='text-destructive focus:text-destructive'
-										onClick={(event) => {
-											// La ligne est cliquable et ouvre la fiche : sans cela,
-											// demander la suppression ouvrirait AUSSI le produit.
-											event.stopPropagation()
-											onDelete(product)
-										}}
-									>
-										<Trash2 className='mr-2 h-4 w-4' />
-										Supprimer…
-									</DropdownMenuItem>
-								</>
-							) : null}
-						</DropdownMenuContent>
-					</DropdownMenu>
-				)
+			{
+				id: 'actions',
+				cell: ({ row }) => {
+					const product = row.original
+					return (
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button variant='ghost' className='h-8 w-8 p-0'>
+									<MoreHorizontal className='h-4 w-4' />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align='end'>
+								<DropdownMenuLabel>Actions</DropdownMenuLabel>
+								<DropdownMenuItem
+									onClick={(event) => {
+										// La ligne est cliquable et ouvre la fiche : sans cela,
+										// imprimer ouvrirait AUSSI le produit.
+										event.stopPropagation()
+										setLabelRow(product)
+									}}
+								>
+									<Printer className='mr-2 h-4 w-4' />
+									Imprimer l’étiquette…
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									onClick={() =>
+										navigator.clipboard.writeText(product.barcode || '')
+									}
+								>
+									Copier le code-barres
+								</DropdownMenuItem>
+								{onDelete ? (
+									<>
+										<DropdownMenuSeparator />
+										<DropdownMenuItem
+											className='text-destructive focus:text-destructive'
+											onClick={(event) => {
+												// La ligne est cliquable et ouvre la fiche : sans cela,
+												// demander la suppression ouvrirait AUSSI le produit.
+												event.stopPropagation()
+												onDelete(product)
+											}}
+										>
+											<Trash2 className='mr-2 h-4 w-4' />
+											Supprimer…
+										</DropdownMenuItem>
+									</>
+								) : null}
+							</DropdownMenuContent>
+						</DropdownMenu>
+					)
+				},
 			},
-		},
-	]
+		],
+		[onDelete],
+	)
 
 	const table = useReactTable({
 		data,
@@ -457,8 +506,20 @@ export function ProductTable({
 		state: { sorting, columnFilters, pagination },
 	})
 	return (
-		<div className='space-y-4'>
-			<div className='rounded-md border [&>div]:max-h-[calc(100vh-var(--header-h)-9.5rem)]'>
+		<div className='flex h-full min-h-0 flex-col'>
+			{/* L'UNIQUE zone défilante de la table (5 septembre 2026).
+			    Elle bornait sa hauteur à `100vh` moins une constante devinée, DANS
+			    une page qui défilait elle aussi : deux ascenseurs superposés, dont
+			    l'un s'accrochait la molette. Elle prend maintenant la place que son
+			    conteneur lui donne — toute la carte quand la page est un cadre fixe
+			    (`ProductsPage`), la hauteur du contenu sinon.
+			    `[&>div]:overflow-visible` neutralise le scrollport interne du
+			    composant `Table` : sans cela il y en aurait DEUX imbriqués, et
+			    l'en-tête collant se fixerait au mauvais. */}
+			<div
+				ref={zoneDefilante}
+				className='min-h-0 flex-1 overflow-auto overscroll-contain [&>div]:overflow-visible'
+			>
 				<Table>
 					<TableHeader className='sticky top-0 z-20 bg-background shadow-sm [&_th]:bg-background'>
 						{table.getHeaderGroups().map((headerGroup) => (
@@ -517,7 +578,7 @@ export function ProductTable({
 			</div>
 
 			{paginated && (
-				<div className='flex items-center justify-between'>
+				<div className='flex shrink-0 items-center justify-between border-t p-3'>
 					<div className='text-sm text-muted-foreground'>
 						{(() => {
 							const total = table.getFilteredRowModel().rows.length

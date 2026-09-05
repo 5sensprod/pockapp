@@ -12,7 +12,7 @@
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Footer, Header, Sidebar } from '@/components/layout'
+import { Header, Sidebar } from '@/components/layout'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
@@ -230,8 +230,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 			>
 				{children}
 			</main>
-
-			<Footer />
 
 			{/* BottomNav — visible uniquement sur mobile, si le module a un menu */}
 			{isMobile && hasBottomNav && <BottomNav currentModule={currentModule} />}

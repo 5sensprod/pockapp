@@ -25,7 +25,6 @@ import {
 	PopoverTrigger,
 } from '@/components/ui/popover'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
-import { LAYOUT } from '@/lib/layout-tokens'
 import { useBrands } from '@/lib/queries/brands'
 import { PRODUCT_HEALTH_MAX } from '@/lib/queries/catalog-health'
 import {
@@ -34,7 +33,7 @@ import {
 	type CatalogSaleStateFilter,
 	useCatalogProducts,
 } from '@/lib/queries/catalog-products'
-import { toStockRow } from '@/lib/queries/catalog-rows'
+import { type StockProductRow, toStockRow } from '@/lib/queries/catalog-rows'
 import { useCategories } from '@/lib/queries/categories'
 import {
 	collectBranchIds,
@@ -50,21 +49,18 @@ import {
 	AlertTriangle,
 	Check,
 	ChevronDown,
-	ChevronLeft,
-	ChevronRight,
 	ChevronsUpDown,
 	CircleDollarSign,
 	FileText,
 	ImageOff,
 	Loader2,
-	Package,
 	PackageX,
 	Plus,
 	Search,
 	SlidersHorizontal,
 	X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useEtatPersistant } from '@/lib/hooks/useEtatPersistant'
 
@@ -73,6 +69,7 @@ import {
 	DeleteProductDialog,
 	type ProduitASupprimer,
 } from './components/DeleteProductDialog'
+import { PaginationBar } from './components/PaginationBar'
 import { ProductCategoryFilterTree } from './components/ProductCategoryFilterTree'
 import { ProductTable } from './components/ProductTable'
 
@@ -221,8 +218,6 @@ export function ProductsPage() {
 	const [produitASupprimer, setProduitASupprimer] =
 		useState<ProduitASupprimer | null>(null)
 	const previousCompanyId = useRef(activeCompanyId)
-
-	const sentinelle = useRef<HTMLDivElement | null>(null)
 
 	const openCreate = () => {
 		setDialogOpen(true)
@@ -383,12 +378,36 @@ export function ProductsPage() {
 
 	// La ligne mène à la fiche complète. La modale reste disponible pour la
 	// création rapide et sera allégée dans l'étape suivante du chantier.
-	const openRow = (rowId: string) => {
-		void navigate({
-			to: '/stock/produits/$productId',
-			params: { productId: rowId },
-		})
-	}
+	//
+	// Les deux rappels sont STABLES, et pas par habitude : `ProductTable`
+	// mémorise ses colonnes sur `onDelete`. Une lambda écrite dans le JSX en
+	// ferait une identité neuve à chaque rendu — donc des colonnes reconstruites
+	// et les caches de TanStack invalidés pour les 25 lignes, à chaque frappe
+	// dans la recherche.
+	const ouvrirFiche = useCallback(
+		(row: StockProductRow) => {
+			void navigate({
+				to: '/stock/produits/$productId',
+				params: { productId: row.id },
+			})
+		},
+		[navigate],
+	)
+
+	const demanderSuppression = useCallback(
+		(row: StockProductRow) => {
+			// La ligne de table ne porte pas `legacy_id` : on retrouve
+			// l'enregistrement de la page courante, qui l'a.
+			const record = products.data?.items.find((item) => item.id === row.id)
+			setProduitASupprimer({
+				id: row.id,
+				name: row.name,
+				legacy_id: record?.legacy_id,
+				status: row.status,
+			})
+		},
+		[products.data],
+	)
 
 	// Toute recherche et tout changement de filtre ramènent à la page 1 : rester
 	// en page 7 d'un résultat qui n'en compte que 2 donnerait un écran vide sans
@@ -409,11 +428,9 @@ export function ProductsPage() {
 	}
 
 	// Changer de page sans remonter laisserait l'œil au milieu d'un tableau dont
-	// les 25 lignes ont toutes changé. On remonte à la SENTINELLE, pas à 0 : le
-	// tableau se retrouve juste sous la barre, sans repasser par le titre.
-	const remonterAuTableau = () => {
-		sentinelle.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-	}
+	// les 25 lignes ont toutes changé. Ce n'est plus la PAGE qu'on remonte — elle
+	// ne défile plus — mais la zone défilante de la table, et c'est elle qui le
+	// fait, sur changement de lignes (`ProductTable`).
 
 	const changeSorting = (nextSorting: SortingState) => {
 		setSorting(nextSorting)
@@ -536,14 +553,6 @@ export function ProductsPage() {
 	}
 	const filterCount = activeFilterTags.length
 	const filtresActifs = filterCount > 0
-	const sortValue = sorting[0]
-		? `${sorting[0].id}:${sorting[0].desc ? 'desc' : 'asc'}`
-		: 'created:desc'
-	const changeSortSelect = (value: string) => {
-		const [id, direction] = value.split(':')
-		changeSorting([{ id, desc: direction === 'desc' }])
-	}
-
 	const clearFilters = () => {
 		setBrandId('')
 		setCategoryId('')
@@ -562,34 +571,25 @@ export function ProductsPage() {
 	const totalPages = products.data?.totalPages ?? 1
 
 	return (
-		<div className='container mx-auto px-6 py-8'>
-			<div className='mb-6 flex items-start justify-between gap-4'>
-				<div>
-					<div className='mb-2 flex items-center gap-3'>
-						<div className='flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10'>
-							<Package className='h-6 w-6 text-primary' />
-						</div>
-						<div className='flex items-baseline gap-3'>
-							<h1 className='font-bold text-3xl'>Produits</h1>
-							<span className='text-muted-foreground text-sm tabular-nums'>
-								{products.isLoading ? '…' : `${total} au total`}
-							</span>
-						</div>
-					</div>
-					<p className='text-muted-foreground'>
-						Le catalogue commun à la caisse, au stock et au site. Cliquez une
-						ligne pour consulter ou modifier sa fiche.
-					</p>
-				</div>
-
-				<Button className='shrink-0' onClick={openCreate}>
-					<Plus className='mr-2 h-4 w-4' />
-					Nouveau produit
-				</Button>
-			</div>
-
+		// LE CADRE NE DÉFILE PAS, SES DEUX PANNEAUX SI (5 septembre 2026).
+		//
+		// L'écran tenait dans la page : barre collante, arbre collant, et une
+		// table à hauteur bornée qui portait SON PROPRE ascenseur. Trois
+		// scrollports imbriqués dans un quatrième — le document. La molette
+		// s'accrochait alors au conteneur intérieur et n'en repartait qu'après un
+		// mouvement de souris (le « latch » de Chrome), et l'en-tête de la table
+		// glissait hors de vue dès qu'on descendait la page elle-même, puisqu'il
+		// ne collait qu'à son propre conteneur.
+		//
+		// À partir de `lg` la page prend exactement la hauteur restante et ne
+		// déborde plus : le document n'a plus d'ascenseur, il n'en reste qu'UN par
+		// panneau — l'arbre et la table —, et les deux en-têtes sont hors de leur
+		// zone défilante, donc toujours visibles sans `sticky`. Sous `lg` l'arbre
+		// n'est pas rendu : la page reprend sa hauteur naturelle et sa barre
+		// redevient collante.
+		<div className='flex flex-col lg:h-[calc(100dvh-var(--header-h))] lg:overflow-hidden'>
 			{products.error && (
-				<Card className='mb-6 border-destructive'>
+				<Card className='m-3 shrink-0 border-destructive'>
 					<CardContent className='flex items-start gap-3 pt-6'>
 						<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
 						<div>
@@ -602,377 +602,343 @@ export function ProductsPage() {
 				</Card>
 			)}
 
-			<div className='flex flex-col'>
-				<div
-					ref={sentinelle}
-					aria-hidden='true'
-					className='order-1 h-px'
-					style={{ scrollMarginTop: LAYOUT.HEADER_H_CSS }}
-				/>
-
-				<div
-					style={{ top: LAYOUT.HEADER_H_CSS }}
-					className='order-1 -mx-6 sticky z-30 mb-2 border-b bg-background px-6 py-2 shadow-sm'
-				>
-					<div className='flex min-w-0 items-center gap-2'>
-						<div className='relative min-w-36 flex-1 sm:max-w-48 lg:max-w-56 xl:max-w-64'>
-							<Search className='-translate-y-1/2 absolute top-1/2 left-2.5 h-4 w-4 text-muted-foreground' />
-							<Input
-								autoFocus
-								value={search}
-								onChange={(event) => changeSearch(event.target.value)}
-								placeholder='Rechercher…'
-								aria-label='Rechercher un produit'
-								className='h-9 pl-8'
-							/>
-						</div>
-
-						<Popover>
-							<PopoverTrigger asChild>
-								<Button variant='outline' size='sm' className='shrink-0'>
-									<SlidersHorizontal className='mr-1.5 h-4 w-4' />
-									Filtres
-									{filtresActifs && (
-										<span className='ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-primary-foreground text-xs tabular-nums'>
-											{filterCount}
-										</span>
-									)}
-									<ChevronDown className='ml-1.5 h-3.5 w-3.5' />
-								</Button>
-							</PopoverTrigger>
-							<PopoverContent
-								align='start'
-								className='max-h-[min(38rem,var(--radix-popover-content-available-height))] w-80 overflow-y-auto p-2'
-							>
-								<div className='px-2 py-1 font-semibold text-sm'>
-									Filtrer les produits
-								</div>
-								<div className='space-y-3 p-2'>
-									<div className='space-y-3 lg:hidden'>
-										<CompactFilterField label='Catégorie'>
-											<FilterSelect
-												value={categoryId}
-												onChange={changeFilter(setCategoryId)}
-												vide='Toutes les catégories'
-												noneLabel='Aucune catégorie'
-												recherche='Rechercher une catégorie…'
-												options={categoryOptions}
-												loading={
-													categories.isLoading || catalogCounts.isLoading
-												}
-											/>
-										</CompactFilterField>
-										<CompactFilterField label='Marque'>
-											<FilterSelect
-												value={brandId}
-												onChange={changeFilter(setBrandId)}
-												vide='Toutes les marques'
-												noneLabel='Aucune marque'
-												recherche='Rechercher une marque…'
-												options={brands.data ?? []}
-											/>
-										</CompactFilterField>
-										<CompactFilterField label='Fournisseur'>
-											<FilterSelect
-												value={supplierId}
-												onChange={changeFilter(setSupplierId)}
-												vide='Tous les fournisseurs'
-												noneLabel='Aucun fournisseur'
-												recherche='Rechercher un fournisseur…'
-												options={suppliers.data ?? []}
-											/>
-										</CompactFilterField>
-									</div>
-									<CompactFilterField label='Santé'>
-										<ChoiceFilter
-											value={healthScore}
-											onChange={(value) => {
-												setHealthScore(value)
-												setPage(1)
-											}}
-											ariaLabel='Filtrer par santé'
-											emptyLabel='Toutes les notes'
-											options={HEALTH_OPTIONS}
-										/>
-									</CompactFilterField>
-									<CompactFilterField label='État commercial'>
-										<ChoiceFilter
-											value={commercialState}
-											onChange={(value) => {
-												setCommercialState(
-													value as CatalogCommercialStateFilter | '',
-												)
-												setPage(1)
-											}}
-											ariaLabel='Filtrer par état commercial'
-											emptyLabel='Tous les états'
-											options={[
-												{ value: 'new', label: 'Neuf' },
-												{ value: 'used', label: 'Occasion' },
-												{ value: 'rental', label: 'Location' },
-											]}
-										/>
-									</CompactFilterField>
-									<CompactFilterField label='Opération commerciale'>
-										<ChoiceFilter
-											value={saleState}
-											onChange={(value) => {
-												setSaleState(value as CatalogSaleStateFilter | '')
-												setPage(1)
-											}}
-											ariaLabel='Filtrer par opération commerciale'
-											emptyLabel='Toutes les opérations'
-											options={[
-												{ value: 'regular', label: 'Plein tarif' },
-												{ value: 'sale', label: 'Soldé' },
-												{ value: 'promo', label: 'Promotion' },
-											]}
-										/>
-									</CompactFilterField>
-								</div>
-								<div className='my-1 h-px bg-border' />
-								<div className='space-y-1 p-1'>
-									<CompactBooleanFilter
-										checked={missingImage}
-										onChange={(checked) => {
-											setMissingImage(checked)
-											setPage(1)
-										}}
-										icon={<ImageOff />}
-										label='Sans image'
-									/>
-									<CompactBooleanFilter
-										checked={missingDescription}
-										onChange={(checked) => {
-											setMissingDescription(checked)
-											setPage(1)
-										}}
-										icon={<FileText />}
-										label='Sans description'
-									/>
-									<CompactBooleanFilter
-										checked={missingPurchasePrice}
-										onChange={(checked) => {
-											setMissingPurchasePrice(checked)
-											setPage(1)
-										}}
-										icon={<CircleDollarSign />}
-										label='Sans prix d’achat'
-									/>
-									<CompactBooleanFilter
-										checked={emptyStock}
-										onChange={(checked) => {
-											setEmptyStock(checked)
-											setPage(1)
-										}}
-										icon={<PackageX />}
-										label='Stock vide ou à 0'
-									/>
-								</div>
-								{filtresActifs && (
-									<Button
-										variant='ghost'
-										size='sm'
-										className='mt-1 w-full'
-										onClick={clearFilters}
-									>
-										<X className='mr-1 h-4 w-4' />
-										Réinitialiser les filtres
-									</Button>
-								)}
-							</PopoverContent>
-						</Popover>
-
-						<div className='hidden shrink-0 items-center gap-1 rounded-lg border bg-background p-0.5 lg:flex'>
-							<StatusChip
-								active={status === undefined}
-								onClick={() => changeStatus(undefined)}
-							>
-								Tous
-							</StatusChip>
-							<StatusChip
-								active={status === 'published'}
-								onClick={() => changeStatus('published')}
-							>
-								Publiés
-							</StatusChip>
-							<StatusChip
-								active={status === 'draft'}
-								onClick={() => changeStatus('draft')}
-							>
-								Brouillons
-							</StatusChip>
-						</div>
-
-						<div className='min-w-2 flex-1' />
-
-						<label className='shrink-0 text-muted-foreground text-sm'>
-							<span className='sr-only'>Tri du tableau</span>
-							<select
-								value={sortValue}
-								onChange={(event) => changeSortSelect(event.target.value)}
-								className='h-9 max-w-40 rounded-md border border-input bg-background px-2 text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:max-w-none'
-							>
-								<option value='created:desc'>Ajout récent</option>
-								<option value='created:asc'>Ajout ancien</option>
-								<option value='name:asc'>Produit · A à Z</option>
-								<option value='name:desc'>Produit · Z à A</option>
-								<option value='price_ttc:asc'>Prix · croissant</option>
-								<option value='price_ttc:desc'>Prix · décroissant</option>
-								<option value='healthScore:desc'>Santé · meilleure</option>
-								<option value='healthScore:asc'>Santé · à compléter</option>
-							</select>
-						</label>
-
-						<div className='flex shrink-0 items-center gap-2'>
-							<span className='whitespace-nowrap text-muted-foreground text-sm tabular-nums'>
-								Page {page} / {Math.max(totalPages, 1)}
-							</span>
-							<Button
-								variant='outline'
-								size='icon'
-								className='h-9 w-9'
-								aria-label='Page précédente'
-								disabled={page <= 1 || products.isFetching}
-								onClick={() => {
-									setPage((p) => Math.max(1, p - 1))
-									remonterAuTableau()
-								}}
-							>
-								<ChevronLeft className='h-4 w-4' />
-							</Button>
-							<Button
-								variant='outline'
-								size='icon'
-								className='h-9 w-9'
-								aria-label='Page suivante'
-								disabled={page >= totalPages || products.isFetching}
-								onClick={() => {
-									setPage((p) => p + 1)
-									remonterAuTableau()
-								}}
-							>
-								<ChevronRight className='h-4 w-4' />
-							</Button>
-						</div>
-					</div>
-
-					<div className='mt-1.5 flex min-h-6 min-w-0 items-start gap-2'>
-						<div className='flex w-36 shrink-0 items-center gap-2 font-medium text-sm sm:w-48 lg:w-56 xl:w-64'>
-							<span className='h-2 w-2 shrink-0 rounded-full bg-emerald-600' />
-							<span className='truncate tabular-nums'>
-								{products.isLoading
-									? '…'
-									: `${total} produit${total > 1 ? 's' : ''}`}
-							</span>
-						</div>
-
-						{filtresActifs && (
-							<div className='flex min-w-0 flex-1 flex-wrap items-center gap-1.5'>
-								{activeFilterTags.map((filter) => (
-									<button
-										type='button'
-										key={filter.key}
-										onClick={filter.clear}
-										aria-label={`Retirer le filtre ${filter.label}`}
-										className='inline-flex h-6 max-w-56 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 font-medium text-primary text-[11px] transition-colors hover:border-primary/40 hover:bg-primary/15'
-									>
-										<span className='truncate'>{filter.label}</span>
-										<X className='h-3 w-3 shrink-0' />
-									</button>
-								))}
-							</div>
-						)}
-					</div>
-				</div>
-
-				<div className='order-3 grid items-start gap-3 lg:grid-cols-[17rem_minmax(0,1fr)]'>
-					<div className='hidden lg:contents'>
-						<ProductCategoryFilterTree
-							categories={categories.data ?? []}
-							brands={brands.data ?? []}
-							suppliers={suppliers.data ?? []}
-							counts={catalogCounts.data}
-							categoryValue={categoryId}
-							brandValue={brandId}
-							supplierValue={supplierId}
-							noneValue={NO_RELATION_FILTER}
-							onCategoryChange={(value) => {
-								setCategoryId(value)
-								setPage(1)
-							}}
-							onBrandChange={(value) => {
-								setBrandId(value)
-								setPage(1)
-							}}
-							onSupplierChange={(value) => {
-								setSupplierId(value)
-								setPage(1)
-							}}
-							loading={{
-								category: categories.isLoading || catalogCounts.isLoading,
-								brand: brands.isLoading,
-								supplier: suppliers.isLoading,
-							}}
+			<div className='sticky top-header z-30 shrink-0 border-b bg-background px-3 py-2 shadow-sm lg:static'>
+				<div className='flex min-w-0 items-center gap-2.5'>
+					<div className='group relative min-w-36 flex-1 sm:max-w-48 lg:max-w-56 xl:max-w-64'>
+						<Search className='-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 h-4 w-4 text-primary' />
+						<Input
+							autoFocus
+							value={search}
+							onChange={(event) => changeSearch(event.target.value)}
+							placeholder='Rechercher…'
+							aria-label='Rechercher un produit'
+							className='h-10 rounded-md border-input bg-sky-50/80 pl-9 text-primary shadow-sm transition-[background-color,border-color,box-shadow] placeholder:text-muted-foreground hover:bg-sky-50 focus:border-primary focus:bg-white focus:outline-none focus:ring-4 focus:ring-primary/15 focus-visible:ring-4 focus-visible:ring-primary/15 focus-visible:ring-offset-0 dark:bg-sky-950/35 dark:text-foreground dark:focus:bg-background'
 						/>
 					</div>
 
-					<Card className='min-w-0'>
-						<CardContent
-							// La page précédente reste lisible pendant le chargement de la
-							// suivante, grisée : la table ne se vide pas et la page ne saute pas.
-							className={cn('p-4', products.isFetching && 'opacity-60')}
+					<Popover>
+						<PopoverTrigger asChild>
+							<Button
+								variant='outline'
+								size='sm'
+								className='h-10 shrink-0 rounded-md border-input bg-violet-50/80 px-3.5 text-primary shadow-sm hover:bg-violet-100 hover:text-primary dark:bg-violet-950/35 dark:text-foreground dark:hover:bg-violet-900/55'
+							>
+								<SlidersHorizontal className='mr-1.5 h-4 w-4' />
+								Filtres
+								{filtresActifs && (
+									<span className='ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-primary-foreground text-xs tabular-nums'>
+										{filterCount}
+									</span>
+								)}
+								<ChevronDown className='ml-1.5 h-3.5 w-3.5' />
+							</Button>
+						</PopoverTrigger>
+						<PopoverContent
+							align='start'
+							className='max-h-[min(38rem,var(--radix-popover-content-available-height))] w-80 overflow-y-auto p-2'
 						>
-							{/* Un écran vide doit dire POURQUOI il est vide. Sans ces trois cas,
+							<div className='px-2 py-1 font-semibold text-sm'>
+								Filtrer les produits
+							</div>
+							<div className='space-y-3 p-2'>
+								<div className='space-y-3 lg:hidden'>
+									<CompactFilterField label='Catégorie'>
+										<FilterSelect
+											value={categoryId}
+											onChange={changeFilter(setCategoryId)}
+											vide='Toutes les catégories'
+											noneLabel='Aucune catégorie'
+											recherche='Rechercher une catégorie…'
+											options={categoryOptions}
+											loading={categories.isLoading || catalogCounts.isLoading}
+										/>
+									</CompactFilterField>
+									<CompactFilterField label='Marque'>
+										<FilterSelect
+											value={brandId}
+											onChange={changeFilter(setBrandId)}
+											vide='Toutes les marques'
+											noneLabel='Aucune marque'
+											recherche='Rechercher une marque…'
+											options={brands.data ?? []}
+										/>
+									</CompactFilterField>
+									<CompactFilterField label='Fournisseur'>
+										<FilterSelect
+											value={supplierId}
+											onChange={changeFilter(setSupplierId)}
+											vide='Tous les fournisseurs'
+											noneLabel='Aucun fournisseur'
+											recherche='Rechercher un fournisseur…'
+											options={suppliers.data ?? []}
+										/>
+									</CompactFilterField>
+								</div>
+								<CompactFilterField label='Santé'>
+									<ChoiceFilter
+										value={healthScore}
+										onChange={(value) => {
+											setHealthScore(value)
+											setPage(1)
+										}}
+										ariaLabel='Filtrer par santé'
+										emptyLabel='Toutes les notes'
+										options={HEALTH_OPTIONS}
+									/>
+								</CompactFilterField>
+								<CompactFilterField label='État commercial'>
+									<ChoiceFilter
+										value={commercialState}
+										onChange={(value) => {
+											setCommercialState(
+												value as CatalogCommercialStateFilter | '',
+											)
+											setPage(1)
+										}}
+										ariaLabel='Filtrer par état commercial'
+										emptyLabel='Tous les états'
+										options={[
+											{ value: 'new', label: 'Neuf' },
+											{ value: 'used', label: 'Occasion' },
+											{ value: 'rental', label: 'Location' },
+										]}
+									/>
+								</CompactFilterField>
+								<CompactFilterField label='Opération commerciale'>
+									<ChoiceFilter
+										value={saleState}
+										onChange={(value) => {
+											setSaleState(value as CatalogSaleStateFilter | '')
+											setPage(1)
+										}}
+										ariaLabel='Filtrer par opération commerciale'
+										emptyLabel='Toutes les opérations'
+										options={[
+											{ value: 'regular', label: 'Plein tarif' },
+											{ value: 'sale', label: 'Soldé' },
+											{ value: 'promo', label: 'Promotion' },
+										]}
+									/>
+								</CompactFilterField>
+							</div>
+							<div className='my-1 h-px bg-border' />
+							<div className='space-y-1 p-1'>
+								<CompactBooleanFilter
+									checked={missingImage}
+									onChange={(checked) => {
+										setMissingImage(checked)
+										setPage(1)
+									}}
+									icon={<ImageOff />}
+									label='Sans image'
+								/>
+								<CompactBooleanFilter
+									checked={missingDescription}
+									onChange={(checked) => {
+										setMissingDescription(checked)
+										setPage(1)
+									}}
+									icon={<FileText />}
+									label='Sans description'
+								/>
+								<CompactBooleanFilter
+									checked={missingPurchasePrice}
+									onChange={(checked) => {
+										setMissingPurchasePrice(checked)
+										setPage(1)
+									}}
+									icon={<CircleDollarSign />}
+									label='Sans prix d’achat'
+								/>
+								<CompactBooleanFilter
+									checked={emptyStock}
+									onChange={(checked) => {
+										setEmptyStock(checked)
+										setPage(1)
+									}}
+									icon={<PackageX />}
+									label='Stock vide ou à 0'
+								/>
+							</div>
+							{filtresActifs && (
+								<Button
+									variant='ghost'
+									size='sm'
+									className='mt-1 w-full'
+									onClick={clearFilters}
+								>
+									<X className='mr-1 h-4 w-4' />
+									Réinitialiser les filtres
+								</Button>
+							)}
+						</PopoverContent>
+					</Popover>
+
+					<div className='hidden h-10 shrink-0 items-center gap-1 rounded-md border border-input bg-background p-1 shadow-sm lg:flex'>
+						<StatusChip
+							tone='all'
+							active={status === undefined}
+							onClick={() => changeStatus(undefined)}
+						>
+							Tous
+						</StatusChip>
+						<StatusChip
+							tone='published'
+							active={status === 'published'}
+							onClick={() => changeStatus('published')}
+						>
+							Publiés
+						</StatusChip>
+						<StatusChip
+							tone='draft'
+							active={status === 'draft'}
+							onClick={() => changeStatus('draft')}
+						>
+							Brouillons
+						</StatusChip>
+					</div>
+
+					<div className='min-w-2 flex-1' />
+
+					{/* La pagination est descendue SOUS la table le 5 septembre 2026 :
+					    le cadre à hauteur fixe lui donne un pied de tableau visible,
+					    et elle y gagne les numéros de page. Voir `PaginationBar`. */}
+
+					<Button className='shrink-0' onClick={openCreate}>
+						<Plus className='mr-2 h-4 w-4' />
+						Nouveau produit
+					</Button>
+				</div>
+
+				<div className='mt-1.5 flex min-h-6 min-w-0 items-start gap-2'>
+					<div className='flex w-36 shrink-0 items-center gap-2 font-medium text-sm sm:w-48 lg:w-56 xl:w-64'>
+						<span className='h-2 w-2 shrink-0 rounded-full bg-emerald-600' />
+						<span className='truncate tabular-nums'>
+							{products.isLoading
+								? '…'
+								: `${total} produit${total > 1 ? 's' : ''}`}
+						</span>
+					</div>
+
+					{filtresActifs && (
+						<div className='flex min-w-0 flex-1 flex-wrap items-center gap-1.5'>
+							{activeFilterTags.map((filter) => (
+								<button
+									type='button'
+									key={filter.key}
+									onClick={filter.clear}
+									aria-label={`Retirer le filtre ${filter.label}`}
+									className={cn(
+										'inline-flex h-6 max-w-56 items-center gap-1 rounded-full border border-primary/20 px-2 font-medium text-[11px] text-primary transition-colors hover:border-primary/40',
+										filterTagTone(filter.key),
+									)}
+								>
+									<span className='truncate'>{filter.label}</span>
+									<X className='h-3 w-3 shrink-0' />
+								</button>
+							))}
+						</div>
+					)}
+				</div>
+			</div>
+
+			{/* `lg:grid-rows-[minmax(0,1fr)]` n'est pas décoratif : sans lui la
+			    ligne se dimensionnerait sur son contenu, les deux panneaux
+			    déborderaient du cadre — qui est en `overflow-hidden` — et le bas de
+			    la table serait coupé au lieu de défiler. */}
+			<div className='grid min-h-0 items-start gap-3 p-3 lg:flex-1 lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch'>
+				<div className='hidden lg:contents'>
+					<ProductCategoryFilterTree
+						categories={categories.data ?? []}
+						brands={brands.data ?? []}
+						suppliers={suppliers.data ?? []}
+						counts={catalogCounts.data}
+						categoryValue={categoryId}
+						brandValue={brandId}
+						supplierValue={supplierId}
+						noneValue={NO_RELATION_FILTER}
+						onCategoryChange={(value) => {
+							setCategoryId(value)
+							setPage(1)
+						}}
+						onBrandChange={(value) => {
+							setBrandId(value)
+							setPage(1)
+						}}
+						onSupplierChange={(value) => {
+							setSupplierId(value)
+							setPage(1)
+						}}
+						loading={{
+							category: categories.isLoading || catalogCounts.isLoading,
+							brand: brands.isLoading,
+							supplier: suppliers.isLoading,
+						}}
+					/>
+				</div>
+
+				<Card className='flex min-h-0 min-w-0 flex-col overflow-hidden lg:h-full'>
+					<CardContent
+						// Aucun padding : la table prend toute la largeur de la carte, qui
+						// lui sert de cadre. Et la page précédente reste lisible pendant le
+						// chargement de la suivante, grisée — la table ne se vide pas.
+						className={cn(
+							'flex min-h-0 flex-1 flex-col p-0',
+							products.isFetching && 'opacity-60',
+						)}
+					>
+						{/* Un écran vide doit dire POURQUOI il est vide. Sans ces trois cas,
 					    « aucune entreprise active », « lecture en cours » et « 0 résultat
 					    pour ces filtres » se ressemblent tous : une table sans ligne. */}
-							{!activeCompanyId ? (
-								<p className='py-12 text-center text-muted-foreground'>
-									Aucune entreprise active — sélectionnez-en une pour voir le
-									catalogue.
+						{!activeCompanyId ? (
+							<p className='flex flex-1 items-center justify-center p-12 text-center text-muted-foreground'>
+								Aucune entreprise active — sélectionnez-en une pour voir le
+								catalogue.
+							</p>
+						) : products.isLoading ? (
+							<div className='flex flex-1 items-center justify-center gap-3 p-12 text-muted-foreground'>
+								<Loader2 className='h-5 w-5 animate-spin' />
+								<span className='text-sm'>Lecture du catalogue…</span>
+							</div>
+						) : rows.length === 0 ? (
+							<div className='flex flex-1 flex-col items-center justify-center p-12 text-center text-muted-foreground'>
+								<p>Aucun produit ne correspond.</p>
+								<p className='mt-1 text-sm'>
+									{filtresActifs || debounced || status
+										? 'Des filtres sont actifs.'
+										: `Le catalogue en compte ${total}.`}
 								</p>
-							) : products.isLoading ? (
-								<div className='flex items-center justify-center gap-3 py-12 text-muted-foreground'>
-									<Loader2 className='h-5 w-5 animate-spin' />
-									<span className='text-sm'>Lecture du catalogue…</span>
-								</div>
-							) : rows.length === 0 ? (
-								<div className='py-12 text-center text-muted-foreground'>
-									<p>Aucun produit ne correspond.</p>
-									<p className='mt-1 text-sm'>
-										{filtresActifs || debounced || status
-											? 'Des filtres sont actifs.'
-											: `Le catalogue en compte ${total}.`}
-									</p>
-								</div>
-							) : (
-								/* `paginated={false}` : la page vient du serveur. Paginer une
+							</div>
+						) : (
+							/* `paginated={false}` : la page vient du serveur. Paginer une
 					   seconde fois en mémoire afficherait « 1–10 sur 25 » sous une
 					   table qui en montre 25. */
-								<ProductTable
-									data={rows}
-									paginated={false}
-									sorting={sorting}
-									onSortingChange={changeSorting}
-									onRowClick={(row) => openRow(row.id)}
-									onDelete={(row) => {
-										// La ligne de table ne porte pas `legacy_id` : on retrouve
-										// l'enregistrement de la page courante, qui l'a.
-										const record = products.data?.items.find(
-											(item) => item.id === row.id,
-										)
-										setProduitASupprimer({
-											id: row.id,
-											name: row.name,
-											legacy_id: record?.legacy_id,
-											status: row.status,
-										})
-									}}
-								/>
-							)}
-						</CardContent>
-					</Card>
-				</div>
+							<ProductTable
+								data={rows}
+								paginated={false}
+								sorting={sorting}
+								onSortingChange={changeSorting}
+								onRowClick={ouvrirFiche}
+								onDelete={demanderSuppression}
+							/>
+						)}
+
+						{/* Sous la zone défilante, donc toujours visible : c'est ce que
+						    le cadre à hauteur fixe a rendu possible. Elle ne s'affiche
+						    qu'avec des lignes — trois messages de vide n'ont pas de
+						    « page 1 sur 1 » à annoncer. */}
+						{activeCompanyId && !products.isLoading && rows.length > 0 && (
+							<PaginationBar
+								page={page}
+								totalPages={totalPages}
+								total={total}
+								perPage={PER_PAGE}
+								disabled={products.isFetching}
+								onChange={setPage}
+							/>
+						)}
+					</CardContent>
+				</Card>
 			</div>
 
 			<CatalogProductDialog
@@ -1011,29 +977,61 @@ function toCatalogSort(sorting: SortingState) {
 
 /** La version serrée du groupe de statut pour la barre de commande unique. */
 function StatusChip({
+	tone,
 	active,
 	onClick,
 	children,
 }: {
+	tone: 'all' | 'published' | 'draft'
 	active: boolean
 	onClick: () => void
 	children: React.ReactNode
 }) {
+	const tones = {
+		all: {
+			idle: 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60',
+		},
+		published: {
+			idle: 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60',
+		},
+		draft: {
+			idle: 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60',
+		},
+	} as const
+
 	return (
 		<button
 			type='button'
 			onClick={onClick}
 			aria-pressed={active}
 			className={cn(
-				'rounded-md px-2.5 py-1 font-medium text-xs transition-colors',
+				'h-8 rounded-md px-2.5 font-medium text-primary text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-foreground',
 				active
-					? 'bg-primary text-primary-foreground shadow-sm'
-					: 'text-muted-foreground hover:bg-muted',
+					? 'bg-primary text-primary-foreground shadow-sm dark:text-primary-foreground'
+					: tones[tone].idle,
 			)}
 		>
 			{children}
 		</button>
 	)
+}
+
+/** Les filtres de même nature partagent une couleur, ce qui permet de repérer
+ * leur famille sans transformer la barre en arc-en-ciel décoratif. */
+function filterTagTone(key: string) {
+	if (key === 'brand' || key === 'category' || key === 'supplier') {
+		return 'bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/45'
+	}
+	if (key.startsWith('missing-') || key === 'empty-stock') {
+		return 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/45'
+	}
+	if (key === 'health') {
+		return 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/45'
+	}
+	if (key === 'commercial-state') {
+		return 'bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/45'
+	}
+	return 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/45'
 }
 
 function CompactFilterField({

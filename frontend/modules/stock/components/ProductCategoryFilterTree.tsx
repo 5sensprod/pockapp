@@ -221,9 +221,15 @@ export function ProductCategoryFilterTree({
 	}
 
 	return (
-		<Card className='overflow-hidden lg:sticky lg:top-[calc(var(--header-h)+5.5rem)]'>
-			<CardContent className='p-0'>
-				<div className='border-b bg-muted/30 p-3'>
+		// L'arbre remplit la colonne et ne défile QUE dans sa liste (5 septembre
+		// 2026). Il était collant sous un décalage écrit en dur — `header + 5.5rem`
+		// —, qui ne correspondait plus à la hauteur réelle de la barre dès qu'un
+		// filtre passait à la ligne, et sa liste était bornée par un second calcul
+		// de la même famille. La colonne étant désormais à hauteur fixe, il n'y a
+		// plus rien à deviner : l'en-tête est hors de la zone défilante.
+		<Card className='flex min-h-0 flex-col overflow-hidden lg:h-full'>
+			<CardContent className='flex min-h-0 flex-1 flex-col p-0'>
+				<div className='shrink-0 border-b bg-muted/30 p-3'>
 					<div className='mb-2 flex items-center justify-between gap-2'>
 						<div
 							role='tablist'
@@ -279,7 +285,7 @@ export function ProductCategoryFilterTree({
 					</div>
 				</div>
 
-				<div className='max-h-72 overflow-y-auto p-2 lg:max-h-[calc(100vh-var(--header-h)-10.5rem)]'>
+				<div className='max-h-72 overflow-y-auto overscroll-contain p-2 lg:max-h-none lg:min-h-0 lg:flex-1'>
 					<button
 						type='button'
 						onClick={() => currentView.onChange('')}
