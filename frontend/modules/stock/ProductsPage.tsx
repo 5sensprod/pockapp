@@ -101,6 +101,17 @@ const SALE_STATE_LABELS: Record<CatalogSaleStateFilter, string> = {
 	sale: 'Soldé',
 	promo: 'Promotion',
 }
+// Les boutons DÉRIVENT des libellés ci-dessus, ils ne les recopient pas : le
+// tag de filtre actif et le bouton qui l'a posé disaient « Neuf » chacun de
+// leur côté, et rien n'empêchait qu'un jour l'un dise « Occasion » et l'autre
+// « Seconde main ».
+const COMMERCIAL_STATE_OPTIONS = Object.entries(COMMERCIAL_STATE_LABELS).map(
+	([value, label]) => ({ value, label }),
+)
+const SALE_STATE_OPTIONS = Object.entries(SALE_STATE_LABELS).map(
+	([value, label]) => ({ value, label }),
+)
+
 // Les gardes de la mémoire d'écran. Elles ne défendent pas contre l'utilisateur
 // mais contre NOUS : une valeur écrite par une version antérieure — un filtre
 // retiré, une colonne de tri renommée — partirait au serveur et rendrait une
@@ -686,40 +697,30 @@ export function ProductsPage() {
 										options={HEALTH_OPTIONS}
 									/>
 								</CompactFilterField>
-								<CompactFilterField label='État commercial'>
-									<ChoiceFilter
-										value={commercialState}
-										onChange={(value) => {
-											setCommercialState(
-												value as CatalogCommercialStateFilter | '',
-											)
-											setPage(1)
-										}}
-										ariaLabel='Filtrer par état commercial'
-										emptyLabel='Tous les états'
-										options={[
-											{ value: 'new', label: 'Neuf' },
-											{ value: 'used', label: 'Occasion' },
-											{ value: 'rental', label: 'Location' },
-										]}
-									/>
-								</CompactFilterField>
-								<CompactFilterField label='Opération commerciale'>
-									<ChoiceFilter
-										value={saleState}
-										onChange={(value) => {
-											setSaleState(value as CatalogSaleStateFilter | '')
-											setPage(1)
-										}}
-										ariaLabel='Filtrer par opération commerciale'
-										emptyLabel='Toutes les opérations'
-										options={[
-											{ value: 'regular', label: 'Plein tarif' },
-											{ value: 'sale', label: 'Soldé' },
-											{ value: 'promo', label: 'Promotion' },
-										]}
-									/>
-								</CompactFilterField>
+								{/* Ni titre ni « Tous les états » : trois mots posés côte à
+								    côte disent déjà de quoi il s'agit, et le libellé vide
+								    était une quatrième ligne pour dire « pas de filtre » —
+								    ce que l'absence de sélection dit toute seule. */}
+								<SegmentedFilter
+									value={commercialState}
+									onChange={(value) => {
+										setCommercialState(
+											value as CatalogCommercialStateFilter | '',
+										)
+										setPage(1)
+									}}
+									ariaLabel='État commercial'
+									options={COMMERCIAL_STATE_OPTIONS}
+								/>
+								<SegmentedFilter
+									value={saleState}
+									onChange={(value) => {
+										setSaleState(value as CatalogSaleStateFilter | '')
+										setPage(1)
+									}}
+									ariaLabel='Opération commerciale'
+									options={SALE_STATE_OPTIONS}
+								/>
 							</div>
 							<div className='my-1 h-px bg-border' />
 							<div className='space-y-1 p-1'>
@@ -1079,6 +1080,59 @@ function CompactBooleanFilter({
 	)
 }
 
+/** Un choix parmi trois — ou aucun.
+ *
+ * Remplace un `<select>` de quatre entrées dont la première ne filtrait rien.
+ * Trois boutons montrent l'éventail SANS être ouverts, ce qu'une liste
+ * déroulante ne fait jamais : il fallait cliquer pour savoir que « Location »
+ * existait.
+ *
+ * Recliquer le choix actif le retire. C'est le seul retour vers « tous »
+ * depuis ce panneau — le libellé vide est parti avec le titre —, mais pas le
+ * seul de l'écran : le tag du filtre porte sa croix dans la barre, et
+ * « Réinitialiser les filtres » est juste dessous. */
+function SegmentedFilter({
+	value,
+	onChange,
+	ariaLabel,
+	options,
+}: {
+	value: string
+	onChange: (value: string) => void
+	ariaLabel: string
+	options: readonly { value: string; label: string }[]
+}) {
+	return (
+		// `fieldset` et non `div role='group'` : c'est le même rôle, en natif.
+		// `min-w-0` annule son `min-inline-size: min-content`, qui l'empêcherait
+		// de rétrécir sous la largeur de « Opération commerciale ».
+		<fieldset
+			aria-label={ariaLabel}
+			className='flex min-w-0 items-center gap-0.5 rounded-md border border-input bg-background p-1 shadow-sm'
+		>
+			{options.map((option) => {
+				const actif = value === option.value
+				return (
+					<button
+						key={option.value}
+						type='button'
+						aria-pressed={actif}
+						onClick={() => onChange(actif ? '' : option.value)}
+						className={cn(
+							'h-8 min-w-0 flex-1 truncate rounded-sm px-2 font-medium text-primary text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-foreground',
+							actif
+								? 'bg-primary text-primary-foreground shadow-sm dark:text-primary-foreground'
+								: 'hover:bg-muted',
+						)}
+					>
+						{option.label}
+					</button>
+				)
+			})}
+		</fieldset>
+	)
+}
+
 function ChoiceFilter({
 	value,
 	onChange,
@@ -1097,7 +1151,7 @@ function ChoiceFilter({
 			value={value}
 			onChange={(event) => onChange(event.target.value)}
 			aria-label={ariaLabel}
-			className='h-10 min-w-[190px] max-w-[260px] rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+			className='h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 		>
 			<option value=''>{emptyLabel}</option>
 			{options.map((option) => (
@@ -1174,7 +1228,7 @@ function FilterSelect({
 					variant='outline'
 					aria-expanded={open}
 					aria-haspopup='listbox'
-					className='min-w-[190px] max-w-[260px] justify-between px-2 font-normal'
+					className='w-full justify-between px-2 font-normal'
 				>
 					<span className='truncate'>{selectedLabel}</span>
 					<ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
