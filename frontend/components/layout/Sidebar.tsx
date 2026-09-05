@@ -23,7 +23,13 @@
 // Modes (useBreakpoint) :
 //   mobile  (<768px)   → non rendue, BottomNav prend le relais
 //   tablet  (768–1023) → backdrop, refermeture après un saut, pas de push
-//   desktop (≥1024px)  → pas de backdrop, elle pousse le contenu et reste ouverte
+//   desktop (≥1024px)  → pas de backdrop, elle pousse le contenu
+//
+// Un clic hors de la barre la ferme, à tous les formats — sur tablette par le
+// backdrop, sur desktop par un écouteur `pointerdown` : là, aucun voile ne
+// couvre la page, le clic doit donc atteindre ce qu'il visait ET fermer le
+// menu. Le bouton du Header est exclu (`data-sidebar-toggle`), sans quoi il
+// fermerait au `pointerdown` puis rouvrirait au `click`.
 //
 // Tokens : bg-panel, bg-panel-header, bg-panel-item-active, text-panel-*,
 //          w-panel, h-header (tailwind.config.cjs)
@@ -78,6 +84,21 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 	React.useEffect(() => {
 		navRef.current?.toggleAttribute('inert', !open)
 	}, [open])
+
+	// Clic extérieur — desktop uniquement : sur tablette c'est le backdrop qui
+	// s'en charge, et il faut laisser passer les clics DANS la barre.
+	React.useEffect(() => {
+		if (!open || isMobile || isTablet) return
+		const onPointerDown = (e: PointerEvent) => {
+			const target = e.target as Element | null
+			if (!target) return
+			if (navRef.current?.contains(target)) return
+			if (target.closest('[data-sidebar-toggle]')) return
+			onClose()
+		}
+		document.addEventListener('pointerdown', onPointerDown)
+		return () => document.removeEventListener('pointerdown', onPointerDown)
+	}, [open, isMobile, isTablet, onClose])
 
 	// Groupes dépliés par défaut : la barre est assez haute pour tout montrer,
 	// et un item visible vaut mieux qu'un item à chercher. Replier reste

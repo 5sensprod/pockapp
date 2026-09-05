@@ -19,6 +19,7 @@ import {
 	Bell,
 	Building2,
 	ChevronDown,
+	Home,
 	LogOut,
 	Menu,
 	PanelLeftClose,
@@ -202,36 +203,51 @@ export function Header({
 		// No-Line rule : pas de border-b, séparation assurée par bg-muted du ModulePageShell
 		<header className='sticky top-0 z-50 w-full min-w-[200px] bg-background'>
 			<div className='flex h-header items-center justify-between px-4 tablet:px-6 desktop:px-8'>
-				{/* ══ GAUCHE : menu unique + brand ═════════════════════════════════ */}
+				{/* ══ GAUCHE : menu + accueil, puis identité de la page ════════════ */}
 				<div className='flex flex-1 items-center gap-3 min-w-0 tablet:gap-4'>
-					{/* Seul bouton de navigation de l'application — il ouvre et ferme la
-					    barre latérale, qui contient TOUT le menu. Il n'y a plus de rail
-					    d'icônes ni de flèche « retour » : le contenu de la barre ne
-					    dépend pas de la page où l'on se trouve. Absent sur mobile, où la
-					    BottomNav tient ce rôle. */}
+					{/* Zone de navigation — deux boutons, et rien d'autre : ouvrir le menu,
+					    revenir à l'accueil. Elle porte un fond et une bordure pour se voir :
+					    en `ghost` pur, le seul point d'entrée de toute la navigation se
+					    confondait avec l'en-tête. Absente sur mobile, où la BottomNav
+					    tient ce rôle. */}
 					{!isMobile && (
-						<Button
-							variant='ghost'
-							size='icon'
-							className='h-9 w-9 shrink-0'
-							onClick={onToggleSidebar}
-							aria-expanded={sidebarOpen}
-							aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
-							title={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
-						>
-							{sidebarOpen ? (
-								<PanelLeftClose className='h-5 w-5' />
-							) : (
-								<Menu className='h-5 w-5' />
-							)}
-						</Button>
+						<div className='flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/60 p-0.5'>
+							<Button
+								data-sidebar-toggle
+								variant='ghost'
+								size='icon'
+								className='h-8 w-8 hover:bg-background'
+								onClick={onToggleSidebar}
+								aria-expanded={sidebarOpen}
+								aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+								title={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+							>
+								{sidebarOpen ? (
+									<PanelLeftClose className='h-5 w-5' />
+								) : (
+									<Menu className='h-5 w-5' />
+								)}
+							</Button>
+
+							{/* Retour à l'accueil — c'est ce bouton qui y mène, plus le titre. */}
+							<Button
+								asChild
+								variant='ghost'
+								size='icon'
+								className='h-8 w-8 hover:bg-background'
+								title='Accueil'
+							>
+								<Link to='/' aria-label='Accueil'>
+									<Home className='h-5 w-5' />
+								</Link>
+							</Button>
+						</div>
 					)}
 
-					{/* Logo + nom du module courant — le logo ramène toujours à l'accueil */}
-					<Link
-						to='/'
-						className='flex items-center gap-2 font-medium text-base text-foreground min-w-0 overflow-hidden'
-					>
+					{/* Logo + nom du module — une ÉTIQUETTE, pas un lien : elle dit où l'on
+					    est. Cliquable, elle ramenait à l'accueil sans le dire, ce qui n'a
+					    pas de sens sur un titre de page. */}
+					<div className='flex items-center gap-2 font-medium text-base text-foreground min-w-0 overflow-hidden'>
 						{/* bg-primary = #1E1B4B via token shadcn */}
 						<div className='w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0'>
 							P
@@ -240,7 +256,7 @@ export function Header({
 						<span className='hidden brand-visible truncate min-w-0'>
 							{brand}
 						</span>
-					</Link>
+					</div>
 				</div>
 
 				{/* ══ DROITE : crédits + entreprise + notifs + user ════════════════ */}

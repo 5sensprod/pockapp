@@ -18,6 +18,14 @@
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+	DropdownMenu,
+	DropdownMenuCheckboxItem,
+	DropdownMenuContent,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
 	Popover,
@@ -49,6 +57,7 @@ import type { SortingState } from '@tanstack/react-table'
 import {
 	AlertTriangle,
 	Check,
+	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
 	ChevronsUpDown,
@@ -103,6 +112,18 @@ const SALE_STATE_LABELS: Record<CatalogSaleStateFilter, string> = {
 	sale: 'Soldé',
 	promo: 'Promotion',
 }
+const FILTER_FIELD_OPTIONS = [
+	{ key: 'brand', label: 'Marque' },
+	{ key: 'category', label: 'Catégorie' },
+	{ key: 'supplier', label: 'Fournisseur' },
+	{ key: 'health', label: 'Santé' },
+	{ key: 'commercial-state', label: 'État commercial' },
+	{ key: 'sale-state', label: 'Opération commerciale' },
+] as const
+type FilterFieldKey = (typeof FILTER_FIELD_OPTIONS)[number]['key']
+const FILTER_FIELD_KEYS = new Set<FilterFieldKey>(
+	FILTER_FIELD_OPTIONS.map((option) => option.key),
+)
 
 // Les gardes de la mémoire d'écran. Elles ne défendent pas contre l'utilisateur
 // mais contre NOUS : une valeur écrite par une version antérieure — un filtre
@@ -123,6 +144,13 @@ const estEtatCommercialValide = (valeur: unknown) =>
 	(typeof valeur === 'string' && valeur in COMMERCIAL_STATE_LABELS)
 const estEtatVenteValide = (valeur: unknown) =>
 	valeur === '' || (typeof valeur === 'string' && valeur in SALE_STATE_LABELS)
+const estFiltresVisiblesValides = (valeur: unknown) =>
+	Array.isArray(valeur) &&
+	valeur.every(
+		(filtre) =>
+			typeof filtre === 'string' &&
+			FILTER_FIELD_KEYS.has(filtre as FilterFieldKey),
+	)
 const estTriValide = (valeur: unknown) =>
 	Array.isArray(valeur) &&
 	valeur.every(
@@ -208,6 +236,9 @@ export function ProductsPage() {
 	const [saleState, setSaleState] = useEtatPersistant<
 		CatalogSaleStateFilter | ''
 	>('stock-produits-etat-vente', '', estEtatVenteValide)
+	const [filtresVisibles, setFiltresVisibles] = useEtatPersistant<
+		FilterFieldKey[]
+	>('stock-produits-filtres-visibles', [], estFiltresVisiblesValides)
 	const [sorting, setSorting] = useEtatPersistant<SortingState>(
 		'stock-produits-tri',
 		[{ id: 'created', desc: true }],
@@ -443,6 +474,56 @@ export function ProductsPage() {
 		setPage(1)
 	}
 
+	const filterFieldValues: Record<FilterFieldKey, string> = {
+		brand: brandId,
+		category: categoryId,
+		supplier: supplierId,
+		health: healthScore,
+		'commercial-state': commercialState,
+		'sale-state': saleState,
+	}
+	const isFilterFieldVisible = (key: FilterFieldKey) =>
+		filtresVisibles.includes(key) || filterFieldValues[key] !== ''
+
+	// Le menu choisit les contrôles utiles. Retirer un contrôle retire aussi sa
+	// valeur : aucun filtre ne doit continuer à agir une fois devenu invisible.
+	const hideFilterField = (key: FilterFieldKey) => {
+		setFiltresVisibles((current) => current.filter((item) => item !== key))
+		switch (key) {
+			case 'brand':
+				setBrandId('')
+				break
+			case 'category':
+				setCategoryId('')
+				break
+			case 'supplier':
+				setSupplierId('')
+				break
+			case 'health':
+				setHealthScore('')
+				break
+			case 'commercial-state':
+				setCommercialState('')
+				break
+			case 'sale-state':
+				setSaleState('')
+				break
+		}
+		setPage(1)
+	}
+	const changeFilterFieldVisibility = (
+		key: FilterFieldKey,
+		visible: boolean,
+	) => {
+		if (!visible) {
+			hideFilterField(key)
+			return
+		}
+		setFiltresVisibles((current) =>
+			current.includes(key) ? current : [...current, key],
+		)
+	}
+
 	// Changer de page sans remonter laisserait l'œil au milieu d'un tableau dont
 	// les 25 lignes ont toutes changé. On remonte à la SENTINELLE, pas à 0 : le
 	// tableau se retrouve juste sous la barre, sans repasser par le titre.
@@ -580,7 +661,7 @@ export function ProductsPage() {
 	}
 
 	const filterHelp =
-		'Les filtres se cumulent. La santé mesure les six éléments nécessaires à une fiche prête pour le site. Les filtres « Sans… » repèrent les données manquantes ; état et opération commerciale sont deux axes distincts. Les tags retirent un critère précis.'
+		'Ajoutez uniquement les critères utiles : ils se cumulent. La santé mesure les six éléments nécessaires à une fiche prête pour le site. Les choix « Sans… » repèrent directement les données manquantes. Retirer un champ retire aussi sa valeur.'
 
 	const clearFilters = () => {
 		setBrandId('')
@@ -687,16 +768,87 @@ export function ProductsPage() {
 
 			<Card className='mb-4 border-sky-100 bg-gradient-to-r from-sky-50/90 via-background to-amber-50/70 shadow-sm'>
 				<CardContent className='p-3'>
-					<div className='mb-2 flex items-center justify-between gap-3'>
-						<div className='flex items-center gap-1.5 font-semibold text-sm'>
-							<SlidersHorizontal className='h-4 w-4 text-sky-700' />
-							<span>Filtres</span>
-							<HelpTooltip text={filterHelp} />
-							{filtresActifs && (
-								<span className='ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-primary-foreground text-xs tabular-nums'>
-									{filterCount}
-								</span>
-							)}
+					<div className='flex items-center justify-between gap-3'>
+						<div className='flex items-center gap-2'>
+							<div className='flex items-center gap-1.5 font-semibold text-sm'>
+								<SlidersHorizontal className='h-4 w-4 text-sky-700' />
+								<span>Filtres</span>
+								<HelpTooltip text={filterHelp} />
+								{filtresActifs && (
+									<span className='ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-primary-foreground text-xs tabular-nums'>
+										{filterCount}
+									</span>
+								)}
+							</div>
+
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button variant='outline' size='sm' className='bg-background'>
+										<Plus className='mr-1.5 h-4 w-4' />
+										Ajouter un filtre
+										<ChevronDown className='ml-1.5 h-3.5 w-3.5 opacity-60' />
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align='start' className='w-64'>
+									<DropdownMenuLabel>Critères détaillés</DropdownMenuLabel>
+									{FILTER_FIELD_OPTIONS.map((option) => (
+										<DropdownMenuCheckboxItem
+											key={option.key}
+											checked={isFilterFieldVisible(option.key)}
+											onCheckedChange={(checked) =>
+												changeFilterFieldVisibility(
+													option.key,
+													checked === true,
+												)
+											}
+										>
+											{option.label}
+										</DropdownMenuCheckboxItem>
+									))}
+									<DropdownMenuSeparator />
+									<DropdownMenuLabel>Données à compléter</DropdownMenuLabel>
+									<DropdownMenuCheckboxItem
+										checked={missingImage}
+										onCheckedChange={(checked) => {
+											setMissingImage(checked === true)
+											setPage(1)
+										}}
+									>
+										<ImageOff className='mr-2 text-amber-700' />
+										Sans image
+									</DropdownMenuCheckboxItem>
+									<DropdownMenuCheckboxItem
+										checked={missingDescription}
+										onCheckedChange={(checked) => {
+											setMissingDescription(checked === true)
+											setPage(1)
+										}}
+									>
+										<FileText className='mr-2 text-sky-700' />
+										Sans description
+									</DropdownMenuCheckboxItem>
+									<DropdownMenuCheckboxItem
+										checked={missingPurchasePrice}
+										onCheckedChange={(checked) => {
+											setMissingPurchasePrice(checked === true)
+											setPage(1)
+										}}
+									>
+										<CircleDollarSign className='mr-2 text-amber-700' />
+										Sans prix d’achat
+									</DropdownMenuCheckboxItem>
+									<DropdownMenuCheckboxItem
+										checked={emptyStock}
+										onCheckedChange={(checked) => {
+											setEmptyStock(checked === true)
+											setPage(1)
+										}}
+									>
+										<PackageX className='mr-2 text-rose-700' />
+										Stock vide ou à 0
+									</DropdownMenuCheckboxItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
 						</div>
 
 						{filtresActifs && (
@@ -707,127 +859,114 @@ export function ProductsPage() {
 						)}
 					</div>
 
-					<div className='flex flex-wrap items-end gap-2'>
-						<FilterField label='Marque'>
-							<FilterSelect
-								value={brandId}
-								onChange={changeFilter(setBrandId)}
-								vide='Toutes les marques'
-								noneLabel='Aucune marque'
-								recherche='Rechercher une marque…'
-								options={brands.data ?? []}
-							/>
-						</FilterField>
-						<FilterField label='Catégorie'>
-							<FilterSelect
-								value={categoryId}
-								onChange={changeFilter(setCategoryId)}
-								vide='Toutes les catégories'
-								noneLabel='Aucune catégorie'
-								recherche='Rechercher une catégorie…'
-								options={categoryOptions}
-								loading={categories.isLoading || catalogCounts.isLoading}
-							/>
-						</FilterField>
-						<FilterField label='Fournisseur'>
-							<FilterSelect
-								value={supplierId}
-								onChange={changeFilter(setSupplierId)}
-								vide='Tous les fournisseurs'
-								noneLabel='Aucun fournisseur'
-								recherche='Rechercher un fournisseur…'
-								options={suppliers.data ?? []}
-							/>
-						</FilterField>
-						<FilterField label='Santé'>
-							<ChoiceFilter
-								value={healthScore}
-								onChange={(value) => {
-									setHealthScore(value)
-									setPage(1)
-								}}
-								ariaLabel='Filtrer par santé'
-								emptyLabel='Toutes les notes'
-								options={HEALTH_OPTIONS}
-							/>
-						</FilterField>
-						<FilterField label='État commercial'>
-							<ChoiceFilter
-								value={commercialState}
-								onChange={(value) => {
-									setCommercialState(value as CatalogCommercialStateFilter | '')
-									setPage(1)
-								}}
-								ariaLabel='Filtrer par état commercial'
-								emptyLabel='Tous les états'
-								options={[
-									{ value: 'new', label: 'Neuf' },
-									{ value: 'used', label: 'Occasion' },
-									{ value: 'rental', label: 'Location' },
-								]}
-							/>
-						</FilterField>
-						<FilterField label='Opération commerciale'>
-							<ChoiceFilter
-								value={saleState}
-								onChange={(value) => {
-									setSaleState(value as CatalogSaleStateFilter | '')
-									setPage(1)
-								}}
-								ariaLabel='Filtrer par opération commerciale'
-								emptyLabel='Toutes les opérations'
-								options={[
-									{ value: 'regular', label: 'Plein tarif' },
-									{ value: 'sale', label: 'Soldé' },
-									{ value: 'promo', label: 'Promotion' },
-								]}
-							/>
-						</FilterField>
-
-						<FilterButton
-							active={missingImage}
-							onClick={() => {
-								setMissingImage((current) => !current)
-								setPage(1)
-							}}
-							className='h-10 text-amber-800'
-						>
-							<ImageOff className='mr-1.5 inline h-4 w-4' />
-							Sans image
-						</FilterButton>
-						<FilterButton
-							active={missingDescription}
-							onClick={() => {
-								setMissingDescription((current) => !current)
-								setPage(1)
-							}}
-							className='h-10 text-sky-800'
-						>
-							<FileText className='mr-1.5 inline h-4 w-4' />
-							Sans description
-						</FilterButton>
-						<FilterButton
-							active={missingPurchasePrice}
-							onClick={() => {
-								setMissingPurchasePrice((current) => !current)
-								setPage(1)
-							}}
-							className='h-10 text-amber-800'
-						>
-							<CircleDollarSign className='mr-1.5 inline h-4 w-4' />
-							Sans prix d’achat
-						</FilterButton>
-						<FilterButton
-							active={emptyStock}
-							onClick={() => {
-								setEmptyStock((current) => !current)
-								setPage(1)
-							}}
-							className='h-10 text-rose-800'
-						>
-							<PackageX className='mr-1.5 inline h-4 w-4' />
-							Stock vide ou à 0
-						</FilterButton>
+					<div className='mt-2 flex flex-wrap items-end gap-2 empty:hidden'>
+						{isFilterFieldVisible('brand') && (
+							<FilterField
+								label='Marque'
+								onRemove={() => hideFilterField('brand')}
+							>
+								<FilterSelect
+									value={brandId}
+									onChange={changeFilter(setBrandId)}
+									vide='Toutes les marques'
+									noneLabel='Aucune marque'
+									recherche='Rechercher une marque…'
+									options={brands.data ?? []}
+								/>
+							</FilterField>
+						)}
+						{isFilterFieldVisible('category') && (
+							<FilterField
+								label='Catégorie'
+								onRemove={() => hideFilterField('category')}
+							>
+								<FilterSelect
+									value={categoryId}
+									onChange={changeFilter(setCategoryId)}
+									vide='Toutes les catégories'
+									noneLabel='Aucune catégorie'
+									recherche='Rechercher une catégorie…'
+									options={categoryOptions}
+									loading={categories.isLoading || catalogCounts.isLoading}
+								/>
+							</FilterField>
+						)}
+						{isFilterFieldVisible('supplier') && (
+							<FilterField
+								label='Fournisseur'
+								onRemove={() => hideFilterField('supplier')}
+							>
+								<FilterSelect
+									value={supplierId}
+									onChange={changeFilter(setSupplierId)}
+									vide='Tous les fournisseurs'
+									noneLabel='Aucun fournisseur'
+									recherche='Rechercher un fournisseur…'
+									options={suppliers.data ?? []}
+								/>
+							</FilterField>
+						)}
+						{isFilterFieldVisible('health') && (
+							<FilterField
+								label='Santé'
+								onRemove={() => hideFilterField('health')}
+							>
+								<ChoiceFilter
+									value={healthScore}
+									onChange={(value) => {
+										setHealthScore(value)
+										setPage(1)
+									}}
+									ariaLabel='Filtrer par santé'
+									emptyLabel='Toutes les notes'
+									options={HEALTH_OPTIONS}
+								/>
+							</FilterField>
+						)}
+						{isFilterFieldVisible('commercial-state') && (
+							<FilterField
+								label='État commercial'
+								onRemove={() => hideFilterField('commercial-state')}
+							>
+								<ChoiceFilter
+									value={commercialState}
+									onChange={(value) => {
+										setCommercialState(
+											value as CatalogCommercialStateFilter | '',
+										)
+										setPage(1)
+									}}
+									ariaLabel='Filtrer par état commercial'
+									emptyLabel='Tous les états'
+									options={[
+										{ value: 'new', label: 'Neuf' },
+										{ value: 'used', label: 'Occasion' },
+										{ value: 'rental', label: 'Location' },
+									]}
+								/>
+							</FilterField>
+						)}
+						{isFilterFieldVisible('sale-state') && (
+							<FilterField
+								label='Opération commerciale'
+								onRemove={() => hideFilterField('sale-state')}
+							>
+								<ChoiceFilter
+									value={saleState}
+									onChange={(value) => {
+										setSaleState(value as CatalogSaleStateFilter | '')
+										setPage(1)
+									}}
+									ariaLabel='Filtrer par opération commerciale'
+									emptyLabel='Toutes les opérations'
+									options={[
+										{ value: 'regular', label: 'Plein tarif' },
+										{ value: 'sale', label: 'Soldé' },
+										{ value: 'promo', label: 'Promotion' },
+									]}
+								/>
+							</FilterField>
+						)}
 					</div>
 
 					{filtresActifs && (
@@ -1151,16 +1290,26 @@ function FilterButton({
 
 function FilterField({
 	label,
+	onRemove,
 	children,
 }: {
 	label: string
+	onRemove: () => void
 	children: React.ReactNode
 }) {
 	return (
 		<div className='min-w-0'>
-			<p className='mb-1 ml-0.5 font-medium text-muted-foreground text-xs'>
-				{label}
-			</p>
+			<div className='mb-1 flex items-center justify-between gap-2 px-0.5'>
+				<p className='font-medium text-muted-foreground text-xs'>{label}</p>
+				<button
+					type='button'
+					onClick={onRemove}
+					aria-label={`Masquer le filtre ${label}`}
+					className='rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+				>
+					<X className='h-3.5 w-3.5' />
+				</button>
+			</div>
 			{children}
 		</div>
 	)
