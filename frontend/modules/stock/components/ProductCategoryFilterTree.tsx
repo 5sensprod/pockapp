@@ -1,11 +1,13 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
 import type { CategoryNode } from '@/lib/queries/category-tree'
 import {
 	collectBranchIds,
 	toCategoryOptions,
 } from '@/lib/queries/category-tree'
 import { type CatalogCounts, countsOfCategory } from '@/lib/queries/products'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import {
 	Building2,
@@ -26,10 +28,14 @@ interface NamedOption {
 	name: string
 }
 
+interface SupplierOption extends NamedOption {
+	brands?: string[]
+}
+
 interface ProductCategoryFilterTreeProps {
 	categories: CategoryNode[]
-	brands: NamedOption[]
-	suppliers: NamedOption[]
+	brands: CatalogBrandShape[]
+	suppliers: SupplierOption[]
 	counts?: CatalogCounts
 	categoryValue: string
 	brandValue: string
@@ -39,6 +45,27 @@ interface ProductCategoryFilterTreeProps {
 	onBrandChange: (value: string) => void
 	onSupplierChange: (value: string) => void
 	loading?: Partial<Record<ExplorerView, boolean>>
+}
+
+function BrandLogo({ name, url }: { name: string; url: string | null }) {
+	const [brokenUrl, setBrokenUrl] = useState<string | null>(null)
+
+	return (
+		<div className='flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded bg-muted'>
+			{url && brokenUrl !== url ? (
+				<img
+					src={url}
+					alt={`Logo ${name}`}
+					loading='lazy'
+					decoding='async'
+					className='h-full w-full object-contain'
+					onError={() => setBrokenUrl(url)}
+				/>
+			) : (
+				<Building2 className='h-3.5 w-3.5 text-muted-foreground' />
+			)}
+		</div>
+	)
 }
 
 function normalizeSearch(value: string) {
@@ -67,9 +94,13 @@ export function ProductCategoryFilterTree({
 	onSupplierChange,
 	loading = {},
 }: ProductCategoryFilterTreeProps) {
+	const pb = usePocketBase()
 	const [view, setView] = useState<ExplorerView>('category')
 	const [search, setSearch] = useState('')
 	const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
+	const [expandedSupplierIds, setExpandedSupplierIds] = useState<Set<string>>(
+		() => new Set(),
+	)
 
 	// `total` est déjà remonté par le serveur. Les branches sans produit peuvent
 	// disparaître sans calculer ni parcourir les produits dans le navigateur.
@@ -162,12 +193,39 @@ export function ProductCategoryFilterTree({
 			),
 		[brands, normalizedSearch],
 	)
+	const brandById = useMemo(
+		() => new Map(brands.map((brand) => [brand.id, brand])),
+		[brands],
+	)
 	const filteredSuppliers = useMemo(
 		() =>
 			suppliers.filter((supplier) =>
 				normalizeSearch(supplier.name).includes(normalizedSearch),
 			),
 		[suppliers, normalizedSearch],
+	)
+	const supplierNamesByBrand = useMemo(() => {
+		const namesByBrand = new Map<string, string[]>()
+		for (const supplier of suppliers) {
+			for (const brandId of supplier.brands ?? []) {
+				const names = namesByBrand.get(brandId) ?? []
+				names.push(supplier.name)
+				namesByBrand.set(brandId, names)
+			}
+		}
+		return namesByBrand
+	}, [suppliers])
+	const brandNamesBySupplier = useMemo(
+		() =>
+			new Map(
+				suppliers.map((supplier) => [
+					supplier.id,
+					(supplier.brands ?? [])
+						.map((brandId) => brandById.get(brandId)?.name)
+						.filter((name): name is string => Boolean(name)),
+				]),
+			),
+		[suppliers, brandById],
 	)
 
 	const viewOptions = {
@@ -211,8 +269,16 @@ export function ProductCategoryFilterTree({
 		{ id: 'supplier', label: 'Fournisseurs', Icon: Truck },
 	] as const
 
-	const toggle = (id: string) => {
+	const toggleCategory = (id: string) => {
 		setExpandedIds((current) => {
+			const next = new Set(current)
+			if (next.has(id)) next.delete(id)
+			else next.add(id)
+			return next
+		})
+	}
+	const toggleSupplier = (id: string) => {
+		setExpandedSupplierIds((current) => {
 			const next = new Set(current)
 			if (next.has(id)) next.delete(id)
 			else next.add(id)
@@ -297,7 +363,9 @@ export function ProductCategoryFilterTree({
 								: 'hover:bg-accent',
 						)}
 					>
-						<CurrentViewIcon className='h-4 w-4 shrink-0' />
+						{view !== 'supplier' && (
+							<CurrentViewIcon className='h-4 w-4 shrink-0' />
+						)}
 						<span className='min-w-0 flex-1 truncate'>{currentView.all}</span>
 					</button>
 					<button
@@ -311,7 +379,9 @@ export function ProductCategoryFilterTree({
 								: 'text-muted-foreground hover:bg-accent hover:text-foreground',
 						)}
 					>
-						<CurrentViewIcon className='h-4 w-4 shrink-0 opacity-70' />
+						{view !== 'supplier' && (
+							<CurrentViewIcon className='h-4 w-4 shrink-0 opacity-70' />
+						)}
 						<span className='truncate'>{currentView.none}</span>
 					</button>
 
@@ -352,7 +422,7 @@ export function ProductCategoryFilterTree({
 										<button
 											type='button'
 											disabled={!hasChildren || normalizedSearch !== ''}
-											onClick={() => toggle(option.id)}
+											onClick={() => toggleCategory(option.id)}
 											aria-label={
 												expanded
 													? `Replier ${option.name}`
@@ -398,31 +468,94 @@ export function ProductCategoryFilterTree({
 						<nav aria-label={currentView.label}>
 							{flatOptions.map((option) => {
 								const selected = currentView.value === option.id
+								const brand =
+									view === 'brand' ? brandById.get(option.id) : undefined
+								const logoUrl = brand?.image
+									? pb.files.getUrl(brand, brand.image)
+									: null
+								const supplierNames =
+									view === 'brand'
+										? (supplierNamesByBrand.get(option.id) ?? [])
+										: []
+								const supplierBrandNames =
+									view === 'supplier'
+										? (brandNamesBySupplier.get(option.id) ?? [])
+										: []
+								const supplierExpanded =
+									view === 'supplier' && expandedSupplierIds.has(option.id)
 								const productCount =
 									view === 'brand' ? counts?.parMarque[option.id] : undefined
 								return (
-									<button
-										key={option.id}
-										type='button'
-										aria-pressed={selected}
-										onClick={() => currentView.onChange(option.id)}
-										className={cn(
-											'mb-0.5 flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-											selected
-												? 'bg-primary text-primary-foreground'
-												: 'hover:bg-accent',
+									<div key={option.id} className='mb-0.5'>
+										<div
+											className={cn(
+												'flex min-w-0 items-center rounded-md transition-colors',
+												selected
+													? 'bg-primary text-primary-foreground'
+													: 'hover:bg-accent',
+											)}
+										>
+											{view === 'supplier' && (
+												<button
+													type='button'
+													disabled={supplierBrandNames.length === 0}
+													onClick={() => toggleSupplier(option.id)}
+													aria-label={
+														supplierExpanded
+															? `Replier ${option.name}`
+															: `Déplier ${option.name}`
+													}
+													aria-expanded={
+														supplierBrandNames.length > 0
+															? supplierExpanded
+															: undefined
+													}
+													className={cn(
+														'm-0.5 rounded p-1 hover:bg-background/20',
+														supplierBrandNames.length === 0 && 'invisible',
+													)}
+												>
+													{supplierExpanded ? (
+														<ChevronDown className='h-3.5 w-3.5' />
+													) : (
+														<ChevronRight className='h-3.5 w-3.5' />
+													)}
+												</button>
+											)}
+											<button
+												type='button'
+												aria-pressed={selected}
+												onClick={() => currentView.onChange(option.id)}
+												className='flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm'
+											>
+												{brand && <BrandLogo name={brand.name} url={logoUrl} />}
+												<span className='min-w-0 flex-1'>
+													<span className='block truncate'>{option.name}</span>
+													{supplierNames.length > 0 && (
+														<span
+															className='flex min-w-0 items-center gap-1 text-[11px] text-orange-600'
+															title={supplierNames.join(', ')}
+														>
+															<Truck className='h-3 w-3 shrink-0' />
+															<span className='truncate'>
+																{supplierNames.join(', ')}
+															</span>
+														</span>
+													)}
+												</span>
+												{productCount !== undefined && (
+													<span className='shrink-0 text-[11px] tabular-nums opacity-60'>
+														{productCount}
+													</span>
+												)}
+											</button>
+										</div>
+										{supplierExpanded && (
+											<p className='px-8 py-1.5 text-muted-foreground text-xs leading-relaxed'>
+												{supplierBrandNames.join(', ')}
+											</p>
 										)}
-									>
-										<CurrentViewIcon className='h-3.5 w-3.5 shrink-0 opacity-70' />
-										<span className='min-w-0 flex-1 truncate'>
-											{option.name}
-										</span>
-										{productCount !== undefined && (
-											<span className='shrink-0 text-[11px] tabular-nums opacity-60'>
-												{productCount}
-											</span>
-										)}
-									</button>
+									</div>
 								)
 							})}
 						</nav>
