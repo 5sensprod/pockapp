@@ -448,10 +448,13 @@ export function ProductsPage() {
 	if (brandId) {
 		activeFilterTags.push({
 			key: 'brand',
+			// Sans préfixe, comme partout ailleurs dans cette barre : le tag est
+			// déjà dans la ligne des filtres actifs, « Marque · » ne faisait que
+			// manger la place du nom — que la troncature reprenait ensuite.
 			label:
 				brandId === NO_RELATION_FILTER
 					? 'Aucune marque'
-					: `Marque · ${brandById.get(brandId) ?? 'Sélectionnée'}`,
+					: (brandById.get(brandId) ?? 'Marque sélectionnée'),
 			clear: () => {
 				setBrandId('')
 				setPage(1)
@@ -464,7 +467,7 @@ export function ProductsPage() {
 			label:
 				categoryId === NO_RELATION_FILTER
 					? 'Aucune catégorie'
-					: `Catégorie · ${categoryById.get(categoryId) ?? 'Sélectionnée'}`,
+					: (categoryById.get(categoryId) ?? 'Catégorie sélectionnée'),
 			clear: () => {
 				setCategoryId('')
 				setPage(1)
@@ -477,7 +480,7 @@ export function ProductsPage() {
 			label:
 				supplierId === NO_RELATION_FILTER
 					? 'Aucun fournisseur'
-					: `Fournisseur · ${supplierById.get(supplierId) ?? 'Sélectionné'}`,
+					: (supplierById.get(supplierId) ?? 'Fournisseur sélectionné'),
 			clear: () => {
 				setSupplierId('')
 				setPage(1)
@@ -527,10 +530,6 @@ export function ProductsPage() {
 	if (commercialState) {
 		activeFilterTags.push({
 			key: 'commercial-state',
-			// Sans préfixe : « Neuf » ne se confond avec rien. Marque, catégorie
-			// et fournisseur gardent le leur — une marque s'appelle BOSTON et une
-			// catégorie « Location », le mot seul ne dirait pas de quel filtre il
-			// s'agit.
 			label: COMMERCIAL_STATE_LABELS[commercialState],
 			clear: () => {
 				setCommercialState('')
@@ -638,38 +637,37 @@ export function ProductsPage() {
 								Filtrer les produits
 							</div>
 							<div className='space-y-3 p-2'>
-								<div className='space-y-3 lg:hidden'>
-									<CompactFilterField label='Catégorie'>
-										<FilterSelect
-											value={categoryId}
-											onChange={changeFilter(setCategoryId)}
-											vide='Toutes les catégories'
-											noneLabel='Aucune catégorie'
-											recherche='Rechercher une catégorie…'
-											options={categoryOptions}
-											loading={categories.isLoading || catalogCounts.isLoading}
-										/>
-									</CompactFilterField>
-									<CompactFilterField label='Marque'>
-										<FilterSelect
-											value={brandId}
-											onChange={changeFilter(setBrandId)}
-											vide='Toutes les marques'
-											noneLabel='Aucune marque'
-											recherche='Rechercher une marque…'
-											options={brands.data ?? []}
-										/>
-									</CompactFilterField>
-									<CompactFilterField label='Fournisseur'>
-										<FilterSelect
-											value={supplierId}
-											onChange={changeFilter(setSupplierId)}
-											vide='Tous les fournisseurs'
-											noneLabel='Aucun fournisseur'
-											recherche='Rechercher un fournisseur…'
-											options={suppliers.data ?? []}
-										/>
-									</CompactFilterField>
+								{/* Le repli des petites largeurs, où l'arbre latéral n'est
+								    pas rendu. Sans titres : « Toutes les catégories » est
+								    déjà le nom du champ ET sa valeur, un « Catégorie »
+								    au-dessus ne disait rien de plus et ajoutait trois
+								    lignes à un panneau qui en compte déjà dix. */}
+								<div className='space-y-2 lg:hidden'>
+									<FilterSelect
+										value={categoryId}
+										onChange={changeFilter(setCategoryId)}
+										vide='Toutes les catégories'
+										noneLabel='Aucune catégorie'
+										recherche='Rechercher une catégorie…'
+										options={categoryOptions}
+										loading={categories.isLoading || catalogCounts.isLoading}
+									/>
+									<FilterSelect
+										value={brandId}
+										onChange={changeFilter(setBrandId)}
+										vide='Toutes les marques'
+										noneLabel='Aucune marque'
+										recherche='Rechercher une marque…'
+										options={brands.data ?? []}
+									/>
+									<FilterSelect
+										value={supplierId}
+										onChange={changeFilter(setSupplierId)}
+										vide='Tous les fournisseurs'
+										noneLabel='Aucun fournisseur'
+										recherche='Rechercher un fournisseur…'
+										options={suppliers.data ?? []}
+									/>
 								</div>
 								{/* Ni titre ni « Tous les états » : trois mots posés côte à
 								    côte disent déjà de quoi il s'agit, et le libellé vide
@@ -797,7 +795,7 @@ export function ProductsPage() {
 					</Button>
 				</div>
 
-				<div className='mt-1.5 flex min-h-6 min-w-0 items-start gap-2'>
+				<div className='mt-2 flex min-h-7 min-w-0 items-start gap-2'>
 					<div className='flex w-36 shrink-0 items-center gap-2 font-medium text-sm sm:w-48 lg:w-56 xl:w-64'>
 						<span className='h-2 w-2 shrink-0 rounded-full bg-emerald-600' />
 						<span className='truncate tabular-nums'>
@@ -815,14 +813,16 @@ export function ProductsPage() {
 									key={filter.key}
 									onClick={filter.clear}
 									aria-label={`Retirer le filtre ${filter.label}`}
-									// Le bleu nuit du statut actif : dans cet écran, « ceci
-									// est retenu » se dit d'une seule façon. Les six
-									// pastels d'avant classaient les filtres par famille,
-									// une information que personne ne cherchait.
-									className='inline-flex h-6 max-w-56 items-center gap-1 rounded-md bg-primary px-2 font-medium text-[11px] text-primary-foreground shadow-sm transition-colors hover:bg-primary/90'
+									// LE MAUVE DU BOUTON « FILTRES », À L'IDENTIQUE. Un tag n'est
+									// pas une action : il rappelle ce qui a été posé depuis ce
+									// bouton, et porter sa couleur dit d'où il vient sans un mot —
+									// ce que faisait le préfixe « Catégorie · », en plus long. Le
+									// bleu nuit plein d'avant annonçait au contraire une action, et
+									// tirait l'œil hors du tableau, qui est ce qu'on regarde.
+									className='inline-flex h-7 max-w-64 items-center gap-1.5 rounded-md border border-input bg-violet-50/80 px-2.5 font-medium text-primary text-xs shadow-sm transition-colors hover:bg-violet-100 dark:bg-violet-950/35 dark:text-foreground dark:hover:bg-violet-900/55'
 								>
 									<span className='truncate'>{filter.label}</span>
-									<X className='h-3 w-3 shrink-0' />
+									<X className='h-3.5 w-3.5 shrink-0 opacity-70' />
 								</button>
 							))}
 						</div>
@@ -1001,23 +1001,6 @@ function StatusChip({
 		>
 			{children}
 		</button>
-	)
-}
-
-function CompactFilterField({
-	label,
-	children,
-}: {
-	label: string
-	children: React.ReactNode
-}) {
-	return (
-		<div className='space-y-1'>
-			<p className='px-0.5 font-medium text-muted-foreground text-xs'>
-				{label}
-			</p>
-			{children}
-		</div>
 	)
 }
 
