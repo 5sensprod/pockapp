@@ -13,7 +13,12 @@ import { queryOptions, useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { usePocketBase } from '@/lib/use-pocketbase'
-import type { LabelPageSize } from './render-product-label'
+
+/** La zone imprimable rendue par le pilote, en millimètres. */
+export type LabelPageSize = {
+	widthMm: number
+	heightMm: number
+}
 
 const STORAGE_KEY = 'label_printer_name'
 
@@ -41,9 +46,10 @@ export const labelKeys = {
 		[...labelKeys.all, 'page-size', printer, lengthMm] as const,
 }
 
-/** La longueur de coupe par défaut, en millimètres. Le rouleau est CONTINU :
- *  rien n'impose les 90 mm du réglage d'usine du pilote, et une étiquette de
- *  prix n'en demande pas la moitié. */
+/** UNE longueur de référence, et rien de plus : elle sert à demander au pilote
+ *  sa zone imprimable, d'où l'on déduit la largeur utile du rouleau et la
+ *  marge d'entraînement qu'il retire. La longueur réellement imprimée, elle,
+ *  est calculée à partir du contenu (`label-layout.ts`). */
 export const DEFAULT_LABEL_LENGTH_MM = 50
 
 type PocketBaseClient = ReturnType<typeof usePocketBase>
