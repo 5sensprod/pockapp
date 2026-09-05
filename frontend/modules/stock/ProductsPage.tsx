@@ -59,7 +59,16 @@ import {
 	SlidersHorizontal,
 	X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+	type CSSProperties,
+	type KeyboardEvent as ReactKeyboardEvent,
+	type PointerEvent as ReactPointerEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react'
 
 import { useEtatPersistant } from '@/lib/hooks/useEtatPersistant'
 
@@ -74,6 +83,11 @@ import { ProductTable } from './components/ProductTable'
 
 const PER_PAGE = 25
 const NO_RELATION_FILTER = '__none__'
+const EXPLORER_WIDTH_DEFAULT = 272
+const EXPLORER_WIDTH_MIN = 220
+const EXPLORER_WIDTH_MAX = 480
+const TABLE_WIDTH_MIN = 480
+const RESIZE_HANDLE_WIDTH = 16
 const COMMERCIAL_STATE_LABELS: Record<CatalogCommercialStateFilter, string> = {
 	new: 'Neuf',
 	used: 'Occasion',
@@ -104,6 +118,11 @@ const estChaine = (valeur: unknown) => typeof valeur === 'string'
 const estBooleen = (valeur: unknown) => typeof valeur === 'boolean'
 const estPageValide = (valeur: unknown) =>
 	typeof valeur === 'number' && Number.isInteger(valeur) && valeur >= 1
+const estLargeurExplorateurValide = (valeur: unknown) =>
+	typeof valeur === 'number' &&
+	Number.isFinite(valeur) &&
+	valeur >= EXPLORER_WIDTH_MIN &&
+	valeur <= EXPLORER_WIDTH_MAX
 const estStatutValide = (valeur: unknown) =>
 	valeur === undefined || valeur === 'draft' || valeur === 'published'
 const estEtatCommercialValide = (valeur: unknown) =>
@@ -196,6 +215,11 @@ export function ProductsPage() {
 		[{ id: 'created', desc: true }],
 		estTriValide,
 	)
+	const [explorerWidth, setExplorerWidth] = useEtatPersistant(
+		'stock-produits-largeur-explorateur',
+		EXPLORER_WIDTH_DEFAULT,
+		estLargeurExplorateurValide,
+	)
 	const [panneauOuvert, setPanneauOuvert] = useState(false)
 	const [dialogOpen, setDialogOpen] = useState(false)
 	/** La fiche dont on demande la suppression. `null` = aucune confirmation
@@ -205,9 +229,64 @@ export function ProductsPage() {
 	const [produitASupprimer, setProduitASupprimer] =
 		useState<ProduitASupprimer | null>(null)
 	const previousCompanyId = useRef(activeCompanyId)
+	const catalogGridRef = useRef<HTMLDivElement | null>(null)
+	const resizeStartRef = useRef<{
+		pointerId: number
+		startX: number
+		startWidth: number
+		maxWidth: number
+	} | null>(null)
 
 	const openCreate = () => {
 		setDialogOpen(true)
+	}
+
+	const explorerMaxWidth = () => {
+		const gridWidth = catalogGridRef.current?.clientWidth
+		if (!gridWidth) return EXPLORER_WIDTH_MAX
+		return Math.max(
+			EXPLORER_WIDTH_MIN,
+			Math.min(
+				EXPLORER_WIDTH_MAX,
+				gridWidth - RESIZE_HANDLE_WIDTH - TABLE_WIDTH_MIN,
+			),
+		)
+	}
+	const clampExplorerWidth = (width: number, maxWidth = explorerMaxWidth()) =>
+		Math.round(Math.max(EXPLORER_WIDTH_MIN, Math.min(maxWidth, width)))
+	const startExplorerResize = (event: ReactPointerEvent<HTMLHRElement>) => {
+		if (event.button !== 0) return
+		event.preventDefault()
+		event.currentTarget.setPointerCapture(event.pointerId)
+		resizeStartRef.current = {
+			pointerId: event.pointerId,
+			startX: event.clientX,
+			startWidth: explorerWidth,
+			maxWidth: explorerMaxWidth(),
+		}
+	}
+	const resizeExplorer = (event: ReactPointerEvent<HTMLHRElement>) => {
+		const start = resizeStartRef.current
+		if (!start || start.pointerId !== event.pointerId) return
+		setExplorerWidth(
+			clampExplorerWidth(
+				start.startWidth + event.clientX - start.startX,
+				start.maxWidth,
+			),
+		)
+	}
+	const stopExplorerResize = (event: ReactPointerEvent<HTMLHRElement>) => {
+		if (resizeStartRef.current?.pointerId !== event.pointerId) return
+		resizeStartRef.current = null
+	}
+	const resizeExplorerWithKeyboard = (
+		event: ReactKeyboardEvent<HTMLHRElement>,
+	) => {
+		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+		event.preventDefault()
+		setExplorerWidth((current) =>
+			clampExplorerWidth(current + (event.key === 'ArrowLeft' ? -16 : 16)),
+		)
 	}
 
 	// La recherche part au serveur : la lancer à chaque frappe ferait 2999
@@ -834,7 +913,15 @@ export function ProductsPage() {
 			    ligne se dimensionnerait sur son contenu, les deux panneaux
 			    déborderaient du cadre — qui est en `overflow-hidden` — et le bas de
 			    la table serait coupé au lieu de défiler. */}
-			<div className='grid min-h-0 items-start gap-3 p-3 lg:flex-1 lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch'>
+			<div
+				ref={catalogGridRef}
+				className='grid min-h-0 items-start gap-3 p-3 lg:flex-1 lg:grid-cols-[var(--catalog-explorer-width)_1rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch lg:gap-0'
+				style={
+					{
+						'--catalog-explorer-width': `${explorerWidth}px`,
+					} as CSSProperties
+				}
+			>
 				<div className='hidden lg:contents'>
 					<ProductCategoryFilterTree
 						categories={categories.data ?? []}
@@ -864,6 +951,23 @@ export function ProductsPage() {
 						}}
 					/>
 				</div>
+
+				<hr
+					aria-orientation='vertical'
+					aria-label='Redimensionner l’explorateur du catalogue'
+					aria-valuemin={EXPLORER_WIDTH_MIN}
+					aria-valuemax={EXPLORER_WIDTH_MAX}
+					aria-valuenow={explorerWidth}
+					tabIndex={0}
+					title='Faire glisser pour modifier la largeur · double-clic pour réinitialiser'
+					onPointerDown={startExplorerResize}
+					onPointerMove={resizeExplorer}
+					onPointerUp={stopExplorerResize}
+					onPointerCancel={stopExplorerResize}
+					onDoubleClick={() => setExplorerWidth(EXPLORER_WIDTH_DEFAULT)}
+					onKeyDown={resizeExplorerWithKeyboard}
+					className='relative m-0 hidden h-auto cursor-col-resize touch-none border-0 bg-transparent after:absolute after:inset-y-2 after:left-1/2 after:w-px after:-translate-x-1/2 after:rounded-full after:bg-border after:transition-[width,background-color] hover:after:w-1 hover:after:bg-primary/35 active:after:w-1 active:after:bg-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 lg:block'
+				/>
 
 				<Card className='flex min-h-0 min-w-0 flex-col overflow-hidden lg:h-full'>
 					<CardContent
