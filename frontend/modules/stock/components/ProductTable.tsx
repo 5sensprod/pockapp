@@ -77,16 +77,24 @@ interface ProductTableProps {
 
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
 	dateStyle: 'short',
-	timeStyle: 'short',
+})
+const timeFormatter = new Intl.DateTimeFormat('fr-FR', {
+	hour: '2-digit',
+	minute: '2-digit',
 })
 
 // Ces colonnes portent des valeurs très courtes. Leur padding générique de
 // 16 px de chaque côté leur donnait plus de place qu'à leur contenu, au moment
 // où l'arbre des catégories réduit justement la largeur disponible au tableau.
 const COMPACT_COLUMN_CLASS: Record<string, string> = {
+	image: 'w-14 min-w-14 max-w-14 px-1.5 py-2',
+	name: 'w-52 min-w-44 max-w-52 px-2',
+	price_ttc: 'w-px whitespace-nowrap px-2',
 	stock: 'w-px whitespace-nowrap px-2',
+	created: 'w-px whitespace-nowrap px-2',
 	healthScore: 'w-px whitespace-nowrap px-1.5',
 	status: 'w-px whitespace-nowrap px-2',
+	actions: 'w-px whitespace-nowrap px-1',
 }
 
 export function ProductTable({
@@ -118,7 +126,7 @@ export function ProductTable({
 				const imageUrl = row.original.imageUrl
 
 				return (
-					<div className='w-12 h-12 rounded-md overflow-hidden bg-muted flex items-center justify-center flex-shrink-0'>
+					<div className='flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted'>
 						{imageUrl ? (
 							<img
 								src={imageUrl}
@@ -167,48 +175,53 @@ export function ProductTable({
 				const hasBrandOrSupplier = brandName || supplierName
 
 				return (
-					<div className='space-y-0.5'>
-						<div className='font-medium'>{designation}</div>
+					<div className='min-w-0 space-y-0.5'>
+						<div
+							className='line-clamp-2 whitespace-normal break-words font-medium text-sm leading-snug lg:text-[13px] xl:text-sm'
+							title={designation}
+						>
+							{designation}
+						</div>
 
 						{hasCategories && (
-							<div className='flex items-center gap-1 text-xs text-muted-foreground'>
+							<div className='flex min-w-0 items-center gap-1 text-xs text-muted-foreground'>
 								<Tags className='h-3 w-3 flex-shrink-0' />
-								<span>{categoryPaths.join(' • ')}</span>
+								<span className='truncate' title={categoryPaths.join(' • ')}>
+									{categoryPaths.join(' • ')}
+								</span>
 							</div>
 						)}
 
 						{hasBrandOrSupplier && (
-							<div className='flex items-center gap-3 text-xs'>
+							<div className='flex min-w-0 items-center gap-3 overflow-hidden text-xs'>
 								{brandName && (
-									<div className='flex items-center gap-1 text-blue-600'>
-										<Building2 className='h-3 w-3' />
-										<span>{brandName}</span>
+									<div className='flex min-w-0 items-center gap-1 text-blue-600'>
+										<Building2 className='h-3 w-3 shrink-0' />
+										<span className='truncate' title={brandName}>
+											{brandName}
+										</span>
 									</div>
 								)}
 								{supplierName && (
-									<div className='flex items-center gap-1 text-orange-600'>
-										<Truck className='h-3 w-3' />
-										<span>{supplierName}</span>
+									<div className='flex min-w-0 items-center gap-1 text-orange-600'>
+										<Truck className='h-3 w-3 shrink-0' />
+										<span className='truncate' title={supplierName}>
+											{supplierName}
+										</span>
 									</div>
 								)}
 							</div>
 						)}
+
+						{product.barcode && (
+							<div className='flex min-w-0 items-center gap-1 font-mono text-[11px] text-muted-foreground'>
+								<Barcode className='h-3 w-3 shrink-0' />
+								<span className='truncate' title={product.barcode}>
+									{product.barcode}
+								</span>
+							</div>
+						)}
 					</div>
-				)
-			},
-		},
-		{
-			accessorKey: 'barcode',
-			header: 'Code-barres',
-			cell: ({ row }) => {
-				const barcode = row.getValue<string>('barcode')
-				return barcode ? (
-					<span className='flex items-center gap-1 font-mono text-sm'>
-						<Barcode className='h-3 w-3' />
-						{barcode}
-					</span>
-				) : (
-					<span className='text-muted-foreground'>-</span>
 				)
 			},
 		},
@@ -256,7 +269,11 @@ export function ProductTable({
 		},
 		{
 			accessorKey: 'stock',
-			header: () => <span className='text-xs'>Stock</span>,
+			header: () => (
+				<span className='inline-flex h-8 items-center text-xs leading-none'>
+					Stock
+				</span>
+			),
 			cell: ({ row }) => {
 				const stock = row.getValue<number | null>('stock') ?? undefined
 
@@ -281,10 +298,11 @@ export function ProductTable({
 			header: ({ column }) => (
 				<Button
 					variant='ghost'
+					className='h-8 justify-start px-0 text-xs leading-none'
 					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 				>
 					Ajouté le
-					<ArrowUpDown className='ml-2 h-4 w-4' />
+					<ArrowUpDown className='ml-1 h-3 w-3' />
 				</Button>
 			),
 			cell: ({ row }) => {
@@ -295,9 +313,15 @@ export function ProductTable({
 				return Number.isNaN(date.getTime()) ? (
 					<span className='text-muted-foreground'>-</span>
 				) : (
-					<span className='whitespace-nowrap text-sm'>
-						{dateFormatter.format(date)}
-					</span>
+					<div
+						className='whitespace-nowrap text-xs leading-tight tabular-nums'
+						title={`${dateFormatter.format(date)} à ${timeFormatter.format(date)}`}
+					>
+						<div>{dateFormatter.format(date)}</div>
+						<div className='mt-0.5 text-[11px] text-muted-foreground'>
+							{timeFormatter.format(date)}
+						</div>
+					</div>
 				)
 			},
 		},
@@ -306,7 +330,7 @@ export function ProductTable({
 			header: ({ column }) => (
 				<Button
 					variant='ghost'
-					className='h-8 px-0 text-xs'
+					className='h-8 justify-start px-0 text-xs leading-none'
 					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 				>
 					Santé
@@ -340,7 +364,11 @@ export function ProductTable({
 		},
 		{
 			accessorKey: 'status',
-			header: () => <span className='text-xs'>Statut</span>,
+			header: () => (
+				<span className='inline-flex h-8 items-center text-xs leading-none'>
+					Statut
+				</span>
+			),
 			cell: ({ row }) => {
 				// L'intention de publication du catalogue en ligne — pas un « actif /
 				// inactif », qui n'existe plus au schéma depuis `catalog_v2`.

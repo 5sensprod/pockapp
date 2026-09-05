@@ -8,6 +8,7 @@ import {
 import { type CatalogCounts, countsOfCategory } from '@/lib/queries/products'
 import { cn } from '@/lib/utils'
 import {
+	Building2,
 	ChevronDown,
 	ChevronRight,
 	Folder,
@@ -15,17 +16,31 @@ import {
 	FolderTree,
 	Loader2,
 	Search,
+	Truck,
 	X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+type ExplorerView = 'category' | 'brand' | 'supplier'
+
+interface NamedOption {
+	id: string
+	name: string
+}
+
 interface ProductCategoryFilterTreeProps {
 	categories: CategoryNode[]
+	brands: NamedOption[]
+	suppliers: NamedOption[]
 	counts?: CatalogCounts
-	value: string
+	categoryValue: string
+	brandValue: string
+	supplierValue: string
 	noneValue: string
-	onChange: (value: string) => void
-	loading?: boolean
+	onCategoryChange: (value: string) => void
+	onBrandChange: (value: string) => void
+	onSupplierChange: (value: string) => void
+	loading?: Partial<Record<ExplorerView, boolean>>
 }
 
 function normalizeSearch(value: string) {
@@ -42,12 +57,19 @@ function normalizeSearch(value: string) {
  */
 export function ProductCategoryFilterTree({
 	categories,
+	brands,
+	suppliers,
 	counts,
-	value,
+	categoryValue,
+	brandValue,
+	supplierValue,
 	noneValue,
-	onChange,
-	loading = false,
+	onCategoryChange,
+	onBrandChange,
+	onSupplierChange,
+	loading = {},
 }: ProductCategoryFilterTreeProps) {
+	const [view, setView] = useState<ExplorerView>('category')
 	const [search, setSearch] = useState('')
 	const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
 
@@ -85,11 +107,11 @@ export function ProductCategoryFilterTree({
 	// Une sélection restaurée doit être visible immédiatement, même si ses
 	// parents étaient repliés avant le démontage de la page.
 	useEffect(() => {
-		if (!value || value === noneValue) return
+		if (!categoryValue || categoryValue === noneValue) return
 		setExpandedIds((current) => {
 			const next = new Set(current)
 			const visited = new Set<string>()
-			let parent = parentById.get(value) || ''
+			let parent = parentById.get(categoryValue) || ''
 			while (parent && !visited.has(parent)) {
 				visited.add(parent)
 				next.add(parent)
@@ -97,11 +119,11 @@ export function ProductCategoryFilterTree({
 			}
 			return next
 		})
-	}, [noneValue, parentById, value])
+	}, [categoryValue, noneValue, parentById])
 
 	const normalizedSearch = normalizeSearch(search.trim())
 	const searchedIds = useMemo(() => {
-		if (!normalizedSearch) return null
+		if (view !== 'category' || !normalizedSearch) return null
 		const included = new Set<string>()
 		for (const category of categories) {
 			if (!normalizeSearch(category.name).includes(normalizedSearch)) continue
@@ -119,7 +141,7 @@ export function ProductCategoryFilterTree({
 			}
 		}
 		return included
-	}, [categories, normalizedSearch, parentById])
+	}, [categories, normalizedSearch, parentById, view])
 
 	const visibleOptions = useMemo(() => {
 		if (searchedIds)
@@ -135,6 +157,61 @@ export function ProductCategoryFilterTree({
 			return true
 		})
 	}, [expandedIds, optionIds, options, parentById, searchedIds])
+	const filteredBrands = useMemo(
+		() =>
+			brands.filter((brand) =>
+				normalizeSearch(brand.name).includes(normalizedSearch),
+			),
+		[brands, normalizedSearch],
+	)
+	const filteredSuppliers = useMemo(
+		() =>
+			suppliers.filter((supplier) =>
+				normalizeSearch(supplier.name).includes(normalizedSearch),
+			),
+		[suppliers, normalizedSearch],
+	)
+
+	const viewOptions = {
+		category: {
+			label: 'Catégories',
+			search: 'Chercher une catégorie…',
+			all: 'Toutes les catégories',
+			none: 'Sans catégorie',
+			count: options.length,
+			value: categoryValue,
+			onChange: onCategoryChange,
+			Icon: FolderTree,
+		},
+		brand: {
+			label: 'Marques',
+			search: 'Chercher une marque…',
+			all: 'Toutes les marques',
+			none: 'Sans marque',
+			count: brands.length,
+			value: brandValue,
+			onChange: onBrandChange,
+			Icon: Building2,
+		},
+		supplier: {
+			label: 'Fournisseurs',
+			search: 'Chercher un fournisseur…',
+			all: 'Tous les fournisseurs',
+			none: 'Sans fournisseur',
+			count: suppliers.length,
+			value: supplierValue,
+			onChange: onSupplierChange,
+			Icon: Truck,
+		},
+	} as const
+	const currentView = viewOptions[view]
+	const CurrentViewIcon = currentView.Icon
+	const flatOptions = view === 'brand' ? filteredBrands : filteredSuppliers
+	const explorerTabs = [
+		{ id: 'category', label: 'Catégories', Icon: FolderTree },
+		{ id: 'brand', label: 'Marques', Icon: Building2 },
+		{ id: 'supplier', label: 'Fournisseurs', Icon: Truck },
+	] as const
 
 	const toggle = (id: string) => {
 		setExpandedIds((current) => {
@@ -146,16 +223,40 @@ export function ProductCategoryFilterTree({
 	}
 
 	return (
-		<Card className='overflow-hidden xl:sticky xl:top-[calc(var(--header-h)+4.5rem)]'>
+		<Card className='overflow-hidden lg:sticky lg:top-[calc(var(--header-h)+4.5rem)]'>
 			<CardContent className='p-0'>
 				<div className='border-b bg-muted/30 p-3'>
 					<div className='mb-2 flex items-center justify-between gap-2'>
-						<div className='flex items-center gap-2'>
-							<FolderTree className='h-4 w-4 text-sky-700' />
-							<h2 className='font-semibold text-sm'>Catégories</h2>
+						<div
+							role='tablist'
+							aria-label='Type de classement'
+							className='flex items-center gap-1 rounded-lg border bg-background p-0.5'
+						>
+							{explorerTabs.map(({ id, label, Icon }) => (
+								<button
+									key={id}
+									type='button'
+									role='tab'
+									aria-label={label}
+									aria-selected={view === id}
+									title={label}
+									onClick={() => {
+										setView(id)
+										setSearch('')
+									}}
+									className={cn(
+										'rounded-md p-1.5 transition-colors',
+										view === id
+											? 'bg-primary text-primary-foreground shadow-sm'
+											: 'text-muted-foreground hover:bg-accent hover:text-foreground',
+									)}
+								>
+									<Icon className='h-4 w-4' />
+								</button>
+							))}
 						</div>
 						<span className='text-muted-foreground text-xs tabular-nums'>
-							{options.length}
+							{currentView.count}
 						</span>
 					</div>
 					<div className='relative'>
@@ -163,15 +264,15 @@ export function ProductCategoryFilterTree({
 						<Input
 							value={search}
 							onChange={(event) => setSearch(event.target.value)}
-							placeholder='Chercher une catégorie…'
-							aria-label='Chercher dans les catégories'
+							placeholder={currentView.search}
+							aria-label={`Chercher dans les ${currentView.label.toLocaleLowerCase('fr')}`}
 							className='h-8 pr-8 pl-8 text-sm'
 						/>
 						{search && (
 							<button
 								type='button'
 								onClick={() => setSearch('')}
-								aria-label='Effacer la recherche de catégorie'
+								aria-label='Effacer la recherche'
 								className='-translate-y-1/2 absolute top-1/2 right-2 rounded-sm text-muted-foreground hover:text-foreground'
 							>
 								<X className='h-3.5 w-3.5' />
@@ -180,60 +281,55 @@ export function ProductCategoryFilterTree({
 					</div>
 				</div>
 
-				<div className='max-h-72 overflow-y-auto p-2 xl:max-h-[calc(100vh-var(--header-h)-9.5rem)]'>
+				<div className='max-h-72 overflow-y-auto p-2 lg:max-h-[calc(100vh-var(--header-h)-9.5rem)]'>
 					<button
 						type='button'
-						onClick={() => onChange('')}
-						aria-pressed={value === ''}
+						onClick={() => currentView.onChange('')}
+						aria-pressed={currentView.value === ''}
 						className={cn(
 							'mb-0.5 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left font-medium text-sm transition-colors',
-							value === ''
+							currentView.value === ''
 								? 'bg-primary text-primary-foreground'
 								: 'hover:bg-accent',
 						)}
 					>
-						<FolderTree className='h-4 w-4 shrink-0' />
-						<span className='min-w-0 flex-1 truncate'>Tous les produits</span>
-						{counts && (
-							<span className='text-xs tabular-nums opacity-70'>
-								{counts.totalProduits}
-							</span>
-						)}
+						<CurrentViewIcon className='h-4 w-4 shrink-0' />
+						<span className='min-w-0 flex-1 truncate'>{currentView.all}</span>
 					</button>
 					<button
 						type='button'
-						onClick={() => onChange(noneValue)}
-						aria-pressed={value === noneValue}
+						onClick={() => currentView.onChange(noneValue)}
+						aria-pressed={currentView.value === noneValue}
 						className={cn(
 							'mb-1.5 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors',
-							value === noneValue
+							currentView.value === noneValue
 								? 'bg-primary text-primary-foreground'
 								: 'text-muted-foreground hover:bg-accent hover:text-foreground',
 						)}
 					>
-						<Folder className='h-4 w-4 shrink-0' />
-						<span className='truncate'>Sans catégorie</span>
+						<CurrentViewIcon className='h-4 w-4 shrink-0 opacity-70' />
+						<span className='truncate'>{currentView.none}</span>
 					</button>
 
-					{loading ? (
+					{loading[view] ? (
 						<div className='flex items-center justify-center gap-2 py-8 text-muted-foreground text-sm'>
 							<Loader2 className='h-4 w-4 animate-spin' />
 							Chargement…
 						</div>
-					) : visibleOptions.length === 0 ? (
+					) : view === 'category' && visibleOptions.length === 0 ? (
 						<p className='py-8 text-center text-muted-foreground text-sm'>
 							{normalizedSearch
 								? 'Aucune catégorie trouvée'
 								: 'Aucune catégorie peuplée'}
 						</p>
-					) : (
+					) : view === 'category' ? (
 						<div role='tree' aria-label='Arbre des catégories'>
 							{visibleOptions.map((option) => {
 								const hasChildren = parentsWithChildren.has(option.id)
 								const expanded =
 									normalizedSearch !== '' || expandedIds.has(option.id)
 								const categoryCounts = countsOfCategory(counts, option.id)
-								const selected = value === option.id
+								const selected = categoryValue === option.id
 								return (
 									<div
 										key={option.id}
@@ -271,7 +367,7 @@ export function ProductCategoryFilterTree({
 										</button>
 										<button
 											type='button'
-											onClick={() => onChange(option.id)}
+											onClick={() => onCategoryChange(option.id)}
 											className='flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pr-2 text-left text-sm'
 											title={`${option.name} — ${categoryCounts.direct} directement, ${categoryCounts.total} dans la branche`}
 										>
@@ -295,6 +391,42 @@ export function ProductCategoryFilterTree({
 								)
 							})}
 						</div>
+					) : flatOptions.length === 0 ? (
+						<p className='py-8 text-center text-muted-foreground text-sm'>
+							Aucun résultat
+						</p>
+					) : (
+						<nav aria-label={currentView.label}>
+							{flatOptions.map((option) => {
+								const selected = currentView.value === option.id
+								const productCount =
+									view === 'brand' ? counts?.parMarque[option.id] : undefined
+								return (
+									<button
+										key={option.id}
+										type='button'
+										aria-pressed={selected}
+										onClick={() => currentView.onChange(option.id)}
+										className={cn(
+											'mb-0.5 flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+											selected
+												? 'bg-primary text-primary-foreground'
+												: 'hover:bg-accent',
+										)}
+									>
+										<CurrentViewIcon className='h-3.5 w-3.5 shrink-0 opacity-70' />
+										<span className='min-w-0 flex-1 truncate'>
+											{option.name}
+										</span>
+										{productCount !== undefined && (
+											<span className='shrink-0 text-[11px] tabular-nums opacity-60'>
+												{productCount}
+											</span>
+										)}
+									</button>
+								)
+							})}
+						</nav>
 					)}
 				</div>
 			</CardContent>

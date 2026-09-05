@@ -135,8 +135,11 @@ func main() {
 	}
 
 	wails.Run(&options.App{
-		Title:  "Pocket App",
-		Width:  1280,
+		Title: "Pocket App",
+		// 1440 laisse au WebView plus que le breakpoint xl (1280 px), même une
+		// fois les bordures Windows retirées. Le catalogue démarre ainsi avec son
+		// explorateur catégories / marques / fournisseurs à gauche du tableau.
+		Width:  1440,
 		Height: 800,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,

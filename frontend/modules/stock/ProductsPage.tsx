@@ -125,6 +125,11 @@ type FilterFieldKey = (typeof FILTER_FIELD_OPTIONS)[number]['key']
 const FILTER_FIELD_KEYS = new Set<FilterFieldKey>(
 	FILTER_FIELD_OPTIONS.map((option) => option.key),
 )
+const SIDEBAR_FILTER_KEYS = new Set<FilterFieldKey>([
+	'brand',
+	'category',
+	'supplier',
+])
 
 // Les gardes de la mémoire d'écran. Elles ne défendent pas contre l'utilisateur
 // mais contre NOUS : une valeur écrite par une version antérieure — un filtre
@@ -657,7 +662,7 @@ export function ProductsPage() {
 	}
 
 	const filterHelp =
-		'Sur grand écran, la catégorie se choisit dans l’arbre à gauche du tableau. Sur un écran plus étroit, elle rejoint ce menu. Ajoutez uniquement les critères utiles : ils se cumulent. Les choix « Sans… » repèrent directement les données manquantes.'
+		'Sur grand écran, catégories, marques et fournisseurs se choisissent dans l’explorateur à gauche du tableau. Sur un écran plus étroit, ils rejoignent ce menu. Ajoutez uniquement les critères utiles : ils se cumulent. Les choix « Sans… » repèrent directement les données manquantes.'
 
 	const clearFilters = () => {
 		setBrandId('')
@@ -791,7 +796,9 @@ export function ProductsPage() {
 										<DropdownMenuCheckboxItem
 											key={option.key}
 											className={
-												option.key === 'category' ? 'xl:hidden' : undefined
+												SIDEBAR_FILTER_KEYS.has(option.key)
+													? 'lg:hidden'
+													: undefined
 											}
 											checked={isFilterFieldVisible(option.key)}
 											onCheckedChange={(checked) =>
@@ -860,22 +867,24 @@ export function ProductsPage() {
 
 					<div className='mt-2 flex flex-wrap items-end gap-2 empty:hidden'>
 						{isFilterFieldVisible('brand') && (
-							<FilterField
-								label='Marque'
-								onRemove={() => hideFilterField('brand')}
-							>
-								<FilterSelect
-									value={brandId}
-									onChange={changeFilter(setBrandId)}
-									vide='Toutes les marques'
-									noneLabel='Aucune marque'
-									recherche='Rechercher une marque…'
-									options={brands.data ?? []}
-								/>
-							</FilterField>
+							<div className='lg:hidden'>
+								<FilterField
+									label='Marque'
+									onRemove={() => hideFilterField('brand')}
+								>
+									<FilterSelect
+										value={brandId}
+										onChange={changeFilter(setBrandId)}
+										vide='Toutes les marques'
+										noneLabel='Aucune marque'
+										recherche='Rechercher une marque…'
+										options={brands.data ?? []}
+									/>
+								</FilterField>
+							</div>
 						)}
 						{isFilterFieldVisible('category') && (
-							<div className='xl:hidden'>
+							<div className='lg:hidden'>
 								<FilterField
 									label='Catégorie'
 									onRemove={() => hideFilterField('category')}
@@ -893,19 +902,21 @@ export function ProductsPage() {
 							</div>
 						)}
 						{isFilterFieldVisible('supplier') && (
-							<FilterField
-								label='Fournisseur'
-								onRemove={() => hideFilterField('supplier')}
-							>
-								<FilterSelect
-									value={supplierId}
-									onChange={changeFilter(setSupplierId)}
-									vide='Tous les fournisseurs'
-									noneLabel='Aucun fournisseur'
-									recherche='Rechercher un fournisseur…'
-									options={suppliers.data ?? []}
-								/>
-							</FilterField>
+							<div className='lg:hidden'>
+								<FilterField
+									label='Fournisseur'
+									onRemove={() => hideFilterField('supplier')}
+								>
+									<FilterSelect
+										value={supplierId}
+										onChange={changeFilter(setSupplierId)}
+										vide='Tous les fournisseurs'
+										noneLabel='Aucun fournisseur'
+										recherche='Rechercher un fournisseur…'
+										options={suppliers.data ?? []}
+									/>
+								</FilterField>
+							</div>
 						)}
 						{isFilterFieldVisible('health') && (
 							<FilterField
@@ -1141,18 +1152,34 @@ export function ProductsPage() {
 				</div>
 			</div>
 
-			<div className='grid items-start gap-3 xl:grid-cols-[17rem_minmax(0,1fr)]'>
-				<div className='hidden xl:contents'>
+			<div className='grid items-start gap-3 lg:grid-cols-[17rem_minmax(0,1fr)]'>
+				<div className='hidden lg:contents'>
 					<ProductCategoryFilterTree
 						categories={categories.data ?? []}
+						brands={brands.data ?? []}
+						suppliers={suppliers.data ?? []}
 						counts={catalogCounts.data}
-						value={categoryId}
+						categoryValue={categoryId}
+						brandValue={brandId}
+						supplierValue={supplierId}
 						noneValue={NO_RELATION_FILTER}
-						onChange={(value) => {
+						onCategoryChange={(value) => {
 							setCategoryId(value)
 							setPage(1)
 						}}
-						loading={categories.isLoading || catalogCounts.isLoading}
+						onBrandChange={(value) => {
+							setBrandId(value)
+							setPage(1)
+						}}
+						onSupplierChange={(value) => {
+							setSupplierId(value)
+							setPage(1)
+						}}
+						loading={{
+							category: categories.isLoading || catalogCounts.isLoading,
+							brand: brands.isLoading,
+							supplier: suppliers.isLoading,
+						}}
 					/>
 				</div>
 
