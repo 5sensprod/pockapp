@@ -18,14 +18,6 @@
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-	DropdownMenu,
-	DropdownMenuCheckboxItem,
-	DropdownMenuContent,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
 	Popover,
@@ -83,7 +75,6 @@ import {
 } from './components/DeleteProductDialog'
 import { ProductCategoryFilterTree } from './components/ProductCategoryFilterTree'
 import { ProductTable } from './components/ProductTable'
-import { HelpTooltip } from './components/detail/detail-primitives'
 
 const PER_PAGE = 25
 const NO_RELATION_FILTER = '__none__'
@@ -113,24 +104,6 @@ const SALE_STATE_LABELS: Record<CatalogSaleStateFilter, string> = {
 	sale: 'Soldé',
 	promo: 'Promotion',
 }
-const FILTER_FIELD_OPTIONS = [
-	{ key: 'brand', label: 'Marque' },
-	{ key: 'category', label: 'Catégorie' },
-	{ key: 'supplier', label: 'Fournisseur' },
-	{ key: 'health', label: 'Santé' },
-	{ key: 'commercial-state', label: 'État commercial' },
-	{ key: 'sale-state', label: 'Opération commerciale' },
-] as const
-type FilterFieldKey = (typeof FILTER_FIELD_OPTIONS)[number]['key']
-const FILTER_FIELD_KEYS = new Set<FilterFieldKey>(
-	FILTER_FIELD_OPTIONS.map((option) => option.key),
-)
-const SIDEBAR_FILTER_KEYS = new Set<FilterFieldKey>([
-	'brand',
-	'category',
-	'supplier',
-])
-
 // Les gardes de la mémoire d'écran. Elles ne défendent pas contre l'utilisateur
 // mais contre NOUS : une valeur écrite par une version antérieure — un filtre
 // retiré, une colonne de tri renommée — partirait au serveur et rendrait une
@@ -150,13 +123,6 @@ const estEtatCommercialValide = (valeur: unknown) =>
 	(typeof valeur === 'string' && valeur in COMMERCIAL_STATE_LABELS)
 const estEtatVenteValide = (valeur: unknown) =>
 	valeur === '' || (typeof valeur === 'string' && valeur in SALE_STATE_LABELS)
-const estFiltresVisiblesValides = (valeur: unknown) =>
-	Array.isArray(valeur) &&
-	valeur.every(
-		(filtre) =>
-			typeof filtre === 'string' &&
-			FILTER_FIELD_KEYS.has(filtre as FilterFieldKey),
-	)
 const estTriValide = (valeur: unknown) =>
 	Array.isArray(valeur) &&
 	valeur.every(
@@ -242,9 +208,6 @@ export function ProductsPage() {
 	const [saleState, setSaleState] = useEtatPersistant<
 		CatalogSaleStateFilter | ''
 	>('stock-produits-etat-vente', '', estEtatVenteValide)
-	const [filtresVisibles, setFiltresVisibles] = useEtatPersistant<
-		FilterFieldKey[]
-	>('stock-produits-filtres-visibles', [], estFiltresVisiblesValides)
 	const [sorting, setSorting] = useEtatPersistant<SortingState>(
 		'stock-produits-tri',
 		[{ id: 'created', desc: true }],
@@ -259,37 +222,7 @@ export function ProductsPage() {
 		useState<ProduitASupprimer | null>(null)
 	const previousCompanyId = useRef(activeCompanyId)
 
-	// LA BARRE DE COMMANDE SE COLLE ET SE REPLIE, 4 septembre 2026.
-	//
-	// La pagination était en bas de page : avec 25 lignes, changer de page
-	// demandait de descendre tout le tableau, puis de remonter pour lire la
-	// première ligne de la page suivante. Elle vit maintenant dans une barre
-	// collée sous l'en-tête de l'application.
-	//
-	// `estCollee` est mesuré par une SENTINELLE d'un pixel placée juste au-dessus
-	// de la barre, pas par un écouteur de défilement : un `scroll` se déclenche
-	// des dizaines de fois par seconde et ferait rendre la table à chaque cran.
-	//
-	// Et la barre garde EXACTEMENT la même hauteur dans les deux états : seul
-	// son contenu change. Replier en retirant de la hauteur raccourcirait le
-	// document, le navigateur remonterait, la sentinelle réapparaîtrait — et la
-	// barre battrait entre ses deux états sans jamais se stabiliser.
 	const sentinelle = useRef<HTMLDivElement | null>(null)
-	const [estCollee, setEstCollee] = useState(false)
-
-	useEffect(() => {
-		const cible = sentinelle.current
-		if (!cible || typeof IntersectionObserver === 'undefined') return
-		const observateur = new IntersectionObserver(
-			([entree]) => setEstCollee(!entree.isIntersecting),
-			// La sentinelle passe sous l'en-tête de l'application bien avant de
-			// sortir de l'écran : sans cette marge, la barre ne se replierait qu'une
-			// fois déjà cachée derrière lui.
-			{ rootMargin: `-${LAYOUT.HEADER_H}px 0px 0px 0px`, threshold: 0 },
-		)
-		observateur.observe(cible)
-		return () => observateur.disconnect()
-	}, [])
 
 	const openCreate = () => {
 		setDialogOpen(true)
@@ -475,56 +408,6 @@ export function ProductsPage() {
 		setPage(1)
 	}
 
-	const filterFieldValues: Record<FilterFieldKey, string> = {
-		brand: brandId,
-		category: categoryId,
-		supplier: supplierId,
-		health: healthScore,
-		'commercial-state': commercialState,
-		'sale-state': saleState,
-	}
-	const isFilterFieldVisible = (key: FilterFieldKey) =>
-		filtresVisibles.includes(key) || filterFieldValues[key] !== ''
-
-	// Le menu choisit les contrôles utiles. Retirer un contrôle retire aussi sa
-	// valeur : aucun filtre ne doit continuer à agir une fois devenu invisible.
-	const hideFilterField = (key: FilterFieldKey) => {
-		setFiltresVisibles((current) => current.filter((item) => item !== key))
-		switch (key) {
-			case 'brand':
-				setBrandId('')
-				break
-			case 'category':
-				setCategoryId('')
-				break
-			case 'supplier':
-				setSupplierId('')
-				break
-			case 'health':
-				setHealthScore('')
-				break
-			case 'commercial-state':
-				setCommercialState('')
-				break
-			case 'sale-state':
-				setSaleState('')
-				break
-		}
-		setPage(1)
-	}
-	const changeFilterFieldVisibility = (
-		key: FilterFieldKey,
-		visible: boolean,
-	) => {
-		if (!visible) {
-			hideFilterField(key)
-			return
-		}
-		setFiltresVisibles((current) =>
-			current.includes(key) ? current : [...current, key],
-		)
-	}
-
 	// Changer de page sans remonter laisserait l'œil au milieu d'un tableau dont
 	// les 25 lignes ont toutes changé. On remonte à la SENTINELLE, pas à 0 : le
 	// tableau se retrouve juste sous la barre, sans repasser par le titre.
@@ -661,9 +544,6 @@ export function ProductsPage() {
 		changeSorting([{ id, desc: direction === 'desc' }])
 	}
 
-	const filterHelp =
-		'Sur grand écran, catégories, marques et fournisseurs se choisissent dans l’explorateur à gauche du tableau. Sur un écran plus étroit, ils rejoignent ce menu. Ajoutez uniquement les critères utiles : ils se cumulent. Les choix « Sans… » repèrent directement les données manquantes.'
-
 	const clearFilters = () => {
 		setBrandId('')
 		setCategoryId('')
@@ -722,522 +602,377 @@ export function ProductsPage() {
 				</Card>
 			)}
 
-			<Card className='mb-3 border-sky-200 shadow-sm'>
-				<CardContent className='p-3'>
-					<div className='grid items-stretch gap-3 xl:grid-cols-[minmax(360px,1fr)_auto]'>
-						<div className='relative'>
-							<Search className='-translate-y-1/2 absolute top-1/2 left-4 h-5 w-5 text-sky-700' />
+			<div className='flex flex-col'>
+				<div
+					ref={sentinelle}
+					aria-hidden='true'
+					className='order-1 h-px'
+					style={{ scrollMarginTop: LAYOUT.HEADER_H_CSS }}
+				/>
+
+				<div
+					style={{ top: LAYOUT.HEADER_H_CSS }}
+					className='order-1 -mx-6 sticky z-30 mb-2 border-b bg-background px-6 py-2 shadow-sm'
+				>
+					<div className='flex min-w-0 items-center gap-2'>
+						<div className='relative min-w-36 flex-1 sm:max-w-48 lg:max-w-56 xl:max-w-64'>
+							<Search className='-translate-y-1/2 absolute top-1/2 left-2.5 h-4 w-4 text-muted-foreground' />
 							<Input
 								autoFocus
 								value={search}
-								onChange={(e) => changeSearch(e.target.value)}
-								placeholder='Rechercher un produit par nom, référence ou code-barres…'
+								onChange={(event) => changeSearch(event.target.value)}
+								placeholder='Rechercher…'
 								aria-label='Rechercher un produit'
-								className='h-14 border-2 border-sky-500 bg-background pr-44 pl-12 text-base shadow-sm focus-visible:ring-sky-200'
+								className='h-9 pl-8'
 							/>
-							<span className='-translate-y-1/2 pointer-events-none absolute top-1/2 right-3 rounded-md bg-sky-50 px-2 py-1 font-medium text-sky-700 text-xs'>
-								Recherche instantanée
-							</span>
 						</div>
 
-						<div className='grid grid-cols-3 gap-1 rounded-xl border bg-background p-1'>
-							<FilterButton
+						<Popover>
+							<PopoverTrigger asChild>
+								<Button variant='outline' size='sm' className='shrink-0'>
+									<SlidersHorizontal className='mr-1.5 h-4 w-4' />
+									Filtres
+									{filtresActifs && (
+										<span className='ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-primary-foreground text-xs tabular-nums'>
+											{filterCount}
+										</span>
+									)}
+									<ChevronDown className='ml-1.5 h-3.5 w-3.5' />
+								</Button>
+							</PopoverTrigger>
+							<PopoverContent
+								align='start'
+								className='max-h-[min(38rem,var(--radix-popover-content-available-height))] w-80 overflow-y-auto p-2'
+							>
+								<div className='px-2 py-1 font-semibold text-sm'>
+									Filtrer les produits
+								</div>
+								<div className='space-y-3 p-2'>
+									<div className='space-y-3 lg:hidden'>
+										<CompactFilterField label='Catégorie'>
+											<FilterSelect
+												value={categoryId}
+												onChange={changeFilter(setCategoryId)}
+												vide='Toutes les catégories'
+												noneLabel='Aucune catégorie'
+												recherche='Rechercher une catégorie…'
+												options={categoryOptions}
+												loading={
+													categories.isLoading || catalogCounts.isLoading
+												}
+											/>
+										</CompactFilterField>
+										<CompactFilterField label='Marque'>
+											<FilterSelect
+												value={brandId}
+												onChange={changeFilter(setBrandId)}
+												vide='Toutes les marques'
+												noneLabel='Aucune marque'
+												recherche='Rechercher une marque…'
+												options={brands.data ?? []}
+											/>
+										</CompactFilterField>
+										<CompactFilterField label='Fournisseur'>
+											<FilterSelect
+												value={supplierId}
+												onChange={changeFilter(setSupplierId)}
+												vide='Tous les fournisseurs'
+												noneLabel='Aucun fournisseur'
+												recherche='Rechercher un fournisseur…'
+												options={suppliers.data ?? []}
+											/>
+										</CompactFilterField>
+									</div>
+									<CompactFilterField label='Santé'>
+										<ChoiceFilter
+											value={healthScore}
+											onChange={(value) => {
+												setHealthScore(value)
+												setPage(1)
+											}}
+											ariaLabel='Filtrer par santé'
+											emptyLabel='Toutes les notes'
+											options={HEALTH_OPTIONS}
+										/>
+									</CompactFilterField>
+									<CompactFilterField label='État commercial'>
+										<ChoiceFilter
+											value={commercialState}
+											onChange={(value) => {
+												setCommercialState(
+													value as CatalogCommercialStateFilter | '',
+												)
+												setPage(1)
+											}}
+											ariaLabel='Filtrer par état commercial'
+											emptyLabel='Tous les états'
+											options={[
+												{ value: 'new', label: 'Neuf' },
+												{ value: 'used', label: 'Occasion' },
+												{ value: 'rental', label: 'Location' },
+											]}
+										/>
+									</CompactFilterField>
+									<CompactFilterField label='Opération commerciale'>
+										<ChoiceFilter
+											value={saleState}
+											onChange={(value) => {
+												setSaleState(value as CatalogSaleStateFilter | '')
+												setPage(1)
+											}}
+											ariaLabel='Filtrer par opération commerciale'
+											emptyLabel='Toutes les opérations'
+											options={[
+												{ value: 'regular', label: 'Plein tarif' },
+												{ value: 'sale', label: 'Soldé' },
+												{ value: 'promo', label: 'Promotion' },
+											]}
+										/>
+									</CompactFilterField>
+								</div>
+								<div className='my-1 h-px bg-border' />
+								<div className='space-y-1 p-1'>
+									<CompactBooleanFilter
+										checked={missingImage}
+										onChange={(checked) => {
+											setMissingImage(checked)
+											setPage(1)
+										}}
+										icon={<ImageOff />}
+										label='Sans image'
+									/>
+									<CompactBooleanFilter
+										checked={missingDescription}
+										onChange={(checked) => {
+											setMissingDescription(checked)
+											setPage(1)
+										}}
+										icon={<FileText />}
+										label='Sans description'
+									/>
+									<CompactBooleanFilter
+										checked={missingPurchasePrice}
+										onChange={(checked) => {
+											setMissingPurchasePrice(checked)
+											setPage(1)
+										}}
+										icon={<CircleDollarSign />}
+										label='Sans prix d’achat'
+									/>
+									<CompactBooleanFilter
+										checked={emptyStock}
+										onChange={(checked) => {
+											setEmptyStock(checked)
+											setPage(1)
+										}}
+										icon={<PackageX />}
+										label='Stock vide ou à 0'
+									/>
+								</div>
+								{filtresActifs && (
+									<Button
+										variant='ghost'
+										size='sm'
+										className='mt-1 w-full'
+										onClick={clearFilters}
+									>
+										<X className='mr-1 h-4 w-4' />
+										Réinitialiser les filtres
+									</Button>
+								)}
+							</PopoverContent>
+						</Popover>
+
+						<div className='hidden shrink-0 items-center gap-1 rounded-lg border bg-background p-0.5 lg:flex'>
+							<StatusChip
 								active={status === undefined}
 								onClick={() => changeStatus(undefined)}
-								className='min-w-28'
 							>
 								Tous
-							</FilterButton>
-							<FilterButton
+							</StatusChip>
+							<StatusChip
 								active={status === 'published'}
 								onClick={() => changeStatus('published')}
-								className='min-w-28'
 							>
 								Publiés
-							</FilterButton>
-							<FilterButton
+							</StatusChip>
+							<StatusChip
 								active={status === 'draft'}
 								onClick={() => changeStatus('draft')}
-								className='min-w-28'
 							>
 								Brouillons
-							</FilterButton>
+							</StatusChip>
+						</div>
+
+						<div className='min-w-2 flex-1' />
+
+						<label className='shrink-0 text-muted-foreground text-sm'>
+							<span className='sr-only'>Tri du tableau</span>
+							<select
+								value={sortValue}
+								onChange={(event) => changeSortSelect(event.target.value)}
+								className='h-9 max-w-40 rounded-md border border-input bg-background px-2 text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:max-w-none'
+							>
+								<option value='created:desc'>Ajout récent</option>
+								<option value='created:asc'>Ajout ancien</option>
+								<option value='name:asc'>Produit · A à Z</option>
+								<option value='name:desc'>Produit · Z à A</option>
+								<option value='price_ttc:asc'>Prix · croissant</option>
+								<option value='price_ttc:desc'>Prix · décroissant</option>
+								<option value='healthScore:desc'>Santé · meilleure</option>
+								<option value='healthScore:asc'>Santé · à compléter</option>
+							</select>
+						</label>
+
+						<div className='flex shrink-0 items-center gap-2'>
+							<span className='whitespace-nowrap text-muted-foreground text-sm tabular-nums'>
+								Page {page} / {Math.max(totalPages, 1)}
+							</span>
+							<Button
+								variant='outline'
+								size='icon'
+								className='h-9 w-9'
+								aria-label='Page précédente'
+								disabled={page <= 1 || products.isFetching}
+								onClick={() => {
+									setPage((p) => Math.max(1, p - 1))
+									remonterAuTableau()
+								}}
+							>
+								<ChevronLeft className='h-4 w-4' />
+							</Button>
+							<Button
+								variant='outline'
+								size='icon'
+								className='h-9 w-9'
+								aria-label='Page suivante'
+								disabled={page >= totalPages || products.isFetching}
+								onClick={() => {
+									setPage((p) => p + 1)
+									remonterAuTableau()
+								}}
+							>
+								<ChevronRight className='h-4 w-4' />
+							</Button>
 						</div>
 					</div>
-				</CardContent>
-			</Card>
 
-			<Card className='mb-4 border-sky-100 bg-gradient-to-r from-sky-50/90 via-background to-amber-50/70 shadow-sm'>
-				<CardContent className='p-3'>
-					<div className='flex items-center justify-between gap-3'>
-						<div className='flex items-center gap-2'>
-							<div className='flex items-center gap-1.5 font-semibold text-sm'>
-								<SlidersHorizontal className='h-4 w-4 text-sky-700' />
-								<span>Filtres</span>
-								<HelpTooltip text={filterHelp} />
-								{filtresActifs && (
-									<span className='ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-primary-foreground text-xs tabular-nums'>
-										{filterCount}
-									</span>
-								)}
-							</div>
-
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button variant='outline' size='sm' className='bg-background'>
-										<Plus className='mr-1.5 h-4 w-4' />
-										Ajouter un filtre
-										<ChevronDown className='ml-1.5 h-3.5 w-3.5 opacity-60' />
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align='start' className='w-64'>
-									<DropdownMenuLabel>Critères détaillés</DropdownMenuLabel>
-									{FILTER_FIELD_OPTIONS.map((option) => (
-										<DropdownMenuCheckboxItem
-											key={option.key}
-											className={
-												SIDEBAR_FILTER_KEYS.has(option.key)
-													? 'lg:hidden'
-													: undefined
-											}
-											checked={isFilterFieldVisible(option.key)}
-											onCheckedChange={(checked) =>
-												changeFilterFieldVisibility(
-													option.key,
-													checked === true,
-												)
-											}
-										>
-											{option.label}
-										</DropdownMenuCheckboxItem>
-									))}
-									<DropdownMenuSeparator />
-									<DropdownMenuLabel>Données à compléter</DropdownMenuLabel>
-									<DropdownMenuCheckboxItem
-										checked={missingImage}
-										onCheckedChange={(checked) => {
-											setMissingImage(checked === true)
-											setPage(1)
-										}}
-									>
-										<ImageOff className='mr-2 text-amber-700' />
-										Sans image
-									</DropdownMenuCheckboxItem>
-									<DropdownMenuCheckboxItem
-										checked={missingDescription}
-										onCheckedChange={(checked) => {
-											setMissingDescription(checked === true)
-											setPage(1)
-										}}
-									>
-										<FileText className='mr-2 text-sky-700' />
-										Sans description
-									</DropdownMenuCheckboxItem>
-									<DropdownMenuCheckboxItem
-										checked={missingPurchasePrice}
-										onCheckedChange={(checked) => {
-											setMissingPurchasePrice(checked === true)
-											setPage(1)
-										}}
-									>
-										<CircleDollarSign className='mr-2 text-amber-700' />
-										Sans prix d’achat
-									</DropdownMenuCheckboxItem>
-									<DropdownMenuCheckboxItem
-										checked={emptyStock}
-										onCheckedChange={(checked) => {
-											setEmptyStock(checked === true)
-											setPage(1)
-										}}
-									>
-										<PackageX className='mr-2 text-rose-700' />
-										Stock vide ou à 0
-									</DropdownMenuCheckboxItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
+					<div className='mt-1.5 flex min-h-6 min-w-0 items-start gap-2'>
+						<div className='flex w-36 shrink-0 items-center gap-2 font-medium text-sm sm:w-48 lg:w-56 xl:w-64'>
+							<span className='h-2 w-2 shrink-0 rounded-full bg-emerald-600' />
+							<span className='truncate tabular-nums'>
+								{products.isLoading
+									? '…'
+									: `${total} produit${total > 1 ? 's' : ''}`}
+							</span>
 						</div>
 
 						{filtresActifs && (
-							<Button variant='ghost' size='sm' onClick={clearFilters}>
-								<X className='mr-1 h-4 w-4' />
-								Réinitialiser
-							</Button>
+							<div className='flex min-w-0 flex-1 flex-wrap items-center gap-1.5'>
+								{activeFilterTags.map((filter) => (
+									<button
+										type='button'
+										key={filter.key}
+										onClick={filter.clear}
+										aria-label={`Retirer le filtre ${filter.label}`}
+										className='inline-flex h-6 max-w-56 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 font-medium text-primary text-[11px] transition-colors hover:border-primary/40 hover:bg-primary/15'
+									>
+										<span className='truncate'>{filter.label}</span>
+										<X className='h-3 w-3 shrink-0' />
+									</button>
+								))}
+							</div>
 						)}
 					</div>
-
-					<div className='mt-2 flex flex-wrap items-end gap-2 empty:hidden'>
-						{isFilterFieldVisible('brand') && (
-							<div className='lg:hidden'>
-								<FilterField
-									label='Marque'
-									onRemove={() => hideFilterField('brand')}
-								>
-									<FilterSelect
-										value={brandId}
-										onChange={changeFilter(setBrandId)}
-										vide='Toutes les marques'
-										noneLabel='Aucune marque'
-										recherche='Rechercher une marque…'
-										options={brands.data ?? []}
-									/>
-								</FilterField>
-							</div>
-						)}
-						{isFilterFieldVisible('category') && (
-							<div className='lg:hidden'>
-								<FilterField
-									label='Catégorie'
-									onRemove={() => hideFilterField('category')}
-								>
-									<FilterSelect
-										value={categoryId}
-										onChange={changeFilter(setCategoryId)}
-										vide='Toutes les catégories'
-										noneLabel='Aucune catégorie'
-										recherche='Rechercher une catégorie…'
-										options={categoryOptions}
-										loading={categories.isLoading || catalogCounts.isLoading}
-									/>
-								</FilterField>
-							</div>
-						)}
-						{isFilterFieldVisible('supplier') && (
-							<div className='lg:hidden'>
-								<FilterField
-									label='Fournisseur'
-									onRemove={() => hideFilterField('supplier')}
-								>
-									<FilterSelect
-										value={supplierId}
-										onChange={changeFilter(setSupplierId)}
-										vide='Tous les fournisseurs'
-										noneLabel='Aucun fournisseur'
-										recherche='Rechercher un fournisseur…'
-										options={suppliers.data ?? []}
-									/>
-								</FilterField>
-							</div>
-						)}
-						{isFilterFieldVisible('health') && (
-							<FilterField
-								label='Santé'
-								onRemove={() => hideFilterField('health')}
-							>
-								<ChoiceFilter
-									value={healthScore}
-									onChange={(value) => {
-										setHealthScore(value)
-										setPage(1)
-									}}
-									ariaLabel='Filtrer par santé'
-									emptyLabel='Toutes les notes'
-									options={HEALTH_OPTIONS}
-								/>
-							</FilterField>
-						)}
-						{isFilterFieldVisible('commercial-state') && (
-							<FilterField
-								label='État commercial'
-								onRemove={() => hideFilterField('commercial-state')}
-							>
-								<ChoiceFilter
-									value={commercialState}
-									onChange={(value) => {
-										setCommercialState(
-											value as CatalogCommercialStateFilter | '',
-										)
-										setPage(1)
-									}}
-									ariaLabel='Filtrer par état commercial'
-									emptyLabel='Tous les états'
-									options={[
-										{ value: 'new', label: 'Neuf' },
-										{ value: 'used', label: 'Occasion' },
-										{ value: 'rental', label: 'Location' },
-									]}
-								/>
-							</FilterField>
-						)}
-						{isFilterFieldVisible('sale-state') && (
-							<FilterField
-								label='Opération commerciale'
-								onRemove={() => hideFilterField('sale-state')}
-							>
-								<ChoiceFilter
-									value={saleState}
-									onChange={(value) => {
-										setSaleState(value as CatalogSaleStateFilter | '')
-										setPage(1)
-									}}
-									ariaLabel='Filtrer par opération commerciale'
-									emptyLabel='Toutes les opérations'
-									options={[
-										{ value: 'regular', label: 'Plein tarif' },
-										{ value: 'sale', label: 'Soldé' },
-										{ value: 'promo', label: 'Promotion' },
-									]}
-								/>
-							</FilterField>
-						)}
-					</div>
-
-					{filtresActifs && (
-						<div className='mt-3 flex flex-wrap items-center gap-2 border-sky-100 border-t pt-3'>
-							<span className='font-medium text-muted-foreground text-xs'>
-								Filtres actifs
-							</span>
-							{activeFilterTags.map((filter) => (
-								<button
-									type='button'
-									key={filter.key}
-									onClick={filter.clear}
-									aria-label={`Retirer le filtre ${filter.label}`}
-									className='inline-flex min-h-8 items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 font-medium text-primary text-xs transition-colors hover:border-primary/40 hover:bg-primary/15'
-								>
-									{filter.label}
-									<X className='h-3.5 w-3.5' />
-								</button>
-							))}
-						</div>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* La sentinelle est le seul rôle de ce pixel : elle dit quand la barre
-			    ci-dessous s'est collée. */}
-			<div
-				ref={sentinelle}
-				aria-hidden='true'
-				className='h-px'
-				style={{ scrollMarginTop: LAYOUT.HEADER_H_CSS }}
-			/>
-
-			<div
-				style={{ top: LAYOUT.HEADER_H_CSS }}
-				// `-mx-6 px-6` : la barre déborde jusqu'aux bords du conteneur, sinon
-				// le tableau se verrait passer dans la gouttière une fois collée.
-				// Hauteur FIXE dans les deux états — voir le commentaire d'`estCollee`.
-				className={cn(
-					'-mx-6 sticky z-30 mb-2 flex h-16 items-center justify-between gap-3 border-b bg-background px-6 transition-shadow',
-					estCollee ? 'border-border shadow-sm' : 'border-transparent',
-				)}
-			>
-				<div className='flex min-w-0 items-center gap-2 font-medium text-sm'>
-					<span className='h-2 w-2 shrink-0 rounded-full bg-emerald-600' />
-					<span className='shrink-0 tabular-nums'>
-						{products.isLoading
-							? '…'
-							: `${total} produit${total > 1 ? 's' : ''}`}
-					</span>
-
-					{estCollee ? (
-						/* Repliée, la barre reprend le strict nécessaire : chercher,
-						   revenir aux filtres, changer de page. Le champ pilote le MÊME
-						   état que la grande recherche — il n'y a pas deux recherches. */
-						<>
-							<div className='relative hidden min-w-0 sm:block'>
-								<Search className='-translate-y-1/2 absolute top-1/2 left-2.5 h-4 w-4 text-muted-foreground' />
-								<Input
-									value={search}
-									onChange={(e) => changeSearch(e.target.value)}
-									placeholder='Rechercher…'
-									aria-label='Rechercher un produit'
-									className='h-9 w-44 pl-8 lg:w-64'
-								/>
-							</div>
-							<Button
-								variant='outline'
-								size='sm'
-								className='shrink-0'
-								// Remonter plutôt que rouvrir le panneau ici : les filtres
-								// prennent trois lignes, les dupliquer dans la barre en
-								// ferait deux jeux de contrôles pour un seul état.
-								onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-							>
-								<SlidersHorizontal className='mr-1.5 h-4 w-4' />
-								Filtres
-								{filtresActifs && (
-									<span className='ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-primary-foreground text-xs tabular-nums'>
-										{filterCount}
-									</span>
-								)}
-							</Button>
-
-							{/* Tous / Publiés / Brouillons suit la barre : c'est le
-							    filtre le plus utilisé, et le seul qui n'ait aucun
-							    équivalent dans les tags. Même état que le grand
-							    groupe au-dessus, en plus serré. */}
-							<div className='hidden shrink-0 items-center gap-1 rounded-lg border bg-background p-0.5 lg:flex'>
-								<StatusChip
-									active={status === undefined}
-									onClick={() => changeStatus(undefined)}
-								>
-									Tous
-								</StatusChip>
-								<StatusChip
-									active={status === 'published'}
-									onClick={() => changeStatus('published')}
-								>
-									Publiés
-								</StatusChip>
-								<StatusChip
-									active={status === 'draft'}
-									onClick={() => changeStatus('draft')}
-								>
-									Brouillons
-								</StatusChip>
-							</div>
-						</>
-					) : (
-						<span className='truncate text-muted-foreground'>
-							{filtresActifs
-								? `· ${filterCount} filtre${filterCount > 1 ? 's' : ''} actif${filterCount > 1 ? 's' : ''}`
-								: '· Aucun filtre complémentaire'}
-						</span>
-					)}
 				</div>
 
-				<div className='flex shrink-0 items-center gap-3'>
-					<label className='flex items-center gap-2 text-muted-foreground text-sm'>
-						<span className={cn(estCollee && 'sr-only')}>Tri du tableau</span>
-						<select
-							value={sortValue}
-							onChange={(event) => changeSortSelect(event.target.value)}
-							className='h-9 rounded-md border border-input bg-background px-2 text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-						>
-							<option value='created:desc'>Ajout récent</option>
-							<option value='created:asc'>Ajout ancien</option>
-							<option value='name:asc'>Produit · A à Z</option>
-							<option value='name:desc'>Produit · Z à A</option>
-							<option value='price_ttc:asc'>Prix · croissant</option>
-							<option value='price_ttc:desc'>Prix · décroissant</option>
-							<option value='healthScore:desc'>Santé · meilleure</option>
-							<option value='healthScore:asc'>Santé · à compléter</option>
-						</select>
-					</label>
-
-					{/* La pagination n'est plus en bas de page : elle suit le défilement.
-					    Un seul jeu de boutons, ici. */}
-					<div className='flex items-center gap-2'>
-						<span className='whitespace-nowrap text-muted-foreground text-sm tabular-nums'>
-							Page {page} / {Math.max(totalPages, 1)}
-						</span>
-						<Button
-							variant='outline'
-							size='icon'
-							className='h-9 w-9'
-							aria-label='Page précédente'
-							disabled={page <= 1 || products.isFetching}
-							onClick={() => {
-								setPage((p) => Math.max(1, p - 1))
-								remonterAuTableau()
+				<div className='order-3 grid items-start gap-3 lg:grid-cols-[17rem_minmax(0,1fr)]'>
+					<div className='hidden lg:contents'>
+						<ProductCategoryFilterTree
+							categories={categories.data ?? []}
+							brands={brands.data ?? []}
+							suppliers={suppliers.data ?? []}
+							counts={catalogCounts.data}
+							categoryValue={categoryId}
+							brandValue={brandId}
+							supplierValue={supplierId}
+							noneValue={NO_RELATION_FILTER}
+							onCategoryChange={(value) => {
+								setCategoryId(value)
+								setPage(1)
 							}}
-						>
-							<ChevronLeft className='h-4 w-4' />
-						</Button>
-						<Button
-							variant='outline'
-							size='icon'
-							className='h-9 w-9'
-							aria-label='Page suivante'
-							disabled={page >= totalPages || products.isFetching}
-							onClick={() => {
-								setPage((p) => p + 1)
-								remonterAuTableau()
+							onBrandChange={(value) => {
+								setBrandId(value)
+								setPage(1)
 							}}
-						>
-							<ChevronRight className='h-4 w-4' />
-						</Button>
+							onSupplierChange={(value) => {
+								setSupplierId(value)
+								setPage(1)
+							}}
+							loading={{
+								category: categories.isLoading || catalogCounts.isLoading,
+								brand: brands.isLoading,
+								supplier: suppliers.isLoading,
+							}}
+						/>
 					</div>
-				</div>
-			</div>
 
-			<div className='grid items-start gap-3 lg:grid-cols-[17rem_minmax(0,1fr)]'>
-				<div className='hidden lg:contents'>
-					<ProductCategoryFilterTree
-						categories={categories.data ?? []}
-						brands={brands.data ?? []}
-						suppliers={suppliers.data ?? []}
-						counts={catalogCounts.data}
-						categoryValue={categoryId}
-						brandValue={brandId}
-						supplierValue={supplierId}
-						noneValue={NO_RELATION_FILTER}
-						onCategoryChange={(value) => {
-							setCategoryId(value)
-							setPage(1)
-						}}
-						onBrandChange={(value) => {
-							setBrandId(value)
-							setPage(1)
-						}}
-						onSupplierChange={(value) => {
-							setSupplierId(value)
-							setPage(1)
-						}}
-						loading={{
-							category: categories.isLoading || catalogCounts.isLoading,
-							brand: brands.isLoading,
-							supplier: suppliers.isLoading,
-						}}
-					/>
-				</div>
-
-				<Card className='min-w-0'>
-					<CardContent
-						// La page précédente reste lisible pendant le chargement de la
-						// suivante, grisée : la table ne se vide pas et la page ne saute pas.
-						className={cn('p-4', products.isFetching && 'opacity-60')}
-					>
-						{/* Un écran vide doit dire POURQUOI il est vide. Sans ces trois cas,
+					<Card className='min-w-0'>
+						<CardContent
+							// La page précédente reste lisible pendant le chargement de la
+							// suivante, grisée : la table ne se vide pas et la page ne saute pas.
+							className={cn('p-4', products.isFetching && 'opacity-60')}
+						>
+							{/* Un écran vide doit dire POURQUOI il est vide. Sans ces trois cas,
 					    « aucune entreprise active », « lecture en cours » et « 0 résultat
 					    pour ces filtres » se ressemblent tous : une table sans ligne. */}
-						{!activeCompanyId ? (
-							<p className='py-12 text-center text-muted-foreground'>
-								Aucune entreprise active — sélectionnez-en une pour voir le
-								catalogue.
-							</p>
-						) : products.isLoading ? (
-							<div className='flex items-center justify-center gap-3 py-12 text-muted-foreground'>
-								<Loader2 className='h-5 w-5 animate-spin' />
-								<span className='text-sm'>Lecture du catalogue…</span>
-							</div>
-						) : rows.length === 0 ? (
-							<div className='py-12 text-center text-muted-foreground'>
-								<p>Aucun produit ne correspond.</p>
-								<p className='mt-1 text-sm'>
-									{filtresActifs || debounced || status
-										? 'Des filtres sont actifs.'
-										: `Le catalogue en compte ${total}.`}
+							{!activeCompanyId ? (
+								<p className='py-12 text-center text-muted-foreground'>
+									Aucune entreprise active — sélectionnez-en une pour voir le
+									catalogue.
 								</p>
-							</div>
-						) : (
-							/* `paginated={false}` : la page vient du serveur. Paginer une
+							) : products.isLoading ? (
+								<div className='flex items-center justify-center gap-3 py-12 text-muted-foreground'>
+									<Loader2 className='h-5 w-5 animate-spin' />
+									<span className='text-sm'>Lecture du catalogue…</span>
+								</div>
+							) : rows.length === 0 ? (
+								<div className='py-12 text-center text-muted-foreground'>
+									<p>Aucun produit ne correspond.</p>
+									<p className='mt-1 text-sm'>
+										{filtresActifs || debounced || status
+											? 'Des filtres sont actifs.'
+											: `Le catalogue en compte ${total}.`}
+									</p>
+								</div>
+							) : (
+								/* `paginated={false}` : la page vient du serveur. Paginer une
 					   seconde fois en mémoire afficherait « 1–10 sur 25 » sous une
 					   table qui en montre 25. */
-							<ProductTable
-								data={rows}
-								paginated={false}
-								sorting={sorting}
-								onSortingChange={changeSorting}
-								onRowClick={(row) => openRow(row.id)}
-								onDelete={(row) => {
-									// La ligne de table ne porte pas `legacy_id` : on retrouve
-									// l'enregistrement de la page courante, qui l'a.
-									const record = products.data?.items.find(
-										(item) => item.id === row.id,
-									)
-									setProduitASupprimer({
-										id: row.id,
-										name: row.name,
-										legacy_id: record?.legacy_id,
-										status: row.status,
-									})
-								}}
-							/>
-						)}
-					</CardContent>
-				</Card>
+								<ProductTable
+									data={rows}
+									paginated={false}
+									sorting={sorting}
+									onSortingChange={changeSorting}
+									onRowClick={(row) => openRow(row.id)}
+									onDelete={(row) => {
+										// La ligne de table ne porte pas `legacy_id` : on retrouve
+										// l'enregistrement de la page courante, qui l'a.
+										const record = products.data?.items.find(
+											(item) => item.id === row.id,
+										)
+										setProduitASupprimer({
+											id: row.id,
+											name: row.name,
+											legacy_id: record?.legacy_id,
+											status: row.status,
+										})
+									}}
+								/>
+							)}
+						</CardContent>
+					</Card>
+				</div>
 			</div>
 
 			<CatalogProductDialog
@@ -1274,9 +1009,7 @@ function toCatalogSort(sorting: SortingState) {
 	return `${current.desc ? '-' : ''}${field}`
 }
 
-/** La version serrée du groupe de statut, pour la barre repliée. Elle ne
- * réutilise pas `FilterButton` : celui-ci fait 40 px de haut, ce qui ne tient
- * pas dans une barre qui doit rester d'une seule ligne. */
+/** La version serrée du groupe de statut pour la barre de commande unique. */
 function StatusChip({
 	active,
 	onClick,
@@ -1303,59 +1036,48 @@ function StatusChip({
 	)
 }
 
-function FilterButton({
-	active,
-	onClick,
+function CompactFilterField({
+	label,
 	children,
-	className,
 }: {
-	active: boolean
-	onClick: () => void
+	label: string
 	children: React.ReactNode
-	className?: string
+}) {
+	return (
+		<div className='space-y-1'>
+			<p className='px-0.5 font-medium text-muted-foreground text-xs'>
+				{label}
+			</p>
+			{children}
+		</div>
+	)
+}
+
+function CompactBooleanFilter({
+	checked,
+	onChange,
+	icon,
+	label,
+}: {
+	checked: boolean
+	onChange: (checked: boolean) => void
+	icon: React.ReactNode
+	label: string
 }) {
 	return (
 		<button
 			type='button'
-			onClick={onClick}
-			aria-pressed={active}
+			onClick={() => onChange(!checked)}
+			aria-pressed={checked}
 			className={cn(
-				'min-h-10 rounded-md border bg-background px-3 py-2 text-sm transition-colors',
-				className,
-				active
-					? 'border-primary bg-primary font-medium text-primary-foreground shadow-sm hover:bg-primary/90'
-					: 'hover:border-primary/40 hover:bg-accent/50',
+				'flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
+				checked ? 'bg-primary/10 text-primary' : 'hover:bg-muted',
 			)}
 		>
-			{children}
+			{icon}
+			<span className='flex-1'>{label}</span>
+			{checked && <Check />}
 		</button>
-	)
-}
-
-function FilterField({
-	label,
-	onRemove,
-	children,
-}: {
-	label: string
-	onRemove: () => void
-	children: React.ReactNode
-}) {
-	return (
-		<div className='min-w-0'>
-			<div className='mb-1 flex items-center justify-between gap-2 px-0.5'>
-				<p className='font-medium text-muted-foreground text-xs'>{label}</p>
-				<button
-					type='button'
-					onClick={onRemove}
-					aria-label={`Masquer le filtre ${label}`}
-					className='rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-				>
-					<X className='h-3.5 w-3.5' />
-				</button>
-			</div>
-			{children}
-		</div>
 	)
 }
 

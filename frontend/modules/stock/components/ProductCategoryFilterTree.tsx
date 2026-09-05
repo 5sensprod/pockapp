@@ -11,8 +11,6 @@ import {
 	Building2,
 	ChevronDown,
 	ChevronRight,
-	Folder,
-	FolderOpen,
 	FolderTree,
 	Loader2,
 	Search,
@@ -223,7 +221,7 @@ export function ProductCategoryFilterTree({
 	}
 
 	return (
-		<Card className='overflow-hidden lg:sticky lg:top-[calc(var(--header-h)+4.5rem)]'>
+		<Card className='overflow-hidden lg:sticky lg:top-[calc(var(--header-h)+5.5rem)]'>
 			<CardContent className='p-0'>
 				<div className='border-b bg-muted/30 p-3'>
 					<div className='mb-2 flex items-center justify-between gap-2'>
@@ -281,7 +279,7 @@ export function ProductCategoryFilterTree({
 					</div>
 				</div>
 
-				<div className='max-h-72 overflow-y-auto p-2 lg:max-h-[calc(100vh-var(--header-h)-9.5rem)]'>
+				<div className='max-h-72 overflow-y-auto p-2 lg:max-h-[calc(100vh-var(--header-h)-10.5rem)]'>
 					<button
 						type='button'
 						onClick={() => currentView.onChange('')}
@@ -371,11 +369,6 @@ export function ProductCategoryFilterTree({
 											className='flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pr-2 text-left text-sm'
 											title={`${option.name} — ${categoryCounts.direct} directement, ${categoryCounts.total} dans la branche`}
 										>
-											{expanded && hasChildren ? (
-												<FolderOpen className='h-3.5 w-3.5 shrink-0 opacity-70' />
-											) : (
-												<Folder className='h-3.5 w-3.5 shrink-0 opacity-70' />
-											)}
 											<span className='min-w-0 flex-1 truncate'>
 												{option.name}
 											</span>

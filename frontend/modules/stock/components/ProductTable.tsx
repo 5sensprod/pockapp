@@ -458,9 +458,9 @@ export function ProductTable({
 	})
 	return (
 		<div className='space-y-4'>
-			<div className='rounded-md border'>
+			<div className='rounded-md border [&>div]:max-h-[calc(100vh-var(--header-h)-9.5rem)]'>
 				<Table>
-					<TableHeader>
+					<TableHeader className='sticky top-0 z-20 bg-background shadow-sm [&_th]:bg-background'>
 						{table.getHeaderGroups().map((headerGroup) => (
 							<TableRow key={headerGroup.id}>
 								{headerGroup.headers.map((header) => (
