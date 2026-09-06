@@ -484,6 +484,11 @@ export function ProductsPage() {
 		setSearch(value)
 		setPage(1)
 	}
+	const clearSearch = () => {
+		setSearch('')
+		setDebounced('')
+		setPage(1)
+	}
 
 	const changeStatus = (value: CatalogProductStatus | undefined) => {
 		setStatus(value)
@@ -640,6 +645,16 @@ export function ProductsPage() {
 		setCommercialState('')
 		setSaleState('')
 		setPage(1)
+	}
+	const searchActive = search.trim().length > 0
+	const listFiltersActive = filtresActifs || status !== undefined
+	const clearListFilters = () => {
+		clearFilters()
+		setStatus(undefined)
+	}
+	const clearSearchAndFilters = () => {
+		clearSearch()
+		clearListFilters()
 	}
 
 	const total = products.data?.totalItems ?? 0
@@ -993,13 +1008,42 @@ export function ProductsPage() {
 								<span className='text-sm'>Lecture du catalogue…</span>
 							</div>
 						) : rows.length === 0 ? (
-							<div className='flex flex-1 flex-col items-center justify-center p-12 text-center text-muted-foreground'>
-								<p>Aucun produit ne correspond.</p>
-								<p className='mt-1 text-sm'>
-									{filtresActifs || debounced || status
-										? 'Des filtres sont actifs.'
-										: `Le catalogue en compte ${total}.`}
-								</p>
+							<div
+								className='flex flex-1 items-center justify-center p-6 sm:p-12'
+								aria-live='polite'
+							>
+								<div className='w-full max-w-lg rounded-xl border bg-muted/30 px-6 py-7 text-center shadow-sm sm:px-8'>
+									<div className='mx-auto flex h-11 w-11 items-center justify-center rounded-full border bg-background text-primary shadow-sm'>
+										<Search className='h-5 w-5' />
+									</div>
+									<h2 className='mt-4 font-semibold text-lg tracking-tight'>
+										{searchActive
+											? 'Aucun produit trouvé'
+											: listFiltersActive
+												? 'Aucun produit avec ces filtres'
+												: 'Le catalogue est vide'}
+									</h2>
+									<p className='mx-auto mt-2 max-w-sm text-muted-foreground text-sm leading-relaxed'>
+										{searchActive && listFiltersActive
+											? `La recherche « ${search.trim()} » ne correspond à aucun produit avec les filtres actuels.`
+											: searchActive
+												? `Aucun produit ne correspond à « ${search.trim()} ».`
+												: listFiltersActive
+													? 'Essayez de retirer les filtres sélectionnés pour retrouver le catalogue complet.'
+													: 'Ajoutez un premier produit pour commencer à construire votre catalogue.'}
+									</p>
+									{(searchActive || listFiltersActive) && (
+										<Button
+											type='button'
+											variant='outline'
+											onClick={clearSearchAndFilters}
+											className='mt-5 bg-background shadow-sm hover:bg-violet-50 hover:text-primary dark:hover:bg-violet-950/35'
+										>
+											<X className='mr-1.5 h-4 w-4' />
+											Effacer les filtres et la recherche
+										</Button>
+									)}
+								</div>
 							</div>
 						) : (
 							/* `paginated={false}` : la page vient du serveur. Paginer une

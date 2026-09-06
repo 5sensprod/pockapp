@@ -88,7 +88,9 @@ const timeFormatter = new Intl.DateTimeFormat('fr-FR', {
 // 16 px de chaque côté leur donnait plus de place qu'à leur contenu, au moment
 // où l'arbre des catégories réduit justement la largeur disponible au tableau.
 const COMPACT_COLUMN_CLASS: Record<string, string> = {
-	image: 'w-24 min-w-24 max-w-24 p-1',
+	// Même padding que la cellule « Désignation » : la vignette occupe la
+	// hauteur du bloc de quatre lignes sans imposer une ligne plus haute.
+	image: 'w-24 min-w-24 max-w-24 p-4',
 	name: 'w-52 min-w-44 max-w-52 px-2',
 	price_ttc: 'w-px whitespace-nowrap px-2',
 	stock: 'w-px whitespace-nowrap px-2',
@@ -138,7 +140,7 @@ function ProductThumb({ row }: { row: StockProductRow }) {
 	const imageUrl = row.imageUrl
 
 	return (
-		<div className='flex h-24 w-full flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-white'>
+		<div className='flex h-16 w-full flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-white'>
 			{imageUrl && adresseCassee !== imageUrl ? (
 				<img
 					src={imageUrl}
@@ -455,9 +457,12 @@ export function ProductTable({
 									Imprimer l’étiquette…
 								</DropdownMenuItem>
 								<DropdownMenuItem
-									onClick={() =>
-										navigator.clipboard.writeText(product.barcode || '')
-									}
+									onClick={(event) => {
+										// Le menu vit dans un portail React : son clic remonte quand
+										// même à la ligne, qui ouvrirait alors la fiche produit.
+										event.stopPropagation()
+										void navigator.clipboard.writeText(product.barcode || '')
+									}}
 								>
 									Copier le code-barres
 								</DropdownMenuItem>
@@ -553,7 +558,10 @@ export function ProductTable({
 									{row.getVisibleCells().map((cell) => (
 										<TableCell
 											key={cell.id}
-											className={COMPACT_COLUMN_CLASS[cell.column.id]}
+											className={cn(
+												COMPACT_COLUMN_CLASS[cell.column.id],
+												'py-1',
+											)}
 										>
 											{flexRender(
 												cell.column.columnDef.cell,
