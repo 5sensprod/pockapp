@@ -34,6 +34,7 @@ import {
 } from '@/lib/queries/catalog-products'
 import { type StockProductRow, toStockRow } from '@/lib/queries/catalog-rows'
 import { useCategories } from '@/lib/queries/categories'
+import { hasUsableCategoryCounts } from '@/lib/queries/category-counts'
 import {
 	collectBranchIds,
 	toCategoryOptions,
@@ -340,6 +341,7 @@ export function ProductsPage() {
 
 	const categories = useCategories({ companyId: activeCompanyId ?? undefined })
 	const catalogCounts = useCatalogCounts(activeCompanyId ?? undefined)
+	const categoryCountsAreUsable = hasUsableCategoryCounts(catalogCounts.data)
 
 	// Filtrer sur une catégorie, c'est filtrer sur SA BRANCHE : les produits sont
 	// rattachés aux feuilles, jamais aux ancêtres. Sans cela, « Guitares » ne
@@ -367,29 +369,37 @@ export function ProductsPage() {
 		}
 		return peuplees
 	}, [catalogCounts.data])
-	const categoryOptions = useMemo(
-		() =>
-			catalogCounts.data
-				? toCategoryOptions(categories.data ?? []).filter((category) =>
-						populatedCategoryIds.has(category.id),
-					)
-				: [],
-		[categories.data, catalogCounts.data, populatedCategoryIds],
-	)
+	const categoryOptions = useMemo(() => {
+		if (!catalogCounts.data && catalogCounts.isLoading) return []
+		const treeOptions = toCategoryOptions(categories.data ?? [])
+		return categoryCountsAreUsable
+			? treeOptions.filter((category) => populatedCategoryIds.has(category.id))
+			: treeOptions
+	}, [
+		categories.data,
+		catalogCounts.data,
+		catalogCounts.isLoading,
+		categoryCountsAreUsable,
+		populatedCategoryIds,
+	])
 
 	// Une catégorie peut devenir vide après une réaffectation ou un nouvel
 	// import. Elle disparaît alors des choix et ne doit pas rester sélectionnée
 	// comme un filtre invisible.
 	useEffect(() => {
-		if (!categoryId || categoryId === NO_RELATION_FILTER || !catalogCounts.data)
+		if (
+			!categoryId ||
+			categoryId === NO_RELATION_FILTER ||
+			!categoryCountsAreUsable
+		)
 			return
 		if (populatedCategoryIds.has(categoryId)) return
 		setCategoryId('')
 		setPage(1)
 	}, [
 		categoryId,
+		categoryCountsAreUsable,
 		populatedCategoryIds,
-		catalogCounts.data,
 		setCategoryId,
 		setPage,
 	])

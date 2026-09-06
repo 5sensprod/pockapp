@@ -1,11 +1,17 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
+import type {
+	CatalogBrandShape,
+	CatalogCategoryShape,
+} from '@/lib/queries/catalog-shapes'
+import { useUpdateCategory } from '@/lib/queries/categories'
+import { hasUsableCategoryCounts } from '@/lib/queries/category-counts'
 import type { CategoryNode } from '@/lib/queries/category-tree'
 import {
 	collectBranchIds,
 	toCategoryOptions,
 } from '@/lib/queries/category-tree'
+import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { type CatalogCounts, countsOfCategory } from '@/lib/queries/products'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
@@ -16,6 +22,7 @@ import {
 	FolderTree,
 	Loader2,
 	Search,
+	Star,
 	Truck,
 	X,
 } from 'lucide-react'
@@ -25,6 +32,7 @@ import {
 	useMemo,
 	useState,
 } from 'react'
+import { toast } from 'sonner'
 
 import { PRODUCT_BATCH_DRAG_TYPE } from './product-batch-drag'
 
@@ -43,7 +51,7 @@ interface SupplierOption extends NamedOption {
 }
 
 interface ProductCategoryFilterTreeProps {
-	categories: CategoryNode[]
+	categories: CatalogCategoryShape[]
 	brands: CatalogBrandShape[]
 	suppliers: SupplierOption[]
 	counts?: CatalogCounts
@@ -109,8 +117,10 @@ export function ProductCategoryFilterTree({
 	loading = {},
 }: ProductCategoryFilterTreeProps) {
 	const pb = usePocketBase()
+	const updateCategory = useUpdateCategory()
 	const [view, setView] = useState<ExplorerView>('category')
 	const [search, setSearch] = useState('')
+	const [featuredOnly, setFeaturedOnly] = useState(false)
 	const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
 	const [expandedSupplierIds, setExpandedSupplierIds] = useState<Set<string>>(
 		() => new Set(),
@@ -119,26 +129,75 @@ export function ProductCategoryFilterTree({
 		null,
 	)
 
-	// `total` est déjà remonté par le serveur. Les branches sans produit peuvent
-	// disparaître sans calculer ni parcourir les produits dans le navigateur.
-	const options = useMemo(() => {
-		const treeOrder = toCategoryOptions(categories)
-		// Pendant un déplacement, même une catégorie vide doit devenir une cible.
-		if (!counts || selectedProductCount > 0) return treeOrder
-		return treeOrder.filter(
-			(category) => countsOfCategory(counts, category.id).total > 0,
-		)
-	}, [categories, counts, selectedProductCount])
-	const optionIds = useMemo(
-		() => new Set(options.map((option) => option.id)),
-		[options],
-	)
 	const parentById = useMemo(
 		() =>
 			new Map(
 				categories.map((category) => [category.id, category.parent || '']),
 			),
 		[categories],
+	)
+	const categoryById = useMemo(
+		() => new Map(categories.map((category) => [category.id, category])),
+		[categories],
+	)
+	const featuredCategoryIds = useMemo(
+		() =>
+			new Set(
+				categories
+					.filter((category) => category.is_featured)
+					.map((category) => category.id),
+			),
+		[categories],
+	)
+	const featuredVisibleIds = useMemo(() => {
+		const included = new Set<string>()
+		const includeWithParents = (categoryId: string) => {
+			const visited = new Set<string>()
+			let current = categoryId
+			while (current && !visited.has(current)) {
+				visited.add(current)
+				included.add(current)
+				current = parentById.get(current) || ''
+			}
+		}
+
+		for (const id of featuredCategoryIds) includeWithParents(id)
+		// Un filtre produit déjà actif ne doit pas devenir invisible lorsque le
+		// bouton « mises en avant » est activé.
+		if (categoryValue && categoryValue !== noneValue)
+			includeWithParents(categoryValue)
+		return included
+	}, [categoryValue, featuredCategoryIds, noneValue, parentById])
+	const categoryCountsAreUsable = hasUsableCategoryCounts(counts)
+
+	// `total` est déjà remonté par le serveur. Les branches sans produit peuvent
+	// disparaître sans calculer ni parcourir les produits dans le navigateur. Si
+	// une ancienne réponse en cache n'a aucune ventilation par catégorie alors
+	// que le catalogue est non vide, elle ne doit surtout pas vider l'arbre.
+	const options = useMemo(() => {
+		const treeOrder = toCategoryOptions(categories)
+		// Pendant un déplacement, même une catégorie vide doit devenir une cible.
+		const populated =
+			!categoryCountsAreUsable || selectedProductCount > 0
+				? treeOrder
+				: treeOrder.filter(
+						(category) => countsOfCategory(counts, category.id).total > 0,
+					)
+		// Le glisser-déposer reste possible vers toutes les catégories, même si le
+		// filtre visuel était actif avant de commencer la sélection.
+		if (!featuredOnly || selectedProductCount > 0) return populated
+		return populated.filter((category) => featuredVisibleIds.has(category.id))
+	}, [
+		categories,
+		categoryCountsAreUsable,
+		counts,
+		featuredOnly,
+		featuredVisibleIds,
+		selectedProductCount,
+	])
+	const optionIds = useMemo(
+		() => new Set(options.map((option) => option.id)),
+		[options],
 	)
 	const parentsWithChildren = useMemo(() => {
 		const parents = new Set<string>()
@@ -167,6 +226,25 @@ export function ProductCategoryFilterTree({
 			return next
 		})
 	}, [categoryValue, noneValue, parentById])
+
+	// Afficher directement les catégories mises en avant plutôt que seulement
+	// leurs racines : toutes les branches nécessaires sont dépliées au toggle.
+	useEffect(() => {
+		if (!featuredOnly) return
+		setExpandedIds((current) => {
+			const next = new Set(current)
+			for (const categoryId of featuredCategoryIds) {
+				const visited = new Set<string>()
+				let parent = parentById.get(categoryId) || ''
+				while (parent && !visited.has(parent)) {
+					visited.add(parent)
+					next.add(parent)
+					parent = parentById.get(parent) || ''
+				}
+			}
+			return next
+		})
+	}, [featuredCategoryIds, featuredOnly, parentById])
 
 	const normalizedSearch = normalizeSearch(search.trim())
 	const searchedIds = useMemo(() => {
@@ -252,7 +330,9 @@ export function ProductCategoryFilterTree({
 			search: 'Chercher une catégorie…',
 			all: 'Toutes les catégories',
 			none: 'Sans catégorie',
-			count: options.length,
+			count: featuredOnly
+				? options.filter((option) => featuredCategoryIds.has(option.id)).length
+				: options.length,
 			value: categoryValue,
 			onChange: onCategoryChange,
 			Icon: FolderTree,
@@ -302,6 +382,19 @@ export function ProductCategoryFilterTree({
 			else next.add(id)
 			return next
 		})
+	}
+	const toggleCategoryFeatured = async (categoryId: string) => {
+		const category = categoryById.get(categoryId)
+		if (!category) return
+
+		try {
+			await updateCategory.mutateAsync({
+				id: category.id,
+				data: { is_featured: !category.is_featured },
+			})
+		} catch (error) {
+			toast.error(`Mise en avant refusée : ${pocketbaseErrorMessage(error)}`)
+		}
 	}
 	const acceptsProductBatch = (event: ReactDragEvent) =>
 		selectedProductCount > 0 &&
@@ -358,9 +451,38 @@ export function ProductCategoryFilterTree({
 								</button>
 							))}
 						</div>
-						<span className='text-muted-foreground text-xs tabular-nums'>
-							{currentView.count}
-						</span>
+						<div className='flex items-center gap-1.5'>
+							{view === 'category' && (
+								<button
+									type='button'
+									aria-pressed={featuredOnly}
+									aria-label={
+										featuredOnly
+											? 'Afficher toutes les catégories'
+											: 'Afficher uniquement les catégories mises en avant'
+									}
+									title={
+										featuredOnly
+											? 'Voir toutes les catégories'
+											: 'Catégories mises en avant'
+									}
+									onClick={() => setFeaturedOnly((active) => !active)}
+									className={cn(
+										'flex h-7 w-7 items-center justify-center rounded-md border transition-colors',
+										featuredOnly
+											? 'border-amber-300 bg-amber-50 text-amber-600 shadow-sm hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+											: 'border-transparent text-muted-foreground hover:border-border hover:bg-background hover:text-amber-600',
+									)}
+								>
+									<Star
+										className={cn('h-4 w-4', featuredOnly && 'fill-current')}
+									/>
+								</button>
+							)}
+							<span className='text-muted-foreground text-xs tabular-nums'>
+								{currentView.count}
+							</span>
+						</div>
 					</div>
 					<div className='relative'>
 						<Search className='-translate-y-1/2 absolute top-1/2 left-2.5 h-3.5 w-3.5 text-muted-foreground' />
@@ -427,17 +549,26 @@ export function ProductCategoryFilterTree({
 						<p className='py-8 text-center text-muted-foreground text-sm'>
 							{normalizedSearch
 								? 'Aucune catégorie trouvée'
-								: 'Aucune catégorie peuplée'}
+								: featuredOnly
+									? 'Aucune catégorie mise en avant'
+									: 'Aucune catégorie peuplée'}
 						</p>
 					) : view === 'category' ? (
 						<div role='tree' aria-label='Arbre des catégories'>
 							{visibleOptions.map((option) => {
 								const hasChildren = parentsWithChildren.has(option.id)
+								const featured = featuredCategoryIds.has(option.id)
 								const expanded =
 									normalizedSearch !== '' || expandedIds.has(option.id)
-								const categoryCounts = countsOfCategory(counts, option.id)
+								const categoryCounts = countsOfCategory(
+									categoryCountsAreUsable ? counts : undefined,
+									option.id,
+								)
 								const selected = categoryValue === option.id
 								const dragTarget = dragOverCategoryId === option.id
+								const updatingFeatured =
+									updateCategory.isPending &&
+									updateCategory.variables?.id === option.id
 								return (
 									<div
 										key={option.id}
@@ -508,20 +639,54 @@ export function ProductCategoryFilterTree({
 										<button
 											type='button'
 											onClick={() => onCategoryChange(option.id)}
-											className='flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pr-2 text-left text-sm'
+											className='flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left text-sm'
 											title={`${option.name} — ${categoryCounts.direct} directement, ${categoryCounts.total} dans la branche`}
 										>
 											<span className='min-w-0 flex-1 truncate'>
 												{option.name}
 											</span>
-											{counts && (
-												<span className='shrink-0 text-[11px] tabular-nums opacity-60'>
-													{categoryCounts.direct === categoryCounts.total
-														? categoryCounts.total
-														: `${categoryCounts.direct}/${categoryCounts.total}`}
-												</span>
+										</button>
+										<button
+											type='button'
+											aria-pressed={featured}
+											aria-label={
+												featured
+													? `Retirer ${option.name} des catégories mises en avant`
+													: `Mettre ${option.name} en avant`
+											}
+											title={
+												featured
+													? 'Retirer de la mise en avant'
+													: 'Mettre en avant'
+											}
+											disabled={updateCategory.isPending}
+											onClick={() => void toggleCategoryFeatured(option.id)}
+											className={cn(
+												'mr-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-all focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+												featured
+													? 'text-amber-500 opacity-100 hover:bg-amber-100 dark:hover:bg-amber-950/50'
+													: 'text-muted-foreground opacity-0 hover:bg-background hover:text-amber-500 group-hover:opacity-100',
+												updatingFeatured && 'opacity-100',
+											)}
+										>
+											{updatingFeatured ? (
+												<Loader2 className='h-3.5 w-3.5 animate-spin' />
+											) : (
+												<Star
+													className={cn(
+														'h-3.5 w-3.5',
+														featured && 'fill-current',
+													)}
+												/>
 											)}
 										</button>
+										{categoryCountsAreUsable && (
+											<span className='shrink-0 pr-2 text-[11px] tabular-nums opacity-60'>
+												{categoryCounts.direct === categoryCounts.total
+													? categoryCounts.total
+													: `${categoryCounts.direct}/${categoryCounts.total}`}
+											</span>
+										)}
 									</div>
 								)
 							})}

@@ -196,14 +196,27 @@ export function useUpdateCategory() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: async ({ id, data }: { id: string; data: CategoryWrite }) => {
+		// PocketBase accepte une mise à jour partielle. Le type le reflète pour que
+		// les actions rapides (par exemple `is_featured`) n'aient pas à renvoyer un
+		// nom potentiellement périmé avec le seul champ réellement modifié.
+		mutationFn: async ({
+			id,
+			data,
+		}: {
+			id: string
+			data: Partial<CategoryWrite>
+		}) => {
 			return await pb
 				.collection('categories')
 				.update<CatalogCategoryShape>(id, buildWritePayload(data))
 		},
-		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: ['categories'] })
-			queryClient.invalidateQueries({ queryKey: ['categories', variables.id] })
+		onSuccess: async (_, variables) => {
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: ['categories'] }),
+				queryClient.invalidateQueries({
+					queryKey: ['categories', variables.id],
+				}),
+			])
 		},
 	})
 }
