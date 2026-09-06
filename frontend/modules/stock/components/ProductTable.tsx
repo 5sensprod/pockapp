@@ -53,7 +53,15 @@ import {
 	Trash2,
 	Truck,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+	type MouseEvent as ReactMouseEvent,
+	type PointerEvent as ReactPointerEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react'
 
 import type { StockProductRow } from '@/lib/queries/catalog-rows'
 import { cn } from '@/lib/utils'
@@ -83,6 +91,8 @@ const timeFormatter = new Intl.DateTimeFormat('fr-FR', {
 	hour: '2-digit',
 	minute: '2-digit',
 })
+const LONG_PRESS_DELAY = 500
+const LONG_PRESS_MOVE_TOLERANCE = 8
 
 // Ces colonnes portent des valeurs très courtes. Leur padding générique de
 // 16 px de chaque côté leur donnait plus de place qu'à leur contenu, au moment
@@ -175,7 +185,89 @@ export function ProductTable({
 		pageIndex: 0,
 		pageSize: 10,
 	})
+	const [selectedProducts, setSelectedProducts] = useState<
+		Map<string, StockProductRow>
+	>(() => new Map())
 	const zoneDefilante = useRef<HTMLDivElement | null>(null)
+	const longPressTimerRef = useRef<number | null>(null)
+	const pressStartRef = useRef<{
+		rowId: string
+		x: number
+		y: number
+	} | null>(null)
+	const suppressedClickRowIdRef = useRef<string | null>(null)
+	const selectionStartedRef = useRef(false)
+	const selectionMode = selectedProducts.size > 0
+
+	const toggleProductSelection = useCallback((product: StockProductRow) => {
+		setSelectedProducts((current) => {
+			const next = new Map(current)
+			if (next.has(product.id)) next.delete(product.id)
+			else next.set(product.id, product)
+			return next
+		})
+	}, [])
+
+	const cancelLongPress = useCallback(() => {
+		if (longPressTimerRef.current !== null) {
+			window.clearTimeout(longPressTimerRef.current)
+			longPressTimerRef.current = null
+		}
+		pressStartRef.current = null
+	}, [])
+
+	const startLongPress = (
+		product: StockProductRow,
+		event: ReactPointerEvent<HTMLTableRowElement>,
+	) => {
+		if (!onRowClick || selectionMode || event.button !== 0) return
+		if ((event.target as HTMLElement).closest('button, a, [role="menuitem"]'))
+			return
+
+		cancelLongPress()
+		pressStartRef.current = {
+			rowId: product.id,
+			x: event.clientX,
+			y: event.clientY,
+		}
+		longPressTimerRef.current = window.setTimeout(() => {
+			selectionStartedRef.current = true
+			suppressedClickRowIdRef.current = product.id
+			toggleProductSelection(product)
+			longPressTimerRef.current = null
+		}, LONG_PRESS_DELAY)
+	}
+
+	const moveLongPress = (
+		product: StockProductRow,
+		event: ReactPointerEvent<HTMLTableRowElement>,
+	) => {
+		const start = pressStartRef.current
+		if (!start || start.rowId !== product.id) return
+		if (
+			Math.abs(event.clientX - start.x) > LONG_PRESS_MOVE_TOLERANCE ||
+			Math.abs(event.clientY - start.y) > LONG_PRESS_MOVE_TOLERANCE
+		) {
+			cancelLongPress()
+		}
+	}
+
+	const handleRowClick = (
+		product: StockProductRow,
+		event: ReactMouseEvent<HTMLTableRowElement>,
+	) => {
+		if ((event.target as HTMLElement).closest('button, a, [role="menuitem"]'))
+			return
+		if (suppressedClickRowIdRef.current === product.id) {
+			suppressedClickRowIdRef.current = null
+			return
+		}
+		if (selectionMode) {
+			toggleProductSelection(product)
+			return
+		}
+		onRowClick?.(product)
+	}
 
 	// De nouvelles lignes commencent en haut. Changer de page en restant au
 	// milieu de l'ancienne laisserait l'œil au 14e produit d'une liste dont les
@@ -186,6 +278,26 @@ export function ProductTable({
 		if (data.length === 0) return
 		zoneDefilante.current?.scrollTo({ top: 0 })
 	}, [data])
+
+	useEffect(() => {
+		if (!selectionStartedRef.current) return
+		console.info(
+			'[PocketApp] Produits sélectionnés :',
+			Array.from(selectedProducts.values()),
+		)
+	}, [selectedProducts])
+
+	useEffect(() => {
+		if (!selectionMode) return
+		const leaveSelectionMode = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape') return
+			setSelectedProducts(new Map())
+		}
+		window.addEventListener('keydown', leaveSelectionMode)
+		return () => window.removeEventListener('keydown', leaveSelectionMode)
+	}, [selectionMode])
+
+	useEffect(() => cancelLongPress, [cancelLongPress])
 
 	// Reconstruire les colonnes à chaque rendu invalide les caches internes de
 	// TanStack Table pour les 25 lignes affichées. Elles ne dépendent que de
@@ -547,30 +659,52 @@ export function ProductTable({
 					</TableHeader>
 					<TableBody>
 						{table.getRowModel().rows?.length ? (
-							table.getRowModel().rows.map((row) => (
-								<TableRow
-									key={row.id}
-									className={onRowClick ? 'cursor-pointer' : undefined}
-									onClick={
-										onRowClick ? () => onRowClick(row.original) : undefined
-									}
-								>
-									{row.getVisibleCells().map((cell) => (
-										<TableCell
-											key={cell.id}
-											className={cn(
-												COMPACT_COLUMN_CLASS[cell.column.id],
-												'py-1',
-											)}
-										>
-											{flexRender(
-												cell.column.columnDef.cell,
-												cell.getContext(),
-											)}
-										</TableCell>
-									))}
-								</TableRow>
-							))
+							table.getRowModel().rows.map((row) => {
+								const selected = selectedProducts.has(row.original.id)
+								return (
+									<TableRow
+										key={row.id}
+										aria-selected={selected}
+										className={cn(
+											onRowClick && 'cursor-pointer',
+											selected &&
+												'bg-violet-50/80 outline outline-2 outline-offset-[-2px] outline-primary/50 hover:bg-violet-100 dark:bg-violet-950/35',
+										)}
+										onPointerDown={(event) =>
+											startLongPress(row.original, event)
+										}
+										onPointerMove={(event) =>
+											moveLongPress(row.original, event)
+										}
+										onPointerUp={cancelLongPress}
+										onPointerCancel={cancelLongPress}
+										onPointerLeave={cancelLongPress}
+										onContextMenu={(event) => {
+											if (
+												selectionMode ||
+												suppressedClickRowIdRef.current === row.original.id
+											)
+												event.preventDefault()
+										}}
+										onClick={(event) => handleRowClick(row.original, event)}
+									>
+										{row.getVisibleCells().map((cell) => (
+											<TableCell
+												key={cell.id}
+												className={cn(
+													COMPACT_COLUMN_CLASS[cell.column.id],
+													'py-1',
+												)}
+											>
+												{flexRender(
+													cell.column.columnDef.cell,
+													cell.getContext(),
+												)}
+											</TableCell>
+										))}
+									</TableRow>
+								)
+							})
 						) : (
 							<TableRow>
 								<TableCell

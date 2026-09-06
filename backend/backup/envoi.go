@@ -193,12 +193,27 @@ func (c *Client) requete(methode, action string, params url.Values, corps io.Rea
 	return req, nil
 }
 
+// TailleMaxReponse plafonne un corps de réponse lu en mémoire.
+//
+// Il valait 8 Kio, et c'était un plafond posé pour la seule réponse d'erreur —
+// une page HTML d'anti-bot. Mais lireReponse sert AUSSI aux inventaires, et
+// celui du miroir compte une ligne par fichier : 9492 lignes pour un socle de
+// 4712 images, soit près d'un mégaoctet de JSON. Tronqué à 8 Kio, il revenait
+// en « unexpected end of JSON input » — donc `storage-liste` échouait TOUJOURS
+// dès qu'un socle était déclaré, et avec elle le rapatriement des images
+// (RapatrierStorage, /api/backup/storage/pull, /api/backup/storage/mirror).
+// Mesuré le 6 septembre 2026 : 27 images du poste client irrécupérables, sans
+// que rien n'indique la vraie cause.
+const TailleMaxReponse = 32 << 20
+
 // lireReponse rend le corps et transforme un statut non-2xx en erreur
-// lisible. Le corps est tronqué : en cas d'anti-bot, la réponse est une page
-// HTML entière, et la recopier dans les journaux ne renseigne personne.
+// lisible. Le corps reste plafonné — une réponse illimitée lue en mémoire est
+// une porte ouverte — et l'EXTRAIT d'erreur, lui, reste court : en cas
+// d'anti-bot la réponse est une page HTML entière, et la recopier dans les
+// journaux ne renseigne personne.
 func lireReponse(resp *http.Response) ([]byte, error) {
 	defer resp.Body.Close()
-	corps, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	corps, _ := io.ReadAll(io.LimitReader(resp.Body, TailleMaxReponse))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		extrait := strings.TrimSpace(string(corps))
 		if len(extrait) > 300 {
