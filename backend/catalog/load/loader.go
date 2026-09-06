@@ -60,8 +60,16 @@ type files struct {
 	// root est la racine d'AppServe, parent du répertoire `data`. Les `src`
 	// sont relatifs à elle : /public/products/… → <root>/public/products/…
 	root string
-	fsys *filesystem.System
-	res  *Result
+	// autresRacines — racines supplémentaires à essayer avant les replis.
+	//
+	// Le chargement complet n'en a pas besoin : il lit UNE base NeDB et ses
+	// images sont sous la même racine. Le rattrapage, lui, va chercher des
+	// fiches que la base d'installation n'a plus et que seule la base de
+	// développement détient encore — leurs images sont sous une AUTRE racine.
+	// Vide par défaut : sans elle, rien ne change.
+	autresRacines []string
+	fsys          *filesystem.System
+	res           *Result
 	// secours est le répertoire `storage` d'une AUTRE base PocketBase, où
 	// retrouver les fichiers que public/ n'a plus. Vide = pas de repli.
 	secours string
@@ -170,11 +178,18 @@ func (f *files) indexSecours() map[string]string {
 
 // resolve rend le chemin disque d'un `src`, ou "" s'il reste introuvable.
 func (f *files) resolve(src string) string {
-	// Cas normal : chemin relatif à la racine d'AppServe.
+	// Cas normal : chemin relatif à la racine d'AppServe, puis aux racines
+	// supplémentaires que le rattrapage peut fournir.
 	if !strings.HasPrefix(src, "http://") && !strings.HasPrefix(src, "https://") {
-		p := filepath.Join(f.root, filepath.FromSlash(strings.TrimPrefix(src, "/")))
-		if _, err := os.Stat(p); err == nil {
-			return p
+		rel := filepath.FromSlash(strings.TrimPrefix(src, "/"))
+		for _, racine := range append([]string{f.root}, f.autresRacines...) {
+			if racine == "" {
+				continue
+			}
+			p := filepath.Join(racine, rel)
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
 		}
 	}
 	// Repli : le fichier existe sous public/, à un autre chemin. C'est le cas
@@ -264,6 +279,10 @@ type Result struct {
 	// Findings est ce que la garde a trouvé avant d'écrire — vide sur une base
 	// reconstructible, renseigné quand `-force-purge` a passé outre.
 	Findings Findings
+
+	// dernierProduit — identifiant PocketBase du dernier produit écrit. Sert
+	// au rattrapage, qui rend compte fiche par fiche. Voir ProduitEcrit.
+	dernierProduit string
 }
 
 func newResult() *Result {
@@ -579,58 +598,86 @@ func loadProducts(tx *daos.Dao, cat *normalize.Catalog, res *Result, companyID s
 			res.Skipped = append(res.Skipped, Skipped{"products", p.LegacyID, p.Name, reason})
 			continue
 		}
-		r := models.NewRecord(col)
-		r.RefreshId() // voir loadCategories : requis avant la copie des fichiers
-		r.Set("name", p.Name)
-		r.Set("designation", p.Designati)
-		r.Set("sku", p.SKU)
-		r.Set("barcode", p.Barcode)
-		r.Set("slug", p.Slug)
-		r.Set("description", p.Descripti)
-		r.Set("type", p.Type)
-		r.Set("status", p.Status)
-		r.Set("price_ttc", p.PriceTTC)
-		r.Set("purchase_price_ht", p.PurchaseH)
-		r.Set("tax_rate", p.TaxRate)
-		r.Set("stock", p.Stock)
-		r.Set("manage_stock", p.ManageStk)
-		r.Set("min_stock", p.MinStock)
-		r.Set("image", fl.upload(r, p.ImageSrc))
-		r.Set("gallery", fl.uploadAll(r, p.GallerySrc))
-		r.Set("wp_image_url", p.ImageWPURL)
-		// Vide = neuf, et l'absence est la valeur par défaut : on n'écrit rien
-		// plutôt que d'imposer une valeur à 3036 produits pour dire « rien de
-		// particulier ». Voir AddCommercialStateToProducts.
-		if p.CommercialState != "" {
-			r.Set("commercial_state", p.CommercialState)
+		if err := ecrireProduit(tx, col, p, companyID, brandIDs, categoryIDs, supplierIDs, fl, res); err != nil {
+			return err
 		}
-
-		if p.BrandLegacyID != "" {
-			if id, ok := brandIDs[p.BrandLegacyID]; ok {
-				r.Set("brand", id)
-			} else {
-				res.drop("products.brand (marque écartée ou absente)")
-			}
-		}
-		if p.SupplierLegacyID != "" {
-			if id, ok := supplierIDs[p.SupplierLegacyID]; ok {
-				r.Set("supplier", id)
-			} else {
-				res.drop("products.supplier (fournisseur écarté ou absent)")
-			}
-		}
-		r.Set("categories", resolve(p.CategoryLegacyID, categoryIDs, res, "products.categories"))
-
-		r.Set("legacy_id", p.LegacyID)
-		r.Set("company", companyID)
-
-		if err := tx.SaveRecord(r); err != nil {
-			return fmt.Errorf("products/%s (%s): %w", p.LegacyID, p.Name, err)
-		}
-		res.Loaded["products"]++
 	}
 	return nil
 }
+
+// ecrireProduit écrit UN produit. Extraite de loadProducts pour que le
+// rattrapage (rattrapage.go) écrive par le même chemin : deux codes qui
+// écrivent la même collection divergent, et c'est le défaut que la reprise a
+// déjà rencontré une fois (voir l'en-tête de mapping/appliquer.go).
+func ecrireProduit(
+	tx *daos.Dao,
+	col *models.Collection,
+	p normalize.Product,
+	companyID string,
+	brandIDs, categoryIDs, supplierIDs map[string]string,
+	fl *files,
+	res *Result,
+) error {
+	r := models.NewRecord(col)
+	r.RefreshId() // voir loadCategories : requis avant la copie des fichiers
+	r.Set("name", p.Name)
+	r.Set("designation", p.Designati)
+	r.Set("sku", p.SKU)
+	r.Set("barcode", p.Barcode)
+	r.Set("slug", p.Slug)
+	r.Set("description", p.Descripti)
+	r.Set("type", p.Type)
+	r.Set("status", p.Status)
+	r.Set("price_ttc", p.PriceTTC)
+	r.Set("purchase_price_ht", p.PurchaseH)
+	r.Set("tax_rate", p.TaxRate)
+	r.Set("stock", p.Stock)
+	r.Set("manage_stock", p.ManageStk)
+	r.Set("min_stock", p.MinStock)
+	r.Set("image", fl.upload(r, p.ImageSrc))
+	r.Set("gallery", fl.uploadAll(r, p.GallerySrc))
+	r.Set("wp_image_url", p.ImageWPURL)
+	// Vide = neuf, et l'absence est la valeur par défaut : on n'écrit rien
+	// plutôt que d'imposer une valeur à 3036 produits pour dire « rien de
+	// particulier ». Voir AddCommercialStateToProducts.
+	if p.CommercialState != "" {
+		r.Set("commercial_state", p.CommercialState)
+	}
+
+	if p.BrandLegacyID != "" {
+		if id, ok := brandIDs[p.BrandLegacyID]; ok {
+			r.Set("brand", id)
+		} else {
+			res.drop("products.brand (marque écartée ou absente)")
+		}
+	}
+	if p.SupplierLegacyID != "" {
+		if id, ok := supplierIDs[p.SupplierLegacyID]; ok {
+			r.Set("supplier", id)
+		} else {
+			res.drop("products.supplier (fournisseur écarté ou absent)")
+		}
+	}
+	r.Set("categories", resolve(p.CategoryLegacyID, categoryIDs, res, "products.categories"))
+
+	r.Set("legacy_id", p.LegacyID)
+	r.Set("company", companyID)
+
+	if err := tx.SaveRecord(r); err != nil {
+		return fmt.Errorf("products/%s (%s): %w", p.LegacyID, p.Name, err)
+	}
+	res.Loaded["products"]++
+	res.dernierProduit = r.Id
+	return nil
+}
+
+// ProduitEcrit rend l'identifiant PocketBase du dernier produit écrit par
+// ecrireProduit. Utile au rattrapage, qui rend compte fiche par fiche.
+//
+// Volontairement porté par le Result et non rendu par ecrireProduit : le
+// chargement complet n'en a aucun usage, et changer sa signature pour un
+// besoin qui n'est pas le sien est le genre de dette qui se paie deux fois.
+func (r *Result) ProduitEcrit() string { return r.dernierProduit }
 
 // resolve traduit une liste d'identifiants NeDB en identifiants PocketBase, et
 // compte ce qui se perd en chemin.

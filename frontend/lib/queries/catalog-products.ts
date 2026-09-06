@@ -36,6 +36,10 @@ import {
 } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
+import {
+	type CatalogCategoryBatchMode,
+	categoriesAfterBatchChange,
+} from './catalog-product-category-batch'
 import type { PocketBaseRecord } from './catalog-shapes'
 import {
 	type GalleryIntent,
@@ -560,6 +564,72 @@ export function useUpdateCatalogProduct() {
 				.collection('products')
 				.update(id, buildWritePayload(data))) as CatalogProductShape,
 		onSuccess: () => invalidateCatalog(queryClient),
+	})
+}
+
+export type { CatalogCategoryBatchMode } from './catalog-product-category-batch'
+
+export interface CatalogProductCategoryBatchItem {
+	id: string
+	categories: string[]
+}
+
+/** Écriture par lot dans PocketBase, au même endroit que toutes les mutations
+ * produit. Les requêtes partent par groupes bornés, puis le catalogue n'est
+ * invalidé qu'une fois à la fin. */
+export function useUpdateCatalogProductCategoriesBatch() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async ({
+			products,
+			destinationId,
+			mode,
+		}: {
+			products: CatalogProductCategoryBatchItem[]
+			destinationId: string
+			mode: CatalogCategoryBatchMode
+		}) => {
+			const updates = products
+				.map((product) => ({
+					id: product.id,
+					categories: categoriesAfterBatchChange(
+						product.categories,
+						destinationId,
+						mode,
+					),
+				}))
+				.filter(
+					(update, index) =>
+						update.categories.length !== products[index].categories.length ||
+						update.categories.some(
+							(categoryId, categoryIndex) =>
+								categoryId !== products[index].categories[categoryIndex],
+						),
+				)
+
+			// Une sélection peut porter toute une page. Borner la concurrence évite
+			// d'envoyer 25 écritures simultanées au PocketBase embarqué.
+			for (let start = 0; start < updates.length; start += 6) {
+				await Promise.all(
+					updates.slice(start, start + 6).map((update) =>
+						pb.collection('products').update(
+							update.id,
+							buildWritePayload({
+								categories: update.categories,
+							}),
+						),
+					),
+				)
+			}
+
+			return {
+				updated: updates.length,
+				unchanged: products.length - updates.length,
+			}
+		},
+		onSettled: () => invalidateCatalog(queryClient),
 	})
 }
 

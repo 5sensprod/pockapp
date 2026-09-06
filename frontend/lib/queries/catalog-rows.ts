@@ -39,6 +39,8 @@ export interface StockProductRow {
 	imageUrl?: string | null
 	brandName?: string | null
 	supplierName?: string | null
+	/** Identifiants PocketBase nécessaires aux actions par lot. */
+	categoryIds: string[]
 	categoryNames: string[]
 }
 
@@ -77,6 +79,7 @@ export function toStockRow(
 		brandName: (product.brand && ctx.brandById.get(product.brand)) || null,
 		supplierName:
 			(product.supplier && ctx.supplierById.get(product.supplier)) || null,
+		categoryIds: product.categories ?? [],
 		// Une catégorie inconnue du cache est ignorée plutôt que rendue en
 		// identifiant brut : l'utilisateur n'a rien à faire d'un `n0zg4…`.
 		categoryNames: (product.categories ?? [])

@@ -36,6 +36,7 @@ describe('toStockRow', () => {
 		)
 		expect(row.brandName).toBe('Fender')
 		expect(row.supplierName).toBe('Algam')
+		expect(row.categoryIds).toEqual(['c1', 'c2'])
 		expect(row.categoryNames).toEqual(['Guitares', 'Électriques'])
 	})
 

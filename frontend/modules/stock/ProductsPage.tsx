@@ -78,6 +78,7 @@ import {
 	type ProduitASupprimer,
 } from './components/DeleteProductDialog'
 import { PaginationBar } from './components/PaginationBar'
+import { ProductBatchCategoryDialog } from './components/ProductBatchCategoryDialog'
 import { ProductCategoryFilterTree } from './components/ProductCategoryFilterTree'
 import { ProductTable } from './components/ProductTable'
 
@@ -222,6 +223,13 @@ export function ProductsPage() {
 	)
 	const [panneauOuvert, setPanneauOuvert] = useState(false)
 	const [dialogOpen, setDialogOpen] = useState(false)
+	const [selectedProducts, setSelectedProducts] = useState<
+		Map<string, StockProductRow>
+	>(() => new Map())
+	const [batchCategoryTarget, setBatchCategoryTarget] = useState<{
+		id: string
+		name: string
+	} | null>(null)
 	/** La fiche dont on demande la suppression. `null` = aucune confirmation
 	 *  ouverte. On garde l'ENREGISTREMENT et non la ligne de table : la
 	 *  suppression a besoin du `legacy_id`, que `StockProductRow` ne porte pas —
@@ -959,6 +967,8 @@ export function ProductsPage() {
 							setSupplierId(value)
 							setPage(1)
 						}}
+						selectedProductCount={selectedProducts.size}
+						onProductsDropOnCategory={setBatchCategoryTarget}
 						loading={{
 							category: categories.isLoading || catalogCounts.isLoading,
 							brand: brands.isLoading,
@@ -1051,6 +1061,8 @@ export function ProductsPage() {
 					   table qui en montre 25. */
 							<ProductTable
 								data={rows}
+								selectedProducts={selectedProducts}
+								onSelectedProductsChange={setSelectedProducts}
 								paginated={false}
 								sorting={sorting}
 								onSortingChange={changeSorting}
@@ -1086,6 +1098,16 @@ export function ProductsPage() {
 			<DeleteProductDialog
 				produit={produitASupprimer}
 				onOpenChange={(ouvert) => !ouvert && setProduitASupprimer(null)}
+			/>
+
+			<ProductBatchCategoryDialog
+				target={batchCategoryTarget}
+				products={Array.from(selectedProducts.values())}
+				onCancel={() => setBatchCategoryTarget(null)}
+				onComplete={() => {
+					setBatchCategoryTarget(null)
+					setSelectedProducts(new Map())
+				}}
 			/>
 		</div>
 	)

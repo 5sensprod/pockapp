@@ -19,7 +19,14 @@ import {
 	Truck,
 	X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import {
+	type DragEvent as ReactDragEvent,
+	useEffect,
+	useMemo,
+	useState,
+} from 'react'
+
+import { PRODUCT_BATCH_DRAG_TYPE } from './product-batch-drag'
 
 type ExplorerView = 'category' | 'brand' | 'supplier'
 
@@ -47,6 +54,8 @@ interface ProductCategoryFilterTreeProps {
 	onCategoryChange: (value: string) => void
 	onBrandChange: (value: string) => void
 	onSupplierChange: (value: string) => void
+	selectedProductCount?: number
+	onProductsDropOnCategory?: (category: CategoryNode) => void
 	loading?: Partial<Record<ExplorerView, boolean>>
 }
 
@@ -95,6 +104,8 @@ export function ProductCategoryFilterTree({
 	onCategoryChange,
 	onBrandChange,
 	onSupplierChange,
+	selectedProductCount = 0,
+	onProductsDropOnCategory,
 	loading = {},
 }: ProductCategoryFilterTreeProps) {
 	const pb = usePocketBase()
@@ -104,16 +115,20 @@ export function ProductCategoryFilterTree({
 	const [expandedSupplierIds, setExpandedSupplierIds] = useState<Set<string>>(
 		() => new Set(),
 	)
+	const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(
+		null,
+	)
 
 	// `total` est déjà remonté par le serveur. Les branches sans produit peuvent
 	// disparaître sans calculer ni parcourir les produits dans le navigateur.
 	const options = useMemo(() => {
 		const treeOrder = toCategoryOptions(categories)
-		if (!counts) return treeOrder
+		// Pendant un déplacement, même une catégorie vide doit devenir une cible.
+		if (!counts || selectedProductCount > 0) return treeOrder
 		return treeOrder.filter(
 			(category) => countsOfCategory(counts, category.id).total > 0,
 		)
-	}, [categories, counts])
+	}, [categories, counts, selectedProductCount])
 	const optionIds = useMemo(
 		() => new Set(options.map((option) => option.id)),
 		[options],
@@ -288,6 +303,9 @@ export function ProductCategoryFilterTree({
 			return next
 		})
 	}
+	const acceptsProductBatch = (event: ReactDragEvent) =>
+		selectedProductCount > 0 &&
+		Array.from(event.dataTransfer.types).includes(PRODUCT_BATCH_DRAG_TYPE)
 
 	return (
 		// L'arbre remplit la colonne et ne défile QUE dans sa liste (5 septembre
@@ -296,7 +314,14 @@ export function ProductCategoryFilterTree({
 		// filtre passait à la ligne, et sa liste était bornée par un second calcul
 		// de la même famille. La colonne étant désormais à hauteur fixe, il n'y a
 		// plus rien à deviner : l'en-tête est hors de la zone défilante.
-		<Card className='flex min-h-0 flex-col overflow-hidden lg:h-full'>
+		<Card
+			onDragEnter={(event) => {
+				if (view === 'category' || !acceptsProductBatch(event)) return
+				setView('category')
+				setSearch('')
+			}}
+			className='flex min-h-0 flex-col overflow-hidden lg:h-full'
+		>
 			<CardContent className='flex min-h-0 flex-1 flex-col p-0'>
 				<div className='shrink-0 border-b bg-muted/30 p-3'>
 					<div className='mb-2 flex items-center justify-between gap-2'>
@@ -315,6 +340,11 @@ export function ProductCategoryFilterTree({
 									title={label}
 									onClick={() => {
 										setView(id)
+										setSearch('')
+									}}
+									onDragEnter={(event) => {
+										if (id !== 'category' || !acceptsProductBatch(event)) return
+										setView('category')
 										setSearch('')
 									}}
 									className={cn(
@@ -407,6 +437,7 @@ export function ProductCategoryFilterTree({
 									normalizedSearch !== '' || expandedIds.has(option.id)
 								const categoryCounts = countsOfCategory(counts, option.id)
 								const selected = categoryValue === option.id
+								const dragTarget = dragOverCategoryId === option.id
 								return (
 									<div
 										key={option.id}
@@ -414,9 +445,43 @@ export function ProductCategoryFilterTree({
 										aria-level={option.depth + 1}
 										aria-selected={selected}
 										aria-expanded={hasChildren ? expanded : undefined}
+										onDragEnter={(event) => {
+											if (!acceptsProductBatch(event)) return
+											setDragOverCategoryId(option.id)
+											if (hasChildren) {
+												setExpandedIds((current) =>
+													current.has(option.id)
+														? current
+														: new Set(current).add(option.id),
+												)
+											}
+										}}
+										onDragOver={(event) => {
+											if (!acceptsProductBatch(event)) return
+											event.preventDefault()
+											event.dataTransfer.dropEffect = 'move'
+										}}
+										onDragLeave={(event) => {
+											if (
+												event.relatedTarget instanceof Node &&
+												event.currentTarget.contains(event.relatedTarget)
+											)
+												return
+											setDragOverCategoryId(null)
+										}}
+										onDrop={(event) => {
+											if (!acceptsProductBatch(event)) return
+											event.preventDefault()
+											setDragOverCategoryId(null)
+											onProductsDropOnCategory?.(option)
+										}}
 										className={cn(
 											'group mb-0.5 flex min-w-0 items-center rounded-md transition-colors',
-											selected ? SELECTED_ITEM_CLASS : 'hover:bg-accent',
+											dragTarget
+												? 'bg-violet-100 text-primary ring-2 ring-primary/50 ring-inset dark:bg-violet-900/50'
+												: selected
+													? SELECTED_ITEM_CLASS
+													: 'hover:bg-accent',
 										)}
 										style={{ paddingLeft: `${4 + option.depth * 13}px` }}
 									>

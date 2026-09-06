@@ -54,8 +54,11 @@ import {
 	Truck,
 } from 'lucide-react'
 import {
+	type Dispatch,
+	type DragEvent as ReactDragEvent,
 	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
+	type SetStateAction,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -66,6 +69,7 @@ import {
 import type { StockProductRow } from '@/lib/queries/catalog-rows'
 import { cn } from '@/lib/utils'
 import { PrintLabelDialog } from './PrintLabelDialog'
+import { PRODUCT_BATCH_DRAG_TYPE } from './product-batch-drag'
 
 interface ProductTableProps {
 	data: StockProductRow[]
@@ -82,6 +86,10 @@ interface ProductTableProps {
 	/** Tri contrôlé par l'appelant quand les pages sont chargées par le serveur. */
 	sorting?: SortingState
 	onSortingChange?: (sorting: SortingState) => void
+	selectedProducts: Map<string, StockProductRow>
+	onSelectedProductsChange: Dispatch<
+		SetStateAction<Map<string, StockProductRow>>
+	>
 }
 
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -174,6 +182,8 @@ export function ProductTable({
 	paginated = true,
 	sorting: controlledSorting,
 	onSortingChange,
+	selectedProducts,
+	onSelectedProductsChange,
 }: ProductTableProps) {
 	// La ligne dont on imprime l'étiquette. Une seule boîte pour toute la
 	// table : chaque ligne n'a qu'à dire laquelle.
@@ -185,10 +195,8 @@ export function ProductTable({
 		pageIndex: 0,
 		pageSize: 10,
 	})
-	const [selectedProducts, setSelectedProducts] = useState<
-		Map<string, StockProductRow>
-	>(() => new Map())
 	const zoneDefilante = useRef<HTMLDivElement | null>(null)
+	const dragPreviewRef = useRef<HTMLDivElement | null>(null)
 	const longPressTimerRef = useRef<number | null>(null)
 	const pressStartRef = useRef<{
 		rowId: string
@@ -199,14 +207,17 @@ export function ProductTable({
 	const selectionStartedRef = useRef(false)
 	const selectionMode = selectedProducts.size > 0
 
-	const toggleProductSelection = useCallback((product: StockProductRow) => {
-		setSelectedProducts((current) => {
-			const next = new Map(current)
-			if (next.has(product.id)) next.delete(product.id)
-			else next.set(product.id, product)
-			return next
-		})
-	}, [])
+	const toggleProductSelection = useCallback(
+		(product: StockProductRow) => {
+			onSelectedProductsChange((current) => {
+				const next = new Map(current)
+				if (next.has(product.id)) next.delete(product.id)
+				else next.set(product.id, product)
+				return next
+			})
+		},
+		[onSelectedProductsChange],
+	)
 
 	const cancelLongPress = useCallback(() => {
 		if (longPressTimerRef.current !== null) {
@@ -268,6 +279,25 @@ export function ProductTable({
 		}
 		onRowClick?.(product)
 	}
+	const startBatchDrag = (
+		product: StockProductRow,
+		event: ReactDragEvent<HTMLTableRowElement>,
+	) => {
+		if (!selectedProducts.has(product.id)) {
+			event.preventDefault()
+			return
+		}
+		cancelLongPress()
+		suppressedClickRowIdRef.current = product.id
+		event.dataTransfer.effectAllowed = 'move'
+		event.dataTransfer.setData(
+			PRODUCT_BATCH_DRAG_TYPE,
+			JSON.stringify(Array.from(selectedProducts.keys())),
+		)
+		if (dragPreviewRef.current) {
+			event.dataTransfer.setDragImage(dragPreviewRef.current, 18, 18)
+		}
+	}
 
 	// De nouvelles lignes commencent en haut. Changer de page en restant au
 	// milieu de l'ancienne laisserait l'œil au 14e produit d'une liste dont les
@@ -291,11 +321,11 @@ export function ProductTable({
 		if (!selectionMode) return
 		const leaveSelectionMode = (event: KeyboardEvent) => {
 			if (event.key !== 'Escape') return
-			setSelectedProducts(new Map())
+			onSelectedProductsChange(new Map())
 		}
 		window.addEventListener('keydown', leaveSelectionMode)
 		return () => window.removeEventListener('keydown', leaveSelectionMode)
-	}, [selectionMode])
+	}, [selectionMode, onSelectedProductsChange])
 
 	useEffect(() => cancelLongPress, [cancelLongPress])
 
@@ -624,6 +654,14 @@ export function ProductTable({
 	})
 	return (
 		<div className='flex h-full min-h-0 flex-col'>
+			<div
+				ref={dragPreviewRef}
+				aria-hidden='true'
+				className='fixed -left-[9999px] top-0 rounded-lg bg-primary px-3 py-2 font-medium text-primary-foreground text-sm shadow-xl'
+			>
+				{selectedProducts.size} produit
+				{selectedProducts.size > 1 ? 's' : ''}
+			</div>
 			{/* L'UNIQUE zone défilante de la table (5 septembre 2026).
 			    Elle bornait sa hauteur à `100vh` moins une constante devinée, DANS
 			    une page qui défilait elle aussi : deux ascenseurs superposés, dont
@@ -665,11 +703,21 @@ export function ProductTable({
 									<TableRow
 										key={row.id}
 										aria-selected={selected}
+										draggable={selectionMode && selected}
+										title={
+											selected
+												? `Glisser ${selectedProducts.size} produit${selectedProducts.size > 1 ? 's' : ''} vers une catégorie`
+												: undefined
+										}
 										className={cn(
 											onRowClick && 'cursor-pointer',
 											selected &&
-												'bg-violet-50/80 outline outline-2 outline-offset-[-2px] outline-primary/50 hover:bg-violet-100 dark:bg-violet-950/35',
+												'cursor-grab bg-violet-50/80 outline outline-2 outline-offset-[-2px] outline-primary/50 hover:bg-violet-100 active:cursor-grabbing dark:bg-violet-950/35',
 										)}
+										onDragStart={(event) => startBatchDrag(row.original, event)}
+										onDragEnd={() => {
+											suppressedClickRowIdRef.current = null
+										}}
 										onPointerDown={(event) =>
 											startLongPress(row.original, event)
 										}
