@@ -229,6 +229,26 @@ func fusionnerMarques(cat *normalize.Catalog, bt *BrandTable) (map[string]string
 }
 
 // reglesParCategorie associe chaque catégorie NeDB à sa règle, par le chemin.
+// EtatsCommerciaux rend les catégories qui ne sont PAS des catégories, mais un
+// état commercial : « Occasion » → `used`, « LOCATION » → `rental` (décision du
+// 24 août 2026). La clé est le legacy_id de la catégorie, la valeur celle du
+// champ.
+//
+// Exportée pour le rattrapage. Sans elle, il faudrait recopier la règle dans
+// un second endroit, et un produit d'occasion rattrapé arriverait au catalogue
+// comme du neuf — un Yamaha SGV 800 d'occasion affiché à son prix de neuf n'est
+// pas un défaut d'affichage, c'est une erreur de prix. La règle reste lue dans
+// `categories.json`, jamais réécrite ici.
+func EtatsCommerciaux(cat *normalize.Catalog, ct *CategoryTable) map[string]string {
+	out := map[string]string{}
+	for legacyID, r := range reglesParCategorie(cat, ct) {
+		if r.Action == ActionChampProduit && r.ChampProduit != nil {
+			out[legacyID] = r.ChampProduit.Valeur
+		}
+	}
+	return out
+}
+
 func reglesParCategorie(cat *normalize.Catalog, ct *CategoryTable) map[string]*CategoryRule {
 	chemins := cheminsDesCategories(cat.Categories)
 	out := make(map[string]*CategoryRule, len(cat.Categories))

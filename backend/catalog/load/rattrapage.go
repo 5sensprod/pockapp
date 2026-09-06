@@ -60,6 +60,9 @@ type FicheRattrapee struct {
 	// un échec : c'est une fiche sans image.
 	ImagesAttendues int
 	ImagesTrouvees  int
+	// SKUVide dit que le SKU de la source était déjà porté par un autre
+	// produit et qu'il a été écarté plutôt que dupliqué.
+	SKUVide bool
 	// Refus, vide si la fiche est retenue.
 	Refus string
 	// Marque, Categories, Fournisseur : ce qui n'a pas pu être rattaché.
@@ -117,6 +120,20 @@ type OptionsRattrapage struct {
 	// Simulation : ne rien écrire. C'est le défaut de l'appelant, pas d'ici —
 	// mais une valeur nulle qui n'écrit pas est le bon sens par défaut.
 	Simulation bool
+
+	// ViderSKUEnCollision écrit la fiche SANS SKU au lieu de la refuser, quand
+	// le SKU est déjà porté par un autre produit.
+	//
+	// Réservé au FAUX doublon : deux articles distincts qu'AppPos a saisis sous
+	// la même référence. Le cas mesuré est « Méthode guitare Impro », qui a
+	// hérité du X000NE768F de la « Règle Coulissante » — un ASIN Amazon qui ne
+	// désigne qu'un seul des deux. Écrire les deux sous ce SKU recréerait la
+	// collision de clé stable qui a produit les fusions du 11 août ; ne rien
+	// écrire perdrait le produit. On écrit donc la fiche sans référence, et on
+	// le DIT, pour que quelqu'un lui en donne une vraie.
+	//
+	// Jamais par défaut : sur un VRAI doublon, le refus est la bonne réponse.
+	ViderSKUEnCollision bool
 }
 
 // Rattraper ajoute au catalogue les produits de `cat` dont le `legacy_id`
@@ -224,6 +241,11 @@ func Rattraper(
 			f.Refus = "introuvable dans la source NeDB lue"
 		case dejaLegacy[id] != "":
 			f.Refus = fmt.Sprintf("legacy_id déjà en base (produit %s)", dejaLegacy[id])
+		case p.SKU != "" && dejaSKU[p.SKU] != "" && opts.ViderSKUEnCollision:
+			// Faux doublon assumé par l'appelant : on écrit sans référence
+			// plutôt que d'en dupliquer une qui ne désigne pas ce produit.
+			f.SKUVide = true
+			p.SKU = ""
 		case p.SKU != "" && dejaSKU[p.SKU] != "":
 			f.Refus = fmt.Sprintf("SKU %q déjà porté par le produit %s", p.SKU, dejaSKU[p.SKU])
 		case quarantaineDe(quarantaine, id) != "":

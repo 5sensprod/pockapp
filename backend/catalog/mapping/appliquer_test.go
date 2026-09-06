@@ -379,3 +379,34 @@ func TestSansRefonteLEtatCommercialSortQuandMeme(t *testing.T) {
 		t.Fatalf("les autres rattachements doivent survivre, got %v", g.CategoryLegacyID)
 	}
 }
+
+func TestEtatsCommerciauxNeRendQueLesCategoriesDevenuesUnChamp(t *testing.T) {
+	// Le rattrapage lit cette table pour ne pas écrire un instrument
+	// d'occasion comme du neuf. Elle ne doit rendre QUE les règles
+	// champ_produit : y laisser une catégorie ordinaire ferait disparaître un
+	// rattachement légitime.
+	ct := &CategoryTable{Categories: []CategoryRule{
+		{Chemin: "Occasion", Action: ActionChampProduit,
+			ChampProduit: &struct {
+				Champ  string `json:"champ"`
+				Valeur string `json:"valeur"`
+			}{Champ: "commercial_state", Valeur: "used"}},
+		{Chemin: "GUITARES", Action: ActionRattacher, RayonCible: "Cordes & frettés"},
+	}}
+	_ = ct.index()
+	cat := &normalize.Catalog{Categories: []normalize.Category{
+		{LegacyID: "occ", Name: "Occasion"},
+		{LegacyID: "gui", Name: "GUITARES"},
+	}}
+
+	etats := EtatsCommerciaux(cat, ct)
+	if len(etats) != 1 {
+		t.Fatalf("attendu une seule catégorie devenue champ, obtenu %d : %v", len(etats), etats)
+	}
+	if etats["occ"] != "used" {
+		t.Fatalf("« Occasion » doit valoir used, obtenu %q", etats["occ"])
+	}
+	if _, present := etats["gui"]; present {
+		t.Fatal("une catégorie à rattacher n'est pas un état commercial")
+	}
+}

@@ -40,6 +40,7 @@ import (
 	"github.com/pocketbase/pocketbase"
 
 	"pocket-react/backend/catalog/load"
+	"pocket-react/backend/catalog/mapping"
 	"pocket-react/backend/catalog/nedb"
 	"pocket-react/backend/catalog/normalize"
 )
@@ -75,6 +76,10 @@ func main() {
 		pbDir   = flag.String("pb", defaultPBDir(), "répertoire `pb_data`")
 		secours = flag.String("images-secours", "",
 			"répertoire `storage` d'une autre base PocketBase, dernier repli pour les images")
+		skuVide = flag.Bool("vider-sku-en-collision", false,
+			"écrire une fiche SANS SKU quand son SKU est déjà porté, au lieu de la "+
+				"refuser. Pour le FAUX doublon : deux articles distincts saisis sous "+
+				"la même référence dans AppPos. Jamais par défaut")
 		apply = flag.Bool("apply", false,
 			"ÉCRIRE dans PocketBase. Sans ce drapeau, l'outil simule. "+
 				"PocketApp doit être FERMÉ : une seconde connexion en écriture "+
@@ -99,6 +104,7 @@ func main() {
 	cat := &normalize.Catalog{}
 	rep := &normalize.Report{}
 	vus := map[string]bool{}
+	vusCat := map[string]bool{}
 	racines := []string{}
 
 	for _, dir := range sources {
@@ -115,6 +121,15 @@ func main() {
 				pris++
 			}
 		}
+		// Les catégories suivent : sans elles, la règle « Occasion » ne peut
+		// pas être appliquée — elle se lit par le CHEMIN d'une catégorie, et
+		// un catalogue sans arbre n'a pas de chemin.
+		for _, k := range c.Categories {
+			if !vusCat[k.LegacyID] {
+				vusCat[k.LegacyID] = true
+				cat.Categories = append(cat.Categories, k)
+			}
+		}
 		// Le rapport de la source qui fournit la fiche est celui qui compte :
 		// une quarantaine prononcée sur une AUTRE version de la même fiche
 		// écarterait à tort celle qu'on reprend.
@@ -123,6 +138,22 @@ func main() {
 		racines = append(racines, racinesDe(dir)...)
 	}
 	fmt.Println()
+
+	// ── « Occasion » et « LOCATION » ne sont pas des catégories ─────────────
+	//
+	// Ce sont des états commerciaux depuis le 24 août 2026, et PocketBase ne
+	// les porte donc pas. Sans cette étape, le rattrapage signalerait « catégorie
+	// non rattachée » et écrirait un instrument d'occasion comme du neuf — au
+	// prix du neuf. La règle est LUE dans categories.json, elle n'est pas
+	// réécrite ici : deux copies d'une même règle finissent par diverger.
+	if ct, _, err := mapping.LoadTables(); err != nil {
+		fmt.Printf("⚠ tables de correspondance illisibles (%v) : les états commerciaux "+
+			"ne seront pas posés\n\n", err)
+	} else if etats := mapping.EtatsCommerciaux(cat, ct); len(etats) > 0 {
+		poses := appliquerEtatsCommerciaux(cat, etats)
+		fmt.Printf("États commerciaux : %d catégorie(s) traitées comme un champ, "+
+			"%d fiche(s) marquées\n\n", len(etats), poses)
+	}
 
 	app := pocketbase.NewWithConfig(pocketbase.Config{DefaultDataDir: *pbDir})
 	if err := app.Bootstrap(); err != nil {
@@ -148,10 +179,11 @@ func main() {
 	}
 
 	res, err := load.Rattraper(app, cat, rep, ids, load.OptionsRattrapage{
-		RacineImages:  premier(racines),
-		AutresRacines: reste(racines),
-		SecoursImages: *secours,
-		Simulation:    !*apply,
+		RacineImages:        premier(racines),
+		AutresRacines:       reste(racines),
+		SecoursImages:       *secours,
+		Simulation:          !*apply,
+		ViderSKUEnCollision: *skuVide,
 	})
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -165,6 +197,34 @@ func main() {
 		return
 	}
 	fmt.Printf("\nEn cas de doute, la base d'avant est ici :\n  %s\n", sauvegarde)
+}
+
+// appliquerEtatsCommerciaux retire de chaque produit les catégories devenues
+// un champ, et pose l'état correspondant. Rend le nombre de fiches marquées.
+//
+// Un produit qui n'avait QUE « Occasion » se retrouve sans catégorie : c'est
+// exact, c'est ce que fait la reprise (mapping/appliquer.go, sansRefonte), et
+// c'est mieux qu'un rattachement vers une catégorie qui n'existe plus.
+func appliquerEtatsCommerciaux(cat *normalize.Catalog, etats map[string]string) int {
+	var marques int
+	for i := range cat.Products {
+		p := &cat.Products[i]
+		garde := make([]string, 0, len(p.CategoryLegacyID))
+		var pose bool
+		for _, id := range p.CategoryLegacyID {
+			if v, estChamp := etats[id]; estChamp {
+				p.CommercialState = v
+				pose = true
+				continue
+			}
+			garde = append(garde, id)
+		}
+		p.CategoryLegacyID = garde
+		if pose {
+			marques++
+		}
+	}
+	return marques
 }
 
 // pocketAppEnMarche rend l'adresse où PocketApp répond, ou "" s'il est fermé.
@@ -291,6 +351,10 @@ func afficher(res *load.ResultatRattrapage) {
 		fmt.Printf("  %-16s %-46s %-16s %s\n", f.LegacyID, trunc(f.Nom, 44), trunc(f.SKU, 14), img)
 		if f.ProduitID != "" {
 			fmt.Printf("      → écrit sous %s\n", f.ProduitID)
+		}
+		if f.SKUVide {
+			fmt.Println("      SKU écarté : il était déjà porté par un autre produit. " +
+				"La fiche entre SANS référence.")
 		}
 		if f.SlugAjuste {
 			fmt.Printf("      slug ajusté : %s (celui du nom était déjà pris)\n", f.Slug)

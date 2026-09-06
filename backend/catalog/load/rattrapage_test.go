@@ -141,3 +141,29 @@ func TestRetenueEtRefuseeSeparentLesFiches(t *testing.T) {
 		t.Fatalf("attendu 1 refusée, obtenu %d", n)
 	}
 }
+
+func TestViderSKUEnCollisionNEstPasLeDefaut(t *testing.T) {
+	// Sur un VRAI doublon, le refus est la bonne réponse : écrire une seconde
+	// fiche sous le même SKU recréerait la collision de clé stable qui a
+	// produit les fusions du 11 août 2026.
+	var opts OptionsRattrapage
+	if opts.ViderSKUEnCollision {
+		t.Fatal("vider le SKU ne doit jamais être le comportement par défaut")
+	}
+}
+
+func TestUneFicheSansSKUEstSignalee(t *testing.T) {
+	// Une fiche qui entre sans référence doit être visible dans le compte
+	// rendu : quelqu'un doit lui en donner une vraie.
+	res := &ResultatRattrapage{Fiches: []FicheRattrapee{
+		{LegacyID: "a", SKUVide: true},
+		{LegacyID: "b"},
+	}}
+	retenues := res.Retenues()
+	if len(retenues) != 2 {
+		t.Fatalf("attendu 2 retenues, obtenu %d", len(retenues))
+	}
+	if !retenues[0].SKUVide || retenues[1].SKUVide {
+		t.Fatal("SKUVide doit distinguer la fiche écrite sans référence")
+	}
+}
