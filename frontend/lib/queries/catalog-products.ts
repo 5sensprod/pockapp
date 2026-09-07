@@ -633,6 +633,55 @@ export function useUpdateCatalogProductCategoriesBatch() {
 	})
 }
 
+/**
+ * Publier ou dépublier une sélection, en un seul geste (7 septembre 2026).
+ *
+ * Elle n'écrit QUE `status` : une mise à jour partielle ne doit ré-écrire ni le
+ * nom, ni le prix, ni la galerie — c'est la même règle que `DeleteProductDialog`,
+ * qui passe une fiche citée par un document en brouillon plutôt que de
+ * l'effacer. « Dépublier un produit, c'est l'exporter en `draft` » (CLAUDE.md) :
+ * la ligne SQL distante reste, la page disparaît.
+ *
+ * Les fiches déjà dans l'état visé ne partent pas : rien ne sert de marquer
+ * `modified` 25 produits pour en changer trois. Concurrence bornée à 6, comme
+ * le lot de catégories, parce que le PocketBase embarqué n'a qu'une connexion
+ * d'écriture.
+ */
+export function useUpdateCatalogProductStatusBatch() {
+	const pb = usePocketBase() as any
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async ({
+			products,
+			status,
+		}: {
+			products: { id: string; status?: CatalogProductStatus }[]
+			status: CatalogProductStatus
+		}) => {
+			const cibles = products.filter((product) => product.status !== status)
+
+			for (let start = 0; start < cibles.length; start += 6) {
+				await Promise.all(
+					cibles
+						.slice(start, start + 6)
+						.map((product) =>
+							pb
+								.collection('products')
+								.update(product.id, buildWritePayload({ status })),
+						),
+				)
+			}
+
+			return {
+				updated: cibles.length,
+				unchanged: products.length - cibles.length,
+			}
+		},
+		onSettled: () => invalidateCatalog(queryClient),
+	})
+}
+
 // ---------------------------------------------------------------------------
 // SUPPRESSION — et ce qu'elle casserait
 // ---------------------------------------------------------------------------

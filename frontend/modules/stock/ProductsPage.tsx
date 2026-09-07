@@ -31,6 +31,7 @@ import {
 	type CatalogProductStatus,
 	type CatalogSaleStateFilter,
 	useCatalogProducts,
+	useUpdateCatalogProductStatusBatch,
 } from '@/lib/queries/catalog-products'
 import { type StockProductRow, toStockRow } from '@/lib/queries/catalog-rows'
 import { useCategories } from '@/lib/queries/categories'
@@ -48,13 +49,17 @@ import type { SortingState } from '@tanstack/react-table'
 import {
 	AlertTriangle,
 	Check,
+	CheckCheck,
 	ChevronDown,
 	ChevronsUpDown,
 	CircleDollarSign,
+	Eye,
 	FileText,
+	Globe,
 	ImageOff,
 	Loader2,
 	PackageX,
+	PenLine,
 	Plus,
 	Search,
 	SlidersHorizontal,
@@ -227,6 +232,7 @@ export function ProductsPage() {
 	const [selectedProducts, setSelectedProducts] = useState<
 		Map<string, StockProductRow>
 	>(() => new Map())
+	const [selectionSeule, setSelectionSeule] = useState(false)
 	const [batchCategoryTarget, setBatchCategoryTarget] = useState<{
 		id: string
 		name: string
@@ -461,6 +467,84 @@ export function ProductsPage() {
 			),
 		[products.data, brandById, supplierById, categoryById, pb],
 	)
+
+	// « Sélection seule » n'interroge PAS le serveur, et ce n'est pas une
+	// économie : la sélection PORTE ses lignes (`Map<id, StockProductRow>`), y
+	// compris celles retenues sur les pages précédentes. Filtrer `rows` ne
+	// montrerait que les sélectionnés de la page courante et mentirait sur le
+	// compte affiché juste à côté. La pagination n'a alors plus de sens et
+	// disparaît — c'est une vue, pas une page.
+	const lignesSelection = useMemo(
+		() => Array.from(selectedProducts.values()),
+		[selectedProducts],
+	)
+	const lignesAffichees = selectionSeule ? lignesSelection : rows
+
+	const statutBatch = useUpdateCatalogProductStatusBatch()
+	// Une sélection mixte n'allume aucun des deux côtés : la bascule dit l'état
+	// commun quand il existe, et sinon ne prétend rien.
+	const statutCommun = useMemo<CatalogProductStatus | null>(() => {
+		if (lignesSelection.length === 0) return null
+		const premier = lignesSelection[0].status ?? 'draft'
+		return lignesSelection.every(
+			(ligne) => (ligne.status ?? 'draft') === premier,
+		)
+			? premier
+			: null
+	}, [lignesSelection])
+	// La sélection est une COPIE des lignes, prise au moment du clic : invalider
+	// le catalogue rafraîchit `rows`, pas cette copie. Sans la remettre à jour
+	// ici, la pastille continuait d'annoncer l'ancien statut ET le lot suivant
+	// n'écrivait plus rien — il saute les fiches « déjà dans l'état visé », et
+	// il les lisait dans la copie périmée. Il fallait sortir par Échap et
+	// re-sélectionner. C'est aussi ce que fait l'effet ci-dessous pour les
+	// modifications venues d'ailleurs (fiche, autre poste).
+	const changerStatutSelection = useCallback(
+		(status: CatalogProductStatus) => {
+			if (lignesSelection.length === 0 || statutBatch.isPending) return
+			statutBatch.mutate(
+				{ products: lignesSelection, status },
+				{
+					onSuccess: () =>
+						setSelectedProducts((courante) => {
+							const suivante = new Map(courante)
+							for (const [id, ligne] of suivante)
+								suivante.set(id, { ...ligne, status })
+							return suivante
+						}),
+				},
+			)
+		},
+		[lignesSelection, statutBatch],
+	)
+
+	// Et le même recalage depuis le serveur, pour les lignes visibles : modifier
+	// une fiche sélectionnée depuis son écran — ou depuis un autre poste, le
+	// temps réel invalidant `rows` — ne doit pas laisser la sélection sur une
+	// version périmée. On ne touche QUE ce qui a changé, sinon l'état repartirait
+	// à chaque rendu.
+	useEffect(() => {
+		setSelectedProducts((courante) => {
+			if (courante.size === 0) return courante
+			let change = false
+			const suivante = new Map(courante)
+			for (const ligne of rows) {
+				const retenue = suivante.get(ligne.id)
+				if (!retenue || retenue === ligne) continue
+				if (retenue.status === ligne.status && retenue.name === ligne.name)
+					continue
+				suivante.set(ligne.id, ligne)
+				change = true
+			}
+			return change ? suivante : courante
+		})
+	}, [rows])
+
+	// Sortir du mode sélection éteint la vue « sélection seule » : sans cela
+	// l'écran resterait sur une liste vide, sans rien dire.
+	useEffect(() => {
+		if (selectedProducts.size === 0) setSelectionSeule(false)
+	}, [selectedProducts])
 
 	// La ligne mène à la fiche complète. La modale reste disponible pour la
 	// création rapide et sera allégée dans l'étape suivante du chantier.
@@ -1070,7 +1154,7 @@ export function ProductsPage() {
 					   seconde fois en mémoire afficherait « 1–10 sur 25 » sous une
 					   table qui en montre 25. */
 							<ProductTable
-								data={rows}
+								data={lignesAffichees}
 								selectedProducts={selectedProducts}
 								onSelectedProductsChange={setSelectedProducts}
 								paginated={false}
@@ -1081,20 +1165,110 @@ export function ProductsPage() {
 							/>
 						)}
 
+						{/* LA PASTILLE DU MODE SÉLECTION (7 septembre 2026), dans le pied
+						    du tableau, au-dessus de la pagination et centrée sur la table.
+						    Le mode s'entre par un appui long sur une ligne et ne se voyait
+						    qu'au surlignage : rien ne disait qu'on y était, ni comment en
+						    sortir. Elle n'existe que dans ce mode, donc le pied ne grandit
+						    que lorsqu'il y a quelque chose à dire.
+						    Elle est SOMBRE dans les deux thèmes, et volontairement : c'est
+						    une barre d'outils temporaire posée par-dessus un écran clair,
+						    pas un élément de la page. */}
+						{selectedProducts.size > 0 && (
+							<div className='flex justify-center border-t px-3 py-2'>
+								<div className='flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 text-sm shadow-lg'>
+									<span className='flex shrink-0 items-center gap-2 pl-2 font-medium'>
+										<CheckCheck
+											className='h-4 w-4 text-emerald-400'
+											aria-hidden='true'
+										/>
+										<span className='tabular-nums'>
+											{selectedProducts.size} sélectionné
+											{selectedProducts.size > 1 ? 's' : ''}
+										</span>
+									</span>
+
+									<span
+										aria-hidden='true'
+										className='hidden h-5 w-px bg-slate-700 sm:block'
+									/>
+
+									<SelectionToggle
+										active={selectionSeule}
+										onClick={() => setSelectionSeule((vu) => !vu)}
+										icon={<Eye className='h-3.5 w-3.5' />}
+										label='Sélection seule'
+										title='N’afficher que les produits sélectionnés'
+									/>
+
+									<span
+										aria-hidden='true'
+										className='hidden h-5 w-px bg-slate-700 sm:block'
+									/>
+
+									{/* Deux boutons, pas un interrupteur : une sélection mixte
+									    n'a pas d'état à retourner, et l'intention se dit dans les
+									    deux sens. Publier ou dépublier n'écrit QUE `status`. */}
+									<span className='flex items-center gap-1 rounded-full bg-slate-800 p-0.5'>
+										<SelectionToggle
+											active={statutCommun === 'published'}
+											disabled={statutBatch.isPending}
+											onClick={() => changerStatutSelection('published')}
+											icon={<Globe className='h-3.5 w-3.5' />}
+											label='Publier'
+											title='Publier la sélection sur le site'
+											tone='emerald'
+										/>
+										<SelectionToggle
+											active={statutCommun === 'draft'}
+											disabled={statutBatch.isPending}
+											onClick={() => changerStatutSelection('draft')}
+											icon={<PenLine className='h-3.5 w-3.5' />}
+											label='Dépublier'
+											title='Repasser la sélection en brouillon'
+											tone='amber'
+										/>
+									</span>
+
+									{statutBatch.isPending && (
+										<Loader2 className='h-4 w-4 shrink-0 animate-spin text-slate-400' />
+									)}
+
+									<span className='hidden text-slate-400 text-xs lg:inline'>
+										Échap pour quitter
+									</span>
+									<Button
+										type='button'
+										variant='ghost'
+										size='icon'
+										aria-label='Quitter le mode sélection'
+										title='Quitter le mode sélection (Échap)'
+										className='h-7 w-7 shrink-0 rounded-full text-slate-300 hover:bg-slate-800 hover:text-slate-50'
+										onClick={() => setSelectedProducts(new Map())}
+									>
+										<X className='h-4 w-4' />
+									</Button>
+								</div>
+							</div>
+						)}
+
 						{/* Sous la zone défilante, donc toujours visible : c'est ce que
 						    le cadre à hauteur fixe a rendu possible. Elle ne s'affiche
 						    qu'avec des lignes — trois messages de vide n'ont pas de
 						    « page 1 sur 1 » à annoncer. */}
-						{activeCompanyId && !products.isLoading && rows.length > 0 && (
-							<PaginationBar
-								page={page}
-								totalPages={totalPages}
-								total={total}
-								perPage={PER_PAGE}
-								disabled={products.isFetching}
-								onChange={setPage}
-							/>
-						)}
+						{activeCompanyId &&
+							!products.isLoading &&
+							!selectionSeule &&
+							rows.length > 0 && (
+								<PaginationBar
+									page={page}
+									totalPages={totalPages}
+									total={total}
+									perPage={PER_PAGE}
+									disabled={products.isFetching}
+									onChange={setPage}
+								/>
+							)}
 					</CardContent>
 				</Card>
 			</div>
@@ -1141,6 +1315,54 @@ function toCatalogSort(sorting: SortingState) {
 	const field = current && CATALOG_SORT_FIELDS[current.id]
 	if (!current || !field) return '-created'
 	return `${current.desc ? '-' : ''}${field}`
+}
+
+/**
+ * Une bascule de la pastille de sélection. Elle vit sur fond SOMBRE dans les
+ * deux thèmes — d'où des couleurs écrites en dur plutôt que des jetons du
+ * thème, qui s'inverseraient sous elle.
+ */
+function SelectionToggle({
+	active,
+	disabled,
+	onClick,
+	icon,
+	label,
+	title,
+	tone = 'slate',
+}: {
+	active: boolean
+	disabled?: boolean
+	onClick: () => void
+	icon: React.ReactNode
+	label: string
+	title: string
+	tone?: 'slate' | 'emerald' | 'amber'
+}) {
+	const actif = {
+		slate: 'bg-slate-100 text-slate-900',
+		emerald: 'bg-emerald-500 text-emerald-950',
+		amber: 'bg-amber-400 text-amber-950',
+	} as const
+
+	return (
+		<button
+			type='button'
+			onClick={onClick}
+			disabled={disabled}
+			aria-pressed={active}
+			title={title}
+			className={cn(
+				'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 font-medium text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50',
+				active
+					? `${actif[tone]} shadow-sm`
+					: 'text-slate-300 hover:bg-slate-700 hover:text-slate-50',
+			)}
+		>
+			{icon}
+			<span className='hidden sm:inline'>{label}</span>
+		</button>
+	)
 }
 
 /** La version serrée du groupe de statut pour la barre de commande unique. */
