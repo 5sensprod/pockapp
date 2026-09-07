@@ -3,7 +3,7 @@
 // Isolé de index.ts pour éviter les imports circulaires :
 // AppSitePage → manifest  ET  index → AppSitePage
 
-import { Globe, Menu, Store } from 'lucide-react'
+import { Globe, History, Menu, Store } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
 
 export const manifest: ModuleManifest = {
@@ -40,6 +40,23 @@ export const manifest: ModuleManifest = {
 					label: 'Menu de navigation',
 					to: '/site/menu',
 					icon: Menu,
+				},
+			],
+		},
+		{
+			// Ramener un rangement de catalogue depuis une sauvegarde, sans
+			// toucher aux ventes. Elle vit ici, et pas dans les réglages où vit
+			// la sauvegarde : c'est un geste d'ORGANISATION du catalogue, pas
+			// d'administration du poste — et son effet le plus visible est que
+			// des fiches repartent vers le site.
+			id: 'restauration',
+			label: 'Restauration sélective',
+			icon: History,
+			items: [
+				{
+					label: 'Restauration sélective',
+					to: '/site/restauration',
+					icon: History,
 				},
 			],
 		},

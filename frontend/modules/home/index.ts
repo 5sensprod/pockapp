@@ -8,6 +8,7 @@ import {
 	FileImage,
 	FilePen,
 	Globe,
+	History,
 	LayoutDashboard,
 	Menu,
 	Monitor,
@@ -103,6 +104,11 @@ export const manifest: ModuleManifest = {
 			items: [
 				{ label: 'Catalogue en ligne', to: '/site/catalogue', icon: Store },
 				{ label: 'Menu de navigation', to: '/site/menu', icon: Menu },
+				{
+					label: 'Restauration sélective',
+					to: '/site/restauration',
+					icon: History,
+				},
 			],
 		},
 

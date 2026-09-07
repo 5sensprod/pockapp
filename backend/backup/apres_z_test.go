@@ -73,6 +73,36 @@ func scellerZ(t *testing.T, app *pocketbase.PocketBase, numero string) {
 	}
 }
 
+// laisserRetomberLeHook arrête le planificateur ET laisse à la goroutine du
+// hook le temps de sortir, AVANT que l'app de test ne soit démontée.
+//
+// ─── La course que ça ferme, observée le 6 septembre 2026 ──────────────────
+// `SurRapportZ` lance une goroutine détachée qui attend `delaiApresZ` (ramené
+// à quelques millisecondes ici), puis lit les réglages. Le test, lui, se
+// termine et `nouvelleAppDeTest` appelle `ResetBootstrapState` : le DAO
+// devient nil, et la goroutine réveillée panique dedans — `LireEtat` →
+// `GetSetting` → `FindFirstRecordByFilter` sur un `*daos.Dao` nul.
+//
+// Ce n'est pas un défaut du planificateur, dont c'est le comportement voulu en
+// production (rien n'y démonte l'application sous ses pieds). C'est un défaut
+// de test, et il est INTERMITTENT : il ne se manifeste que quand la suite est
+// assez longue pour que la goroutine se réveille pendant le test suivant. Il
+// est apparu en ajoutant les tests de la restauration sélective, qui allongent
+// la suite — les tests d'avant ne le déclenchaient simplement jamais.
+//
+// À appeler APRÈS `SurRapportZ` : `t.Cleanup` est LIFO, et il faut que ce
+// nettoyage-ci passe AVANT celui qui démonte l'app.
+func laisserRetomberLeHook(t *testing.T, p *Planificateur) {
+	t.Helper()
+	t.Cleanup(func() {
+		p.Arreter()
+		// `Arreter` suffit tant que la goroutine dort encore ; si elle vient
+		// de se réveiller, il faut lui laisser finir sa lecture. Elle ne fait
+		// que quelques requêtes locales.
+		time.Sleep(250 * time.Millisecond)
+	})
+}
+
 // attendre laisse la goroutine du hook faire son travail.
 func attendre(t *testing.T, condition func() bool, limite time.Duration) bool {
 	t.Helper()
@@ -95,6 +125,7 @@ func TestSauvegardeDeclencheeParUnZ(t *testing.T) {
 	app := appAvecCollections(t)
 	p := NouveauPlanificateur(app, "test")
 	p.SurRapportZ(app)
+	laisserRetomberLeHook(t, p)
 
 	scellerZ(t, app, "Z-001")
 
@@ -129,6 +160,7 @@ func TestAmortisseurApresZ(t *testing.T) {
 	})
 
 	p.SurRapportZ(app)
+	laisserRetomberLeHook(t, p)
 	scellerZ(t, app, "Z-002")
 
 	// Si l'amortisseur ne jouait pas, une tentative aurait lieu et échouerait,
@@ -154,6 +186,7 @@ func TestZScelleMemeSiLaSauvegardeEchoue(t *testing.T) {
 	app := appAvecCollections(t)
 	p := NouveauPlanificateur(app, "test")
 	p.SurRapportZ(app)
+	laisserRetomberLeHook(t, p)
 
 	// scellerZ échoue le test si SaveRecord rend une erreur : c'est l'assertion.
 	scellerZ(t, app, "Z-003")

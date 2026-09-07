@@ -2,3 +2,4 @@
 export { manifest } from './manifest'
 export { AppSitePage } from './AppSitePage'
 export { CatalogueEnLignePage } from './CatalogueEnLignePage'
+export { RestaurationSelectivePage } from './RestaurationSelectivePage'

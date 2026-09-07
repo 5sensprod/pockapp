@@ -37,7 +37,7 @@ export interface SetSecretDto {
 // HELPER - FETCH AVEC AUTH
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function fetchWithAuth(
+export async function fetchWithAuth(
 	pb: any,
 	url: string,
 	options: RequestInit = {},

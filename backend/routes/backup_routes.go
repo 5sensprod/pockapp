@@ -734,6 +734,16 @@ func RegisterBackupRoutes(pb *pocketbase.PocketBase, router *echo.Echo, planific
 		})
 	}, requireAdmin)
 
+	// ── Restauration SÉLECTIVE ──────────────────────────────────────────────
+	//
+	// L'inverse de `POST /api/backup/restore` : à chaud, et seulement une
+	// liste blanche de champs. Elle vit dans son propre fichier
+	// (`backup_selectif_routes.go`) mais se branche ici, pour recevoir la même
+	// fermeture `clientSuper` et le même planificateur — deux clients super
+	// construits séparément, c'est deux façons de lire la clé, donc une de
+	// trop.
+	enregistrerRoutesSelectives(pb, router, planificateur, clientSuper, requireAdmin)
+
 	log.Println("✅ Backup routes registered successfully")
 }
 

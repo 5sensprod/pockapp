@@ -151,9 +151,16 @@ poste finirait sans copie sans que personne ne l'ait décidé.
 
 ## 6. Restaurer
 
-**Il n'y a aucun chemin de restauration dans l'application du client**, et il
-ne doit pas y en avoir : restaurer par-dessus une base vivante efface des
-ventes. La restauration est un geste de développement.
+**Il n'y a aucun chemin de restauration COMPLÈTE dans l'application du
+client**, et il ne doit pas y en avoir : remplacer une base vivante efface des
+ventes. La restauration complète est un geste de développement.
+
+⚠️ Depuis le 6 septembre 2026, il existe un second chemin, qui n'est PAS
+celui-ci : la **restauration sélective** (§11), à chaud, qui ne ramène qu'une
+liste blanche de champs et ne peut pas toucher un document commercial. Les deux
+ne se confondent pas, et l'écran non plus : l'une est dans les réglages, sous
+« Sauvegarde » ; l'autre dans le module `site`, sous « Restauration
+sélective ».
 
 ```bash
 go run ./backend/cmd/snapshot-restore -list
@@ -495,3 +502,167 @@ sauvegarde ne doit empêcher un Z d'être scellé.
 | `pocketApp_minisaas/api/backup-storage.php` | la réception des images |
 | `pocketApp_minisaas/schema-storage.sql` | la table `backup_storage` |
 | `pocketApp_minisaas/schema-backups.sql` | la table `backups` |
+
+---
+
+## 11. La restauration sélective — trois champs, et rien d'autre
+
+**Mise en place le 6 septembre 2026.** Écran : `/site/restauration`.
+
+Le besoin est l'inverse du §6 : livrer dans la base d'un client **un travail
+d'organisation fait en développement** — le rangement du catalogue, l'état de
+publication, les désignations — sans toucher à une seule de ses ventes.
+
+|  | Restauration complète (§6) | Restauration sélective |
+|---|---|---|
+| Portée | `data.db` en ENTIER | une liste blanche de champs |
+| Quand | au démarrage suivant | **à chaud**, tout de suite |
+| La caisse | écrasée | intacte |
+| Créations / suppressions | toute la base | **aucune**, sauf le menu si on le demande |
+| Aperçu | non | **oui, et c'est le mode par défaut** |
+
+### 11.1 Ce qui passe
+
+```
+products    → categories, status, designation
+categories  → name
+site_menu   → la structure entière, sur case cochée
+```
+
+Et rien d'autre. `image`, `gallery`, `stock`, `price_ttc`,
+`purchase_price_ht`, `sku`, `slug`, `legacy_id`, `barcode`, `brand`,
+`supplier`, ainsi que **toutes les autres collections**, sont hors périmètre.
+
+`ChampsAutorises` (`backend/backup/selectif.go`) est la seule porte, et
+`appliquerChamps` **refuse** un champ qui n'y figure pas — même présenté par un
+plan, même porté par le snapshot, ce qui est toujours le cas puisqu'un snapshot
+est la base entière. Gardien : `TestChampHorsListeBlancheRefuse`.
+
+La protection est déclarée **par collection** (`ChampsProteges`), et ce n'est
+pas une subtilité inutile : `name` est le champ à ramener sur une catégorie et
+un champ à ne surtout pas toucher sur un produit — le nom d'un produit est
+celui de sa fiche en ligne, `designation` étant celui du ticket (règle du
+27 août 2026).
+
+### 11.2 Sur quelle clé les deux bases se reconnaissent
+
+**`id` PocketBase d'abord, `legacy_id` en repli, jamais le nom ni le slug.**
+
+Les deux bases descendent du même snapshot — la base de développement EST une
+restauration de celle du client —, donc les identifiants coïncident et sont la
+clé exacte. `legacy_id` rattrape le cas d'une base rechargée par
+`catalog-import`, qui reçoit des `id` neufs mais garde ses clés stables. Le nom
+est exclu : « Accessoires » existe deux fois dans l'arbre, et apparier sur un
+homonyme écrirait sur la mauvaise fiche, en silence.
+
+Un `legacy_id` vide n'apparie rien : PocketBase stocke `''` et non NULL, et
+sans cette garde toutes les fiches sans clé stable s'apparieraient entre elles
+(`TestLegacyIDVideNAppariePas`).
+
+### 11.3 L'absence n'est pas une instruction
+
+C'est la règle qui protège le client :
+
+- une fiche du snapshot absente de la base est **comptée et nommée, jamais
+  créée** ;
+- une fiche de la base absente du snapshot **reste intacte**. C'est le produit
+  né en caisse — clé `pa_…`, jamais passé par le poste de développement. Il n'a
+  aucune raison d'être dans mon snapshot, et il ne doit surtout pas en être
+  déduit qu'il faut le dépublier.
+
+Gardien : `TestRienNestCreeNiEfface`.
+
+**Une exception, nommée : le menu.** `site_menu` est un arbre ordonné ; le
+ramener signifie créer et supprimer des entrées, un menu à moitié restauré
+n'étant pas un demi-menu mais un menu cassé. C'est le seul geste destructeur du
+mécanisme, il est derrière une case à cocher distincte, et les entrées sont
+recréées **sous leur identifiant d'origine** — ce qui conserve les
+rattachements `parent` et rend l'opération rejouable.
+
+### 11.4 Ce que ça déclenche vers le site, et qu'il faut dire
+
+`status` et `categories` entrent dans le checksum d'export des produits
+(`catalog-export.ts`, `CHAMPS_PRODUIT_EXPORTES`), `name` dans celui des
+catégories. Une fiche dont l'un d'eux change devient donc `modified` et
+**repartira au prochain export du catalogue**.
+
+Ce n'est pas un défaut : le site doit apprendre qu'une fiche a changé de
+rangement ou d'état de publication. Mais un ré-export de plusieurs centaines de
+fiches ne doit pas être une surprise, donc l'écran l'annonce **avec son
+nombre**, avant d'écrire (`EffetExport`).
+
+`designation` est le seul des trois champs produits qui n'a aucun effet en
+ligne — elle est nommément exclue de l'export. Une fiche dont seule la
+désignation change n'est donc PAS comptée comme « repartira »
+(`TestDesignationSeuleNeRepubliePas`).
+
+### 11.5 Les deux propriétés techniques qui portent le reste
+
+**Le snapshot s'ouvre en `mode=ro`.** La règle « une seule connexion en
+écriture » (CLAUDE.md) tient parce que SQLite refuse, pas parce qu'on
+s'abstient : mesuré, « attempt to write a readonly database ». Aucun `-wal` ni
+`-shm` n'est créé à côté, donc rien qui puisse être confondu avec la base en
+service. Le nom du pilote est CHOISI et non écrit en dur — `sqlite` (modernc)
+sans CGO, `pb_sqlite3` (mattn) avec.
+
+**La sauvegarde d'avant passe par `VACUUM INTO`, pas par la copie des trois
+fichiers.** C'est une différence assumée avec `sauvegarderBase`
+(`backend/cmd/catalog-rattraper/main.go:404`), et elle découle du §2 : cet
+outil-là refuse de tourner tant que PocketApp est ouvert, ici la base est **en
+service**. Copier `data.db`, `-wal` et `-shm` pendant qu'une vente s'écrit donne
+une base incohérente, silencieusement. Le résultat est un `data.db` unique,
+cohérent, sans journal à recoller.
+
+### 11.6 Mesuré sur la base réelle du client
+
+Le 6 septembre 2026, sur le miroir du 31 août (`lundi_31_08` : 3046 produits,
+463 catégories, 881 tickets, 388 factures, 68 rapports Z, 75 sessions), par
+`TestRestaurationSelectiveReelle`. Le snapshot y porte 7 catégories renommées,
+11 produits dépubliés et 5 désignations réécrites — **et, sur les mêmes fiches,
+des noms, prix, slugs et stocks délibérément salis**, pour vérifier qu'ils ne
+passent pas.
+
+| | |
+|---|---|
+| snapshot ouvert | 15 196 Kio |
+| **simulation** | **205 ms** |
+| **écriture** | **973 ms, 23 enregistrements** |
+| écart vu | `name` × 7 (catégories), `status` × 11, `designation` × 5 |
+| écart vu sur les champs salis | **0** — `name`, `price_ttc`, `slug`, `stock` |
+| annoncé « repartiront en ligne » | 11 produits, 7 catégories |
+| témoins après écriture | factures, tickets, Z, sessions, mouvements, images, galeries, stocks, prix, slugs : **tous inchangés** |
+| sommes prix et stock | **identiques** |
+| rejeu immédiat | **aucun écart** — l'opération est idempotente |
+
+### 11.7 Ce qu'il faut savoir avant de s'en servir
+
+- **Comparer laisse la sauvegarde DÉCHIFFRÉE sur le poste**, dans
+  `pb_data/restauration-selective/`. C'est délibéré : l'écriture doit porter
+  sur exactement ce qui a été montré, pas sur un second téléchargement. Elle
+  est effacée après l'écriture, et un bouton l'efface si l'on renonce — un
+  snapshot déchiffré est la base du client en clair.
+- **Une catégorie du snapshot que la base ne connaît pas écarte la fiche.**
+  Rien ne se crée, donc le rattachement ne peut pas être écrit ; plutôt qu'un
+  produit rangé à moitié, on refuse la fiche et on la nomme. Si le cas est
+  fréquent, c'est que ces catégories doivent d'abord être créées à la main.
+- **Le menu ne se propage pas en temps réel.** `products` et `categories` sont
+  dans `COLLECTIONS_SURVEILLEES` (`frontend/lib/realtime/catalog-realtime.ts`),
+  `site_menu` non : sur les autres postes, le menu n'apparaît qu'au
+  rechargement de la page. L'écran le dit.
+- **Le `buster` du cache persisté n'a pas changé**, et n'avait pas à changer :
+  la FORME des réponses `categories` et `catalog-counts` est la même, seules
+  leurs valeurs bougent. Le hook les périme explicitement, parce qu'elles sont
+  écrites sur le disque (`CLES_PERSISTEES`, `frontend/main.tsx`) et qu'un écran
+  en retard qui LE RESTE après un rechargement est le pire cas.
+
+### 11.8 Où est quoi
+
+| Fichier | Rôle |
+|---|---|
+| `backend/backup/selectif.go` | la liste blanche, l'appariement, l'écart, l'écriture |
+| `backend/backup/selectif_travail.go` | le snapshot déchiffré, conservé entre l'aperçu et l'écriture |
+| `backend/backup/selectif_test.go` | les gardiens : liste blanche, slug, rien créé ni effacé, simulation |
+| `backend/backup/selectif_reel_test.go` | la mesure du §11.6, sur la base du client |
+| `backend/routes/backup_selectif_routes.go` | `POST /api/backup/selective-restore` |
+| `frontend/lib/queries/restauration-selective.ts` | les hooks, et l'invalidation des caches |
+| `frontend/modules/site/RestaurationSelectivePage.tsx` | l'écran |
