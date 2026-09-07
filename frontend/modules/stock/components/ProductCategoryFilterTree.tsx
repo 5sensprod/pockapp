@@ -38,6 +38,7 @@ import {
 import { toast } from 'sonner'
 
 import { BrandDialog } from './BrandDialog'
+import { BrandLogo } from './BrandLogo'
 import { CategoryDialog } from './CategoryDialog'
 import { SupplierDialog } from './SupplierDialog'
 import { PRODUCT_BATCH_DRAG_TYPE } from './product-batch-drag'
@@ -73,27 +74,6 @@ interface ProductCategoryFilterTreeProps {
 	selectedProductCount?: number
 	onProductsDropOnCategory?: (category: CategoryNode) => void
 	loading?: Partial<Record<ExplorerView, boolean>>
-}
-
-function BrandLogo({ name, url }: { name: string; url: string | null }) {
-	const [brokenUrl, setBrokenUrl] = useState<string | null>(null)
-
-	return (
-		<div className='flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded bg-muted'>
-			{url && brokenUrl !== url ? (
-				<img
-					src={url}
-					alt={`Logo ${name}`}
-					loading='lazy'
-					decoding='async'
-					className='h-full w-full object-contain'
-					onError={() => setBrokenUrl(url)}
-				/>
-			) : (
-				<Building2 className='h-3.5 w-3.5 text-muted-foreground' />
-			)}
-		</div>
-	)
 }
 
 function normalizeSearch(value: string) {
@@ -325,14 +305,18 @@ export function ProductCategoryFilterTree({
 		}
 		return namesByBrand
 	}, [suppliers])
-	const brandNamesBySupplier = useMemo(
+	// Les marques d'un fournisseur sont rendues en pastilles, avec leur logo :
+	// ce sont donc les ENREGISTREMENTS qu'il faut ici, plus seulement les noms.
+	// Une marque citée par un fournisseur mais absente du catalogue est écartée
+	// — `brandById` ne la connaît pas, et une pastille vide n'apprendrait rien.
+	const brandsBySupplier = useMemo(
 		() =>
 			new Map(
 				suppliers.map((supplier) => [
 					supplier.id,
 					(supplier.brands ?? [])
-						.map((brandId) => brandById.get(brandId)?.name)
-						.filter((name): name is string => Boolean(name)),
+						.map((brandId) => brandById.get(brandId))
+						.filter((brand): brand is CatalogBrandShape => Boolean(brand)),
 				]),
 			),
 		[suppliers, brandById],
@@ -553,9 +537,7 @@ export function ProductCategoryFilterTree({
 								: 'hover:bg-accent',
 						)}
 					>
-						{view !== 'supplier' && (
-							<CurrentViewIcon className='h-4 w-4 shrink-0' />
-						)}
+						<CurrentViewIcon className='h-4 w-4 shrink-0' />
 						<span className='min-w-0 flex-1 truncate'>{currentView.all}</span>
 					</button>
 					<button
@@ -569,9 +551,7 @@ export function ProductCategoryFilterTree({
 								: 'text-muted-foreground hover:bg-accent hover:text-foreground',
 						)}
 					>
-						{view !== 'supplier' && (
-							<CurrentViewIcon className='h-4 w-4 shrink-0 opacity-70' />
-						)}
+						<CurrentViewIcon className='h-4 w-4 shrink-0 opacity-70' />
 						<span className='truncate'>{currentView.none}</span>
 					</button>
 
@@ -754,9 +734,9 @@ export function ProductCategoryFilterTree({
 									view === 'brand'
 										? (supplierNamesByBrand.get(option.id) ?? [])
 										: []
-								const supplierBrandNames =
+								const supplierBrands =
 									view === 'supplier'
-										? (brandNamesBySupplier.get(option.id) ?? [])
+										? (brandsBySupplier.get(option.id) ?? [])
 										: []
 								const supplierExpanded =
 									view === 'supplier' && expandedSupplierIds.has(option.id)
@@ -776,7 +756,7 @@ export function ProductCategoryFilterTree({
 											{view === 'supplier' && (
 												<button
 													type='button'
-													disabled={supplierBrandNames.length === 0}
+													disabled={supplierBrands.length === 0}
 													onClick={() => toggleSupplier(option.id)}
 													aria-label={
 														supplierExpanded
@@ -784,13 +764,13 @@ export function ProductCategoryFilterTree({
 															: `Déplier ${option.name}`
 													}
 													aria-expanded={
-														supplierBrandNames.length > 0
+														supplierBrands.length > 0
 															? supplierExpanded
 															: undefined
 													}
 													className={cn(
 														'm-0.5 rounded p-1 hover:bg-background/20',
-														supplierBrandNames.length === 0 && 'invisible',
+														supplierBrands.length === 0 && 'invisible',
 													)}
 												>
 													{supplierExpanded ? (
@@ -850,9 +830,39 @@ export function ProductCategoryFilterTree({
 											)}
 										</div>
 										{supplierExpanded && (
-											<p className='px-8 py-1.5 text-muted-foreground text-xs leading-relaxed'>
-												{supplierBrandNames.join(', ')}
-											</p>
+											// Une pastille par marque, avec son logo quand il existe.
+											// La liste était une phrase en `join(', ')` : au-delà de
+											// quelques marques — ALGAM en distribue 46 — elle
+											// devenait un pavé où l'œil ne séparait plus rien.
+											// Cliquer une pastille filtre sur la marque et bascule
+											// sur son onglet : c'est le geste qu'on attend d'un nom
+											// de marque affiché sous un fournisseur.
+											<div className='flex flex-wrap gap-1 px-8 pt-0.5 pb-2'>
+												{supplierBrands.map((brand) => (
+													<button
+														key={brand.id}
+														type='button'
+														title={`Filtrer sur ${brand.name}`}
+														onClick={() => {
+															setView('brand')
+															setSearch('')
+															onBrandChange(brand.id)
+														}}
+														className='inline-flex max-w-full items-center gap-1 rounded-full border bg-background py-0.5 pr-2 pl-1 text-[11px] transition-colors hover:bg-accent'
+													>
+														<BrandLogo
+															name={brand.name}
+															url={
+																brand.image
+																	? pb.files.getUrl(brand, brand.image)
+																	: null
+															}
+															size='tag'
+														/>
+														<span className='truncate'>{brand.name}</span>
+													</button>
+												))}
+											</div>
 										)}
 									</div>
 								)

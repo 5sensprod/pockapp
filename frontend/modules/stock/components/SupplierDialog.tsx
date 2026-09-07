@@ -53,12 +53,17 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
-import type { CatalogSupplierShape } from '@/lib/queries/catalog-shapes'
+import type {
+	CatalogBrandShape,
+	CatalogSupplierShape,
+} from '@/lib/queries/catalog-shapes'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { useCreateSupplier, useUpdateSupplier } from '@/lib/queries/suppliers'
+import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import { Check, ChevronsUpDown, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { BrandLogo } from './BrandLogo'
 
 const supplierSchema = z.object({
 	name: z.string().min(1, 'Le nom est requis').max(255),
@@ -113,6 +118,10 @@ export function SupplierDialog({
 	const { data: brands } = useBrands({
 		companyId: activeCompanyId ?? undefined,
 	})
+	const pb = usePocketBase()
+	// `image` est un NOM DE FICHIER : seul `pb.files.getUrl` en fait une adresse.
+	const logoUrl = (brand: CatalogBrandShape) =>
+		brand.image ? pb.files.getUrl(brand, brand.image) : null
 
 	const [brandPickerOpen, setBrandPickerOpen] = useState(false)
 	const [brandSearch, setBrandSearch] = useState('')
@@ -356,8 +365,14 @@ export function SupplierDialog({
 											{selectedBrandRecords.map((brand) => (
 												<span
 													key={brand.id}
-													className='inline-flex items-center gap-1 rounded-full bg-primary py-1 pr-1 pl-2.5 text-primary-foreground text-xs'
+													className='inline-flex items-center gap-1 rounded-full bg-primary py-1 pr-1 pl-1 text-primary-foreground text-xs'
 												>
+													<BrandLogo
+														name={brand.name}
+														url={logoUrl(brand)}
+														size='tag'
+														tone='contrast'
+													/>
 													{brand.name}
 													<button
 														type='button'
@@ -450,6 +465,11 @@ export function SupplierDialog({
 																	'h-3.5 w-3.5 shrink-0',
 																	!isSelected && 'invisible',
 																)}
+															/>
+															<BrandLogo
+																name={brand.name}
+																url={logoUrl(brand)}
+																size='tag'
 															/>
 															<span className='truncate'>{brand.name}</span>
 														</button>
