@@ -23,7 +23,7 @@
 // `backend/migrations/fix_json_max_size.go`.
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 
@@ -44,6 +44,11 @@ import {
 	FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
@@ -51,6 +56,8 @@ import { useBrands } from '@/lib/queries/brands'
 import type { CatalogSupplierShape } from '@/lib/queries/catalog-shapes'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { useCreateSupplier, useUpdateSupplier } from '@/lib/queries/suppliers'
+import { cn } from '@/lib/utils'
+import { Check, ChevronsUpDown, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 const supplierSchema = z.object({
@@ -107,6 +114,9 @@ export function SupplierDialog({
 		companyId: activeCompanyId ?? undefined,
 	})
 
+	const [brandPickerOpen, setBrandPickerOpen] = useState(false)
+	const [brandSearch, setBrandSearch] = useState('')
+
 	const form = useForm<SupplierFormValues>({
 		resolver: zodResolver(supplierSchema),
 		defaultValues: EMPTY,
@@ -124,6 +134,7 @@ export function SupplierDialog({
 			contact_address: supplier?.contact_address ?? '',
 			brands: supplier?.brands ?? [],
 		})
+		setBrandSearch('')
 	}, [open, supplier, form])
 
 	const onSubmit = async (data: SupplierFormValues) => {
@@ -178,6 +189,26 @@ export function SupplierDialog({
 	}
 
 	const selectedBrands = form.watch('brands') || []
+	const selectedBrandRecords = useMemo(
+		() => (brands ?? []).filter((brand) => selectedBrands.includes(brand.id)),
+		[brands, selectedBrands],
+	)
+	// Recherche insensible aux accents, comme dans l'arbre du catalogue.
+	const marquesCherchees = useMemo(() => {
+		const terme = brandSearch
+			.trim()
+			.normalize('NFD')
+			.replace(/\p{Diacritic}/gu, '')
+			.toLocaleLowerCase('fr')
+		if (!terme) return brands ?? []
+		return (brands ?? []).filter((brand) =>
+			brand.name
+				.normalize('NFD')
+				.replace(/\p{Diacritic}/gu, '')
+				.toLocaleLowerCase('fr')
+				.includes(terme),
+		)
+	}, [brands, brandSearch])
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -309,37 +340,129 @@ export function SupplierDialog({
 							)}
 						/>
 
-						{/* Marques distribuées */}
+						{/* Marques distribuées — 287 marques au catalogue : les étaler
+						    en pastilles noyait la seule information utile, celles qui sont
+						    déjà distribuées. Même sélecteur que « Distribuée par » dans
+						    `BrandDialog`, pour que le lien se manipule pareil des deux
+						    côtés. */}
 						<FormField
 							control={form.control}
 							name='brands'
 							render={() => (
 								<FormItem>
 									<FormLabel>Marques distribuées</FormLabel>
-									<div className='flex min-h-[42px] flex-wrap gap-2 rounded-md border p-3'>
-										{brands?.map((brand) => {
-											const isSelected = selectedBrands.includes(brand.id)
-											return (
-												<button
+									{selectedBrandRecords.length > 0 && (
+										<div className='flex flex-wrap gap-2'>
+											{selectedBrandRecords.map((brand) => (
+												<span
 													key={brand.id}
-													type='button'
-													onClick={() => toggleBrand(brand.id)}
-													className={`rounded-full px-2 py-1 text-xs transition-colors ${
-														isSelected
-															? 'bg-primary text-primary-foreground'
-															: 'bg-muted hover:bg-muted/80'
-													}`}
+													className='inline-flex items-center gap-1 rounded-full bg-primary py-1 pr-1 pl-2.5 text-primary-foreground text-xs'
 												>
 													{brand.name}
+													<button
+														type='button'
+														aria-label={`Retirer ${brand.name}`}
+														title='Retirer cette marque'
+														onClick={() => toggleBrand(brand.id)}
+														className='rounded-full p-0.5 hover:bg-primary-foreground/20'
+													>
+														<X className='h-3 w-3' />
+													</button>
+												</span>
+											))}
+										</div>
+									)}
+									<Popover
+										open={brandPickerOpen}
+										onOpenChange={(ouvert) => {
+											setBrandPickerOpen(ouvert)
+											if (!ouvert) setBrandSearch('')
+										}}
+									>
+										<PopoverTrigger asChild>
+											<Button
+												type='button'
+												variant='outline'
+												aria-haspopup='listbox'
+												aria-expanded={brandPickerOpen}
+												className='w-full justify-between font-normal'
+											>
+												<span
+													className={cn(
+														'truncate',
+														selectedBrandRecords.length === 0 &&
+															'text-muted-foreground',
+													)}
+												>
+													{selectedBrandRecords.length === 0
+														? 'Aucune marque'
+														: selectedBrandRecords.length === 1
+															? selectedBrandRecords[0].name
+															: `${selectedBrandRecords.length} marques`}
+												</span>
+												<ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent
+											align='start'
+											className='w-[--radix-popover-trigger-width] p-0'
+										>
+											<div className='relative border-b p-2'>
+												<Search className='-translate-y-1/2 absolute top-1/2 left-4 h-3.5 w-3.5 text-muted-foreground' />
+												<Input
+													value={brandSearch}
+													onChange={(event) =>
+														setBrandSearch(event.target.value)
+													}
+													placeholder='Chercher une marque…'
+													aria-label='Chercher une marque'
+													className='h-8 pl-7 text-sm'
+												/>
+											</div>
+											<div className='max-h-60 overflow-y-auto p-1'>
+												{/* « Aucune » vide la liste d'un clic, plutôt que
+												    d'obliger à décocher une à une. */}
+												<button
+													type='button'
+													onClick={() => form.setValue('brands', [])}
+													className='flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent'
+												>
+													<Check
+														className={cn(
+															'h-3.5 w-3.5 shrink-0',
+															selectedBrands.length > 0 && 'invisible',
+														)}
+													/>
+													<span className='text-muted-foreground'>Aucune</span>
 												</button>
-											)
-										})}
-										{!brands?.length && (
-											<span className='text-muted-foreground text-sm'>
-												Aucune marque
-											</span>
-										)}
-									</div>
+												{marquesCherchees.map((brand) => {
+													const isSelected = selectedBrands.includes(brand.id)
+													return (
+														<button
+															key={brand.id}
+															type='button'
+															aria-pressed={isSelected}
+															onClick={() => toggleBrand(brand.id)}
+															className='flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent'
+														>
+															<Check
+																className={cn(
+																	'h-3.5 w-3.5 shrink-0',
+																	!isSelected && 'invisible',
+																)}
+															/>
+															<span className='truncate'>{brand.name}</span>
+														</button>
+													)
+												})}
+												{marquesCherchees.length === 0 && (
+													<p className='px-2 py-6 text-center text-muted-foreground text-sm'>
+														Aucun résultat
+													</p>
+												)}
+											</div>
+										</PopoverContent>
+									</Popover>
 									<FormMessage />
 								</FormItem>
 							)}

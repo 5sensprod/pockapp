@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input'
 import type {
 	CatalogBrandShape,
 	CatalogCategoryShape,
+	CatalogSupplierShape,
 } from '@/lib/queries/catalog-shapes'
 import { useUpdateCategory } from '@/lib/queries/categories'
 import { hasUsableCategoryCounts } from '@/lib/queries/category-counts'
@@ -22,18 +23,23 @@ import {
 	FolderTree,
 	Loader2,
 	Search,
+	Settings2,
 	Star,
 	Truck,
 	X,
 } from 'lucide-react'
 import {
 	type DragEvent as ReactDragEvent,
+	type MouseEvent as ReactMouseEvent,
 	useEffect,
 	useMemo,
 	useState,
 } from 'react'
 import { toast } from 'sonner'
 
+import { BrandDialog } from './BrandDialog'
+import { CategoryDialog } from './CategoryDialog'
+import { SupplierDialog } from './SupplierDialog'
 import { PRODUCT_BATCH_DRAG_TYPE } from './product-batch-drag'
 
 type ExplorerView = 'category' | 'brand' | 'supplier'
@@ -41,14 +47,16 @@ type ExplorerView = 'category' | 'brand' | 'supplier'
 const SELECTED_ITEM_CLASS =
 	'bg-violet-50/80 text-primary shadow-sm hover:bg-violet-100 dark:bg-violet-950/35 dark:text-foreground dark:hover:bg-violet-900/55'
 
-interface NamedOption {
-	id: string
-	name: string
-}
+// Le fournisseur est reçu ENTIER, et non réduit à `{ id, name, brands }` :
+// l'engrenage de la ligne ouvre `SupplierDialog`, qui préremplit sa fiche
+// depuis l'enregistrement lui-même.
+type SupplierOption = CatalogSupplierShape
 
-interface SupplierOption extends NamedOption {
-	brands?: string[]
-}
+/** Élément dont l'engrenage a ouvert une modale d'édition. */
+type EditingTarget = { kind: ExplorerView; id: string }
+
+const GEAR_BUTTON_CLASS =
+	'mr-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
 
 interface ProductCategoryFilterTreeProps {
 	categories: CatalogCategoryShape[]
@@ -128,6 +136,8 @@ export function ProductCategoryFilterTree({
 	const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(
 		null,
 	)
+	// L'engrenage n'ouvre qu'une modale à la fois, quel que soit l'onglet.
+	const [editing, setEditing] = useState<EditingTarget | null>(null)
 
 	const parentById = useMemo(
 		() =>
@@ -293,6 +303,10 @@ export function ProductCategoryFilterTree({
 		() => new Map(brands.map((brand) => [brand.id, brand])),
 		[brands],
 	)
+	const supplierById = useMemo(
+		() => new Map(suppliers.map((supplier) => [supplier.id, supplier])),
+		[suppliers],
+	)
 	const filteredSuppliers = useMemo(
 		() =>
 			suppliers.filter((supplier) =>
@@ -396,6 +410,27 @@ export function ProductCategoryFilterTree({
 			toast.error(`Mise en avant refusée : ${pocketbaseErrorMessage(error)}`)
 		}
 	}
+	// Ouvrir l'édition ne doit RIEN faire d'autre : ni sélectionner la ligne, ni
+	// changer le filtre, ni amorcer un glisser-déposer depuis la ligne parente.
+	const openEditor = (
+		event: ReactMouseEvent,
+		kind: ExplorerView,
+		id: string,
+	) => {
+		event.stopPropagation()
+		event.preventDefault()
+		setEditing({ kind, id })
+	}
+	const closeEditor = (open: boolean) => {
+		if (!open) setEditing(null)
+	}
+	const editingCategory =
+		editing?.kind === 'category' ? (categoryById.get(editing.id) ?? null) : null
+	const editingBrand =
+		editing?.kind === 'brand' ? (brandById.get(editing.id) ?? null) : null
+	const editingSupplier =
+		editing?.kind === 'supplier' ? (supplierById.get(editing.id) ?? null) : null
+
 	const acceptsProductBatch = (event: ReactDragEvent) =>
 		selectedProductCount > 0 &&
 		Array.from(event.dataTransfer.types).includes(PRODUCT_BATCH_DRAG_TYPE)
@@ -680,6 +715,17 @@ export function ProductCategoryFilterTree({
 												/>
 											)}
 										</button>
+										<button
+											type='button'
+											aria-label={`Modifier la catégorie ${option.name}`}
+											title='Modifier la catégorie'
+											onClick={(event) =>
+												openEditor(event, 'category', option.id)
+											}
+											className={GEAR_BUTTON_CLASS}
+										>
+											<Settings2 className='h-3.5 w-3.5' />
+										</button>
 										{categoryCountsAreUsable && (
 											<span className='shrink-0 pr-2 text-[11px] tabular-nums opacity-60'>
 												{categoryCounts.direct === categoryCounts.total
@@ -723,7 +769,7 @@ export function ProductCategoryFilterTree({
 									<div key={option.id} className='mb-0.5'>
 										<div
 											className={cn(
-												'flex min-w-0 items-center rounded-md transition-colors',
+												'group flex min-w-0 items-center rounded-md transition-colors',
 												selected ? SELECTED_ITEM_CLASS : 'hover:bg-accent',
 											)}
 										>
@@ -775,12 +821,33 @@ export function ProductCategoryFilterTree({
 														</span>
 													)}
 												</span>
-												{productCount !== undefined && (
-													<span className='shrink-0 text-[11px] tabular-nums opacity-60'>
-														{productCount}
-													</span>
-												)}
 											</button>
+											{/* L'engrenage se glisse ENTRE le nom et le décompte,
+											    comme l'étoile des catégories : le compteur reste la
+											    dernière colonne, alignée d'une ligne à l'autre. Le
+											    décompte est donc sorti du bouton de sélection. */}
+											<button
+												type='button'
+												aria-label={
+													view === 'brand'
+														? `Modifier la marque ${option.name}`
+														: `Modifier le fournisseur ${option.name}`
+												}
+												title={
+													view === 'brand'
+														? 'Modifier la marque'
+														: 'Modifier le fournisseur'
+												}
+												onClick={(event) => openEditor(event, view, option.id)}
+												className={GEAR_BUTTON_CLASS}
+											>
+												<Settings2 className='h-3.5 w-3.5' />
+											</button>
+											{productCount !== undefined && (
+												<span className='shrink-0 pr-2 text-[11px] tabular-nums opacity-60'>
+													{productCount}
+												</span>
+											)}
 										</div>
 										{supplierExpanded && (
 											<p className='px-8 py-1.5 text-muted-foreground text-xs leading-relaxed'>
@@ -794,6 +861,25 @@ export function ProductCategoryFilterTree({
 					)}
 				</div>
 			</CardContent>
+
+			{/* Les trois modales sont montées ici, hors de la liste défilante : une
+			    modale rendue DANS la ligne disparaîtrait avec elle dès qu'un filtre
+			    ou une recherche la sort de `visibleOptions`. */}
+			<CategoryDialog
+				open={editing?.kind === 'category' && !!editingCategory}
+				onOpenChange={closeEditor}
+				category={editingCategory}
+			/>
+			<BrandDialog
+				open={editing?.kind === 'brand' && !!editingBrand}
+				onOpenChange={closeEditor}
+				brand={editingBrand}
+			/>
+			<SupplierDialog
+				open={editing?.kind === 'supplier' && !!editingSupplier}
+				onOpenChange={closeEditor}
+				supplier={editingSupplier}
+			/>
 		</Card>
 	)
 }
