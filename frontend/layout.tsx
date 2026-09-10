@@ -10,7 +10,7 @@
 //   - Mobile inchangé : BottomNav, la Sidebar ne se rend pas.
 
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Header, Sidebar } from '@/components/layout'
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -30,6 +30,7 @@ import { CheckForUpdates } from '@/wailsjs/go/main/App'
 import { EventsOn } from '@/wailsjs/runtime/runtime'
 
 const SIDEBAR_OPEN_KEY = 'pocketapp:sidebar-open'
+const SIDEBAR_AUTO_CLOSE_MAX_WIDTH = 1150
 
 function readSidebarOpen(): boolean {
 	if (typeof window === 'undefined') return true
@@ -72,6 +73,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	const { isMobile, isDesktop } = useBreakpoint()
 
 	const [sidebarOpen, setSidebarOpen] = useState<boolean>(readSidebarOpen)
+	const autoClosedSidebar = useRef(false)
 
 	const { needsSetup, loading: setupLoading } = useSetupCheck()
 	const currentModule = useMemo(() => findModuleByPath(pathname), [pathname])
@@ -102,6 +104,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	})
 
 	const setSidebarOpenPersisted = (next: boolean) => {
+		autoClosedSidebar.current = false
 		setSidebarOpen(next)
 		try {
 			window.localStorage.setItem(SIDEBAR_OPEN_KEY, next ? '1' : '0')
@@ -109,6 +112,37 @@ export function Layout({ children }: { children: React.ReactNode }) {
 			// stockage indisponible — la préférence vaut pour la session seule
 		}
 	}
+
+	// En réduisant la fenêtre, replie automatiquement le menu à partir de
+	// 1150px. Ce repli responsive ne modifie pas la préférence persistée et le
+	// menu retrouve donc son état ouvert quand la place revient. Sous le seuil,
+	// l'utilisateur peut toujours le rouvrir depuis le Header.
+	useEffect(() => {
+		const media = window.matchMedia(
+			`(max-width: ${SIDEBAR_AUTO_CLOSE_MAX_WIDTH}px)`,
+		)
+
+		const syncSidebar = (shouldClose: boolean) => {
+			if (shouldClose) {
+				setSidebarOpen((current) => {
+					if (!current) return current
+					autoClosedSidebar.current = true
+					return false
+				})
+				return
+			}
+
+			if (autoClosedSidebar.current) {
+				autoClosedSidebar.current = false
+				setSidebarOpen(true)
+			}
+		}
+
+		const onChange = (event: MediaQueryListEvent) => syncSidebar(event.matches)
+		syncSidebar(media.matches)
+		media.addEventListener('change', onChange)
+		return () => media.removeEventListener('change', onChange)
+	}, [])
 
 	// ── Marge et padding <main> ─────────────────────────────────────────────
 	// Seul le desktop pousse le contenu ; sur tablette la barre survole, faute
@@ -196,7 +230,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 			<Header
 				currentModule={currentModule}
 				sidebarOpen={sidebarOpen}
-				onToggleSidebar={() => setSidebarOpenPersisted(!sidebarOpen)}
+				onToggleSidebar={() => setSidebarOpenPersisted(true)}
 				notifications={notifications}
 				unreadCount={unreadCount}
 				markAllRead={markAllRead}
@@ -213,7 +247,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 			{/*
         Contenu principal
           mobile  → ml-0,    pb-bottom-nav (espace sous la BottomNav)
-          tablet  → ml-0     (la barre survole)
+          tablet  → ml-0     (la barre survole, largeur inchangée)
           desktop → ml-panel quand la barre est ouverte, sinon ml-0
       */}
 			<main

@@ -22,14 +22,12 @@
 //
 // Modes (useBreakpoint) :
 //   mobile  (<768px)   → non rendue, BottomNav prend le relais
-//   tablet  (768–1023) → backdrop, refermeture après un saut, pas de push
-//   desktop (≥1024px)  → pas de backdrop, elle pousse le contenu
+//   tablet  (768–1023) → overlay de même largeur, pas de push
+//   desktop (≥1024px)  → elle pousse le contenu
 //
-// Un clic hors de la barre la ferme, à tous les formats — sur tablette par le
-// backdrop, sur desktop par un écouteur `pointerdown` : là, aucun voile ne
-// couvre la page, le clic doit donc atteindre ce qu'il visait ET fermer le
-// menu. Le bouton du Header est exclu (`data-sidebar-toggle`), sans quoi il
-// fermerait au `pointerdown` puis rouvrirait au `click`.
+// Le menu général ne se ferme jamais implicitement : ni clic extérieur, ni
+// navigation. Seul son bouton X appelle `onClose`. Le repli responsive à
+// 1150px est piloté par `layout.tsx` et ne change pas sa largeur.
 //
 // Tokens : bg-panel, bg-panel-header, bg-panel-item-active, text-panel-*,
 //          w-panel, h-header (tailwind.config.cjs)
@@ -75,7 +73,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 	const { pathname } = useLocation()
 	const navigate = useNavigate()
 	const router = useRouter()
-	const { isMobile, isTablet } = useBreakpoint()
+	const { isMobile } = useBreakpoint()
 
 	// `inert` n'existe pas comme prop React en 18 — on le pose sur le nœud.
 	// Sans lui, la barre fermée reste tabulable : on sortirait du champ visible
@@ -84,21 +82,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 	React.useEffect(() => {
 		navRef.current?.toggleAttribute('inert', !open)
 	}, [open])
-
-	// Clic extérieur — desktop uniquement : sur tablette c'est le backdrop qui
-	// s'en charge, et il faut laisser passer les clics DANS la barre.
-	React.useEffect(() => {
-		if (!open || isMobile || isTablet) return
-		const onPointerDown = (e: PointerEvent) => {
-			const target = e.target as Element | null
-			if (!target) return
-			if (navRef.current?.contains(target)) return
-			if (target.closest('[data-sidebar-toggle]')) return
-			onClose()
-		}
-		document.addEventListener('pointerdown', onPointerDown)
-		return () => document.removeEventListener('pointerdown', onPointerDown)
-	}, [open, isMobile, isTablet, onClose])
 
 	// Groupes dépliés par défaut : la barre est assez haute pour tout montrer,
 	// et un item visible vaut mieux qu'un item à chercher. Replier reste
@@ -131,8 +114,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 		} else {
 			navigate({ to: itemTo as any })
 		}
-		// Sur tablette la barre survole le contenu : elle se referme après le saut.
-		if (isTablet) onClose()
 	}
 
 	const toggleGroup = (groupId: string) =>
@@ -145,22 +126,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
 	return (
 		<>
-			{/* ── Backdrop tablette — ferme la barre au clic extérieur ─────────── */}
-			{isTablet && open && (
-				<div
-					className='fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]'
-					style={{ top: 'var(--header-h)' }}
-					onClick={onClose}
-					onKeyDown={(e) => {
-						if (e.key === 'Enter' || e.key === ' ') {
-							e.preventDefault()
-							onClose()
-						}
-					}}
-					aria-hidden='true'
-				/>
-			)}
-
 			<nav
 				ref={navRef}
 				className={cn(
@@ -181,6 +146,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 						onClick={onClose}
 						className='rounded-md p-1.5 hover:bg-panel-item-active transition-colors'
 						title='Fermer le menu'
+						aria-label='Fermer le menu'
 					>
 						<X className='h-4 w-4 text-panel-close-btn' />
 					</button>

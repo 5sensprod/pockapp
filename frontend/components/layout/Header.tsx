@@ -22,7 +22,6 @@ import {
 	Home,
 	LogOut,
 	Menu,
-	PanelLeftClose,
 	RefreshCw,
 	Settings,
 	Trash2,
@@ -60,7 +59,7 @@ import type { AppNotification } from '@/lib/notifications'
 
 interface HeaderProps {
 	currentModule: ModuleManifest | null
-	/** État du menu unique — le bouton ci-dessous est son seul déclencheur. */
+	/** État du menu unique — le Header permet seulement de le rouvrir. */
 	sidebarOpen: boolean
 	onToggleSidebar: () => void
 	notifications: AppNotification[]
@@ -212,22 +211,18 @@ export function Header({
 					    tient ce rôle. */}
 					{!isMobile && (
 						<div className='flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/60 p-0.5'>
-							<Button
-								data-sidebar-toggle
-								variant='ghost'
-								size='icon'
-								className='h-8 w-8 hover:bg-background'
-								onClick={onToggleSidebar}
-								aria-expanded={sidebarOpen}
-								aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
-								title={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
-							>
-								{sidebarOpen ? (
-									<PanelLeftClose className='h-5 w-5' />
-								) : (
+							{!sidebarOpen && (
+								<Button
+									variant='ghost'
+									size='icon'
+									className='h-8 w-8 hover:bg-background'
+									onClick={onToggleSidebar}
+									aria-label='Ouvrir le menu'
+									title='Ouvrir le menu'
+								>
 									<Menu className='h-5 w-5' />
-								)}
-							</Button>
+								</Button>
+							)}
 
 							{/* Retour à l'accueil — c'est ce bouton qui y mène, plus le titre. */}
 							<Button
