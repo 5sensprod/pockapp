@@ -100,6 +100,7 @@ interface CartItem {
 	lineDiscountMode?: 'percent' | 'unit'
 	lineDiscountValue?: number
 	displayMode?: DisplayMode
+	stockCounter?: 'stock' | 'stock_b'
 }
 
 function round2(n: number) {
@@ -113,6 +114,13 @@ export function cartItemToPosItem(item: CartItem): PosItemInput {
 		displayName = item.designation || item.name
 	} else if (displayMode === 'sku') {
 		displayName = item.sku || item.name
+	}
+
+	// Une unité B est dite sur le ticket : le client achète un article ouvert
+	// ou rayé, et il doit le lire. Porté par le NOM de la ligne, pas par un champ
+	// neuf — aucune ligne de document fiscal ne change de forme.
+	if (item.stockCounter === 'stock_b') {
+		displayName = `${displayName} (Stock B)`
 	}
 
 	const qty = Number(item.quantity) || 1

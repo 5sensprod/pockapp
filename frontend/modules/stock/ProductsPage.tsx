@@ -18,6 +18,14 @@
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
 	Popover,
@@ -30,8 +38,10 @@ import { useResizableExplorer } from '@/lib/hooks/useResizableExplorer'
 import { useBrands } from '@/lib/queries/brands'
 import {
 	type CatalogCommercialStateFilter,
+	type CatalogProductQuery,
 	type CatalogProductStatus,
 	type CatalogSaleStateFilter,
+	fetchAllCatalogProducts,
 	useCatalogProducts,
 	useUpdateCatalogProductStatusBatch,
 } from '@/lib/queries/catalog-products'
@@ -59,6 +69,7 @@ import {
 	FileText,
 	Globe,
 	ImageOff,
+	ListChecks,
 	Loader2,
 	PackageX,
 	PenLine,
@@ -75,6 +86,7 @@ import {
 	useRef,
 	useState,
 } from 'react'
+import { toast } from 'sonner'
 
 import { useEtatPersistant } from '@/lib/hooks/useEtatPersistant'
 
@@ -234,6 +246,8 @@ export function ProductsPage() {
 	const [selectedProducts, setSelectedProducts] = useState<
 		Map<string, StockProductRow>
 	>(() => new Map())
+	const [selectionGlobalePending, setSelectionGlobalePending] = useState(false)
+	const selectionGlobaleRunRef = useRef(0)
 	const [selectionSeule, setSelectionSeule] = useState(false)
 	const [batchCategoryTarget, setBatchCategoryTarget] = useState<{
 		id: string
@@ -357,27 +371,49 @@ export function ProductsPage() {
 		setPage,
 	])
 
-	const products = useCatalogProducts({
-		companyId: activeCompanyId ?? undefined,
-		page,
-		perPage: PER_PAGE,
-		search: debounced || undefined,
-		status,
-		brandId: brandId && brandId !== NO_RELATION_FILTER ? brandId : undefined,
-		withoutBrand: brandId === NO_RELATION_FILTER,
-		categoryIds: categoryBranch,
-		withoutCategory: categoryId === NO_RELATION_FILTER,
-		supplierId:
-			supplierId && supplierId !== NO_RELATION_FILTER ? supplierId : undefined,
-		withoutSupplier: supplierId === NO_RELATION_FILTER,
-		missingImage,
-		missingDescription,
-		missingPurchasePrice,
-		emptyStock,
-		commercialState: commercialState || undefined,
-		saleState: saleState || undefined,
-		sort: toCatalogSort(sorting),
-	})
+	const catalogQuery = useMemo<CatalogProductQuery>(
+		() => ({
+			companyId: activeCompanyId ?? undefined,
+			page,
+			perPage: PER_PAGE,
+			search: debounced || undefined,
+			status,
+			brandId: brandId && brandId !== NO_RELATION_FILTER ? brandId : undefined,
+			withoutBrand: brandId === NO_RELATION_FILTER,
+			categoryIds: categoryBranch,
+			withoutCategory: categoryId === NO_RELATION_FILTER,
+			supplierId:
+				supplierId && supplierId !== NO_RELATION_FILTER
+					? supplierId
+					: undefined,
+			withoutSupplier: supplierId === NO_RELATION_FILTER,
+			missingImage,
+			missingDescription,
+			missingPurchasePrice,
+			emptyStock,
+			commercialState: commercialState || undefined,
+			saleState: saleState || undefined,
+			sort: toCatalogSort(sorting),
+		}),
+		[
+			activeCompanyId,
+			page,
+			debounced,
+			status,
+			brandId,
+			categoryBranch,
+			categoryId,
+			supplierId,
+			missingImage,
+			missingDescription,
+			missingPurchasePrice,
+			emptyStock,
+			commercialState,
+			saleState,
+			sorting,
+		],
+	)
+	const products = useCatalogProducts(catalogQuery)
 
 	// Les manques viennent du serveur avec les autres décomptes : les compter
 	// ici demanderait les 2999 produits au navigateur, ce que la route
@@ -402,17 +438,22 @@ export function ProductsPage() {
 
 	// Les lignes affichées : produits PocketBase, relations résolues en mémoire,
 	// image résolue par `pb.files.getUrl`. Une seule provenance, du haut en bas.
+	const stockRowContext = useMemo(
+		() => ({
+			brandById,
+			supplierById,
+			categoryById,
+			fileUrl: (record: Parameters<typeof toStockRow>[0], filename: string) =>
+				pb.files.getUrl(record, filename),
+		}),
+		[brandById, supplierById, categoryById, pb],
+	)
 	const rows = useMemo(
 		() =>
 			(products.data?.items ?? []).map((product) =>
-				toStockRow(product, {
-					brandById,
-					supplierById,
-					categoryById,
-					fileUrl: (record, filename) => pb.files.getUrl(record, filename),
-				}),
+				toStockRow(product, stockRowContext),
 			),
-		[products.data, brandById, supplierById, categoryById, pb],
+		[products.data, stockRowContext],
 	)
 
 	// « Sélection seule » n'interroge PAS le serveur, et ce n'est pas une
@@ -708,6 +749,67 @@ export function ProductsPage() {
 
 	const total = products.data?.totalItems ?? 0
 	const totalPages = products.data?.totalPages ?? 1
+	const pageEntiereSelectionnee =
+		rows.length > 0 && rows.every((row) => selectedProducts.has(row.id))
+
+	const selectionnerPageCourante = () => {
+		selectionGlobaleRunRef.current += 1
+		setSelectionGlobalePending(false)
+		setSelectedProducts((courante) => {
+			const suivante = new Map(courante)
+			for (const row of rows) suivante.set(row.id, row)
+			return suivante
+		})
+	}
+
+	const selectionnerTousLesResultats = async () => {
+		if (!activeCompanyId || total === 0 || selectionGlobalePending) return
+		const run = ++selectionGlobaleRunRef.current
+		setSelectionGlobalePending(true)
+		try {
+			const records = await fetchAllCatalogProducts(pb, catalogQuery)
+			if (selectionGlobaleRunRef.current !== run) return
+			const selection = records.map((record) =>
+				toStockRow(record, stockRowContext),
+			)
+			setSelectedProducts(
+				new Map(selection.map((row) => [row.id, row] as const)),
+			)
+			toast.success(
+				`${selection.length} produit${selection.length > 1 ? 's' : ''} sélectionné${selection.length > 1 ? 's' : ''}`,
+			)
+		} catch (error) {
+			if (selectionGlobaleRunRef.current !== run) return
+			console.error('[PocketApp] Sélection globale impossible :', error)
+			toast.error('Impossible de sélectionner toutes les pages')
+		} finally {
+			if (selectionGlobaleRunRef.current === run) {
+				setSelectionGlobalePending(false)
+			}
+		}
+	}
+
+	const viderSelection = () => {
+		selectionGlobaleRunRef.current += 1
+		setSelectionGlobalePending(false)
+		setSelectedProducts(new Map())
+	}
+
+	// Échap est géré dans `ProductTable` et vide directement la Map. Si une
+	// lecture globale était encore en vol, son résultat ne doit pas rallumer le
+	// mode sélection une seconde plus tard.
+	useEffect(() => {
+		if (!selectionGlobalePending || selectedProducts.size > 0) return
+		selectionGlobaleRunRef.current += 1
+		setSelectionGlobalePending(false)
+	}, [selectionGlobalePending, selectedProducts])
+
+	useEffect(
+		() => () => {
+			selectionGlobaleRunRef.current += 1
+		},
+		[],
+	)
 
 	return (
 		// LE CADRE NE DÉFILE PAS, SES DEUX PANNEAUX SI (5 septembre 2026).
@@ -1100,9 +1202,9 @@ export function ProductsPage() {
 							/>
 						)}
 
-						{/* LA PASTILLE DU MODE SÉLECTION (7 septembre 2026), dans le pied
+						{/* LA BARRE DU MODE SÉLECTION (7 septembre 2026), dans le pied
 						    du tableau, au-dessus de la pagination et centrée sur la table.
-						    Le mode s'entre par un appui long sur une ligne et ne se voyait
+						    Le mode s'entre par un rectangle tracé sur les lignes et ne se voyait
 						    qu'au surlignage : rien ne disait qu'on y était, ni comment en
 						    sortir. Elle n'existe que dans ce mode, donc le pied ne grandit
 						    que lorsqu'il y a quelque chose à dire.
@@ -1111,7 +1213,7 @@ export function ProductsPage() {
 						    pas un élément de la page. */}
 						{selectedProducts.size > 0 && (
 							<div className='flex justify-center border-t px-3 py-2'>
-								<div className='flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 text-sm shadow-lg'>
+								<div className='flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 p-1.5 text-slate-100 text-sm shadow-lg'>
 									<span className='flex shrink-0 items-center gap-2 pl-2 font-medium'>
 										<CheckCheck
 											className='h-4 w-4 text-emerald-400'
@@ -1122,6 +1224,70 @@ export function ProductsPage() {
 											{selectedProducts.size > 1 ? 's' : ''}
 										</span>
 									</span>
+
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<button
+												type='button'
+												disabled={selectionGlobalePending}
+												className='inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 font-medium text-slate-300 text-xs transition-colors hover:bg-slate-700 hover:text-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:cursor-wait disabled:opacity-70'
+											>
+												{selectionGlobalePending ? (
+													<Loader2 className='h-3.5 w-3.5 animate-spin' />
+												) : (
+													<ListChecks className='h-3.5 w-3.5' />
+												)}
+												<span>
+													{selectionGlobalePending ? 'Sélection…' : 'Étendre'}
+												</span>
+												<ChevronDown className='h-3 w-3' />
+											</button>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent
+											align='start'
+											side='top'
+											className='w-72'
+										>
+											<DropdownMenuLabel>
+												Étendre la sélection
+											</DropdownMenuLabel>
+											<DropdownMenuSeparator />
+											<DropdownMenuItem
+												disabled={pageEntiereSelectionnee || rows.length === 0}
+												onSelect={selectionnerPageCourante}
+											>
+												<Check className='text-primary' />
+												<span className='min-w-0 flex-1'>
+													<span className='block font-medium'>
+														Page actuelle
+													</span>
+													<span className='block text-muted-foreground text-xs'>
+														Ajoute les lignes affichées
+													</span>
+												</span>
+												<span className='tabular-nums text-muted-foreground text-xs'>
+													{rows.length}
+												</span>
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												disabled={total === 0}
+												onSelect={() => void selectionnerTousLesResultats()}
+											>
+												<CheckCheck className='text-primary' />
+												<span className='min-w-0 flex-1'>
+													<span className='block font-medium'>
+														Toutes les pages
+													</span>
+													<span className='block text-muted-foreground text-xs'>
+														Remplace par tous les résultats filtrés
+													</span>
+												</span>
+												<span className='tabular-nums text-muted-foreground text-xs'>
+													{total}
+												</span>
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
 
 									<span
 										aria-hidden='true'
@@ -1169,9 +1335,6 @@ export function ProductsPage() {
 										<Loader2 className='h-4 w-4 shrink-0 animate-spin text-slate-400' />
 									)}
 
-									<span className='hidden text-slate-400 text-xs lg:inline'>
-										Échap pour quitter
-									</span>
 									<Button
 										type='button'
 										variant='ghost'
@@ -1179,7 +1342,7 @@ export function ProductsPage() {
 										aria-label='Quitter le mode sélection'
 										title='Quitter le mode sélection (Échap)'
 										className='h-7 w-7 shrink-0 rounded-full text-slate-300 hover:bg-slate-800 hover:text-slate-50'
-										onClick={() => setSelectedProducts(new Map())}
+										onClick={viderSelection}
 									>
 										<X className='h-4 w-4' />
 									</Button>

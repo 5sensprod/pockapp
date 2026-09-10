@@ -170,26 +170,42 @@ export function StockReclassificationDialog({
 			)
 
 			if (toProcess.length > 0) {
-				// Seul « restock » remet la marchandise en vente : SAV et Stock B la
-				// sortent du stock vendable. Les trois se journalisent, mais un seul
-				// bouge le stock — c'était déjà la règle côté AppPos, elle est
-				// désormais lisible ici plutôt que dans l'API distante.
+				// « restock » remet au stock neuf, « stock_b » au compteur Stock B
+				// (10 septembre 2026 — avant, le Stock B ne laissait qu'une trace et
+				// la marchandise disparaissait des comptes). Seul le SAV sort du
+				// stock sans mouvement. Les deux premiers partent dans UN appel.
 				const aRemettreEnStock = toProcess.filter(
 					(it) => choices[it.product_id]?.destination === 'restock',
+				)
+				const aClasserStockB = toProcess.filter(
+					(it) => choices[it.product_id]?.destination === 'stock_b',
 				)
 
 				const resultats = await applyStockMovements(
 					pb,
-					aRemettreEnStock.map((it) => ({
-						productId: it.product_id,
-						delta: it.quantity,
-						productName: it.name,
-						productSku: it.sku ?? '',
-						metadata: {
-							destination: 'restock',
-							quantity_returned: it.quantity,
-						},
-					})),
+					[
+						...aRemettreEnStock.map((it) => ({
+							productId: it.product_id,
+							delta: it.quantity,
+							productName: it.name,
+							productSku: it.sku ?? '',
+							metadata: {
+								destination: 'restock',
+								quantity_returned: it.quantity,
+							},
+						})),
+						...aClasserStockB.map((it) => ({
+							productId: it.product_id,
+							delta: it.quantity,
+							counter: 'stock_b' as const,
+							productName: it.name,
+							productSku: it.sku ?? '',
+							metadata: {
+								destination: 'stock_b',
+								quantity_returned: it.quantity,
+							},
+						})),
+					],
 					{
 						reason: 'return',
 						sourceId: documentId ?? documentNumber ?? undefined,
@@ -237,14 +253,14 @@ export function StockReclassificationDialog({
 					)
 				}
 
-				// SAV et Stock B ne changent pas le stock vendable ; ils laissent
-				// quand même une trace, sans quoi la marchandise disparaîtrait du
-				// journal en même temps que du stock.
+				// Le SAV ne change aucun compteur ; il laisse quand même une trace,
+				// sans quoi la marchandise disparaîtrait du journal en même temps
+				// que du stock. (Stock B est désormais un mouvement, ci-dessus.)
 				const now = new Date().toISOString()
 				for (const item of toProcess) {
 					const destination = choices[item.product_id]
 						.destination as StockReturnDestination
-					if (destination === 'restock') continue
+					if (destination !== 'sav') continue
 
 					try {
 						await createProductEvent(pb, {

@@ -141,7 +141,7 @@ var ChampsAutorises = map[string][]string{
 // il nomme l'arborescence.
 var ChampsProteges = map[string][]string{
 	"products": {
-		"slug", "legacy_id", "name", "image", "gallery", "stock", "price_ttc",
+		"slug", "legacy_id", "name", "image", "gallery", "stock", "stock_b", "price_ttc", "promo_price_ttc", "stock_b_price_ttc",
 		"purchase_price_ht", "sku", "barcode", "brand", "supplier",
 		"tax_rate", "min_stock", "manage_stock", "type", "commercial_state",
 	},

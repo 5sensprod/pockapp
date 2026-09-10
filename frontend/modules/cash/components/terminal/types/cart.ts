@@ -1,4 +1,6 @@
 // frontend/modules/cash/components/terminal/types/cart.ts
+import type { CompteurDeStock, PrixProduitB } from '@/lib/pricing/promo-price'
+
 export type LineDiscountMode = 'percent' | 'unit'
 export type DisplayMode = 'name' | 'designation' | 'sku'
 
@@ -18,6 +20,13 @@ export interface CartItem {
 	lineDiscountValue?: number
 	lineDiscountRaw?: string
 	displayMode?: DisplayMode
+	/** Le compteur que la vente décrémente. Absent = neuf. */
+	stockCounter?: CompteurDeStock
+	/** Unités B au moment de l'ajout : décide si la bascule Neuf ↔ B s'affiche. */
+	stockBAvailable?: number
+	/** Les prix de la fiche au moment de l'ajout, pour reposer la bonne remise
+	 *  quand la ligne bascule entre neuf et B. */
+	pricing?: PrixProduitB
 }
 
 export interface VatBreakdown {
@@ -39,7 +48,14 @@ export type PosProduct = {
 	sku?: string | null
 	barcode?: string | null
 	price_ttc?: number | null
+	/** Avec `sale_state`, décide de la remise posée à l'ajout au panier —
+	 *  `lib/pricing/promo-price.ts`. Le prix de la ligne reste `price_ttc`. */
+	promo_price_ttc?: number | null
+	sale_state?: string | null
 	stock?: number | null
+	/** Unités Stock B, et leur prix. Voir `compteurParDefaut`. */
+	stock_b?: number | null
+	stock_b_price_ttc?: number | null
 	/** Prête à poser dans un `<img src>`, ou `null`. */
 	imageUrl?: string | null
 	/** Taux de TVA du schéma `catalog_v2`. Le nom `tva_rate` était celui du

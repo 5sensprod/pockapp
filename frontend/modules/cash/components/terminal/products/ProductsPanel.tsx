@@ -6,6 +6,7 @@
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { prixPromoActif } from '@/lib/pricing/promo-price'
 import { Search } from 'lucide-react'
 import type * as React from 'react'
 import type { PosProduct } from '../types/cart'
@@ -17,6 +18,58 @@ interface ProductsPanelProps {
 	products: PosProduct[]
 	onAddToCart: (p: PosProduct) => void
 	onCreateProductClick: () => void
+}
+
+// Ce qu'un résultat doit dire AVANT d'être ajouté : une remise ou une unité B
+// qui ne se voit qu'une fois au panier fait facturer à l'aveugle
+// (10 septembre 2026). La règle de la promo est celle du panier
+// (`prixPromoActif`), pas une copie.
+function etiquettes(p: PosProduct) {
+	const promo = prixPromoActif(p)
+	const stockB = Number(p.stock_b ?? 0)
+	return {
+		promo,
+		stockB,
+		operation:
+			p.sale_state === 'sale'
+				? 'Soldé'
+				: p.sale_state === 'promo'
+					? 'Promo'
+					: null,
+	}
+}
+
+function Badges({ p }: { p: PosProduct }) {
+	const { operation, stockB } = etiquettes(p)
+	if (!operation && stockB <= 0) return null
+	return (
+		<span className='flex flex-wrap gap-1'>
+			{operation && (
+				<span className='rounded bg-rose-100 px-1.5 py-px text-[10px] font-semibold text-rose-700'>
+					{operation}
+				</span>
+			)}
+			{stockB > 0 && (
+				<span className='rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-800'>
+					Stock B · {stockB}
+				</span>
+			)}
+		</span>
+	)
+}
+
+function Prix({ p, className }: { p: PosProduct; className: string }) {
+	const { promo } = etiquettes(p)
+	const prix = (p.price_ttc ?? 0).toFixed(2)
+	if (promo === null) return <span className={className}>{prix} €</span>
+	return (
+		<span className='flex flex-col items-end leading-tight'>
+			<span className='text-[10px] text-muted-foreground line-through'>
+				{prix} €
+			</span>
+			<span className={`${className} text-rose-700`}>{promo.toFixed(2)} €</span>
+		</span>
+	)
 }
 
 export function ProductsPanel({
@@ -95,6 +148,7 @@ export function ProductsPanel({
 						? empty
 						: products.slice(0, 50).map((p) => {
 								const imageUrl = p.imageUrl
+								const { stockB } = etiquettes(p)
 								return (
 									<button
 										key={p.id}
@@ -118,17 +172,21 @@ export function ProductsPanel({
 										)}
 										<div className='flex-1 min-w-0'>
 											<div className='font-medium truncate'>{p.name}</div>
-											<div className='text-xs text-muted-foreground'>
-												{p.sku || p.barcode || 'N/A'}
+											<div className='flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground'>
+												<span>{p.sku || p.barcode || 'N/A'}</span>
+												<Badges p={p} />
 											</div>
 										</div>
-										<div className='w-24 text-right text-sm font-semibold shrink-0'>
-											{(p.price_ttc ?? 0).toFixed(2)} €
+										<div className='w-24 flex justify-end shrink-0'>
+											<Prix p={p} className='text-sm font-semibold' />
 										</div>
 										<div
 											className={`w-24 text-right text-xs shrink-0 ${(p.stock ?? 0) <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}
 										>
 											{p.stock ?? '?'} en stock
+											{stockB > 0 && (
+												<div className='text-amber-700'>+ {stockB} en B</div>
+											)}
 										</div>
 									</button>
 								)
@@ -175,10 +233,12 @@ export function ProductsPanel({
 										<div className='text-[10px] text-muted-foreground'>
 											{p.sku || p.barcode}
 										</div>
+										<Badges p={p} />
 										<div className='flex items-center justify-between mt-1'>
-											<span className='text-sm font-bold text-foreground'>
-												{(p.price_ttc ?? 0).toFixed(2)} €
-											</span>
+											<Prix
+												p={p}
+												className='text-sm font-bold text-foreground'
+											/>
 											<span
 												className={`text-[10px] font-medium ${outOfStock ? 'text-destructive' : 'text-emerald-600'}`}
 											>

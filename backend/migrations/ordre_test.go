@@ -82,6 +82,9 @@ var apresCatalogV2 = []string{
 	"AddCommercialStateToProducts",
 	"AddSaleStateToProducts",
 	"AddConsignorToProducts",
+	"AddStockBToProducts",
+	"AddPromoPriceToProducts",
+	"AddStockBPriceToProducts",
 }
 
 func TestLesMigrationsDuCatalogueSontInscritesEtApresLaRecreation(t *testing.T) {
@@ -107,6 +110,26 @@ func TestLesMigrationsDuCatalogueSontInscritesEtApresLaRecreation(t *testing.T) 
 					"suivant, sans erreur", nom)
 			}
 		})
+	}
+}
+
+func TestLesMotifsDeStockSontInscritsApresLeJournal(t *testing.T) {
+	// Sans eux au schéma, l'événement d'un mouvement manuel est REFUSÉ par
+	// PocketBase — et en silence, le journal étant best-effort.
+	src := lireSourceSansCommentaires(t, "migrations.go")
+
+	journal := strings.Index(src, "ensureProductEventsCollection,")
+	if journal < 0 {
+		t.Fatal("ensureProductEventsCollection n'est plus inscrite dans RunMigrations")
+	}
+	motifs := strings.Index(src, "AddStockReasonsToProductEvents,")
+	if motifs < 0 {
+		t.Fatal("AddStockReasonsToProductEvents n'est pas inscrite dans RunMigrations : " +
+			"les mouvements manuels ne seraient jamais journalisés")
+	}
+	if motifs < journal {
+		t.Fatal("AddStockReasonsToProductEvents doit passer après " +
+			"ensureProductEventsCollection, qui crée la collection")
 	}
 }
 

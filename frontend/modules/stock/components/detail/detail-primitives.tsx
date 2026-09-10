@@ -33,6 +33,45 @@ export function DetailCard({
 	)
 }
 
+/** Carte dont les champs sont TOUJOURS saisissables : on modifie en cliquant
+ *  dans l'input, sans ouvrir la carte d'abord. Le liseré ambre signale ce qui
+ *  attend l'enregistrement. */
+export function FormDetailCard({
+	title,
+	children,
+	dirty,
+	contentClassName,
+}: {
+	title: string
+	children: React.ReactNode
+	dirty: boolean
+	contentClassName?: string
+}) {
+	return (
+		<Card className='relative overflow-hidden shadow-sm transition-colors focus-within:border-primary/40'>
+			{dirty && (
+				<span
+					aria-hidden
+					className='absolute top-5 left-0 z-10 h-8 w-[3px] rounded-r bg-amber-500'
+				/>
+			)}
+			<CardHeader className='flex min-h-16 flex-row items-center border-b bg-background px-6 py-4'>
+				<CardTitle className='font-semibold text-base text-primary/90 tracking-tight'>
+					{title}
+				</CardTitle>
+			</CardHeader>
+			<CardContent
+				className={cn(
+					'p-6 [&_input]:h-11 [&_label]:font-semibold [&_label]:text-muted-foreground [&_label]:text-xs [&_select]:h-11',
+					contentClassName,
+				)}
+			>
+				{children}
+			</CardContent>
+		</Card>
+	)
+}
+
 export function EditableDetailCard({
 	title,
 	banner,

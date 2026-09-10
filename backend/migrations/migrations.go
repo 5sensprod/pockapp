@@ -135,6 +135,24 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// à jour, sans quoi seules les fiches d'hier seraient bien classées.
 		// Après MigrateCatalogV2, qui recrée `products`.
 		AddNameSortToProducts,
+
+		// 20. Un mouvement de stock manuel porte un motif — réassort, correction,
+		// casse, Stock B, autre — et chaque motif son type d'événement. Après
+		// ensureProductEventsCollection, qui crée la collection.
+		AddStockReasonsToProductEvents,
+
+		// 21. Le Stock B est une seconde quantité du produit, pas un état.
+		// Après MigrateCatalogV2, qui recrée `products`.
+		AddStockBToProducts,
+
+		// 22. Le prix promo : un second prix, appliqué en REMISE DE LIGNE quand
+		// le produit est soldé ou en promotion. Le prix d'origine ne bouge pas.
+		// Après MigrateCatalogV2, qui recrée `products`.
+		AddPromoPriceToProducts,
+
+		// 23. Le prix d'une unité Stock B, posé en remise de ligne quand la
+		// caisse vend du B. Après MigrateCatalogV2, qui recrée `products`.
+		AddStockBPriceToProducts,
 	}
 
 	for _, migrate := range migrations {

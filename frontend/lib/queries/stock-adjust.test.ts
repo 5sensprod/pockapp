@@ -8,7 +8,9 @@ import {
 	eventTypeFor,
 	recordSale,
 	setCountedStock,
+	setStockManually,
 	toSoldLines,
+	transferToStockB,
 } from './stock-adjust'
 
 // Un PocketBase de comptoir. Depuis le 19 août 2026, le mouvement passe par
@@ -59,6 +61,29 @@ function fakePb(
 				if (applied) {
 					updates.push({ id: trouve.id, data: { stock: apres } })
 					trouve.stock = apres
+				}
+
+				// Même règle que `journaliserMouvement` (stock_routes.go) : un
+				// événement par ligne appliquée, métadonnée de la ligne par-dessus
+				// celle du lot, nom du produit à défaut de celui de l'appelant.
+				const lot = config.body.journal
+				if (applied && lot) {
+					journal.push({
+						product_id: trouve.id,
+						product_name_snapshot: m.product_name || trouve.name || '',
+						product_sku_snapshot: m.product_sku || trouve.sku || '',
+						event_type: lot.event_type,
+						source: lot.source,
+						source_id: lot.source_id || null,
+						operator: lot.operator ?? '',
+						before: { stock: avant },
+						after: { stock: apres },
+						delta: { stock: apres - avant },
+						metadata:
+							lot.metadata || m.metadata
+								? { ...(lot.metadata ?? {}), ...(m.metadata ?? {}) }
+								: null,
+					})
 				}
 
 				return {
@@ -209,6 +234,93 @@ describe('setCountedStock', () => {
 	})
 })
 
+describe('setStockManually', () => {
+	it('journalise le motif comme type, en source manuelle, avec le commentaire', async () => {
+		const { pb, journal, updates } = fakePb([{ id: 'pb1', stock: 4 }])
+
+		const resultat = await setStockManually(pb, 'pb1', 10, {
+			reason: 'restock',
+			comment: ' BL 2231 ',
+			metadata: { origin: 'product_detail' },
+		})
+
+		expect(resultat.applied).toBe(true)
+		expect(updates).toEqual([{ id: 'pb1', data: { stock: 10 } }])
+		expect(journal[0]).toMatchObject({
+			event_type: 'stock_restock',
+			source: 'manual',
+			delta: { stock: 6 },
+			metadata: { origin: 'product_detail', comment: 'BL 2231' },
+		})
+	})
+
+	it('refuse « Autre » sans commentaire, avant tout appel serveur', async () => {
+		const { pb, envois } = fakePb([{ id: 'pb1', stock: 4 }])
+
+		const resultat = await setStockManually(pb, 'pb1', 3, {
+			reason: 'other',
+			comment: '   ',
+		})
+
+		expect(resultat.applied).toBe(false)
+		expect(resultat.error).toBeTruthy()
+		expect(envois).toHaveLength(0)
+	})
+
+	it('donne à chaque motif manuel son propre type d’événement', () => {
+		expect(eventTypeFor('correction')).toBe('stock_correction')
+		expect(eventTypeFor('loss')).toBe('stock_loss')
+		expect(eventTypeFor('to_stock_b')).toBe('stock_to_stock_b')
+		expect(eventTypeFor('other')).toBe('stock_other')
+		expect(eventSourceFor('loss')).toBe('manual')
+		// L'inventaire garde les siens.
+		expect(eventSourceFor('inventory')).toBe('inventory_session')
+	})
+})
+
+describe('le Stock B', () => {
+	it('le passage en Stock B part comme UN mouvement de transfert', async () => {
+		const { pb, envois } = fakePb([{ id: 'pb1', stock: 5 }])
+
+		await transferToStockB(pb, 'pb1', 2, { comment: ' carton ouvert ' })
+
+		expect(envois).toHaveLength(1)
+		expect(envois[0].body.movements).toHaveLength(1)
+		expect(envois[0].body.movements[0]).toMatchObject({
+			product_id: 'pb1',
+			transfer_to_b: 2,
+		})
+		expect(envois[0].body.movements[0].delta).toBeUndefined()
+		expect(envois[0].body.journal).toMatchObject({
+			event_type: 'stock_to_stock_b',
+			source: 'manual',
+			metadata: { comment: 'carton ouvert' },
+		})
+	})
+
+	it('refuse une quantité nulle ou fractionnaire, avant tout appel', async () => {
+		const { pb, envois } = fakePb([{ id: 'pb1', stock: 5 }])
+
+		expect((await transferToStockB(pb, 'pb1', 0)).applied).toBe(false)
+		expect((await transferToStockB(pb, 'pb1', 1.5)).applied).toBe(false)
+		expect(envois).toHaveLength(0)
+	})
+
+	it('une correction du Stock B vise son propre compteur', async () => {
+		const { pb, envois } = fakePb([{ id: 'pb1', stock: 5 }])
+
+		await setStockManually(pb, 'pb1', 3, {
+			reason: 'correction',
+			counter: 'stock_b',
+		})
+
+		expect(envois[0].body.movements[0]).toMatchObject({
+			counter: 'stock_b',
+			absolute: 3,
+		})
+	})
+})
+
 describe('recordSale', () => {
 	it('décrémente, et accepte les deux noms de quantité', async () => {
 		// `quantity` en caisse, `quantitySold` dans les factures : les deux
@@ -228,6 +340,19 @@ describe('recordSale', () => {
 			{ id: 'a', data: { stock: 7 } },
 			{ id: 'b', data: { stock: 3 } },
 		])
+	})
+
+	it('décrémente le Stock B quand la ligne vendue en est une', async () => {
+		const { pb, envois } = fakePb([{ id: 'a', stock: 10 }])
+		await recordSale(pb, [
+			{ productId: 'a', quantity: 1 },
+			{ productId: 'a', quantity: 2, counter: 'stock_b' },
+		])
+		expect(envois[0].body.movements[0].counter).toBe('')
+		expect(envois[0].body.movements[1]).toMatchObject({
+			counter: 'stock_b',
+			delta: -2,
+		})
 	})
 
 	it('ignore les lignes libres et les quantités nulles', async () => {
@@ -295,6 +420,37 @@ describe('le mouvement passe par le serveur, et par lui seul', () => {
 
 		expect(envois).toHaveLength(1)
 		expect(envois[0].chemin).toBe('/api/stock/adjust')
+	})
+
+	it("n'écrit jamais le journal depuis le client : il part avec le mouvement", async () => {
+		// La règle du 10 septembre 2026. Un journal écrit après coup, par le
+		// client, pouvait manquer sans que le stock le sache.
+		const creations: string[] = []
+		const { pb: base, envois } = fakePb([{ id: 'pb1', stock: 5 }])
+		const pb = {
+			send: (base as any).send,
+			collection: (nom: string) => {
+				creations.push(nom)
+				throw new Error(`collection ${nom} touchée depuis le client`)
+			},
+		} as unknown as PocketBase
+
+		const [resultat] = await applyStockMovements(
+			pb,
+			[{ productId: 'pb1', delta: 2, metadata: { destination: 'restock' } }],
+			{ reason: 'return', sourceId: 'ticket-4' },
+		)
+
+		expect(resultat.applied).toBe(true)
+		expect(creations).toHaveLength(0)
+		expect(envois[0].body.journal).toMatchObject({
+			event_type: 'stock_return',
+			source: 'return',
+			source_id: 'ticket-4',
+		})
+		expect(envois[0].body.movements[0].metadata).toEqual({
+			destination: 'restock',
+		})
 	})
 
 	it('envoie le lot entier en un seul appel, pas un appel par ligne', async () => {

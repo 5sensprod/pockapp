@@ -37,6 +37,7 @@ import {
 	type CatalogProductShape,
 	useCatalogProductSearch,
 } from '@/lib/queries/catalog-products'
+import { remiseInitialeDeLigne } from '@/lib/pricing/promo-price'
 import { useCreateCustomer, useCustomers } from '@/lib/queries/customers'
 import { useInvoice, useUpdateInvoice } from '@/lib/queries/invoices'
 import type { InvoiceItem } from '@/lib/types/invoice.types'
@@ -379,9 +380,9 @@ export function InvoiceEditPage() {
 			tva_rate: tvaRate,
 			unit_price_ttc: unitTtc,
 			unitPriceRaw: unitTtc.toString(),
-			lineDiscountMode: 'percent',
-			lineDiscountValue: 0,
 			lineDiscountRaw: '',
+			// Soldé ou en promotion : remise de ligne sur le prix d'origine.
+			...remiseInitialeDeLigne(product),
 			unit_price_ht: 0,
 			total_ht: 0,
 			total_ttc: 0,

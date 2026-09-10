@@ -22,9 +22,27 @@ export const productDetailSchema = z.object({
 	// être `used` ET `sale` — voir `CatalogSaleState`.
 	sale_state: z.enum(['', 'sale', 'promo']),
 	price_ttc: money,
+	// Le prix remisé : 0 = aucun. Appliqué en remise de ligne, et seulement si
+	// `sale_state` le permet (`lib/pricing/promo-price.ts`). Sa cohérence avec
+	// `price_ttc` est vérifiée par `useProductDetailEditor.submit`.
+	promo_price_ttc: money,
 	purchase_price_ht: money,
 	tax_rate: z.coerce.number().min(0).max(100),
 	stock: z.coerce.number().int('Le stock est un entier'),
+	// Le motif d'un stock modifié à la main. Exigé à l'enregistrement si le
+	// stock a bougé — le schéma ne connaît pas la valeur d'origine, c'est donc
+	// `useProductDetailEditor.submit` qui tranche. Jamais envoyé dans le patch.
+	stock_reason: z.enum(['', 'restock', 'correction', 'loss', 'other']),
+	stock_comment: z.string().max(500),
+	// Seconde quantité, à côté du neuf. Même chemin d'écriture et même motif
+	// exigé que `stock` ; jamais dans le patch de la fiche.
+	stock_b: z.coerce
+		.number()
+		.int('Le Stock B est un entier')
+		.min(0, 'Stock B négatif impossible'),
+	// Le prix d'une unité B : 0 = aucune remise automatique en caisse. Sa
+	// cohérence avec `price_ttc` est vérifiée par `submit`.
+	stock_b_price_ttc: money,
 	min_stock: z.coerce.number().int().min(0),
 	manage_stock: z.boolean(),
 	brand: z.string().optional(),
@@ -45,9 +63,14 @@ export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
 	commercial_state: '',
 	sale_state: '',
 	price_ttc: 0,
+	promo_price_ttc: 0,
 	purchase_price_ht: 0,
 	tax_rate: 20,
 	stock: 0,
+	stock_reason: '',
+	stock_comment: '',
+	stock_b: 0,
+	stock_b_price_ttc: 0,
 	min_stock: 0,
 	manage_stock: true,
 	brand: '',
@@ -113,9 +136,12 @@ export function productDetailValues(
 		commercial_state: product.commercial_state ?? '',
 		sale_state: product.sale_state ?? '',
 		price_ttc: product.price_ttc ?? 0,
+		promo_price_ttc: product.promo_price_ttc ?? 0,
 		purchase_price_ht: product.purchase_price_ht ?? 0,
 		tax_rate: product.tax_rate ?? 20,
 		stock: product.stock ?? 0,
+		stock_b: product.stock_b ?? 0,
+		stock_b_price_ttc: product.stock_b_price_ttc ?? 0,
 		min_stock: product.min_stock ?? 0,
 		manage_stock: product.manage_stock ?? true,
 		brand: product.brand ?? '',
@@ -140,6 +166,8 @@ export function productDetailPayload(
 		commercial_state: data.commercial_state,
 		sale_state: data.sale_state,
 		price_ttc: data.price_ttc,
+		promo_price_ttc: data.promo_price_ttc,
+		stock_b_price_ttc: data.stock_b_price_ttc,
 		purchase_price_ht: data.purchase_price_ht,
 		tax_rate: data.tax_rate,
 		min_stock: data.min_stock,

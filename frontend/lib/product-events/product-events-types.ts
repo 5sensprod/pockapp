@@ -24,6 +24,12 @@ export type ProductEventType =
 	| 'stock_adjusted_inventory' // écart appliqué après comptage physique
 	| 'stock_sale' // décrémentation après vente
 	| 'stock_return' // incrémentation après retour client
+	// Mouvements manuels, un type par motif (AddStockReasonsToProductEvents)
+	| 'stock_restock' // réassort, réception fournisseur
+	| 'stock_correction' // correction d'inventaire ponctuelle
+	| 'stock_loss' // casse, perte, vol
+	| 'stock_to_stock_b' // passage en Stock B
+	| 'stock_other' // autre, commentaire obligatoire
 	// Prix
 	| 'purchase_price_changed'
 	| 'sale_price_changed'

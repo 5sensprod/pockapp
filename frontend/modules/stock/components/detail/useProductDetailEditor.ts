@@ -15,7 +15,7 @@ import {
 import { type GalleryEntry, memeGalerie } from '@/lib/queries/gallery-order'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import type { CatalogProduct } from '@/lib/queries/site-catalog'
-import { setCountedStock } from '@/lib/queries/stock-adjust'
+import { setStockManually } from '@/lib/queries/stock-adjust'
 import { useSyncAfterSave } from '@/lib/sync/SyncAfterSaveDialog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 
@@ -104,6 +104,52 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 
 	const submit = async (data: ProductDetailValues): Promise<boolean> => {
 		if (!hasChanges) return true
+		// Le motif AVANT toute écriture : refuser après le patch produit
+		// laisserait une fiche à moitié enregistrée.
+		// Contre les valeurs d'ORIGINE du formulaire, pas contre `product` : un
+		// passage en Stock B fait juste avant les a déjà mises à jour, alors que
+		// `product` attend encore sa relecture.
+		const origine = form.formState.defaultValues
+		const stockChange = data.stock !== Number(origine?.stock ?? 0)
+		const stockBChange = data.stock_b !== Number(origine?.stock_b ?? 0)
+		const mouvementStock = stockChange || stockBChange
+		// Un prix promo qui n'est pas une baisse serait ignoré en caisse sans un
+		// mot (`prixPromoActif`) : on le dit ici, où il se saisit.
+		if (data.promo_price_ttc > 0 && data.promo_price_ttc >= data.price_ttc) {
+			form.setError('promo_price_ttc', {
+				message: 'Le prix promo doit être inférieur au prix TTC',
+			})
+			toast.error('Prix promo supérieur ou égal au prix TTC')
+			return false
+		}
+		if (
+			data.stock_b_price_ttc > 0 &&
+			data.stock_b_price_ttc >= data.price_ttc
+		) {
+			form.setError('stock_b_price_ttc', {
+				message: 'Le prix Stock B doit être inférieur au prix TTC',
+			})
+			toast.error('Prix Stock B supérieur ou égal au prix TTC')
+			return false
+		}
+		if (mouvementStock && !data.stock_reason) {
+			form.setError('stock_reason', {
+				message: 'Indiquez pourquoi le stock change',
+			})
+			toast.error('Motif du mouvement de stock manquant')
+			return false
+		}
+		if (
+			mouvementStock &&
+			data.stock_reason === 'other' &&
+			!data.stock_comment.trim()
+		) {
+			form.setError('stock_comment', {
+				message: 'Précisez le motif',
+			})
+			toast.error('Le motif « Autre » demande un commentaire')
+			return false
+		}
 		try {
 			const slug = product.slug
 				? ''
@@ -146,14 +192,34 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 				}
 			}
 
-			if (data.stock !== (product.stock ?? 0)) {
-				const stock = await setCountedStock(pb, product.id, data.stock, {
+			if (mouvementStock && data.stock_reason) {
+				const motif = {
+					reason: data.stock_reason,
+					comment: data.stock_comment,
 					metadata: { origin: 'product_detail' },
-				})
-				if (!stock.applied && stock.stockAfter !== data.stock) {
-					throw new Error(stock.error ?? 'ajustement du stock refusé')
 				}
-				saved = { ...saved, stock: stock.stockAfter ?? data.stock }
+				if (stockChange) {
+					const stock = await setStockManually(
+						pb,
+						product.id,
+						data.stock,
+						motif,
+					)
+					if (!stock.applied && stock.stockAfter !== data.stock) {
+						throw new Error(stock.error ?? 'ajustement du stock refusé')
+					}
+					saved = { ...saved, stock: stock.stockAfter ?? data.stock }
+				}
+				if (stockBChange) {
+					const stockB = await setStockManually(pb, product.id, data.stock_b, {
+						...motif,
+						counter: 'stock_b',
+					})
+					if (!stockB.applied && stockB.stockBAfter !== data.stock_b) {
+						throw new Error(stockB.error ?? 'ajustement du Stock B refusé')
+					}
+					saved = { ...saved, stock_b: stockB.stockBAfter ?? data.stock_b }
+				}
 				// L'ajustement arrive après le patch produit : il ré-invalide aussi la
 				// projection `site-catalog`, sinon la file pourrait exporter l'ancien
 				// stock depuis un cache tout juste rechargé.

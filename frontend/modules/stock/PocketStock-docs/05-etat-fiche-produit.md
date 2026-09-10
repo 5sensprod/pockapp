@@ -21,10 +21,67 @@ pourquoi c'est ainsi, et ce qui est fragile. Il ne prescrit aucune direction.
 | Pièces jointes IA | `frontend/modules/site/lib/sheet-files.ts` |
 | Routes IA | `backend/routes/gemini_routes.go` |
 
-La page est organisée en **cartes éditables par section**
-(`EditableDetailCard`) : `identity`, `pricing`, `stock`, `content`, `visuals`.
-Une seule est ouverte à la fois (`activeSection`), un `pointerdown` en dehors la
-referme.
+**Depuis le 10 septembre 2026, les cartes de gauche** — dans l'ordre :
+identité (désignation, référence, code-barres, état commercial, opération),
+prix, stock, puis rattachements (marque, fournisseur, catégories) — **sont
+toujours en saisie** (`FormDetailCard`) :
+on modifie en cliquant dans l'input, sans ouvrir la carte. Le survol puis le
+clic était jugé contraignant. Le liseré ambre reste le signal « à enregistrer ».
+Conséquence gardée dans `ProductLinksCard` : le fournisseur unique d'une marque
+ne se pose que si la marque vient d'être changée, sinon ouvrir une fiche la
+marquait modifiée.
+
+**Un stock modifié depuis la fiche exige un motif** (10 septembre 2026) :
+réassort, correction d'inventaire, casse ou perte, autre (commentaire
+obligatoire). Il part par `setStockManually` (`lib/queries/stock-adjust.ts`),
+source `manual`, un `event_type` par motif — schéma ouvert par
+`AddStockReasonsToProductEvents`. Avant cette date, la fiche passait par
+`setCountedStock` et tout se journalisait comme un inventaire. Le refus a lieu
+dans `submit`, AVANT le patch produit : une fiche n'est jamais à moitié
+enregistrée.
+
+**Le Stock B** (même jour) : champ `stock_b` dans la carte Stock, soumis au
+même motif que le neuf si on le modifie à la main. Le **passage neuf → B** est
+un bouton à part, `StockBTransferButton`, qui part tout de suite par
+`transferToStockB` — hors du bouton « Enregistrer », parce que c'est un
+mouvement et non une modification de fiche. Il est désactivé tant que le stock
+est modifié dans le formulaire, et remet ensuite les valeurs d'origine du
+formulaire par `resetField` : c'est pourquoi `submit` compare aux valeurs
+d'origine et non à `product`. L'historique affiche « B +n » à côté du neuf.
+
+**Le prix promo** (même jour) : champ « Prix promo TTC » dans la carte Prix,
+avec son état sous le champ (actif, ou inactif et pourquoi). Il ne s'applique
+que si l'opération commerciale vaut « Soldé » ou « Promotion » — et **saisir un
+prix promo sur une fiche « Plein tarif » la passe en « Promotion »**, à la
+saisie seulement (jamais au chargement), sans écraser un « Soldé ». Un prix promo
+supérieur ou égal au prix TTC est refusé à l'enregistrement. L'en-tête barre
+le prix d'origine quand la promo est active. La marge reste calculée sur le
+prix TTC.
+
+**Le prix Stock B** (même jour) : champ « Prix Stock B TTC » dans la carte
+Stock, à côté du Stock B. La caisse le pose en remise de ligne quand elle vend
+une unité B ; vide, le vendeur fixe la remise. Refusé à l'enregistrement s'il
+n'est pas inférieur au prix TTC. Règle : `prixStockB`
+(`lib/pricing/promo-price.ts`).
+
+**L'historique du stock est en bas de la colonne de gauche** (10 septembre
+2026) : `ProductStockHistory`, lu par `useProductStockHistory`
+(`lib/queries/product-stock-history.ts`) dans `product_events`, par
+`product_id` ET `legacy_id` — les événements d'avant le 19 août portent
+l'identifiant NeDB. Sa clé vit sous `catalog-products`, donc le temps réel la
+périme : une vente sur un autre poste apparaît sans rechargement. Les saisies
+faites depuis la fiche AVANT les motifs, journalisées comme inventaire avec
+`origin: 'product_detail'`, s'affichent « Modification depuis la fiche (sans
+motif) ». Gardien : `product-stock-history.test.ts`, qui exige que tout type
+écrit par `eventTypeFor` soit lu par l'historique.
+L'historique est fiable depuis le même jour : `/api/stock/adjust` écrit
+l'événement dans la transaction du stock, et un journal refusé annule le
+mouvement. Seules exceptions, sans mouvement de stock : les retours SAV et
+Stock B, tracés à part par `StockReclassificationDialog` (delta 0).
+
+La colonne de droite garde les **cartes éditables par section**
+(`EditableDetailCard`) : `content`, `visuals`. Une seule est ouverte à la fois
+(`activeSection`), un `pointerdown` en dehors la referme.
 
 ---
 

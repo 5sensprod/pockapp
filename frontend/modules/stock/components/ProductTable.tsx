@@ -100,7 +100,26 @@ const timeFormatter = new Intl.DateTimeFormat('fr-FR', {
 	minute: '2-digit',
 })
 const LONG_PRESS_DELAY = 500
-const LONG_PRESS_MOVE_TOLERANCE = 8
+const MARQUEE_MOVE_THRESHOLD = 8
+
+interface MarqueeRectangle {
+	left: number
+	top: number
+	width: number
+	height: number
+}
+
+function rectangleBetween(
+	start: { x: number; y: number },
+	end: { x: number; y: number },
+): MarqueeRectangle {
+	return {
+		left: Math.min(start.x, end.x),
+		top: Math.min(start.y, end.y),
+		width: Math.abs(end.x - start.x),
+		height: Math.abs(end.y - start.y),
+	}
+}
 
 // Ces colonnes portent des valeurs très courtes. Leur padding générique de
 // 16 px de chaque côté leur donnait plus de place qu'à leur contenu, au moment
@@ -165,6 +184,7 @@ function ProductThumb({ row }: { row: StockProductRow }) {
 					alt={row.designation?.trim() || 'Produit sans désignation'}
 					loading='lazy'
 					decoding='async'
+					draggable={false}
 					className='h-full w-full object-contain'
 					onError={() => setAdresseCassee(imageUrl)}
 				/>
@@ -202,7 +222,17 @@ export function ProductTable({
 		rowId: string
 		x: number
 		y: number
+		currentX: number
+		currentY: number
+		pointerId: number
+		active: boolean
 	} | null>(null)
+	const rowElementsRef = useRef(new Map<string, HTMLTableRowElement>())
+	const [marqueeRectangle, setMarqueeRectangle] =
+		useState<MarqueeRectangle | null>(null)
+	const [marqueeProductIds, setMarqueeProductIds] = useState<Set<string>>(
+		new Set(),
+	)
 	const suppressedClickRowIdRef = useRef<string | null>(null)
 	const selectionStartedRef = useRef(false)
 	const selectionMode = selectedProducts.size > 0
@@ -219,15 +249,60 @@ export function ProductTable({
 		[onSelectedProductsChange],
 	)
 
-	const cancelLongPress = useCallback(() => {
+	const clearLongPressTimer = useCallback(() => {
 		if (longPressTimerRef.current !== null) {
 			window.clearTimeout(longPressTimerRef.current)
 			longPressTimerRef.current = null
 		}
-		pressStartRef.current = null
 	}, [])
 
-	const startLongPress = (
+	const cancelSelectionGesture = useCallback(() => {
+		clearLongPressTimer()
+		pressStartRef.current = null
+		suppressedClickRowIdRef.current = null
+		setMarqueeRectangle(null)
+		setMarqueeProductIds(new Set())
+	}, [clearLongPressTimer])
+
+	const updateMarquee = useCallback(
+		(start: { x: number; y: number }, end: { x: number; y: number }) => {
+			const rectangle = rectangleBetween(start, end)
+			const right = rectangle.left + Math.max(rectangle.width, 1)
+			const bottom = rectangle.top + Math.max(rectangle.height, 1)
+			const products = new Map<string, StockProductRow>()
+
+			for (const product of data) {
+				const row = rowElementsRef.current.get(product.id)
+				if (!row) continue
+				const bounds = row.getBoundingClientRect()
+				const intersects =
+					rectangle.left <= bounds.right &&
+					right >= bounds.left &&
+					rectangle.top <= bounds.bottom &&
+					bottom >= bounds.top
+				if (intersects) products.set(product.id, product)
+			}
+
+			setMarqueeRectangle(rectangle)
+			setMarqueeProductIds(new Set(products.keys()))
+			return products
+		},
+		[data],
+	)
+
+	const activateMarquee = useCallback(() => {
+		const start = pressStartRef.current
+		if (!start || start.active) return
+		start.active = true
+		selectionStartedRef.current = true
+		window.getSelection()?.removeAllRanges()
+		updateMarquee(
+			{ x: start.x, y: start.y },
+			{ x: start.currentX, y: start.currentY },
+		)
+	}, [updateMarquee])
+
+	const startSelectionGesture = (
 		product: StockProductRow,
 		event: ReactPointerEvent<HTMLTableRowElement>,
 	) => {
@@ -235,31 +310,74 @@ export function ProductTable({
 		if ((event.target as HTMLElement).closest('button, a, [role="menuitem"]'))
 			return
 
-		cancelLongPress()
+		cancelSelectionGesture()
 		pressStartRef.current = {
 			rowId: product.id,
 			x: event.clientX,
 			y: event.clientY,
+			currentX: event.clientX,
+			currentY: event.clientY,
+			pointerId: event.pointerId,
+			active: false,
 		}
+		event.currentTarget.setPointerCapture(event.pointerId)
 		longPressTimerRef.current = window.setTimeout(() => {
-			selectionStartedRef.current = true
-			suppressedClickRowIdRef.current = product.id
-			toggleProductSelection(product)
 			longPressTimerRef.current = null
+			activateMarquee()
 		}, LONG_PRESS_DELAY)
 	}
 
-	const moveLongPress = (
-		product: StockProductRow,
+	const moveSelectionGesture = (
 		event: ReactPointerEvent<HTMLTableRowElement>,
 	) => {
 		const start = pressStartRef.current
-		if (!start || start.rowId !== product.id) return
+		if (!start || start.pointerId !== event.pointerId) return
+		start.currentX = event.clientX
+		start.currentY = event.clientY
+
+		if (start.active) {
+			event.preventDefault()
+			updateMarquee(
+				{ x: start.x, y: start.y },
+				{ x: event.clientX, y: event.clientY },
+			)
+			return
+		}
+
 		if (
-			Math.abs(event.clientX - start.x) > LONG_PRESS_MOVE_TOLERANCE ||
-			Math.abs(event.clientY - start.y) > LONG_PRESS_MOVE_TOLERANCE
+			Math.abs(event.clientX - start.x) > MARQUEE_MOVE_THRESHOLD ||
+			Math.abs(event.clientY - start.y) > MARQUEE_MOVE_THRESHOLD
 		) {
-			cancelLongPress()
+			event.preventDefault()
+			clearLongPressTimer()
+			activateMarquee()
+		}
+	}
+
+	const finishSelectionGesture = (
+		event: ReactPointerEvent<HTMLTableRowElement>,
+	) => {
+		const start = pressStartRef.current
+		if (!start || start.pointerId !== event.pointerId) return
+
+		const selectionWasActive = start.active
+		if (selectionWasActive) {
+			event.preventDefault()
+			const products = updateMarquee(
+				{ x: start.x, y: start.y },
+				{ x: event.clientX, y: event.clientY },
+			)
+			onSelectedProductsChange(new Map(products))
+		}
+
+		cancelSelectionGesture()
+		if (selectionWasActive) {
+			suppressedClickRowIdRef.current = start.rowId
+			window.setTimeout(() => {
+				if (suppressedClickRowIdRef.current === start.rowId) {
+					suppressedClickRowIdRef.current = null
+				}
+			}, 0)
 		}
 	}
 
@@ -287,7 +405,8 @@ export function ProductTable({
 			event.preventDefault()
 			return
 		}
-		cancelLongPress()
+		clearLongPressTimer()
+		pressStartRef.current = null
 		suppressedClickRowIdRef.current = product.id
 		event.dataTransfer.effectAllowed = 'move'
 		event.dataTransfer.setData(
@@ -327,7 +446,14 @@ export function ProductTable({
 		return () => window.removeEventListener('keydown', leaveSelectionMode)
 	}, [selectionMode, onSelectedProductsChange])
 
-	useEffect(() => cancelLongPress, [cancelLongPress])
+	useEffect(
+		() => () => {
+			if (longPressTimerRef.current !== null) {
+				window.clearTimeout(longPressTimerRef.current)
+			}
+		},
+		[],
+	)
 
 	// Reconstruire les colonnes à chaque rendu invalide les caches internes de
 	// TanStack Table pour les 25 lignes affichées. Elles ne dépendent que de
@@ -654,6 +780,18 @@ export function ProductTable({
 	})
 	return (
 		<div className='flex h-full min-h-0 flex-col'>
+			{marqueeRectangle && (
+				<div
+					aria-hidden='true'
+					className='pointer-events-none fixed z-50 border border-primary bg-primary/10 shadow-sm'
+					style={{
+						left: marqueeRectangle.left,
+						top: marqueeRectangle.top,
+						width: Math.max(marqueeRectangle.width, 1),
+						height: Math.max(marqueeRectangle.height, 1),
+					}}
+				/>
+			)}
 			<div
 				ref={dragPreviewRef}
 				aria-hidden='true'
@@ -673,7 +811,10 @@ export function ProductTable({
 			    l'en-tête collant se fixerait au mauvais. */}
 			<div
 				ref={zoneDefilante}
-				className='min-h-0 flex-1 overflow-auto overscroll-contain [&>div]:overflow-visible'
+				className={cn(
+					'min-h-0 flex-1 overflow-auto overscroll-contain [&>div]:overflow-visible',
+					marqueeRectangle && 'select-none',
+				)}
 			>
 				<Table>
 					<TableHeader className='sticky top-0 z-20 bg-background shadow-sm [&_th]:bg-background'>
@@ -699,10 +840,16 @@ export function ProductTable({
 						{table.getRowModel().rows?.length ? (
 							table.getRowModel().rows.map((row) => {
 								const selected = selectedProducts.has(row.original.id)
+								const marqueeSelected = marqueeProductIds.has(row.original.id)
 								return (
 									<TableRow
 										key={row.id}
-										aria-selected={selected}
+										ref={(element) => {
+											if (element)
+												rowElementsRef.current.set(row.original.id, element)
+											else rowElementsRef.current.delete(row.original.id)
+										}}
+										aria-selected={selected || marqueeSelected}
 										draggable={selectionMode && selected}
 										title={
 											selected
@@ -711,22 +858,20 @@ export function ProductTable({
 										}
 										className={cn(
 											onRowClick && 'cursor-pointer',
-											selected &&
-												'cursor-grab bg-violet-50/80 outline outline-2 outline-offset-[-2px] outline-primary/50 hover:bg-violet-100 active:cursor-grabbing dark:bg-violet-950/35',
+											(selected || marqueeSelected) &&
+												'bg-violet-50/80 hover:bg-violet-100 dark:bg-violet-950/35',
+											selected && 'cursor-grab active:cursor-grabbing',
 										)}
 										onDragStart={(event) => startBatchDrag(row.original, event)}
 										onDragEnd={() => {
 											suppressedClickRowIdRef.current = null
 										}}
 										onPointerDown={(event) =>
-											startLongPress(row.original, event)
+											startSelectionGesture(row.original, event)
 										}
-										onPointerMove={(event) =>
-											moveLongPress(row.original, event)
-										}
-										onPointerUp={cancelLongPress}
-										onPointerCancel={cancelLongPress}
-										onPointerLeave={cancelLongPress}
+										onPointerMove={moveSelectionGesture}
+										onPointerUp={finishSelectionGesture}
+										onPointerCancel={cancelSelectionGesture}
 										onContextMenu={(event) => {
 											if (
 												selectionMode ||

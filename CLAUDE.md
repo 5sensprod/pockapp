@@ -236,7 +236,42 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   — mesuré, 60 ventes concurrentes n'en retiraient que 15. Deux gardiens :
   `backend/routes/stock_atomic_test.go` et le faux PocketBase de
   `frontend/lib/queries/stock-adjust.test.ts`, qui lève dès qu'on touche la
-  collection. L'atomicité repose sur une propriété **de PocketBase v0.22.22**
+  collection.
+  **Le journal `product_events` s'écrit dans la MÊME transaction** (10 septembre
+  2026) : le client envoie le motif dans un bloc `journal`, la route écrit
+  l'événement après le stock, et **un journal refusé annule le mouvement** —
+  vente comprise, rendue en échec sur sa ligne. `event_type` et `source` sont
+  vérifiés contre le schéma par la route, parce que `Dao.SaveRecord` ne valide
+  pas un select. Ne pas réécrire le journal depuis le client. Gardiens :
+  `backend/routes/stock_journal_test.go` et `stock-adjust.test.ts`.
+  **Le Stock B est un second compteur, `products.stock_b`** (10 septembre
+  2026), pas un état du produit : une fiche, deux quantités. Même chemin que
+  `stock` — un mouvement nomme son `counter` —, et le **passage neuf → B est un
+  seul mouvement** (`transfer_to_b`) : une transaction, un événement portant
+  les deux deltas, **refusé si le neuf n'a pas les unités**. Un retour classé
+  « Stock B » alimente ce compteur. **La caisse vend du B** (même jour) : une
+  ligne de panier porte son compteur (`stockCounter`), choisi à l'ajout par
+  `compteurParDefaut` — le neuf s'il en reste, sinon le B — et basculable sur la
+  ligne. La vente décrémente ce compteur (`recordSale`, champ `counter`). Une
+  unité B se vend au **prix B de la fiche** (`stock_b_price_ttc`), posé en
+  remise de ligne comme le prix promo, et **jamais à la promo du neuf** ; sans
+  prix B, le vendeur fixe sa remise. Le nom de la ligne porte « (Stock B) », sur
+  le ticket enregistré ET sur le reçu imprimé — aucun champ n'est ajouté aux
+  lignes d'un document fiscal. ⚠️ Les factures et devis hors caisse ne vendent
+  que du neuf, et `stock_b` n'entre ni dans l'export du site ni dans le décompte
+  « stock à 0 ».
+- **Le prix promo n'est jamais le prix d'une ligne** (10 septembre 2026).
+  `products.promo_price_ttc` devient une **remise de ligne** sur `price_ttc`, à
+  l'ajout au panier ou au document, et seulement si `sale_state` vaut `sale` ou
+  `promo` et que le prix promo est inférieur au prix — règle UNIQUE dans
+  `frontend/lib/pricing/promo-price.ts`, appelée par la caisse et les quatre
+  écrans facture/devis. Le ticket garde donc le prix d'origine
+  (`unit_price_ttc_before_discount`), et le Z compte la promo dans
+  `total_discounts` par le chemin existant : **aucune règle ajoutée au Z**. Les
+  factures et devis posent un pourcentage NON arrondi, parce que leur remise
+  « montant » est un total de ligne qui ne suivrait pas la quantité. La remise
+  se pose À L'AJOUT : une ligne déjà au panier ne change pas si la promo change.
+  Gardiens : `promo-price.test.ts` et `promo-caisse.test.ts`. L'atomicité repose sur une propriété **de PocketBase v0.22.22**
   (une seule connexion d'écriture) : à revérifier à chaque mise à jour, voir
   `docs/DECISIONS.md`.
 - **Les décomptes du catalogue se calculent côté serveur** (25 août 2026) :

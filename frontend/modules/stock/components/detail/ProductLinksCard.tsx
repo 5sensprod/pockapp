@@ -10,50 +10,27 @@ import {
 } from '@/components/ui/form'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
-import { useCategories } from '@/lib/queries/categories'
 import { useSuppliers } from '@/lib/queries/suppliers'
 
 import { CategoryPicker } from '../CategoryPicker'
-import {
-	DetailCard,
-	HelpTooltip,
-	NativeSelect,
-	ReadValue,
-} from './detail-primitives'
+import { DetailCard, NativeSelect } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
 
-const commercial = { '': 'Neuf', used: 'Occasion', rental: 'Location' } as const
-
-// ⚠️ DEUX AXES, ET ILS NE FUSIONNENT PAS. `commercial_state` dit ce que l'objet
-// EST (neuf, occasion, location) ; `sale_state` dit l'OPÉRATION en cours dessus
-// (soldé, en promotion). Un instrument d'occasion soldé est un cas ordinaire :
-// un sélecteur unique à quatre options le rendrait inexprimable.
-// Ni l'un ni l'autre ne décide de la publication — `status` en est la seule
-// autorité (`catalog-products.ts:69`).
-const operation = {
-	'': 'Plein tarif',
-	sale: 'Soldé',
-	promo: 'Promotion',
-} as const
+// Marque, fournisseur, catégories. L'état commercial et l'opération vivent dans
+// la carte identité (`ProductIdentityCard`).
 
 export function ProductLinksCard({
-	editing,
 	form,
 	embedded = false,
 }: {
-	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
 }) {
 	const { activeCompanyId } = useActiveCompany()
 	const brands = useBrands({ companyId: activeCompanyId ?? undefined })
 	const suppliers = useSuppliers({ companyId: activeCompanyId ?? undefined })
-	const categories = useCategories({ companyId: activeCompanyId ?? undefined })
 	const supplierId = form.watch('supplier')
 	const brandId = form.watch('brand')
-	const categoryIds = form.watch('categories')
-	const commercialState = form.watch('commercial_state')
-	const saleState = form.watch('sale_state')
 	const supplierBrandIds = suppliers.data?.find(
 		(item) => item.id === supplierId,
 	)?.brands
@@ -105,177 +82,88 @@ export function ProductLinksCard({
 
 	// Un seul fournisseur distribue cette marque : le poser. Uniquement si le
 	// champ est VIDE — remplacer un fournisseur déjà choisi serait écraser une
-	// décision prise —, et seulement en édition, pour ne rien salir en lecture.
+	// décision prise —, et seulement quand la MARQUE vient d'être changée.
+	// ⚠️ Les champs sont toujours saisissables : sans cette condition, ouvrir une
+	// fiche sans fournisseur la marquait « modifiée », et le bloqueur de
+	// navigation retenait l'utilisateur sur une fiche qu'il n'avait pas touchée.
 	const soleSupplierId =
 		suppliersDistributingBrand.length === 1
 			? suppliersDistributingBrand[0].id
 			: undefined
+	const brandChanged = Boolean(form.formState.dirtyFields.brand)
 
 	useEffect(() => {
-		if (!editing) return
+		if (!brandChanged) return
 		if (!soleSupplierId) return
 		if (supplierId) return
 		form.setValue('supplier', soleSupplierId, { shouldDirty: true })
-	}, [editing, soleSupplierId, supplierId, form])
-	const names = {
-		brand: brands.data?.find((item) => item.id === brandId)?.name,
-		supplier: suppliers.data?.find((item) => item.id === supplierId)?.name,
-		categories: categoryIds
-			.map((id) => categories.data?.find((item) => item.id === id)?.name)
-			.filter((name): name is string => Boolean(name)),
-	}
+	}, [brandChanged, soleSupplierId, supplierId, form])
 
 	const content = (
-		<>
-			{editing ? (
-				<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
-					<SelectField
-						form={form}
-						name='brand'
-						label='Marque'
-						hint={
-							brandsFilteredBySupplier
-								? `${brandOptions.length} marque(s) distribuée(s) par ce fournisseur. Retirez le fournisseur pour voir tout le catalogue.`
-								: undefined
-						}
-					>
-						<option value=''>— Aucune —</option>
-						{brandOptions.map((brand) => (
-							<option key={brand.id} value={brand.id}>
-								{brand.name}
-							</option>
-						))}
-					</SelectField>
-					<SelectField
-						form={form}
-						name='supplier'
-						label='Fournisseur'
-						hint={
-							suppliersFilteredByBrand
-								? `${supplierOptions.length} fournisseur(s) distribuant cette marque. Retirez la marque pour voir toute la liste.`
-								: brandWithoutSupplier
-									? 'Aucun fournisseur ne déclare cette marque : toute la liste reste proposée.'
-									: undefined
-						}
-					>
-						<option value=''>— Aucun —</option>
-						{supplierOptions.map((supplier) => (
-							<option key={supplier.id} value={supplier.id}>
-								{supplier.name}
-							</option>
-						))}
-					</SelectField>
-					<FormField
-						control={form.control}
-						name='categories'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Catégories</FormLabel>
-								<CategoryPicker
-									value={field.value}
-									onChange={(value) =>
-										field.onChange(Array.isArray(value) ? value : [value])
-									}
-									multiple
-									searchPlaceholder='Rechercher une catégorie…'
-									maxHeight='200px'
-									companyId={activeCompanyId ?? undefined}
-								/>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-					<FormField
-						control={form.control}
-						name='commercial_state'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel className='flex items-center'>
-									État commercial
-									<HelpTooltip text='Occasion et location gardent leur rayon habituel : cet état dit comment le produit se vend.' />
-								</FormLabel>
-								<FormControl>
-									<NativeSelect {...field}>
-										<option value=''>Neuf</option>
-										<option value='used'>Occasion</option>
-										<option value='rental'>Location</option>
-									</NativeSelect>
-								</FormControl>
-							</FormItem>
-						)}
-					/>
-					<FormField
-						control={form.control}
-						name='sale_state'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel className='flex items-center'>
-									Opération commerciale
-									<HelpTooltip text='Indépendante de l’état commercial : une occasion peut être soldée. Elle ne change ni le prix, ni la publication.' />
-								</FormLabel>
-								<FormControl>
-									<NativeSelect {...field}>
-										<option value=''>Plein tarif</option>
-										<option value='sale'>Soldé</option>
-										<option value='promo'>Promotion</option>
-									</NativeSelect>
-								</FormControl>
-							</FormItem>
-						)}
-					/>
-				</div>
-			) : (
-				<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
-					<ReadValue
-						label='Marque'
-						value={names.brand}
-						valueClassName='text-indigo-700 dark:text-indigo-300'
-					/>
-					<ReadValue
-						label='Fournisseur'
-						value={names.supplier}
-						valueClassName='text-sky-700 dark:text-sky-300'
-					/>
-					<ReadTags label='Catégories' values={names.categories} />
-					<ReadTags
-						label='État commercial'
-						values={[commercial[commercialState]]}
-					/>
-					<ReadTags
-						label='Opération commerciale'
-						values={[operation[saleState]]}
-					/>
-				</div>
-			)}
-		</>
+		<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
+			<SelectField
+				form={form}
+				name='brand'
+				label='Marque'
+				hint={
+					brandsFilteredBySupplier
+						? `${brandOptions.length} marque(s) distribuée(s) par ce fournisseur. Retirez le fournisseur pour voir tout le catalogue.`
+						: undefined
+				}
+			>
+				<option value=''>— Aucune —</option>
+				{brandOptions.map((brand) => (
+					<option key={brand.id} value={brand.id}>
+						{brand.name}
+					</option>
+				))}
+			</SelectField>
+			<SelectField
+				form={form}
+				name='supplier'
+				label='Fournisseur'
+				hint={
+					suppliersFilteredByBrand
+						? `${supplierOptions.length} fournisseur(s) distribuant cette marque. Retirez la marque pour voir toute la liste.`
+						: brandWithoutSupplier
+							? 'Aucun fournisseur ne déclare cette marque : toute la liste reste proposée.'
+							: undefined
+				}
+			>
+				<option value=''>— Aucun —</option>
+				{supplierOptions.map((supplier) => (
+					<option key={supplier.id} value={supplier.id}>
+						{supplier.name}
+					</option>
+				))}
+			</SelectField>
+			<FormField
+				control={form.control}
+				name='categories'
+				render={({ field }) => (
+					<FormItem className='md:col-span-2'>
+						<FormLabel>Catégories</FormLabel>
+						<CategoryPicker
+							value={field.value}
+							onChange={(value) =>
+								field.onChange(Array.isArray(value) ? value : [value])
+							}
+							multiple
+							searchPlaceholder='Rechercher une catégorie…'
+							maxHeight='200px'
+							companyId={activeCompanyId ?? undefined}
+						/>
+						<FormMessage />
+					</FormItem>
+				)}
+			/>
+		</div>
 	)
 
 	return embedded ? (
 		content
 	) : (
 		<DetailCard title='Rattachements'>{content}</DetailCard>
-	)
-}
-
-function ReadTags({ label, values }: { label: string; values: string[] }) {
-	return (
-		<div>
-			<p className='font-medium text-muted-foreground text-xs'>{label}</p>
-			<div className='mt-2 flex min-h-7 flex-wrap gap-2'>
-				{values.length ? (
-					values.map((value) => (
-						<span
-							key={value}
-							className='inline-flex min-h-7 items-center rounded-full bg-primary px-3 py-1 font-medium text-primary-foreground text-xs shadow-sm'
-						>
-							{value}
-						</span>
-					))
-				) : (
-					<span className='text-muted-foreground text-sm'>—</span>
-				)}
-			</div>
-		</div>
 	)
 }
 

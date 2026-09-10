@@ -172,6 +172,10 @@ export function CashTerminalPage() {
 				sku: p.sku ?? null,
 				barcode: p.barcode ?? null,
 				price_ttc: p.price_ttc ?? null,
+				promo_price_ttc: p.promo_price_ttc ?? null,
+				sale_state: p.sale_state ?? null,
+				stock_b: p.stock_b ?? null,
+				stock_b_price_ttc: p.stock_b_price_ttc ?? null,
 				stock: p.stock ?? null,
 				tax_rate: p.tax_rate ?? null,
 				imageUrl: p.image ? pb.files.getUrl(p, p.image) : null,
@@ -321,6 +325,10 @@ export function CashTerminalPage() {
 				sku: product.sku ?? null,
 				barcode: product.barcode ?? null,
 				price_ttc: product.price_ttc ?? null,
+				promo_price_ttc: product.promo_price_ttc ?? null,
+				sale_state: product.sale_state ?? null,
+				stock_b: product.stock_b ?? null,
+				stock_b_price_ttc: product.stock_b_price_ttc ?? null,
 				stock: product.stock ?? null,
 				tax_rate: product.tax_rate ?? null,
 				imageUrl: product.image
@@ -426,6 +434,10 @@ export function CashTerminalPage() {
 					if (displayMode === 'designation')
 						displayName = it.designation || it.name
 					else if (displayMode === 'sku') displayName = it.sku || it.name
+					// Même mention que la ligne enregistrée (`cartItemToPosItem`) : le
+					// reçu remis au client ne doit pas taire une unité Stock B.
+					if (it.stockCounter === 'stock_b')
+						displayName = `${displayName} (Stock B)`
 					const hasDiscount = it.lineDiscountValue && it.lineDiscountValue > 0
 					const baseUnitTtc = it.unitPrice
 					const effectiveUnitTtc = getEffectiveUnitTtc(it)
@@ -567,6 +579,8 @@ export function CashTerminalPage() {
 							productName: item.name ?? '',
 							productSku: item.sku ?? '',
 							quantity: item.quantity,
+							// Une ligne Stock B décrémente le compteur B, pas le neuf.
+							counter: item.stockCounter ?? 'stock',
 						})),
 						{ sourceId: ticket.number },
 					)
@@ -799,6 +813,7 @@ export function CashTerminalPage() {
 			cartManager.setLineDiscountValue(id, '')
 		},
 		toggleItemDisplayMode: cartManager.toggleItemDisplayMode,
+		setItemStockCounter: cartManager.setItemStockCounter,
 		editingLineId,
 		setEditingLineId,
 		setUnitPrice: cartManager.setUnitPrice,

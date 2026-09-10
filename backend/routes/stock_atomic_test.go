@@ -67,7 +67,7 @@ func TestMouvementsConcurrentsNeSEcrasentPas(t *testing.T) {
 			applyOneMovement(app, StockMovementInput{
 				ProductID: cle,
 				Delta:     ptr(-1),
-			})
+			}, nil)
 		}()
 	}
 	wg.Wait()

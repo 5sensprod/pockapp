@@ -27,17 +27,39 @@
 // C'est la contrepartie assumée de la bascule ; elle prend fin quand AppPos
 // sort, à la prochaine release.
 
-import { createProductEvent } from '@/lib/product-events/product-events-pocketbase'
 import type PocketBase from 'pocketbase'
 
-/** Où va la marchandise rendue. Seul `restock` la remet en vente ; `sav` et
- *  `stock_b` la sortent du stock vendable et ne laissent qu'une trace.
+/** Où va la marchandise rendue. `restock` la remet au stock neuf, `stock_b` au
+ *  compteur Stock B (depuis le 10 septembre 2026) ; `sav` la sort du stock et ne
+ *  laisse qu'une trace.
  *  Déclaré ici et non dans `lib/apppos` : c'est une notion de métier, pas une
  *  notion de l'API qu'on quitte. */
 export type ReturnDestination = 'restock' | 'sav' | 'stock_b'
 
+/** Pourquoi le stock bouge À LA MAIN. Exigé par la fiche produit depuis le
+ *  10 septembre 2026 : avant, tout y était journalisé comme un inventaire. */
+export type ManualStockReason =
+	| 'restock'
+	| 'correction'
+	| 'loss'
+	| 'to_stock_b'
+	| 'other'
+
 /** Pourquoi le stock bouge. Explicite au point d'appel, jamais déduit. */
-export type StockReason = 'inventory' | 'return' | 'sale'
+export type StockReason = 'inventory' | 'return' | 'sale' | ManualStockReason
+
+/** Les motifs proposés à l'écran, dans l'ordre d'affichage.
+ *  ⚠️ `to_stock_b` n'y est PAS : le passage en Stock B est un TRANSFERT
+ *  (`transferToStockB`), un geste à part — pas une valeur qu'on saisit. */
+export const MANUAL_STOCK_REASONS: ReadonlyArray<{
+	value: ManualStockReason
+	label: string
+}> = [
+	{ value: 'restock', label: 'Réassort / réception fournisseur' },
+	{ value: 'correction', label: 'Correction d’inventaire' },
+	{ value: 'loss', label: 'Casse ou perte' },
+	{ value: 'other', label: 'Autre (préciser)' },
+]
 
 export interface StockMovement {
 	/** Identifiant PocketBase OU clé stable NeDB (`legacy_id`). Résolu ici. */
@@ -46,6 +68,11 @@ export interface StockMovement {
 	delta?: number
 	/** Valeur absolue : ce que l'inventaire a compté. Prime sur `delta`. */
 	absolute?: number
+	/** Le compteur visé par `delta` et `absolute`. Le neuf par défaut. */
+	counter?: 'stock' | 'stock_b'
+	/** Unités à passer du neuf au Stock B, en UN mouvement. Prime sur le reste ;
+	 *  refusé par le serveur si le neuf n'en a pas assez. */
+	transferToB?: number
 	productName?: string
 	productSku?: string
 	/** Ce qui n'appartient qu'à cette ligne — la destination d'un retour, la
@@ -60,6 +87,9 @@ export interface StockAdjustResult {
 	recordId: string | null
 	stockBefore: number | null
 	stockAfter: number | null
+	/** Le compteur Stock B, tel que le serveur l'a lu et écrit. */
+	stockBBefore?: number | null
+	stockBAfter?: number | null
 	applied: boolean
 	error?: string
 }
@@ -96,6 +126,16 @@ export function eventTypeFor(reason: StockReason) {
 			return 'stock_return' as const
 		case 'sale':
 			return 'stock_sale' as const
+		case 'restock':
+			return 'stock_restock' as const
+		case 'correction':
+			return 'stock_correction' as const
+		case 'loss':
+			return 'stock_loss' as const
+		case 'to_stock_b':
+			return 'stock_to_stock_b' as const
+		case 'other':
+			return 'stock_other' as const
 	}
 }
 
@@ -108,6 +148,10 @@ export function eventSourceFor(reason: StockReason) {
 			return 'return' as const
 		case 'sale':
 			return 'sale' as const
+		default:
+			// Tous les motifs manuels. `manual` est déjà compté par le garde-fou
+			// de purge (`backend/catalog/load/guard.go`).
+			return 'manual' as const
 	}
 }
 
@@ -124,13 +168,15 @@ interface ReponseServeur {
 		product_sku: string
 		stock_before: number | null
 		stock_after: number | null
+		stock_b_before?: number | null
+		stock_b_after?: number | null
 		applied: boolean
 		error?: string
 	}>
 }
 
 /**
- * Applique les mouvements, puis journalise.
+ * Applique les mouvements et les journalise, côté serveur, ensemble.
  *
  * ── LE MOUVEMENT PASSE PAR LE SERVEUR ─────────────────────────────────────
  * Ce fichier lisait le stock puis le réécrivait, en deux appels REST. Deux
@@ -140,10 +186,13 @@ interface ReponseServeur {
  * par `backend/routes/stock_routes.go` — voir ce fichier pour la raison pour
  * laquelle la transaction suffit.
  *
- * ── LE JOURNAL RESTE ICI ──────────────────────────────────────────────────
- * `product_events` s'écrit toujours depuis le client, et reste best-effort :
- * une trace ratée ne défait pas un mouvement appliqué. Seul le nombre avait
- * besoin d'être atomique.
+ * ── LE JOURNAL EST DANS LA MÊME TRANSACTION ───────────────────────────────
+ * Jusqu'au 10 septembre 2026, `product_events` s'écrivait ici, APRÈS le
+ * mouvement, en best-effort : une trace ratée laissait un stock modifié sans
+ * historique. Le motif part désormais dans le corps (`journal`), et la route
+ * écrit l'événement dans la transaction du stock. Un journal refusé annule le
+ * mouvement, rendu en échec sur sa ligne. Ne pas réintroduire d'écriture du
+ * journal ici — un test le garde.
  *
  * Chaque produit reste traité séparément : un produit introuvable n'empêche
  * pas les autres de passer, et il est rendu dans le résultat plutôt qu'avalé.
@@ -164,7 +213,21 @@ export async function applyStockMovements(
 					product_id: m.productId,
 					delta: m.delta,
 					absolute: m.absolute,
+					counter: m.counter ?? '',
+					transfer_to_b: m.transferToB,
+					product_name: m.productName ?? '',
+					product_sku: m.productSku ?? '',
+					metadata: m.metadata ?? null,
 				})),
+				// Le motif du lot. La route l'écrit dans la transaction du stock :
+				// un journal refusé annule le mouvement.
+				journal: {
+					event_type: eventTypeFor(options.reason),
+					source: eventSourceFor(options.reason),
+					source_id: options.sourceId ?? '',
+					operator: options.operator ?? '',
+					metadata: options.metadata ?? null,
+				},
 			},
 		})
 	} catch (error) {
@@ -208,36 +271,11 @@ export async function applyStockMovements(
 			recordId: ligne.record_id || null,
 			stockBefore: ligne.stock_before,
 			stockAfter: ligne.stock_after,
+			stockBBefore: ligne.stock_b_before ?? null,
+			stockBAfter: ligne.stock_b_after ?? null,
 			applied: ligne.applied,
 			...(ligne.error ? { error: ligne.error } : {}),
 		})
-
-		// Rien à journaliser d'un comptage conforme ou d'une ligne en échec.
-		if (!ligne.applied) continue
-
-		try {
-			await createProductEvent(pb, {
-				product_id: ligne.record_id,
-				product_name_snapshot: movement.productName ?? ligne.product_name ?? '',
-				product_sku_snapshot: movement.productSku ?? ligne.product_sku ?? '',
-				event_type: eventTypeFor(options.reason),
-				source: eventSourceFor(options.reason),
-				source_id: options.sourceId ?? null,
-				operator: options.operator ?? '',
-				before: { stock: ligne.stock_before },
-				after: { stock: ligne.stock_after },
-				// Le journal porte le mouvement, pas seulement les deux bornes :
-				// c'est lui qu'on additionne pour reconstituer une période.
-				delta: { stock: (ligne.stock_after ?? 0) - (ligne.stock_before ?? 0) },
-				metadata:
-					movement.metadata || options.metadata
-						? { ...(options.metadata ?? {}), ...(movement.metadata ?? {}) }
-						: null,
-				occurred_at: new Date().toISOString(),
-			})
-		} catch (error) {
-			console.error('[stock] journalisation refusée', error)
-		}
 	}
 
 	return resultats
@@ -258,6 +296,88 @@ export async function setCountedStock(
 	return resultat
 }
 
+/**
+ * Un stock posé À LA MAIN, depuis la fiche produit. Le motif est obligatoire,
+ * et « Autre » exige un commentaire : sans lui, le journal ne dirait rien de
+ * plus qu'avant. Refusé AVANT tout appel serveur — rien ne bouge.
+ */
+export async function setStockManually(
+	pb: PocketBase,
+	productId: string,
+	stock: number,
+	options: Omit<StockAdjustOptions, 'reason'> & {
+		reason: ManualStockReason
+		comment?: string
+		/** Le compteur posé : le neuf par défaut. */
+		counter?: 'stock' | 'stock_b'
+	},
+): Promise<StockAdjustResult> {
+	const { reason, comment, counter, ...reste } = options
+	const commentaire = comment?.trim() ?? ''
+	if (reason === 'other' && !commentaire) {
+		return {
+			productId,
+			recordId: null,
+			stockBefore: null,
+			stockAfter: null,
+			applied: false,
+			error: 'le motif « Autre » demande un commentaire',
+		}
+	}
+	const [resultat] = await applyStockMovements(
+		pb,
+		[{ productId, absolute: stock, counter }],
+		{
+			...reste,
+			reason,
+			metadata: {
+				...(reste.metadata ?? {}),
+				...(commentaire ? { comment: commentaire } : {}),
+			},
+		},
+	)
+	return resultat
+}
+
+/**
+ * Le passage neuf → Stock B : UN mouvement, une transaction, un événement
+ * portant les deux deltas. Retirer au neuf puis ajouter au B en deux gestes
+ * ferait deux motifs, et un historique qui raconte une perte suivie d'un
+ * réassort. Le serveur refuse si le neuf n'a pas assez d'unités.
+ */
+export async function transferToStockB(
+	pb: PocketBase,
+	productId: string,
+	quantity: number,
+	options: Omit<StockAdjustOptions, 'reason'> & { comment?: string } = {},
+): Promise<StockAdjustResult> {
+	const { comment, ...reste } = options
+	if (!Number.isInteger(quantity) || quantity < 1) {
+		return {
+			productId,
+			recordId: null,
+			stockBefore: null,
+			stockAfter: null,
+			applied: false,
+			error: 'quantité à passer en Stock B invalide',
+		}
+	}
+	const commentaire = comment?.trim() ?? ''
+	const [resultat] = await applyStockMovements(
+		pb,
+		[{ productId, transferToB: quantity }],
+		{
+			...reste,
+			reason: 'to_stock_b',
+			metadata: {
+				...(reste.metadata ?? {}),
+				...(commentaire ? { comment: commentaire } : {}),
+			},
+		},
+	)
+	return resultat
+}
+
 /** Une ligne vendue, telle que la tiennent le panier de caisse et les documents
  *  commerciaux. Les deux formats de quantité coexistaient dans les appelants —
  *  `quantity` en caisse, `quantitySold` dans les factures : la couche accepte
@@ -268,6 +388,8 @@ export interface SoldLine {
 	productSku?: string
 	quantity?: number
 	quantitySold?: number
+	/** Le compteur vendu : le neuf par défaut, `stock_b` pour une unité B. */
+	counter?: 'stock' | 'stock_b'
 }
 
 /**
@@ -289,6 +411,7 @@ export async function recordSale(
 			quantite: line.quantitySold ?? line.quantity ?? 0,
 			productName: line.productName,
 			productSku: line.productSku,
+			counter: line.counter,
 		}))
 		// Une ligne libre — sans produit — ou à quantité nulle ne bouge aucun
 		// stock. Les documents en portent : elles étaient déjà écartées avant.

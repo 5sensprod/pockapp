@@ -110,9 +110,22 @@ export type CatalogProductShape = PocketBaseRecord & {
 	 *  Indépendant de `commercial_state` : les deux se cumulent. */
 	sale_state?: CatalogSaleState
 	price_ttc?: number
+	/** Le prix remisé. N'est JAMAIS le prix d'une ligne : il devient une remise
+	 *  de ligne sur `price_ttc`, et seulement si `sale_state` vaut `sale` ou
+	 *  `promo` — règle unique dans `lib/pricing/promo-price.ts`. 0 = aucun.
+	 *  Schéma : `backend/migrations/add_promo_price_to_products.go`. */
+	promo_price_ttc?: number
 	purchase_price_ht?: number
 	tax_rate?: number
 	stock?: number
+	/** Unités B-stock (ouvertes, rayées, retour fonctionnel), à côté du neuf.
+	 *  Ne s'écrit que par `/api/stock/adjust`, jamais par un patch de fiche.
+	 *  Schéma : `backend/migrations/add_stock_b_to_products.go`. */
+	stock_b?: number
+	/** Le prix d'une unité Stock B, posé en remise de ligne quand la caisse
+	 *  vend du B. 0 = aucune remise automatique. Règle :
+	 *  `lib/pricing/promo-price.ts` (`prixStockB`). */
+	stock_b_price_ttc?: number
 	min_stock?: number
 	manage_stock?: boolean
 	image?: string
@@ -144,7 +157,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,purchase_price_ht,tax_rate,stock,min_stock,manage_stock,image,gallery,brand,supplier,consignor,categories'
+	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,promo_price_ttc,purchase_price_ht,tax_rate,stock,stock_b,stock_b_price_ttc,min_stock,manage_stock,image,gallery,brand,supplier,consignor,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -193,6 +206,133 @@ export const CLAUSES_MANQUE = {
 	prixAchat: 'purchase_price_ht = 0',
 	stock: 'stock = 0',
 } as const
+
+/** Construit l'unique filtre du catalogue. La page ordinaire et la sélection
+ * de tous les résultats doivent décrire strictement le même ensemble. */
+export function buildCatalogProductsFilter(
+	pb: any,
+	query: CatalogProductQuery,
+): string | undefined {
+	const {
+		companyId,
+		search,
+		status,
+		brandId,
+		withoutBrand,
+		categoryIds,
+		withoutCategory,
+		supplierId,
+		withoutSupplier,
+		missingImage,
+		missingDescription,
+		missingPurchasePrice,
+		emptyStock,
+		commercialState,
+		saleState,
+	} = query
+	const clauses: string[] = []
+
+	if (companyId) {
+		clauses.push(pb.filter('company = {:company}', { company: companyId }))
+	}
+	if (status) {
+		clauses.push(pb.filter('status = {:status}', { status }))
+	}
+	if (brandId) {
+		clauses.push(pb.filter('brand = {:brand}', { brand: brandId }))
+	}
+	if (withoutBrand) clauses.push('brand:length = 0')
+	if (supplierId) {
+		clauses.push(pb.filter('supplier = {:supplier}', { supplier: supplierId }))
+	}
+	if (withoutSupplier) clauses.push('supplier:length = 0')
+	if (categoryIds?.length) {
+		// `categories` est une relation MULTIPLE : `=` ne vaudrait que pour un
+		// produit rattaché à cette seule catégorie. `~` teste l'appartenance.
+		// La branche la plus large mesurée en base compte 62 catégories, ce
+		// qui tient largement dans une chaîne de filtre.
+		const ou = categoryIds
+			.map((id) => pb.filter('categories ~ {:category}', { category: id }))
+			.join(' || ')
+		clauses.push(`(${ou})`)
+	}
+	if (withoutCategory) clauses.push('categories:length = 0')
+	if (missingImage) clauses.push(CLAUSES_MANQUE.image)
+	if (missingDescription) clauses.push(CLAUSES_MANQUE.description)
+	if (missingPurchasePrice) clauses.push(CLAUSES_MANQUE.prixAchat)
+	if (emptyStock) clauses.push(CLAUSES_MANQUE.stock)
+	if (commercialState === 'new') {
+		clauses.push("commercial_state = ''")
+	} else if (commercialState) {
+		clauses.push(
+			pb.filter('commercial_state = {:commercialState}', {
+				commercialState,
+			}),
+		)
+	}
+	if (saleState === 'regular') {
+		clauses.push("sale_state = ''")
+	} else if (saleState) {
+		clauses.push(pb.filter('sale_state = {:saleState}', { saleState }))
+	}
+
+	const term = search?.trim()
+	if (term) {
+		// `pb.filter` échappe la valeur : une apostrophe dans une désignation
+		// ou un nom de produit ne peut pas casser la requête, ni servir à en
+		// injecter une autre.
+		clauses.push(
+			pb.filter(
+				'(designation ~ {:q} || name ~ {:q} || sku ~ {:q} || barcode ~ {:q})',
+				{ q: term },
+			),
+		)
+	}
+
+	return clauses.length ? clauses.join(' && ') : undefined
+}
+
+/** Charge tous les résultats du filtre courant pour les actions de lot.
+ * PocketBase accepte 500 lignes par page : le catalogue usuel tient ainsi en
+ * sept lectures, au lieu des quelque 120 pages de la table. */
+export async function fetchAllCatalogProducts(
+	pb: any,
+	query: CatalogProductQuery,
+): Promise<CatalogProductShape[]> {
+	const batch = 500
+	const filter = buildCatalogProductsFilter(pb, query)
+	const sort = query.sort || 'name_sort'
+
+	if (sort !== 'health' && sort !== '-health') {
+		return (await pb.collection('products').getFullList({
+			batch,
+			filter,
+			fields: PRODUCT_FIELDS,
+			sort,
+		})) as CatalogProductShape[]
+	}
+
+	const fetchPage = async (page: number) => {
+		const params = new URLSearchParams({
+			page: String(page),
+			perPage: String(batch),
+			sort,
+		})
+		if (filter) params.set('filter', filter)
+		return (await pb.send(`/api/catalog/products/health?${params.toString()}`, {
+			method: 'GET',
+		})) as CatalogProductPage
+	}
+
+	const first = await fetchPage(1)
+	if (first.totalPages <= 1) return first.items
+	const following = await Promise.all(
+		Array.from({ length: first.totalPages - 1 }, (_, index) =>
+			fetchPage(index + 2),
+		),
+	)
+	return [first, ...following].flatMap((page) => page.items)
+}
 
 export function useCatalogProducts(query: CatalogProductQuery) {
 	const pb = usePocketBase() as any
@@ -244,70 +384,7 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 		placeholderData: keepPreviousData,
 		staleTime: 60_000,
 		queryFn: async () => {
-			const clauses: string[] = []
-
-			if (companyId) {
-				clauses.push(pb.filter('company = {:company}', { company: companyId }))
-			}
-			if (status) {
-				clauses.push(pb.filter('status = {:status}', { status }))
-			}
-			if (brandId) {
-				clauses.push(pb.filter('brand = {:brand}', { brand: brandId }))
-			}
-			if (withoutBrand) clauses.push('brand:length = 0')
-			if (supplierId) {
-				clauses.push(
-					pb.filter('supplier = {:supplier}', { supplier: supplierId }),
-				)
-			}
-			if (withoutSupplier) clauses.push('supplier:length = 0')
-			if (categoryIds?.length) {
-				// `categories` est une relation MULTIPLE : `=` ne vaudrait que pour un
-				// produit rattaché à cette seule catégorie. `~` teste l'appartenance.
-				// La branche la plus large mesurée en base compte 62 catégories, ce
-				// qui tient largement dans une chaîne de filtre.
-				const ou = categoryIds
-					.map((id) => pb.filter('categories ~ {:category}', { category: id }))
-					.join(' || ')
-				clauses.push(`(${ou})`)
-			}
-			if (withoutCategory) clauses.push('categories:length = 0')
-			if (missingImage) clauses.push(CLAUSES_MANQUE.image)
-			if (missingDescription) clauses.push(CLAUSES_MANQUE.description)
-			if (missingPurchasePrice) clauses.push(CLAUSES_MANQUE.prixAchat)
-			if (emptyStock) clauses.push(CLAUSES_MANQUE.stock)
-			if (commercialState === 'new') {
-				clauses.push("commercial_state = ''")
-			} else if (commercialState) {
-				clauses.push(
-					pb.filter('commercial_state = {:commercialState}', {
-						commercialState,
-					}),
-				)
-			}
-			if (saleState === 'regular') {
-				clauses.push("sale_state = ''")
-			} else if (saleState) {
-				clauses.push(pb.filter('sale_state = {:saleState}', { saleState }))
-			}
-
-			const term = search?.trim()
-			if (term) {
-				// `pb.filter` échappe la valeur : une apostrophe dans une désignation
-				// ou un nom de produit ne peut pas casser la requête, ni servir à en
-				// injecter une autre.
-				clauses.push(
-					pb.filter(
-						'(designation ~ {:q} || name ~ {:q} || sku ~ {:q} || barcode ~ {:q})',
-						{
-							q: term,
-						},
-					),
-				)
-			}
-
-			const filter = clauses.length ? clauses.join(' && ') : undefined
+			const filter = buildCatalogProductsFilter(pb, query)
 			// La route santé ne sert plus qu'à TRIER : la note ne se filtre plus
 			// depuis l'écran (5 septembre 2026). SQLite ordonne sur les six
 			// prérequis, ce que React ne pourrait faire que sur les 25 lignes
@@ -453,6 +530,10 @@ export type CatalogProductWrite = ImageIntent &
 		commercial_state?: CatalogCommercialState
 		sale_state?: CatalogSaleState
 		price_ttc?: number
+		/** 0 = aucun. Voir `CatalogProductShape.promo_price_ttc`. */
+		promo_price_ttc?: number
+		/** 0 = aucun. Voir `CatalogProductShape.stock_b_price_ttc`. */
+		stock_b_price_ttc?: number
 		purchase_price_ht?: number
 		tax_rate?: number
 		stock?: number

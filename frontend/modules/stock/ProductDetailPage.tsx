@@ -25,7 +25,8 @@ import { ProductLinksCard } from './components/detail/ProductLinksCard'
 import { ProductPricingCard } from './components/detail/ProductPricingCard'
 import { ProductSitePanel } from './components/detail/ProductSitePanel'
 import { ProductStockCard } from './components/detail/ProductStockCard'
-import { EditableDetailCard } from './components/detail/detail-primitives'
+import { ProductStockHistory } from './components/detail/ProductStockHistory'
+import { FormDetailCard } from './components/detail/detail-primitives'
 import {
 	type ProductDetailSection,
 	useProductDetailEditor,
@@ -107,14 +108,33 @@ function ProductDetailContent({
 				dirty.sale_state,
 		),
 		pricing: Boolean(
-			dirty.price_ttc || dirty.purchase_price_ht || dirty.tax_rate,
+			dirty.price_ttc ||
+				dirty.promo_price_ttc ||
+				dirty.purchase_price_ht ||
+				dirty.tax_rate,
 		),
 		stock: Boolean(
-			dirty.stock || dirty.min_stock || dirty.type || dirty.manage_stock,
+			dirty.stock ||
+				dirty.stock_b ||
+				dirty.stock_b_price_ttc ||
+				dirty.stock_reason ||
+				dirty.stock_comment ||
+				dirty.min_stock ||
+				dirty.type ||
+				dirty.manage_stock,
 		),
 		content: Boolean(dirty.name || dirty.description),
 		visuals: editor.galleryDirty || editor.imagesTouched,
 	}
+	// Les rattachements ont leur propre carte : chacune porte son liseré.
+	const identityDirty = Boolean(
+		dirty.designation ||
+			dirty.sku ||
+			dirty.barcode ||
+			dirty.commercial_state ||
+			dirty.sale_state,
+	)
+	const linksDirty = Boolean(dirty.brand || dirty.supplier || dirty.categories)
 
 	// ═══════════════════════════════════════════════════════════════════════
 	// QUITTER LA FICHE SANS L'ENREGISTRER
@@ -220,54 +240,40 @@ function ProductDetailContent({
 
 				<main className='container mx-auto grid items-start gap-5 px-6 py-5 lg:grid-cols-[minmax(0,1fr)_430px]'>
 					<div className='grid content-start gap-4 self-start'>
-						<EditableDetailCard
-							title='Identité du produit'
-							banner='Vous pouvez maintenant modifier les informations du produit.'
-							editing={editor.activeSection === 'identity'}
-							dirty={dirtySections.identity}
-							onEdit={() => editor.start('identity')}
-						>
+						{/* Colonne de gauche : les champs sont toujours saisissables.
+						    Ouvrir une carte au survol puis au clic avant de pouvoir
+						    taper était un geste de trop pour des champs aussi courts. */}
+						<FormDetailCard title='Identité du produit' dirty={identityDirty}>
 							<div className='grid gap-x-7 gap-y-5 md:grid-cols-3'>
-								<ProductIdentityCard
-									editing={editor.activeSection === 'identity'}
-									form={editor.form}
-									embedded
-								/>
-								<ProductLinksCard
-									editing={editor.activeSection === 'identity'}
-									form={editor.form}
-									embedded
-								/>
+								<ProductIdentityCard form={editor.form} embedded />
 							</div>
-						</EditableDetailCard>
+						</FormDetailCard>
 
-						<EditableDetailCard
-							title='Prix et marge'
-							banner='Modifiez les tarifs. La marge est recalculée automatiquement.'
-							editing={editor.activeSection === 'pricing'}
-							dirty={dirtySections.pricing}
-							onEdit={() => editor.start('pricing')}
-						>
-							<ProductPricingCard
-								editing={editor.activeSection === 'pricing'}
-								form={editor.form}
-								embedded
-							/>
-						</EditableDetailCard>
+						<FormDetailCard title='Prix et marge' dirty={dirtySections.pricing}>
+							<ProductPricingCard form={editor.form} embedded />
+						</FormDetailCard>
 
-						<EditableDetailCard
+						<FormDetailCard
 							title='Stock et disponibilité'
-							banner='Vous pouvez modifier la quantité et les paramètres de suivi.'
-							editing={editor.activeSection === 'stock'}
 							dirty={dirtySections.stock}
-							onEdit={() => editor.start('stock')}
 						>
 							<ProductStockCard
-								editing={editor.activeSection === 'stock'}
+								productId={product.id}
 								form={editor.form}
 								embedded
 							/>
-						</EditableDetailCard>
+						</FormDetailCard>
+
+						<FormDetailCard title='Rattachements' dirty={linksDirty}>
+							<div className='grid gap-x-7 gap-y-5 md:grid-cols-2'>
+								<ProductLinksCard form={editor.form} embedded />
+							</div>
+						</FormDetailCard>
+
+						<ProductStockHistory
+							productId={product.id}
+							legacyId={product.legacy_id}
+						/>
 					</div>
 					<aside className='self-start lg:sticky lg:top-[104px]'>
 						<ProductSitePanel

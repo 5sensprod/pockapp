@@ -9,51 +9,78 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 
-import { DetailCard, HelpTooltip, ReadValue } from './detail-primitives'
+import { DetailCard, HelpTooltip, NativeSelect } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
 
 // L'identité INTERNE du produit. Le nom de la fiche publique vit désormais avec
 // sa description et l'assistant, dans la colonne « Fiche sur le site » : le
 // laisser ici mélangeait ce qui sert au comptoir et ce qui part en ligne.
 export function ProductIdentityCard({
-	editing,
 	form,
 	embedded = false,
 }: {
-	editing: boolean
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
 }) {
-	const values = form.watch(['designation', 'sku', 'barcode'])
 	const content = (
-		<>
-			{editing ? (
-				<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
-					<TextField
-						form={form}
-						name='designation'
-						label='Désignation'
-						wide
-						emphasis
-						help='Ce libellé apparaît sur le ticket de caisse et la facture.'
-						placeholder='Libellé court pour le ticket et la facture'
-					/>
-					<TextField form={form} name='sku' label='Référence' />
-					<TextField form={form} name='barcode' label='Code-barres' />
-				</div>
-			) : (
-				<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
-					<ReadValue
-						label='Désignation'
-						value={values[0]}
-						valueClassName='font-semibold text-base text-primary/90'
-						wide
-					/>
-					<ReadValue label='Référence' value={values[1]} />
-					<ReadValue label='Code-barres' value={values[2]} />
-				</div>
-			)}
-		</>
+		<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
+			<TextField
+				form={form}
+				name='designation'
+				label='Désignation'
+				wide
+				emphasis
+				help='Ce libellé apparaît sur le ticket de caisse et la facture.'
+				placeholder='Libellé court pour le ticket et la facture'
+			/>
+			<TextField form={form} name='sku' label='Référence' />
+			<TextField form={form} name='barcode' label='Code-barres' />
+			{/* ⚠️ DEUX AXES, ET ILS NE FUSIONNENT PAS. `commercial_state` dit ce
+			    que l'objet EST (neuf, occasion, location) ; `sale_state` dit
+			    l'OPÉRATION en cours dessus (soldé, en promotion). Un instrument
+			    d'occasion soldé est un cas ordinaire : un sélecteur unique à quatre
+			    options le rendrait inexprimable. Ni l'un ni l'autre ne décide de la
+			    publication — `status` en est la seule autorité
+			    (`catalog-products.ts:69`). */}
+			<FormField
+				control={form.control}
+				name='commercial_state'
+				render={({ field }) => (
+					<FormItem>
+						<FormLabel className='flex items-center'>
+							État commercial
+							<HelpTooltip text='Occasion et location gardent leur rayon habituel : cet état dit comment le produit se vend.' />
+						</FormLabel>
+						<FormControl>
+							<NativeSelect {...field}>
+								<option value=''>Neuf</option>
+								<option value='used'>Occasion</option>
+								<option value='rental'>Location</option>
+							</NativeSelect>
+						</FormControl>
+					</FormItem>
+				)}
+			/>
+			<FormField
+				control={form.control}
+				name='sale_state'
+				render={({ field }) => (
+					<FormItem>
+						<FormLabel className='flex items-center'>
+							Opération commerciale
+							<HelpTooltip text='Indépendante de l’état commercial : une occasion peut être soldée. Elle ne change ni le prix, ni la publication.' />
+						</FormLabel>
+						<FormControl>
+							<NativeSelect {...field}>
+								<option value=''>Plein tarif</option>
+								<option value='sale'>Soldé</option>
+								<option value='promo'>Promotion</option>
+							</NativeSelect>
+						</FormControl>
+					</FormItem>
+				)}
+			/>
+		</div>
 	)
 
 	return embedded ? (

@@ -41,6 +41,7 @@ interface CartPanelProps {
 	setLineDiscountValue: (itemId: string, raw: string) => void
 	clearLineDiscount: (itemId: string) => void
 	toggleItemDisplayMode: (itemId: string) => void
+	setItemStockCounter?: (itemId: string, counter: 'stock' | 'stock_b') => void
 	editingLineId: string | null
 	setEditingLineId: (id: string | null) => void
 	setUnitPrice: (itemId: string, raw: string) => void
@@ -69,6 +70,7 @@ export function CartPanel({
 	setLineDiscountValue,
 	clearLineDiscount,
 	toggleItemDisplayMode,
+	setItemStockCounter,
 	editingLineId,
 	setEditingLineId,
 	setUnitPrice,
@@ -91,6 +93,7 @@ export function CartPanel({
 					getLineTotalTtc={getLineTotalTtc}
 					onSetUnitPrice={setUnitPrice}
 					onClearUnitPrice={clearUnitPrice}
+					onSetStockCounter={setItemStockCounter}
 				/>
 			))}
 		</div>

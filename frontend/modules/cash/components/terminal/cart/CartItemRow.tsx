@@ -23,6 +23,7 @@ interface CartItemRowProps {
 	getLineTotalTtc: (item: CartItem) => number
 	onSetUnitPrice: (itemId: string, raw: string) => void
 	onClearUnitPrice: (itemId: string) => void
+	onSetStockCounter?: (itemId: string, counter: 'stock' | 'stock_b') => void
 }
 
 export function CartItemRow({
@@ -38,7 +39,14 @@ export function CartItemRow({
 	getLineTotalTtc,
 	onSetUnitPrice,
 	onClearUnitPrice,
+	onSetStockCounter,
 }: CartItemRowProps) {
+	const enStockB = item.stockCounter === 'stock_b'
+	// La bascule ne s'offre que si le produit a du Stock B — ou si la ligne en
+	// est déjà une, pour pouvoir revenir au neuf.
+	const basculeStockB =
+		!!onSetStockCounter && ((item.stockBAvailable ?? 0) > 0 || enStockB)
+
 	const hasPriceOverride =
 		item.originalUnitPrice != null && item.unitPrice !== item.originalUnitPrice
 
@@ -104,6 +112,11 @@ export function CartItemRow({
 				<div className='flex-1 min-w-0'>
 					<p className='text-sm font-medium truncate leading-tight'>
 						{getDisplayText()}
+						{enStockB && (
+							<span className='ml-1.5 rounded bg-amber-100 px-1 py-px text-[10px] font-semibold text-amber-800 align-middle'>
+								Stock B
+							</span>
+						)}
 					</p>
 					{hasPriceOverride && (
 						<span className='text-[10px] text-blue-600 font-medium'>
@@ -164,6 +177,28 @@ export function CartItemRow({
 							? 'Remise active'
 							: 'Remise'}
 				</button>
+
+				{/* Neuf ou Stock B — repose la remise qui va avec le compteur */}
+				{basculeStockB && (
+					<button
+						type='button'
+						onClick={() =>
+							onSetStockCounter?.(item.id, enStockB ? 'stock' : 'stock_b')
+						}
+						title={
+							enStockB
+								? 'Vendre une unité neuve à la place'
+								: `Vendre une unité Stock B (${item.stockBAvailable ?? 0} disponible(s))`
+						}
+						className={`h-7 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
+							enStockB
+								? 'border-amber-300 bg-amber-50 text-amber-800'
+								: 'border-border/60 bg-transparent text-muted-foreground hover:text-foreground hover:border-border'
+						}`}
+					>
+						{enStockB ? 'Stock B → Neuf' : 'Neuf → Stock B'}
+					</button>
+				)}
 
 				{/* Dropdown affichage — discret, en ligne */}
 				{hasDisplayChoice && (

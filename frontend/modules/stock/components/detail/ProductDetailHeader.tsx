@@ -8,6 +8,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { prixPromoActif } from '@/lib/pricing/promo-price'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 
 const euros = new Intl.NumberFormat('fr-FR', {
@@ -90,8 +91,23 @@ export function ProductDetailHeader(props: Props) {
 						</Tooltip>
 					</TooltipProvider>
 					<div className='mt-1 flex flex-wrap items-center gap-2 text-sm'>
-						<strong>{euros.format(props.product.price_ttc ?? 0)}</strong>
-						<span>Stock {props.product.stock ?? 0}</span>
+						{prixPromoActif(props.product) === null ? (
+							<strong>{euros.format(props.product.price_ttc ?? 0)}</strong>
+						) : (
+							<>
+								<span className='text-muted-foreground line-through'>
+									{euros.format(props.product.price_ttc ?? 0)}
+								</span>
+								<strong className='text-emerald-700'>
+									{euros.format(prixPromoActif(props.product) ?? 0)}
+								</strong>
+							</>
+						)}
+						<span>
+							Stock {props.product.stock ?? 0}
+							{(props.product.stock_b ?? 0) > 0 &&
+								` · B ${props.product.stock_b}`}
+						</span>
 						<Badge
 							variant={props.status === 'published' ? 'default' : 'secondary'}
 						>

@@ -4,6 +4,11 @@ import {
 	setTerminalState,
 } from '@/lib/stores/appCashStore'
 // frontend/modules/cash/components/terminal/hooks/useCartManager.ts
+import {
+	type CompteurDeStock,
+	compteurParDefaut,
+	remiseCaisseSelonCompteur,
+} from '@/lib/pricing/promo-price'
 import * as React from 'react'
 import type { CartItem, LineDiscountMode, PosProduct } from '../types/cart'
 import { clamp } from '../utils/calculations'
@@ -48,9 +53,21 @@ export function useCartManager(registerId: string) {
 			const imageUrl = product.imageUrl
 			const tvaRate = product.tax_rate ?? 20
 
+			const compteur = compteurParDefaut(product)
+			const pricing = {
+				price_ttc: product.price_ttc,
+				promo_price_ttc: product.promo_price_ttc,
+				sale_state: product.sale_state,
+				stock_b_price_ttc: product.stock_b_price_ttc,
+			}
+
 			setCart((prev) => {
+				// Une ligne neuve et une ligne B du même produit sont deux lignes :
+				// elles ne se vendent ni au même prix, ni sur le même compteur.
 				const existingIndex = prev.findIndex(
-					(item) => item.productId === product.id,
+					(item) =>
+						item.productId === product.id &&
+						(item.stockCounter ?? 'stock') === compteur,
 				)
 				if (existingIndex >= 0) {
 					const next = [...prev]
@@ -73,6 +90,13 @@ export function useCartManager(registerId: string) {
 					quantity: 1,
 					tvaRate,
 					displayMode: 'name',
+					stockCounter: compteur,
+					stockBAvailable: Number(product.stock_b ?? 0),
+					pricing,
+					// Soldé, en promotion ou vendu en Stock B : le prix réduit devient
+					// une remise de ligne, le prix d'origine reste celui de la ligne —
+					// le ticket montre les deux, et le Z compte la remise.
+					...remiseCaisseSelonCompteur(pricing, compteur),
 				}
 				setLastAddedItem(newItem)
 				return [...prev, newItem]
@@ -200,6 +224,28 @@ export function useCartManager(registerId: string) {
 		[setCart],
 	)
 
+	/** Bascule une ligne entre neuf et Stock B, et repose la remise qui va avec :
+	 *  le prix B, ou la promo en neuf. Une remise saisie à la main sur la ligne
+	 *  est remplacée — changer de compteur, c'est changer d'article. */
+	const setItemStockCounter = React.useCallback(
+		(itemId: string, compteur: CompteurDeStock) => {
+			setCart((prev) =>
+				prev.map((it) => {
+					if (it.id !== itemId) return it
+					return {
+						...it,
+						stockCounter: compteur,
+						...remiseCaisseSelonCompteur(
+							it.pricing ?? { price_ttc: it.originalUnitPrice ?? it.unitPrice },
+							compteur,
+						),
+					}
+				}),
+			)
+		},
+		[setCart],
+	)
+
 	const toggleItemDisplayMode = React.useCallback(
 		(itemId: string) => {
 			setCart((prev) =>
@@ -271,6 +317,7 @@ export function useCartManager(registerId: string) {
 		clearUnitPrice,
 		setLineDiscountMode,
 		setLineDiscountValue,
+		setItemStockCounter,
 		toggleItemDisplayMode,
 		clearCart,
 		clearCartAndStore,
