@@ -96,6 +96,34 @@ const REF_TYPE_NOUNS: Record<SiteMenuRefType, string> = {
  */
 export const looksLikeWooId = (refId: string): boolean => /^\d+$/.test(refId)
 
+/** Les types de destination qui ont une liste à lire. `page` n'en a pas. */
+export type ListedRefType = Exclude<SiteMenuRefType, 'page'>
+
+/**
+ * Les listes de destinations nécessaires sont-elles utilisables ?
+ *
+ * **Une liste vide ne compte pas comme chargée.** Le catalogue n'est jamais
+ * vide ; une liste vide est le signe d'une lecture ratée — typiquement faite
+ * avant la connexion, que PocketBase sert en `200` avec zéro élément. La
+ * considérer chargée laissait le bouton actif et faisait refuser TOUTES les
+ * destinations du type, « absente du catalogue en ligne », ce qui envoie
+ * chercher une erreur de saisie qui n'existe pas (10 septembre 2026).
+ *
+ * `vides` nomme les types concernés, pour que l'écran dise pourquoi il bloque.
+ */
+export function destinationsState(
+	usedTypes: ReadonlySet<SiteMenuRefType>,
+	lists: Record<ListedRefType, readonly unknown[] | undefined>,
+): { loaded: boolean; vides: ListedRefType[] } {
+	const used = (['category', 'brand', 'product'] as const).filter((type) =>
+		usedTypes.has(type),
+	)
+	return {
+		loaded: used.every((type) => (lists[type]?.length ?? 0) > 0),
+		vides: used.filter((type) => lists[type]?.length === 0),
+	}
+}
+
 const isRefType = (value: string): value is SiteMenuRefType =>
 	value === 'category' ||
 	value === 'brand' ||

@@ -52,7 +52,6 @@ import {
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import { useAppPosSession } from '@/lib/apppos'
 import { useDestinationIndex } from '../hooks/use-menu-destinations'
 import {
 	ROOT,
@@ -85,7 +84,7 @@ const REF_TYPE_NOUNS: Record<SiteMenuRefType, string> = {
  * n'existe qu'à la publication (§3 du contrat).
  *
  * `resolve` rend le nom de la cible quand il est connu, `null` sinon —
- * catalogue encore en cours de lecture, AppPos injoignable, ou cible
+ * catalogue encore en cours de lecture, catalogue illisible, ou cible
  * supprimée depuis. On retombe alors sur l'identifiant : moins lisible, mais
  * jamais faux, et c'est précisément ce qui permettra de repérer une
  * destination devenue orpheline.
@@ -123,7 +122,8 @@ export function MenuTreeEditor() {
 	const rows = useMemo(() => flattenMenuTree(tree), [tree])
 	const inheritedHidden = useMemo(() => hiddenByAncestor(tree), [tree])
 
-	// Ne lire chez AppPos que les types de destination réellement employés.
+	// Types de destination réellement employés : seuls ceux-là conditionnent
+	// la publication.
 	const usedTypes = useMemo(() => {
 		const types = new Set<SiteMenuRefType>()
 		for (const entry of list) {
@@ -131,19 +131,19 @@ export function MenuTreeEditor() {
 		}
 		return types
 	}, [list])
-	// Lecture de la session ouverte au lancement (main.tsx) — l'éditeur ne
-	// dépend plus de l'ordre de navigation.
-	const appPos = useAppPosSession()
+	// Les destinations viennent du catalogue PocketBase. L'éditeur ne dépend
+	// plus d'AppPos depuis le 10 septembre 2026 (chantier C de CLAUDE.md).
 	const {
 		labelFor,
 		urlFor,
 		loaded: catalogLoaded,
+		vides: listesVides,
 		isError: catalogError,
-	} = useDestinationIndex(usedTypes, appPos.isConnected)
+	} = useDestinationIndex(usedTypes)
 
 	// Les noms de destinations manquent, le menu lui-même est intact : c'est un
 	// avertissement, pas une erreur bloquante.
-	const catalogUnavailable = catalogError || !!appPos.error
+	const catalogUnavailable = catalogError
 
 	const parentLabel = useMemo(
 		() =>
@@ -284,18 +284,35 @@ export function MenuTreeEditor() {
 				</div>
 			</div>
 
+			{listesVides.length > 0 && (
+				<div className='flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm'>
+					<AlertTriangle className='mt-0.5 h-4 w-4 shrink-0 text-amber-600' />
+					<div>
+						<p className='font-medium'>
+							Catalogue lu vide (
+							{listesVides.map((t) => REF_TYPE_NOUNS[t]).join(', ')}) —
+							publication bloquée.
+						</p>
+						<p className='text-muted-foreground text-xs'>
+							Le catalogue n'est jamais vide : la lecture a probablement eu lieu
+							avant la connexion. Elle se refait d'elle-même à la connexion ; si
+							ce message reste, quitter l'écran et y revenir.
+						</p>
+					</div>
+				</div>
+			)}
+
 			{catalogUnavailable && (
 				<div className='flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm'>
 					<AlertTriangle className='mt-0.5 h-4 w-4 shrink-0 text-amber-600' />
 					<div>
 						<p className='font-medium'>
-							Catalogue AppPos illisible — les destinations s'affichent par
+							Catalogue illisible — les destinations s'affichent par
 							identifiant.
 						</p>
 						<p className='text-muted-foreground text-xs'>
-							Les noms des catégories, marques et produits viennent d'AppPos.
-							Vérifier qu'il est démarré. Le menu lui-même est intact et reste
-							modifiable.
+							Les noms des catégories, marques et produits n'ont pas pu être lus
+							dans PocketBase. Le menu lui-même est intact et reste modifiable.
 						</p>
 					</div>
 				</div>
@@ -437,9 +454,6 @@ export function MenuTreeEditor() {
 				onOpenChange={setDialogOpen}
 				entry={editing}
 				parentLabel={editing ? undefined : parentLabel}
-				// Le formulaire lit AppPos lui aussi : il attend la même session,
-				// plutôt que d'en ouvrir une seconde en parallèle.
-				appPosReady={appPos.isConnected}
 				onSubmit={handleSubmit}
 				isSubmitting={createEntry.isPending || updateEntry.isPending}
 			/>

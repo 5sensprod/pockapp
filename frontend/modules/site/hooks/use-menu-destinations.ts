@@ -29,8 +29,9 @@
 //
 // ─── Ce que ce fichier n'appelle plus ──────────────────────────────────────
 // **AppPos.** L'édition du menu ne dépend plus d'une session AppPos ouverte.
-// Le paramètre `ready` est conservé pour ne pas casser les appelants, mais il
-// n'est plus consulté.
+// Le paramètre `ready`, conservé un temps pour les appelants, est retiré le
+// 10 septembre 2026 : il faisait afficher « Connexion à AppPos… » dans le
+// formulaire d'entrée alors que plus rien n'attendait AppPos.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import {
@@ -42,6 +43,7 @@ import type { SiteMenuRefType } from '@/lib/queries/site-menu'
 // Réexporté depuis la couche pure : voir la note à sa définition.
 export { looksLikeWooId } from '../lib/publish-menu'
 import { useMemo } from 'react'
+import { destinationsState } from '../lib/publish-menu'
 
 /**
  * Une destination proposable, indépendante du type.
@@ -165,12 +167,7 @@ function useProductDestinations(): MenuDestination[] | undefined {
  * PocketApp n'interroge pas. L'identifiant se saisit à la main, comme
  * l'autorise le contrat (« identifiant ou slug », §3).
  */
-export function useMenuDestinations(
-	linkType: SiteMenuRefType | null,
-	/** Conservé pour les appelants. Plus consulté : l'édition du menu ne
-	 *  dépend plus d'AppPos. */
-	_ready = true,
-) {
+export function useMenuDestinations(linkType: SiteMenuRefType | null) {
 	const categories = useCatalogCategories()
 	const brands = useCatalogBrands()
 	const products = usePublishedProducts()
@@ -228,11 +225,7 @@ export function useMenuDestinations(
  * en ligne » et partagent leur cache TanStack Query. Les redemander ici ne
  * coûte rien.
  */
-export function useDestinationIndex(
-	usedTypes: Set<SiteMenuRefType>,
-	/** Conservé pour les appelants. Voir `useMenuDestinations`. */
-	_ready = true,
-) {
+export function useDestinationIndex(usedTypes: Set<SiteMenuRefType>) {
 	const categories = useCatalogCategories()
 	const brands = useCatalogBrands()
 	const products = usePublishedProducts()
@@ -267,16 +260,20 @@ export function useDestinationIndex(
 	const urlFor = (type: SiteMenuRefType, refId: string): string | null =>
 		find(type, refId)?.url ?? null
 
-	/** Vrai quand toutes les listes nécessaires sont effectivement chargées.
-	 *  `page` n'a pas de source : elle ne conditionne rien. */
-	const loaded = (['category', 'brand', 'product'] as const).every(
-		(type) => !usedTypes.has(type) || byType[type] !== undefined,
-	)
+	/** Vrai quand toutes les listes nécessaires sont chargées ET non vides ;
+	 *  `vides` nomme celles qui sont revenues sans élément. Voir
+	 *  `destinationsState`. `page` n'a pas de source : elle ne conditionne rien. */
+	const { loaded, vides } = destinationsState(usedTypes, {
+		category: categoryList,
+		brand: brandList,
+		product: productList,
+	})
 
 	return {
 		labelFor,
 		urlFor,
 		loaded,
+		vides,
 		isLoading: categories.isLoading || brands.isLoading || products.isLoading,
 		isError: categories.isError || brands.isError || products.isError,
 	}

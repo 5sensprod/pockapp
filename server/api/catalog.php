@@ -687,41 +687,6 @@ try {
 
     // ── Une catégorie et ses produits ───────────────────────────────────────
     if ($action === 'category') {
-        $id = isset($_GET['id']) ? (string) $_GET['id'] : '';
-        $slug = isset($_GET['slug']) ? (string) $_GET['slug'] : '';
-
-        if ($id !== '') {
-            $st = $pdo->prepare(sprintf(
-                'SELECT legacy_id, name, slug, description FROM `%s` WHERE legacy_id = ?',
-                $T_CATEGORIES
-            ));
-            $st->execute([$id]);
-        } elseif ($slug !== '') {
-            $st = $pdo->prepare(sprintf(
-                'SELECT legacy_id, name, slug, description FROM `%s` WHERE slug = ?',
-                $T_CATEGORIES
-            ));
-            $st->execute([$slug]);
-        } else {
-            // Sans désignation, on prend la catégorie la mieux fournie : c'est
-            // ce que veut une page d'accueil qui montre « une » catégorie.
-            $st = $pdo->query(sprintf(
-                'SELECT c.legacy_id, c.name, c.slug, c.description
-                   FROM `%s` c
-                   JOIN `%s` pc ON pc.category_legacy_id = c.legacy_id
-                  GROUP BY c.legacy_id, c.name, c.slug, c.description
-                  ORDER BY COUNT(pc.product_legacy_id) DESC
-                  LIMIT 1',
-                $T_CATEGORIES,
-                $T_PRODCAT
-            ));
-        }
-
-        $category = $st->fetch();
-        if (!$category) {
-            fail(404, 'Catégorie introuvable.');
-        }
-
         // ── La catégorie ET SA DESCENDANCE ──────────────────────────────
         //
         // Constaté à l'usage : une catégorie de pur classement ne porte aucun
@@ -814,6 +779,138 @@ try {
 
             return array_keys($seen);
         };
+
+        /**
+         * Parmi des lignes qui partagent un slug, celle dont la BRANCHE porte
+         * le plus de produits publiés. Voir la note au chemin `slug`.
+         *
+         * Un seul aller-retour : les couples (catégorie, produit) de l'union
+         * des branches candidates. Les produits sont dédoublonnés par branche,
+         * comme le fait `$branchProductCount` plus bas — un produit rattaché à
+         * deux catégories sœurs ne compte qu'une fois dans leur ancêtre.
+         *
+         * @param array<int,array<string,mixed>> $candidates
+         * @return array<string,mixed>
+         */
+        $mieuxFournie = static function (array $candidates) use ($pdo, $branchOf, $T_PRODCAT, $T_PRODUCTS): array {
+            $branches = [];
+            $union = [];
+            foreach ($candidates as $index => $candidate) {
+                $branch = $branchOf((string) $candidate['legacy_id']);
+                $branches[$index] = $branch;
+                foreach ($branch as $categoryId) {
+                    $union[$categoryId] = true;
+                }
+            }
+
+            $unionIds = array_keys($union);
+            if ($unionIds === []) {
+                return $candidates[0];
+            }
+
+            $st = $pdo->prepare(sprintf(
+                'SELECT pc.category_legacy_id, pc.product_legacy_id
+                   FROM `%s` pc
+                   JOIN `%s` p ON p.legacy_id = pc.product_legacy_id
+                  WHERE pc.category_legacy_id IN (%s)
+                    AND p.status = \'published\'',
+                $T_PRODCAT,
+                $T_PRODUCTS,
+                implode(',', array_fill(0, count($unionIds), '?'))
+            ));
+            $st->execute($unionIds);
+
+            $productsByCategory = [];
+            foreach ($st->fetchAll() as $pair) {
+                $productsByCategory[(string) $pair['category_legacy_id']][] =
+                    (string) $pair['product_legacy_id'];
+            }
+
+            $best = $candidates[0];
+            $bestCount = -1;
+            foreach ($candidates as $index => $candidate) {
+                $seen = [];
+                foreach ($branches[$index] as $categoryId) {
+                    foreach ($productsByCategory[$categoryId] ?? [] as $productId) {
+                        $seen[$productId] = true;
+                    }
+                }
+                // Strictement supérieur : à égalité, la première ligne gagne.
+                if (count($seen) > $bestCount) {
+                    $bestCount = count($seen);
+                    $best = $candidate;
+                }
+            }
+
+            return $best;
+        };
+
+        $id = isset($_GET['id']) ? (string) $_GET['id'] : '';
+        $slug = isset($_GET['slug']) ? (string) $_GET['slug'] : '';
+
+        if ($id !== '') {
+            $st = $pdo->prepare(sprintf(
+                'SELECT legacy_id, name, slug, description FROM `%s` WHERE legacy_id = ?',
+                $T_CATEGORIES
+            ));
+            $st->execute([$id]);
+        } elseif ($slug !== '') {
+            // ── Un slug peut désigner PLUSIEURS lignes ──────────────────
+            //
+            // Constaté le 2026-09-09 : « /categorie-produit/piano-numerique »
+            // affichait 0 produit. Deux catégories portent ce slug — la vraie
+            // (`riJ7azU6q0YRnVy5`, 25 produits) et un rayon issu de la reprise
+            // (`rayon_claviers__pianonumerique`, vide) —, et un `WHERE slug = ?`
+            // sans départage rend la ligne que MySQL sort en premier. Six des
+            // vingt-trois rubriques catégorie du menu tombaient ainsi sur un
+            // rayon vide.
+            //
+            // On ne choisit donc PAS au hasard : on garde la candidate dont la
+            // BRANCHE porte le plus de produits publiés — la même règle que le
+            // total affiché plus bas, faute de quoi le départage désignerait
+            // une catégorie et la page en compterait une autre. À égalité, la
+            // première ligne : deux branches également fournies ne se
+            // départagent par rien de plus honnête.
+            //
+            // La requête de comptage n'est émise que dans le cas ambigu ; le
+            // cas d'un slug unique — l'immense majorité — ne coûte rien de
+            // plus qu'avant.
+            $st = $pdo->prepare(sprintf(
+                'SELECT legacy_id, name, slug, description FROM `%s` WHERE slug = ?',
+                $T_CATEGORIES
+            ));
+            $st->execute([$slug]);
+
+            $candidates = $st->fetchAll();
+            $category = $candidates === [] ? false : $candidates[0];
+
+            if (count($candidates) > 1) {
+                $category = $mieuxFournie($candidates);
+            }
+        } else {
+            // Sans désignation, on prend la catégorie la mieux fournie : c'est
+            // ce que veut une page d'accueil qui montre « une » catégorie.
+            $st = $pdo->query(sprintf(
+                'SELECT c.legacy_id, c.name, c.slug, c.description
+                   FROM `%s` c
+                   JOIN `%s` pc ON pc.category_legacy_id = c.legacy_id
+                  GROUP BY c.legacy_id, c.name, c.slug, c.description
+                  ORDER BY COUNT(pc.product_legacy_id) DESC
+                  LIMIT 1',
+                $T_CATEGORIES,
+                $T_PRODCAT
+            ));
+        }
+
+        // Les deux autres chemins n'ont pas encore lu leur ligne ; celui du
+        // slug l'a déjà fait, pour pouvoir départager.
+        if (!isset($category)) {
+            $category = $st->fetch();
+        }
+        if (!$category) {
+            fail(404, 'Catégorie introuvable.');
+        }
+
 
         $branch = $branchOf((string) $category['legacy_id']);
 

@@ -63,10 +63,6 @@ export interface MenuEntryDialogProps {
 	entry?: SiteMenuResponse
 	/** Libellé du parent, pour situer une création. */
 	parentLabel?: string
-	/** Session AppPos ouverte par le composant parent. Les listes de
-	 *  destinations ne sont demandées qu'à partir de là — sans jeton, AppPos
-	 *  ne rend qu'un 401. */
-	appPosReady?: boolean
 	onSubmit: (data: SiteMenuRecord) => Promise<unknown>
 	isSubmitting?: boolean
 }
@@ -76,7 +72,6 @@ export function MenuEntryDialog({
 	onOpenChange,
 	entry,
 	parentLabel,
-	appPosReady = true,
 	onSubmit,
 	isSubmitting,
 }: MenuEntryDialogProps) {
@@ -102,7 +97,6 @@ export function MenuEntryDialog({
 
 	const destinations = useMenuDestinations(
 		isRefType(linkType) && linkType !== 'page' ? linkType : null,
-		appPosReady,
 	)
 
 	const selected = useMemo(
@@ -215,8 +209,8 @@ export function MenuEntryDialog({
 								maxLength={255}
 							/>
 							<p className='text-muted-foreground text-xs'>
-								Les pages vivent dans WordPress, que PocketApp n'interroge pas :
-								l'identifiant se saisit à la main.
+								Chemin d'une page du site, sans le domaine : `shop` publie
+								`/shop`. Aucune liste ne le vérifie, il se saisit à la main.
 							</p>
 						</div>
 					)}
@@ -225,26 +219,23 @@ export function MenuEntryDialog({
 						<div className='space-y-2'>
 							<Label htmlFor='menu-ref'>Cible</Label>
 
-							{/* Requête désactivée tant que la session n'est pas ouverte :
-							    sans ce cas, l'attente de connexion n'afficherait rien. */}
-							{(destinations.isLoading || !appPosReady) &&
-								!destinations.isError && (
-									<div className='flex items-center gap-2 text-muted-foreground text-sm'>
-										<Loader2 className='h-4 w-4 animate-spin' />
-										{appPosReady
-											? 'Lecture du catalogue AppPos…'
-											: 'Connexion à AppPos…'}
-									</div>
-								)}
+							{/* Les destinations viennent du catalogue PocketBase, et de lui
+							    seul depuis le 11 août 2026 — AppPos n'intervient plus. */}
+							{destinations.isLoading && !destinations.isError && (
+								<div className='flex items-center gap-2 text-muted-foreground text-sm'>
+									<Loader2 className='h-4 w-4 animate-spin' />
+									Lecture du catalogue…
+								</div>
+							)}
 
 							{destinations.isError && (
 								<div className='flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm'>
 									<AlertTriangle className='mt-0.5 h-4 w-4 shrink-0 text-destructive' />
 									<div>
-										<p className='font-medium'>Catalogue AppPos injoignable.</p>
+										<p className='font-medium'>Catalogue illisible.</p>
 										<p className='text-muted-foreground text-xs'>
-											La liste des destinations vient d'AppPos. Vérifier qu'il
-											est démarré, puis rouvrir ce formulaire.
+											La liste des destinations n'a pas pu être lue dans
+											PocketBase. Rouvrir ce formulaire.
 										</p>
 									</div>
 								</div>
@@ -264,15 +255,17 @@ export function MenuEntryDialog({
 													disabled={d.refId === null}
 												>
 													{d.label}
-													{d.refId === null && ' — non synchronisée'}
+													{d.refId === null && ' — sans clé stable'}
 												</SelectItem>
 											))}
 										</SelectContent>
 									</Select>
 									<p className='text-muted-foreground text-xs'>
 										{selected
-											? `Référence WooCommerce ${selected.refId}.`
-											: "Les cibles non synchronisées vers WooCommerce n'ont pas d'adresse résoluble et ne peuvent pas être choisies."}
+											? selected.url
+												? `Adresse publiée : ${selected.url}`
+												: `Cette cible n'a pas d'adresse sur le site : la publication la refusera.`
+											: "Une cible sans clé stable n'a pas d'adresse publiable et ne peut pas être choisie."}
 									</p>
 								</>
 							)}

@@ -34,6 +34,7 @@ PHP.
 | `api/products-sync.php` | l'endpoint d'export du **catalogue** vers MySQL | oui |
 | `api/catalog.php` | la lecture **publique** du catalogue, pour le site | oui |
 | `api/images-sync.php` | le **miroir des images** — marques et catégories | oui |
+| `api/categories-cleanup.php` | le **nettoyage des catégories orphelines** (rayons de la refonte abandonnée) | oui |
 | `sql/schema.sql` | les quatre tables du catalogue, à exécuter une fois | oui |
 | `sql/images.sql` | les colonnes `image_*`, à exécuter une fois après | oui |
 | `sql/first-seen.sql` | la colonne `first_seen_at` d'`ax_products`, à exécuter une fois | oui |
@@ -62,6 +63,24 @@ des images cassées à un visiteur. Un envoi porte TOUTES les images d'une
 entité, jamais une seule, ce qui rend le retrait possible sans jamais
 supprimer. Mécanisme :
 [`16-conception-images.md`](../frontend/modules/site/PocketSite-docs/16-conception-images.md).
+
+**`categories-cleanup.php` est un OUTIL, pas un endpoint du contrat.** Il ne
+s'appelle pas depuis PocketApp : il se déclenche à la main, avec la clé du
+catalogue, quand on doit retirer de la base des catégories qui n'y ont plus
+leur place. Le cas qui l'a motivé, le 9 septembre 2026 : douze rayons
+`rayon_*`, restes d'un essai de refonte de l'arbre abandonné depuis
+(`RefondreCategories` est faux par défaut, `backend/catalog/mapping/appliquer.go`),
+disputaient leur slug à de vraies catégories — six rubriques du menu tombaient
+sur un rayon vide et affichaient « 0 produit ».
+
+`GET` relève, `POST` sans rien ne fait que relever aussi, `POST ?confirm=1`
+supprime. Il refuse toute ligne qui porte un produit, une sous-catégorie ou des
+images sur le miroir, et dit lesquelles il a refusées et pourquoi.
+
+Le correctif de `catalog.php` qui l'accompagne — départager un slug ambigu par
+le nombre de produits de la branche — reste en place et **doit y rester** : cet
+outil retire les lignes d'aujourd'hui, il n'empêche pas une collision de
+revenir le jour où la refonte est décidée.
 
 ⚠️ `media_root` est sous la racine web : **tout ce qui s'y écrit est servi par
 Apache**. C'est pourquoi le script n'accepte qu'une liste fermée d'extensions
