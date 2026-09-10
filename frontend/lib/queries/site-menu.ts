@@ -80,6 +80,9 @@ export type SiteMenuRecord = {
 	parent?: string
 }
 
+/** Enregistrement importé avec l'identifiant PocketBase publié à conserver. */
+export type SiteMenuImportRecord = SiteMenuRecord & { id: string }
+
 export type SiteMenuResponse = Required<SiteMenuRecord> & {
 	id: string
 	created: string
@@ -164,6 +167,29 @@ export function useDeleteSiteMenuEntry() {
 		mutationFn: async (id: string) =>
 			await pb.collection(COLLECTION).delete(id),
 		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+		},
+	})
+}
+
+/** Remplace tout le menu. La suppression des racines entraîne leur descendance. */
+export function useReplaceSiteMenu() {
+	const pb = usePocketBase()
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (records: SiteMenuImportRecord[]) => {
+			const current = await pb
+				.collection(COLLECTION)
+				.getFullList<SiteMenuResponse>()
+			for (const root of current.filter((entry) => !entry.parent)) {
+				await pb.collection(COLLECTION).delete(root.id)
+			}
+			for (const record of records) {
+				await pb.collection(COLLECTION).create<SiteMenuResponse>(record)
+			}
+		},
+		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: QUERY_KEY })
 		},
 	})

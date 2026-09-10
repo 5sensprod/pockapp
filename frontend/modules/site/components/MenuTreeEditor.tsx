@@ -46,6 +46,7 @@ import {
 	useCreateSiteMenuEntry,
 	useDeleteSiteMenuEntry,
 	useReorderSiteMenu,
+	useReplaceSiteMenu,
 	useSiteMenuEntries,
 	useUpdateSiteMenuEntry,
 } from '@/lib/queries/site-menu'
@@ -58,6 +59,7 @@ import {
 	ChevronUp,
 	Eye,
 	EyeOff,
+	FileUp,
 	Loader2,
 	Pencil,
 	Plus,
@@ -67,11 +69,13 @@ import {
 	type CSSProperties,
 	type DragEvent as ReactDragEvent,
 	useMemo,
+	useRef,
 	useState,
 } from 'react'
 import { toast } from 'sonner'
 
 import { useDestinationIndex } from '../hooks/use-menu-destinations'
+import { type ParseMenuResult, parseMenuDocument } from '../lib/import-menu'
 import {
 	MENU_CATEGORY_DRAG_TYPE,
 	ROOT,
@@ -94,6 +98,8 @@ const EXPLORER_WIDTH_MIN = 220
 const EXPLORER_WIDTH_MAX = 480
 const MENU_WIDTH_MIN = 480
 const RESIZE_HANDLE_WIDTH = 16
+
+type PendingImport = Extract<ParseMenuResult, { ok: true }>
 
 /** Les quatre types qui portent un `ref_id` à résoudre. */
 const REF_TYPES = ['category', 'brand', 'product', 'page'] as const
@@ -151,6 +157,7 @@ export function MenuTreeEditor() {
 	const createEntry = useCreateSiteMenuEntry()
 	const updateEntry = useUpdateSiteMenuEntry()
 	const deleteEntry = useDeleteSiteMenuEntry()
+	const replaceMenu = useReplaceSiteMenu()
 	const reorder = useReorderSiteMenu()
 
 	// Les catégories et leurs décomptes PUBLIÉS : l'arbre de gauche, le dépôt et
@@ -170,7 +177,11 @@ export function MenuTreeEditor() {
 	const [pendingDelete, setPendingDelete] = useState<
 		SiteMenuResponse | undefined
 	>()
+	const [pendingImport, setPendingImport] = useState<
+		PendingImport | undefined
+	>()
 	const [dragOverId, setDragOverId] = useState<string | null>(null)
+	const importInputRef = useRef<HTMLInputElement>(null)
 
 	const list = useMemo(() => entries ?? [], [entries])
 	const tree = useMemo(() => buildMenuTree(list), [list])
@@ -359,6 +370,39 @@ export function MenuTreeEditor() {
 		}
 	}
 
+	const handleImportFile = async (file: File | undefined) => {
+		if (!file) return
+		try {
+			const parsed = parseMenuDocument(await file.text())
+			if (!parsed.ok) {
+				toast.error('Menu JSON invalide', { description: parsed.error })
+				return
+			}
+			setPendingImport(parsed)
+		} catch (error) {
+			toast.error('Lecture du fichier impossible', {
+				description: error instanceof Error ? error.message : undefined,
+			})
+		}
+	}
+
+	const handleImport = async () => {
+		if (!pendingImport) return
+		const count = pendingImport.records.length
+		try {
+			await replaceMenu.mutateAsync(pendingImport.records)
+			toast.success(
+				`${count} entrée${count > 1 ? 's importées' : ' importée'}.`,
+			)
+		} catch (error) {
+			toast.error('Import interrompu : le menu local peut être partiel.', {
+				description: error instanceof Error ? error.message : undefined,
+			})
+		} finally {
+			setPendingImport(undefined)
+		}
+	}
+
 	if (isLoading) {
 		return (
 			<div className='flex items-center gap-2 py-8 text-muted-foreground text-sm'>
@@ -420,6 +464,26 @@ export function MenuTreeEditor() {
 						>
 							<Plus className='mr-2 h-4 w-4' />
 							Entrée racine
+						</Button>
+						<input
+							ref={importInputRef}
+							type='file'
+							accept='application/json'
+							className='sr-only'
+							onChange={(event) => {
+								const file = event.currentTarget.files?.[0]
+								event.currentTarget.value = ''
+								void handleImportFile(file)
+							}}
+						/>
+						<Button
+							size='sm'
+							variant='outline'
+							disabled={replaceMenu.isPending}
+							onClick={() => importInputRef.current?.click()}
+						>
+							<FileUp className='mr-2 h-4 w-4' />
+							Importer un menu JSON
 						</Button>
 						<PublishMenuButton
 							entries={list}
@@ -675,6 +739,47 @@ export function MenuTreeEditor() {
 						<AlertDialogCancel>Annuler</AlertDialogCancel>
 						<AlertDialogAction onClick={handleDelete}>
 							Supprimer
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			<AlertDialog
+				open={!!pendingImport}
+				onOpenChange={(open) => !open && setPendingImport(undefined)}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Remplacer tout le menu local ?</AlertDialogTitle>
+						<AlertDialogDescription className='space-y-2'>
+							<span className='block'>
+								Fichier publié le{' '}
+								{pendingImport &&
+									new Date(pendingImport.publishedAt).toLocaleString('fr-FR')}
+								. Il contient {pendingImport?.records.length ?? 0} entrée
+								{(pendingImport?.records.length ?? 0) > 1 ? 's' : ''}.
+							</span>
+							<span className='block'>
+								Les {list.length} entrée{list.length > 1 ? 's' : ''} locale
+								{list.length > 1 ? 's' : ''} seront remplacées. Les entrées
+								masquées disparaîtront aussi, car le fichier publié ne les
+								contient pas.
+							</span>
+							<span className='block'>Cette action est définitive.</span>
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel disabled={replaceMenu.isPending}>
+							Annuler
+						</AlertDialogCancel>
+						<AlertDialogAction
+							disabled={replaceMenu.isPending}
+							onClick={handleImport}
+						>
+							{replaceMenu.isPending && (
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							)}
+							Remplacer le menu
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
