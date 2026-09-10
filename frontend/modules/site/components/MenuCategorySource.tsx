@@ -86,7 +86,7 @@ export function MenuCategorySource({
 	const searching = search.trim() !== ''
 
 	return (
-		<div className='flex min-h-0 flex-col overflow-hidden rounded-md border lg:max-h-[70vh]'>
+		<div className='flex min-h-0 flex-col overflow-hidden rounded-md border lg:h-full'>
 			<div className='shrink-0 border-b bg-muted/30 p-3'>
 				<div className='mb-2 flex items-center justify-between gap-2'>
 					<p className='flex items-center gap-1.5 font-medium text-sm'>

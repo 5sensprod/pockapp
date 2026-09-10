@@ -33,7 +33,9 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ResizableExplorerHandle } from '@/components/ui/resizable-explorer-handle'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { useResizableExplorer } from '@/lib/hooks/useResizableExplorer'
 import { categoryPathNames } from '@/lib/queries/category-tree'
 import { useCatalogCounts } from '@/lib/queries/products'
 import { useCatalogCategories } from '@/lib/queries/site-catalog'
@@ -61,7 +63,12 @@ import {
 	Plus,
 	Trash2,
 } from 'lucide-react'
-import { type DragEvent as ReactDragEvent, useMemo, useState } from 'react'
+import {
+	type CSSProperties,
+	type DragEvent as ReactDragEvent,
+	useMemo,
+	useState,
+} from 'react'
 import { toast } from 'sonner'
 
 import { useDestinationIndex } from '../hooks/use-menu-destinations'
@@ -81,6 +88,12 @@ import {
 import { MenuCategorySource } from './MenuCategorySource'
 import { type CategoryTarget, MenuEntryDialog } from './MenuEntryDialog'
 import { PublishMenuButton } from './PublishMenuButton'
+
+const EXPLORER_WIDTH_DEFAULT = 272
+const EXPLORER_WIDTH_MIN = 220
+const EXPLORER_WIDTH_MAX = 480
+const MENU_WIDTH_MIN = 480
+const RESIZE_HANDLE_WIDTH = 16
 
 /** Les quatre types qui portent un `ref_id` à résoudre. */
 const REF_TYPES = ['category', 'brand', 'product', 'page'] as const
@@ -121,6 +134,18 @@ const acceptsCategory = (event: ReactDragEvent) =>
 	Array.from(event.dataTransfer.types).includes(MENU_CATEGORY_DRAG_TYPE)
 
 export function MenuTreeEditor() {
+	const {
+		width: explorerWidth,
+		gridRef: menuGridRef,
+		handleProps: explorerResizeHandleProps,
+	} = useResizableExplorer({
+		storageKey: 'site-menu-largeur-explorateur',
+		defaultWidth: EXPLORER_WIDTH_DEFAULT,
+		minWidth: EXPLORER_WIDTH_MIN,
+		maxWidth: EXPLORER_WIDTH_MAX,
+		contentMinWidth: MENU_WIDTH_MIN,
+		handleWidth: RESIZE_HANDLE_WIDTH,
+	})
 	const { data: entries, isLoading, isError } = useSiteMenuEntries()
 
 	const createEntry = useCreateSiteMenuEntry()
@@ -352,12 +377,30 @@ export function MenuTreeEditor() {
 	}
 
 	return (
-		<div className='grid items-start gap-4 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]'>
-			<MenuCategorySource
-				categories={categories}
-				publishedCounts={publishedCounts}
-				isLoading={categoriesQuery.isLoading || countsQuery.isLoading}
-				isError={categoriesQuery.isError || countsQuery.isError}
+		<div
+			ref={menuGridRef}
+			className='grid items-start gap-4 lg:grid-cols-[var(--menu-explorer-width)_1rem_minmax(0,1fr)] lg:gap-0'
+			style={
+				{
+					'--menu-explorer-width': `${explorerWidth}px`,
+				} as CSSProperties
+			}
+		>
+			{/* Le document est le scrollport : aucun ancêtre entre le layout et cette
+			    grille ne porte d'overflow. Le sticky suit donc réellement la fenêtre,
+			    sous le header global, tandis que la liste de l'arbre défile seule. */}
+			<div className='min-h-0 lg:sticky lg:top-header lg:h-[calc(100dvh-var(--header-h))] lg:self-start'>
+				<MenuCategorySource
+					categories={categories}
+					publishedCounts={publishedCounts}
+					isLoading={categoriesQuery.isLoading || countsQuery.isLoading}
+					isError={categoriesQuery.isError || countsQuery.isError}
+				/>
+			</div>
+
+			<ResizableExplorerHandle
+				label='Redimensionner l’arbre des catégories en ligne'
+				{...explorerResizeHandleProps}
 			/>
 
 			<div className='min-w-0 space-y-4'>
