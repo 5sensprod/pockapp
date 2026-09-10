@@ -68,7 +68,9 @@ createRoot(rootElement).render(
 				// plus, et l'écran casserait sans requête réseau pour l'expliquer.
 				// v2 (5 septembre 2026) : `catalog-counts` porte désormais les
 				// manques (`par_manque`).
-				buster: 'catalogue-v2',
+				// v3 (10 septembre 2026) : `catalog-counts` porte les décomptes des
+				// produits publiés (`par_categorie_publiee`), lus par le menu du site.
+				buster: 'catalogue-v3',
 				dehydrateOptions: {
 					shouldDehydrateQuery: (query) =>
 						query.state.status === 'success' &&

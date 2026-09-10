@@ -11,6 +11,11 @@
 // glisser-déposer n'existe dans ce dépôt, et on n'en ajoute pas une sur une
 // hypothèse d'ergonomie.
 //
+// Un seul glisser existe, depuis le 10 septembre 2026 : déposer une catégorie
+// du catalogue sur un sous-menu, pour y créer une entrée. Il est en HTML5 natif,
+// sur le modèle du lot de produits de la page Produits (`product-batch-drag.ts`),
+// et sa règle est `categoryDrop`, plus bas.
+//
 // Convention de `position` : entiers consécutifs à partir de 1, **par
 // fratrie**. Deux entrées de parents différents peuvent porter la même
 // position, c'est normal — la position n'ordonne que des frères. Chaque
@@ -18,7 +23,7 @@
 // la dérive des rangs fractionnaires.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import type { SiteMenuResponse } from '@/lib/queries/site-menu'
+import type { SiteMenuRecord, SiteMenuResponse } from '@/lib/queries/site-menu'
 
 /** Racine = `parent` vide. PocketBase rend une relation non renseignée
  *  comme chaîne vide, pas comme `null`. */
@@ -247,6 +252,102 @@ export function nextPosition(
 		(e) => (e.parent && known.has(e.parent) ? e.parent : ROOT) === parentId,
 	)
 	return siblings.reduce((max, e) => Math.max(max, e.position ?? 0), 0) + 1
+}
+
+// ---------------------------------------------------------------------------
+// DÉPÔT D'UNE CATÉGORIE
+// ---------------------------------------------------------------------------
+
+/** Type privé posé dans `DataTransfer` : il ne porte que l'identifiant
+ *  PocketBase de la catégorie, et n'accepte ni texte, ni fichier, ni lot de
+ *  produits. */
+export const MENU_CATEGORY_DRAG_TYPE = 'application/x-pocketapp-menu-category'
+
+/** Ce que le dépôt a besoin de savoir de la catégorie glissée. */
+export interface DroppedCategory {
+	/** Part dans `ref_id` — c'est lui que la publication résout en URL. */
+	legacyId: string
+	name: string
+	/** Au moins un produit publié dans sa branche : elle a une page sur le
+	 *  site. Lu dans `par_categorie_publiee`, jamais recalculé ici. */
+	online: boolean
+}
+
+export type CategoryDropResult =
+	| {
+			ok: true
+			record: SiteMenuRecord & { parent: string; position: number }
+	  }
+	| { ok: false; reason: string }
+
+/**
+ * La règle du dépôt d'une catégorie sur une entrée du menu.
+ *
+ * Refusé, dans cet ordre : à la racine (une entrée racine se crée par son
+ * bouton), sur une entrée inconnue, sur une entrée qui n'est pas un sous-menu
+ * (`link_type = none`), pour une catégorie sans clé stable ou hors ligne — elle
+ * n'aurait pas de page —, et pour une catégorie déjà présente sous ce parent.
+ *
+ * Accepté : une entrée `category`, visible, nommée comme la catégorie, en fin
+ * de fratrie.
+ */
+export function categoryDrop(
+	entries: SiteMenuResponse[],
+	parentId: string,
+	category: DroppedCategory,
+): CategoryDropResult {
+	if (parentId === ROOT) {
+		return { ok: false, reason: 'Une catégorie se dépose dans un sous-menu.' }
+	}
+
+	const parent = entries.find((e) => e.id === parentId)
+	if (!parent) {
+		return { ok: false, reason: "Cette entrée n'existe plus." }
+	}
+	if (parent.link_type !== 'none') {
+		return {
+			ok: false,
+			reason: `« ${parent.title} » n'est pas un sous-menu.`,
+		}
+	}
+	if (!category.legacyId) {
+		return {
+			ok: false,
+			reason: `« ${category.name} » n'a pas de clé stable.`,
+		}
+	}
+	if (!category.online) {
+		return {
+			ok: false,
+			reason: `« ${category.name} » n'est pas en ligne : aucun produit publié.`,
+		}
+	}
+
+	const doublon = entries.find(
+		(e) =>
+			e.parent === parentId &&
+			e.link_type === 'category' &&
+			e.ref_id === category.legacyId,
+	)
+	if (doublon) {
+		return {
+			ok: false,
+			reason: `« ${parent.title} » contient déjà cette catégorie (« ${doublon.title} »).`,
+		}
+	}
+
+	return {
+		ok: true,
+		record: {
+			title: category.name,
+			link_type: 'category',
+			link_url: '',
+			ref_id: category.legacyId,
+			visible: true,
+			parent: parentId,
+			position: nextPosition(entries, parentId),
+		},
+	}
 }
 
 // ---------------------------------------------------------------------------

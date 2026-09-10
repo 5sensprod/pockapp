@@ -111,6 +111,33 @@ func TestAgregerDecomptes(t *testing.T) {
 		}
 	})
 
+	// Le jeu publié dit ce qui est EN LIGNE : un brouillon n'y entre pas, et un
+	// produit publié y suit exactement la même règle de remontée.
+	t.Run("seuls les produits publiés comptent dans par_categorie_publiee", func(t *testing.T) {
+		sortie := agregerDecomptes([]ligneProduit{
+			{Categories: texte(`["gauche","droite"]`), Status: texte("published")},
+			{Categories: texte(`["gauche"]`), Status: texte("draft")},
+			{Categories: texte(`["seule"]`), Status: sql.NullString{}},
+		}, arbreDeTest)
+
+		if got := sortie.ParCategoriePubliee["racine"].Total; got != 1 {
+			t.Errorf("total publié de la racine = %d, attendu 1", got)
+		}
+		if got := sortie.ParCategoriePubliee["gauche"].Direct; got != 1 {
+			t.Errorf("direct publié de gauche = %d, attendu 1 — le brouillon ne compte pas", got)
+		}
+		if compte, present := sortie.ParCategoriePubliee["seule"]; present {
+			t.Errorf("« seule » n'a aucun produit publié, rend %+v", compte)
+		}
+		// Le jeu complet, lui, ne change pas de règle.
+		if got := sortie.ParCategorie["gauche"].Direct; got != 2 {
+			t.Errorf("direct de gauche = %d, attendu 2", got)
+		}
+		if got := sortie.ParCategorie["seule"].Total; got != 1 {
+			t.Errorf("total de seule = %d, attendu 1", got)
+		}
+	})
+
 	// Sans la garde, la remontée tournerait sans fin et la requête resterait
 	// pendue — écran figé, pas message d'erreur.
 	t.Run("un cycle dans l'arbre ne fige pas la remontée", func(t *testing.T) {

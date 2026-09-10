@@ -1,3 +1,7 @@
+import {
+	CATEGORY_SELECTED_CLASS,
+	CategoryTreeRow,
+} from '@/components/catalog/CategoryTreeRow'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import type {
@@ -9,8 +13,12 @@ import { useUpdateCategory } from '@/lib/queries/categories'
 import { hasUsableCategoryCounts } from '@/lib/queries/category-counts'
 import type { CategoryNode } from '@/lib/queries/category-tree'
 import {
-	collectBranchIds,
+	normalizeCategorySearch,
+	parentMap,
+	parentsWithVisibleChildren,
+	searchCategoryIds,
 	toCategoryOptions,
+	visibleCategoryOptions,
 } from '@/lib/queries/category-tree'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { type CatalogCounts, countsOfCategory } from '@/lib/queries/products'
@@ -45,8 +53,7 @@ import { PRODUCT_BATCH_DRAG_TYPE } from './product-batch-drag'
 
 type ExplorerView = 'category' | 'brand' | 'supplier'
 
-const SELECTED_ITEM_CLASS =
-	'bg-violet-50/80 text-primary shadow-sm hover:bg-violet-100 dark:bg-violet-950/35 dark:text-foreground dark:hover:bg-violet-900/55'
+const SELECTED_ITEM_CLASS = CATEGORY_SELECTED_CLASS
 
 // Le fournisseur est reçu ENTIER, et non réduit à `{ id, name, brands }` :
 // l'engrenage de la ligne ouvre `SupplierDialog`, qui préremplit sa fiche
@@ -76,12 +83,7 @@ interface ProductCategoryFilterTreeProps {
 	loading?: Partial<Record<ExplorerView, boolean>>
 }
 
-function normalizeSearch(value: string) {
-	return value
-		.normalize('NFD')
-		.replace(/\p{Diacritic}/gu, '')
-		.toLocaleLowerCase('fr')
-}
+const normalizeSearch = normalizeCategorySearch
 
 /**
  * Arbre de navigation du catalogue. Il ne possède aucun état de filtre : la
@@ -119,13 +121,7 @@ export function ProductCategoryFilterTree({
 	// L'engrenage n'ouvre qu'une modale à la fois, quel que soit l'onglet.
 	const [editing, setEditing] = useState<EditingTarget | null>(null)
 
-	const parentById = useMemo(
-		() =>
-			new Map(
-				categories.map((category) => [category.id, category.parent || '']),
-			),
-		[categories],
-	)
+	const parentById = useMemo(() => parentMap(categories), [categories])
 	const categoryById = useMemo(
 		() => new Map(categories.map((category) => [category.id, category])),
 		[categories],
@@ -185,20 +181,10 @@ export function ProductCategoryFilterTree({
 		featuredVisibleIds,
 		selectedProductCount,
 	])
-	const optionIds = useMemo(
-		() => new Set(options.map((option) => option.id)),
-		[options],
+	const parentsWithChildren = useMemo(
+		() => parentsWithVisibleChildren(categories, options),
+		[categories, options],
 	)
-	const parentsWithChildren = useMemo(() => {
-		const parents = new Set<string>()
-		for (const category of categories) {
-			const parent = category.parent || ''
-			if (parent && optionIds.has(parent) && optionIds.has(category.id)) {
-				parents.add(parent)
-			}
-		}
-		return parents
-	}, [categories, optionIds])
 
 	// Une sélection restaurée doit être visible immédiatement, même si ses
 	// parents étaient repliés avant le démontage de la page.
@@ -237,41 +223,15 @@ export function ProductCategoryFilterTree({
 	}, [featuredCategoryIds, featuredOnly, parentById])
 
 	const normalizedSearch = normalizeSearch(search.trim())
-	const searchedIds = useMemo(() => {
-		if (view !== 'category' || !normalizedSearch) return null
-		const included = new Set<string>()
-		for (const category of categories) {
-			if (!normalizeSearch(category.name).includes(normalizedSearch)) continue
+	const searchedIds = useMemo(
+		() => (view === 'category' ? searchCategoryIds(categories, search) : null),
+		[categories, search, view],
+	)
 
-			// Le résultat conserve ses parents pour expliquer où il se trouve, et sa
-			// descendance pour que chercher une famille garde ses sous-catégories.
-			for (const id of collectBranchIds(categories, category.id))
-				included.add(id)
-			const visited = new Set<string>()
-			let parent = category.parent || ''
-			while (parent && !visited.has(parent)) {
-				visited.add(parent)
-				included.add(parent)
-				parent = parentById.get(parent) || ''
-			}
-		}
-		return included
-	}, [categories, normalizedSearch, parentById, view])
-
-	const visibleOptions = useMemo(() => {
-		if (searchedIds)
-			return options.filter((option) => searchedIds.has(option.id))
-		return options.filter((option) => {
-			const visited = new Set<string>()
-			let parent = parentById.get(option.id) || ''
-			while (parent && optionIds.has(parent) && !visited.has(parent)) {
-				if (!expandedIds.has(parent)) return false
-				visited.add(parent)
-				parent = parentById.get(parent) || ''
-			}
-			return true
-		})
-	}, [expandedIds, optionIds, options, parentById, searchedIds])
+	const visibleOptions = useMemo(
+		() => visibleCategoryOptions(options, parentById, expandedIds, searchedIds),
+		[expandedIds, options, parentById, searchedIds],
+	)
 	const filteredBrands = useMemo(
 		() =>
 			brands.filter((brand) =>
@@ -585,12 +545,20 @@ export function ProductCategoryFilterTree({
 									updateCategory.isPending &&
 									updateCategory.variables?.id === option.id
 								return (
-									<div
+									<CategoryTreeRow
 										key={option.id}
-										role='treeitem'
-										aria-level={option.depth + 1}
-										aria-selected={selected}
-										aria-expanded={hasChildren ? expanded : undefined}
+										option={option}
+										hasChildren={hasChildren}
+										expanded={expanded}
+										onToggle={() => toggleCategory(option.id)}
+										toggleDisabled={normalizedSearch !== ''}
+										selected={selected}
+										highlighted={dragTarget}
+										counts={
+											categoryCountsAreUsable ? categoryCounts : undefined
+										}
+										labelTitle={`${option.name} — ${categoryCounts.direct} directement, ${categoryCounts.total} dans la branche`}
+										onLabelClick={() => onCategoryChange(option.id)}
 										onDragEnter={(event) => {
 											if (!acceptsProductBatch(event)) return
 											setDragOverCategoryId(option.id)
@@ -621,99 +589,56 @@ export function ProductCategoryFilterTree({
 											setDragOverCategoryId(null)
 											onProductsDropOnCategory?.(option)
 										}}
-										className={cn(
-											'group mb-0.5 flex min-w-0 items-center rounded-md transition-colors',
-											dragTarget
-												? 'bg-violet-100 text-primary ring-2 ring-primary/50 ring-inset dark:bg-violet-900/50'
-												: selected
-													? SELECTED_ITEM_CLASS
-													: 'hover:bg-accent',
-										)}
-										style={{ paddingLeft: `${4 + option.depth * 13}px` }}
-									>
-										<button
-											type='button'
-											disabled={!hasChildren || normalizedSearch !== ''}
-											onClick={() => toggleCategory(option.id)}
-											aria-label={
-												expanded
-													? `Replier ${option.name}`
-													: `Déplier ${option.name}`
-											}
-											className={cn(
-												'm-0.5 rounded p-1 hover:bg-background/20',
-												!hasChildren && 'invisible',
-											)}
-										>
-											{expanded ? (
-												<ChevronDown className='h-3.5 w-3.5' />
-											) : (
-												<ChevronRight className='h-3.5 w-3.5' />
-											)}
-										</button>
-										<button
-											type='button'
-											onClick={() => onCategoryChange(option.id)}
-											className='flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left text-sm'
-											title={`${option.name} — ${categoryCounts.direct} directement, ${categoryCounts.total} dans la branche`}
-										>
-											<span className='min-w-0 flex-1 truncate'>
-												{option.name}
-											</span>
-										</button>
-										<button
-											type='button'
-											aria-pressed={featured}
-											aria-label={
-												featured
-													? `Retirer ${option.name} des catégories mises en avant`
-													: `Mettre ${option.name} en avant`
-											}
-											title={
-												featured
-													? 'Retirer de la mise en avant'
-													: 'Mettre en avant'
-											}
-											disabled={updateCategory.isPending}
-											onClick={() => void toggleCategoryFeatured(option.id)}
-											className={cn(
-												'mr-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-all focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-												featured
-													? 'text-amber-500 opacity-100 hover:bg-amber-100 dark:hover:bg-amber-950/50'
-													: 'text-muted-foreground opacity-0 hover:bg-background hover:text-amber-500 group-hover:opacity-100',
-												updatingFeatured && 'opacity-100',
-											)}
-										>
-											{updatingFeatured ? (
-												<Loader2 className='h-3.5 w-3.5 animate-spin' />
-											) : (
-												<Star
+										actions={
+											<>
+												<button
+													type='button'
+													aria-pressed={featured}
+													aria-label={
+														featured
+															? `Retirer ${option.name} des catégories mises en avant`
+															: `Mettre ${option.name} en avant`
+													}
+													title={
+														featured
+															? 'Retirer de la mise en avant'
+															: 'Mettre en avant'
+													}
+													disabled={updateCategory.isPending}
+													onClick={() => void toggleCategoryFeatured(option.id)}
 													className={cn(
-														'h-3.5 w-3.5',
-														featured && 'fill-current',
+														'mr-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-all focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+														featured
+															? 'text-amber-500 opacity-100 hover:bg-amber-100 dark:hover:bg-amber-950/50'
+															: 'text-muted-foreground opacity-0 hover:bg-background hover:text-amber-500 group-hover:opacity-100',
+														updatingFeatured && 'opacity-100',
 													)}
-												/>
-											)}
-										</button>
-										<button
-											type='button'
-											aria-label={`Modifier la catégorie ${option.name}`}
-											title='Modifier la catégorie'
-											onClick={(event) =>
-												openEditor(event, 'category', option.id)
-											}
-											className={GEAR_BUTTON_CLASS}
-										>
-											<Settings2 className='h-3.5 w-3.5' />
-										</button>
-										{categoryCountsAreUsable && (
-											<span className='shrink-0 pr-2 text-[11px] tabular-nums opacity-60'>
-												{categoryCounts.direct === categoryCounts.total
-													? categoryCounts.total
-													: `${categoryCounts.direct}/${categoryCounts.total}`}
-											</span>
-										)}
-									</div>
+												>
+													{updatingFeatured ? (
+														<Loader2 className='h-3.5 w-3.5 animate-spin' />
+													) : (
+														<Star
+															className={cn(
+																'h-3.5 w-3.5',
+																featured && 'fill-current',
+															)}
+														/>
+													)}
+												</button>
+												<button
+													type='button'
+													aria-label={`Modifier la catégorie ${option.name}`}
+													title='Modifier la catégorie'
+													onClick={(event) =>
+														openEditor(event, 'category', option.id)
+													}
+													className={GEAR_BUTTON_CLASS}
+												>
+													<Settings2 className='h-3.5 w-3.5' />
+												</button>
+											</>
+										}
+									/>
 								)
 							})}
 						</div>

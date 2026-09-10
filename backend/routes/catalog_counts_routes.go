@@ -43,6 +43,15 @@
 // stock, qui est un écran de gestion et non la vitrine. Changer cela ici
 // changerait des chiffres affichés sans que personne l'ait demandé.
 //
+// ── SAUF UN SECOND JEU, À PART : `par_categorie_publiee` ──────────────────
+// Depuis le 10 septembre 2026, la même réponse porte les décomptes des SEULS
+// produits publiés. L'éditeur du menu en a besoin : une catégorie est en ligne
+// dès que sa branche contient un produit publié (docs/DECISIONS.md,
+// 2026-08-10 ; `frontend/modules/site/lib/online-catalog.ts`), et une
+// catégorie qui ne l'est pas n'a pas de page sur le site. `total > 0` dans ce
+// jeu-là, c'est donc « en ligne ». Même remontée, même dédoublonnage : c'est
+// la même fonction qui compte les deux.
+//
 // Pas de nouvelle sortie réseau : la route est locale, servie par le
 // PocketBase embarqué (point 1 de CLAUDE.md).
 
@@ -88,6 +97,8 @@ type CatalogCountsOutput struct {
 	ParMarque      map[string]int            `json:"par_marque"`
 	ParFournisseur map[string]int            `json:"par_fournisseur"`
 	ParCategorie   map[string]CategoryCounts `json:"par_categorie"`
+	// Les mêmes décomptes, restreints aux produits `status = published`.
+	ParCategoriePubliee map[string]CategoryCounts `json:"par_categorie_publiee"`
 	// Le catalogue entier, sous le même filtre d'entreprise. Rendu parce que
 	// l'appelant l'a sous la main gratuitement et qu'il évite une requête de
 	// plus pour afficher « n produits ».
@@ -124,7 +135,12 @@ type ligneProduit struct {
 	Brand      sql.NullString `db:"brand"`
 	Supplier   sql.NullString `db:"supplier"`
 	Categories sql.NullString `db:"categories"`
+	Status     sql.NullString `db:"status"`
 }
+
+// statutPublie — la seule valeur qui met un produit en ligne
+// (`CatalogProductStatus`, `frontend/lib/queries/site-catalog.ts`).
+const statutPublie = "published"
 
 type ligneCategorie struct {
 	ID     string         `db:"id"`
@@ -165,7 +181,7 @@ func computeCatalogCounts(app *pocketbase.PocketBase, companyID string) (*Catalo
 
 	// ── Les produits, en une requête et trois colonnes ─────────────────────
 	var produits []ligneProduit
-	requeteProduits := db.Select("brand", "supplier", "categories").From("products")
+	requeteProduits := db.Select("brand", "supplier", "categories", "status").From("products")
 	if companyID != "" {
 		requeteProduits = requeteProduits.Where(dbx.HashExp{"company": companyID})
 	}
@@ -235,10 +251,11 @@ func compterManques(app *pocketbase.PocketBase, companyID string) (CatalogGapCou
 // Tout ce qui pouvait diverger d'un comptage à l'autre est ici.
 func agregerDecomptes(produits []ligneProduit, parentDe map[string]string) *CatalogCountsOutput {
 	sortie := &CatalogCountsOutput{
-		ParMarque:      map[string]int{},
-		ParFournisseur: map[string]int{},
-		ParCategorie:   map[string]CategoryCounts{},
-		TotalProduits:  len(produits),
+		ParMarque:           map[string]int{},
+		ParFournisseur:      map[string]int{},
+		ParCategorie:        map[string]CategoryCounts{},
+		ParCategoriePubliee: map[string]CategoryCounts{},
+		TotalProduits:       len(produits),
 	}
 
 	// Réutilisé d'un produit à l'autre pour ne pas rallouer 2999 fois.
@@ -257,39 +274,53 @@ func agregerDecomptes(produits []ligneProduit, parentDe map[string]string) *Cata
 			continue
 		}
 
-		for cle := range ancetres {
-			delete(ancetres, cle)
-		}
-
-		for _, categoryID := range directes {
-			compte := sortie.ParCategorie[categoryID]
-			compte.Direct++
-			sortie.ParCategorie[categoryID] = compte
-
-			// Remontée jusqu'à la racine. `ancetres` sert DEUX fois : il
-			// dédoublonne le total — deux catégories sœurs partagent un ancêtre,
-			// qui ne doit compter le produit qu'une fois — et il arrête la
-			// remontée sur un cycle. Une donnée importée peut porter un parent
-			// qui est aussi son propre descendant, et une boucle naïve tournerait
-			// alors sans fin, requête pendue.
-			courante := categoryID
-			for courante != "" {
-				if _, deja := ancetres[courante]; deja {
-					break
-				}
-				ancetres[courante] = struct{}{}
-				courante = parentDe[courante]
-			}
-		}
-
-		for categoryID := range ancetres {
-			compte := sortie.ParCategorie[categoryID]
-			compte.Total++
-			sortie.ParCategorie[categoryID] = compte
+		compterDansCategories(sortie.ParCategorie, directes, parentDe, ancetres)
+		if produit.Status.Valid && produit.Status.String == statutPublie {
+			compterDansCategories(sortie.ParCategoriePubliee, directes, parentDe, ancetres)
 		}
 	}
 
 	return sortie
+}
+
+// compterDansCategories — compte UN produit dans ses catégories directes et,
+// une seule fois chacun, dans tous leurs ancêtres.
+func compterDansCategories(
+	vers map[string]CategoryCounts,
+	directes []string,
+	parentDe map[string]string,
+	ancetres map[string]struct{},
+) {
+	for cle := range ancetres {
+		delete(ancetres, cle)
+	}
+
+	for _, categoryID := range directes {
+		compte := vers[categoryID]
+		compte.Direct++
+		vers[categoryID] = compte
+
+		// Remontée jusqu'à la racine. `ancetres` sert DEUX fois : il
+		// dédoublonne le total — deux catégories sœurs partagent un ancêtre,
+		// qui ne doit compter le produit qu'une fois — et il arrête la
+		// remontée sur un cycle. Une donnée importée peut porter un parent
+		// qui est aussi son propre descendant, et une boucle naïve tournerait
+		// alors sans fin, requête pendue.
+		courante := categoryID
+		for courante != "" {
+			if _, deja := ancetres[courante]; deja {
+				break
+			}
+			ancetres[courante] = struct{}{}
+			courante = parentDe[courante]
+		}
+	}
+
+	for categoryID := range ancetres {
+		compte := vers[categoryID]
+		compte.Total++
+		vers[categoryID] = compte
+	}
 }
 
 // decodeUnRelation — une relation `MaxSelect: 1` (`brand`, `supplier`,

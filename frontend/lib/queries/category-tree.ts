@@ -125,3 +125,117 @@ export function toCategoryOptions(
 	}
 	return options
 }
+
+// ---------------------------------------------------------------------------
+// AFFICHAGE D'UN ARBRE REPLIABLE
+// ---------------------------------------------------------------------------
+// Partagé par l'arbre de la page Produits (`ProductCategoryFilterTree`) et par
+// celui du menu du site (`MenuCategorySource`), depuis le 10 septembre 2026.
+// Les deux écrans affichent le même arbre ; ils ne diffèrent que par ce qu'on
+// fait d'une ligne — la filtrer, ou la glisser.
+
+/** Insensible à la casse et aux accents : « electrique » trouve « Électriques ». */
+export function normalizeCategorySearch(value: string): string {
+	return value
+		.normalize('NFD')
+		.replace(/\p{Diacritic}/gu, '')
+		.toLocaleLowerCase('fr')
+}
+
+/** Parent de chaque catégorie, chaîne vide à la racine. */
+export function parentMap(categories: CategoryNode[]): Map<string, string> {
+	return new Map(categories.map((c) => [c.id, c.parent || '']))
+}
+
+/**
+ * Les catégories qu'une recherche fait apparaître, ou `null` sans recherche.
+ *
+ * Un résultat garde ses ANCÊTRES, pour dire où il se trouve — c'est tout ce
+ * qui distingue deux « Microphones » —, et sa DESCENDANCE, pour que chercher
+ * une famille garde ses sous-catégories.
+ */
+export function searchCategoryIds(
+	categories: CategoryNode[],
+	search: string,
+): Set<string> | null {
+	const recherche = normalizeCategorySearch(search.trim())
+	if (!recherche) return null
+
+	const parents = parentMap(categories)
+	const inclus = new Set<string>()
+	for (const categorie of categories) {
+		if (!normalizeCategorySearch(categorie.name).includes(recherche)) continue
+		for (const id of collectBranchIds(categories, categorie.id)) inclus.add(id)
+		const vus = new Set<string>()
+		let parent = categorie.parent || ''
+		while (parent && !vus.has(parent)) {
+			vus.add(parent)
+			inclus.add(parent)
+			parent = parents.get(parent) || ''
+		}
+	}
+	return inclus
+}
+
+/**
+ * Les lignes à rendre : avec une recherche, ce qu'elle retient ; sinon, les
+ * options dont tous les ancêtres AFFICHÉS sont dépliés. Un ancêtre absent des
+ * options (catégorie filtrée) ne replie rien.
+ */
+export function visibleCategoryOptions(
+	options: CategoryOption[],
+	parents: Map<string, string>,
+	expandedIds: ReadonlySet<string>,
+	searchedIds: ReadonlySet<string> | null,
+): CategoryOption[] {
+	if (searchedIds) return options.filter((option) => searchedIds.has(option.id))
+	const optionIds = new Set(options.map((option) => option.id))
+	return options.filter((option) => {
+		const vus = new Set<string>()
+		let parent = parents.get(option.id) || ''
+		while (parent && optionIds.has(parent) && !vus.has(parent)) {
+			if (!expandedIds.has(parent)) return false
+			vus.add(parent)
+			parent = parents.get(parent) || ''
+		}
+		return true
+	})
+}
+
+/** Les options qui ont au moins un enfant parmi les options : ce sont elles
+ *  qui portent un chevron. */
+export function parentsWithVisibleChildren(
+	categories: CategoryNode[],
+	options: CategoryOption[],
+): Set<string> {
+	const optionIds = new Set(options.map((option) => option.id))
+	const parents = new Set<string>()
+	for (const categorie of categories) {
+		const parent = categorie.parent || ''
+		if (parent && optionIds.has(parent) && optionIds.has(categorie.id)) {
+			parents.add(parent)
+		}
+	}
+	return parents
+}
+
+/**
+ * Les noms de la racine jusqu'à la catégorie, elle comprise. Rend `[]` pour
+ * un identifiant inconnu. Garde contre les cycles, pour la même raison que
+ * `collectBranchIds`.
+ */
+export function categoryPathNames(
+	categories: CategoryNode[],
+	id: string,
+): string[] {
+	const parId = new Map(categories.map((c) => [c.id, c]))
+	const noms: string[] = []
+	const vus = new Set<string>()
+	let courant = parId.get(id)
+	while (courant && !vus.has(courant.id)) {
+		vus.add(courant.id)
+		noms.unshift(courant.name)
+		courant = courant.parent ? parId.get(courant.parent) : undefined
+	}
+	return noms
+}

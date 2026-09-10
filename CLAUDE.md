@@ -54,8 +54,9 @@ Trois, et trois seulement :
 2. **AppPos** — `frontend/lib/apppos/apppos-config.ts:5` — `VITE_APPPOS_URL`,
    sinon `127.0.0.1:3000`. Jeton Bearer en `sessionStorage`. **REST seul** : le
    canal WebSocket est retiré depuis le 19 août 2026, il n'avait plus aucun
-   consommateur. Un seul lecteur subsiste, `MenuTreeEditor.tsx:55`, pour nommer
-   les destinations du menu.
+   consommateur. Depuis le 10 septembre 2026, plus aucun écran ne lit AppPos :
+   le seul importateur de `@/lib/apppos` est `main.tsx:6`
+   (`AppPosSessionProvider`, la session ouverte au lancement).
 3. **Mini-SaaS distant** — `remote_notifications.go:27` et
    `backend/routes/gemini_routes.go` —
    `pocketapp.5sensprod.com/api/notifications.php` pour les notifications et
@@ -360,6 +361,22 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   dans le panneau d'images. Avant cette date, `toExportProduct` écrivait
   `status: 'published'` en dur et un produit dépublié restait en ligne
   indéfiniment. Gardiens : `catalog-export.test.ts`.
+- **Une entrée de menu de catégorie se crée par glisser-déposer, et seulement
+  ainsi** (10 septembre 2026). La liste déroulante du formulaire — 460 noms à
+  plat, avec leurs homonymes — faisait choisir la mauvaise catégorie ; elle est
+  retirée. On glisse une catégorie de l'arbre de gauche (`MenuCategorySource`)
+  sur une entrée « sous-menu » ; la règle est `categoryDrop`
+  (`frontend/modules/site/lib/menu-tree.ts`) : refus à la racine, sur une
+  entrée qui n'est pas un sous-menu, pour une catégorie hors ligne ou déjà
+  présente sous ce parent. L'arbre ne montre que les catégories **en ligne**,
+  lues dans `par_categorie_publiee` de `GET /api/catalog/counts` — le même
+  calcul que `par_categorie`, restreint aux produits `published`, **pas
+  recalculé côté React**. Marque, produit et page ne se créent plus depuis le
+  formulaire (commentés dans `LINK_TYPE_CHOICES`) : fonctionnalités à venir.
+  Gardiens : `frontend/modules/site/lib/category-drop.test.ts` et
+  `backend/routes/catalog_counts_test.go`. L'arbre est partagé avec la page
+  Produits par `frontend/components/catalog/CategoryTreeRow.tsx` et les
+  fonctions de `frontend/lib/queries/category-tree.ts`.
 - **Ne pas toucher `wp-admin` ni `wp-json`** dans le `.htaccess` du site tant
   que WordPress sert le catalogue et la médiathèque.
 - **Le rapport Z dit « un total, quatre lignes », et `schema_version` dit sous
@@ -429,9 +446,9 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
 
 **Au 20 août 2026, l'objectif de découplage est atteint côté PocketApp.**
 Mesuré : zéro appel `wp-json` ou `wc/v3` dans `frontend/` et `backend/`, et
-**deux** importateurs de `@/lib/apppos` — `main.tsx:6` (session) et
-`MenuTreeEditor.tsx:55` (nommer les destinations du menu). Ni caisse, ni
-catalogue, ni stock, ni inventaire n'en dépendent plus.
+depuis le 10 septembre 2026 **un seul** importateur de `@/lib/apppos` —
+`main.tsx:6` (session). Ni caisse, ni catalogue, ni stock, ni inventaire, ni
+menu n'en dépendent plus.
 
 **Trois chantiers restent, et un seul est gros :**
 
@@ -439,7 +456,7 @@ catalogue, ni stock, ni inventaire n'en dépendent plus.
 |---|---|---|---|
 | **A** | **Reprendre la base de production du client** pour remettre le développement à niveau | PocketApp | **La grosse étape.** La PocketBase de dév a divergé : ventes, factures et produits créés en caisse chez le client n'y sont pas. Périmètre à définir ; **session séparée** |
 | **B** | Fermer la faille 3.1 : **sortir les clés WooCommerce du bundle** | site | **Reformulé le 20 août 2026, après audit.** Ce n'est PAS un appel à couper : sous le drapeau, aucun des dix importateurs de `services/woocommerce.js` n'est atteignable, et le carrousel « Soldes » ne se monte que sur une slide **en commentaire**. Les clés partent dans le bundle parce qu'`App.jsx` importe ce service et les quatre pages WooCommerce **statiquement**. Il faut `React.lazy`, ou sortir les clés du code. S'y ajoute `wp-json/wp/v2/site-data`, appelé sans condition à chaque page, avec un mot de passe d'application dont l'endpoint n'a pas besoin |
-| **C** | Couper la dernière lecture AppPos (`MenuTreeEditor.tsx:55`) | PocketApp | **PocketApp doit être totalement indépendant à la prochaine release** |
+| **C** | Couper la dernière lecture AppPos | PocketApp | **Fait le 10 septembre 2026** pour le menu : `MenuTreeEditor.tsx` lit PocketBase. Reste `AppPosSessionProvider` dans `main.tsx:6`, qui ouvre une session que plus rien ne consomme — à retirer pour que PocketApp soit **totalement indépendant à la prochaine release** |
 
 État détaillé et archives :
 [`frontend/modules/site/PocketSite-docs/README.md`](frontend/modules/site/PocketSite-docs/README.md).

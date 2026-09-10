@@ -3,8 +3,13 @@
 import { describe, expect, it } from 'vitest'
 import {
 	type CategoryNode,
+	categoryPathNames,
 	collectBranchIds,
+	parentMap,
+	parentsWithVisibleChildren,
+	searchCategoryIds,
 	toCategoryOptions,
+	visibleCategoryOptions,
 } from './category-tree'
 
 //  Guitares ─┬─ Électriques ─── Solid body
@@ -87,5 +92,77 @@ describe('toCategoryOptions', () => {
 
 	it("n'oublie et ne duplique aucune catégorie", () => {
 		expect(toCategoryOptions(arbre)).toHaveLength(arbre.length)
+	})
+})
+
+describe('searchCategoryIds', () => {
+	it('rend null sans recherche', () => {
+		expect(searchCategoryIds(arbre, '  ')).toBeNull()
+	})
+
+	it('garde les ancêtres et la descendance, sans les accents', () => {
+		expect([...(searchCategoryIds(arbre, 'electri') ?? [])].sort()).toEqual([
+			'e',
+			'g',
+			's',
+		])
+	})
+})
+
+describe('visibleCategoryOptions', () => {
+	const options = toCategoryOptions(arbre)
+	const parents = parentMap(arbre)
+
+	it('cache les enfants des nœuds repliés', () => {
+		expect(
+			visibleCategoryOptions(options, parents, new Set(), null).map(
+				(o) => o.id,
+			),
+		).toEqual(['b', 'g'])
+	})
+
+	it('montre les enfants des nœuds dépliés, et seulement eux', () => {
+		expect(
+			visibleCategoryOptions(options, parents, new Set(['g']), null).map(
+				(o) => o.id,
+			),
+		).toEqual(['b', 'g', 'a', 'e'])
+	})
+
+	it('ignore le dépliage quand une recherche est active', () => {
+		expect(
+			visibleCategoryOptions(options, parents, new Set(), new Set(['s'])).map(
+				(o) => o.id,
+			),
+		).toEqual(['s'])
+	})
+})
+
+describe('parentsWithVisibleChildren', () => {
+	it("ne donne un chevron qu'aux parents dont un enfant est affiché", () => {
+		// Sans « Électriques », « Solid body » n'a plus de parent affiché.
+		const sansElectriques = toCategoryOptions(arbre).filter((o) => o.id !== 'e')
+		expect([...parentsWithVisibleChildren(arbre, sansElectriques)]).toEqual([
+			'g',
+		])
+	})
+})
+
+describe('categoryPathNames', () => {
+	it('rend le chemin depuis la racine', () => {
+		expect(categoryPathNames(arbre, 's')).toEqual([
+			'Guitares',
+			'Électriques',
+			'Solid body',
+		])
+	})
+
+	it('rend [] pour une catégorie inconnue, et ne boucle pas sur un cycle', () => {
+		expect(categoryPathNames(arbre, 'inconnue')).toEqual([])
+		const cycle: CategoryNode[] = [
+			{ id: 'x', name: 'X', parent: 'y' },
+			{ id: 'y', name: 'Y', parent: 'x' },
+		]
+		expect(categoryPathNames(cycle, 'x')).toEqual(['Y', 'X'])
 	})
 })

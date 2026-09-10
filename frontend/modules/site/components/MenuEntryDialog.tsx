@@ -4,10 +4,24 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // Création et modification d'une entrée. Écrit dans `site_menu`, rien d'autre.
 //
-// Ce formulaire ne montre **jamais** l'URL publiée : elle n'existe pas encore
-// à ce stade. On saisit une *destination* — un type et, selon le type, une
-// cible choisie dans le catalogue ou une URL écrite à la main. La résolution
-// en URL a lieu à la publication, au ticket 6 (§3 du contrat).
+// On y saisit un libellé, la visibilité, et une destination parmi deux :
+// « sous-menu » ou « adresse saisie à la main ». La résolution en URL a lieu à
+// la publication, au ticket 6 (§3 du contrat).
+//
+// ─── Ce qui a été retiré le 10 septembre 2026 ─────────────────────────────
+// **La liste déroulante des catégories.** 460 noms à plat, triés par ordre
+// alphabétique, avec leurs homonymes : on y choisissait la mauvaise catégorie,
+// et c'est arrivé. Une entrée de catégorie se crée désormais en glissant la
+// catégorie depuis l'arbre de l'éditeur sur un sous-menu (`MenuCategorySource`,
+// `categoryDrop`). Ici, elle s'affiche en lecture seule, avec son chemin — ce
+// qui distingue deux « Microphones » — et son adresse. En changer, c'est
+// supprimer l'entrée et en glisser une autre.
+//
+// **Marque, produit et page** ne se proposent plus à la création : ce seront
+// des fonctionnalités à part. Les marques n'ont de toute façon pas de page sur
+// le site (`brandUrl`, `use-menu-destinations.ts`), et les produits posaient le
+// même problème de liste à plat que les catégories. Une entrée existante de ces
+// types reste lisible, modifiable dans son libellé, et publiable.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { Button } from '@/components/ui/button'
@@ -36,12 +50,9 @@ import type {
 	SiteMenuResponse,
 } from '@/lib/queries/site-menu'
 import { AlertTriangle, Loader2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import { useMenuDestinations } from '../hooks/use-menu-destinations'
-
-/** Libellés des types de lien. Ordre d'affichage volontaire : les deux cas
- *  sans référence d'abord, ils sont les plus courants dans un menu. */
+/** Libellés de tous les types de lien, pour l'affichage. */
 const LINK_TYPE_LABELS: Record<SiteMenuLinkType, string> = {
 	none: 'Aucun lien (porte un sous-menu)',
 	manual: 'Adresse saisie à la main',
@@ -51,10 +62,31 @@ const LINK_TYPE_LABELS: Record<SiteMenuLinkType, string> = {
 	page: 'Page du site',
 }
 
+/** Les types qu'on peut CHOISIR dans ce formulaire. `category` n'y est pas :
+ *  une catégorie se glisse depuis l'arbre de l'éditeur. */
+const LINK_TYPE_CHOICES: SiteMenuLinkType[] = [
+	'none',
+	'manual',
+	// Fonctionnalités à venir — chacune demandera son propre sélecteur, pas une
+	// liste déroulante à plat :
+	// 'brand',
+	// 'product',
+	// 'page',
+]
+
 const REF_TYPES: SiteMenuRefType[] = ['category', 'brand', 'product', 'page']
 
 const isRefType = (t: SiteMenuLinkType): t is SiteMenuRefType =>
 	(REF_TYPES as SiteMenuLinkType[]).includes(t)
+
+/** Ce que l'éditeur sait de la catégorie d'une entrée existante. */
+export interface CategoryTarget {
+	/** De la racine à la catégorie. Vide si elle est absente du catalogue. */
+	path: string[]
+	url: string | null
+	/** `null` quand on ne le sait pas encore. */
+	online: boolean | null
+}
 
 export interface MenuEntryDialogProps {
 	open: boolean
@@ -63,6 +95,8 @@ export interface MenuEntryDialogProps {
 	entry?: SiteMenuResponse
 	/** Libellé du parent, pour situer une création. */
 	parentLabel?: string
+	/** Renseigné quand `entry` est une entrée de catégorie. */
+	categoryTarget?: CategoryTarget
 	onSubmit: (data: SiteMenuRecord) => Promise<unknown>
 	isSubmitting?: boolean
 }
@@ -72,13 +106,13 @@ export function MenuEntryDialog({
 	onOpenChange,
 	entry,
 	parentLabel,
+	categoryTarget,
 	onSubmit,
 	isSubmitting,
 }: MenuEntryDialogProps) {
 	const [title, setTitle] = useState('')
 	const [linkType, setLinkType] = useState<SiteMenuLinkType>('none')
 	const [linkUrl, setLinkUrl] = useState('')
-	const [refId, setRefId] = useState('')
 	const [visible, setVisible] = useState(true)
 
 	// Réinitialise à chaque ouverture : sans ça, rouvrir le formulaire pour une
@@ -88,36 +122,24 @@ export function MenuEntryDialog({
 		setTitle(entry?.title ?? '')
 		setLinkType(entry?.link_type ?? 'none')
 		setLinkUrl(entry?.link_url ?? '')
-		setRefId(entry?.ref_id ?? '')
 		// `visible` est explicitement vrai à la création : le champ n'a pas de
 		// valeur par défaut en base (backend/migrations/site_menu.go:105), une
 		// entrée créée sans lui naîtrait masquée.
 		setVisible(entry ? entry.visible !== false : true)
 	}, [open, entry])
 
-	const destinations = useMenuDestinations(
-		isRefType(linkType) && linkType !== 'page' ? linkType : null,
-	)
-
-	const selected = useMemo(
-		() => destinations.data?.find((d) => d.refId === refId),
-		[destinations.data, refId],
-	)
+	// Une entrée qui pointe vers le catalogue garde sa destination telle quelle :
+	// elle ne se modifie plus ici.
+	const lockedRef = entry && isRefType(entry.link_type) ? entry : undefined
 
 	const handleLinkTypeChange = (next: SiteMenuLinkType) => {
 		setLinkType(next)
-		// Une destination ne survit pas au changement de type : garder un ref_id
-		// de catégorie sur une entrée devenue « marque » produirait une URL
-		// fausse à la publication.
-		setRefId('')
 		setLinkUrl('')
 	}
 
 	const trimmedTitle = title.trim()
 	const missingUrl = linkType === 'manual' && !linkUrl.trim()
-	const missingRef = isRefType(linkType) && !refId.trim()
-	const canSubmit =
-		trimmedTitle.length > 0 && !missingUrl && !missingRef && !isSubmitting
+	const canSubmit = trimmedTitle.length > 0 && !missingUrl && !isSubmitting
 
 	const handleSubmit = async () => {
 		if (!canSubmit) return
@@ -128,7 +150,7 @@ export function MenuEntryDialog({
 			// l'autre : une entrée ne doit pas traîner les restes d'un type
 			// précédent, que la publication pourrait relire.
 			link_url: linkType === 'manual' ? linkUrl.trim() : '',
-			ref_id: isRefType(linkType) ? refId.trim() : '',
+			ref_id: lockedRef ? lockedRef.ref_id : '',
 			visible,
 		})
 		onOpenChange(false)
@@ -142,9 +164,9 @@ export function MenuEntryDialog({
 						{entry ? "Modifier l'entrée" : 'Nouvelle entrée'}
 					</DialogTitle>
 					<DialogDescription>
-						{parentLabel
-							? `Sous « ${parentLabel} ». La destination est résolue en adresse au moment de la publication.`
-							: 'La destination est résolue en adresse au moment de la publication.'}
+						{parentLabel ? `Sous « ${parentLabel} ». ` : ''}
+						Pour ajouter une catégorie, la glisser depuis l'arbre sur un
+						sous-menu.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -161,26 +183,64 @@ export function MenuEntryDialog({
 						/>
 					</div>
 
-					<div className='space-y-2'>
-						<Label htmlFor='menu-link-type'>Destination</Label>
-						<Select
-							value={linkType}
-							onValueChange={(v) => handleLinkTypeChange(v as SiteMenuLinkType)}
-						>
-							<SelectTrigger id='menu-link-type'>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{(Object.keys(LINK_TYPE_LABELS) as SiteMenuLinkType[]).map(
-									(type) => (
+					{lockedRef ? (
+						<div className='space-y-2'>
+							<Label>Destination</Label>
+							<div className='space-y-1 rounded-md border bg-muted/30 p-3 text-sm'>
+								<p className='text-muted-foreground text-xs'>
+									{LINK_TYPE_LABELS[lockedRef.link_type]}
+								</p>
+								{lockedRef.link_type === 'category' ? (
+									<>
+										<p className='font-medium'>
+											{categoryTarget && categoryTarget.path.length > 0
+												? categoryTarget.path.join(' › ')
+												: `Absente du catalogue (${lockedRef.ref_id})`}
+										</p>
+										<p className='text-muted-foreground text-xs'>
+											{categoryTarget?.url
+												? `Adresse publiée : ${categoryTarget.url}`
+												: "Pas d'adresse sur le site : la publication la refusera."}
+										</p>
+										{categoryTarget?.online === false && (
+											<p className='flex items-start gap-1.5 text-amber-700 text-xs dark:text-amber-400'>
+												<AlertTriangle className='mt-0.5 h-3.5 w-3.5 shrink-0' />
+												Plus aucun produit publié dans cette catégorie : sa page
+												n'existe pas sur le site.
+											</p>
+										)}
+									</>
+								) : (
+									<p className='font-medium'>{lockedRef.ref_id}</p>
+								)}
+							</div>
+							<p className='text-muted-foreground text-xs'>
+								Pour changer de destination, supprimer l'entrée et en créer une
+								autre.
+							</p>
+						</div>
+					) : (
+						<div className='space-y-2'>
+							<Label htmlFor='menu-link-type'>Destination</Label>
+							<Select
+								value={linkType}
+								onValueChange={(v) =>
+									handleLinkTypeChange(v as SiteMenuLinkType)
+								}
+							>
+								<SelectTrigger id='menu-link-type'>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{LINK_TYPE_CHOICES.map((type) => (
 										<SelectItem key={type} value={type}>
 											{LINK_TYPE_LABELS[type]}
 										</SelectItem>
-									),
-								)}
-							</SelectContent>
-						</Select>
-					</div>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+					)}
 
 					{linkType === 'manual' && (
 						<div className='space-y-2'>
@@ -198,6 +258,9 @@ export function MenuEntryDialog({
 						</div>
 					)}
 
+					{/* Page du site — fonctionnalité à venir. Le champ saisissait
+					    l'identifiant à la main, dans `ref_id` :
+
 					{linkType === 'page' && (
 						<div className='space-y-2'>
 							<Label htmlFor='menu-page-ref'>Identifiant ou slug de page</Label>
@@ -208,69 +271,9 @@ export function MenuEntryDialog({
 								placeholder='nous-contacter'
 								maxLength={255}
 							/>
-							<p className='text-muted-foreground text-xs'>
-								Chemin d'une page du site, sans le domaine : `shop` publie
-								`/shop`. Aucune liste ne le vérifie, il se saisit à la main.
-							</p>
 						</div>
 					)}
-
-					{isRefType(linkType) && linkType !== 'page' && (
-						<div className='space-y-2'>
-							<Label htmlFor='menu-ref'>Cible</Label>
-
-							{/* Les destinations viennent du catalogue PocketBase, et de lui
-							    seul depuis le 11 août 2026 — AppPos n'intervient plus. */}
-							{destinations.isLoading && !destinations.isError && (
-								<div className='flex items-center gap-2 text-muted-foreground text-sm'>
-									<Loader2 className='h-4 w-4 animate-spin' />
-									Lecture du catalogue…
-								</div>
-							)}
-
-							{destinations.isError && (
-								<div className='flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm'>
-									<AlertTriangle className='mt-0.5 h-4 w-4 shrink-0 text-destructive' />
-									<div>
-										<p className='font-medium'>Catalogue illisible.</p>
-										<p className='text-muted-foreground text-xs'>
-											La liste des destinations n'a pas pu être lue dans
-											PocketBase. Rouvrir ce formulaire.
-										</p>
-									</div>
-								</div>
-							)}
-
-							{destinations.data && (
-								<>
-									<Select value={refId} onValueChange={setRefId}>
-										<SelectTrigger id='menu-ref'>
-											<SelectValue placeholder='Choisir…' />
-										</SelectTrigger>
-										<SelectContent className='max-h-72'>
-											{destinations.data.map((d) => (
-												<SelectItem
-													key={d.sourceId}
-													value={d.refId ?? `__unresolvable__${d.sourceId}`}
-													disabled={d.refId === null}
-												>
-													{d.label}
-													{d.refId === null && ' — sans clé stable'}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									<p className='text-muted-foreground text-xs'>
-										{selected
-											? selected.url
-												? `Adresse publiée : ${selected.url}`
-												: `Cette cible n'a pas d'adresse sur le site : la publication la refusera.`
-											: "Une cible sans clé stable n'a pas d'adresse publiable et ne peut pas être choisie."}
-									</p>
-								</>
-							)}
-						</div>
-					)}
+					*/}
 
 					<div className='flex items-center justify-between rounded-md border p-3'>
 						<div>

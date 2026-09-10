@@ -55,6 +55,11 @@ export interface CatalogCounts {
 	parMarque: Record<string, number>
 	parFournisseur: Record<string, number>
 	parCategorie: Record<string, CategoryCounts>
+	/** Les mêmes décomptes, produits PUBLIÉS seuls : `total > 0` veut dire que
+	 *  la catégorie est en ligne. `undefined` quand la réponse vient d'un
+	 *  backend antérieur au 10 septembre 2026 — ce n'est PAS « aucune catégorie
+	 *  en ligne », et l'appelant ne doit pas le lire ainsi. */
+	parCategoriePubliee?: Record<string, CategoryCounts>
 	totalProduits: number
 	parManque: CatalogGapCounts
 }
@@ -64,6 +69,7 @@ interface ReponseDecomptes {
 	par_marque: Record<string, number>
 	par_fournisseur?: Record<string, number>
 	par_categorie: Record<string, CategoryCounts>
+	par_categorie_publiee?: Record<string, CategoryCounts>
 	total_produits: number
 	par_manque?: {
 		sans_image: number
@@ -94,6 +100,7 @@ export function useCatalogCounts(companyId?: string) {
 				// version antérieure de l'application.
 				parFournisseur: reponse.par_fournisseur ?? {},
 				parCategorie: reponse.par_categorie ?? {},
+				parCategoriePubliee: reponse.par_categorie_publiee,
 				totalProduits: reponse.total_produits ?? 0,
 				// Le repli n'est pas décoratif : cette réponse est PERSISTÉE dans
 				// `localStorage` (`main.tsx`, `CLES_PERSISTEES`). Un poste qui a

@@ -163,6 +163,11 @@ function useProductDestinations(): MenuDestination[] | undefined {
 /**
  * Destinations proposables pour un type de lien donné.
  *
+ * **Sans appelant depuis le 10 septembre 2026.** Elle nourrissait la liste
+ * déroulante du formulaire d'entrée, retirée : les catégories se glissent
+ * depuis l'arbre (`MenuCategorySource`), et marques, produits et pages sont des
+ * fonctionnalités à venir. Gardée pour elles.
+ *
  * `page` n'a aucune source : les pages du site vivent dans WordPress, que
  * PocketApp n'interroge pas. L'identifiant se saisit à la main, comme
  * l'autorise le contrat (« identifiant ou slug », §3).
