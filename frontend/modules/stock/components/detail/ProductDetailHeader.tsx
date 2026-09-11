@@ -9,6 +9,7 @@ import {
 	TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { prixPromoActif } from '@/lib/pricing/promo-price'
+import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 
 const euros = new Intl.NumberFormat('fr-FR', {
@@ -28,6 +29,8 @@ type Props = {
 }
 
 export function ProductDetailHeader(props: Props) {
+	const jour = useJourServeur()
+	const promo = prixPromoActif(props.product, jour)
 	// DEUX BADGES, JAMAIS UN SEUL. L'état commercial dit ce que l'objet EST,
 	// l'opération dit ce qui se passe SUR son prix : « Occasion » et « Soldé »
 	// se cumulent, et les fondre en une étiquette perdrait l'un des deux.
@@ -91,7 +94,7 @@ export function ProductDetailHeader(props: Props) {
 						</Tooltip>
 					</TooltipProvider>
 					<div className='mt-1 flex flex-wrap items-center gap-2 text-sm'>
-						{prixPromoActif(props.product) === null ? (
+						{promo === null ? (
 							<strong>{euros.format(props.product.price_ttc ?? 0)}</strong>
 						) : (
 							<>
@@ -99,7 +102,7 @@ export function ProductDetailHeader(props: Props) {
 									{euros.format(props.product.price_ttc ?? 0)}
 								</span>
 								<strong className='text-emerald-700'>
-									{euros.format(prixPromoActif(props.product) ?? 0)}
+									{euros.format(promo)}
 								</strong>
 							</>
 						)}

@@ -115,6 +115,11 @@ export type CatalogProductShape = PocketBaseRecord & {
 	 *  `promo` — règle unique dans `lib/pricing/promo-price.ts`. 0 = aucun.
 	 *  Schéma : `backend/migrations/add_promo_price_to_products.go`. */
 	promo_price_ttc?: number
+	/** Période de la promo, « AAAA-MM-JJ », bornes incluses ; vide = sans borne.
+	 *  Jugée au jour du serveur par `prixPromoActif`. Schéma :
+	 *  `backend/migrations/add_promo_period_to_products.go`. */
+	promo_start?: string
+	promo_end?: string
 	purchase_price_ht?: number
 	tax_rate?: number
 	stock?: number
@@ -157,7 +162,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,promo_price_ttc,purchase_price_ht,tax_rate,stock,stock_b,stock_b_price_ttc,min_stock,manage_stock,image,gallery,brand,supplier,consignor,categories'
+	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,promo_price_ttc,promo_start,promo_end,purchase_price_ht,tax_rate,stock,stock_b,stock_b_price_ttc,min_stock,manage_stock,image,gallery,brand,supplier,consignor,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -532,6 +537,9 @@ export type CatalogProductWrite = ImageIntent &
 		price_ttc?: number
 		/** 0 = aucun. Voir `CatalogProductShape.promo_price_ttc`. */
 		promo_price_ttc?: number
+		/** « AAAA-MM-JJ » ou vide. Voir `CatalogProductShape.promo_start`. */
+		promo_start?: string
+		promo_end?: string
 		/** 0 = aucun. Voir `CatalogProductShape.stock_b_price_ttc`. */
 		stock_b_price_ttc?: number
 		purchase_price_ht?: number

@@ -52,6 +52,9 @@ export type PosProduct = {
 	 *  `lib/pricing/promo-price.ts`. Le prix de la ligne reste `price_ttc`. */
 	promo_price_ttc?: number | null
 	sale_state?: string | null
+	/** Période de la promo, jugée au jour du serveur. */
+	promo_start?: string | null
+	promo_end?: string | null
 	stock?: number | null
 	/** Unités Stock B, et leur prix. Voir `compteurParDefaut`. */
 	stock_b?: number | null

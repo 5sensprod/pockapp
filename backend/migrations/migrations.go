@@ -153,6 +153,10 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// 23. Le prix d'une unité Stock B, posé en remise de ligne quand la
 		// caisse vend du B. Après MigrateCatalogV2, qui recrée `products`.
 		AddStockBPriceToProducts,
+
+		// 24. La période d'une promo — deux dates calendaires « AAAA-MM-JJ »,
+		// bornes incluses. Après MigrateCatalogV2, qui recrée `products`.
+		AddPromoPeriodToProducts,
 	}
 
 	for _, migrate := range migrations {

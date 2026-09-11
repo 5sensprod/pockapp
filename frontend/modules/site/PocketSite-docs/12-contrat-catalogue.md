@@ -112,6 +112,11 @@ arriver après le produit qui la cite.
 | `stock` | entier | oui | |
 | `status` | `"published"` ou `"draft"` | oui | l'intention, recopiée telle quelle — voir ci-dessous |
 | `sale_state` | `""`, `"sale"` ou `"promo"` | oui | l'opération commerciale — **`""` VEUT DIRE « normal »**, voir §4.1 bis |
+| `promo_price_ttc` | nombre > 0 | **non** | prix promo TTC — **clé absente = aucun**, voir §4.1 ter |
+| `promo_start` | `"AAAA-MM-JJ"` | **non** | premier jour de la promo, inclus |
+| `promo_end` | `"AAAA-MM-JJ"` | **non** | dernier jour de la promo, inclus |
+| `stock_b` | entier > 0 | **non** | unités Stock B — clé absente = 0 |
+| `stock_b_price_ttc` | nombre > 0 | **non** | prix TTC d'une unité Stock B |
 | `brand` | chaîne ou `null` | oui | `legacy_id` de la marque |
 | `categories` | tableau de chaînes | oui | `legacy_id`, peut être vide |
 
@@ -154,7 +159,7 @@ deux ferait disparaître des pages sans que rien ne le dise.
 **Il ne porte AUCUN prix.** `price_ttc` reste le prix de vente, tel qu'il doit
 être encaissé. `sale_state` est une ÉTIQUETTE d'état, destinée à l'affichage
 (un bandeau, une pastille). Une remise chiffrée — montant, pourcentage, dates de
-campagne — serait d'autres champs, et ce contrat ne les porte pas.
+campagne — serait d'autres champs : ils sont arrivés le 11 septembre 2026, §4.1 ter.
 
 **Il est INDÉPENDANT de l'état commercial du produit.** PocketApp porte aussi
 `commercial_state` (`used` / `rental`, vide = neuf), qui dit ce que l'objet EST.
@@ -173,6 +178,37 @@ ont été ré-exportées en une fois**, le 27 août 2026, sur décision du
 propriétaire. Ce n'est pas un défaut à corriger : retirer la clé pour « réparer »
 repaierait exactement le même coût. Même mécanique que la note sur `site_title`
 dans `catalog-export.ts`.
+
+#### 4.1 ter. Prix promo, période et Stock B (11 septembre 2026)
+
+**Cinq clés facultatives** : `promo_price_ttc`, `promo_start`, `promo_end`,
+`stock_b`, `stock_b_price_ttc`.
+
+**Elles sont ABSENTES quand elles ne portent rien**, et ce n'est pas une
+économie d'octets. Le checksum sérialise toutes les clés du corps (§4.4) :
+ajouter une clé à `null` pour tout le monde changerait l'empreinte des 2412
+fiches publiées, qui repasseraient « modifiées » — le coût déjà payé deux fois
+(§4.1 bis, `site_title`). Absente, la clé laisse intacte l'empreinte d'un produit
+sans promo ni Stock B ; seules les fiches concernées changent.
+
+**Côté serveur, absence veut dire « aucun »** : NULL (0 pour `stock_b`) est
+écrit, y compris sur une ligne existante. C'est ainsi qu'une promo retirée dans
+PocketApp disparaît du site.
+
+**Les dates sont des JOURS**, `"AAAA-MM-JJ"`, bornes incluses, jugés à **Paris**.
+Une date qui n'est pas un jour réel, ou une fin antérieure au début, **refuse
+l'entité** (§5). Le serveur ne décide pas si la promo est en cours : il écrit.
+
+**`catalog.php` décide à la lecture, au jour de Paris**, sans attendre
+d'export — une promo finie quitte le site à sa date, même si PocketApp n'a rien
+renvoyé. La règle est dans `server/lib/promo.php`, copie de
+`frontend/lib/pricing/promo-price.ts` et de `backend/promo/jour.go`, avec les
+mêmes cas de test (`server/tests/promo-test.php`).
+
+**Ce que PocketApp envoie n'est pas filtré** : un prix promo saisi sur une fiche
+au plein tarif part tel quel. C'est la lecture qui applique les quatre
+conditions — opération `sale` ou `promo`, prix promo > 0, inférieur à
+`price_ttc`, jour dans la période.
 
 ### 4.2 Catégorie
 
@@ -270,6 +306,20 @@ sur toute action qui rend des produits — listes comprises, contrairement à
 que dans une grille. Il se rend **tel qu'il est en base**, chaîne vide incluse ;
 le bundle décide de l'affichage. Et il ne remplace aucun filtre : `catalog.php`
 continue de ne servir que `published`.
+
+**Depuis le 11 septembre 2026, trois choses changent sur ces mêmes actions**
+(§4.1 ter) :
+
+- `sale_state` est rendu **`""` hors de sa période** : une promo finie ou pas
+  encore commencée ne montre plus sa pastille ;
+- **`promo`** : `null`, ou `{ "price_ttc": 449.0, "ends_on": "2026-09-20" }` —
+  le prix réduit en cours et son dernier jour (`null` sans fin). `price_ttc`
+  reste le prix d'origine, celui que le site barre ;
+- **`stock_b`** : `null`, ou `{ "quantity": 2, "price_ttc": 380.0 }` — le prix
+  B vaut `null` s'il n'est pas une baisse.
+
+Les deux objets sont toujours présents, éventuellement `null`, sur toute action
+qui rend des produits.
 
 **`stats` compte ce que le SITE expose, pas ce que la caisse porte** : produits
 `published`, marques et catégories **portant au moins un produit publié**.

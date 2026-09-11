@@ -24,6 +24,10 @@
 
 declare(strict_types=1);
 
+// La lecture des dates de promo (11 septembre 2026). À déposer AVEC ce fichier :
+// absent, le script tombe en erreur 500 avant d'avoir rien écrit.
+require_once __DIR__ . '/../lib/promo.php';
+
 // ---------------------------------------------------------------------------
 // Sortie
 // ---------------------------------------------------------------------------
@@ -315,6 +319,21 @@ function opt_string($value): ?string
 }
 
 /**
+ * Un prix strictement positif, ou null. Pour les champs FACULTATIFS du §4.1 ter,
+ * où l'absence est le cas ordinaire : clé absente, `null`, `0` ou valeur non
+ * numérique veulent tous dire « aucun prix ».
+ * @param mixed $value
+ */
+function opt_positive_price($value): ?float
+{
+    if (!is_numeric($value)) {
+        return null;
+    }
+    $price = round((float) $value, 2);
+    return $price > 0 ? $price : null;
+}
+
+/**
  * Vérifie les champs communs. Retourne la raison du refus, ou null.
  * @param mixed $entity
  */
@@ -424,12 +443,33 @@ $sqlCategory = sprintf(
 //
 // Colonne ajoutée par `server/sql/sale-state.sql`, à passer avant de déposer
 // ce fichier.
+//
+// ─── PRIX PROMO, PÉRIODE ET STOCK B (11 septembre 2026) ───────────────────
+//
+// Cinq clés FACULTATIVES (§4.1 ter) : PocketApp ne les envoie que lorsqu'elles
+// portent une valeur, pour ne pas changer l'empreinte des produits qui n'en
+// ont pas. Une clé absente s'écrit donc NULL (0 pour `stock_b`), et elle EST
+// dans le `ON DUPLICATE KEY UPDATE` : une promo retirée dans PocketApp arrive
+// sans clé, et doit effacer la valeur précédente.
+//
+// Rien n'est interprété ici non plus : le serveur ne décide pas si la promo est
+// en cours. C'est `catalog.php` qui le fait à la lecture, au jour de Paris.
+// Seule la FORME est contrôlée — une date qui n'est pas un jour réel, ou une fin
+// antérieure au début, refuse l'entité : écrite, elle désactiverait la promo
+// sans que rien ne le dise.
+//
+// Colonnes ajoutées par `server/sql/promo-stock-b.sql`, à passer avant de
+// déposer ce fichier.
 $sqlProduct = sprintf(
     'INSERT INTO `%s` (legacy_id, checksum, name, sku, slug, description,
-                       price_ttc, tax_rate, stock, status, sale_state, brand,
+                       price_ttc, tax_rate, stock, status, sale_state,
+                       promo_price_ttc, promo_start, promo_end,
+                       stock_b, stock_b_price_ttc, brand,
                        exported_at, first_seen_at)
      VALUES (:legacy_id, :checksum, :name, :sku, :slug, :description,
-             :price_ttc, :tax_rate, :stock, :status, :sale_state, :brand,
+             :price_ttc, :tax_rate, :stock, :status, :sale_state,
+             :promo_price_ttc, :promo_start, :promo_end,
+             :stock_b, :stock_b_price_ttc, :brand,
              :exported_at, :first_seen_at)
      ON DUPLICATE KEY UPDATE
         checksum = VALUES(checksum), name = VALUES(name),
@@ -438,6 +478,9 @@ $sqlProduct = sprintf(
         description = VALUES(description),
         price_ttc = VALUES(price_ttc), tax_rate = VALUES(tax_rate), stock = VALUES(stock),
         status = VALUES(status), sale_state = VALUES(sale_state),
+        promo_price_ttc = VALUES(promo_price_ttc),
+        promo_start = VALUES(promo_start), promo_end = VALUES(promo_end),
+        stock_b = VALUES(stock_b), stock_b_price_ttc = VALUES(stock_b_price_ttc),
         brand = VALUES(brand), exported_at = VALUES(exported_at)',
     $T_PRODUCTS
 );
@@ -518,6 +561,16 @@ try {
             $reason = 'status : seuls "published" et "draft" sont acceptés';
         }
 
+        // La période de promo : absente, vide ou un jour réel « AAAA-MM-JJ ».
+        $promoStart = promo_date($product['promo_start'] ?? null);
+        $promoEnd = promo_date($product['promo_end'] ?? null);
+        if ($reason === null && ($promoStart === false || $promoEnd === false)) {
+            $reason = 'promo_start / promo_end : date « AAAA-MM-JJ » attendue';
+        }
+        if ($reason === null && is_string($promoStart) && is_string($promoEnd) && $promoEnd < $promoStart) {
+            $reason = 'promo_end : antérieure à promo_start';
+        }
+
         if ($reason !== null) {
             $rejected[] = ['kind' => 'product', 'legacy_id' => (string) ($product['legacy_id'] ?? "#$index"), 'reason' => $reason];
             continue;
@@ -552,6 +605,12 @@ try {
             ':stock'       => is_numeric($product['stock'] ?? null) ? (int) $product['stock'] : 0,
             ':status'      => $status,
             ':sale_state'  => $saleState,
+            // §4.1 ter : clé absente = aucun. Voir le bloc au-dessus de $sqlProduct.
+            ':promo_price_ttc'   => opt_positive_price($product['promo_price_ttc'] ?? null),
+            ':promo_start'       => is_string($promoStart) ? $promoStart : null,
+            ':promo_end'         => is_string($promoEnd) ? $promoEnd : null,
+            ':stock_b'           => is_numeric($product['stock_b'] ?? null) ? max(0, (int) $product['stock_b']) : 0,
+            ':stock_b_price_ttc' => opt_positive_price($product['stock_b_price_ttc'] ?? null),
             ':brand'       => opt_string($product['brand'] ?? null),
             ':exported_at' => $now,
             // Même valeur, deux destins : `exported_at` sera réécrit au

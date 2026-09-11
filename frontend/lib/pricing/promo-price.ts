@@ -13,32 +13,83 @@
 // dans `total_discounts` sans rien recalculer
 // (`backend/reports/cash_reports.go`, `aggregateInvoiceIntoTotals`).
 // Voir `backend/migrations/add_promo_price_to_products.go`.
+//
+// ── LA PÉRIODE (10 septembre 2026) ────────────────────────────────────────
+// `promo_start` et `promo_end` sont deux dates calendaires « AAAA-MM-JJ »,
+// bornes incluses, vides = sans borne. Le JOUR qui les juge est celui du
+// SERVEUR, à Paris (`useJourServeur`, route `/api/time/today`) : cette fonction
+// ne lit JAMAIS l'horloge du navigateur, et c'est pourquoi le jour est un
+// paramètre obligatoire — un appelant qui l'oublie ne compile pas.
+//
+// La même règle existe en Go (`backend/promo/jour.go`, expiration des fiches)
+// et en PHP (`server/api/catalog.php`, le site). Elle est gardée volontairement
+// triviale, et ses cas de test sont les mêmes des trois côtés.
 
 export interface PrixProduit {
 	price_ttc?: number | null
 	promo_price_ttc?: number | null
 	sale_state?: string | null
+	promo_start?: string | null
+	promo_end?: string | null
 }
+
+/** Le jour du serveur, « AAAA-MM-JJ », ou `null` tant qu'il n'est pas connu. */
+export type JourServeur = string | null
 
 const arrondi = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 /**
+ * Où en est la période d'une promo, ce jour-là.
+ *
+ * `jour-inconnu` n'est rendu QUE pour une fiche qui porte au moins une date :
+ * une promo sans période ne dépend d'aucune horloge, elle n'a pas à attendre
+ * la réponse du serveur.
+ */
+export type EtatPeriode =
+	| 'sans-periode'
+	| 'programmee'
+	| 'en-cours'
+	| 'expiree'
+	| 'jour-inconnu'
+
+export function periodePromo(
+	produit: Pick<PrixProduit, 'promo_start' | 'promo_end'>,
+	jour: JourServeur,
+): EtatPeriode {
+	const debut = produit.promo_start ?? ''
+	const fin = produit.promo_end ?? ''
+	if (debut === '' && fin === '') return 'sans-periode'
+	if (!jour) return 'jour-inconnu'
+	if (debut !== '' && jour < debut) return 'programmee'
+	if (fin !== '' && jour > fin) return 'expiree'
+	return 'en-cours'
+}
+
+/**
  * Le prix promo TTC unitaire en vigueur, ou `null`.
  *
- * Trois conditions, toutes nécessaires :
+ * Quatre conditions, toutes nécessaires :
  *  • le produit est soldé ou en promotion — le tag seul décide que la campagne
  *    est en cours, un prix promo oublié sur une fiche ne s'applique pas ;
  *  • un prix promo est saisi (> 0) ;
  *  • il est strictement inférieur au prix d'origine — une « promo » plus chère
- *    que le prix serait une majoration déguisée en remise.
+ *    que le prix serait une majoration déguisée en remise ;
+ *  • le jour du serveur est dans la période, quand la fiche en porte une. Jour
+ *    inconnu et période posée : pas de remise — mieux vaut une remise à poser à
+ *    la main qu'une promo finie appliquée d'office.
  */
-export function prixPromoActif(produit: PrixProduit): number | null {
+export function prixPromoActif(
+	produit: PrixProduit,
+	jour: JourServeur,
+): number | null {
 	if (produit.sale_state !== 'sale' && produit.sale_state !== 'promo') {
 		return null
 	}
 	const prix = Number(produit.price_ttc ?? 0)
 	const promo = Number(produit.promo_price_ttc ?? 0)
 	if (!(prix > 0) || !(promo > 0) || promo >= prix) return null
+	const periode = periodePromo(produit, jour)
+	if (periode !== 'sans-periode' && periode !== 'en-cours') return null
 	return arrondi(promo)
 }
 
@@ -51,8 +102,11 @@ export function prixPromoActif(produit: PrixProduit): number | null {
  * `(prix − promo) × quantité`, quelle que soit la quantité. Un pourcentage
  * arrondi à deux décimales dériverait d'un centime dès trois unités.
  */
-export function remisePromoPourcent(produit: PrixProduit): number | null {
-	const promo = prixPromoActif(produit)
+export function remisePromoPourcent(
+	produit: PrixProduit,
+	jour: JourServeur,
+): number | null {
+	const promo = prixPromoActif(produit, jour)
 	if (promo === null) return null
 	return (1 - promo / Number(produit.price_ttc)) * 100
 }
@@ -61,12 +115,15 @@ export function remisePromoPourcent(produit: PrixProduit): number | null {
  *  rien. Le panier a un mode « prix unitaire » (`unit`) que `cartItemToPosItem`
  *  convertit en remise de ligne à chaque quantité : le prix promo s'y pose tel
  *  quel. */
-export function remiseCaisse(produit: PrixProduit): {
+export function remiseCaisse(
+	produit: PrixProduit,
+	jour: JourServeur,
+): {
 	lineDiscountMode?: 'unit'
 	lineDiscountValue?: number
 	lineDiscountRaw?: string
 } {
-	const promo = prixPromoActif(produit)
+	const promo = prixPromoActif(produit, jour)
 	if (promo === null) return {}
 	return {
 		lineDiscountMode: 'unit',
@@ -79,7 +136,7 @@ export function remiseCaisse(produit: PrixProduit): {
 // Une unité B se vend à `stock_b_price_ttc`, posé comme le prix promo : en
 // remise de ligne sur le prix d'origine. Sans prix B, AUCUNE remise
 // automatique — ni la promo : une unité B n'est pas une unité neuve soldée, et
-// c'est au vendeur de fixer sa remise.
+// c'est au vendeur de fixer sa remise. Le prix B n'a pas de période.
 
 export interface PrixProduitB extends PrixProduit {
 	stock_b_price_ttc?: number | null
@@ -114,13 +171,14 @@ export function compteurParDefaut(produit: {
 export function remiseCaisseSelonCompteur(
 	produit: PrixProduitB,
 	compteur: CompteurDeStock,
+	jour: JourServeur,
 ): {
 	lineDiscountMode: 'unit' | undefined
 	lineDiscountValue: number | undefined
 	lineDiscountRaw: string
 } {
 	const prix =
-		compteur === 'stock_b' ? prixStockB(produit) : prixPromoActif(produit)
+		compteur === 'stock_b' ? prixStockB(produit) : prixPromoActif(produit, jour)
 	if (prix === null) {
 		return {
 			lineDiscountMode: undefined,
@@ -137,12 +195,15 @@ export function remiseCaisseSelonCompteur(
 
 /** La remise d'une ligne de facture ou de devis, prête à poser à l'ajout du
  *  produit — ou la ligne sans remise, comme avant. */
-export function remiseInitialeDeLigne(produit: PrixProduit): {
+export function remiseInitialeDeLigne(
+	produit: PrixProduit,
+	jour: JourServeur,
+): {
 	lineDiscountMode: 'percent'
 	lineDiscountValue: number
 	lineDiscountRaw?: string
 } {
-	const pourcent = remisePromoPourcent(produit)
+	const pourcent = remisePromoPourcent(produit, jour)
 	if (pourcent === null) {
 		return { lineDiscountMode: 'percent', lineDiscountValue: 0 }
 	}

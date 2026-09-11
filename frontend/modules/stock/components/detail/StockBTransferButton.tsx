@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { invalidateCatalog } from '@/lib/queries/catalog-products'
 import { transferToStockB } from '@/lib/queries/stock-adjust'
+import { useStockSync } from '@/lib/sync/stock-sync'
 import { usePocketBase } from '@/lib/use-pocketbase'
 
 import type { ProductDetailValues } from './product-detail-form'
@@ -40,6 +41,11 @@ export function StockBTransferButton({
 }) {
 	const pb = usePocketBase()
 	const queryClient = useQueryClient()
+	// Le transfert change DEUX champs qui partent vers le site — `stock` et
+	// `stock_b` — sans passer par « Enregistrer » : la modale d'après
+	// enregistrement ne le voit donc pas. Même question que pour une vente, dans
+	// un toast qui attend (`stock-sync.ts`), et seulement si la fiche est en ligne.
+	const { proposerApresMouvement } = useStockSync()
 	const [open, setOpen] = useState(false)
 	const [quantite, setQuantite] = useState('1')
 	const [commentaire, setCommentaire] = useState('')
@@ -77,6 +83,9 @@ export function StockBTransferButton({
 		form.resetField('stock_b', { defaultValue: resultat.stockBAfter ?? 0 })
 		invalidateCatalog(queryClient)
 		toast.success(`${q} unité(s) passée(s) en Stock B`)
+		void proposerApresMouvement([{ productId }], {
+			reference: `stock-b-${productId}-${Date.now()}`,
+		})
 		fermer()
 	}
 

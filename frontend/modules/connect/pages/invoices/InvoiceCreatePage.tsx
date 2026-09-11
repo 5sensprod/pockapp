@@ -37,6 +37,7 @@ import {
 	useCatalogProductSearch,
 } from '@/lib/queries/catalog-products'
 import { remiseInitialeDeLigne } from '@/lib/pricing/promo-price'
+import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
 import { useAllCustomers, useCreateCustomer } from '@/lib/queries/customers'
 import { useCreateInvoice } from '@/lib/queries/invoices'
 import type { InvoiceItem } from '@/lib/types/invoice.types'
@@ -236,6 +237,8 @@ export function InvoiceCreatePage() {
 		term: productSearch,
 	})
 	const createInvoice = useCreateInvoice()
+	// Le jour du serveur juge la période des promos (`prixPromoActif`).
+	const jour = useJourServeur()
 	const createCustomer = useCreateCustomer()
 
 	// ✅ Remplace l'ancien
@@ -300,7 +303,7 @@ export function InvoiceCreatePage() {
 			unitPriceRaw: unitTtc.toString(),
 			lineDiscountRaw: '',
 			// Soldé ou en promotion : remise de ligne sur le prix d'origine.
-			...remiseInitialeDeLigne(product),
+			...remiseInitialeDeLigne(product, jour),
 			unit_price_ht: 0,
 			total_ht: 0,
 			total_ttc: 0,

@@ -110,6 +110,8 @@ function ProductDetailContent({
 		pricing: Boolean(
 			dirty.price_ttc ||
 				dirty.promo_price_ttc ||
+				dirty.promo_start ||
+				dirty.promo_end ||
 				dirty.purchase_price_ht ||
 				dirty.tax_rate,
 		),

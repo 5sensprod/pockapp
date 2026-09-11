@@ -77,6 +77,9 @@ export function ProductIdentityCard({
 								<option value='promo'>Promotion</option>
 							</NativeSelect>
 						</FormControl>
+						{/* Soldé ou en promotion sans prix promo : refusé à
+						    l'enregistrement (`productDetailSchema`). */}
+						<FormMessage />
 					</FormItem>
 				)}
 			/>

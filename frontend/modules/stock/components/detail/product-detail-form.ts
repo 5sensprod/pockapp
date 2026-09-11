@@ -9,7 +9,15 @@ import type {
 // règle de la modale : PocketBase reçoit toujours un nombre positif.
 const money = z.coerce.number().min(0, 'Valeur négative impossible')
 
-export const productDetailSchema = z.object({
+// Une date calendaire « AAAA-MM-JJ », ou vide = sans borne. C'est la forme
+// que rend `<input type="date">`, et celle du schéma
+// (`add_promo_period_to_products.go`).
+const jour = z.union([
+	z.literal(''),
+	z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide'),
+])
+
+const productDetailObject = z.object({
 	name: z.string().min(1, 'Le nom est requis').max(255),
 	designation: z.string().max(255).optional(),
 	sku: z.string().max(50).optional(),
@@ -26,6 +34,11 @@ export const productDetailSchema = z.object({
 	// `sale_state` le permet (`lib/pricing/promo-price.ts`). Sa cohérence avec
 	// `price_ttc` est vérifiée par `useProductDetailEditor.submit`.
 	promo_price_ttc: money,
+	// La période de la promo, bornes incluses. Jugée au jour du SERVEUR
+	// (`prixPromoActif`) ; expirée, la fiche repasse seule en plein tarif
+	// (`backend/promo/expiration.go`).
+	promo_start: jour,
+	promo_end: jour,
 	purchase_price_ht: money,
 	tax_rate: z.coerce.number().min(0).max(100),
 	stock: z.coerce.number().int('Le stock est un entier'),
@@ -50,6 +63,44 @@ export const productDetailSchema = z.object({
 	categories: z.array(z.string()),
 })
 
+/**
+ * La modale de création et la fiche partagent CETTE validation, règles croisées
+ * comprises : une règle posée ici vaut aux deux endroits.
+ *
+ * ── UN PRODUIT SOLDÉ OU EN PROMOTION A UN PRIX PROMO (10 septembre 2026) ──
+ * Sans lui l'opération n'est qu'une étiquette : la caisse n'applique rien, et
+ * le site afficherait « Promo » sur un prix inchangé. On refuse donc
+ * d'enregistrer. Les fiches antérieures dans ce cas restent lisibles ; c'est à
+ * leur prochain enregistrement qu'il faudra choisir un prix ou le plein tarif.
+ */
+export const productDetailSchema = productDetailObject.superRefine(
+	(valeurs, ctx) => {
+		if (valeurs.sale_state !== '' && !(valeurs.promo_price_ttc > 0)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ['promo_price_ttc'],
+				message: 'Prix promo requis pour un produit soldé ou en promotion',
+			})
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ['sale_state'],
+				message: 'Renseignez un prix promo, ou repassez en plein tarif',
+			})
+		}
+		if (
+			valeurs.promo_start !== '' &&
+			valeurs.promo_end !== '' &&
+			valeurs.promo_end < valeurs.promo_start
+		) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ['promo_end'],
+				message: 'La fin précède le début',
+			})
+		}
+	},
+)
+
 export type ProductDetailValues = z.infer<typeof productDetailSchema>
 
 export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
@@ -64,6 +115,8 @@ export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
 	sale_state: '',
 	price_ttc: 0,
 	promo_price_ttc: 0,
+	promo_start: '',
+	promo_end: '',
 	purchase_price_ht: 0,
 	tax_rate: 20,
 	stock: 0,
@@ -137,6 +190,8 @@ export function productDetailValues(
 		sale_state: product.sale_state ?? '',
 		price_ttc: product.price_ttc ?? 0,
 		promo_price_ttc: product.promo_price_ttc ?? 0,
+		promo_start: product.promo_start ?? '',
+		promo_end: product.promo_end ?? '',
 		purchase_price_ht: product.purchase_price_ht ?? 0,
 		tax_rate: product.tax_rate ?? 20,
 		stock: product.stock ?? 0,
@@ -167,6 +222,8 @@ export function productDetailPayload(
 		sale_state: data.sale_state,
 		price_ttc: data.price_ttc,
 		promo_price_ttc: data.promo_price_ttc,
+		promo_start: data.promo_start,
+		promo_end: data.promo_end,
 		stock_b_price_ttc: data.stock_b_price_ttc,
 		purchase_price_ht: data.purchase_price_ht,
 		tax_rate: data.tax_rate,

@@ -14,6 +14,7 @@ import (
 	"pocket-react/backend/backup"
 	"pocket-react/backend/hooks"
 	"pocket-react/backend/migrations"
+	"pocket-react/backend/promo"
 	"pocket-react/backend/routes"
 
 	"github.com/joho/godotenv"
@@ -237,6 +238,12 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterCatalogCountsRoutes(pb, e.Router)
 		routes.RegisterCatalogHealthRoutes(pb, e.Router)
 		routes.RegisterProductImageRoutes(pb, e.Router)
+		routes.RegisterJourRoutes(pb, e.Router)
+
+		// Une promo dont la date de fin est passée repasse seule en « Plein
+		// tarif ». La caisse et le site n'en dépendent pas — ils lisent la
+		// période eux-mêmes — : la tâche range la fiche, rien de plus.
+		promo.DemarrerExpiration(pb)
 
 		// ── Sauvegarde distante ─────────────────────────────────────────────
 		//

@@ -9,6 +9,7 @@ import {
 	compteurParDefaut,
 	remiseCaisseSelonCompteur,
 } from '@/lib/pricing/promo-price'
+import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
 import * as React from 'react'
 import type { CartItem, LineDiscountMode, PosProduct } from '../types/cart'
 import { clamp } from '../utils/calculations'
@@ -31,6 +32,10 @@ export function useCartManager(registerId: string) {
 	const [lastAddedItem, setLastAddedItem] = React.useState<CartItem | null>(
 		null,
 	)
+	// Le jour du SERVEUR juge la période d'une promo — jamais l'horloge du
+	// navigateur (`use-jour-serveur.ts`). Lu à l'ajout : une ligne déjà au
+	// panier garde sa remise si la promo finit entre-temps.
+	const jour = useJourServeur()
 
 	// ✅ Sync vers le store à chaque changement
 	React.useEffect(() => {
@@ -58,6 +63,8 @@ export function useCartManager(registerId: string) {
 				price_ttc: product.price_ttc,
 				promo_price_ttc: product.promo_price_ttc,
 				sale_state: product.sale_state,
+				promo_start: product.promo_start,
+				promo_end: product.promo_end,
 				stock_b_price_ttc: product.stock_b_price_ttc,
 			}
 
@@ -96,7 +103,7 @@ export function useCartManager(registerId: string) {
 					// Soldé, en promotion ou vendu en Stock B : le prix réduit devient
 					// une remise de ligne, le prix d'origine reste celui de la ligne —
 					// le ticket montre les deux, et le Z compte la remise.
-					...remiseCaisseSelonCompteur(pricing, compteur),
+					...remiseCaisseSelonCompteur(pricing, compteur, jour),
 				}
 				setLastAddedItem(newItem)
 				return [...prev, newItem]
@@ -104,7 +111,7 @@ export function useCartManager(registerId: string) {
 
 			setTimeout(() => setLastAddedItem(null), 1500)
 		},
-		[setCart],
+		[setCart, jour],
 	)
 
 	const updateQuantity = React.useCallback(
@@ -238,12 +245,13 @@ export function useCartManager(registerId: string) {
 						...remiseCaisseSelonCompteur(
 							it.pricing ?? { price_ttc: it.originalUnitPrice ?? it.unitPrice },
 							compteur,
+							jour,
 						),
 					}
 				}),
 			)
 		},
-		[setCart],
+		[setCart, jour],
 	)
 
 	const toggleItemDisplayMode = React.useCallback(

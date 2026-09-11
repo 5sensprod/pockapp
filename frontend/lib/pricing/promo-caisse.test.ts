@@ -15,6 +15,8 @@ const { cartItemToPosItem } = await import('@/lib/queries/pos')
 const { remiseCaisse, compteurParDefaut, remiseCaisseSelonCompteur } =
 	await import('./promo-price')
 
+const JOUR = '2026-09-10'
+
 describe('le Stock B à la caisse', () => {
 	const produit = {
 		price_ttc: 499,
@@ -38,7 +40,7 @@ describe('le Stock B à la caisse', () => {
 			quantity: 2,
 			tvaRate: 20,
 			stockCounter: 'stock_b',
-			...remiseCaisseSelonCompteur(produit, 'stock_b'),
+			...remiseCaisseSelonCompteur(produit, 'stock_b', JOUR),
 		})
 		expect(envoye).toMatchObject({
 			name: 'Guitare (Stock B)',
@@ -50,14 +52,14 @@ describe('le Stock B à la caisse', () => {
 
 	it('une bascule efface la remise précédente quand le nouveau compteur n’en a pas', () => {
 		const sansPrixB = { ...produit, stock_b_price_ttc: 0 }
-		expect(remiseCaisseSelonCompteur(sansPrixB, 'stock_b')).toEqual({
+		expect(remiseCaisseSelonCompteur(sansPrixB, 'stock_b', JOUR)).toEqual({
 			lineDiscountMode: undefined,
 			lineDiscountValue: undefined,
 			lineDiscountRaw: '',
 		})
 		// Et une unité B ne profite pas de la promo du neuf.
 		expect(
-			remiseCaisseSelonCompteur(sansPrixB, 'stock').lineDiscountValue,
+			remiseCaisseSelonCompteur(sansPrixB, 'stock', JOUR).lineDiscountValue,
 		).toBe(450)
 	})
 })
@@ -70,7 +72,7 @@ function ligne(produit: Parameters<typeof remiseCaisse>[0], quantite: number) {
 		unitPrice: Number(produit.price_ttc),
 		quantity: quantite,
 		tvaRate: 20,
-		...remiseCaisse(produit),
+		...remiseCaisse(produit, JOUR),
 	} satisfies CartItem
 }
 

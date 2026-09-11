@@ -56,6 +56,14 @@ export type CatalogProduct = FileBearing & {
 	 *  ⚠️ Elle ne décide de RIEN quant à la publication — `status` seul. */
 	sale_state?: CatalogSaleState
 	price_ttc?: number
+	/** Prix promo, période « AAAA-MM-JJ », Stock B et son prix : ils partent
+	 *  vers le site depuis le 11 septembre 2026, SEULEMENT quand ils valent
+	 *  (§4.1 ter du contrat, `toExportProduct`). */
+	promo_price_ttc?: number
+	promo_start?: string
+	promo_end?: string
+	stock_b?: number
+	stock_b_price_ttc?: number
 	tax_rate?: number
 	stock?: number
 	description?: string
@@ -112,7 +120,7 @@ export type CatalogBrand = FileBearing & {
 // rechargement par purge et ne peuvent pas servir de clé distante — §1 de
 // PocketSite-docs/12-contrat-catalogue.md.
 export const PRODUCT_FIELDS =
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,slug,description,status,sale_state,price_ttc,tax_rate,stock,image,gallery,brand,categories'
+	'id,collectionId,collectionName,legacy_id,name,designation,sku,slug,description,status,sale_state,price_ttc,promo_price_ttc,promo_start,promo_end,stock_b,stock_b_price_ttc,tax_rate,stock,image,gallery,brand,categories'
 const CATEGORY_FIELDS =
 	'id,collectionId,collectionName,legacy_id,name,slug,description,image,is_featured,parent'
 const BRAND_FIELDS =

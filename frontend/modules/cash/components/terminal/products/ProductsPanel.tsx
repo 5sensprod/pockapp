@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { prixPromoActif } from '@/lib/pricing/promo-price'
+import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
 import { Search } from 'lucide-react'
 import type * as React from 'react'
 import type { PosProduct } from '../types/cart'
@@ -25,10 +26,8 @@ interface ProductsPanelProps {
 // (10 septembre 2026). La règle de la promo est celle du panier
 // (`prixPromoActif`), pas une copie.
 function etiquettes(p: PosProduct) {
-	const promo = prixPromoActif(p)
 	const stockB = Number(p.stock_b ?? 0)
 	return {
-		promo,
 		stockB,
 		operation:
 			p.sale_state === 'sale'
@@ -59,7 +58,9 @@ function Badges({ p }: { p: PosProduct }) {
 }
 
 function Prix({ p, className }: { p: PosProduct; className: string }) {
-	const { promo } = etiquettes(p)
+	// Même règle ET même jour que le panier : ce qui s'affiche ici est ce qui
+	// sera remisé à l'ajout.
+	const promo = prixPromoActif(p, useJourServeur())
 	const prix = (p.price_ttc ?? 0).toFixed(2)
 	if (promo === null) return <span className={className}>{prix} €</span>
 	return (

@@ -197,6 +197,9 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 		form.reset(
 			product
 				? {
+						// Les champs que cette modale ne montre pas — Stock B, motif —
+						// gardent un défaut valide : le schéma partagé les exige.
+						...EMPTY,
 						// Vide, ou réduit au `sku` : voir `nomFicheParDefaut`.
 						name: nomFicheParDefaut(product),
 						designation: product.designation ?? '',
@@ -209,6 +212,9 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 						// Axe distinct du précédent : vide = plein tarif, et les deux se
 						// cumulent (`CatalogSaleState`).
 						sale_state: product.sale_state ?? '',
+						promo_price_ttc: product.promo_price_ttc ?? 0,
+						promo_start: product.promo_start ?? '',
+						promo_end: product.promo_end ?? '',
 						price_ttc: product.price_ttc ?? 0,
 						purchase_price_ht: product.purchase_price_ht ?? 0,
 						tax_rate: product.tax_rate ?? 20,
@@ -257,6 +263,9 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 			status: data.status,
 			commercial_state: data.commercial_state,
 			sale_state: data.sale_state,
+			// La période, elle, se règle sur la fiche : la modale ne l'envoie pas,
+			// donc ne l'efface pas.
+			promo_price_ttc: data.promo_price_ttc,
 			price_ttc: data.price_ttc,
 			purchase_price_ht: data.purchase_price_ht,
 			tax_rate: data.tax_rate,
@@ -808,9 +817,30 @@ export function CatalogProductDialog({ open, onOpenChange, product }: Props) {
 											</NativeSelect>
 										</FormControl>
 										<p className='text-muted-foreground text-xs'>
-											Se cumule avec l’état commercial, et ne change aucun prix
-											: c’est une étiquette, pas une remise.
+											Se cumule avec l’état commercial. Soldé ou en promotion,
+											un prix promo est requis ; la période se règle sur la
+											fiche produit.
 										</p>
+										{field.value !== '' && (
+											<FormField
+												control={form.control}
+												name='promo_price_ttc'
+												render={({ field: promo }) => (
+													<FormItem>
+														<FormLabel>Prix promo TTC</FormLabel>
+														<FormControl>
+															<Input
+																type='number'
+																step='0.01'
+																min='0'
+																{...promo}
+															/>
+														</FormControl>
+														<FormMessage />
+													</FormItem>
+												)}
+											/>
+										)}
 										<FormMessage />
 									</FormItem>
 								)}

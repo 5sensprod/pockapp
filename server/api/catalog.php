@@ -26,6 +26,10 @@
 
 declare(strict_types=1);
 
+// La période des promos et le Stock B (11 septembre 2026). À déposer AVEC ce
+// fichier : absent, le catalogue public tombe en erreur 500.
+require_once __DIR__ . '/../lib/promo.php';
+
 // ---------------------------------------------------------------------------
 // Sortie
 // ---------------------------------------------------------------------------
@@ -127,6 +131,12 @@ define('MEDIA_BASE_URL', is_string($config['media_base_url'] ?? null) && $config
     ? rtrim((string) $config['media_base_url'], '/') . '/'
     : '');
 
+/**
+ * Le jour qui juge les périodes de promo : Paris, lu UNE fois par requête.
+ * Pas le fuseau du mutualisé, qu'on ne connaît pas (`lib/promo.php`).
+ */
+define('JOUR_PARIS', promo_jour_paris());
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -149,6 +159,11 @@ define('MEDIA_BASE_URL', is_string($config['media_base_url'] ?? null) && $config
  */
 function present_product(array $row, bool $withGallery = false): array
 {
+    $prix = (float) $row['price_ttc'];
+    $saleState = (string) ($row['sale_state'] ?? '');
+    $promoStart = ($row['promo_start'] ?? null) !== null ? (string) $row['promo_start'] : null;
+    $promoEnd = ($row['promo_end'] ?? null) !== null ? (string) $row['promo_end'] : null;
+
     $product = [
         'id'          => (string) $row['legacy_id'],
         // `name` EST le nom de la fiche produit sur Internet (27 août 2026).
@@ -171,12 +186,35 @@ function present_product(array $row, bool $withGallery = false): array
         // pastille « Soldé » a du sens dans une grille, et c'est même là
         // qu'elle en a le plus.
         //
-        // Rendu TEL QU'IL EST EN BASE, chaîne vide incluse : `''` veut dire
-        // « normal », ce n'est pas une absence de donnée. Le bundle décide de
-        // l'affichage ; le serveur ne l'interprète pas, ne le croise pas avec
-        // `status` et n'en dérive AUCUN prix — `price_ttc` reste le prix de
-        // vente (§4.1 bis du contrat).
-        'sale_state'  => (string) ($row['sale_state'] ?? ''),
+        // Rendu tel qu'il est en base, chaîne vide incluse : `''` veut dire
+        // « normal », ce n'est pas une absence de donnée. Il ne se croise pas
+        // avec `status`.
+        //
+        // ⚠️ SAUF HORS DE SA PÉRIODE (11 septembre 2026) : une promo finie ou
+        // pas encore commencée est rendue `''`. Le site retire ainsi la pastille
+        // à la date de fin, sans attendre que PocketApp réécrive la fiche et la
+        // renvoie (§4.1 ter).
+        'sale_state'  => promo_etat_affiche($saleState, $promoStart, $promoEnd, JOUR_PARIS),
+        // Le prix réduit EN COURS, ou null. `price_ttc` reste le prix d'origine,
+        // celui que le site barre. Null veut dire « pas de prix barré » : aucune
+        // promo, promo hors période, ou fiche soldée sans prix promo. Rendu par
+        // toutes les actions, comme `sale_state`.
+        'promo'       => promo_active(
+            $saleState,
+            $prix,
+            ($row['promo_price_ttc'] ?? null) !== null ? (float) $row['promo_price_ttc'] : null,
+            $promoStart,
+            $promoEnd,
+            JOUR_PARIS
+        ),
+        // Les unités Stock B et leur prix, ou null s'il n'y en a pas. Le prix B
+        // est null s'il n'est pas une baisse : le site montre alors le tag sans
+        // prix barré.
+        'stock_b'     => stock_b_affiche(
+            (int) ($row['stock_b'] ?? 0),
+            $prix,
+            ($row['stock_b_price_ttc'] ?? null) !== null ? (float) $row['stock_b_price_ttc'] : null
+        ),
         // `image` est presque toujours null, et c'est le cas NORMAL, pas une
         // erreur : trois marques sur 288 ont leurs octets en ligne au 19 août
         // 2026 (inventaire images-sync.php, mesuré). Le site doit traiter
@@ -351,6 +389,8 @@ function media_urls(?string $imagePaths): array
 // apparaisse partout, et rien à faire de plus.
 $PRODUCT_COLUMNS = 'p.legacy_id, p.name, p.slug, p.sku, p.description,
                     p.price_ttc, p.stock, p.sale_state,
+                    p.promo_price_ttc, p.promo_start, p.promo_end,
+                    p.stock_b, p.stock_b_price_ttc,
                     p.brand, b.name AS brand_name,
                     b.image_paths AS brand_image_paths,
                     p.image_paths AS product_image_paths';

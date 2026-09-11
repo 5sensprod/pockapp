@@ -112,6 +112,37 @@ describe('commercial_state', () => {
 	})
 })
 
+describe('promo et Stock B vers le site', () => {
+	it('sont demandés par la liste du module site — sinon ils partiraient vides', () => {
+		// `toExportProduct` n'envoie ces clés que lorsqu'elles valent : absentes
+		// de `fields`, elles reviendraient vides, AUCUNE ne partirait, et la fiche
+		// mise en promo resterait « à jour » dans /site — sans un message. C'est
+		// le défaut signalé le 10 septembre 2026.
+		const demandes = SITE_PRODUCT_FIELDS.split(',')
+		for (const champ of [
+			'promo_price_ttc',
+			'promo_start',
+			'promo_end',
+			'stock_b',
+			'stock_b_price_ttc',
+		]) {
+			expect(demandes).toContain(champ)
+		}
+	})
+})
+
+describe('la promo', () => {
+	it('prix et période sont demandés par PRODUCT_FIELDS — sinon la caisse ne remiserait rien', () => {
+		// Absents de `fields`, ils reviendraient vides : la fiche afficherait
+		// une promo sans période, la caisse l'appliquerait hors de ses dates, et
+		// l'enregistrement effacerait la période saisie.
+		const demandes = PRODUCT_FIELDS.split(',')
+		expect(demandes).toContain('promo_price_ttc')
+		expect(demandes).toContain('promo_start')
+		expect(demandes).toContain('promo_end')
+	})
+})
+
 describe('sale_state', () => {
 	it('est demandé par PRODUCT_FIELDS — sinon tout produit paraîtrait « normal »', () => {
 		// Même piège que `commercial_state`, un champ plus loin : absent de

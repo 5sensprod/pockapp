@@ -94,6 +94,29 @@ export type ExportProduct = WithChecksum & {
 	 * ne pas retirer la clé pour « réparer » — ce serait le repayer.
 	 */
 	sale_state: CatalogSaleState
+	/**
+	 * ── PRIX PROMO, PÉRIODE ET STOCK B (11 septembre 2026, §4.1 ter) ─────────
+	 *
+	 * Cinq clés FACULTATIVES, et c'est tout le mécanisme : elles ne sont
+	 * présentes dans le corps QUE lorsqu'elles portent une valeur.
+	 *
+	 * `canonical()` sérialise toutes les clés présentes. Ajouter ces cinq-là à
+	 * `null` pour tout le monde aurait changé l'empreinte des 2412 fiches
+	 * publiées — le coût déjà payé pour `sale_state`. Absentes, elles laissent
+	 * intacte l'empreinte d'un produit sans promo ni Stock B : seules les fiches
+	 * concernées passent « modifiées ». Gardien : `catalog-export.test.ts`.
+	 *
+	 * Côté serveur, une clé absente EFFACE la valeur : une promo retirée part sans
+	 * clé, et disparaît du site.
+	 *
+	 * Rien n'est filtré ici : un prix promo sur une fiche au plein tarif part tel
+	 * quel. C'est `catalog.php` qui applique la règle, au jour de Paris.
+	 */
+	promo_price_ttc?: number
+	promo_start?: string
+	promo_end?: string
+	stock_b?: number
+	stock_b_price_ttc?: number
 	brand: string | null
 	categories: string[]
 }
@@ -169,6 +192,35 @@ export async function checksumOf(entity: object): Promise<string> {
 const nullable = (value: string | undefined): string | null =>
 	value && value.trim() !== '' ? value : null
 
+/** Un nombre strictement positif, ou `undefined` — la clé ne partira pas. */
+const positif = (value: number | undefined | null): number | undefined =>
+	Number(value) > 0 ? Number(value) : undefined
+
+/** Les clés facultatives du §4.1 ter : présentes seulement si elles valent. */
+function champsFacultatifs(
+	product: CatalogProduct,
+): Pick<
+	ExportProduct,
+	| 'promo_price_ttc'
+	| 'promo_start'
+	| 'promo_end'
+	| 'stock_b'
+	| 'stock_b_price_ttc'
+> {
+	const valeurs = {
+		promo_price_ttc: positif(product.promo_price_ttc),
+		promo_start: nullable(product.promo_start) ?? undefined,
+		promo_end: nullable(product.promo_end) ?? undefined,
+		stock_b: positif(product.stock_b),
+		stock_b_price_ttc: positif(product.stock_b_price_ttc),
+	}
+	// Une clé à `undefined` disparaît de JSON.stringify, mais PAS de
+	// `Object.entries`, que `canonical()` parcourt : on la retire pour de bon.
+	return Object.fromEntries(
+		Object.entries(valeurs).filter(([, v]) => v !== undefined),
+	)
+}
+
 /**
  * `status` est RECOPIÉ, jamais décidé : tout ce qui n'est pas `published` part
  * en `draft`, c'est-à-dire dépublié. Le serveur n'accepte que ces deux valeurs.
@@ -209,6 +261,7 @@ export function toExportProduct(
 			product.sale_state === 'sale' || product.sale_state === 'promo'
 				? product.sale_state
 				: '',
+		...champsFacultatifs(product),
 		brand: brandLegacyId,
 		categories: categoryLegacyIds,
 	}
@@ -423,11 +476,49 @@ export const CHAMPS_PRODUIT_EXPORTES = [
 	'stock',
 	'status',
 	'sale_state',
+	'promo_price_ttc',
+	'promo_start',
+	'promo_end',
+	'stock_b',
+	'stock_b_price_ttc',
 	'brand',
 	'categories',
 ] as const
 
 type ChampExporte = (typeof CHAMPS_PRODUIT_EXPORTES)[number]
+
+/** Les champs que l'export n'envoie que s'ils valent : `0` y veut dire
+ *  « aucun », exactement comme une absence (`champsFacultatifs`). */
+const CHAMPS_FACULTATIFS: ReadonlySet<ChampExporte> = new Set([
+	'promo_price_ttc',
+	'promo_start',
+	'promo_end',
+	'stock_b',
+	'stock_b_price_ttc',
+])
+
+/**
+ * Ce que la modale ANNONCE, champ par champ. Plusieurs champs donnent le même
+ * libellé : on dit « prix promo et période », pas trois lignes pour une promo.
+ */
+const LIBELLES: Record<ChampExporte, string> = {
+	name: 'nom',
+	sku: 'référence',
+	slug: 'adresse',
+	description: 'description',
+	price_ttc: 'prix',
+	tax_rate: 'TVA',
+	stock: 'stock',
+	status: 'publication',
+	sale_state: 'opération commerciale',
+	promo_price_ttc: 'prix promo et période',
+	promo_start: 'prix promo et période',
+	promo_end: 'prix promo et période',
+	stock_b: 'Stock B',
+	stock_b_price_ttc: 'Stock B',
+	brand: 'marque',
+	categories: 'catégories',
+}
 
 /** La fiche vue par ce filtre : tout est optionnel, une fiche fraîchement
  *  créée n'ayant pas encore la moitié de ces champs. */
@@ -441,9 +532,32 @@ export type ProduitComparable = Partial<
  * (`price_ttc ?? 0` dans `toExportProduct`) : sans cela, ouvrir puis
  * enregistrer une fiche dont un champ était absent la déclarerait modifiée.
  */
-function normaliser(valeur: unknown): unknown {
+function normaliser(champ: ChampExporte, valeur: unknown): unknown {
 	if (valeur === undefined || valeur === null || valeur === '') return null
+	if (CHAMPS_FACULTATIFS.has(champ) && !(Number(valeur) > 0)) {
+		// Sauf les dates, que `Number` ne sait pas lire : une date non vide vaut.
+		if (typeof valeur !== 'string') return null
+	}
 	return valeur
+}
+
+/**
+ * Les libellés de ce qui, entre ces deux états, part vers le site — sans
+ * doublon, dans l'ordre du contrat. Vide : rien d'exporté n'a bougé.
+ */
+export function champsProduitModifies(
+	avant: ProduitComparable,
+	apres: ProduitComparable,
+): string[] {
+	const libelles = CHAMPS_PRODUIT_EXPORTES.filter((champ) => {
+		if (champ === 'categories') {
+			const a = avant.categories ?? []
+			const b = apres.categories ?? []
+			return a.length !== b.length || a.some((valeur, i) => valeur !== b[i])
+		}
+		return normaliser(champ, avant[champ]) !== normaliser(champ, apres[champ])
+	}).map((champ) => LIBELLES[champ])
+	return [...new Set(libelles)]
 }
 
 /**
@@ -460,12 +574,5 @@ export function produitChangeAExporter(
 	avant: ProduitComparable,
 	apres: ProduitComparable,
 ): boolean {
-	return CHAMPS_PRODUIT_EXPORTES.some((champ) => {
-		if (champ === 'categories') {
-			const a = avant.categories ?? []
-			const b = apres.categories ?? []
-			return a.length !== b.length || a.some((valeur, i) => valeur !== b[i])
-		}
-		return normaliser(avant[champ]) !== normaliser(apres[champ])
-	})
+	return champsProduitModifies(avant, apres).length > 0
 }

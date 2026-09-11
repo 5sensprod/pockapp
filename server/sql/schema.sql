@@ -68,6 +68,13 @@ CREATE TABLE IF NOT EXISTS `ax_products` (
   -- une valeur, d'où `NOT NULL DEFAULT ''`. Ajoutée par `sale-state.sql` sur
   -- les bases existantes ; §4.1 bis du contrat.
   `sale_state`  VARCHAR(8)    NOT NULL DEFAULT '',
+  -- Prix promo, période (jours, bornes incluses), Stock B et son prix. NULL =
+  -- aucun. Ajoutées par `promo-stock-b.sql` sur les bases existantes ; §4.1 ter.
+  `promo_price_ttc`   DECIMAL(10,2) DEFAULT NULL,
+  `promo_start`       DATE          DEFAULT NULL,
+  `promo_end`         DATE          DEFAULT NULL,
+  `stock_b`           INT           NOT NULL DEFAULT 0,
+  `stock_b_price_ttc` DECIMAL(10,2) DEFAULT NULL,
   `brand`       VARCHAR(64)   DEFAULT NULL,
   `exported_at` DATETIME      NOT NULL,
   PRIMARY KEY (`legacy_id`),

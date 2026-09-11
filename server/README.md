@@ -39,6 +39,9 @@ PHP.
 | `sql/images.sql` | les colonnes `image_*`, à exécuter une fois après | oui |
 | `sql/first-seen.sql` | la colonne `first_seen_at` d'`ax_products`, à exécuter une fois | oui |
 | `sql/sale-state.sql` | la colonne `sale_state` d'`ax_products`, à exécuter une fois — plus, **en commentaire et à ne pas jouer sans décision**, le retrait de `site_title` | oui |
+| `sql/promo-stock-b.sql` | les colonnes prix promo, période et Stock B d'`ax_products`, à exécuter une fois | oui |
+| `lib/promo.php` | la règle de période des promos, **incluse** par `products-sync.php` et `catalog.php` — à déposer avec eux | oui |
+| `tests/promo-test.php` | tests de `lib/promo.php`, `php server/tests/promo-test.php` — **ne pas déposer** | oui |
 | `config/config.php.example` | modèle de configuration | oui |
 | `config/config.php` | la configuration réelle, **avec la clé** | **non** (`.gitignore`) |
 | `config/.htaccess` | interdit l'accès HTTP au dossier de configuration | oui |
@@ -86,6 +89,17 @@ revenir le jour où la refonte est décidée.
 Apache**. C'est pourquoi le script n'accepte qu'une liste fermée d'extensions
 et ne laisse aucun nom venu du client toucher le disque — le nom distant est
 calculé, `<kind>/<legacy_id>/<rang>.<ext>`.
+
+**Prix promo et Stock B — ordre de dépôt (11 septembre 2026).** Trois gestes, dans
+cet ordre, et le premier ne se rattrape pas en sens inverse :
+
+1. passer `sql/promo-stock-b.sql` dans phpMyAdmin ;
+2. déposer `lib/promo.php` (nouveau dossier `server/lib/`) ;
+3. déposer `api/products-sync.php` et `api/catalog.php`.
+
+Déposés avant les colonnes, les deux scripts tombent en erreur SQL — **catalogue
+public compris**. Déposés sans `lib/`, ils tombent en erreur 500. Vérifier ensuite
+que `catalog.php?action=latest&limit=1` rend bien `promo` et `stock_b`.
 
 **`sql/schema.sql` est revenu le 11 août 2026, pour le catalogue** — les quatre
 tables `ax_products`, `ax_categories`, `ax_brands` et `ax_product_categories`.

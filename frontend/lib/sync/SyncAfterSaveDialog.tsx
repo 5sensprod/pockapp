@@ -50,7 +50,7 @@ import {
 } from '@/modules/site/hooks/use-image-sync'
 import {
 	type ProduitComparable,
-	produitChangeAExporter,
+	champsProduitModifies,
 } from '@/modules/site/lib/catalog-export'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 
@@ -70,6 +70,8 @@ type CibleSynchro = {
 	product: CatalogProduct
 	dataModified: boolean
 	imagesModified: boolean
+	/** Ce qui part, en mots — vide quand on ne sait pas (`avant` absent). */
+	changements: string[]
 }
 
 type CibleSynchroCategorie = {
@@ -123,9 +125,8 @@ export function useSyncAfterSave(enabled: boolean): {
 			// apprend à cliquer « Plus tard » sans lire, et c'est ce qui fait rater
 			// la vraie fois. Les images gardent leur propre empreinte : un geste
 			// image seul suffit à poser la question, même si aucune donnée ne bouge.
-			const donneesModifiees = avant
-				? produitChangeAExporter(avant, product)
-				: true
+			const changements = avant ? champsProduitModifies(avant, product) : []
+			const donneesModifiees = avant ? changements.length > 0 : true
 			if (!donneesModifiees && !imagesModified) {
 				return false
 			}
@@ -164,7 +165,12 @@ export function useSyncAfterSave(enabled: boolean): {
 				return false
 			}
 
-			setCible({ product, dataModified: donneesModifiees, imagesModified })
+			setCible({
+				product,
+				dataModified: donneesModifiees,
+				imagesModified,
+				changements,
+			})
 			return true
 		},
 		[inventaire],
@@ -177,6 +183,7 @@ export function useSyncAfterSave(enabled: boolean): {
 				product={cible.product}
 				dataModified={cible.dataModified}
 				imagesModified={cible.imagesModified}
+				changements={cible.changements}
 				onClose={() => setCible(null)}
 			/>
 		) : null,
@@ -312,6 +319,7 @@ export function SyncAfterSaveDialog({
 	product,
 	dataModified,
 	imagesModified,
+	changements = [],
 	onClose,
 }: {
 	product: CatalogProduct
@@ -319,6 +327,9 @@ export function SyncAfterSaveDialog({
 	 *  quand la modale n'a été ouverte que pour des images. */
 	dataModified: boolean
 	imagesModified: boolean
+	/** Ce qui a changé, en mots (`champsProduitModifies`) : « prix promo et
+	 *  période », « Stock B »… Vide, la mention générique reste. */
+	changements?: string[]
 	onClose: () => void
 }) {
 	const pb = usePocketBase()
@@ -436,7 +447,9 @@ export function SyncAfterSaveDialog({
 						>
 							Envoyer la fiche
 							<span className='block text-muted-foreground text-xs'>
-								nom, prix, catégories…
+								{changements.length > 0
+									? `modifié : ${changements.join(', ')}`
+									: 'nom, prix, catégories…'}
 							</span>
 						</label>
 					</div>

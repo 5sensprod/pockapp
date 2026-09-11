@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest'
 import {
 	CATALOG_CONTRACT_VERSION,
 	CHAMPS_PRODUIT_EXPORTES,
+	champsProduitModifies,
 	type ExportBrand,
 	type ExportCategory,
 	type ExportProduct,
@@ -217,6 +218,85 @@ describe('toExportProduct', () => {
 
 		expect(exported.price_ttc).toBe(0)
 		expect(exported.stock).toBe(0)
+	})
+})
+
+// ── PRIX PROMO, PÉRIODE ET STOCK B (11 septembre 2026, §4.1 ter) ───────────
+// Le risque n'est pas qu'ils partent mal : c'est qu'ils changent l'empreinte
+// des 2412 fiches publiées qui n'en ont pas, et les fassent toutes repartir.
+describe('les champs facultatifs du §4.1 ter', () => {
+	it('laissent INTACTE l’empreinte d’un produit sans promo ni Stock B', async () => {
+		// La forme exacte d'avant le 11 septembre 2026, écrite à la main : si
+		// elle change, c'est tout le catalogue en ligne qui passe « modifié ».
+		const avant = {
+			legacy_id: 'nedb-1',
+			name: 'Ukulélé',
+			site_title: null,
+			sku: null,
+			slug: null,
+			description: null,
+			price_ttc: 59.9,
+			tax_rate: 0,
+			stock: 0,
+			status: 'published',
+			sale_state: '',
+			brand: null,
+			categories: [],
+		}
+		const ordinaire = await sealed(
+			toExportProduct(
+				product({
+					promo_price_ttc: 0,
+					promo_start: '',
+					promo_end: '',
+					stock_b: 0,
+					stock_b_price_ttc: 0,
+				}),
+				[],
+				null,
+			),
+		)
+		expect(ordinaire.checksum).toBe(await checksumOf(avant))
+	})
+
+	it('ne portent leurs clés que lorsqu’elles valent', () => {
+		const exported = toExportProduct(
+			product({
+				promo_price_ttc: 49.9,
+				promo_start: '2026-09-10',
+				promo_end: '2026-09-20',
+				stock_b: 2,
+				stock_b_price_ttc: 45,
+			}),
+			[],
+			null,
+		)
+		expect(exported).toMatchObject({
+			promo_price_ttc: 49.9,
+			promo_start: '2026-09-10',
+			promo_end: '2026-09-20',
+			stock_b: 2,
+			stock_b_price_ttc: 45,
+		})
+		expect(Object.keys(toExportProduct(product(), [], null))).not.toContain(
+			'promo_price_ttc',
+		)
+	})
+
+	it('font passer « modifiée » la fiche mise en promo ou dont le Stock B bouge', async () => {
+		const reference = await sealed(toExportProduct(product(), [], null))
+		for (const change of [
+			{ sale_state: 'promo', promo_price_ttc: 49.9 } as const,
+			{ promo_end: '2026-09-20' },
+			{ stock_b: 1 },
+		]) {
+			const apres = await sealed(toExportProduct(product(change), [], null))
+			expect(
+				syncStateOf('nedb-1', apres.checksum, {
+					'nedb-1': reference.checksum,
+				}),
+			).toBe('modified')
+		}
 	})
 })
 
@@ -426,7 +506,16 @@ describe('produitChangeAExporter', () => {
 		// `CHAMPS_PRODUIT_EXPORTES` rendrait la modale d'après-enregistrement
 		// muette sur un changement qui doit partir : la page publique garderait
 		// l'ancienne valeur, sans erreur et sans compteur.
-		const composes = Object.keys(toExportProduct(product(), [], null))
+		// Une fiche qui porte TOUT : les clés facultatives n'apparaissent qu'avec
+		// une valeur, et le gardien doit les voir.
+		const complete = product({
+			promo_price_ttc: 49.9,
+			promo_start: '2026-09-10',
+			promo_end: '2026-09-20',
+			stock_b: 1,
+			stock_b_price_ttc: 45,
+		})
+		const composes = Object.keys(toExportProduct(complete, [], null))
 			// La clé ne change pas, et `site_title` vaut `null` en dur.
 			.filter((champ) => champ !== 'legacy_id' && champ !== 'site_title')
 			.sort()
@@ -458,6 +547,11 @@ describe('produitChangeAExporter', () => {
 			{ stock: 3 },
 			{ status: 'draft' },
 			{ sale_state: 'promo' },
+			{ promo_price_ttc: 49.9 },
+			{ promo_start: '2026-09-10' },
+			{ promo_end: '2026-09-20' },
+			{ stock_b: 2 },
+			{ stock_b_price_ttc: 45 },
 			{ brand: 'pb-m1' },
 			{ categories: ['pb-c1'] },
 		]
@@ -480,5 +574,31 @@ describe('produitChangeAExporter', () => {
 		const avant = product()
 		const apres = product({ description: '', sku: '', slug: '' })
 		expect(produitChangeAExporter(avant, apres)).toBe(false)
+	})
+
+	it('traite 0 et absent comme le même « aucun » pour promo et Stock B', () => {
+		// PocketBase rend 0 pour un nombre jamais saisi : ouvrir puis enregistrer
+		// une fiche sans promo ne doit pas la déclarer modifiée.
+		const apres = product({
+			promo_price_ttc: 0,
+			promo_start: '',
+			stock_b: 0,
+			stock_b_price_ttc: 0,
+		})
+		expect(produitChangeAExporter(product(), apres)).toBe(false)
+	})
+
+	it('nomme ce qui part, sans doublon', () => {
+		expect(
+			champsProduitModifies(
+				product(),
+				product({
+					sale_state: 'promo',
+					promo_price_ttc: 49.9,
+					promo_end: '2026-09-20',
+					stock_b: 1,
+				}),
+			),
+		).toEqual(['opération commerciale', 'prix promo et période', 'Stock B'])
 	})
 })

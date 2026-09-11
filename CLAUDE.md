@@ -258,8 +258,9 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   prix B, le vendeur fixe sa remise. Le nom de la ligne porte « (Stock B) », sur
   le ticket enregistré ET sur le reçu imprimé — aucun champ n'est ajouté aux
   lignes d'un document fiscal. ⚠️ Les factures et devis hors caisse ne vendent
-  que du neuf, et `stock_b` n'entre ni dans l'export du site ni dans le décompte
-  « stock à 0 ».
+  que du neuf, et `stock_b` n'entre pas dans le décompte « stock à 0 ». Il part
+  en revanche vers le site depuis le 11 septembre 2026, avec son prix (voir la
+  règle du prix promo, juste en dessous).
 - **Le prix promo n'est jamais le prix d'une ligne** (10 septembre 2026).
   `products.promo_price_ttc` devient une **remise de ligne** sur `price_ttc`, à
   l'ajout au panier ou au document, et seulement si `sale_state` vaut `sale` ou
@@ -271,7 +272,25 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   factures et devis posent un pourcentage NON arrondi, parce que leur remise
   « montant » est un total de ligne qui ne suivrait pas la quantité. La remise
   se pose À L'AJOUT : une ligne déjà au panier ne change pas si la promo change.
-  Gardiens : `promo-price.test.ts` et `promo-caisse.test.ts`. L'atomicité repose sur une propriété **de PocketBase v0.22.22**
+  Gardiens : `promo-price.test.ts` et `promo-caisse.test.ts`.
+  **La promo a une période** (11 septembre 2026) : `promo_start` / `promo_end`,
+  TEXTE « AAAA-MM-JJ », bornes incluses, vides = sans borne. **Le jour qui la juge
+  est celui du serveur, à Paris** — `GET /api/time/today`
+  (`backend/routes/jour_routes.go`), lu par `useJourServeur` : `prixPromoActif`
+  exige ce jour en paramètre et **ne lit jamais l'horloge du navigateur**. Une
+  fiche dont la fin est passée **repasse seule en plein tarif**
+  (`backend/promo/expiration.go`, toutes les 15 min). Soldé ou Promotion **sans
+  prix promo refuse l'enregistrement** (`productDetailSchema`). La règle existe
+  en TROIS copies, gardées par les mêmes cas : TypeScript (caisse), Go
+  (expiration), PHP (`server/lib/promo.php`, `tests/promo-test.php`).
+  **Vers le site**, prix promo, période, `stock_b` et son prix sont des clés
+  **absentes quand elles ne valent rien** (`champsFacultatifs`,
+  `catalog-export.ts`) : c'est ce qui n'a PAS fait repasser les 2412 fiches
+  « modifiées ». **Ne pas les envoyer à `null`** — un gardien compare
+  l'empreinte d'un produit ordinaire à sa forme d'avant. `catalog.php` décide
+  lui-même de la période et rend `promo` et `stock_b` ; le site (`AxePrice.jsx`)
+  affiche sans rien dater. Contrat : §4.1 ter.
+  L'atomicité repose sur une propriété **de PocketBase v0.22.22**
   (une seule connexion d'écriture) : à revérifier à chaque mise à jour, voir
   `docs/DECISIONS.md`.
 - **Les décomptes du catalogue se calculent côté serveur** (25 août 2026) :
