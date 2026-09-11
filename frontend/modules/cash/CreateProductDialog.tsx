@@ -7,6 +7,7 @@
 // Depuis le 19 août 2026 il écrit dans PocketBase, comme tout le reste. C'est
 // ce qui rend possible l'arrêt du rechargement par purge (front F).
 
+import { useProductDuplicateGuard } from '@/components/catalog/ProductDuplicateGuard'
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -70,6 +71,14 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 
 	const { activeCompanyId } = useActiveCompany()
 	const createProduct = useCreateCatalogProduct()
+	// Le code-barres vient de la scanette, la désignation se tape : les deux
+	// sont comparés au catalogue pendant la saisie, puis à la validation.
+	const duplicates = useProductDuplicateGuard(
+		{ designation: formData.designation, barcode: formData.barcode },
+		activeCompanyId ?? undefined,
+		undefined,
+		open,
+	)
 
 	// Réinitialiser le formulaire avec le nouveau barcode ou nom quand il change
 	React.useEffect(() => {
@@ -116,6 +125,12 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 				return
 			}
 
+			const confirme = await duplicates.verify({
+				designation,
+				barcode: formData.barcode,
+			})
+			if (!confirme) return
+
 			try {
 				// `status: 'published'` — sans quoi le produit tout juste créé serait
 				// invisible du sélecteur de la caisse, qui écarte les brouillons.
@@ -144,6 +159,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 		[
 			formData,
 			createProduct,
+			duplicates,
 			activeCompanyId,
 			onProductCreated,
 			onOpenChange,
@@ -215,6 +231,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 							Affichée sur le ticket de caisse.
 						</p>
 					</div>
+					{duplicates.feedback}
 
 					{/* Nom de la fiche en ligne (optionnel) */}
 					<div className='space-y-2'>
@@ -330,6 +347,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 						</Button>
 					</DialogFooter>
 				</form>
+				{duplicates.dialogue}
 			</DialogContent>
 		</Dialog>
 	)

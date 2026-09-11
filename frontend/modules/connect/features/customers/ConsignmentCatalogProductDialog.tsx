@@ -1,3 +1,4 @@
+import { useProductDuplicateGuard } from '@/components/catalog/ProductDuplicateGuard'
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -47,6 +48,13 @@ export function ConsignmentCatalogProductDialog({
 	const [gallery, setGallery] = useState<GalleryEntry[]>([])
 	const [status, setStatus] = useState<CatalogProductStatus>('draft')
 	const [taxRate, setTaxRate] = useState(20)
+	// Le nom devient aussi la désignation (`consignmentProductPayload`).
+	const duplicates = useProductDuplicateGuard(
+		{ designation: name },
+		companyId || undefined,
+		undefined,
+		open,
+	)
 
 	useEffect(() => {
 		if (!open || !item) return
@@ -71,6 +79,7 @@ export function ConsignmentCatalogProductDialog({
 			toast.error('Le nom du produit est requis')
 			return
 		}
+		if (!(await duplicates.verify({ designation: name }))) return
 
 		try {
 			const created = await createProduct.mutateAsync(
@@ -150,6 +159,7 @@ export function ConsignmentCatalogProductDialog({
 							maxLength={255}
 							onChange={(event) => setName(event.target.value)}
 						/>
+						{duplicates.feedback}
 					</div>
 
 					<div className='grid grid-cols-2 gap-4'>
@@ -276,6 +286,7 @@ export function ConsignmentCatalogProductDialog({
 						</Button>
 					</div>
 				</form>
+				{duplicates.dialogue}
 			</DialogContent>
 		</Dialog>
 	)

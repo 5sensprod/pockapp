@@ -308,7 +308,9 @@ function ProductDetailContent({
 						<FormDetailCard title='Identité du produit' dirty={identityDirty}>
 							<div className='grid gap-x-7 gap-y-5 md:grid-cols-3'>
 								<ProductIdentityCard form={editor.form} embedded />
+								{editor.duplicates.feedback}
 							</div>
+							{editor.duplicates.dialogue}
 						</FormDetailCard>
 
 						<FormDetailCard title='Prix et marge' dirty={dirtySections.pricing}>

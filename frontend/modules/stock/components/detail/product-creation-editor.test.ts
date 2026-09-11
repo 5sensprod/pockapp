@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
 	promote: vi.fn(),
 	stock: vi.fn(),
 	sync: vi.fn(),
+	verify: vi.fn(),
 }))
 vi.mock('react', () => ({
 	useEffect: () => {},
@@ -74,6 +75,13 @@ vi.mock('@/lib/sync/SyncAfterSaveDialog', () => ({
 	useSyncAfterSave: () => ({ proposer: h.sync, dialogue: null }),
 }))
 vi.mock('@/lib/queries/stock-adjust', () => ({ setStockManually: h.stock }))
+vi.mock('@/components/catalog/ProductDuplicateGuard', () => ({
+	useProductDuplicateGuard: () => ({
+		verify: h.verify,
+		feedback: null,
+		dialogue: null,
+	}),
+}))
 vi.mock('@/lib/queries/catalog-products', () => ({
 	invalidateCatalog: vi.fn(),
 	useCreateCatalogProduct: () => ({ mutateAsync: h.create }),
@@ -113,6 +121,7 @@ beforeEach(() => {
 	h.update.mockResolvedValue(saved)
 	h.stock.mockResolvedValue({ applied: true, stockAfter: 5 })
 	h.promote.mockResolvedValue({ image: 'photo_pb.jpg', gallery: [] })
+	h.verify.mockResolvedValue(true)
 })
 
 describe('création depuis la fiche détail', () => {
@@ -174,6 +183,21 @@ describe('création depuis la fiche détail', () => {
 			id: 'created1',
 			data: expect.objectContaining({ gallery: undefined }),
 		})
+	})
+	it('vérifie les doublons avant la première écriture, et renoncer n’écrit rien', async () => {
+		const editor = render()
+		h.values.price_ttc = 120
+		h.values.sku = 'GF-01'
+		h.verify.mockResolvedValueOnce(false)
+		expect(await editor.saveNow()).toBe(false)
+		expect(h.verify).toHaveBeenCalledWith(
+			expect.objectContaining({ designation: 'Guitare', sku: 'GF-01' }),
+			undefined,
+		)
+		expect(h.create).not.toHaveBeenCalled()
+		// Le verrou est rendu : confirmer ensuite enregistre.
+		expect(await render().saveNow()).toBe(true)
+		expect(h.create).toHaveBeenCalledTimes(1)
 	})
 	it('ignore un deuxième enregistrement pendant une création en cours', async () => {
 		const editor = render()

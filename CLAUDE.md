@@ -434,6 +434,16 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   `backend/routes/catalog_counts_test.go`. L'arbre est partagé avec la page
   Produits par `frontend/components/catalog/CategoryTreeRow.tsx` et les
   fonctions de `frontend/lib/queries/category-tree.ts`.
+- **Les doublons de produit avertissent, ils ne bloquent pas** (11 septembre
+  2026). Désignation, référence et code-barres identiques à une AUTRE fiche
+  sont signalés pendant la saisie puis dans un dialogue à la validation ; le
+  vendeur confirme « Il s'agit d'un autre produit ». La comparaison est en Go,
+  `GET /api/catalog/products/duplicates`
+  (`backend/routes/product_duplicates_routes.go`) — désignation sans casse ni
+  espaces répétés, référence et code-barres exacts. Branché sur la fiche
+  détail (champs MODIFIÉS seulement), la création en caisse et la fiche
+  d'occasion d'un dépôt, par `frontend/components/catalog/ProductDuplicateGuard.tsx`.
+  Gardiens : `product_duplicates_test.go` et `product-creation-editor.test.ts`.
 - **Ne pas toucher `wp-admin` ni `wp-json`** dans le `.htaccess` du site tant
   que WordPress sert le catalogue et la médiathèque.
 - **Le rapport Z dit « un total, quatre lignes », et `schema_version` dit sous

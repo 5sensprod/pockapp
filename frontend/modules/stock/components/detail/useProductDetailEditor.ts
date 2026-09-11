@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 
+import { useProductDuplicateGuard } from '@/components/catalog/ProductDuplicateGuard'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import {
 	type CatalogProductShape,
@@ -93,6 +94,36 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 		setActiveSection(null)
 	}
 
+	// Doublons : sur une fiche existante, seuls les champs MODIFIÉS sont
+	// comparés. Sinon une fiche dont le doublon a déjà été accepté redemanderait
+	// confirmation à chaque enregistrement, prix ou stock compris.
+	const identiteModifiee = (values: {
+		designation?: string
+		sku?: string
+		barcode?: string
+	}) => {
+		const origine = form.formState.defaultValues
+		const garder = (champ: 'designation' | 'sku' | 'barcode') =>
+			isCreation ||
+			(values[champ] ?? '').trim() !== (origine?.[champ] ?? '').trim()
+				? values[champ]
+				: ''
+		return {
+			designation: garder('designation'),
+			sku: garder('sku'),
+			barcode: garder('barcode'),
+		}
+	}
+	const duplicates = useProductDuplicateGuard(
+		identiteModifiee({
+			designation: form.watch?.('designation'),
+			sku: form.watch?.('sku'),
+			barcode: form.watch?.('barcode'),
+		}),
+		activeCompanyId ?? undefined,
+		product.id || createdRecord.current?.id || undefined,
+	)
+
 	const galleryDirty = !memeGalerie(baseGallery, gallery)
 	const hasChanges =
 		(isCreation && !createdId) ||
@@ -163,6 +194,15 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 		savingRef.current = true
 		setSaving(true)
 		try {
+			// Avant toute écriture : un refus ici ne laisse rien à moitié fait.
+			if (
+				!(await duplicates.verify(
+					identiteModifiee(data),
+					product.id || createdRecord.current?.id || undefined,
+				))
+			) {
+				return false
+			}
 			const payload = {
 				...productDetailPayload(data),
 				gallery: memeGalerie(baseGallery, gallery) ? undefined : gallery,
@@ -317,6 +357,7 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 		imageRecord: createdRecord.current ?? product,
 		createdId,
 		form,
+		duplicates,
 		/**
 		 * Enregistrer sans passer par le bouton du bandeau.
 		 *
