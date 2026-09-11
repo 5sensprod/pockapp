@@ -1024,7 +1024,7 @@ export function ProductsPage() {
 							active={status === 'draft'}
 							onClick={() => changeStatus('draft')}
 						>
-							Brouillons
+							Non publiés
 						</StatusChip>
 					</div>
 
@@ -1326,7 +1326,7 @@ export function ProductsPage() {
 											onClick={() => changerStatutSelection('draft')}
 											icon={<PenLine className='h-3.5 w-3.5' />}
 											label='Dépublier'
-											title='Repasser la sélection en brouillon'
+											title='Passer la sélection en non publié'
 											tone='amber'
 										/>
 									</span>
@@ -1374,7 +1374,9 @@ export function ProductsPage() {
 			<CatalogProductDialog
 				open={dialogOpen}
 				onOpenChange={setDialogOpen}
-				product={null}
+				onContinue={(designation) =>
+					navigate({ to: '/stock/produits/nouveau', search: { designation } })
+				}
 			/>
 
 			<DeleteProductDialog

@@ -28,7 +28,7 @@ export function ProductPublicationControl({
 				<Badge
 					variant={product.status === 'published' ? 'default' : 'secondary'}
 				>
-					{product.status === 'published' ? 'Publié' : 'Brouillon'}
+					{product.status === 'published' ? 'Publié' : 'Non publié'}
 				</Badge>
 			</div>
 		)
@@ -46,7 +46,7 @@ export function ProductPublicationControl({
 					</FormLabel>
 					<FormControl>
 						<NativeSelect {...field}>
-							<option value='draft'>Brouillon</option>
+							<option value='draft'>Non publié</option>
 							<option value='published'>Publié sur le site</option>
 						</NativeSelect>
 					</FormControl>

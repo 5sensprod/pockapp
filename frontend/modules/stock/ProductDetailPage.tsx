@@ -1,5 +1,5 @@
 import { ArrowLeft, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
 	AlertDialog,
@@ -15,9 +15,17 @@ import { Button } from '@/components/ui/button'
 import { Form } from '@/components/ui/form'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
-import { useCatalogProduct } from '@/lib/queries/catalog-products'
+import {
+	type CatalogProductShape,
+	useCatalogProduct,
+} from '@/lib/queries/catalog-products'
 import { usePocketBase } from '@/lib/use-pocketbase'
-import { useBlocker, useNavigate, useParams } from '@tanstack/react-router'
+import {
+	useBlocker,
+	useNavigate,
+	useParams,
+	useSearch,
+} from '@tanstack/react-router'
 
 import { ProductDetailHeader } from './components/detail/ProductDetailHeader'
 import { ProductIdentityCard } from './components/detail/ProductIdentityCard'
@@ -27,6 +35,7 @@ import { ProductSitePanel } from './components/detail/ProductSitePanel'
 import { ProductStockCard } from './components/detail/ProductStockCard'
 import { ProductStockHistory } from './components/detail/ProductStockHistory'
 import { FormDetailCard } from './components/detail/detail-primitives'
+import { EMPTY_PRODUCT_DETAIL_VALUES } from './components/detail/product-detail-form'
 import {
 	type ProductDetailSection,
 	useProductDetailEditor,
@@ -83,6 +92,31 @@ export function ProductDetailPage() {
 	)
 }
 
+export function NewProductDetailPage() {
+	const { designation } = useSearch({ from: '/stock/produits/nouveau' })
+	const navigate = useNavigate()
+	const draft = useMemo<CatalogProductShape>(
+		() => ({
+			...EMPTY_PRODUCT_DETAIL_VALUES,
+			id: '',
+			collectionId: '',
+			collectionName: 'products',
+			legacy_id: '',
+			name: designation,
+			designation,
+		}),
+		[designation],
+	)
+	return (
+		<ProductDetailContent
+			key={designation}
+			product={draft}
+			imageUrl={null}
+			onBack={() => navigate({ to: '/stock/produits' })}
+		/>
+	)
+}
+
 function ProductDetailContent({
 	product,
 	brandName,
@@ -95,6 +129,7 @@ function ProductDetailContent({
 	onBack: () => void
 }) {
 	const editor = useProductDetailEditor(product)
+	const navigate = useNavigate()
 	const dirty = editor.form.formState.dirtyFields
 	const dirtySections: Record<ProductDetailSection, boolean> = {
 		identity: Boolean(
@@ -157,6 +192,7 @@ function ProductDetailContent({
 	// PocketBase laisse la fiche à l'écran, avec son texte.
 	const [enregistrementEnCours, setEnregistrementEnCours] = useState(false)
 	const [sortieAmorcee, setSortieAmorcee] = useState(false)
+	const destinationDemandee = useRef(false)
 	// ⚠️ **LA CONDITION RESTE VRAIE PENDANT L'ENREGISTREMENT**, et pas seulement
 	// tant qu'il y a des modifications. Mesuré : `useBlocker` retire son
 	// abonnement à l'historique dès que `condition` repasse à `false`
@@ -168,6 +204,20 @@ function ProductDetailContent({
 	const blocage = useBlocker({
 		condition: editor.hasChanges || sortieAmorcee,
 	})
+	useEffect(() => {
+		if (
+			!editor.createdId ||
+			destinationDemandee.current ||
+			sortieAmorcee ||
+			blocage.status === 'blocked'
+		)
+			return
+		void navigate({
+			to: '/stock/produits/$productId',
+			params: { productId: editor.createdId },
+			replace: true,
+		})
+	}, [editor.createdId, sortieAmorcee, blocage.status, navigate])
 
 	useEffect(() => {
 		if (!editor.hasChanges) return
@@ -192,6 +242,7 @@ function ProductDetailContent({
 	}
 
 	const enregistrerPuisQuitter = async () => {
+		destinationDemandee.current = true
 		// Posé AVANT l'attente : c'est ce drapeau qui tient l'abonnement du
 		// bloqueur en vie pendant que l'enregistrement fait tomber `hasChanges`.
 		setSortieAmorcee(true)
@@ -199,7 +250,10 @@ function ProductDetailContent({
 		const enregistre = await editor.saveNow()
 		setEnregistrementEnCours(false)
 		if (enregistre) quitterVraiment()
-		else resterIci()
+		else {
+			destinationDemandee.current = false
+			resterIci()
+		}
 	}
 
 	useEffect(() => {
@@ -242,6 +296,12 @@ function ProductDetailContent({
 
 				<main className='container mx-auto grid items-start gap-5 px-6 py-5 lg:grid-cols-[minmax(0,1fr)_430px]'>
 					<div className='grid content-start gap-4 self-start'>
+						{!product.id && (
+							<p className='rounded-lg border bg-muted/30 p-3 text-sm'>
+								Nouveau produit : complétez la fiche et saisissez un prix de
+								vente TTC supérieur à zéro avant d’enregistrer.
+							</p>
+						)}
 						{/* Colonne de gauche : les champs sont toujours saisissables.
 						    Ouvrir une carte au survol puis au clic avant de pouvoir
 						    taper était un geste de trop pour des champs aussi courts. */}
@@ -272,14 +332,16 @@ function ProductDetailContent({
 							</div>
 						</FormDetailCard>
 
-						<ProductStockHistory
-							productId={product.id}
-							legacyId={product.legacy_id}
-						/>
+						{product.id && (
+							<ProductStockHistory
+								productId={product.id}
+								legacyId={product.legacy_id}
+							/>
+						)}
 					</div>
 					<aside className='self-start lg:sticky lg:top-[104px]'>
 						<ProductSitePanel
-							product={product}
+							product={editor.imageRecord}
 							activeSection={editor.activeSection}
 							dirtySections={dirtySections}
 							onEdit={editor.start}

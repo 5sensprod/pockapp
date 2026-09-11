@@ -87,9 +87,8 @@ export function ProductDetailHeader(props: Props) {
 								</span>
 							</TooltipTrigger>
 							<TooltipContent className='max-w-80'>
-								Le slug est figé dès le premier envoi au site. S’il manque, le
-								prochain enregistrement le posera sans modifier une adresse
-								existante.
+								L’adresse est attribuée au premier enregistrement en statut
+								publié. Elle reste ensuite inchangée, même si le nom change.
 							</TooltipContent>
 						</Tooltip>
 					</TooltipProvider>
@@ -114,7 +113,7 @@ export function ProductDetailHeader(props: Props) {
 						<Badge
 							variant={props.status === 'published' ? 'default' : 'secondary'}
 						>
-							{props.status === 'published' ? 'Publié' : 'Brouillon'}
+							{props.status === 'published' ? 'Publié' : 'Non publié'}
 						</Badge>
 						{commercial && <Badge variant='outline'>{commercial}</Badge>}
 						{operation && <Badge variant='destructive'>{operation}</Badge>}

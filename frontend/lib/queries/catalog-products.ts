@@ -514,7 +514,7 @@ export function useCatalogProductSearch(options: {
 // destination, nommée, sans paramètre à oublier.
 
 /** Ce qu'un écran peut écrire. Deux absents, et chacun pour sa raison :
- *  - `slug` : figé au premier envoi vers le site, le serveur en est le gardien ;
+ *  - `slug` : posé au premier enregistrement publié, puis figé ;
  *  - `legacy_id` : posé par la couche, pas par l'écran — voir `useCreate…`.
  *
  *  L'IMAGE s'écrit depuis le 18 août 2026 (`ImageIntent`) et LA GALERIE depuis
@@ -587,7 +587,7 @@ export async function resoudreSlugProduit(
 }
 
 /**
- * Le slug d'un produit, garanti non vide — posé par la couche, jamais saisi.
+ * Le slug d'un produit publié — posé par la couche, jamais saisi.
  *
  * ⚠️ **Un slug déjà présent n'est jamais retouché.** C'est la règle §4.5 du
  * contrat, et elle a une raison concrète : le slug est l'adresse publique, il
@@ -610,6 +610,7 @@ async function withSlug(
 	// pouvoir le saisir (§4.5). Il n'apparaît qu'ici, à la sortie.
 	const fourni = (data as { slug?: unknown }).slug
 	if (typeof fourni === 'string' && fourni.trim() !== '') return data
+	if (data.status !== 'published') return data
 
 	const slug = await resoudreSlugProduit(pb, data.name ?? '')
 
@@ -625,7 +626,7 @@ export function useCreateCatalogProduct() {
 
 	return useMutation({
 		mutationFn: async (data: CatalogProductWrite) => {
-			// La clé stable ET l'adresse publique sont posées ICI, pas dans le
+			// La clé stable et, en statut publié, l'adresse sont posées ICI, pas dans le
 			// formulaire. Un produit sans `legacy_id` n'est pas seulement refusé à
 			// l'export, il disparaît des relations des autres (docs/DECISIONS.md,
 			// 2026-08-13) ; un produit sans `slug` part en ligne avec une adresse
@@ -649,11 +650,33 @@ export function useUpdateCatalogProduct() {
 			id,
 			data,
 		}: { id: string; data: Partial<CatalogProductWrite> }) =>
-			(await pb
-				.collection('products')
-				.update(id, buildWritePayload(data))) as CatalogProductShape,
+			updateCatalogProductRecord(pb, id, data),
 		onSuccess: () => invalidateCatalog(queryClient),
 	})
+}
+
+/** Le slug naît à la publication et reste ensuite celui de la base, même après dépublication. */
+export async function updateCatalogProductRecord(
+	pb: any,
+	id: string,
+	data: Partial<CatalogProductWrite>,
+): Promise<CatalogProductShape> {
+	const current = await pb.collection('products').getOne(id)
+	const { slug: _ignored, ...fields } = data as Partial<CatalogProductWrite> & {
+		slug?: string
+	}
+	const resolved = await withSlug(pb, {
+		name: fields.name ?? current.name,
+		status: fields.status ?? current.status,
+		slug: current.slug,
+	} as CatalogProductWrite)
+	return pb.collection('products').update(
+		id,
+		buildWritePayload({
+			...fields,
+			...(resolved.slug ? { slug: resolved.slug } : {}),
+		}),
+	)
 }
 
 export type { CatalogCategoryBatchMode } from './catalog-product-category-batch'
@@ -755,9 +778,7 @@ export function useUpdateCatalogProductStatusBatch() {
 					cibles
 						.slice(start, start + 6)
 						.map((product) =>
-							pb
-								.collection('products')
-								.update(product.id, buildWritePayload({ status })),
+							updateCatalogProductRecord(pb, product.id, { status }),
 						),
 				)
 			}

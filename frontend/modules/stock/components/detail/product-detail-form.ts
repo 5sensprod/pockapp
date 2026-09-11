@@ -18,7 +18,7 @@ const jour = z.union([
 ])
 
 const productDetailObject = z.object({
-	name: z.string().min(1, 'Le nom est requis').max(255),
+	name: z.string().trim().min(1, 'Le nom est requis').max(255),
 	designation: z.string().max(255).optional(),
 	sku: z.string().max(50).optional(),
 	barcode: z.string().max(50).optional(),
@@ -103,6 +103,18 @@ export const productDetailSchema = productDetailObject.superRefine(
 
 export type ProductDetailValues = z.infer<typeof productDetailSchema>
 
+/** La création exige un prix de vente ; les anciennes fiches restent éditables. */
+export const productCreationSchema = productDetailSchema.superRefine(
+	(values, ctx) => {
+		if (!(values.price_ttc > 0))
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ['price_ttc'],
+				message: 'Saisissez un prix de vente TTC supérieur à zéro',
+			})
+	},
+)
+
 export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
 	name: '',
 	designation: '',
@@ -149,7 +161,7 @@ export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
  *
  * ⚠️ Ce repli est un repli d'AFFICHAGE, à l'ouverture du formulaire. Il ne
  * réécrit rien tout seul : c'est l'enregistrement qui fixe la valeur. Et comme
- * le slug se dérive de `name` à la SEULE création, réparer le nom d'une fiche
+ * le slug se dérive de `name` à la première publication, réparer le nom d'une fiche
  * déjà publiée ne déplace pas sa page (un slug non vide ne se retouche jamais).
  */
 function reduire(valeur: string): string {

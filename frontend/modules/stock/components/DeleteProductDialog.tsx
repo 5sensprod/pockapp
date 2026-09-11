@@ -143,8 +143,8 @@ export function DeleteProductDialog({
 										</span>
 									</span>
 									<span className='block'>
-										À la place, passez la fiche en <strong>brouillon</strong> :
-										elle sort des grilles de vente et du site, ses documents
+										À la place, passez le produit en <strong>non publié</strong>{' '}
+										: elle sort des grilles de vente et du site, ses documents
 										restent lisibles.
 									</span>
 								</>
@@ -176,7 +176,7 @@ export function DeleteProductDialog({
 									) : null}
 									<span className='block text-muted-foreground'>
 										Le site n'est pas nettoyé par ce geste : si la fiche est
-										publiée en ligne, passez-la d'abord en brouillon et
+										publiée en ligne, choisissez d'abord « Non publié » et
 										ré-exportez-la.
 									</span>
 								</>
@@ -200,7 +200,7 @@ export function DeleteProductDialog({
 								{miseAJour.isPending ? (
 									<Loader2 className='mr-2 h-4 w-4 animate-spin' />
 								) : null}
-								Passer en brouillon
+								Passer en non publié
 							</Button>
 						)
 					) : (

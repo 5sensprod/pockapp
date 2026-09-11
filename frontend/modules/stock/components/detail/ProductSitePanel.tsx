@@ -73,7 +73,7 @@ export function ProductSitePanel(props: Props) {
 									: 'font-semibold text-muted-foreground text-xs'
 							}
 						>
-							{published ? 'Publié' : 'Brouillon'}
+							{published ? 'Publié' : 'Non publié'}
 						</span>
 						<Switch
 							checked={published}
@@ -85,17 +85,24 @@ export function ProductSitePanel(props: Props) {
 								})
 							}
 							aria-label={
-								published ? 'Passer en brouillon' : 'Publier la fiche'
+								published ? 'Passer en non publié' : 'Publier la fiche'
 							}
 						/>
 					</div>
 				}
 			>
-				<ProductOnlinePanel
-					product={props.product}
-					form={props.form}
-					embedded
-				/>
+				{props.product.id ? (
+					<ProductOnlinePanel
+						product={props.product}
+						form={props.form}
+						embedded
+					/>
+				) : (
+					<p className='text-muted-foreground text-sm'>
+						L’adresse sera attribuée lors du premier enregistrement en statut
+						publié.
+					</p>
+				)}
 			</DetailStatusCard>
 
 			<EditableDetailCard

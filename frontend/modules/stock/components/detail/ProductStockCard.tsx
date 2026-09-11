@@ -109,7 +109,9 @@ export function ProductStockCard({
 					help='Appliqué en remise quand la caisse vend une unité B, le prix TTC restant affiché. Vide : le vendeur fixe la remise.'
 				/>
 				<div className='flex h-11 items-center sm:col-span-2 xl:col-span-1 xl:justify-end'>
-					<StockBTransferButton productId={productId} form={form} />
+					{productId && (
+						<StockBTransferButton productId={productId} form={form} />
+					)}
 				</div>
 			</div>
 

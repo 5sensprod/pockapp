@@ -695,7 +695,7 @@ export function ProductTable({
 							variant={publie ? 'default' : 'secondary'}
 							className='px-1.5 py-0.5 font-medium'
 						>
-							{publie ? 'Publié' : 'Brouillon'}
+							{publie ? 'Publié' : 'Non publié'}
 						</Badge>
 					)
 				},

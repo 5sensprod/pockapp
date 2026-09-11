@@ -10,6 +10,30 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Nouveau produit depuis sa fiche ; adresse à la publication — 2026-09-11
+
+**Décision.** Dans PocketStock, « Nouveau produit » demande seulement la
+désignation, puis ouvre la fiche détail avec cette désignation comme nom initial.
+Rien n'est écrit avant l'enregistrement ; un prix TTC strictement positif est
+requis pour créer le produit. Le stock initial passe par `/api/stock/adjust`,
+avec motif, après la création. Un échec de cette étape se reprend sur le même
+produit. La caisse conserve son dialogue et son ajout immédiat au panier.
+
+Le slug des produits est désormais attribué au premier enregistrement en statut
+`published`, y compris lors d'une publication en lot. Les brouillons peuvent
+ainsi changer de nom avant de figer leur adresse. Un slug existant est conservé,
+même sur un brouillon ou après dépublication ; aucune adresse n'est effacée ou
+régénérée rétroactivement. La clé `legacy_id` reste attribuée à la création.
+
+**Écarté.** Créer un brouillon dès la désignation laisserait des produits abandonnés.
+Attribuer le slug à chaque création figerait une adresse avant la fin de la saisie.
+Cette règle remplace l'attribution à la création documentée le 20 août 2026.
+
+**À reconsidérer si** un produit doit disposer d'une adresse publique avant sa
+publication, ou si la caisse doit partager le parcours complet de PocketStock.
+
+---
+
 ## La sauvegarde du client est un snapshot chiffré de `data.db` — 2026-09-01
 
 **Décision.** La base du client part vers le mini-SaaS sous la forme d'un
@@ -1790,6 +1814,9 @@ fournisseurs ne sont pas au contrat d'export.
 ---
 
 ## Le slug est figé, mais quelqu'un doit le POSER — 2026-08-20
+
+Attribution à la création — annulée le 2026-09-11 par « Nouveau produit depuis
+sa fiche ; adresse à la publication ». La conservation des adresses reste valable.
 
 Défaut trouvé à l'usage par le propriétaire : un produit créé au comptoir
 (« Soucoupe », `pa_z01ub59ehh638mgd`) se trouvait bien dans la recherche du
