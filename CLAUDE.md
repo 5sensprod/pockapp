@@ -443,7 +443,39 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   espaces répétés, référence et code-barres exacts. Branché sur la fiche
   détail (champs MODIFIÉS seulement), la création en caisse et la fiche
   d'occasion d'un dépôt, par `frontend/components/catalog/ProductDuplicateGuard.tsx`.
-  Gardiens : `product_duplicates_test.go` et `product-creation-editor.test.ts`.
+  **Les noms qui se RESSEMBLENT sont signalés aussi** (même jour) :
+  « Casio CDP110 » trouve « Bundle Casio CDP110 », « CDP-110 » et la faute
+  « CPD110 », jamais « CDP130 ». La réponse porte `kind` (`identical` |
+  `similar`), `score` et `strong` ; identiques d'abord, puis ressemblants par
+  score, dix au total. Technique : `backend/routes/product_similarity.go`,
+  **jetons normalisés en mémoire, sans dépendance ni index**. Accents retirés,
+  mots vides métier (bundle, pack, occasion, couleurs) enlevés, codes modèle
+  recollés. Un jeton chiffré ou de trois caractères au plus est une
+  **spécification** : si chaque côté en garde une que l'autre n'a pas, la paire
+  est exclue (P45/P145, 3 m/6 m, XLR (F)/(M), Mib/Sib). Fautes de frappe : une
+  édition sur un mot de quatre lettres ou plus, et **seulement la transposition
+  de deux lettres** sur un code modèle (EDC34 ≠ EDQ34). Seuils `seuilSemblable`
+  0,55 (encadré) et `seuilFort` 0,9 (dialogue). **Le seuil ne vit qu'en Go** :
+  le dialogue n'ouvre que sur `strong`, React ne compare rien. Mesuré sur une
+  copie de la base de dév (3051 produits) : 26 cas « oui » sur 26 et 23 « non »
+  sur 23, contre 25 sur 26 sans tolérance aux fautes ; environ 9 ms par requête
+  (6,9 ms de découpage et 1,9 ms de comparaison). FTS5 est compilé dans
+  `modernc.org/sqlite`, le pilote effectif sans CGO, mais écarté : il n'aurait
+  ni recollé les codes ni exclu les faux amis. Référence et code-barres n'ont
+  pas d'étage approché. **Une référence ou un code-barres DIFFÉRENT écarte**
+  une fiche signalée par sa seule désignation (identique ou semblable) : il faut
+  que la saisie et la fiche en portent un, et qu'ils diffèrent. Une fiche sans
+  code reste signalée. La fiche détail envoie ses valeurs non modifiées dans
+  `entered_sku` et `entered_barcode` : elles départagent sans être comparées.
+  **L'avertissement n'ouvre pas la fiche** : chaque correspondance est un
+  dépliant (marque, référence, code-barres, prix, stock et Stock B, statut,
+  vignette), lus par la route avec une jointure `brands`. Les noms semblables
+  sont regroupés dans un pli fermé dans l'encadré, ouvert dans le dialogue.
+  Sous Wails, le lien `target='_blank'` d'avant ouvrait une seconde fenêtre de
+  l'application.
+  Gardiens : `product_duplicates_test.go`, **`product_similarity_test.go`**
+  (jeu de 50 cas réels : retoucher un seuil ou un mot vide, c'est le rejouer) et
+  `product-creation-editor.test.ts`.
 - **Ne pas toucher `wp-admin` ni `wp-json`** dans le `.htaccess` du site tant
   que WordPress sert le catalogue et la médiathèque.
 - **Le rapport Z dit « un total, quatre lignes », et `schema_version` dit sous

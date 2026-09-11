@@ -112,6 +112,10 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 			designation: garder('designation'),
 			sku: garder('sku'),
 			barcode: garder('barcode'),
+			// Non comparés, mais une référence différente écarte une fiche
+			// signalée par sa seule désignation.
+			enteredSku: values.sku,
+			enteredBarcode: values.barcode,
 		}
 	}
 	const duplicates = useProductDuplicateGuard(

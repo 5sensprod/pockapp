@@ -9,6 +9,13 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select'
+import {
 	type JourServeur,
 	periodePromo,
 	prixPromoActif,
@@ -162,7 +169,7 @@ export function ProductPricingCard({
 						</p>
 					)}
 				</div>
-				<NumberField form={form} name='tax_rate' label='TVA (%)' step='0.1' />
+				<TaxRateField form={form} />
 				<div>
 					<p className='mb-2 font-medium text-muted-foreground text-xs'>
 						Marge calculée
@@ -210,7 +217,7 @@ function NumberField({
 	onSaisie,
 }: {
 	form: UseFormReturn<ProductDetailValues>
-	name: 'price_ttc' | 'promo_price_ttc' | 'purchase_price_ht' | 'tax_rate'
+	name: 'price_ttc' | 'promo_price_ttc' | 'purchase_price_ht'
 	label: string
 	step: string
 	help?: string
@@ -242,6 +249,55 @@ function NumberField({
 					<FormMessage />
 				</FormItem>
 			)}
+		/>
+	)
+}
+
+/**
+ * Les taux proposés par les factures et devis. Le schéma garde un nombre libre
+ * (`catalog_v2.go:660`) : un taux hors liste, venu d'un import, reste affiché
+ * tel quel plutôt que d'être remplacé en silence.
+ */
+const TAUX_TVA = [20, 10, 5.5, 2.1, 0]
+
+function libelleTva(taux: number) {
+	return taux === 0 ? 'Exonéré (0 %)' : `${String(taux).replace('.', ',')} %`
+}
+
+function TaxRateField({ form }: { form: UseFormReturn<ProductDetailValues> }) {
+	return (
+		<FormField
+			control={form.control}
+			name='tax_rate'
+			render={({ field }) => {
+				const courant = Number(field.value)
+				const taux = TAUX_TVA.includes(courant)
+					? TAUX_TVA
+					: [...TAUX_TVA, courant]
+				return (
+					<FormItem>
+						<FormLabel>TVA</FormLabel>
+						<Select
+							value={String(courant)}
+							onValueChange={(valeur) => field.onChange(Number(valeur))}
+						>
+							<FormControl>
+								<SelectTrigger ref={field.ref} onBlur={field.onBlur}>
+									<SelectValue />
+								</SelectTrigger>
+							</FormControl>
+							<SelectContent>
+								{taux.map((t) => (
+									<SelectItem key={t} value={String(t)}>
+										{libelleTva(t)}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<FormMessage />
+					</FormItem>
+				)
+			}}
 		/>
 	)
 }

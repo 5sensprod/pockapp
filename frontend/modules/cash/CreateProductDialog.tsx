@@ -288,9 +288,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 							</Label>
 							<Select
 								value={String(formData.tax_rate)}
-								onValueChange={(v) =>
-									handleFieldChange('tax_rate', Number.parseInt(v))
-								}
+								onValueChange={(v) => handleFieldChange('tax_rate', Number(v))}
 							>
 								<SelectTrigger id='tax_rate' className='h-11'>
 									<SelectValue />

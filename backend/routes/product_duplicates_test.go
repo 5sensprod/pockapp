@@ -31,8 +31,10 @@ func TestTrouverDoublons(t *testing.T) {
 		if got := champsDe(trouverDoublons(catalogueDoublons, IdentiteProduit{Designation: "AMPLI ÉTÉ"}, "")); len(got["b"]) != 1 {
 			t.Fatalf("got %v", got)
 		}
-		if got := trouverDoublons(catalogueDoublons, IdentiteProduit{Designation: "Ampli Ete"}, ""); len(got) != 0 {
-			t.Fatalf("un accent retiré ne doit pas correspondre : %v", got)
+		// Depuis le 11 septembre 2026, l'accent retiré RESSEMBLE
+		// (product_similarity.go) ; il ne rend toujours pas la fiche identique.
+		if got := trouverDoublons(catalogueDoublons, IdentiteProduit{Designation: "Ampli Ete"}, ""); len(got) != 1 || got[0].Kind != "similar" {
+			t.Fatalf("un accent retiré ne doit pas rendre identique : %v", got)
 		}
 	})
 

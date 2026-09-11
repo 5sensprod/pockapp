@@ -7,6 +7,11 @@ export type ProductIdentity = {
 	designation?: string
 	sku?: string
 	barcode?: string
+	// Valeurs du formulaire, même non modifiées : ne sont pas comparées, mais
+	// écartent une fiche signalée par sa seule désignation quand sa référence
+	// ou son code-barres diffère (règle en Go).
+	enteredSku?: string
+	enteredBarcode?: string
 }
 export type DuplicateField = 'designation' | 'sku' | 'barcode'
 export type DuplicateProduct = {
@@ -16,10 +21,23 @@ export type DuplicateProduct = {
 	sku: string
 	barcode: string
 	status: string
+	// Pour le dépliant de l'avertissement ; non comparés.
+	price_ttc: number
+	stock: number
+	stock_b: number
+	brand: string
+	image: string
 }
 export type ProductDuplicate = {
 	product: DuplicateProduct
 	fields: DuplicateField[]
+	// `identical` : un champ au moins est identique. `similar` : la désignation
+	// seule ressemble (`backend/routes/product_similarity.go`).
+	kind: 'identical' | 'similar'
+	score: number
+	// Décidé en Go (identique, ou ressemblant au-dessus du seuil fort) : c'est
+	// lui, et lui seul, qui ouvre le dialogue de validation.
+	strong: boolean
 }
 
 export const DUPLICATE_LABELS: Record<DuplicateField, string> = {
@@ -52,6 +70,8 @@ export async function fetchProductDuplicates(
 				designation: identity.designation ?? '',
 				sku: identity.sku ?? '',
 				barcode: identity.barcode ?? '',
+				entered_sku: identity.enteredSku ?? '',
+				entered_barcode: identity.enteredBarcode ?? '',
 				exclude: excludeId ?? '',
 			},
 			requestKey: null,

@@ -26,6 +26,13 @@ type Props = {
 	canSave: boolean
 	pending: boolean
 	onBack: () => void
+	// Création : « Valider » au lieu d'« Enregistrer », grisé tant que le prix
+	// TTC manque (même règle que `productCreationSchema`), et « Annuler » dès
+	// qu'il est actif — le vendeur qui découvre, à l'avertissement de doublon,
+	// que la fiche existe déjà doit pouvoir renoncer sans rien écrire.
+	isCreation?: boolean
+	priceMissing?: boolean
+	onCancel?: () => void
 }
 
 export function ProductDetailHeader(props: Props) {
@@ -119,10 +126,39 @@ export function ProductDetailHeader(props: Props) {
 						{operation && <Badge variant='destructive'>{operation}</Badge>}
 					</div>
 				</div>
-				<Button type='submit' disabled={props.pending || !props.canSave}>
-					<Save className='mr-2 h-4 w-4' />
-					Enregistrer
-				</Button>
+				{props.isCreation ? (
+					<div className='flex shrink-0 flex-col items-end gap-1'>
+						<div className='flex items-center gap-2'>
+							{!props.priceMissing && props.onCancel && (
+								<Button
+									type='button'
+									variant='outline'
+									disabled={props.pending}
+									onClick={props.onCancel}
+								>
+									Annuler
+								</Button>
+							)}
+							<Button
+								type='submit'
+								disabled={props.pending || !props.canSave || props.priceMissing}
+							>
+								<Save className='mr-2 h-4 w-4' />
+								Valider
+							</Button>
+						</div>
+						{props.priceMissing && (
+							<p className='text-muted-foreground text-xs'>
+								Saisissez un prix de vente TTC pour valider.
+							</p>
+						)}
+					</div>
+				) : (
+					<Button type='submit' disabled={props.pending || !props.canSave}>
+						<Save className='mr-2 h-4 w-4' />
+						Enregistrer
+					</Button>
+				)}
 			</div>
 		</header>
 	)

@@ -201,9 +201,27 @@ function ProductDetailContent({
 	// quitter » faisait donc tomber la condition — plus rien de modifié — AVANT
 	// d'appeler `proceed()` : l'abonnement était déjà parti, la navigation
 	// perdue, et la boîte restait à l'écran sur une fiche pourtant enregistrée.
+	// « Annuler » en création : le vendeur renonce, lui reposer la question
+	// « quitter sans enregistrer ? » serait absurde. Le drapeau lève le bloqueur,
+	// puis l'effet plus bas quitte — dans cet ordre, pour la raison dite juste
+	// au-dessus : un bloqueur encore abonné intercepterait la navigation.
+	const [abandonCreation, setAbandonCreation] = useState(false)
 	const blocage = useBlocker({
-		condition: editor.hasChanges || sortieAmorcee,
+		condition: !abandonCreation && (editor.hasChanges || sortieAmorcee),
 	})
+	// `onBack` est recréé à chaque rendu : sans ce verrou, l'effet naviguerait
+	// une fois par rendu jusqu'au démontage.
+	const abandonLance = useRef(false)
+	useEffect(() => {
+		if (!abandonCreation || abandonLance.current) return
+		abandonLance.current = true
+		onBack()
+	}, [abandonCreation, onBack])
+	const creation = !product.id
+	// Déjà écrite (création passée, stock refusé ensuite) : « Annuler » ne
+	// ferait plus disparaître la fiche, il n'est donc plus proposé.
+	const creationEcrite = Boolean(editor.imageRecord.id)
+	const prixSaisi = Number(editor.form.watch('price_ttc')) > 0
 	useEffect(() => {
 		if (
 			!editor.createdId ||
@@ -292,6 +310,13 @@ function ProductDetailContent({
 					canSave={editor.hasChanges}
 					pending={editor.pending}
 					onBack={onBack}
+					isCreation={creation}
+					priceMissing={creation && !prixSaisi}
+					onCancel={
+						creation && !creationEcrite
+							? () => setAbandonCreation(true)
+							: undefined
+					}
 				/>
 
 				<main className='container mx-auto grid items-start gap-5 px-6 py-5 lg:grid-cols-[minmax(0,1fr)_430px]'>
@@ -299,7 +324,7 @@ function ProductDetailContent({
 						{!product.id && (
 							<p className='rounded-lg border bg-muted/30 p-3 text-sm'>
 								Nouveau produit : complétez la fiche et saisissez un prix de
-								vente TTC supérieur à zéro avant d’enregistrer.
+								vente TTC supérieur à zéro avant de valider.
 							</p>
 						)}
 						{/* Colonne de gauche : les champs sont toujours saisissables.
