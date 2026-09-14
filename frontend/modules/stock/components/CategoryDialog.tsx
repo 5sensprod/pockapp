@@ -29,7 +29,7 @@ import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import { useCreateCategory, useUpdateCategory } from '@/lib/queries/categories'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import type { CatalogCategory } from '@/lib/queries/site-catalog'
-import { useCategorySyncAfterSave } from '@/lib/sync/SyncAfterSaveDialog'
+import { useCategoryAutoSync } from '@/lib/sync/relation-auto-sync'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 import { CategoryPicker } from './CategoryPicker'
@@ -77,7 +77,10 @@ export function CategoryDialog({
 	const createCategory = useCreateCategory()
 	const updateCategory = useUpdateCategory()
 	const pb = usePocketBase()
-	const syncApresEnregistrement = useCategorySyncAfterSave(open && isEdit)
+	// Ouvert, qu'on crée ou qu'on modifie : une catégorie MISE EN AVANT part dès
+	// sa création (`relation-auto-sync.ts`), l'inventaire doit donc être lu dans
+	// les deux cas.
+	const publierCategorie = useCategoryAutoSync(open)
 
 	// Hors formulaire : react-hook-form sérialise ses valeurs, un `File` n'y
 	// survit pas.
@@ -144,13 +147,10 @@ export function CategoryDialog({
 				})
 				toast.success('Catégorie modifiée')
 				if (donneesModifiees || imageModifiee) {
-					await syncApresEnregistrement.proposer(
-						enregistree as CatalogCategory,
-						{
-							dataModified: donneesModifiees,
-							imageModified: imageModifiee,
-						},
-					)
+					await publierCategorie(enregistree as CatalogCategory, {
+						dataModified: donneesModifiees,
+						imageModified: imageModifiee,
+					})
 				}
 			} else {
 				if (!activeCompanyId) {
@@ -163,6 +163,13 @@ export function CategoryDialog({
 				})
 				toast.success('Catégorie créée')
 				onCreated?.(creee)
+				// Une création n'a rien à rafraîchir en ligne — sauf mise en avant :
+				// `catalog.php?action=featured-categories` l'affiche SANS produit. La
+				// décision est prise dans `relation-auto-sync.ts`, pas ici.
+				await publierCategorie(creee as unknown as CatalogCategory, {
+					dataModified: true,
+					imageModified: Boolean(imageFile),
+				})
 			}
 			onOpenChange(false)
 		} catch (error) {
@@ -310,7 +317,6 @@ export function CategoryDialog({
 					</Form>
 				</DialogContent>
 			</Dialog>
-			{syncApresEnregistrement.dialogue}
 		</>
 	)
 }

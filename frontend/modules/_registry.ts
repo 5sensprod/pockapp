@@ -7,11 +7,22 @@ export interface TopbarMenuItem {
 	icon?: LucideIcon
 }
 
+/**
+ * Les pastilles que la barre latérale sait poser sur une entrée.
+ *
+ * C'est une CLÉ, pas une valeur : le registre ne compte rien et n'appelle
+ * personne. La barre traduit la clé en composant (`Sidebar.tsx`), et ce
+ * composant vit dans le module concerné, avec la requête qui le nourrit.
+ */
+export type SidebarBadgeKey = 'site-catalogue'
+
 export interface SidebarMenuItem {
 	label: string
 	to: string
 	/** Icône du sous-menu, rendue dans les panneaux desktop et mobile. */
 	icon: LucideIcon
+	/** Pastille à poser à droite du libellé. Voir `SidebarBadgeKey`. */
+	badge?: SidebarBadgeKey
 }
 
 export interface SidebarGroup {

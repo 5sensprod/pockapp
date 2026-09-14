@@ -134,6 +134,11 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 			marques: 0,
 			images: 0,
 			fichesImages: 0,
+			/** Les travaux traversés, par leur nom. Un seul, et le bilan le
+			 *  nomme : c'est ce qui rend lisible l'envoi automatique d'une
+			 *  catégorie ou d'une marque, où le vendeur n'a rien demandé et doit
+			 *  lire QUOI est parti (`relation-auto-sync.ts`). */
+			libelles: new Set<string>(),
 			rejets: [] as SyncQueueState['rejets'],
 			echecs: [] as string[],
 		}
@@ -142,6 +147,7 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 			while (file.current.length > 0 && !arret.current) {
 				const job = file.current.shift()
 				if (!job) break
+				bilan.libelles.add(job.label)
 
 				// Le catalogue vient du MÊME cache que les écrans
 				// (`catalog*QueryOptions`) : ouvert, il est déjà là ; fermé, la file
@@ -442,6 +448,14 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 				.filter(Boolean)
 				.join(' · ')
 
+			// Un seul travail : on le nomme. Plusieurs : les compteurs parlent
+			// mieux qu'une liste de noms tronquée.
+			const [seulLibelle] = [...bilan.libelles]
+			const resumeNomme =
+				resume && bilan.libelles.size === 1 && seulLibelle
+					? `« ${seulLibelle} » — ${resume}`
+					: resume
+
 			const action = {
 				label: 'Voir',
 				onClick: () => router.navigate({ to: '/site/catalogue' }),
@@ -456,19 +470,22 @@ export function SyncQueueProvider({ children }: { children: ReactNode }) {
 					bilan.echecs.length > 0 ? bilan.echecs.slice(0, 3).join(' ; ') : null
 
 				toast.warning(
-					[resume || 'Synchronisation interrompue', refus, echecs]
+					[resumeNomme || 'Synchronisation interrompue', refus, echecs]
 						.filter(Boolean)
 						.join(' — '),
 					{ id: TOAST_ID, duration: 12_000, action },
 				)
 			} else if (interrompu) {
-				toast.info(resume ? `Arrêté — ${resume}` : 'Synchronisation arrêtée.', {
-					id: TOAST_ID,
-					duration: 6_000,
-					action,
-				})
+				toast.info(
+					resumeNomme ? `Arrêté — ${resumeNomme}` : 'Synchronisation arrêtée.',
+					{
+						id: TOAST_ID,
+						duration: 6_000,
+						action,
+					},
+				)
 			} else if (resume) {
-				toast.success(resume, { id: TOAST_ID, duration: 6_000, action })
+				toast.success(resumeNomme, { id: TOAST_ID, duration: 6_000, action })
 			} else {
 				// Ni écriture, ni refus, ni échec : il ne s'est RIEN passé. Se taire
 				// ici — ce que faisait `toast.dismiss` — laisse croire que l'envoi a

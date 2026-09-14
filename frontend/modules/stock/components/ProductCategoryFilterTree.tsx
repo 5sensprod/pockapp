@@ -31,7 +31,9 @@ import {
 } from '@/lib/queries/category-tree'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { type CatalogCounts, countsOfCategory } from '@/lib/queries/products'
+import type { CatalogCategory } from '@/lib/queries/site-catalog'
 import { useDeleteSupplier } from '@/lib/queries/suppliers'
+import { useCategoryAutoSync } from '@/lib/sync/relation-auto-sync'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import {
@@ -150,18 +152,43 @@ const parCreation = (a: { created?: string }, b: { created?: string }) =>
 const parNom = (a: { name: string }, b: { name: string }) =>
 	a.name.localeCompare(b.name, 'fr')
 
+// Teinte du bouton de tri. Une seule paire pour les trois critères : la même
+// violette que la sélection de l'arbre (CATEGORY_SELECTED_CLASS), parce que ce
+// qui distingue les boutons est leur icône, pas leur couleur. Chaque entrée la
+// porte quand même séparément : si un critère doit un jour se démarquer, c'est
+// ici, sans toucher au JSX.
+const TRI_ACTIF =
+	'bg-violet-100 text-primary dark:bg-violet-900/50 dark:text-foreground'
+const TRI_SURVOL = 'hover:text-primary'
+
 const SORT_BUTTONS = [
-	{ mode: 'name', Ascendant: ArrowDownAZ, Descendant: ArrowUpAZ },
+	{
+		mode: 'name',
+		Ascendant: ArrowDownAZ,
+		Descendant: ArrowUpAZ,
+		actif: TRI_ACTIF,
+		survol: TRI_SURVOL,
+	},
 	{
 		mode: 'created',
 		Ascendant: CalendarArrowUp,
 		Descendant: CalendarArrowDown,
+		actif: TRI_ACTIF,
+		survol: TRI_SURVOL,
 	},
-	{ mode: 'products', Ascendant: ArrowDown01, Descendant: ArrowUp01 },
+	{
+		mode: 'products',
+		Ascendant: ArrowDown01,
+		Descendant: ArrowUp01,
+		actif: TRI_ACTIF,
+		survol: TRI_SURVOL,
+	},
 ] as const satisfies readonly {
 	mode: SortMode
 	Ascendant: typeof ArrowDownAZ
 	Descendant: typeof ArrowDownAZ
+	actif: string
+	survol: string
 }[]
 
 const normalizeSearch = normalizeCategorySearch
@@ -193,6 +220,11 @@ export function ProductCategoryFilterTree({
 	const deleteBrand = useDeleteBrand()
 	const deleteSupplier = useDeleteSupplier()
 	const [view, setView] = useState<ExplorerView>('category')
+	// La mise en avant se bascule ICI, hors du formulaire : elle doit partir en
+	// ligne comme le reste (14 septembre 2026). L'inventaire distant n'est lu
+	// que dans la vue Catégories — une lecture par visite, `staleTime` 30 s,
+	// la même requête que `/site/catalogue`.
+	const publierCategorie = useCategoryAutoSync(view === 'category')
 	const [search, setSearch] = useState('')
 	const [featuredOnly, setFeaturedOnly] = useState(false)
 	// Ne montrer QUE ce qui n'a aucun produit. L'arbre écarte les catégories
@@ -553,9 +585,17 @@ export function ProductCategoryFilterTree({
 		if (!category) return
 
 		try {
-			await updateCategory.mutateAsync({
+			const enregistree = await updateCategory.mutateAsync({
 				id: category.id,
 				data: { is_featured: !category.is_featured },
+			})
+			// `is_featured` est un champ exporté, et une catégorie mise en avant
+			// s'affiche SEULE sur le site (`catalog.php?action=featured-categories`,
+			// sans jointure produit) : le geste doit atteindre la vitrine sans
+			// passer par `/site/catalogue`.
+			await publierCategorie(enregistree as unknown as CatalogCategory, {
+				dataModified: true,
+				imageModified: false,
 			})
 		} catch (error) {
 			toast.error(`Mise en avant refusée : ${pocketbaseErrorMessage(error)}`)

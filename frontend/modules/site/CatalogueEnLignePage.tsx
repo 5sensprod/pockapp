@@ -333,6 +333,30 @@ function CatalogueEnLigneContent({
 		[depubliesEnLigne, checksums, inventory.data],
 	)
 
+	/**
+	 * Les fiches que le site sert et qui n'existent plus ici — supprimées au
+	 * comptoir. Elles ne sont NI dans `products` (publiés) NI dans `unpublished`
+	 * (brouillons) : rien ne les montrait, et le compteur « Sur le site »
+	 * les incluait sans le dire.
+	 *
+	 * Aucun envoi ne les concerne : on ne peut pas exporter une fiche qui
+	 * n'existe pas, et le contrat n'a aucune opération de suppression (§2). La
+	 * bande les AFFICHE, elle ne propose rien — voir
+	 * `PocketSite-docs/20-conception-retrait.md`.
+	 */
+	const disparus = useMemo(() => {
+		const enLigne = inventory.data?.products
+		if (!enLigne) return 0
+		const locaux = new Set<string>()
+		for (const p of products.data ?? NO_PRODUCTS) locaux.add(p.legacy_id)
+		for (const p of unpublished.data ?? NO_PRODUCTS) locaux.add(p.legacy_id)
+		let compte = 0
+		for (const legacyId of Object.keys(enLigne)) {
+			if (!locaux.has(legacyId)) compte++
+		}
+		return compte
+	}, [inventory.data, products.data, unpublished.data])
+
 	const syncStates = useMemo(() => {
 		const map = new Map<string, SyncState>()
 		if (!inventory.data) return map
@@ -912,6 +936,7 @@ function CatalogueEnLigneContent({
 						loading={inventory.isFetching}
 						error={(inventory.error as Error | null) ?? null}
 						counts={syncCounts}
+						disparus={disparus}
 						remoteCount={inventory.data?.counts.products ?? null}
 						exporting={exporting}
 						progress={sync.etat.donnees}

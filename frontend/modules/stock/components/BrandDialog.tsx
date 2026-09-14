@@ -35,7 +35,7 @@ import type { CatalogBrandShape } from '@/lib/queries/catalog-shapes'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import type { CatalogBrand } from '@/lib/queries/site-catalog'
 import { useSuppliers, useUpdateSupplier } from '@/lib/queries/suppliers'
-import { useBrandSyncAfterSave } from '@/lib/sync/SyncAfterSaveDialog'
+import { useBrandAutoSync } from '@/lib/sync/relation-auto-sync'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import { Check, ChevronsUpDown, Search, X } from 'lucide-react'
@@ -72,7 +72,10 @@ export function BrandDialog({
 	const createBrand = useCreateBrand()
 	const updateBrand = useUpdateBrand()
 	const pb = usePocketBase()
-	const syncApresEnregistrement = useBrandSyncAfterSave(open && isEdit)
+	// Édition seule : une marque sans produit publié n'apparaît nulle part sur le
+	// site (`catalog.php?action=brands` joint les produits publiés), une création
+	// n'a donc rien à y écrire. Voir `relation-auto-sync.ts`.
+	const publierMarque = useBrandAutoSync(open && isEdit)
 
 	// L'image vit hors du formulaire : react-hook-form sérialise ses valeurs, et
 	// un `File` n'y survit pas.
@@ -241,7 +244,7 @@ export function BrandDialog({
 						: 'Marque modifiée',
 				)
 				if (donneesModifiees || imageModifiee) {
-					await syncApresEnregistrement.proposer(enregistree as CatalogBrand, {
+					await publierMarque(enregistree as CatalogBrand, {
 						dataModified: donneesModifiees,
 						imageModified: imageModifiee,
 					})
@@ -480,7 +483,6 @@ export function BrandDialog({
 					</Form>
 				</DialogContent>
 			</Dialog>
-			{syncApresEnregistrement.dialogue}
 		</>
 	)
 }

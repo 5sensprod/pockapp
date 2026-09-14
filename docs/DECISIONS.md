@@ -10,6 +10,97 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Une pastille pour ce qui n'a aucun automatisme — 2026-09-14
+
+**Décision.** « Catalogue en ligne », dans la barre latérale, porte une pastille
+ambre qui compte **deux états, et deux seulement** : les fiches publiées ici que
+le site n'a jamais reçues (la première mise en ligne reste manuelle), et les
+fiches encore en ligne qui n'existent plus ici (supprimées au comptoir). Ce sont
+exactement les deux cas qu'aucun automatisme ne couvre.
+
+**Elle ne compte pas les fiches modifiées**, et c'est le prix payé pour qu'elle
+existe : le savoir demande une empreinte par produit — ce que `/site/catalogue`
+calcule sur 2848 fiches — et le faire tourner en fond sur tous les écrans pour
+poser un chiffre dans un menu coûterait bien plus que le rappel ne vaut. Les
+deux états retenus se lisent par simple présence d'une clé : un index
+`legacy_id + status` (deux champs, ~2900 lignes) et l'inventaire distant, sans
+une empreinte ni un octet d'image. Pastille éteinte ne veut donc pas dire « site
+à jour » : son infobulle le dit, et `/site/catalogue` fait foi.
+
+**L'écran a été réécrit dans le même geste.** La bande de synchronisation
+alignait cinq nombres de même poids — dont trois étaient des tâches et deux un
+état — et ne disait jamais quoi faire. Elle porte maintenant une phrase
+(« 14 fiches à envoyer au site »), les tâches en toutes lettres en dessous, et
+l'état du site en gris, en pied. « Jamais exportés » est devenu « créées ici,
+jamais parties sur le site ».
+
+**Un état apparaît, qui n'était affiché nulle part** : les fiches en ligne
+supprimées localement. Le compteur « Sur le site » les incluait sans le dire.
+Elles n'entrent dans aucun envoi — on n'exporte pas une fiche qui n'existe plus,
+et le serveur n'a aucune opération de suppression : l'écran les nomme et
+renvoie au sous-chantier
+[`20-conception-retrait.md`](../frontend/modules/site/PocketSite-docs/20-conception-retrait.md).
+
+**Écarté.** Compter tout côté serveur, dans une route Go : le checksum d'export
+n'existe qu'en TypeScript, le réécrire en Go créerait une seconde
+implémentation de la règle — c'est exactement ce qu'on refuse pour le Z.
+Approximer « à retirer » sans empreinte : le compteur ne retomberait jamais à
+zéro après l'envoi.
+
+**Ce qui pourrait la remettre en cause.** Une pastille durablement allumée sur
+des fiches disparues que rien ne peut retirer : ce serait le signal qu'il faut
+ouvrir le sous-chantier du retrait plutôt que de continuer à le signaler.
+
+## Catégories et marques : la mise en ligne part toute seule — 2026-09-14
+
+**Décision.** Après enregistrement d'une catégorie ou d'une marque, PocketApp
+n'interroge plus le vendeur : si l'entité est connue de l'inventaire du site,
+la file reçoit directement `{ donnees: true, images: true }` et le toast nomme
+ce qui est parti. Le dialogue `RelationSyncAfterSaveDialog` est **supprimé**,
+sans réglage ni « ne plus demander » : le commentaire de `SyncAfterSaveDialog.tsx`
+disait vouloir « voir si la question rassure ou agace » — elle agace, parce
+qu'elle porte sur un nom, un texte, un parent et une photo, et qu'elle n'a
+jamais eu de réponse autre que « oui ». Le dialogue **produit** reste : une
+fiche produit porte huit champs qui ne vont nulle part en ligne et jusqu'à des
+dizaines d'images. La règle vit dans `frontend/lib/sync/relation-auto-sync-rule.ts`,
+seule et testée ; le hook qui l'applique est à côté.
+
+La mise en avant bascule aussi depuis l'arbre de `/stock/produits`, hors
+formulaire : ce geste-là part également.
+
+**Les créations.** Une marque neuve ne part pas : `catalog.php?action=brands`
+joint les produits publiés, une marque sans produit n'apparaît nulle part et sa
+ligne SQL serait morte. Une catégorie neuve ne part pas non plus — sauf si elle
+est **mise en avant** : `catalog.php?action=featured-categories` ne joint rien,
+cette catégorie-là s'affiche seule sur la vitrine. Pour tout le reste, la règle
+existante ne bouge pas : un produit publié emporte les catégories qu'il cite,
+ancêtres compris (`collectExportInput`).
+
+**Les images partent sans être comparées.** Une catégorie porte au plus une
+photo : l'envoi est un multipart de quelques centaines de kilo-octets, moins
+cher que la lecture d'octets et la requête d'inventaire qu'une comparaison
+d'empreinte coûterait. Aucun balayage du catalogue, dans aucun cas.
+
+**Écarté.** Garder le dialogue derrière un réglage : un réglage que personne ne
+change est un chemin mort de plus, et la question ne portait sur rien de
+risqué. Empiler les images seulement quand elles ont changé : plus cher que
+l'envoi qu'on évite.
+
+**Non traité, et c'est explicite.** La suppression. `products-sync.php` n'a
+aucune opération de retrait (§2 du contrat), et l'ordre imposé par
+`images-sync.php` — qui refuse des images pour une ligne absente — fait du
+retrait un sous-chantier à part :
+[`20-conception-retrait.md`](../frontend/modules/site/PocketSite-docs/20-conception-retrait.md).
+Tant qu'il n'est pas fait, supprimer une catégorie laisse sa page en ligne et
+les produits qui la citaient gardent leur ancien rattachement sur le site.
+
+**Ce qui pourrait la remettre en cause.** Un envoi automatique qui part vers un
+site injoignable trois fois par minute : le toast le dirait, mais rien ne
+temporise aujourd'hui.
+
+**`/site/catalogue` ne change pas.** Il reste le filet en cas de
+désynchronisation, et le seul chemin pour une campagne.
+
 ## Nouveau produit depuis sa fiche ; adresse à la publication — 2026-09-11
 
 **Décision.** Dans PocketStock, « Nouveau produit » demande seulement la

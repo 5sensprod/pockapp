@@ -42,6 +42,9 @@ import { navigationActions } from '@/lib/stores/navigationStore'
 import { cn } from '@/lib/utils'
 import { type SidebarGroup, getModule } from '@/modules/_registry'
 import { homeDashboardManifest } from '@/modules/home'
+// Une pastille = un module. La barre ne compte rien elle-même : elle monte le
+// composant que le module fournit, avec sa requête (`use-catalog-pending.ts`).
+import { CatalogPendingBadge } from '@/modules/site/components/CatalogPendingBadge'
 import { useLocation, useNavigate, useRouter } from '@tanstack/react-router'
 import { ChevronDown, X } from 'lucide-react'
 import * as React from 'react'
@@ -208,6 +211,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 														<ItemIcon className='h-3.5 w-3.5 shrink-0' />
 													)}
 													<span>{item.label}</span>
+													{item.badge === 'site-catalogue' && (
+														<CatalogPendingBadge />
+													)}
 												</button>
 											)
 										})}

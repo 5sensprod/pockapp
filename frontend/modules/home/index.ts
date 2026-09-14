@@ -103,7 +103,15 @@ export const manifest: ModuleManifest = {
 			label: 'PocketSite',
 			icon: Globe,
 			items: [
-				{ label: 'Catalogue en ligne', to: '/site/catalogue', icon: Store },
+				// La pastille dit ce qui n'a AUCUN automatisme : une fiche publiée
+				// jamais envoyée, une fiche supprimée ici et encore en ligne. Le
+				// reste — les fiches modifiées — se lit sur la page elle-même.
+				{
+					label: 'Catalogue en ligne',
+					to: '/site/catalogue',
+					icon: Store,
+					badge: 'site-catalogue',
+				},
 				{ label: 'Menu de navigation', to: '/site/menu', icon: Menu },
 				{
 					label: 'Restauration sélective',

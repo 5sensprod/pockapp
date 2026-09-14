@@ -68,6 +68,7 @@ Les documents actifs — ceux qui décident encore de quelque chose :
 |---|---|---|
 | [`12-contrat-catalogue.md`](12-contrat-catalogue.md) | **Fait foi sur l'export ET sur la lecture publique.** Identité, checksum, slug figé, limites du mutualisé, `catalog.php` | contrat, à respecter |
 | [`16-conception-images.md`](16-conception-images.md) | **Fait foi sur le miroir d'images.** Risques de désynchro retenus et écartés, nommage distant, empreinte séparée, ménage distant | conçu, écrit, mesuré en ligne |
+| [`20-conception-retrait.md`](20-conception-retrait.md) | **Retirer une catégorie ou une marque du site** : pourquoi rien n'existe, l'ordre images-puis-SQL imposé par `images-sync.php`, le script serveur retenu et ce qu'il refuse | conçu, **rien d'écrit** |
 | [`05-contrat-menu.md`](05-contrat-menu.md) | **Fait foi sur la forme publiée du menu.** Le seul fichier d'ici destiné à être lu depuis les deux autres dépôts | contrat, à respecter |
 | [`09-modele-cible.md`](09-modele-cible.md) | **Fait foi sur le modèle** des collections, champ par champ ; §9 : confrontation au schéma réel | mesuré et lu |
 | [`03-audit-resultats.md`](03-audit-resultats.md) | **Fait foi sur le flux d'origine, les failles et les tickets du 6 août.** Compte rendu daté : on ne le réécrit pas | lu dans le code, références données |

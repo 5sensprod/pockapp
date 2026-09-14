@@ -133,6 +133,9 @@ func (a *App) GetNetworkInfo() map[string]interface{} {
 		"ip":   ip,
 		"port": 8090,
 		"url":  "http://" + ip + ":8090",
+		// Toutes les IPv4 du poste, filtre compris : quand l'adresse retenue
+		// ne convient pas, c'est ici qu'on lit ce que la machine portait.
+		"all": backend.GetAllLocalIPs(),
 	}
 }
 
