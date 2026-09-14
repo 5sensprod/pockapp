@@ -56,6 +56,13 @@ interface CategoryDialogProps {
 	onOpenChange: (open: boolean) => void
 	category?: CatalogCategoryShape | null
 	defaultParentId?: string
+	/**
+	 * Appelé avec la catégorie qui vient d'être créée. L'arbre de la page
+	 * Produits masque les catégories vides : sans ce signal, la catégorie qu'on
+	 * vient de créer serait invalidée dans le cache, relue, puis écartée à
+	 * l'affichage — le geste semblerait n'avoir rien fait.
+	 */
+	onCreated?: (category: CatalogCategoryShape) => void
 }
 
 export function CategoryDialog({
@@ -63,6 +70,7 @@ export function CategoryDialog({
 	onOpenChange,
 	category = null,
 	defaultParentId,
+	onCreated,
 }: CategoryDialogProps) {
 	const isEdit = !!category
 	const { activeCompanyId } = useActiveCompany()
@@ -149,11 +157,12 @@ export function CategoryDialog({
 					toast.error('Aucune entreprise active')
 					return
 				}
-				await createCategory.mutateAsync({
+				const creee = await createCategory.mutateAsync({
 					...payload,
 					company: activeCompanyId,
 				})
 				toast.success('Catégorie créée')
+				onCreated?.(creee)
 			}
 			onOpenChange(false)
 		} catch (error) {

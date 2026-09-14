@@ -2,14 +2,23 @@ import {
 	CATEGORY_SELECTED_CLASS,
 	CategoryTreeRow,
 } from '@/components/catalog/CategoryTreeRow'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { useDeleteBrand } from '@/lib/queries/brands'
 import type {
 	CatalogBrandShape,
 	CatalogCategoryShape,
 	CatalogSupplierShape,
 } from '@/lib/queries/catalog-shapes'
-import { useUpdateCategory } from '@/lib/queries/categories'
+import { useDeleteCategory, useUpdateCategory } from '@/lib/queries/categories'
 import { hasUsableCategoryCounts } from '@/lib/queries/category-counts'
 import type { CategoryNode } from '@/lib/queries/category-tree'
 import {
@@ -22,17 +31,27 @@ import {
 } from '@/lib/queries/category-tree'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import { type CatalogCounts, countsOfCategory } from '@/lib/queries/products'
+import { useDeleteSupplier } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { cn } from '@/lib/utils'
 import {
+	ArrowDown01,
+	ArrowDownAZ,
+	ArrowUp01,
+	ArrowUpAZ,
 	Building2,
+	CalendarArrowDown,
+	CalendarArrowUp,
 	ChevronDown,
 	ChevronRight,
+	FolderOpen,
 	FolderTree,
 	Loader2,
+	Plus,
 	Search,
 	Settings2,
 	Star,
+	Trash2,
 	Truck,
 	X,
 } from 'lucide-react'
@@ -63,6 +82,45 @@ type SupplierOption = CatalogSupplierShape
 /** Élément dont l'engrenage a ouvert une modale d'édition. */
 type EditingTarget = { kind: ExplorerView; id: string }
 
+// Création : l'onglet dit QUOI créer, `parentId` — posé par le « + » d'une
+// ligne de catégorie — dit SOUS QUOI. Une modale de création est distincte de
+// celle d'édition : la même instance recevrait tantôt un enregistrement,
+// tantôt `null`, et son `reset` dépend de ce qu'elle reçoit.
+type CreatingTarget = { kind: ExplorerView; parentId?: string }
+
+/** Élément dont la corbeille a ouvert la demande de confirmation. */
+type DeletingTarget = { kind: ExplorerView; id: string; name: string }
+
+/** Critère de tri de la liste, commun aux trois onglets. */
+type SortMode = 'name' | 'created' | 'products'
+type SortDir = 'asc' | 'desc'
+
+/**
+ * Le sens « naturel » de chaque critère : celui qu'on obtient en le
+ * choisissant, avant de l'inverser. Personne ne demande une date de création
+ * en commençant par la plus ancienne.
+ */
+const SENS_PAR_DEFAUT: Record<SortMode, SortDir> = {
+	name: 'asc',
+	created: 'desc',
+	products: 'asc',
+}
+
+const SORT_LABELS: Record<SortMode, Record<SortDir, string>> = {
+	name: {
+		asc: 'Ordre alphabétique (A → Z)',
+		desc: 'Ordre alphabétique (Z → A)',
+	},
+	created: {
+		asc: 'Date de création, la plus ancienne en tête',
+		desc: 'Date de création, la plus récente en tête',
+	},
+	products: {
+		asc: 'Nombre de produits, croissant',
+		desc: 'Nombre de produits, décroissant',
+	},
+}
+
 const GEAR_BUTTON_CLASS =
 	'mr-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100'
 
@@ -82,6 +140,29 @@ interface ProductCategoryFilterTreeProps {
 	onProductsDropOnCategory?: (category: CategoryNode) => void
 	loading?: Partial<Record<ExplorerView, boolean>>
 }
+
+// `created` est posé par PocketBase et comparé comme une CHAÎNE : le format
+// est « AAAA-MM-JJ hh:mm:ss.sssZ », déjà ordonnable tel quel. Les deux
+// comparateurs sont ASCENDANTS ; le sens choisi est appliqué par-dessus, pour
+// qu'un seul code décrive l'ordre et son inverse.
+const parCreation = (a: { created?: string }, b: { created?: string }) =>
+	(a.created ?? '').localeCompare(b.created ?? '')
+const parNom = (a: { name: string }, b: { name: string }) =>
+	a.name.localeCompare(b.name, 'fr')
+
+const SORT_BUTTONS = [
+	{ mode: 'name', Ascendant: ArrowDownAZ, Descendant: ArrowUpAZ },
+	{
+		mode: 'created',
+		Ascendant: CalendarArrowUp,
+		Descendant: CalendarArrowDown,
+	},
+	{ mode: 'products', Ascendant: ArrowDown01, Descendant: ArrowUp01 },
+] as const satisfies readonly {
+	mode: SortMode
+	Ascendant: typeof ArrowDownAZ
+	Descendant: typeof ArrowDownAZ
+}[]
 
 const normalizeSearch = normalizeCategorySearch
 
@@ -108,9 +189,30 @@ export function ProductCategoryFilterTree({
 }: ProductCategoryFilterTreeProps) {
 	const pb = usePocketBase()
 	const updateCategory = useUpdateCategory()
+	const deleteCategory = useDeleteCategory()
+	const deleteBrand = useDeleteBrand()
+	const deleteSupplier = useDeleteSupplier()
 	const [view, setView] = useState<ExplorerView>('category')
 	const [search, setSearch] = useState('')
 	const [featuredOnly, setFeaturedOnly] = useState(false)
+	// Ne montrer QUE ce qui n'a aucun produit. L'arbre écarte les catégories
+	// vides — sinon les 464 défilent pour rien —, or c'est précisément là qu'on
+	// veut déposer des produits, et une catégorie neuve est vide par définition.
+	// La bascule vaut pour les trois onglets : une marque ou un fournisseur sans
+	// produit se cherche de la même façon.
+	const [videsSeules, setVidesSeules] = useState(false)
+	const [sortMode, setSortMode] = useState<SortMode>('name')
+	const [sortDir, setSortDir] = useState<SortDir>(SENS_PAR_DEFAUT.name)
+	// Un clic sur le critère actif l'inverse ; sur un autre, il l'adopte dans son
+	// sens naturel.
+	const choisirTri = (mode: SortMode) => {
+		if (mode === sortMode) {
+			setSortDir((sens) => (sens === 'asc' ? 'desc' : 'asc'))
+			return
+		}
+		setSortMode(mode)
+		setSortDir(SENS_PAR_DEFAUT[mode])
+	}
 	const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
 	const [expandedSupplierIds, setExpandedSupplierIds] = useState<Set<string>>(
 		() => new Set(),
@@ -120,6 +222,15 @@ export function ProductCategoryFilterTree({
 	)
 	// L'engrenage n'ouvre qu'une modale à la fois, quel que soit l'onglet.
 	const [editing, setEditing] = useState<EditingTarget | null>(null)
+	const [creating, setCreating] = useState<CreatingTarget | null>(null)
+	const [deleting, setDeleting] = useState<DeletingTarget | null>(null)
+	// Les catégories créées depuis ce panneau, tant que la page vit. L'arbre ne
+	// montre que les catégories PEUPLÉES : une catégorie neuve est vide par
+	// définition, elle disparaîtrait aussitôt créée. Elle reste donc visible
+	// jusqu'au prochain chargement de la page, le temps d'y ranger des produits.
+	const [categoriesCreees, setCategoriesCreees] = useState<Set<string>>(
+		() => new Set(),
+	)
 
 	const parentById = useMemo(() => parentMap(categories), [categories])
 	const categoryById = useMemo(
@@ -155,31 +266,89 @@ export function ProductCategoryFilterTree({
 		return included
 	}, [categoryValue, featuredCategoryIds, noneValue, parentById])
 	const categoryCountsAreUsable = hasUsableCategoryCounts(counts)
+	// Les catégories sans aucun produit, avec la branche qui les porte : une
+	// sous-catégorie vide sous un parent peuplé doit rester atteignable, donc
+	// visible, donc précédée de ses ancêtres.
+	const videsVisibleIds = useMemo(() => {
+		const included = new Set<string>()
+		for (const category of categories) {
+			if (countsOfCategory(counts, category.id).total > 0) continue
+			const visited = new Set<string>()
+			let current = category.id
+			while (current && !visited.has(current)) {
+				visited.add(current)
+				included.add(current)
+				current = parentById.get(current) || ''
+			}
+		}
+		return included
+	}, [categories, counts, parentById])
 
 	// `total` est déjà remonté par le serveur. Les branches sans produit peuvent
 	// disparaître sans calculer ni parcourir les produits dans le navigateur. Si
 	// une ancienne réponse en cache n'a aucune ventilation par catégorie alors
 	// que le catalogue est non vide, elle ne doit surtout pas vider l'arbre.
+	const sens = sortDir === 'asc' ? 1 : -1
 	const options = useMemo(() => {
-		const treeOrder = toCategoryOptions(categories)
+		// Le classement par nombre de produits ne s'applique QU'AUX RACINES, et
+		// sur leur `total` — celui qui couvre toute la branche, sous-catégories
+		// comprises (`catalog_counts_routes.go`). Les fratries restent
+		// alphabétiques : leurs totaux ne se comparent pas d'un niveau à l'autre.
+		const treeOrder = toCategoryOptions(
+			categories,
+			sortMode === 'products'
+				? {
+						racines: (a, b) =>
+							sens *
+								(countsOfCategory(counts, a.id).total -
+									countsOfCategory(counts, b.id).total) || parNom(a, b),
+					}
+				: sortMode === 'created'
+					? {
+							racines: (a, b) => sens * parCreation(a, b),
+							fratries: (a, b) => sens * parCreation(a, b),
+						}
+					: sortDir === 'desc'
+						? {
+								racines: (a, b) => -parNom(a, b),
+								fratries: (a, b) => -parNom(a, b),
+							}
+						: {},
+		)
 		// Pendant un déplacement, même une catégorie vide doit devenir une cible.
+		// Le filtre « vides » ne s'ajoute pas au filtre « peuplées » : il le
+		// remplace, les deux étant exactement contraires.
+		if (videsSeules && categoryCountsAreUsable)
+			return treeOrder.filter((category) => videsVisibleIds.has(category.id))
 		const populated =
 			!categoryCountsAreUsable || selectedProductCount > 0
 				? treeOrder
 				: treeOrder.filter(
-						(category) => countsOfCategory(counts, category.id).total > 0,
+						(category) =>
+							countsOfCategory(counts, category.id).total > 0 ||
+							categoriesCreees.has(category.id),
 					)
 		// Le glisser-déposer reste possible vers toutes les catégories, même si le
 		// filtre visuel était actif avant de commencer la sélection.
 		if (!featuredOnly || selectedProductCount > 0) return populated
-		return populated.filter((category) => featuredVisibleIds.has(category.id))
+		return populated.filter(
+			(category) =>
+				featuredVisibleIds.has(category.id) ||
+				categoriesCreees.has(category.id),
+		)
 	}, [
 		categories,
+		categoriesCreees,
 		categoryCountsAreUsable,
 		counts,
 		featuredOnly,
 		featuredVisibleIds,
 		selectedProductCount,
+		sens,
+		sortDir,
+		sortMode,
+		videsSeules,
+		videsVisibleIds,
 	])
 	const parentsWithChildren = useMemo(
 		() => parentsWithVisibleChildren(categories, options),
@@ -222,6 +391,13 @@ export function ProductCategoryFilterTree({
 		})
 	}, [featuredCategoryIds, featuredOnly, parentById])
 
+	// Même raison pour les vides : montrer la catégorie vide elle-même, et pas
+	// seulement la racine qui la contient.
+	useEffect(() => {
+		if (!videsSeules) return
+		setExpandedIds((current) => new Set([...current, ...videsVisibleIds]))
+	}, [videsSeules, videsVisibleIds])
+
 	const normalizedSearch = normalizeSearch(search.trim())
 	const searchedIds = useMemo(
 		() => (view === 'category' ? searchCategoryIds(categories, search) : null),
@@ -234,10 +410,21 @@ export function ProductCategoryFilterTree({
 	)
 	const filteredBrands = useMemo(
 		() =>
-			brands.filter((brand) =>
-				normalizeSearch(brand.name).includes(normalizedSearch),
-			),
-		[brands, normalizedSearch],
+			brands
+				.filter(
+					(brand) =>
+						normalizeSearch(brand.name).includes(normalizedSearch) &&
+						(!videsSeules || (counts?.parMarque[brand.id] ?? 0) === 0),
+				)
+				.sort((a, b) =>
+					sortMode === 'created'
+						? parCreation(a, b)
+						: sortMode === 'products'
+							? (counts?.parMarque[a.id] ?? 0) -
+									(counts?.parMarque[b.id] ?? 0) || parNom(a, b)
+							: parNom(a, b),
+				),
+		[brands, counts, normalizedSearch, sortMode, videsSeules],
 	)
 	const brandById = useMemo(
 		() => new Map(brands.map((brand) => [brand.id, brand])),
@@ -249,10 +436,21 @@ export function ProductCategoryFilterTree({
 	)
 	const filteredSuppliers = useMemo(
 		() =>
-			suppliers.filter((supplier) =>
-				normalizeSearch(supplier.name).includes(normalizedSearch),
-			),
-		[suppliers, normalizedSearch],
+			suppliers
+				.filter(
+					(supplier) =>
+						normalizeSearch(supplier.name).includes(normalizedSearch) &&
+						(!videsSeules || (counts?.parFournisseur[supplier.id] ?? 0) === 0),
+				)
+				.sort((a, b) =>
+					sortMode === 'created'
+						? parCreation(a, b)
+						: sortMode === 'products'
+							? (counts?.parFournisseur[a.id] ?? 0) -
+									(counts?.parFournisseur[b.id] ?? 0) || parNom(a, b)
+							: parNom(a, b),
+				),
+		[counts, normalizedSearch, sortMode, suppliers, videsSeules],
 	)
 	const supplierNamesByBrand = useMemo(() => {
 		const namesByBrand = new Map<string, string[]>()
@@ -287,7 +485,10 @@ export function ProductCategoryFilterTree({
 			label: 'Catégories',
 			search: 'Chercher une catégorie…',
 			all: 'Toutes les catégories',
-			none: 'Sans catégorie',
+			none: 'Produits sans catégorie',
+			create: 'Créer une catégorie',
+			emptyOn: 'Voir les catégories sans produit',
+			emptyOff: 'Voir toutes les catégories',
 			count: featuredOnly
 				? options.filter((option) => featuredCategoryIds.has(option.id)).length
 				: options.length,
@@ -299,8 +500,11 @@ export function ProductCategoryFilterTree({
 			label: 'Marques',
 			search: 'Chercher une marque…',
 			all: 'Toutes les marques',
-			none: 'Sans marque',
-			count: brands.length,
+			none: 'Produits sans marque',
+			create: 'Créer une marque',
+			emptyOn: 'Voir les marques sans produit',
+			emptyOff: 'Voir toutes les marques',
+			count: videsSeules ? filteredBrands.length : brands.length,
 			value: brandValue,
 			onChange: onBrandChange,
 			Icon: Building2,
@@ -309,8 +513,11 @@ export function ProductCategoryFilterTree({
 			label: 'Fournisseurs',
 			search: 'Chercher un fournisseur…',
 			all: 'Tous les fournisseurs',
-			none: 'Sans fournisseur',
-			count: suppliers.length,
+			none: 'Produits sans fournisseur',
+			create: 'Créer un fournisseur',
+			emptyOn: 'Voir les fournisseurs sans produit',
+			emptyOff: 'Voir tous les fournisseurs',
+			count: videsSeules ? filteredSuppliers.length : suppliers.length,
 			value: supplierValue,
 			onChange: onSupplierChange,
 			Icon: Truck,
@@ -368,12 +575,108 @@ export function ProductCategoryFilterTree({
 	const closeEditor = (open: boolean) => {
 		if (!open) setEditing(null)
 	}
+	// Le « + » d'une ligne ne doit pas non plus sélectionner la catégorie.
+	const openCreator = (
+		event: ReactMouseEvent,
+		kind: ExplorerView,
+		parentId?: string,
+	) => {
+		event.stopPropagation()
+		event.preventDefault()
+		setCreating({ kind, parentId })
+	}
+	const closeCreator = (open: boolean) => {
+		if (!open) setCreating(null)
+	}
+	// Rendre visible ce qui vient d'être créé : la garder dans l'arbre malgré
+	// zéro produit, et déplier la branche qui la porte.
+	const onCategoryCreated = (category: CatalogCategoryShape) => {
+		setCategoriesCreees((current) => new Set(current).add(category.id))
+		const parentId = category.parent || ''
+		if (!parentId) return
+		setExpandedIds((current) => {
+			const next = new Set(current)
+			const visited = new Set<string>()
+			let parent = parentId
+			while (parent && !visited.has(parent)) {
+				visited.add(parent)
+				next.add(parent)
+				parent = parentById.get(parent) || ''
+			}
+			return next
+		})
+	}
 	const editingCategory =
 		editing?.kind === 'category' ? (categoryById.get(editing.id) ?? null) : null
 	const editingBrand =
 		editing?.kind === 'brand' ? (brandById.get(editing.id) ?? null) : null
 	const editingSupplier =
 		editing?.kind === 'supplier' ? (supplierById.get(editing.id) ?? null) : null
+
+	const openDeletion = (
+		event: ReactMouseEvent,
+		kind: ExplorerView,
+		id: string,
+		name: string,
+	) => {
+		event.stopPropagation()
+		event.preventDefault()
+		setDeleting({ kind, id, name })
+	}
+	// Ce que la suppression emporte, dit avant de la faire. Les produits ne sont
+	// pas supprimés : PocketBase retire la relation, le champ étant en
+	// `CascadeDelete: false` (`backend/migrations/catalog_v2.go:439`). Une
+	// catégorie parente ne détruit pas sa descendance non plus — ses enfants
+	// remontent à la racine.
+	const deletionSummary = useMemo(() => {
+		if (!deleting) return null
+		if (deleting.kind === 'category') {
+			// `direct`, et surtout PAS `total` : seuls les produits rangés DANS
+			// cette catégorie perdent le rattachement. Ceux des sous-catégories
+			// gardent le leur — la branche remonte à la racine, elle ne se vide pas.
+			// Annoncer le total de branche aurait fait renoncer devant un nombre
+			// qui n'allait rien perdre.
+			return {
+				produits: countsOfCategory(counts, deleting.id).direct,
+				enfants: categories.filter(
+					(category) => category.parent === deleting.id,
+				).length,
+				relation: 'catégorie',
+			}
+		}
+		return {
+			produits:
+				(deleting.kind === 'brand'
+					? counts?.parMarque[deleting.id]
+					: counts?.parFournisseur[deleting.id]) ?? 0,
+			enfants: 0,
+			relation: deleting.kind === 'brand' ? 'marque' : 'fournisseur',
+		}
+	}, [categories, counts, deleting])
+	const deletionPending =
+		deleteCategory.isPending ||
+		deleteBrand.isPending ||
+		deleteSupplier.isPending
+	const confirmDeletion = async () => {
+		if (!deleting) return
+		const mutation =
+			deleting.kind === 'category'
+				? deleteCategory
+				: deleting.kind === 'brand'
+					? deleteBrand
+					: deleteSupplier
+		try {
+			await mutation.mutateAsync(deleting.id)
+			// Le filtre actif pointait peut-être ce qui vient de disparaître : le
+			// laisser en place afficherait une grille vide sans rien pour en sortir.
+			if (viewOptions[deleting.kind].value === deleting.id)
+				viewOptions[deleting.kind].onChange('')
+			toast.success(`« ${deleting.name} » supprimé`)
+			setDeleting(null)
+		} catch (error) {
+			toast.error(`Suppression refusée : ${pocketbaseErrorMessage(error)}`)
+		}
+	}
 
 	const acceptsProductBatch = (event: ReactDragEvent) =>
 		selectedProductCount > 0 &&
@@ -431,6 +734,23 @@ export function ProductCategoryFilterTree({
 							))}
 						</div>
 						<div className='flex items-center gap-1.5'>
+							<button
+								type='button'
+								aria-pressed={videsSeules}
+								aria-label={
+									videsSeules ? currentView.emptyOff : currentView.emptyOn
+								}
+								title={videsSeules ? currentView.emptyOff : currentView.emptyOn}
+								onClick={() => setVidesSeules((active) => !active)}
+								className={cn(
+									'flex h-7 w-7 items-center justify-center rounded-md border transition-colors',
+									videsSeules
+										? 'border-primary/40 bg-primary/10 text-primary shadow-sm'
+										: 'border-transparent text-muted-foreground hover:border-border hover:bg-background hover:text-foreground',
+								)}
+							>
+								<FolderOpen className='h-4 w-4' />
+							</button>
 							{view === 'category' && (
 								<button
 									type='button'
@@ -458,6 +778,15 @@ export function ProductCategoryFilterTree({
 									/>
 								</button>
 							)}
+							<button
+								type='button'
+								aria-label={currentView.create}
+								title={currentView.create}
+								onClick={(event) => openCreator(event, view)}
+								className='flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-background hover:text-foreground'
+							>
+								<Plus className='h-4 w-4' />
+							</button>
 							<span className='text-muted-foreground text-xs tabular-nums'>
 								{currentView.count}
 							</span>
@@ -486,20 +815,72 @@ export function ProductCategoryFilterTree({
 				</div>
 
 				<div className='max-h-72 overflow-y-auto overscroll-contain p-2 lg:max-h-none lg:min-h-0 lg:flex-1'>
-					<button
-						type='button'
-						onClick={() => currentView.onChange('')}
-						aria-pressed={currentView.value === ''}
+					{/* La ligne « tout » porte aussi l'ordre de la liste : c'est
+					    l'en-tête de ce qui suit, et le seul endroit qui vaut pour les
+					    trois onglets. Le déclencheur est un FRÈRE du bouton, pas un
+					    bouton dans un bouton. */}
+					<div
 						className={cn(
-							'mb-0.5 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left font-medium text-sm transition-colors',
+							'group/all mb-1 flex items-center gap-1 rounded-md py-0.5 pr-1.5 transition-colors',
 							currentView.value === ''
 								? SELECTED_ITEM_CLASS
 								: 'hover:bg-accent',
 						)}
 					>
-						<CurrentViewIcon className='h-4 w-4 shrink-0' />
-						<span className='min-w-0 flex-1 truncate'>{currentView.all}</span>
-					</button>
+						<button
+							type='button'
+							onClick={() => currentView.onChange('')}
+							aria-pressed={currentView.value === ''}
+							className='flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left font-medium text-sm'
+						>
+							<CurrentViewIcon className='h-4 w-4 shrink-0' />
+							<span className='min-w-0 flex-1 truncate'>{currentView.all}</span>
+						</button>
+						{SORT_BUTTONS.map(
+							({
+								mode,
+								Ascendant,
+								Descendant,
+								actif: classeActive,
+								survol,
+							}) => {
+								const actif = sortMode === mode
+								// Inactif : l'icône du critère dans son sens naturel, en gris.
+								// Actif : la même, colorée, la flèche disant le sens réel.
+								const Icone =
+									(actif ? sortDir : SENS_PAR_DEFAUT[mode]) === 'asc'
+										? Ascendant
+										: Descendant
+								return (
+									<button
+										key={mode}
+										type='button'
+										aria-pressed={actif}
+										aria-label={
+											SORT_LABELS[mode][actif ? sortDir : SENS_PAR_DEFAUT[mode]]
+										}
+										title={
+											SORT_LABELS[mode][actif ? sortDir : SENS_PAR_DEFAUT[mode]]
+										}
+										onClick={() => choisirTri(mode)}
+										className={cn(
+											'flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-all focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+											// Le critère actif reste visible hors survol : sinon la
+											// liste serait triée sans que rien ne dise comment.
+											actif
+												? cn('opacity-100 shadow-sm', classeActive)
+												: cn(
+														'text-muted-foreground opacity-0 hover:bg-background/60 group-hover/all:opacity-100',
+														survol,
+													),
+										)}
+									>
+										<Icone className='h-[18px] w-[18px]' />
+									</button>
+								)
+							},
+						)}
+					</div>
 					<button
 						type='button'
 						onClick={() => currentView.onChange(noneValue)}
@@ -526,7 +907,9 @@ export function ProductCategoryFilterTree({
 								? 'Aucune catégorie trouvée'
 								: featuredOnly
 									? 'Aucune catégorie mise en avant'
-									: 'Aucune catégorie peuplée'}
+									: videsSeules
+										? 'Aucune catégorie sans produit'
+										: 'Aucune catégorie peuplée'}
 						</p>
 					) : view === 'category' ? (
 						<div role='tree' aria-label='Arbre des catégories'>
@@ -627,6 +1010,17 @@ export function ProductCategoryFilterTree({
 												</button>
 												<button
 													type='button'
+													aria-label={`Créer une sous-catégorie de ${option.name}`}
+													title='Créer une sous-catégorie'
+													onClick={(event) =>
+														openCreator(event, 'category', option.id)
+													}
+													className={GEAR_BUTTON_CLASS}
+												>
+													<Plus className='h-3.5 w-3.5' />
+												</button>
+												<button
+													type='button'
 													aria-label={`Modifier la catégorie ${option.name}`}
 													title='Modifier la catégorie'
 													onClick={(event) =>
@@ -635,6 +1029,25 @@ export function ProductCategoryFilterTree({
 													className={GEAR_BUTTON_CLASS}
 												>
 													<Settings2 className='h-3.5 w-3.5' />
+												</button>
+												<button
+													type='button'
+													aria-label={`Supprimer la catégorie ${option.name}`}
+													title='Supprimer la catégorie'
+													onClick={(event) =>
+														openDeletion(
+															event,
+															'category',
+															option.id,
+															option.name,
+														)
+													}
+													className={cn(
+														GEAR_BUTTON_CLASS,
+														'hover:bg-destructive/10 hover:text-destructive',
+													)}
+												>
+													<Trash2 className='h-3.5 w-3.5' />
 												</button>
 											</>
 										}
@@ -748,6 +1161,28 @@ export function ProductCategoryFilterTree({
 											>
 												<Settings2 className='h-3.5 w-3.5' />
 											</button>
+											<button
+												type='button'
+												aria-label={
+													view === 'brand'
+														? `Supprimer la marque ${option.name}`
+														: `Supprimer le fournisseur ${option.name}`
+												}
+												title={
+													view === 'brand'
+														? 'Supprimer la marque'
+														: 'Supprimer le fournisseur'
+												}
+												onClick={(event) =>
+													openDeletion(event, view, option.id, option.name)
+												}
+												className={cn(
+													GEAR_BUTTON_CLASS,
+													'hover:bg-destructive/10 hover:text-destructive',
+												)}
+											>
+												<Trash2 className='h-3.5 w-3.5' />
+											</button>
 											{productCount !== undefined && (
 												<span className='shrink-0 pr-2 text-[11px] tabular-nums opacity-60'>
 													{productCount}
@@ -815,6 +1250,89 @@ export function ProductCategoryFilterTree({
 				onOpenChange={closeEditor}
 				supplier={editingSupplier}
 			/>
+
+			{/* Création. La clé porte le parent : rouvrir le « + » d'une AUTRE
+			    catégorie doit remonter un formulaire vierge sous ce parent-là. */}
+			<CategoryDialog
+				key={`creation-categorie-${creating?.parentId ?? 'racine'}`}
+				open={creating?.kind === 'category'}
+				onOpenChange={closeCreator}
+				category={null}
+				defaultParentId={creating?.parentId}
+				onCreated={onCategoryCreated}
+			/>
+			<BrandDialog
+				open={creating?.kind === 'brand'}
+				onOpenChange={closeCreator}
+				brand={null}
+			/>
+			<SupplierDialog
+				open={creating?.kind === 'supplier'}
+				onOpenChange={closeCreator}
+				supplier={null}
+			/>
+
+			<Dialog
+				open={deleting !== null}
+				onOpenChange={(open) => {
+					if (!open && !deletionPending) setDeleting(null)
+				}}
+			>
+				<DialogContent className='max-w-md'>
+					<DialogHeader>
+						<DialogTitle>Supprimer « {deleting?.name} » ?</DialogTitle>
+						<DialogDescription asChild>
+							<div className='space-y-2 text-left'>
+								<p>
+									Cette suppression est définitive. Les produits, eux, ne sont
+									pas supprimés.
+								</p>
+								{deletionSummary && deletionSummary.produits > 0 && (
+									<p>
+										<strong className='tabular-nums'>
+											{deletionSummary.produits}
+										</strong>{' '}
+										produit{deletionSummary.produits > 1 ? 's' : ''} perdra
+										{deletionSummary.produits > 1 ? 'ont' : ''} sa{' '}
+										{deletionSummary.relation}.
+									</p>
+								)}
+								{deletionSummary && deletionSummary.enfants > 0 && (
+									<p>
+										<strong className='tabular-nums'>
+											{deletionSummary.enfants}
+										</strong>{' '}
+										sous-catégorie{deletionSummary.enfants > 1 ? 's' : ''}{' '}
+										remontera{deletionSummary.enfants > 1 ? 'ont' : ''} à la
+										racine.
+									</p>
+								)}
+							</div>
+						</DialogDescription>
+					</DialogHeader>
+					<div className='flex justify-end gap-2 pt-4'>
+						<Button
+							type='button'
+							variant='outline'
+							disabled={deletionPending}
+							onClick={() => setDeleting(null)}
+						>
+							Annuler
+						</Button>
+						<Button
+							type='button'
+							variant='destructive'
+							disabled={deletionPending}
+							onClick={() => void confirmDeletion()}
+						>
+							{deletionPending && (
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							)}
+							Supprimer
+						</Button>
+					</div>
+				</DialogContent>
+			</Dialog>
 		</Card>
 	)
 }

@@ -83,15 +83,29 @@ export interface CategoryOption {
  * Une liste de 464 entrées triées à plat par nom ne dit pas qui est sous qui —
  * et c'est justement ce qu'il faut savoir pour choisir une racine.
  */
-export function toCategoryOptions(
-	categories: CategoryNode[],
+export interface CategoryOrder<T extends CategoryNode> {
+	/** Ordre des RACINES. Par défaut : alphabétique. */
+	racines?: (a: T, b: T) => number
+	/** Ordre des fratries à l'intérieur d'une branche. Par défaut :
+	 *  alphabétique. Les deux sont séparés parce qu'un classement par nombre de
+	 *  produits n'a de sens qu'entre racines : le total d'une racine couvre sa
+	 *  branche entière, alors que trier les fratries par le leur ferait sauter
+	 *  l'œil d'un niveau à l'autre sans rien comparer. */
+	fratries?: (a: T, b: T) => number
+}
+
+export function toCategoryOptions<T extends CategoryNode>(
+	categories: T[],
+	ordre: CategoryOrder<T> = {},
 ): CategoryOption[] {
 	const parLangue = (a: CategoryNode, b: CategoryNode) =>
 		a.name.localeCompare(b.name, 'fr')
+	const ordreRacines = ordre.racines ?? parLangue
+	const ordreFratries = ordre.fratries ?? parLangue
 
-	const enfantsDe = new Map<string, CategoryNode[]>()
+	const enfantsDe = new Map<string, T[]>()
 	const connus = new Set(categories.map((c) => c.id))
-	const racines: CategoryNode[] = []
+	const racines: T[] = []
 	for (const categorie of categories) {
 		const parent = categorie.parent || ''
 		// Une catégorie dont le parent a disparu est traitée comme une racine :
@@ -107,20 +121,20 @@ export function toCategoryOptions(
 
 	const options: CategoryOption[] = []
 	const vus = new Set<string>()
-	const descendre = (noeud: CategoryNode, depth: number) => {
+	const descendre = (noeud: T, depth: number) => {
 		if (vus.has(noeud.id)) return
 		vus.add(noeud.id)
 		options.push({ id: noeud.id, name: noeud.name, depth })
-		for (const enfant of (enfantsDe.get(noeud.id) ?? []).sort(parLangue)) {
+		for (const enfant of (enfantsDe.get(noeud.id) ?? []).sort(ordreFratries)) {
 			descendre(enfant, depth + 1)
 		}
 	}
-	for (const racine of racines.sort(parLangue)) descendre(racine, 0)
+	for (const racine of racines.sort(ordreRacines)) descendre(racine, 0)
 
 	// Un composant cyclique n'a aucune racine et serait donc absent du
 	// sélecteur. Les nœuds encore inconnus sont exposés comme des racines de
 	// secours ; `vus` arrête le parcours lorsque le cycle se referme.
-	for (const categorie of [...categories].sort(parLangue)) {
+	for (const categorie of [...categories].sort(ordreRacines)) {
 		if (!vus.has(categorie.id)) descendre(categorie, 0)
 	}
 	return options

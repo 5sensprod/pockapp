@@ -9,6 +9,7 @@
 // Ces hooks ne servent qu'au module `stock` (vérifié le 13 août 2026).
 // Détail : §6bis.4 du rituel de migration AppStock.
 
+import { invalidateCatalog } from '@/lib/queries/catalog-products'
 import type {
 	CatalogBrandShape,
 	PocketBaseRecord,
@@ -131,6 +132,13 @@ export function useDeleteBrand() {
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['brands'] })
+			// Les produits qui citaient l'entité ont perdu la relation — c'est
+			// PocketBase qui la retire, la relation étant en `CascadeDelete: false`
+			// (`backend/migrations/catalog_v2.go`). Les caches produits et les
+			// décomptes serveur changent donc sans qu'aucun écran n'ait écrit :
+			// sans cette invalidation, le compteur d'une catégorie voisine et la
+			// grille garderaient l'ancienne relation, décompte persisté compris.
+			invalidateCatalog(queryClient)
 		},
 	})
 }

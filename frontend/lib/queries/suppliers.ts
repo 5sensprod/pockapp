@@ -10,6 +10,7 @@
 // 2026) : les retyper n'a donc aucun effet sur la caisse ni sur les documents
 // commerciaux. Détail : §6bis.2 et §6bis.4 du rituel de migration AppStock.
 
+import { invalidateCatalog } from '@/lib/queries/catalog-products'
 import type {
 	CatalogSupplierShape,
 	PocketBaseRecord,
@@ -133,6 +134,13 @@ export function useDeleteSupplier() {
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+			// Les produits qui citaient l'entité ont perdu la relation — c'est
+			// PocketBase qui la retire, la relation étant en `CascadeDelete: false`
+			// (`backend/migrations/catalog_v2.go`). Les caches produits et les
+			// décomptes serveur changent donc sans qu'aucun écran n'ait écrit :
+			// sans cette invalidation, le compteur d'une catégorie voisine et la
+			// grille garderaient l'ancienne relation, décompte persisté compris.
+			invalidateCatalog(queryClient)
 		},
 	})
 }
