@@ -1,5 +1,10 @@
 import type { UseFormReturn } from 'react-hook-form'
 
+import JsBarcode from 'jsbarcode'
+import { Barcode, LoaderCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+
+import { Button } from '@/components/ui/button'
 import {
 	FormControl,
 	FormField,
@@ -8,6 +13,11 @@ import {
 	FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { formatEAN13, validateEAN13 } from '@/lib/barcode/ean13'
+import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
+import { generateProductBarcode } from '@/lib/queries/product-barcode'
+import { usePocketBase } from '@/lib/use-pocketbase'
+import { toast } from 'sonner'
 
 import { DetailCard, HelpTooltip, NativeSelect } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
@@ -34,7 +44,7 @@ export function ProductIdentityCard({
 				placeholder='Libellé court pour le ticket et la facture'
 			/>
 			<TextField form={form} name='sku' label='Référence' />
-			<TextField form={form} name='barcode' label='Code-barres' />
+			<BarcodeField form={form} />
 			{/* ⚠️ DEUX AXES, ET ILS NE FUSIONNENT PAS. `commercial_state` dit ce
 			    que l'objet EST (neuf, occasion, location) ; `sale_state` dit
 			    l'OPÉRATION en cours dessus (soldé, en promotion). Un instrument
@@ -90,6 +100,101 @@ export function ProductIdentityCard({
 		content
 	) : (
 		<DetailCard title='Identité du produit'>{content}</DetailCard>
+	)
+}
+
+function BarcodeField({
+	form,
+}: {
+	form: UseFormReturn<ProductDetailValues>
+}) {
+	const pb = usePocketBase()
+	const [generating, setGenerating] = useState(false)
+
+	const generate = async () => {
+		if (generating) return
+		setGenerating(true)
+		try {
+			const barcode = await generateProductBarcode(pb)
+			form.setValue('barcode', barcode, {
+				shouldDirty: true,
+				shouldTouch: true,
+				shouldValidate: true,
+			})
+			toast.success('Code-barres EAN-13 généré')
+		} catch (error) {
+			toast.error(`Génération impossible : ${pocketbaseErrorMessage(error)}`)
+		} finally {
+			setGenerating(false)
+		}
+	}
+
+	return (
+		<FormField
+			control={form.control}
+			name='barcode'
+			render={({ field }) => {
+				const value = field.value?.trim() ?? ''
+				const isEAN13 = /^\d{13}$/.test(value)
+				const valid = isEAN13 && validateEAN13(value)
+				return (
+					<FormItem>
+						<FormLabel>Code-barres</FormLabel>
+						<div className='flex items-center gap-2'>
+							<FormControl>
+								<Input {...field} />
+							</FormControl>
+							<Button
+								type='button'
+								variant='outline'
+								className='h-11 shrink-0'
+								disabled={generating}
+								onClick={generate}
+							>
+								{generating ? (
+									<LoaderCircle className='mr-2 h-4 w-4 animate-spin' />
+								) : (
+									<Barcode className='mr-2 h-4 w-4' />
+								)}
+								Générer
+							</Button>
+						</div>
+						{isEAN13 && !valid && (
+							<p className='text-destructive text-xs'>
+								Clé de contrôle EAN-13 incorrecte.
+							</p>
+						)}
+						{valid && <EAN13Preview value={value} />}
+						<FormMessage />
+					</FormItem>
+				)
+			}}
+		/>
+	)
+}
+
+function EAN13Preview({ value }: { value: string }) {
+	const ref = useRef<SVGSVGElement>(null)
+
+	useEffect(() => {
+		if (!ref.current) return
+		JsBarcode(ref.current, value, {
+			format: 'EAN13',
+			displayValue: true,
+			fontSize: 13,
+			height: 42,
+			margin: 4,
+		})
+	}, [value])
+
+	return (
+		<div className='mt-2 overflow-x-auto rounded-md border bg-white p-2'>
+			<svg
+				ref={ref}
+				role='img'
+				aria-label={`Aperçu du code-barres ${formatEAN13(value)}`}
+			/>
+		</div>
 	)
 }
 

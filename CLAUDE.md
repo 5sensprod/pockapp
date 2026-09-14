@@ -45,6 +45,18 @@ dette assumée dans
 Ses templates et sa bibliothèque d'images sont **locaux au poste** (IndexedDB) :
 aucune collection PocketBase ne les porte encore.
 
+Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
+repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation
+du stock, marge, ventilation par taux de TVA, camembert par catégorie racine et
+export PDF. ⚠️ **La TVA de ce rapport n'est pas une TVA fiscale** — c'est celle
+que le stock porterait s'il était vendu, elle ne s'additionne à rien du Z et ne
+se rapproche d'aucune déclaration. Tout y est **calculé en Go**
+(`backend/routes/stock_statistics_routes.go` et `…_detail_routes.go`,
+sous-totaux compris) parce que ce PDF part chez le comptable ; le PDF lui-même
+est fabriqué sur le poste par `@react-pdf/renderer`, comme le Z. Les composants
+sont en `.jsx`, non typés et non formatés : dette assumée dans
+[`frontend/modules/stats/reports/PocketReports-docs/01-portage-rapports.md`](frontend/modules/stats/reports/PocketReports-docs/01-portage-rapports.md).
+
 Modules : `cash` (caisse — tickets, sessions, rapports X et Z ; sa doc est
 dans `frontend/modules/cash/PocketCash-docs/`), `stock` (produits, lecture
 **et** écriture),

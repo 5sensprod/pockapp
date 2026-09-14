@@ -99,10 +99,19 @@ export const COLLECTIONS_SURVEILLEES: Record<string, string[][]> = {
 		['products'],
 		['catalog-counts'],
 		['site-catalog'],
+		['stock-statistics'],
 	],
 	// `catalog-counts` dépend AUSSI de l'arbre : déplacer une catégorie change
 	// le total de deux branches sans qu'aucun produit ne bouge.
-	categories: [['categories'], ['catalog-counts'], ['site-catalog']],
+	// `stock-statistics` en dépend pour la MÊME raison que `catalog-counts` :
+	// le camembert range chaque fiche sous la RACINE de sa catégorie, et
+	// déplacer une branche change la répartition sans qu'aucun produit ne bouge.
+	categories: [
+		['categories'],
+		['catalog-counts'],
+		['site-catalog'],
+		['stock-statistics'],
+	],
 	brands: [['brands'], ['site-catalog']],
 	suppliers: [['suppliers']],
 }

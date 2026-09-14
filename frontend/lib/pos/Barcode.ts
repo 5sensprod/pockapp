@@ -1,6 +1,8 @@
 // frontend/lib/pos/barcode.ts
 // Validation + normalisation barcode (POS-friendly), y compris scan "sans Enter" côté orchestrateur.
 
+import { validateEAN13 } from '@/lib/barcode/ean13'
+
 export type BarcodeFormat = 'EAN8' | 'EAN13' | 'UPC_A' | 'UPC_E' | 'CODE128' // fallback "digits only" (ou alphanum si activé)
 
 export type BarcodeValidationResult =
@@ -68,13 +70,6 @@ function computeEanUpcCheckDigit(baseDigits: string): number {
 	return (10 - (sum % 10)) % 10
 }
 
-function hasValidEan13(code: string) {
-	if (code.length !== 13) return false
-	const base = code.slice(0, 12)
-	const check = code.charCodeAt(12) - 48
-	return computeEanUpcCheckDigit(base) === check
-}
-
 function hasValidEan8(code: string) {
 	if (code.length !== 8) return false
 	const base = code.slice(0, 7)
@@ -126,7 +121,7 @@ export function validateBarcode(
 	const format = detectFormat(code, r)
 
 	if (r.verifyChecksum) {
-		if (code.length === 13 && !hasValidEan13(code))
+		if (code.length === 13 && !validateEAN13(code))
 			return { ok: false, code, reason: 'invalid_checksum' }
 		if (code.length === 8 && !hasValidEan8(code))
 			return { ok: false, code, reason: 'invalid_checksum' }

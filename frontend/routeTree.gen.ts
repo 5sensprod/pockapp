@@ -22,6 +22,7 @@ import { Route as SettingsIndexImport } from './routes/settings/index'
 import { Route as InventoryAppposIndexImport } from './routes/inventory-apppos/index'
 import { Route as ConnectIndexImport } from './routes/connect/index'
 import { Route as CashIndexImport } from './routes/cash/index'
+import { Route as StatsRapportsImport } from './routes/stats/rapports'
 import { Route as StatsEspecesImport } from './routes/stats/especes'
 import { Route as SiteRestaurationImport } from './routes/site/restauration'
 import { Route as SiteMenuImport } from './routes/site/menu'
@@ -127,6 +128,12 @@ const ConnectIndexRoute = ConnectIndexImport.update({
 const CashIndexRoute = CashIndexImport.update({
   id: '/cash/',
   path: '/cash/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const StatsRapportsRoute = StatsRapportsImport.update({
+  id: '/stats/rapports',
+  path: '/stats/rapports',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -458,6 +465,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatsEspecesImport
       parentRoute: typeof rootRoute
     }
+    '/stats/rapports': {
+      id: '/stats/rapports'
+      path: '/stats/rapports'
+      fullPath: '/stats/rapports'
+      preLoaderRoute: typeof StatsRapportsImport
+      parentRoute: typeof rootRoute
+    }
     '/cash/': {
       id: '/cash/'
       path: '/cash'
@@ -742,6 +756,7 @@ export interface FileRoutesByFullPath {
   '/site/menu': typeof SiteMenuRoute
   '/site/restauration': typeof SiteRestaurationRoute
   '/stats/especes': typeof StatsEspecesRoute
+  '/stats/rapports': typeof StatsRapportsRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
   '/inventory-apppos': typeof InventoryAppposIndexRoute
@@ -795,6 +810,7 @@ export interface FileRoutesByTo {
   '/site/menu': typeof SiteMenuRoute
   '/site/restauration': typeof SiteRestaurationRoute
   '/stats/especes': typeof StatsEspecesRoute
+  '/stats/rapports': typeof StatsRapportsRoute
   '/cash': typeof CashIndexRoute
   '/connect': typeof ConnectIndexRoute
   '/inventory-apppos': typeof InventoryAppposIndexRoute
@@ -849,6 +865,7 @@ export interface FileRoutesById {
   '/site/menu': typeof SiteMenuRoute
   '/site/restauration': typeof SiteRestaurationRoute
   '/stats/especes': typeof StatsEspecesRoute
+  '/stats/rapports': typeof StatsRapportsRoute
   '/cash/': typeof CashIndexRoute
   '/connect/': typeof ConnectIndexRoute
   '/inventory-apppos/': typeof InventoryAppposIndexRoute
@@ -904,6 +921,7 @@ export interface FileRouteTypes {
     | '/site/menu'
     | '/site/restauration'
     | '/stats/especes'
+    | '/stats/rapports'
     | '/cash'
     | '/connect'
     | '/inventory-apppos'
@@ -956,6 +974,7 @@ export interface FileRouteTypes {
     | '/site/menu'
     | '/site/restauration'
     | '/stats/especes'
+    | '/stats/rapports'
     | '/cash'
     | '/connect'
     | '/inventory-apppos'
@@ -1008,6 +1027,7 @@ export interface FileRouteTypes {
     | '/site/menu'
     | '/site/restauration'
     | '/stats/especes'
+    | '/stats/rapports'
     | '/cash/'
     | '/connect/'
     | '/inventory-apppos/'
@@ -1062,6 +1082,7 @@ export interface RootRouteChildren {
   SiteMenuRoute: typeof SiteMenuRoute
   SiteRestaurationRoute: typeof SiteRestaurationRoute
   StatsEspecesRoute: typeof StatsEspecesRoute
+  StatsRapportsRoute: typeof StatsRapportsRoute
   CashIndexRoute: typeof CashIndexRoute
   ConnectIndexRoute: typeof ConnectIndexRoute
   InventoryAppposIndexRoute: typeof InventoryAppposIndexRoute
@@ -1115,6 +1136,7 @@ const rootRouteChildren: RootRouteChildren = {
   SiteMenuRoute: SiteMenuRoute,
   SiteRestaurationRoute: SiteRestaurationRoute,
   StatsEspecesRoute: StatsEspecesRoute,
+  StatsRapportsRoute: StatsRapportsRoute,
   CashIndexRoute: CashIndexRoute,
   ConnectIndexRoute: ConnectIndexRoute,
   InventoryAppposIndexRoute: InventoryAppposIndexRoute,
@@ -1180,6 +1202,7 @@ export const routeTree = rootRoute
         "/site/menu",
         "/site/restauration",
         "/stats/especes",
+        "/stats/rapports",
         "/cash/",
         "/connect/",
         "/inventory-apppos/",
@@ -1255,6 +1278,9 @@ export const routeTree = rootRoute
     },
     "/stats/especes": {
       "filePath": "stats/especes.tsx"
+    },
+    "/stats/rapports": {
+      "filePath": "stats/rapports.tsx"
     },
     "/cash/": {
       "filePath": "cash/index.tsx"

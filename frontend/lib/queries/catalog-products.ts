@@ -588,6 +588,10 @@ export function invalidateCatalog(
 	// retard qui le reste après un rechargement.
 	queryClient.invalidateQueries({ queryKey: ['catalog-counts'] })
 	queryClient.invalidateQueries({ queryKey: ['site-catalog'] })
+	// Les statistiques de stock (`/stats/rapports`) sont additionnées par le Go
+	// et gardées cinq minutes. Un prix ou un stock corrigé les fait mentir : la
+	// valorisation, la marge et la TVA potentielle changent toutes les trois.
+	queryClient.invalidateQueries({ queryKey: ['stock-statistics'] })
 }
 
 /**

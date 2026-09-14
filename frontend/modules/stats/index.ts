@@ -1,8 +1,9 @@
 // frontend/modules/stats/index.ts
-import { BarChart3, Coins } from 'lucide-react'
+import { BarChart3, Coins, PieChart } from 'lucide-react'
 import type { ModuleManifest } from '../_registry'
 import { JournalDesEspecesPage } from './JournalDesEspecesPage'
 import { JournalDesVentesPage } from './JournalDesVentesPage'
+import ReportsPage from './reports/ReportsPage'
 import { StatsPage } from './StatsPage'
 
 export const manifest: ModuleManifest = {
@@ -27,6 +28,14 @@ export const manifest: ModuleManifest = {
 			items: [{ label: 'Journal des ventes', to: '/stats', icon: BarChart3 }],
 		},
 		{
+			id: 'rapports-stock',
+			label: 'Rapports de stock',
+			icon: PieChart,
+			items: [
+				{ label: 'Rapports de stock', to: '/stats/rapports', icon: PieChart },
+			],
+		},
+		{
 			id: 'journal-especes',
 			label: 'Journal des espèces',
 			icon: Coins,
@@ -37,6 +46,6 @@ export const manifest: ModuleManifest = {
 	],
 }
 
-export { StatsPage, JournalDesVentesPage, JournalDesEspecesPage }
+export { StatsPage, JournalDesVentesPage, JournalDesEspecesPage, ReportsPage }
 export * from './useJournalDesVentes'
 export * from './useJournalDesEspeces'

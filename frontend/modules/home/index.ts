@@ -13,6 +13,7 @@ import {
 	Menu,
 	Monitor,
 	Package,
+	PieChart,
 	Receipt,
 	Settings,
 	ShoppingCart,
@@ -120,6 +121,7 @@ export const manifest: ModuleManifest = {
 			items: [
 				{ label: 'Journal des ventes', to: '/stats', icon: BarChart3 },
 				{ label: 'Journal des espèces', to: '/stats/especes', icon: Coins },
+				{ label: 'Rapports de stock', to: '/stats/rapports', icon: PieChart },
 			],
 		},
 	],
