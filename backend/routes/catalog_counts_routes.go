@@ -107,6 +107,10 @@ type CatalogCountsOutput struct {
 	// marque, catégorie, recherche : c'est le même contrat que `ParMarque` et
 	// `ParCategorie`, qui annoncent eux aussi ce que porte le catalogue entier.
 	ParManque CatalogGapCounts `json:"par_manque"`
+	// Les fiches qui ont du Stock B (11 septembre 2026). Pas un manque : un
+	// compteur à part, mais compté par le même chemin et sous le même contrat
+	// — catalogue entier, sans les autres filtres.
+	AvecStockB int `json:"avec_stock_b"`
 }
 
 // LES QUATRE MANQUES, ÉCRITS EN SYNTAXE DE FILTRE POCKETBASE — PAS EN SQL.
@@ -126,6 +130,8 @@ const (
 	filtreSansDescription = "description = ''"
 	filtreSansPrixAchat   = "purchase_price_ht = 0"
 	filtreStockVide       = "stock = 0"
+	// Même règle d'écriture, hors des manques : `CLAUSES_STOCK_B` côté client.
+	filtreAvecStockB = "stock_b > 0"
 )
 
 // ligneProduit — le strict nécessaire. `sql.NullString` parce que les deux
@@ -196,6 +202,12 @@ func computeCatalogCounts(app *pocketbase.PocketBase, companyID string) (*Catalo
 		return nil, err
 	}
 	sortie.ParManque = manques
+
+	avecStockB, err := compterProduits(app, companyID, filtreAvecStockB)
+	if err != nil {
+		return nil, err
+	}
+	sortie.AvecStockB = avecStockB
 
 	return sortie, nil
 }

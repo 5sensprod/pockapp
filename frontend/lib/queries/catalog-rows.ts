@@ -31,6 +31,16 @@ export interface StockProductRow {
 	price_ttc?: number | null
 	purchase_price_ht?: number | null
 	stock?: number | null
+	/** Le second compteur. La table l'affiche sous le stock neuf. */
+	stock_b?: number | null
+	stock_b_price_ttc?: number | null
+	/** Ce que `prixPromoActif` lit pour décider du prix barré. La ligne porte
+	 *  les champs BRUTS : la règle se juge dans la table, avec le jour du
+	 *  serveur, jamais ici. */
+	sale_state?: string | null
+	promo_price_ttc?: number | null
+	promo_start?: string | null
+	promo_end?: string | null
 	status?: 'draft' | 'published'
 	healthScore: number
 	healthMax: number
@@ -68,6 +78,12 @@ export function toStockRow(
 		price_ttc: product.price_ttc,
 		purchase_price_ht: product.purchase_price_ht,
 		stock: product.stock,
+		stock_b: product.stock_b,
+		stock_b_price_ttc: product.stock_b_price_ttc,
+		sale_state: product.sale_state,
+		promo_price_ttc: product.promo_price_ttc,
+		promo_start: product.promo_start,
+		promo_end: product.promo_end,
 		status: product.status,
 		healthScore: health.score,
 		healthMax: health.max,

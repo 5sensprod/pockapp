@@ -78,6 +78,29 @@ describe('toStockRow', () => {
 		)
 	})
 
+	it('recopie la promo et le Stock B bruts, sans juger la période', () => {
+		const row = toStockRow(
+			produit({
+				sale_state: 'promo',
+				price_ttc: 200,
+				promo_price_ttc: 150,
+				promo_start: '2026-09-15',
+				promo_end: '2026-09-30',
+				stock_b: 2,
+				stock_b_price_ttc: 120,
+			}),
+			contexte,
+		)
+		expect(row).toMatchObject({
+			sale_state: 'promo',
+			promo_price_ttc: 150,
+			promo_start: '2026-09-15',
+			promo_end: '2026-09-30',
+			stock_b: 2,
+			stock_b_price_ttc: 120,
+		})
+	})
+
 	it("recopie la date d'ajout utilisée par le tri du catalogue", () => {
 		const created = '2026-08-31 14:25:00.000Z'
 		expect(toStockRow(produit({ created }), contexte).created).toBe(created)

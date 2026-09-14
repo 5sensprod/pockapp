@@ -188,6 +188,7 @@ export type CatalogProductQuery = {
 	missingDescription?: boolean
 	missingPurchasePrice?: boolean
 	emptyStock?: boolean
+	withStockB?: boolean
 	commercialState?: CatalogCommercialStateFilter
 	saleState?: CatalogSaleStateFilter
 	sort?: string
@@ -212,6 +213,18 @@ export const CLAUSES_MANQUE = {
 	stock: 'stock = 0',
 } as const
 
+/**
+ * LE STOCK B, ÉCRIT UNE FOIS — pour la même raison que les manques, dont il ne
+ * fait pas partie : le serveur compte avec cette chaîne (`filtreAvecStockB`,
+ * `catalog_counts_routes.go`), et « Avec Stock B · 12 » doit annoncer la liste
+ * obtenue en cliquant.
+ *
+ * Gardien : `catalog-gap-filters.test.ts`.
+ */
+export const CLAUSES_STOCK_B = {
+	avec: 'stock_b > 0',
+} as const
+
 /** Construit l'unique filtre du catalogue. La page ordinaire et la sélection
  * de tous les résultats doivent décrire strictement le même ensemble. */
 export function buildCatalogProductsFilter(
@@ -232,6 +245,7 @@ export function buildCatalogProductsFilter(
 		missingDescription,
 		missingPurchasePrice,
 		emptyStock,
+		withStockB,
 		commercialState,
 		saleState,
 	} = query
@@ -266,6 +280,7 @@ export function buildCatalogProductsFilter(
 	if (missingDescription) clauses.push(CLAUSES_MANQUE.description)
 	if (missingPurchasePrice) clauses.push(CLAUSES_MANQUE.prixAchat)
 	if (emptyStock) clauses.push(CLAUSES_MANQUE.stock)
+	if (withStockB) clauses.push(CLAUSES_STOCK_B.avec)
 	if (commercialState === 'new') {
 		clauses.push("commercial_state = ''")
 	} else if (commercialState) {
@@ -357,6 +372,7 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 		missingDescription,
 		missingPurchasePrice,
 		emptyStock,
+		withStockB,
 		commercialState,
 		saleState,
 		sort,
@@ -380,6 +396,7 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			missingDescription,
 			missingPurchasePrice,
 			emptyStock,
+			withStockB,
 			commercialState,
 			saleState,
 			sort,

@@ -69,6 +69,7 @@ import {
 	FileText,
 	Globe,
 	ImageOff,
+	Layers,
 	ListChecks,
 	Loader2,
 	PackageX,
@@ -218,6 +219,11 @@ export function ProductsPage() {
 		false,
 		estBooleen,
 	)
+	const [withStockB, setWithStockB] = useEtatPersistant(
+		'stock-produits-avec-stock-b',
+		false,
+		estBooleen,
+	)
 	const [commercialState, setCommercialState] = useEtatPersistant<
 		CatalogCommercialStateFilter | ''
 	>('stock-produits-etat-commercial', '', estEtatCommercialValide)
@@ -286,6 +292,7 @@ export function ProductsPage() {
 		setMissingDescription(false)
 		setMissingPurchasePrice(false)
 		setEmptyStock(false)
+		setWithStockB(false)
 		setCommercialState('')
 		setSaleState('')
 		setPage(1)
@@ -301,6 +308,7 @@ export function ProductsPage() {
 		setMissingDescription,
 		setMissingPurchasePrice,
 		setEmptyStock,
+		setWithStockB,
 		setCommercialState,
 		setSaleState,
 		setPage,
@@ -391,6 +399,7 @@ export function ProductsPage() {
 			missingDescription,
 			missingPurchasePrice,
 			emptyStock,
+			withStockB,
 			commercialState: commercialState || undefined,
 			saleState: saleState || undefined,
 			sort: toCatalogSort(sorting),
@@ -408,6 +417,7 @@ export function ProductsPage() {
 			missingDescription,
 			missingPurchasePrice,
 			emptyStock,
+			withStockB,
 			commercialState,
 			saleState,
 			sorting,
@@ -701,6 +711,16 @@ export function ProductsPage() {
 			},
 		})
 	}
+	if (withStockB) {
+		activeFilterTags.push({
+			key: 'with-stock-b',
+			label: 'Avec Stock B',
+			clear: () => {
+				setWithStockB(false)
+				setPage(1)
+			},
+		})
+	}
 	if (commercialState) {
 		activeFilterTags.push({
 			key: 'commercial-state',
@@ -732,6 +752,7 @@ export function ProductsPage() {
 		setMissingDescription(false)
 		setMissingPurchasePrice(false)
 		setEmptyStock(false)
+		setWithStockB(false)
 		setCommercialState('')
 		setSaleState('')
 		setPage(1)
@@ -988,6 +1009,23 @@ export function ProductsPage() {
 									icon={<PackageX />}
 									label='Stock vide ou à 0'
 									count={manques?.stockVide}
+								/>
+							</div>
+							<div className='my-1 h-px bg-border' />
+							{/* LE STOCK B (11 septembre 2026). Pas un manque : zéro n'y
+							    veut pas dire « rien à corriger », d'où le ton neutre.
+							    Compté par le serveur avec `CLAUSES_STOCK_B`, la clause
+							    envoyée en filtrant. */}
+							<div className='p-1'>
+								<CompactBooleanFilter
+									checked={withStockB}
+									onChange={(checked) =>
+										appliquerFiltre(() => setWithStockB(checked))
+									}
+									icon={<Layers />}
+									label='Avec Stock B'
+									count={catalogCounts.data?.avecStockB}
+									neutre
 								/>
 							</div>
 							{filtresActifs && (
@@ -1512,6 +1550,7 @@ function CompactBooleanFilter({
 	icon,
 	label,
 	count,
+	neutre = false,
 }: {
 	checked: boolean
 	onChange: (checked: boolean) => void
@@ -1521,6 +1560,8 @@ function CompactBooleanFilter({
 	 *  ne sont pas là — la ligne s'affiche alors sans nombre plutôt qu'avec un
 	 *  zéro, qui se lirait « rien à corriger ». */
 	count?: number
+	/** Le nombre n'est pas un manque : zéro n'est pas affiché en vert. */
+	neutre?: boolean
 }) {
 	return (
 		<button
@@ -1538,7 +1579,9 @@ function CompactBooleanFilter({
 				<span
 					className={cn(
 						'shrink-0 text-xs tabular-nums',
-						count === 0 ? 'text-emerald-600' : 'text-muted-foreground',
+						count === 0 && !neutre
+							? 'text-emerald-600'
+							: 'text-muted-foreground',
 					)}
 				>
 					{count}

@@ -62,6 +62,10 @@ export interface CatalogCounts {
 	parCategoriePubliee?: Record<string, CategoryCounts>
 	totalProduits: number
 	parManque: CatalogGapCounts
+	/** Les fiches qui ont du Stock B. `undefined` sous un backend ou un cache
+	 *  persisté antérieur au 11 septembre 2026 : le panneau n'affiche alors aucun
+	 *  nombre, plutôt qu'un zéro qui serait faux. */
+	avecStockB?: number
 }
 
 /** La forme rendue par `GET /api/catalog/counts`. */
@@ -77,6 +81,7 @@ interface ReponseDecomptes {
 		sans_prix_achat: number
 		stock_vide: number
 	}
+	avec_stock_b?: number
 }
 
 export function useCatalogCounts(companyId?: string) {
@@ -115,6 +120,7 @@ export function useCatalogCounts(companyId?: string) {
 							stockVide: reponse.par_manque.stock_vide ?? 0,
 						}
 					: MANQUES_VIDES,
+				avecStockB: reponse.avec_stock_b,
 			}
 		},
 		enabled: !!companyId,

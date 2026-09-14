@@ -25,12 +25,13 @@ const lire = (...chemin: string[]) =>
 const sourceGo = lire('backend', 'routes', 'catalog_counts_routes.go')
 const sourceTs = lire('frontend', 'lib', 'queries', 'catalog-products.ts')
 
-/** Les clauses déclarées dans `CLAUSES_MANQUE`, relues depuis le source. */
-function clausesDuClient(): [string, string][] {
-	const bloc = /export const CLAUSES_MANQUE = \{([\s\S]*?)\} as const/.exec(
-		sourceTs,
-	)?.[1]
-	if (!bloc) throw new Error('CLAUSES_MANQUE introuvable')
+/** Les clauses déclarées dans un bloc `export const NOM = { … } as const`,
+ *  relues depuis le source. Par défaut `CLAUSES_MANQUE`. */
+function clausesDuClient(nom = 'CLAUSES_MANQUE'): [string, string][] {
+	const bloc = new RegExp(
+		`export const ${nom} = \\{([\\s\\S]*?)\\} as const`,
+	).exec(sourceTs)?.[1]
+	if (!bloc) throw new Error(`${nom} introuvable`)
 
 	const entrees: [string, string][] = []
 	for (const ligne of bloc.split(/\r?\n/)) {
@@ -66,4 +67,23 @@ describe('les manques sont écrits une seule fois', () => {
 		// `:length` — sans erreur, avec un compteur simplement mensonger.
 		expect(sourceGo).not.toMatch(/COUNT\([^)]*\)\s*FROM\s+products\s+WHERE/i)
 	})
+})
+
+// Le Stock B n'est pas un manque, mais son décompte suit le même contrat.
+describe('le filtre Stock B est écrit une seule fois', () => {
+	it('la clause est bien déclarée', () => {
+		expect(clausesDuClient('CLAUSES_STOCK_B').map(([nom]) => nom)).toEqual([
+			'avec',
+		])
+	})
+
+	it.each(clausesDuClient('CLAUSES_STOCK_B'))(
+		'le serveur compte « %s » avec la clause du client',
+		(_nom, clause) => {
+			const echappee = clause.replace(/"/g, '\\"')
+			const presente =
+				sourceGo.includes(`"${echappee}"`) || sourceGo.includes(`\`${clause}\``)
+			expect(presente, `clause absente du Go : ${clause}`).toBe(true)
+		},
+	)
 })

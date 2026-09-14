@@ -15,6 +15,13 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+	type JourServeur,
+	periodePromo,
+	prixPromoActif,
+	prixStockB,
+} from '@/lib/pricing/promo-price'
+import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
+import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
@@ -135,6 +142,32 @@ const COMPACT_COLUMN_CLASS: Record<string, string> = {
 	healthScore: 'w-px whitespace-nowrap px-1.5',
 	status: 'w-px whitespace-nowrap px-2',
 	actions: 'w-px whitespace-nowrap px-1',
+}
+
+/**
+ * La mention d'une promo qui NE s'applique PAS aujourd'hui, mais s'appliquera
+ * ou s'est appliquée — ou rien.
+ *
+ * La règle n'est pas recopiée : on demande à `prixPromoActif` si la fiche
+ * serait en promo le jour de son début (programmée) ou de sa fin (expirée). Une
+ * fiche dont le prix promo est refusé pour une autre raison — absent, plus cher
+ * que le prix — ne dit donc rien ici : sa fiche détail nomme la condition.
+ */
+function mentionPromoInactive(
+	row: StockProductRow,
+	jour: JourServeur,
+): string | null {
+	const periode = periodePromo(row, jour)
+	if (periode === 'programmee' && row.promo_start) {
+		if (prixPromoActif(row, row.promo_start) === null) return null
+		const [, mois, jourDuMois] = row.promo_start.split('-')
+		return `Promo le ${jourDuMois}/${mois}`
+	}
+	if (periode === 'expiree' && row.promo_end) {
+		if (prixPromoActif(row, row.promo_end) === null) return null
+		return 'Promo expirée'
+	}
+	return null
 }
 
 /** Le tri se choisit dans les colonnes elles-mêmes. La colonne active reprend
@@ -458,6 +491,8 @@ export function ProductTable({
 	// Reconstruire les colonnes à chaque rendu invalide les caches internes de
 	// TanStack Table pour les 25 lignes affichées. Elles ne dépendent que de
 	// `onDelete` — que l'appelant stabilise.
+	// Le jour du SERVEUR juge la période des promos, jamais l'horloge du poste.
+	const jour = useJourServeur()
 	const columns: ColumnDef<StockProductRow>[] = useMemo(
 		() => [
 			// ✅ COLONNE IMAGE
@@ -572,9 +607,29 @@ export function ProductTable({
 						)
 					}
 
+					// Barré + prix promo seulement si la règle unique l'accorde
+					// aujourd'hui. Le tri de la colonne reste sur le prix d'origine.
+					const promo = prixPromoActif(row.original, jour)
+					const mention =
+						promo === null ? mentionPromoInactive(row.original, jour) : null
+
 					return (
 						<div>
-							<div className='font-medium'>{price.toFixed(2)} €</div>
+							{promo === null ? (
+								<div className='font-medium'>{price.toFixed(2)} €</div>
+							) : (
+								<div className='flex items-baseline gap-1.5'>
+									<span className='text-muted-foreground text-xs line-through'>
+										{price.toFixed(2)} €
+									</span>
+									<span className='font-medium text-emerald-700 dark:text-emerald-400'>
+										{promo.toFixed(2)} €
+									</span>
+								</div>
+							)}
+							{mention && (
+								<div className='text-muted-foreground text-xs'>{mention}</div>
+							)}
 							{cost != null && !Number.isNaN(cost) && cost > 0 && (
 								<div className='text-xs text-muted-foreground'>
 									Achat: {cost.toFixed(2)} €
@@ -593,20 +648,43 @@ export function ProductTable({
 				),
 				cell: ({ row }) => {
 					const stock = row.getValue<number | null>('stock') ?? undefined
-
-					if (stock == null || Number.isNaN(stock)) {
-						return <span className='text-muted-foreground'>-</span>
-					}
+					// Le Stock B sous le neuf, et seulement s'il existe : la plupart
+					// des fiches n'en ont pas, une colonne serait vide aux trois quarts.
+					// Un B négatif s'affiche aussi — c'est une information.
+					const stockB = Number(row.original.stock_b ?? 0)
+					const prixB = prixStockB(row.original)
 
 					return (
-						<Badge
-							className='min-w-6 justify-center px-1.5 py-0.5 tabular-nums'
-							variant={
-								stock > 10 ? 'default' : stock > 0 ? 'secondary' : 'destructive'
-							}
-						>
-							{stock}
-						</Badge>
+						<div className='flex flex-col items-start gap-0.5'>
+							{stock == null || Number.isNaN(stock) ? (
+								<span className='text-muted-foreground'>-</span>
+							) : (
+								<Badge
+									className='min-w-6 justify-center px-1.5 py-0.5 tabular-nums'
+									variant={
+										stock > 10
+											? 'default'
+											: stock > 0
+												? 'secondary'
+												: 'destructive'
+									}
+								>
+									{stock}
+								</Badge>
+							)}
+							{stockB !== 0 && !Number.isNaN(stockB) && (
+								<span
+									className='text-muted-foreground text-xs tabular-nums'
+									title={
+										prixB === null
+											? 'Stock B — sans prix B'
+											: `Stock B — ${prixB.toFixed(2)} €`
+									}
+								>
+									B {stockB}
+								</span>
+							)}
+						</div>
 					)
 				},
 			},
@@ -757,7 +835,7 @@ export function ProductTable({
 				},
 			},
 		],
-		[onDelete],
+		[onDelete, jour],
 	)
 
 	const table = useReactTable({
