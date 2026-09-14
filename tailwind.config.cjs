@@ -6,7 +6,11 @@ module.exports = {
 		'./components/**/*.{ts,tsx}',
 		'./app/**/*.{ts,tsx}',
 		'./src/**/*.{ts,tsx}',
-		'./frontend/**/*.{ts,tsx}',
+		// `jsx`/`js` : l'éditeur d'affiche (frontend/modules/stick/labels) est porté
+		// d'AppPos tel quel. Sans ces extensions, AUCUNE de ses classes n'est
+		// générée — seulement celles qu'un fichier .tsx utilise déjà ailleurs, ce
+		// qui donne des mises en page à moitié stylées, sans erreur.
+		'./frontend/**/*.{ts,tsx,js,jsx}',
 	],
 	prefix: '',
 	theme: {

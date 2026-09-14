@@ -1,25 +1,18 @@
 // frontend/modules/stick/StickPage.tsx
 //
-// Page placeholder — cards mockées remplacées par EmptyState mutualisé.
-// Prête à recevoir les vraies fonctionnalités sans refacto supplémentaire.
+// L'ÉDITEUR D'AFFICHE, porté d'AppPos (« Outils → Affiche », /tools/labels).
+//
+// Pas de `ModulePageShell` ici, et c'est délibéré : l'éditeur porte sa propre
+// barre d'outils (`TopToolbar`) et veut toute la hauteur, sans le padding du
+// shell — c'est ainsi qu'il vivait dans AppPos. Le placeholder qui occupait
+// cette page est remplacé.
 
-import { EmptyState, ModulePageShell } from '@/components/module-ui'
-import { Outlet } from '@tanstack/react-router'
-import { Image } from 'lucide-react'
-import { manifest } from './index'
+import { LabelPage } from './labels/LabelPage'
 
 export function StickPage() {
 	return (
-		<ModulePageShell manifest={manifest}>
-			<EmptyState
-				icon={Image}
-				title='Module en cours de développement'
-				description='Les fonctionnalités Affiches & visuels arrivent bientôt. Revenez dans une prochaine version.'
-				fullPage
-			/>
-
-			{/* Sous-routes Stick éventuelles */}
-			<Outlet />
-		</ModulePageShell>
+		<div className='h-full w-full overflow-hidden'>
+			<LabelPage />
+		</div>
 	)
 }

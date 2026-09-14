@@ -15,6 +15,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* L'éditeur d'affiche (frontend/modules/stick/labels) est porté d'AppPos
+       tel quel, en .jsx/.js. `allowJs` le laisse entrer dans le programme sans
+       `checkJs` : il est compilé, pas typé. À retirer quand il sera converti —
+       voir frontend/modules/stick/PocketStick-docs/01-portage-affiche.md */
+    "allowJs": true,
+
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
@@ -25,5 +31,9 @@
       "@/*": ["./frontend/*"]
     }
   },
-  "include": ["frontend"]
+  "include": ["frontend"],
+  // Les bindings Wails sont générés en .js avec leurs .d.ts à côté : `allowJs`
+  // les ferait entrer une seconde fois, non typés. Les imports passent par les
+  // .d.ts, qui restent, eux, dans le programme.
+  "exclude": ["frontend/wailsjs"]
 }
