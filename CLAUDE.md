@@ -36,6 +36,15 @@ server/                        code PHP du serveur mutualisé d'axemusique.shop 
 docs/DECISIONS.md              pourquoi les choses sont comme elles sont
 ```
 
+Le module `stick` (**PocketStick**, `/stick`) porte depuis le 14 septembre 2026
+l'**éditeur d'affiches et d'étiquettes** repris d'AppPos (« Outils → Affiche ») :
+canvas Konva, planches A4, export PDF, templates. Il est en `.jsx`/`.js`, non
+typé (`allowJs` sans `checkJs`) et non formaté par Biome — état, attaches et
+dette assumée dans
+[`frontend/modules/stick/PocketStick-docs/01-portage-affiche.md`](frontend/modules/stick/PocketStick-docs/01-portage-affiche.md).
+Ses templates et sa bibliothèque d'images sont **locaux au poste** (IndexedDB) :
+aucune collection PocketBase ne les porte encore.
+
 Modules : `cash` (caisse — tickets, sessions, rapports X et Z ; sa doc est
 dans `frontend/modules/cash/PocketCash-docs/`), `stock` (produits, lecture
 **et** écriture),

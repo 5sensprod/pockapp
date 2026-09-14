@@ -116,6 +116,39 @@ Quatre manques relevés au premier essai, tous corrigés le jour même.
   qu'un facteur fractionnaire rendrait certaines barres plus larges que leurs
   voisines par arrondi — et un scanner lit la LARGEUR des barres.
 
+## Où intervenir — carte pour un agent qui reprend
+
+Tout vit sous `frontend/modules/stick/`. La page est `/stick`
+(`frontend/routes/stick/index.tsx` → `StickPage.tsx` → `labels/LabelPage.jsx`).
+
+| Pour toucher à… | Le fichier |
+|---|---|
+| Le canvas, la sélection, les guides magnétiques | `labels/components/KonvaCanvas.jsx` |
+| Un type d'élément à l'écran | `labels/components/canvas/` — `TextNode`, `ImageNode`, `BarcodeNode`, `QRCodeNode`, `ShapeNode` |
+| Les onglets de la barre latérale | `labels/components/ToolsSidebar.jsx` (la table `tools`) puis `labels/components/templates/` |
+| Les réglages de l'élément sélectionné | `labels/components/PropertyPanel.jsx` |
+| L'état du document (éléments, historique, annuler/refaire) | `labels/store/useLabelStore.js` |
+| Le passage produit → texte affiché | `labels/utils/dataBinding.js` **et** `labels/lib/produit-adapte.ts` |
+| L'export PDF, à l'unité ou en planche | `labels/utils/exportPdf.js`, `labels/utils/exportPdfSheet.js` |
+| Les templates enregistrés | `labels/services/templateService.js` (IndexedDB) |
+
+**Ajouter un type d'élément** demande quatre gestes, et en oublier un ne
+produit AUCUNE erreur — c'est ce qui rendait l'onglet Formes muet :
+
+1. un composant dans `labels/components/canvas/` ;
+2. une branche `if (type === '…')` dans la boucle de rendu de `KonvaCanvas.jsx` ;
+3. un panneau dans `labels/components/templates/` qui appelle `addElement` ;
+4. ses réglages dans `PropertyPanel.jsx`, et son nom dans `LayersPanel.jsx`.
+
+**Deux pièges déjà payés :**
+
+- **Tailwind doit voir le fichier.** `tailwind.config.cjs` scanne désormais
+  `.{ts,tsx,js,jsx}`. Un nouveau fichier hors de `frontend/` ne serait pas
+  stylé, sans erreur.
+- **Ce module n'est pas typé** (`allowJs` sans `checkJs`) et **n'est pas
+  formaté** par Biome au même titre que le reste : `pnpm format` le réécrirait
+  entièrement. Formater uniquement ses propres fichiers.
+
 ## À nettoyer, plus tard
 
 Rien de ce qui suit n'est urgent ; tout est une dette prise sciemment le jour
