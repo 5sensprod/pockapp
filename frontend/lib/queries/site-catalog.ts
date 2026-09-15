@@ -67,6 +67,11 @@ export type CatalogProduct = FileBearing & {
 	promo_end?: string
 	stock_b?: number
 	stock_b_price_ttc?: number
+	/** Les liens de la fiche — pages web et vidéos YouTube, DANS L'ORDRE. JSON
+	 *  libre au schéma : il ne se consomme qu'à travers `liensNormalises`
+	 *  (`lib/catalog/web-links.ts`). Comme les cinq clés ci-dessus, il ne part
+	 *  vers le site que lorsqu'il porte au moins un lien. */
+	web_links?: unknown
 	tax_rate?: number
 	stock?: number
 	description?: string
@@ -128,7 +133,7 @@ export type CatalogBrand = FileBearing & {
 // Comme tout le reste ici, un champ absent de cette chaîne revient VIDE sans
 // erreur : le tri retomberait silencieusement sur l'ordre alphabétique.
 export const PRODUCT_FIELDS =
-	'id,collectionId,collectionName,created,updated,legacy_id,name,designation,sku,slug,description,status,sale_state,price_ttc,promo_price_ttc,promo_start,promo_end,stock_b,stock_b_price_ttc,tax_rate,stock,image,gallery,brand,categories'
+	'id,collectionId,collectionName,created,updated,legacy_id,name,designation,sku,slug,description,status,sale_state,price_ttc,promo_price_ttc,promo_start,promo_end,stock_b,stock_b_price_ttc,web_links,tax_rate,stock,image,gallery,brand,categories'
 const CATEGORY_FIELDS =
 	'id,collectionId,collectionName,legacy_id,name,slug,description,image,is_featured,parent'
 const BRAND_FIELDS =

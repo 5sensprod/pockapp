@@ -86,6 +86,7 @@ var apresCatalogV2 = []string{
 	"AddPromoPriceToProducts",
 	"AddStockBPriceToProducts",
 	"AddPromoPeriodToProducts",
+	"AddWebLinksToProducts",
 }
 
 func TestLesMigrationsDuCatalogueSontInscritesEtApresLaRecreation(t *testing.T) {

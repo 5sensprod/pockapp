@@ -47,6 +47,16 @@
 // `POST /api/catalog/products/:id/promote-image`
 // (`backend/routes/product_image_routes.go`).
 
+/**
+ * Les champs JSON du catalogue, à sérialiser d'un bloc dans un `FormData`.
+ *
+ * Nommés un par un, et pas devinés à la forme de la valeur : `categories: []`
+ * et `web_links: []` sont le même tableau vide et veulent dire deux choses
+ * opposées — « aucune catégorie », donc aucune entrée, contre « aucun lien »,
+ * donc la valeur `[]`. Seul le nom du champ tranche.
+ */
+const CHAMPS_JSON: ReadonlySet<string> = new Set(['web_links'])
+
 /** Ce qu'un écran déclare à propos de l'image, en plus des champs texte. */
 export interface ImageIntent {
 	/** Un fichier choisi par l'utilisateur. */
@@ -95,7 +105,17 @@ export function buildWritePayload<T extends Record<string, unknown>>(
 
 	const form = new FormData()
 	for (const [cle, valeur] of Object.entries(propre)) {
-		if (Array.isArray(valeur)) {
+		if (CHAMPS_JSON.has(cle)) {
+			// ── UN CHAMP JSON N'EST PAS UNE RELATION MULTIPLE ──────────────────
+			// Les deux sont des tableaux, et la boucle ci-dessous ne sait pas les
+			// distinguer : elle répéterait la clé en passant chaque entrée par
+			// `String()`, ce qui écrit « [object Object] » en base — sans erreur,
+			// et seulement quand l'enregistrement touche AUSSI une image, puisque
+			// c'est ce qui déclenche le `FormData`. Un champ JSON part donc en
+			// UNE valeur, sérialisée, y compris quand la liste est vide : `[]` est
+			// une valeur, contrairement à une relation vidée.
+			form.append(cle, JSON.stringify(valeur))
+		} else if (Array.isArray(valeur)) {
 			// Une relation multiple — `brands` d'un fournisseur, `categories` d'un
 			// produit — s'envoie en répétant la clé. Un tableau vide n'ajoute donc
 			// aucune entrée : c'est ainsi qu'on vide une relation.

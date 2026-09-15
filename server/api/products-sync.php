@@ -27,6 +27,7 @@ declare(strict_types=1);
 // La lecture des dates de promo (11 septembre 2026). À déposer AVEC ce fichier :
 // absent, le script tombe en erreur 500 avant d'avoir rien écrit.
 require_once __DIR__ . '/../lib/promo.php';
+require_once __DIR__ . '/../lib/web-links.php';
 
 // ---------------------------------------------------------------------------
 // Sortie
@@ -460,16 +461,33 @@ $sqlCategory = sprintf(
 //
 // Colonnes ajoutées par `server/sql/promo-stock-b.sql`, à passer avant de
 // déposer ce fichier.
+//
+// ─── LES LIENS DE LA FICHE (15 septembre 2026) ────────────────────────────
+//
+// Une sixième clé facultative (§4.1 quater) : `web_links`, une liste ORDONNÉE
+// de pages web et de vidéos YouTube. Même règle d'absence que les cinq
+// précédentes — clé absente, colonne à NULL, liens précédents effacés.
+//
+// Elle est REVALIDÉE ici (`server/lib/web-links.php`) et non écrite telle
+// quelle : ces adresses finissent dans des `href` et dans une iframe du site,
+// et PocketApp n'est pas la seule chose qui puisse écrire dans ce corps. Ce
+// qui ne passe pas est ÉCARTÉ, sans refuser l'entité — un lien tordu ne doit
+// pas retenir un produit hors ligne. C'est l'inverse du choix fait pour les
+// dates de promo, et pour une raison précise : une date invalide écrite
+// DÉSACTIVERAIT la promo sans le dire, alors qu'un lien manquant se voit.
+//
+// Colonne ajoutée par `server/sql/web-links.sql`, à passer avant de déposer
+// ce fichier.
 $sqlProduct = sprintf(
     'INSERT INTO `%s` (legacy_id, checksum, name, sku, slug, description,
                        price_ttc, tax_rate, stock, status, sale_state,
                        promo_price_ttc, promo_start, promo_end,
-                       stock_b, stock_b_price_ttc, brand,
+                       stock_b, stock_b_price_ttc, web_links, brand,
                        exported_at, first_seen_at)
      VALUES (:legacy_id, :checksum, :name, :sku, :slug, :description,
              :price_ttc, :tax_rate, :stock, :status, :sale_state,
              :promo_price_ttc, :promo_start, :promo_end,
-             :stock_b, :stock_b_price_ttc, :brand,
+             :stock_b, :stock_b_price_ttc, :web_links, :brand,
              :exported_at, :first_seen_at)
      ON DUPLICATE KEY UPDATE
         checksum = VALUES(checksum), name = VALUES(name),
@@ -481,6 +499,7 @@ $sqlProduct = sprintf(
         promo_price_ttc = VALUES(promo_price_ttc),
         promo_start = VALUES(promo_start), promo_end = VALUES(promo_end),
         stock_b = VALUES(stock_b), stock_b_price_ttc = VALUES(stock_b_price_ttc),
+        web_links = VALUES(web_links),
         brand = VALUES(brand), exported_at = VALUES(exported_at)',
     $T_PRODUCTS
 );
@@ -611,6 +630,8 @@ try {
             ':promo_end'         => is_string($promoEnd) ? $promoEnd : null,
             ':stock_b'           => is_numeric($product['stock_b'] ?? null) ? max(0, (int) $product['stock_b']) : 0,
             ':stock_b_price_ttc' => opt_positive_price($product['stock_b_price_ttc'] ?? null),
+            // §4.1 quater : NULL quand il ne reste aucun lien valide.
+            ':web_links'         => web_links_pour_base($product['web_links'] ?? null),
             ':brand'       => opt_string($product['brand'] ?? null),
             ':exported_at' => $now,
             // Même valeur, deux destins : `exported_at` sera réécrit au

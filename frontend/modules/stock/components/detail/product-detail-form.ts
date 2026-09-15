@@ -1,5 +1,10 @@
 import { z } from 'zod'
 
+import {
+	MAX_LIENS,
+	liensNormalises,
+	motifRefusLien,
+} from '@/lib/catalog/web-links'
 import type {
 	CatalogProductShape,
 	CatalogProductWrite,
@@ -61,6 +66,30 @@ const productDetailObject = z.object({
 	brand: z.string().optional(),
 	supplier: z.string().optional(),
 	categories: z.array(z.string()),
+	// Les liens de la fiche, DANS LEUR ORDRE. La validité d'une adresse n'est
+	// PAS réécrite ici : `motifRefusLien` est la règle, partagée avec l'export
+	// (`lib/catalog/web-links.ts`). Le message qu'elle rend est celui qui
+	// s'affiche sous le champ.
+	web_links: z
+		.array(
+			z.object({
+				kind: z.enum(['link', 'video']),
+				url: z.string(),
+				label: z.string().max(120),
+			}),
+		)
+		.max(MAX_LIENS, `${MAX_LIENS} liens au maximum`)
+		.superRefine((liens, ctx) => {
+			liens.forEach((lien, index) => {
+				const motif = motifRefusLien(lien.kind, lien.url)
+				if (motif !== null)
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						path: [index, 'url'],
+						message: motif,
+					})
+			})
+		}),
 })
 
 /**
@@ -141,6 +170,7 @@ export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
 	brand: '',
 	supplier: '',
 	categories: [],
+	web_links: [],
 }
 
 /**
@@ -214,6 +244,10 @@ export function productDetailValues(
 		brand: product.brand ?? '',
 		supplier: product.supplier ?? '',
 		categories: product.categories ?? [],
+		// Le champ est un JSON libre : ce qu'on relit peut être n'importe quoi,
+		// et une entrée tordue est écartée plutôt que d'empêcher la fiche de
+		// s'ouvrir.
+		web_links: liensNormalises(product.web_links),
 	}
 }
 
@@ -244,5 +278,10 @@ export function productDetailPayload(
 		brand: data.brand ?? '',
 		supplier: data.supplier ?? '',
 		categories: data.categories,
+		// La liste part ENTIÈRE : le champ se remplace, il ne se complète pas.
+		// Elle repasse par la normalisation avant d'être écrite — le formulaire
+		// laisse une ligne vide tant que le vendeur n'a rien tapé, et une ligne
+		// vide n'a rien à faire en base.
+		web_links: liensNormalises(data.web_links),
 	}
 }

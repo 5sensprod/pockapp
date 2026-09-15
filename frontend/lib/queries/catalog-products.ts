@@ -27,6 +27,7 @@
 // Schéma lu : backend/migrations/catalog_v2.go.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import type { WebLink } from '@/lib/catalog/web-links'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import {
 	keepPreviousData,
@@ -133,6 +134,11 @@ export type CatalogProductShape = PocketBaseRecord & {
 	stock_b_price_ttc?: number
 	min_stock?: number
 	manage_stock?: boolean
+	/** Les liens de la fiche — pages web et vidéos YouTube, DANS L'ORDRE
+	 *  d'affichage. JSON libre au schéma : ne jamais le consommer sans passer
+	 *  par `liensNormalises` (`lib/catalog/web-links.ts`). Schéma :
+	 *  `backend/migrations/add_web_links_to_products.go`. */
+	web_links?: WebLink[]
 	image?: string
 	/** Les noms de fichiers de la galerie, DANS L'ORDRE — l'ordre est une
 	 *  donnée (règle du 19 août 2026). Jusqu'à dix. */
@@ -162,7 +168,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,promo_price_ttc,promo_start,promo_end,purchase_price_ht,tax_rate,stock,stock_b,stock_b_price_ttc,min_stock,manage_stock,image,gallery,brand,supplier,consignor,categories'
+	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,promo_price_ttc,promo_start,promo_end,purchase_price_ht,tax_rate,stock,stock_b,stock_b_price_ttc,min_stock,manage_stock,web_links,image,gallery,brand,supplier,consignor,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -564,6 +570,9 @@ export type CatalogProductWrite = ImageIntent &
 		stock?: number
 		min_stock?: number
 		manage_stock?: boolean
+		/** La liste ENTIÈRE, dans son ordre : ce champ se remplace, il ne se
+		 *  complète pas. Voir `CatalogProductShape.web_links`. */
+		web_links?: WebLink[]
 		brand?: string
 		supplier?: string
 		/** Particulier qui a confié l'article. Relation facultative vers

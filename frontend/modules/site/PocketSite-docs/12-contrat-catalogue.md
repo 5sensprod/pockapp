@@ -117,6 +117,7 @@ arriver après le produit qui la cite.
 | `promo_end` | `"AAAA-MM-JJ"` | **non** | dernier jour de la promo, inclus |
 | `stock_b` | entier > 0 | **non** | unités Stock B — clé absente = 0 |
 | `stock_b_price_ttc` | nombre > 0 | **non** | prix TTC d'une unité Stock B |
+| `web_links` | tableau d'objets | **non** | liens et vidéos de la fiche, **dans l'ordre** — voir §4.1 quater |
 | `brand` | chaîne ou `null` | oui | `legacy_id` de la marque |
 | `categories` | tableau de chaînes | oui | `legacy_id`, peut être vide |
 
@@ -209,6 +210,51 @@ mêmes cas de test (`server/tests/promo-test.php`).
 au plein tarif part tel quel. C'est la lecture qui applique les quatre
 conditions — opération `sale` ou `promo`, prix promo > 0, inférieur à
 `price_ttc`, jour dans la période.
+
+#### 4.1 quater. Les liens de la fiche (15 septembre 2026)
+
+**Une clé facultative de plus** : `web_links`, un tableau d'objets
+`{ kind, url, label }` :
+
+| Champ | Type | Note |
+|---|---|---|
+| `kind` | `"link"` ou `"video"` | `video` = une vidéo YouTube, intégrée par le site |
+| `url` | chaîne en **`https`** | pour une vidéo, l'hôte doit être YouTube |
+| `label` | chaîne, 120 caractères au plus | peut être vide : le site retombe sur le domaine |
+
+**L'ORDRE DU TABLEAU EST L'ORDRE D'AFFICHAGE** sur le site — c'est une donnée,
+saisie par le vendeur, au même titre que l'ordre de la galerie d'images. Le
+serveur ne retrie rien, le site non plus. Vingt liens au plus.
+
+**Même règle d'absence que le §4.1 ter** : la clé ne part que lorsqu'il y a au
+moins un lien, et son absence écrit NULL — c'est ainsi qu'on retire un lien.
+L'empreinte d'une fiche sans lien est donc inchangée, et les 2412 produits
+publiés ne repassent pas « modifiés ».
+
+**Les entrées invalides sont ÉCARTÉES, l'entité n'est PAS refusée.** C'est
+l'inverse du choix fait pour les dates de promo, et pour une raison précise :
+une date invalide écrite désactiverait la promo sans que rien ne le dise, alors
+qu'un lien manquant se voit. Un lien tordu sur douze ne doit pas retenir un
+produit hors ligne.
+
+**Le serveur revalide ce que PocketApp a déjà validé** — `https` obligatoire,
+hôte YouTube contrôlé pour une vidéo (`server/lib/web-links.php`, mêmes cas que
+`frontend/lib/catalog/web-links.ts`). Ces adresses finissent dans des `href` et
+dans une iframe du site, et un poste sur un vieux build n'est pas une
+hypothèse théorique. La colonne étant un `TEXT`, la **relecture** revalide elle
+aussi.
+
+**L'identifiant d'une vidéo n'est ni stocké, ni calculé par le serveur.** Il se
+dérive de l'URL, au seul endroit qui l'affiche : le bundle du site
+(`AxeProductLinks.jsx`). Le stocker en ferait une troisième copie à tenir
+d'accord avec les deux autres.
+
+**À la lecture, `catalog.php` rend `links` sur la SEULE action `product`**,
+comme `gallery` et pour la même raison : aucune grille n'affiche de liens. Il
+est alors toujours présent, éventuellement vide.
+
+Colonne : `server/sql/web-links.sql`. Schéma PocketBase :
+`backend/migrations/add_web_links_to_products.go`.
 
 ### 4.2 Catégorie
 
@@ -320,6 +366,17 @@ continue de ne servir que `published`.
 
 Les deux objets sont toujours présents, éventuellement `null`, sur toute action
 qui rend des produits.
+
+**Depuis le 15 septembre 2026, `links` s'ajoute — sur la SEULE action
+`product`** (§4.1 quater). Comme `gallery`, et pour la même raison : aucune
+grille n'affiche de liens. Il est **toujours présent sur la fiche**,
+éventuellement vide, et **absent des listes** — l'absence dit « non demandé »,
+un tableau vide affirmerait « ce produit n'a pas de liens ».
+
+Chaque entrée est `{ "kind": "link" | "video", "url": "https://…",
+"label": "…" }`, dans l'ordre voulu par le vendeur. La liste est **revalidée à
+la lecture** : la colonne est un `TEXT`, et le bundle pose ces adresses dans des
+`href` et dans une iframe.
 
 **`stats` compte ce que le SITE expose, pas ce que la caisse porte** : produits
 `published`, marques et catégories **portant au moins un produit publié**.

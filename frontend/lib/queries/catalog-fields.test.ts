@@ -177,3 +177,16 @@ describe('sale_state', () => {
 		expect(SITE_PRODUCT_FIELDS.split(',')).toContain('sale_state')
 	})
 })
+
+describe('les liens de la fiche', () => {
+	it('sont demandés par les DEUX listes — sinon ils reviendraient vides', () => {
+		// `web_links` est arrivé au schéma le 15 septembre 2026. Absent de
+		// `PRODUCT_FIELDS`, la fiche l'ouvrirait vide et l'enregistrement
+		// effacerait les liens saisis ; absent de celle du module site, aucun
+		// lien ne partirait jamais et la section du site resterait muette —
+		// dans les deux cas sans la moindre erreur. Le piège de `gallery`,
+		// un champ plus loin.
+		expect(PRODUCT_FIELDS.split(',')).toContain('web_links')
+		expect(SITE_PRODUCT_FIELDS.split(',')).toContain('web_links')
+	})
+})

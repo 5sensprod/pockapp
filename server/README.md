@@ -40,6 +40,9 @@ PHP.
 | `sql/first-seen.sql` | la colonne `first_seen_at` d'`ax_products`, à exécuter une fois | oui |
 | `sql/sale-state.sql` | la colonne `sale_state` d'`ax_products`, à exécuter une fois — plus, **en commentaire et à ne pas jouer sans décision**, le retrait de `site_title` | oui |
 | `sql/promo-stock-b.sql` | les colonnes prix promo, période et Stock B d'`ax_products`, à exécuter une fois | oui |
+| `sql/web-links.sql` | la colonne `web_links` d'`ax_products` — liens et vidéos de la fiche, à exécuter une fois | oui |
+| `lib/web-links.php` | la règle des liens de fiche, **incluse** par `products-sync.php` et `catalog.php` — à déposer avec eux | oui |
+| `tests/web-links-test.php` | tests de `lib/web-links.php`, `php server/tests/web-links-test.php` — **ne pas déposer** | oui |
 | `lib/promo.php` | la règle de période des promos, **incluse** par `products-sync.php` et `catalog.php` — à déposer avec eux | oui |
 | `tests/promo-test.php` | tests de `lib/promo.php`, `php server/tests/promo-test.php` — **ne pas déposer** | oui |
 | `config/config.php.example` | modèle de configuration | oui |
@@ -100,6 +103,17 @@ cet ordre, et le premier ne se rattrape pas en sens inverse :
 Déposés avant les colonnes, les deux scripts tombent en erreur SQL — **catalogue
 public compris**. Déposés sans `lib/`, ils tombent en erreur 500. Vérifier ensuite
 que `catalog.php?action=latest&limit=1` rend bien `promo` et `stock_b`.
+
+**Liens et vidéos de fiche — ordre de dépôt (15 septembre 2026).** Les mêmes
+trois gestes, dans le même ordre, et pour les mêmes raisons :
+
+1. passer `sql/web-links.sql` dans phpMyAdmin ;
+2. déposer `lib/web-links.php` ;
+3. déposer `api/products-sync.php` et `api/catalog.php`.
+
+Vérifier ensuite que `catalog.php?action=product&slug=<une fiche>` rend bien une
+clé `links` — tableau vide tant qu'aucun lien n'a été exporté, ce qui est
+l'état normal de tout le catalogue le premier jour.
 
 **`sql/schema.sql` est revenu le 11 août 2026, pour le catalogue** — les quatre
 tables `ax_products`, `ax_categories`, `ax_brands` et `ax_product_categories`.

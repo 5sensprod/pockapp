@@ -29,6 +29,7 @@ declare(strict_types=1);
 // La période des promos et le Stock B (11 septembre 2026). À déposer AVEC ce
 // fichier : absent, le catalogue public tombe en erreur 500.
 require_once __DIR__ . '/../lib/promo.php';
+require_once __DIR__ . '/../lib/web-links.php';
 
 // ---------------------------------------------------------------------------
 // Sortie
@@ -267,6 +268,23 @@ function present_product(array $row, bool $withGallery = false): array
         // ferait afficher la principale deux fois. Un carrousel qui la veut en
         // tête compose `[image, ...gallery]` — c'est à lui de le dire.
         $product['gallery'] = array_slice($images, 1);
+
+        // ── Les liens de la fiche (15 septembre 2026) ───────────────────────
+        //
+        // Sur la SEULE action `product`, exactement comme `gallery`, et pour la
+        // même raison : aucune grille n'affiche de liens. Un champ publié sans
+        // consommateur est un champ qu'il faut porter, faire évoluer et ne
+        // jamais casser, pour rien.
+        //
+        // TOUJOURS présent sur la fiche, éventuellement vide — le site n'a pas
+        // à distinguer « pas de liens » de « pas demandé ».
+        //
+        // Revalidé à la lecture (`web_links_affiches`) : la colonne est un TEXT
+        // que rien n'empêche d'avoir été écrit autrement, et le site pose ces
+        // adresses dans des `href` et dans une iframe. L'identifiant d'une
+        // vidéo n'est PAS calculé ici : il se dérive de l'URL, et il se dérive
+        // là où on l'affiche.
+        $product['links'] = web_links_affiches($row['web_links'] ?? null);
     }
 
     return $product;
@@ -390,7 +408,7 @@ function media_urls(?string $imagePaths): array
 $PRODUCT_COLUMNS = 'p.legacy_id, p.name, p.slug, p.sku, p.description,
                     p.price_ttc, p.stock, p.sale_state,
                     p.promo_price_ttc, p.promo_start, p.promo_end,
-                    p.stock_b, p.stock_b_price_ttc,
+                    p.stock_b, p.stock_b_price_ttc, p.web_links,
                     p.brand, b.name AS brand_name,
                     b.image_paths AS brand_image_paths,
                     p.image_paths AS product_image_paths';

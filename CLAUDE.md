@@ -317,6 +317,32 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   L'atomicité repose sur une propriété **de PocketBase v0.22.22**
   (une seule connexion d'écriture) : à revérifier à chaque mise à jour, voir
   `docs/DECISIONS.md`.
+- **La fiche produit porte des liens, et l'ordre est une donnée** (15 septembre
+  2026). `products.web_links` est un JSON unique — une liste de
+  `{kind:'link'|'video', url, label}` — et non deux champs : le type est une
+  donnée de l'entrée. Règle UNIQUE dans `frontend/lib/catalog/web-links.ts`
+  (`https` obligatoire, hôte YouTube contrôlé pour une vidéo), appelée par le
+  formulaire ET par l'export ; le champ étant un JSON libre, **rien de ce qu'on
+  y relit n'est digne de confiance** — toujours passer par `liensNormalises`.
+  Le serveur revalide (`server/lib/web-links.php`) et **revalide encore à la
+  lecture** : ces adresses finissent dans des `href` et dans une iframe du
+  site. Les entrées invalides sont ÉCARTÉES, l'entité n'est pas refusée —
+  l'inverse des dates de promo, qui, elles, désactiveraient la promo en
+  silence. **L'identifiant d'une vidéo n'est jamais stocké** : il se dérive au
+  seul endroit qui l'affiche, `AxeProductLinks.jsx` dans le dépôt du site.
+  Vers le site, c'est une clé **absente quand elle ne vaut rien**
+  (`champsFacultatifs`) — ne pas l'envoyer à `null`, sous peine de faire
+  repasser les 2412 fiches « modifiées ». `catalog.php` la rend sous le nom
+  `links`, sur la SEULE action `product`, comme `gallery`. Contrat : §4.1
+  quater. **Deux listes à tenir d'accord en plus de la chaîne `fields`** :
+  `CHAMPS_PRODUIT_EXPORTES` (`catalog-export.ts`), sans quoi la modale
+  d'après-enregistrement reste muette sur un lien modifié ou retiré — c'est
+  arrivé le 15 septembre 2026, et son gardien ne l'a pas vu parce que sa fiche
+  « complète » ne portait pas le champ ; et `CHAMPS_JSON`
+  (`image-upload.ts`), sans quoi un champ JSON enregistré EN MÊME TEMPS qu'une
+  image part en « [object Object] », la boucle `FormData` traitant tout tableau
+  comme une relation multiple. Gardiens : `web-links.test.ts`, `catalog-export.test.ts`,
+  `catalog-fields.test.ts` et `server/tests/web-links-test.php`.
 - **Les décomptes du catalogue se calculent côté serveur** (25 août 2026) :
   `GET /api/catalog/counts` (`backend/routes/catalog_counts_routes.go`) rend,
   par marque et par catégorie, ce que trois écrans du module `stock`

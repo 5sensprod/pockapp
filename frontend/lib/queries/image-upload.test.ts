@@ -155,3 +155,45 @@ describe('buildWritePayload', () => {
 		expect(form.getAll('gallery')).toEqual([])
 	})
 })
+
+describe('les champs JSON dans un FormData', () => {
+	// Le piège : `web_links` et `categories` sont tous deux des tableaux, et la
+	// boucle générique les traitait pareil — clé répétée, chaque entrée passée
+	// par `String()`. Pour une liste d'objets, cela écrit « [object Object] » en
+	// base, sans erreur, et SEULEMENT quand l'enregistrement touche aussi une
+	// image : c'est ce qui déclenche le FormData.
+	const liens = [
+		{ kind: 'link', url: 'https://a.fr', label: 'Notice' },
+		{ kind: 'video', url: 'https://youtu.be/x', label: '' },
+	]
+
+	it('sérialise `web_links` en UNE valeur, pas une entrée par lien', () => {
+		const form = buildWritePayload({
+			name: 'Ukulélé',
+			web_links: liens,
+			image: fichier(),
+		}) as FormData
+		expect(form.getAll('web_links')).toEqual([JSON.stringify(liens)])
+	})
+
+	it('envoie `[]` pour une liste vidée — c’est une valeur, pas une absence', () => {
+		// Contrairement à une relation multiple, qu'on vide en n'envoyant AUCUNE
+		// entrée. Sans cette distinction, retirer le dernier lien d'un produit
+		// dont on change aussi l'image ne le retirerait pas.
+		const form = buildWritePayload({
+			name: 'Ukulélé',
+			web_links: [],
+			image: fichier(),
+		}) as FormData
+		expect(form.getAll('web_links')).toEqual(['[]'])
+	})
+
+	it('laisse `categories` répéter sa clé — c’est une relation, pas du JSON', () => {
+		const form = buildWritePayload({
+			name: 'Ukulélé',
+			categories: ['c1', 'c2'],
+			image: fichier(),
+		}) as FormData
+		expect(form.getAll('categories')).toEqual(['c1', 'c2'])
+	})
+})

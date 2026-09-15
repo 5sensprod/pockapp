@@ -157,6 +157,11 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// 24. La période d'une promo — deux dates calendaires « AAAA-MM-JJ »,
 		// bornes incluses. Après MigrateCatalogV2, qui recrée `products`.
 		AddPromoPeriodToProducts,
+
+		// 25. Les liens de la fiche — pages web et vidéos YouTube, une liste
+		// ordonnée dans un seul champ JSON. Après MigrateCatalogV2, qui recrée
+		// `products`.
+		AddWebLinksToProducts,
 	}
 
 	for _, migrate := range migrations {

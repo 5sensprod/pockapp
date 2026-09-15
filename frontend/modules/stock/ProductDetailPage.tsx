@@ -34,6 +34,7 @@ import { ProductPricingCard } from './components/detail/ProductPricingCard'
 import { ProductSitePanel } from './components/detail/ProductSitePanel'
 import { ProductStockCard } from './components/detail/ProductStockCard'
 import { ProductStockHistory } from './components/detail/ProductStockHistory'
+import { ProductWebLinksCard } from './components/detail/ProductWebLinksCard'
 import { FormDetailCard } from './components/detail/detail-primitives'
 import { EMPTY_PRODUCT_DETAIL_VALUES } from './components/detail/product-detail-form'
 import {
@@ -172,6 +173,12 @@ function ProductDetailContent({
 			dirty.sale_state,
 	)
 	const linksDirty = Boolean(dirty.brand || dirty.supplier || dirty.categories)
+	// `dirtyFields` rend un TABLEAU pour un champ de tableau, pas un booléen :
+	// une ligne modifiée y est un objet. `Boolean([])` vaut vrai — d'où la
+	// longueur, sans quoi la carte se dirait modifiée dès l'ouverture.
+	const webLinksDirty = Array.isArray(dirty.web_links)
+		? dirty.web_links.length > 0
+		: Boolean(dirty.web_links)
 
 	// ═══════════════════════════════════════════════════════════════════════
 	// QUITTER LA FICHE SANS L'ENREGISTRER
@@ -357,6 +364,10 @@ function ProductDetailContent({
 							<div className='grid gap-x-7 gap-y-5 md:grid-cols-2'>
 								<ProductLinksCard form={editor.form} embedded />
 							</div>
+						</FormDetailCard>
+
+						<FormDetailCard title='Liens et vidéos' dirty={webLinksDirty}>
+							<ProductWebLinksCard form={editor.form} />
 						</FormDetailCard>
 
 						{product.id && (

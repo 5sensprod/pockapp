@@ -14,6 +14,8 @@
 // silencieux côté SQL au premier `catalog-import -load`. §1 du contrat.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { liensNormalises } from '@/lib/catalog/web-links'
+import type { WebLink } from '@/lib/catalog/web-links'
 import type {
 	CatalogBrand,
 	CatalogCategory,
@@ -117,6 +119,20 @@ export type ExportProduct = WithChecksum & {
 	promo_end?: string
 	stock_b?: number
 	stock_b_price_ttc?: number
+	/**
+	 * §4.1 quater — LES LIENS DE LA FICHE (15 septembre 2026).
+	 *
+	 * Pages web et vidéos YouTube, DANS LEUR ORDRE : c'est l'ordre d'affichage
+	 * sur le site, et il fait donc partie de la donnée. Même règle d'absence que
+	 * les cinq clés ci-dessus — une fiche sans lien n'envoie pas la clé, et son
+	 * empreinte ne bouge pas.
+	 *
+	 * Les entrées sont normalisées avant de partir (`liensNormalises`) : le
+	 * champ PocketBase est un JSON libre, et le serveur ne doit pas avoir à
+	 * deviner ce qu'est un lien. Il revalide néanmoins — un poste sur un vieux
+	 * build n'est pas une hypothèse théorique.
+	 */
+	web_links?: WebLink[]
 	brand: string | null
 	categories: string[]
 }
@@ -196,7 +212,10 @@ const nullable = (value: string | undefined): string | null =>
 const positif = (value: number | undefined | null): number | undefined =>
 	Number(value) > 0 ? Number(value) : undefined
 
-/** Les clés facultatives du §4.1 ter : présentes seulement si elles valent. */
+/** Les clés facultatives du §4.1 ter et quater : présentes seulement si elles
+ *  valent. **Ne JAMAIS les envoyer à `null`** — `canonical()` sérialise toutes
+ *  les clés, une clé nulle change donc l'empreinte au même titre qu'une valeur,
+ *  et les 2412 fiches publiées repasseraient « modifiées » d'un coup. */
 function champsFacultatifs(
 	product: CatalogProduct,
 ): Pick<
@@ -206,13 +225,21 @@ function champsFacultatifs(
 	| 'promo_end'
 	| 'stock_b'
 	| 'stock_b_price_ttc'
+	| 'web_links'
 > {
+	// Les liens sont remis au propre AVANT de partir : le champ est un JSON
+	// libre, et ce qui n'est pas un lien valide n'a rien à faire dans la base du
+	// site. Une liste vidée de tout devient une liste vide, donc une clé absente
+	// — et `products-sync.php` efface alors la valeur précédente.
+	const liens = liensNormalises(product.web_links)
+
 	const valeurs = {
 		promo_price_ttc: positif(product.promo_price_ttc),
 		promo_start: nullable(product.promo_start) ?? undefined,
 		promo_end: nullable(product.promo_end) ?? undefined,
 		stock_b: positif(product.stock_b),
 		stock_b_price_ttc: positif(product.stock_b_price_ttc),
+		web_links: liens.length > 0 ? liens : undefined,
 	}
 	// Une clé à `undefined` disparaît de JSON.stringify, mais PAS de
 	// `Object.entries`, que `canonical()` parcourt : on la retire pour de bon.
@@ -483,6 +510,7 @@ export const CHAMPS_PRODUIT_EXPORTES = [
 	'stock_b_price_ttc',
 	'brand',
 	'categories',
+	'web_links',
 ] as const
 
 type ChampExporte = (typeof CHAMPS_PRODUIT_EXPORTES)[number]
@@ -518,6 +546,7 @@ const LIBELLES: Record<ChampExporte, string> = {
 	stock_b_price_ttc: 'Stock B',
 	brand: 'marque',
 	categories: 'catégories',
+	web_links: 'liens et vidéos',
 }
 
 /** La fiche vue par ce filtre : tout est optionnel, une fiche fraîchement
@@ -554,6 +583,17 @@ export function champsProduitModifies(
 			const a = avant.categories ?? []
 			const b = apres.categories ?? []
 			return a.length !== b.length || a.some((valeur, i) => valeur !== b[i])
+		}
+		// Les liens sont une LISTE D'OBJETS : `!==` y comparerait deux références
+		// et les dirait toujours différentes. On compare ce qui PART réellement —
+		// la liste normalisée, dans son ordre, comme le fait `canonical()` pour
+		// l'empreinte. Un réordonnancement compte donc comme un changement, et
+		// une entrée invalide des deux côtés ne compte pas.
+		if (champ === 'web_links') {
+			return (
+				JSON.stringify(liensNormalises(avant.web_links)) !==
+				JSON.stringify(liensNormalises(apres.web_links))
+			)
 		}
 		return normaliser(champ, avant[champ]) !== normaliser(champ, apres[champ])
 	}).map((champ) => LIBELLES[champ])

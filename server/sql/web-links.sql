@@ -1,0 +1,42 @@
+-- server/sql/web-links.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Les liens d'une fiche produit — pages web et vidéos YouTube
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Écrit le 15 septembre 2026. À passer UNE FOIS sur la base du mutualisé,
+-- AVANT de déposer les versions de `products-sync.php` et `catalog.php` qui la
+-- portent. Ce fichier n'est pas lu par PHP : il est versionné pour que le
+-- schéma en place soit connu.
+--
+-- Contrat : frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md,
+-- §4.1 quater, qui fait autorité.
+--
+-- ─── UNE COLONNE, PAS UNE TABLE ─────────────────────────────────────────
+-- Ces liens n'ont pas de vie propre : aucune requête ne les cherche, aucune
+-- page ne les liste hors de leur produit, et ils meurent avec lui. Une table
+-- `ax_product_links` demanderait une jointure de plus dans les quatre actions
+-- de `catalog.php`, un DELETE/INSERT de plus dans la transaction de
+-- `products-sync.php`, et un index — pour zéro usage. Ils voyagent DANS le
+-- produit, comme `image_paths` voyage dans son entité.
+--
+-- ─── POURQUOI `TEXT` ET NON `JSON` ──────────────────────────────────────
+-- Le type JSON de MySQL valide la syntaxe et REFUSE la ligne quand elle ne
+-- passe pas. Ici, c'est `products-sync.php` qui valide — il le fait mieux, il
+-- connaît la forme attendue, et il rejette l'ENTITÉ en le disant, sans faire
+-- échouer le lot entier sur une exception PDO. La colonne ne fait que porter
+-- des octets déjà contrôlés. Même raison que `image_paths`, qui est un TEXT.
+--
+-- ─── NULL VEUT DIRE « AUCUN LIEN » ──────────────────────────────────────
+-- Comme le prix promo : PocketApp n'envoie la clé que lorsqu'elle porte au
+-- moins un lien, pour ne pas changer l'empreinte des 2412 fiches publiées
+-- (§4.1 quater). Une clé absente écrit NULL, et efface donc les liens
+-- précédents — c'est ainsi qu'on retire un lien.
+--
+-- Les lignes déjà en base prennent NULL, ce qui est leur état exact. Aucun
+-- rattrapage.
+--
+-- ─── PAS D'INDEX ────────────────────────────────────────────────────────
+-- Aucune requête ne filtre ni ne trie là-dessus : `catalog.php` sélectionne la
+-- colonne et décode en PHP, sur la seule action `product`.
+
+ALTER TABLE `ax_products`
+  ADD COLUMN `web_links` TEXT DEFAULT NULL;

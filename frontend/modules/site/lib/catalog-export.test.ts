@@ -16,12 +16,12 @@ import { describe, expect, it } from 'vitest'
 import {
 	CATALOG_CONTRACT_VERSION,
 	CHAMPS_PRODUIT_EXPORTES,
-	champsProduitModifies,
 	type ExportBrand,
 	type ExportCategory,
 	type ExportProduct,
 	aSynchroniser,
 	buildExportBatches,
+	champsProduitModifies,
 	checksumOf,
 	produitChangeAExporter,
 	sealed,
@@ -300,6 +300,55 @@ describe('les champs facultatifs du §4.1 ter', () => {
 	})
 })
 
+describe('les liens de la fiche — §4.1 quater', () => {
+	it('ne partent pas quand il n’y en a aucun, et l’empreinte ne bouge pas', async () => {
+		// Même raison que les cinq clés du §4.1 ter : une clé `web_links: []` ou
+		// `null` dans le corps changerait l'empreinte de CHAQUE fiche, et les
+		// 2412 produits publiés repartiraient en entier.
+		const sansLiens = await sealed(toExportProduct(product(), [], null))
+		const listeVide = await sealed(
+			toExportProduct(product({ web_links: [] }), [], null),
+		)
+		expect(Object.keys(sansLiens)).not.toContain('web_links')
+		expect(listeVide.checksum).toBe(sansLiens.checksum)
+	})
+
+	it('partent normalisés, dans leur ordre, quand ils valent', () => {
+		const exported = toExportProduct(
+			product({
+				web_links: [
+					{ kind: 'video', url: 'https://youtu.be/abc', label: '  Démo  ' },
+					{ kind: 'link', url: 'https://yamaha.com/p', label: '' },
+					// Écartée : ni https, ni un lien exploitable par le site.
+					{ kind: 'link', url: 'http://vieux.fr' },
+				],
+			}),
+			[],
+			null,
+		)
+		expect(exported.web_links).toEqual([
+			{ kind: 'video', url: 'https://youtu.be/abc', label: 'Démo' },
+			{ kind: 'link', url: 'https://yamaha.com/p', label: '' },
+		])
+	})
+
+	it('font passer « modifiée » la fiche qui gagne un lien', async () => {
+		const reference = await sealed(toExportProduct(product(), [], null))
+		const apres = await sealed(
+			toExportProduct(
+				product({
+					web_links: [{ kind: 'link', url: 'https://a.fr', label: '' }],
+				}),
+				[],
+				null,
+			),
+		)
+		expect(
+			syncStateOf('nedb-1', apres.checksum, { 'nedb-1': reference.checksum }),
+		).toBe('modified')
+	})
+})
+
 describe('sealed', () => {
 	it('ajoute une empreinte reproductible', async () => {
 		const a = await sealed(toExportProduct(product(), [], null))
@@ -514,12 +563,78 @@ describe('produitChangeAExporter', () => {
 			promo_end: '2026-09-20',
 			stock_b: 1,
 			stock_b_price_ttc: 45,
+			// ⚠️ TOUTE clé facultative ajoutée au contrat s'ajoute ICI. Sans
+			// `web_links`, cette fiche « complète » n'en portait pas, la clé
+			// n'apparaissait pas dans `composes`, et le gardien passait au vert
+			// alors que le filtre était aveugle aux liens — constaté au comptoir
+			// le 15 septembre 2026 : une vidéo modifiée ou retirée ne proposait
+			// plus la synchronisation.
+			web_links: [{ kind: 'link', url: 'https://a.fr', label: '' }],
 		})
 		const composes = Object.keys(toExportProduct(complete, [], null))
 			// La clé ne change pas, et `site_title` vaut `null` en dur.
 			.filter((champ) => champ !== 'legacy_id' && champ !== 'site_title')
 			.sort()
 		expect(composes).toEqual([...CHAMPS_PRODUIT_EXPORTES].sort())
+	})
+
+	it('voit un lien ajouté, modifié, RETIRÉ, et réordonné', () => {
+		// Les trois derniers sont le défaut du 15 septembre 2026 : ajouter un lien
+		// se remarquait (la fiche partait à l'export manuel), mais le modifier ou
+		// le supprimer ne proposait plus rien — `web_links` n'était pas dans
+		// `CHAMPS_PRODUIT_EXPORTES`, et la page publique gardait la vidéo retirée.
+		const a = { kind: 'link', url: 'https://a.fr', label: 'A' }
+		const b = { kind: 'video', url: 'https://youtu.be/x', label: 'B' }
+
+		expect(produitChangeAExporter(product(), product({ web_links: [a] }))).toBe(
+			true,
+		)
+		expect(
+			produitChangeAExporter(
+				product({ web_links: [a] }),
+				product({ web_links: [{ ...a, url: 'https://autre.fr' }] }),
+			),
+		).toBe(true)
+		expect(produitChangeAExporter(product({ web_links: [a] }), product())).toBe(
+			true,
+		)
+		// L'ORDRE est une donnée : c'est celui de l'affichage sur le site.
+		expect(
+			produitChangeAExporter(
+				product({ web_links: [a, b] }),
+				product({ web_links: [b, a] }),
+			),
+		).toBe(true)
+	})
+
+	it('ne bouge pas pour une liste identique, ni pour une entrée invalide des deux côtés', () => {
+		// La comparaison porte sur ce qui PART — la liste normalisée —, pas sur
+		// la référence du tableau : sinon toute réouverture de fiche se dirait
+		// modifiée. Une entrée que l'export écarte de toute façon ne compte pas.
+		const liens = [{ kind: 'link', url: 'https://a.fr', label: 'A' }]
+		expect(
+			produitChangeAExporter(
+				product({ web_links: liens }),
+				product({ web_links: [{ ...liens[0] }] }),
+			),
+		).toBe(false)
+		expect(
+			produitChangeAExporter(
+				product({ web_links: [{ kind: 'link', url: 'http://vieux.fr' }] }),
+				product({ web_links: [] }),
+			),
+		).toBe(false)
+	})
+
+	it('annonce « liens et vidéos » dans la modale', () => {
+		expect(
+			champsProduitModifies(
+				product(),
+				product({
+					web_links: [{ kind: 'link', url: 'https://a.fr', label: '' }],
+				}),
+			),
+		).toEqual(['liens et vidéos'])
 	})
 
 	it('ignore les champs qui ne vont pas en ligne', () => {

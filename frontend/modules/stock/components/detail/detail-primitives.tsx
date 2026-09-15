@@ -1,5 +1,5 @@
 import { HelpCircle, Pencil } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { forwardRef, useEffect, useRef } from 'react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -299,13 +299,23 @@ export function HelpTooltip({ text }: { text: string }) {
 	)
 }
 
-export function NativeSelect(
-	props: React.SelectHTMLAttributes<HTMLSelectElement>,
-) {
+/**
+ * ⚠️ `forwardRef` est OBLIGATOIRE ici, et ce n'est pas du zèle : `FormControl`
+ * est un `Slot` Radix, qui passe une ref à son unique enfant. Un composant
+ * fonction simple la reçoit sans pouvoir la porter — React avertit
+ * (« Function components cannot be given refs »), et react-hook-form perd le
+ * moyen de donner le focus au champ quand une validation échoue : le message
+ * d'erreur s'affiche sous un select vers lequel rien ne fait défiler.
+ */
+export const NativeSelect = forwardRef<
+	HTMLSelectElement,
+	React.SelectHTMLAttributes<HTMLSelectElement>
+>(function NativeSelect(props, ref) {
 	return (
 		<select
+			ref={ref}
 			{...props}
 			className='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
 		/>
 	)
-}
+})
