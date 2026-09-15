@@ -23,6 +23,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { formatDateUTC } from '@/lib/format/date-utc'
 import {
 	useBackupStatus,
 	useCancelRestore,
@@ -1134,7 +1135,7 @@ function BackupSection() {
 		const saisi = prompt(
 			`RESTAURER cette sauvegarde ?\n\n` +
 				`${snap.client_name} — ${snap.origin || 'poste inconnu'}\n` +
-				`base du ${snap.created_at} (UTC), ${Math.round(snap.plain_size / 1024)} Kio\n\n` +
+				`base du ${formatDateUTC(snap.created_at)}, ${Math.round(snap.plain_size / 1024)} Kio\n\n` +
 				`⚠️ La base ACTUELLE sera remplacée. Tout ce qui a été saisi depuis ce snapshot sera perdu.\n` +
 				`(l'ancienne base est archivée à côté, jamais effacée)\n\n` +
 				`Retapez l'identifiant du snapshot pour confirmer :`,
@@ -1276,7 +1277,7 @@ function BackupSection() {
 							</code>{' '}
 							({restauration.data.pending.client_name} —{' '}
 							{restauration.data.pending.origin || 'poste inconnu'}, base du{' '}
-							{restauration.data.pending.created_at}).
+							{formatDateUTC(restauration.data.pending.created_at)}).
 						</p>
 						<p className='text-sm text-destructive'>
 							<strong>
@@ -1680,7 +1681,7 @@ function BackupSection() {
 											<th className='pb-2 pr-3'>Client</th>
 											<th className='pb-2 pr-3'>Poste</th>
 											<th className='pb-2 pr-3'>Taille</th>
-											<th className='pb-2 pr-3'>Créé le (UTC)</th>
+											<th className='pb-2 pr-3'>Créé le</th>
 											<th className='pb-2' />
 										</tr>
 									</thead>
@@ -1713,7 +1714,7 @@ function BackupSection() {
 													{Math.round(snap.plain_size / 1024)} Kio
 												</td>
 												<td className='py-2 pr-3 font-mono text-xs'>
-													{snap.created_at}
+													{formatDateUTC(snap.created_at)}
 												</td>
 												<td className='py-2 text-right whitespace-nowrap'>
 													<Button

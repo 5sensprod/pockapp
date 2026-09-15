@@ -221,9 +221,9 @@ export function CatalogSyncBar({
 								{disparus > 1 ? 'nt' : ''} plus ici
 							</p>
 							<p className='text-muted-foreground'>
-								Supprimée{disparus > 1 ? 's' : ''} au comptoir : leur page reste
-								visible sur le site. L’envoi ne les concerne pas — le retrait
-								d’une fiche supprimée n’existe pas encore.
+								Supprimée{disparus > 1 ? 's' : ''} au comptoir : leur page est
+								encore servie par le site. L’envoi ne les concerne pas — elles
+								se retirent une par une, dans le détail ci-dessous.
 							</p>
 						</div>
 					</div>

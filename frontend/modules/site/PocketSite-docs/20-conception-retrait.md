@@ -1,10 +1,16 @@
-# Retirer une catégorie ou une marque du site — conception
+# Retirer une entité du site — conception, puis mise en œuvre
 
-*Ouvert le 14 septembre 2026. **Rien de ce document n'est écrit dans le code
-aujourd'hui** : c'est le sous-chantier que la mise en ligne automatique des
-catégories et des marques (`frontend/lib/sync/relation-auto-sync.ts`) laisse
-ouvert derrière elle. Modifier, créer : automatisés. Supprimer : non, et ce
-n'est pas un oubli.*
+> **ÉCRIT LE MÊME JOUR, 14 septembre 2026.** Ce qui suit était une conception ;
+> le §5 dit maintenant ce qui existe. Ce qui a été fait : `catalog-delete.php`,
+> le relais `POST /api/site/catalog/remove`, et le bouton par ligne sur les
+> fiches disparues. Ce qui n'a PAS été fait : le §2 — la ré-exportation des
+> produits et des sous-catégories qu'une suppression de catégorie déplace.
+> Déclencheur : 21 fiches supprimées au comptoir dont la page restait servie.
+
+*Ouvert le 14 septembre 2026, à côté de la mise en ligne automatique des
+catégories et des marques (`frontend/lib/sync/relation-auto-sync.ts`) :
+modifier et créer étaient automatisés, supprimer ne l'était pas. Les §1 à §4
+disent pourquoi et comment ; le §5 dit ce qui tourne.*
 
 ---
 
@@ -107,18 +113,37 @@ authentifié : même réglage `site_catalog_url` (le script est à côté), mêm
 `site_catalog_api_key`, et le `User-Agent` explicite sans lequel la couche
 anti-bot répond 503 avant Apache.
 
-## 5. Ce qu'il faudra écrire, et dans quel ordre
+## 5. Ce qui existe, depuis le 14 septembre 2026
 
-1. `server/api/catalog-delete.php` — relevé + suppression, refus documentés
-   ci-dessus. Déposé par FTP ; il ne s'exécute pas dans PocketApp.
-2. `backend/routes/site_catalog_routes.go` — relais `DELETE
-   /api/site/catalog/entity`, avec son test de route.
-3. `SyncJob` — un champ de retrait (`retraits?: {kind, legacyId}[]`), traité
-   **après** les deux étapes existantes, jamais à leur place.
-4. L'arbre — brancher la suppression locale sur la file, et l'étape (2) du §2.
-5. §2 et §7 du contrat — la ligne « Le retrait d'une entité, cf. §2 » cesse
-   alors d'être vraie. **Ne pas la modifier avant que le code existe** : le
-   contrat décrit ce qui tourne, pas ce qui est prévu.
+1. **`server/api/catalog-delete.php`** — `GET` relève, `POST` supprime : la
+   ligne, ses rattachements du pivot et le dossier d'images de l'entité. Refus
+   du §4 appliqués. **À déposer par FTP** ; il ne s'exécute pas dans PocketApp.
+2. **`POST /api/site/catalog/remove`** (`site_catalog_routes.go`) — le relais,
+   avec la clé et le `User-Agent` explicite. Son URL se **déduit** de
+   `site_catalog_url` en remplaçant le dernier segment : les deux fichiers sont
+   voisins, il n'y a pas un réglage de plus à saisir, et une URL qui ne désigne
+   pas un `.php` est refusée plutôt que devinée. Gardiens :
+   `site_catalog_remove_test.go`.
+3. **Un bouton par ligne**, dans le groupe « En ligne, disparues d'ici » du
+   détail. Il s'ARME avant d'agir — un clic affiche « Confirmer le retrait »,
+   c'est le second qui part. Une seule ligne armée à la fois.
+
+**L'ordre du §3 est tenu par le PHP lui-même** : il efface les octets pendant
+que la ligne existe encore, puis la ligne. Le passage par un envoi d'images
+vide, envisagé plus haut, n'a pas été retenu — il aurait demandé une entité
+locale que, par définition, on n'a plus.
+
+### Ce qui reste ouvert
+
+* **Le §2** : quand une CATÉGORIE est retirée, les produits qui la citaient et
+  les sous-catégories remontées ne sont pas ré-exportés. Le serveur refuse
+  aujourd'hui de supprimer une catégorie encore citée — donc le cas ne peut pas
+  produire d'incohérence, il produit un refus. C'est un garde-fou, pas la
+  fonctionnalité.
+* **§2 et §7 du contrat** : la ligne « Le retrait d'une entité, cf. §2 » n'est
+  plus vraie pour ce chemin-là. À reprendre quand le mécanisme aura servi —
+  le contrat décrit ce qui tourne, et celui-ci n'a pas encore tourné en
+  production.
 
 ## 6. Ce que ce document ne tranche pas
 

@@ -44,6 +44,9 @@ export type CatalogSaleState = '' | 'sale' | 'promo'
 export type CatalogProduct = FileBearing & {
 	/** Identifiant NeDB d'origine. **Clé de l'export**, stable au rechargement. */
 	legacy_id: string
+	/** Posées par PocketBase, jamais exportées : elles servent à ordonner. */
+	created?: string
+	updated?: string
 	name: string
 	designation?: string
 	sku?: string
@@ -119,8 +122,13 @@ export type CatalogBrand = FileBearing & {
 // Axemusique. Les identifiants PocketBase, eux, sont régénérés à chaque
 // rechargement par purge et ne peuvent pas servir de clé distante — §1 de
 // PocketSite-docs/12-contrat-catalogue.md.
+// ⚠️ `created` et `updated` sont posés par PocketBase et n'entrent dans AUCUN
+// checksum d'export (§4.4) : ils ne servent qu'à ORDONNER — le détail « ce qui
+// attend » montre les fiches les plus récentes d'abord (14 septembre 2026).
+// Comme tout le reste ici, un champ absent de cette chaîne revient VIDE sans
+// erreur : le tri retomberait silencieusement sur l'ordre alphabétique.
 export const PRODUCT_FIELDS =
-	'id,collectionId,collectionName,legacy_id,name,designation,sku,slug,description,status,sale_state,price_ttc,promo_price_ttc,promo_start,promo_end,stock_b,stock_b_price_ttc,tax_rate,stock,image,gallery,brand,categories'
+	'id,collectionId,collectionName,created,updated,legacy_id,name,designation,sku,slug,description,status,sale_state,price_ttc,promo_price_ttc,promo_start,promo_end,stock_b,stock_b_price_ttc,tax_rate,stock,image,gallery,brand,categories'
 const CATEGORY_FIELDS =
 	'id,collectionId,collectionName,legacy_id,name,slug,description,image,is_featured,parent'
 const BRAND_FIELDS =

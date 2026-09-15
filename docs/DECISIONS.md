@@ -10,6 +10,53 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Retirer une fiche disparue du site — 2026-09-14
+
+**Décision.** Une entité supprimée dans PocketApp se retire de la base SQL du
+site par un nouveau chemin : `server/api/catalog-delete.php`, relayé par
+`POST /api/site/catalog/remove`, déclenché **une fiche à la fois** depuis le
+détail de `/site/catalogue`. Il efface les octets pendant que la ligne existe
+encore, puis la ligne et ses rattachements. Déclencheur : 21 fiches supprimées
+au comptoir dont la page restait servie — dépublier n'était plus possible,
+elles n'existaient plus ici.
+
+**Ce n'est PAS le retrait normal d'un produit.** Un produit qui existe encore
+se retire en le dépubliant : exporté en `draft`, sa page disparaît et sa ligne
+garde son `first_seen_at`, ses images et ses rattachements (21 août 2026).
+Cette règle ne bouge pas. Le nouveau chemin ne sert qu'aux fiches disparues.
+
+**Écarté : `products-sync.php?action=delete`.** Ce fichier ne contient pas un
+seul `DELETE`, et c'est une propriété qui vaut d'être gardée : quel que soit le
+bug, un lot d'export ne peut pas effacer une ligne. Le geste destructeur reste
+dans un fichier qu'on appelle exprès.
+
+**Écarté : un réglage d'URL de plus.** L'adresse se déduit de
+`site_catalog_url` en remplaçant le dernier segment — les deux fichiers sont
+voisins dans `server/api/`. Une URL qui ne désigne pas un `.php` est refusée
+plutôt que devinée (`endpointVoisin`, gardée par `site_catalog_remove_test.go`).
+
+**Écarté : passer par un envoi d'images vide** pour vider le dossier avant de
+supprimer la ligne, comme la conception l'envisageait. Il aurait fallu une
+entité locale que, par définition, on n'a plus.
+
+**Le serveur refuse** ce qui est encore cité : une catégorie portant des
+produits (brouillons compris) ou des sous-catégories, une marque qu'un produit
+déclare. Le refus porte sa raison et remonte tel quel. Conséquence assumée :
+la ré-exportation des produits qu'une suppression de catégorie déplace n'est
+pas faite — le cas produit un refus, pas une incohérence.
+
+**Le bouton s'arme avant d'agir** : un clic affiche « Confirmer le retrait »,
+c'est le second qui part. Pas de modale — une par ligne sur 21 lignes serait
+pire — et une seule ligne armée à la fois.
+
+**Ce qui pourrait la remettre en cause.** Un retrait déclenché par erreur : il
+est sans retour, la ligne et les octets s'en vont, et seule une ré-exportation
+depuis une fiche encore présente les rendrait. C'est pourquoi il n'y a pas
+d'action de masse.
+
+**Conception, mesures et ce qui reste ouvert :**
+[`20-conception-retrait.md`](../frontend/modules/site/PocketSite-docs/20-conception-retrait.md).
+
 ## Une pastille pour ce qui n'a aucun automatisme — 2026-09-14
 
 **Décision.** « Catalogue en ligne », dans la barre latérale, porte une pastille

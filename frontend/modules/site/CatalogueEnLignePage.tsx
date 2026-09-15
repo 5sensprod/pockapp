@@ -27,7 +27,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -69,9 +68,16 @@ import { OnlineBrandGrid } from './components/online-catalog/OnlineBrandGrid'
 import { OnlineCategoryTree } from './components/online-catalog/OnlineCategoryTree'
 import { OnlineProductGrid } from './components/online-catalog/OnlineProductGrid'
 import {
+	type GroupeEnAttente,
+	type LigneEnAttente,
+	PendingDetails,
+} from './components/online-catalog/PendingDetails'
+import {
 	useCatalogInventory,
 	useProductChecksums,
 	useRelationChecksums,
+	useRemovalPreview,
+	useRemoveFromSite,
 } from './hooks/use-catalog-sync'
 import {
 	toImageBearing,
@@ -269,6 +275,17 @@ function CatalogueEnLigneContent({
 	// progression (26 août 2026).
 	const sync = useSyncQueue()
 	const exporting = sync.etat.phase !== 'idle'
+	// Le seul geste destructeur de l'écran. Il ne concerne QUE les fiches
+	// disparues d'ici — un produit encore présent se retire en le dépubliant.
+	const retirerDuSite = useRemoveFromSite()
+	// Le nom d'une fiche disparue n'existe plus ici : seul le site l'a encore.
+	// On va le chercher À LA DEMANDE — un appel par fiche vers le mutualisé —
+	// et jamais au montage.
+	const lireAvantRetrait = useRemovalPreview()
+	const [nomsDisparus, setNomsDisparus] = useState<Map<string, string>>(
+		() => new Map(),
+	)
+	const [lectureDisparus, setLectureDisparus] = useState(false)
 
 	/**
 	 * ── LES DÉPUBLIÉS QUI SONT ENCORE EN LIGNE ───────────────────────────────
@@ -346,15 +363,11 @@ function CatalogueEnLigneContent({
 	 */
 	const disparus = useMemo(() => {
 		const enLigne = inventory.data?.products
-		if (!enLigne) return 0
+		if (!enLigne) return [] as string[]
 		const locaux = new Set<string>()
 		for (const p of products.data ?? NO_PRODUCTS) locaux.add(p.legacy_id)
 		for (const p of unpublished.data ?? NO_PRODUCTS) locaux.add(p.legacy_id)
-		let compte = 0
-		for (const legacyId of Object.keys(enLigne)) {
-			if (!locaux.has(legacyId)) compte++
-		}
-		return compte
+		return Object.keys(enLigne).filter((legacyId) => !locaux.has(legacyId))
 	}, [inventory.data, products.data, unpublished.data])
 
 	const syncStates = useMemo(() => {
@@ -373,14 +386,19 @@ function CatalogueEnLigneContent({
 		return map
 	}, [inventory.data, products.data, checksums])
 
-	// Le filtre « à mettre à jour » porte uniquement sur les produits déjà
-	// présents sur le site dont l'empreinte a changé. Les produits jamais
-	// exportés gardent leur état distinct et restent accessibles dans la vue
-	// complète.
+	// ⚠️ CORRIGÉ LE 14 SEPTEMBRE 2026. Ce filtre ne gardait QUE les `modified`,
+	// donc il MASQUAIT les fiches jamais envoyées — exactement celles qu'on
+	// vient de créer et de publier, et qu'on cherche sur cet écran. Un produit
+	// d'essai créé au comptoir faisait monter la pastille de la barre latérale
+	// et restait introuvable ici : le filtre s'appelait « À mettre à jour » et
+	// écartait le cas le plus courant.
+	//
+	// Il garde maintenant tout ce qui n'est pas `synced` — jamais envoyé
+	// compris. Son compteur suit la même règle.
 	const visibleProducts = useMemo(() => {
 		if (!onlyModified || !inventory.data) return filteredProducts
 		return filteredProducts.filter(
-			(product) => syncStates.get(product.legacy_id) === 'modified',
+			(product) => syncStates.get(product.legacy_id) !== 'synced',
 		)
 	}, [filteredProducts, inventory.data, onlyModified, syncStates])
 
@@ -781,6 +799,231 @@ function CatalogueEnLigneContent({
 		[categories.data, brands.data, sync],
 	)
 
+	/**
+	 * Va chercher, une par une, les désignations que le site garde des fiches
+	 * supprimées ici. Séquentiel et borné à ce qui est affiché : le mutualisé
+	 * n'a pas à encaisser vingt requêtes simultanées pour un confort de
+	 * lecture, et un échec sur l'une ne doit pas priver des autres.
+	 */
+	const identifierDisparus = useCallback(async () => {
+		setLectureDisparus(true)
+		try {
+			for (const legacyId of disparus.slice(0, 50)) {
+				if (nomsDisparus.has(legacyId)) continue
+				try {
+					const vu = await lireAvantRetrait({
+						kind: 'products',
+						legacyId,
+					})
+					setNomsDisparus((courant) =>
+						new Map(courant).set(legacyId, vu.name || '(sans nom côté site)'),
+					)
+				} catch (error) {
+					console.info(
+						`[site] nom indisponible pour ${legacyId} :`,
+						error instanceof Error ? error.message : error,
+					)
+				}
+			}
+		} finally {
+			setLectureDisparus(false)
+		}
+	}, [disparus, nomsDisparus, lireAvantRetrait])
+
+	/**
+	 * CE QUI ATTEND, NOMMÉ. Un groupe par état, et dans chaque groupe le nom de
+	 * chaque fiche avec son propre bouton — envoyer une catégorie d'essai ne
+	 * doit pas demander de pousser les 2412 autres (14 septembre 2026).
+	 *
+	 * Rien n'est recalculé ici : les cinq listes existent déjà plus haut, pour
+	 * les compteurs. On les met en forme.
+	 */
+	const groupesEnAttente = useMemo((): GroupeEnAttente[] => {
+		// Les plus récentes d'abord : ce qu'on cherche sur cet écran, c'est la
+		// fiche qu'on vient de créer ou de corriger, pas la lettre A. `updated`
+		// prime sur `created` — une fiche ancienne qu'on vient de modifier est
+		// une nouveauté pour le site. Les deux sont des chaînes ISO, ordonnables
+		// telles quelles (même raison que `parCreation`, module `stock`).
+		const recence = (product: CatalogProduct) =>
+			product.updated ?? product.created ?? ''
+		const desPlusRecentes = (liste: CatalogProduct[]) =>
+			[...liste].sort((a, b) => recence(b).localeCompare(recence(a)))
+
+		const parEtat = (etat: SyncState) =>
+			desPlusRecentes(
+				(products.data ?? NO_PRODUCTS).filter(
+					(product) => syncStates.get(product.legacy_id) === etat,
+				),
+			)
+
+		// La clé stable en second plan, TOUJOURS : c'est elle qui nomme la fiche
+		// côté site, et c'est le seul repère quand la désignation est vide ou
+		// qu'un homonyme sème le doute.
+		const ligneProduit = (product: CatalogProduct): LigneEnAttente => ({
+			cle: product.id,
+			nom: product.name || product.designation || '(sans désignation)',
+			detail: product.sku || product.legacy_id,
+			envoyer: () => exportProducts([product], product.name),
+		})
+
+		return [
+			{
+				cle: 'absent',
+				titre: 'Jamais parties sur le site',
+				aide: 'Créées ici et publiées : leur première mise en ligne est manuelle.',
+				lignes: parEtat('absent').map(ligneProduit),
+				// Dépliés d'emblée, tous les deux : ce sont les deux seuls états
+				// qu'aucun automatisme ne couvre. Une fiche qu'on vient de créer
+				// doit être sous la phrase qui l'annonce.
+				ouvertParDefaut: true,
+			},
+			{
+				cle: 'modified',
+				titre: 'Modifiées depuis leur dernier envoi',
+				aide: 'Le site affiche encore la version précédente.',
+				lignes: parEtat('modified').map(ligneProduit),
+			},
+			{
+				cle: 'retirable',
+				titre: 'Pages à retirer du site',
+				aide: 'Dépubliées ici : l’envoi fait disparaître la page.',
+				lignes: desPlusRecentes(retirables).map(ligneProduit),
+			},
+			{
+				cle: 'categories',
+				titre: 'Catégories modifiées',
+				aide: 'Leur texte a changé ici, pas encore sur le site.',
+				lignes: staleRelations.categories.map((category) => ({
+					cle: category.id,
+					nom: category.name,
+					envoyer: () =>
+						sync.enqueue({
+							label: category.name,
+							productIds: [],
+							categoryIds: [category.id],
+							donnees: true,
+							images: false,
+						}),
+				})),
+				envoyerTout:
+					staleRelations.categories.length > 1
+						? {
+								label: `Envoyer les ${staleRelations.categories.length} catégories`,
+								onClick: () =>
+									sync.enqueue({
+										label: 'Textes des catégories',
+										productIds: [],
+										categoryIds: staleRelations.categories.map((c) => c.id),
+										donnees: true,
+										images: false,
+									}),
+							}
+						: undefined,
+			},
+			{
+				cle: 'brands',
+				titre: 'Marques modifiées',
+				aide: 'Leur texte a changé ici, pas encore sur le site.',
+				lignes: staleRelations.brands.map((brand) => ({
+					cle: brand.id,
+					nom: brand.name,
+					envoyer: () =>
+						sync.enqueue({
+							label: brand.name,
+							productIds: [],
+							brandIds: [brand.id],
+							donnees: true,
+							images: false,
+						}),
+				})),
+				envoyerTout:
+					staleRelations.brands.length > 1
+						? {
+								label: `Envoyer les ${staleRelations.brands.length} marques`,
+								onClick: () =>
+									sync.enqueue({
+										label: 'Textes des marques',
+										productIds: [],
+										brandIds: staleRelations.brands.map((b) => b.id),
+										donnees: true,
+										images: false,
+									}),
+							}
+						: undefined,
+			},
+			{
+				cle: 'disparus',
+				titre: 'En ligne, disparues d’ici',
+				// Pas de bouton, et ce n'est pas un oubli : la fiche n'existe plus,
+				// il n'y a rien à exporter, et le serveur n'a aucune suppression.
+				aide: 'Supprimées au comptoir : leur page est encore servie. Le retrait est définitif.',
+				ouvertParDefaut: true,
+				envoyerTout:
+					disparus.length > 0
+						? {
+								label: lectureDisparus
+									? 'Lecture des noms…'
+									: 'Retrouver les noms sur le site',
+								icone: 'lecture' as const,
+								enCours: lectureDisparus,
+								onClick: () => void identifierDisparus(),
+							}
+						: undefined,
+				lignes: disparus.map((legacyId) => ({
+					cle: legacyId,
+					// Son nom n'existe plus ici — la fiche est supprimée. Le site, lui,
+					// le connaît encore : c'est sa ligne SQL qu'on va retirer.
+					// Tant qu'on n'a pas demandé, on ne PRÉTEND pas connaître le nom :
+					// inventer « Produit » là où le site dit autre chose ferait
+					// retirer la mauvaise fiche.
+					nom: nomsDisparus.get(legacyId) ?? 'Fiche supprimée ici',
+					detail: legacyId,
+					retirer: () =>
+						retirerDuSite.mutate(
+							{ kind: 'products', legacyId },
+							{
+								onSuccess: (bilan) => {
+									setNomsDisparus((courant) => {
+										const suivant = new Map(courant)
+										suivant.delete(legacyId)
+										return suivant
+									})
+									toast.success(
+										`« ${bilan.name || legacyId} » retirée du site${
+											bilan.images.files > 0
+												? ` — ${bilan.images.files} image(s) effacée(s)`
+												: ''
+										}.`,
+									)
+									if (bilan.orphelins.length > 0) {
+										toast.warning(
+											`${bilan.orphelins.length} fichier(s) n'ont pas pu être effacés sur le serveur. La page, elle, n'est plus servie.`,
+										)
+									}
+								},
+								onError: (error) =>
+									toast.error(
+										`Retrait refusé : ${error instanceof Error ? error.message : String(error)}`,
+									),
+							},
+						),
+				})),
+			},
+		]
+	}, [
+		products.data,
+		syncStates,
+		retirables,
+		staleRelations,
+		disparus,
+		nomsDisparus,
+		lectureDisparus,
+		identifierDisparus,
+		exportProducts,
+		retirerDuSite,
+		sync,
+	])
+
 	// ── Ouverture de l'éditeur ───────────────────────────────────────────────
 	// La fiche est relue dans les données FRAÎCHES au moment du clic, jamais
 	// prise dans l'objet que le composant porte : `selectedCategory` est un nœud
@@ -845,7 +1088,65 @@ function CatalogueEnLigneContent({
 				<CatalogueLoadingState />
 			) : (
 				<>
-					{/* ── Décomptes ──────────────────────────────────────────────── */}
+					{/* ── LA SYNCHRONISATION D'ABORD ─────────────────────────────
+					    Réordonné le 14 septembre 2026. L'écran ouvrait sur quatre
+					    compteurs et trois constats — « Produits en ligne 2412 »,
+					    « catégories citées mais absentes » — avant de dire ce qu'il y
+					    avait à FAIRE. On venait ici pour envoyer une fiche qu'on
+					    venait de créer, et elle était sous la ligne de flottaison.
+					    L'état du catalogue et les constats restent : plus bas, là où
+					    on les consulte au lieu de les subir. */}
+					<CatalogSyncBar
+						available={Boolean(inventory.data)}
+						loading={inventory.isFetching}
+						error={(inventory.error as Error | null) ?? null}
+						counts={syncCounts}
+						disparus={disparus.length}
+						remoteCount={inventory.data?.counts.products ?? null}
+						exporting={exporting}
+						progress={sync.etat.donnees}
+						rejected={sync.etat.rejets}
+						onRefresh={() => inventory.refetch()}
+						onExportAll={() =>
+							// Les retraits partent avec le reste, dans les mêmes lots : le
+							// serveur écrit `status` sans l'interpréter, une fiche
+							// dépubliée n'est qu'une fiche de plus dans le lot.
+							exportProducts([
+								...(products.data ?? []).filter(
+									(p) => syncStates.get(p.legacy_id) !== 'synced',
+								),
+								...retirables,
+							])
+						}
+					/>
+
+					{/* Le détail nommé, avec un bouton par ligne. Il remplace la carte
+					    « X catégories et Y marques modifiées », qui disait le nombre et
+					    n'offrait qu'un envoi en bloc (14 septembre 2026). La règle du
+					    13 août 2026 ne bouge pas : une retouche de texte isolée ne part
+					    QUE si on le demande, mais elle ne se tait pas. */}
+					<PendingDetails groupes={groupesEnAttente} occupe={exporting} />
+
+					{sync.etat.echecs.length > 0 && (
+						<Card className='mb-6 border-destructive'>
+							<CardContent className='flex items-start gap-3 pt-6'>
+								<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
+								<div>
+									<p className='font-medium'>Export interrompu</p>
+									<p className='text-muted-foreground text-sm'>
+										{sync.etat.echecs.join(' ; ')}
+									</p>
+									<p className='mt-1 text-muted-foreground text-xs'>
+										Les lots déjà écrits le restent. L’opération est idempotente
+										: relancer la synchronisation reprend l’ensemble sans rien
+										dupliquer.
+									</p>
+								</div>
+							</CardContent>
+						</Card>
+					)}
+
+					{/* ── L'état du catalogue, et les constats ──────────────────── */}
 					<div className='mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4'>
 						<Stat
 							label='Produits en ligne'
@@ -931,89 +1232,6 @@ function CatalogueEnLigneContent({
 						</Card>
 					)}
 
-					<CatalogSyncBar
-						available={Boolean(inventory.data)}
-						loading={inventory.isFetching}
-						error={(inventory.error as Error | null) ?? null}
-						counts={syncCounts}
-						disparus={disparus}
-						remoteCount={inventory.data?.counts.products ?? null}
-						exporting={exporting}
-						progress={sync.etat.donnees}
-						rejected={sync.etat.rejets}
-						onRefresh={() => inventory.refetch()}
-						onExportAll={() =>
-							// Les retraits partent avec le reste, dans les mêmes lots : le
-							// serveur écrit `status` sans l'interpréter, une fiche
-							// dépubliée n'est qu'une fiche de plus dans le lot.
-							exportProducts([
-								...(products.data ?? []).filter(
-									(p) => syncStates.get(p.legacy_id) !== 'synced',
-								),
-								...retirables,
-							])
-						}
-					/>
-
-					{/* Les retouches de texte isolées : elles ne partent QUE si on le
-					    demande, mais elles ne doivent pas se taire (docs/DECISIONS.md,
-					    2026-08-13). Une modification qui accompagne un produit, elle,
-					    part déjà toute seule avec lui. */}
-					{(staleRelations.categories.length > 0 ||
-						staleRelations.brands.length > 0) && (
-						<Card className='mb-6 border-amber-500/50'>
-							<CardContent className='flex flex-wrap items-center justify-between gap-3 pt-6'>
-								<div className='text-sm'>
-									<p className='font-medium'>
-										{staleRelations.categories.length} catégorie(s) et{' '}
-										{staleRelations.brands.length} marque(s) modifiées depuis
-										leur dernier envoi
-									</p>
-									<p className='text-muted-foreground'>
-										Leur texte a changé ici, pas encore sur le site. Les
-										produits, eux, ne sont pas concernés.
-									</p>
-								</div>
-								<Button
-									variant='secondary'
-									disabled={exporting}
-									onClick={() =>
-										sync.enqueue({
-											label: 'Textes des catégories et marques',
-											productIds: [],
-											categoryIds: staleRelations.categories.map((c) => c.id),
-											brandIds: staleRelations.brands.map((b) => b.id),
-											donnees: true,
-											images: false,
-										})
-									}
-								>
-									<RefreshCw className='mr-1.5 h-4 w-4' />
-									Envoyer ces textes
-								</Button>
-							</CardContent>
-						</Card>
-					)}
-
-					{sync.etat.echecs.length > 0 && (
-						<Card className='mb-6 border-destructive'>
-							<CardContent className='flex items-start gap-3 pt-6'>
-								<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
-								<div>
-									<p className='font-medium'>Export interrompu</p>
-									<p className='text-muted-foreground text-sm'>
-										{sync.etat.echecs.join(' ; ')}
-									</p>
-									<p className='mt-1 text-muted-foreground text-xs'>
-										Les lots déjà écrits le restent. L’opération est idempotente
-										: relancer la synchronisation reprend l’ensemble sans rien
-										dupliquer.
-									</p>
-								</div>
-							</CardContent>
-						</Card>
-					)}
-
 					{/* ── Filtres produit ───────────────────────────────────────── */}
 					<div className='mb-4 flex flex-col gap-2 sm:flex-row'>
 						<div className='relative flex-1'>
@@ -1030,16 +1248,16 @@ function CatalogueEnLigneContent({
 							pressed={onlyModified}
 							onPressedChange={setOnlyModified}
 							disabled={!inventory.data}
-							aria-label='Afficher uniquement les produits à mettre à jour'
+							aria-label='Afficher uniquement les produits à envoyer'
 							title={
 								inventory.data
-									? 'Afficher uniquement les produits modifiés depuis leur dernier export'
+									? 'Afficher uniquement les fiches jamais envoyées ou modifiées depuis leur dernier envoi'
 									: 'L’état du site doit être disponible pour utiliser ce filtre'
 							}
 							className='shrink-0'
 						>
-							<RefreshCw className='h-4 w-4' />À mettre à jour (
-							{syncCounts.modified})
+							<RefreshCw className='h-4 w-4' />À envoyer (
+							{syncCounts.absent + syncCounts.modified})
 						</Toggle>
 					</div>
 

@@ -83,6 +83,105 @@ async function callRelay<T>(
 	return payload as T
 }
 
+// ---------------------------------------------------------------------------
+// RETRAIT  (14 septembre 2026)
+// ---------------------------------------------------------------------------
+
+export type RemovalOutcome = {
+	ok: true
+	kind: EntityKind
+	legacy_id: string
+	name: string
+	deleted: number
+	images: { files: number; bytes: number }
+	/** Fichiers que le serveur n'a pas pu effacer. La ligne, elle, est partie :
+	 *  la page n'est plus servie, il reste des octets inertes. */
+	orphelins: string[]
+	media_root: boolean
+}
+
+export type EntityKind = 'products' | 'categories' | 'brands'
+
+export type RemovalPreview = {
+	ok: true
+	kind: EntityKind
+	legacy_id: string
+	/** Le nom que le SITE connaît encore. Il n'existe plus nulle part ici : la
+	 *  fiche est supprimée. */
+	name: string
+	slug: string | null
+	images: number
+	supprimable: boolean
+	retenues: string[]
+}
+
+/**
+ * CE QUE LE SITE SAIT ENCORE D'UNE FICHE QU'ON N'A PLUS.
+ *
+ * Lecture seule — c'est le GET de `catalog-delete.php`. Elle existe parce que
+ * le détail n'affichait que des clés stables : `0eZtUIbYxLjkaZWe` ne dit à
+ * personne quel produit va partir, et le retrait est sans retour.
+ *
+ * Un appel par fiche, donc **déclenché explicitement** et jamais au montage :
+ * 21 fiches valent 21 allers-retours vers le mutualisé.
+ */
+export function useRemovalPreview() {
+	const pb = usePocketBase() as { authStore: { token: string } }
+
+	return useCallback(
+		async (cible: { kind: EntityKind; legacyId: string }) =>
+			callRelay<RemovalPreview>(
+				pb.authStore.token,
+				`/api/site/catalog/removal-preview?kind=${encodeURIComponent(cible.kind)}&legacy_id=${encodeURIComponent(cible.legacyId)}`,
+			),
+		[pb],
+	)
+}
+
+/**
+ * RETIRER UNE ENTITÉ DE LA BASE DU SITE — ligne, rattachements et images.
+ *
+ * ⚠️ **Ce n'est pas le retrait normal d'un produit.** Un produit qui existe
+ * encore ici se retire en le dépubliant : on l'exporte en `draft`, sa page
+ * disparaît, et sa ligne garde son `first_seen_at`, ses images et ses
+ * rattachements (21 août 2026). Republier le remet en ligne tel quel.
+ *
+ * Celui-ci est pour les fiches DISPARUES : supprimées au comptoir, elles n'ont
+ * plus rien à exporter — ni en `draft`, ni autrement — et leur page restait
+ * servie indéfiniment. Il est **sans retour** : la ligne et les octets s'en
+ * vont. L'écran demande confirmation avant de l'appeler.
+ *
+ * Le serveur refuse en 409 ce qui est encore cité (une catégorie qui porte des
+ * produits, une marque qu'un produit déclare) : le refus porte sa raison, on la
+ * remonte telle quelle.
+ */
+export function useRemoveFromSite() {
+	const pb = usePocketBase() as { authStore: { token: string } }
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: async (cible: { kind: EntityKind; legacyId: string }) =>
+			callRelay<RemovalOutcome>(
+				pb.authStore.token,
+				'/api/site/catalog/remove',
+				{
+					method: 'POST',
+					body: JSON.stringify({
+						kind: cible.kind,
+						legacy_id: cible.legacyId,
+					}),
+				},
+			),
+		// L'inventaire d'entités ET celui des images : la ligne a disparu de
+		// l'un, le dossier de l'autre. Sans les deux, l'écran continuerait de
+		// compter une fiche qui n'existe plus nulle part.
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['site-catalog', 'inventory'] })
+			queryClient.invalidateQueries({ queryKey: ['site-images', 'inventory'] })
+		},
+	})
+}
+
 /**
  * Ce que la base SQL contient déjà. **Ne s'exécute pas tout seul** : tant que
  * l'URL et la clé ne sont pas réglées, la route répond 412, et interroger le

@@ -8,6 +8,15 @@
 //   GET  /api/site/catalog/inventory  → ce que la base SQL contient déjà
 //   POST /api/site/catalog/export     → pousse un lot d'entités
 //
+// Et, depuis le 14 septembre 2026, un relais vers un AUTRE fichier :
+//
+//   POST /api/site/catalog/remove     → retire une entité (catalog-delete.php)
+//
+// Il vise `catalog-delete.php`, et c'est délibéré : `products-sync.php` ne
+// contient pas un seul DELETE, propriété qu'on garde — un lot d'export ne peut
+// pas effacer une ligne, quel que soit le bug. Le geste destructeur est dans un
+// fichier qu'on appelle exprès, une entité à la fois.
+//
 // ─── Pourquoi ce relais existe ─────────────────────────────────────────────
 // La même raison qu'au ticket 6 : la clé ne doit jamais descendre dans le
 // renderer. Le lot est composé en React — c'est là que vit la règle de mise en
@@ -27,9 +36,12 @@ package routes
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -194,5 +206,161 @@ func RegisterSiteCatalogRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		return forward(c, req, apiKey, siteCatalogMaxBytes)
 	}, requireAdmin)
 
+	// ── GET /api/site/catalog/removal-preview ───────────────────────────────
+	// Ce que le site sait encore d'une fiche qu'on n'a plus ici : son nom, son
+	// adresse, le nombre d'images, et ce qui retiendrait le retrait.
+	//
+	// Elle existe parce que le détail de l'écran n'affichait que des clés
+	// stables — `0eZtUIbYxLjkaZWe` ne dit à personne quel produit va partir, et
+	// le retrait est sans retour. Le nom n'est plus nulle part en local : la
+	// fiche est supprimée. Seul le site l'a encore.
+	//
+	// Elle ne touche à rien : c'est le GET de `catalog-delete.php`.
+	router.GET("/api/site/catalog/removal-preview", func(c echo.Context) error {
+		endpoint, apiKey, failure := config(c)
+		if failure != nil {
+			return failure
+		}
+
+		kind := c.QueryParam("kind")
+		switch kind {
+		case "products", "categories", "brands":
+		default:
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "kind inconnu. Attendu : products, categories ou brands.",
+			})
+		}
+		legacyID := c.QueryParam("legacy_id")
+		if !legacyIDValide(legacyID) {
+			return c.JSON(http.StatusUnprocessableEntity, map[string]interface{}{
+				"error": "legacy_id absent ou de forme inacceptable.",
+			})
+		}
+
+		cible, err := endpointVoisin(endpoint, "catalog-delete.php")
+		if err != nil {
+			return c.JSON(http.StatusPreconditionFailed, map[string]interface{}{
+				"error": "URL d'export inattendue : " + err.Error(),
+			})
+		}
+
+		params := url.Values{}
+		params.Set("kind", kind)
+		params.Set("legacy_id", legacyID)
+
+		req, err := http.NewRequest(http.MethodGet, cible+"?"+params.Encode(), nil)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+				"error": "URL de retrait invalide",
+			})
+		}
+
+		return forward(c, req, apiKey, siteCatalogMaxBytes)
+	}, requireAdmin)
+
+	// ── POST /api/site/catalog/remove ───────────────────────────────────────
+	// Retire UNE entité de la base SQL du site : la ligne, ses rattachements et
+	// ses images. C'est le seul geste destructeur de tout l'export.
+	//
+	// Il existe parce qu'une fiche SUPPRIMÉE dans PocketApp n'a plus rien à
+	// exporter — ni en `draft`, ni autrement — et que sa page restait servie
+	// indéfiniment. Dépublier reste le retrait normal d'un produit qui existe
+	// encore (21 août 2026) ; celui-ci ne sert qu'aux fiches disparues.
+	//
+	// L'URL se déduit de `site_catalog_url` en remplaçant le dernier segment :
+	// les deux fichiers sont côte à côte dans `server/api/`, le réglage n'a pas
+	// à être saisi deux fois — et une URL qui ne finirait pas par un fichier
+	// PHP est refusée plutôt que devinée.
+	router.POST("/api/site/catalog/remove", func(c echo.Context) error {
+		endpoint, apiKey, failure := config(c)
+		if failure != nil {
+			return failure
+		}
+
+		var demande struct {
+			Kind     string `json:"kind"`
+			LegacyID string `json:"legacy_id"`
+		}
+		if err := c.Bind(&demande); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "Corps de requête illisible",
+			})
+		}
+
+		// Liste fermée ici AUSSI, et pas seulement dans le PHP : ces deux
+		// valeurs partent dans une URL, et `legacy_id` devient un nom de
+		// répertoire à l'autre bout.
+		switch demande.Kind {
+		case "products", "categories", "brands":
+		default:
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "kind inconnu. Attendu : products, categories ou brands.",
+			})
+		}
+		if !legacyIDValide(demande.LegacyID) {
+			return c.JSON(http.StatusUnprocessableEntity, map[string]interface{}{
+				"error": "legacy_id absent ou de forme inacceptable.",
+			})
+		}
+
+		cible, err := endpointVoisin(endpoint, "catalog-delete.php")
+		if err != nil {
+			return c.JSON(http.StatusPreconditionFailed, map[string]interface{}{
+				"error": "URL d'export inattendue : " + err.Error(),
+			})
+		}
+
+		log.Printf("🗑️ POST /api/site/catalog/remove %s/%s", demande.Kind, demande.LegacyID)
+
+		corps := url.Values{}
+		corps.Set("kind", demande.Kind)
+		corps.Set("legacy_id", demande.LegacyID)
+
+		req, err := http.NewRequest(
+			http.MethodPost,
+			cible,
+			strings.NewReader(corps.Encode()),
+		)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+				"error": "URL de retrait invalide",
+			})
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		return forward(c, req, apiKey, siteCatalogMaxBytes)
+	}, requireAdmin)
+
 	log.Println("✅ Site catalog routes registered successfully")
+}
+
+// legacyIDRe : identifiants NeDB (16 caractères) ou clés PocketApp `pa_…`. La
+// même contrainte qu'au miroir d'images et qu'au PHP — ce jeton finit en nom de
+// répertoire, il ne peut pas porter un `..`.
+var legacyIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+func legacyIDValide(id string) bool {
+	return legacyIDRe.MatchString(id)
+}
+
+// endpointVoisin remplace le dernier segment d'une URL par `fichier`, en
+// conservant schéma, hôte et chemin. `site_catalog_url` désigne
+// `…/server/api/products-sync.php` ; son voisin est `…/server/api/<fichier>`.
+//
+// Elle REFUSE une URL dont le dernier segment n'est pas un fichier : deviner
+// reviendrait à poster un retrait sur une adresse inventée.
+func endpointVoisin(endpoint, fichier string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return "", err
+	}
+	coupe := strings.LastIndex(u.Path, "/")
+	if coupe < 0 || !strings.HasSuffix(u.Path, ".php") {
+		return "", fmt.Errorf(
+			"le réglage doit désigner un fichier .php (reçu %q)", u.Path,
+		)
+	}
+	u.Path = u.Path[:coupe+1] + fichier
+	u.RawQuery = ""
+	return u.String(), nil
 }

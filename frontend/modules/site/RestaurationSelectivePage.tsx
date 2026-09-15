@@ -45,6 +45,7 @@ import {
 	CardTitle,
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { formatDateUTC } from '@/lib/format/date-utc'
 import {
 	type FicheChangee,
 	type RapportSelectif,
@@ -192,7 +193,7 @@ export function RestaurationSelectivePage() {
 											</span>
 											<span className='block text-muted-foreground text-xs'>
 												{snap.client_name} · {snap.origin || 'poste inconnu'} ·{' '}
-												{snap.created_at}
+												{formatDateUTC(snap.created_at)}
 												{autreCle && (
 													<span className='text-amber-600'>
 														{' '}
