@@ -66,6 +66,7 @@ export interface CatalogCounts {
 	 *  persisté antérieur au 11 septembre 2026 : le panneau n'affiche alors aucun
 	 *  nombre, plutôt qu'un zéro qui serait faux. */
 	avecStockB?: number
+	misEnAvant?: number
 }
 
 /** La forme rendue par `GET /api/catalog/counts`. */
@@ -82,6 +83,7 @@ interface ReponseDecomptes {
 		stock_vide: number
 	}
 	avec_stock_b?: number
+	mis_en_avant?: number
 }
 
 export function useCatalogCounts(companyId?: string) {
@@ -121,6 +123,7 @@ export function useCatalogCounts(companyId?: string) {
 						}
 					: MANQUES_VIDES,
 				avecStockB: reponse.avec_stock_b,
+				misEnAvant: reponse.mis_en_avant,
 			}
 		},
 		enabled: !!companyId,

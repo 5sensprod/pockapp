@@ -139,6 +139,14 @@ export type CatalogProductShape = PocketBaseRecord & {
 	 *  par `liensNormalises` (`lib/catalog/web-links.ts`). Schéma :
 	 *  `backend/migrations/add_web_links_to_products.go`. */
 	web_links?: WebLink[]
+	/** LA MISE EN AVANT — troisième axe, indépendant de `commercial_state` et de
+	 *  `sale_state` : un produit d'occasion soldé peut être un coup de cœur.
+	 *  `featured` dit SI la pastille s'affiche, `featured_label` CE QU'ELLE
+	 *  porte ; vide = le défaut du site, qui ne s'écrit pas en base. Règle
+	 *  unique : `lib/catalog/featured.ts`. Schéma :
+	 *  `backend/migrations/add_featured_to_products.go`. */
+	featured?: boolean
+	featured_label?: string
 	image?: string
 	/** Les noms de fichiers de la galerie, DANS L'ORDRE — l'ordre est une
 	 *  donnée (règle du 19 août 2026). Jusqu'à dix. */
@@ -168,7 +176,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,promo_price_ttc,promo_start,promo_end,purchase_price_ht,tax_rate,stock,stock_b,stock_b_price_ttc,min_stock,manage_stock,web_links,image,gallery,brand,supplier,consignor,categories'
+	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,promo_price_ttc,promo_start,promo_end,purchase_price_ht,tax_rate,stock,stock_b,stock_b_price_ttc,min_stock,manage_stock,web_links,featured,featured_label,image,gallery,brand,supplier,consignor,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -195,6 +203,9 @@ export type CatalogProductQuery = {
 	missingPurchasePrice?: boolean
 	emptyStock?: boolean
 	withStockB?: boolean
+	/** Les seules fiches en vitrine. Troisième axe, indépendant des deux
+	 *  sélecteurs ci-dessous : une occasion soldée peut être un coup de cœur. */
+	featured?: boolean
 	commercialState?: CatalogCommercialStateFilter
 	saleState?: CatalogSaleStateFilter
 	sort?: string
@@ -231,6 +242,21 @@ export const CLAUSES_STOCK_B = {
 	avec: 'stock_b > 0',
 } as const
 
+/**
+ * LA MISE EN AVANT, ÉCRITE UNE FOIS — même règle que le Stock B, et pour la
+ * même raison : le serveur compte avec cette chaîne (`filtreMisEnAvant`,
+ * `catalog_counts_routes.go`), et « Mis en avant · 12 » doit annoncer la liste
+ * obtenue en cliquant.
+ *
+ * `= true` et non `!= false` : un booléen absent de l'enregistrement vaut faux,
+ * les deux formes le disent — mais une seule est écrite des DEUX côtés.
+ *
+ * Gardien : `catalog-gap-filters.test.ts`.
+ */
+export const CLAUSES_MISE_EN_AVANT = {
+	oui: 'featured = true',
+} as const
+
 /** Construit l'unique filtre du catalogue. La page ordinaire et la sélection
  * de tous les résultats doivent décrire strictement le même ensemble. */
 export function buildCatalogProductsFilter(
@@ -252,6 +278,7 @@ export function buildCatalogProductsFilter(
 		missingPurchasePrice,
 		emptyStock,
 		withStockB,
+		featured,
 		commercialState,
 		saleState,
 	} = query
@@ -287,6 +314,7 @@ export function buildCatalogProductsFilter(
 	if (missingPurchasePrice) clauses.push(CLAUSES_MANQUE.prixAchat)
 	if (emptyStock) clauses.push(CLAUSES_MANQUE.stock)
 	if (withStockB) clauses.push(CLAUSES_STOCK_B.avec)
+	if (featured) clauses.push(CLAUSES_MISE_EN_AVANT.oui)
 	if (commercialState === 'new') {
 		clauses.push("commercial_state = ''")
 	} else if (commercialState) {
@@ -573,6 +601,10 @@ export type CatalogProductWrite = ImageIntent &
 		/** La liste ENTIÈRE, dans son ordre : ce champ se remplace, il ne se
 		 *  complète pas. Voir `CatalogProductShape.web_links`. */
 		web_links?: WebLink[]
+		/** Voir `CatalogProductShape.featured`. Le libellé se remplace ; le
+		 *  vider ne retire PAS la mise en avant, seul `featured` le fait. */
+		featured?: boolean
+		featured_label?: string
 		brand?: string
 		supplier?: string
 		/** Particulier qui a confié l'article. Relation facultative vers

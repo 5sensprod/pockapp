@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_LIBELLE, libelleNormalise } from '@/lib/catalog/featured'
 
 import {
 	MAX_LIENS,
@@ -63,6 +64,13 @@ const productDetailObject = z.object({
 	stock_b_price_ttc: money,
 	min_stock: z.coerce.number().int().min(0),
 	manage_stock: z.boolean(),
+	// La mise en avant : deux champs, et seul `featured` décide de la pastille.
+	// Le libellé vide est le cas NORMAL — le site retombe sur son défaut, qui
+	// ne s'écrit pas en base (`lib/catalog/featured.ts`).
+	featured: z.boolean(),
+	featured_label: z
+		.string()
+		.max(MAX_LIBELLE, `${MAX_LIBELLE} caractères au maximum`),
 	brand: z.string().optional(),
 	supplier: z.string().optional(),
 	categories: z.array(z.string()),
@@ -167,6 +175,8 @@ export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
 	stock_b_price_ttc: 0,
 	min_stock: 0,
 	manage_stock: true,
+	featured: false,
+	featured_label: '',
 	brand: '',
 	supplier: '',
 	categories: [],
@@ -241,6 +251,8 @@ export function productDetailValues(
 		stock_b_price_ttc: product.stock_b_price_ttc ?? 0,
 		min_stock: product.min_stock ?? 0,
 		manage_stock: product.manage_stock ?? true,
+		featured: product.featured ?? false,
+		featured_label: product.featured_label ?? '',
 		brand: product.brand ?? '',
 		supplier: product.supplier ?? '',
 		categories: product.categories ?? [],
@@ -275,6 +287,12 @@ export function productDetailPayload(
 		tax_rate: data.tax_rate,
 		min_stock: data.min_stock,
 		manage_stock: data.manage_stock,
+		featured: data.featured,
+		// Le libellé est remis au propre avant d'être écrit, comme les liens.
+		// Il est CONSERVÉ même si la case est décochée : le vendeur qui retire
+		// une mise en avant pour la semaine ne doit pas retaper son texte pour
+		// la remettre. C'est l'export qui ne l'envoie pas (`champsFacultatifs`).
+		featured_label: libelleNormalise(data.featured_label),
 		brand: data.brand ?? '',
 		supplier: data.supplier ?? '',
 		categories: data.categories,

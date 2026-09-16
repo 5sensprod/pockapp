@@ -103,12 +103,22 @@ describe('commercial_state', () => {
 		expect(PRODUCT_FIELDS.split(',')).toContain('commercial_state')
 	})
 
-	it('n’est PAS demandé par la liste du module site', () => {
-		// Le contrat catalogue ne le connaît pas et son checksum ne le couvre
-		// pas (DECISIONS, 2026-08-24). L'ajouter ici sans ouvrir le contrat le
-		// ferait voyager sans que rien ne le lise — et brouillerait la règle qui
-		// dit que `status` seul décide de ce qui part.
-		expect(SITE_PRODUCT_FIELDS.split(',')).not.toContain('commercial_state')
+	it('est demandé par la liste du module site depuis le 15 septembre 2026', () => {
+		// ⚠️ **CE TEST DISAIT L'INVERSE.** Jusqu'au 15 septembre 2026, le contrat
+		// ne connaissait pas ce champ et ce gardien interdisait de l'ajouter à
+		// `fields` sans ouvrir le contrat — précisément pour qu'il ne se mette
+		// pas à voyager sans que rien ne le lise.
+		//
+		// Le contrat a été ouvert (§4.1 sexies) : le propriétaire veut les
+		// pastilles « Occasion » et « Location » sur le site, comme celles des
+		// soldes. La condition que posait l'ancien gardien est donc remplie, et
+		// l'interdiction tombe avec elle. Ce qui NE change pas : `status` reste
+		// seul juge de ce qui part, et cet état n'en décide rien.
+		//
+		// Et le piège reste le même qu'avant : absent de `fields`, le champ
+		// reviendrait VIDE SANS ERREUR, aucune occasion ne partirait jamais, et
+		// la fiche resterait « à jour » dans /site — sans un message.
+		expect(SITE_PRODUCT_FIELDS.split(',')).toContain('commercial_state')
 	})
 })
 
@@ -188,5 +198,33 @@ describe('les liens de la fiche', () => {
 		// un champ plus loin.
 		expect(PRODUCT_FIELDS.split(',')).toContain('web_links')
 		expect(SITE_PRODUCT_FIELDS.split(',')).toContain('web_links')
+	})
+})
+
+describe('la mise en avant', () => {
+	it('est demandée par les DEUX listes, et ses DEUX champs', () => {
+		// Même piège que `web_links` et `gallery` : un champ absent de `fields`
+		// revient VIDE SANS ERREUR. Absent de `PRODUCT_FIELDS`, la fiche
+		// s'ouvrirait décochée et l'enregistrement retirerait la mise en avant
+		// qu'un vendeur avait posée ; absent de la liste du module site, aucune
+		// pastille ne partirait jamais.
+		//
+		// Et il faut LES DEUX champs : avec `featured` seul, toute pastille
+		// partirait sans son libellé et le site afficherait « Coup de cœur »
+		// partout, y compris là où le client avait écrit « Spécial rentrée ».
+		for (const champ of ['featured', 'featured_label']) {
+			expect(PRODUCT_FIELDS.split(',')).toContain(champ)
+			expect(SITE_PRODUCT_FIELDS.split(',')).toContain(champ)
+		}
+	})
+
+	it('est un axe DISTINCT de sale_state et de commercial_state', () => {
+		// Les trois coexistent : un produit d'occasion soldé peut être un coup
+		// de cœur. Si la mise en avant devenait une valeur de `sale_state`, ce
+		// cas deviendrait inexprimable — le select est mono-valeur.
+		const demandes = PRODUCT_FIELDS.split(',')
+		expect(demandes).toContain('commercial_state')
+		expect(demandes).toContain('sale_state')
+		expect(demandes).toContain('featured')
 	})
 })

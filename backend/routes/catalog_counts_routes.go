@@ -111,6 +111,9 @@ type CatalogCountsOutput struct {
 	// compteur à part, mais compté par le même chemin et sous le même contrat
 	// — catalogue entier, sans les autres filtres.
 	AvecStockB int `json:"avec_stock_b"`
+	// Les fiches mises en avant (15 septembre 2026). Pas un manque non plus :
+	// même chemin, même contrat — catalogue entier, sans les autres filtres.
+	MisEnAvant int `json:"mis_en_avant"`
 }
 
 // LES QUATRE MANQUES, ÉCRITS EN SYNTAXE DE FILTRE POCKETBASE — PAS EN SQL.
@@ -132,6 +135,10 @@ const (
 	filtreStockVide       = "stock = 0"
 	// Même règle d'écriture, hors des manques : `CLAUSES_STOCK_B` côté client.
 	filtreAvecStockB = "stock_b > 0"
+	// Idem : `CLAUSES_MISE_EN_AVANT` côté client. `= true` et non `!= false` —
+	// un booléen PocketBase absent de l'enregistrement vaut faux, et les deux
+	// formes le disent, mais une seule est écrite des DEUX côtés.
+	filtreMisEnAvant = "featured = true"
 )
 
 // ligneProduit — le strict nécessaire. `sql.NullString` parce que les deux
@@ -208,6 +215,12 @@ func computeCatalogCounts(app *pocketbase.PocketBase, companyID string) (*Catalo
 		return nil, err
 	}
 	sortie.AvecStockB = avecStockB
+
+	misEnAvant, err := compterProduits(app, companyID, filtreMisEnAvant)
+	if err != nil {
+		return nil, err
+	}
+	sortie.MisEnAvant = misEnAvant
 
 	return sortie, nil
 }

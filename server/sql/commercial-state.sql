@@ -1,0 +1,62 @@
+-- server/sql/commercial-state.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+-- `commercial_state` — ce que l'objet EST : occasion, location, ou neuf
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Écrit le 15 septembre 2026. À passer UNE FOIS sur la base du mutualisé,
+-- AVANT de déposer les versions de `products-sync.php` et `catalog.php` qui la
+-- portent. Ce fichier n'est pas lu par PHP : il est versionné pour que le
+-- schéma en place soit connu.
+--
+-- Contrat : frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md,
+-- §4.1 sexies, qui fait autorité.
+--
+-- ─── TROIS VALEURS, ET LA CHAÎNE VIDE EN EST UNE ─────────────────────────
+--   ''         neuf — l'état de la QUASI-TOTALITÉ du catalogue
+--   'used'     occasion
+--   'rental'   location
+--
+-- Exactement la forme de `sale_state` : `NOT NULL DEFAULT ''`, parce qu'ici la
+-- chaîne vide EST une valeur — « neuf » — et non une absence de donnée. Les
+-- lignes déjà en base prennent `''` immédiatement, ce qui est leur état exact.
+-- Aucun rattrapage.
+--
+-- ─── CE N'EST PAS `sale_state`, ET LES DEUX SE CUMULENT ──────────────────
+-- `sale_state` dit l'OPÉRATION en cours sur l'objet (soldé, en promotion) ;
+-- celui-ci dit ce que l'objet EST. Une guitare d'occasion soldée est un cas
+-- ordinaire en magasin, et sa carte porte alors ses DEUX pastilles. C'est
+-- précisément pourquoi ce sont deux colonnes et non deux valeurs d'une même :
+-- un select mono-valeur rendrait ce cas inexprimable
+-- (`backend/migrations/add_sale_state_to_products.go`).
+--
+-- Les deux ne vivent pas au même rythme non plus : ce que l'objet EST ne change
+-- qu'une fois — on le reprend d'occasion —, l'opération commerciale se pose et
+-- se retire par campagnes.
+--
+-- ─── IL ÉTAIT HORS CONTRAT JUSQU'À CETTE DATE ────────────────────────────
+-- PocketApp le porte depuis le 24 août 2026, mais il ne voyageait pas : le
+-- contrat ne le connaissait pas, et un test l'INTERDISAIT explicitement dans la
+-- liste des champs exportés. Le propriétaire a tranché le 15 septembre 2026 —
+-- les pastilles « Occasion » et « Location » sont attendues sur le site, au
+-- même titre que celles des soldes.
+--
+-- Côté export il est une clé FACULTATIVE, contrairement à `sale_state` :
+-- PocketApp ne l'envoie que lorsqu'elle vaut. L'envoyer vide pour tout le monde
+-- aurait changé l'empreinte des 2412 fiches publiées et les aurait fait
+-- repartir en entier — le prix payé une fois, sciemment, pour `sale_state` le
+-- 27 août. Une clé absente écrit donc `''` : c'est ainsi qu'on repasse une
+-- occasion en neuf.
+--
+-- ─── IL NE DIT RIEN DE LA PUBLICATION, NI D'UN PRIX ──────────────────────
+-- `status` reste la seule autorité sur ce que `catalog.php` sert, et
+-- `price_ttc` reste le prix de vente. C'est une étiquette d'état.
+--
+-- ─── PAS D'INDEX ─────────────────────────────────────────────────────────
+-- Aucune requête de `catalog.php` ne filtre ni ne trie dessus : la colonne est
+-- SÉLECTIONNÉE et rendue au site, qui décide de l'affichage. Un index sur une
+-- colonne à trois valeurs, dont une écrasante, ne servirait aucun plan
+-- d'exécution et coûterait à chaque écriture. Même raisonnement que
+-- `sale_state`. Si une action « l'occasion » apparaît un jour, l'index
+-- s'ajoutera avec elle.
+
+ALTER TABLE `ax_products`
+  ADD COLUMN `commercial_state` VARCHAR(8) NOT NULL DEFAULT '';

@@ -112,12 +112,15 @@ arriver après le produit qui la cite.
 | `stock` | entier | oui | |
 | `status` | `"published"` ou `"draft"` | oui | l'intention, recopiée telle quelle — voir ci-dessous |
 | `sale_state` | `""`, `"sale"` ou `"promo"` | oui | l'opération commerciale — **`""` VEUT DIRE « normal »**, voir §4.1 bis |
+| `commercial_state` | `"used"` ou `"rental"` | **non** | ce que l'objet EST — **clé absente = neuf**, voir §4.1 sexies |
 | `promo_price_ttc` | nombre > 0 | **non** | prix promo TTC — **clé absente = aucun**, voir §4.1 ter |
 | `promo_start` | `"AAAA-MM-JJ"` | **non** | premier jour de la promo, inclus |
 | `promo_end` | `"AAAA-MM-JJ"` | **non** | dernier jour de la promo, inclus |
 | `stock_b` | entier > 0 | **non** | unités Stock B — clé absente = 0 |
 | `stock_b_price_ttc` | nombre > 0 | **non** | prix TTC d'une unité Stock B |
 | `web_links` | tableau d'objets | **non** | liens et vidéos de la fiche, **dans l'ordre** — voir §4.1 quater |
+| `featured` | `true` | **non** | le produit est en vitrine — **jamais envoyé à `false`**, voir §4.1 quinquies |
+| `featured_label` | chaîne, 40 caractères au plus | **non** | le texte de la pastille — clé absente = **le défaut du site** |
 | `brand` | chaîne ou `null` | oui | `legacy_id` de la marque |
 | `categories` | tableau de chaînes | oui | `legacy_id`, peut être vide |
 
@@ -164,7 +167,8 @@ campagne — serait d'autres champs : ils sont arrivés le 11 septembre 2026, §
 
 **Il est INDÉPENDANT de l'état commercial du produit.** PocketApp porte aussi
 `commercial_state` (`used` / `rental`, vide = neuf), qui dit ce que l'objet EST.
-**Ce champ-là ne voyage pas** et n'est pas au contrat. Les deux se cumulent
+**Ce champ-là voyage depuis le 15 septembre 2026** — il ne le faisait pas
+jusque-là, et ce paragraphe disait l'inverse ; voir §4.1 sexies. Les deux se cumulent
 librement côté caisse — une occasion peut être soldée — et c'est précisément
 pourquoi ce sont deux champs et non deux valeurs d'un même select
 (`docs/DECISIONS.md`, 2026-08-27).
@@ -255,6 +259,100 @@ est alors toujours présent, éventuellement vide.
 
 Colonne : `server/sql/web-links.sql`. Schéma PocketBase :
 `backend/migrations/add_web_links_to_products.go`.
+
+#### 4.1 sexies. L'état commercial (15 septembre 2026)
+
+**Une clé facultative de plus** : `commercial_state`, qui vaut `"used"`
+(occasion) ou `"rental"` (location). Vide — donc **neuf** — la clé ne part pas.
+
+**C'est ce que l'objet EST**, quand `sale_state` dit l'OPÉRATION en cours
+dessus. Les deux se cumulent : une guitare d'occasion soldée est un cas
+ordinaire en magasin, et sa carte porte alors ses deux pastilles. C'est
+précisément pourquoi ce sont deux champs et non deux valeurs d'un même select,
+qui est mono-valeur (`backend/migrations/add_sale_state_to_products.go`).
+
+Les deux ne vivent pas au même rythme non plus : ce que l'objet EST ne change
+qu'une fois — on le reprend d'occasion —, l'opération commerciale se pose et se
+retire par campagnes.
+
+**⚠️ Il était HORS CONTRAT jusqu'à cette date, et délibérément.** PocketApp le
+porte depuis le 24 août 2026, mais il ne voyageait pas, et un test
+(`catalog-fields.test.ts`) INTERDISAIT explicitement de l'ajouter à la liste des
+champs exportés sans ouvrir ce contrat d'abord. Le contrat est ouvert ici, sur
+décision du propriétaire : les pastilles « Occasion » et « Location » sont
+attendues sur le site, au même titre que celles des soldes. Le test a été
+inversé, sa justification avec.
+
+**La clé est FACULTATIVE, et c'est tout l'écart avec `sale_state`.** Celui-ci
+part TOUJOURS, chaîne vide comprise, et son arrivée a fait repasser les 2412
+fiches publiées « modifiées » d'un coup le 27 août 2026 — un coût assumé une
+fois. Il n'y a aucune raison de le repayer : une clé qui ne part que lorsqu'elle
+vaut laisse intacte l'empreinte d'un produit neuf. Côté serveur, la clé absente
+écrit `''` : repasser une occasion en neuf part sans clé, et la pastille
+disparaît.
+
+**Il ne dit rien de la publication, ni d'un prix.** `status` reste seul juge de
+ce qui part, `price_ttc` reste le prix de vente. Et **il n'a pas de période** :
+contrairement à la promo, ce que l'objet EST n'expire pas — le serveur ne date
+rien, il n'y a aucun « hors période » à traiter.
+
+**À la lecture, `catalog.php` le rend sur les QUATRE actions**, tel qu'il est en
+base, chaîne vide incluse — comme `sale_state`, et pour la même raison : une
+pastille « Occasion » a tout son sens dans une grille.
+
+Colonne : `server/sql/commercial-state.sql`. Schéma PocketBase :
+`backend/migrations/add_commercial_state_to_products.go`.
+
+#### 4.1 quinquies. Le produit mis en avant (15 septembre 2026)
+
+**Deux clés facultatives de plus** : `featured`, la pastille de vitrine, et
+`featured_label`, son texte — libre, écrit par le magasin : « Coup de cœur »,
+« Spécial rentrée 2026 », « Notre sélection », « À découvrir ».
+
+**C'est un TROISIÈME AXE**, indépendant de `sale_state` comme de
+`commercial_state`. Une guitare d'occasion soldée peut être un coup de cœur —
+c'est même le cas qu'on met en vitrine —, et une carte porte alors ses deux
+pastilles. Verser « mis en avant » dans le select des opérations commerciales,
+qui est mono-valeur, rendrait ce cas inexprimable : il faudrait choisir entre
+« Soldes » et « Coup de cœur ».
+
+**`featured` n'est JAMAIS envoyé à `false`.** Comme les six clés facultatives
+ci-dessus : l'envoyer partout changerait l'empreinte des 2412 fiches publiées
+d'un coup, et elles repartiraient en entier. Clé absente = pas en vitrine ;
+c'est ainsi qu'on retire une mise en avant.
+
+**Un libellé vide ne veut PAS dire « pas de pastille »** — il veut dire « le
+libellé par défaut du site ». Seul `featured` décide de l'affichage. Une fiche
+cochée sans texte envoie donc `featured` seul, et c'est le cas normal.
+
+**Le défaut lui-même ne s'écrit nulle part dans cette chaîne** : ni dans
+PocketBase, ni dans le corps d'export, ni dans `products-sync.php`, ni dans
+`catalog.php`. Il se décide au SEUL endroit qui l'affiche, le bundle du site
+(`AxeFeaturedBadge.jsx`) — même raisonnement que l'identifiant d'une vidéo
+YouTube (§4.1 quater). L'écrire en base ferait 3000 fiches portant un texte que
+personne n'a choisi, et le changer un jour demanderait de toutes les réécrire.
+
+**Le libellé est revalidé, et il est COUPÉ, jamais refusé** — 40 caractères,
+sauts de ligne et suites d'espaces réduits à une espace
+(`server/lib/featured.php`, mêmes cas que `frontend/lib/catalog/featured.ts`).
+Un texte trop long est une maladresse de saisie, pas une donnée dangereuse : il
+ne doit pas retenir un produit hors ligne. Le serveur n'échappe RIEN pour le
+HTML — le bundle React échappe le texte qu'il rend, et un
+`htmlspecialchars` ici afficherait `Coup de c&oelig;ur` en toutes lettres.
+
+**Rien n'est croisé avec `status`** : une fiche mise en avant et dépubliée part
+en `draft` et n'a simplement pas de page.
+
+**À la lecture, `catalog.php` rend `featured` sur les QUATRE actions** —
+`category`, `product`, `search`, `latest` —, contrairement à `gallery` et à
+`links` : une pastille a tout son sens dans une grille, c'est même là qu'on
+l'attend. Sa forme est `null`, ou `{ "label": … }` où `label` peut lui-même
+être `null`. Un objet et non une chaîne, pour la même raison que `promo` et
+`stock_b` en sont : une clé de plus (couleur, icône) n'y casserait aucun
+consommateur, alors que changer une chaîne en objet les casse tous.
+
+Colonnes : `server/sql/featured.sql`. Schéma PocketBase :
+`backend/migrations/add_featured_to_products.go`.
 
 ### 4.2 Catégorie
 
@@ -366,6 +464,17 @@ continue de ne servir que `published`.
 
 Les deux objets sont toujours présents, éventuellement `null`, sur toute action
 qui rend des produits.
+
+**Le même jour, `commercial_state` s'ajoute — sur les QUATRE actions** (§4.1
+sexies) : `""`, `"used"` ou `"rental"`, tel qu'il est en base. Il n'a pas de
+période et ne se croise avec rien.
+
+**Le même jour, `featured` s'ajoute — sur les QUATRE actions** (§4.1
+quinquies) : `null`, ou `{ "label": "Spécial rentrée 2026" }`, où `label` peut
+lui-même être `null` — le bundle affiche alors son défaut, « Coup de cœur », qui
+n'est écrit nulle part ailleurs. Rendu sur les listes comme `sale_state`, et
+pour la même raison : c'est dans une grille qu'une pastille sert le plus. Les
+deux se cumulent sur une même carte.
 
 **Depuis le 15 septembre 2026, `links` s'ajoute — sur la SEULE action
 `product`** (§4.1 quater). Comme `gallery`, et pour la même raison : aucune

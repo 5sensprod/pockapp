@@ -5,6 +5,7 @@ import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 import type { GalleryEntry } from '@/lib/queries/gallery-order'
 
 import { ProductDescriptionCard } from './ProductDescriptionCard'
+import { ProductFeaturedCard } from './ProductFeaturedCard'
 import { ProductMediaPanel } from './ProductMediaPanel'
 import { ProductOnlinePanel } from './ProductOnlinePanel'
 import { DetailStatusCard, EditableDetailCard } from './detail-primitives'
@@ -104,6 +105,11 @@ export function ProductSitePanel(props: Props) {
 					</p>
 				)}
 			</DetailStatusCard>
+
+			{/* La vitrine, juste après la publication : les deux sont des
+			    interrupteurs, et ils se lisent ensemble — une fiche mise en avant
+			    mais non publiée n'a pas de page où porter sa pastille. */}
+			<ProductFeaturedCard form={props.form} disabled={props.disabled} />
 
 			<EditableDetailCard
 				title='Contenu éditorial'

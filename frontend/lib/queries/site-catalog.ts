@@ -41,6 +41,14 @@ export type CatalogProductStatus = 'draft' | 'published'
  *  `backend/migrations/add_sale_state_to_products.go`. */
 export type CatalogSaleState = '' | 'sale' | 'promo'
 
+/** CE QUE L'OBJET EST au regard de la vente. **Vide VEUT DIRE neuf** — l'état
+ *  de la quasi-totalité du catalogue. Mono-valeur : aucun produit n'est à la
+ *  fois d'occasion et en location (mesuré, 0 sur 3055). Schéma :
+ *  `backend/migrations/add_commercial_state_to_products.go`.
+ *
+ *  Il voyage vers le site depuis le 15 septembre 2026, en clé FACULTATIVE. */
+export type CatalogCommercialState = '' | 'used' | 'rental'
+
 export type CatalogProduct = FileBearing & {
 	/** Identifiant NeDB d'origine. **Clé de l'export**, stable au rechargement. */
 	legacy_id: string
@@ -58,6 +66,15 @@ export type CatalogProduct = FileBearing & {
 	 *
 	 *  ⚠️ Elle ne décide de RIEN quant à la publication — `status` seul. */
 	sale_state?: CatalogSaleState
+	/** L'ÉTAT COMMERCIAL — `used` (occasion), `rental` (location), ou vide =
+	 *  neuf. Il part vers le site depuis le 15 septembre 2026, et SEULEMENT
+	 *  quand il vaut : l'envoyer vide pour tout le monde ferait repasser les
+	 *  2412 fiches publiées « modifiées », le prix payé pour `sale_state`.
+	 *
+	 *  ⚠️ Axe DISTINCT de `sale_state` : une occasion peut être soldée, et la
+	 *  carte du site porte alors ses deux pastilles. Ni l'un ni l'autre ne
+	 *  décide de la publication — `status` seul. */
+	commercial_state?: CatalogCommercialState
 	price_ttc?: number
 	/** Prix promo, période « AAAA-MM-JJ », Stock B et son prix : ils partent
 	 *  vers le site depuis le 11 septembre 2026, SEULEMENT quand ils valent
@@ -72,6 +89,18 @@ export type CatalogProduct = FileBearing & {
 	 *  (`lib/catalog/web-links.ts`). Comme les cinq clés ci-dessus, il ne part
 	 *  vers le site que lorsqu'il porte au moins un lien. */
 	web_links?: unknown
+	/** LA MISE EN AVANT — un troisième axe, indépendant de `sale_state` comme de
+	 *  `commercial_state` : un produit soldé peut être un coup de cœur.
+	 *  `featured` dit SI la pastille s'affiche, `featured_label` CE QU'ELLE
+	 *  porte ; un libellé vide veut dire « le défaut du site », et c'est le cas
+	 *  normal. Règle unique : `lib/catalog/featured.ts`.
+	 *
+	 *  Comme les six clés ci-dessus, elles ne partent vers le site que
+	 *  lorsqu'elles valent (§4.1 quinquies du contrat).
+	 *
+	 *  ⚠️ Elles ne décident de RIEN quant à la publication — `status` seul. */
+	featured?: boolean
+	featured_label?: string
 	tax_rate?: number
 	stock?: number
 	description?: string
@@ -133,7 +162,7 @@ export type CatalogBrand = FileBearing & {
 // Comme tout le reste ici, un champ absent de cette chaîne revient VIDE sans
 // erreur : le tri retomberait silencieusement sur l'ordre alphabétique.
 export const PRODUCT_FIELDS =
-	'id,collectionId,collectionName,created,updated,legacy_id,name,designation,sku,slug,description,status,sale_state,price_ttc,promo_price_ttc,promo_start,promo_end,stock_b,stock_b_price_ttc,web_links,tax_rate,stock,image,gallery,brand,categories'
+	'id,collectionId,collectionName,created,updated,legacy_id,name,designation,sku,slug,description,status,sale_state,commercial_state,price_ttc,promo_price_ttc,promo_start,promo_end,stock_b,stock_b_price_ttc,web_links,featured,featured_label,tax_rate,stock,image,gallery,brand,categories'
 const CATEGORY_FIELDS =
 	'id,collectionId,collectionName,legacy_id,name,slug,description,image,is_featured,parent'
 const BRAND_FIELDS =

@@ -87,6 +87,7 @@ var apresCatalogV2 = []string{
 	"AddStockBPriceToProducts",
 	"AddPromoPeriodToProducts",
 	"AddWebLinksToProducts",
+	"AddFeaturedToProducts",
 }
 
 func TestLesMigrationsDuCatalogueSontInscritesEtApresLaRecreation(t *testing.T) {
@@ -243,5 +244,46 @@ func TestLOperationCommercialeEstUnChampSepareDeLEtatCommercial(t *testing.T) {
 				"est mono-valeur, un produit d'occasion soldé y deviendrait "+
 				"inexprimable", v)
 		}
+	}
+}
+
+func TestLaMiseEnAvantEstUnTroisiemeAxe(t *testing.T) {
+	// L'ARBITRAGE QUE CE TEST TIENT : « mis en avant » n'est pas une valeur de
+	// plus dans `sale_state`. Un produit soldé PEUT être un coup de cœur —
+	// c'est même le cas qu'on met en vitrine —, et une valeur de plus dans un
+	// select mono-valeur le rendrait inexprimable.
+	featured := lireSourceSansCommentaires(t, "add_featured_to_products.go")
+
+	if !strings.Contains(featured, `Name: "featured"`) ||
+		!strings.Contains(featured, `Name: "featured_label"`) {
+		t.Fatal("les deux champs doivent s'appeler featured et featured_label")
+	}
+	if !strings.Contains(featured, "FieldTypeBool") {
+		t.Fatal("featured doit être un booléen : il n'y a rien à nommer, et un " +
+			"champ absent vaut false, donc « pas mis en avant »")
+	}
+	if strings.Contains(featured, "Required: true") {
+		t.Fatal("ni featured ni featured_label ne doivent être obligatoires : " +
+			"un libellé vide est le cas NORMAL, le site retombe sur son défaut")
+	}
+
+	// La borne de longueur vit ici et seulement ici côté Go ; les copies
+	// TypeScript et PHP la citent.
+	if FeaturedLabelMaxLength <= 0 {
+		t.Fatal("FeaturedLabelMaxLength doit borner le libellé : au-delà, la " +
+			"pastille déborde de la carte du site")
+	}
+	if !strings.Contains(featured, "FeaturedLabelMaxLength") {
+		t.Fatal("le schéma doit borner featured_label par FeaturedLabelMaxLength, " +
+			"pas par un nombre écrit en dur qui divergerait des copies TS et PHP")
+	}
+
+	// Et l'autre moitié : le select des opérations commerciales ne s'est pas
+	// mis à porter la mise en avant.
+	sale := lireSourceSansCommentaires(t, "add_sale_state_to_products.go")
+	if strings.Contains(sale, `"featured"`) {
+		t.Fatal("« featured » est entrée dans sale_state : ce champ est " +
+			"mono-valeur, un produit soldé mis en avant y deviendrait " +
+			"inexprimable")
 	}
 }

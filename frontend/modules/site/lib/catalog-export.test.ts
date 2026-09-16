@@ -570,12 +570,117 @@ describe('produitChangeAExporter', () => {
 			// le 15 septembre 2026 : une vidéo modifiée ou retirée ne proposait
 			// plus la synchronisation.
 			web_links: [{ kind: 'link', url: 'https://a.fr', label: '' }],
+			// Les deux clés de la mise en avant, et il faut LES DEUX : une fiche
+			// cochée sans libellé n'envoie que `featured`.
+			featured: true,
+			featured_label: 'Coup de cœur',
+			// Facultative elle aussi : une fiche neuve n'envoie pas la clé.
+			commercial_state: 'used',
 		})
 		const composes = Object.keys(toExportProduct(complete, [], null))
 			// La clé ne change pas, et `site_title` vaut `null` en dur.
 			.filter((champ) => champ !== 'legacy_id' && champ !== 'site_title')
 			.sort()
 		expect(composes).toEqual([...CHAMPS_PRODUIT_EXPORTES].sort())
+	})
+
+	it('n’envoie l’état commercial QUE lorsqu’il vaut', () => {
+		// L'écart délibéré avec `sale_state`, qui, lui, part TOUJOURS et dont
+		// l'arrivée a fait repartir les 2412 fiches publiées en entier le
+		// 27 août 2026. Le coût a été payé une fois, sciemment ; une clé
+		// facultative évite de le repayer.
+		const neuf = toExportProduct(product({ commercial_state: '' }), [], null)
+		expect(neuf).not.toHaveProperty('commercial_state')
+		expect(toExportProduct(product(), [], null)).not.toHaveProperty(
+			'commercial_state',
+		)
+
+		expect(
+			toExportProduct(product({ commercial_state: 'used' }), [], null)
+				.commercial_state,
+		).toBe('used')
+		expect(
+			toExportProduct(product({ commercial_state: 'rental' }), [], null)
+				.commercial_state,
+		).toBe('rental')
+	})
+
+	it('voit une occasion posée et REPASSÉE en neuf', () => {
+		const dit = (a: object, b: object) => champsProduitModifies(a, b)
+		expect(dit({}, { commercial_state: 'used' })).toContain('état commercial')
+		expect(
+			dit({ commercial_state: 'used' }, { commercial_state: '' }),
+		).toContain('état commercial')
+		// Vide et absent sont le même neuf : ouvrir puis enregistrer une fiche
+		// qui n'avait pas le champ ne doit pas la déclarer modifiée.
+		expect(dit({}, { commercial_state: '' })).not.toContain('état commercial')
+	})
+
+	it('l’état commercial et l’opération commerciale ne se confondent pas', () => {
+		// Les deux axes se cumulent : une occasion soldée est un cas ORDINAIRE,
+		// et c'est pourquoi ce sont deux champs et non deux valeurs d'un select.
+		const occasionSoldee = toExportProduct(
+			product({ commercial_state: 'used', sale_state: 'sale' }),
+			[],
+			null,
+		)
+		expect(occasionSoldee.commercial_state).toBe('used')
+		expect(occasionSoldee.sale_state).toBe('sale')
+	})
+
+	it('n’envoie les clés de mise en avant QUE lorsqu’elles valent', () => {
+		// Le coût déjà payé deux fois : `canonical()` sérialise toutes les clés
+		// présentes, donc une clé ajoutée pour tout le monde — même à `false`
+		// ou à `null` — ferait repasser les 2412 fiches publiées « modifiées ».
+		const ordinaire = toExportProduct(product(), [], null)
+		expect(ordinaire).not.toHaveProperty('featured')
+		expect(ordinaire).not.toHaveProperty('featured_label')
+
+		// Cochée sans libellé : `featured` part SEUL. Le vide veut dire « le
+		// défaut du site », qui ne s'écrit ni ici ni en base.
+		const sansLibelle = toExportProduct(product({ featured: true }), [], null)
+		expect(sansLibelle.featured).toBe(true)
+		expect(sansLibelle).not.toHaveProperty('featured_label')
+
+		// Un libellé sur une fiche NON cochée ne part pas : il n'afficherait rien.
+		const nonCochee = toExportProduct(
+			product({ featured: false, featured_label: 'Notre sélection' }),
+			[],
+			null,
+		)
+		expect(nonCochee).not.toHaveProperty('featured')
+		expect(nonCochee).not.toHaveProperty('featured_label')
+
+		// Et le libellé part NORMALISÉ, comme les liens.
+		const cochee = toExportProduct(
+			product({ featured: true, featured_label: '  Spécial   rentrée 2026 ' }),
+			[],
+			null,
+		)
+		expect(cochee.featured_label).toBe('Spécial rentrée 2026')
+	})
+
+	it('voit la mise en avant posée, RETIRÉE, et son libellé changé', () => {
+		const dit = (a: object, b: object) => champsProduitModifies(a, b)
+
+		expect(dit({}, { featured: true })).toContain('mise en avant')
+		expect(dit({ featured: true }, {})).toContain('mise en avant')
+		expect(
+			dit(
+				{ featured: true, featured_label: 'A' },
+				{ featured: true, featured_label: 'B' },
+			),
+		).toContain('mise en avant')
+
+		// Un libellé changé sur une fiche NON mise en avant ne part pas :
+		// l'annoncer enverrait le vendeur synchroniser pour rien.
+		expect(dit({ featured_label: 'A' }, { featured_label: 'B' })).not.toContain(
+			'mise en avant',
+		)
+
+		// Et un seul libellé pour deux champs : pas deux lignes pour une pastille.
+		const libelles = dit({}, { featured: true, featured_label: 'X' })
+		expect(libelles.filter((l) => l === 'mise en avant')).toHaveLength(1)
 	})
 
 	it('voit un lien ajouté, modifié, RETIRÉ, et réordonné', () => {

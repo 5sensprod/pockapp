@@ -13,6 +13,7 @@
 // mémoire donnerait « 1–10 sur 25 » sous une table qui en montre 25.
 
 import { Badge } from '@/components/ui/badge'
+import { LIBELLE_PAR_DEFAUT } from '@/lib/catalog/featured'
 import { Button } from '@/components/ui/button'
 import {
 	type JourServeur,
@@ -53,6 +54,7 @@ import {
 	ArrowUpDown,
 	Barcode,
 	Building2,
+	Heart,
 	ImageIcon,
 	MoreHorizontal,
 	Printer,
@@ -168,6 +170,110 @@ function mentionPromoInactive(
 		return 'Promo expirée'
 	}
 	return null
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LES PASTILLES D'ÉTAT — CELLES QUE LE SITE AFFICHE
+// ═══════════════════════════════════════════════════════════════════════════
+// Trois axes INDÉPENDANTS, et c'est pour ça que ce sont trois champs et non un
+// select à cinq valeurs (`backend/migrations/add_sale_state_to_products.go`) :
+//
+//   commercial_state   ce que l'objet EST      neuf · occasion · location
+//   sale_state         l'OPÉRATION en cours    plein tarif · soldé · promotion
+//   featured           la vitrine              + son libellé libre
+//
+// Une guitare d'occasion soldée mise en avant porte les TROIS, ici comme sur le
+// site. Les valeurs ordinaires — neuf, plein tarif, pas en vitrine — ne rendent
+// rien : c'est l'état de la quasi-totalité du catalogue, et une pastille
+// « Neuf » sur 2900 lignes serait du bruit.
+//
+// ⚠️ LIBELLÉS ET COULEURS SONT CEUX DU SITE, délibérément : `AxeConditionBadge`,
+// `AxeSaleBadge` et `AxeFeaturedBadge` dans le dépôt du site. Le vendeur doit
+// reconnaître ici ce que verra le visiteur. Les deux dépôts étant séparés, rien
+// ne peut le garantir mécaniquement — d'où cette note, et le fait que la liste
+// tienne en un seul endroit de chaque côté.
+//
+// ⚠️ La promo n'est PAS datée ici. `sale_state` est affiché tel quel, comme
+// dans la fiche : une promo programmée ou expirée garde sa pastille en interne,
+// et c'est la colonne « Prix » qui porte déjà `mentionPromoInactive`. Le site,
+// lui, reçoit `''` hors période — le serveur s'en charge, pas cette table.
+const ETATS_COMMERCIAUX: Record<string, { label: string; classes: string }> = {
+	used: {
+		label: 'Occasion',
+		classes: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200',
+	},
+	rental: {
+		label: 'Location',
+		classes: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200',
+	},
+}
+
+const ETATS_DE_VENTE: Record<string, { label: string; classes: string }> = {
+	sale: {
+		label: 'Soldes',
+		classes: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
+	},
+	promo: {
+		label: 'Promo',
+		classes:
+			'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
+	},
+}
+
+/** Le libellé par défaut de la pastille de vitrine vit dans le bundle du site
+ *  (`AxeFeaturedBadge.jsx`) et nulle part ailleurs. Celui-ci est le même texte,
+ *  affiché pour MONTRER ce que le visiteur verra — il n'est jamais écrit ni
+ *  envoyé, `LIBELLE_PAR_DEFAUT` de `lib/catalog/featured.ts` porte la même
+ *  note. */
+function EtatsBadges({ produit }: { produit: StockProductRow }) {
+	const etat = produit.commercial_state
+		? ETATS_COMMERCIAUX[produit.commercial_state]
+		: undefined
+	const vente = produit.sale_state
+		? ETATS_DE_VENTE[produit.sale_state]
+		: undefined
+	const enAvant = Boolean(produit.featured)
+
+	if (!etat && !vente && !enAvant) return null
+
+	const libelle = (produit.featured_label ?? '').trim()
+
+	return (
+		<div className='flex flex-wrap items-center gap-1'>
+			{etat && <PastilleEtat label={etat.label} classes={etat.classes} />}
+			{vente && <PastilleEtat label={vente.label} classes={vente.classes} />}
+			{enAvant && (
+				<PastilleEtat
+					label={libelle === '' ? LIBELLE_PAR_DEFAUT : libelle}
+					classes='bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200'
+					icone={<Heart className='mr-0.5 h-2.5 w-2.5' />}
+				/>
+			)}
+		</div>
+	)
+}
+
+function PastilleEtat({
+	label,
+	classes,
+	icone,
+}: {
+	label: string
+	classes: string
+	icone?: React.ReactNode
+}) {
+	return (
+		<span
+			className={cn(
+				'inline-flex max-w-32 items-center truncate rounded-full px-1.5 py-0.5 font-medium text-[10px] leading-none',
+				classes,
+			)}
+			title={label}
+		>
+			{icone}
+			{label}
+		</span>
+	)
 }
 
 /** Le tri se choisit dans les colonnes elles-mêmes. La colonne active reprend
@@ -768,13 +874,26 @@ export function ProductTable({
 					// L'intention de publication du catalogue en ligne — pas un « actif /
 					// inactif », qui n'existe plus au schéma depuis `catalog_v2`.
 					const publie = row.getValue<string>('status') === 'published'
+					const produit = row.original
 					return (
-						<Badge
-							variant={publie ? 'default' : 'secondary'}
-							className='px-1.5 py-0.5 font-medium'
-						>
-							{publie ? 'Publié' : 'Non publié'}
-						</Badge>
+						<div className='flex flex-col items-start gap-1'>
+							<Badge
+								variant={publie ? 'default' : 'secondary'}
+								className='px-1.5 py-0.5 font-medium'
+							>
+								{publie ? 'Publié' : 'Non publié'}
+							</Badge>
+							{/* LES TROIS AXES, SOUS LA PUBLICATION (15 septembre 2026).
+							    Ce sont CELLES QUE LE SITE AFFICHE — mêmes libellés, mêmes
+							    couleurs qu'`AxeConditionBadge`, `AxeSaleBadge` et
+							    `AxeFeaturedBadge` dans le dépôt du site : la table doit
+							    montrer ce que le visiteur verra, pas un vocabulaire à elle.
+							    Les trois se cumulent : une occasion soldée mise en avant
+							    porte les trois, ici comme en ligne. Le neuf et le plein
+							    tarif ne rendent RIEN — c'est l'état de la quasi-totalité du
+							    catalogue, et la colonne resterait sur une seule ligne. */}
+							<EtatsBadges produit={produit} />
+						</div>
 					)
 				},
 			},

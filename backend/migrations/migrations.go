@@ -162,6 +162,11 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// ordonnée dans un seul champ JSON. Après MigrateCatalogV2, qui recrée
 		// `products`.
 		AddWebLinksToProducts,
+
+		// 26. Le produit mis en avant — un booléen et le libellé de sa
+		// pastille. Troisième axe, indépendant de `commercial_state` et de
+		// `sale_state`. Après MigrateCatalogV2, qui recrée `products`.
+		AddFeaturedToProducts,
 	}
 
 	for _, migrate := range migrations {

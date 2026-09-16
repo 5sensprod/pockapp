@@ -28,6 +28,7 @@ declare(strict_types=1);
 // absent, le script tombe en erreur 500 avant d'avoir rien écrit.
 require_once __DIR__ . '/../lib/promo.php';
 require_once __DIR__ . '/../lib/web-links.php';
+require_once __DIR__ . '/../lib/featured.php';
 
 // ---------------------------------------------------------------------------
 // Sortie
@@ -478,16 +479,60 @@ $sqlCategory = sprintf(
 //
 // Colonne ajoutée par `server/sql/web-links.sql`, à passer avant de déposer
 // ce fichier.
+//
+// ─── LE PRODUIT MIS EN AVANT (15 septembre 2026) ──────────────────────────
+//
+// Deux clés facultatives de plus (§4.1 quinquies) : `featured`, la pastille de
+// vitrine, et `featured_label`, son texte. Même règle d'absence que les
+// précédentes — clé absente, colonne remise à son défaut (0 et NULL), pastille
+// retirée. C'est ainsi qu'on sort une fiche de la vitrine.
+//
+// ⚠️ `featured_label` NULL ne veut PAS dire « pas de pastille » : il veut dire
+// « le libellé par défaut du site ». Seul `featured` décide de l'affichage. Le
+// défaut lui-même ne s'écrit nulle part ici — il se décide dans le bundle, au
+// seul endroit qui l'affiche.
+//
+// Le libellé est REVALIDÉ (`server/lib/featured.php`) et non écrit tel quel :
+// il finit dans le DOM du site, et PocketApp n'est pas la seule chose qui
+// puisse écrire dans ce corps. Comme pour les liens, ce qui ne passe pas est
+// ÉCARTÉ — le libellé retombe sur le défaut — sans refuser l'entité : un texte
+// trop long ne doit pas retenir un produit hors ligne.
+//
+// Colonnes ajoutées par `server/sql/featured.sql`, à passer avant de déposer
+// ce fichier.
+//
+// ─── `commercial_state` EST ÉCRITE TELLE QUELLE (15 septembre 2026) ───────
+//
+// `''`, `'used'` ou `'rental'` — ce que l'objet EST, quand `sale_state` dit
+// l'OPÉRATION en cours dessus. Les deux se cumulent : une occasion soldée est
+// un cas ordinaire, et la carte du site porte alors ses deux pastilles.
+//
+// **La chaîne vide EST une valeur** — « neuf » — exactement comme pour
+// `sale_state` : elle ne passe donc PAS par `opt_string()`, qui la
+// convertirait en NULL. Aucun défaut deviné, aucun croisement avec `status`.
+//
+// ⚠️ La clé est FACULTATIVE côté export, contrairement à `sale_state` :
+// PocketApp ne l'envoie que lorsqu'elle vaut, pour ne pas changer l'empreinte
+// des 2412 fiches publiées (§4.1 sexies). Une clé absente écrit donc `''`, et
+// elle EST dans le `ON DUPLICATE KEY UPDATE` : repasser une occasion en neuf
+// arrive sans clé, et doit effacer la valeur précédente.
+//
+// Colonne ajoutée par `server/sql/commercial-state.sql`, à passer avant de
+// déposer ce fichier.
 $sqlProduct = sprintf(
     'INSERT INTO `%s` (legacy_id, checksum, name, sku, slug, description,
                        price_ttc, tax_rate, stock, status, sale_state,
+                       commercial_state,
                        promo_price_ttc, promo_start, promo_end,
-                       stock_b, stock_b_price_ttc, web_links, brand,
+                       stock_b, stock_b_price_ttc, web_links,
+                       featured, featured_label, brand,
                        exported_at, first_seen_at)
      VALUES (:legacy_id, :checksum, :name, :sku, :slug, :description,
              :price_ttc, :tax_rate, :stock, :status, :sale_state,
+             :commercial_state,
              :promo_price_ttc, :promo_start, :promo_end,
-             :stock_b, :stock_b_price_ttc, :web_links, :brand,
+             :stock_b, :stock_b_price_ttc, :web_links,
+             :featured, :featured_label, :brand,
              :exported_at, :first_seen_at)
      ON DUPLICATE KEY UPDATE
         checksum = VALUES(checksum), name = VALUES(name),
@@ -496,10 +541,12 @@ $sqlProduct = sprintf(
         description = VALUES(description),
         price_ttc = VALUES(price_ttc), tax_rate = VALUES(tax_rate), stock = VALUES(stock),
         status = VALUES(status), sale_state = VALUES(sale_state),
+        commercial_state = VALUES(commercial_state),
         promo_price_ttc = VALUES(promo_price_ttc),
         promo_start = VALUES(promo_start), promo_end = VALUES(promo_end),
         stock_b = VALUES(stock_b), stock_b_price_ttc = VALUES(stock_b_price_ttc),
         web_links = VALUES(web_links),
+        featured = VALUES(featured), featured_label = VALUES(featured_label),
         brand = VALUES(brand), exported_at = VALUES(exported_at)',
     $T_PRODUCTS
 );
@@ -624,6 +671,14 @@ try {
             ':stock'       => is_numeric($product['stock'] ?? null) ? (int) $product['stock'] : 0,
             ':status'      => $status,
             ':sale_state'  => $saleState,
+            // §4.1 sexies : même traitement que `sale_state`, écrit TEL QUEL.
+            // Clé absente ou valeur non textuelle → `''`, qui est « neuf » et
+            // le défaut de la colonne. Aucun rejet sur une valeur inconnue : la
+            // colonne fait 8 caractères, les trois valeurs du contrat en font
+            // au plus 6.
+            ':commercial_state' => isset($product['commercial_state']) && is_string($product['commercial_state'])
+                ? $product['commercial_state']
+                : '',
             // §4.1 ter : clé absente = aucun. Voir le bloc au-dessus de $sqlProduct.
             ':promo_price_ttc'   => opt_positive_price($product['promo_price_ttc'] ?? null),
             ':promo_start'       => is_string($promoStart) ? $promoStart : null,
@@ -632,6 +687,13 @@ try {
             ':stock_b_price_ttc' => opt_positive_price($product['stock_b_price_ttc'] ?? null),
             // §4.1 quater : NULL quand il ne reste aucun lien valide.
             ':web_links'         => web_links_pour_base($product['web_links'] ?? null),
+            // §4.1 quinquies : clé absente = pas en vitrine, et libellé au
+            // défaut du site. `featured` se lit COMME UN BOOLÉEN et non par
+            // `=== true` : un vieux poste, ou un corps relu d'un journal,
+            // peuvent porter `1` ou `"1"`, et refuser la pastille pour la forme
+            // de la valeur serait un défaut invisible depuis PocketApp.
+            ':featured'          => !empty($product['featured']) ? 1 : 0,
+            ':featured_label'    => featured_label_normalise($product['featured_label'] ?? null),
             ':brand'       => opt_string($product['brand'] ?? null),
             ':exported_at' => $now,
             // Même valeur, deux destins : `exported_at` sera réécrit au

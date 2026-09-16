@@ -68,6 +68,7 @@ import {
 	Eye,
 	FileText,
 	Globe,
+	Heart,
 	ImageOff,
 	Layers,
 	ListChecks,
@@ -224,6 +225,11 @@ export function ProductsPage() {
 		false,
 		estBooleen,
 	)
+	const [featured, setFeatured] = useEtatPersistant(
+		'stock-produits-mis-en-avant',
+		false,
+		estBooleen,
+	)
 	const [commercialState, setCommercialState] = useEtatPersistant<
 		CatalogCommercialStateFilter | ''
 	>('stock-produits-etat-commercial', '', estEtatCommercialValide)
@@ -293,6 +299,7 @@ export function ProductsPage() {
 		setMissingPurchasePrice(false)
 		setEmptyStock(false)
 		setWithStockB(false)
+		setFeatured(false)
 		setCommercialState('')
 		setSaleState('')
 		setPage(1)
@@ -309,6 +316,7 @@ export function ProductsPage() {
 		setMissingPurchasePrice,
 		setEmptyStock,
 		setWithStockB,
+		setFeatured,
 		setCommercialState,
 		setSaleState,
 		setPage,
@@ -400,6 +408,7 @@ export function ProductsPage() {
 			missingPurchasePrice,
 			emptyStock,
 			withStockB,
+			featured,
 			commercialState: commercialState || undefined,
 			saleState: saleState || undefined,
 			sort: toCatalogSort(sorting),
@@ -418,6 +427,7 @@ export function ProductsPage() {
 			missingPurchasePrice,
 			emptyStock,
 			withStockB,
+			featured,
 			commercialState,
 			saleState,
 			sorting,
@@ -721,6 +731,16 @@ export function ProductsPage() {
 			},
 		})
 	}
+	if (featured) {
+		activeFilterTags.push({
+			key: 'featured',
+			label: 'Mis en avant',
+			clear: () => {
+				setFeatured(false)
+				setPage(1)
+			},
+		})
+	}
 	if (commercialState) {
 		activeFilterTags.push({
 			key: 'commercial-state',
@@ -753,6 +773,7 @@ export function ProductsPage() {
 		setMissingPurchasePrice(false)
 		setEmptyStock(false)
 		setWithStockB(false)
+		setFeatured(false)
 		setCommercialState('')
 		setSaleState('')
 		setPage(1)
@@ -1025,6 +1046,22 @@ export function ProductsPage() {
 									icon={<Layers />}
 									label='Avec Stock B'
 									count={catalogCounts.data?.avecStockB}
+									neutre
+								/>
+								{/* LA MISE EN AVANT (15 septembre 2026). Pas un manque non
+								    plus, et TROISIÈME AXE : elle se cumule avec les deux
+								    sélecteurs ci-dessus — une occasion soldée peut être un
+								    coup de cœur. D'où une case, et non une option de plus
+								    dans un segment qui n'en admettrait qu'une à la fois.
+								    Comptée par le serveur avec `CLAUSES_MISE_EN_AVANT`. */}
+								<CompactBooleanFilter
+									checked={featured}
+									onChange={(checked) =>
+										appliquerFiltre(() => setFeatured(checked))
+									}
+									icon={<Heart />}
+									label='Mis en avant'
+									count={catalogCounts.data?.misEnAvant}
 									neutre
 								/>
 							</div>

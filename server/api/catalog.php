@@ -30,6 +30,7 @@ declare(strict_types=1);
 // fichier : absent, le catalogue public tombe en erreur 500.
 require_once __DIR__ . '/../lib/promo.php';
 require_once __DIR__ . '/../lib/web-links.php';
+require_once __DIR__ . '/../lib/featured.php';
 
 // ---------------------------------------------------------------------------
 // Sortie
@@ -211,6 +212,36 @@ function present_product(array $row, bool $withGallery = false): array
         // Les unités Stock B et leur prix, ou null s'il n'y en a pas. Le prix B
         // est null s'il n'est pas une baisse : le site montre alors le tag sans
         // prix barré.
+        // ── L'état commercial (15 septembre 2026) ───────────────────────────
+        //
+        // Ce que l'objet EST : `used`, `rental`, ou `''` pour le neuf. Rendu
+        // TEL QUEL, chaîne vide incluse, sur les QUATRE actions — c'est le site
+        // qui décide de l'affichage, et une pastille « Occasion » a tout son
+        // sens dans une grille.
+        //
+        // ⚠️ Il ne se croise NI avec `sale_state` — les deux se cumulent, une
+        // occasion peut être soldée —, NI avec `status`, NI avec aucune période :
+        // contrairement à la promo, ce que l'objet EST n'expire pas.
+        'commercial_state' => (string) ($row['commercial_state'] ?? ''),
+        // ── La mise en avant (15 septembre 2026) ────────────────────────────
+        //
+        // `null`, ou `{label: …}` où `label` peut lui-même être null — le site
+        // affiche alors SON défaut. Rendu par les QUATRE actions, comme
+        // `sale_state` : une pastille « Coup de cœur » a tout son sens dans une
+        // grille, c'est même là qu'on l'attend.
+        //
+        // Un objet et non une chaîne, pour la même raison que `promo` et
+        // `stock_b` en sont : une clé de plus (couleur, icône) n'y casserait
+        // aucun consommateur, alors que changer une chaîne en objet les casse
+        // tous.
+        //
+        // Elle ne se croise NI avec `status` — seuls les produits publiés sont
+        // servis —, NI avec `sale_state` : une guitare soldée peut être un coup
+        // de cœur, et la carte porte alors ses deux pastilles.
+        'featured'    => featured_affiche(
+            $row['featured'] ?? 0,
+            $row['featured_label'] ?? null
+        ),
         'stock_b'     => stock_b_affiche(
             (int) ($row['stock_b'] ?? 0),
             $prix,
@@ -406,9 +437,10 @@ function media_urls(?string $imagePaths): array
 // `search`, `latest` — c'est donc le seul endroit à toucher pour qu'un champ
 // apparaisse partout, et rien à faire de plus.
 $PRODUCT_COLUMNS = 'p.legacy_id, p.name, p.slug, p.sku, p.description,
-                    p.price_ttc, p.stock, p.sale_state,
+                    p.price_ttc, p.stock, p.sale_state, p.commercial_state,
                     p.promo_price_ttc, p.promo_start, p.promo_end,
                     p.stock_b, p.stock_b_price_ttc, p.web_links,
+                    p.featured, p.featured_label,
                     p.brand, b.name AS brand_name,
                     b.image_paths AS brand_image_paths,
                     p.image_paths AS product_image_paths';

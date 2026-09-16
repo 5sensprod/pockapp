@@ -87,3 +87,23 @@ describe('le filtre Stock B est écrit une seule fois', () => {
 		},
 	)
 })
+
+// La mise en avant non plus n'est pas un manque, et son décompte suit le même
+// contrat : « Mis en avant · 12 » doit annoncer la liste obtenue en cliquant.
+describe('le filtre Mis en avant est écrit une seule fois', () => {
+	it('la clause est bien déclarée', () => {
+		expect(
+			clausesDuClient('CLAUSES_MISE_EN_AVANT').map(([nom]) => nom),
+		).toEqual(['oui'])
+	})
+
+	it.each(clausesDuClient('CLAUSES_MISE_EN_AVANT'))(
+		'le serveur compte « %s » avec la clause du client',
+		(_nom, clause) => {
+			const echappee = clause.replace(/"/g, '\\"')
+			const presente =
+				sourceGo.includes(`"${echappee}"`) || sourceGo.includes(`\`${clause}\``)
+			expect(presente, `clause absente du Go : ${clause}`).toBe(true)
+		},
+	)
+})

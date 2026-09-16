@@ -41,6 +41,10 @@ PHP.
 | `sql/sale-state.sql` | la colonne `sale_state` d'`ax_products`, à exécuter une fois — plus, **en commentaire et à ne pas jouer sans décision**, le retrait de `site_title` | oui |
 | `sql/promo-stock-b.sql` | les colonnes prix promo, période et Stock B d'`ax_products`, à exécuter une fois | oui |
 | `sql/web-links.sql` | la colonne `web_links` d'`ax_products` — liens et vidéos de la fiche, à exécuter une fois | oui |
+| `sql/commercial-state.sql` | la colonne `commercial_state` d'`ax_products` — occasion et location, à exécuter une fois | oui |
+| `sql/featured.sql` | les colonnes `featured` et `featured_label` d'`ax_products` — la pastille de vitrine et son texte, à exécuter une fois | oui |
+| `lib/featured.php` | la règle du libellé de pastille, **incluse** par `products-sync.php` et `catalog.php` — à déposer avec eux | oui |
+| `tests/featured-test.php` | tests de `lib/featured.php`, `php server/tests/featured-test.php` — **ne pas déposer** | oui |
 | `lib/web-links.php` | la règle des liens de fiche, **incluse** par `products-sync.php` et `catalog.php` — à déposer avec eux | oui |
 | `tests/web-links-test.php` | tests de `lib/web-links.php`, `php server/tests/web-links-test.php` — **ne pas déposer** | oui |
 | `lib/promo.php` | la règle de période des promos, **incluse** par `products-sync.php` et `catalog.php` — à déposer avec eux | oui |

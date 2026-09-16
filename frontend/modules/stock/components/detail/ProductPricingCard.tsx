@@ -25,10 +25,21 @@ import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
 import { DetailCard, HelpTooltip } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
 
-function marge(priceTtc = 0, purchaseHt = 0, taxRate = 0) {
+/**
+ * Les deux taux que le commerce de détail appelle « marge », à partir du prix
+ * TTC saisi : le TTC est détaxé d'abord, les deux se calculent donc sur le HT.
+ * - `marque` : sur le prix de vente HT — c'est le seul qui était affiché.
+ * - `marge` : sur le prix d'achat, le taux de marge au sens comptable.
+ * `null` quand le dénominateur n'a pas de sens (prix ou achat à zéro).
+ */
+function tauxMarges(priceTtc = 0, purchaseHt = 0, taxRate = 0) {
 	const priceHt = priceTtc / (1 + taxRate / 100)
-	if (priceHt <= 0) return null
-	return ((priceHt - purchaseHt) / priceHt) * 100
+	if (priceHt <= 0) return { marque: null, marge: null }
+	const brute = priceHt - purchaseHt
+	return {
+		marque: (brute / priceHt) * 100,
+		marge: purchaseHt > 0 ? (brute / purchaseHt) * 100 : null,
+	}
 }
 
 /** « AAAA-MM-JJ » → « JJ/MM/AAAA ». */
@@ -108,7 +119,7 @@ export function ProductPricingCard({
 		'promo_start',
 		'promo_end',
 	])
-	const margin = marge(prix, achat, tva)
+	const taux = tauxMarges(Number(prix), Number(achat), Number(tva))
 	const mention = mentionPromo({
 		price_ttc: Number(prix),
 		promo_price_ttc: Number(promo),
@@ -172,13 +183,24 @@ export function ProductPricingCard({
 				<TaxRateField form={form} />
 				<div>
 					<p className='mb-2 font-medium text-muted-foreground text-xs'>
-						Marge calculée
+						Marges calculées
 					</p>
-					<p className='font-semibold text-emerald-700 text-lg leading-10'>
-						{margin === null ? '—' : `${margin.toFixed(1)} %`}
-					</p>
+					<div className='flex gap-4 leading-10'>
+						<p className='font-semibold text-emerald-700 text-lg'>
+							{taux.marge === null ? '—' : `${taux.marge.toFixed(1)} %`}
+							<span className='ml-1 font-normal text-[10px] text-muted-foreground'>
+								marge
+							</span>
+						</p>
+						<p className='font-semibold text-emerald-700 text-lg'>
+							{taux.marque === null ? '—' : `${taux.marque.toFixed(1)} %`}
+							<span className='ml-1 font-normal text-[10px] text-muted-foreground'>
+								marque
+							</span>
+						</p>
+					</div>
 					<p className='text-muted-foreground text-[10px]'>
-						Sur le prix TTC, hors promo
+						Marge sur l’achat HT, marque sur le prix de vente HT. Hors promo.
 					</p>
 				</div>
 			</div>

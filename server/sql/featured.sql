@@ -1,0 +1,54 @@
+-- server/sql/featured.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Le produit mis en avant — la pastille de vitrine et son texte
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Écrit le 15 septembre 2026. À passer UNE FOIS sur la base du mutualisé,
+-- AVANT de déposer les versions de `products-sync.php` et `catalog.php` qui
+-- les portent. Ce fichier n'est pas lu par PHP : il est versionné pour que le
+-- schéma en place soit connu.
+--
+-- Contrat : frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md,
+-- §4.1 quinquies, qui fait autorité.
+--
+-- ─── DEUX COLONNES, PAS UNE ─────────────────────────────────────────────
+-- `featured` dit SI la pastille s'affiche, `featured_label` CE QU'ELLE porte.
+-- Le pourquoi tient en un cas d'usage : avec une seule colonne texte, « non
+-- vide veut dire mis en avant », le client ne pourrait pas cocher sans écrire,
+-- et effacer le texte pour le corriger ferait disparaître la pastille au
+-- milieu d'une frappe. Voir `backend/migrations/add_featured_to_products.go`.
+--
+-- ─── `featured` EST UN TINYINT, PAS UN ENUM ─────────────────────────────
+-- Il n'y a rien à nommer : une fiche est en vitrine ou elle ne l'est pas.
+-- `NOT NULL DEFAULT 0` — les lignes déjà en base prennent 0, qui est leur état
+-- exact. Aucun rattrapage.
+--
+-- ─── LE LIBELLÉ VIDE N'EST PAS « PAS DE PASTILLE » ──────────────────────
+-- Il veut dire « le libellé par défaut du site », et ce défaut ne s'écrit NI
+-- ici, NI dans PocketBase, NI dans `catalog.php` : il se décide au seul endroit
+-- qui l'affiche, `AxeFeaturedBadge.jsx`. L'écrire en base ferait 3000 lignes
+-- portant un texte que personne n'a choisi, et le changer un jour demanderait
+-- de toutes les réécrire. Même raisonnement que l'identifiant d'une vidéo
+-- YouTube, dérivé au seul endroit qui l'intègre.
+--
+-- D'où `DEFAULT NULL` : PocketApp n'envoie la clé que lorsqu'elle porte un
+-- texte (§4.1 quinquies), et une clé absente écrit NULL — c'est ainsi qu'on
+-- revient au défaut du site.
+--
+-- ─── 40 CARACTÈRES ──────────────────────────────────────────────────────
+-- La même borne qu'au schéma PocketBase (`FeaturedLabelMaxLength`) et dans la
+-- validation PHP (`FEATURED_LABEL_MAX`). Au-delà, la pastille déborde de la
+-- carte du site. VARCHAR(60) laisse la place à des caractères multi-octets sans
+-- que la borne applicative change de nature : c'est `featured.php` qui coupe,
+-- en CARACTÈRES, pas la colonne en octets.
+--
+-- ─── PAS D'INDEX ────────────────────────────────────────────────────────
+-- Aucune requête de `catalog.php` ne filtre ni ne trie dessus aujourd'hui : les
+-- deux colonnes sont SÉLECTIONNÉES et rendues au site, qui décide de
+-- l'affichage. Même raisonnement que `sale_state`. ⚠️ Si une action « la
+-- sélection du moment » apparaît un jour — une grille des seuls produits mis
+-- en avant —, l'index sur `featured` s'ajoutera AVEC elle : là, il servira un
+-- plan d'exécution, ce qui n'est pas le cas tant que personne ne filtre.
+
+ALTER TABLE `ax_products`
+  ADD COLUMN `featured` TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `featured_label` VARCHAR(60) DEFAULT NULL;

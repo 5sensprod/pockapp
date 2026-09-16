@@ -14,11 +14,13 @@
 // silencieux côté SQL au premier `catalog-import -load`. §1 du contrat.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { libelleNormalise, miseEnAvant } from '@/lib/catalog/featured'
 import { liensNormalises } from '@/lib/catalog/web-links'
 import type { WebLink } from '@/lib/catalog/web-links'
 import type {
 	CatalogBrand,
 	CatalogCategory,
+	CatalogCommercialState,
 	CatalogProduct,
 	CatalogProductStatus,
 	CatalogSaleState,
@@ -97,6 +99,23 @@ export type ExportProduct = WithChecksum & {
 	 */
 	sale_state: CatalogSaleState
 	/**
+	 * §4.1 sexies — L'ÉTAT COMMERCIAL (15 septembre 2026).
+	 *
+	 * `used` (occasion) ou `rental` (location). CE QUE L'OBJET EST, quand
+	 * `sale_state` dit l'OPÉRATION en cours dessus : les deux se cumulent, et
+	 * une occasion soldée porte ses deux pastilles sur le site.
+	 *
+	 * **Clé FACULTATIVE, et c'est tout l'écart avec `sale_state`.** Elle ne part
+	 * que lorsqu'elle vaut. Envoyée à `''` pour tout le monde — la forme choisie
+	 * pour `sale_state` le 27 août 2026 —, elle aurait changé l'empreinte des
+	 * 2412 fiches publiées et les aurait fait repartir en entier. Le coût a été
+	 * payé une fois sciemment ; il n'y a aucune raison de le repayer.
+	 *
+	 * Côté serveur, la clé absente écrit `''` : repasser une occasion en neuf
+	 * part sans clé, et la pastille disparaît.
+	 */
+	commercial_state?: Exclude<CatalogCommercialState, ''>
+	/**
 	 * ── PRIX PROMO, PÉRIODE ET STOCK B (11 septembre 2026, §4.1 ter) ─────────
 	 *
 	 * Cinq clés FACULTATIVES, et c'est tout le mécanisme : elles ne sont
@@ -133,6 +152,23 @@ export type ExportProduct = WithChecksum & {
 	 * build n'est pas une hypothèse théorique.
 	 */
 	web_links?: WebLink[]
+	/**
+	 * §4.1 quinquies — LE PRODUIT MIS EN AVANT (15 septembre 2026).
+	 *
+	 * Deux clés, même règle d'absence que les six ci-dessus : une fiche
+	 * ordinaire n'envoie ni l'une ni l'autre, et son empreinte ne bouge pas.
+	 *
+	 * `featured` ne part QUE lorsqu'il vaut `true` — envoyer `false` partout
+	 * changerait l'empreinte des 2412 fiches publiées d'un coup. Côté serveur,
+	 * la clé absente écrit `0` : c'est ainsi qu'on retire une mise en avant.
+	 *
+	 * `featured_label` ne part que s'il porte un texte. **Vide ne veut pas dire
+	 * « pas de pastille »** — il veut dire « le libellé par défaut du site »,
+	 * qui ne s'écrit ni ici, ni en base, ni dans le serveur. Une fiche mise en
+	 * avant sans libellé envoie donc `featured` seul, et c'est normal.
+	 */
+	featured?: true
+	featured_label?: string
 	brand: string | null
 	categories: string[]
 }
@@ -226,6 +262,9 @@ function champsFacultatifs(
 	| 'stock_b'
 	| 'stock_b_price_ttc'
 	| 'web_links'
+	| 'featured'
+	| 'featured_label'
+	| 'commercial_state'
 > {
 	// Les liens sont remis au propre AVANT de partir : le champ est un JSON
 	// libre, et ce qui n'est pas un lien valide n'a rien à faire dans la base du
@@ -240,6 +279,25 @@ function champsFacultatifs(
 		stock_b: positif(product.stock_b),
 		stock_b_price_ttc: positif(product.stock_b_price_ttc),
 		web_links: liens.length > 0 ? liens : undefined,
+		// La mise en avant (§4.1 quinquies). `featured` n'est JAMAIS envoyé à
+		// `false` : c'est l'état de tout le catalogue, et la clé changerait
+		// l'empreinte de chaque fiche. Le libellé ne part que s'il porte un
+		// texte — vide, il dit « le défaut du site », qui ne voyage pas.
+		// L'état commercial (§4.1 sexies). Vide = neuf, et le neuf n'envoie RIEN :
+		// c'est l'état de la quasi-totalité du catalogue, et la clé changerait
+		// l'empreinte de chaque fiche. Toute valeur inattendue retombe sur
+		// l'absence — le contrat n'en admet que deux, et un select PocketBase ne
+		// peut de toute façon pas en produire d'autre.
+		commercial_state:
+			product.commercial_state === 'used' ||
+			product.commercial_state === 'rental'
+				? product.commercial_state
+				: undefined,
+		featured: product.featured ? (true as const) : undefined,
+		featured_label:
+			product.featured && libelleNormalise(product.featured_label) !== ''
+				? libelleNormalise(product.featured_label)
+				: undefined,
 	}
 	// Une clé à `undefined` disparaît de JSON.stringify, mais PAS de
 	// `Object.entries`, que `canonical()` parcourt : on la retire pour de bon.
@@ -503,6 +561,7 @@ export const CHAMPS_PRODUIT_EXPORTES = [
 	'stock',
 	'status',
 	'sale_state',
+	'commercial_state',
 	'promo_price_ttc',
 	'promo_start',
 	'promo_end',
@@ -511,6 +570,8 @@ export const CHAMPS_PRODUIT_EXPORTES = [
 	'brand',
 	'categories',
 	'web_links',
+	'featured',
+	'featured_label',
 ] as const
 
 type ChampExporte = (typeof CHAMPS_PRODUIT_EXPORTES)[number]
@@ -539,6 +600,7 @@ const LIBELLES: Record<ChampExporte, string> = {
 	stock: 'stock',
 	status: 'publication',
 	sale_state: 'opération commerciale',
+	commercial_state: 'état commercial',
 	promo_price_ttc: 'prix promo et période',
 	promo_start: 'prix promo et période',
 	promo_end: 'prix promo et période',
@@ -547,6 +609,10 @@ const LIBELLES: Record<ChampExporte, string> = {
 	brand: 'marque',
 	categories: 'catégories',
 	web_links: 'liens et vidéos',
+	// Un seul libellé pour les deux champs : on dit « mise en avant », pas deux
+	// lignes pour une pastille.
+	featured: 'mise en avant',
+	featured_label: 'mise en avant',
 }
 
 /** La fiche vue par ce filtre : tout est optionnel, une fiche fraîchement
@@ -593,6 +659,17 @@ export function champsProduitModifies(
 			return (
 				JSON.stringify(liensNormalises(avant.web_links)) !==
 				JSON.stringify(liensNormalises(apres.web_links))
+			)
+		}
+		// La mise en avant est DEUX champs qui ne partent pas indépendamment :
+		// libellé changé sur une fiche NON mise en avant, rien ne part ; case
+		// cochée sur un libellé vide, `featured` part seul. Les comparer un par
+		// un annoncerait « mise en avant » pour un texte que personne ne verra.
+		// On compare donc ce qui PART réellement, comme pour `web_links`.
+		if (champ === 'featured' || champ === 'featured_label') {
+			return (
+				JSON.stringify(miseEnAvant(avant)) !==
+				JSON.stringify(miseEnAvant(apres))
 			)
 		}
 		return normaliser(champ, avant[champ]) !== normaliser(champ, apres[champ])
