@@ -28,3 +28,23 @@ export const urlPubliqueDuSite = (): string =>
  */
 export const urlProduitSurLeSite = (slug?: string | null): string =>
 	slug ? `${urlPubliqueDuSite()}/produit/${slug}` : ''
+
+/**
+ * Ouvre une adresse dans le NAVIGATEUR DU POSTE, jamais dans l'application.
+ *
+ * Sous Wails, un `target='_blank'` ouvre une seconde fenêtre de PocketApp —
+ * constaté sur les liens de l'avertissement de doublon (`CLAUDE.md`). Le
+ * runtime expose `BrowserOpenURL`, qui passe la main au navigateur par défaut ;
+ * hors Wails (les postes au navigateur) on retombe sur `window.open`.
+ */
+export const ouvrirDansLeNavigateur = (url: string): void => {
+	if (!url) return
+	const runtime = (
+		window as unknown as { runtime?: { BrowserOpenURL?: (u: string) => void } }
+	).runtime
+	if (runtime?.BrowserOpenURL) {
+		runtime.BrowserOpenURL(url)
+		return
+	}
+	window.open(url, '_blank', 'noopener,noreferrer')
+}

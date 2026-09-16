@@ -1,4 +1,4 @@
-import { ArrowLeft, ImageOff, Save } from 'lucide-react'
+import { ArrowLeft, ExternalLink, ImageOff, Save } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,10 @@ import {
 import { prixPromoActif } from '@/lib/pricing/promo-price'
 import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
+import {
+	ouvrirDansLeNavigateur,
+	urlProduitSurLeSite,
+} from '@/lib/site/url-publique'
 
 const euros = new Intl.NumberFormat('fr-FR', {
 	style: 'currency',
@@ -47,6 +51,10 @@ export function ProductDetailHeader(props: Props) {
 			: props.product.commercial_state === 'rental'
 				? 'Location'
 				: null
+
+	// Vide tant que le produit n'a pas de slug : il n'a alors PAS de page sur
+	// le site, et proposer un lien mènerait à « Produit introuvable ».
+	const adresse = urlProduitSurLeSite(props.product.slug)
 
 	const operation =
 		props.product.sale_state === 'sale'
@@ -89,13 +97,25 @@ export function ProductDetailHeader(props: Props) {
 					<TooltipProvider>
 						<Tooltip>
 							<TooltipTrigger asChild>
-								<span className='cursor-help font-mono text-muted-foreground text-xs'>
-									/produit/{props.product.slug || '—'}
-								</span>
+								{adresse ? (
+									<button
+										type='button'
+										onClick={() => ouvrirDansLeNavigateur(adresse)}
+										className='inline-flex max-w-full items-center gap-1 font-mono text-muted-foreground text-xs hover:text-foreground hover:underline'
+									>
+										<span className='truncate'>{adresse}</span>
+										<ExternalLink className='h-3 w-3 shrink-0' />
+									</button>
+								) : (
+									<span className='cursor-help font-mono text-muted-foreground text-xs'>
+										Pas encore d’adresse en ligne
+									</span>
+								)}
 							</TooltipTrigger>
 							<TooltipContent className='max-w-80'>
-								L’adresse est attribuée au premier enregistrement en statut
-								publié. Elle reste ensuite inchangée, même si le nom change.
+								{adresse
+									? 'Ouvre la fiche sur le site dans le navigateur du poste. L’adresse est attribuée au premier enregistrement en statut publié, puis reste inchangée même si le nom change.'
+									: 'L’adresse est attribuée au premier enregistrement en statut publié. Un brouillon n’a pas de page sur le site.'}
 							</TooltipContent>
 						</Tooltip>
 					</TooltipProvider>
