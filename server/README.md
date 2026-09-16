@@ -19,7 +19,10 @@ PocketApp ──POST + X-API-Key──▶ api/publish-menu.php ──écriture a
 
 Aucun PHP sur le chemin de **lecture** — c'est l'option A de §4.3 de
 [`03-audit-resultats.md`](../frontend/modules/site/PocketSite-docs/03-audit-resultats.md),
-et c'est ce qui rend le `.htaccess` inutile à modifier (§1.1 du contrat).
+et c'est ce qui dispensait le `.htaccess` de toute règle de réécriture (§1.1 du
+contrat). Cela ne vaut que pour la réécriture : le 16 septembre 2026, un bloc
+d'**en-têtes de cache** y est devenu nécessaire — voir
+« Le cache du navigateur » plus bas.
 
 La forme du document reçu est fixée par
 [`05-contrat-menu.md`](../frontend/modules/site/PocketSite-docs/05-contrat-menu.md).
@@ -52,6 +55,68 @@ PHP.
 | `config/config.php.example` | modèle de configuration | oui |
 | `config/config.php` | la configuration réelle, **avec la clé** | **non** (`.gitignore`) |
 | `config/.htaccess` | interdit l'accès HTTP au dossier de configuration | oui |
+| `site/htaccess-racine.conf` | le `.htaccess` de la **racine web**, en entier — à déposer renommé `.htaccess` | oui |
+
+## Le cache du navigateur
+
+**Mesuré le 16 septembre 2026 :** ni `/` (index.html), ni `/assets/*`, ni
+`/data/menu.json` ne renvoient de `Cache-Control`. Apache ne pose qu'un `ETag`
+et un `Last-Modified`, et le navigateur applique alors son **cache
+heuristique** — environ 10 % du temps écoulé depuis `Last-Modified`. Un
+`index.html` déposé cinq jours plus tôt est donc réutilisé pendant des heures
+**sans même revalider**, et le visiteur reste sur l'ANCIEN bundle entier : c'est
+ce qui oblige à faire Ctrl+F5 après une mise en ligne.
+
+Le correctif est dans [`site/htaccess-racine.conf`](site/htaccess-racine.conf),
+qui est le `.htaccess` de la racine **en entier** : il reprend les règles de
+réécriture du bundle — `/produit/:slug` rend l'application — et y ajoute les
+en-têtes. **Garder une copie de l'ancien avant de l'écraser.**
+
+Trois règles, et une interdiction :
+
+| Ce que ça vise | Règle | Pourquoi |
+|---|---|---|
+| `/assets/*` et `/frontend/assets/*` (par `SetEnvIf` : `<LocationMatch>` est interdit en `.htaccess` et y provoque un 500) | `max-age=31536000, immutable` | Vite met une empreinte dans le nom : un build produit un nouveau NOM, jamais un nouveau contenu sous le même nom |
+| `index.html` | `no-cache, must-revalidate` | seul fichier qui désigne l'empreinte du jour ; `no-cache` fait revalider, pas retélécharger — Apache répond 304 |
+| `menu.json` | `no-cache, must-revalidate` | réécrit à chaque « Publier le menu » |
+| **les images du catalogue** | **aucune règle** | leur chemin est CALCULÉ, `<kind>/<legacy_id>/<rang>.<ext>` : remplacer une photo réécrit le MÊME nom. Les figer rendrait tout changement de visuel invisible |
+
+Ce qui reste hors de portée d'Apache, et qu'on laisse tel quel : le menu est en
+cache `localStorage` **cinq minutes** côté site (`src/utils/cache.js`), et
+`catalog.php` pose lui-même `public, max-age=300`. Cinq minutes est le bon ordre
+de grandeur pour une vitrine ; abaisser le second ferait exécuter du PHP et du
+MySQL à chaque visiteur sur un mutualisé. Il n'y a **aucun service worker** dans
+le bundle — rien ne survit donc hors du contrôle d'Apache.
+
+## WordPress est coupé — 16 septembre 2026
+
+`axe.5sensprod.com` répond **403 sur tout**, par la première règle de
+[`site/htaccess-racine.conf`](site/htaccess-racine.conf). Décision du
+propriétaire, prise une fois la migration terminée.
+
+**Ce qui l'a permis**, mesuré le même jour sur le bundle réellement en
+production (`/assets/index-BN-0HNVh.js`) et non sur les sources :
+
+| Cherché dans le bundle en ligne | Occurrences |
+|---|---|
+| `wp-json` | 0 |
+| `wp-content` | 0 |
+| clés WooCommerce (`ck_`, `cs_`) | 0 |
+
+L'appel `wp-json/wp/v2/site-data` à chaque page a disparu, et les clés
+WooCommerce ne sont plus dans le bundle : le **chantier B** de `CLAUDE.md` est
+clos par les faits. Le site ne lit plus que `/data/menu.json` et
+`server/api/catalog.php`.
+
+**La règle est en PREMIER, et elle coupe même les fichiers existants.** Retirer
+seulement les anciennes réécritures n'aurait pas suffi : Apache aurait continué
+à servir l'`index.php` de WordPress par `DirectoryIndex`, et `/wp-admin/` de
+même.
+
+**C'est réversible, et l'installation reste sur le disque** — remettre le bloc
+WordPress de l'ancien fichier suffit. Deux conséquences à connaître avant de
+s'y fier : la médiathèque REST du sous-domaine, qui servait de source d'images,
+ne répond plus ; et les moteurs désindexeront le sous-domaine.
 
 **Deux endpoints pour le catalogue, et deux régimes.** `products-sync.php`
 écrit et exige la clé ; `catalog.php` lit et n'en veut aucune — son consommateur
@@ -148,16 +213,16 @@ pas le canal de publication — une fois en place, PocketApp publie en POST
 ### 1. L'arborescence en ligne
 
 À la racine web d'axemusique.shop (le répertoire qui contient le `.htaccess`
-racine, `index.php` et `wp-config.php`) :
+racine et `frontend/`) :
 
 ```
 racine web/
-  .htaccess
-  index.php
+  .htaccess                 ← copie de server/site/htaccess-racine.conf
+  index.php                 ← WordPress, plus servi depuis le 2026-09-16
   wp-config.php
   wp-admin/  wp-content/  wp-includes/
 
-  axemusique-react/         ← le frontend React compilé (existant)
+  frontend/                 ← le build React, c'est LUI que sert le site
     index.html
     assets/
 
@@ -171,6 +236,12 @@ racine web/
   data/
     menu.json               ← créé par le script, pas par vous
 ```
+
+**Le build est dans `frontend/`, et non plus dans `axemusique-react/`.** Ce
+dernier était le frontend de l'époque WordPress ; ce document le nommait encore
+jusqu'au 16 septembre 2026. C'est `frontend/` que désignent les réécritures de
+[`site/htaccess-racine.conf`](site/htaccess-racine.conf), et ce nom-là qui fait
+foi.
 
 **Le dossier en ligne porte le même nom que celui du dépôt : `server/`.** C'est
 délibéré — un fichier se redépose au même chemin sans traduction mentale. Le

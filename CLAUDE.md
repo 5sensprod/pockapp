@@ -12,7 +12,7 @@ projet. Ne pas s'y fier.
 |---|---|---|
 | **PocketApp** (`I:\pockapp`, ce dépôt) | Caisse + pilotage du site | actif |
 | **AppPos** (non versionné ici) | React / Express / NeDB `:3000` — **autorité** sur produits, catégories, marques, fournisseurs | on n'y touche pas |
-| **Site** (`I:\divi-child\frontend-wp`) | Build React devant WordPress/WooCommerce — vitrine, **pas de vente en ligne**. Lit le menu publié, et depuis le 2026-08-11 ses premiers produits dans notre base SQL via `server/api/catalog.php` — drapeau `VITE_USE_AXE_CATALOG`, **à `true` et en production**. Depuis le 2026-08-20 l'accueil aussi : bandeau de chiffres, carrousel de marques et aperçu du catalogue passent par `catalog.php` (`stats`, `brands`, `latest`). **Audité le même jour : plus aucun appel WooCommerce ne part du site** — mais les clés restent dans le bundle, par imports statiques, et `wp-json/wp/v2/site-data` est encore appelé à chaque page | menu, catalogue, images |
+| **Site** (`I:\divi-child\frontend-wp`) | Build React servi en `frontend/` à la racine web — vitrine, **pas de vente en ligne**. **WordPress est coupé depuis le 2026-09-16** : `axe.5sensprod.com` répond 403, le site ne vit plus que de `menu.json` et de `catalog.php`. Lit le menu publié, et depuis le 2026-08-11 ses premiers produits dans notre base SQL via `server/api/catalog.php` — drapeau `VITE_USE_AXE_CATALOG`, **à `true` et en production**. Depuis le 2026-08-20 l'accueil aussi : bandeau de chiffres, carrousel de marques et aperçu du catalogue passent par `catalog.php` (`stats`, `brands`, `latest`). **Audité le même jour : plus aucun appel WooCommerce ne part du site.** Et le 2026-09-16, mesuré sur le bundle **en production** (`/assets/index-BN-0HNVh.js`) : zéro `wp-json`, zéro `wp-content`, zéro clé WooCommerce — `services/woocommerce.js` n'existe plus et l'appel `site-data` a disparu | menu, catalogue, images |
 
 Ce dépôt est le seul documenté. AppPos et le site sont décrits ici, jamais
 depuis leur propre dépôt.
@@ -523,8 +523,26 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   Gardiens : `product_duplicates_test.go`, **`product_similarity_test.go`**
   (jeu de 50 cas réels : retoucher un seuil ou un mot vide, c'est le rejouer) et
   `product-creation-editor.test.ts`.
-- **Ne pas toucher `wp-admin` ni `wp-json`** dans le `.htaccess` du site tant
-  que WordPress sert le catalogue et la médiathèque.
+- **WordPress est coupé** (16 septembre 2026). La contrainte inverse a tenu
+  jusque-là — ne pas toucher `wp-admin` ni `wp-json` tant que WordPress servait
+  le catalogue et la médiathèque — et sa condition est levée : mesuré sur le
+  bundle **en production**, zéro `wp-json`, zéro `wp-content`, zéro clé
+  WooCommerce. `axe.5sensprod.com` répond **403 sur tout**, par la première
+  règle de `server/site/htaccess-racine.conf`. Retirer les seules réécritures
+  n'aurait PAS suffi : Apache aurait continué à servir l'`index.php` de
+  WordPress par `DirectoryIndex`. C'est **réversible** — l'installation reste
+  sur le disque —, au prix de la médiathèque REST du sous-domaine, qui servait
+  de source d'images, et de la désindexation par les moteurs.
+- **Le `.htaccess` de la racine du site est versionné ici**, en entier :
+  `server/site/htaccess-racine.conf`, déposé par FTP renommé `.htaccess`. Il
+  porte la réécriture SPA vers `frontend/` **et** les en-têtes de cache. Deux
+  pièges s'y lisent : `<LocationMatch>` est **interdit** en `.htaccess` et y
+  provoque un 500 sur tout le site — d'où le `SetEnvIf` —, et `immutable` ne
+  vaut QUE pour `/assets/`, dont Vite hache les noms, **jamais** pour les images
+  du catalogue, dont le chemin est calculé et donc réécrit à l'identique quand
+  la photo change. Sans en-tête, le navigateur applique un cache **heuristique**
+  et garde `index.html` des heures sans revalider : c'est ce qui obligeait à
+  faire Ctrl+F5 après chaque mise en ligne. Voir `server/README.md`.
 - **Le rapport Z dit « un total, quatre lignes », et `schema_version` dit sous
   quelle règle** (24 août 2026, en production). `total_ht` / `total_tva` /
   `total_ttc` ne portent QUE la ligne 1 — les ventes du jour : tickets des
@@ -585,7 +603,8 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   acomptes encaissés. Mesuré : 7 parentes, 2 523,70 € qui seraient comptés deux
   fois.
 - **Secrets :** `package.json` contient le mot de passe PocketBase en clair
-  dans le script `typegen`, et le bundle du site expose les clés WooCommerce.
+  dans le script `typegen`. Le bundle du site, lui, **n'expose plus les clés
+  WooCommerce** depuis le 2026-09-16, vérifié sur le bundle en production.
   Ne pas en ajouter ; voir `docs/DECISIONS.md`.
 
 ## Travail en cours
@@ -596,12 +615,12 @@ depuis le 10 septembre 2026 **un seul** importateur de `@/lib/apppos` —
 `main.tsx:6` (session). Ni caisse, ni catalogue, ni stock, ni inventaire, ni
 menu n'en dépendent plus.
 
-**Trois chantiers restent, et un seul est gros :**
+**Un seul chantier reste vraiment, et c'est le gros :**
 
 | # | Chantier | Où | Note |
 |---|---|---|---|
 | **A** | **Reprendre la base de production du client** pour remettre le développement à niveau | PocketApp | **La grosse étape.** La PocketBase de dév a divergé : ventes, factures et produits créés en caisse chez le client n'y sont pas. Périmètre à définir ; **session séparée** |
-| **B** | Fermer la faille 3.1 : **sortir les clés WooCommerce du bundle** | site | **Reformulé le 20 août 2026, après audit.** Ce n'est PAS un appel à couper : sous le drapeau, aucun des dix importateurs de `services/woocommerce.js` n'est atteignable, et le carrousel « Soldes » ne se monte que sur une slide **en commentaire**. Les clés partent dans le bundle parce qu'`App.jsx` importe ce service et les quatre pages WooCommerce **statiquement**. Il faut `React.lazy`, ou sortir les clés du code. S'y ajoute `wp-json/wp/v2/site-data`, appelé sans condition à chaque page, avec un mot de passe d'application dont l'endpoint n'a pas besoin |
+| **B** | Fermer la faille 3.1 : **sortir les clés WooCommerce du bundle** | site | **Fait — constaté le 16 septembre 2026.** `services/woocommerce.js` n'existe plus dans les sources, et le bundle **en production** ne porte ni clé (`ck_` / `cs_`), ni `wp-json`, ni `wp-content`. L'appel `site-data` à chaque page a disparu avec lui (`src/utils/constants.js`). Aucun `React.lazy` n'a été nécessaire : les importateurs ont été supprimés |
 | **C** | Couper la dernière lecture AppPos | PocketApp | **Fait le 10 septembre 2026** pour le menu : `MenuTreeEditor.tsx` lit PocketBase. Reste `AppPosSessionProvider` dans `main.tsx:6`, qui ouvre une session que plus rien ne consomme — à retirer pour que PocketApp soit **totalement indépendant à la prochaine release** |
 
 État détaillé et archives :
@@ -678,9 +697,11 @@ plus `/wp-json/wp/v2/menus`, l'appel a disparu de son bundle.
 Historique des neuf tickets et état réel :
 [`frontend/modules/site/PocketSite-docs/README.md`](frontend/modules/site/PocketSite-docs/README.md).
 
-**Prioritaire et non traité :** la faille 3.1 — clés WooCommerce en clair dans
-le bundle public du site. Indépendante de la refonte, elle lui était déclarée
-prioritaire du premier jour et ne l'a jamais été dans les faits.
+**La faille 3.1 est fermée** — les clés WooCommerce en clair dans le bundle
+public du site. Indépendante de la refonte, elle lui était déclarée prioritaire
+du premier jour sans jamais l'être dans les faits ; elle est tombée le
+16 septembre 2026 avec la suppression des importateurs, constatée sur le bundle
+en production.
 
 ## Attentes de travail
 
