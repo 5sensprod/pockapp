@@ -602,8 +602,13 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   Si un solde existe, la parente n'entre pas ; sinon elle entre amputée des
   acomptes encaissés. Mesuré : 7 parentes, 2 523,70 € qui seraient comptés deux
   fois.
-- **Secrets :** `package.json` contient le mot de passe PocketBase en clair
-  dans le script `typegen`. Le bundle du site, lui, **n'expose plus les clés
+- **Secrets :** le script `typegen` de `package.json` lit ses identifiants
+  PocketBase dans le `.env` (`--env`, `PB_TYPEGEN_PASSWORD`) — plus aucun mot
+  de passe en clair dans le dépôt, constaté le 2026-09-17. Les anciennes
+  versions versionnées du `.env` (commits `2f38b02` à `a7e4461`) ne portaient
+  ni mot de passe ni clé. Côté serveur, les secrets vivent dans
+  `server/config/config.php`, hors dépôt et interdit en HTTP par
+  `server/config/.htaccess`. Le bundle du site, lui, **n'expose plus les clés
   WooCommerce** depuis le 2026-09-16, vérifié sur le bundle en production.
   Ne pas en ajouter ; voir `docs/DECISIONS.md`.
 
