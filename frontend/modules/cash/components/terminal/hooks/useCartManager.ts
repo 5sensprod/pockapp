@@ -9,10 +9,61 @@ import {
 	compteurParDefaut,
 	remiseCaisseSelonCompteur,
 } from '@/lib/pricing/promo-price'
+import {
+	type PlafondRemise,
+	prixDeReference,
+	prixPlancher,
+} from '@/lib/pricing/plafond-remise'
+import type { JourServeur } from '@/lib/pricing/promo-price'
 import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
+import { usePlafondRemise } from '@/lib/pricing/use-plafond-remise'
 import * as React from 'react'
 import type { CartItem, LineDiscountMode, PosProduct } from '../types/cart'
-import { clamp } from '../utils/calculations'
+import { clamp, getEffectiveUnitTtc } from '../utils/calculations'
+
+/** Le prix net minimal d'une ligne pour ce vendeur, ou `null` sans plafond. */
+export function plancherDeLigne(
+	it: CartItem,
+	plafond: PlafondRemise,
+	jour: JourServeur,
+): number | null {
+	if (plafond === null) return null
+	const reference = prixDeReference(
+		it.pricing,
+		it.stockCounter,
+		it.originalUnitPrice ?? it.unitPrice,
+		jour,
+	)
+	return prixPlancher(reference, plafond)
+}
+
+/** Ramène une ligne au plancher du vendeur (backend/remise/plafond.go refuse
+ *  le reste) : le prix retapé d'abord, puis la remise, dans son propre mode.
+ *  Seul le pourcentage réécrit la saisie : un prix se tape chiffre à chiffre,
+ *  et « 1 » en route vers « 12 » serait remplacé sous les doigts du vendeur.
+ *  Le prix net affiché (« → 9,52 € ») montre la limite. */
+function brider(
+	it: CartItem,
+	plafond: PlafondRemise,
+	jour: JourServeur,
+): CartItem {
+	const plancher = plancherDeLigne(it, plafond, jour)
+	if (plancher === null) return it
+	let out = it
+	if (out.unitPrice < plancher) {
+		out = { ...out, unitPrice: plancher }
+	}
+	if (getEffectiveUnitTtc(out) >= plancher - 0.001) return out
+	if (out.lineDiscountMode === 'percent') {
+		const pct = Math.floor((1 - plancher / out.unitPrice) * 1000) / 10
+		return {
+			...out,
+			lineDiscountValue: pct,
+			lineDiscountRaw: String(pct),
+		}
+	}
+	return { ...out, lineDiscountValue: plancher }
+}
 
 export interface ParkedCart {
 	id: string
@@ -36,6 +87,7 @@ export function useCartManager(registerId: string) {
 	// navigateur (`use-jour-serveur.ts`). Lu à l'ajout : une ligne déjà au
 	// panier garde sa remise si la promo finit entre-temps.
 	const jour = useJourServeur()
+	const plafond = usePlafondRemise()
 
 	// ✅ Sync vers le store à chaque changement
 	React.useEffect(() => {
@@ -131,27 +183,28 @@ export function useCartManager(registerId: string) {
 			setCart((prev) =>
 				prev.map((it) => {
 					if (it.id !== itemId) return it
+					const b = (x: CartItem) => brider(x, plafond, jour)
 					const original = it.originalUnitPrice ?? it.unitPrice
 					if (raw.trim() === '') {
-						return {
+						return b({
 							...it,
 							unitPrice: original,
 							originalUnitPrice: original,
 							unitPriceRaw: '',
-						}
+						})
 					}
 					const v = Number.parseFloat(raw.replace(',', '.'))
 					if (Number.isNaN(v)) return { ...it, unitPriceRaw: raw }
-					return {
+					return b({
 						...it,
 						unitPrice: Math.max(0, +v.toFixed(2)),
 						originalUnitPrice: original,
 						unitPriceRaw: raw,
-					}
+					})
 				}),
 			)
 		},
-		[setCart],
+		[setCart, plafond, jour],
 	)
 
 	const clearUnitPrice = React.useCallback(
@@ -177,21 +230,22 @@ export function useCartManager(registerId: string) {
 			setCart((prev) =>
 				prev.map((it) => {
 					if (it.id !== itemId) return it
+					const b = (x: CartItem) => brider(x, plafond, jour)
 					const currentVal = it.lineDiscountValue
 					const nextValue =
 						mode === 'percent'
 							? clamp(currentVal ?? 0, 0, 100)
 							: clamp(currentVal ?? it.unitPrice, 0, it.unitPrice)
-					return {
+					return b({
 						...it,
 						lineDiscountMode: mode,
 						lineDiscountValue: nextValue,
 						lineDiscountRaw: String(nextValue),
-					}
+					})
 				}),
 			)
 		},
-		[setCart],
+		[setCart, plafond, jour],
 	)
 
 	const setLineDiscountValue = React.useCallback(
@@ -199,36 +253,37 @@ export function useCartManager(registerId: string) {
 			setCart((prev) =>
 				prev.map((it) => {
 					if (it.id !== itemId) return it
+					const b = (x: CartItem) => brider(x, plafond, jour)
 					const mode = it.lineDiscountMode ?? 'percent'
 					if (raw.trim() === '') {
-						return {
+						return b({
 							...it,
 							lineDiscountMode: mode,
 							lineDiscountValue: undefined,
 							lineDiscountRaw: '',
-						}
+						})
 					}
 					const v = Number.parseFloat(raw.replace(',', '.'))
 					if (Number.isNaN(v)) {
-						return {
+						return b({
 							...it,
 							lineDiscountMode: mode,
 							lineDiscountValue: undefined,
 							lineDiscountRaw: raw,
-						}
+						})
 					}
 					const next =
 						mode === 'percent' ? clamp(v, 0, 100) : clamp(v, 0, it.unitPrice)
-					return {
+					return b({
 						...it,
 						lineDiscountMode: mode,
 						lineDiscountValue: next,
 						lineDiscountRaw: raw,
-					}
+					})
 				}),
 			)
 		},
-		[setCart],
+		[setCart, plafond, jour],
 	)
 
 	/** Bascule une ligne entre neuf et Stock B, et repose la remise qui va avec :
@@ -315,8 +370,16 @@ export function useCartManager(registerId: string) {
 		setParkedCarts((prev) => prev.filter((p) => p.id !== parkedId))
 	}, [])
 
+	const plancherDe = React.useCallback(
+		(it: CartItem) => plancherDeLigne(it, plafond, jour),
+		[plafond, jour],
+	)
+
 	return {
 		cart,
+		/** Plafond de remise du vendeur connecté, `null` sans limite. */
+		plafond,
+		plancherDe,
 		lastAddedItem,
 		parkedCarts,
 		addToCart,

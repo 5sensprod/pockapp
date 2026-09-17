@@ -365,6 +365,15 @@ export function CashTerminalPage() {
 		setProductSearch('')
 	}, [productSearch])
 
+	// Plafond de remise actif : la remise globale est remise à zéro, y compris
+	// celle d'un panier repris de l'attente.
+	const remiseGlobaleInterdite = cartManager.plafond !== null
+	React.useEffect(() => {
+		if (!remiseGlobaleInterdite) return
+		setCartDiscountValue(0)
+		setCartDiscountRaw('')
+	}, [remiseGlobaleInterdite])
+
 	const handleChangeCartDiscount = React.useCallback(
 		(raw: string) => {
 			setCartDiscountRaw(raw)
@@ -807,6 +816,11 @@ export function CashTerminalPage() {
 		discountAmount,
 		onCartDiscountModeChange: setCartDiscountMode,
 		onCartDiscountChange: handleChangeCartDiscount,
+		// Un vendeur au plafond de remise ne fait pas de remise globale
+		// (backend/remise/plafond.go la refuse).
+		cartDiscountLocked: cartManager.plafond !== null,
+		plancherDe: cartManager.plancherDe,
+		plafond: cartManager.plafond,
 		onPaymentClick: handlePaymentClick,
 		getEffectiveUnitTtc,
 		getLineTotalTtc,

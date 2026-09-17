@@ -20,6 +20,8 @@ interface CartTotalsProps {
 	discountAmount: number
 	onCartDiscountModeChange: (mode: 'percent' | 'amount') => void
 	onCartDiscountChange: (raw: string) => void
+	/** Vendeur au plafond de remise : pas de remise globale. */
+	cartDiscountLocked?: boolean
 }
 
 export function CartTotals({
@@ -32,6 +34,7 @@ export function CartTotals({
 	discountAmount,
 	onCartDiscountModeChange,
 	onCartDiscountChange,
+	cartDiscountLocked = false,
 }: CartTotalsProps) {
 	return (
 		<div className='border-t px-4 py-4 text-sm'>
@@ -42,29 +45,35 @@ export function CartTotals({
 
 			<div className='mt-2 flex items-center justify-between gap-2'>
 				<span>Remise</span>
-				<div className='flex items-center gap-1'>
-					<Select
-						value={cartDiscountMode}
-						onValueChange={onCartDiscountModeChange}
-					>
-						<SelectTrigger className='h-8 w-20'>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value='percent'>%</SelectItem>
-							<SelectItem value='amount'>€</SelectItem>
-						</SelectContent>
-					</Select>
+				{cartDiscountLocked ? (
+					<span className='text-xs text-muted-foreground'>
+						Remise globale non autorisée
+					</span>
+				) : (
+					<div className='flex items-center gap-1'>
+						<Select
+							value={cartDiscountMode}
+							onValueChange={onCartDiscountModeChange}
+						>
+							<SelectTrigger className='h-8 w-20'>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value='percent'>%</SelectItem>
+								<SelectItem value='amount'>€</SelectItem>
+							</SelectContent>
+						</Select>
 
-					<Input
-						type='text'
-						inputMode='decimal'
-						className='h-8 w-20 bg-slate-50 text-right text-sm'
-						value={cartDiscountRaw}
-						onChange={(e) => onCartDiscountChange(e.target.value)}
-						placeholder='0'
-					/>
-				</div>
+						<Input
+							type='text'
+							inputMode='decimal'
+							className='h-8 w-20 bg-slate-50 text-right text-sm'
+							value={cartDiscountRaw}
+							onChange={(e) => onCartDiscountChange(e.target.value)}
+							placeholder='0'
+						/>
+					</div>
+				)}
 			</div>
 
 			{discountAmount > 0 && (

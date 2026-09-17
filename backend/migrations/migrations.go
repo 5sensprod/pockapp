@@ -167,6 +167,10 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// pastille. Troisième axe, indépendant de `commercial_state` et de
 		// `sale_state`. Après MigrateCatalogV2, qui recrée `products`.
 		AddFeaturedToProducts,
+
+		// 27. Le plafond de remise d'un vendeur, fixé par l'administrateur,
+		// et la règle qui l'empêche de le modifier lui-même.
+		AddDiscountLimitToUsers,
 	}
 
 	for _, migrate := range migrations {

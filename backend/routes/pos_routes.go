@@ -19,6 +19,7 @@ import (
 
 	"pocket-react/backend"
 	"pocket-react/backend/hash"
+	"pocket-react/backend/remise"
 )
 
 // ============================================================================
@@ -242,6 +243,28 @@ func RegisterPosRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		totals, processedItems, err := calculateTicketTotals(input)
 		if err != nil {
 			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		// 5 bis) Le plafond de remise du vendeur (backend/remise)
+		if plafond, limite := remise.Plafond(info.AuthRecord); limite {
+			if err := remise.VerifierRemiseGlobale(input.CartDiscountValue); err != nil {
+				return apis.NewForbiddenError(err.Error(), nil)
+			}
+			lignes := make([]remise.Ligne, len(input.Items))
+			produits := make([]string, len(input.Items))
+			for i, item := range input.Items {
+				lignes[i] = remise.Ligne{
+					Nom:          item.Name,
+					Quantite:     item.Quantity,
+					PrixSaisiTTC: item.UnitPriceTTC,
+					NetTTC:       processedItems[i]["total_ttc"].(float64),
+				}
+				produits[i] = item.ProductID
+			}
+			remise.ResoudreReferences(dao, lignes, produits)
+			if err := remise.Verifier(lignes, totals.TotalTTC, plafond); err != nil {
+				return apis.NewForbiddenError(err.Error(), nil)
+			}
 		}
 
 		// 6) Normaliser et valider les paiements

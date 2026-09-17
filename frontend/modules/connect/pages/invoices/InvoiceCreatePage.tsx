@@ -36,7 +36,14 @@ import {
 	type CatalogProductShape,
 	useCatalogProductSearch,
 } from '@/lib/queries/catalog-products'
+import {
+	briderLigneDocument,
+	prixDeReference,
+	prixPlancher,
+} from '@/lib/pricing/plafond-remise'
 import { remiseInitialeDeLigne } from '@/lib/pricing/promo-price'
+import { usePlafondRemise } from '@/lib/pricing/use-plafond-remise'
+import { usePrixFiches } from '@/lib/pricing/use-prix-fiches'
 import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
 import { useAllCustomers, useCreateCustomer } from '@/lib/queries/customers'
 import { useCreateInvoice } from '@/lib/queries/invoices'
@@ -239,6 +246,40 @@ export function InvoiceCreatePage() {
 	const createInvoice = useCreateInvoice()
 	// Le jour du serveur juge la période des promos (`prixPromoActif`).
 	const jour = useJourServeur()
+
+	// Plafond de remise du vendeur (backend/remise/plafond.go refuse le reste) :
+	// chaque ligne modifiée est ramenée à son prix net minimal, et la remise
+	// globale est interdite.
+	const plafond = usePlafondRemise()
+	const fichesPrix = usePrixFiches(
+		items.map((it) => it.product_id),
+		plafond !== null,
+	)
+	const bridageRef = useRef((it: UiInvoiceItem) => it)
+	const plancherDe = (it: UiInvoiceItem): number | null => {
+		if (plafond === null) return null
+		const fiche = it.product_id ? fichesPrix.get(it.product_id) : undefined
+		const reference = prixDeReference(
+			fiche,
+			'stock',
+			it.unit_price_ttc_before_discount ?? it.unit_price_ttc,
+			jour,
+		)
+		return prixPlancher(reference, plafond)
+	}
+	bridageRef.current = (it: UiInvoiceItem) =>
+		briderLigneDocument(it, plancherDe(it))
+	// Info-bulle du champ de remise : le maximum du vendeur et ce qu'il donne.
+	const infoMaximum = (it: UiInvoiceItem): string | undefined => {
+		const plancher = plancherDe(it)
+		if (plancher === null) return undefined
+		return `Votre remise maximale : ${plafond} % — prix minimum ${plancher.toFixed(2)} € l'unité`
+	}
+	useEffect(() => {
+		if (plafond === null) return
+		setCartDiscountValue(0)
+		setCartDiscountRaw('')
+	}, [plafond])
 	const createCustomer = useCreateCustomer()
 
 	// ✅ Remplace l'ancien
@@ -366,7 +407,8 @@ export function InvoiceCreatePage() {
 						const q = Math.max(0, it.quantity + delta)
 						if (q === 0) return null
 						const next = { ...it, quantity: q }
-						return { ...next, ...computeLineTotals(next) }
+						const bridee = bridageRef.current(next)
+						return { ...bridee, ...computeLineTotals(bridee) }
 					})
 					.filter(Boolean) as UiInvoiceItem[],
 		)
@@ -387,7 +429,8 @@ export function InvoiceCreatePage() {
 					unitPriceRaw: raw,
 					unit_price_ttc: newUnitTtc,
 				}
-				return { ...next, ...computeLineTotals(next) }
+				const bridee = bridageRef.current(next)
+				return { ...bridee, ...computeLineTotals(bridee) }
 			}),
 		)
 	}, [])
@@ -414,7 +457,8 @@ export function InvoiceCreatePage() {
 						lineDiscountValue: newValue,
 						lineDiscountRaw: raw,
 					}
-					return { ...next, ...computeLineTotals(next) }
+					const bridee = bridageRef.current(next)
+					return { ...bridee, ...computeLineTotals(bridee) }
 				}),
 			)
 		},
@@ -431,7 +475,8 @@ export function InvoiceCreatePage() {
 						...it,
 						lineDiscountMode: mode,
 					}
-					return { ...next, ...computeLineTotals(next) }
+					const bridee = bridageRef.current(next)
+					return { ...bridee, ...computeLineTotals(bridee) }
 				}),
 			)
 		},
@@ -883,27 +928,33 @@ export function InvoiceCreatePage() {
 							{/* Promotion globale */}
 							<div className='space-y-2 pt-2 border-t'>
 								<div className='text-sm font-medium'>Promotion globale</div>
-								<div className='flex items-center gap-2'>
-									<select
-										className='h-9 rounded-md border bg-white px-2 text-sm'
-										value={cartDiscountMode}
-										onChange={(e) =>
-											setCartDiscountMode(e.target.value as DiscountMode)
-										}
-									>
-										<option value='percent'>%</option>
-										<option value='amount'>€</option>
-									</select>
-									{/* ✅ FIX: Utilise cartDiscountRaw au lieu de cartDiscountValue */}
-									<Input
-										type='text'
-										inputMode='decimal'
-										className='h-9'
-										placeholder='0'
-										value={cartDiscountRaw}
-										onChange={(e) => handleCartDiscountChange(e.target.value)}
-									/>
-								</div>
+								{plafond !== null ? (
+									<p className='text-xs text-muted-foreground'>
+										Remise globale non autorisée pour votre compte
+									</p>
+								) : (
+									<div className='flex items-center gap-2'>
+										<select
+											className='h-9 rounded-md border bg-white px-2 text-sm'
+											value={cartDiscountMode}
+											onChange={(e) =>
+												setCartDiscountMode(e.target.value as DiscountMode)
+											}
+										>
+											<option value='percent'>%</option>
+											<option value='amount'>€</option>
+										</select>
+										{/* ✅ FIX: Utilise cartDiscountRaw au lieu de cartDiscountValue */}
+										<Input
+											type='text'
+											inputMode='decimal'
+											className='h-9'
+											placeholder='0'
+											value={cartDiscountRaw}
+											onChange={(e) => handleCartDiscountChange(e.target.value)}
+										/>
+									</div>
+								)}
 							</div>
 
 							<div className='border-t pt-3 space-y-2 text-sm'>
@@ -1121,6 +1172,7 @@ export function InvoiceCreatePage() {
 																inputMode='decimal'
 																className='h-8 w-20'
 																placeholder='0'
+																title={infoMaximum(item)}
 																value={item.lineDiscountRaw ?? ''}
 																onChange={(e) =>
 																	updateLineDiscount(

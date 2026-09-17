@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
 	Select,
 	SelectContent,
@@ -42,6 +43,8 @@ interface UserFormData {
 	email: string
 	password: string
 	role: UserRole
+	discount_limit_enabled: boolean
+	max_discount_percent: number
 }
 
 const roleLabels: Record<UserRole, string> = {
@@ -67,6 +70,8 @@ export default function UserManagement() {
 		email: '',
 		password: '',
 		role: 'user',
+		discount_limit_enabled: false,
+		max_discount_percent: 0,
 	})
 
 	// ✅ Utiliser les hooks React Query
@@ -90,6 +95,8 @@ export default function UserManagement() {
 			email: '',
 			password: '',
 			role: 'user',
+			discount_limit_enabled: false,
+			max_discount_percent: 0,
 		})
 		setIsDialogOpen(true)
 	}
@@ -102,6 +109,8 @@ export default function UserManagement() {
 			email: user.email,
 			password: '', // Ne pas pré-remplir le mot de passe
 			role: user.role,
+			discount_limit_enabled: Boolean(user.discount_limit_enabled),
+			max_discount_percent: Number(user.max_discount_percent ?? 0),
 		})
 		setIsDialogOpen(true)
 	}
@@ -127,12 +136,20 @@ export default function UserManagement() {
 				return
 			}
 
+			const pct = formData.max_discount_percent
+			if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+				toast.error('La remise maximale doit être comprise entre 0 et 100 %')
+				return
+			}
+
 			if (editingUserId) {
 				// Mise à jour
 				const updateData: any = {
 					name: formData.name,
 					email: formData.email,
 					role: formData.role,
+					discount_limit_enabled: formData.discount_limit_enabled,
+					max_discount_percent: formData.max_discount_percent,
 				}
 
 				// N'envoyer le mot de passe que s'il est fourni
@@ -229,6 +246,7 @@ export default function UserManagement() {
 								<TableHead>Utilisateur</TableHead>
 								<TableHead>Email</TableHead>
 								<TableHead>Rôle</TableHead>
+								<TableHead>Remise max.</TableHead>
 								<TableHead>Créé le</TableHead>
 								<TableHead className='text-right'>Actions</TableHead>
 							</TableRow>
@@ -264,6 +282,11 @@ export default function UserManagement() {
 										</span>
 									</TableCell>
 									<TableCell className='text-sm text-muted-foreground'>
+										{user.role === 'admin' || !user.discount_limit_enabled
+											? 'Illimitée'
+											: `${user.max_discount_percent ?? 0} %`}
+									</TableCell>
+									<TableCell className='text-sm text-muted-foreground'>
 										{new Date(user.created).toLocaleDateString('fr-FR')}
 									</TableCell>
 									<TableCell className='text-right'>
@@ -292,7 +315,7 @@ export default function UserManagement() {
 
 							{users.length === 0 && (
 								<TableRow>
-									<TableCell colSpan={5} className='text-center py-8'>
+									<TableCell colSpan={6} className='text-center py-8'>
 										<p className='text-muted-foreground'>Aucun utilisateur</p>
 									</TableCell>
 								</TableRow>
@@ -380,6 +403,50 @@ export default function UserManagement() {
 								Les administrateurs ont accès à toutes les fonctionnalités
 							</p>
 						</div>
+
+						{formData.role !== 'admin' && (
+							<div className='space-y-2 rounded-md border p-3'>
+								<div className='flex items-center justify-between gap-4'>
+									<Label htmlFor='discount_limit_enabled'>
+										Limiter les remises
+									</Label>
+									<Switch
+										id='discount_limit_enabled'
+										checked={formData.discount_limit_enabled}
+										onCheckedChange={(checked) =>
+											setFormData({
+												...formData,
+												discount_limit_enabled: checked,
+											})
+										}
+									/>
+								</div>
+								{formData.discount_limit_enabled && (
+									<div className='flex items-center gap-2'>
+										<Input
+											id='max_discount_percent'
+											type='number'
+											min={0}
+											max={100}
+											step={0.5}
+											className='w-24'
+											value={formData.max_discount_percent}
+											onChange={(e) =>
+												setFormData({
+													...formData,
+													max_discount_percent: Number(e.target.value),
+												})
+											}
+										/>
+										<span className='text-sm'>% maximum</span>
+									</div>
+								)}
+								<p className='text-xs text-muted-foreground'>
+									Caisse, factures et devis. Le prix promo et le prix Stock B de
+									la fiche ne comptent pas : le maximum s'applique au-delà.
+								</p>
+							</div>
+						)}
 					</div>
 
 					<DialogFooter>

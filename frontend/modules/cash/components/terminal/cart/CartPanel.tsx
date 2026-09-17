@@ -33,6 +33,9 @@ interface CartPanelProps {
 	discountAmount: number
 	onCartDiscountModeChange: (mode: 'percent' | 'amount') => void
 	onCartDiscountChange: (raw: string) => void
+	cartDiscountLocked?: boolean
+	plafond?: number | null
+	plancherDe?: (item: CartItem) => number | null
 	onPaymentClick: (method: PaymentMethod) => void
 	hideMethodButtons?: boolean
 	getEffectiveUnitTtc: (item: CartItem) => number
@@ -62,6 +65,9 @@ export function CartPanel({
 	discountAmount,
 	onCartDiscountModeChange,
 	onCartDiscountChange,
+	cartDiscountLocked = false,
+	plafond = null,
+	plancherDe,
 	onPaymentClick,
 	hideMethodButtons = false,
 	getEffectiveUnitTtc,
@@ -94,6 +100,8 @@ export function CartPanel({
 					onSetUnitPrice={setUnitPrice}
 					onClearUnitPrice={clearUnitPrice}
 					onSetStockCounter={setItemStockCounter}
+					plafond={plafond}
+					plancher={plancherDe?.(item) ?? null}
 				/>
 			))}
 		</div>
@@ -163,6 +171,7 @@ export function CartPanel({
 				vatBreakdown={vatBreakdown}
 				cartDiscountMode={cartDiscountMode}
 				cartDiscountRaw={cartDiscountRaw}
+				cartDiscountLocked={cartDiscountLocked}
 				discountAmount={discountAmount}
 				onCartDiscountModeChange={onCartDiscountModeChange}
 				onCartDiscountChange={onCartDiscountChange}

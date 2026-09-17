@@ -10,6 +10,9 @@ export interface UserDto {
 	email: string
 	password?: string
 	role: UserRole
+	/** Plafond de remise fixé par l'admin — la règle est en Go (backend/remise). */
+	discount_limit_enabled?: boolean
+	max_discount_percent?: number
 }
 
 // ✅ Helper pour faire des requêtes avec le bon header Authorization

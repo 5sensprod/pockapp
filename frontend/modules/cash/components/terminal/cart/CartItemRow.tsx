@@ -24,6 +24,10 @@ interface CartItemRowProps {
 	onSetUnitPrice: (itemId: string, raw: string) => void
 	onClearUnitPrice: (itemId: string) => void
 	onSetStockCounter?: (itemId: string, counter: 'stock' | 'stock_b') => void
+	/** Plafond de remise du vendeur (%), `null` sans limite. */
+	plafond?: number | null
+	/** Prix net unitaire minimal de la ligne pour ce vendeur. */
+	plancher?: number | null
 }
 
 export function CartItemRow({
@@ -40,6 +44,8 @@ export function CartItemRow({
 	onSetUnitPrice,
 	onClearUnitPrice,
 	onSetStockCounter,
+	plafond = null,
+	plancher = null,
 }: CartItemRowProps) {
 	const enStockB = item.stockCounter === 'stock_b'
 	// La bascule ne s'offre que si le produit a du Stock B — ou si la ligne en
@@ -308,6 +314,13 @@ export function CartItemRow({
 							Reset
 						</Button>
 					</div>
+
+					{plafond !== null && plancher !== null && (
+						<p className='text-[11px] text-muted-foreground'>
+							Votre remise maximale : {plafond} % — prix minimum{' '}
+							{plancher.toFixed(2)} € l'unité
+						</p>
+					)}
 				</div>
 			)}
 		</div>

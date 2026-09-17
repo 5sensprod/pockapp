@@ -10,87 +10,34 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/models"
-	"github.com/pocketbase/pocketbase/tools/security"
 )
 
 func RegisterUserManagementRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 	log.Println("🔧 Registering user management routes...")
 
-	// ✅ Middleware d'authentification simplifié (pour app desktop locale)
+	// Accès administrateur.
+	//
+	// Jusqu'au 17 septembre 2026 ce middleware lisait le jeton par
+	// `security.ParseUnverifiedJWT`, SANS vérifier sa signature : n'importe
+	// quel poste pouvait fabriquer un jeton portant l'id d'un administrateur
+	// et modifier rôles et plafonds de remise. On s'en remet désormais à
+	// l'authentification de PocketBase, qui vérifie la signature.
 	requireAdmin := func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			log.Println("🔐 Checking admin access...")
-
-			// 1. Récupérer le token
-			token := c.Request().Header.Get("Authorization")
-			token = strings.TrimPrefix(token, "Bearer ")
-			token = strings.TrimSpace(token)
-
-			if token == "" {
-				log.Println("❌ No token")
+			record := apis.RequestInfo(c).AuthRecord
+			if record == nil || record.Collection().Name != "users" {
 				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
 					"error": "Non authentifié",
 				})
 			}
-
-			// Log du token (premiers 30 caractères)
-			tokenPreview := token
-			if len(token) > 30 {
-				tokenPreview = token[:30] + "..."
-			}
-			log.Printf("🔑 Token received: %s", tokenPreview)
-
-			// 2. Parser le token (sans vérifier la signature - OK pour app desktop locale)
-			claims, err := security.ParseUnverifiedJWT(token)
-			if err != nil {
-				log.Printf("❌ Parse error: %v", err)
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Token invalide - impossible de parser",
-				})
-			}
-
-			log.Printf("✅ Token parsed successfully")
-			log.Printf("📋 Claims: %+v", claims)
-
-			// 3. Extraire l'ID utilisateur
-			userId, ok := claims["id"].(string)
-			if !ok || userId == "" {
-				log.Println("❌ No user ID in claims")
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Token invalide - pas d'ID utilisateur",
-				})
-			}
-
-			log.Printf("📝 User ID from token: %s", userId)
-
-			// 4. Récupérer l'utilisateur depuis la base de données
-			record, err := pb.Dao().FindRecordById("users", userId)
-			if err != nil {
-				log.Printf("❌ User not found: %v", err)
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Utilisateur non trouvé",
-				})
-			}
-
-			log.Printf("👤 User found: %s (%s)", record.GetString("name"), record.GetString("email"))
-
-			// 5. Vérifier le rôle
-			role := record.GetString("role")
-			log.Printf("🎭 User role: %s", role)
-
-			if role != "admin" {
-				log.Println("⛔ User is not admin - access denied")
+			if record.GetString("role") != "admin" {
 				return c.JSON(http.StatusForbidden, map[string]interface{}{
 					"error": "Accès réservé aux administrateurs",
 				})
 			}
-
-			log.Println("✅ Admin access granted")
-
-			// 6. Stocker l'utilisateur dans le contexte
 			c.Set("authRecord", record)
-
 			return next(c)
 		}
 	}
@@ -137,13 +84,16 @@ func RegisterUserManagementRoutes(pb *pocketbase.PocketBase, router *echo.Echo) 
 		users := make([]map[string]interface{}, len(records))
 		for i, record := range records {
 			users[i] = map[string]interface{}{
-				"id":      record.Id,
-				"name":    record.GetString("name"),
-				"email":   record.GetString("email"),
-				"role":    record.GetString("role"),
-				"avatar":  record.GetString("avatar"),
-				"created": record.Created,
-				"updated": record.Updated,
+				"id":     record.Id,
+				"name":   record.GetString("name"),
+				"email":  record.GetString("email"),
+				"role":   record.GetString("role"),
+				"avatar": record.GetString("avatar"),
+
+				"discount_limit_enabled": record.GetBool("discount_limit_enabled"),
+				"max_discount_percent":   record.GetFloat("max_discount_percent"),
+				"created":                record.Created,
+				"updated":                record.Updated,
 			}
 		}
 
@@ -159,6 +109,9 @@ func RegisterUserManagementRoutes(pb *pocketbase.PocketBase, router *echo.Echo) 
 			Email    string `json:"email"`
 			Password string `json:"password"`
 			Role     string `json:"role"`
+
+			DiscountLimitEnabled bool    `json:"discount_limit_enabled"`
+			MaxDiscountPercent   float64 `json:"max_discount_percent"`
 		}
 
 		var req CreateUserRequest
@@ -268,6 +221,13 @@ func RegisterUserManagementRoutes(pb *pocketbase.PocketBase, router *echo.Echo) 
 		record.Set("name", req.Name)
 		record.Set("email", req.Email)
 		record.Set("role", req.Role)
+		if req.MaxDiscountPercent < 0 || req.MaxDiscountPercent > 100 {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "La remise maximale doit être comprise entre 0 et 100 %",
+			})
+		}
+		record.Set("discount_limit_enabled", req.DiscountLimitEnabled)
+		record.Set("max_discount_percent", req.MaxDiscountPercent)
 
 		// ✅ IMPORTANT: PocketBase requiert password ET passwordConfirm
 		record.Set("password", req.Password)
@@ -312,6 +272,9 @@ func RegisterUserManagementRoutes(pb *pocketbase.PocketBase, router *echo.Echo) 
 			Email    *string `json:"email"`
 			Password *string `json:"password"`
 			Role     *string `json:"role"`
+
+			DiscountLimitEnabled *bool    `json:"discount_limit_enabled"`
+			MaxDiscountPercent   *float64 `json:"max_discount_percent"`
 		}
 
 		var req UpdateUserRequest
@@ -377,6 +340,18 @@ func RegisterUserManagementRoutes(pb *pocketbase.PocketBase, router *echo.Echo) 
 			record.Set("role", *req.Role)
 		}
 
+		if req.DiscountLimitEnabled != nil {
+			record.Set("discount_limit_enabled", *req.DiscountLimitEnabled)
+		}
+		if req.MaxDiscountPercent != nil {
+			if *req.MaxDiscountPercent < 0 || *req.MaxDiscountPercent > 100 {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+					"error": "La remise maximale doit être comprise entre 0 et 100 %",
+				})
+			}
+			record.Set("max_discount_percent", *req.MaxDiscountPercent)
+		}
+
 		if err := pb.Dao().SaveRecord(record); err != nil {
 			log.Printf("❌ Error updating user: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
@@ -392,6 +367,9 @@ func RegisterUserManagementRoutes(pb *pocketbase.PocketBase, router *echo.Echo) 
 			"email":   record.GetString("email"),
 			"role":    record.GetString("role"),
 			"updated": record.Updated,
+
+			"discount_limit_enabled": record.GetBool("discount_limit_enabled"),
+			"max_discount_percent":   record.GetFloat("max_discount_percent"),
 		})
 	}, requireAdmin)
 
