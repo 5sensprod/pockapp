@@ -39,6 +39,26 @@ export function ProductSitePanel(props: Props) {
 	const status = props.form.watch('status')
 	const published = status === 'published'
 
+	// Même calcul que `useProductDetailEditor.hasMainImage`, sans plomberie
+	// supplémentaire : `currentImage`, `pendingMain` et `product` sont déjà des
+	// props de ce panneau. Un produit déjà publié n'a pas à repasser ce test —
+	// le frein ne retient que la PREMIÈRE publication, jamais une fiche en
+	// ligne dont l'image aurait disparu depuis (elle reste publiée, à corriger
+	// à son rythme).
+	const manqueImage =
+		!published &&
+		!(
+			(props.currentImage ?? props.product.image ?? '') !== '' ||
+			!!props.pendingMain
+		)
+	const manqueCategorie =
+		!published && (props.form.watch('categories')?.length ?? 0) === 0
+	const manques = [
+		manqueImage && 'une image principale',
+		manqueCategorie && 'une catégorie',
+	].filter((valeur): valeur is string => Boolean(valeur))
+	const publicationBloquee = manques.length > 0
+
 	return (
 		<div className='rounded-xl border border-purple-300 bg-purple-50/50 p-3 shadow-sm dark:border-purple-800 dark:bg-purple-950/15'>
 			<div className='mb-3 flex items-center gap-3 border-purple-300 border-b px-1 pb-3 dark:border-purple-800'>
@@ -120,6 +140,7 @@ export function ProductSitePanel(props: Props) {
 							</span>
 							<Switch
 								checked={published}
+								disabled={publicationBloquee}
 								onCheckedChange={(checked) =>
 									props.form.setValue(
 										'status',
@@ -134,10 +155,21 @@ export function ProductSitePanel(props: Props) {
 								aria-label={
 									published ? 'Passer en non publié' : 'Publier la fiche'
 								}
+								title={
+									publicationBloquee
+										? `Manque ${manques.join(' et ')} pour publier`
+										: undefined
+								}
 							/>
 						</div>
 					}
 				>
+					{publicationBloquee && (
+						<p className='mb-3 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400'>
+							Publication impossible : {manques.join(' et ')}{' '}
+							{manques.length > 1 ? 'manquent' : 'manque'}.
+						</p>
+					)}
 					{props.product.id ? (
 						<ProductOnlinePanel
 							product={props.product}
