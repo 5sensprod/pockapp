@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
 import {
@@ -8,6 +9,7 @@ import {
 	FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
 	Select,
 	SelectContent,
@@ -181,28 +183,7 @@ export function ProductPricingCard({
 					)}
 				</div>
 				<TaxRateField form={form} />
-				<div>
-					<p className='mb-2 font-medium text-muted-foreground text-xs'>
-						Marges calculées
-					</p>
-					<div className='flex gap-4 leading-10'>
-						<p className='font-semibold text-emerald-700 text-lg'>
-							{taux.marge === null ? '—' : `${taux.marge.toFixed(1)} %`}
-							<span className='ml-1 font-normal text-[10px] text-muted-foreground'>
-								marge
-							</span>
-						</p>
-						<p className='font-semibold text-emerald-700 text-lg'>
-							{taux.marque === null ? '—' : `${taux.marque.toFixed(1)} %`}
-							<span className='ml-1 font-normal text-[10px] text-muted-foreground'>
-								marque
-							</span>
-						</p>
-					</div>
-					<p className='text-muted-foreground text-[10px]'>
-						Marge sur l’achat HT, marque sur le prix de vente HT. Hors promo.
-					</p>
-				</div>
+				<MargeField form={form} marge={taux.marge} marque={taux.marque} />
 			</div>
 			{avecPromo && (
 				<div className='grid gap-5 sm:grid-cols-2 xl:grid-cols-5'>
@@ -272,6 +253,85 @@ function NumberField({
 				</FormItem>
 			)}
 		/>
+	)
+}
+
+/**
+ * La marge se saisit aussi, dans l'autre sens : depuis l'achat HT, elle donne
+ * le prix TTC — au lieu de seulement le lire depuis un prix déjà posé. Reprise
+ * d'AppPos (`usePriceCalculations.js`, mode « depuis le coût »), sur le champ
+ * qui existe ici : `purchase_price_ht` × (1 + marge/100) détaxé, puis retaxé.
+ *
+ * `saisie` n'est PAS un champ du formulaire — le schéma ne porte pas de marge,
+ * qui reste dérivée de `price_ttc`. Elle ne sert qu'à garder ce que l'utilisateur
+ * tape pendant qu'il tape, `taux.marge` reprenant la main dès qu'il quitte le
+ * champ ou que `price_ttc` change par un autre chemin.
+ */
+function MargeField({
+	form,
+	marge,
+	marque,
+}: {
+	form: UseFormReturn<ProductDetailValues>
+	marge: number | null
+	marque: number | null
+}) {
+	const [saisie, setSaisie] = useState<string | null>(null)
+	const [achat, tva] = form.watch(['purchase_price_ht', 'tax_rate'])
+	const aDesArrhes = Number(achat) > 0
+
+	return (
+		<div>
+			<Label className='mb-2 flex items-center font-medium text-muted-foreground text-xs'>
+				Marges
+				<HelpTooltip text='La marge se saisit ici et calcule le prix TTC depuis l’achat HT. À l’inverse, changer le prix TTC recalcule cette marge — les deux se répondent.' />
+			</Label>
+			<div className='flex items-end gap-4'>
+				<div className='relative w-20'>
+					<Input
+						type='number'
+						step='0.1'
+						className='h-auto border-0 border-emerald-300 border-b border-dashed bg-transparent p-0 pr-4 font-semibold text-emerald-700 text-lg shadow-none focus-visible:ring-0 dark:text-emerald-500'
+						disabled={!aDesArrhes}
+						title={aDesArrhes ? undefined : 'Saisir l’achat HT d’abord'}
+						value={
+							saisie ??
+							(marge === null ? '' : (Math.round(marge * 10) / 10).toString())
+						}
+						onFocus={() => setSaisie(marge === null ? '' : String(marge))}
+						onBlur={() => setSaisie(null)}
+						onChange={(event) => {
+							setSaisie(event.target.value)
+							const saisi = Number.parseFloat(event.target.value)
+							const achatHt = Number(achat)
+							if (Number.isNaN(saisi) || !(achatHt > 0)) return
+							const prixHt = achatHt * (1 + saisi / 100)
+							const prixTtc = prixHt * (1 + Number(tva) / 100)
+							form.setValue('price_ttc', Math.round(prixTtc * 100) / 100, {
+								shouldDirty: true,
+								shouldTouch: true,
+							})
+						}}
+					/>
+					<span className='-translate-y-1/2 absolute top-1/2 right-0 text-muted-foreground text-xs'>
+						%
+					</span>
+					<span className='mt-0.5 block font-normal text-[10px] text-muted-foreground'>
+						marge
+					</span>
+				</div>
+				<p className='font-semibold text-emerald-700 text-lg leading-none dark:text-emerald-500'>
+					{marque === null ? '—' : `${marque.toFixed(1)} %`}
+					<span className='ml-1 block font-normal text-[10px] text-muted-foreground'>
+						marque
+					</span>
+				</p>
+			</div>
+			<p className='mt-1 text-muted-foreground text-[10px]'>
+				Marge sur l’achat HT (modifiable), marque sur le prix de vente HT. Hors
+				promo.
+			</p>
+		</div>
 	)
 }
 

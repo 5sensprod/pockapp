@@ -545,22 +545,49 @@ function CatalogueEnLigneContent({
 		// `image` OU `gallery` : un produit sans principale mais avec une
 		// galerie n'existe pas dans la base (0 sur 2999, mesuré le 20 août
 		// 2026). Tester les deux ne coûte rien et ne suppose rien.
+		//
+		// ── L'ORDRE DES PRODUITS, DANS L'ONGLET IMAGES ───────────────────────
+		// `shownProducts` suit l'ordre de `usePublishedProducts` — le nom, donc
+		// l'alphabet. Un produit tout juste créé s'y perd au milieu de 2400
+		// fiches, et le client devait le chercher à la main (demande du
+		// 23 septembre 2026). Ici, et ici seulement — la grille de
+		// l'arborescence garde l'ordre du nom, qui lui convient —, les fiches
+		// qui ATTENDENT une action passent devant : jamais envoyée, puis à
+		// mettre à jour, puis à jour ; et dans chaque groupe, la plus récente
+		// en tête. `syncStateOf` rend déjà « absent » sans avoir lu un octet
+		// dès qu'une fiche n'est pas dans l'inventaire distant des images
+		// (`catalog-export.ts:400-402`) : ce tri agit donc dès l'ouverture de
+		// l'onglet, avant tout calcul d'empreinte.
+		const produitsAvecRecence: { row: ImageRow; recence: string }[] = []
 		for (const product of shownProducts) {
 			if (!product.image && !(product.gallery?.length ?? 0)) continue
 			const entity = toProductImageBearing(pb, product)
 			const checksum = localImageChecksums.lookup(entity)
-			rows.push({
-				kind: 'products',
-				entity,
-				checksum,
-				online: onLigne(product.legacy_id, inventory.data?.products),
-				state: syncStateOf(
-					product.legacy_id,
+			produitsAvecRecence.push({
+				row: {
+					kind: 'products',
+					entity,
 					checksum,
-					imageInventory.data?.products,
-				),
+					online: onLigne(product.legacy_id, inventory.data?.products),
+					state: syncStateOf(
+						product.legacy_id,
+						checksum,
+						imageInventory.data?.products,
+					),
+				},
+				recence: product.updated ?? product.created ?? '',
 			})
 		}
+		const PRIORITE_ETAT: Record<SyncState, number> = {
+			absent: 0,
+			modified: 1,
+			synced: 2,
+		}
+		produitsAvecRecence.sort((a, b) => {
+			const diff = PRIORITE_ETAT[a.row.state] - PRIORITE_ETAT[b.row.state]
+			return diff !== 0 ? diff : b.recence.localeCompare(a.recence)
+		})
+		for (const { row } of produitsAvecRecence) rows.push(row)
 
 		return rows
 	}, [
