@@ -16,8 +16,8 @@ import { CategoryPicker } from '../CategoryPicker'
 import { DetailCard, NativeSelect } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
 
-// Marque, fournisseur, catégories. L'état commercial et l'opération vivent dans
-// la carte identité (`ProductIdentityCard`).
+// Marque, fournisseur, catégories. Les conditions commerciales vivent avec les
+// prix dans `ProductPricingCard` : cette carte ne porte que les rattachements.
 
 export function ProductLinksCard({
 	form,

@@ -128,6 +128,22 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 		product.id || createdRecord.current?.id || undefined,
 	)
 
+	// Le produit aura-t-il une image de tête après cet enregistrement ? Compte
+	// le fichier déjà désigné comme vedette avant même sa promotion : il n'a pas
+	// encore de nom PocketBase, mais `submit` le promeut juste après l'écriture
+	// (lignes plus bas). Sans ce cas, créer une fiche, choisir sa vedette dans
+	// la galerie puis publier dans le même geste serait refusé à tort.
+	const hasMainImage =
+		(currentImage ?? product.image ?? '') !== '' || !!pendingMain
+	// Les produits nés en caisse (`CreateProductDialog.tsx`) n'entrent JAMAIS
+	// ici : ils écrivent par `useCreateCatalogProduct` directement, sans passer
+	// par cet éditeur. Cette garde ne les voit donc pas — c'est voulu, pas un
+	// oubli : un article scanné au comptoir doit rester vendable tout de suite.
+	// `?.` : le double de test de ce hook n'implémente pas `watch` (seuls
+	// `formState`, `setError`, `reset`, `resetField`, `handleSubmit` le sont) —
+	// même garde que `identiteModifiee` un peu plus haut.
+	const imageMissing = form.watch?.('status') === 'published' && !hasMainImage
+
 	const galleryDirty = !memeGalerie(baseGallery, gallery)
 	const hasChanges =
 		(isCreation && !createdId) ||
@@ -176,6 +192,31 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 			})
 			toast.error('Prix Stock B supérieur ou égal au prix TTC')
 			return false
+		}
+		// Une fiche publiée sans vedette part sur le site sans visuel — et
+		// jusqu'ici, sans qu'on le remarque avant d'aller vérifier là-bas. Le
+		// statut vient de `data`, jamais de `form.watch` : c'est la valeur qui va
+		// réellement être écrite.
+		if (data.status === 'published' && !hasMainImage) {
+			toast.error('Une image principale est requise pour publier ce produit')
+			return false
+		}
+		// Même règle, même raison : une fiche publiée sans catégorie n'a pas de
+		// point d'entrée dans la navigation du site (elle rejoint le constat de
+		// `catalog.uncategorized` que `/site/catalogue` fait déjà, mais après
+		// coup — ici, avant l'écriture).
+		if (data.status === 'published' && data.categories.length === 0) {
+			form.setError('categories', {
+				message: 'Au moins une catégorie est requise pour publier',
+			})
+			toast.error('Une catégorie est requise pour publier ce produit')
+			return false
+		}
+		// Un produit d'occasion se vend à 0 % de TVA (régime de la marge) : la
+		// règle s'applique en silence à l'écriture, plutôt que de refuser
+		// l'enregistrement d'une fiche dont le taux n'a pas encore été touché.
+		if (data.commercial_state === 'used' && data.tax_rate !== 0) {
+			data.tax_rate = 0
 		}
 		if (mouvementStock && !data.stock_reason) {
 			form.setError('stock_reason', {
@@ -393,6 +434,12 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 		hasChanges,
 		galleryDirty,
 		imagesTouched,
+		hasMainImage,
+		/** Le statut en formulaire vaut « publié » sans qu'aucune image ne soit
+		 *  désignée. `submit` refuse déjà d'enregistrer dans ce cas ; ceci n'est
+		 *  qu'un état à afficher — un bandeau, un bouton désactivé — à qui veut
+		 *  le prévenir avant le clic plutôt qu'après. */
+		imageMissing,
 		gallery,
 		setGallery: (value: GalleryEntry[]) => {
 			setGallery(value)

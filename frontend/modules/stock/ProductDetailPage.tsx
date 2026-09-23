@@ -34,7 +34,6 @@ import { ProductPricingCard } from './components/detail/ProductPricingCard'
 import { ProductSitePanel } from './components/detail/ProductSitePanel'
 import { ProductStockCard } from './components/detail/ProductStockCard'
 import { ProductStockHistory } from './components/detail/ProductStockHistory'
-import { ProductWebLinksCard } from './components/detail/ProductWebLinksCard'
 import { FormDetailCard } from './components/detail/detail-primitives'
 import { EMPTY_PRODUCT_DETAIL_VALUES } from './components/detail/product-detail-form'
 import {
@@ -134,17 +133,11 @@ function ProductDetailContent({
 	const dirty = editor.form.formState.dirtyFields
 	const dirtySections: Record<ProductDetailSection, boolean> = {
 		identity: Boolean(
-			dirty.designation ||
-				dirty.sku ||
-				dirty.barcode ||
-				dirty.brand ||
-				dirty.supplier ||
-				dirty.categories ||
-				dirty.commercial_state ||
-				dirty.sale_state,
+			dirty.designation || dirty.sku || dirty.barcode || dirty.commercial_state,
 		),
 		pricing: Boolean(
-			dirty.price_ttc ||
+			dirty.sale_state ||
+				dirty.price_ttc ||
 				dirty.promo_price_ttc ||
 				dirty.promo_start ||
 				dirty.promo_end ||
@@ -166,11 +159,7 @@ function ProductDetailContent({
 	}
 	// Les rattachements ont leur propre carte : chacune porte son liseré.
 	const identityDirty = Boolean(
-		dirty.designation ||
-			dirty.sku ||
-			dirty.barcode ||
-			dirty.commercial_state ||
-			dirty.sale_state,
+		dirty.designation || dirty.sku || dirty.barcode || dirty.commercial_state,
 	)
 	const linksDirty = Boolean(dirty.brand || dirty.supplier || dirty.categories)
 	// `dirtyFields` rend un TABLEAU pour un champ de tableau, pas un booléen :
@@ -326,20 +315,20 @@ function ProductDetailContent({
 					}
 				/>
 
-				<main className='container mx-auto grid items-start gap-5 px-6 py-5 lg:grid-cols-[minmax(0,1fr)_430px]'>
-					<div className='grid content-start gap-4 self-start'>
+				<main className='container mx-auto grid items-start gap-4 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_430px]'>
+					<div className='grid content-start gap-3 self-start'>
 						{/* Colonne de gauche : les champs sont toujours saisissables.
 						    Ouvrir une carte au survol puis au clic avant de pouvoir
 						    taper était un geste de trop pour des champs aussi courts. */}
-						<FormDetailCard title='Identité du produit' dirty={identityDirty}>
-							<div className='grid gap-x-7 gap-y-5 md:grid-cols-3'>
+						<FormDetailCard dirty={identityDirty}>
+							<div className='grid gap-4'>
 								<ProductIdentityCard form={editor.form} embedded />
 								{editor.duplicates.feedback}
 							</div>
 							{editor.duplicates.dialogue}
 						</FormDetailCard>
 
-						<FormDetailCard title='Prix et marge' dirty={dirtySections.pricing}>
+						<FormDetailCard dirty={dirtySections.pricing}>
 							<ProductPricingCard
 								form={editor.form}
 								embedded
@@ -347,10 +336,7 @@ function ProductDetailContent({
 							/>
 						</FormDetailCard>
 
-						<FormDetailCard
-							title='Stock et disponibilité'
-							dirty={dirtySections.stock}
-						>
+						<FormDetailCard dirty={dirtySections.stock}>
 							<ProductStockCard
 								productId={product.id}
 								form={editor.form}
@@ -359,13 +345,9 @@ function ProductDetailContent({
 						</FormDetailCard>
 
 						<FormDetailCard title='Rattachements' dirty={linksDirty}>
-							<div className='grid gap-x-7 gap-y-5 md:grid-cols-2'>
+							<div className='grid gap-4 md:grid-cols-2'>
 								<ProductLinksCard form={editor.form} embedded />
 							</div>
-						</FormDetailCard>
-
-						<FormDetailCard title='Liens et vidéos' dirty={webLinksDirty}>
-							<ProductWebLinksCard form={editor.form} />
 						</FormDetailCard>
 
 						{product.id && (
@@ -382,6 +364,7 @@ function ProductDetailContent({
 							dirtySections={dirtySections}
 							onEdit={editor.start}
 							form={editor.form}
+							webLinksDirty={webLinksDirty}
 							gallery={editor.gallery}
 							onGalleryChange={editor.setGallery}
 							currentImage={editor.currentImage}

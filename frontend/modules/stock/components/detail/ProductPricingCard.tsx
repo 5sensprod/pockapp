@@ -1,6 +1,8 @@
+import { CalendarRange, type LucideIcon, Percent, Tag } from 'lucide-react'
 import { useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
+import { Button } from '@/components/ui/button'
 import {
 	FormControl,
 	FormField,
@@ -17,12 +19,14 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import {
 	type JourServeur,
 	periodePromo,
 	prixPromoActif,
 } from '@/lib/pricing/promo-price'
 import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
+import { cn } from '@/lib/utils'
 
 import { DetailCard, HelpTooltip } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
@@ -132,13 +136,136 @@ export function ProductPricingCard({
 		promo_end: fin,
 		jour,
 	})
-	// La période n'a de sens qu'avec une promo : on ne l'affiche pas sur une
-	// fiche au plein tarif sans prix promo, qui est le cas de tout le catalogue.
-	const avecPromo = operation !== '' || Number(promo) > 0
+	// Repliée par défaut ; ouverte d'emblée si la fiche porte déjà une borne,
+	// pour ne pas cacher une période déjà posée.
+	const [periodeOuverte, setPeriodeOuverte] = useState(
+		() => Boolean(debut) || Boolean(fin),
+	)
 
 	const content = (
-		<div className='space-y-5'>
-			<div className='grid gap-5 sm:grid-cols-2 xl:grid-cols-5'>
+		<div className='space-y-4'>
+			{/* L'opération commerciale est un axe indépendant de l'état commercial
+			    (Identité) : elle ne change ni le prix affiché en temps normal, ni la
+			    publication. */}
+			<div className='rounded-lg border p-4'>
+				<div className='flex items-center justify-between gap-4'>
+					<div className='min-w-0'>
+						<p className='flex items-center font-semibold text-sm'>
+							Produit en solde ou en promotion
+							<HelpTooltip text='Indépendante de l’état commercial : une occasion peut être soldée. Elle ne change ni le prix, ni la publication.' />
+						</p>
+						<p className='mt-0.5 text-muted-foreground text-[10px]'>
+							Applique le prix promo en remise, sur le ticket et la facture.
+						</p>
+					</div>
+					<Switch
+						checked={operation !== ''}
+						onCheckedChange={(checked) => {
+							form.setValue('sale_state', checked ? 'promo' : '', {
+								shouldDirty: true,
+								shouldTouch: true,
+								shouldValidate: true,
+							})
+						}}
+						aria-label='Produit en solde ou en promotion'
+					/>
+				</div>
+
+				{operation !== '' && (
+					<div className='mt-4 space-y-4 border-t pt-4'>
+						<FormField
+							control={form.control}
+							name='sale_state'
+							render={({ field }) => (
+								<FormItem>
+									<div className='flex items-center gap-2'>
+										<OperationButton
+											active={field.value === 'sale'}
+											icon={Tag}
+											label='Soldé'
+											onClick={() => field.onChange('sale')}
+										/>
+										<OperationButton
+											active={field.value === 'promo'}
+											icon={Percent}
+											label='Promotion'
+											onClick={() => field.onChange('promo')}
+										/>
+									</div>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						<div className='max-w-[220px]'>
+							<NumberField
+								form={form}
+								name='promo_price_ttc'
+								label='Prix promo TTC'
+								step='0.01'
+								help='Appliqué en remise sur le ticket et la facture, le prix TTC restant affiché.'
+								// Filet historique : un prix promo saisi sur une fiche « Plein
+								// tarif » restait inerte, et passait pour une panne (10
+								// septembre 2026). Le champ n'est plus visible hors opération
+								// active, mais la bascule reste au cas où — jamais sur un
+								// « Soldé » déjà choisi.
+								onSaisie={(valeur) => {
+									if (
+										Number(valeur) > 0 &&
+										form.getValues('sale_state') === ''
+									) {
+										form.setValue('sale_state', 'promo', {
+											shouldDirty: true,
+											shouldTouch: true,
+										})
+									}
+								}}
+							/>
+							{mention && (
+								<p
+									className={
+										mention.actif
+											? 'mt-1 text-emerald-700 text-[10px]'
+											: 'mt-1 text-muted-foreground text-[10px]'
+									}
+								>
+									{mention.texte}
+								</p>
+							)}
+						</div>
+
+						<div>
+							<Button
+								type='button'
+								variant='outline'
+								size='sm'
+								onClick={() => setPeriodeOuverte((v) => !v)}
+							>
+								<CalendarRange className='h-3.5 w-3.5' />
+								{periodeOuverte ? 'Masquer la période' : 'Définir une période'}
+							</Button>
+							{periodeOuverte && (
+								<div className='mt-3 grid gap-4 sm:grid-cols-2'>
+									<DateField
+										form={form}
+										name='promo_start'
+										label='Promo à partir du'
+										help='Vide : dès maintenant. Le jour est celui du serveur, à Paris.'
+									/>
+									<DateField
+										form={form}
+										name='promo_end'
+										label='Promo jusqu’au'
+										help='Inclus. Vide : sans fin. Le lendemain, la fiche repasse seule en « Plein tarif » en caisse, en facture et sur le site.'
+									/>
+								</div>
+							)}
+						</div>
+					</div>
+				)}
+			</div>
+
+			<div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
 				<NumberField
 					form={form}
 					name='purchase_price_ht'
@@ -152,58 +279,9 @@ export function ProductPricingCard({
 					step='0.01'
 					warning={priceRequired && !(Number(prix) > 0)}
 				/>
-				<div>
-					<NumberField
-						form={form}
-						name='promo_price_ttc'
-						label='Prix promo TTC'
-						step='0.01'
-						help='Appliqué en remise sur le ticket et la facture, le prix TTC restant affiché. Saisir un prix promo passe l’opération commerciale en « Promotion » si elle était « Plein tarif ».'
-						// Un prix promo saisi sur une fiche « Plein tarif » restait inerte,
-						// et passait pour une panne (10 septembre 2026). On bascule À LA
-						// SAISIE — pas dans un effet, qui marquerait « modifiée » une fiche
-						// simplement ouverte — et seulement depuis « Plein tarif » : un
-						// « Soldé » déjà choisi n'est pas écrasé.
-						onSaisie={(valeur) => {
-							if (Number(valeur) > 0 && form.getValues('sale_state') === '') {
-								form.setValue('sale_state', 'promo', {
-									shouldDirty: true,
-									shouldTouch: true,
-								})
-							}
-						}}
-					/>
-					{mention && (
-						<p
-							className={
-								mention.actif
-									? 'mt-1 text-emerald-700 text-[10px]'
-									: 'mt-1 text-muted-foreground text-[10px]'
-							}
-						>
-							{mention.texte}
-						</p>
-					)}
-				</div>
 				<TaxRateField form={form} />
 				<MargeField form={form} marge={taux.marge} marque={taux.marque} />
 			</div>
-			{avecPromo && (
-				<div className='grid gap-5 sm:grid-cols-2 xl:grid-cols-5'>
-					<DateField
-						form={form}
-						name='promo_start'
-						label='Promo à partir du'
-						help='Vide : dès maintenant. Le jour est celui du serveur, à Paris.'
-					/>
-					<DateField
-						form={form}
-						name='promo_end'
-						label='Promo jusqu’au'
-						help='Inclus. Vide : sans fin. Le lendemain, la fiche repasse seule en « Plein tarif » en caisse, en facture et sur le site.'
-					/>
-				</div>
-			)}
 		</div>
 	)
 
@@ -211,6 +289,36 @@ export function ProductPricingCard({
 		content
 	) : (
 		<DetailCard title='Prix et marge'>{content}</DetailCard>
+	)
+}
+
+/** Les deux valeurs d'opération restent atteignables séparément : « Soldé »
+ *  et « Promotion » ne sont pas fusionnées derrière le seul interrupteur. */
+function OperationButton({
+	active,
+	icon: Icon,
+	label,
+	onClick,
+}: {
+	active: boolean
+	icon: LucideIcon
+	label: string
+	onClick: () => void
+}) {
+	return (
+		<button
+			type='button'
+			onClick={onClick}
+			className={cn(
+				'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 font-medium text-xs transition-colors',
+				active
+					? 'border-primary bg-primary/10 text-primary'
+					: 'border-input text-muted-foreground hover:bg-muted/50',
+			)}
+		>
+			<Icon className='h-3.5 w-3.5' />
+			{label}
+		</button>
 	)
 }
 
@@ -368,6 +476,11 @@ function libelleTva(taux: number) {
 }
 
 function TaxRateField({ form }: { form: UseFormReturn<ProductDetailValues> }) {
+	// Occasion impose 0 % (régime de la marge) : `submit` l'écrit de toute
+	// façon, le sélecteur se contente de ne pas laisser croire qu'un autre
+	// taux tiendrait.
+	const occasion = form.watch('commercial_state') === 'used'
+
 	return (
 		<FormField
 			control={form.control}
@@ -379,9 +492,15 @@ function TaxRateField({ form }: { form: UseFormReturn<ProductDetailValues> }) {
 					: [...TAUX_TVA, courant]
 				return (
 					<FormItem>
-						<FormLabel>TVA</FormLabel>
+						<FormLabel className='flex items-center'>
+							TVA
+							{occasion && (
+								<HelpTooltip text='Occasion : TVA fixée à 0 %, régime de la marge.' />
+							)}
+						</FormLabel>
 						<Select
-							value={String(courant)}
+							disabled={occasion}
+							value={String(occasion ? 0 : courant)}
 							onValueChange={(valeur) => field.onChange(Number(valeur))}
 						>
 							<FormControl>

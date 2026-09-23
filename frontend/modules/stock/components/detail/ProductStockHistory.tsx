@@ -76,15 +76,15 @@ export function ProductStockHistory({
 			contentClassName='p-0'
 		>
 			{historique.isLoading ? (
-				<p className='px-6 py-5 text-muted-foreground text-sm'>
+				<p className='px-4 py-3 text-muted-foreground text-sm'>
 					Lecture de l’historique…
 				</p>
 			) : historique.isError ? (
-				<p className='px-6 py-5 text-destructive text-sm'>
+				<p className='px-4 py-3 text-destructive text-sm'>
 					Historique illisible : {String(historique.error)}
 				</p>
 			) : lignes.length === 0 ? (
-				<p className='px-6 py-5 text-muted-foreground text-sm'>
+				<p className='px-4 py-3 text-muted-foreground text-sm'>
 					Aucun mouvement de stock enregistré.
 				</p>
 			) : (
@@ -93,7 +93,7 @@ export function ProductStockHistory({
 						{lignes.map((ligne) => (
 							<li
 								key={ligne.id}
-								className='grid grid-cols-[110px_minmax(0,1fr)_auto] items-center gap-4 px-6 py-3 text-sm'
+								className='grid grid-cols-[100px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-sm'
 							>
 								<span className='text-muted-foreground text-xs tabular-nums'>
 									{formaterDate(ligne.occurredAt)}
@@ -131,7 +131,7 @@ export function ProductStockHistory({
 						))}
 					</ul>
 					{total > lignes.length && (
-						<div className='border-t px-6 py-3'>
+						<div className='border-t px-4 py-2.5'>
 							<Button
 								type='button'
 								variant='ghost'

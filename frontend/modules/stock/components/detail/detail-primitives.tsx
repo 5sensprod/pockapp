@@ -1,4 +1,4 @@
-import { HelpCircle, Pencil } from 'lucide-react'
+import { ChevronDown, HelpCircle, Pencil } from 'lucide-react'
 import { forwardRef, useEffect, useRef } from 'react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -35,14 +35,15 @@ export function DetailCard({
 
 /** Carte dont les champs sont TOUJOURS saisissables : on modifie en cliquant
  *  dans l'input, sans ouvrir la carte d'abord. Le liseré ambre signale ce qui
- *  attend l'enregistrement. */
+ *  attend l'enregistrement. Sans `title`, pas de bandeau : les champs
+ *  regroupés dans la carte suffisent à en dire le sujet. */
 export function FormDetailCard({
 	title,
 	children,
 	dirty,
 	contentClassName,
 }: {
-	title: string
+	title?: string
 	children: React.ReactNode
 	dirty: boolean
 	contentClassName?: string
@@ -52,17 +53,19 @@ export function FormDetailCard({
 			{dirty && (
 				<span
 					aria-hidden
-					className='absolute top-5 left-0 z-10 h-8 w-[3px] rounded-r bg-amber-500'
+					className='absolute top-3 left-0 z-10 h-7 w-[3px] rounded-r bg-amber-500'
 				/>
 			)}
-			<CardHeader className='flex min-h-16 flex-row items-center border-b bg-background px-6 py-4'>
-				<CardTitle className='font-semibold text-base text-primary/90 tracking-tight'>
-					{title}
-				</CardTitle>
-			</CardHeader>
+			{title && (
+				<CardHeader className='flex min-h-11 flex-row items-center border-b bg-muted/20 px-4 py-2.5'>
+					<CardTitle className='font-semibold text-sm text-primary/90 tracking-tight'>
+						{title}
+					</CardTitle>
+				</CardHeader>
+			)}
 			<CardContent
 				className={cn(
-					'p-6 [&_input]:h-11 [&_label]:font-semibold [&_label]:text-muted-foreground [&_label]:text-xs [&_select]:h-11',
+					'p-4 [&_input]:h-10 [&_label]:font-semibold [&_label]:text-muted-foreground [&_label]:text-xs [&_select]:h-10',
 					contentClassName,
 				)}
 			>
@@ -139,17 +142,17 @@ export function EditableDetailCard({
 			{dirty && (
 				<span
 					aria-hidden
-					className='absolute top-5 left-0 z-10 h-8 w-[3px] rounded-r bg-amber-500'
+					className='absolute top-3 left-0 z-10 h-7 w-[3px] rounded-r bg-amber-500'
 				/>
 			)}
 			<CardHeader
 				className={cn(
-					'flex min-h-16 flex-row items-center justify-between gap-4 border-b px-6 py-4 transition-colors',
+					'flex min-h-11 flex-row items-center justify-between gap-4 border-b px-4 py-2.5 transition-colors',
 					editing ? 'border-primary/15 bg-primary/[0.035]' : 'bg-background',
 				)}
 			>
 				<div className='min-w-0'>
-					<CardTitle className='font-semibold text-base text-primary/90 tracking-tight'>
+					<CardTitle className='font-semibold text-sm text-primary/90 tracking-tight'>
 						{title}
 					</CardTitle>
 				</div>
@@ -171,7 +174,7 @@ export function EditableDetailCard({
 			</CardHeader>
 			<CardContent
 				className={cn(
-					'p-6 [&_input]:h-11 [&_label]:font-semibold [&_label]:text-muted-foreground [&_label]:text-xs [&_select]:h-11',
+					'p-4 [&_input]:h-10 [&_label]:font-semibold [&_label]:text-muted-foreground [&_label]:text-xs [&_select]:h-10',
 					contentClassName,
 				)}
 			>
@@ -213,18 +216,18 @@ export function DetailStatusCard({
 			{dirty && (
 				<span
 					aria-hidden
-					className='absolute top-4 left-0 z-10 h-8 w-[3px] rounded-r bg-amber-500'
+					className='absolute top-3 left-0 z-10 h-7 w-[3px] rounded-r bg-amber-500'
 				/>
 			)}
-			<CardHeader className='flex min-h-16 flex-row items-center justify-between gap-4 border-b bg-background px-6 py-4'>
-				<CardTitle className='font-semibold text-base text-primary/90 tracking-tight'>
+			<CardHeader className='flex min-h-11 flex-row items-center justify-between gap-4 border-b bg-muted/20 px-4 py-2.5'>
+				<CardTitle className='font-semibold text-sm text-primary/90 tracking-tight'>
 					{title}
 				</CardTitle>
 				{headerRight}
 			</CardHeader>
 			<CardContent
 				className={cn(
-					'p-6 transition-[background-color,opacity,filter] duration-200',
+					'p-4 transition-[background-color,opacity,filter] duration-200',
 					muted && 'bg-muted/35 opacity-55 grayscale',
 				)}
 			>
@@ -312,16 +315,28 @@ export function HelpTooltip({
  * (« Function components cannot be given refs »), et react-hook-form perd le
  * moyen de donner le focus au champ quand une validation échoue : le message
  * d'erreur s'affiche sous un select vers lequel rien ne fait défiler.
+ *
+ * `appearance-none` retire le chrome natif du `<select>` : sans lui, le texte
+ * s'aligne selon la métrique du navigateur/OS, pas selon `px-3 py-2` — d'où le
+ * texte qui ne tombait pas à la même hauteur qu'un `Input` ou qu'un `Select`
+ * shadcn juste à côté (signalé le 23 septembre 2026). Avec un chrome custom,
+ * la boîte est identique aux deux autres, au pixel près.
  */
 export const NativeSelect = forwardRef<
 	HTMLSelectElement,
 	React.SelectHTMLAttributes<HTMLSelectElement>
->(function NativeSelect(props, ref) {
+>(function NativeSelect({ className, ...props }, ref) {
 	return (
-		<select
-			ref={ref}
-			{...props}
-			className='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
-		/>
+		<div className='relative'>
+			<select
+				ref={ref}
+				{...props}
+				className={cn(
+					'flex h-10 w-full appearance-none rounded-md border border-input bg-background px-3 py-2 pr-8 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+					className,
+				)}
+			/>
+			<ChevronDown className='-translate-y-1/2 pointer-events-none absolute top-1/2 right-3 h-4 w-4 opacity-50' />
+		</div>
 	)
 })
