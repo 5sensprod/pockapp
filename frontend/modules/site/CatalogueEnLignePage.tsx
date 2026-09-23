@@ -897,11 +897,16 @@ function CatalogueEnLigneContent({
 			{
 				cle: 'absent',
 				titre: 'Jamais parties sur le site',
-				aide: 'Créées ici et publiées : leur première mise en ligne est manuelle.',
+				// Depuis le 23 septembre 2026, une fiche qui passe publiée part
+				// toute seule (`product-publish-auto-sync.ts`) : ce groupe ne
+				// devrait plus contenir, en usage normal, que des envois qui ont
+				// échoué (réseau, hébergeur indisponible) ou des fiches publiées
+				// avant cette date. Le bouton « Exporter » sert de rattrapage.
+				aide: "L'envoi automatique n'a pas abouti, ou la fiche est antérieure à sa mise en place — exportez-la à la main.",
 				lignes: parEtat('absent').map(ligneProduit),
-				// Dépliés d'emblée, tous les deux : ce sont les deux seuls états
-				// qu'aucun automatisme ne couvre. Une fiche qu'on vient de créer
-				// doit être sous la phrase qui l'annonce.
+				// Déplié d'emblée avec « disparus » plus bas : ce sont les deux
+				// groupes qui signalent une anomalie plutôt qu'un choix éditorial en
+				// attente — une fiche qui y reste doit se voir sans avoir à déplier.
 				ouvertParDefaut: true,
 			},
 			{

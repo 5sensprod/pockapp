@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
 	stock: vi.fn(),
 	sync: vi.fn(),
 	verify: vi.fn(),
+	publierProduit: vi.fn(() => 'rien-a-faire' as const),
 }))
 vi.mock('react', () => ({
 	useEffect: () => {},
@@ -73,6 +74,9 @@ vi.mock('sonner', () => ({
 }))
 vi.mock('@/lib/sync/SyncAfterSaveDialog', () => ({
 	useSyncAfterSave: () => ({ proposer: h.sync, dialogue: null }),
+}))
+vi.mock('@/lib/sync/product-publish-auto-sync', () => ({
+	useProductPublishAutoSync: () => h.publierProduit,
 }))
 vi.mock('@/lib/queries/stock-adjust', () => ({ setStockManually: h.stock }))
 vi.mock('@/components/catalog/ProductDuplicateGuard', () => ({

@@ -18,6 +18,7 @@ import { type GalleryEntry, memeGalerie } from '@/lib/queries/gallery-order'
 import { pocketbaseErrorMessage } from '@/lib/queries/pb-error'
 import type { CatalogProduct } from '@/lib/queries/site-catalog'
 import { setStockManually } from '@/lib/queries/stock-adjust'
+import { useProductPublishAutoSync } from '@/lib/sync/product-publish-auto-sync'
 import { useSyncAfterSave } from '@/lib/sync/SyncAfterSaveDialog'
 import { usePocketBase } from '@/lib/use-pocketbase'
 
@@ -157,6 +158,9 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 	const syncAfterSave = useSyncAfterSave(
 		!isCreation && (activeSection !== null || hasChanges),
 	)
+	// Le passage à publié part tout seul, données ET images ; toute autre
+	// transition retombe sur `syncAfterSave` ci-dessus, inchangé.
+	const publierProduit = useProductPublishAutoSync()
 
 	const submit = async (data: ProductDetailValues): Promise<boolean> => {
 		if (savingRef.current) return false
@@ -253,6 +257,14 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 				gallery: memeGalerie(baseGallery, gallery) ? undefined : gallery,
 			}
 			const existingId = product.id || createdRecord.current?.id
+			// Capturé AVANT que `createdRecord.current` soit remplacé par le
+			// résultat, juste en dessous : une création enchaîne plusieurs
+			// enregistrements (brouillon, puis publication, puis une retouche) sans
+			// que le `product` reçu en prop ne bouge jamais — lui reste le
+			// brouillon initial. Sans cette capture, la deuxième sauvegarde d'une
+			// fiche déjà publiée ce jour-là se serait crue être la première.
+			const publieAvant =
+				(createdRecord.current ?? product).status === 'published'
 			let saved = existingId
 				? await update.mutateAsync({ id: existingId, data: payload })
 				: await create.mutateAsync({
@@ -344,17 +356,30 @@ export function useProductDetailEditor(product: CatalogProductShape) {
 			setImagesTouched(false)
 			setActiveSection(null)
 			toast.success(isCreation ? 'Produit créé' : 'Produit modifié')
+
+			// Un produit qui vient de passer publié part tout seul — plus besoin
+			// d'aller le chercher dans `/site/catalogue`. `publieAvant` est capturé
+			// plus haut, avant l'écriture.
+			const decision = publierProduit(
+				{ id: saved.id, name: saved.name },
+				{ avantPublie: publieAvant, apresPublie: saved.status === 'published' },
+			)
+
 			if (isCreation) {
 				setCreatedId(saved.id)
 				return true
 			}
 			// Seul le retour PocketBase connaît les noms attribués aux nouveaux
 			// fichiers de galerie ; l'empreinte ne doit jamais partir des valeurs RHF.
-			await syncAfterSave.proposer(
-				saved as unknown as CatalogProduct,
-				syncImages,
-				avant,
-			)
+			// La question ne se pose plus si l'envoi automatique vient déjà de
+			// partir pour la même fiche.
+			if (decision !== 'publier') {
+				await syncAfterSave.proposer(
+					saved as unknown as CatalogProduct,
+					syncImages,
+					avant,
+				)
+			}
 			return true
 		} catch (error) {
 			toast.error(
