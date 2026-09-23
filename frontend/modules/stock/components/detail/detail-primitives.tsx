@@ -280,7 +280,13 @@ export function ReadValue({
 	)
 }
 
-export function HelpTooltip({ text }: { text: string }) {
+export function HelpTooltip({
+	text,
+	className,
+}: {
+	text: string
+	className?: string
+}) {
 	return (
 		<TooltipProvider delayDuration={100} skipDelayDuration={0}>
 			<Tooltip delayDuration={100}>
@@ -288,7 +294,7 @@ export function HelpTooltip({ text }: { text: string }) {
 					<button
 						type='button'
 						aria-label='Plus d’informations'
-						className='ml-1 inline-flex text-muted-foreground'
+						className={cn('ml-1 inline-flex text-muted-foreground', className)}
 					>
 						<HelpCircle className='h-3.5 w-3.5' />
 					</button>

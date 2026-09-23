@@ -328,12 +328,6 @@ function ProductDetailContent({
 
 				<main className='container mx-auto grid items-start gap-5 px-6 py-5 lg:grid-cols-[minmax(0,1fr)_430px]'>
 					<div className='grid content-start gap-4 self-start'>
-						{!product.id && (
-							<p className='rounded-lg border bg-muted/30 p-3 text-sm'>
-								Nouveau produit : complétez la fiche et saisissez un prix de
-								vente TTC supérieur à zéro avant de valider.
-							</p>
-						)}
 						{/* Colonne de gauche : les champs sont toujours saisissables.
 						    Ouvrir une carte au survol puis au clic avant de pouvoir
 						    taper était un geste de trop pour des champs aussi courts. */}
@@ -346,7 +340,11 @@ function ProductDetailContent({
 						</FormDetailCard>
 
 						<FormDetailCard title='Prix et marge' dirty={dirtySections.pricing}>
-							<ProductPricingCard form={editor.form} embedded />
+							<ProductPricingCard
+								form={editor.form}
+								embedded
+								priceRequired={creation}
+							/>
 						</FormDetailCard>
 
 						<FormDetailCard

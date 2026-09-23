@@ -107,9 +107,11 @@ function mentionPromo(produit: {
 export function ProductPricingCard({
 	form,
 	embedded = false,
+	priceRequired = false,
 }: {
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
+	priceRequired?: boolean
 }) {
 	const jour = useJourServeur()
 	const [prix, achat, tva, promo, operation, debut, fin] = form.watch([
@@ -148,6 +150,7 @@ export function ProductPricingCard({
 					name='price_ttc'
 					label='Prix TTC'
 					step='0.01'
+					warning={priceRequired && !(Number(prix) > 0)}
 				/>
 				<div>
 					<NumberField
@@ -218,6 +221,7 @@ function NumberField({
 	step,
 	help,
 	onSaisie,
+	warning = false,
 }: {
 	form: UseFormReturn<ProductDetailValues>
 	name: 'price_ttc' | 'promo_price_ttc' | 'purchase_price_ht'
@@ -226,6 +230,7 @@ function NumberField({
 	help?: string
 	/** Appelé après une saisie de l'utilisateur — jamais au chargement. */
 	onSaisie?: (valeur: string) => void
+	warning?: boolean
 }) {
 	return (
 		<FormField
@@ -236,12 +241,23 @@ function NumberField({
 					<FormLabel className='flex items-center'>
 						{label}
 						{help && <HelpTooltip text={help} />}
+						{warning && (
+							<HelpTooltip
+								text='Un prix de vente TTC supérieur à zéro est obligatoire pour valider.'
+								className='text-orange-500 hover:text-orange-600 dark:text-orange-400'
+							/>
+						)}
 					</FormLabel>
 					<FormControl>
 						<Input
 							type='number'
 							min='0'
 							step={step}
+							className={
+								warning
+									? 'border-orange-400 bg-orange-50 focus-visible:ring-orange-500 dark:border-orange-700 dark:bg-orange-950/30'
+									: undefined
+							}
 							{...field}
 							onChange={(event) => {
 								field.onChange(event)
@@ -286,46 +302,51 @@ function MargeField({
 				Marges
 				<HelpTooltip text='La marge se saisit ici et calcule le prix TTC depuis l’achat HT. À l’inverse, changer le prix TTC recalcule cette marge — les deux se répondent.' />
 			</Label>
-			<div className='flex items-end gap-4'>
-				<div className='relative w-20'>
-					<Input
-						type='number'
-						step='0.1'
-						className='h-auto border-0 border-emerald-300 border-b border-dashed bg-transparent p-0 pr-4 font-semibold text-emerald-700 text-lg shadow-none focus-visible:ring-0 dark:text-emerald-500'
-						disabled={!aDesArrhes}
-						title={aDesArrhes ? undefined : 'Saisir l’achat HT d’abord'}
-						value={
-							saisie ??
-							(marge === null ? '' : (Math.round(marge * 10) / 10).toString())
-						}
-						onFocus={() => setSaisie(marge === null ? '' : String(marge))}
-						onBlur={() => setSaisie(null)}
-						onChange={(event) => {
-							setSaisie(event.target.value)
-							const saisi = Number.parseFloat(event.target.value)
-							const achatHt = Number(achat)
-							if (Number.isNaN(saisi) || !(achatHt > 0)) return
-							const prixHt = achatHt * (1 + saisi / 100)
-							const prixTtc = prixHt * (1 + Number(tva) / 100)
-							form.setValue('price_ttc', Math.round(prixTtc * 100) / 100, {
-								shouldDirty: true,
-								shouldTouch: true,
-							})
-						}}
-					/>
-					<span className='-translate-y-1/2 absolute top-1/2 right-0 text-muted-foreground text-xs'>
-						%
-					</span>
+			<div className='grid grid-cols-2 gap-3'>
+				<div className='min-w-0'>
+					<div className='flex h-8 items-center border-emerald-300 border-b border-dashed text-emerald-700 dark:text-emerald-500'>
+						<Input
+							type='number'
+							step='0.1'
+							className='h-8 min-w-0 border-0 bg-transparent p-0 font-semibold text-lg shadow-none focus-visible:ring-0 focus-visible:ring-offset-0'
+							disabled={!aDesArrhes}
+							title={aDesArrhes ? undefined : 'Saisir l’achat HT d’abord'}
+							value={
+								saisie ??
+								(marge === null ? '' : (Math.round(marge * 10) / 10).toString())
+							}
+							onFocus={() => setSaisie(marge === null ? '' : String(marge))}
+							onBlur={() => setSaisie(null)}
+							onChange={(event) => {
+								setSaisie(event.target.value)
+								const saisi = Number.parseFloat(event.target.value)
+								const achatHt = Number(achat)
+								if (Number.isNaN(saisi) || !(achatHt > 0)) return
+								const prixHt = achatHt * (1 + saisi / 100)
+								const prixTtc = prixHt * (1 + Number(tva) / 100)
+								form.setValue('price_ttc', Math.round(prixTtc * 100) / 100, {
+									shouldDirty: true,
+									shouldTouch: true,
+								})
+							}}
+						/>
+						<span className='ml-1 shrink-0 font-semibold text-sm'>%</span>
+					</div>
 					<span className='mt-0.5 block font-normal text-[10px] text-muted-foreground'>
-						marge
+						Taux de marge
 					</span>
 				</div>
-				<p className='font-semibold text-emerald-700 text-lg leading-none dark:text-emerald-500'>
-					{marque === null ? '—' : `${marque.toFixed(1)} %`}
-					<span className='ml-1 block font-normal text-[10px] text-muted-foreground'>
-						marque
+				<div className='min-w-0'>
+					<p className='flex h-8 items-center whitespace-nowrap font-semibold text-emerald-700 text-lg dark:text-emerald-500'>
+						{marque === null ? '—' : marque.toFixed(1)}
+						{marque !== null && (
+							<span className='ml-1 font-semibold text-sm'>%</span>
+						)}
+					</p>
+					<span className='mt-0.5 block font-normal text-[10px] text-muted-foreground'>
+						Taux de marque
 					</span>
-				</p>
+				</div>
 			</div>
 			<p className='mt-1 text-muted-foreground text-[10px]'>
 				Marge sur l’achat HT (modifiable), marque sur le prix de vente HT. Hors

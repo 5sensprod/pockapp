@@ -140,23 +140,25 @@ function BarcodeField({
 				return (
 					<FormItem>
 						<FormLabel>Code-barres</FormLabel>
-						<div className='flex items-center gap-2'>
+						<div className='flex min-w-0 items-center gap-2'>
 							<FormControl>
-								<Input {...field} />
+								<Input className='min-w-0 font-mono' {...field} />
 							</FormControl>
 							<Button
 								type='button'
 								variant='outline'
-								className='h-11 shrink-0'
+								size='icon'
+								className='h-11 w-11 shrink-0'
 								disabled={generating}
 								onClick={generate}
+								aria-label='Générer un code-barres EAN-13'
+								title='Générer un code-barres EAN-13'
 							>
 								{generating ? (
-									<LoaderCircle className='mr-2 h-4 w-4 animate-spin' />
+									<LoaderCircle className='h-4 w-4 animate-spin' />
 								) : (
-									<Barcode className='mr-2 h-4 w-4' />
+									<Barcode className='h-4 w-4' />
 								)}
-								Générer
 							</Button>
 						</div>
 						{isEAN13 && !valid && (

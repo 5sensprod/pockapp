@@ -168,8 +168,8 @@ export function ProductDetailHeader(props: Props) {
 							</Button>
 						</div>
 						{props.priceMissing && (
-							<p className='text-muted-foreground text-xs'>
-								Saisissez un prix de vente TTC pour valider.
+							<p className='font-medium text-orange-600 text-xs dark:text-orange-400'>
+								Saisissez un prix de vente
 							</p>
 						)}
 					</div>
