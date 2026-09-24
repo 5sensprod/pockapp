@@ -111,6 +111,8 @@ interface GalleryFieldProps {
 	onRemoveMain?: () => void
 	removingMain?: boolean
 	disabled?: boolean
+	/** Masque le rappel « tout de suite / après Enregistrer » : l'appelant l'affiche ailleurs. */
+	hideTimingNote?: boolean
 	/** Réduit et convertit en WebP chaque fichier choisi, comme le fait
 	 *  `ImageField` sur les marques et les catégories. Absent = le fichier part
 	 *  tel quel — et c'est ce qui exposait la galerie produit aux refus de MIME
@@ -130,6 +132,7 @@ export function GalleryField({
 	onRemoveMain,
 	removingMain,
 	disabled,
+	hideTimingNote,
 	optimize,
 }: GalleryFieldProps) {
 	const inputRef = useRef<HTMLInputElement>(null)
@@ -477,15 +480,17 @@ export function GalleryField({
 
 			{/* LES DEUX TEMPORALITÉS. Elles ne se devinent pas, et les confondre a
 			    produit un enregistrement refusé. */}
-			<p className='rounded-lg bg-muted/50 px-3 py-2 text-muted-foreground text-xs leading-relaxed'>
-				<strong className='text-foreground'>
-					Sur une image déjà enregistrée, « principale » et la suppression
-					s’appliquent tout de suite.
-				</strong>{' '}
-				Promouvoir ne supprime rien ; supprimer est définitif après
-				confirmation. Les imports, retraits et déplacements attendent «
-				Enregistrer ».
-			</p>
+			{!hideTimingNote && (
+				<p className='rounded-lg bg-muted/50 px-3 py-2 text-muted-foreground text-xs leading-relaxed'>
+					<strong className='text-foreground'>
+						Sur une image déjà enregistrée, « principale » et la suppression
+						s’appliquent tout de suite.
+					</strong>{' '}
+					Promouvoir ne supprime rien ; supprimer est définitif après
+					confirmation. Les imports, retraits et déplacements attendent «
+					Enregistrer ».
+				</p>
+			)}
 
 			<AlertDialog
 				open={confirmationSuppression}

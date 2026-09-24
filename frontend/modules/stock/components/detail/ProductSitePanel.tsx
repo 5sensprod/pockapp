@@ -10,7 +10,12 @@ import { ProductFeaturedCard } from './ProductFeaturedCard'
 import { ProductMediaPanel } from './ProductMediaPanel'
 import { ProductOnlinePanel } from './ProductOnlinePanel'
 import { ProductWebLinksCard } from './ProductWebLinksCard'
-import { DetailStatusCard, EditableDetailCard } from './detail-primitives'
+import {
+	DetailStatusCard,
+	EditableDetailCard,
+	FormDetailCard,
+	HelpTooltip,
+} from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
 import type { ProductDetailSection } from './useProductDetailEditor'
 
@@ -75,12 +80,9 @@ export function ProductSitePanel(props: Props) {
 				</div>
 			</div>
 			<div className='grid gap-3'>
-				<EditableDetailCard
+				<FormDetailCard
 					title='Médias'
-					banner='Vous pouvez maintenant gérer les photos, les liens et les vidéos de la fiche en ligne.'
-					editing={props.activeSection === 'visuals'}
 					dirty={props.dirtySections.visuals || props.webLinksDirty}
-					onEdit={() => props.onEdit('visuals')}
 				>
 					<div className='grid gap-4'>
 						<section>
@@ -88,6 +90,7 @@ export function ProductSitePanel(props: Props) {
 								<h3 className='flex items-center gap-2 font-semibold text-sm'>
 									<Images className='h-4 w-4 text-purple-600 dark:text-purple-400' />
 									Photos
+									<HelpTooltip text='Sur une image déjà enregistrée, « principale » et la suppression s’appliquent tout de suite. Promouvoir ne supprime rien ; supprimer est définitif après confirmation. Les imports, retraits et déplacements attendent « Enregistrer ».' />
 								</h3>
 								<span className='text-muted-foreground text-[10px]'>
 									Image principale et galerie
@@ -95,7 +98,7 @@ export function ProductSitePanel(props: Props) {
 							</div>
 							<ProductMediaPanel
 								product={props.product}
-								editing={props.activeSection === 'visuals'}
+								editing
 								gallery={props.gallery}
 								onGalleryChange={props.onGalleryChange}
 								currentImage={props.currentImage}
@@ -122,7 +125,7 @@ export function ProductSitePanel(props: Props) {
 							<ProductWebLinksCard form={props.form} />
 						</section>
 					</div>
-				</EditableDetailCard>
+				</FormDetailCard>
 				<DetailStatusCard
 					title='Publication'
 					dirty={Boolean(props.form.formState.dirtyFields.status)}

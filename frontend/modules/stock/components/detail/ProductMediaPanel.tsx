@@ -44,6 +44,7 @@ export function ProductMediaPanel(props: Props) {
 					onRemoveMain={props.onRemoveMain}
 					removingMain={props.removingMain}
 					disabled={props.disabled}
+					hideTimingNote
 					optimize={{ maxSide: 1600 }}
 				/>
 			) : (

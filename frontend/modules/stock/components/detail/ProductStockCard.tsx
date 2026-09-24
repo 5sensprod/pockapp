@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
 import {
@@ -29,11 +30,15 @@ export function ProductStockCard({
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
 }) {
-	const [stock, stockB, reason] = form.watch([
+	const [stock, stockB, stockBPrice, reason] = form.watch([
 		'stock',
 		'stock_b',
+		'stock_b_price_ttc',
 		'stock_reason',
 	])
+	const [stockBActif, setStockBActif] = useState(
+		() => Number(stockB) > 0 || Number(stockBPrice) > 0,
+	)
 	// La valeur d'origine est celle du dernier `reset` : à l'ouverture, après
 	// chaque enregistrement, et après un passage en Stock B.
 	const origine = form.formState.defaultValues
@@ -42,7 +47,7 @@ export function ProductStockCard({
 
 	const content = (
 		<div className='grid gap-5'>
-			<div className='grid items-end gap-5 sm:grid-cols-2 xl:grid-cols-[150px_150px_180px_minmax(0,1fr)]'>
+			<div className='grid items-end gap-5 sm:grid-cols-2 xl:grid-cols-[150px_150px_180px]'>
 				<NumberField form={form} name='stock' label='Stock neuf' />
 				<NumberField
 					form={form}
@@ -69,7 +74,7 @@ export function ProductStockCard({
 					control={form.control}
 					name='manage_stock'
 					render={({ field }) => (
-						<FormItem className='flex min-h-10 items-center justify-between gap-4 xl:justify-end'>
+						<FormItem className='flex min-h-10 items-center justify-between gap-4 sm:col-span-2 xl:col-span-3'>
 							<div>
 								<FormLabel className='flex items-center text-foreground'>
 									Suivi du stock
@@ -90,29 +95,50 @@ export function ProductStockCard({
 				/>
 			</div>
 
-			{/* Le Stock B sur sa propre ligne, sous le neuf : quantité, prix, et
-			    le passage neuf → B. */}
-			<div className='grid items-end gap-5 sm:grid-cols-2 xl:grid-cols-[150px_150px_minmax(0,1fr)]'>
-				<NumberField
-					form={form}
-					name='stock_b'
-					label='Stock B'
-					min='0'
-					help='Unités ouvertes, rayées ou retournées fonctionnelles, vendues à part. Même fiche, même code-barres.'
-				/>
-				<NumberField
-					form={form}
-					name='stock_b_price_ttc'
-					label='Prix Stock B TTC'
-					min='0'
-					step='0.01'
-					help='Appliqué en remise quand la caisse vend une unité B, le prix TTC restant affiché. Vide : le vendeur fixe la remise.'
-				/>
-				<div className='flex h-11 items-center sm:col-span-2 xl:col-span-1 xl:justify-end'>
-					{productId && (
-						<StockBTransferButton productId={productId} form={form} />
-					)}
+			{/* Le Stock B est une option de la fiche. Replier la carte ne modifie
+			    jamais les quantités : l'interrupteur ne pilote que leur affichage. */}
+			<div className='rounded-lg border p-4'>
+				<div className='flex items-center justify-between gap-4'>
+					<div className='min-w-0'>
+						<p className='flex items-center font-semibold text-sm'>
+							Utiliser le Stock B
+							<HelpTooltip text='Pour les unités ouvertes, rayées ou retournées fonctionnelles, vendues à part sur la même fiche.' />
+						</p>
+						<p className='mt-0.5 text-muted-foreground text-[10px]'>
+							Gère une quantité et un prix distincts du stock neuf.
+						</p>
+					</div>
+					<Switch
+						checked={stockBActif}
+						onCheckedChange={setStockBActif}
+						aria-label='Utiliser le Stock B'
+					/>
 				</div>
+
+				{stockBActif && (
+					<div className='mt-4 grid items-end gap-5 border-t pt-4 sm:grid-cols-2 xl:grid-cols-[150px_150px_minmax(0,1fr)]'>
+						<NumberField
+							form={form}
+							name='stock_b'
+							label='Stock B'
+							min='0'
+							help='Unités ouvertes, rayées ou retournées fonctionnelles, vendues à part. Même fiche, même code-barres.'
+						/>
+						<NumberField
+							form={form}
+							name='stock_b_price_ttc'
+							label='Prix Stock B TTC'
+							min='0'
+							step='0.01'
+							help='Appliqué en remise quand la caisse vend une unité B, le prix TTC restant affiché. Vide : le vendeur fixe la remise.'
+						/>
+						<div className='flex h-11 items-center sm:col-span-2 xl:col-span-1 xl:justify-end'>
+							{productId && (
+								<StockBTransferButton productId={productId} form={form} />
+							)}
+						</div>
+					</div>
+				)}
 			</div>
 
 			{/* Un stock modifié à la main dit POURQUOI : c'est ce qui rend

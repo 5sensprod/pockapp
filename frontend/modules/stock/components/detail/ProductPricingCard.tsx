@@ -144,6 +144,24 @@ export function ProductPricingCard({
 
 	const content = (
 		<div className='space-y-4'>
+			<div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
+				<NumberField
+					form={form}
+					name='purchase_price_ht'
+					label='Achat HT'
+					step='0.01'
+				/>
+				<NumberField
+					form={form}
+					name='price_ttc'
+					label='Prix TTC'
+					step='0.01'
+					warning={priceRequired && !(Number(prix) > 0)}
+				/>
+				<TaxRateField form={form} />
+				<MargeField form={form} marge={taux.marge} marque={taux.marque} />
+			</div>
+
 			{/* L'opération commerciale est un axe indépendant de l'état commercial
 			    (Identité) : elle ne change ni le prix affiché en temps normal, ni la
 			    publication. */}
@@ -263,24 +281,6 @@ export function ProductPricingCard({
 						</div>
 					</div>
 				)}
-			</div>
-
-			<div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-				<NumberField
-					form={form}
-					name='purchase_price_ht'
-					label='Achat HT'
-					step='0.01'
-				/>
-				<NumberField
-					form={form}
-					name='price_ttc'
-					label='Prix TTC'
-					step='0.01'
-					warning={priceRequired && !(Number(prix) > 0)}
-				/>
-				<TaxRateField form={form} />
-				<MargeField form={form} marge={taux.marge} marque={taux.marque} />
 			</div>
 		</div>
 	)
