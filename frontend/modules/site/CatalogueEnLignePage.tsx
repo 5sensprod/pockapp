@@ -49,6 +49,7 @@ import {
 	Pencil,
 	RefreshCw,
 	Search,
+	ShieldCheck,
 	X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -1120,65 +1121,75 @@ function CatalogueEnLigneContent({
 				<CatalogueLoadingState />
 			) : (
 				<>
-					{/* ── LA SYNCHRONISATION D'ABORD ─────────────────────────────
-					    Réordonné le 14 septembre 2026. L'écran ouvrait sur quatre
-					    compteurs et trois constats — « Produits en ligne 2412 »,
-					    « catégories citées mais absentes » — avant de dire ce qu'il y
-					    avait à FAIRE. On venait ici pour envoyer une fiche qu'on
-					    venait de créer, et elle était sous la ligne de flottaison.
-					    L'état du catalogue et les constats restent : plus bas, là où
-					    on les consulte au lieu de les subir. */}
-					<CatalogSyncBar
-						available={Boolean(inventory.data)}
-						loading={inventory.isFetching}
-						error={(inventory.error as Error | null) ?? null}
-						counts={syncCounts}
-						disparus={disparus.length}
-						remoteCount={inventory.data?.counts.products ?? null}
-						exporting={exporting}
-						progress={sync.etat.donnees}
-						rejected={sync.etat.rejets}
-						onRefresh={() => inventory.refetch()}
-						onExportAll={() =>
-							// Les retraits partent avec le reste, dans les mêmes lots : le
-							// serveur écrit `status` sans l'interpréter, une fiche
-							// dépubliée n'est qu'une fiche de plus dans le lot.
-							exportProducts([
-								...(products.data ?? []).filter(
-									(p) => syncStates.get(p.legacy_id) !== 'synced',
-								),
-								...retirables,
-							])
-						}
-					/>
+					{/* ── LE POINT DE CONTRÔLE ────────────────────────────────────
+					    Réordonné le 14 septembre 2026, recadré le 23 septembre 2026 :
+					    depuis que produits, catégories et marques partent tout seuls à
+					    la publication (`product-publish-auto-sync.ts`,
+					    `relation-auto-sync.ts`), ce bloc ne devrait plus, en usage
+					    normal, montrer que du vide (`CatalogSyncBar` et
+					    `PendingDetails` se réduisent d'eux-mêmes quand il n'y a rien à
+					    faire). L'étiquette le dit explicitement : ce qui suit est une
+					    EXCEPTION à rattraper, pas le geste qui publie. */}
+					<section aria-label='Point de contrôle de la synchronisation'>
+						<p className='mb-2 flex items-center gap-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wide'>
+							<ShieldCheck className='h-3.5 w-3.5' />
+							Point de contrôle — ce qui n’est pas parti tout seul
+						</p>
+						<CatalogSyncBar
+							available={Boolean(inventory.data)}
+							loading={inventory.isFetching}
+							error={(inventory.error as Error | null) ?? null}
+							counts={syncCounts}
+							disparus={disparus.length}
+							remoteCount={inventory.data?.counts.products ?? null}
+							exporting={exporting}
+							progress={sync.etat.donnees}
+							rejected={sync.etat.rejets}
+							onRefresh={() => inventory.refetch()}
+							onExportAll={() =>
+								// Les retraits partent avec le reste, dans les mêmes lots : le
+								// serveur écrit `status` sans l'interpréter, une fiche
+								// dépubliée n'est qu'une fiche de plus dans le lot.
+								exportProducts([
+									...(products.data ?? []).filter(
+										(p) => syncStates.get(p.legacy_id) !== 'synced',
+									),
+									...retirables,
+								])
+							}
+						/>
 
-					{/* Le détail nommé, avec un bouton par ligne. Il remplace la carte
-					    « X catégories et Y marques modifiées », qui disait le nombre et
-					    n'offrait qu'un envoi en bloc (14 septembre 2026). La règle du
-					    13 août 2026 ne bouge pas : une retouche de texte isolée ne part
-					    QUE si on le demande, mais elle ne se tait pas. */}
-					<PendingDetails groupes={groupesEnAttente} occupe={exporting} />
+						{/* Le détail nommé, avec un bouton par ligne. Il remplace la
+						    carte « X catégories et Y marques modifiées », qui disait le
+						    nombre et n'offrait qu'un envoi en bloc (14 septembre 2026).
+						    La règle du 13 août 2026 ne bouge pas : une retouche de texte
+						    isolée ne part QUE si on le demande, mais elle ne se tait
+						    pas. */}
+						<PendingDetails groupes={groupesEnAttente} occupe={exporting} />
 
-					{sync.etat.echecs.length > 0 && (
-						<Card className='mb-6 border-destructive'>
-							<CardContent className='flex items-start gap-3 pt-6'>
-								<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
-								<div>
-									<p className='font-medium'>Export interrompu</p>
-									<p className='text-muted-foreground text-sm'>
-										{sync.etat.echecs.join(' ; ')}
-									</p>
-									<p className='mt-1 text-muted-foreground text-xs'>
-										Les lots déjà écrits le restent. L’opération est idempotente
-										: relancer la synchronisation reprend l’ensemble sans rien
-										dupliquer.
-									</p>
-								</div>
-							</CardContent>
-						</Card>
-					)}
+						{sync.etat.echecs.length > 0 && (
+							<Card className='mb-6 border-destructive'>
+								<CardContent className='flex items-start gap-3 pt-6'>
+									<AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-destructive' />
+									<div>
+										<p className='font-medium'>Export interrompu</p>
+										<p className='text-muted-foreground text-sm'>
+											{sync.etat.echecs.join(' ; ')}
+										</p>
+										<p className='mt-1 text-muted-foreground text-xs'>
+											Les lots déjà écrits le restent. L’opération est
+											idempotente : relancer la synchronisation reprend
+											l’ensemble sans rien dupliquer.
+										</p>
+									</div>
+								</CardContent>
+							</Card>
+						)}
+					</section>
 
-					{/* ── L'état du catalogue, et les constats ──────────────────── */}
+					{/* ── LA CONSULTATION ──────────────────────────────────────────
+					    À partir d'ici, on regarde, on ne rattrape rien : l'état du
+					    catalogue, l'arbre, les marques, les images. */}
 					<div className='mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4'>
 						<Stat
 							label='Produits en ligne'
@@ -1502,10 +1513,10 @@ function CatalogueHeader() {
 				<h1 className='font-bold text-3xl'>Catalogue en ligne</h1>
 			</div>
 			<p className='text-muted-foreground'>
-				Ce qui part vers axemusique.shop. Un produit est en ligne si son statut
-				est <strong>publié</strong> ; catégories et marques suivent
-				automatiquement. Les produits grisés ne sont pas encore dans la base du
-				site.
+				Publier un produit l’envoie <strong>automatiquement</strong> vers
+				axemusique.shop, données et photo comprises — comme les catégories et
+				les marques. Cet écran est un point de contrôle : il montre ce qui n’est
+				pas encore parti et permet de rattraper un envoi resté en travers.
 			</p>
 		</div>
 	)
@@ -1526,7 +1537,11 @@ function SkeletonBlock({ className }: { className: string }) {
  */
 function CatalogueLoadingState() {
 	return (
-		<div role='status' aria-live='polite' aria-label='Lecture du catalogue'>
+		<output
+			className='block'
+			aria-live='polite'
+			aria-label='Lecture du catalogue'
+		>
 			<div className='mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4'>
 				{[
 					'Produits en ligne',
@@ -1582,9 +1597,18 @@ function CatalogueLoadingState() {
 					<div className='grid gap-4 lg:grid-cols-[320px_1fr]'>
 						<Card className='h-fit'>
 							<CardContent className='space-y-3 p-4'>
-								{Array.from({ length: 8 }, (_, index) => (
+								{[
+									'arbre-1',
+									'arbre-2',
+									'arbre-3',
+									'arbre-4',
+									'arbre-5',
+									'arbre-6',
+									'arbre-7',
+									'arbre-8',
+								].map((key, index) => (
 									<SkeletonBlock
-										key={index}
+										key={key}
 										className={`h-5 ${index % 3 === 0 ? 'w-3/4' : 'w-full'}`}
 									/>
 								))}
@@ -1593,15 +1617,26 @@ function CatalogueLoadingState() {
 						<div>
 							<SkeletonBlock className='mb-3 h-6 w-52' />
 							<div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'>
-								{Array.from({ length: 10 }, (_, index) => (
-									<SkeletonBlock key={index} className='aspect-[3/4] w-full' />
+								{[
+									'produit-1',
+									'produit-2',
+									'produit-3',
+									'produit-4',
+									'produit-5',
+									'produit-6',
+									'produit-7',
+									'produit-8',
+									'produit-9',
+									'produit-10',
+								].map((key) => (
+									<SkeletonBlock key={key} className='aspect-[3/4] w-full' />
 								))}
 							</div>
 						</div>
 					</div>
 				</TabsContent>
 			</Tabs>
-		</div>
+		</output>
 	)
 }
 
