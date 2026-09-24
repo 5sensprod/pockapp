@@ -10,6 +10,50 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Ajout rapide de produit dans les documents ; recherche sans accent, par marque et catégorie — 2026-09-24
+
+**Décision (ajout rapide).** Les sélecteurs de produit des factures, devis et
+bons de commande (sept écrans) portent `AjoutRapideProduit`, qui ouvre le
+dialogue de la caisse (`CreateProductDialog`) : même formulaire, mêmes règles
+— naissance en brouillon, désignation ou code-barres repris de la recherche,
+doublons avertis. Le produit créé est posé sur la ligne du document (dans la
+sélection, pour le formulaire de bon de commande en ligne, qui confirme en lot).
+
+**Conséquence assumée : ces sélecteurs cherchent désormais aussi les
+brouillons** (`inclureBrouillons`). La décision précédente disait « factures,
+devis et commandes restent sur les publiés » ; elle n'y tient plus, et c'est la
+même logique : sans cela, le produit créé depuis un devis disparaîtrait au
+devis suivant et serait recréé. Le coût est celui déjà noté pour la caisse — les
+fiches non publiées héritées deviennent visibles dans les documents.
+
+**Décision (recherche).** Un mot tapé se cherche, sans casse ni accent, dans le
+nom, la désignation, la référence, le code-barres, la MARQUE et les CATÉGORIES
+du produit ; chaque mot de la requête doit se retrouver quelque part, pas
+forcément dans le même champ (« lag folk »). Déclencheur : « lag » devait
+ramener les produits de la marque Lag.
+
+**Mesuré.** Le `LIKE` de SQLite ne plie pas les accents (« eclat » ne trouvait
+pas « Éclat ») ; il plie la casse d'un « É » dans ce build, mais on ne parie pas
+dessus. PocketBase 0.22 résout `brand.name_sort ~` et
+`categories.name_sort ?~` dans un filtre sans dupliquer les lignes d'une
+relation multiple (`catalog_search_test.go`, par le chemin de l'API REST).
+
+**Écarté : recopier marque et catégories dans le texte du produit.** Renommer ou
+déplacer une catégorie obligerait à réécrire des centaines de produits, et un
+hook qui rate un cas ferait mentir la recherche sans erreur. Elles portent déjà
+un `name_sort` ; on les interroge par relation.
+
+**Écarté : une route Go qui rend les identifiants trouvés.** Elle casserait la
+pagination et le tri de l'écran, et une liste d'ids dans l'URL ne passe pas à
+l'échelle.
+
+**Non couvert.** Les catégories ANCÊTRES : un produit rangé dans « Guitares
+folk » ne se trouve pas en tapant le nom de sa catégorie parente seule. Le mot
+« coeur » trouve « cœur » dans le produit, mais pas dans le nom d'une marque ou
+d'une catégorie (leur `name_sort` ne replie pas les ligatures).
+
+---
+
 ## Un produit né en caisse naît en brouillon — 2026-09-24
 
 **Décision.** La création rapide de la caisse (`CreateProductDialog`) écrit

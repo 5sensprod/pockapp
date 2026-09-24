@@ -1,5 +1,5 @@
 import { ChevronDown, HelpCircle, Pencil } from 'lucide-react'
-import { forwardRef, useEffect, useRef } from 'react'
+import { Children, forwardRef, useEffect, useRef } from 'react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -211,6 +211,8 @@ export function DetailStatusCard({
 	muted?: boolean
 	dirty?: boolean
 }) {
+	// Rien à montrer (ex. fiche non publiée) : l'en-tête suffit, sans corps vide.
+	const hasBody = Children.toArray(children).length > 0
 	return (
 		<Card className='relative overflow-hidden shadow-sm'>
 			{dirty && (
@@ -219,20 +221,27 @@ export function DetailStatusCard({
 					className='absolute top-3 left-0 z-10 h-7 w-[3px] rounded-r bg-amber-500'
 				/>
 			)}
-			<CardHeader className='flex min-h-11 flex-row items-center justify-between gap-4 border-b bg-muted/20 px-4 py-2.5'>
+			<CardHeader
+				className={cn(
+					'flex min-h-11 flex-row items-center justify-between gap-4 bg-muted/20 px-4 py-2.5',
+					hasBody && 'border-b',
+				)}
+			>
 				<CardTitle className='font-semibold text-sm text-primary/90 tracking-tight'>
 					{title}
 				</CardTitle>
 				{headerRight}
 			</CardHeader>
-			<CardContent
-				className={cn(
-					'p-4 transition-[background-color,opacity,filter] duration-200',
-					muted && 'bg-muted/35 opacity-55 grayscale',
-				)}
-			>
-				{children}
-			</CardContent>
+			{hasBody && (
+				<CardContent
+					className={cn(
+						'p-4 transition-[background-color,opacity,filter] duration-200',
+						muted && 'bg-muted/35 opacity-55 grayscale',
+					)}
+				>
+					{children}
+				</CardContent>
+			)}
 		</Card>
 	)
 }

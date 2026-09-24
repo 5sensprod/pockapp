@@ -177,28 +177,35 @@ export function ProductSitePanel(props: Props) {
 							{manques.length > 1 ? 'manquent' : 'manque'}.
 						</p>
 					)}
-					{props.product.id ? (
-						<ProductOnlinePanel
-							product={props.product}
-							form={props.form}
-							embedded
-						/>
-					) : (
-						<p className='text-muted-foreground text-sm'>
-							L’adresse sera attribuée lors du premier enregistrement en statut
-							publié.
-						</p>
+					{published && (
+						<>
+							{props.product.id ? (
+								<ProductOnlinePanel
+									product={props.product}
+									form={props.form}
+									embedded
+								/>
+							) : (
+								<p className='text-muted-foreground text-sm'>
+									L’adresse sera attribuée lors du premier enregistrement en
+									statut publié.
+								</p>
+							)}
+							{/* La vitrine vit DANS la publication : une fiche non publiée
+					    n'a pas de page où porter sa pastille. */}
+							<ProductFeaturedCard
+								form={props.form}
+								disabled={props.disabled}
+								embedded
+							/>
+							<ProductAvailabilityCard
+								form={props.form}
+								disabled={props.disabled}
+								embedded
+							/>
+						</>
 					)}
 				</DetailStatusCard>
-
-				{/* La vitrine, juste après la publication : les deux sont des
-			    interrupteurs, et ils se lisent ensemble — une fiche mise en avant
-			    mais non publiée n'a pas de page où porter sa pastille. */}
-				<ProductFeaturedCard form={props.form} disabled={props.disabled} />
-
-				{/* Ce que le site dit stock à zéro : un réglage de vitrine, donc ici et
-				    non dans la carte Stock. */}
-				<ProductAvailabilityCard form={props.form} disabled={props.disabled} />
 
 				<EditableDetailCard
 					title='Contenu éditorial'

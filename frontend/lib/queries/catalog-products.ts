@@ -31,6 +31,7 @@ import {
 	dire,
 	manquesPourPublier,
 } from '@/lib/catalog/publication-requirements'
+import { motsDeRecherche } from '@/lib/catalog/search-key'
 import type { WebLink } from '@/lib/catalog/web-links'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import {
@@ -194,7 +195,8 @@ export type CatalogProductQuery = {
 	companyId?: string
 	page: number
 	perPage: number
-	/** Cherché dans le nom, la référence et le code-barres. */
+	/** Cherché dans le nom, la désignation, la référence, le code-barres, la
+	 *  MARQUE et les CATÉGORIES — mot par mot, sans casse ni accent. */
 	search?: string
 	/** `undefined` = les deux intentions de publication. */
 	status?: CatalogProductStatus
@@ -342,18 +344,33 @@ export function buildCatalogProductsFilter(
 		clauses.push(pb.filter('sale_state = {:saleState}', { saleState }))
 	}
 
-	const term = search?.trim()
-	if (term) {
-		// `pb.filter` échappe la valeur : une apostrophe dans une désignation
-		// ou un nom de produit ne peut pas casser la requête, ni servir à en
-		// injecter une autre.
+	// ── LA RECHERCHE (24 septembre 2026) ─────────────────────────────────────
+	// Chaque MOT doit se retrouver quelque part : dans le texte propre du produit
+	// (nom, désignation, référence, code-barres — `search_text`), dans sa MARQUE
+	// ou dans l'une de ses CATÉGORIES. Taper « lag » trouve donc aussi les
+	// produits de la marque Lag, et « lag folk » ceux de la marque Lag rangés
+	// dans une catégorie « folk » — sans que ce soit le même champ.
+	//
+	// Sans casse ni accent : le `LIKE` de SQLite ne connaît pas les accents. Les DEUX
+	// côtés sont donc pliés de la même façon — `search_text` à l'écriture
+	// (`backend/catalog/searchkey`), le mot ici (`cleDeRecherche`), et la marque
+	// et les catégories sont lues sur leur `name_sort`, plié par la même famille
+	// de règles. ⚠️ Un mot passé tel quel à `search_text` ne trouverait plus rien.
+	//
+	// `categories` est une relation MULTIPLE : `?~` teste « l'une d'elles », là
+	// où `~` exigerait que TOUTES contiennent le mot.
+	//
+	// `pb.filter` échappe la valeur : une apostrophe dans un mot ne peut ni
+	// casser la requête ni servir à en injecter une autre.
+	motsDeRecherche(search ?? '').forEach((mot, index) => {
+		const cle = `q${index}`
 		clauses.push(
 			pb.filter(
-				'(designation ~ {:q} || name ~ {:q} || sku ~ {:q} || barcode ~ {:q})',
-				{ q: term },
+				`(search_text ~ {:${cle}} || brand.name_sort ~ {:${cle}} || categories.name_sort ?~ {:${cle}})`,
+				{ [cle]: mot },
 			),
 		)
-	}
+	})
 
 	return clauses.length ? clauses.join(' && ') : undefined
 }

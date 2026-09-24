@@ -71,6 +71,7 @@ import { toast } from 'sonner'
 import { SendQuoteEmailDialog } from '../../dialogs/SendQuoteEmailDialog'
 import { CustomerDialog } from '../../features/customers/CustomerDialog'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
+import { AjoutRapideProduit } from '@/modules/connect/components/AjoutRapideProduit'
 
 // ============================================================================
 // TYPES + HELPERS (Identiques à InvoiceCreatePage)
@@ -250,6 +251,9 @@ export function QuoteCreatePage() {
 	const { items: products } = useCatalogProductSearch({
 		companyId: activeCompanyId ?? undefined,
 		term: productSearch,
+		// Un produit créé depuis ce sélecteur naît en brouillon (`AjoutRapideProduit`) :
+		// il doit rester trouvable au document suivant, sinon il serait recréé.
+		inclureBrouillons: true,
 	})
 	// Le jour du serveur juge la période des promos (`prixPromoActif`).
 	const jour = useJourServeur()
@@ -1332,7 +1336,7 @@ export function QuoteCreatePage() {
 						<div className='max-h-64 overflow-y-auto border rounded-md'>
 							{products.length === 0 ? (
 								<div className='p-4 text-center text-sm text-muted-foreground'>
-									'Aucun produit trouvé'
+									Aucun produit trouvé
 								</div>
 							) : (
 								<ul className='divide-y'>
@@ -1357,6 +1361,7 @@ export function QuoteCreatePage() {
 								</ul>
 							)}
 						</div>
+						<AjoutRapideProduit terme={productSearch} onCree={addProduct} />
 					</div>
 				</DialogContent>
 			</Dialog>

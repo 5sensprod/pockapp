@@ -176,6 +176,12 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// neuf est à zéro. Remplace l'usage prévu de `manage_stock`. Après
 		// MigrateCatalogV2, qui recrée `products`.
 		AddAvailabilityToProducts,
+
+		// 29. Le texte de recherche du produit, sans casse ni accent — le `LIKE`
+		// de SQLite ne connaît ni l'un ni l'autre. Après MigrateCatalogV2, qui
+		// recrée `products`, et après AddNameSortToProducts : la marque et les
+		// catégories sont cherchées sur leur `name_sort`.
+		AddSearchTextToProducts,
 	}
 
 	for _, migrate := range migrations {

@@ -34,6 +34,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { computeItem, computeOrderTotals } from '../../types/order'
+import { AjoutRapideProduit } from '@/modules/connect/components/AjoutRapideProduit'
 
 // ============================================================================
 // HELPERS
@@ -86,6 +87,9 @@ export function OrderCreateInline({
 	const { items: products } = useCatalogProductSearch({
 		companyId: activeCompanyId ?? undefined,
 		term: productSearch,
+		// Un produit créé depuis ce sélecteur naît en brouillon (`AjoutRapideProduit`) :
+		// il doit rester trouvable au document suivant, sinon il serait recréé.
+		inclureBrouillons: true,
 	})
 
 	useEffect(() => {
@@ -521,7 +525,7 @@ export function OrderCreateInline({
 							<div className='max-h-56 overflow-y-auto border rounded-md divide-y'>
 								{products.length === 0 ? (
 									<div className='p-4 text-center text-sm text-muted-foreground'>
-										'Aucun produit trouvé'
+										Aucun produit trouvé
 									</div>
 								) : (
 									products.slice(0, 30).map((product) => {
@@ -606,6 +610,20 @@ export function OrderCreateInline({
 									})
 								)}
 							</div>
+
+							<AjoutRapideProduit
+								terme={productSearch}
+								onCree={(produit) => {
+									// Ajouté à la sélection, pas à la commande : le vendeur confirme avec
+									// « Ajouter la sélection », comme pour un produit du catalogue.
+									setCatalogueSelection((prev) =>
+										prev.some((s) => s.product.id === produit.id)
+											? prev
+											: [...prev, { product: produit, qty: 1 }],
+									)
+									setProductSearch('')
+								}}
+							/>
 
 							{/* Footer sélection */}
 							{catalogueSelection.length > 0 && (

@@ -14,14 +14,25 @@ import {
 	TableHeader as UiTableHeader,
 	TableRow as UiTableRow,
 } from '@/components/ui/table'
-import { Building2, Mail, Pencil, Phone, Plus, Trash2 } from 'lucide-react'
+import {
+	Building2,
+	FileDown,
+	Loader2,
+	Mail,
+	Pencil,
+	Phone,
+	Plus,
+	Trash2,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useBrands } from '@/lib/queries/brands'
+import { useCompany } from '@/lib/queries/companies'
 import type { CatalogSupplierShape } from '@/lib/queries/catalog-shapes'
 import { useDeleteSupplier, useSuppliers } from '@/lib/queries/suppliers'
 import { toast } from 'sonner'
+import { useExportSuppliersPdf } from '../lib/use-export-suppliers-pdf'
 import { SupplierDialog } from './SupplierDialog'
 
 export function SupplierList() {
@@ -35,6 +46,10 @@ export function SupplierList() {
 		companyId: activeCompanyId ?? undefined,
 	})
 	const deleteSupplier = useDeleteSupplier()
+	// Le repère à imprimer : qui fournit quelles marques (PDF fait sur le poste).
+	const { data: company } = useCompany(activeCompanyId ?? undefined)
+	const { exporter: exporterPdf, enCours: exportEnCours } =
+		useExportSuppliersPdf()
 
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [editSupplier, setEditSupplier] = useState<CatalogSupplierShape | null>(
@@ -102,10 +117,29 @@ export function SupplierList() {
 				<h2 className='text-lg font-semibold'>
 					Fournisseurs ({suppliers?.length ?? 0})
 				</h2>
-				<Button onClick={handleAdd}>
-					<Plus className='h-4 w-4 mr-2' />
-					Nouveau fournisseur
-				</Button>
+				<div className='flex items-center gap-2'>
+					{/* Un repère à garder sous la main : l'index des marques (chez qui
+					    commander) et la fiche de chaque fournisseur. Sans coordonnées
+					    bancaires. */}
+					<Button
+						variant='outline'
+						disabled={exportEnCours || !suppliers?.length}
+						onClick={() =>
+							exporterPdf(suppliers ?? [], brands ?? [], company?.name)
+						}
+					>
+						{exportEnCours ? (
+							<Loader2 className='h-4 w-4 mr-2 animate-spin' />
+						) : (
+							<FileDown className='h-4 w-4 mr-2' />
+						)}
+						Exporter en PDF
+					</Button>
+					<Button onClick={handleAdd}>
+						<Plus className='h-4 w-4 mr-2' />
+						Nouveau fournisseur
+					</Button>
+				</div>
 			</div>
 
 			{!suppliers?.length ? (

@@ -61,6 +61,7 @@ import {
 } from '../../types/order'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { useOrderDetailHeader } from './OrderDetailHeader'
+import { AjoutRapideProduit } from '@/modules/connect/components/AjoutRapideProduit'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
@@ -150,6 +151,9 @@ export function OrderDetailPage() {
 	const { items: products } = useCatalogProductSearch({
 		companyId: activeCompanyId ?? undefined,
 		term: productSearch,
+		// Un produit créé depuis ce sélecteur naît en brouillon (`AjoutRapideProduit`) :
+		// il doit rester trouvable au document suivant, sinon il serait recréé.
+		inclureBrouillons: true,
 	})
 
 	useEffect(() => {
@@ -929,7 +933,7 @@ export function OrderDetailPage() {
 							<div className='max-h-64 overflow-y-auto border rounded-md divide-y'>
 								{products.length === 0 ? (
 									<div className='p-4 text-center text-sm text-muted-foreground'>
-										'Aucun produit trouvé'
+										Aucun produit trouvé
 									</div>
 								) : (
 									products.slice(0, 30).map((product) => (
@@ -964,6 +968,10 @@ export function OrderDetailPage() {
 									))
 								)}
 							</div>
+							<AjoutRapideProduit
+								terme={productSearch}
+								onCree={addFromCatalogue}
+							/>
 						</div>
 					)}
 

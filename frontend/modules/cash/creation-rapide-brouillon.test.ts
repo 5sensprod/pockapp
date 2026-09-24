@@ -17,8 +17,21 @@ import { describe, expect, it } from 'vitest'
 
 const racine = join(__dirname, '..', '..')
 const lire = (chemin: string) => readFileSync(join(racine, chemin), 'utf-8')
+// Seuls les commentaires de LIGNE sont retirés : un motif comme `'@/lib/*'` dans
+// un import ouvrirait un faux commentaire de bloc et avalerait la moitié du
+// fichier.
 const sansCommentaires = (source: string) =>
-	source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+	source.replace(/^\s*\/\/.*$/gm, '')
+
+const DOCUMENTS = [
+	'modules/connect/pages/invoices/InvoiceCreatePage.tsx',
+	'modules/connect/pages/invoices/InvoiceEditPage.tsx',
+	'modules/connect/pages/quotes/QuoteCreatePage.tsx',
+	'modules/connect/pages/quotes/QuoteEditPage.tsx',
+	'modules/connect/pages/orders/OrderCreatePage.tsx',
+	'modules/connect/pages/orders/OrderDetailPage.tsx',
+	'modules/connect/features/orders/OrderCreateInline.tsx',
+]
 
 describe('la création rapide en caisse', () => {
 	it('crée en brouillon — jamais publié, faute d’image et de catégorie', () => {
@@ -32,17 +45,24 @@ describe('la création rapide en caisse', () => {
 		expect(code).toMatch(/inclureBrouillons:\s*true/)
 	})
 
-	it('factures, devis et commandes ne cherchent QUE les produits publiés', () => {
-		for (const fichier of [
-			'modules/connect/pages/invoices/InvoiceCreatePage.tsx',
-			'modules/connect/pages/invoices/InvoiceEditPage.tsx',
-			'modules/connect/pages/quotes/QuoteCreatePage.tsx',
-			'modules/connect/pages/quotes/QuoteEditPage.tsx',
-			'modules/connect/pages/orders/OrderCreatePage.tsx',
-			'modules/connect/pages/orders/OrderDetailPage.tsx',
-			'modules/connect/features/orders/OrderCreateInline.tsx',
-		]) {
-			expect(lire(fichier), fichier).not.toMatch(/inclureBrouillons/)
+	it('les sélecteurs de documents portent l’ajout rapide ET cherchent les brouillons', () => {
+		// Le bouton crée en brouillon, comme la caisse ; sans la recherche des
+		// brouillons, le produit disparaîtrait au document suivant et serait
+		// recréé. Les deux vont ensemble dans chacun des sept sélecteurs.
+		for (const fichier of DOCUMENTS) {
+			const code = sansCommentaires(lire(fichier))
+			expect(code, fichier).toMatch(/<AjoutRapideProduit\s/)
+			expect(code, fichier).toMatch(/inclureBrouillons:\s*true/)
 		}
+	})
+
+	it('l’ajout rapide de document passe par le dialogue de la caisse', () => {
+		// Une seule saisie, un seul jeu de règles : pas de seconde copie du
+		// formulaire à tenir d'accord avec le premier.
+		const code = sansCommentaires(
+			lire('modules/connect/components/AjoutRapideProduit.tsx'),
+		)
+		expect(code).toMatch(/CreateProductDialog/)
+		expect(code).not.toMatch(/useCreateCatalogProduct/)
 	})
 })

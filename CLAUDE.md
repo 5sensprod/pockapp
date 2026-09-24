@@ -368,11 +368,40 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   la page prévienne le vendeur ; il relit chaque fiche **dans la base**, jamais
   la copie de la sélection. Dépublier n'exige rien. **Un produit né en caisse
   naît en BROUILLON** (`CreateProductDialog`) — il n'a ni image ni catégorie —, et
-  **la caisse cherche aussi les brouillons** (`inclureBrouillons`, réservé à
-  `CashTerminalPage`) : « publié » dit « en ligne », pas « vendable ». Factures,
-  devis et commandes restent sur les publiés. Les deux moitiés vont ensemble.
-  Gardiens : `product-publication.test.ts` et
-  `modules/cash/creation-rapide-brouillon.test.ts`.
+  **la caisse ET les sélecteurs de documents cherchent aussi les brouillons**
+  (`inclureBrouillons` de `useCatalogProductSearch`) : « publié » dit « en
+  ligne », pas « vendable ». Les sept sélecteurs (facture, devis, bon de
+  commande) portent `AjoutRapideProduit` (`modules/connect/components/`), qui
+  ouvre le dialogue de la caisse — mêmes règles, un seul formulaire. Les deux
+  moitiés vont ensemble : créer en brouillon sans chercher les brouillons ferait
+  recréer le produit au document suivant. Gardiens : `product-publication.test.ts`
+  et `modules/cash/creation-rapide-brouillon.test.ts`.
+- **La recherche produit plie la casse ET les accents, et cherche marque et
+  catégories** (24 septembre 2026). Le `LIKE` de SQLite ne connaît pas les
+  accents (« eclat » ne trouvait pas « Éclat », mesuré). `products.search_text`
+  (nom, désignation, référence, code-barres, plié par
+  `backend/catalog/searchkey`, tenu par un hook de modèle et une migration
+  idempotente) est cherché AVEC `brand.name_sort` et `categories.name_sort ?~`
+  — la marque et les catégories ne sont PAS recopiées dans le produit. Chaque
+  MOT de la requête doit se retrouver quelque part (`buildCatalogProductsFilter`,
+  `frontend/lib/catalog/search-key.ts`). **Le pliage existe en deux copies, Go et
+  TypeScript, et doit rester le même** : cas partagés dans `searchkey_test.go` et
+  `search-key.test.ts`. Gardiens : `catalog_search_test.go` (contre un vrai
+  PocketBase : pas de doublon sur relation multiple) et
+  `catalog-search-filter.test.ts`. Un mot passé brut à `search_text` ne
+  trouverait plus rien : toujours par `motsDeRecherche`.
+- **Le PDF « Fournisseurs et marques »** (24 septembre 2026, bouton de la page
+  `/stock/fournisseurs`) est un repère pour le vendeur : un INDEX DES MARQUES de
+  A à Z — la marque est l'entrée, le fournisseur la réponse, tous cités si une
+  marque en a plusieurs — puis la fiche de chaque fournisseur, puis les marques
+  sans fournisseur. Fabriqué sur le poste par `@react-pdf/renderer`, chargé à la
+  demande ; les données viennent de `construireRepertoire`
+  (`modules/stock/lib/suppliers-directory.ts`). ⚠️ **Il n'imprime JAMAIS les
+  coordonnées bancaires ni les conditions de règlement** (`banking`,
+  `payment_terms`) : le document est fait pour circuler au comptoir, et un test
+  le garde. La liaison marque ↔ fournisseur n'est portée que par
+  `suppliers.brands`. Gardiens : `suppliers-directory.test.ts` et
+  `SuppliersDirectoryPDF.test.tsx` (rendu réel sur 287 marques).
 - **Les décomptes du catalogue se calculent côté serveur** (25 août 2026) :
   `GET /api/catalog/counts` (`backend/routes/catalog_counts_routes.go`) rend,
   par marque et par catégorie, ce que trois écrans du module `stock`

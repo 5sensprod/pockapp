@@ -124,6 +124,7 @@ func main() {
 	hooks.RegisterCompanyHooks(pb)
 	hooks.RegisterCustomerNumberHook(pb)
 	hooks.RegisterProductNameSortHook(pb)
+	hooks.RegisterProductSearchTextHook(pb)
 
 	app := NewApp(pb)
 

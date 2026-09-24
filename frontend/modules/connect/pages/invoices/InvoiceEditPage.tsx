@@ -65,6 +65,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { CustomerDialog } from '../../features/customers/CustomerDialog'
 import { getUnitPriceTtcBeforeDiscount } from '../../utils/formatters'
+import { AjoutRapideProduit } from '@/modules/connect/components/AjoutRapideProduit'
 
 // =====================
 // TYPES + HELPERS
@@ -270,6 +271,9 @@ export function InvoiceEditPage() {
 	const { items: products } = useCatalogProductSearch({
 		companyId: activeCompanyId ?? undefined,
 		term: productSearch,
+		// Un produit créé depuis ce sélecteur naît en brouillon (`AjoutRapideProduit`) :
+		// il doit rester trouvable au document suivant, sinon il serait recréé.
+		inclureBrouillons: true,
 	})
 	// Le jour du serveur juge la période des promos (`prixPromoActif`).
 	const jour = useJourServeur()
@@ -1328,7 +1332,7 @@ export function InvoiceEditPage() {
 						<div className='max-h-64 overflow-y-auto border rounded-md'>
 							{products.length === 0 ? (
 								<div className='p-4 text-center text-sm text-muted-foreground'>
-									'Aucun produit trouvé'
+									Aucun produit trouvé
 								</div>
 							) : (
 								<ul className='divide-y'>
@@ -1354,6 +1358,7 @@ export function InvoiceEditPage() {
 								</ul>
 							)}
 						</div>
+						<AjoutRapideProduit terme={productSearch} onCree={addProduct} />
 					</div>
 				</DialogContent>
 			</Dialog>

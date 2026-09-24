@@ -89,6 +89,7 @@ var apresCatalogV2 = []string{
 	"AddWebLinksToProducts",
 	"AddFeaturedToProducts",
 	"AddAvailabilityToProducts",
+	"AddSearchTextToProducts",
 }
 
 func TestLesMigrationsDuCatalogueSontInscritesEtApresLaRecreation(t *testing.T) {

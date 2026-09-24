@@ -65,6 +65,7 @@ import { toast } from 'sonner'
 import { InvoicePaymentDialog } from '../../components/InvoicePaymentDialog'
 import { CustomerDialog } from '../../features/customers/CustomerDialog'
 import { useDocumentNavigation } from '../../hooks/useDocumentNavigation'
+import { AjoutRapideProduit } from '@/modules/connect/components/AjoutRapideProduit'
 
 // =====================
 // TYPES + HELPERS
@@ -242,6 +243,9 @@ export function InvoiceCreatePage() {
 	const { items: products } = useCatalogProductSearch({
 		companyId: activeCompanyId ?? undefined,
 		term: productSearch,
+		// Un produit créé depuis ce sélecteur naît en brouillon (`AjoutRapideProduit`) :
+		// il doit rester trouvable au document suivant, sinon il serait recréé.
+		inclureBrouillons: true,
 	})
 	const createInvoice = useCreateInvoice()
 	// Le jour du serveur juge la période des promos (`prixPromoActif`).
@@ -1288,7 +1292,7 @@ export function InvoiceCreatePage() {
 							<div className='max-h-64 overflow-y-auto border rounded-md'>
 								{products.length === 0 ? (
 									<div className='p-4 text-center text-sm text-muted-foreground'>
-										'Aucun produit trouvé'
+										Aucun produit trouvé
 									</div>
 								) : (
 									<ul className='divide-y'>
@@ -1313,6 +1317,7 @@ export function InvoiceCreatePage() {
 									</ul>
 								)}
 							</div>
+							<AjoutRapideProduit terme={productSearch} onCree={addProduct} />
 						</div>
 					</DialogContent>
 				</Dialog>
