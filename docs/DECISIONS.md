@@ -10,6 +10,70 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## « Suivi du stock » retiré, un message de disponibilité à la place — 2026-09-24
+
+**Décision.** L'interrupteur « Suivi du stock » (`manage_stock`) sort de la fiche
+produit, et un champ neuf `availability_label` entre dans la colonne PocketSite :
+le **texte libre** que le site affiche quand le stock neuf est à zéro — « Sur
+commande », « Livraison prochaine », « Retour en octobre »… — avec des
+suggestions de saisie. Vide, le site garde son « Réappro ». Déclencheur : le
+toggle ne se désactivait pas quand le type passait à Service, et en cherchant
+pourquoi on a constaté qu'**aucun code ne le lisait**.
+
+**Mesuré.** `manage_stock` n'avait aucun lecteur dans `frontend/`, dans
+`backend/routes/`, dans la caisse ni dans le serveur PHP ; il ne partait pas vers
+le site (`catalog-export.ts`) et le site le forçait à `true` en dur. Le
+10 août 2026 il avait été conservé « pour un usage à construire » — dire qu'un
+service ne suit pas de stock — et `type = service` le disait déjà : deux champs
+pour un même fait, sans rien pour les tenir d'accord. Le besoin réel était
+ailleurs : non pas SI on suit un stock, mais CE QU'ON DIT quand il est vide.
+
+**Ce qui remplace son usage annoncé :**
+
+- `type = service` fait foi. La fiche masque le bloc quantités d'un service, et
+  **`POST /api/stock/adjust` n'applique ni ne journalise aucun mouvement sur un
+  service** (`stock_routes.go`) — sans erreur : vendre un service est un geste
+  ordinaire, il ne doit pas remonter comme un échec de stock sur le ticket. La
+  règle est côté serveur parce que la caisse, les factures, les devis et
+  l'inventaire passent tous par cette route. Avant, une vente de service
+  décrémentait un stock que la fiche ne montrait pas.
+- La colonne `manage_stock` est **conservée** et écrite dérivée
+  (`type !== 'service'`) : la retirer d'une collection remplie coûte plus cher
+  que la laisser, et une fiche ne peut plus se contredire.
+
+**Le message.** Un seul champ texte, 60 caractères, facultatif — pas de booléen,
+contrairement à la mise en avant : il n'a de sens que stock à zéro, et c'est
+`catalog.php` qui juge ce moment, pas le site, si bien qu'un « Sur commande »
+écrit sur une fiche à 12 unités ne fait pas mentir la vitrine et n'a pas à être
+retiré quand le stock revient. Rendu sous la forme `availability: null | {label}`
+sur les quatre actions (contrat §4.1 septies). Clé **absente** de l'export quand
+elle est vide, pour ne pas faire repasser les 2412 fiches « modifiées ».
+
+**Écarté : désactiver simplement le toggle sur un service.** Cohérent, mais il
+aurait gardé un champ mort et un besoin réel non servi.
+
+**Écarté : un select à valeurs fixes** (Sur commande / Réappro / …). Il figerait
+le vocabulaire du magasin ; le propriétaire a choisi le texte libre avec
+suggestions. Le §« Tranché — pas de champ `availability` » du modèle cible
+(`09-modele-cible.md`) demandait « des valeurs explicites » — cette décision le
+supplante sur ce point, et sur lui seul.
+
+**Écarté : rendre `stock_status`.** Il reste supprimé : le site dérive « en
+stock » / « réappro » du stock lui-même, seul le mot du cas « pas en stock »
+devient un réglage.
+
+**Ne se voit pas encore, à savoir.** Un service à stock 0 s'affiche « Réappro »
+sur le site (le site ne connaît pas `type`) : le message peut y dire « Sur
+rendez-vous », mais rien ne le fait à sa place. Et la caisse grise toujours en
+rouge un service à 0 (`ProductsPanel.tsx`) — cosmétique, ça ne bloque pas
+l'ajout au panier.
+
+**Remise en cause si :** le site doit un jour distinguer les services des
+articles (alors `type` part vers le site et ce message ne se pose plus que sur
+les articles).
+
+---
+
 ## Retirer une fiche disparue du site — 2026-09-14
 
 **Décision.** Une entité supprimée dans PocketApp se retire de la base SQL du

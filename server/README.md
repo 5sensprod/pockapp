@@ -46,6 +46,9 @@ PHP.
 | `sql/web-links.sql` | la colonne `web_links` d'`ax_products` — liens et vidéos de la fiche, à exécuter une fois | oui |
 | `sql/commercial-state.sql` | la colonne `commercial_state` d'`ax_products` — occasion et location, à exécuter une fois | oui |
 | `sql/featured.sql` | les colonnes `featured` et `featured_label` d'`ax_products` — la pastille de vitrine et son texte, à exécuter une fois | oui |
+| `sql/availability.sql` | la colonne `availability_label` d'`ax_products` — le message affiché quand le stock est à zéro, à exécuter une fois **avant** de déposer `products-sync.php` et `catalog.php` | oui |
+| `lib/availability.php` | la règle du message de disponibilité, **incluse** par `products-sync.php` et `catalog.php` — à déposer avec eux | oui |
+| `tests/availability-test.php` | tests de `lib/availability.php`, `php server/tests/availability-test.php` — **ne pas déposer** | oui |
 | `lib/featured.php` | la règle du libellé de pastille, **incluse** par `products-sync.php` et `catalog.php` — à déposer avec eux | oui |
 | `tests/featured-test.php` | tests de `lib/featured.php`, `php server/tests/featured-test.php` — **ne pas déposer** | oui |
 | `lib/web-links.php` | la règle des liens de fiche, **incluse** par `products-sync.php` et `catalog.php` — à déposer avec eux | oui |
@@ -183,6 +186,18 @@ trois gestes, dans le même ordre, et pour les mêmes raisons :
 Vérifier ensuite que `catalog.php?action=product&slug=<une fiche>` rend bien une
 clé `links` — tableau vide tant qu'aucun lien n'a été exporté, ce qui est
 l'état normal de tout le catalogue le premier jour.
+
+**Message de disponibilité — ordre de dépôt (24 septembre 2026).** Les mêmes
+trois gestes, dans le même ordre, et pour les mêmes raisons :
+
+1. passer `sql/availability.sql` dans phpMyAdmin ;
+2. déposer `lib/availability.php` ;
+3. déposer `api/products-sync.php` et `api/catalog.php`.
+
+Vérifier ensuite que `catalog.php?action=latest&limit=1` rend bien une clé
+`availability` — `null` pour presque tout le catalogue, ce qui est l'état normal
+tant qu'aucun message n'a été exporté. Puis, sur une fiche à stock 0 dont le
+message a été exporté, qu'elle rend `{ "label": … }`.
 
 **`sql/schema.sql` est revenu le 11 août 2026, pour le catalogue** — les quatre
 tables `ax_products`, `ax_categories`, `ax_brands` et `ax_product_categories`.

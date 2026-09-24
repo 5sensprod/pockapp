@@ -101,6 +101,11 @@ export type CatalogProduct = FileBearing & {
 	 *  ⚠️ Elles ne décident de RIEN quant à la publication — `status` seul. */
 	featured?: boolean
 	featured_label?: string
+	/** LE MESSAGE DE DISPONIBILITÉ — ce que le site dit quand le stock neuf est
+	 *  à zéro. Texte libre ; vide = le défaut du site. Il part vers le site
+	 *  depuis le 24 septembre 2026, et SEULEMENT quand il porte un texte (§4.1
+	 *  septies du contrat). Règle unique : `lib/catalog/availability.ts`. */
+	availability_label?: string
 	tax_rate?: number
 	stock?: number
 	description?: string
@@ -162,7 +167,7 @@ export type CatalogBrand = FileBearing & {
 // Comme tout le reste ici, un champ absent de cette chaîne revient VIDE sans
 // erreur : le tri retomberait silencieusement sur l'ordre alphabétique.
 export const PRODUCT_FIELDS =
-	'id,collectionId,collectionName,created,updated,legacy_id,name,designation,sku,slug,description,status,sale_state,commercial_state,price_ttc,promo_price_ttc,promo_start,promo_end,stock_b,stock_b_price_ttc,web_links,featured,featured_label,tax_rate,stock,image,gallery,brand,categories'
+	'id,collectionId,collectionName,created,updated,legacy_id,name,designation,sku,slug,description,status,sale_state,commercial_state,price_ttc,promo_price_ttc,promo_start,promo_end,stock_b,stock_b_price_ttc,web_links,featured,featured_label,availability_label,tax_rate,stock,image,gallery,brand,categories'
 const CATEGORY_FIELDS =
 	'id,collectionId,collectionName,legacy_id,name,slug,description,image,is_featured,parent'
 const BRAND_FIELDS =

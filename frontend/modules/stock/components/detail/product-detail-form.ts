@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_MESSAGE, messageNormalise } from '@/lib/catalog/availability'
 import { MAX_LIBELLE, libelleNormalise } from '@/lib/catalog/featured'
 
 import {
@@ -63,7 +64,6 @@ const productDetailObject = z.object({
 	// cohérence avec `price_ttc` est vérifiée par `submit`.
 	stock_b_price_ttc: money,
 	min_stock: z.coerce.number().int().min(0),
-	manage_stock: z.boolean(),
 	// La mise en avant : deux champs, et seul `featured` décide de la pastille.
 	// Le libellé vide est le cas NORMAL — le site retombe sur son défaut, qui
 	// ne s'écrit pas en base (`lib/catalog/featured.ts`).
@@ -71,6 +71,12 @@ const productDetailObject = z.object({
 	featured_label: z
 		.string()
 		.max(MAX_LIBELLE, `${MAX_LIBELLE} caractères au maximum`),
+	// Ce que le site dit quand le stock neuf est à zéro. Texte libre, vide = le
+	// défaut du site (`lib/catalog/availability.ts`). Il n'y a pas de
+	// `manage_stock` ici : il se dérive de `type` à l'écriture.
+	availability_label: z
+		.string()
+		.max(MAX_MESSAGE, `${MAX_MESSAGE} caractères au maximum`),
 	brand: z.string().optional(),
 	supplier: z.string().optional(),
 	categories: z.array(z.string()),
@@ -174,9 +180,9 @@ export const EMPTY_PRODUCT_DETAIL_VALUES: ProductDetailValues = {
 	stock_b: 0,
 	stock_b_price_ttc: 0,
 	min_stock: 0,
-	manage_stock: true,
 	featured: false,
 	featured_label: '',
+	availability_label: '',
 	brand: '',
 	supplier: '',
 	categories: [],
@@ -250,9 +256,9 @@ export function productDetailValues(
 		stock_b: product.stock_b ?? 0,
 		stock_b_price_ttc: product.stock_b_price_ttc ?? 0,
 		min_stock: product.min_stock ?? 0,
-		manage_stock: product.manage_stock ?? true,
 		featured: product.featured ?? false,
 		featured_label: product.featured_label ?? '',
+		availability_label: product.availability_label ?? '',
 		brand: product.brand ?? '',
 		supplier: product.supplier ?? '',
 		categories: product.categories ?? [],
@@ -286,13 +292,19 @@ export function productDetailPayload(
 		purchase_price_ht: data.purchase_price_ht,
 		tax_rate: data.tax_rate,
 		min_stock: data.min_stock,
-		manage_stock: data.manage_stock,
+		// Plus un réglage : `type` le dit déjà, et personne ne lisait l'ancien
+		// interrupteur. La colonne reste écrite, dérivée, pour qu'aucune fiche ne
+		// porte un `manage_stock` contredisant son type.
+		manage_stock: data.type !== 'service',
 		featured: data.featured,
 		// Le libellé est remis au propre avant d'être écrit, comme les liens.
 		// Il est CONSERVÉ même si la case est décochée : le vendeur qui retire
 		// une mise en avant pour la semaine ne doit pas retaper son texte pour
 		// la remettre. C'est l'export qui ne l'envoie pas (`champsFacultatifs`).
 		featured_label: libelleNormalise(data.featured_label),
+		// Remis au propre avant d'être écrit. Vide, il EFFACE le message : le site
+		// retombe sur son défaut.
+		availability_label: messageNormalise(data.availability_label),
 		brand: data.brand ?? '',
 		supplier: data.supplier ?? '',
 		categories: data.categories,

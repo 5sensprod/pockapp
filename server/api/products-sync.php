@@ -29,6 +29,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../lib/promo.php';
 require_once __DIR__ . '/../lib/web-links.php';
 require_once __DIR__ . '/../lib/featured.php';
+require_once __DIR__ . '/../lib/availability.php';
 
 // ---------------------------------------------------------------------------
 // Sortie
@@ -501,6 +502,24 @@ $sqlCategory = sprintf(
 // Colonnes ajoutées par `server/sql/featured.sql`, à passer avant de déposer
 // ce fichier.
 //
+// ─── LE MESSAGE DE DISPONIBILITÉ (24 septembre 2026) ──────────────────────
+//
+// Une clé facultative de plus (§4.1 septies) : `availability_label`, ce que le
+// site dit quand le stock neuf est à zéro — « Sur commande », « Livraison
+// prochaine »… Même règle d'absence que les précédentes : clé absente, colonne
+// à NULL, message effacé. C'est ainsi qu'on revient au défaut du site.
+//
+// ⚠️ NULL veut dire « le défaut du site » (« Réappro »), qui ne s'écrit nulle
+// part ici. Et l'écriture ne juge PAS le stock : le message est enregistré même
+// sur une fiche à 12 unités. C'est `catalog.php` qui ne le rend que stock à
+// zéro — le magasin n'a pas à le retirer quand le stock revient.
+//
+// Revalidé (`server/lib/availability.php`) et non écrit tel quel : il finit
+// dans le DOM du site. Ce qui ne passe pas est ÉCARTÉ, sans refuser l'entité.
+//
+// Colonne ajoutée par `server/sql/availability.sql`, à passer avant de déposer
+// ce fichier.
+//
 // ─── `commercial_state` EST ÉCRITE TELLE QUELLE (15 septembre 2026) ───────
 //
 // `''`, `'used'` ou `'rental'` — ce que l'objet EST, quand `sale_state` dit
@@ -525,14 +544,14 @@ $sqlProduct = sprintf(
                        commercial_state,
                        promo_price_ttc, promo_start, promo_end,
                        stock_b, stock_b_price_ttc, web_links,
-                       featured, featured_label, brand,
+                       featured, featured_label, availability_label, brand,
                        exported_at, first_seen_at)
      VALUES (:legacy_id, :checksum, :name, :sku, :slug, :description,
              :price_ttc, :tax_rate, :stock, :status, :sale_state,
              :commercial_state,
              :promo_price_ttc, :promo_start, :promo_end,
              :stock_b, :stock_b_price_ttc, :web_links,
-             :featured, :featured_label, :brand,
+             :featured, :featured_label, :availability_label, :brand,
              :exported_at, :first_seen_at)
      ON DUPLICATE KEY UPDATE
         checksum = VALUES(checksum), name = VALUES(name),
@@ -547,6 +566,7 @@ $sqlProduct = sprintf(
         stock_b = VALUES(stock_b), stock_b_price_ttc = VALUES(stock_b_price_ttc),
         web_links = VALUES(web_links),
         featured = VALUES(featured), featured_label = VALUES(featured_label),
+        availability_label = VALUES(availability_label),
         brand = VALUES(brand), exported_at = VALUES(exported_at)',
     $T_PRODUCTS
 );
@@ -694,6 +714,9 @@ try {
             // de la valeur serait un défaut invisible depuis PocketApp.
             ':featured'          => !empty($product['featured']) ? 1 : 0,
             ':featured_label'    => featured_label_normalise($product['featured_label'] ?? null),
+            // §4.1 septies : clé absente = le défaut du site (NULL). Écrit quel
+            // que soit le stock : c'est `catalog.php` qui juge « stock à zéro ».
+            ':availability_label' => availability_label_normalise($product['availability_label'] ?? null),
             ':brand'       => opt_string($product['brand'] ?? null),
             ':exported_at' => $now,
             // Même valeur, deux destins : `exported_at` sera réécrit au

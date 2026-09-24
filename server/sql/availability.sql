@@ -1,0 +1,43 @@
+-- server/sql/availability.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Le message de disponibilité — ce que le site dit quand le stock est à zéro
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Écrit le 24 septembre 2026. À passer UNE FOIS sur la base du mutualisé,
+-- AVANT de déposer les versions de `products-sync.php` et `catalog.php` qui la
+-- portent. Ce fichier n'est pas lu par PHP : il est versionné pour que le
+-- schéma en place soit connu.
+--
+-- Contrat : frontend/modules/site/PocketSite-docs/12-contrat-catalogue.md,
+-- §4.1 septies, qui fait autorité.
+--
+-- ─── UNE COLONNE, ET RIEN À COCHER ──────────────────────────────────────
+-- Contrairement à la mise en avant (`featured` + `featured_label`), il n'y a
+-- pas de booléen : le message n'a de sens que stock à zéro, et c'est
+-- `catalog.php` qui juge ce moment à la lecture. Le magasin peut donc écrire
+-- « Sur commande » sur une fiche encore en stock sans faire mentir la vitrine.
+-- Voir `backend/migrations/add_availability_to_products.go`.
+--
+-- ─── NULL VEUT DIRE « LE DÉFAUT DU SITE » ───────────────────────────────
+-- Ce défaut (« Réappro ») ne s'écrit NI ici, NI dans PocketBase, NI dans
+-- `catalog.php` : il se décide au seul endroit qui l'affiche, le bundle du
+-- site. L'écrire en base ferait 3000 lignes portant un texte que personne n'a
+-- choisi, et le changer un jour demanderait de toutes les réécrire.
+--
+-- D'où `DEFAULT NULL` : PocketApp n'envoie la clé que lorsqu'elle porte un
+-- texte (§4.1 septies), et une clé absente écrit NULL — c'est ainsi qu'on
+-- revient au défaut du site. Les lignes déjà en base prennent NULL, qui est
+-- leur état exact. Aucun rattrapage.
+--
+-- ─── 60 CARACTÈRES, EN VARCHAR(120) ─────────────────────────────────────
+-- La même borne qu'au schéma PocketBase (`AvailabilityLabelMaxLength`) et dans
+-- la validation PHP (`AVAILABILITY_LABEL_MAX`). Au-delà, le message déborde de
+-- la carte du site. VARCHAR(120) laisse la place à des caractères multi-octets
+-- sans que la borne applicative change de nature : c'est `availability.php` qui
+-- coupe, en CARACTÈRES, pas la colonne en octets.
+--
+-- ─── PAS D'INDEX ────────────────────────────────────────────────────────
+-- Aucune requête de `catalog.php` ne filtre ni ne trie dessus : la colonne est
+-- SÉLECTIONNÉE et rendue au site, qui décide de l'affichage.
+
+ALTER TABLE `ax_products`
+  ADD COLUMN `availability_label` VARCHAR(120) DEFAULT NULL;

@@ -133,6 +133,9 @@ export type CatalogProductShape = PocketBaseRecord & {
 	 *  `lib/pricing/promo-price.ts` (`prixStockB`). */
 	stock_b_price_ttc?: number
 	min_stock?: number
+	/** Plus un réglage depuis le 24 septembre 2026 : dérivé de `type` à
+	 *  l'écriture (`productDetailPayload`), et lu par personne — voir
+	 *  `availability_label` pour le besoin réel. La colonne est conservée. */
 	manage_stock?: boolean
 	/** Les liens de la fiche — pages web et vidéos YouTube, DANS L'ORDRE
 	 *  d'affichage. JSON libre au schéma : ne jamais le consommer sans passer
@@ -147,6 +150,11 @@ export type CatalogProductShape = PocketBaseRecord & {
 	 *  `backend/migrations/add_featured_to_products.go`. */
 	featured?: boolean
 	featured_label?: string
+	/** Ce que le SITE dit quand le stock neuf est à zéro : « Sur commande »,
+	 *  « Livraison prochaine »… Texte libre ; vide = le défaut du site, qui ne
+	 *  s'écrit pas en base. Règle unique : `lib/catalog/availability.ts`. Schéma :
+	 *  `backend/migrations/add_availability_to_products.go`. */
+	availability_label?: string
 	image?: string
 	/** Les noms de fichiers de la galerie, DANS L'ORDRE — l'ordre est une
 	 *  donnée (règle du 19 août 2026). Jusqu'à dix. */
@@ -176,7 +184,7 @@ export const PRODUCT_FIELDS =
 	// ⚠️ `gallery` a manqué à cette liste jusqu'au 19 août 2026, et c'est la
 	// raison pour laquelle 747 galeries importées ne s'affichaient nulle part :
 	// **un champ absent de `fields` revient vide, sans erreur.**
-	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,promo_price_ttc,promo_start,promo_end,purchase_price_ht,tax_rate,stock,stock_b,stock_b_price_ttc,min_stock,manage_stock,web_links,featured,featured_label,image,gallery,brand,supplier,consignor,categories'
+	'id,collectionId,collectionName,created,legacy_id,name,designation,sku,barcode,slug,description,status,commercial_state,sale_state,type,price_ttc,promo_price_ttc,promo_start,promo_end,purchase_price_ht,tax_rate,stock,stock_b,stock_b_price_ttc,min_stock,manage_stock,web_links,featured,featured_label,availability_label,image,gallery,brand,supplier,consignor,categories'
 
 export type CatalogProductQuery = {
 	companyId?: string
@@ -605,6 +613,9 @@ export type CatalogProductWrite = ImageIntent &
 		 *  vider ne retire PAS la mise en avant, seul `featured` le fait. */
 		featured?: boolean
 		featured_label?: string
+		/** Voir `CatalogProductShape.availability_label`. Le vider retire le
+		 *  message : le site retombe sur son défaut. */
+		availability_label?: string
 		brand?: string
 		supplier?: string
 		/** Particulier qui a confié l'article. Relation facultative vers

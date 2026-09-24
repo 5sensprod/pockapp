@@ -576,6 +576,9 @@ describe('produitChangeAExporter', () => {
 			featured_label: 'Coup de cœur',
 			// Facultative elle aussi : une fiche neuve n'envoie pas la clé.
 			commercial_state: 'used',
+			// Le message de disponibilité : sans lui ici, le gardien serait
+			// aveugle à ce champ, comme il l'a été aux liens.
+			availability_label: 'Sur commande',
 		})
 		const composes = Object.keys(toExportProduct(complete, [], null))
 			// La clé ne change pas, et `site_title` vaut `null` en dur.
@@ -681,6 +684,56 @@ describe('produitChangeAExporter', () => {
 		// Et un seul libellé pour deux champs : pas deux lignes pour une pastille.
 		const libelles = dit({}, { featured: true, featured_label: 'X' })
 		expect(libelles.filter((l) => l === 'mise en avant')).toHaveLength(1)
+	})
+
+	it('n’envoie le message de disponibilité QUE lorsqu’il porte un texte', () => {
+		// Le même coût déjà payé trois fois : une clé ajoutée pour tout le monde
+		// ferait repasser les 2412 fiches publiées « modifiées ». Vide, le message
+		// dit « le défaut du site » — qui ne voyage pas.
+		expect(toExportProduct(product(), [], null)).not.toHaveProperty(
+			'availability_label',
+		)
+		expect(
+			toExportProduct(product({ availability_label: '   ' }), [], null),
+		).not.toHaveProperty('availability_label')
+
+		// Il part NORMALISÉ, comme le libellé de pastille et les liens.
+		expect(
+			toExportProduct(
+				product({ availability_label: '  Livraison   prochaine ' }),
+				[],
+				null,
+			).availability_label,
+		).toBe('Livraison prochaine')
+
+		// Et il part quel que soit le stock : c'est `catalog.php` qui ne le rend
+		// que stock à zéro. Le filtrer ici lierait l'empreinte au stock, qui bouge
+		// à chaque vente.
+		expect(
+			toExportProduct(
+				product({ availability_label: 'Sur commande', stock: 12 }),
+				[],
+				null,
+			).availability_label,
+		).toBe('Sur commande')
+	})
+
+	it('voit le message de disponibilité posé, changé et RETIRÉ', () => {
+		const dit = (a: object, b: object) => champsProduitModifies(a, b)
+		const libelle = 'message de disponibilité'
+
+		expect(dit({}, { availability_label: 'Sur commande' })).toContain(libelle)
+		expect(
+			dit({ availability_label: 'Sur commande' }, { availability_label: 'B' }),
+		).toContain(libelle)
+		expect(dit({ availability_label: 'Sur commande' }, {})).toContain(libelle)
+
+		// Vide, absent et espaces sont le même « défaut du site » : ouvrir puis
+		// enregistrer une fiche qui n'avait pas le champ ne la déclare pas modifiée.
+		expect(dit({}, { availability_label: '' })).not.toContain(libelle)
+		expect(
+			dit({ availability_label: 'A' }, { availability_label: ' A ' }),
+		).not.toContain(libelle)
 	})
 
 	it('voit un lien ajouté, modifié, RETIRÉ, et réordonné', () => {

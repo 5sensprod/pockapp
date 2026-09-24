@@ -31,6 +31,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../lib/promo.php';
 require_once __DIR__ . '/../lib/web-links.php';
 require_once __DIR__ . '/../lib/featured.php';
+require_once __DIR__ . '/../lib/availability.php';
 
 // ---------------------------------------------------------------------------
 // Sortie
@@ -242,6 +243,21 @@ function present_product(array $row, bool $withGallery = false): array
             $row['featured'] ?? 0,
             $row['featured_label'] ?? null
         ),
+        // ── Le message de disponibilité (24 septembre 2026) ─────────────────
+        //
+        // `null`, ou `{label}` — et seulement STOCK NEUF À ZÉRO OU NÉGATIF : le
+        // serveur juge ce moment, pas le site, pour que « Sur commande » écrit
+        // sur une fiche à 12 unités ne fasse pas mentir la vitrine. `null` veut
+        // aussi dire « rien d'écrit » : le site affiche alors SON défaut
+        // (« Réappro »), qui ne s'écrit nulle part ici.
+        //
+        // Rendu par les QUATRE actions, comme `featured` : la carte d'une grille
+        // est l'endroit où on l'attend. Un objet et non une chaîne, pour la même
+        // raison que `promo` : une clé de plus n'y casserait aucun consommateur.
+        'availability' => availability_affiche(
+            $row['stock'] ?? null,
+            $row['availability_label'] ?? null
+        ),
         'stock_b'     => stock_b_affiche(
             (int) ($row['stock_b'] ?? 0),
             $prix,
@@ -440,7 +456,7 @@ $PRODUCT_COLUMNS = 'p.legacy_id, p.name, p.slug, p.sku, p.description,
                     p.price_ttc, p.stock, p.sale_state, p.commercial_state,
                     p.promo_price_ttc, p.promo_start, p.promo_end,
                     p.stock_b, p.stock_b_price_ttc, p.web_links,
-                    p.featured, p.featured_label,
+                    p.featured, p.featured_label, p.availability_label,
                     p.brand, b.name AS brand_name,
                     b.image_paths AS brand_image_paths,
                     p.image_paths AS product_image_paths';

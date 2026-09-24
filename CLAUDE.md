@@ -343,6 +343,22 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   image part en « [object Object] », la boucle `FormData` traitant tout tableau
   comme une relation multiple. Gardiens : `web-links.test.ts`, `catalog-export.test.ts`,
   `catalog-fields.test.ts` et `server/tests/web-links-test.php`.
+- **Il n'y a plus d'interrupteur « Suivi du stock »** (24 septembre 2026).
+  `manage_stock` n'avait aucun lecteur ; `type = service` dit déjà qu'un article
+  n'a pas de stock, et **`/api/stock/adjust` n'applique ni ne journalise aucun
+  mouvement sur un service** (`stock_routes.go`, gardé par
+  `stock_journal_test.go`) — la règle est côté serveur parce que caisse,
+  factures, devis et inventaire passent tous par là. La colonne reste, écrite
+  dérivée de `type` : **ne pas rouvrir un champ éditable**. Ce qu'on voulait
+  vraiment, c'est dire quelque chose stock à zéro : `availability_label`, texte
+  libre de la colonne PocketSite, rendu par `catalog.php` en
+  `availability: null | {label}` **seulement stock neuf à zéro** (contrat §4.1
+  septies). Vide, c'est le « Réappro » du site, qui ne s'écrit ni en base ni
+  dans l'export. Comme les autres clés facultatives : **absente de l'export
+  quand elle est vide**, sous peine de faire repasser les 2412 fiches
+  « modifiées ». Trois listes à tenir d'accord, gardées par
+  `catalog-fields.test.ts` et `catalog-export.test.ts` : `PRODUCT_FIELDS` (les
+  deux), `CHAMPS_PRODUIT_EXPORTES`.
 - **Les décomptes du catalogue se calculent côté serveur** (25 août 2026) :
   `GET /api/catalog/counts` (`backend/routes/catalog_counts_routes.go`) rend,
   par marque et par catégorie, ce que trois écrans du module `stock`

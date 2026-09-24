@@ -5,6 +5,7 @@ import { Switch } from '@/components/ui/switch'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 import type { GalleryEntry } from '@/lib/queries/gallery-order'
 
+import { ProductAvailabilityCard } from './ProductAvailabilityCard'
 import { ProductDescriptionCard } from './ProductDescriptionCard'
 import { ProductFeaturedCard } from './ProductFeaturedCard'
 import { ProductMediaPanel } from './ProductMediaPanel'
@@ -191,6 +192,10 @@ export function ProductSitePanel(props: Props) {
 			    interrupteurs, et ils se lisent ensemble — une fiche mise en avant
 			    mais non publiée n'a pas de page où porter sa pastille. */}
 				<ProductFeaturedCard form={props.form} disabled={props.disabled} />
+
+				{/* Ce que le site dit stock à zéro : un réglage de vitrine, donc ici et
+				    non dans la carte Stock. */}
+				<ProductAvailabilityCard form={props.form} disabled={props.disabled} />
 
 				<EditableDetailCard
 					title='Contenu éditorial'

@@ -121,6 +121,7 @@ arriver après le produit qui la cite.
 | `web_links` | tableau d'objets | **non** | liens et vidéos de la fiche, **dans l'ordre** — voir §4.1 quater |
 | `featured` | `true` | **non** | le produit est en vitrine — **jamais envoyé à `false`**, voir §4.1 quinquies |
 | `featured_label` | chaîne, 40 caractères au plus | **non** | le texte de la pastille — clé absente = **le défaut du site** |
+| `availability_label` | chaîne, 60 caractères au plus | **non** | ce que le site dit quand le stock est à zéro — clé absente = **le défaut du site** (« Réappro »), voir §4.1 septies |
 | `brand` | chaîne ou `null` | oui | `legacy_id` de la marque |
 | `categories` | tableau de chaînes | oui | `legacy_id`, peut être vide |
 
@@ -354,6 +355,50 @@ consommateur, alors que changer une chaîne en objet les casse tous.
 Colonnes : `server/sql/featured.sql`. Schéma PocketBase :
 `backend/migrations/add_featured_to_products.go`.
 
+#### 4.1 septies. Le message de disponibilité (24 septembre 2026)
+
+**Une clé facultative de plus** : `availability_label`, le texte que le site
+affiche à la place de « Réappro » quand le stock neuf est à zéro — libre, écrit
+par le magasin : « Sur commande », « Livraison prochaine », « Retour en
+octobre », « Sur rendez-vous ». Elle remplace l'usage annoncé de `manage_stock`,
+qui n'a jamais eu de lecteur (`docs/DECISIONS.md`, 2026-09-24).
+
+**Un seul champ, et rien à cocher** — contrairement à §4.1 quinquies. Le message
+n'a de sens que stock à zéro, et c'est le SERVEUR qui juge ce moment.
+
+**Absente quand elle est vide**, comme les clés facultatives précédentes :
+l'envoyer partout, même à `null`, changerait l'empreinte des 2412 fiches
+publiées d'un coup. Côté serveur, la clé absente écrit `NULL` : c'est ainsi
+qu'on retire un message.
+
+**Un message vide ne veut PAS dire « pas de message »** — il veut dire « le
+défaut du site ». Ce défaut (« Réappro ») ne s'écrit nulle part dans cette
+chaîne : ni dans PocketBase, ni dans le corps d'export, ni dans
+`products-sync.php`, ni dans `catalog.php`. Il se décide au seul endroit qui
+l'affiche, le bundle du site (`utils/axeAvailability.js`).
+
+**Elle part quel que soit le stock.** L'export ne juge pas « stock à zéro » :
+lier l'empreinte du message au stock la ferait bouger à chaque vente. Le
+magasin peut donc écrire « Sur commande » sur une fiche à 12 unités, et n'a pas à
+le retirer quand le stock revient.
+
+**Revalidée, COUPÉE et jamais refusée** — 60 caractères, sauts de ligne et
+suites d'espaces réduits à une espace (`server/lib/availability.php`, mêmes cas
+que `frontend/lib/catalog/availability.ts`). Le serveur n'échappe RIEN pour le
+HTML : le bundle React échappe le texte qu'il rend.
+
+**À la lecture, `catalog.php` rend `availability` sur les QUATRE actions**, sous
+la forme `null` ou `{ "label": … }`, et **seulement quand le stock NEUF est nul
+ou négatif** — un stock négatif est ordinaire en caisse. `null` dit donc deux
+choses, qui appellent le même affichage : le produit est en stock, ou rien n'a
+été écrit. Le Stock B ne compte pas. Un objet et non une chaîne, pour la même
+raison que `promo`, `stock_b` et `featured`.
+
+Colonne : `server/sql/availability.sql`, **à passer avant de déposer**
+`products-sync.php` et `catalog.php`, qui incluent en outre
+`server/lib/availability.php`. Schéma PocketBase :
+`backend/migrations/add_availability_to_products.go`.
+
 ### 4.2 Catégorie
 
 `legacy_id`, `checksum`, `name`, `slug`, `description`, `parent` (`legacy_id` ou
@@ -475,6 +520,10 @@ lui-même être `null` — le bundle affiche alors son défaut, « Coup de cœur
 n'est écrit nulle part ailleurs. Rendu sur les listes comme `sale_state`, et
 pour la même raison : c'est dans une grille qu'une pastille sert le plus. Les
 deux se cumulent sur une même carte.
+
+**Le 24 septembre 2026, `availability` s'ajoute — sur les QUATRE actions**
+(§4.1 septies) : `null`, ou `{ "label": "Sur commande" }`. Il n'est rendu que
+stock neuf à zéro ou négatif, et le bundle affiche sinon son défaut, « Réappro ».
 
 **Depuis le 15 septembre 2026, `links` s'ajoute — sur la SEULE action
 `product`** (§4.1 quater). Comme `gallery`, et pour la même raison : aucune

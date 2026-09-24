@@ -151,8 +151,7 @@ function ProductDetailContent({
 				dirty.stock_reason ||
 				dirty.stock_comment ||
 				dirty.min_stock ||
-				dirty.type ||
-				dirty.manage_stock,
+				dirty.type,
 		),
 		content: Boolean(dirty.name || dirty.description),
 		visuals: editor.galleryDirty || editor.imagesTouched,

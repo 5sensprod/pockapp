@@ -176,6 +176,28 @@ func applyOneMovement(app *pocketbase.PocketBase, mouvement StockMovementInput, 
 
 		avant := produit.GetFloat("stock")
 		avantB := produit.GetFloat("stock_b")
+
+		// Un service n'a pas de stock (24 septembre 2026). C'est `type` qui le
+		// dit — l'ancien interrupteur `manage_stock`, jamais lu par personne, est
+		// retiré de la fiche. La règle est ICI et non dans chaque appelant : la
+		// caisse, les factures, les devis et l'inventaire passent tous par cette
+		// route, et une garde côté client oublierait le cinquième.
+		//
+		// Le mouvement n'est ni appliqué ni journalisé, et ce n'est pas une
+		// erreur : vendre un service est un geste ordinaire, il ne doit pas
+		// remonter comme un échec de stock sur le ticket. Même forme qu'un
+		// comptage conforme — `applied` reste faux, les bornes sont rendues.
+		if produit.GetString("type") == "service" {
+			res.RecordID = produit.Id
+			res.ProductName = produit.GetString("name")
+			res.ProductSku = produit.GetString("sku")
+			res.StockBefore = &avant
+			res.StockAfter = &avant
+			res.StockBBefore = &avantB
+			res.StockBAfter = &avantB
+			return nil
+		}
+
 		apres, apresB, err := NextCounters(avant, avantB, mouvement)
 		if err != nil {
 			return err

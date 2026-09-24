@@ -171,6 +171,11 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// 27. Le plafond de remise d'un vendeur, fixé par l'administrateur,
 		// et la règle qui l'empêche de le modifier lui-même.
 		AddDiscountLimitToUsers,
+
+		// 28. Le message de disponibilité — ce que le site dit quand le stock
+		// neuf est à zéro. Remplace l'usage prévu de `manage_stock`. Après
+		// MigrateCatalogV2, qui recrée `products`.
+		AddAvailabilityToProducts,
 	}
 
 	for _, migrate := range migrations {

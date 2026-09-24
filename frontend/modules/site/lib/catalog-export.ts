@@ -14,6 +14,7 @@
 // silencieux côté SQL au premier `catalog-import -load`. §1 du contrat.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { messageNormalise } from '@/lib/catalog/availability'
 import { libelleNormalise, miseEnAvant } from '@/lib/catalog/featured'
 import { liensNormalises } from '@/lib/catalog/web-links'
 import type { WebLink } from '@/lib/catalog/web-links'
@@ -169,6 +170,21 @@ export type ExportProduct = WithChecksum & {
 	 */
 	featured?: true
 	featured_label?: string
+	/**
+	 * §4.1 septies — LE MESSAGE DE DISPONIBILITÉ (24 septembre 2026).
+	 *
+	 * Ce que le site dit quand le stock neuf est à zéro : « Sur commande »,
+	 * « Livraison prochaine »… Même règle d'absence que les clés ci-dessus — une
+	 * fiche sans message n'envoie pas la clé, et son empreinte ne bouge pas.
+	 *
+	 * **Vide ne veut pas dire « pas de message »** : il veut dire « le défaut du
+	 * site » (« Réappro »), qui ne s'écrit ni ici, ni en base, ni dans le
+	 * serveur. Il part quel que soit le stock : c'est `catalog.php` qui ne le
+	 * rend que lorsque le stock est à zéro, à la lecture — le vendeur qui écrit
+	 * « Sur commande » sur une fiche à 12 unités ne fait donc pas mentir la
+	 * vitrine, et n'a pas à le retirer quand le stock revient.
+	 */
+	availability_label?: string
 	brand: string | null
 	categories: string[]
 }
@@ -264,6 +280,7 @@ function champsFacultatifs(
 	| 'web_links'
 	| 'featured'
 	| 'featured_label'
+	| 'availability_label'
 	| 'commercial_state'
 > {
 	// Les liens sont remis au propre AVANT de partir : le champ est un JSON
@@ -298,6 +315,10 @@ function champsFacultatifs(
 			product.featured && libelleNormalise(product.featured_label) !== ''
 				? libelleNormalise(product.featured_label)
 				: undefined,
+		// Le message de disponibilité (§4.1 septies). Vide, il dit « le défaut du
+		// site », qui ne voyage pas : la clé n'est alors pas envoyée.
+		availability_label:
+			messageNormalise(product.availability_label) || undefined,
 	}
 	// Une clé à `undefined` disparaît de JSON.stringify, mais PAS de
 	// `Object.entries`, que `canonical()` parcourt : on la retire pour de bon.
@@ -550,6 +571,9 @@ export function buildExportBatches(
  * `purchase_price_ht`, `min_stock`, `manage_stock`, `type`,
  * `commercial_state`, `supplier` — n'ont AUCUN effet en ligne. C'est pour eux
  * que ce filtre existe.
+ *
+ * `manage_stock` n'est plus un champ du formulaire depuis le 24 septembre
+ * 2026 : il se dérive de `type` à l'écriture (`productDetailPayload`).
  */
 export const CHAMPS_PRODUIT_EXPORTES = [
 	'name',
@@ -572,6 +596,7 @@ export const CHAMPS_PRODUIT_EXPORTES = [
 	'web_links',
 	'featured',
 	'featured_label',
+	'availability_label',
 ] as const
 
 type ChampExporte = (typeof CHAMPS_PRODUIT_EXPORTES)[number]
@@ -613,6 +638,7 @@ const LIBELLES: Record<ChampExporte, string> = {
 	// lignes pour une pastille.
 	featured: 'mise en avant',
 	featured_label: 'mise en avant',
+	availability_label: 'message de disponibilité',
 }
 
 /** La fiche vue par ce filtre : tout est optionnel, une fiche fraîchement
@@ -670,6 +696,14 @@ export function champsProduitModifies(
 			return (
 				JSON.stringify(miseEnAvant(avant)) !==
 				JSON.stringify(miseEnAvant(apres))
+			)
+		}
+		// Le message est comparé APRÈS normalisation, comme il part : un espace de
+		// plus en fin de saisie n'est pas un changement que le site verrait.
+		if (champ === 'availability_label') {
+			return (
+				messageNormalise(avant.availability_label) !==
+				messageNormalise(apres.availability_label)
 			)
 		}
 		return normaliser(champ, avant[champ]) !== normaliser(champ, apres[champ])

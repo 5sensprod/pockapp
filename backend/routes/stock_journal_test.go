@@ -35,6 +35,7 @@ func appJournal(t *testing.T) (*pocketbase.PocketBase, *models.Record) {
 		&schema.SchemaField{Name: "legacy_id", Type: schema.FieldTypeText},
 		&schema.SchemaField{Name: "stock", Type: schema.FieldTypeNumber},
 		&schema.SchemaField{Name: "stock_b", Type: schema.FieldTypeNumber},
+		&schema.SchemaField{Name: "type", Type: schema.FieldTypeText},
 	)
 	if err := app.Dao().SaveCollection(produits); err != nil {
 		t.Fatalf("collection products: %v", err)
@@ -269,6 +270,46 @@ func TestUnRetourClasseStockBAlimenteLeCompteurB(t *testing.T) {
 	}
 	if got := stockBDe(t, app, produit.Id); got != 2 {
 		t.Errorf("stock B %v, attendu 2", got)
+	}
+}
+
+func TestUnServiceNAPasDeStock(t *testing.T) {
+	// Décision du 24 septembre 2026 : `type = service` dit ce que
+	// `manage_stock` prétendait dire. Une vente de service ne retire rien, ne
+	// journalise rien et ne remonte PAS comme une erreur — le ticket est déjà
+	// enregistré, un « échec de stock » y serait faux.
+	app, produit := appJournal(t)
+	produit.Set("type", "service")
+	if err := app.Dao().SaveRecord(produit); err != nil {
+		t.Fatalf("passage en service: %v", err)
+	}
+
+	res := applyOneMovement(app, StockMovementInput{
+		ProductID: produit.Id,
+		Delta:     ptr(-1),
+	}, &StockJournalInput{EventType: "stock_sale", Source: "sale"})
+
+	if res.Applied || res.Error != "" {
+		t.Fatalf("un service ne bouge pas, sans erreur : %+v", res)
+	}
+	if res.RecordID != produit.Id || res.StockAfter == nil || *res.StockAfter != 10 {
+		t.Errorf("les bornes doivent être rendues, inchangées : %+v", res)
+	}
+	if got := stockDe(t, app, produit.Id); got != 10 {
+		t.Fatalf("stock %v : un service ne doit rien décompter", got)
+	}
+	if n := len(evenementsDe(t, app, produit.Id)); n != 0 {
+		t.Fatalf("%d événement(s) pour un service", n)
+	}
+
+	// Et un produit ordinaire — `type` simple, ou absent — continue de bouger.
+	produit.Set("type", "simple")
+	if err := app.Dao().SaveRecord(produit); err != nil {
+		t.Fatalf("retour en produit: %v", err)
+	}
+	res = applyOneMovement(app, StockMovementInput{ProductID: produit.Id, Delta: ptr(-1)}, nil)
+	if !res.Applied {
+		t.Fatalf("un produit ordinaire doit être décompté : %+v", res)
 	}
 }
 

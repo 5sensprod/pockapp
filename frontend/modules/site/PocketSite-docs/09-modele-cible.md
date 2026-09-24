@@ -196,6 +196,13 @@ métier `availability` **neuf**, à valeurs explicites, et **pas** la
 réintroduction du miroir `stock_status`. Ajouter un champ à une collection
 PocketBase est peu coûteux ; en retirer un qui a été rempli l'est beaucoup plus.
 
+> **Mis à jour le 24 septembre 2026 — le besoin s'est confirmé, et `manage_stock`
+> en est sorti.** Le champ est arrivé sous le nom `availability_label`, en
+> **texte libre** (et non « à valeurs explicites » : décision du propriétaire),
+> et `manage_stock` n'est plus qu'une colonne dérivée de `type`, sans usage à
+> construire. Voir `docs/DECISIONS.md`, 2026-09-24, et le §4.1 septies du
+> contrat.
+
 **Relations**
 
 | Champ | Type |

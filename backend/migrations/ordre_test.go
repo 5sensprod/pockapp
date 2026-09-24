@@ -88,6 +88,7 @@ var apresCatalogV2 = []string{
 	"AddPromoPeriodToProducts",
 	"AddWebLinksToProducts",
 	"AddFeaturedToProducts",
+	"AddAvailabilityToProducts",
 }
 
 func TestLesMigrationsDuCatalogueSontInscritesEtApresLaRecreation(t *testing.T) {
@@ -244,6 +245,36 @@ func TestLOperationCommercialeEstUnChampSepareDeLEtatCommercial(t *testing.T) {
 				"est mono-valeur, un produit d'occasion soldé y deviendrait "+
 				"inexprimable", v)
 		}
+	}
+}
+
+func TestLeMessageDeDisponibiliteEstUnTexteLibreFacultatif(t *testing.T) {
+	// L'ARBITRAGE QUE CE TEST TIENT : le message est un TEXTE LIBRE, décision du
+	// propriétaire le 24 septembre 2026, et il est facultatif — vide, le site
+	// retombe sur son défaut. Un select figerait le vocabulaire du magasin ; un
+	// champ obligatoire imposerait un texte aux 3000 fiches.
+	dispo := lireSourceSansCommentaires(t, "add_availability_to_products.go")
+
+	if !strings.Contains(dispo, `Name: "availability_label"`) {
+		t.Fatal("le champ doit s'appeler availability_label : c'est ce nom que " +
+			"portent l'export, la colonne SQL du site et le formulaire")
+	}
+	if !strings.Contains(dispo, "FieldTypeText") {
+		t.Fatal("availability_label doit être un texte libre, pas un select : le " +
+			"magasin écrit « Sur commande », « Livraison prochaine »… lui-même")
+	}
+	if strings.Contains(dispo, "Required: true") {
+		t.Fatal("availability_label ne doit PAS être obligatoire : vide, c'est le " +
+			"défaut du site, et c'est le cas de tout le catalogue")
+	}
+	if AvailabilityLabelMaxLength <= 0 {
+		t.Fatal("AvailabilityLabelMaxLength doit borner le message : au-delà, il " +
+			"déborde de la carte du site")
+	}
+	if !strings.Contains(dispo, "AvailabilityLabelMaxLength") {
+		t.Fatal("le schéma doit borner availability_label par " +
+			"AvailabilityLabelMaxLength, pas par un nombre écrit en dur qui " +
+			"divergerait des copies TS et PHP")
 	}
 }
 

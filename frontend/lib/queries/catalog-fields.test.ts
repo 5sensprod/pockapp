@@ -228,3 +228,15 @@ describe('la mise en avant', () => {
 		expect(demandes).toContain('featured')
 	})
 })
+
+describe('le message de disponibilité', () => {
+	it('est demandé par les DEUX listes — sinon il reviendrait vide', () => {
+		// Même piège que `featured_label` et `web_links`. Absent de
+		// `PRODUCT_FIELDS`, la fiche s'ouvrirait avec un champ vide et
+		// l'enregistrement EFFACERAIT le message qu'un vendeur avait écrit ; absent
+		// de la liste du module site, aucun message ne partirait jamais et le site
+		// afficherait « Réappro » partout — sans la moindre erreur.
+		expect(PRODUCT_FIELDS.split(',')).toContain('availability_label')
+		expect(SITE_PRODUCT_FIELDS.split(',')).toContain('availability_label')
+	})
+})
