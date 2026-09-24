@@ -136,7 +136,9 @@ function BarcodeField({
 				const valid = isEAN13 && validateEAN13(value)
 				return (
 					<FormItem>
-						<FormLabel>Code-barres</FormLabel>
+						<FormLabel className='flex min-h-6 items-center'>
+							Code-barres
+						</FormLabel>
 						<div className='flex min-w-0 items-center gap-2'>
 							<FormControl>
 								<Input className='min-w-0 font-mono' {...field} />

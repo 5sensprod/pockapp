@@ -16,6 +16,7 @@
 // l'export (`lib/catalog/availability.ts`) ; l'indice sous le champ le dit,
 // pour que « laisser vide » soit un choix et non un oubli.
 
+import { useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
 import {
@@ -26,11 +27,11 @@ import {
 	FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import {
 	MAX_MESSAGE,
 	MESSAGES_SUGGERES,
 	MESSAGE_PAR_DEFAUT,
-	messageNormalise,
 } from '@/lib/catalog/availability'
 
 import { FormDetailCard, HelpTooltip } from './detail-primitives'
@@ -49,9 +50,22 @@ export function ProductAvailabilityCard({
 }) {
 	const published = form.watch('status') === 'published'
 	const disabled = disabledProp || (embedded && !published)
-	const [message, stock] = form.watch(['availability_label', 'stock'])
-	const enStock = Number(stock) > 0
-	const affiche = messageNormalise(message) || MESSAGE_PAR_DEFAUT
+
+	// Simple affichage, rien n'est écrit en base : allumé quand un message est
+	// déjà posé. Éteindre EFFACE le message (le site reprend son défaut).
+	const [actif, setActif] = useState(
+		() => (form.getValues('availability_label') ?? '').trim() !== '',
+	)
+	const basculer = (checked: boolean) => {
+		setActif(checked)
+		if (!checked) {
+			form.setValue('availability_label', '', {
+				shouldDirty: true,
+				shouldTouch: true,
+				shouldValidate: true,
+			})
+		}
+	}
 
 	const body = (
 		<div className='grid gap-3'>
@@ -60,7 +74,7 @@ export function ProductAvailabilityCard({
 				name='availability_label'
 				render={({ field }) => (
 					<FormItem>
-						<FormLabel className='flex items-center'>
+						<FormLabel className={embedded ? 'sr-only' : 'flex items-center'}>
 							Message quand le stock est à 0
 							<HelpTooltip text='Affiché à la place de « Réappro » sur la carte et la fiche du site, uniquement quand le stock neuf est à 0. Laissez vide pour garder le message par défaut. Utile aussi pour un service : « Sur rendez-vous ».' />
 						</FormLabel>
@@ -96,48 +110,32 @@ export function ProductAvailabilityCard({
 					</button>
 				))}
 			</div>
-
-			{/* L'aperçu reprend la forme de la pastille de stock du site
-				    (`StockBadge.jsx`) sans en être le code : deux dépôts, et celui-ci
-				    ne doit pas prétendre montrer le rendu exact. Il dit aussi ce que
-				    le site affiche MAINTENANT, pas seulement à zéro. */}
-			<div className='flex flex-wrap items-center gap-2'>
-				<span className='text-muted-foreground text-xs'>
-					{enStock ? 'Aujourd’hui, le site affiche :' : 'Le site affiche :'}
-				</span>
-				{enStock ? (
-					<span className='inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 font-medium text-green-800 text-xs dark:bg-green-900/40 dark:text-green-200'>
-						<span className='mr-1.5 h-1.5 w-1.5 rounded-full bg-green-500' />
-						En stock
-					</span>
-				) : (
-					<span className='inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 font-medium text-orange-800 text-xs dark:bg-orange-900/40 dark:text-orange-200'>
-						<span className='mr-1.5 h-1.5 w-1.5 rounded-full bg-orange-500' />
-						{affiche}
-					</span>
-				)}
-			</div>
-			{enStock && (
-				<p className='text-muted-foreground text-xs'>
-					Le message « {affiche} » s’affichera dès que le stock neuf tombera à
-					0.
-				</p>
-			)}
 		</div>
 	)
 
 	if (embedded) {
 		if (!published) return null
 		return (
-			<section
-				className={
-					published ? 'mt-4 border-t pt-4' : 'mt-4 border-t pt-4 opacity-55'
-				}
-			>
-				<h3 className='mb-3 font-semibold text-primary/90 text-sm tracking-tight'>
-					Disponibilité en ligne
-				</h3>
-				{published && body}
+			<section className='mt-4 border-t pt-4'>
+				<div
+					className={
+						actif
+							? 'mb-3 flex items-center justify-between gap-4'
+							: 'flex items-center justify-between gap-4'
+					}
+				>
+					<h3 className='flex items-center font-semibold text-primary/90 text-sm tracking-tight'>
+						Message stock à 0
+						<HelpTooltip text='Ce réglage ne concerne que le stock à 0. Désactivé, le site garde son message par défaut (« Réappro ») ; un produit en stock s’affiche toujours « En stock ». Activé, votre message remplace « Réappro » quand le stock neuf tombe à 0. Utile aussi pour un service : « Sur rendez-vous ».' />
+					</h3>
+					<Switch
+						checked={actif}
+						disabled={disabled}
+						onCheckedChange={basculer}
+						aria-label='Personnaliser le message de stock à 0'
+					/>
+				</div>
+				{actif && body}
 			</section>
 		)
 	}

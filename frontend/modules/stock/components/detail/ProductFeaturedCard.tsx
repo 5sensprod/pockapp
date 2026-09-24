@@ -21,8 +21,6 @@
 
 import type { UseFormReturn } from 'react-hook-form'
 
-import { Sparkles } from 'lucide-react'
-
 import {
 	FormControl,
 	FormField,
@@ -37,15 +35,6 @@ import { LIBELLE_PAR_DEFAUT, MAX_LIBELLE } from '@/lib/catalog/featured'
 import { DetailStatusCard, HelpTooltip } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
 
-/** Des libellés prêts à poser. Ce ne sont QUE des raccourcis de saisie : rien
- *  ici n'est une valeur du schéma, le champ reste un texte libre. */
-const SUGGESTIONS = [
-	LIBELLE_PAR_DEFAUT,
-	'Notre sélection',
-	'Produit vedette',
-	'À découvrir',
-]
-
 export function ProductFeaturedCard({
 	form,
 	disabled = false,
@@ -59,7 +48,6 @@ export function ProductFeaturedCard({
 	embedded?: boolean
 }) {
 	const featured = form.watch('featured')
-	const libelle = form.watch('featured_label')
 	const published = form.watch('status') === 'published'
 	const locked = disabled || (embedded && !published)
 
@@ -124,57 +112,26 @@ export function ProductFeaturedCard({
 					</FormItem>
 				)}
 			/>
-
-			{/* L'aperçu. Il reprend la forme de la pastille du site
-				    (`AxeFeaturedBadge.jsx`) sans en être le code : deux dépôts,
-				    et celui-ci ne doit pas prétendre montrer le rendu exact. */}
-			<div className='flex flex-wrap items-center gap-2'>
-				<span className='text-muted-foreground text-xs'>Aperçu :</span>
-				<span className='inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800 text-xs dark:bg-amber-900/40 dark:text-amber-200'>
-					<Sparkles className='mr-1 h-3 w-3' aria-hidden='true' />
-					{libelle.trim() === '' ? LIBELLE_PAR_DEFAUT : libelle.trim()}
-				</span>
-			</div>
-
-			{featured && (
-				<div className='flex flex-wrap gap-1.5'>
-					{SUGGESTIONS.map((suggestion) => (
-						<button
-							key={suggestion}
-							type='button'
-							disabled={locked}
-							className='rounded-full border px-2.5 py-1 text-muted-foreground text-xs transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50'
-							onClick={() =>
-								form.setValue('featured_label', suggestion, {
-									shouldDirty: true,
-									shouldTouch: true,
-									shouldValidate: true,
-								})
-							}
-						>
-							{suggestion}
-						</button>
-					))}
-				</div>
-			)}
 		</div>
 	)
 
 	if (embedded) {
 		if (!published) return null
 		return (
-			<section
-				className={
-					published ? 'mt-4 border-t pt-4' : 'mt-4 border-t pt-4 opacity-55'
-				}
-			>
-				<div className='mb-3 flex items-center justify-between gap-4'>
+			<section className='mt-4 border-t pt-4'>
+				<div
+					className={
+						featured
+							? 'mb-3 flex items-center justify-between gap-4'
+							: 'flex items-center justify-between gap-4'
+					}
+				>
 					<h3 className='font-semibold text-sm text-primary/90 tracking-tight'>
 						Mise en avant
 					</h3>
 					{headerRight}
 				</div>
-				{published && body}
+				{featured && body}
 			</section>
 		)
 	}

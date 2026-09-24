@@ -1,4 +1,5 @@
 import { Globe2, Images, PlaySquare } from 'lucide-react'
+import { useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
 import { Switch } from '@/components/ui/switch'
@@ -46,6 +47,21 @@ type Props = {
 }
 
 export function ProductSitePanel(props: Props) {
+	// Simple affichage : allumé quand des liens existent déjà. Éteindre les
+	// EFFACE du formulaire (rien n'est perdu tant qu'on n'enregistre pas).
+	const [liensActifs, setLiensActifs] = useState(
+		() => (props.form.getValues('web_links') ?? []).length > 0,
+	)
+	const basculerLiens = (checked: boolean) => {
+		setLiensActifs(checked)
+		if (!checked) {
+			props.form.setValue('web_links', [], {
+				shouldDirty: true,
+				shouldTouch: true,
+				shouldValidate: true,
+			})
+		}
+	}
 	const status = props.form.watch('status')
 	const published = status === 'published'
 
@@ -117,16 +133,26 @@ export function ProductSitePanel(props: Props) {
 							/>
 						</section>
 						<section className='border-t pt-4'>
-							<div className='mb-3 flex items-center justify-between gap-3'>
+							<div
+								className={
+									liensActifs
+										? 'mb-3 flex items-center justify-between gap-3'
+										: 'flex items-center justify-between gap-3'
+								}
+							>
 								<h3 className='flex items-center gap-2 font-semibold text-sm'>
 									<PlaySquare className='h-4 w-4 text-purple-600 dark:text-purple-400' />
 									Liens et vidéos
+									<HelpTooltip text='Documentation, tests et démonstrations, affichés sur la page du site. Désactiver retire tous les liens de la fiche.' />
 								</h3>
-								<span className='text-muted-foreground text-[10px]'>
-									Documentation, tests et démonstrations
-								</span>
+								<Switch
+									checked={liensActifs}
+									disabled={props.disabled}
+									onCheckedChange={basculerLiens}
+									aria-label='Activer les liens et vidéos'
+								/>
 							</div>
-							<ProductWebLinksCard form={props.form} />
+							{liensActifs && <ProductWebLinksCard form={props.form} />}
 						</section>
 					</div>
 				</FormDetailCard>
