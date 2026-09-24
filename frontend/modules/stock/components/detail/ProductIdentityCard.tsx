@@ -19,7 +19,7 @@ import { generateProductBarcode } from '@/lib/queries/product-barcode'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { toast } from 'sonner'
 
-import { DetailCard, HelpTooltip, NativeSelect } from './detail-primitives'
+import { DetailCard, HelpTooltip } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
 
 // L'identité INTERNE du produit : uniquement ce qui permet de le nommer et de
@@ -56,6 +56,14 @@ export function ProductIdentityCard({
 	)
 }
 
+const TVA_PAR_DEFAUT = 20
+
+const ETATS = [
+	{ value: '', label: 'Neuf' },
+	{ value: 'used', label: 'Occasion' },
+	{ value: 'rental', label: 'Location' },
+] as const
+
 function CommercialStateField({
 	form,
 }: {
@@ -66,33 +74,51 @@ function CommercialStateField({
 			control={form.control}
 			name='commercial_state'
 			render={({ field }) => (
-				<FormItem>
-					<FormLabel className='flex items-center'>
-						État commercial
-						<HelpTooltip text='Occasion et location gardent leur rayon habituel : cet état dit comment le produit se vend.' />
-					</FormLabel>
+				<FormItem className='self-end'>
 					<FormControl>
-						<NativeSelect
-							{...field}
-							onChange={(event) => {
-								field.onChange(event)
-								// Un produit d'occasion se vend à 0 % de TVA (régime de la
-								// marge) : la bascule est immédiate, pour ne pas laisser la
-								// fiche afficher un taux qui ne sera plus le sien à
-								// l'enregistrement (`useProductDetailEditor.submit` l'impose
-								// de toute façon, ceci n'est que le retour visuel).
-								if (event.target.value === 'used') {
-									form.setValue('tax_rate', 0, {
-										shouldDirty: true,
-										shouldValidate: true,
-									})
-								}
-							}}
+						<div
+							aria-label='État commercial'
+							className='grid h-10 grid-cols-3 gap-1 rounded-md border bg-muted/30 p-1'
 						>
-							<option value=''>Neuf</option>
-							<option value='used'>Occasion</option>
-							<option value='rental'>Location</option>
-						</NativeSelect>
+							{ETATS.map(({ value, label }) => {
+								const actif = (field.value ?? '') === value
+								return (
+									<button
+										key={value}
+										type='button'
+										aria-pressed={actif}
+										onClick={() => {
+											field.onChange(value)
+											// Un produit d'occasion se vend à 0 % de TVA (régime de la
+											// marge) : la bascule est immédiate, pour ne pas laisser la
+											// fiche afficher un taux qui ne sera plus le sien à
+											// l'enregistrement (`useProductDetailEditor.submit` l'impose
+											// de toute façon, ceci n'est que le retour visuel).
+											// À l'inverse, quitter l'occasion rend le taux par défaut.
+											if (value !== 'used' && (field.value ?? '') === 'used') {
+												form.setValue('tax_rate', TVA_PAR_DEFAUT, {
+													shouldDirty: true,
+													shouldValidate: true,
+												})
+											}
+											if (value === 'used') {
+												form.setValue('tax_rate', 0, {
+													shouldDirty: true,
+													shouldValidate: true,
+												})
+											}
+										}}
+										className={
+											actif
+												? 'rounded bg-background font-medium text-sm shadow-sm'
+												: 'rounded text-muted-foreground text-sm transition-colors hover:text-foreground'
+										}
+									>
+										{label}
+									</button>
+								)
+							})}
+						</div>
 					</FormControl>
 				</FormItem>
 			)}

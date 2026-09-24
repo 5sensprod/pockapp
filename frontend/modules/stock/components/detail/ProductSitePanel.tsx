@@ -100,10 +100,7 @@ export function ProductSitePanel(props: Props) {
 				</div>
 			</div>
 			<div className='grid gap-3'>
-				<FormDetailCard
-					title='Médias'
-					dirty={props.dirtySections.visuals || props.webLinksDirty}
-				>
+				<FormDetailCard title='Médias' dirty={props.dirtySections.visuals}>
 					<div className='grid gap-4'>
 						<section>
 							<div className='mb-3 flex items-center justify-between gap-3'>
@@ -132,30 +129,47 @@ export function ProductSitePanel(props: Props) {
 								embedded
 							/>
 						</section>
-						<section className='border-t pt-4'>
-							<div
-								className={
-									liensActifs
-										? 'mb-3 flex items-center justify-between gap-3'
-										: 'flex items-center justify-between gap-3'
-								}
-							>
-								<h3 className='flex items-center gap-2 font-semibold text-sm'>
-									<PlaySquare className='h-4 w-4 text-purple-600 dark:text-purple-400' />
-									Liens et vidéos
-									<HelpTooltip text='Documentation, tests et démonstrations, affichés sur la page du site. Désactiver retire tous les liens de la fiche.' />
-								</h3>
-								<Switch
-									checked={liensActifs}
-									disabled={props.disabled}
-									onCheckedChange={basculerLiens}
-									aria-label='Activer les liens et vidéos'
-								/>
-							</div>
-							{liensActifs && <ProductWebLinksCard form={props.form} />}
-						</section>
 					</div>
 				</FormDetailCard>
+				<EditableDetailCard
+					title='Contenu éditorial'
+					banner='Vous pouvez maintenant modifier les contenus visibles en ligne.'
+					editing={props.activeSection === 'content'}
+					dirty={props.dirtySections.content || props.webLinksDirty}
+					onEdit={() => props.onEdit('content')}
+				>
+					<ProductDescriptionCard
+						product={props.product}
+						editing={props.activeSection === 'content'}
+						form={props.form}
+						embedded
+						onSaveNow={props.onSaveNow}
+						saving={props.saving}
+					/>
+					<section className='border-t pt-4'>
+						<div
+							className={
+								liensActifs
+									? 'mb-3 flex items-center justify-between gap-3'
+									: 'flex items-center justify-between gap-3'
+							}
+						>
+							<h3 className='flex items-center gap-2 font-semibold text-sm'>
+								<PlaySquare className='h-4 w-4 text-purple-600 dark:text-purple-400' />
+								Liens et vidéos
+								<HelpTooltip text='Documentation, tests et démonstrations, affichés sur la page du site. Désactiver retire tous les liens de la fiche.' />
+							</h3>
+							<Switch
+								checked={liensActifs}
+								disabled={props.disabled}
+								onCheckedChange={basculerLiens}
+								aria-label='Activer les liens et vidéos'
+							/>
+						</div>
+						{liensActifs && <ProductWebLinksCard form={props.form} />}
+					</section>
+				</EditableDetailCard>
+
 				<DetailStatusCard
 					title='Publication'
 					dirty={Boolean(props.form.formState.dirtyFields.status)}
@@ -232,23 +246,6 @@ export function ProductSitePanel(props: Props) {
 						</>
 					)}
 				</DetailStatusCard>
-
-				<EditableDetailCard
-					title='Contenu éditorial'
-					banner='Vous pouvez maintenant modifier les contenus visibles en ligne.'
-					editing={props.activeSection === 'content'}
-					dirty={props.dirtySections.content}
-					onEdit={() => props.onEdit('content')}
-				>
-					<ProductDescriptionCard
-						product={props.product}
-						editing={props.activeSection === 'content'}
-						form={props.form}
-						embedded
-						onSaveNow={props.onSaveNow}
-						saving={props.saving}
-					/>
-				</EditableDetailCard>
 			</div>
 		</div>
 	)

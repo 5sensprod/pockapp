@@ -97,7 +97,13 @@ export function ProductDetailHeader(props: Props) {
 					<TooltipProvider>
 						<Tooltip>
 							<TooltipTrigger asChild>
-								{adresse ? (
+								{adresse && props.status !== 'published' ? (
+									// Déjà publiée une fois puis repassée en brouillon : l'adresse
+									// existe mais la page n'est plus en ligne, donc pas de lien.
+									<span className='cursor-help truncate font-mono text-muted-foreground text-xs'>
+										{adresse}
+									</span>
+								) : adresse ? (
 									<button
 										type='button'
 										onClick={() => ouvrirDansLeNavigateur(adresse)}
@@ -113,9 +119,11 @@ export function ProductDetailHeader(props: Props) {
 								)}
 							</TooltipTrigger>
 							<TooltipContent className='max-w-80'>
-								{adresse
-									? 'Ouvre la fiche sur le site dans le navigateur du poste. L’adresse est attribuée au premier enregistrement en statut publié, puis reste inchangée même si le nom change.'
-									: 'L’adresse est attribuée au premier enregistrement en statut publié. Un brouillon n’a pas de page sur le site.'}
+								{adresse && props.status !== 'published'
+									? 'Adresse réservée à cette fiche, mais la page n’est pas en ligne tant que le produit n’est pas publié.'
+									: adresse
+										? 'Ouvre la fiche sur le site dans le navigateur du poste. L’adresse est attribuée au premier enregistrement en statut publié, puis reste inchangée même si le nom change.'
+										: 'L’adresse est attribuée au premier enregistrement en statut publié. Un brouillon n’a pas de page sur le site.'}
 							</TooltipContent>
 						</Tooltip>
 					</TooltipProvider>
