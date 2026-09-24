@@ -2,6 +2,10 @@ import { Globe2, Images, PlaySquare } from 'lucide-react'
 import type { UseFormReturn } from 'react-hook-form'
 
 import { Switch } from '@/components/ui/switch'
+import {
+	dire,
+	manquesPourPublier,
+} from '@/lib/catalog/publication-requirements'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 import type { GalleryEntry } from '@/lib/queries/gallery-order'
 
@@ -51,18 +55,17 @@ export function ProductSitePanel(props: Props) {
 	// le frein ne retient que la PREMIÈRE publication, jamais une fiche en
 	// ligne dont l'image aurait disparu depuis (elle reste publiée, à corriger
 	// à son rythme).
-	const manqueImage =
-		!published &&
-		!(
-			(props.currentImage ?? props.product.image ?? '') !== '' ||
-			!!props.pendingMain
-		)
-	const manqueCategorie =
-		!published && (props.form.watch('categories')?.length ?? 0) === 0
-	const manques = [
-		manqueImage && 'une image principale',
-		manqueCategorie && 'une catégorie',
-	].filter((valeur): valeur is string => Boolean(valeur))
+	//
+	// La règle elle-même est partagée avec le lot « Publier la sélection » de la
+	// page produits (`lib/catalog/publication-requirements.ts`) : ce qui bloque
+	// ici bloque là-bas.
+	const manques = published
+		? []
+		: manquesPourPublier({
+				image: props.currentImage ?? props.product.image,
+				categories: props.form.watch('categories'),
+				imageEnAttente: !!props.pendingMain,
+			})
 	const publicationBloquee = manques.length > 0
 
 	return (
@@ -161,7 +164,7 @@ export function ProductSitePanel(props: Props) {
 								}
 								title={
 									publicationBloquee
-										? `Manque ${manques.join(' et ')} pour publier`
+										? `Manque ${dire(manques)} pour publier`
 										: undefined
 								}
 							/>
@@ -170,7 +173,7 @@ export function ProductSitePanel(props: Props) {
 				>
 					{publicationBloquee && (
 						<p className='mb-3 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400'>
-							Publication impossible : {manques.join(' et ')}{' '}
+							Publication impossible : {dire(manques)}{' '}
 							{manques.length > 1 ? 'manquent' : 'manque'}.
 						</p>
 					)}

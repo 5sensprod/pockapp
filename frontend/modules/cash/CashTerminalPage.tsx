@@ -159,6 +159,9 @@ export function CashTerminalPage() {
 	const { items: catalogItems } = useCatalogProductSearch({
 		companyId: activeCompanyId ?? undefined,
 		term: productSearch,
+		// Un produit né en caisse est un brouillon (`CreateProductDialog`) : il doit
+		// rester trouvable au scan et à la recherche tant qu'il n'est pas publié.
+		inclureBrouillons: true,
 	})
 
 	// L'image est résolue ICI, une fois : la grille et le panier reçoivent une

@@ -359,6 +359,20 @@ pnpm typegen          # types TS depuis le schéma PocketBase (serveur démarré
   « modifiées ». Trois listes à tenir d'accord, gardées par
   `catalog-fields.test.ts` et `catalog-export.test.ts` : `PRODUCT_FIELDS` (les
   deux), `CHAMPS_PRODUIT_EXPORTES`.
+- **Pas de publication sans image principale ni catégorie, et le lot le fait
+  respecter dans la mutation** (24 septembre 2026). La règle est unique :
+  `frontend/lib/catalog/publication-requirements.ts`, lue par le verrou de la
+  fiche (`ProductSitePanel`) ET par « Publier la sélection »
+  (`useUpdateCatalogProductStatusBatch`). Le lot publie les fiches complètes,
+  laisse les autres en brouillon et rend `refused` (avec ce qui manque) pour que
+  la page prévienne le vendeur ; il relit chaque fiche **dans la base**, jamais
+  la copie de la sélection. Dépublier n'exige rien. **Un produit né en caisse
+  naît en BROUILLON** (`CreateProductDialog`) — il n'a ni image ni catégorie —, et
+  **la caisse cherche aussi les brouillons** (`inclureBrouillons`, réservé à
+  `CashTerminalPage`) : « publié » dit « en ligne », pas « vendable ». Factures,
+  devis et commandes restent sur les publiés. Les deux moitiés vont ensemble.
+  Gardiens : `product-publication.test.ts` et
+  `modules/cash/creation-rapide-brouillon.test.ts`.
 - **Les décomptes du catalogue se calculent côté serveur** (25 août 2026) :
   `GET /api/catalog/counts` (`backend/routes/catalog_counts_routes.go`) rend,
   par marque et par catégorie, ce que trois écrans du module `stock`

@@ -132,8 +132,16 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 			if (!confirme) return
 
 			try {
-				// `status: 'published'` — sans quoi le produit tout juste créé serait
-				// invisible du sélecteur de la caisse, qui écarte les brouillons.
+				// `status: 'draft'` (24 septembre 2026) : un produit né au comptoir n'a
+				// ni image ni catégorie, et une fiche sans elles ne se publie pas
+				// (`lib/catalog/publication-requirements.ts`). Il naissait publié pour
+				// rester visible du sélecteur de la caisse, qui écartait les
+				// brouillons — ce couplage est levé : la caisse cherche désormais
+				// aussi les brouillons (`inclureBrouillons`, `CashTerminalPage`). Le
+				// produit reste vendable tout de suite ET aux ventes suivantes, sans
+				// jamais paraître en ligne incomplet ; le vendeur le complète sur sa
+				// fiche, puis le publie. Pas de slug non plus : il naît à la première
+				// publication (`withSlug`).
 				// `legacy_id` est posé par la couche, pas ici.
 				// Ce qui est tapé au comptoir est la DÉSIGNATION, celle du ticket.
 				// `name` titre la fiche en ligne : on ne le reprend que si le
@@ -144,7 +152,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 					designation,
 					name: formData.name.trim() || designation,
 					company: activeCompanyId,
-					status: 'published',
+					status: 'draft',
 					type: 'simple',
 					manage_stock: true,
 				})

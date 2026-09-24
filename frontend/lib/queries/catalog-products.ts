@@ -27,6 +27,10 @@
 // Schéma lu : backend/migrations/catalog_v2.go.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import {
+	dire,
+	manquesPourPublier,
+} from '@/lib/catalog/publication-requirements'
 import type { WebLink } from '@/lib/catalog/web-links'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import {
@@ -532,8 +536,14 @@ export function useCatalogProductSearch(options: {
 	term?: string
 	/** Le sélecteur est fermé : rien ne part au serveur. */
 	enabled?: boolean
+	/** Cherche aussi les fiches non publiées. **Réservé à la caisse** : un
+	 *  article se vend au comptoir avant d'être en ligne — c'est le cas de tout
+	 *  produit né en caisse, qui naît en brouillon faute d'image et de catégorie.
+	 *  Factures, devis et commandes gardent les seuls produits publiés. */
+	inclureBrouillons?: boolean
 }) {
-	const { companyId, term = '', enabled = true } = options
+	const { companyId, term = '', enabled = true, inclureBrouillons = false } =
+		options
 	const [debounced, setDebounced] = useState(term)
 
 	useEffect(() => {
@@ -549,8 +559,9 @@ export function useCatalogProductSearch(options: {
 		perPage: SEARCH_PER_PAGE,
 		search: debounced.trim() || undefined,
 		// Un document ne se compose pas de brouillons : ce qui n'est pas publié
-		// n'a pas de prix arrêté.
-		status: 'published',
+		// n'a pas de prix arrêté. La caisse fait exception (`inclureBrouillons`) :
+		// « publié » dit « en ligne », pas « vendable ».
+		status: inclureBrouillons ? undefined : 'published',
 	})
 
 	return {
@@ -728,13 +739,32 @@ export function useUpdateCatalogProduct() {
 	})
 }
 
-/** Le slug naît à la publication et reste ensuite celui de la base, même après dépublication. */
+/** Une fiche refusée à la publication : ce qui lui manque, dans les mots de
+ *  `publication-requirements.ts`. Levée AVANT toute écriture. */
+export class PublicationRefusee extends Error {
+	constructor(readonly manques: string[]) {
+		super(`Publication refusée : manque ${dire(manques)}`)
+		this.name = 'PublicationRefusee'
+	}
+}
+
+/** Le slug naît à la publication et reste ensuite celui de la base, même après dépublication.
+ *
+ *  `exigerRessources` : refuse de PUBLIER une fiche sans image principale ni
+ *  catégorie, sur ce que la base porte À CET INSTANT — pas sur une copie prise
+ *  à l'écran. Réservé au lot : la fiche détail a sa propre garde, qui voit
+ *  l'image qu'elle s'apprête à enregistrer dans le même geste. */
 export async function updateCatalogProductRecord(
 	pb: any,
 	id: string,
 	data: Partial<CatalogProductWrite>,
+	options: { exigerRessources?: boolean } = {},
 ): Promise<CatalogProductShape> {
 	const current = await pb.collection('products').getOne(id)
+	if (options.exigerRessources && data.status === 'published') {
+		const manques = manquesPourPublier(current)
+		if (manques.length > 0) throw new PublicationRefusee(manques)
+	}
 	const { slug: _ignored, ...fields } = data as Partial<CatalogProductWrite> & {
 		slug?: string
 	}
@@ -831,6 +861,20 @@ export function useUpdateCatalogProductCategoriesBatch() {
  * `modified` 25 produits pour en changer trois. Concurrence bornée à 6, comme
  * le lot de catégories, parce que le PocketBase embarqué n'a qu'une connexion
  * d'écriture.
+ *
+ * ── PUBLIER, C'EST PUBLIER LES FICHES VALIDES (24 septembre 2026) ──────────
+ * Une fiche sans image principale ou sans catégorie ne se publie pas
+ * (`lib/catalog/publication-requirements.ts`) — l'écran de la fiche la refusait
+ * déjà, le lot non. Il publie désormais celles qui sont complètes, laisse les
+ * autres EN BROUILLON, et rend la liste des refusées avec ce qui leur manque
+ * (`refused`) pour que l'appelant prévienne le vendeur : un lot ne s'arrête
+ * pas sur une fiche, et il ne se tait pas non plus.
+ *
+ * Le contrôle lit la fiche dans la base au moment d'écrire, pas la copie de
+ * la sélection : une image ajoutée depuis la fiche, ou depuis un autre poste,
+ * ne doit pas faire refuser à tort — ni l'inverse.
+ *
+ * Dépublier n'exige rien.
  */
 export function useUpdateCatalogProductStatusBatch() {
 	const pb = usePocketBase() as any
@@ -841,24 +885,42 @@ export function useUpdateCatalogProductStatusBatch() {
 			products,
 			status,
 		}: {
-			products: { id: string; status?: CatalogProductStatus }[]
+			products: { id: string; name?: string; status?: CatalogProductStatus }[]
 			status: CatalogProductStatus
 		}) => {
 			const cibles = products.filter((product) => product.status !== status)
+			const refused: { id: string; name: string; manques: string[] }[] = []
+			let updated = 0
 
 			for (let start = 0; start < cibles.length; start += 6) {
 				await Promise.all(
-					cibles
-						.slice(start, start + 6)
-						.map((product) =>
-							updateCatalogProductRecord(pb, product.id, { status }),
-						),
+					cibles.slice(start, start + 6).map(async (product) => {
+						try {
+							await updateCatalogProductRecord(
+								pb,
+								product.id,
+								{ status },
+								{ exigerRessources: true },
+							)
+							updated += 1
+						} catch (error) {
+							// Un refus de publication est un RÉSULTAT ; toute autre erreur
+							// (réseau, PocketBase) reste une erreur et arrête le lot.
+							if (!(error instanceof PublicationRefusee)) throw error
+							refused.push({
+								id: product.id,
+								name: product.name ?? '',
+								manques: error.manques,
+							})
+						}
+					}),
 				)
 			}
 
 			return {
-				updated: cibles.length,
+				updated,
 				unchanged: products.length - cibles.length,
+				refused,
 			}
 		},
 		onSettled: () => invalidateCatalog(queryClient),

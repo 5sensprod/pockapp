@@ -10,6 +10,45 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Un produit né en caisse naît en brouillon — 2026-09-24
+
+**Décision.** La création rapide de la caisse (`CreateProductDialog`) écrit
+`status: 'draft'` au lieu de `'published'`, et le sélecteur de la caisse cherche
+désormais aussi les brouillons (`inclureBrouillons`, passé par
+`CashTerminalPage` seul). Déclencheur : une fiche ne se publie plus sans image
+principale ni catégorie (fiche et lot « Publier la sélection »), or un produit
+né au comptoir n'a ni l'une ni l'autre — il contournait la règle par sa seule
+porte d'entrée.
+
+**Pourquoi il naissait publié.** Tout le catalogue de vente (caisse, factures,
+devis, commandes) ne cherchait que les produits `published`. « Publié » disait à
+la fois « en ligne » et « vendable » — un couplage hérité d'AppPos, où `active`
+se traduisait par `publish`. La caisse est désormais le seul endroit où les deux
+se séparent : on vend au comptoir avant d'être en ligne.
+
+**Écarté : créer en brouillon sans rien changer à la recherche.** Le produit
+s'ajoute au panier à la création, mais le scan suivant ne le retrouve plus : le
+vendeur le recrée, et le garde-fou de doublons ne fait que l'avertir. Les
+doublons arriveraient par la porte que cette décision ferme.
+
+**Écarté : rester publié et faire bloquer l'export vers le site.** La caisse ne
+changeait pas, mais `status` cessait d'être la seule autorité sur ce qui est en
+ligne — une fiche « publiée » pouvait ne pas l'être.
+
+**Coût connu.** Les fiches non publiées déjà au catalogue **apparaissent
+maintenant en caisse** — de l'ordre de 590, ESTIMÉ (2999 produits chargés le
+2026-08-11, moins les 2412 publiés comptés depuis) et non mesuré. Si certaines
+sont des articles abandonnés, elles se vendront au scan comme les autres :
+à vérifier sur le catalogue de production avant la release. Factures, devis et
+commandes ne changent pas. Les produits déjà nés publiés en caisse restent tels
+quels.
+
+**Remise en cause si :** les brouillons hérités polluent la caisse — alors un
+marqueur « né en caisse » (ou une distinction vendable / en ligne portée par un
+champ) remplacera « tous les brouillons ».
+
+---
+
 ## « Suivi du stock » retiré, un message de disponibilité à la place — 2026-09-24
 
 **Décision.** L'interrupteur « Suivi du stock » (`manage_stock`) sort de la fiche

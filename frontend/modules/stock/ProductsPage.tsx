@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/popover'
 import { ResizableExplorerHandle } from '@/components/ui/resizable-explorer-handle'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import { dire } from '@/lib/catalog/publication-requirements'
 import { useResizableExplorer } from '@/lib/hooks/useResizableExplorer'
 import { useBrands } from '@/lib/queries/brands'
 import {
@@ -513,13 +514,19 @@ export function ProductsPage() {
 			statutBatch.mutate(
 				{ products: lignesSelection, status },
 				{
-					onSuccess: () =>
+					onSuccess: (resultat) => {
+						// Une fiche refusée reste EN BROUILLON : la copie ne doit pas
+						// dire « publié », sans quoi la pastille mentirait et le lot
+						// suivant la sauterait comme « déjà dans l'état visé ».
+						const refusees = new Set(resultat.refused.map((r) => r.id))
 						setSelectedProducts((courante) => {
 							const suivante = new Map(courante)
 							for (const [id, ligne] of suivante)
-								suivante.set(id, { ...ligne, status })
+								if (!refusees.has(id)) suivante.set(id, { ...ligne, status })
 							return suivante
-						}),
+						})
+						if (status === 'published') annoncerPublication(resultat)
+					},
 				},
 			)
 		},
@@ -1485,6 +1492,61 @@ const CATALOG_SORT_FIELDS: Record<string, string> = {
 
 /** Traduit le tri de la table vers la syntaxe PocketBase. Le repli garde le
  * catalogue sur le plus récent même si la table retire momentanément son tri. */
+/**
+ * Ce que le vendeur apprend d'un lot « Publier » (24 septembre 2026) : combien
+ * de fiches sont parties, et LESQUELLES sont restées en brouillon faute de
+ * ressources — une image principale, une catégorie. Un lot qui refuserait des
+ * fiches sans le dire laisserait croire à une panne du site : « je l'ai publié,
+ * il n'y est pas ».
+ *
+ * Le refus lui-même est décidé dans la mutation
+ * (`useUpdateCatalogProductStatusBatch`), pas ici : ce qui suit ne fait que
+ * l'annoncer.
+ */
+function annoncerPublication(resultat: {
+	updated: number
+	refused: { id: string; name: string; manques: string[] }[]
+}) {
+	const { updated, refused } = resultat
+	const pluriel = (n: number) => (n > 1 ? 's' : '')
+
+	if (refused.length === 0) {
+		if (updated > 0)
+			toast.success(
+				`${updated} produit${pluriel(updated)} publié${pluriel(updated)}`,
+			)
+		return
+	}
+
+	const visibles = refused.slice(0, 5)
+	toast.warning(
+		updated > 0
+			? `${updated} publié${pluriel(updated)}, ${refused.length} non publié${pluriel(refused.length)}`
+			: `Aucun produit publié : ${refused.length} fiche${pluriel(refused.length)} incomplète${pluriel(refused.length)}`,
+		{
+			duration: 12000,
+			description: (
+				<div className='space-y-1'>
+					<p>
+						Publication impossible sans image principale ni catégorie. Restés en
+						brouillon :
+					</p>
+					<ul className='list-disc pl-4'>
+						{visibles.map((fiche) => (
+							<li key={fiche.id}>
+								{fiche.name || 'Sans nom'} — manque {dire(fiche.manques)}
+							</li>
+						))}
+					</ul>
+					{refused.length > visibles.length && (
+						<p>et {refused.length - visibles.length} autre(s).</p>
+					)}
+				</div>
+			),
+		},
+	)
+}
+
 function toCatalogSort(sorting: SortingState) {
 	const current = sorting[0]
 	const field = current && CATALOG_SORT_FIELDS[current.id]
