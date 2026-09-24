@@ -58,15 +58,6 @@ export function ProductFeaturedCard({
 
 	const headerRight = (
 		<div className='flex items-center gap-2.5'>
-			<span
-				className={
-					featured
-						? 'font-semibold text-amber-700 text-xs dark:text-amber-300'
-						: 'font-semibold text-muted-foreground text-xs'
-				}
-			>
-				{featured ? 'En vitrine' : 'Non mis en avant'}
-			</span>
 			<Switch
 				checked={featured}
 				disabled={locked}

@@ -206,7 +206,7 @@ export function DetailStatusCard({
 	dirty = false,
 }: {
 	title: string
-	children: React.ReactNode
+	children?: React.ReactNode
 	headerRight: React.ReactNode
 	muted?: boolean
 	dirty?: boolean

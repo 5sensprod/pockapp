@@ -144,7 +144,7 @@ export function ProductPricingCard({
 
 	const content = (
 		<div className='space-y-4'>
-			<div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
+			<div className='grid gap-4 sm:grid-cols-3'>
 				<NumberField
 					form={form}
 					name='purchase_price_ht'
@@ -159,8 +159,10 @@ export function ProductPricingCard({
 					warning={priceRequired && !(Number(prix) > 0)}
 				/>
 				<TaxRateField form={form} />
-				<MargeField form={form} marge={taux.marge} marque={taux.marque} />
 			</div>
+			{/* Le prix se lit en une ligne (achat, prix, TVA) ; ce qu'il rapporte
+			    vient dessous, seul. */}
+			<MargeField form={form} marge={taux.marge} marque={taux.marque} />
 
 			{/* L'opération commerciale est un axe indépendant de l'état commercial
 			    (Identité) : elle ne change ni le prix affiché en temps normal, ni la
@@ -408,9 +410,9 @@ function MargeField({
 		<div>
 			<Label className='mb-2 flex items-center font-medium text-muted-foreground text-xs'>
 				Marges
-				<HelpTooltip text='La marge se saisit ici et calcule le prix TTC depuis l’achat HT. À l’inverse, changer le prix TTC recalcule cette marge — les deux se répondent.' />
+				<HelpTooltip text='La marge se saisit ici et calcule le prix TTC depuis l’achat HT. À l’inverse, changer le prix TTC recalcule cette marge — les deux se répondent. Marge sur l’achat HT, marque sur le prix de vente HT, hors promo.' />
 			</Label>
-			<div className='grid grid-cols-2 gap-3'>
+			<div className='grid max-w-sm grid-cols-2 gap-6'>
 				<div className='min-w-0'>
 					<div className='flex h-8 items-center border-emerald-300 border-b border-dashed text-emerald-700 dark:text-emerald-500'>
 						<Input
@@ -456,10 +458,6 @@ function MargeField({
 					</span>
 				</div>
 			</div>
-			<p className='mt-1 text-muted-foreground text-[10px]'>
-				Marge sur l’achat HT (modifiable), marque sur le prix de vente HT. Hors
-				promo.
-			</p>
 		</div>
 	)
 }

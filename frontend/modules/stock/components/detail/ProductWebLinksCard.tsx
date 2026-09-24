@@ -1,4 +1,5 @@
-import { GripVertical, Link2, Plus, Trash2, Youtube } from 'lucide-react'
+import { Link2, Plus, Trash2, Youtube } from 'lucide-react'
+import { useState } from 'react'
 import { useFieldArray } from 'react-hook-form'
 import type { UseFormReturn } from 'react-hook-form'
 
@@ -12,7 +13,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { MAX_LIENS, estUrlYouTube } from '@/lib/catalog/web-links'
 
-import { NativeSelect } from './detail-primitives'
 import type { ProductDetailValues } from './product-detail-form'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -39,77 +39,37 @@ export function ProductWebLinksCard({
 }: {
 	form: UseFormReturn<ProductDetailValues>
 }) {
-	const { fields, append, remove, move } = useFieldArray({
+	const { fields, append, remove } = useFieldArray({
 		control: form.control,
 		name: 'web_links',
 	})
+	const [saisie, setSaisie] = useState('')
 
 	const liens = form.watch('web_links') ?? []
 	const plein = fields.length >= MAX_LIENS
 
-	return (
-		<div className='grid gap-3'>
-			{fields.length === 0 && (
-				<p className='text-muted-foreground text-sm'>
-					Aucun lien. Ajoutez la fiche du constructeur, une notice, un test ou
-					une vidéo de démonstration : ils s'affichent sur la page du site.
-				</p>
-			)}
+	// Le type se DÉDUIT de l'adresse : une adresse YouTube est une vidéo, le
+	// reste un lien. Plus de liste à ouvrir, et plus de vidéo « non YouTube »
+	// que la règle refuserait.
+	const kindDe = (url: string) => (estUrlYouTube(url) ? 'video' : 'link')
 
+	const ajouter = (brut: string) => {
+		const url = brut.trim()
+		if (url === '' || plein) return
+		append({ kind: kindDe(url), url, label: '' })
+		setSaisie('')
+	}
+
+	return (
+		<div className='grid gap-2'>
 			{fields.map((field, index) => {
-				const lien = liens[index]
-				const video = lien?.kind === 'video'
-				// Une vidéo dont l'adresse n'est pas YouTube ne s'intégrera pas :
-				// l'icône passe en sourdine avant même la validation.
-				const videoReconnue = video && estUrlYouTube(lien?.url ?? '')
+				const video = liens[index]?.kind === 'video'
 
 				return (
 					<div
 						key={field.id}
-						className='grid items-start gap-2 sm:grid-cols-[auto_130px_minmax(0,1fr)_minmax(0,200px)_auto]'
+						className='grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,180px)_auto]'
 					>
-						<div className='flex items-center gap-0.5 pt-2'>
-							<GripVertical
-								className='text-muted-foreground/40 size-4'
-								aria-hidden='true'
-							/>
-							<div className='flex flex-col'>
-								<button
-									type='button'
-									onClick={() => move(index, index - 1)}
-									disabled={index === 0}
-									className='text-muted-foreground hover:text-foreground px-1 text-[10px] leading-none disabled:opacity-30'
-									aria-label='Monter ce lien'
-								>
-									▲
-								</button>
-								<button
-									type='button'
-									onClick={() => move(index, index + 1)}
-									disabled={index === fields.length - 1}
-									className='text-muted-foreground hover:text-foreground px-1 text-[10px] leading-none disabled:opacity-30'
-									aria-label='Descendre ce lien'
-								>
-									▼
-								</button>
-							</div>
-						</div>
-
-						<FormField
-							control={form.control}
-							name={`web_links.${index}.kind`}
-							render={({ field: champ }) => (
-								<FormItem>
-									<FormControl>
-										<NativeSelect {...champ}>
-											<option value='link'>Lien</option>
-											<option value='video'>Vidéo</option>
-										</NativeSelect>
-									</FormControl>
-								</FormItem>
-							)}
-						/>
-
 						<FormField
 							control={form.control}
 							name={`web_links.${index}.url`}
@@ -119,16 +79,12 @@ export function ProductWebLinksCard({
 										<div className='relative'>
 											{video ? (
 												<Youtube
-													className={`absolute top-2.5 left-2 size-4 ${
-														videoReconnue
-															? 'text-red-600'
-															: 'text-muted-foreground/40'
-													}`}
+													className='absolute top-3 left-2.5 size-4 text-red-600'
 													aria-hidden='true'
 												/>
 											) : (
 												<Link2
-													className='text-muted-foreground/60 absolute top-2.5 left-2 size-4'
+													className='absolute top-3 left-2.5 size-4 text-muted-foreground/60'
 													aria-hidden='true'
 												/>
 											)}
@@ -136,12 +92,16 @@ export function ProductWebLinksCard({
 												{...champ}
 												type='url'
 												inputMode='url'
-												placeholder={
-													video
-														? 'https://www.youtube.com/watch?v=…'
-														: 'https://…'
-												}
-												className='pl-8'
+												placeholder='https://…'
+												className='pl-9'
+												onChange={(event) => {
+													champ.onChange(event)
+													form.setValue(
+														`web_links.${index}.kind`,
+														kindDe(event.target.value),
+														{ shouldDirty: true },
+													)
+												}}
 											/>
 										</div>
 									</FormControl>
@@ -177,33 +137,45 @@ export function ProductWebLinksCard({
 				)
 			})}
 
+			{/* UN SEUL champ d'ajout : on colle l'adresse, Entrée (ou le collage
+			    lui-même) crée la ligne. Aucun type à choisir, aucune ligne vide à
+			    remplir après coup. */}
 			<div className='flex items-center gap-2'>
-				<Button
-					type='button'
-					variant='outline'
-					size='sm'
-					disabled={plein}
-					onClick={() => append({ kind: 'link', url: '', label: '' })}
-				>
-					<Plus className='mr-1 size-4' />
-					Lien
-				</Button>
-				<Button
-					type='button'
-					variant='outline'
-					size='sm'
-					disabled={plein}
-					onClick={() => append({ kind: 'video', url: '', label: '' })}
-				>
-					<Youtube className='mr-1 size-4' />
-					Vidéo YouTube
-				</Button>
-				{plein && (
-					<span className='text-muted-foreground text-xs'>
-						{MAX_LIENS} liens au maximum.
-					</span>
-				)}
+				<div className='relative min-w-0 flex-1'>
+					<Plus
+						className='absolute top-3 left-2.5 size-4 text-muted-foreground/60'
+						aria-hidden='true'
+					/>
+					<Input
+						value={saisie}
+						disabled={plein}
+						inputMode='url'
+						placeholder='Coller un lien ou une vidéo YouTube'
+						aria-label='Ajouter un lien ou une vidéo'
+						className='pl-9'
+						onChange={(event) => setSaisie(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key !== 'Enter') return
+							// Entrée ne doit pas envoyer le formulaire de la fiche.
+							event.preventDefault()
+							ajouter(saisie)
+						}}
+						onPaste={(event) => {
+							const texte = event.clipboardData.getData('text').trim()
+							if (/^https?:\/\/\S+$/i.test(texte)) {
+								event.preventDefault()
+								ajouter(texte)
+							}
+						}}
+						onBlur={() => ajouter(saisie)}
+					/>
+				</div>
 			</div>
+			{plein && (
+				<span className='text-muted-foreground text-xs'>
+					{MAX_LIENS} liens au maximum.
+				</span>
+			)}
 		</div>
 	)
 }

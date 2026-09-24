@@ -69,6 +69,7 @@ import {
 } from 'lucide-react'
 import {
 	type ClipboardEvent,
+	type ReactNode,
 	useEffect,
 	useMemo,
 	useRef,
@@ -176,6 +177,13 @@ type Props = {
 	/** Les valeurs COURANTES du formulaire, pas celles de la base. */
 	draft: SheetDraft
 	saving?: boolean
+	/** Ce que le studio n'écrit pas lui-même mais qui fait partie de la fiche
+	 *  (les liens et vidéos, tenus par le formulaire de la page). Affiché sous
+	 *  les sections de description. */
+	extra?: ReactNode
+	/** Ce que `extra` a modifié depuis l'ouverture de la page : il compte pour
+	 *  activer « Enregistrer la fiche ». */
+	extraDirty?: boolean
 	onSave: (valeurs: {
 		name: string
 		description: string
@@ -226,6 +234,8 @@ export function ProductSheetStudio({
 	product,
 	draft,
 	saving,
+	extra,
+	extraDirty = false,
 	onSave,
 }: Props) {
 	const pb = usePocketBase()
@@ -259,6 +269,15 @@ export function ProductSheetStudio({
 	const brouillon = useRef(draft)
 	brouillon.current = draft
 
+	// Le point de départ, pour n'activer « Enregistrer » que sur un vrai
+	// changement. La description est comparée APRÈS un aller-retour par les
+	// blocs : c'est sous cette forme que l'éditeur la rend.
+	const depart = (d: SheetDraft) => ({
+		titre: d.name.trim(),
+		description: recomposerBlocs(decouperEnBlocs(d.description)),
+	})
+	const [initial, setInitial] = useState(() => depart(draft))
+
 	// Rouvrir la modale — sur un autre produit, ou après un enregistrement —
 	// repart du brouillon courant. Seule l'OUVERTURE réinitialise : le faire à
 	// chaque rendu effacerait ce qui est en train d'être écrit.
@@ -266,6 +285,7 @@ export function ProductSheetStudio({
 	useEffect(() => {
 		if (!open) return
 		setTitre(brouillon.current.name)
+		setInitial(depart(brouillon.current))
 		setBlocs(decouperEnBlocs(brouillon.current.description))
 		setMessage('')
 		if (messageInput.current) messageInput.current.style.height = '44px'
@@ -280,6 +300,10 @@ export function ProductSheetStudio({
 	}, [open, product.id])
 
 	const description = useMemo(() => recomposerBlocs(blocs), [blocs])
+	const modifie =
+		titre.trim() !== initial.titre ||
+		description !== initial.description ||
+		extraDirty
 	const enCours = genererFiche.isPending || genererTitre.isPending
 	const gele = enCours || Boolean(saving)
 
@@ -786,6 +810,7 @@ export function ProductSheetStudio({
 									? `${description.length} / ${DESCRIPTION_MAX} caractères`
 									: `${description.length} caractère${description.length > 1 ? 's' : ''}`}
 							</p>
+							{extra && <div className='border-t pt-4'>{extra}</div>}
 						</div>
 					</div>
 
@@ -1138,7 +1163,11 @@ export function ProductSheetStudio({
 					>
 						Annuler
 					</Button>
-					<Button type='button' onClick={enregistrer} disabled={gele}>
+					<Button
+						type='button'
+						onClick={enregistrer}
+						disabled={gele || !modifie}
+					>
 						{saving && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
 						Enregistrer la fiche
 					</Button>
