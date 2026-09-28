@@ -2,10 +2,13 @@ import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { Text, Rect } from 'react-konva';
 import useLabelStore from '../../store/useLabelStore';
 import { loadGoogleFont } from '../../utils/loadGoogleFont'; // 🎨 Import de la fonction de chargement
+import { remplissage } from '../../utils/fillStyle';
 
 /**
  * Text Konva avec édition inline au double-clic (overlay <textarea>).
- * - Désactivé si el.dataBinding est défini (car la valeur vient des données).
+ * - Si el.dataBinding est défini, l'édition écrit une CORRECTION pour le
+ *   produit affiché (`textOverrides[correctionKey]`) et non `text` : la fiche
+ *   produit n'est pas touchée. Sans produit (`correctionKey` vide), pas d'édition.
  * - Support de width pour le redimensionnement et wrap="word"
  * - Support de fontFamily pour Google Fonts
  * - Support gras/italique (fontStyle), souligné/barré (textDecoration),
@@ -32,6 +35,8 @@ const TextNode = ({
   draggable = true,
   locked = false,
   dataBinding = null,
+  correctionKey = null, // _id du produit affiché, pour corriger un texte lié
+  fillGradient = null, // 🌈 { from, to, angle } ou null
   shadowEnabled,
   shadowColor,
   shadowOpacity,
@@ -54,13 +59,13 @@ const TextNode = ({
 
   useEffect(() => {
     const node = textRef.current;
-    if (!node || !highlightEnabled) return;
+    if (!node || !(highlightEnabled || fillGradient)) return;
 
     const raf = requestAnimationFrame(() => {
       setBox({ width: node.width(), height: node.height() });
     });
     return () => cancelAnimationFrame(raf);
-  }, [text, fontSize, fontFamily, fontStyle, width, highlightEnabled]);
+  }, [text, fontSize, fontFamily, fontStyle, width, highlightEnabled, fillGradient]);
 
   // 🎨 Charger la police Google Font et forcer le redraw quand elle change
   useEffect(() => {
@@ -97,15 +102,25 @@ const TextNode = ({
 
   const commit = useCallback(
     (value) => {
-      updateElement(id, { text: value });
+      if (!dataBinding) {
+        updateElement(id, { text: value });
+        return;
+      }
+      // Texte lié : rien n'est écrit si le vendeur n'a rien changé, sinon une
+      // simple ouverture/fermeture figerait la valeur de la fiche.
+      if (value === text) return;
+      const el = useLabelStore.getState().elements.find((e) => e.id === id);
+      updateElement(id, {
+        textOverrides: { ...(el?.textOverrides || {}), [correctionKey]: value },
+      });
     },
-    [id, updateElement]
+    [id, updateElement, dataBinding, correctionKey, text]
   );
 
   const startEditing = useCallback(
     (e) => {
       if (locked) return;
-      if (dataBinding) return; // contenu piloté par les données → pas d'édition manuelle
+      if (dataBinding && !correctionKey) return; // lié, mais aucun produit à qui rattacher la correction
 
       const node = textRef.current;
       const stage = node.getStage();
@@ -189,6 +204,7 @@ const TextNode = ({
       locked,
       rotation,
       dataBinding,
+      correctionKey,
     ]
   );
 
@@ -219,7 +235,7 @@ const TextNode = ({
         fontStyle={fontStyle}
         fontFamily={fontFamily} // 🎨 Appliquer la police Google Font
         textDecoration={textDecoration} // souligné / barré
-        fill={fill}
+        {...remplissage(fillGradient, box.width, box.height, fill)}
         rotation={rotation}
         scaleX={scaleX}
         scaleY={scaleY}

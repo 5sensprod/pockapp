@@ -10,6 +10,8 @@ import {
   resolveTemplate,
   formatPriceEUR,
 } from '../utils/dataBinding';
+import { remplissage } from './fillStyle';
+import { dessinForme } from '../components/canvas/ShapeNode';
 
 /**
  * Utilitaires purs (réutilisables/testables)
@@ -69,10 +71,9 @@ function loadImageFromURL(url) {
 function updateElementsWithProduct(elements, product, fillQrWhenNoBinding = false) {
   if (!product) return elements;
 
-  const fallbackQR = () => {
-    const barcode = product?.meta_data?.find?.((m) => m.key === 'barcode')?.value;
-    return product.website_url || barcode || product.sku || product._id || '';
-  };
+  // Seule l'URL web : un repli sur le code-barres ou la référence encodait
+  // un nombre que personne ne peut ouvrir (voir `QRCodeTemplates.jsx`).
+  const fallbackQR = () => product.website_url || '';
 
   const gallerySrcAt = (idx) => {
     const gi = Array.isArray(product?.gallery_images) ? product.gallery_images[idx] : undefined;
@@ -84,13 +85,9 @@ function updateElementsWithProduct(elements, product, fillQrWhenNoBinding = fals
 
     // 📝 TEXT — binding + templates, avec prix formaté (comme le canvas)
     if (el?.type === 'text') {
-      const nextText = el.dataBinding
-        ? // dataBinding: 'price' => ajouter "€"
-          el.dataBinding === 'price'
-          ? formatPriceEUR(getProductField(product, 'price'))
-          : String(getProductField(product, el.dataBinding) ?? '')
-        : // templating éventuel dans el.text
-          resolveTemplate(el.text ?? '', product, { type: 'text' });
+      // La MÊME résolution que le canvas : prix formatés, description sans
+      // HTML, et correction manuelle du texte lié pour ce produit.
+      const nextText = String(resolvePropForElement(el.text ?? '', el, product) ?? '');
       return { ...el, text: nextText };
     }
 
@@ -157,7 +154,7 @@ function shadowProps(el) {
 
 /**
  * Crée un dataURL PNG d'un document Konva pour un set d'éléments
- * -> Supporte: text, qrcode, barcode, image
+ * -> Supporte: text, qrcode, barcode, image, shape
  * -> Ajout: application des ombres sur chaque node qui dessine
  */
 async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRatio) {
@@ -185,16 +182,17 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
     // 📝 TEXT
     if (el?.type === 'text') {
       // fontStyle combine bold et italic comme Konva l'attend ("bold", "italic", "bold italic")
-      const fontStyle =
-        [el.bold ? 'bold' : '', el.italic ? 'italic' : ''].filter(Boolean).join(' ') || 'normal';
+      // Même lecture que le canvas : `fontStyle`, repli sur l'ancien `bold`.
+      const fontStyle = el.fontStyle || (el.bold ? 'bold' : 'normal');
 
-      return new Konva.Text({
+      const texte = new Konva.Text({
         x: (el.x ?? 0) * scale,
         y: (el.y ?? 0) * scale,
         text: el.text ?? '',
         fontSize: (el.fontSize ?? 12) * scale,
         fontFamily: el.fontFamily ?? 'Arial',
         fontStyle,
+        textDecoration: el.textDecoration || '',
         fill: el.color ?? '#000000',
         align: el.align ?? 'left',
         // ⬇️ width permet le word-wrap automatique (comme dans le canvas)
@@ -208,6 +206,30 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
         listening: false,
         ...shadowProps(el),
       });
+      // 🌈 Le dégradé se cale sur la taille MESURÉE du texte, comme à l'écran
+      if (el.fillGradient) {
+        texte.setAttrs(
+          remplissage(el.fillGradient, texte.width(), texte.height(), el.color ?? '#000000')
+        );
+      }
+      return texte;
+    }
+
+    // 🔷 SHAPE — même géométrie que le canvas (`dessinForme`), dessinée à
+    // l'échelle 1 dans un groupe mis à l'échelle de la cellule.
+    if (el?.type === 'shape') {
+      const { kind, props } = dessinForme(el);
+      const forme = new Konva[kind]({
+        ...props,
+        rotation: el.rotation ?? 0,
+        scaleX: el.scaleX ?? 1,
+        scaleY: el.scaleY ?? 1,
+        listening: false,
+        ...shadowProps(el),
+      });
+      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, listening: false });
+      groupe.add(forme);
+      return groupe;
     }
 
     // 🔲 QRCODE (Konva.Image)
@@ -216,6 +238,8 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
       const color = el.color ?? '#000000';
       const bgColor = el.bgColor ?? '#FFFFFF';
       const qrValue = el.qrValue ?? '';
+      // Pas de valeur (produit sans URL web) : pas de QR, comme à l'écran.
+      if (!String(qrValue).trim()) return null;
 
       try {
         const qrResolution = Math.max(512, Math.floor(size * 4));
@@ -342,7 +366,6 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
       }
     }
 
-    // TODO: shapes si nécessaire
     return null;
   });
 

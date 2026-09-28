@@ -149,6 +149,7 @@ export function ProductLinksCard({
 								field.onChange(Array.isArray(value) ? value : [value])
 							}
 							multiple
+							collapsible
 							searchPlaceholder='Rechercher une catégorie…'
 							maxHeight='200px'
 							companyId={activeCompanyId ?? undefined}

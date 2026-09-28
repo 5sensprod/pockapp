@@ -1,12 +1,15 @@
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { CatalogCategoryShape } from '@/lib/queries/catalog-shapes'
 import { useCategories } from '@/lib/queries/categories'
 import { cn } from '@/lib/utils'
 import {
 	ChevronDown,
+	Check,
 	ChevronRight,
 	Folder,
 	FolderOpen,
+	Plus,
 	Search,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -100,6 +103,9 @@ interface CategoryPickerProps {
 	maxHeight?: string
 	/** ID de l'entreprise pour filtrer les catégories */
 	companyId?: string
+	/** Ne montre que les catégories choisies ; la recherche et l'arbre
+	 *  s'ouvrent à la demande (bouton Modifier / Ajouter). */
+	collapsible?: boolean
 }
 
 export function CategoryPicker({
@@ -112,11 +118,14 @@ export function CategoryPicker({
 	searchPlaceholder = 'Rechercher...',
 	maxHeight = '200px',
 	companyId,
+	collapsible = false,
 }: CategoryPickerProps) {
 	const { data: categories } = useCategories({
 		companyId: companyId ?? undefined,
 	})
 	const [search, setSearch] = useState('')
+	const [ouvert, setOuvert] = useState(false)
+	const selecteurVisible = !collapsible || ouvert
 	const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
 	// Normaliser la valeur en tableau
@@ -223,9 +232,10 @@ export function CategoryPicker({
 
 	return (
 		<div className='space-y-2'>
-			{/* Catégories sélectionnées */}
-			{selectedPaths.length > 0 && (
-				<div className='flex flex-wrap gap-2'>
+			{/* Catégories sélectionnées, et — en mode repliable — le petit bouton
+			    d'ouverture au bout de la rangée : pas de ligne à part. */}
+			{(selectedPaths.length > 0 || collapsible) && (
+				<div className='flex flex-wrap items-center gap-2'>
 					{selectedPaths.map(({ id, path }) => (
 						<button
 							key={id}
@@ -237,63 +247,93 @@ export function CategoryPicker({
 							<span className='ml-1'>×</span>
 						</button>
 					))}
+					{collapsible && (
+						<Button
+							type='button'
+							variant='outline'
+							size='icon'
+							className='h-7 w-7 rounded-full'
+							title={ouvert ? 'Terminer' : 'Ajouter ou retirer des catégories'}
+							aria-label={
+								ouvert ? 'Terminer' : 'Ajouter ou retirer des catégories'
+							}
+							aria-expanded={ouvert}
+							onClick={() => {
+								setOuvert((v) => !v)
+								setSearch('')
+							}}
+						>
+							{ouvert ? (
+								<Check className='h-3.5 w-3.5' />
+							) : (
+								<Plus className='h-3.5 w-3.5' />
+							)}
+						</Button>
+					)}
 				</div>
 			)}
 
-			{/* Barre de recherche */}
-			<div className='relative'>
-				<Search className='absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-				<Input
-					type='text'
-					placeholder={searchPlaceholder}
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-					className='pl-8 h-9'
-				/>
-			</div>
-
-			{/* Liste des catégories */}
-			<div className='border rounded-md overflow-y-auto' style={{ maxHeight }}>
-				{/* Option "Aucune" */}
-				{showNone && !multiple && (
-					<button
-						type='button'
-						onClick={() => handleSelect(null)}
-						className={cn(
-							'w-full text-left px-3 py-2 text-sm flex items-center hover:bg-muted transition-colors',
-							isSelected(null) && 'bg-primary/10 font-medium',
-						)}
-					>
-						<Folder className='h-4 w-4 mr-2 text-muted-foreground' />
-						<span className={cn(isSelected(null) && 'text-primary')}>
-							{noneLabel}
-						</span>
-						{isSelected(null) && (
-							<span className='ml-auto text-primary'>✓</span>
-						)}
-					</button>
-				)}
-
-				{/* Arbre des catégories */}
-				{filteredTree.map((node) => (
-					<TreeNode
-						key={node.category.id}
-						node={node}
-						level={0}
-						expandedIds={effectiveExpandedIds}
-						selectedIds={selectedIds}
-						onToggleExpand={toggleExpand}
-						onSelect={handleSelect}
-						searchActive={!!search}
-					/>
-				))}
-
-				{filteredTree.length === 0 && !showNone && (
-					<div className='px-3 py-4 text-sm text-muted-foreground text-center'>
-						{search ? 'Aucun résultat' : 'Aucune catégorie'}
+			{selecteurVisible && (
+				<>
+					{/* Barre de recherche */}
+					<div className='relative'>
+						<Search className='absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+						<Input
+							type='text'
+							placeholder={searchPlaceholder}
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							className='pl-8 h-9'
+						/>
 					</div>
-				)}
-			</div>
+
+					{/* Liste des catégories */}
+					<div
+						className='border rounded-md overflow-y-auto'
+						style={{ maxHeight }}
+					>
+						{/* Option "Aucune" */}
+						{showNone && !multiple && (
+							<button
+								type='button'
+								onClick={() => handleSelect(null)}
+								className={cn(
+									'w-full text-left px-3 py-2 text-sm flex items-center hover:bg-muted transition-colors',
+									isSelected(null) && 'bg-primary/10 font-medium',
+								)}
+							>
+								<Folder className='h-4 w-4 mr-2 text-muted-foreground' />
+								<span className={cn(isSelected(null) && 'text-primary')}>
+									{noneLabel}
+								</span>
+								{isSelected(null) && (
+									<span className='ml-auto text-primary'>✓</span>
+								)}
+							</button>
+						)}
+
+						{/* Arbre des catégories */}
+						{filteredTree.map((node) => (
+							<TreeNode
+								key={node.category.id}
+								node={node}
+								level={0}
+								expandedIds={effectiveExpandedIds}
+								selectedIds={selectedIds}
+								onToggleExpand={toggleExpand}
+								onSelect={handleSelect}
+								searchActive={!!search}
+							/>
+						))}
+
+						{filteredTree.length === 0 && !showNone && (
+							<div className='px-3 py-4 text-sm text-muted-foreground text-center'>
+								{search ? 'Aucun résultat' : 'Aucune catégorie'}
+							</div>
+						)}
+					</div>
+				</>
+			)}
 		</div>
 	)
 }

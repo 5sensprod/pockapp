@@ -467,11 +467,19 @@ const KonvaCanvas = forwardRef(
                     width={el.width}
                     locked={locked}
                     dataBinding={el.dataBinding || null}
+                    correctionKey={selectedProduct?._id ?? null}
+                    fillGradient={el.fillGradient ?? null}
                   />
                 );
               }
 
               if (type === 'qrcode') {
+                const qrValue = resolvePropForElement(el.qrValue, el, selectedProduct) ?? '';
+                // QR lié à un produit qui n'a pas la valeur (typiquement : pas
+                // d'URL web, produit sans slug) → rien. Surtout pas un QR vide,
+                // ni un repli sur une autre donnée : il s'imprimerait et ne
+                // mènerait nulle part.
+                if (el.dataBinding && !String(qrValue).trim()) return null;
                 return (
                   <QRCodeNode
                     key={`${id}-${currentProductIndex}`}
@@ -479,7 +487,7 @@ const KonvaCanvas = forwardRef(
                     size={el.size ?? 160}
                     color={el.color ?? '#000000'}
                     bgColor={el.bgColor ?? '#FFFFFF00'}
-                    qrValue={resolvePropForElement(el.qrValue, el, selectedProduct) ?? ''}
+                    qrValue={qrValue}
                   />
                 );
               }
@@ -509,6 +517,7 @@ const KonvaCanvas = forwardRef(
                     stroke={el.stroke ?? ''}
                     strokeWidth={el.strokeWidth ?? 0}
                     cornerRadius={el.cornerRadius ?? 0}
+                    fillGradient={el.fillGradient ?? null}
                   />
                 );
               }

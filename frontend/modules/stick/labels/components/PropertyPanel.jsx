@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import useLabelStore from '../store/useLabelStore';
 import FontSelector from './FontSelector';
+import GradientColorPicker from './GradientColorPicker';
+import { texteCorrige } from '../utils/dataBinding';
 import { FORMATS_TEXTE_CODE_BARRES } from '../utils/barcodeText';
 
 const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
@@ -20,6 +22,9 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
   const selectedId = useLabelStore((s) => s.selectedId);
   const updateElement = useLabelStore((s) => s.updateElement);
   const dataSource = useLabelStore((s) => s.dataSource);
+  // Le produit que le CANVAS affiche : c'est à lui qu'une correction de texte
+  // est rattachée (`TextNode`, `textOverrides`).
+  const canvasProduct = useLabelStore((s) => s.selectedProduct);
 
   const selectedElement = elements.find((el) => el.id === selectedId);
   if (!selectedElement) return null;
@@ -86,14 +91,9 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
     updateElement(selectedId, { dataBinding: null });
   };
 
-  const getDefaultQRBindingKey = () => {
-    const pref = ['website_url', 'barcode', 'sku'];
-    for (const key of pref) {
-      const f = dataFields.find((d) => d.key === key);
-      if (f && f.value) return key;
-    }
-    return null;
-  };
+  // Un QR lié l'est à l'URL web, et à rien d'autre : sans URL il ne s'affiche
+  // pas, plutôt que d'encoder un code-barres que personne ne peut ouvrir.
+  const getDefaultQRBindingKey = () => 'website_url';
 
   /** Lier/Délier un QR au produit (toggle) */
   const handleQRBinding = () => {
@@ -125,6 +125,22 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
   /** Opacité pour les images */
   const handleOpacityChange = (value) => {
     updateElement(selectedId, { opacity: parseFloat(value) });
+  };
+
+  /** 🔠 Taille de police (px). Bornée : 0 ou vide rendrait le texte invisible. */
+  const handleFontSizeChange = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return;
+    updateElement(selectedId, { fontSize: Math.min(400, Math.max(4, n)) });
+  };
+
+  // ✏️ Correction manuelle d'un texte lié, pour le produit affiché
+  const correction = isText && selectedElement.dataBinding ? texteCorrige(selectedElement, canvasProduct) : undefined;
+  const resetCorrection = () => {
+    const id = canvasProduct?._id;
+    if (!id) return;
+    const { [id]: _retire, ...reste } = selectedElement.textOverrides || {};
+    updateElement(selectedId, { textOverrides: reste });
   };
 
   /** 🎨 Changement de police pour les textes */
@@ -184,6 +200,16 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
               value={selectedElement.fontFamily || 'Arial'}
               onChange={handleFontFamilyChange}
               apiKey={import.meta.env.VITE_GOOGLE_FONTS_KEY} // optionnel si ton FontSelector lit déjà l'env
+            />
+            <input
+              type="number"
+              min={4}
+              max={400}
+              step={1}
+              value={Math.round(selectedElement.fontSize ?? 16)}
+              onChange={(e) => handleFontSizeChange(e.target.value)}
+              className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              title="Taille de la police, en pixels"
             />
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
 
@@ -265,7 +291,20 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
           </>
         )}
 
-        {(isText || isQRCode) && (
+        {isText && (
+          <div className="flex items-center gap-2">
+            <Palette className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+            <GradientColorPicker
+              color={selectedElement.color || '#000000'}
+              gradient={selectedElement.fillGradient ?? null}
+              onColorChange={handleColorChange}
+              onGradientChange={(g) => updateElement(selectedId, { fillGradient: g })}
+              title="Couleur"
+            />
+          </div>
+        )}
+
+        {isQRCode && (
           <div className="flex items-center gap-2">
             <Palette className="h-4 w-4 text-gray-500 dark:text-gray-400" />
             <input
@@ -405,12 +444,23 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
               <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
                 Remplissage:
               </span>
-              <input
-                type="color"
-                value={selectedElement.fill || '#3b82f6'}
-                onChange={(e) => updateElement(selectedId, { fill: e.target.value })}
-                className="w-10 h-8 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
-              />
+              {(selectedElement.shape ?? 'rectangle') === 'line' ? (
+                // Un trait n'a pas de remplissage : pas de dégradé.
+                <input
+                  type="color"
+                  value={selectedElement.fill || '#3b82f6'}
+                  onChange={(e) => updateElement(selectedId, { fill: e.target.value })}
+                  className="w-10 h-8 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+                />
+              ) : (
+                <GradientColorPicker
+                  color={selectedElement.fill || '#3b82f6'}
+                  gradient={selectedElement.fillGradient ?? null}
+                  onColorChange={(c) => updateElement(selectedId, { fill: c })}
+                  onGradientChange={(g) => updateElement(selectedId, { fillGradient: g })}
+                  title="Remplissage"
+                />
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -549,6 +599,15 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
                 >
                   Délier
                 </button>
+                {isText && correction !== undefined && (
+                  <button
+                    onClick={resetCorrection}
+                    className="px-2 py-1 text-xs border border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors whitespace-nowrap"
+                    title="Texte corrigé à la main pour ce produit. Cliquer pour revenir au texte de la fiche."
+                  >
+                    Texte d'origine
+                  </button>
+                )}
               </div>
             </>
           )}

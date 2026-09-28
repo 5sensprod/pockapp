@@ -12,6 +12,7 @@
 
 import React from 'react'
 import { Ellipse, Line, Rect, RegularPolygon, Star } from 'react-konva'
+import { remplissage } from '../../utils/fillStyle'
 
 /** Les formes proposées, dans l'ordre où le panneau les affiche. */
 export const FORMES = [
@@ -22,90 +23,132 @@ export const FORMES = [
 	{ id: 'line', label: 'Trait' },
 ]
 
-const ShapeNode = ({
+/**
+ * La géométrie d'une forme, sans React : `kind` est le nom de la classe Konva
+ * et `props` ce qu'il faut lui passer. Partagée par le canvas (ci-dessous) et
+ * par l'export en planche (`utils/exportPdfSheet.js`), qui ne dessinait
+ * AUCUNE forme tant qu'elle n'existait qu'ici en JSX.
+ */
+export function dessinForme({
 	shape = 'rectangle',
+	x = 0,
+	y = 0,
 	width = 160,
 	height = 160,
 	fill = '#3b82f6',
 	stroke = '',
 	strokeWidth = 0,
 	cornerRadius = 0,
-	...rest
-}) => {
+	fillGradient = null,
+}) {
 	// Un contour d'épaisseur nulle ou sans couleur ne se dessine pas : Konva
 	// tracerait sinon un liseré noir par défaut.
 	const contour =
 		stroke && strokeWidth > 0
 			? { stroke, strokeWidth }
 			: { strokeEnabled: false }
+	const centre = { x: x + width / 2, y: y + height / 2 }
+	const plein = (centré) =>
+		remplissage(fillGradient, width, height, fill, centré)
 
 	if (shape === 'circle') {
-		return (
-			<Ellipse
-				{...rest}
-				{...contour}
-				x={(rest.x ?? 0) + width / 2}
-				y={(rest.y ?? 0) + height / 2}
-				radiusX={width / 2}
-				radiusY={height / 2}
-				fill={fill}
-			/>
-		)
+		return {
+			kind: 'Ellipse',
+			props: {
+				...contour,
+				...plein(true),
+				...centre,
+				radiusX: width / 2,
+				radiusY: height / 2,
+			},
+		}
 	}
 
 	if (shape === 'triangle') {
-		return (
-			<RegularPolygon
-				{...rest}
-				{...contour}
-				x={(rest.x ?? 0) + width / 2}
-				y={(rest.y ?? 0) + height / 2}
-				sides={3}
-				radius={Math.min(width, height) / 2}
-				fill={fill}
-			/>
-		)
+		return {
+			kind: 'RegularPolygon',
+			props: {
+				...contour,
+				...plein(true),
+				...centre,
+				sides: 3,
+				radius: Math.min(width, height) / 2,
+			},
+		}
 	}
 
 	if (shape === 'star') {
-		return (
-			<Star
-				{...rest}
-				{...contour}
-				x={(rest.x ?? 0) + width / 2}
-				y={(rest.y ?? 0) + height / 2}
-				numPoints={5}
-				innerRadius={Math.min(width, height) / 4}
-				outerRadius={Math.min(width, height) / 2}
-				fill={fill}
-			/>
-		)
+		return {
+			kind: 'Star',
+			props: {
+				...contour,
+				...plein(true),
+				...centre,
+				numPoints: 5,
+				innerRadius: Math.min(width, height) / 4,
+				outerRadius: Math.min(width, height) / 2,
+			},
+		}
 	}
 
 	if (shape === 'line') {
 		// Un trait horizontal dont l'épaisseur est celle du contour, ou 2 px :
 		// une ligne sans épaisseur serait invisible et impossible à rattraper.
-		return (
-			<Line
-				{...rest}
-				points={[0, height / 2, width, height / 2]}
-				stroke={stroke || fill}
-				strokeWidth={strokeWidth > 0 ? strokeWidth : 2}
-				lineCap='round'
-			/>
-		)
+		// Un trait n'a pas de remplissage : pas de dégradé.
+		return {
+			kind: 'Line',
+			props: {
+				x,
+				y,
+				points: [0, height / 2, width, height / 2],
+				stroke: stroke || fill,
+				strokeWidth: strokeWidth > 0 ? strokeWidth : 2,
+				lineCap: 'round',
+			},
+		}
 	}
 
-	return (
-		<Rect
-			{...rest}
-			{...contour}
-			width={width}
-			height={height}
-			cornerRadius={cornerRadius}
-			fill={fill}
-		/>
-	)
+	return {
+		kind: 'Rect',
+		props: {
+			...contour,
+			...plein(false),
+			x,
+			y,
+			width,
+			height,
+			cornerRadius,
+		},
+	}
+}
+
+const COMPOSANTS = { Ellipse, Line, Rect, RegularPolygon, Star }
+
+const ShapeNode = ({
+	shape,
+	width,
+	height,
+	fill,
+	stroke,
+	strokeWidth,
+	cornerRadius,
+	fillGradient,
+	...rest
+}) => {
+	const { kind, props } = dessinForme({
+		shape,
+		x: rest.x ?? 0,
+		y: rest.y ?? 0,
+		width,
+		height,
+		fill,
+		stroke,
+		strokeWidth,
+		cornerRadius,
+		fillGradient,
+	})
+	const Composant = COMPOSANTS[kind]
+	return <Composant {...rest} {...props} />
 }
 
 export default ShapeNode

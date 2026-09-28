@@ -193,9 +193,28 @@ export const resolveTemplate = (tpl, product, options = {}) => {
  * 2) templating dans la valeur (string avec {{...}}) — appliqué avec contexte du type d'élément
  * 3) valeur telle quelle
  */
+/**
+ * ✏️ Correction manuelle d'un texte LIÉ, pour UN produit.
+ * `el.textOverrides` = { [product._id]: texte } : on corrige une faute sur
+ * l'affiche sans toucher la fiche produit. La clé est le produit, pas
+ * l'élément seul — sinon, en planche, la correction du premier produit
+ * s'imprimerait sur tous les autres.
+ */
+export const texteCorrige = (el, product) => {
+  const id = product?._id;
+  if (!id || !el?.textOverrides) return undefined;
+  const v = el.textOverrides[id];
+  return typeof v === 'string' ? v : undefined;
+};
+
 export const resolvePropForElement = (elProp, el, product) => {
   // 1) dataBinding prioritaire
   if (el?.dataBinding) {
+    // ✏️ Une correction manuelle l'emporte sur la valeur de la fiche
+    if (el?.type === 'text') {
+      const corrige = texteCorrige(el, product);
+      if (corrige !== undefined) return corrige;
+    }
     const raw = getProductField(product, el.dataBinding);
     // 💶 Si c'est du texte et que le binding est un prix => ajouter "€"
     if (el?.type === 'text' && (el.dataBinding === 'price' || el.dataBinding === 'sale_price')) {

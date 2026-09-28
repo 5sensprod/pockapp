@@ -3,30 +3,16 @@ import React from 'react';
 import useLabelStore from '../../store/useLabelStore';
 
 /**
- * Détermine le meilleur champ à binder en priorité
- * Ordre : website_url > barcode > sku
+ * En mode données, un QR code est TOUJOURS lié à l'URL web du produit.
+ * Avant, un produit sans URL basculait sur le code-barres puis la référence :
+ * le QR s'imprimait, encodait un nombre, et un client qui le scannait
+ * n'arrivait nulle part. Sans URL, le QR ne s'affiche pas (`KonvaCanvas.jsx`,
+ * `exportPdfSheet.js`).
  */
-const defaultBindingFor = (product) => {
-  if (!product) return null;
+const QR_BINDING = 'website_url';
 
-  const barcode = product?.meta_data?.find?.((m) => m.key === 'barcode')?.value;
-
-  if (product.website_url) return 'website_url';
-  if (barcode) return 'barcode';
-  if (product.sku) return 'sku';
-
-  return null;
-};
-
-/**
- * Récupère la valeur par défaut du QR
- */
-const defaultQRValue = (product) => {
-  if (!product) return 'https://example.com';
-
-  const barcode = product?.meta_data?.find?.((m) => m.key === 'barcode')?.value;
-  return product.website_url || barcode || product.sku || product._id || 'https://example.com';
-};
+/** Valeur fixe d'un QR hors données (mode vierge). */
+const defaultQRValue = (product) => product?.website_url || 'https://example.com';
 
 const QRCodeTemplates = ({ dataSource, selectedProduct }) => {
   const { addElement, elements, selectedProducts } = useLabelStore();
@@ -37,7 +23,7 @@ const QRCodeTemplates = ({ dataSource, selectedProduct }) => {
   const handleAdd = () => {
     // ✅ Définir le binding dès la création si en mode données
     const binding =
-      dataSource === 'data' && displayProduct ? defaultBindingFor(displayProduct) : null;
+      dataSource === 'data' && displayProduct ? QR_BINDING : null;
 
     addElement({
       type: 'qrcode',
@@ -47,7 +33,8 @@ const QRCodeTemplates = ({ dataSource, selectedProduct }) => {
       size: 160,
       color: '#000000',
       bgColor: '#FFFFFF00',
-      qrValue: defaultQRValue(displayProduct), // valeur visible immédiate
+      // Lié : la valeur affichée vient du produit ; celle-ci ne sert qu'après « Délier ».
+      qrValue: binding ? displayProduct.website_url || '' : defaultQRValue(displayProduct),
       dataBinding: binding, // 👈 clé pour l'export/PropertyPanel
       visible: true,
       locked: false,
@@ -74,7 +61,12 @@ const QRCodeTemplates = ({ dataSource, selectedProduct }) => {
         <div className="text-[11px] text-gray-400 mt-1">
           {dataSource === 'data' && displayProduct ? (
             <>
-              Lié au champ : <strong>{defaultBindingFor(displayProduct)}</strong>
+              Lié au champ : <strong>URL produit</strong>
+              {!displayProduct.website_url && (
+                <span className="block text-amber-600 dark:text-amber-400">
+                  Ce produit n'a pas d'URL web : le QR ne s'affichera pas.
+                </span>
+              )}
             </>
           ) : (
             <>Valeur par défaut : {defaultQRValue(displayProduct) || '—'}</>
