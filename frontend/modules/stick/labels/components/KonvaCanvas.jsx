@@ -692,6 +692,9 @@ const KonvaCanvas = forwardRef(
                     flipX={!!el.flipX}
                     flipY={!!el.flipY}
                     mask={el.mask ?? null}
+                    maskPadding={el.maskPadding ?? 0}
+                    maskTexture={el.maskTexture ?? null}
+                    maskFeather={el.maskFeather ?? 0}
                     // Double-clic : recadrer, comme PocketStick
                     onDblClick={() => !locked && startCrop(id)}
                     onDblTap={() => !locked && startCrop(id)}

@@ -64,3 +64,23 @@ export const placerAuCentre = (el, { canvas, elements, mesurerTexte, taille } = 
     positionCentree(taille || tailleInitiale(el, mesurerTexte), canvas),
     elements
   );
+
+/**
+ * REMPLIR LE CANVAS : le cadre qui fait couvrir tout le canvas à `el`, sans
+ * rotation ni mise à l'échelle. Un QR reste carré (le plus petit côté, centré) ;
+ * une image garde ses proportions par son recadrage (`ImageNode`), comme
+ * lorsqu'on étire son cadre à la main.
+ */
+export const cadreDuCanvas = (el, canvas) => {
+  const cw = canvas?.width || 800;
+  const ch = canvas?.height || 600;
+  const base = { rotation: 0, scaleX: 1, scaleY: 1 };
+  if (el?.type === 'qrcode') {
+    const s = Math.min(cw, ch);
+    return { ...base, x: Math.round((cw - s) / 2), y: Math.round((ch - s) / 2), size: s };
+  }
+  return { ...base, x: 0, y: 0, width: cw, height: ch };
+};
+
+/** Le FOND d'un document : l'élément marqué `role: 'fond'`, ou null. */
+export const fondDe = (elements = []) => elements.find((e) => e.role === 'fond') ?? null;

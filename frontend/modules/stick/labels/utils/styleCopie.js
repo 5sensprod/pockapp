@@ -18,7 +18,7 @@ const HORS_STYLE = new Set([
   'text', 'title', 'qrValue', 'barcodeValue', 'format', 'src',
   'dataBinding', 'textOverrides', 'textOverridesSource',
   'cropX', 'cropY', 'cropWidth', 'cropHeight',
-  'visible', 'locked', 'shadowExpanded',
+  'visible', 'locked', 'shadowExpanded', 'role', // être le fond n'est pas un style
   'flipX', 'flipY', // le miroir est une orientation, pas un style
 ]);
 
@@ -27,6 +27,8 @@ export const STYLE_COMMUN = [
   'opacity',
   'shadowEnabled', 'shadowColor', 'shadowBlur', 'shadowOffsetX', 'shadowOffsetY', 'shadowOpacity',
   'blurEnabled', 'blurRadius', 'blurFade',
+  'innerShadowEnabled', 'innerShadowColor', 'innerShadowOpacity', 'innerShadowBlur',
+  'innerShadowOffsetX', 'innerShadowOffsetY',
 ];
 
 /** La peinture, partagée par le texte et la forme. */

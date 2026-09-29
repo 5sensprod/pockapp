@@ -17,6 +17,7 @@ import {
   FolderOpen,
   Palette,
   Package,
+  PaintBucket,
 } from 'lucide-react';
 
 import TextTemplates from './templates/TextTemplates';
@@ -33,6 +34,7 @@ import BarcodeTemplates from './templates/BarcodeTemplates';
 import EffectsTemplates from './templates/EffectsTemplates';
 import TemplateManager from './templates/TemplateManager';
 import DesignTemplates from './templates/DesignTemplates';
+import FondPanel from './templates/FondPanel';
 
 const ToolsSidebar = ({
   isCollapsed,
@@ -58,6 +60,7 @@ const ToolsSidebar = ({
     { id: 'upload', label: 'Upload', icon: Upload, component: UploadTemplate },
     { id: 'image', label: 'Images', icon: ImageIcon, component: ImageTemplates },
     { id: 'shape', label: 'Forme', icon: Shapes, component: ShapeTemplates },
+    { id: 'fond', label: 'Fond', icon: PaintBucket, component: FondPanel },
     { id: 'table', label: 'Tableau', icon: Table2, component: TableTemplates },
     { id: 'fiche', label: 'Fiche produit', icon: ListChecks, component: FicheTemplates },
     { id: 'qrcode', label: 'QR Code', icon: QrCode, component: QRCodeTemplates },

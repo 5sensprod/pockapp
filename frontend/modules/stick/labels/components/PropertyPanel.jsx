@@ -26,13 +26,15 @@ import {
   FlipHorizontal2,
   FlipVertical2,
   Shapes,
+  Expand,
 } from 'lucide-react';
 import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
 import { alignOffsets, distributeOffsets, unionBoxes } from '../utils/layout';
 import FontSelector from './FontSelector';
 import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
-import { MASQUES } from '../utils/imageForme';
+import { FONDU_MAX, MASQUES, RETRAIT_MAX } from '../utils/imageForme';
+import MasqueTexture from './MasqueTexture';
 import { resolvePropForElement, texteCorrige, ficheChangeeDepuisCorrection } from '../utils/dataBinding';
 import { resetCropAttrs } from '../utils/crop';
 import { geometrieImage } from './canvas/CropOverlay';
@@ -78,6 +80,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
   const extraIds = useLabelStore((s) => s.extraIds);
   const canvasSize = useLabelStore((s) => s.canvasSize);
   const deleteElements = useLabelStore((s) => s.deleteElements);
+  const ajusterAuCanvas = useLabelStore((s) => s.ajusterAuCanvas);
 
   const selectedElement = elements.find((el) => el.id === selectedId);
   if (!selectedElement) return null;
@@ -956,7 +959,12 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                   <Icone className="h-4 w-4" />
                 </button>
               ))}
-              <MenuGroupe icone={Shapes} titre="Masque" actif={!!selectedElement.mask} largeur="13rem">
+              <MenuGroupe
+                icone={Shapes}
+                titre="Masque"
+                actif={!!(selectedElement.mask || selectedElement.maskTexture || selectedElement.maskPadding)}
+                largeur="16rem"
+              >
                 <div className="grid grid-cols-3 gap-1.5 p-1">
                   <button
                     type="button"
@@ -985,6 +993,29 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                     </button>
                   ))}
                 </div>
+                {/* Retrait (rétrécit la forme dans le cadre) et fondu de son bord */}
+                {[
+                  ['maskPadding', 'Retrait', RETRAIT_MAX],
+                  ['maskFeather', 'Fondu', FONDU_MAX],
+                ].map(([cle, libelle, max]) => (
+                  <label key={cle} className="flex items-center gap-2 px-1 pt-2 text-xs text-gray-600 dark:text-gray-300">
+                    <span className="w-14">{libelle}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={max}
+                      step={1}
+                      value={selectedElement[cle] ?? 0}
+                      onChange={(e) => updateElement(selectedId, { [cle]: Number(e.target.value) })}
+                      className="flex-1"
+                    />
+                    <span className="w-8 text-right">{selectedElement[cle] ?? 0}%</span>
+                  </label>
+                ))}
+                <MasqueTexture
+                  valeur={selectedElement.maskTexture ?? null}
+                  onChange={(maskTexture) => updateElement(selectedId, { maskTexture })}
+                />
               </MenuGroupe>
             </div>
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
@@ -1151,6 +1182,16 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
         {ids.length > 0 && (
           <>
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            {/* Remplir le canvas (`cadreDuCanvas`, utils/placement.js) */}
+            {ids.length === 1 && (
+              <button
+                onClick={() => ajusterAuCanvas(selectedId)}
+                className="p-1.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                title="Remplir le canvas : l'élément prend toute la taille du canvas"
+              >
+                <Expand className="h-4 w-4" />
+              </button>
+            )}
             <button
               onClick={() => deleteElements(ids)}
               className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"

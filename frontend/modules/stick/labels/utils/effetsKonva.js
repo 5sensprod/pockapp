@@ -14,6 +14,9 @@
 
 import Konva from 'konva';
 import { effectFilters, sanitizeFilters } from './effetsImage';
+import { ombreInterneDe, ombrerPixels } from './ombreInterne';
+
+export { ombreInterneDe };
 
 export const FLOU_MAX = 200;
 
@@ -70,6 +73,21 @@ const filtreFlouDegrade = (fondu) =>
     return imageData;
   };
 
+/**
+ * Filtre Konva de l'OMBRE INTERNE (`utils/ombreInterne.js`). Les réglages sont
+ * LUS SUR LE NŒUD (`ombreInterneNoeud`, unités du nœud, et `ratioCache`) et
+ * non figés dans le filtre : `recacherFiltres` change la résolution du cache
+ * à l'export.
+ */
+function ombreInterne(imageData) {
+  const o = this.getAttr?.('ombreInterneNoeud');
+  if (!o) return imageData;
+  ombrerPixels(imageData, o, this.getAttr?.('ratioCache') ?? 1, (img, r) =>
+    Konva.Filters.Blur.call({ blurRadius: () => r }, img)
+  );
+  return imageData;
+}
+
 /** Luminosité effective, dans [-1, 1] ; 0 si désactivée. */
 export const luminosite = (el) => {
   if (!el?.brightnessEnabled) return 0;
@@ -86,6 +104,7 @@ export const luminosite = (el) => {
 export const filtresDe = (el) => {
   if (!el) return [];
   return [
+    ombreInterneDe(el) && ombreInterne,
     rayonFlou(el) > 0 && (fonduFlou(el) ? filtreFlouDegrade(fonduFlou(el)) : Konva.Filters.Blur),
     luminosite(el) !== 0 && Konva.Filters.Brighten,
     el.sepiaEnabled && Konva.Filters.Sepia,
@@ -112,6 +131,17 @@ export const appliquerEffets = (node, el, { echelle = 1, ratio = 1 } = {}) => {
   node.blurRadius(rayon * ratio);
   node.brightness(luminosite(el));
   node.setAttr('rayonFlouNoeud', rayon); // relu par `recacherFiltres` sur un clone
+  const ombre = ombreInterneDe(el);
+  node.setAttr(
+    'ombreInterneNoeud',
+    ombre && {
+      ...ombre,
+      blur: ombre.blur * echelle,
+      offsetX: ombre.offsetX * echelle,
+      offsetY: ombre.offsetY * echelle,
+    }
+  );
+  node.setAttr('ratioCache', ratio);
   // Un nœud vide (image pas encore chargée) ne se met pas en cache
   const r = node.getClientRect({ skipTransform: true });
   if (!(r.width > 0 && r.height > 0)) return;
@@ -129,6 +159,7 @@ export const recacherFiltres = (racine, ratioExport = 3) => {
     if (!f?.length) continue;
     const rayon = n.getAttr('rayonFlouNoeud') ?? 0;
     n.blurRadius(rayon * ratioExport);
+    n.setAttr('ratioCache', ratioExport);
     n.cache({ pixelRatio: ratioExport, offset: Math.ceil(rayon) + 2 });
   }
 };

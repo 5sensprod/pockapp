@@ -402,3 +402,71 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
   ronger. Dégradé linéaire seulement, comme tout contour. À l'export planche,
   l'épaisseur suit l'échelle de la cellule.
 - Gardien : `imageForme.test.js`.
+
+## Retrait du masque et masques texture (29 septembre 2026)
+
+Écrits ici : PocketStick n'a ni bruit, ni Perlin, ni Voronoï (rien à reprendre).
+
+- **Retrait** (`maskPadding`, % du cadre par côté, 0 à 40) : rétrécit la forme
+  ET la texture dans le cadre (`retraitMasque`, `utils/imageForme.js`).
+- **Masque texture** (`maskTexture`) : champ SÉPARÉ de `mask`, combinable —
+  la forme découpe, la texture module l'alpha.
+  `{ type: 'value'|'white'|'perlin'|'voronoi', scale, seed, octaves,
+  distance: 'f1'|'f2'|'f2-f1', contrast, threshold, softness, invert }`.
+  - Moteur : `utils/bruit.js`, JS pur (testé sous Node). Hachage entier de
+    (cellule, graine), jamais `Math.random` ; coordonnées NORMALISÉES AU CADRE,
+    donc même motif quelle que soit la résolution (écran = export).
+  - Carte : `utils/carteTexture.js`, canvas blanc dont l'alpha est le niveau,
+    en cache LRU (32), résolution au palier de 64 px, plafond 1024 (2048 quand
+    le canvas de dessin est à `pixelRatio` ≥ 3, c'est-à-dire l'export).
+    Mesuré sous Node, 1024², 3 octaves : bruit 139 ms, blanc 36, Perlin 219,
+    Voronoï 105 — recalculé seulement au changement de palier ou de réglage.
+  - Rendu : dans `sceneImage`, l'image est dessinée dans un canvas HORS ÉCRAN à
+    la résolution réelle (transformation du contexte), la carte y passe en
+    `destination-in`, puis le tout est posé sur le contexte. Pas de
+    `destination-in` sur le calque (il effacerait les voisins), pas de filtre
+    (il imposerait un cache à toute image masquée). Les deux exports suivent
+    sans changement. Sur le canvas de sélection, le cadre entier reste
+    cliquable.
+  - UI : menu « Masque » (`PropertyPanel.jsx`), curseur Retrait et
+    `components/MasqueTexture.jsx` (aperçu calculé par `carteNiveaux`).
+- **Fondu du bord** (`maskFeather`, feather, % du plus petit côté, 0 à 25) :
+  la forme — ou, sans forme, le rectangle du retrait — est floutée par
+  `ctx.filter = blur(…)` dans le masque alpha hors écran. La carte de texture
+  couvre alors TOUT le cadre ; c'est la forme floutée qui porte le retrait.
+  Sans fondu ni texture, la découpe reste un `clip` net. Le retrait seul
+  découpe désormais le cadre en rectangle.
+- ⚠️ Non vérifié à l'écran ni dans un PDF au moment d'écrire : seulement les
+  tests et le build.
+- Gardien : `bruit.test.js`.
+
+## Fond et « Remplir le canvas » (29 septembre 2026)
+
+- **Fond** (onglet « Fond », `components/templates/FondPanel.jsx`) : un élément
+  `role: 'fond'`, unique, PREMIER calque, verrouillé, à la taille du canvas.
+  Une couleur ou un dégradé crée un rectangle de fond (`poserFond`) ; « Mettre
+  la sélection en fond » en fait une image ou tout autre élément
+  (`mettreEnFond`, l'ancien fond redevient ordinaire). `role` n'est pas un
+  style copiable (`styleCopie.js`). ⚠️ Le fond ne suit pas seul un changement
+  de format : bouton « Réajuster au format ».
+- **Remplir le canvas** (icône dans la barre de la sélection, un seul
+  élément) : `cadreDuCanvas` (`utils/placement.js`), sans rotation ni échelle ;
+  un QR reste carré et centré, une image garde ses proportions par son
+  recadrage.
+- Gardiens : `store/fond-store.test.js`, `placement.test.js`.
+
+## Ombre interne (29 septembre 2026)
+
+- Champs à plat, comme l'ombre portée : `innerShadowEnabled`,
+  `innerShadowColor`, `innerShadowOpacity`, `innerShadowBlur`,
+  `innerShadowOffsetX`, `innerShadowOffsetY` (unités du document). Tout type
+  d'élément. Style copiable (`STYLE_COMMUN`).
+- C'est un FILTRE de pixels, le premier de `filtresDe` (`utils/effetsKonva.js`) :
+  le vide autour de l'élément (alpha inversé), décalé puis flouté
+  (`Konva.Filters.Blur`), assombrit l'élément là où il le recouvre. Calcul pur
+  dans `utils/ombreInterne.js` (`ombrerPixels`, testé sous Node). Les réglages
+  sont lus sur le nœud (`ombreInterneNoeud`, `ratioCache`) et non figés dans le
+  filtre : `recacherFiltres` change la résolution à l'export par clone.
+- UI : section « Ombre interne » du panneau Effets.
+- Couleur : hexadécimale seulement (`rgbDe`) — c'est ce que donne le sélecteur.
+- Gardien : `ombreInterne.test.js`.

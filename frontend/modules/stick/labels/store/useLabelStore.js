@@ -1,7 +1,7 @@
 // src/features/labels/store/useLabelStore.js
 import { create } from 'zustand';
 import { quantiteValide } from '../lib/tirage';
-import { placerAuCentre } from '../utils/placement';
+import { cadreDuCanvas, fondDe, placerAuCentre } from '../utils/placement';
 import { extraireStyle, reordonner, styleApplicable } from '../utils/styleCopie';
 
 const HISTORY_LIMIT = 100;
@@ -310,6 +310,66 @@ const useLabelStore = create((set, get) => ({
       if (elements === state.elements) return {};
       state._pushHistory(snapshotOf(state));
       return { elements };
+    }),
+
+  // REMPLIR LE CANVAS (`cadreDuCanvas`) : l'élément couvre tout le canvas.
+  ajusterAuCanvas: (id) =>
+    set((state) => {
+      const el = state.elements.find((e) => e.id === id);
+      if (!el) return {};
+      state._pushHistory(snapshotOf(state));
+      const maj = cadreDuCanvas(el, state.canvasSize);
+      return { elements: state.elements.map((e) => (e.id === id ? { ...e, ...maj } : e)) };
+    }),
+
+  // FOND : un seul par document, `role: 'fond'`, TOUJOURS le premier calque,
+  // verrouillé (il ne part pas sous la souris) et à la taille du canvas.
+  // `poserFond(props)` crée un rectangle de fond ou met à jour le fond
+  // existant ; `mettreEnFond(id)` fait d'un élément (une image, souvent) le
+  // fond, l'ancien fond redevenant un élément ordinaire.
+  poserFond: (props) =>
+    set((state) => {
+      state._pushHistory(snapshotOf(state));
+      const fond = fondDe(state.elements);
+      if (fond) {
+        return { elements: state.elements.map((e) => (e.id === fond.id ? { ...e, ...props } : e)) };
+      }
+      const nouveau = {
+        id: `fond-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type: 'shape',
+        shape: 'rectangle',
+        name: 'Fond',
+        role: 'fond',
+        fill: '#ffffff',
+        stroke: '',
+        strokeWidth: 0,
+        cornerRadius: 0,
+        ...cadreDuCanvas({ type: 'shape' }, state.canvasSize),
+        ...props,
+        visible: true,
+        locked: true,
+      };
+      return { elements: [nouveau, ...state.elements] };
+    }),
+
+  mettreEnFond: (id) =>
+    set((state) => {
+      const el = state.elements.find((e) => e.id === id);
+      if (!el) return {};
+      state._pushHistory(snapshotOf(state));
+      const fond = { ...el, ...cadreDuCanvas(el, state.canvasSize), role: 'fond', locked: true };
+      const autres = state.elements
+        .filter((e) => e.id !== id)
+        .map((e) => (e.role === 'fond' ? { ...e, role: undefined, locked: false } : e));
+      return { elements: [fond, ...autres], selectedId: null, extraIds: [] };
+    }),
+
+  retirerFond: () =>
+    set((state) => {
+      const fond = fondDe(state.elements);
+      if (!fond) return {};
+      state._pushHistory(snapshotOf(state));
+      return { elements: state.elements.filter((e) => e.id !== fond.id) };
     }),
 
   moveElement: (fromIndex, toIndex) =>

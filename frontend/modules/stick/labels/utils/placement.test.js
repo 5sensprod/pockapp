@@ -64,3 +64,20 @@ describe('placerAuCentre', () => {
     expect(second).toEqual({ x: premier.x + PAS_DECALAGE, y: premier.y + PAS_DECALAGE });
   });
 });
+
+import { cadreDuCanvas, fondDe } from './placement';
+
+describe('remplir le canvas', () => {
+  it('toute la surface, sans rotation ni échelle', () => {
+    expect(cadreDuCanvas({ type: 'image', rotation: 30, scaleX: 2 }, { width: 400, height: 300 })).toEqual({
+      x: 0, y: 0, width: 400, height: 300, rotation: 0, scaleX: 1, scaleY: 1,
+    });
+  });
+  it('un QR reste carré, centré', () => {
+    expect(cadreDuCanvas({ type: 'qrcode' }, { width: 400, height: 300 })).toMatchObject({ x: 50, y: 0, size: 300 });
+  });
+  it('le fond est l’élément marqué', () => {
+    expect(fondDe([{ id: 'a' }, { id: 'b', role: 'fond' }])?.id).toBe('b');
+    expect(fondDe([])).toBeNull();
+  });
+});

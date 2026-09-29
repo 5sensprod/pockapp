@@ -275,6 +275,59 @@ const EffectsTemplates = () => {
         )}
       </div>
 
+      {/* Ombre interne (`ombreInterneDe`, `utils/effetsKonva.js`) : le bord de
+          l'élément projette son ombre vers l'intérieur. Même filtre à l'écran
+          et dans les deux exports. */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <label className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 p-3 cursor-pointer">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Ombre interne</span>
+          <input
+            type="checkbox"
+            checked={!!selectedElement.innerShadowEnabled}
+            onChange={(e) => updateElement(selectedId, { innerShadowEnabled: e.target.checked })}
+            className="h-4 w-4 accent-purple-600"
+          />
+        </label>
+        {selectedElement.innerShadowEnabled && (
+          <div className="p-3 space-y-3 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-20">Couleur</span>
+              <input
+                type="color"
+                value={selectedElement.innerShadowColor ?? '#000000'}
+                onChange={(e) => updateElement(selectedId, { innerShadowColor: e.target.value })}
+                className="w-10 h-8 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+              />
+            </div>
+            {[
+              ['innerShadowOpacity', 'Opacité', 0, 1, 0.05, 0.5, (v) => `${Math.round(v * 100)}%`],
+              ['innerShadowBlur', 'Flou', 0, 60, 1, 8, (v) => `${v}px`],
+              ['innerShadowOffsetX', 'Décalage X', -40, 40, 1, 2, (v) => `${v}px`],
+              ['innerShadowOffsetY', 'Décalage Y', -40, 40, 1, 2, (v) => `${v}px`],
+            ].map(([cle, libelle, min, max, step, defaut, fmt]) => {
+              const v = selectedElement[cle] ?? defaut;
+              return (
+                <div key={cle}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{libelle}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{fmt(v)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={v}
+                    onChange={(e) => updateElement(selectedId, { [cle]: parseFloat(e.target.value) })}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Flou de l'élément entier (`utils/effetsKonva.js`), repris de PocketStick */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <div className="bg-gray-50 dark:bg-gray-800/50 p-3 flex items-center justify-between">

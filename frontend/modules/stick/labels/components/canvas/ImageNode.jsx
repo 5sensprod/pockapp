@@ -57,11 +57,26 @@ const ImageNode = ({
   flipX = false,
   flipY = false,
   mask = null,
+  maskPadding = 0,
+  maskTexture = null,
+  maskFeather = 0,
   ...rest
 }) => {
   const image = useImageChargee(src);
   // Miroir et masque : un DESSIN particulier, pas un autre nœud (`utils/imageForme.js`)
-  const sceneFunc = useMemo(() => sceneImage({ flipX, flipY, mask }), [flipX, flipY, mask]);
+  // (la texture est un objet : comparée par son contenu, pas son identité)
+  const cleTexture = maskTexture ? JSON.stringify(maskTexture) : '';
+  const sceneFunc = useMemo(
+    () => sceneImage({
+        flipX,
+        flipY,
+        mask,
+        maskPadding,
+        maskFeather,
+        maskTexture: cleTexture ? JSON.parse(cleTexture) : null,
+      }),
+    [flipX, flipY, mask, maskPadding, maskFeather, cleTexture]
+  );
   const naturel = tailleNaturelle(image);
   // MÉMOÏSÉ sur des nombres, et c'est ce qui rend le redimensionnement fluide :
   // pendant le geste, le canvas pose le recadrage directement sur le nœud
