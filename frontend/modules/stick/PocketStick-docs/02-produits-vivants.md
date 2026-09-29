@@ -25,6 +25,17 @@ modifié en caisse restait l'ancien sur l'affiche.
   `COLLECTIONS_SURVEILLEES.products` et `invalidateCatalog` périment déjà ;
   `brands` et `suppliers` périment le contexte. `staleTime: 0` : en revenant
   sur `/stick`, la relecture repart toujours.
+- **Relecture au retour du focus de la fenêtre** (événement `focus` de
+  `window`, dans le même hook). TanStack ne relit qu'au changement de
+  VISIBILITÉ ; sous Wails, repasser la fenêtre devant le navigateur ne la rend
+  pas « visible » à nouveau — il fallait la réduire puis l'agrandir (constaté
+  par le propriétaire le 29 septembre 2026, produit modifié dans
+  `/stock/produits` au navigateur). Non tranché : si le temps réel arrive
+  quand la fenêtre Wails est cachée ; s'il manque avec les deux fenêtres
+  visibles côte à côte, c'est l'abonnement qu'il faudra regarder.
+- **`requestKey: null`** sur la lecture : sans lui, le SDK annule la requête
+  quand une autre lecture de `products` part en même temps — ce que provoque
+  justement une invalidation du temps réel.
 - **Aucun remontage** : un produit inchangé garde sa référence, et les clés
   Konva ne dépendent que de l'élément et de l'index. Sélection, Transformer et
   recadrage (`cropId`) ne sont pas touchés : la synchro n'écrit ni `elements`,
