@@ -116,6 +116,116 @@ Quatre manques relevés au premier essai, tous corrigés le jour même.
   qu'un facteur fractionnaire rendrait certaines barres plus larges que leurs
   voisines par arrondi — et un scanner lit la LARGEUR des barres.
 
+## Ce qui a été ajouté fin septembre 2026 — l'éditeur aligné sur PocketStick
+
+Du 28 au 29 septembre 2026 (commits `01dcf9b`, `b3fdb07`, `d791074`,
+`03cb4c4`, `e005154`). **La référence est PocketStick** (`I:\pocketstick`,
+`src/editor/`) : quand un comportement y existe, il est REPRIS. Deux fichiers
+en sont des copies à l'identique, avec leurs tests — `utils/crop.js` et
+`utils/layout.js`. Ne pas les faire diverger : corriger là-bas, recopier ici.
+
+**Mise en page de l'éditeur**
+- **Barre contextuelle fixe** (44 px) au-dessus du canvas, dans
+  `CanvasArea.jsx` — plus dans `TopToolbar`. Sélectionner un élément la
+  remplit sans rien pousser : le canvas ne saute plus. Trop d'options : elle
+  défile en largeur. Les actions sont **regroupées en menus**
+  (`MenuGroupe.jsx`) : style du texte, alignement du texte, position.
+- **Tout ce qui s'ouvre depuis cette barre est en `position: fixed`**
+  (couleurs, polices, menus) : la barre défile, un `absolute` y serait coupé —
+  c'est arrivé à la liste des polices.
+- **Zone de travail qui défile** : page centrée avec marge (`MARGE_ESPACE`),
+  molette = défilement, **Ctrl+molette = zoom**, zoom « ajusté » à l'ouverture
+  et à chaque changement de format. Plus de déplacement au bouton du milieu.
+- **Hauteur bornée** : `StickPage.tsx` vaut `100dvh - var(--header-h)` ; sans
+  borne, c'est toute la page qui défilait au lieu du panneau de gauche.
+
+**Texte**
+- Taille de police réglable ; couleur **unie ou dégradé**
+  (`GradientColorPicker.jsx`, `utils/fillStyle.js`, partagé écran/export).
+- **Édition en place** reprise de `TextEditor.jsx` : textarea transparent aux
+  métriques du Konva.Text. Entrée = retour à la ligne, Ctrl+Entrée ou clic
+  ailleurs = valider, Échap = annuler.
+- **Étirer la case change sa LARGEUR, jamais la taille de police** ; poignées
+  de côté seulement.
+- **Texte lié corrigeable** sans toucher la fiche : `el.textOverrides`,
+  **par `_id` de produit** (sinon, en planche, la correction du premier
+  produit s'imprimerait sur tous). Bouton « Texte d'origine ».
+- Alignement dans le bloc (gauche, centre, droite, justifié).
+- Le cadre se **re-mesure** quand une police Google arrive (elle arrive après
+  le rendu) : `TextNode` appelle `_setTextData`, interne à Konva — à
+  revérifier à chaque mise à jour de Konva.
+- `stripHtmlToText` décode les **entités numériques** (`&#34;` → `"`).
+
+**QR code** — lié à `website_url` et à RIEN d'autre. Un produit sans URL
+(sans slug) n'affiche aucun QR, à l'écran comme au PDF. L'ancien repli sur le
+code-barres puis la référence imprimait un QR qui ne menait nulle part.
+
+**Images** — sans déformation, comme PocketStick : `cropX/Y/Width/Height`.
+Coin = tout grandit ; côté = l'image se recadre. Double-clic ou « Recadrer »
+ouvre le mode recadrage (`canvas/CropOverlay.jsx`, dessiné HORS du groupe
+exporté). Une image ajoutée arrive **à la taille du canvas**
+(`utils/imagePlacement.js`) — sa résolution n'était pas réduite avant, Konva
+dessine toujours la source entière. ⚠️ **Fluidité** : pendant le geste, aucun
+état React ne doit changer, et `ImageNode` mémoïse `crop` ; un objet neuf à
+chaque rendu remettait l'ancien recadrage sous la souris.
+
+**Formes** — cercle, triangle et étoile ont leur origine au CENTRE
+(`dessinForme`, `ShapeNode.jsx`) : toute position enregistrée passe par
+`positionDepuisNoeud` (`KonvaCanvas.jsx`), aimantation comprise. Sans cela, la
+forme sautait d'une demi-taille.
+
+**Sélection** — multiple (Maj/Ctrl+clic) et **lasso** ; `selectedId` reste
+l'élément principal, `extraIds` les autres, lus par `idsSelectionnes`.
+Alignement sur la page (un élément) ou entre éléments, **distribution** dès
+trois. **Suppr** / Retour arrière / corbeille suppriment la sélection en un
+seul Ctrl+Z (`deleteElements`). ⚠️ La duplication ne vise encore que
+l'élément principal.
+
+**Fiche produit** (outil « Fiche produit ») — caractéristiques techniques en
+tableau, points forts en puces, conseils en paragraphe. **Aucun champ dédié
+en base** : tout est dans la `description`, forme fixe de
+`renderProductSheetDescription` (`backend/routes/gemini_routes.go`), découpée
+par `blocCorrespondant` du module site (`modules/site/lib/sheet-blocks.ts`) —
+pas de seconde copie du découpage. `utils/ficheProduit.js` extrait,
+`utils/ficheKonva.js` dessine (écran ET planche). Coupée à N lignes, titre
+réglable, tableau stylable (cadre, grille, arrondi, ligne mise en avant, fond
+des noms). **Un produit sans la section n'affiche rien** ; sans produit, un
+contenu d'exemple qui ne s'imprime jamais. La ligne mise en avant est un
+NUMÉRO de ligne, pas une caractéristique.
+
+**Exports**
+- **Solo** (`exportPdf.js`) clone le groupe du document : il suit l'écran
+  sans rien à maintenir. Tout ce qui ne doit pas s'imprimer (recadrage, lasso,
+  Transformer) vit hors de ce groupe.
+- **Planche** (`exportPdfSheet.js`) **redessine** chaque élément : c'est lui
+  qui dérive. Il partage maintenant le dessin avec l'écran — `dessinForme`,
+  `remplissage`, `konvaCrop`, `dessinerCodeBarres` (`utils/barcodeCanvas.js`),
+  `construireFiche` — et résout les textes par `resolvePropForElement`.
+  **Un seul produit sélectionné remplit toutes les cases** avec le produit du
+  canvas ; avant, les cases partaient sans produit, et la fiche, les textes et
+  QR liés étaient faux ou absents.
+
+## Chantier suivant — le canvas ne suit pas les modifications du catalogue
+
+**Constat, lu dans le code** : le produit choisi est COPIÉ dans le store
+(`useLabelStore.js` : `selectedProduct`, `selectedProducts`), projeté une fois
+par `versProduitAffiche`. Le canvas, `resolvePropForElement`, `FicheNode` et
+l'export en planche (`useLabelStore.getState()`) lisent cette copie. Or le
+temps réel du catalogue **existe déjà** — `frontend/lib/realtime/`, temps réel
+natif de PocketBase (SSE, pas WebSocket) sur `products`, `brands`,
+`categories`, `suppliers`, qui invalide les caches TanStack Query. Il met à
+jour la liste du sélecteur, **jamais la copie** : un titre, une marque, un
+prix ou une description corrigés dans PocketStock ne changent pas l'affiche
+ouverte. Les templates (`TemplateManager.jsx`, IndexedDB) peuvent aussi figer
+des produits entiers.
+
+**Piste** : ne garder que des IDENTIFIANTS dans le store, résoudre les
+produits par une requête TanStack par ids invalidée par le temps réel
+existant (la clé doit être dans `COLLECTIONS_SURVEILLEES` ET
+`invalidateCatalog`, gardé par `catalog-realtime.test.ts`), et conserver
+`textOverrides`, la sélection et le recadrage en cours à chaque mise à jour.
+Rien de neuf à écouter ni à ouvrir côté réseau.
+
 ## Où intervenir — carte pour un agent qui reprend
 
 Tout vit sous `frontend/modules/stick/`. La page est `/stick`
@@ -124,21 +234,28 @@ Tout vit sous `frontend/modules/stick/`. La page est `/stick`
 | Pour toucher à… | Le fichier |
 |---|---|
 | Le canvas, la sélection, les guides magnétiques | `labels/components/KonvaCanvas.jsx` |
-| Un type d'élément à l'écran | `labels/components/canvas/` — `TextNode`, `ImageNode`, `BarcodeNode`, `QRCodeNode`, `ShapeNode` |
+| Un type d'élément à l'écran | `labels/components/canvas/` — `TextNode`, `ImageNode`, `BarcodeNode`, `QRCodeNode`, `ShapeNode`, `FicheNode`, `CropOverlay` |
 | Les onglets de la barre latérale | `labels/components/ToolsSidebar.jsx` (la table `tools`) puis `labels/components/templates/` |
-| Les réglages de l'élément sélectionné | `labels/components/PropertyPanel.jsx` |
+| Les réglages de l'élément sélectionné | `labels/components/PropertyPanel.jsx`, affiché dans la barre de `CanvasArea.jsx` ; menus `MenuGroupe.jsx` |
+| Sélection, lasso, suppression | `labels/store/useLabelStore.js` (`idsSelectionnes`, `setSelection`, `deleteElements`) et `KonvaCanvas.jsx` |
+| Recadrage, alignement, distribution | `labels/utils/crop.js`, `labels/utils/layout.js` — **copies de PocketStick** |
+| Fiche produit | `labels/utils/ficheProduit.js` (extraction), `labels/utils/ficheKonva.js` (dessin) |
 | L'état du document (éléments, historique, annuler/refaire) | `labels/store/useLabelStore.js` |
 | Le passage produit → texte affiché | `labels/utils/dataBinding.js` **et** `labels/lib/produit-adapte.ts` |
 | L'export PDF, à l'unité ou en planche | `labels/utils/exportPdf.js`, `labels/utils/exportPdfSheet.js` |
 | Les templates enregistrés | `labels/services/templateService.js` (IndexedDB) |
 
-**Ajouter un type d'élément** demande quatre gestes, et en oublier un ne
+**Ajouter un type d'élément** demande cinq gestes, et en oublier un ne
 produit AUCUNE erreur — c'est ce qui rendait l'onglet Formes muet :
 
 1. un composant dans `labels/components/canvas/` ;
 2. une branche `if (type === '…')` dans la boucle de rendu de `KonvaCanvas.jsx` ;
 3. un panneau dans `labels/components/templates/` qui appelle `addElement` ;
-4. ses réglages dans `PropertyPanel.jsx`, et son nom dans `LayersPanel.jsx`.
+4. ses réglages dans `PropertyPanel.jsx`, et son nom dans `LayersPanel.jsx` ;
+5. **sa branche dans `exportPdfSheet.js`** (`updateElementsWithProduct` s'il
+   dépend du produit, `createDocumentImage` pour le dessin) — sinon il est à
+   l'écran et au PDF solo, mais **absent de la planche**. Partager le dessin
+   avec le canvas plutôt que le réécrire.
 
 **Deux pièges déjà payés :**
 
@@ -156,7 +273,7 @@ du portage.
 
 1. **Convertir en TypeScript** et retirer `allowJs`. C'est le gros morceau :
    26 fichiers, dont trois dépassent 400 lignes.
-2. **Redécouper ce qui a grossi** : `KonvaCanvas.jsx` (620 l.),
+2. **Redécouper ce qui a grossi** : `KonvaCanvas.jsx` (plus de 800 l.), `PropertyPanel.jsx` (plus de 1000 l.),
    `TemplateManager.jsx` (766 l.), `ImageTemplates.jsx` (486 l.).
 3. **Porter les templates dans PocketBase** — une collection `label_templates`,
    miniature en fichier — pour qu'ils suivent d'un poste à l'autre.
