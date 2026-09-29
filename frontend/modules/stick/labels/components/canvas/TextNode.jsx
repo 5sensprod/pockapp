@@ -68,27 +68,41 @@ const TextNode = ({
     return () => cancelAnimationFrame(raf);
   }, [text, fontSize, fontFamily, fontStyle, width, highlightEnabled, fillGradient]);
 
-  // 🎨 Charger la police Google Font et forcer le redraw quand elle change
+  // 📐 RE-MESURER le texte et recaler le cadre de sélection. Konva mesure un
+  // texte au moment où ses attributs changent : une police Google qui arrive
+  // APRÈS (chargement réseau) laissait l'ancienne mesure, et le Transformer
+  // ne se recale que sur un changement de largeur explicite — un texte sans
+  // largeur fixée gardait donc le cadre de l'ancienne police.
+  const remesurer = useCallback(() => {
+    const node = textRef.current;
+    if (!node) return;
+    node._setTextData?.(); // mesure interne de Konva.Text
+    if (highlightEnabled || fillGradient) setBox({ width: node.width(), height: node.height() });
+    node.getStage()?.find('Transformer').forEach((tr) => tr.forceUpdate());
+    node.getLayer()?.batchDraw();
+  }, [highlightEnabled, fillGradient]);
+
+  // Toute retouche qui change la taille du texte (police, taille, style,
+  // contenu, largeur, alignement) : re-mesure à l'image suivante.
   useEffect(() => {
-    const loadAndDraw = async () => {
-      const node = textRef.current;
-      if (!node) return;
+    const raf = requestAnimationFrame(remesurer);
+    return () => cancelAnimationFrame(raf);
+  }, [remesurer, text, fontSize, fontFamily, fontStyle, width, align]);
 
-      // Charger la police si c'est une Google Font (sans italic forcé)
-      await loadGoogleFont(fontFamily, { weights: '400;700' });
-
-      // Forcer le redraw du Layer après chargement
-      const layer = node.getLayer();
-      if (layer) {
-        // Petit délai pour s'assurer que la police est bien chargée
-        setTimeout(() => {
-          layer.batchDraw();
-        }, 50);
-      }
+  // 🎨 Charger la police Google Font, puis re-mesurer quand elle est là
+  useEffect(() => {
+    let actif = true;
+    loadGoogleFont(fontFamily, { weights: '400;700' }).then(() => actif && remesurer());
+    // `document.fonts.load` peut répondre avant que la feuille de style de
+    // Google soit arrivée : on re-mesure aussi à chaque fin de chargement.
+    const fonts = document.fonts;
+    const fin = () => actif && remesurer();
+    fonts?.addEventListener?.('loadingdone', fin);
+    return () => {
+      actif = false;
+      fonts?.removeEventListener?.('loadingdone', fin);
     };
-
-    loadAndDraw();
-  }, [fontFamily]); // Se déclenche à chaque changement de fontFamily
+  }, [fontFamily, remesurer]);
 
   // Empêche la sélection de texte par le navigateur pendant le drag
   useEffect(() => {

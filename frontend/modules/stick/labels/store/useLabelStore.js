@@ -163,6 +163,24 @@ const useLabelStore = create((set, get) => ({
       };
     }),
 
+  // Supprime plusieurs éléments en UNE étape d'historique (un seul Ctrl+Z).
+  deleteElements: (ids) =>
+    set((state) => {
+      const retires = new Set(ids);
+      if (!state.elements.some((el) => retires.has(el.id))) return {};
+      state._pushHistory(snapshotOf(state));
+      return {
+        elements: state.elements.filter((el) => !retires.has(el.id)),
+        selectedId: null,
+        extraIds: [],
+        cropId: null,
+      };
+    }),
+
+  // Remplace la sélection (lasso) : le premier devient l'élément principal.
+  setSelection: (ids) =>
+    set({ selectedId: ids[0] ?? null, extraIds: ids.slice(1), cropId: null }),
+
   duplicateElement: (id) =>
     set((state) => {
       const element = state.elements.find((el) => el.id === id);

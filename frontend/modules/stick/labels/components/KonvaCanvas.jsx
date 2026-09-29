@@ -16,8 +16,11 @@ import ShapeNode from './canvas/ShapeNode';
 import { calculateSnapGuides } from '../utils/snapGuides.utils';
 import { resolvePropForElement } from '../utils/dataBinding';
 import { konvaCrop, resizeStep, settleCrop } from '../utils/crop';
+import { boxesIntersect, rectFromPoints, LASSO_MIN_DRAG } from '../utils/layout';
 import { CropOverlay, CropTransformer, geometrieImage } from './canvas/CropOverlay';
 import { tailleNaturelle } from './canvas/ImageNode';
+import FicheNode from './canvas/FicheNode';
+import { contenuFiche, EXEMPLE_FICHE } from '../utils/ficheProduit';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -46,6 +49,7 @@ const KonvaCanvas = forwardRef(
     const selectedId = useLabelStore((s) => s.selectedId);
     const extraIds = useLabelStore((s) => s.extraIds);
     const toggleSelection = useLabelStore((s) => s.toggleSelection);
+    const setSelection = useLabelStore((s) => s.setSelection);
     const selectElement = useLabelStore((s) => s.selectElement);
     const updateElement = useLabelStore((s) => s.updateElement);
     const setZoom = useLabelStore((s) => s.setZoom);
@@ -66,6 +70,38 @@ const KonvaCanvas = forwardRef(
       window.addEventListener('keydown', onKey);
       return () => window.removeEventListener('keydown', onKey);
     }, [cropId, stopCrop]);
+
+    // Suppr / Retour arrière : supprime la sélection entière. Jamais pendant
+    // une saisie (champ de la barre, édition d'un texte sur le canvas).
+    useEffect(() => {
+      const onKey = (e) => {
+        if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+        const cible = e.target;
+        if (
+          cible?.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(cible?.tagName)
+        )
+          return;
+        const state = useLabelStore.getState();
+        if (state.cropId) return;
+        const ids = idsSelectionnes(state).filter(
+          (id) => !state.elements.find((el) => el.id === id)?.locked
+        );
+        if (!ids.length) return;
+        e.preventDefault();
+        state.deleteElements(ids);
+      };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
+    // LASSO, comme PocketStick : glisser dans le vide trace un rectangle, et
+    // tout élément qu'il touche est sélectionné (Maj : ajouté à la sélection).
+    // Coordonnées du DOCUMENT. `lassoRef` porte le geste, `lasso` le dessin.
+    const [lasso, setLasso] = useState(null);
+    const lassoRef = useRef(null);
+    // Le clic qui suit le relâchement d'un lasso ne doit pas vider la sélection
+    const lassoVientDeFinir = useRef(false);
 
     const stageRef = useRef(null);
     const transformerRef = useRef(null);
@@ -331,7 +367,13 @@ const KonvaCanvas = forwardRef(
         };
 
         // 🎯 Pour les TEXTES : persister width/fontSize avec scale = 1
-        if (element.type === 'text') {
+        if (element.type === 'fiche') {
+          // Comme un texte : étirer change la LARGEUR, pas la taille des lettres
+          updates.width = Math.max(40, Math.round((element.width ?? 360) * node.scaleX()));
+          updates.scaleX = 1;
+          updates.scaleY = 1;
+          node.scale({ x: 1, y: 1 });
+        } else if (element.type === 'text') {
           updates.width = node.width();
           updates.scaleX = 1;
           updates.scaleY = 1;
@@ -433,8 +475,55 @@ const KonvaCanvas = forwardRef(
         width={stageW}
         height={stageH}
         onWheel={handleWheel}
+        onMouseDown={(e) => {
+          if (e.evt.button !== 0 || cropId || e.target !== e.target.getStage()) return;
+          const p = e.target.getStage().getPointerPosition();
+          if (!p) return;
+          const point = { x: (p.x - docPos.x) / zoom, y: (p.y - docPos.y) / zoom };
+          lassoRef.current = {
+            start: point,
+            ecran: p,
+            base: e.evt.shiftKey ? idsSelectionnes(useLabelStore.getState()) : [],
+            actif: false,
+          };
+        }}
+        onMouseMove={(e) => {
+          const g = lassoRef.current;
+          if (!g) return;
+          const p = e.target.getStage().getPointerPosition();
+          if (!p) return;
+          if (!g.actif && Math.hypot(p.x - g.ecran.x, p.y - g.ecran.y) < LASSO_MIN_DRAG) return;
+          g.actif = true;
+          const fin = { x: (p.x - docPos.x) / zoom, y: (p.y - docPos.y) / zoom };
+          const rect = rectFromPoints(g.start, fin);
+          setLasso(rect);
+          // Cadres MESURÉS sur le canvas (nos éléments n'ont pas tous une
+          // largeur : texte libre, QR, formes centrées).
+          const groupe = docGroupRef.current;
+          const touches = elements
+            .filter((el) => el.visible !== false && !el.locked)
+            .filter((el) => {
+              const n = groupe?.findOne(`#${el.id}`);
+              return n && boxesIntersect(n.getClientRect({ skipShadow: true, relativeTo: groupe }), rect);
+            })
+            .map((el) => el.id);
+          setSelection([...new Set([...g.base, ...touches])]);
+        }}
+        onMouseUp={() => {
+          if (lassoRef.current?.actif) lassoVientDeFinir.current = true;
+          lassoRef.current = null;
+          setLasso(null);
+        }}
+        onMouseLeave={() => {
+          lassoRef.current = null;
+          setLasso(null);
+        }}
         onClick={(e) => {
           if (isDragging) return;
+          if (lassoVientDeFinir.current) {
+            lassoVientDeFinir.current = false;
+            return;
+          }
           if (e.target === e.target.getStage()) selectElement(null);
         }}
       >
@@ -540,6 +629,24 @@ const KonvaCanvas = forwardRef(
                 );
               }
 
+              if (type === 'fiche') {
+                // Sans produit : un contenu d'exemple, pour régler l'élément.
+                // Produit SANS cette section : rien, comme un QR sans URL.
+                const contenu = selectedProduct
+                  ? contenuFiche(selectedProduct.description, el.section)
+                  : EXEMPLE_FICHE[el.section] ?? EXEMPLE_FICHE.specs;
+                if (!contenu) return null;
+                const { scaleX: _sx, scaleY: _sy, ...groupe } = commonProps;
+                return (
+                  <FicheNode
+                    key={`${id}-${currentProductIndex}`}
+                    {...groupe}
+                    el={el}
+                    contenu={contenu}
+                  />
+                );
+              }
+
               if (type === 'shape') {
                 return (
                   <ShapeNode
@@ -612,6 +719,18 @@ const KonvaCanvas = forwardRef(
               })}
           </Group>
 
+          {lasso && (
+            <Group x={docPos.x} y={docPos.y} scaleX={zoom} scaleY={zoom} listening={false}>
+              <Rect
+                {...lasso}
+                fill="rgba(59, 130, 246, 0.08)"
+                stroke="#3b82f6"
+                strokeWidth={1 / zoom}
+                dash={[4 / zoom, 3 / zoom]}
+              />
+            </Group>
+          )}
+
           {/* Recadrage : même position et zoom que le document, mais HORS de
               son groupe — l'export clone ce groupe, la surcouche ne doit pas
               s'imprimer. */}
@@ -642,7 +761,7 @@ const KonvaCanvas = forwardRef(
             // Texte : poignées de CÔTÉ seulement, comme PocketStick — un coin
             // ou un bord haut/bas agrandirait les lettres.
             enabledAnchors={
-              !extraIds.length && elements.find((el) => el.id === selectedId)?.type === 'text'
+              !extraIds.length && ['text', 'fiche'].includes(elements.find((el) => el.id === selectedId)?.type)
                 ? ['middle-left', 'middle-right']
                 : [
                     'top-left',

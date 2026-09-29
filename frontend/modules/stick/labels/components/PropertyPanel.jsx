@@ -22,14 +22,18 @@ import {
   AlignEndHorizontal,
   AlignHorizontalSpaceAround,
   AlignVerticalSpaceAround,
+  Trash2,
 } from 'lucide-react';
 import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
 import { alignOffsets, distributeOffsets, unionBoxes } from '../utils/layout';
 import FontSelector from './FontSelector';
+import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
 import { resolvePropForElement, texteCorrige } from '../utils/dataBinding';
 import { resetCropAttrs } from '../utils/crop';
 import { geometrieImage } from './canvas/CropOverlay';
+import { SECTIONS_FICHE, sectionParId } from '../utils/ficheProduit';
+import { FICHE_PAR_DEFAUT } from '../utils/ficheKonva';
 import { FORMATS_TEXTE_CODE_BARRES } from '../utils/barcodeText';
 
 // Comme PocketStick (`ui/Properties.jsx`, ALIGN_BUTTONS) : un élément seul
@@ -69,6 +73,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
 
   const extraIds = useLabelStore((s) => s.extraIds);
   const canvasSize = useLabelStore((s) => s.canvasSize);
+  const deleteElements = useLabelStore((s) => s.deleteElements);
 
   const selectedElement = elements.find((el) => el.id === selectedId);
   if (!selectedElement) return null;
@@ -107,6 +112,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
   const isImage = selectedElement.type === 'image';
   const isBarcode = selectedElement.type === 'barcode';
   const isShape = selectedElement.type === 'shape';
+  const isFiche = selectedElement.type === 'fiche';
 
   const dataFields = selectedProduct
     ? [
@@ -286,6 +292,13 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
             />
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
 
+            {/* Style : gras, italique, souligné, barré, surlignage — un menu */}
+            <MenuGroupe
+              icone={Bold}
+              titre="Style du texte"
+              actif={isBold || isItalic || isUnderline || isStrike || isHighlighted}
+            >
+              <div className="flex items-center gap-1">
             {/* Gras / Italique / Souligné / Barré */}
             <div className="flex items-center gap-1">
               <button
@@ -334,32 +347,6 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
               </button>
             </div>
 
-            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
-
-            {/* Alignement du texte DANS son bloc. Sans largeur fixée, le bloc
-                épouse le texte : on lui en donne une pour que ça se voie. */}
-            <div className="flex items-center gap-1">
-              {BOUTONS_TEXTE.map(([valeur, label, Icone]) => (
-                <button
-                  key={valeur}
-                  onClick={() => {
-                    const maj = { align: valeur };
-                    if (selectedElement.width == null) {
-                      const w = cadre(selectedId)?.width;
-                      if (w) maj.width = Math.round(w);
-                    }
-                    updateElement(selectedId, maj);
-                  }}
-                  className={petitBouton((selectedElement.align ?? 'left') === valeur)}
-                  title={label}
-                >
-                  <Icone className="h-4 w-4" />
-                </button>
-              ))}
-            </div>
-
-            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
-
             {/* Surlignage type stabilo */}
             <div className="flex items-center gap-1">
               <button
@@ -383,6 +370,38 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 />
               )}
             </div>
+
+              </div>
+            </MenuGroupe>
+
+            {/* Alignement dans le bloc — l'icône du bouton montre l'actuel */}
+            <MenuGroupe
+              icone={(BOUTONS_TEXTE.find(([v]) => v === (selectedElement.align ?? 'left')) ?? BOUTONS_TEXTE[0])[2]}
+              titre="Alignement du texte"
+            >
+            {/* Alignement du texte DANS son bloc. Sans largeur fixée, le bloc
+                épouse le texte : on lui en donne une pour que ça se voie. */}
+            <div className="flex items-center gap-1">
+              {BOUTONS_TEXTE.map(([valeur, label, Icone]) => (
+                <button
+                  key={valeur}
+                  onClick={() => {
+                    const maj = { align: valeur };
+                    if (selectedElement.width == null) {
+                      const w = cadre(selectedId)?.width;
+                      if (w) maj.width = Math.round(w);
+                    }
+                    updateElement(selectedId, maj);
+                  }}
+                  className={petitBouton((selectedElement.align ?? 'left') === valeur)}
+                  title={label}
+                >
+                  <Icone className="h-4 w-4" />
+                </button>
+              ))}
+            </div>
+
+            </MenuGroupe>
 
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
           </>
@@ -608,6 +627,228 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
           </>
         )}
 
+        {isFiche && (
+          <>
+            {/* Section : l'ancien titre par défaut suit le changement ; un
+                titre retouché à la main est gardé. */}
+            <select
+              value={selectedElement.section ?? 'specs'}
+              onChange={(e) => {
+                const avant = sectionParId(selectedElement.section);
+                const apres = sectionParId(e.target.value);
+                const maj = { section: apres.id };
+                if ((selectedElement.title ?? '') === avant.titre) maj.title = apres.titre;
+                updateElement(selectedId, maj);
+              }}
+              className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              title="Section de la fiche produit"
+            >
+              {SECTIONS_FICHE.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={selectedElement.title ?? ''}
+              onChange={(e) => updateElement(selectedId, { title: e.target.value })}
+              placeholder="Sans titre"
+              className="w-44 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              title="Titre affiché au-dessus (vide : pas de titre)"
+            />
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            <FontSelector
+              value={selectedElement.fontFamily || 'Arial'}
+              onChange={(fontFamily) => updateElement(selectedId, { fontFamily })}
+            />
+            <input
+              type="number"
+              min={4}
+              max={200}
+              value={Math.round(selectedElement.fontSize ?? FICHE_PAR_DEFAUT.fontSize)}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (n > 0) updateElement(selectedId, { fontSize: Math.min(200, Math.max(4, n)) });
+              }}
+              className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              title="Taille de la police, en pixels"
+            />
+            <label className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              Lignes max
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={selectedElement.maxLines ?? FICHE_PAR_DEFAUT.maxLines}
+                onChange={(e) => {
+                  const n = Math.round(Number(e.target.value));
+                  if (n > 0) updateElement(selectedId, { maxLines: Math.min(50, n) });
+                }}
+                className="w-14 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                title="Au-delà, la suite est coupée"
+              />
+            </label>
+            <MenuGroupe icone={Palette} titre="Style du tableau" largeur="16rem">
+              <div className="space-y-2 text-xs text-gray-600 dark:text-gray-300">
+                {[
+                  ['titleColor', 'Titre'],
+                  ['labelColor', (selectedElement.section ?? 'specs') === 'specs' ? 'Noms' : 'Puces'],
+                  ['color', 'Texte'],
+                  ['lineColor', 'Traits'],
+                ].map(([cle, label]) => (
+                  <label key={cle} className="flex items-center justify-between gap-2">
+                    {label}
+                    <input
+                      type="color"
+                      value={selectedElement[cle] ?? FICHE_PAR_DEFAUT[cle]}
+                      onChange={(e) => updateElement(selectedId, { [cle]: e.target.value })}
+                      className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+                    />
+                  </label>
+                ))}
+                {(selectedElement.section ?? 'specs') === 'specs' && (
+                  <>
+                    <label className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={selectedElement.stripe ?? FICHE_PAR_DEFAUT.stripe}
+                          onChange={(e) => updateElement(selectedId, { stripe: e.target.checked })}
+                        />
+                        Lignes alternées
+                      </span>
+                      <input
+                        type="color"
+                        value={selectedElement.stripeColor ?? FICHE_PAR_DEFAUT.stripeColor}
+                        onChange={(e) => updateElement(selectedId, { stripeColor: e.target.value })}
+                        className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="flex justify-between">
+                        Colonne des noms
+                        <span>{Math.round((selectedElement.colRatio ?? FICHE_PAR_DEFAUT.colRatio) * 100)} %</span>
+                      </span>
+                      <input
+                        type="range"
+                        min={0.15}
+                        max={0.8}
+                        step={0.01}
+                        value={selectedElement.colRatio ?? FICHE_PAR_DEFAUT.colRatio}
+                        onChange={(e) => updateElement(selectedId, { colRatio: Number(e.target.value) })}
+                        className="w-full"
+                      />
+                    </label>
+
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700 font-medium">Cadre</div>
+                    <label className="flex items-center justify-between gap-2">
+                      Bordure
+                      <select
+                        value={selectedElement.frame ?? FICHE_PAR_DEFAUT.frame}
+                        onChange={(e) => updateElement(selectedId, { frame: e.target.value })}
+                        className="px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      >
+                        <option value="none">Aucune</option>
+                        <option value="outer">Encadré</option>
+                        <option value="grid">Grille</option>
+                      </select>
+                    </label>
+                    {(selectedElement.frame ?? FICHE_PAR_DEFAUT.frame) !== 'none' && (
+                      <>
+                        <label className="flex items-center justify-between gap-2">
+                          Couleur
+                          <input
+                            type="color"
+                            value={selectedElement.borderColor ?? FICHE_PAR_DEFAUT.borderColor}
+                            onChange={(e) => updateElement(selectedId, { borderColor: e.target.value })}
+                            className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-2">
+                          Épaisseur
+                          <input
+                            type="number"
+                            min={0}
+                            max={12}
+                            step={0.5}
+                            value={selectedElement.borderWidth ?? FICHE_PAR_DEFAUT.borderWidth}
+                            onChange={(e) => updateElement(selectedId, { borderWidth: Math.max(0, Number(e.target.value) || 0) })}
+                            className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-2">
+                          Arrondi
+                          <input
+                            type="number"
+                            min={0}
+                            max={60}
+                            value={selectedElement.radius ?? FICHE_PAR_DEFAUT.radius}
+                            onChange={(e) => updateElement(selectedId, { radius: Math.max(0, Number(e.target.value) || 0) })}
+                            className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          />
+                        </label>
+                      </>
+                    )}
+                    <label className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={!!selectedElement.labelBg}
+                          onChange={(e) => updateElement(selectedId, { labelBg: e.target.checked ? '#e5e7eb' : '' })}
+                        />
+                        Fond des noms
+                      </span>
+                      {selectedElement.labelBg && (
+                        <input
+                          type="color"
+                          value={selectedElement.labelBg}
+                          onChange={(e) => updateElement(selectedId, { labelBg: e.target.value })}
+                          className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+                        />
+                      )}
+                    </label>
+
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700 font-medium">Ligne mise en avant</div>
+                    <label className="flex items-center justify-between gap-2">
+                      N° de ligne (0 : aucune)
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={selectedElement.highlightRow ?? FICHE_PAR_DEFAUT.highlightRow}
+                        onChange={(e) => updateElement(selectedId, { highlightRow: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+                        className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    </label>
+                    {(selectedElement.highlightRow ?? FICHE_PAR_DEFAUT.highlightRow) > 0 && (
+                      <>
+                        <label className="flex items-center justify-between gap-2">
+                          Couleur
+                          <input
+                            type="color"
+                            value={selectedElement.highlightColor ?? FICHE_PAR_DEFAUT.highlightColor}
+                            onChange={(e) => updateElement(selectedId, { highlightColor: e.target.value })}
+                            className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+                          />
+                        </label>
+                        <label className="flex items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={selectedElement.highlightBold ?? FICHE_PAR_DEFAUT.highlightBold}
+                            onChange={(e) => updateElement(selectedId, { highlightBold: e.target.checked })}
+                          />
+                          Valeur en gras
+                        </label>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </MenuGroupe>
+          </>
+        )}
+
         {isImage && (
           <>
             {/* Recadrage, comme PocketStick (double-clic sur l'image aussi) */}
@@ -755,6 +996,10 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
         {docNode && ids.length > 0 && (
           <>
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            <MenuGroupe
+              icone={AlignCenterVertical}
+              titre={ids.length === 1 ? 'Position sur la page' : `Aligner ${ids.length} éléments`}
+            >
             <div
               className="flex items-center gap-1"
               role="group"
@@ -789,9 +1034,27 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 </>
               )}
             </div>
-            {ids.length === 1 && (
-              <span className="text-[11px] text-gray-400 whitespace-nowrap">Maj+clic : plusieurs</span>
-            )}
+              <div className="mt-1.5 text-[11px] text-gray-400">
+                {ids.length === 1
+                  ? 'Maj+clic ou lasso : plusieurs éléments'
+                  : ids.length === 2
+                    ? 'Trois éléments ou plus pour répartir les espaces'
+                    : 'Les deux derniers boutons répartissent les espaces'}
+              </div>
+            </MenuGroupe>
+          </>
+        )}
+
+        {ids.length > 0 && (
+          <>
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            <button
+              onClick={() => deleteElements(ids)}
+              className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+              title={ids.length > 1 ? `Supprimer les ${ids.length} éléments (Suppr)` : 'Supprimer (Suppr)'}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </>
         )}
 

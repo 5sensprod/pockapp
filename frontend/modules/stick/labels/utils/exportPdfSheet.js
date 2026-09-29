@@ -2,7 +2,6 @@
 import jsPDF from 'jspdf';
 import Konva from 'konva';
 import QRCodeLib from 'qrcode';
-import JsBarcode from 'jsbarcode';
 import useLabelStore from '../store/useLabelStore';
 import {
   resolvePropForElement,
@@ -12,6 +11,9 @@ import {
 } from '../utils/dataBinding';
 import { remplissage } from './fillStyle';
 import { konvaCrop } from './crop';
+import { dessinerCodeBarres } from './barcodeCanvas';
+import { construireFiche } from './ficheKonva';
+import { contenuFiche } from './ficheProduit';
 import { dessinForme } from '../components/canvas/ShapeNode';
 
 /**
@@ -90,6 +92,11 @@ function updateElementsWithProduct(elements, product, fillQrWhenNoBinding = fals
       // HTML, et correction manuelle du texte lié pour ce produit.
       const nextText = String(resolvePropForElement(el.text ?? '', el, product) ?? '');
       return { ...el, text: nextText };
+    }
+
+    // 📋 FICHE — la section du produit de CETTE cellule (null : rien d'imprimé)
+    if (el?.type === 'fiche') {
+      return { ...el, ficheContenu: contenuFiche(product.description, el.section) };
     }
 
     // 🔲 QRCODE — binding brut (pas de €), sinon templating, sinon fallback
@@ -198,9 +205,11 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
         align: el.align ?? 'left',
         // ⬇️ width permet le word-wrap automatique (comme dans le canvas)
         width: el.width != null ? el.width * scale : undefined,
-        height: el.height != null ? el.height * scale : undefined,
+        // Pas de hauteur : le canvas n'en impose aucune, le texte prend la sienne
         wrap: el.wrap ?? 'word',
-        lineHeight: el.lineHeight ?? 1.2,
+        // 1 : l'interligne du canvas (TextNode n'en fixe pas, Konva vaut 1)
+        lineHeight: el.lineHeight ?? 1,
+        opacity: el.opacity ?? 1,
         scaleX: el.scaleX ?? 1,
         scaleY: el.scaleY ?? 1,
         rotation: el.rotation ?? 0,
@@ -213,7 +222,35 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
           remplissage(el.fillGradient, texte.width(), texte.height(), el.color ?? '#000000')
         );
       }
-      return texte;
+      if (!el.highlightEnabled) return texte;
+      // 🖍️ Surlignage (stabilo), dessiné DERRIÈRE le texte comme à l'écran
+      const groupe = new Konva.Group({ listening: false });
+      groupe.add(
+        new Konva.Rect({
+          x: texte.x(),
+          y: texte.y(),
+          width: texte.width(),
+          height: texte.height(),
+          rotation: texte.rotation(),
+          scaleX: texte.scaleX(),
+          scaleY: texte.scaleY(),
+          fill: el.highlightColor || '#FFFF00',
+          opacity: 0.5 * (el.opacity ?? 1),
+        })
+      );
+      groupe.add(texte);
+      return groupe;
+    }
+
+    // 📋 FICHE — même dessin que le canvas (`construireFiche`), à l'échelle 1
+    // dans un groupe mis à l'échelle de la cellule. Sans contenu : rien.
+    if (el?.type === 'fiche') {
+      if (!el.ficheContenu) return null;
+      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, listening: false });
+      const fiche = new Konva.Group({ x: el.x ?? 0, y: el.y ?? 0, rotation: el.rotation ?? 0 });
+      construireFiche(el, el.ficheContenu).nodes.forEach((n) => fiche.add(n));
+      groupe.add(fiche);
+      return groupe;
     }
 
     // 🔷 SHAPE — même géométrie que le canvas (`dessinForme`), dessinée à
@@ -273,55 +310,38 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
       }
     }
 
-    // 📊 BARCODE (Konva.Image)
+    // 📊 BARCODE — le MÊME dessin que le canvas (`dessinerCodeBarres`) :
+    // hauteur et largeur des barres, format du numéro, et une hauteur qui
+    // découle de la largeur (jamais d'étirement).
     if (el?.type === 'barcode') {
-      const width = (el.width ?? 200) * scale;
-      const height = (el.height ?? 80) * scale;
-      const barcodeValue = el.barcodeValue ?? '';
-      const format = el.format ?? 'CODE128';
-
-      if (!barcodeValue) {
-        console.warn('⚠️ Code-barres sans valeur:', el);
-        return null;
-      }
-
+      if (!el.barcodeValue) return null;
       try {
-        const barcodeScale = 3;
-        const canvasWidth = Math.floor(width * barcodeScale);
-        const canvasHeight = Math.floor(height * barcodeScale);
-
-        const canvas = document.createElement('canvas');
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-
-        const textHeight = el.displayValue ? (el.fontSize ?? 14) * scale * barcodeScale : 0;
-        const barsHeight =
-          canvasHeight - textHeight - (el.textMargin ?? 2) * scale * barcodeScale * 2;
-
-        JsBarcode(canvas, barcodeValue, {
-          format,
-          width: 2 * barcodeScale,
-          height: Math.max(20, barsHeight),
-          displayValue: el.displayValue ?? true,
-          fontSize: (el.fontSize ?? 14) * scale * barcodeScale,
-          textMargin: (el.textMargin ?? 2) * scale * barcodeScale,
-          margin: (el.margin ?? 10) * scale * barcodeScale,
-          background: el.background ?? '#FFFFFF',
-          lineColor: el.lineColor ?? '#000000',
-          valid: (valid) => {
-            if (!valid) console.warn('⚠️ Code-barres invalide:', barcodeValue, 'format:', format);
+        const width = (el.width ?? 200) * scale;
+        const canvas = dessinerCodeBarres(
+          {
+            barcodeValue: el.barcodeValue,
+            format: el.format ?? 'CODE128',
+            width: el.width ?? 200,
+            height: el.height ?? 80,
+            displayValue: el.displayValue ?? true,
+            fontSize: el.fontSize ?? 14,
+            textMargin: el.textMargin ?? 2,
+            margin: el.margin ?? 10,
+            barHeight: el.barHeight,
+            barWidth: el.barWidth,
+            textFormat: el.textFormat ?? 'brut',
+            background: el.background ?? '#FFFFFF',
+            lineColor: el.lineColor ?? '#000000',
           },
-        });
-
-        const dataURL = canvas.toDataURL('image/png', 1.0);
-        const imageObj = await loadImageFromDataURL(dataURL);
-
+          width * pixelRatio
+        );
+        const imageObj = await loadImageFromDataURL(canvas.toDataURL('image/png'));
         return new Konva.Image({
           x: (el.x ?? 0) * scale,
           y: (el.y ?? 0) * scale,
           image: imageObj,
           width,
-          height,
+          height: width * (canvas.height / canvas.width),
           rotation: el.rotation ?? 0,
           scaleX: el.scaleX ?? 1,
           scaleY: el.scaleY ?? 1,
@@ -329,7 +349,7 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
           ...shadowProps(el),
         });
       } catch (err) {
-        console.error('❌ Code-barres generation failed:', barcodeValue, err);
+        console.error('❌ Code-barres generation failed:', el.barcodeValue, err);
         return null;
       }
     }
@@ -476,7 +496,12 @@ export async function exportPdfSheet(
     } else if (hasProducts && i >= products.length) {
       dataURL = await getBlankCell();
     } else {
-      const updated = updateElementsWithProduct(baseElements, null, false);
+      // Un SEUL produit (ou aucun) : la même affiche dans chaque case, remplie
+      // avec le produit que montre le canvas. Avant, on passait `null` : la
+      // fiche n'avait rien à dessiner et disparaissait, et textes ou QR liés
+      // imprimaient leur valeur enregistrée au lieu de celle du produit.
+      const produitAffiche = useLabelStore.getState()?.selectedProduct ?? null;
+      const updated = updateElementsWithProduct(baseElements, produitAffiche, false);
       dataURL = await createDocumentImage(updated, docWidth, docHeight, scale, pixelRatio);
     }
 

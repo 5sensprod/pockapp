@@ -86,6 +86,10 @@ const LayersPanel = () => {
           } else {
             baseName = el.text?.split('(')[0]?.trim() || 'Texte';
           }
+        } else if (el.type === 'fiche') {
+          baseName =
+            { specs: 'Caractéristiques', highlights: 'Points forts', tips: 'Conseils' }[el.section] ||
+            'Fiche';
         } else if (el.type === 'shape') {
           const noms = {
             rectangle: 'Rectangle',

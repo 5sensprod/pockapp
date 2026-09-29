@@ -5,6 +5,7 @@ import {
   Type,
   Image as ImageIcon,
   Shapes,
+  ListChecks,
   Table2,
   Layers,
   Maximize2,
@@ -26,6 +27,7 @@ import LayersPanel from './templates/LayersPanel';
 import FormatPanel from './templates/FormatPanel';
 import SheetPanel from './templates/SheetPanel';
 import QRCodeTemplates from './templates/QRCodeTemplates';
+import FicheTemplates from './templates/FicheTemplates';
 import UploadTemplate from './templates/UploadTemplate';
 import BarcodeTemplates from './templates/BarcodeTemplates';
 import EffectsTemplates from './templates/EffectsTemplates';
@@ -55,6 +57,7 @@ const ToolsSidebar = ({
     { id: 'image', label: 'Images', icon: ImageIcon, component: ImageTemplates },
     { id: 'shape', label: 'Forme', icon: Shapes, component: ShapeTemplates },
     { id: 'table', label: 'Tableau', icon: Table2, component: TableTemplates },
+    { id: 'fiche', label: 'Fiche produit', icon: ListChecks, component: FicheTemplates },
     { id: 'qrcode', label: 'QR Code', icon: QrCode, component: QRCodeTemplates },
     { id: 'barcode', label: 'Code-barres', icon: Barcode, component: BarcodeTemplates },
     { id: 'effects', label: 'Effets', icon: Sparkles, component: EffectsTemplates },

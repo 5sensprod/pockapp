@@ -7,6 +7,9 @@ const FontSelector = ({ value, onChange, apiKey }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
+  // Position ÉCRAN de la liste : la barre d'options défile (overflow), une
+  // liste en `absolute` y était coupée — invisible.
+  const [pos, setPos] = useState({ top: 0, left: 0 });
 
   const { fonts, loading } = useGoogleFonts(apiKey);
 
@@ -43,8 +46,12 @@ const FontSelector = ({ value, onChange, apiKey }) => {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 min-w-[140px]"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 264) });
+          setIsOpen(!isOpen);
+        }}
+        className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 w-[120px]"
       >
         <span className="truncate" style={{ fontFamily: value }}>
           {value}
@@ -52,7 +59,9 @@ const FontSelector = ({ value, onChange, apiKey }) => {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 max-h-96 flex flex-col">
+        <div
+          style={{ top: pos.top, left: pos.left }}
+          className="fixed w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 max-h-96 flex flex-col">
           {/* Recherche */}
           <div className="p-2 border-b border-gray-200 dark:border-gray-700">
             <div className="relative">

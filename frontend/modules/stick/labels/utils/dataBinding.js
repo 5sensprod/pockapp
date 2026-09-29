@@ -6,6 +6,15 @@
  * en conservant un minimum de structure (listes, paragraphes, retours à la ligne).
  * Indispensable car Konva <Text> ne sait afficher que du texte brut (pas de DOM/HTML).
  */
+/** Entité nommée hors de la liste (&laquo; &oelig; &deg;…) : le navigateur la
+ *  connaît toutes. Sans DOM (tests), on la laisse telle quelle. */
+const decoderNomme = (entite) => {
+  if (typeof document === 'undefined') return entite;
+  const t = document.createElement('textarea');
+  t.innerHTML = entite;
+  return t.value;
+};
+
 export const stripHtmlToText = (html) => {
   if (!html || typeof html !== 'string') return html ?? '';
 
@@ -40,7 +49,13 @@ export const stripHtmlToText = (html) => {
     '&rsquo;': '’',
     '&hellip;': '…',
   };
-  s = s.replace(/&[a-zA-Z#0-9]+;/g, (m) => entities[m] ?? m);
+  // Codes NUMÉRIQUES (&#34; &#233; &#x2019;…) : la liste nommée ci-dessus ne
+  // les couvrait pas, et « 14&#34; » s'imprimait tel quel au lieu de « 14" ».
+  s = s.replace(/&#(x[0-9a-f]+|\d+);/gi, (m, code) => {
+    const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1), 16) : parseInt(code, 10);
+    return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+  });
+  s = s.replace(/&[a-zA-Z]+;/g, (m) => entities[m] ?? decoderNomme(m));
 
   // Nettoyer les espaces/lignes en trop
   s = s

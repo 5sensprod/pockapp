@@ -1,8 +1,7 @@
 // src/features/labels/components/canvas/BarcodeNode.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import { Group, Image as KonvaImage } from 'react-konva';
-import JsBarcode from 'jsbarcode';
-import { formaterTexteCodeBarres } from '../../utils/barcodeText';
+import { dessinerCodeBarres } from '../../utils/barcodeCanvas';
 
 /**
  * BarcodeNode - Composant Konva pour afficher un code-barres
@@ -58,60 +57,21 @@ const BarcodeNode = ({
 
     const generateBarcode = () => {
       try {
-        const canvas = document.createElement('canvas');
-        const value = barcodeValue || '000000000000';
-
-        // `textFormat: 'aucun'` masque le numéro : c'est un réglage de texte,
-        // il n'a pas à passer par une seconde case à cocher.
-        const numeroVisible = displayValue && textFormat !== 'aucun';
-        const hauteurBarres =
-          barHeight != null && barHeight > 0
-            ? barHeight
-            : height - (numeroVisible ? fontSize + textMargin * 2 : 0);
-
-        const largeurBarres = barWidth != null && barWidth > 0 ? barWidth : 2;
-
-        // ── RÉSOLUTION ────────────────────────────────────────────────────
-        // JsBarcode rend un BITMAP à sa taille naturelle, que Konva étire
-        // ensuite jusqu'à la largeur du cadre. Un symbole naturel de 200 px
-        // posé sur 600 px est donc agrandi trois fois : bords de barres
-        // adoucis à l'écran, et surtout au PDF, qui capture ce même bitmap.
-        // Un scanner lit mal des bords flous.
-        //
-        // On dessine donc à une échelle ENTIÈRE — un multiple exact, pour que
-        // chaque barre reste un nombre entier de pixels et qu'aucune ne soit
-        // rendue plus large que sa voisine par un arrondi.
-        const dessiner = (echelle) => {
-          JsBarcode(canvas, value, {
-            format,
-            width: largeurBarres * echelle,
-            height: Math.max(1, hauteurBarres * echelle),
-            displayValue: numeroVisible,
-            text: numeroVisible ? formaterTexteCodeBarres(value, textFormat) : undefined,
-            fontSize: fontSize * echelle,
-            textMargin: textMargin * echelle,
-            margin: margin * echelle,
-            background,
-            lineColor,
-            valid: (valid) => {
-              if (!valid) {
-                console.warn('⚠️ Code-barres invalide:', value, 'format:', format);
-              }
-            },
-          });
-        };
-
-        // Première passe : elle donne la largeur naturelle, qui dépend de la
-        // valeur encodée et du format — impossible à connaître d'avance.
-        dessiner(1);
-
-        // Deuxième passe si le cadre est plus large que le dessin. ×2 au
-        // minimum, pour rester net sur un écran à forte densité et au zoom ;
-        // plafonné pour ne pas fabriquer un bitmap démesuré sur une planche.
-        const naturelle = canvas.width || 1;
-        const souhaitee = (width || naturelle) * 2;
-        const echelle = Math.min(8, Math.max(1, Math.ceil(souhaitee / naturelle)));
-        if (echelle > 1) dessiner(echelle);
+        const canvas = dessinerCodeBarres({
+          barcodeValue,
+          format,
+          width,
+          height,
+          displayValue,
+          fontSize,
+          textMargin,
+          margin,
+          barHeight,
+          barWidth,
+          textFormat,
+          background,
+          lineColor,
+        });
 
         const img = new Image();
         img.crossOrigin = 'anonymous';
