@@ -15,6 +15,9 @@ import TextNode from './canvas/TextNode';
 import ShapeNode from './canvas/ShapeNode';
 import { calculateSnapGuides } from '../utils/snapGuides.utils';
 import { resolvePropForElement } from '../utils/dataBinding';
+import { konvaCrop, resizeStep, settleCrop } from '../utils/crop';
+import { CropOverlay, CropTransformer, geometrieImage } from './canvas/CropOverlay';
+import { tailleNaturelle } from './canvas/ImageNode';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -33,6 +36,21 @@ const KonvaCanvas = forwardRef(
     const setZoom = useLabelStore((s) => s.setZoom);
     const selectedProduct = useLabelStore((s) => s.selectedProduct);
     const currentProductIndex = useLabelStore((s) => s.currentProductIndex);
+    const cropId = useLabelStore((s) => s.cropId);
+    const startCrop = useLabelStore((s) => s.startCrop);
+    const stopCrop = useLabelStore((s) => s.stopCrop);
+    // Image pendant un redimensionnement : { id, el (géométrie courante), natural }.
+    const liveMedia = useRef(null);
+
+    // Échap ou Entrée terminent le recadrage
+    useEffect(() => {
+      if (!cropId) return undefined;
+      const onKey = (e) => {
+        if (e.key === 'Escape' || e.key === 'Enter') stopCrop();
+      };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }, [cropId, stopCrop]);
 
     const stageRef = useRef(null);
     const transformerRef = useRef(null);
@@ -124,9 +142,19 @@ const KonvaCanvas = forwardRef(
     );
 
     // 🎯 onTransformStart simple
-    const handleTransformStart = useCallback(() => {
-      setIsTransforming(true);
-    }, []);
+    const handleTransformStart = useCallback(
+      (id, node) => {
+        setIsTransforming(true);
+        const element = elements.find((el) => el.id === id);
+        // IMAGE, comme PocketStick : on part de la géométrie à l'échelle 1 et
+        // de la taille d'origine, pour recalculer le recadrage à chaque pas.
+        liveMedia.current =
+          element?.type === 'image'
+            ? { id, el: geometrieImage(element), natural: tailleNaturelle(node.image?.()) }
+            : null;
+      },
+      [elements]
+    );
 
     // 🎯 REFACTORISÉ : onTransform avec approche Konva officielle
     const handleTransforming = useCallback(
@@ -188,19 +216,34 @@ const KonvaCanvas = forwardRef(
           setIsRotating(false);
           setRotationAngle(null);
 
-          // 🎯 APPROCHE KONVA OFFICIELLE pour les TEXTES
-          if (element.type === 'text') {
-            const scaleX = node.scaleX();
-            const scaleY = node.scaleY();
-
-            // ✅ Calculer nouvelles dimensions avec contraintes minimales strictes
-            const newWidth = Math.max(30, node.width() * scaleX);
-            const newFontSize = Math.max(10, node.fontSize() * scaleY);
-
-            // ⚡ Appliquer immédiatement avec setAttrs (méthode Konva)
+          // TEXTE, comme PocketStick (`src/editor/canvas/Selection.jsx`) :
+          // étirer la case change sa LARGEUR, jamais la taille de police — le
+          // texte se réorganise à la ligne, les lettres ne grossissent pas. La
+          // taille se règle dans la barre d'options. L'échelle est aussitôt
+          // ramenée à 1 pour que rien ne se déforme pendant le geste.
+          // IMAGE, comme PocketStick (`resizeStep`) : un COIN agrandit tout
+          // ensemble ; un CÔTÉ garde l'image à la même échelle et en montre
+          // plus ou moins — elle se recadre au lieu de s'écraser.
+          const live = liveMedia.current;
+          if (element.type === 'image' && live?.id === id) {
+            const next = resizeStep(
+              live.el,
+              { scaleX: node.scaleX(), scaleY: node.scaleY(), anchor: activeAnchor },
+              live.natural
+            );
+            live.el = { ...live.el, ...next, x: node.x(), y: node.y() };
             node.setAttrs({
-              width: newWidth,
-              fontSize: newFontSize,
+              width: next.width,
+              height: next.height,
+              scaleX: 1,
+              scaleY: 1,
+              ...(live.natural ? { crop: konvaCrop(live.el, live.natural) } : {}),
+            });
+          }
+
+          if (element.type === 'text') {
+            node.setAttrs({
+              width: Math.max(30, node.width() * node.scaleX()),
               scaleX: 1,
               scaleY: 1,
             });
@@ -252,9 +295,24 @@ const KonvaCanvas = forwardRef(
         // 🎯 Pour les TEXTES : persister width/fontSize avec scale = 1
         if (element.type === 'text') {
           updates.width = node.width();
-          updates.fontSize = node.fontSize();
           updates.scaleX = 1;
           updates.scaleY = 1;
+        } else if (element.type === 'image' && liveMedia.current?.id === id) {
+          // Image : taille réelle et recadrage, échelle ramenée à 1
+          const live = liveMedia.current;
+          const el = { ...live.el, width: node.width(), height: node.height() };
+          Object.assign(updates, {
+            width: el.width,
+            height: el.height,
+            cropX: el.cropX,
+            cropY: el.cropY,
+            cropWidth: el.cropWidth,
+            cropHeight: el.cropHeight,
+            ...(live.natural ? settleCrop(el, live.natural) : {}),
+            scaleX: 1,
+            scaleY: 1,
+          });
+          liveMedia.current = null;
         } else {
           // Pour les autres éléments : garder le scale
           updates.scaleX = node.scaleX();
@@ -310,7 +368,7 @@ const KonvaCanvas = forwardRef(
     useEffect(() => {
       const tr = transformerRef.current;
       const stage = stageRef.current;
-      if (!tr || !stage || !selectedId) {
+      if (!tr || !stage || !selectedId || cropId) {
         tr?.nodes([]);
         tr?.getLayer()?.batchDraw();
         return;
@@ -330,7 +388,7 @@ const KonvaCanvas = forwardRef(
         tr.forceUpdate();
         tr.getLayer()?.batchDraw();
       }, 100);
-    }, [selectedId, elements]);
+    }, [selectedId, elements, cropId]);
 
     return (
       <Stage
@@ -373,7 +431,7 @@ const KonvaCanvas = forwardRef(
                 onDragStart: handleDragStart,
                 onDragMove: (e) => !locked && handleDragMove(id, e.target),
                 onDragEnd: (e) => !locked && handleDragEnd(id, e.target),
-                onTransformStart: (e) => !locked && handleTransformStart(),
+                onTransformStart: (e) => !locked && handleTransformStart(id, e.target),
                 onTransform: (e) => !locked && handleTransforming(id, e.target),
                 onTransformEnd: (e) => !locked && handleTransformEnd(id, e.target),
                 scaleX: scaleX || 1,
@@ -433,6 +491,13 @@ const KonvaCanvas = forwardRef(
                     height={el.height ?? 160}
                     src={resolvePropForElement(el.src, el, selectedProduct) ?? ''}
                     opacity={el.opacity ?? 1}
+                    cropX={el.cropX}
+                    cropY={el.cropY}
+                    cropWidth={el.cropWidth}
+                    cropHeight={el.cropHeight}
+                    // Double-clic : recadrer, comme PocketStick
+                    onDblClick={() => !locked && startCrop(id)}
+                    onDblTap={() => !locked && startCrop(id)}
                   />
                 );
               }
@@ -509,22 +574,49 @@ const KonvaCanvas = forwardRef(
               })}
           </Group>
 
+          {/* Recadrage : même position et zoom que le document, mais HORS de
+              son groupe — l'export clone ce groupe, la surcouche ne doit pas
+              s'imprimer. */}
+          {(() => {
+            const cropEl = cropId ? elements.find((e) => e.id === cropId) : null;
+            if (!cropEl) return null;
+            return (
+              <>
+                <Group x={docPos.x} y={docPos.y} scaleX={zoom} scaleY={zoom}>
+                  <CropOverlay
+                    element={cropEl}
+                    src={resolvePropForElement(cropEl.src, cropEl, selectedProduct) ?? ''}
+                    scale={zoom}
+                    onChange={(attrs) => updateElement(cropEl.id, attrs)}
+                  />
+                </Group>
+                <CropTransformer element={cropEl} />
+              </>
+            );
+          })()}
+
           <Transformer
             ref={transformerRef}
             boundBoxFunc={boundBoxFunc}
             rotationSnaps={[0, 90, 180, 270]}
             rotationSnapTolerance={5}
             rotateAnchorOffset={30}
-            enabledAnchors={[
-              'top-left',
-              'top-center',
-              'top-right',
-              'middle-right',
-              'middle-left',
-              'bottom-left',
-              'bottom-center',
-              'bottom-right',
-            ]}
+            // Texte : poignées de CÔTÉ seulement, comme PocketStick — un coin
+            // ou un bord haut/bas agrandirait les lettres.
+            enabledAnchors={
+              elements.find((el) => el.id === selectedId)?.type === 'text'
+                ? ['middle-left', 'middle-right']
+                : [
+                    'top-left',
+                    'top-center',
+                    'top-right',
+                    'middle-right',
+                    'middle-left',
+                    'bottom-left',
+                    'bottom-center',
+                    'bottom-right',
+                  ]
+            }
           />
 
           {/* Badge de rotation : affiché UNIQUEMENT pendant la rotation */}

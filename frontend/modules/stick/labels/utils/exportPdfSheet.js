@@ -11,6 +11,7 @@ import {
   formatPriceEUR,
 } from '../utils/dataBinding';
 import { remplissage } from './fillStyle';
+import { konvaCrop } from './crop';
 import { dessinForme } from '../components/canvas/ShapeNode';
 
 /**
@@ -346,8 +347,21 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
 
       try {
         const imageObj = await loadImageFromURL(src);
+        // Même recadrage qu'à l'écran (`ImageNode`) : jamais d'image écrasée.
+        const crop = konvaCrop(
+          {
+            width: el.width ?? 160,
+            height: el.height ?? 160,
+            cropX: el.cropX ?? 0,
+            cropY: el.cropY ?? 0,
+            cropWidth: el.cropWidth ?? 1,
+            cropHeight: el.cropHeight ?? 1,
+          },
+          { width: imageObj.naturalWidth || imageObj.width, height: imageObj.naturalHeight || imageObj.height }
+        );
 
         return new Konva.Image({
+          crop,
           x: (el.x ?? 0) * scale,
           y: (el.y ?? 0) * scale,
           image: imageObj,

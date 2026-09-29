@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Image as ImageIcon, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
 import presetImageService from '../../services/presetImageService';
 import useLabelStore from '../../store/useLabelStore';
+import { cadreSurCanvas } from '../../utils/imagePlacement';
 
 /**
  * UploadTemplate - Composant d'upload et gestion des images
@@ -78,22 +79,11 @@ const UploadTemplate = ({ onImageSelected }) => {
 
     console.log('📐 Upload - Dimensions naturelles:', { naturalWidth, naturalHeight, aspectRatio });
 
-    // Définir une taille de base (ex: largeur de 160px)
-    const baseWidth = 160;
-    const calculatedHeight = Math.round(baseWidth / aspectRatio);
-
-    console.log('✅ Upload - Dimensions calculées:', {
-      width: baseWidth,
-      height: calculatedHeight,
-    });
-
     addElement({
       type: 'image',
       id: undefined,
-      x: 50,
-      y: 50 + elements.length * 30,
-      width: baseWidth,
-      height: calculatedHeight, // 🔥 Hauteur calculée pour préserver le ratio
+      // À la taille du canvas, entière et centrée
+      ...cadreSurCanvas(aspectRatio, useLabelStore.getState().canvasSize),
       src: image.src,
       filename: image.filename,
       opacity: 1,

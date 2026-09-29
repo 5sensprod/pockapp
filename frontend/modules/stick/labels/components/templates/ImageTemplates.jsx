@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Image as ImageIcon, Loader2, Link as LinkIcon, ArrowLeft } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
+import { cadreSurCanvas } from '../../utils/imagePlacement';
 import presetImageService from '../../services/presetImageService';
 
 const ImageTemplates = ({ selectedProduct }) => {
@@ -75,16 +76,11 @@ const ImageTemplates = ({ selectedProduct }) => {
    */
   const handleAddImage = async (image) => {
     const { aspectRatio } = await loadImageDimensions(image.src);
-    const baseWidth = 160;
-    const calculatedHeight = Math.round(baseWidth / aspectRatio);
 
     addElement({
       type: 'image',
       id: undefined,
-      x: 50,
-      y: 50 + elements.length * 30,
-      width: baseWidth,
-      height: calculatedHeight,
+      ...cadreSurCanvas(aspectRatio, useLabelStore.getState().canvasSize),
       src: image.src, // ✅ URL déjà normalisée par presetImageService
       filename: image.filename,
       opacity: 1,
@@ -147,14 +143,9 @@ const ImageTemplates = ({ selectedProduct }) => {
       ? await loadImageDimensions(fallbackSrc)
       : { aspectRatio: 1 };
 
-    const baseWidth = 160;
-
     addElement({
       type: 'image',
-      x: 50,
-      y: 50 + elements.length * 30,
-      width: baseWidth,
-      height: Math.round(baseWidth / aspectRatio),
+      ...cadreSurCanvas(aspectRatio, useLabelStore.getState().canvasSize),
       src: '{{product_image}}', // résolu dynamiquement via resolveTemplate
       dataBinding: 'product_image_src', // prioritaire, résolu via resolvePropForElement
       opacity: 1,

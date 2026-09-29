@@ -13,6 +13,9 @@ const useLabelStore = create((set, get) => ({
   // --- état principal
   elements: [],
   selectedId: null,
+  // Image en cours de recadrage (id), comme `cropId` de PocketStick. Changer
+  // de sélection termine le recadrage.
+  cropId: null,
   dataSource: null,
   selectedProduct: null,
   selectedProducts: [],
@@ -176,8 +179,15 @@ const useLabelStore = create((set, get) => ({
     }),
 
   // --- sélection
-  selectElement: (id) => set({ selectedId: id }),
-  clearSelection: () => set({ selectedId: null }),
+  selectElement: (id) =>
+    set((state) => ({ selectedId: id, cropId: state.cropId === id ? state.cropId : null })),
+  clearSelection: () => set({ selectedId: null, cropId: null }),
+  startCrop: (id) =>
+    set((state) => {
+      const el = state.elements.find((e) => e.id === id);
+      return el?.type === 'image' && !el.locked ? { selectedId: id, cropId: id } : {};
+    }),
+  stopCrop: () => set({ cropId: null }),
 
   // --- data (ne pollue pas l'historique des éléments)
   setDataSource: (source, product = null) =>
@@ -256,6 +266,7 @@ const useLabelStore = create((set, get) => ({
       return {
         elements: [],
         selectedId: null,
+        cropId: null,
         selectedProducts: [],
         selectedProduct: null,
         dataSource: source,
@@ -280,6 +291,7 @@ const useLabelStore = create((set, get) => ({
       return {
         elements: [],
         selectedId: null,
+        cropId: null,
         selectedProducts: [],
         selectedProduct: null,
       };

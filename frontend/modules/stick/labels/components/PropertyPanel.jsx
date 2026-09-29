@@ -14,7 +14,9 @@ import {
 import useLabelStore from '../store/useLabelStore';
 import FontSelector from './FontSelector';
 import GradientColorPicker from './GradientColorPicker';
-import { texteCorrige } from '../utils/dataBinding';
+import { resolvePropForElement, texteCorrige } from '../utils/dataBinding';
+import { resetCropAttrs } from '../utils/crop';
+import { geometrieImage } from './canvas/CropOverlay';
 import { FORMATS_TEXTE_CODE_BARRES } from '../utils/barcodeText';
 
 const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
@@ -25,6 +27,9 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
   // Le produit que le CANVAS affiche : c'est à lui qu'une correction de texte
   // est rattachée (`TextNode`, `textOverrides`).
   const canvasProduct = useLabelStore((s) => s.selectedProduct);
+  const cropId = useLabelStore((s) => s.cropId);
+  const startCrop = useLabelStore((s) => s.startCrop);
+  const stopCrop = useLabelStore((s) => s.stopCrop);
 
   const selectedElement = elements.find((el) => el.id === selectedId);
   if (!selectedElement) return null;
@@ -513,6 +518,48 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
 
         {isImage && (
           <>
+            {/* Recadrage, comme PocketStick (double-clic sur l'image aussi) */}
+            {cropId === selectedId ? (
+              <>
+                <button
+                  onClick={stopCrop}
+                  className="px-3 py-1 text-sm rounded-lg bg-teal-600 hover:bg-teal-700 text-white"
+                  title="Entrée ou Échap"
+                >
+                  Valider le recadrage
+                </button>
+                <button
+                  onClick={() => {
+                    // Taille d'origine lue sur le nœud affiché : l'image
+                    // entière revient, à la même échelle.
+                    const img = document.createElement('img');
+                    img.onload = () =>
+                      updateElement(selectedId, {
+                        ...resetCropAttrs(geometrieImage(selectedElement), {
+                          width: img.naturalWidth,
+                          height: img.naturalHeight,
+                        }),
+                        scaleX: 1,
+                        scaleY: 1,
+                      });
+                    img.src = resolvePropForElement(selectedElement.src, selectedElement, canvasProduct);
+                  }}
+                  className="px-3 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  title="Revenir à l'image entière"
+                >
+                  Réinitialiser
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => startCrop(selectedId)}
+                className="px-3 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                title="Recadrer (ou double-clic sur l'image)"
+              >
+                Recadrer
+              </button>
+            )}
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
                 Opacité:
@@ -534,7 +581,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                {selectedElement.width ?? 160}×{selectedElement.height ?? 160}px
+                {Math.round(selectedElement.width ?? 160)}×{Math.round(selectedElement.height ?? 160)}px
               </span>
             </div>
 
