@@ -124,6 +124,15 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
   const isShape = selectedElement.type === 'shape';
   const isFiche = selectedElement.type === 'fiche';
   const isDessin = selectedElement.type === 'dessin';
+  // Épaisseur de contour : sans couleur ni dégradé, le contour ne se dessine
+  // pas, alors que le sélecteur affiche une couleur de repli. Donner une
+  // épaisseur pose donc cette couleur — comme choisir une couleur pose 2 px.
+  const epaisseurContour = (strokeWidth, couleurAffichee) => ({
+    strokeWidth,
+    ...(strokeWidth > 0 && !selectedElement.stroke && !selectedElement.strokeGradient
+      ? { stroke: couleurAffichee }
+      : {}),
+  });
 
   const handleColorChange = (color) => updateElement(selectedId, { color });
 
@@ -425,7 +434,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
               max={40}
               step={0.5}
               value={selectedElement.strokeWidth ?? 0}
-              onChange={(e) => updateElement(selectedId, { strokeWidth: Number(e.target.value) })}
+              onChange={(e) => updateElement(selectedId, epaisseurContour(Number(e.target.value), '#000000'))}
               className="w-14 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               title="Épaisseur du contour du texte, en pixels"
             />
@@ -634,7 +643,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 step={1}
                 value={selectedElement.strokeWidth ?? 0}
                 onChange={(e) =>
-                  updateElement(selectedId, { strokeWidth: Number(e.target.value) })
+                  updateElement(selectedId, epaisseurContour(Number(e.target.value), '#0f172a'))
                 }
                 className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 title="Épaisseur du contour, en pixels"

@@ -208,3 +208,13 @@ dans un groupe réduit à la case. `appliquerEffets` leur passait pourtant
 réduits DEUX fois sur une case plus petite que l'affiche. Ces groupes
 portent maintenant `enveloppeCase` et reçoivent `echelle: 1`. Lu dans le
 code, non mesuré sur un PDF avant la correction.
+
+### Ombre d'un contour stylisé (30 septembre 2026)
+
+Konva allume l'ombre avant la `sceneFunc` ; remplissage et trait, peints en
+deux fois, avaient chacun la leur, et celle du trait tombait sur le fond
+(bande sombre sous le bord). `ombreSilhouette` (`ShapeNode.jsx`) dessine
+d'abord l'ombre SEULE de la silhouette — sur un canvas à part, posé d'un
+seul `drawImage` loin hors champ, l'ombre ramenée par compensation du
+décalage (transformation courante : zoom et rotation compris) —, puis la
+forme sans ombre. Même code pour le canvas et l'export planche.

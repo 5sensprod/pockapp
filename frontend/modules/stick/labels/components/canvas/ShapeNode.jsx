@@ -58,6 +58,16 @@ export function dessinForme({
 		// détection (hitFunc) passe par `fillShape`, qui l'exige.
 		const pleine = stylise.ferme ? remplissage(fillGradient, width, height, fill, false) : {}
 		const peindre = (ctx, noeud, scene) => {
+			// L'ombre, que Konva allume avant la sceneFunc, tomberait sur chaque
+			// remplissage : celle du trait sur le fond. On dessine l'ombre de la
+			// SILHOUETTE seule, puis la forme sans ombre (`ombreSilhouette`).
+			if (scene && ombreSilhouette(ctx, stylise)) {
+				ctx._context.save()
+				ctx._context.shadowColor = 'rgba(0,0,0,0)'
+				peindre(ctx, noeud, 'sansOmbre')
+				ctx._context.restore()
+				return
+			}
 			if (stylise.ferme) {
 				ctx.beginPath()
 				tracerLigne(ctx, stylise.ligne)
@@ -173,6 +183,50 @@ export function dessinForme({
 			cornerRadius,
 		},
 	}
+}
+
+/**
+ * Ombre de la silhouette d'un contour stylisé (remplissage ET trait, en UN
+ * seul remplissage, donc une seule ombre, sans ombre du trait sur le fond).
+ * La silhouette est dessinée LOIN hors du canvas, l'ombre ramenée à sa place
+ * en compensant le décalage : `shadowOffset` est en pixels de l'appareil,
+ * le déplacement en unités locales — la transformation courante fait le
+ * lien, zoom et rotation compris. Rend false s'il n'y a pas d'ombre active.
+ */
+const LOIN = 20000
+const ombreSilhouette = (ctx, stylise) => {
+	const n = ctx._context
+	const couleur = String(n?.shadowColor ?? '')
+	const transparente = !couleur || couleur === 'transparent' || /,\s*0(\.0*)?\s*\)$/.test(couleur)
+	if (transparente || !(n.shadowBlur || n.shadowOffsetX || n.shadowOffsetY)) return false
+	const t = n.getTransform()
+	const k = Math.hypot(t.a, t.b) || 1 // pixels de l'appareil par unité
+	const { cadre } = stylise
+	// Silhouette sur un canvas à part : ligne et trait en deux remplissages
+	// (un seul chemin laisserait des trous, sens de parcours opposés), puis
+	// posée d'un seul `drawImage` — une seule image, une seule ombre.
+	const cv = document.createElement('canvas')
+	cv.width = Math.max(1, Math.ceil(cadre.width * k) + 2)
+	cv.height = Math.max(1, Math.ceil(cadre.height * k) + 2)
+	const s = cv.getContext('2d')
+	s.scale(k, k)
+	s.translate(-cadre.x + 1 / k, -cadre.y + 1 / k)
+	s.fillStyle = '#000'
+	if (stylise.ferme) {
+		s.beginPath()
+		tracerLigne(s, stylise.ligne)
+		s.fill()
+	}
+	s.beginPath()
+	tracerOutline(s, stylise.outline)
+	s.fill()
+	n.save()
+	n.shadowOffsetX -= t.a * LOIN
+	n.shadowOffsetY -= t.b * LOIN
+	n.translate(LOIN, 0)
+	n.drawImage(cv, cadre.x - 1 / k, cadre.y - 1 / k, cv.width / k, cv.height / k)
+	n.restore()
+	return true
 }
 
 const COMPOSANTS = { Ellipse, Line, Rect, RegularPolygon, Shape, Star }
