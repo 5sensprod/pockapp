@@ -77,8 +77,29 @@ const lignesDuNoeud = (shape) => {
   });
 };
 
-const disposition = (shape, curve) =>
-  disposerCourbe({
+// Génération des polices : une police qui finit de charger change la mesure
+// des lettres sans changer aucun attribut du nœud.
+let generationPolices = 0;
+if (typeof document !== 'undefined') document.fonts?.addEventListener?.('loadingdone', () => generationPolices++);
+
+// Mémorisée sur le nœud : la sceneFunc ET `getSelfRect` (cache, Transformer)
+// la demandent, et elle mesure chaque lettre. Recalculée dès que change ce
+// qu'elle lit : lignes de Konva, police, espacement, cadre, courbure.
+const disposition = (shape, curve) => {
+  const cle = JSON.stringify([
+    generationPolices,
+    shape._getContextFont?.() ?? '',
+    shape.letterSpacing?.() || 0,
+    shape.width(),
+    shape.lineHeight(),
+    shape.fontSize(),
+    shape.padding?.() || 0,
+    curve,
+    shape.align(),
+    ...(shape.textArr || []).map((l) => [l.text, l.width]),
+  ]);
+  if (shape._dispositionCourbe?.cle === cle) return shape._dispositionCourbe.res;
+  const res = disposerCourbe({
     lignes: lignesDuNoeud(shape),
     W: shape.width(),
     lh: shape.lineHeight() * shape.fontSize(),
@@ -87,6 +108,9 @@ const disposition = (shape, curve) =>
     curve,
     align: shape.align(),
   });
+  shape._dispositionCourbe = { cle, res };
+  return res;
+};
 
 /** Remplace `getSelfRect` du nœud par l'étendue courbée (idempotent). */
 export const installerCourbure = (shape) => {

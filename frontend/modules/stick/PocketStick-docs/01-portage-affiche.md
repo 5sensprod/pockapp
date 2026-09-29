@@ -596,3 +596,30 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
   l'édition en place montre le texte droit ; pas de crénage (lettres mesurées
   une à une).
 - Gardien : `texteCourbe.test.js`.
+
+## Ralentissements de l'éditeur (29/09/2026)
+
+Mesuré hors navigateur sur « Mon template test » (7 éléments dont 6 filtrés),
+JS pur, sans le dessin Konva : une passe de remise en cache des effets coûtait
+**60 à 80 ms au ratio 2** (ombre interne d'un titre 12,6 ms, d'un rectangle
+17,7 ms, ombre portée en pixels 15,1 ms, 4 filtres de couleur 6,7 ms), et
+l'effet de `KonvaCanvas` en faisait **trois par modification**, sur TOUS les
+nœuds filtrés. Les cartes de bruit (fond Voronoï 1024×768 : 87 ms) sont en
+cache et ne pèsent qu'au changement du bruit. Pas de chiffre navigateur
+après correction : constaté « rapide » par le propriétaire.
+
+- **Clé d'effets** (`utils/cleEffets.js`) : un nœud n'est remis en cache que si
+  ses champs (hors position, rotation, verrou), la résolution ou la
+  `signatureNoeud` (taille réelle, texte affiché, image chargée) ont changé.
+  Les exports ne passent pas par là.
+- **Motif du contour texture** (`patternTexture`) mémorisé par canvas et cadre :
+  un motif neuf à chaque rendu faisait reposer `stroke` (et l'avertissement
+  Konva, émis en dev seulement — `Validators.js`, `isUnminified`).
+- **Un geste, une étape d'historique** (`utils/gesteHistorique.js`) : même
+  élément, mêmes champs, moins de 600 ms d'écart. Deux déplacements rapides du
+  même élément s'annulent ensemble.
+- **Disposition du texte courbé** mémorisée sur le nœud, invalidée par ce
+  qu'elle lit et par `document.fonts` `loadingdone`.
+- Non fait : le fond dans un calque séparé (gain faible d'après les mesures).
+- Au passage : `templateService.exportTemplate` / `importTemplate` manquaient
+  (le bouton Exporter levait « is not a function »).

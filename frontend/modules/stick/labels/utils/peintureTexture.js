@@ -92,10 +92,22 @@ export const motifTexture = (paint, w, h, ratio = 2, plafond = 1024) => {
 export const patternTexture = (paint, w, h, { ratio = 2, plafond = 1024, dx = 0, dy = 0 } = {}) => {
   const cv = motifTexture(paint, w, h, ratio, plafond);
   if (!cv) return null;
+  // Même canvas et même cadre → même objet : un motif neuf à chaque rendu
+  // React ferait reposer `stroke` par react-konva à chaque fois.
+  let parCadre = motifs.get(cv);
+  if (!parCadre) motifs.set(cv, (parCadre = new Map()));
+  const cle = `${w}|${h}|${dx}|${dy}`;
+  const trouve = parCadre.get(cle);
+  if (trouve) return trouve;
   const pattern = cv.getContext('2d').createPattern(cv, 'no-repeat');
   pattern?.setTransform?.(new DOMMatrix().translate(-dx, -dy).scale(w / cv.width, h / cv.height));
+  if (pattern) {
+    parCadre.set(cle, pattern);
+    if (parCadre.size > 8) parCadre.delete(parCadre.keys().next().value);
+  }
   return pattern;
 };
+const motifs = new WeakMap(); // canvas de `motifTexture` → motifs par cadre
 
 /**
  * Après un `clone()` (export du canvas) : chaque nœud peint d'une texture

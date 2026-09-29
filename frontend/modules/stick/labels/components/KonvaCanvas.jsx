@@ -21,6 +21,23 @@ import { boxesIntersect, rectFromPoints, LASSO_MIN_DRAG } from '../utils/layout'
 import { CropOverlay, CropTransformer, geometrieImage } from './canvas/CropOverlay';
 import EtiquetteSelection from './EtiquetteSelection';
 import { appliquerEffets, filtresDe } from '../utils/effetsKonva';
+import { cleEffets } from '../utils/cleEffets';
+
+// Contenu d'un nœud que l'élément ne porte pas : taille réelle (police
+// arrivée), texte (liaison produit), image (chargement). Identité d'image
+// par un numéro, sans retenir l'objet.
+const numerosImage = new WeakMap();
+let prochainNumero = 1;
+const signatureNoeud = (node) => {
+  const r = node.getClientRect({ skipTransform: true });
+  const img = node.image?.();
+  let num = 0;
+  if (img) {
+    num = numerosImage.get(img);
+    if (!num) numerosImage.set(img, (num = prochainNumero++));
+  }
+  return `${r.width.toFixed(2)}x${r.height.toFixed(2)}|${node.text?.() ?? ''}|${num}`;
+};
 import { tailleNaturelle } from './canvas/ImageNode';
 import FicheNode from './canvas/FicheNode';
 import { contenuFiche, EXEMPLE_FICHE } from '../utils/ficheProduit';
@@ -510,7 +527,9 @@ const KonvaCanvas = forwardRef(
     // FLOU et effets en pixels (`utils/effetsKonva.js`) : posés sur le nœud
     // APRÈS son rendu, et reposés quand il a pu changer de contenu (image,
     // QR ou police qui arrivent plus tard). Le cache suit le zoom, sinon un
-    // élément flouté serait pixelisé en zoom avant.
+    // élément flouté serait pixelisé en zoom avant. Seuls les nœuds dont la
+    // clé (`utils/cleEffets.js`) a changé sont recalculés : réglages, taille,
+    // et contenu lu sur le nœud (texte lié, image chargée, police arrivée).
     useEffect(() => {
       const stage = stageRef.current;
       if (!stage) return undefined;
@@ -520,6 +539,9 @@ const KonvaCanvas = forwardRef(
           const node = stage.findOne(`#${el.id}`);
           if (!node) continue;
           if (!filtresDe(el).length && !node.isCached?.()) continue;
+          const cle = cleEffets(el, ratio, signatureNoeud(node));
+          if (node.getAttr('cleEffets') === cle) continue;
+          node.setAttr('cleEffets', cle);
           appliquerEffets(node, el, { ratio });
         }
         stage.batchDraw();

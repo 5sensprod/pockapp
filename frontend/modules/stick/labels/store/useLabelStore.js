@@ -3,6 +3,11 @@ import { create } from 'zustand';
 import { quantiteValide } from '../lib/tirage';
 import { cadreDuCanvas, fondDe, placerAuCentre } from '../utils/placement';
 import { extraireStyle, reordonner, styleApplicable } from '../utils/styleCopie';
+import { cleGeste, prolongeGeste } from '../utils/gesteHistorique';
+
+// Geste en cours de `updateElement` (`utils/gesteHistorique.js`) ; toute
+// autre étape d'historique, et undo/redo, le terminent.
+let gesteEnCours = null;
 
 const HISTORY_LIMIT = 100;
 
@@ -132,6 +137,7 @@ const useLabelStore = create((set, get) => ({
 
   // --- helpers historique
   _pushHistory(prev) {
+    gesteEnCours = null;
     const past = get().historyPast;
     const nextPast = [...past, prev].slice(-HISTORY_LIMIT);
     set({
@@ -143,6 +149,7 @@ const useLabelStore = create((set, get) => ({
   },
 
   _afterUndoRedo({ elements, selectedId, historyPast, historyFuture }) {
+    gesteEnCours = null;
     set({
       elements,
       selectedId,
@@ -226,7 +233,11 @@ const useLabelStore = create((set, get) => ({
 
   updateElement: (id, updates) =>
     set((state) => {
-      state._pushHistory(snapshotOf(state));
+      // Un curseur tenu = une seule étape : l'état d'AVANT le geste
+      const cle = cleGeste(id, updates);
+      const t = Date.now();
+      if (!prolongeGeste(gesteEnCours, cle, t)) state._pushHistory(snapshotOf(state));
+      gesteEnCours = { cle, t };
       return {
         elements: state.elements.map((el) => (el.id === id ? { ...el, ...updates } : el)),
       };
