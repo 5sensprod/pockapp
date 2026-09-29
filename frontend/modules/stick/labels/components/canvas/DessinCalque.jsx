@@ -16,6 +16,11 @@
 // événements regroupés par le navigateur (`getCoalescedEvents`) sont tous
 // relevés : un stylet en émet bien plus qu'un par image.
 //
+// Lot 3 (courbe assistée) : un point à moins de `DISTANCE_MIN_ECRAN` pixels
+// écran du précédent n'est pas gardé (`pointUtile`) ; Maj tenue fait du
+// tracé un segment droit depuis son premier point ; la simplification
+// (Ramer-Douglas-Peucker) s'applique au relâchement, dans `elementDessin`.
+//
 // Posé HORS du groupe du document : l'export clone ce groupe, l'aperçu et la
 // surface de capture ne doivent pas s'imprimer. La surface couvre toute la
 // scène et intercepte la souris avant le lasso et les éléments.
@@ -23,13 +28,22 @@
 import React, { useEffect, useRef } from 'react';
 import { Group, Path, Rect } from 'react-konva';
 import useLabelStore from '../../store/useLabelStore';
-import { brushCursor, outlineToPathData, pressionReelle, strokeOutline } from '../../utils/dessin';
+import {
+  brushCursor,
+  DISTANCE_MIN_ECRAN,
+  outlineToPathData,
+  pointUtile,
+  pressionReelle,
+  strokeOutline,
+} from '../../utils/dessin';
 
 export default function DessinCalque({ scale, offsetX, offsetY, stageWidth, stageHeight }) {
   const groupRef = useRef(null);
   const apercuRef = useRef(null);
   const pointsRef = useRef(null); // tracé en cours (null = pas de bouton enfoncé)
   const traitRef = useRef(null); // { pointerId, pression } du tracé en cours
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
   const imageRef = useRef(0); // requestAnimationFrame en attente (0 = aucun)
   const active = useLabelStore((s) => s.outilDessin);
   const reglages = useLabelStore((s) => s.reglagesDessin);
@@ -43,9 +57,11 @@ export default function DessinCalque({ scale, offsetX, offsetY, stageWidth, stag
     const apercu = apercuRef.current;
     const pts = pointsRef.current;
     if (!apercu || !pts) return;
-    const { strokeWidth: w, smoothing, thinning } = reglagesRef.current;
+    const { strokeWidth: w, smoothing, thinning, stabilisation } = reglagesRef.current;
     const pression = !!traitRef.current?.pression;
-    apercu.data(outlineToPathData(strokeOutline(pts, { strokeWidth: w, smoothing, thinning, pression, last: false })));
+    apercu.data(
+      outlineToPathData(strokeOutline(pts, { strokeWidth: w, smoothing, thinning, stabilisation, pression, last: false })),
+    );
     apercu.visible(true);
     apercu.getLayer()?.batchDraw();
   };
@@ -93,10 +109,19 @@ export default function DessinCalque({ scale, offsetX, offsetY, stageWidth, stag
     const evt = e.evt;
     if (!pointsRef.current || evt.pointerId !== traitRef.current?.pointerId) return;
     e.cancelBubble = true;
+    const pts = pointsRef.current;
+    // Maj : un segment droit, du premier point au pointeur
+    if (evt.shiftKey) {
+      const p = pointDe(evt);
+      if (p) pts.splice(1, pts.length - 1, p);
+      planifier();
+      return;
+    }
+    const distanceMin = DISTANCE_MIN_ECRAN / (scaleRef.current || 1);
     const lot = evt.getCoalescedEvents?.() ?? [];
     for (const ev of lot.length ? lot : [evt]) {
       const p = pointDe(ev);
-      if (p) pointsRef.current.push(p);
+      if (p && pointUtile(pts[pts.length - 1], p, distanceMin)) pts.push(p);
     }
     planifier();
   };

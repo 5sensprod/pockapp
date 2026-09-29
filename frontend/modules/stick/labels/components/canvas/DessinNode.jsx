@@ -8,8 +8,8 @@ import { Path } from 'react-konva';
 import { dessinTrace } from '../../utils/dessin';
 
 const DessinNode = forwardRef(({ el, opacity: opaciteVerrou = 1, ...props }, ref) => {
-  const { data, fill, opacity } = dessinTrace(el);
-  return <Path ref={ref} {...props} data={data} fill={fill} opacity={opacity * opaciteVerrou} />;
+  const { opacity, ...trace } = dessinTrace(el);
+  return <Path ref={ref} {...props} {...trace} opacity={opacity * opaciteVerrou} />;
 });
 
 DessinNode.displayName = 'DessinNode';

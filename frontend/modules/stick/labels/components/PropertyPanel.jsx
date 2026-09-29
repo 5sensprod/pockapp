@@ -122,6 +122,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
   const isBarcode = selectedElement.type === 'barcode';
   const isShape = selectedElement.type === 'shape';
   const isFiche = selectedElement.type === 'fiche';
+  const isDessin = selectedElement.type === 'dessin';
 
   const handleColorChange = (color) => updateElement(selectedId, { color });
 
@@ -559,6 +560,24 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                   </option>
                 ))}
               </select>
+            </div>
+          </>
+        )}
+
+        {isDessin && (
+          <>
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            {/* Dessin (`utils/dessin.js`) : même sélecteur que les formes,
+                même règle de remplissage (`dessinTrace` → `remplissage`) */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Couleur:</span>
+              <GradientColorPicker
+                color={selectedElement.fill || '#000000'}
+                gradient={selectedElement.fillGradient ?? null}
+                onColorChange={(c) => updateElement(selectedId, { fill: c })}
+                onGradientChange={(g) => updateElement(selectedId, { fillGradient: g })}
+                title="Couleur du tracé"
+              />
             </div>
           </>
         )}

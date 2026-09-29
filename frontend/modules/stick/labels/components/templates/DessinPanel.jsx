@@ -77,7 +77,7 @@ export default function DessinPanel() {
   const selection = useLabelStore((s) =>
     !s.extraIds.length ? s.elements.find((el) => el.id === s.selectedId && el.type === 'dessin') : null,
   );
-  const { brushType, stroke, strokeWidth, opacity, smoothing, thinning, variation } = reglages;
+  const { brushType, stroke, strokeWidth, opacity, smoothing, thinning, variation, stabilisation, simplification } = reglages;
 
   // Quitter l'onglet rend l'outil Sélection.
   useEffect(() => () => setOutilDessin(false), [setOutilDessin]);
@@ -129,6 +129,9 @@ export default function DessinPanel() {
           <Couleur label="Couleur" valeur={stroke} onValeur={(v) => setReglagesDessin({ stroke: v })} />
           <Reglage label="Opacité (%)" valeur={Math.round(opacity * 100)} min={0} max={100} onValeur={setPourcent('opacity')} />
           <Reglage label="Adoucir le tracé (%)" valeur={Math.round(smoothing * 100)} min={0} max={100} onValeur={setPourcent('smoothing')} />
+          {/* Lot 3 : l'inertie n'est plus liée à l'adoucissement */}
+          <Reglage label="Stabiliser (%)" valeur={Math.round(stabilisation * 100)} min={0} max={100} onValeur={setPourcent('stabilisation')} />
+          <Reglage label="Simplifier au relâchement (%)" valeur={Math.round(simplification * 100)} min={0} max={100} onValeur={setPourcent('simplification')} />
           <Reglage label="Épaisseur variable (%)" valeur={Math.round(thinning * 100)} min={0} max={100} onValeur={setPourcent('thinning')} />
           <div>
             <div className="text-xs text-gray-700 dark:text-gray-300 mb-1">Varie selon</div>
@@ -161,7 +164,7 @@ export default function DessinPanel() {
       )}
 
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        Chaque trait devient un élément recolorable ; Ctrl+Z l'annule, Échap revient à la sélection.
+        Chaque trait devient un élément recolorable ; Maj trace un trait droit, Ctrl+Z l'annule, Échap revient à la sélection.
       </p>
     </div>
   );

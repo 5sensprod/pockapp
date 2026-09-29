@@ -11,6 +11,8 @@ import {
   brushOptions,
   brushCursor,
   pressionReelle,
+  pointUtile,
+  simplifier,
 } from './dessin';
 
 describe('dessin : tracé → contour', () => {
@@ -61,13 +63,22 @@ describe('dessin : tracé → contour', () => {
     const opts = { stroke: '#0a0', strokeWidth: 8, smoothing: 0.5, thinning: 0.3, opacity: 1 };
     const el = elementDessin(pts, opts);
     const attendu = outlineToPathData(strokeOutline(pointsDe(el), opts));
-    expect(dessinTrace(el)).toEqual({ data: attendu, fill: '#0a0', opacity: 1 });
+    expect(dessinTrace(el)).toMatchObject({ data: attendu, fill: '#0a0', fillPriority: 'color', opacity: 1 });
     // recolorer ne touche que la couleur
     expect(dessinTrace({ ...el, fill: '#f00' }).data).toBe(attendu);
   });
   it('options de pinceau', () => {
     expect(brushOptions('highlighter', { strokeWidth: 8 })).toEqual({ brushType: 'highlighter', opacity: 0.5, strokeWidth: 30 });
     expect(brushOptions('brush', { strokeWidth: 8 })).toEqual({ brushType: 'brush', opacity: 1, strokeWidth: 8 });
+  });
+});
+
+describe('dessin : remplissage', () => {
+  it('dégradé : la règle des formes, sur le cadre du dessin', () => {
+    const el = elementDessin([{ x: 0, y: 0 }, { x: 100, y: 0 }], { stroke: '#000', strokeWidth: 10, smoothing: 0.5 });
+    const t = dessinTrace({ ...el, fillGradient: { from: '#f00', to: '#00f', angle: 0 } });
+    expect(t.fillPriority).toBe('linear-gradient');
+    expect(t.fillLinearGradientColorStops).toContain('#f00');
   });
 });
 
@@ -112,5 +123,41 @@ describe('dessin : pression du stylet (lot 2)', () => {
     const el = elementDessin(trait, { stroke: '#000', ...reglages });
     expect(el.pressions).toBeUndefined();
     expect(pointsDe(el)[0]).not.toHaveProperty('pressure');
+  });
+});
+
+describe('dessin : courbe assistée (lot 3)', () => {
+  it('distance minimale : un point trop proche du précédent est écarté', () => {
+    expect(pointUtile(null, { x: 0, y: 0 }, 2)).toBe(true);
+    expect(pointUtile({ x: 0, y: 0 }, { x: 1, y: 1 }, 2)).toBe(false);
+    expect(pointUtile({ x: 0, y: 0 }, { x: 2, y: 0 }, 2)).toBe(true);
+  });
+  it('Ramer-Douglas-Peucker : une droite bruitée garde ses extrémités, un coin reste', () => {
+    const droite = Array.from({ length: 50 }, (_, i) => ({ x: i, y: i % 2 ? 0.2 : -0.2, pressure: i / 49 }));
+    const s = simplifier(droite, 1);
+    expect(s).toEqual([droite[0], droite[49]]);
+    const coin = [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }, { x: 10, y: 10 }];
+    expect(simplifier(coin, 1)).toEqual([coin[0], coin[2], coin[4]]);
+    expect(simplifier(coin, 0)).toBe(coin);
+  });
+  it('simplification 0 = élément identique à avant le lot 3', () => {
+    const pts = Array.from({ length: 30 }, (_, i) => ({ x: i * 3, y: Math.sin(i / 3) * 10 }));
+    const opts = { stroke: '#000', strokeWidth: 10, smoothing: 0.5, thinning: 0 };
+    expect(elementDessin(pts, { ...opts, simplification: 0 }).points).toEqual(elementDessin(pts, opts).points);
+    expect(elementDessin(pts, { ...opts, simplification: 1 }).points.length).toBeLessThan(pts.length * 2);
+  });
+  it('stabilisation absente = 0,7 × adoucir (éléments anciens) ; présente = séparée', () => {
+    const pts = Array.from({ length: 21 }, (_, i) => ({ x: i * 5, y: 50 + (i % 2 ? 6 : -6) }));
+    const base = { strokeWidth: 4, smoothing: 0.5, thinning: 0 };
+    expect(strokeOutline(pts, base)).toEqual(strokeOutline(pts, { ...base, stabilisation: 0.35 }));
+    const h = (o) => getBoundingBox(o).height;
+    expect(h(strokeOutline(pts, { ...base, stabilisation: 1 }))).toBeLessThan(h(strokeOutline(pts, { ...base, stabilisation: 0 })));
+  });
+  it("l'élément garde sa stabilisation et le tracé recalculé la relit", () => {
+    const pts = [{ x: 0, y: 0 }, { x: 30, y: 20 }, { x: 60, y: 0 }, { x: 90, y: 30 }];
+    const opts = { stroke: '#000', strokeWidth: 8, smoothing: 0.2, thinning: 0, stabilisation: 0.9 };
+    const el = elementDessin(pts, opts);
+    expect(el.stabilisation).toBe(0.9);
+    expect(dessinTrace(el).data).toBe(outlineToPathData(strokeOutline(pointsDe(el), opts)));
   });
 });

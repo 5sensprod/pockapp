@@ -33,7 +33,7 @@ l'identique » : le lot 0 copie, les lots suivants améliorent.
 
 1. ~~Perf~~ — corrigé au lot 1, ci-dessous.
 2. ~~Pression simulée, souris et tactile seulement~~ — lot 2, ci-dessous.
-3. Aucun filtrage des points ; « Adoucir » pilote aussi le streamline.
+3. ~~Aucun filtrage des points~~ — lot 3, ci-dessous.
 4. Pas d'effilement.
 5. Surligneur = 30 px et 50 % d'opacité, sans fusion.
 
@@ -67,6 +67,33 @@ non plus à chaque événement) — linéaire par image, donc supportable ; le l
   Un élément sans `pressions` (lot 0, souris) est rendu comme avant.
 - Non vérifié : la pression rapportée par WebView2 (Wails) selon le pilote
   du stylet ; certaines tablettes rendent 0,5 constant.
+
+## Lot 3 — courbe assistée (fait)
+
+Fonctions pures dans `utils/dessin.js`, testées :
+
+- **Distance minimale** (`pointUtile`) : un point à moins de
+  `DISTANCE_MIN_ECRAN` (1,5 px écran, converti par le zoom) du dernier gardé
+  est écarté pendant la saisie.
+- **Simplification** (`simplifier`, Ramer-Douglas-Peucker itératif) au
+  relâchement, dans `elementDessin`. Réglage « Simplifier au relâchement » :
+  tolérance = réglage × `SIMPLIFICATION_MAX` (0,5) × épaisseur, donc
+  indépendante du zoom. À 0 (défaut), aucun point retiré. ⚠️ L'aperçu montre
+  les points bruts : avec une simplification, le trait peut bouger très
+  légèrement au relâchement.
+- **Stabiliser** (`stabilisation` → `streamline`) est séparé d'« Adoucir ».
+  Défaut 0,35 = 0,7 × 0,5, donc identique au réglage par défaut d'avant.
+  Absente d'un élément ancien, elle vaut toujours 0,7 × adoucir : aucun
+  dessin existant ne change d'aspect.
+- **Maj** tenue : le tracé devient un segment droit depuis son premier point.
+
+## Couleur en dégradé (même jour)
+
+`dessinTrace` rend le remplissage par `remplissage` (`fillStyle.js`), la
+règle des formes, sur le cadre `width × height` du dessin : `fill` ou
+`fillGradient` (linéaire, radial, texture). La barre du haut
+(`PropertyPanel.jsx`, `isDessin`) porte le même `GradientColorPicker` que les
+formes. L'export planche reçoit les mêmes props.
 
 ## Lots suivants
 

@@ -10,6 +10,7 @@
 // canvas cloné hérite du nœud. Pas de Konva ici : testable sous Node.
 
 import { getStroke } from 'perfect-freehand';
+import { remplissage } from './fillStyle';
 
 // Réglages de l'outil (en mémoire seulement). smoothing : adoucissement 0–1 ;
 // thinning : épaisseur variable selon la vitesse 0–1 (0 = épaisseur constante).
@@ -24,7 +25,18 @@ export const DRAW_DEFAULTS = {
   // PocketStick) ou 'stylet' (pression réelle, si le trait est tracé au
   // stylet ; souris et doigt restent alors en vitesse).
   variation: 'vitesse',
+  // Lot 3 — courbe assistée. `stabilisation` : inertie du tracé (streamline
+  // de perfect-freehand), séparée d'« Adoucir » ; 0,35 = 0,7 × 0,5, soit
+  // exactement ce que donnait l'adoucissement par défaut. `simplification` :
+  // Ramer-Douglas-Peucker au relâchement, 0 = aucun point retiré.
+  stabilisation: 0.35,
+  simplification: 0,
 };
+
+/** Distance minimale entre deux points relevés, en pixels ÉCRAN. */
+export const DISTANCE_MIN_ECRAN = 1.5;
+/** Tolérance de la simplification à 100 %, en fraction de l'épaisseur. */
+export const SIMPLIFICATION_MAX = 0.5;
 export const VARIATIONS = [
   { id: 'vitesse', label: 'Vitesse' },
   { id: 'stylet', label: 'Pression du stylet' },
@@ -45,21 +57,74 @@ const unit = (v, fallback) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) 
 // L'adoucissement agit à la fois sur le lissage de la courbe et sur l'inertie.
 // `pression` : les points portent la pression RÉELLE du stylet (`p.pressure`,
 // 0–1) ; sinon elle est simulée par la vitesse, comme dans PocketStick.
-export const strokeOutline = (points, { strokeWidth, smoothing, thinning, pression = false, last = true }) => {
+// `stabilisation` absente (éléments d'avant le lot 3) : 0,7 × adoucir, la
+// règle de PocketStick.
+export const strokeOutline = (points, { strokeWidth, smoothing, thinning, stabilisation, pression = false, last = true }) => {
   const soft = unit(smoothing, DRAW_DEFAULTS.smoothing);
   const thin = unit(thinning, 0) * 0.7;
+  const stream = unit(stabilisation, 0.7 * soft);
   return getStroke(
     points.map((p) => (pression ? [p.x, p.y, unit(p.pressure, 0.5)] : [p.x, p.y])),
     {
       size: strokeWidth,
       smoothing: soft,
-      streamline: 0.7 * soft,
+      streamline: stream,
       thinning: thin,
       simulatePressure: !pression && thin > 0,
       last,
     },
   ).map(([x, y]) => ({ x, y }));
 };
+
+/**
+ * Faut-il garder ce point ? Non s'il est à moins de `distanceMin` du dernier
+ * gardé : le tremblement d'une main posée n'apporte que du bruit et du coût.
+ */
+export const pointUtile = (dernier, p, distanceMin) =>
+  !dernier || Math.hypot(p.x - dernier.x, p.y - dernier.y) >= distanceMin;
+
+const distanceAuSegment = (p, a, b) => {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const l2 = dx * dx + dy * dy;
+  if (!l2) return Math.hypot(p.x - a.x, p.y - a.y);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+};
+
+/**
+ * Ramer-Douglas-Peucker : retire les points à moins de `tolerance` de la
+ * corde qui les enjambe. Premier et dernier toujours gardés ; les points
+ * gardés gardent leur pression. Itératif (pas de récursion profonde).
+ */
+export const simplifier = (points, tolerance) => {
+  if (!(tolerance > 0) || points.length < 3) return points;
+  const garde = new Uint8Array(points.length);
+  garde[0] = 1;
+  garde[points.length - 1] = 1;
+  const pile = [[0, points.length - 1]];
+  while (pile.length) {
+    const [i, j] = pile.pop();
+    let max = 0;
+    let k = -1;
+    for (let m = i + 1; m < j; m++) {
+      const d = distanceAuSegment(points[m], points[i], points[j]);
+      if (d > max) {
+        max = d;
+        k = m;
+      }
+    }
+    if (k >= 0 && max > tolerance) {
+      garde[k] = 1;
+      pile.push([i, k], [k, j]);
+    }
+  }
+  return points.filter((_, i) => garde[i]);
+};
+
+/** Tolérance RDP en unités du document, pour les réglages d'un trait. */
+export const toleranceDe = ({ simplification, strokeWidth }) =>
+  unit(simplification, 0) * SIMPLIFICATION_MAX * (strokeWidth || DRAW_DEFAULTS.strokeWidth);
 
 /** Le trait utilise-t-il la pression réelle ? Stylet ET mode « stylet ». */
 export const pressionReelle = (pointerType, variation) => pointerType === 'pen' && variation === 'stylet';
@@ -109,6 +174,7 @@ const reglagesDe = (el) => ({
   strokeWidth: Number.isFinite(el?.strokeWidth) ? el.strokeWidth : DRAW_DEFAULTS.strokeWidth,
   smoothing: el?.smoothing,
   thinning: el?.thinning,
+  stabilisation: el?.stabilisation,
   pression: Array.isArray(el?.pressions),
 });
 
@@ -116,8 +182,9 @@ const reglagesDe = (el) => ({
  * Élément `dessin` créé au relâchement (null si le tracé n'a qu'un point).
  * Cadre = contour + 1 px, comme PocketStick ; points relatifs à ce cadre.
  */
-export const elementDessin = (points, options) => {
-  if (!points || points.length < 2) return null;
+export const elementDessin = (brut, options) => {
+  if (!brut || brut.length < 2) return null;
+  const points = simplifier(brut, toleranceDe(options));
   const outline = strokeOutline(points, options);
   const box = getBoundingBox(outline);
   const x = Math.floor(box.x) - 1;
@@ -136,6 +203,7 @@ export const elementDessin = (points, options) => {
     strokeWidth: options.strokeWidth,
     smoothing: options.smoothing,
     thinning: options.thinning,
+    ...(Number.isFinite(options.stabilisation) ? { stabilisation: options.stabilisation } : {}),
   };
 };
 
@@ -143,10 +211,15 @@ export const elementDessin = (points, options) => {
 // tableau de points (un élément modifié en reçoit un nouveau par le store).
 const cache = new WeakMap();
 
-/** Ce qu'il faut à un `Konva.Path` : UNE règle pour le canvas et les exports. */
+/**
+ * Ce qu'il faut à un `Konva.Path` : UNE règle pour le canvas et les exports.
+ * Remplissage : couleur `fill` ou dégradé `fillGradient`, par la même
+ * fonction que les formes (`remplissage`, `fillStyle.js`), sur le cadre
+ * `width × height` de l'élément — l'origine du Path est son coin haut gauche.
+ */
 export const dessinTrace = (el) => {
   const r = reglagesDe(el);
-  const cle = `${r.strokeWidth}|${r.smoothing}|${r.thinning}|${el?.pressions?.length ?? ''}`;
+  const cle = `${r.strokeWidth}|${r.smoothing}|${r.thinning}|${r.stabilisation}|${el?.pressions?.length ?? ''}`;
   const garde = Array.isArray(el?.points) ? cache.get(el.points) : null;
   let data = garde?.cle === cle ? garde.data : null;
   if (data === null) {
@@ -155,7 +228,7 @@ export const dessinTrace = (el) => {
   }
   return {
     data,
-    fill: el?.fill ?? DRAW_DEFAULTS.stroke,
+    ...remplissage(el?.fillGradient ?? null, el?.width, el?.height, el?.fill ?? DRAW_DEFAULTS.stroke),
     opacity: Number.isFinite(el?.opacity) ? el.opacity : 1,
   };
 };
