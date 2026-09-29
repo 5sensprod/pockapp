@@ -1,4 +1,5 @@
-import React, { useRef, useCallback, useEffect, useState } from 'react';
+import React, { useMemo, useRef, useCallback, useEffect, useState } from 'react';
+import { propsCourbure } from '../../utils/texteCourbe';
 import { Text, Rect } from 'react-konva';
 import useLabelStore from '../../store/useLabelStore';
 import { loadGoogleFont } from '../../utils/loadGoogleFont'; // 🎨 Import de la fonction de chargement
@@ -42,6 +43,7 @@ const TextNode = ({
   letterSpacing = 0, // typographie (`utils/typo.js`)
   lineHeight = 1,
   hauteur = 1, // hauteur des lettres, facteur multiplié à scaleY
+  curve = 0, // courbure (`utils/texteCourbe.js`)
   align = 'left', // alignement DANS le bloc : left | center | right | justify
   stroke = '', // ✏️ contour des lettres (`contourTexte`)
   strokeWidth = 0,
@@ -61,6 +63,8 @@ const TextNode = ({
   onTransformEnd,
 }) => {
   const textRef = useRef(null);
+  // Texte courbé : un autre DESSIN du même nœud
+  const courbure = useMemo(() => propsCourbure(curve), [curve]);
   const updateElement = useLabelStore((s) => s.updateElement);
 
   // 🖍️ Dimensions mesurées du texte, pour positionner le rectangle de surlignage
@@ -95,7 +99,7 @@ const TextNode = ({
   useEffect(() => {
     const raf = requestAnimationFrame(remesurer);
     return () => cancelAnimationFrame(raf);
-  }, [remesurer, text, fontSize, fontFamily, fontStyle, width, align, letterSpacing, lineHeight, hauteur]);
+  }, [remesurer, text, fontSize, fontFamily, fontStyle, width, align, letterSpacing, lineHeight, hauteur, curve]);
 
   // 🎨 Charger la police Google Font, puis re-mesurer quand elle est là
   useEffect(() => {
@@ -307,6 +311,7 @@ const TextNode = ({
         opacity={opacity}
         letterSpacing={letterSpacing}
         lineHeight={lineHeight}
+        {...courbure}
         width={width} // Support du width pour redimensionnement
         align={align}
         wrap="word" // Wrap automatique des mots

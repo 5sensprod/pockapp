@@ -306,7 +306,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
             <MenuGroupe
               icone={LetterText}
               titre="Espacement"
-              actif={['letterSpacing', 'lineHeight', 'charHeight'].some(
+              actif={['letterSpacing', 'lineHeight', 'charHeight', 'curve'].some(
                 (c) => selectedElement[c] != null && selectedElement[c] !== TYPO_BORNES[c].defaut
               )}
               largeur="15rem"
@@ -316,6 +316,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                   ['letterSpacing', 'Lettres', 1, (v) => `${v}px`],
                   ['lineHeight', 'Interligne', 0.05, (v) => `×${v}`],
                   ['charHeight', 'Hauteur', 5, (v) => `${v}%`],
+                  ['curve', 'Courbure', 1, (v) => `${v}`],
                 ].map(([cle, libelle, step, fmt]) => {
                   const b = TYPO_BORNES[cle];
                   const v = selectedElement[cle] ?? b.defaut;

@@ -1,4 +1,5 @@
 // AppTools/src/features/labels/utils/exportPdfSheet.js
+import { propsCourbure } from './texteCourbe';
 import { typoTexte } from './typo';
 import jsPDF from 'jspdf';
 import Konva from 'konva';
@@ -219,6 +220,8 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
         opacity: el.opacity ?? 1,
         scaleX: el.scaleX ?? 1,
         scaleY: (el.scaleY ?? 1) * typo.hauteur,
+        // Courbure : même dessin que le canvas (`utils/texteCourbe.js`)
+        ...propsCourbure(typo.curve),
         rotation: el.rotation ?? 0,
         listening: false,
         ...shadowProps(el),

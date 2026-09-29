@@ -575,3 +575,24 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
     rayon `shadowBlur` : proche du `shadowBlur` du canvas, pas identique au
     pixel près à l'ombre d'un élément non masqué.
 - Gardien : `ombreInterne.test.js`.
+
+## Courbure du texte (29 septembre 2026)
+
+- Champ `curve` (-100 à 100) du texte, lu par `typoTexte` avec l'espacement ;
+  curseur « Courbure » du menu « Espacement ». 100 : demi-cercle en arche (∩)
+  sur la largeur du cadre ; négatif : en creux (∪).
+- Pas d'autre nœud (pas de `Konva.TextPath`) : le même `Konva.Text`, dessiné
+  par une `sceneFunc` (`propsCourbure`, `utils/texteCourbe.js`) qui pose
+  chaque lettre sur un arc — lignes de Konva (`textArr`), alignement, police,
+  espacement ; remplissage et contour par `fillStrokeShape` (dégradés et
+  textures compris). Canvas, export planche et clone : le même attribut.
+- Étendue : les lettres débordent du cadre droit. `installerCourbure` remplace
+  `getSelfRect` sur le nœud (sélection, cache des effets et masques) ; un clone
+  perd ce remplacement, il est réinstallé par la sceneFunc et par `cacher`
+  (`effetsKonva.js`). Zone cliquable : ce rectangle entier (`hitFunc`).
+- Géométrie pure et testée : `disposerCourbe`.
+- ⚠️ Limites : le souligné et le barré ne sont pas dessinés sur un texte
+  courbé ; une lettre dans un dégradé est peinte dans SON repère tourné ;
+  l'édition en place montre le texte droit ; pas de crénage (lettres mesurées
+  une à une).
+- Gardien : `texteCourbe.test.js`.

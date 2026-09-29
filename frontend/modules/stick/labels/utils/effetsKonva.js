@@ -16,6 +16,7 @@ import Konva from 'konva';
 import { effectFilters, sanitizeFilters } from './effetsImage';
 import { ombreInterneDe, ombrePorteeDe, ombrePorteePixels, ombrerPixels } from './ombreInterne';
 import { dessinerMasque, reglagesMasque } from './imageForme';
+import { installerCourbure } from './texteCourbe';
 
 export { ombreInterneDe };
 
@@ -143,6 +144,7 @@ const champsMasque = (el) =>
 
 // Met en cache en retenant où commence la zone cachée (voir `Konva.Node.cache`)
 const cacher = (node, ratio, marge) => {
+  installerCourbure(node); // un clone a perdu l'étendue du texte courbé
   const r = node.getClientRect({ skipTransform: true, relativeTo: node.getParent?.() || undefined });
   node.setAttr('cacheOrigine', { x: Math.floor(r.x) - marge, y: Math.floor(r.y) - marge });
   node.cache({ pixelRatio: ratio, offset: marge });
