@@ -428,8 +428,9 @@ const useLabelStore = create((set, get) => ({
     set(actif ? { outilDessin: true, selectedId: null, extraIds: [], cropId: null } : { outilDessin: false }),
   setReglagesDessin: (reglages) => set((state) => ({ reglagesDessin: { ...state.reglagesDessin, ...reglages } })),
   // Fin d'un tracé : un élément `dessin`, une entrée d'historique, sélection inchangée.
-  ajouterDessin: (points) => {
-    const el = elementDessin(points, get().reglagesDessin);
+  // `pression` : le calque a relevé la pression réelle du stylet (`pressionReelle`).
+  ajouterDessin: (points, { pression = false } = {}) => {
+    const el = elementDessin(points, { ...get().reglagesDessin, pression });
     if (el) get().addElement(el);
     return el;
   },

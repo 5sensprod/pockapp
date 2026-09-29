@@ -10,6 +10,7 @@ import {
   pointsDe,
   brushOptions,
   brushCursor,
+  pressionReelle,
 } from './dessin';
 
 describe('dessin : tracé → contour', () => {
@@ -75,5 +76,41 @@ describe('dessin : curseur', () => {
     expect(brushCursor(2, '#000', 1)).toBe('crosshair');
     expect(brushCursor(120, '#000', 1)).toBe('crosshair');
     expect(brushCursor(20, '#000', 1)).toMatch(/^url\("data:image\/svg\+xml;base64,.+"\) 10 10, crosshair$/);
+  });
+});
+
+describe('dessin : pression du stylet (lot 2)', () => {
+  // Trait horizontal : pression faible puis forte
+  const trait = Array.from({ length: 41 }, (_, i) => ({ x: i * 5, y: 50, pressure: i < 20 ? 0.1 : 1 }));
+  const hauteurEntre = (outline, x0, x1) => getBoundingBox(outline.filter((p) => p.x >= x0 && p.x <= x1)).height;
+  const reglages = { strokeWidth: 20, smoothing: 0.5, thinning: 1 };
+
+  it('seul le stylet en mode « stylet » utilise la pression réelle', () => {
+    expect(pressionReelle('pen', 'stylet')).toBe(true);
+    expect(pressionReelle('mouse', 'stylet')).toBe(false);
+    expect(pressionReelle('touch', 'stylet')).toBe(false);
+    expect(pressionReelle('pen', 'vitesse')).toBe(false);
+  });
+  it('la pression réelle élargit le trait là où elle est forte', () => {
+    const o = strokeOutline(trait, { ...reglages, pression: true });
+    expect(hauteurEntre(o, 150, 180)).toBeGreaterThan(hauteurEntre(o, 20, 60) * 1.5);
+  });
+  it('sans pression, la même entrée ignore les valeurs relevées', () => {
+    const sans = strokeOutline(trait, reglages);
+    const deux = strokeOutline(trait.map(({ x, y }) => ({ x, y })), reglages);
+    expect(sans).toEqual(deux);
+  });
+  it("l'élément garde les pressions, et le tracé recalculé les relit", () => {
+    const opts = { stroke: '#000', ...reglages, opacity: 1 };
+    const el = elementDessin(trait, { ...opts, pression: true });
+    expect(el.pressions).toHaveLength(trait.length);
+    expect(pointsDe(el)[30].pressure).toBe(1);
+    const attendu = outlineToPathData(strokeOutline(pointsDe(el), { ...opts, pression: true }));
+    expect(dessinTrace(el).data).toBe(attendu);
+  });
+  it('un élément sans pressions (lot 0, souris) reste inchangé', () => {
+    const el = elementDessin(trait, { stroke: '#000', ...reglages });
+    expect(el.pressions).toBeUndefined();
+    expect(pointsDe(el)[0]).not.toHaveProperty('pressure');
   });
 });

@@ -10,6 +10,12 @@
 // Konva : aucun rendu React pendant le tracé. Le calcul reste le même
 // (`strokeOutline`, `last: false`) : l'aperçu est toujours le résultat final.
 //
+// Lot 2 (pression) : Pointer Events au lieu de souris + tactile. Un trait
+// appartient à UN pointeur (`pointerId`) ; tracé au stylet en mode
+// « stylet », il relève la pression réelle (`pressionReelle`). Les
+// événements regroupés par le navigateur (`getCoalescedEvents`) sont tous
+// relevés : un stylet en émet bien plus qu'un par image.
+//
 // Posé HORS du groupe du document : l'export clone ce groupe, l'aperçu et la
 // surface de capture ne doivent pas s'imprimer. La surface couvre toute la
 // scène et intercepte la souris avant le lasso et les éléments.
@@ -17,12 +23,13 @@
 import React, { useEffect, useRef } from 'react';
 import { Group, Path, Rect } from 'react-konva';
 import useLabelStore from '../../store/useLabelStore';
-import { brushCursor, outlineToPathData, strokeOutline } from '../../utils/dessin';
+import { brushCursor, outlineToPathData, pressionReelle, strokeOutline } from '../../utils/dessin';
 
 export default function DessinCalque({ scale, offsetX, offsetY, stageWidth, stageHeight }) {
   const groupRef = useRef(null);
   const apercuRef = useRef(null);
   const pointsRef = useRef(null); // tracé en cours (null = pas de bouton enfoncé)
+  const traitRef = useRef(null); // { pointerId, pression } du tracé en cours
   const imageRef = useRef(0); // requestAnimationFrame en attente (0 = aucun)
   const active = useLabelStore((s) => s.outilDessin);
   const reglages = useLabelStore((s) => s.reglagesDessin);
@@ -37,7 +44,8 @@ export default function DessinCalque({ scale, offsetX, offsetY, stageWidth, stag
     const pts = pointsRef.current;
     if (!apercu || !pts) return;
     const { strokeWidth: w, smoothing, thinning } = reglagesRef.current;
-    apercu.data(outlineToPathData(strokeOutline(pts, { strokeWidth: w, smoothing, thinning, last: false })));
+    const pression = !!traitRef.current?.pression;
+    apercu.data(outlineToPathData(strokeOutline(pts, { strokeWidth: w, smoothing, thinning, pression, last: false })));
     apercu.visible(true);
     apercu.getLayer()?.batchDraw();
   };
@@ -54,43 +62,73 @@ export default function DessinCalque({ scale, offsetX, offsetY, stageWidth, stag
     apercu.getLayer()?.batchDraw();
   };
 
-  const pointer = () => groupRef.current?.getRelativePointerPosition();
+  // Événement DOM → point dans le repère du document, pression comprise.
+  const pointDe = (evt) => {
+    const groupe = groupRef.current;
+    const cadre = groupe?.getStage()?.container().getBoundingClientRect();
+    if (!cadre) return null;
+    const p = groupe
+      .getAbsoluteTransform()
+      .copy()
+      .invert()
+      .point({ x: evt.clientX - cadre.left, y: evt.clientY - cadre.top });
+    return { x: p.x, y: p.y, pressure: evt.pressure };
+  };
   const start = (e) => {
+    const evt = e.evt;
     e.cancelBubble = true;
-    const p = pointer();
+    if (pointsRef.current || evt.button !== 0) return;
+    // Pas d'événements souris de compatibilité (lasso, glisser) derrière
+    evt.preventDefault();
+    const p = pointDe(evt);
     if (!p) return;
+    traitRef.current = {
+      pointerId: evt.pointerId,
+      pression: pressionReelle(evt.pointerType, reglagesRef.current.variation),
+    };
     pointsRef.current = [p];
     planifier();
   };
   const move = (e) => {
-    if (!pointsRef.current) return;
+    const evt = e.evt;
+    if (!pointsRef.current || evt.pointerId !== traitRef.current?.pointerId) return;
     e.cancelBubble = true;
-    const p = pointer();
-    if (!p) return;
-    pointsRef.current.push(p);
+    const lot = evt.getCoalescedEvents?.() ?? [];
+    for (const ev of lot.length ? lot : [evt]) {
+      const p = pointDe(ev);
+      if (p) pointsRef.current.push(p);
+    }
     planifier();
   };
 
   // Relâchement n'importe où (même hors de la scène) : fin du tracé.
   useEffect(() => {
     if (!active) return undefined;
-    const end = () => {
+    const end = (evt) => {
       const pts = pointsRef.current;
-      if (!pts) return;
+      const trait = traitRef.current;
+      if (!pts || evt.pointerId !== trait?.pointerId) return;
       pointsRef.current = null;
+      traitRef.current = null;
       effacerApercu();
       try {
-        useLabelStore.getState().ajouterDessin(pts);
+        useLabelStore.getState().ajouterDessin(pts, { pression: trait.pression });
       } catch (error) {
         console.error('Tracé non créé :', error);
       }
     };
-    window.addEventListener('mouseup', end);
-    window.addEventListener('touchend', end);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    // Le doigt et le stylet dessinent au lieu de faire défiler la page
+    const container = groupRef.current?.getStage()?.container();
+    const toucheAvant = container?.style.touchAction ?? '';
+    if (container) container.style.touchAction = 'none';
     return () => {
-      window.removeEventListener('mouseup', end);
-      window.removeEventListener('touchend', end);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      if (container) container.style.touchAction = toucheAvant;
       pointsRef.current = null;
+      traitRef.current = null;
       if (imageRef.current) cancelAnimationFrame(imageRef.current);
       imageRef.current = 0;
     };
@@ -115,10 +153,8 @@ export default function DessinCalque({ scale, offsetX, offsetY, stageWidth, stag
         width={stageWidth / scale}
         height={stageHeight / scale}
         fill="transparent"
-        onMouseDown={start}
-        onMouseMove={move}
-        onTouchStart={start}
-        onTouchMove={move}
+        onPointerDown={start}
+        onPointerMove={move}
       />
       {/* Toujours monté, caché hors tracé : `dessiner` en pose la géométrie */}
       <Path ref={apercuRef} name="drawing-preview" visible={false} fill={stroke} opacity={opacity} listening={false} />

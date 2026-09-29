@@ -7,7 +7,7 @@
 
 import React, { useEffect } from 'react';
 import useLabelStore from '../../store/useLabelStore';
-import { brushOptions, STROKE_WIDTH_RANGE } from '../../utils/dessin';
+import { brushOptions, STROKE_WIDTH_RANGE, VARIATIONS } from '../../utils/dessin';
 
 const OUTILS = [
   { id: 'selection', label: 'Sélection' },
@@ -77,7 +77,7 @@ export default function DessinPanel() {
   const selection = useLabelStore((s) =>
     !s.extraIds.length ? s.elements.find((el) => el.id === s.selectedId && el.type === 'dessin') : null,
   );
-  const { brushType, stroke, strokeWidth, opacity, smoothing, thinning } = reglages;
+  const { brushType, stroke, strokeWidth, opacity, smoothing, thinning, variation } = reglages;
 
   // Quitter l'onglet rend l'outil Sélection.
   useEffect(() => () => setOutilDessin(false), [setOutilDessin]);
@@ -130,6 +130,33 @@ export default function DessinPanel() {
           <Reglage label="Opacité (%)" valeur={Math.round(opacity * 100)} min={0} max={100} onValeur={setPourcent('opacity')} />
           <Reglage label="Adoucir le tracé (%)" valeur={Math.round(smoothing * 100)} min={0} max={100} onValeur={setPourcent('smoothing')} />
           <Reglage label="Épaisseur variable (%)" valeur={Math.round(thinning * 100)} min={0} max={100} onValeur={setPourcent('thinning')} />
+          <div>
+            <div className="text-xs text-gray-700 dark:text-gray-300 mb-1">Varie selon</div>
+            <div className="flex gap-1" role="group" aria-label="L'épaisseur varie selon">
+              {VARIATIONS.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  aria-pressed={variation === v.id}
+                  onClick={() => setReglagesDessin({ variation: v.id })}
+                  className={`flex-1 px-2 py-1 text-xs rounded border ${
+                    variation === v.id
+                      ? 'bg-purple-600 text-white border-purple-600'
+                      : 'bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            {variation === 'stylet' && (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {thinning > 0
+                  ? 'Au stylet, la pression règle l’épaisseur ; souris et doigt restent selon la vitesse.'
+                  : 'Montez « Épaisseur variable » pour que la pression ait un effet.'}
+              </p>
+            )}
+          </div>
         </fieldset>
       )}
 

@@ -32,8 +32,7 @@ l'identique » : le lot 0 copie, les lots suivants améliorent.
 ## Défauts CONSERVÉS au lot 0 (à corriger ensuite)
 
 1. ~~Perf~~ — corrigé au lot 1, ci-dessous.
-2. Pression simulée par la vitesse (`strokeOutline`, `simulatePressure`),
-   souris et tactile seulement.
+2. ~~Pression simulée, souris et tactile seulement~~ — lot 2, ci-dessous.
 3. Aucun filtrage des points ; « Adoucir » pilote aussi le streamline.
 4. Pas d'effilement.
 5. Surligneur = 30 px et 50 % d'opacité, sans fusion.
@@ -49,6 +48,25 @@ tracé. Les réglages sont lus par une ref, à jour même au milieu d'un trait.
 Ce qui reste : `strokeOutline` recalcule tout le contour à chaque IMAGE (et
 non plus à chaque événement) — linéaire par image, donc supportable ; le lot 3
 (distance minimale entre points) réduira encore n.
+
+## Lot 2 — Pointer Events et pression du stylet (fait)
+
+- `DessinCalque.jsx` écoute `pointerdown` / `pointermove` / `pointerup` /
+  `pointercancel`. Un trait appartient à UN `pointerId` (un second doigt ne
+  le brouille pas) ; `preventDefault` au départ coupe les événements souris
+  de compatibilité (lasso, glisser). Tous les événements regroupés
+  (`getCoalescedEvents`) sont relevés, convertis dans le repère du document
+  par la transformation inverse du calque. `touch-action: none` sur le
+  conteneur tant que l'outil est actif.
+- Réglage « Varie selon » : `variation` = `vitesse` (défaut, comportement de
+  PocketStick) ou `stylet`. `pressionReelle(pointerType, variation)` : la
+  pression réelle n'est lue QUE pour un stylet en mode stylet ; souris et
+  doigt restent en vitesse. Elle ne joue que si « Épaisseur variable » > 0.
+- L'élément tracé au stylet porte `pressions` (un nombre par point, au
+  millième) ; `dessinTrace` les relit — même rendu à l'écran et à l'export.
+  Un élément sans `pressions` (lot 0, souris) est rendu comme avant.
+- Non vérifié : la pression rapportée par WebView2 (Wails) selon le pilote
+  du stylet ; certaines tablettes rendent 0,5 constant.
 
 ## Lots suivants
 

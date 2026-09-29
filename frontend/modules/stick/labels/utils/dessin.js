@@ -20,7 +20,15 @@ export const DRAW_DEFAULTS = {
   opacity: 1,
   smoothing: 0.5,
   thinning: 0,
+  // D'où vient l'épaisseur variable (lot 2) : 'vitesse' (simulée, comme
+  // PocketStick) ou 'stylet' (pression réelle, si le trait est tracé au
+  // stylet ; souris et doigt restent alors en vitesse).
+  variation: 'vitesse',
 };
+export const VARIATIONS = [
+  { id: 'vitesse', label: 'Vitesse' },
+  { id: 'stylet', label: 'Pression du stylet' },
+];
 export const STROKE_WIDTH_RANGE = [1, 50];
 
 // Changement de pinceau : le surligneur passe à 30 px et 50 % d'opacité, le
@@ -35,14 +43,26 @@ const unit = (v, fallback) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) 
 
 // Contour du trait (polygone) calculé par perfect-freehand à partir des points.
 // L'adoucissement agit à la fois sur le lissage de la courbe et sur l'inertie.
-export const strokeOutline = (points, { strokeWidth, smoothing, thinning, last = true }) => {
+// `pression` : les points portent la pression RÉELLE du stylet (`p.pressure`,
+// 0–1) ; sinon elle est simulée par la vitesse, comme dans PocketStick.
+export const strokeOutline = (points, { strokeWidth, smoothing, thinning, pression = false, last = true }) => {
   const soft = unit(smoothing, DRAW_DEFAULTS.smoothing);
   const thin = unit(thinning, 0) * 0.7;
   return getStroke(
-    points.map((p) => [p.x, p.y]),
-    { size: strokeWidth, smoothing: soft, streamline: 0.7 * soft, thinning: thin, simulatePressure: thin > 0, last },
+    points.map((p) => (pression ? [p.x, p.y, unit(p.pressure, 0.5)] : [p.x, p.y])),
+    {
+      size: strokeWidth,
+      smoothing: soft,
+      streamline: 0.7 * soft,
+      thinning: thin,
+      simulatePressure: !pression && thin > 0,
+      last,
+    },
   ).map(([x, y]) => ({ x, y }));
 };
+
+/** Le trait utilise-t-il la pression réelle ? Stylet ET mode « stylet ». */
+export const pressionReelle = (pointerType, variation) => pointerType === 'pen' && variation === 'stylet';
 
 const round = (v) => Math.round(v * 100) / 100;
 
@@ -68,11 +88,20 @@ export const getBoundingBox = (points) => {
   return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 };
 
-/** Points de l'élément (plats, `[x0, y0, x1, y1…]`) → `{ x, y }`. */
+/**
+ * Points de l'élément (plats, `[x0, y0, x1, y1…]`) → `{ x, y }`, avec
+ * `pressure` quand l'élément porte `pressions` (un nombre par point, tracé
+ * au stylet). Un élément du lot 0 n'en a pas : inchangé.
+ */
 export const pointsDe = (el) => {
   const plats = Array.isArray(el?.points) ? el.points : [];
+  const pressions = Array.isArray(el?.pressions) ? el.pressions : null;
   const pts = [];
-  for (let i = 0; i + 1 < plats.length; i += 2) pts.push({ x: plats[i], y: plats[i + 1] });
+  for (let i = 0; i + 1 < plats.length; i += 2) {
+    const p = { x: plats[i], y: plats[i + 1] };
+    if (pressions) p.pressure = pressions[i / 2];
+    pts.push(p);
+  }
   return pts;
 };
 
@@ -80,6 +109,7 @@ const reglagesDe = (el) => ({
   strokeWidth: Number.isFinite(el?.strokeWidth) ? el.strokeWidth : DRAW_DEFAULTS.strokeWidth,
   smoothing: el?.smoothing,
   thinning: el?.thinning,
+  pression: Array.isArray(el?.pressions),
 });
 
 /**
@@ -99,6 +129,7 @@ export const elementDessin = (points, options) => {
     width: Math.ceil(box.x + box.width) + 1 - x,
     height: Math.ceil(box.y + box.height) + 1 - y,
     points: points.flatMap((p) => [round(p.x - x), round(p.y - y)]),
+    ...(options.pression ? { pressions: points.map((p) => Math.round(unit(p.pressure, 0.5) * 1000) / 1000) } : {}),
     brushType: options.brushType ?? DRAW_DEFAULTS.brushType,
     fill: options.stroke ?? DRAW_DEFAULTS.stroke,
     opacity: Number.isFinite(options.opacity) ? options.opacity : 1,
@@ -115,7 +146,7 @@ const cache = new WeakMap();
 /** Ce qu'il faut à un `Konva.Path` : UNE règle pour le canvas et les exports. */
 export const dessinTrace = (el) => {
   const r = reglagesDe(el);
-  const cle = `${r.strokeWidth}|${r.smoothing}|${r.thinning}`;
+  const cle = `${r.strokeWidth}|${r.smoothing}|${r.thinning}|${el?.pressions?.length ?? ''}`;
   const garde = Array.isArray(el?.points) ? cache.get(el.points) : null;
   let data = garde?.cle === cle ? garde.data : null;
   if (data === null) {
