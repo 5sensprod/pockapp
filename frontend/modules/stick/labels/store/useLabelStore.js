@@ -1,6 +1,7 @@
 // src/features/labels/store/useLabelStore.js
 import { create } from 'zustand';
 import { quantiteValide } from '../lib/tirage';
+import { placerAuCentre } from '../utils/placement';
 
 const HISTORY_LIMIT = 100;
 
@@ -206,6 +207,21 @@ const useLabelStore = create((set, get) => ({
         ],
       };
     }),
+
+  // AJOUT depuis un panneau : centré dans le canvas ACTUEL (voir
+  // `utils/placement.js`). `taille` impose le cadre quand le panneau le
+  // connaît mieux (fiche, texte mesuré par Konva — le store n'importe pas
+  // Konva, pour rester testable sous Node). La restauration d'un template passe par
+  // `addElement`, qui garde les positions enregistrées.
+  addElementCentre: (element, taille) => {
+    const state = get();
+    const pos = placerAuCentre(element, {
+      canvas: state.canvasSize,
+      elements: state.elements,
+      taille,
+    });
+    state.addElement({ ...element, ...pos });
+  },
 
   updateElement: (id, updates) =>
     set((state) => {

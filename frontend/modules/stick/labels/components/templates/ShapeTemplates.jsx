@@ -27,16 +27,14 @@ const COULEURS = [
 ];
 
 const ShapeTemplates = () => {
-  const { addElement, elements } = useLabelStore();
+  const { addElementCentre } = useLabelStore();
   const [couleur, setCouleur] = useState('#3b82f6');
 
   const handleAddShape = (forme) => {
-    addElement({
+    addElementCentre({
       type: 'shape',
       shape: forme.id,
       id: undefined,
-      x: 50,
-      y: 50 + elements.length * 30,
       width: forme.width,
       height: forme.height,
       fill: couleur,

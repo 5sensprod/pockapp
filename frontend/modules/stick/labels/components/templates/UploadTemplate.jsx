@@ -12,7 +12,7 @@ import { cadreSurCanvas } from '../../utils/imagePlacement';
  * ✅ AMÉLIORATION : Ajout automatique au canvas avec proportions préservées
  */
 const UploadTemplate = ({ onImageSelected }) => {
-  const { addElement, elements } = useLabelStore();
+  const { addElementCentre } = useLabelStore();
   const [availableImages, setAvailableImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -79,7 +79,7 @@ const UploadTemplate = ({ onImageSelected }) => {
 
     console.log('📐 Upload - Dimensions naturelles:', { naturalWidth, naturalHeight, aspectRatio });
 
-    addElement({
+    addElementCentre({
       type: 'image',
       id: undefined,
       // À la taille du canvas, entière et centrée

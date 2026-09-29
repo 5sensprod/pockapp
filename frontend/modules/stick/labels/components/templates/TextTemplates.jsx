@@ -1,8 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import useLabelStore from '../../store/useLabelStore';
+import { mesurerTexte } from '../../utils/mesurerTexte';
 
 const TextTemplates = ({ dataSource, selectedProduct }) => {
-  const { addElement, elements, selectedProducts } = useLabelStore();
+  const { addElementCentre, selectedProducts } = useLabelStore();
 
   // Produit affiché en mode données
   const displayProduct = useMemo(() => {
@@ -43,16 +44,15 @@ const TextTemplates = ({ dataSource, selectedProduct }) => {
     const dataBinding = isDataActive ? 'name' : null;
     const text = isDataActive ? displayProduct.name : template.preview;
 
-    addElement({
+    const el = {
       type: 'text',
       text,
-      x: 50,
-      y: 50 + elements.length * 40,
       fontSize: template.fontSize,
       bold: template.bold,
       color: template.color || '#000000',
       dataBinding,
-    });
+    };
+    addElementCentre(el, mesurerTexte(el));
   };
 
   return (

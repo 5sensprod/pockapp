@@ -8,30 +8,41 @@
 import React from 'react';
 import { Table2, ListChecks, Lightbulb } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
-import { SECTIONS_FICHE, contenuFiche } from '../../utils/ficheProduit';
-import { FICHE_PAR_DEFAUT } from '../../utils/ficheKonva';
+import { SECTIONS_FICHE, contenuFiche, EXEMPLE_FICHE } from '../../utils/ficheProduit';
+import { FICHE_PAR_DEFAUT, construireFiche } from '../../utils/ficheKonva';
 
 const ICONES = { specs: Table2, highlights: ListChecks, tips: Lightbulb };
 
 const FicheTemplates = ({ selectedProduct }) => {
-  const addElement = useLabelStore((s) => s.addElement);
+  const addElementCentre = useLabelStore((s) => s.addElementCentre);
   const canvasSize = useLabelStore((s) => s.canvasSize);
   const produitCanvas = useLabelStore((s) => s.selectedProduct);
   const produit = produitCanvas || selectedProduct;
 
   const ajouter = (section) => {
     const largeur = Math.min(FICHE_PAR_DEFAUT.width, Math.round(canvasSize.width * 0.8));
-    addElement({
+    const el = {
       ...FICHE_PAR_DEFAUT,
       type: 'fiche',
       section: section.id,
       title: section.titre,
       width: largeur,
-      x: Math.round((canvasSize.width - largeur) / 2),
-      y: Math.round(canvasSize.height * 0.1),
       visible: true,
       locked: false,
-    });
+    };
+    // La hauteur suit le contenu : `construireFiche` la calcule sans rendu,
+    // sur le MÊME contenu que dessine `KonvaCanvas` (produit du canvas, sinon
+    // l'exemple).
+    const contenu = produitCanvas
+      ? contenuFiche(produitCanvas.description, section.id)
+      : EXEMPLE_FICHE[section.id] ?? EXEMPLE_FICHE.specs;
+    let hauteur = FICHE_PAR_DEFAUT.fontSize * 4;
+    try {
+      if (contenu) hauteur = construireFiche(el, contenu).height;
+    } catch {
+      // mesure impossible : hauteur approchée
+    }
+    addElementCentre(el, { width: largeur, height: hauteur });
   };
 
   return (

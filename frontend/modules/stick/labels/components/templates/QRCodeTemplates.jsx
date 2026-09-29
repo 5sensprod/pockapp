@@ -15,7 +15,7 @@ const QR_BINDING = 'website_url';
 const defaultQRValue = (product) => product?.website_url || 'https://example.com';
 
 const QRCodeTemplates = ({ dataSource, selectedProduct }) => {
-  const { addElement, elements, selectedProducts } = useLabelStore();
+  const { addElementCentre, selectedProducts } = useLabelStore();
 
   const displayProduct =
     selectedProduct || (selectedProducts.length > 0 ? selectedProducts[0] : null);
@@ -25,11 +25,9 @@ const QRCodeTemplates = ({ dataSource, selectedProduct }) => {
     const binding =
       dataSource === 'data' && displayProduct ? QR_BINDING : null;
 
-    addElement({
+    addElementCentre({
       type: 'qrcode',
       id: undefined, // sera injecté par le store
-      x: 60,
-      y: 60 + elements.length * 30,
       size: 160,
       color: '#000000',
       bgColor: '#FFFFFF00',

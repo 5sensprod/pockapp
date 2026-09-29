@@ -1,9 +1,10 @@
 // src/features/labels/components/templates/TextTemplates.jsx
 import React from 'react';
 import useLabelStore from '../../store/useLabelStore';
+import { mesurerTexte } from '../../utils/mesurerTexte';
 
 const TextTemplates = ({ dataSource, selectedProduct }) => {
-  const addElement = useLabelStore((state) => state.addElement);
+  const addElementCentre = useLabelStore((state) => state.addElementCentre);
 
   const templates = [
     { id: 'heading', label: 'Titre', preview: 'Titre Principal', fontSize: 32, bold: true },
@@ -34,16 +35,15 @@ const TextTemplates = ({ dataSource, selectedProduct }) => {
   const handleAddText = (template, field = null) => {
     const text = field ? field.value : template.preview;
 
-    addElement({
+    const el = {
       type: 'text',
       text,
-      x: 50,
-      y: 50,
       fontSize: template.fontSize,
       bold: template.bold,
       color: template.color || '#000000',
       dataBinding: field ? field.key : null,
-    });
+    };
+    addElementCentre(el, mesurerTexte(el));
   };
 
   return (

@@ -6,7 +6,7 @@ import { cadreSurCanvas } from '../../utils/imagePlacement';
 import presetImageService from '../../services/presetImageService';
 
 const ImageTemplates = ({ selectedProduct }) => {
-  const { addElement, elements, selectedId, updateElement } = useLabelStore();
+  const { addElementCentre, elements, selectedId, updateElement } = useLabelStore();
   const [availableImages, setAvailableImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showMode, setShowMode] = useState('library'); // 'library' | 'product'
@@ -77,7 +77,7 @@ const ImageTemplates = ({ selectedProduct }) => {
   const handleAddImage = async (image) => {
     const { aspectRatio } = await loadImageDimensions(image.src);
 
-    addElement({
+    addElementCentre({
       type: 'image',
       id: undefined,
       ...cadreSurCanvas(aspectRatio, useLabelStore.getState().canvasSize),
@@ -143,7 +143,7 @@ const ImageTemplates = ({ selectedProduct }) => {
       ? await loadImageDimensions(fallbackSrc)
       : { aspectRatio: 1 };
 
-    addElement({
+    addElementCentre({
       type: 'image',
       ...cadreSurCanvas(aspectRatio, useLabelStore.getState().canvasSize),
       src: '{{product_image}}', // résolu dynamiquement via resolveTemplate

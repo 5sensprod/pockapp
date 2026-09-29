@@ -309,3 +309,28 @@ templates. Le recadrage (`CropTransformer`) n'est jamais masqué.
 Plus de choix « vierge / données » au départ ni de planche à part : le canvas
 est le modèle, le tirage (produits × quantités, format page ou planche) dit
 qui l'imprime, et l'export pagine. Voir [`03-tirage.md`](03-tirage.md).
+
+## Tout élément ajouté atterrit au centre (29 septembre 2026)
+
+Les panneaux posaient des coordonnées en dur (`x: 50, y: 50 + elements.length * 30`),
+qui ne suivaient ni la taille du canvas (panneau Format, verrou « Canvas = taille
+d'une cellule », template chargé) ni celle de l'élément.
+
+- **Règle unique** : `labels/utils/placement.js` — taille du cadre par type
+  (QR = `size`, texte = mesure, les autres = `width × height`), centrage dans le
+  `canvasSize` **lu au moment de l'ajout**, et décalage de 16 px en diagonale
+  **seulement** si un élément occupe déjà exactement la même position (plafonné
+  à 20 pas). Gardien : `placement.test.js`.
+- **Point d'entrée** : `addElementCentre(element, taille?)` du store, appelé par
+  les panneaux texte, tableau, forme, QR, code-barres, fiche, image et import.
+  **`addElement` ne place rien** : la restauration d'un template ou d'un design
+  (`TemplateManager`, `DesignTemplates`) passe par lui et garde ses positions.
+  La duplication reste à +20 px de l'original.
+- **Texte** : mesuré avant l'ajout par un `Konva.Text` hors scène
+  (`utils/mesurerTexte.js`), appelé depuis les panneaux — le store n'importe pas
+  Konva, sinon les tests Node échouent (« Cannot find module 'canvas' »). Pas de
+  recentrage après chargement de la police : il ramènerait un texte déjà
+  déplacé et doublerait l'étape d'historique. Écart possible : quelques pixels.
+- **Fiche** : hauteur calculée par `construireFiche` (synchrone) sur le même
+  contenu que dessine `KonvaCanvas` (produit du canvas, sinon l'exemple).
+- **Image** : taille de `cadreSurCanvas`, inchangée ; position par la règle commune.

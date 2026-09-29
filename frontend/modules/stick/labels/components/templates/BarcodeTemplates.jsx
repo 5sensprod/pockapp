@@ -15,7 +15,7 @@ import useLabelStore from '../../store/useLabelStore';
  * - CODE39 (codes industriels)
  */
 const BarcodeTemplates = ({ dataSource, selectedProduct }) => {
-  const { addElement, elements, selectedProducts } = useLabelStore();
+  const { addElementCentre, selectedProducts } = useLabelStore();
 
   // Produit à afficher (priorité : selectedProduct > premier de la liste)
   const displayProduct =
@@ -97,11 +97,9 @@ const BarcodeTemplates = ({ dataSource, selectedProduct }) => {
       return;
     }
 
-    addElement({
+    addElementCentre({
       type: 'barcode',
       id: undefined, // sera injecté par le store
-      x: 50,
-      y: 50 + elements.length * 30,
       width: format.width,
       height: format.height,
       barcodeValue: barcodeValue,
