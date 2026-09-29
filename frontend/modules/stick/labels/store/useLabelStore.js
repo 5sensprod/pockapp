@@ -4,6 +4,7 @@ import { quantiteValide } from '../lib/tirage';
 import { cadreDuCanvas, fondDe, placerAuCentre } from '../utils/placement';
 import { extraireStyle, reordonner, styleApplicable } from '../utils/styleCopie';
 import { cleGeste, prolongeGeste } from '../utils/gesteHistorique';
+import { DRAW_DEFAULTS, elementDessin } from '../utils/dessin';
 
 // Geste en cours de `updateElement` (`utils/gesteHistorique.js`) ; toute
 // autre étape d'historique, et undo/redo, le terminent.
@@ -418,6 +419,20 @@ const useLabelStore = create((set, get) => ({
   cadreMasqueGeste: false,
   basculerCadreMasque: () => set((state) => ({ cadreMasque: !state.cadreMasque })),
   setCadreMasqueGeste: (v) => set({ cadreMasqueGeste: !!v }),
+  // OUTIL DESSIN (`utils/dessin.js`), comme `tool` / `toolOptions` de
+  // PocketStick : ni historique, ni template. Activer le dessin quitte le
+  // recadrage et vide la sélection.
+  outilDessin: false,
+  reglagesDessin: { ...DRAW_DEFAULTS },
+  setOutilDessin: (actif) =>
+    set(actif ? { outilDessin: true, selectedId: null, extraIds: [], cropId: null } : { outilDessin: false }),
+  setReglagesDessin: (reglages) => set((state) => ({ reglagesDessin: { ...state.reglagesDessin, ...reglages } })),
+  // Fin d'un tracé : un élément `dessin`, une entrée d'historique, sélection inchangée.
+  ajouterDessin: (points) => {
+    const el = elementDessin(points, get().reglagesDessin);
+    if (el) get().addElement(el);
+    return el;
+  },
   startCrop: (id) =>
     set((state) => {
       const el = state.elements.find((e) => e.id === id);

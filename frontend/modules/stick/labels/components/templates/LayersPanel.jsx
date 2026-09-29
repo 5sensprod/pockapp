@@ -100,6 +100,8 @@ const LayersPanel = () => {
             line: 'Trait',
           };
           baseName = noms[el.shape] || 'Forme';
+        } else if (el.type === 'dessin') {
+          baseName = el.brushType === 'highlighter' ? 'Surligneur' : 'Dessin';
         } else if (el.type === 'qrcode') {
           // ✅ Afficher le champ lié plutôt que la valeur tronquée
           if (el.dataBinding) {

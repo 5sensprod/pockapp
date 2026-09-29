@@ -7,6 +7,7 @@ import { appliquerEffets } from './effetsKonva';
 import { retexturer } from './peintureTexture';
 import { dessinerQR } from './qrImage';
 import { sceneImage } from './imageForme';
+import { dessinTrace } from './dessin';
 import useLabelStore from '../store/useLabelStore';
 import {
   resolvePropForElement,
@@ -264,6 +265,24 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
       const fiche = new Konva.Group({ x: el.x ?? 0, y: el.y ?? 0, rotation: el.rotation ?? 0 });
       construireFiche(el, el.ficheContenu).nodes.forEach((n) => fiche.add(n));
       groupe.add(fiche);
+      return groupe;
+    }
+
+    // ✏️ DESSIN — même contour que le canvas (`dessinTrace`), à l'échelle 1
+    // dans un groupe mis à l'échelle de la cellule, comme les formes.
+    if (el?.type === 'dessin') {
+      const trace = new Konva.Path({
+        ...dessinTrace(el),
+        x: el.x ?? 0,
+        y: el.y ?? 0,
+        rotation: el.rotation ?? 0,
+        scaleX: el.scaleX ?? 1,
+        scaleY: el.scaleY ?? 1,
+        listening: false,
+        ...shadowProps(el),
+      });
+      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, listening: false });
+      groupe.add(trace);
       return groupe;
     }
 

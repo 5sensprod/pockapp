@@ -14,6 +14,8 @@ import ImageNode from './canvas/ImageNode';
 import BarcodeNode from './canvas/BarcodeNode';
 import TextNode from './canvas/TextNode';
 import ShapeNode from './canvas/ShapeNode';
+import DessinNode from './canvas/DessinNode';
+import DessinCalque from './canvas/DessinCalque';
 import { calculateSnapGuides } from '../utils/snapGuides.utils';
 import { resolvePropForElement } from '../utils/dataBinding';
 import { konvaCrop, resizeStep, settleCrop } from '../utils/crop';
@@ -773,6 +775,10 @@ const KonvaCanvas = forwardRef(
                 );
               }
 
+              if (type === 'dessin') {
+                return <DessinNode key={`${id}-${currentProductIndex}`} {...commonProps} el={el} />;
+              }
+
               if (type === 'barcode') {
                 return (
                   <BarcodeNode
@@ -839,6 +845,9 @@ const KonvaCanvas = forwardRef(
               />
             </Group>
           )}
+
+          {/* Outil Dessin : hors du groupe du document, qui est exporté */}
+          <DessinCalque scale={zoom} offsetX={docPos.x} offsetY={docPos.y} stageWidth={stageW} stageHeight={stageH} />
 
           {/* Recadrage : même position et zoom que le document, mais HORS de
               son groupe — l'export clone ce groupe, la surcouche ne doit pas

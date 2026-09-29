@@ -12,6 +12,7 @@ import {
   PaintBucket,
   Package,
   Database,
+  PenTool,
 } from 'lucide-react';
 
 import TextTemplates from './templates/TextTemplates';
@@ -23,6 +24,7 @@ import UploadTemplate from './templates/UploadTemplate';
 import EffectsTemplates from './templates/EffectsTemplates';
 import ModelesPanel from './templates/ModelesPanel';
 import DonneesProduitPanel from './templates/DonneesProduitPanel';
+import DessinPanel from './templates/DessinPanel';
 
 const ToolsSidebar = ({
   isCollapsed,
@@ -49,6 +51,8 @@ const ToolsSidebar = ({
     { id: 'image', label: 'Médias', icon: ImageIcon, component: UploadTemplate },
     // Assets : formes et QR code statique (`AssetsPanel`)
     { id: 'shape', label: 'Assets', icon: Shapes, component: AssetsPanel },
+    // Dessin à main levée (`utils/dessin.js`), porté de PocketStick
+    { id: 'dessin', label: 'Dessin', icon: PenTool, component: DessinPanel },
     { id: 'effects', label: 'Effets', icon: Sparkles, component: EffectsTemplates },
     { id: 'layers', label: 'Calques', icon: Layers, component: LayersPanel },
     // Sous Calques : ce qui vient de PocketStock, en orange.
