@@ -39,7 +39,7 @@ describe('versPeinture', () => {
 
 describe('remplissageKonva', () => {
   it('uni : la couleur, dégradé éteint', () => {
-    expect(remplissageKonva(null, 100, 50, '#abc')).toEqual({ fill: '#abc', fillPriority: 'color' });
+    expect(remplissageKonva(null, 100, 50, '#abc')).toEqual({ fill: '#abc', fillPriority: 'color', textureRemplissage: null });
   });
   it('radial : centre et rayon à la taille du cadre', () => {
     const p = remplissageKonva(radial, 100, 50, '#abc');
@@ -54,7 +54,7 @@ describe('remplissageKonva', () => {
 
 describe('contourKonva', () => {
   it('uni : la couleur, et le dégradé de contour explicitement retiré', () => {
-    expect(contourKonva(null, 100, 50, '#000')).toEqual({ stroke: '#000', strokeLinearGradientColorStops: null });
+    expect(contourKonva(null, 100, 50, '#000')).toEqual({ stroke: '#000', strokeLinearGradientColorStops: null, textureContour: null });
   });
   it('linéaire : de bord à bord', () => {
     const p = contourKonva(lineaire, 100, 50, '#000');
@@ -64,5 +64,23 @@ describe('contourKonva', () => {
   });
   it('un radial y est rendu en linéaire (Konva ne sait pas mieux)', () => {
     expect(contourKonva(radial, 100, 50, '#000').strokeLinearGradientColorStops).toHaveLength(4);
+  });
+});
+
+import { DEFAULT_TEXTURE_PAINT, estPeinture, isGradient, isTexture, paintToCss } from './paint';
+
+describe('peinture texture', () => {
+  it('troisième format : validé, sans toucher aux deux dégradés', () => {
+    const t = versPeinture(DEFAULT_TEXTURE_PAINT);
+    expect(isTexture(t)).toBe(true);
+    expect(isGradient(t)).toBe(false);
+    expect(estPeinture(t)).toBe(true);
+    expect(t.noise).toMatchObject({ type: 'perlin', seed: 1 });
+    expect(sanitizeGradient({ ...DEFAULT_TEXTURE_PAINT, noise: { type: 'plasma' } })).toBeNull();
+  });
+  it('hors navigateur : repli sur la couleur (pas de motif)', () => {
+    expect(remplissageKonva(DEFAULT_TEXTURE_PAINT, 100, 50, '#abc')).toMatchObject({ fill: '#abc', fillPriority: 'color' });
+    expect(contourKonva(DEFAULT_TEXTURE_PAINT, 100, 50, '')).toMatchObject({ stroke: '#1e3a8a' });
+    expect(paintToCss(DEFAULT_TEXTURE_PAINT)).toMatch(/^linear-gradient\(90deg/);
   });
 });

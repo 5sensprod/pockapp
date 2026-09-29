@@ -3,6 +3,7 @@ import { typoTexte } from './typo';
 import jsPDF from 'jspdf';
 import Konva from 'konva';
 import { appliquerEffets } from './effetsKonva';
+import { retexturer } from './peintureTexture';
 import { dessinerQR } from './qrImage';
 import { sceneImage } from './imageForme';
 import useLabelStore from '../store/useLabelStore';
@@ -426,6 +427,8 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
   nodes.forEach((node, i) => {
     if (!node) return;
     layer.add(node);
+    // Peintures texture à la résolution d'export (échelle de cellule comprise)
+    retexturer(node, ratioEffets * scale);
     // Flou et effets : même règle que le canvas (`utils/effetsKonva.js`)
     appliquerEffets(node, elements[i], { echelle: scale, ratio: ratioEffets });
   });

@@ -487,3 +487,33 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
   normale.
 - UI : menu « Espacement » à côté de la taille de police (double-clic sur un
   curseur : valeur normale). Gardien : `typo.test.js`.
+
+## Peinture texture : remplissage, contour, QR (29 septembre 2026)
+
+- Troisième format de peinture, à côté des deux dégradés (inchangés, lus à
+  l'identique) : `{ type: 'noise-gradient', noise: {…texture de bruit.js…},
+  stops }`. La carte de bruit sert de POSITION dans les arrêts :
+  couleur(x, y) = dégradé(carte(x, y)). `isGradient` ne la reconnaît PAS ;
+  `estPeinture` reconnaît les trois, `sanitizeGradient` et `versPeinture` la
+  valident (`utils/paint.js`).
+- Rendu : `utils/peintureTexture.js`. `motifTexture` fabrique un canvas
+  colorisé (table de 256 couleurs lue sur un dégradé DESSINÉ par le navigateur :
+  même interpolation, toute couleur CSS) ; cache LRU, paliers de 64 px, comme
+  les masques.
+  - Remplissage (texte, forme) : motif Konva (`fillPriority: 'pattern'`,
+    `fillPatternImage`, échelle ramenant le canvas au cadre).
+  - Contour : un `CanvasPattern` posé en `stroke` — Konva le passe tel quel en
+    `strokeStyle` (`konva/lib/Context.js`, `_stroke`). Son validateur
+    (`getStringOrGradientValidator`) n'AVERTIT qu'en build non minifié : un
+    avertissement en console en dev, rien en production.
+  - QR : `degradeCanvas2D` rend le motif, composé en `source-in` comme avant.
+- Exports : chaque nœud texturé porte `textureRemplissage` / `textureContour` ;
+  `retexturer` recalcule la peinture à la résolution d'export — sur le clone
+  (`exportPdf.js`, avant `recacherFiltres`) et sur chaque nœud de la planche
+  (`exportPdfSheet.js`). Sans cela le clone garderait la résolution écran.
+- Hors navigateur (tests Node), la peinture texture retombe sur la couleur.
+- UI : onglet « Texture » du sélecteur (`GradientColorPicker`), à côté de
+  Linéaire et Radial — et disponible pour les CONTOURS, qui n'ont pas de
+  radial. Aperçu réel en canvas ; réglages du bruit par `MasqueTexture`.
+- Gardiens : `paint.test.js` (format, repli), `fillStyle.test.ts`.
+- ⚠️ Non vérifié à l'écran ni dans un PDF au moment d'écrire.

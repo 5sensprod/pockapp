@@ -17,6 +17,7 @@ describe('remplissage', () => {
 		expect(remplissage(null, 100, 50, '#f00')).toEqual({
 			fill: '#f00',
 			fillPriority: 'color',
+			textureRemplissage: null,
 		})
 	})
 	it('0° : de bord gauche à bord droit, origine en coin', () => {

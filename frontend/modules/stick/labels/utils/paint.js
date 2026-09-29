@@ -22,8 +22,20 @@
 // 180°, du centre vers le bord ; `centrer` décale les points pour un nœud
 // dont l'origine est le centre (Ellipse, Étoile, Polygone).
 
+import { TEXTURE_PAR_DEFAUT, sanitizeTexture } from './bruit';
+import { motifTexture, patternTexture } from './peintureTexture';
+
 export const MAX_GRADIENT_STOPS = 16;
 export const isGradient = (value) => value?.type === 'linear-gradient' || value?.type === 'radial-gradient';
+/**
+ * PEINTURE TEXTURE (29/09/2026, `utils/peintureTexture.js`) :
+ * `{ type: 'noise-gradient', noise: {…texture de bruit.js…}, stops }` — la
+ * carte de bruit sert de position dans les arrêts. Troisième format, à côté
+ * des deux dégradés, qui restent lus à l'identique : `isGradient` ne la
+ * reconnaît PAS, `estPeinture` reconnaît les trois.
+ */
+export const isTexture = (value) => value?.type === 'noise-gradient';
+export const estPeinture = (value) => isGradient(value) || isTexture(value);
 
 const finite = (value) => typeof value === 'number' && Number.isFinite(value);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -39,7 +51,7 @@ export const couleurValide = (value) => {
 const cleanColor = (value) => (couleurValide(value) ? value : null);
 
 export const sanitizeGradient = (value) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || !isGradient(value)) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !estPeinture(value)) return null;
   if (!Array.isArray(value.stops) || value.stops.length < 2 || value.stops.length > MAX_GRADIENT_STOPS) return null;
   const stops = value.stops.map((stop) => {
     if (!stop || typeof stop !== 'object' || !finite(stop.offset)) return null;
@@ -48,6 +60,10 @@ export const sanitizeGradient = (value) => {
   });
   if (stops.some((stop) => !stop)) return null;
   stops.sort((a, b) => a.offset - b.offset);
+  if (isTexture(value)) {
+    const noise = sanitizeTexture(value.noise);
+    return noise ? { type: value.type, noise, stops } : null;
+  }
   if (value.type === 'linear-gradient') {
     if (!finite(value.angle)) return null;
     return { type: value.type, angle: ((value.angle % 360) + 360) % 360, stops };
@@ -80,7 +96,7 @@ export const DEFAULT_RADIAL_GRADIENT = {
  */
 export const versPeinture = (value) => {
   if (!value || typeof value !== 'object') return null;
-  if (isGradient(value)) return sanitizeGradient(value);
+  if (estPeinture(value)) return sanitizeGradient(value);
   if (value.from && value.to) {
     return sanitizeGradient({
       type: 'linear-gradient',
@@ -94,9 +110,18 @@ export const versPeinture = (value) => {
 /** Première couleur d'un dégradé (repli : édition d'un texte, aperçu uni). */
 export const premiereCouleur = (value) => versPeinture(value)?.stops[0]?.color ?? null;
 
+export const DEFAULT_TEXTURE_PAINT = {
+  type: 'noise-gradient',
+  noise: { ...TEXTURE_PAR_DEFAUT, type: 'perlin' },
+  stops: [{ offset: 0, color: '#1e3a8a' }, { offset: 1, color: '#f472b6' }],
+};
+
 export const paintToCss = (paint) => {
   if (typeof paint === 'string') return paint;
-  if (!isGradient(paint)) return 'transparent';
+  if (!estPeinture(paint)) return 'transparent';
+  // Texture : approximation CSS (les arrêts à plat) ; l'aperçu réel est un
+  // canvas (`motifTexture`), voir GradientColorPicker
+  if (isTexture(paint)) return paintToCss({ type: 'linear-gradient', angle: 90, stops: paint.stops });
   const stops = paint.stops.map((stop) => `${stop.color} ${Math.round(stop.offset * 1000) / 10}%`).join(', ');
   return paint.type === 'linear-gradient'
     ? `linear-gradient(${paint.angle}deg, ${stops})`
@@ -149,10 +174,28 @@ const decaler = (p, dx, dy) => (p ? { x: p.x - dx, y: p.y - dy } : p);
  * dessiné, pas seulement cesser de le décrire.
  * @returns {Record<string, any>}
  */
-export const remplissageKonva = (gradient, width, height, color, centrer = false) => {
+export const remplissageKonva = (gradient, width, height, color, centrer = false, ratio = 2) => {
   const paint = versPeinture(gradient);
-  if (!paint) return { fill: color, fillPriority: 'color' };
-  const props = { fill: color, ...paintToKonva(paint, width || 0, height || 0) };
+  if (!paint) return { fill: color, fillPriority: 'color', textureRemplissage: null };
+  if (isTexture(paint)) {
+    const w = width || 0;
+    const h = height || 0;
+    const cv = motifTexture(paint, w, h, ratio);
+    // Hors navigateur ou cadre pas encore mesuré : la première couleur
+    if (!cv) return { fill: color || paint.stops[0].color, fillPriority: 'color', textureRemplissage: null };
+    return {
+      fill: color,
+      fillPriority: 'pattern',
+      fillPatternImage: cv,
+      fillPatternRepeat: 'no-repeat',
+      fillPatternScaleX: w / cv.width,
+      fillPatternScaleY: h / cv.height,
+      fillPatternX: centrer ? -w / 2 : 0,
+      fillPatternY: centrer ? -h / 2 : 0,
+      textureRemplissage: { paint, w, h }, // relu par `retexturer` à l'export
+    };
+  }
+  const props = { fill: color, textureRemplissage: null, ...paintToKonva(paint, width || 0, height || 0) };
   if (!centrer) return props;
   const dx = (width || 0) / 2;
   const dy = (height || 0) / 2;
@@ -171,15 +214,27 @@ export const remplissageKonva = (gradient, width, height, color, centrer = false
  * Props Konva de CONTOUR : couleur unie, ou dégradé (linéaire, voir en-tête).
  * @returns {Record<string, any>}
  */
-export const contourKonva = (gradient, width, height, color, centrer = false) => {
+export const contourKonva = (gradient, width, height, color, centrer = false, ratio = 2) => {
   const paint = versPeinture(gradient);
-  if (!paint) return { stroke: color, strokeLinearGradientColorStops: null };
+  if (!paint) return { stroke: color, strokeLinearGradientColorStops: null, textureContour: null };
+  if (isTexture(paint)) {
+    // Texture : un `CanvasPattern` posé en `stroke` (Konva le passe tel quel en
+    // `strokeStyle` ; son validateur n'avertit qu'en build non minifié)
+    const w = width || 0;
+    const h = height || 0;
+    const dx = centrer ? w / 2 : 0;
+    const dy = centrer ? h / 2 : 0;
+    const p = patternTexture(paint, w, h, { ratio, dx, dy });
+    if (!p) return { stroke: color || paint.stops[0].color, strokeLinearGradientColorStops: null, textureContour: null };
+    return { stroke: p, strokeLinearGradientColorStops: null, textureContour: { paint, w, h, dx, dy } };
+  }
   const angle = paint.type === 'linear-gradient' ? paint.angle : 180;
   const { start, end } = linearPoints(width || 0, height || 0, angle);
   const dx = centrer ? (width || 0) / 2 : 0;
   const dy = centrer ? (height || 0) / 2 : 0;
   return {
     stroke: color || paint.stops[0].color,
+    textureContour: null,
     strokeLinearGradientStartPoint: decaler(start, dx, dy),
     strokeLinearGradientEndPoint: decaler(end, dx, dy),
     strokeLinearGradientColorStops: stopsArray(paint),
@@ -193,6 +248,7 @@ export const contourKonva = (gradient, width, height, color, centrer = false) =>
 export const degradeCanvas2D = (ctx, gradient, width, height) => {
   const paint = versPeinture(gradient);
   if (!paint) return null;
+  if (isTexture(paint)) return patternTexture(paint, width, height, { ratio: 1, plafond: 2048 });
   let grd;
   if (paint.type === 'linear-gradient') {
     const { start, end } = linearPoints(width, height, paint.angle);

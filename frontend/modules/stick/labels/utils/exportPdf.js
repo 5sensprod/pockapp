@@ -2,6 +2,7 @@
 import jsPDF from 'jspdf';
 import Konva from 'konva';
 import { recacherFiltres } from './effetsKonva';
+import { retexturer } from './peintureTexture';
 
 /**
  * Export PDF sans déformation:
@@ -39,6 +40,8 @@ export async function exportPdf(
   const layer = new Konva.Layer();
   stage.add(layer);
   layer.add(clone);
+  // Peintures texture à la résolution d'export, AVANT les caches d'effets
+  retexturer(clone, pixelRatio);
   // Flou et effets : le cache du canvas ne suit pas le clone
   recacherFiltres(clone, pixelRatio);
   layer.draw();

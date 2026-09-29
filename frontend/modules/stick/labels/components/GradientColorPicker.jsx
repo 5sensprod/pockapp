@@ -20,7 +20,11 @@ import {
   paintToCss,
   sanitizeGradient,
   versPeinture,
+  DEFAULT_TEXTURE_PAINT,
+  isTexture,
 } from '../utils/paint';
+import { motifTexture } from '../utils/peintureTexture';
+import MasqueTexture from './MasqueTexture';
 
 const DEGRADES_PRETS = [
   ['#3b82f6', '#ec4899'],
@@ -77,6 +81,27 @@ const Curseur = ({ label, valeur, affichage, min, max, step, onChange }) => (
   </label>
 );
 
+// Aperçu RÉEL d'une peinture : un canvas pour une texture (`motifTexture`,
+// même fonction que le dessin), le CSS pour un dégradé.
+const ApercuPeinture = ({ paint, className }) => {
+  const ref = useRef(null);
+  const texture = isTexture(paint);
+  const cle = texture ? JSON.stringify(paint) : '';
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv || !cle) return;
+    const motif = motifTexture(JSON.parse(cle), cv.width, cv.height, 1);
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if (motif) ctx.drawImage(motif, 0, 0, cv.width, cv.height);
+  }, [cle]);
+  return texture ? (
+    <canvas ref={ref} width={224} height={40} className={className} />
+  ) : (
+    <div className={className} style={{ background: paintToCss(paint) }} />
+  );
+};
+
 const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange, title, lineaireSeulement = false }) => {
   const peinture = versPeinture(gradient);
   const [ouvert, setOuvert] = useState(false);
@@ -115,7 +140,7 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
   };
   let g = peinture ?? defaut;
   // Un contour ne se dégrade qu'en linéaire : un radial y est converti
-  if (lineaireSeulement && g.type !== 'linear-gradient') g = { type: 'linear-gradient', angle: 90, stops: g.stops };
+  if (lineaireSeulement && g.type === 'radial-gradient') g = { type: 'linear-gradient', angle: 90, stops: g.stops };
   const i = Math.min(arret, g.stops.length - 1);
 
   const ecrire = (suivant) => {
@@ -141,7 +166,12 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
   };
   const changerType = (type) => {
     if (type === g.type) return;
-    const base = type === 'linear-gradient' ? DEFAULT_LINEAR_GRADIENT : DEFAULT_RADIAL_GRADIENT;
+    const base =
+      type === 'linear-gradient'
+        ? DEFAULT_LINEAR_GRADIENT
+        : type === 'noise-gradient'
+          ? DEFAULT_TEXTURE_PAINT
+          : DEFAULT_RADIAL_GRADIENT;
     ecrire({ ...base, stops: g.stops });
   };
 
@@ -216,22 +246,23 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
             </>
           ) : (
             <>
-              {!lineaireSeulement && (
-                <div className="flex gap-1">
-                  <button type="button" className={onglet(g.type === 'linear-gradient')} onClick={() => changerType('linear-gradient')}>
-                    Linéaire
-                  </button>
+              <div className="flex gap-1">
+                <button type="button" className={onglet(g.type === 'linear-gradient')} onClick={() => changerType('linear-gradient')}>
+                  Linéaire
+                </button>
+                {/* Un contour ne se dégrade pas en radial (Konva) ; en texture, si */}
+                {!lineaireSeulement && (
                   <button type="button" className={onglet(g.type === 'radial-gradient')} onClick={() => changerType('radial-gradient')}>
                     Radial
                   </button>
-                </div>
-              )}
+                )}
+                <button type="button" className={onglet(g.type === 'noise-gradient')} onClick={() => changerType('noise-gradient')}>
+                  Texture
+                </button>
+              </div>
 
               {/* Aperçu réel, puis la barre des arrêts (clic : ajouter un arrêt) */}
-              <div
-                className="w-full h-10 rounded border border-gray-300 dark:border-gray-600"
-                style={{ background: paintToCss(g) }}
-              />
+              <ApercuPeinture paint={g} className="w-full h-10 rounded border border-gray-300 dark:border-gray-600" />
               <div className="px-1.5">
                 <div
                   ref={barre}
@@ -279,7 +310,13 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
                 </button>
               </div>
 
-              {g.type === 'linear-gradient' ? (
+              {g.type === 'noise-gradient' ? (
+                // La carte de bruit donne la POSITION dans les arrêts ci-dessus
+                <MasqueTexture
+                  valeur={g.noise}
+                  onChange={(noise) => (noise ? ecrire({ ...g, noise }) : changerType('linear-gradient'))}
+                />
+              ) : g.type === 'linear-gradient' ? (
                 <Curseur label="Angle" valeur={g.angle} affichage={`${g.angle}°`} min={0} max={359} step={1} onChange={(v) => ecrire({ ...g, angle: v })} />
               ) : (
                 <>
