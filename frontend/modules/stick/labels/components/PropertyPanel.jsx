@@ -23,12 +23,16 @@ import {
   AlignHorizontalSpaceAround,
   AlignVerticalSpaceAround,
   Trash2,
+  FlipHorizontal2,
+  FlipVertical2,
+  Shapes,
 } from 'lucide-react';
 import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
 import { alignOffsets, distributeOffsets, unionBoxes } from '../utils/layout';
 import FontSelector from './FontSelector';
 import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
+import { MASQUES } from '../utils/imageForme';
 import { resolvePropForElement, texteCorrige, ficheChangeeDepuisCorrection } from '../utils/dataBinding';
 import { resetCropAttrs } from '../utils/crop';
 import { geometrieImage } from './canvas/CropOverlay';
@@ -420,6 +424,36 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
               onColorChange={handleColorChange}
               onGradientChange={(g) => updateElement(selectedId, { fillGradient: g })}
               title="Couleur"
+            />
+            {/* Contour des lettres (`contourTexte`) : couleur ou dégradé
+                linéaire, et épaisseur — sans épaisseur, rien ne se voit. */}
+            <GradientColorPicker
+              color={selectedElement.stroke || '#000000'}
+              gradient={selectedElement.strokeGradient ?? null}
+              onColorChange={(c) =>
+                updateElement(selectedId, {
+                  stroke: c,
+                  ...(selectedElement.strokeWidth > 0 ? {} : { strokeWidth: 2 }),
+                })
+              }
+              onGradientChange={(g) =>
+                updateElement(selectedId, {
+                  strokeGradient: g,
+                  ...(g && !(selectedElement.strokeWidth > 0) ? { strokeWidth: 2 } : {}),
+                })
+              }
+              title="Contour du texte"
+              lineaireSeulement
+            />
+            <input
+              type="number"
+              min={0}
+              max={40}
+              step={0.5}
+              value={selectedElement.strokeWidth ?? 0}
+              onChange={(e) => updateElement(selectedId, { strokeWidth: Number(e.target.value) })}
+              className="w-14 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              title="Épaisseur du contour du texte, en pixels"
             />
           </div>
         )}
@@ -900,6 +934,59 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 Recadrer
               </button>
             )}
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            {/* Miroir et masque (`utils/imageForme.js`) */}
+            <div className="flex items-center gap-1">
+              {[
+                ['flipX', FlipHorizontal2, 'Miroir horizontal'],
+                ['flipY', FlipVertical2, 'Miroir vertical'],
+              ].map(([cle, Icone, titre]) => (
+                <button
+                  key={cle}
+                  type="button"
+                  onClick={() => updateElement(selectedId, { [cle]: !selectedElement[cle] })}
+                  className={`p-1.5 rounded ${
+                    selectedElement[cle]
+                      ? 'bg-blue-500 text-white'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                  title={titre}
+                  aria-pressed={!!selectedElement[cle]}
+                >
+                  <Icone className="h-4 w-4" />
+                </button>
+              ))}
+              <MenuGroupe icone={Shapes} titre="Masque" actif={!!selectedElement.mask} largeur="13rem">
+                <div className="grid grid-cols-3 gap-1.5 p-1">
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedId, { mask: null })}
+                    className={`h-12 rounded border text-[10px] text-gray-600 dark:text-gray-300 ${
+                      !selectedElement.mask ? 'ring-2 ring-blue-500 border-transparent' : 'border-gray-300 dark:border-gray-600'
+                    }`}
+                  >
+                    Aucun
+                  </button>
+                  {MASQUES.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => updateElement(selectedId, { mask: m.id })}
+                      className={`h-12 p-1.5 rounded border ${
+                        selectedElement.mask === m.id
+                          ? 'ring-2 ring-blue-500 border-transparent'
+                          : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                      title={m.label}
+                    >
+                      <svg viewBox="0 0 100 100" className="w-full h-full">
+                        <path d={m.d} className="fill-gray-700 dark:fill-gray-200" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </MenuGroupe>
+            </div>
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">

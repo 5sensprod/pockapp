@@ -311,6 +311,51 @@ const EffectsTemplates = () => {
               onChange={(e) => updateElement(selectedId, { blurRadius: parseFloat(e.target.value) })}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
             />
+
+            {/* Dégradé de flou (`fonduFlou`, `utils/effetsKonva.js`) : net d'un
+                côté, flou de l'autre. */}
+            <label className="mt-3 flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
+              Dégradé (net → flou)
+              <input
+                type="checkbox"
+                checked={!!selectedElement.blurFade}
+                onChange={(e) =>
+                  updateElement(selectedId, {
+                    blurFade: e.target.checked ? { angle: 180, from: 0.3, to: 0.8 } : null,
+                  })
+                }
+                className="accent-purple-600"
+              />
+            </label>
+            {selectedElement.blurFade && (
+              <div className="mt-2 space-y-2">
+                {[
+                  ['angle', 'Direction', 0, 359, 1, (v) => `${v}°`],
+                  ['from', 'Début du flou', 0, 1, 0.01, (v) => `${Math.round(v * 100)} %`],
+                  ['to', 'Flou complet', 0, 1, 0.01, (v) => `${Math.round(v * 100)} %`],
+                ].map(([cle, label, min, max, step, format]) => (
+                  <div key={cle}>
+                    <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                      <span>{label}</span>
+                      <span className="tabular-nums">{format(selectedElement.blurFade[cle])}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={selectedElement.blurFade[cle]}
+                      onChange={(e) =>
+                        updateElement(selectedId, {
+                          blurFade: { ...selectedElement.blurFade, [cle]: parseFloat(e.target.value) },
+                        })
+                      }
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -648,6 +648,9 @@ const KonvaCanvas = forwardRef(
                     dataBinding={el.dataBinding || null}
                     correctionKey={selectedProduct?._id ?? null}
                     fillGradient={el.fillGradient ?? null}
+                    stroke={el.stroke ?? ''}
+                    strokeWidth={el.strokeWidth ?? 0}
+                    strokeGradient={el.strokeGradient ?? null}
                     align={el.align ?? 'left'}
                   />
                 );
@@ -686,6 +689,9 @@ const KonvaCanvas = forwardRef(
                     cropY={el.cropY}
                     cropWidth={el.cropWidth}
                     cropHeight={el.cropHeight}
+                    flipX={!!el.flipX}
+                    flipY={!!el.flipY}
+                    mask={el.mask ?? null}
                     // Double-clic : recadrer, comme PocketStick
                     onDblClick={() => !locked && startCrop(id)}
                     onDblTap={() => !locked && startCrop(id)}

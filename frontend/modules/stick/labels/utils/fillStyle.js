@@ -8,7 +8,7 @@
 // Étoile). Une seule fonction les calcule, pour le canvas ET pour l'export
 // planche : deux calculs, c'est deux dessins différents.
 
-import { remplissageKonva } from './paint';
+import { contourKonva, remplissageKonva } from './paint';
 
 // Depuis le 29/09/2026, le dégradé suit le modèle de PocketStick
 // (`utils/paint.js`, linéaire ou radial, 2 à 16 arrêts) ; l'ancien
@@ -27,3 +27,24 @@ export const DEGRADE_PAR_DEFAUT = { from: '#3b82f6', to: '#ec4899', angle: 0 };
  */
 export const remplissage = (gradient, width, height, color, centre = false) =>
   remplissageKonva(gradient, width, height, color, centre);
+
+/**
+ * Props Konva du CONTOUR d'un texte : couleur unie ou dégradé (linéaire,
+ * `contourKonva`), et remplissage APRÈS le contour (`fillAfterStrokeEnabled`)
+ * pour que le trait entoure les lettres au lieu de les ronger. Une seule
+ * fonction pour le canvas (`TextNode`) et l'export planche.
+ * @returns {Record<string, any>}
+ */
+export const contourTexte = (stroke, strokeWidth, strokeGradient, width, height) => {
+  const epaisseur = Number(strokeWidth) || 0;
+  if (!(epaisseur > 0) || !(stroke || strokeGradient)) {
+    return { strokeEnabled: false, strokeLinearGradientColorStops: null };
+  }
+  return {
+    strokeEnabled: true,
+    strokeWidth: epaisseur,
+    fillAfterStrokeEnabled: true,
+    lineJoin: 'round',
+    ...contourKonva(strokeGradient, width, height, stroke || '#000000'),
+  };
+};

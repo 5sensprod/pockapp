@@ -9,6 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Image as KonvaImage } from 'react-konva';
 import { konvaCrop } from '../../utils/crop';
+import { sceneImage } from '../../utils/imageForme';
 
 /** Recadrage d'un élément, valeurs par défaut comprises. */
 export const recadrage = (el) => ({
@@ -53,9 +54,14 @@ const ImageNode = ({
   cropY,
   cropWidth,
   cropHeight,
+  flipX = false,
+  flipY = false,
+  mask = null,
   ...rest
 }) => {
   const image = useImageChargee(src);
+  // Miroir et masque : un DESSIN particulier, pas un autre nœud (`utils/imageForme.js`)
+  const sceneFunc = useMemo(() => sceneImage({ flipX, flipY, mask }), [flipX, flipY, mask]);
   const naturel = tailleNaturelle(image);
   // MÉMOÏSÉ sur des nombres, et c'est ce qui rend le redimensionnement fluide :
   // pendant le geste, le canvas pose le recadrage directement sur le nœud
@@ -85,6 +91,7 @@ const ImageNode = ({
       width={width}
       height={height}
       crop={crop}
+      sceneFunc={sceneFunc}
       {...rest}
     />
   );

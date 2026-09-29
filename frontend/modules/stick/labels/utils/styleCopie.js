@@ -19,18 +19,21 @@ const HORS_STYLE = new Set([
   'dataBinding', 'textOverrides', 'textOverridesSource',
   'cropX', 'cropY', 'cropWidth', 'cropHeight',
   'visible', 'locked', 'shadowExpanded',
+  'flipX', 'flipY', // le miroir est une orientation, pas un style
 ]);
 
 /** Réglages qui ont un sens sur tout élément, quel que soit son type. */
 export const STYLE_COMMUN = [
   'opacity',
   'shadowEnabled', 'shadowColor', 'shadowBlur', 'shadowOffsetX', 'shadowOffsetY', 'shadowOpacity',
-  'blurEnabled', 'blurRadius',
+  'blurEnabled', 'blurRadius', 'blurFade',
 ];
 
 /** La peinture, partagée par le texte et la forme. */
-const PEINTURE = ['fill', 'fillGradient', 'stroke', 'strokeWidth', 'strokeGradient'];
+const PEINTURE = ['fillGradient', 'stroke', 'strokeWidth', 'strokeGradient'];
 const PEINTS = new Set(['text', 'shape']);
+/** Le champ de la couleur de remplissage : `color` pour un texte, `fill` sinon. */
+const champCouleur = (type) => (type === 'text' ? 'color' : 'fill');
 
 /** Le style d'un élément : `{ type, props }`, ou null. */
 export const extraireStyle = (el) => {
@@ -47,9 +50,13 @@ export const styleApplicable = (style, cible) => {
   if (!style || !cible) return {};
   if (style.type === cible.type) return { ...style.props };
   const cles = new Set(STYLE_COMMUN);
-  if (PEINTS.has(style.type) && PEINTS.has(cible.type)) PEINTURE.forEach((c) => cles.add(c));
+  const peints = PEINTS.has(style.type) && PEINTS.has(cible.type);
+  if (peints) PEINTURE.forEach((c) => cles.add(c));
   const maj = {};
   for (const cle of cles) if (cle in style.props) maj[cle] = style.props[cle];
+  // La couleur change de nom d'un type à l'autre (texte `color`, forme `fill`)
+  const source = champCouleur(style.type);
+  if (peints && source in style.props) maj[champCouleur(cible.type)] = style.props[source];
   return maj;
 };
 

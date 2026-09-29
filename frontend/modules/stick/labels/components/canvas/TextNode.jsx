@@ -2,7 +2,7 @@ import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { Text, Rect } from 'react-konva';
 import useLabelStore from '../../store/useLabelStore';
 import { loadGoogleFont } from '../../utils/loadGoogleFont'; // 🎨 Import de la fonction de chargement
-import { remplissage } from '../../utils/fillStyle';
+import { contourTexte, remplissage } from '../../utils/fillStyle';
 import { premiereCouleur } from '../../utils/paint';
 import { texteDeLaFiche } from '../../utils/dataBinding';
 
@@ -40,6 +40,9 @@ const TextNode = ({
   correctionKey = null, // _id du produit affiché, pour corriger un texte lié
   fillGradient = null, // 🌈 dégradé (`utils/paint.js`, ancien { from, to, angle } lu aussi) ou null
   align = 'left', // alignement DANS le bloc : left | center | right | justify
+  stroke = '', // ✏️ contour des lettres (`contourTexte`)
+  strokeWidth = 0,
+  strokeGradient = null,
   shadowEnabled,
   shadowColor,
   shadowOpacity,
@@ -62,13 +65,13 @@ const TextNode = ({
 
   useEffect(() => {
     const node = textRef.current;
-    if (!node || !(highlightEnabled || fillGradient)) return;
+    if (!node || !(highlightEnabled || fillGradient || strokeGradient)) return;
 
     const raf = requestAnimationFrame(() => {
       setBox({ width: node.width(), height: node.height() });
     });
     return () => cancelAnimationFrame(raf);
-  }, [text, fontSize, fontFamily, fontStyle, width, highlightEnabled, fillGradient]);
+  }, [text, fontSize, fontFamily, fontStyle, width, highlightEnabled, fillGradient, strokeGradient]);
 
   // 📐 RE-MESURER le texte et recaler le cadre de sélection. Konva mesure un
   // texte au moment où ses attributs changent : une police Google qui arrive
@@ -79,10 +82,10 @@ const TextNode = ({
     const node = textRef.current;
     if (!node) return;
     node._setTextData?.(); // mesure interne de Konva.Text
-    if (highlightEnabled || fillGradient) setBox({ width: node.width(), height: node.height() });
+    if (highlightEnabled || fillGradient || strokeGradient) setBox({ width: node.width(), height: node.height() });
     node.getStage()?.find('Transformer').forEach((tr) => tr.forceUpdate());
     node.getLayer()?.batchDraw();
-  }, [highlightEnabled, fillGradient]);
+  }, [highlightEnabled, fillGradient, strokeGradient]);
 
   // Toute retouche qui change la taille du texte (police, taille, style,
   // contenu, largeur, alignement) : re-mesure à l'image suivante.
@@ -293,6 +296,7 @@ const TextNode = ({
         fontFamily={fontFamily} // 🎨 Appliquer la police Google Font
         textDecoration={textDecoration} // souligné / barré
         {...remplissage(fillGradient, box.width, box.height, fill)}
+        {...contourTexte(stroke, strokeWidth, strokeGradient, box.width, box.height)}
         rotation={rotation}
         scaleX={scaleX}
         scaleY={scaleY}

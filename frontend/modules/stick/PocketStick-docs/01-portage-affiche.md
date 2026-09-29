@@ -379,3 +379,26 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
     ajouter —, position, angle ou centre et rayon, inverser, préréglages).
 - Gardiens : `styleCopie.test.js`, `paint.test.js`, `effetsImage.test.js`,
   `fillStyle.test.ts` (inchangé sur le fond, comparaisons à la virgule près).
+
+## Miroir, masques, flou dégradé, contour du texte (29 septembre 2026)
+
+- **Miroir et masque d'image** (`flipX`, `flipY`, `mask`) :
+  `utils/imageForme.js`. L'image reste UN `Konva.Image` (redimensionnement et
+  recadrage le manipulent directement) ; c'est son dessin qui change, par une
+  `sceneFunc` : découpe à la forme du masque, repère retourné, puis
+  `Konva.Image._sceneFunc`. Même fonction pour l'export planche ; l'export du
+  canvas cloné la reçoit avec le clone. Les huit formes sont celles de
+  PocketStick (`store/masks.js`), réécrites en chemins 100 × 100 étirés sur le
+  cadre. Le miroir porte sur ce que montre le cadre (recadrage compris) et
+  n'est pas un style copiable ; le masque l'est.
+  ⚠️ La zone cliquable reste le rectangle ; l'ombre est découpée avec l'image.
+- **Flou dégradé** (`blurFade: { angle, from, to }`) : net avant `from`, flou
+  complet après `to`, le long de l'angle (convention CSS des dégradés).
+  Un filtre maison dans `utils/effetsKonva.js` : `Konva.Filters.Blur` sur une
+  copie, mêlée pixel par pixel à l'image nette (fondu lissé, `poidsFondu`).
+- **Contour du texte** (`stroke`, `strokeWidth`, `strokeGradient`) :
+  `contourTexte` (`utils/fillStyle.js`), canvas et export. Remplissage APRÈS le
+  contour (`fillAfterStrokeEnabled`) : le trait entoure les lettres sans les
+  ronger. Dégradé linéaire seulement, comme tout contour. À l'export planche,
+  l'épaisseur suit l'échelle de la cellule.
+- Gardien : `imageForme.test.js`.

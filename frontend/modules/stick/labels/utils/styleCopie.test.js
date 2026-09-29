@@ -4,7 +4,7 @@ import { extraireStyle, reordonner, styleApplicable } from './styleCopie';
 
 const texte = {
   id: 't', type: 'text', x: 10, y: 20, width: 100, text: 'Bonjour', dataBinding: 'name',
-  fontSize: 30, fontFamily: 'Roboto', fill: '#ff0000', stroke: '#000', strokeWidth: 2,
+  fontSize: 30, fontFamily: 'Roboto', color: '#ff0000', stroke: '#000', strokeWidth: 2,
   opacity: 0.5, shadowEnabled: true, shadowBlur: 4, visible: true, locked: false,
 };
 const forme = { id: 'f', type: 'shape', shape: 'rectangle', x: 0, y: 0, width: 50, height: 50, fill: '#00f' };
@@ -14,7 +14,7 @@ describe('extraireStyle', () => {
   it('garde le style, jamais la géométrie, le contenu ni le lien au produit', () => {
     const { type, props } = extraireStyle(texte);
     expect(type).toBe('text');
-    expect(props).toMatchObject({ fontSize: 30, fontFamily: 'Roboto', fill: '#ff0000', opacity: 0.5 });
+    expect(props).toMatchObject({ fontSize: 30, fontFamily: 'Roboto', color: '#ff0000', opacity: 0.5 });
     for (const cle of ['id', 'x', 'y', 'width', 'text', 'dataBinding', 'visible', 'locked']) {
       expect(props).not.toHaveProperty(cle);
     }
@@ -32,6 +32,12 @@ describe('styleApplicable', () => {
     const maj = styleApplicable(extraireStyle(texte), forme);
     expect(maj).toMatchObject({ fill: '#ff0000', stroke: '#000', strokeWidth: 2, opacity: 0.5, shadowBlur: 4 });
     expect(maj).not.toHaveProperty('fontSize');
+    expect(maj).not.toHaveProperty('color');
+  });
+  it('forme → texte : la couleur de remplissage devient la couleur du texte', () => {
+    const maj = styleApplicable(extraireStyle(forme), texte);
+    expect(maj.color).toBe('#00f');
+    expect(maj).not.toHaveProperty('fill');
   });
   it('texte → image : seulement les réglages communs', () => {
     const maj = styleApplicable(extraireStyle(texte), image);

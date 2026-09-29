@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import Konva from 'konva';
 import { appliquerEffets } from './effetsKonva';
 import { dessinerQR } from './qrImage';
+import { sceneImage } from './imageForme';
 import useLabelStore from '../store/useLabelStore';
 import {
   resolvePropForElement,
@@ -10,7 +11,7 @@ import {
   resolveTemplate,
   formatPriceEUR,
 } from '../utils/dataBinding';
-import { remplissage } from './fillStyle';
+import { contourTexte, remplissage } from './fillStyle';
 import { konvaCrop } from './crop';
 import { dessinerCodeBarres } from './barcodeCanvas';
 import { construireFiche } from './ficheKonva';
@@ -224,6 +225,17 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
           remplissage(el.fillGradient, texte.width(), texte.height(), el.color ?? '#000000')
         );
       }
+      // ✏️ Contour des lettres, même règle que le canvas ; l'épaisseur suit
+      // l'échelle de la cellule (le texte est dessiné à l'échelle, pas groupé)
+      texte.setAttrs(
+        contourTexte(
+          el.stroke,
+          (Number(el.strokeWidth) || 0) * scale,
+          el.strokeGradient,
+          texte.width(),
+          texte.height()
+        )
+      );
       if (!el.highlightEnabled) return texte;
       // 🖍️ Surlignage (stabilo), dessiné DERRIÈRE le texte comme à l'écran
       const groupe = new Konva.Group({ listening: false });
@@ -393,6 +405,8 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
           opacity: el.opacity ?? 1,
           listening: false,
           ...shadowProps(el),
+          // Miroir et masque, même dessin que le canvas
+          ...(sceneImage(el) ? { sceneFunc: sceneImage(el) } : {}),
         });
       } catch (err) {
         console.error('❌ Image loading failed in exportPdfSheet:', src, err);
