@@ -285,3 +285,8 @@ du portage.
 6. **Remplacer `ui/ConfirmModal.jsx`** par l'`AlertDialog` du dépôt.
 7. **Aligner le style** (Biome) : le code porté n'a **pas** été formaté, pour
    que le diff avec AppPos reste lisible tant que le portage est frais.
+
+## Suite
+
+Les produits affichés suivent la base depuis le 29 septembre 2026 :
+[`02-produits-vivants.md`](02-produits-vivants.md).

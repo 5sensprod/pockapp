@@ -250,3 +250,28 @@ export const resolvePropForElement = (elProp, el, product) => {
   // 3) brut
   return elProp;
 };
+
+/**
+ * 🧾 Le texte que la FICHE donnerait, sans la correction manuelle.
+ */
+export const texteDeLaFiche = (el, product) => {
+  if (!el?.dataBinding || !product) return undefined;
+  const v = resolvePropForElement(el.text, { ...el, textOverrides: undefined }, product);
+  return v == null ? '' : String(v);
+};
+
+/**
+ * ⚠️ La fiche a-t-elle changé depuis la correction manuelle ?
+ * `el.textOverridesSource[_id]` mémorise le texte de la fiche AU MOMENT de la
+ * correction. La correction l'emporte toujours ; on rend seulement le NOUVEAU
+ * texte de la fiche s'il diffère, pour le signaler. Une correction antérieure
+ * à ce mémo (template ancien) ne signale rien : on ne sait pas d'où elle part.
+ */
+export const ficheChangeeDepuisCorrection = (el, product) => {
+  const id = product?._id;
+  if (!id || texteCorrige(el, product) === undefined) return undefined;
+  const source = el?.textOverridesSource?.[id];
+  if (typeof source !== 'string') return undefined;
+  const actuel = texteDeLaFiche(el, product);
+  return actuel !== undefined && actuel !== source ? actuel : undefined;
+};

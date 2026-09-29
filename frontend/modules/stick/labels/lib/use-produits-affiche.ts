@@ -18,7 +18,11 @@ import { useCatalogProducts } from '@/lib/queries/catalog-products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useEffect, useMemo, useState } from 'react'
-import { type ProduitAffiche, versProduitAffiche } from './produit-adapte'
+import {
+	type ContexteProduitAffiche,
+	type ProduitAffiche,
+	versProduitAffiche,
+} from './produit-adapte'
 
 const PAR_PAGE = 20
 
@@ -37,9 +41,7 @@ export function useProduitsAffiche(options: {
 	isTyping: boolean
 } {
 	const { terme, page, enabled = true } = options
-	const pb = usePocketBase()
 	const { activeCompanyId } = useActiveCompany()
-	const jour = useJourServeur()
 
 	// L'anti-rebond est ici, comme dans `useCatalogProductSearch` : 300 ms, la
 	// même valeur que `ProductsPage`.
@@ -57,22 +59,7 @@ export function useProduitsAffiche(options: {
 		search: debounced.trim() || undefined,
 	})
 
-	const brands = useBrands({ companyId })
-	const suppliers = useSuppliers({ companyId })
-
-	const ctx = useMemo(() => {
-		const brandById = new Map<string, string>()
-		for (const b of brands.data ?? []) brandById.set(b.id, b.name)
-		const supplierById = new Map<string, string>()
-		for (const s of suppliers.data ?? []) supplierById.set(s.id, s.name)
-		return {
-			brandById,
-			supplierById,
-			fileUrl: (record: Parameters<typeof pb.files.getUrl>[0], nom: string) =>
-				pb.files.getUrl(record, nom),
-			jour,
-		}
-	}, [brands.data, suppliers.data, pb, jour])
+	const ctx = useContexteAffiche()
 
 	const produits = useMemo(
 		() => (requete.data?.items ?? []).map((p) => versProduitAffiche(p, ctx)),
@@ -87,4 +74,33 @@ export function useProduitsAffiche(options: {
 		error: requete.error ? String(requete.error) : null,
 		isTyping: debounced !== terme,
 	}
+}
+
+/**
+ * Ce que la projection lit en plus du produit : noms des marques et des
+ * fournisseurs, URL des fichiers, jour du serveur. Tiré des requêtes VIVANTES
+ * `brands` / `suppliers` : une marque renommée ailleurs, invalidée par le
+ * temps réel, change ce contexte, donc la projection.
+ */
+export function useContexteAffiche(): ContexteProduitAffiche {
+	const pb = usePocketBase()
+	const { activeCompanyId } = useActiveCompany()
+	const jour = useJourServeur()
+	const companyId = activeCompanyId ?? undefined
+	const brands = useBrands({ companyId })
+	const suppliers = useSuppliers({ companyId })
+
+	return useMemo(() => {
+		const brandById = new Map<string, string>()
+		for (const b of brands.data ?? []) brandById.set(b.id, b.name)
+		const supplierById = new Map<string, string>()
+		for (const s of suppliers.data ?? []) supplierById.set(s.id, s.name)
+		return {
+			brandById,
+			supplierById,
+			fileUrl: (record: Parameters<typeof pb.files.getUrl>[0], nom: string) =>
+				pb.files.getUrl(record, nom),
+			jour,
+		}
+	}, [brands.data, suppliers.data, pb, jour])
 }

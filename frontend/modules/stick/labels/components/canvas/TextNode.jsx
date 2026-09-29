@@ -3,6 +3,7 @@ import { Text, Rect } from 'react-konva';
 import useLabelStore from '../../store/useLabelStore';
 import { loadGoogleFont } from '../../utils/loadGoogleFont'; // 🎨 Import de la fonction de chargement
 import { remplissage } from '../../utils/fillStyle';
+import { texteDeLaFiche } from '../../utils/dataBinding';
 
 /**
  * Text Konva avec édition inline au double-clic (overlay <textarea>).
@@ -124,9 +125,16 @@ const TextNode = ({
       // Texte lié : rien n'est écrit si le vendeur n'a rien changé, sinon une
       // simple ouverture/fermeture figerait la valeur de la fiche.
       if (value === text) return;
-      const el = useLabelStore.getState().elements.find((e) => e.id === id);
+      const { elements, selectedProduct } = useLabelStore.getState();
+      const el = elements.find((e) => e.id === id);
+      // On mémorise le texte de la fiche au moment de la correction : s'il
+      // change ensuite (temps réel), le panneau le signale sans rien écraser.
+      const source = texteDeLaFiche(el, selectedProduct);
       updateElement(id, {
         textOverrides: { ...(el?.textOverrides || {}), [correctionKey]: value },
+        ...(source !== undefined && {
+          textOverridesSource: { ...(el?.textOverridesSource || {}), [correctionKey]: source },
+        }),
       });
     },
     [id, updateElement, dataBinding, correctionKey, text]

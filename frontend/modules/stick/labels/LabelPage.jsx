@@ -9,6 +9,7 @@ import DataSourceSelector from './components/DataSourceSelector';
 import ProductSelector from './components/ProductSelector';
 import useLabelStore from './store/useLabelStore';
 import { toast } from 'sonner';
+import { useSynchroProduitsAffiche } from './lib/use-synchro-produits-affiche';
 
 export const LabelPage = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -20,6 +21,10 @@ export const LabelPage = () => {
     setSelectedProducts,
     clearCanvas,
   } = useLabelStore();
+  // Les produits du canvas suivent la base (temps réel, retour sur la page).
+  useSynchroProduitsAffiche();
+  const produitsDisparus = useLabelStore((s) => s.produitsDisparus);
+  const retirerProduitsDisparus = useLabelStore((s) => s.retirerProduitsDisparus);
 
   // Si des produits arrivent déjà depuis ProductTable, on saute le sélecteur
   const [showDataSourceSelector, setShowDataSourceSelector] = useState(
@@ -183,6 +188,22 @@ export const LabelPage = () => {
         onOpenEffects={handleOpenEffects}
         onSave={handleSaveTemplate}
       />
+
+      {produitsDisparus.length > 0 && (
+        <div className="shrink-0 flex items-center gap-3 px-4 py-2 text-sm bg-amber-50 text-amber-800 border-b border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
+          <span>
+            {produitsDisparus.length === 1
+              ? "Un produit affiché n'existe plus dans le catalogue : sa dernière valeur connue reste affichée."
+              : `${produitsDisparus.length} produits affichés n'existent plus dans le catalogue : leur dernière valeur connue reste affichée.`}
+          </span>
+          <button
+            onClick={retirerProduitsDisparus}
+            className="px-2 py-1 text-xs border border-amber-300 rounded-lg hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/40"
+          >
+            Les retirer
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         {/* 🆕 ToolsSidebar avec stageRef pour TemplateManager */}

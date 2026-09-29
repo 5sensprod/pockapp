@@ -29,7 +29,7 @@ import { alignOffsets, distributeOffsets, unionBoxes } from '../utils/layout';
 import FontSelector from './FontSelector';
 import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
-import { resolvePropForElement, texteCorrige } from '../utils/dataBinding';
+import { resolvePropForElement, texteCorrige, ficheChangeeDepuisCorrection } from '../utils/dataBinding';
 import { resetCropAttrs } from '../utils/crop';
 import { geometrieImage } from './canvas/CropOverlay';
 import { SECTIONS_FICHE, sectionParId } from '../utils/ficheProduit';
@@ -215,11 +215,15 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
 
   // ✏️ Correction manuelle d'un texte lié, pour le produit affiché
   const correction = isText && selectedElement.dataBinding ? texteCorrige(selectedElement, canvasProduct) : undefined;
+  // ⚠️ La fiche a changé depuis la correction (prix, nom… modifiés ailleurs)
+  const ficheChangee =
+    correction !== undefined ? ficheChangeeDepuisCorrection(selectedElement, canvasProduct) : undefined;
   const resetCorrection = () => {
     const id = canvasProduct?._id;
     if (!id) return;
     const { [id]: _retire, ...reste } = selectedElement.textOverrides || {};
-    updateElement(selectedId, { textOverrides: reste });
+    const { [id]: _source, ...resteSource } = selectedElement.textOverridesSource || {};
+    updateElement(selectedId, { textOverrides: reste, textOverridesSource: resteSource });
   };
 
   /** 🎨 Changement de police pour les textes */
@@ -987,6 +991,14 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                   >
                     Texte d'origine
                   </button>
+                )}
+                {isText && ficheChangee !== undefined && (
+                  <span
+                    className="px-2 py-1 text-xs rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 max-w-[16rem] truncate"
+                    title={`La fiche a changé depuis la correction. Elle dit maintenant : « ${ficheChangee} ». La correction reste affichée.`}
+                  >
+                    ⚠ Fiche modifiée : « {ficheChangee} »
+                  </span>
                 )}
               </div>
             </>

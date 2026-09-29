@@ -18,6 +18,45 @@ export const idsSelectionnes = (state) => {
   );
 };
 
+// ── LES PRODUITS AFFICHÉS : DES IDENTIFIANTS, PAS DES COPIES ────────────────
+// La source de vérité est `selectedProductIds` (id PocketBase = `_id` de
+// `ProduitAffiche`). `produitsParId` n'est qu'un CACHE de la dernière
+// projection connue, réécrit par `synchroniserProduits` à chaque relecture
+// (`lib/use-synchro-produits-affiche.ts`, invalidée par le temps réel du
+// catalogue). `selectedProducts` / `selectedProduct` sont DÉRIVÉS des deux,
+// jamais posés directement : ils restent là parce que vingt lecteurs portés
+// d'AppPos — et les exports, par `getState()` — les lisent tels quels.
+// Voir `PocketStick-docs/02-produits-vivants.md`.
+
+/** Recalcule la forme lue par le canvas à partir des ids et du cache. */
+export const deriverProduits = (ids, parId, index) => {
+  const selectedProducts = ids.map((id) => parId[id]).filter(Boolean);
+  const i = Math.max(0, Math.min(index ?? 0, Math.max(0, ids.length - 1)));
+  return {
+    selectedProducts,
+    selectedProduct: parId[ids[i]] ?? null,
+    currentProductIndex: i,
+  };
+};
+
+/** Pose une sélection à partir d'objets `ProduitAffiche` (sélecteur, template). */
+const selectionDepuis = (products) => {
+  const liste = (Array.isArray(products) ? products : products ? [products] : []).filter(
+    (p) => p && typeof p === 'object' && p._id
+  );
+  const ids = liste.map((p) => p._id).filter((id, i, arr) => arr.indexOf(id) === i);
+  const parId = {};
+  for (const p of liste) parId[p._id] = p;
+  return {
+    selectedProductIds: ids,
+    produitsParId: parId,
+    produitsDisparus: [],
+    ...deriverProduits(ids, parId, 0),
+  };
+};
+
+const memeProduit = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
 const useLabelStore = create((set, get) => ({
   // --- état principal
   elements: [],
@@ -30,6 +69,12 @@ const useLabelStore = create((set, get) => ({
   // de sélection termine le recadrage.
   cropId: null,
   dataSource: null,
+  selectedProductIds: [],
+  produitsParId: {},
+  /** Ids que la dernière relecture n'a plus rendus : produits supprimés. Leur
+   *  dernière valeur connue reste affichée ; `LabelPage` avertit. */
+  produitsDisparus: [],
+  // Dérivés — voir `deriverProduits`. Ne jamais les poser à la main.
   selectedProduct: null,
   selectedProducts: [],
   currentProductIndex: 0, // 🆕 Index du produit actuellement affiché
@@ -237,73 +282,86 @@ const useLabelStore = create((set, get) => ({
 
   // --- data (ne pollue pas l'historique des éléments)
   setDataSource: (source, product = null) =>
+    set({ dataSource: source, ...selectionDepuis(product) }),
+
+  setSelectedProducts: (products) => set(selectionDepuis(products)),
+
+  /**
+   * Relecture des produits affichés (temps réel, retour sur la page). Remplace
+   * la projection des ids encore présents ; les `disparus` gardent leur
+   * dernière valeur. Un produit inchangé garde SA référence : le canvas ne
+   * rerend pas pour rien, et rien n'est remonté — les clés Konva ne dépendent
+   * que de l'élément et de l'index (`KonvaCanvas.jsx`).
+   */
+  synchroniserProduits: (produits, disparus = []) =>
     set((state) => {
-      if (Array.isArray(product)) {
-        return {
-          dataSource: source,
-          selectedProducts: product,
-          selectedProduct: product.length > 0 ? product[0] : null,
-          currentProductIndex: 0, // 🆕 Réinitialiser l'index
-        };
+      const ids = state.selectedProductIds;
+      const parId = { ...state.produitsParId };
+      let change = false;
+      for (const p of produits ?? []) {
+        if (!p?._id || !ids.includes(p._id)) continue;
+        if (!memeProduit(parId[p._id], p)) {
+          parId[p._id] = p;
+          change = true;
+        }
       }
-      if (product && typeof product === 'object') {
-        return {
-          dataSource: source,
-          selectedProducts: [product],
-          selectedProduct: product,
-          currentProductIndex: 0, // 🆕 Réinitialiser l'index
-        };
-      }
+      const perdus = (disparus ?? []).filter((id) => ids.includes(id));
+      const disparusChange =
+        perdus.length !== state.produitsDisparus.length ||
+        perdus.some((id, i) => state.produitsDisparus[i] !== id);
+      if (!change && !disparusChange) return {};
       return {
-        dataSource: source,
-        selectedProducts: [],
-        selectedProduct: null,
-        currentProductIndex: 0, // 🆕 Réinitialiser l'index
+        produitsParId: parId,
+        produitsDisparus: perdus,
+        ...(change ? deriverProduits(ids, parId, state.currentProductIndex) : {}),
       };
     }),
 
-  setSelectedProducts: (products) =>
-    set({
-      selectedProducts: Array.isArray(products) ? products : [],
-      selectedProduct: Array.isArray(products) && products.length > 0 ? products[0] : null,
-      currentProductIndex: 0, // 🆕 Réinitialiser l'index
+  /** Retire de la sélection les produits qui n'existent plus. */
+  retirerProduitsDisparus: () =>
+    set((state) => {
+      if (!state.produitsDisparus.length) return {};
+      const retires = new Set(state.produitsDisparus);
+      const courant = state.selectedProductIds[state.currentProductIndex];
+      const ids = state.selectedProductIds.filter((id) => !retires.has(id));
+      const parId = {};
+      for (const id of ids) if (state.produitsParId[id]) parId[id] = state.produitsParId[id];
+      const index = Math.max(0, ids.indexOf(courant));
+      return {
+        selectedProductIds: ids,
+        produitsParId: parId,
+        produitsDisparus: [],
+        ...deriverProduits(ids, parId, index),
+      };
     }),
 
   // 🆕 Navigation entre produits
   goToNextProduct: () =>
     set((state) => {
-      const products = state.selectedProducts;
-      if (!Array.isArray(products) || products.length <= 1) return {};
-
-      const nextIndex = (state.currentProductIndex + 1) % products.length;
-      return {
-        currentProductIndex: nextIndex,
-        selectedProduct: products[nextIndex],
-      };
+      const n = state.selectedProductIds.length;
+      if (n <= 1) return {};
+      return deriverProduits(
+        state.selectedProductIds,
+        state.produitsParId,
+        (state.currentProductIndex + 1) % n
+      );
     }),
 
   goToPreviousProduct: () =>
     set((state) => {
-      const products = state.selectedProducts;
-      if (!Array.isArray(products) || products.length <= 1) return {};
-
-      const prevIndex = (state.currentProductIndex - 1 + products.length) % products.length;
-      return {
-        currentProductIndex: prevIndex,
-        selectedProduct: products[prevIndex],
-      };
+      const n = state.selectedProductIds.length;
+      if (n <= 1) return {};
+      return deriverProduits(
+        state.selectedProductIds,
+        state.produitsParId,
+        (state.currentProductIndex - 1 + n) % n
+      );
     }),
 
   goToProductIndex: (index) =>
     set((state) => {
-      const products = state.selectedProducts;
-      if (!Array.isArray(products) || products.length === 0) return {};
-
-      const clampedIndex = Math.max(0, Math.min(index, products.length - 1));
-      return {
-        currentProductIndex: clampedIndex,
-        selectedProduct: products[clampedIndex],
-      };
+      if (state.selectedProductIds.length === 0) return {};
+      return deriverProduits(state.selectedProductIds, state.produitsParId, index);
     }),
 
   startNewDocument: (source = 'blank') =>
@@ -314,8 +372,7 @@ const useLabelStore = create((set, get) => ({
         selectedId: null,
         extraIds: [],
         cropId: null,
-        selectedProducts: [],
-        selectedProduct: null,
+        ...selectionDepuis(null),
         dataSource: source,
         currentTemplateName: 'Nouveau',
         currentTemplateId: null,
@@ -340,8 +397,7 @@ const useLabelStore = create((set, get) => ({
         selectedId: null,
         extraIds: [],
         cropId: null,
-        selectedProducts: [],
-        selectedProduct: null,
+        ...selectionDepuis(null),
       };
     }),
 
