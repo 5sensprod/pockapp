@@ -31,13 +31,24 @@ l'identique » : le lot 0 copie, les lots suivants améliorent.
 
 ## Défauts CONSERVÉS au lot 0 (à corriger ensuite)
 
-1. Perf : le tableau est recopié à chaque mouvement et l'aperçu recalcule tout
-   le contour (`DessinCalque.jsx`, `move` et `<Path>`) : coût quadratique.
+1. ~~Perf~~ — corrigé au lot 1, ci-dessous.
 2. Pression simulée par la vitesse (`strokeOutline`, `simulatePressure`),
    souris et tactile seulement.
 3. Aucun filtrage des points ; « Adoucir » pilote aussi le streamline.
 4. Pas d'effilement.
 5. Surligneur = 30 px et 50 % d'opacité, sans fusion.
+
+## Lot 1 — perf (fait)
+
+`DessinCalque.jsx` : les points sont ajoutés EN PLACE dans une ref (plus de
+copie du tableau par mouvement), et l'aperçu est un `Path` toujours monté,
+caché hors tracé, dont `dessiner` pose la géométrie au plus une fois par image
+(`requestAnimationFrame`) puis `batchDraw` — aucun rendu React pendant le
+tracé. Les réglages sont lus par une ref, à jour même au milieu d'un trait.
+
+Ce qui reste : `strokeOutline` recalcule tout le contour à chaque IMAGE (et
+non plus à chaque événement) — linéaire par image, donc supportable ; le lot 3
+(distance minimale entre points) réduira encore n.
 
 ## Lots suivants
 
