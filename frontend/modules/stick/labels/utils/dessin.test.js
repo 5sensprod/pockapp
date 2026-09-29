@@ -14,6 +14,7 @@ import {
   pointUtile,
   simplifier,
   fusionDe,
+  redessiner,
 } from './dessin';
 
 describe('dessin : tracé → contour', () => {
@@ -201,5 +202,48 @@ describe('dessin : fusion du surligneur (lot 5)', () => {
     expect(dessinTrace(el).globalCompositeOperation).toBe('multiply');
     expect(dessinTrace({ ...el, fusion: null }).globalCompositeOperation).toBe('source-over');
     expect(fusionDe({ fusion: 'destination-out' })).toBe('source-over');
+  });
+});
+
+describe('dessin : redessiner un trait (lot 6)', () => {
+  const pts = [{ x: 100, y: 100 }, { x: 140, y: 130 }, { x: 200, y: 110 }];
+  const opts = { stroke: '#000', strokeWidth: 6, smoothing: 0.5, thinning: 0 };
+  // Position d'un point sur la PAGE : x/y, puis échelle et rotation du nœud
+  const surPage = (el) => {
+    const a = ((el.rotation || 0) * Math.PI) / 180;
+    return pointsDe(el).map((p) => {
+      const lx = p.x * (el.scaleX || 1);
+      const ly = p.y * (el.scaleY || 1);
+      return { x: el.x + lx * Math.cos(a) - ly * Math.sin(a), y: el.y + lx * Math.sin(a) + ly * Math.cos(a) };
+    });
+  };
+  const proches = (a, b) => a.forEach((p, i) => {
+    expect(p.x).toBeCloseTo(b[i].x, 6);
+    expect(p.y).toBeCloseTo(b[i].y, 6);
+  });
+
+  it('mêmes réglages : rien ne bouge', () => {
+    const el = elementDessin(pts, opts);
+    expect(redessiner(el, {})).toMatchObject({ x: el.x, y: el.y, width: el.width, height: el.height, points: el.points });
+  });
+  it('plus épais : le cadre grandit, les points restent au même endroit de la page', () => {
+    const el = elementDessin(pts, opts);
+    const maj = { ...el, ...redessiner(el, { strokeWidth: 40 }) };
+    expect(maj.strokeWidth).toBe(40);
+    expect(maj.width).toBeGreaterThan(el.width);
+    proches(surPage(maj), surPage(el));
+    // et le cadre est celui qu'aurait eu un trait créé épais
+    expect(maj.width).toBe(elementDessin(pts, { ...opts, strokeWidth: 40 }).width);
+  });
+  it('tourné et mis à l’échelle : le trait ne bouge pas non plus', () => {
+    const el = { ...elementDessin(pts, opts), rotation: 35, scaleX: 1.5, scaleY: 0.8 };
+    const maj = { ...el, ...redessiner(el, { strokeWidth: 30, effilementFin: 1 }) };
+    proches(surPage(maj), surPage(el));
+  });
+  it('les pressions et la simplification ne sont pas touchées', () => {
+    const el = elementDessin(pts.map((p) => ({ ...p, pressure: 0.3 })), { ...opts, pression: true });
+    const u = redessiner(el, { strokeWidth: 20, simplification: 1 });
+    expect(u).not.toHaveProperty('pressions');
+    expect(u.points).toHaveLength(el.points.length);
   });
 });

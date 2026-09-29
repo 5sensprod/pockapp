@@ -234,6 +234,39 @@ export const elementDessin = (brut, options) => {
   };
 };
 
+/** Réglages de tracé qu'un trait existant peut changer (lot 6). */
+export const REGLAGES_TRACE = ['strokeWidth', 'smoothing', 'thinning', 'stabilisation', 'effilementDebut', 'effilementFin'];
+
+/**
+ * REDESSINER un trait avec d'autres réglages (lot 6) : les points gardés
+ * sont repassés par `strokeOutline`. Le contour change de taille, donc le
+ * cadre aussi : il est recalculé (contour + 1 px, comme à la création), les
+ * points sont décalés d'autant — un nombre entier, ils restent exacts — et
+ * `x`/`y` bougent du même décalage, tourné et mis à l'échelle comme le nœud :
+ * le trait ne bouge pas à l'écran. La simplification n'est PAS rejouée :
+ * elle retirerait des points pour de bon.
+ * @returns les mises à jour à passer à `updateElement`, ou null
+ */
+export const redessiner = (el, maj) => {
+  const pts = pointsDe(el);
+  if (pts.length < 2) return null;
+  const r = { ...reglagesDe(el), ...maj };
+  const box = getBoundingBox(strokeOutline(pts, r));
+  const dx = Math.floor(box.x) - 1;
+  const dy = Math.floor(box.y) - 1;
+  const a = ((el.rotation || 0) * Math.PI) / 180;
+  const ox = dx * (el.scaleX || 1);
+  const oy = dy * (el.scaleY || 1);
+  return {
+    ...maj,
+    x: (el.x || 0) + ox * Math.cos(a) - oy * Math.sin(a),
+    y: (el.y || 0) + ox * Math.sin(a) + oy * Math.cos(a),
+    width: Math.ceil(box.x + box.width) + 1 - dx,
+    height: Math.ceil(box.y + box.height) + 1 - dy,
+    points: pts.flatMap((p) => [round(p.x - dx), round(p.y - dy)]),
+  };
+};
+
 // Le contour ne dépend que des points et des réglages : mis en cache par
 // tableau de points (un élément modifié en reçoit un nouveau par le store).
 const cache = new WeakMap();

@@ -63,6 +63,12 @@ l'ancien comportement — aucun template ne change d'aspect. Le dessin passe par
 toucher. Les onglets fusionnés de la barre latérale partagent
 `templates/OngletsPanneau.jsx`. La source de référence de PocketStick est
 **`I:\PocketStick`** (Konva 10 + MobX).
+L'**outil Dessin** (29 septembre 2026,
+[`05-dessin.md`](frontend/modules/stick/PocketStick-docs/05-dessin.md)) crée
+des éléments `dessin` qui GARDENT leurs points ; `dessinTrace`
+(`utils/dessin.js`) est la seule règle de rendu, canvas et export planche. La
+fusion du surligneur va sur le Path à l'écran mais sur le GROUPE dans
+l'export planche — c'est lui que les effets mettent en cache.
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation

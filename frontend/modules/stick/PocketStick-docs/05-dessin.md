@@ -132,9 +132,20 @@ formes. L'export planche reçoit les mêmes props.
 - L'aperçu du tracé est dans le même calque que le document : il fusionne
   déjà pendant qu'on dessine.
 
-## Lots suivants
+## Lot 6 — redessiner un trait (fait)
 
-1 perf (points en place, rAF) · 2 Pointer Events et pression du stylet ·
-3 courbe assistée (distance minimale, Ramer-Douglas-Peucker, Adoucir séparé,
-Maj = trait droit) · 4 effilement · 5 surligneur en `multiply` (à vérifier
-avec le cache des effets) · 6 redessiner/recolorer dans les Propriétés.
+- Recolorer était acquis dès le lot 0 (`fill`, puis `fillGradient` par la
+  barre du haut).
+- `redessiner(el, maj)` (pur, testé) rejoue les points GARDÉS avec d'autres
+  réglages : épaisseur, adoucir, stabiliser, épaisseur variable, effilements
+  (`REGLAGES_TRACE`). Le contour change de taille : le cadre est recalculé
+  comme à la création, les points décalés d'un nombre entier (ils restent
+  exacts), et `x`/`y` du même décalage TOURNÉ et mis à l'échelle comme le
+  nœud — le trait ne bouge pas sur la page, rotation et échelle comprises.
+  La simplification n'est pas rejouée : elle retirerait des points pour de bon.
+- Onglet Dessin, trait sélectionné : bloc « Redessiner le trait ». Un curseur
+  tenu = une étape d'historique (mêmes clés à chaque mise à jour,
+  `gesteHistorique.js`). « Reprendre ces réglages pour le pinceau » copie le
+  trait dans les réglages de l'outil.
+
+Les six lots de la revue sont faits.

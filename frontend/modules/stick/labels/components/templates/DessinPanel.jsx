@@ -7,7 +7,15 @@
 
 import React, { useEffect } from 'react';
 import useLabelStore from '../../store/useLabelStore';
-import { brushOptions, fusionDe, STROKE_WIDTH_RANGE, VARIATIONS } from '../../utils/dessin';
+import {
+  brushOptions,
+  DRAW_DEFAULTS,
+  fusionDe,
+  redessiner,
+  REGLAGES_TRACE,
+  STROKE_WIDTH_RANGE,
+  VARIATIONS,
+} from '../../utils/dessin';
 
 const OUTILS = [
   { id: 'selection', label: 'Sélection' },
@@ -51,10 +59,29 @@ const Couleur = ({ label, valeur, onValeur }) => (
   </label>
 );
 
-// Tracé sélectionné : couleur et opacité.
+// Tracé sélectionné : couleur, opacité, fusion — et, depuis le lot 6, ses
+// réglages de tracé, rejoués sur les points gardés (`redessiner`).
 const TraceSelectionne = ({ el }) => {
   const updateElement = useLabelStore((s) => s.updateElement);
+  const setReglagesDessin = useLabelStore((s) => s.setReglagesDessin);
   const set = (attrs) => updateElement(el.id, attrs);
+  // Un curseur tenu = un geste d'historique : les clés envoyées sont toujours les mêmes
+  const retracer = (maj) => {
+    const updates = redessiner(el, maj);
+    if (updates) set(updates);
+  };
+  const pourcent = (cle) => (v) => retracer({ [cle]: borne(v, 0, 100) / 100 });
+  const val = (v, defaut = 0) => Math.round((Number.isFinite(v) ? v : defaut) * 100);
+  const doux = Number.isFinite(el.smoothing) ? el.smoothing : DRAW_DEFAULTS.smoothing;
+  // Le pinceau reprend les réglages de ce trait
+  const reprendre = () =>
+    setReglagesDessin({
+      stroke: el.fill ?? DRAW_DEFAULTS.stroke,
+      opacity: Number.isFinite(el.opacity) ? el.opacity : 1,
+      brushType: el.brushType ?? 'brush',
+      ...Object.fromEntries(REGLAGES_TRACE.filter((c) => Number.isFinite(el[c])).map((c) => [c, el[c]])),
+      ...(Number.isFinite(el.stabilisation) ? {} : { stabilisation: 0.7 * doux }),
+    });
   return (
     <div className="space-y-3">
       <Couleur label="Couleur du tracé" valeur={el.fill ?? '#000000'} onValeur={(v) => set({ fill: v })} />
@@ -75,6 +102,28 @@ const TraceSelectionne = ({ el }) => {
           className="accent-purple-600"
         />
       </label>
+      <div className="pt-2 border-t border-gray-200 dark:border-gray-700 space-y-3">
+        <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Redessiner le trait</div>
+        <Reglage
+          label="Épaisseur"
+          valeur={el.strokeWidth ?? DRAW_DEFAULTS.strokeWidth}
+          min={STROKE_WIDTH_RANGE[0]}
+          max={STROKE_WIDTH_RANGE[1]}
+          onValeur={(v) => retracer({ strokeWidth: borne(Math.round(v), ...STROKE_WIDTH_RANGE) })}
+        />
+        <Reglage label="Adoucir (%)" valeur={val(el.smoothing, DRAW_DEFAULTS.smoothing)} min={0} max={100} onValeur={pourcent('smoothing')} />
+        <Reglage label="Stabiliser (%)" valeur={val(el.stabilisation, 0.7 * doux)} min={0} max={100} onValeur={pourcent('stabilisation')} />
+        <Reglage label="Épaisseur variable (%)" valeur={val(el.thinning)} min={0} max={100} onValeur={pourcent('thinning')} />
+        <Reglage label="Effiler le début (%)" valeur={val(el.effilementDebut)} min={0} max={100} onValeur={pourcent('effilementDebut')} />
+        <Reglage label="Effiler la fin (%)" valeur={val(el.effilementFin)} min={0} max={100} onValeur={pourcent('effilementFin')} />
+        <button
+          type="button"
+          onClick={reprendre}
+          className="w-full px-2 py-1.5 text-xs rounded border bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600"
+        >
+          Reprendre ces réglages pour le pinceau
+        </button>
+      </div>
     </div>
   );
 };
