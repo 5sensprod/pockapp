@@ -75,3 +75,17 @@ describe('fondu du masque', () => {
     expect(sceneImage({ maskFeather: 5 })).toBeTypeOf('function');
   });
 });
+
+describe('réglages de masque (image et forme)', () => {
+  it('null sans masque ; sinon forme, retrait, fondu, texture bornés', async () => {
+    const { reglagesMasque } = await import('./imageForme');
+    expect(reglagesMasque({ type: 'shape' })).toBeNull();
+    expect(reglagesMasque({ mask: 'star', maskPadding: 10, maskFeather: 99 })).toMatchObject({
+      masque: { id: 'star' },
+      p: 0.1,
+      f: 0.25,
+      texture: null,
+    });
+    expect(reglagesMasque({ maskTexture: { type: 'voronoi' } })?.texture?.type).toBe('voronoi');
+  });
+});

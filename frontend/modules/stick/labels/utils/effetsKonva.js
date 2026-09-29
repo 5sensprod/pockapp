@@ -15,6 +15,7 @@
 import Konva from 'konva';
 import { effectFilters, sanitizeFilters } from './effetsImage';
 import { ombreInterneDe, ombrerPixels } from './ombreInterne';
+import { dessinerMasque, reglagesMasque } from './imageForme';
 
 export { ombreInterneDe };
 
@@ -88,6 +89,45 @@ function ombreInterne(imageData) {
   return imageData;
 }
 
+/**
+ * MASQUE d'un élément qui n'est pas une image (une forme) : même réglages et
+ * même construction que l'image (`dessinerMasque`, `utils/imageForme.js`),
+ * mais appliqués par FILTRE sur le cache — une forme n'a pas de `sceneFunc`
+ * unique à détourner (Rect, Ellipse, Étoile…). Le cadre du masque est la
+ * GÉOMÉTRIE du nœud, contour et ombre exclus (`masqueNoeud`), placé dans le
+ * cache par `cacheOrigine` (même calcul que `Konva.Node.cache`).
+ */
+function masqueForme(imageData) {
+  const m = this.getAttr?.('masqueNoeud');
+  const o = this.getAttr?.('cacheOrigine');
+  const reglages = m && reglagesMasque(m.champs);
+  if (!reglages || !o || !(m.w > 0 && m.h > 0) || typeof document === 'undefined') return imageData;
+  const ratio = this.getAttr?.('ratioCache') ?? 1;
+  const { width: w, height: h, data } = imageData;
+  const cv = document.createElement('canvas');
+  cv.width = w;
+  cv.height = h;
+  const a = cv.getContext('2d');
+  a.translate((m.x - o.x) * ratio, (m.y - o.y) * ratio);
+  dessinerMasque(a, reglages, m.w * ratio, m.h * ratio, m.w / m.h, ratio >= 3 ? 2048 : 1024);
+  const alpha = a.getImageData(0, 0, w, h).data;
+  for (let i = 3; i < data.length; i += 4) data[i] = (data[i] * alpha[i]) / 255;
+  return imageData;
+}
+
+/** Les champs de masque d'un élément non-image, ou null s'il n'en a pas. */
+const champsMasque = (el) =>
+  el && el.type !== 'image' && reglagesMasque(el)
+    ? { mask: el.mask, maskPadding: el.maskPadding, maskFeather: el.maskFeather, maskTexture: el.maskTexture }
+    : null;
+
+// Met en cache en retenant où commence la zone cachée (voir `Konva.Node.cache`)
+const cacher = (node, ratio, marge) => {
+  const r = node.getClientRect({ skipTransform: true, relativeTo: node.getParent?.() || undefined });
+  node.setAttr('cacheOrigine', { x: Math.floor(r.x) - marge, y: Math.floor(r.y) - marge });
+  node.cache({ pixelRatio: ratio, offset: marge });
+};
+
 /** Luminosité effective, dans [-1, 1] ; 0 si désactivée. */
 export const luminosite = (el) => {
   if (!el?.brightnessEnabled) return 0;
@@ -104,6 +144,7 @@ export const luminosite = (el) => {
 export const filtresDe = (el) => {
   if (!el) return [];
   return [
+    champsMasque(el) && masqueForme,
     ombreInterneDe(el) && ombreInterne,
     rayonFlou(el) > 0 && (fonduFlou(el) ? filtreFlouDegrade(fonduFlou(el)) : Konva.Filters.Blur),
     luminosite(el) !== 0 && Konva.Filters.Brighten,
@@ -142,10 +183,15 @@ export const appliquerEffets = (node, el, { echelle = 1, ratio = 1 } = {}) => {
     }
   );
   node.setAttr('ratioCache', ratio);
+  const champs = champsMasque(el);
+  if (champs) {
+    const g = node.getClientRect({ skipTransform: true, skipStroke: true, skipShadow: true });
+    node.setAttr('masqueNoeud', { champs, x: g.x, y: g.y, w: g.width, h: g.height });
+  } else node.setAttr('masqueNoeud', null);
   // Un nœud vide (image pas encore chargée) ne se met pas en cache
   const r = node.getClientRect({ skipTransform: true });
   if (!(r.width > 0 && r.height > 0)) return;
-  node.cache({ pixelRatio: ratio, offset: Math.ceil(rayon) + 2 });
+  cacher(node, ratio, Math.ceil(rayon) + 2);
 };
 
 /**
@@ -160,6 +206,6 @@ export const recacherFiltres = (racine, ratioExport = 3) => {
     const rayon = n.getAttr('rayonFlouNoeud') ?? 0;
     n.blurRadius(rayon * ratioExport);
     n.setAttr('ratioCache', ratioExport);
-    n.cache({ pixelRatio: ratioExport, offset: Math.ceil(rayon) + 2 });
+    cacher(n, ratioExport, Math.ceil(rayon) + 2);
   }
 };

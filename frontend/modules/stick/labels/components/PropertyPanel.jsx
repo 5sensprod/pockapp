@@ -34,8 +34,7 @@ import { alignOffsets, distributeOffsets, unionBoxes } from '../utils/layout';
 import FontSelector from './FontSelector';
 import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
-import { FONDU_MAX, MASQUES, RETRAIT_MAX } from '../utils/imageForme';
-import MasqueTexture from './MasqueTexture';
+import MenuMasque from './MenuMasque';
 import { TYPO_BORNES } from '../utils/typo';
 import { resolvePropForElement, texteCorrige, ficheChangeeDepuisCorrection } from '../utils/dataBinding';
 import { resetCropAttrs } from '../utils/crop';
@@ -658,6 +657,8 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                   title="Remplissage"
                 />
               )}
+              {/* Masque d'une forme : même menu que l'image, rendu par filtre (`effetsKonva.js`) */}
+              <MenuMasque element={selectedElement} onChange={(maj) => updateElement(selectedId, maj)} />
             </div>
 
             <div className="flex items-center gap-2">
@@ -998,64 +999,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                   <Icone className="h-4 w-4" />
                 </button>
               ))}
-              <MenuGroupe
-                icone={Shapes}
-                titre="Masque"
-                actif={!!(selectedElement.mask || selectedElement.maskTexture || selectedElement.maskPadding)}
-                largeur="16rem"
-              >
-                <div className="grid grid-cols-3 gap-1.5 p-1">
-                  <button
-                    type="button"
-                    onClick={() => updateElement(selectedId, { mask: null })}
-                    className={`h-12 rounded border text-[10px] text-gray-600 dark:text-gray-300 ${
-                      !selectedElement.mask ? 'ring-2 ring-blue-500 border-transparent' : 'border-gray-300 dark:border-gray-600'
-                    }`}
-                  >
-                    Aucun
-                  </button>
-                  {MASQUES.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => updateElement(selectedId, { mask: m.id })}
-                      className={`h-12 p-1.5 rounded border ${
-                        selectedElement.mask === m.id
-                          ? 'ring-2 ring-blue-500 border-transparent'
-                          : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }`}
-                      title={m.label}
-                    >
-                      <svg viewBox="0 0 100 100" className="w-full h-full">
-                        <path d={m.d} className="fill-gray-700 dark:fill-gray-200" />
-                      </svg>
-                    </button>
-                  ))}
-                </div>
-                {/* Retrait (rétrécit la forme dans le cadre) et fondu de son bord */}
-                {[
-                  ['maskPadding', 'Retrait', RETRAIT_MAX],
-                  ['maskFeather', 'Fondu', FONDU_MAX],
-                ].map(([cle, libelle, max]) => (
-                  <label key={cle} className="flex items-center gap-2 px-1 pt-2 text-xs text-gray-600 dark:text-gray-300">
-                    <span className="w-14">{libelle}</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={max}
-                      step={1}
-                      value={selectedElement[cle] ?? 0}
-                      onChange={(e) => updateElement(selectedId, { [cle]: Number(e.target.value) })}
-                      className="flex-1"
-                    />
-                    <span className="w-8 text-right">{selectedElement[cle] ?? 0}%</span>
-                  </label>
-                ))}
-                <MasqueTexture
-                  valeur={selectedElement.maskTexture ?? null}
-                  onChange={(maskTexture) => updateElement(selectedId, { maskTexture })}
-                />
-              </MenuGroupe>
+              <MenuMasque element={selectedElement} onChange={(maj) => updateElement(selectedId, maj)} />
             </div>
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
             <div className="flex items-center gap-2">

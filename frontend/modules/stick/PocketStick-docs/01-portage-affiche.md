@@ -517,3 +517,22 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
   radial. Aperçu réel en canvas ; réglages du bruit par `MasqueTexture`.
 - Gardiens : `paint.test.js` (format, repli), `fillStyle.test.ts`.
 - ⚠️ Non vérifié à l'écran ni dans un PDF au moment d'écrire.
+
+## Masques sur les formes (29 septembre 2026)
+
+- Le menu « Masque » (forme, retrait, fondu, texture) est un composant,
+  `components/MenuMasque.jsx`, posé pour l'IMAGE et pour la FORME.
+- Une construction du masque : `dessinerMasque` (`utils/imageForme.js`),
+  lue par `reglagesMasque`. Deux branchements :
+  - image : la `sceneFunc` de `sceneImage` (inchangée sur le fond) ;
+  - forme (tout élément non-image qui porte un masque) : un FILTRE,
+    `masqueForme` (`utils/effetsKonva.js`), premier de `filtresDe`, qui
+    multiplie l'alpha du cache. Une forme n'a pas de `sceneFunc` unique à
+    détourner (Rect, Ellipse, Étoile, Polygone, Trait).
+- Cadre du masque d'une forme : sa GÉOMÉTRIE (`getClientRect` sans contour ni
+  ombre), placée dans le cache par `cacheOrigine` — même calcul que
+  `Konva.Node.cache` (`floor(rect.x) - marge`). ⚠️ Un contour qui déborde du
+  cadre est coupé par le masque, comme l'ombre portée.
+- Écran et deux exports : `appliquerEffets` et `recacherFiltres`, déjà appelés
+  des trois côtés. Pendant un redimensionnement, le masque suit au relâchement
+  (comme les autres effets en pixels).

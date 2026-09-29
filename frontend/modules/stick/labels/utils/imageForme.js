@@ -92,6 +92,44 @@ const cheminMasque = (masque, w, h, p) => {
   return chemin;
 };
 
+/** Réglages de masque d'un élément, lus et bornés ; null s'il n'en a aucun. */
+export const reglagesMasque = (el) => {
+  const r = {
+    masque: masqueDe(el),
+    p: retraitMasque(el),
+    f: fonduMasque(el),
+    texture: sanitizeTexture(el?.maskTexture),
+  };
+  return r.masque || r.p > 0 || r.f > 0 || r.texture ? r : null;
+};
+
+/**
+ * Le MASQUE ALPHA, dessiné dans `a` (contexte 2D) sur un cadre de `pw × ph`
+ * PIXELS partant de l'origine courante (le contexte ne doit porter qu'une
+ * translation : le fondu est un flou en pixels). Blanc opaque = visible. La
+ * forme (ou le rectangle du retrait) est floutée du fondu, puis multipliée par
+ * la carte de texture, qui couvre tout le cadre. Une SEULE construction pour
+ * l'image (`sceneImage`) et la forme (filtre de `effetsKonva.js`).
+ */
+export const dessinerMasque = (a, { masque, p, f, texture }, pw, ph, aspect, plafond = 1024) => {
+  const decoupe = !!masque || p > 0 || f > 0;
+  a.save();
+  a.fillStyle = '#fff';
+  if (decoupe) {
+    if (f > 0) a.filter = `blur(${f * Math.min(pw, ph)}px)`;
+    a.fill(cheminMasque(masque, pw, ph, p));
+    a.filter = 'none';
+  } else a.fillRect(0, 0, pw, ph);
+  if (texture) {
+    const carte = carteTexture(texture, pw, ph, aspect, plafond);
+    if (carte) {
+      a.globalCompositeOperation = 'destination-in';
+      a.drawImage(carte, 0, 0, pw, ph);
+    }
+  }
+  a.restore();
+};
+
 /**
  * `sceneFunc` Konva pour une image miroir et/ou masquée, ou undefined (dessin
  * normal). Lit la taille sur le nœud au moment du dessin : elle suit donc un
@@ -144,20 +182,8 @@ export const sceneImage = ({
       };
       // 1) Le masque alpha
       const [alpha, a] = neuf();
-      a.fillStyle = '#fff';
-      if (decoupe) {
-        if (f > 0) a.filter = `blur(${f * Math.min(pw, ph)}px)`;
-        a.fill(cheminMasque(masque, pw, ph, p));
-        a.filter = 'none';
-      } else a.fillRect(0, 0, pw, ph);
-      if (texture) {
-        const ratio = ctx.getCanvas?.()?.getPixelRatio?.() ?? 1;
-        const carte = carteTexture(texture, pw, ph, w / h, ratio >= 3 ? 2048 : 1024);
-        if (carte) {
-          a.globalCompositeOperation = 'destination-in';
-          a.drawImage(carte, 0, 0, pw, ph);
-        }
-      }
+      const ratio = ctx.getCanvas?.()?.getPixelRatio?.() ?? 1;
+      dessinerMasque(a, { masque, p, f, texture }, pw, ph, w / h, ratio >= 3 ? 2048 : 1024);
       // 2) L'image, miroir compris, puis le masque
       const [hors, c] = neuf();
       c.scale(pw / w, ph / h);
