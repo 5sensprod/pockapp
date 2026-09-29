@@ -39,12 +39,14 @@ Les pages en DÉCOULENT : elles ne se créent ni ne s'éditent jamais à la main
 
 ## Où c'est dans l'écran
 
-- **Onglet « Tirage »** (`SheetPanel.jsx` → `TiragePanel.jsx`) : la liste
+- **Onglet « Produits »** (icône paquet, en tête de la barre latérale ;
+  `SheetPanel.jsx` → `TiragePanel.jsx`) : la liste
   (− n +, ✕, clic = afficher), « Ajouter des produits » (ajoute, ne remplace
   pas ; un produit déjà là gagne un exemplaire), le format, le compteur. Les
   réglages de grille ne s'affichent qu'en format planche.
-- **Entrée « Produit »** du menu d'ajout (`ToolsSidebar.jsx`) : une ACTION —
-  sélecteur, ajout au tirage, puis ouverture de l'onglet Tirage.
+- Il n'y a PAS d'entrée séparée pour ajouter un produit : une première version
+  (action « Produit » qui ouvrait le sélecteur) doublonnait l'onglet et a été
+  fondue dedans le même jour.
 - **Bande d'aperçu** sous le canvas (`BandeTirage.jsx`) : une vignette par
   page, cases SCHÉMATIQUES (nom du produit, pleine ou libre), pas un rendu
   Konva — un rendu par case à chaque retouche serait trop lent sur une planche
@@ -56,7 +58,7 @@ Les pages en DÉCOULENT : elles ne se créent ni ne s'éditent jamais à la main
 ## Export
 
 Un seul chemin : `utils/exportTirage.js`, lu dans le store au clic, appelé
-par « Exporter » de la barre ET par le bouton de l'onglet Tirage.
+par « Exporter » de la barre ET par le bouton de l'onglet Produits.
 
 - **Une seule case, celle du canvas** : `exportPdf`, qui clone le canvas — le
   rendu le plus fidèle, inchangé.
@@ -77,8 +79,8 @@ planche.
 `multiSelectProducts` ; `requiresProductSelection`, `getMaxProducts`, leur
 badge et le sélecteur imposé au chargement d'un template ; les flèches
 précédent / suivant de `TopToolbar` (remplacées par la liste) ;
-`handleAdaptGrid`, sans appelant. Le message du panneau code-barres renvoie au
-tirage ; le panneau Tableau propose les styles statiques même avec un produit.
+`handleAdaptGrid`, sans appelant. Le message du panneau code-barres renvoie à
+l'onglet Produits ; le panneau Tableau propose les styles statiques même avec un produit.
 
 ## Gardiens
 

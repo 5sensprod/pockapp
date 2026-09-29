@@ -129,8 +129,8 @@ const BarcodeTemplates = ({ dataSource, selectedProduct }) => {
             <div className="text-sm text-gray-600 dark:text-gray-400">
               <div className="font-medium mb-1">Aucun produit au tirage</div>
               <div>
-                Un code-barres se lie au produit : ajoutez-en un par « Produit » ou l'onglet
-                <strong> Tirage</strong>.
+                Un code-barres se lie au produit : ajoutez-en un depuis l'onglet
+                <strong> Produits</strong>.
               </div>
             </div>
           </div>
