@@ -1,7 +1,7 @@
 // src/features/labels/components/canvas/QRCodeNode.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import { Group, Image as KonvaImage } from 'react-konva';
-import QRCode from 'qrcode';
+import { dessinerQR } from '../../utils/qrImage';
 
 /**
  * QRCodeNode - Composant Konva pour afficher un QR code
@@ -16,6 +16,7 @@ const QRCodeNode = ({
   color = '#000',
   bgColor = '#FFFFFF00',
   qrValue = '',
+  fillGradient = null, // dégradé des modules (`utils/qrImage.js`)
   ...rest
 }) => {
   const [imageObj, setImageObj] = useState(null);
@@ -38,13 +39,11 @@ const QRCodeNode = ({
     const generateQR = async () => {
       try {
         const displayResolution = Math.max(256, Math.floor(size * 2));
-        const dataUrl = await QRCode.toDataURL(qrValue || ' ', {
-          width: displayResolution,
-          margin: 2,
-          color: { dark: color, light: bgColor },
-          errorCorrectionLevel: 'H',
-          type: 'image/png',
-          rendererOpts: { quality: 1.0 },
+        const dataUrl = await dessinerQR(qrValue, {
+          resolution: displayResolution,
+          color,
+          bgColor,
+          gradient: fillGradient,
         });
 
         const img = new Image();
@@ -68,7 +67,7 @@ const QRCodeNode = ({
     return () => {
       mounted = false;
     };
-  }, [qrValue, size, color, bgColor]);
+  }, [qrValue, size, color, bgColor, JSON.stringify(fillGradient)]);
 
   return (
     <Group id={id} x={x} y={y} {...groupRest}>

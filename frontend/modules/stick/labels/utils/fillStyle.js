@@ -8,6 +8,12 @@
 // Étoile). Une seule fonction les calcule, pour le canvas ET pour l'export
 // planche : deux calculs, c'est deux dessins différents.
 
+import { remplissageKonva } from './paint';
+
+// Depuis le 29/09/2026, le dégradé suit le modèle de PocketStick
+// (`utils/paint.js`, linéaire ou radial, 2 à 16 arrêts) ; l'ancien
+// `{ from, to, angle }` reste lu tel quel. `remplissage` n'est plus qu'un relais.
+
 export const DEGRADE_PAR_DEFAUT = { from: '#3b82f6', to: '#ec4899', angle: 0 };
 
 /**
@@ -17,28 +23,7 @@ export const DEGRADE_PAR_DEFAUT = { from: '#3b82f6', to: '#ec4899', angle: 0 };
  * @param {number} height
  * @param {string} color  couleur unie, utilisée sans dégradé
  * @param {boolean} [centre] true si l'origine du nœud est son centre
+ * @returns {Record<string, any>}
  */
-export const remplissage = (gradient, width, height, color, centre = false) => {
-  if (!gradient?.from || !gradient?.to) {
-    // `fillPriority` explicite : repasser en uni doit ÉTEINDRE le dégradé
-    // d'un nœud déjà dessiné, pas seulement cesser de le décrire.
-    return { fill: color, fillPriority: 'color' };
-  }
-  const a = ((Number(gradient.angle) || 0) * Math.PI) / 180;
-  const w = width || 0;
-  const h = height || 0;
-  const cx = centre ? 0 : w / 2;
-  const cy = centre ? 0 : h / 2;
-  // Demi-longueur de la projection du cadre sur l'axe du dégradé : les deux
-  // couleurs pures tombent exactement sur les bords, quel que soit l'angle.
-  const demi = (Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a))) / 2;
-  const dx = Math.cos(a) * demi;
-  const dy = Math.sin(a) * demi;
-  return {
-    fill: color,
-    fillPriority: 'linear-gradient',
-    fillLinearGradientStartPoint: { x: cx - dx, y: cy - dy },
-    fillLinearGradientEndPoint: { x: cx + dx, y: cy + dy },
-    fillLinearGradientColorStops: [0, gradient.from, 1, gradient.to],
-  };
-};
+export const remplissage = (gradient, width, height, color, centre = false) =>
+  remplissageKonva(gradient, width, height, color, centre);

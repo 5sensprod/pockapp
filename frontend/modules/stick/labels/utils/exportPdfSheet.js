@@ -1,7 +1,8 @@
 // AppTools/src/features/labels/utils/exportPdfSheet.js
 import jsPDF from 'jspdf';
 import Konva from 'konva';
-import QRCodeLib from 'qrcode';
+import { appliquerEffets } from './effetsKonva';
+import { dessinerQR } from './qrImage';
 import useLabelStore from '../store/useLabelStore';
 import {
   resolvePropForElement,
@@ -282,13 +283,11 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
 
       try {
         const qrResolution = Math.max(512, Math.floor(size * 4));
-        const dataURL = await QRCodeLib.toDataURL(qrValue || ' ', {
-          width: qrResolution,
-          margin: 2,
-          color: { dark: color, light: bgColor },
-          errorCorrectionLevel: 'H',
-          type: 'image/png',
-          rendererOpts: { quality: 1.0 },
+        const dataURL = await dessinerQR(qrValue, {
+          resolution: qrResolution,
+          color,
+          bgColor,
+          gradient: el.fillGradient ?? null,
         });
 
         const imageObj = await loadImageFromDataURL(dataURL);
@@ -406,7 +405,13 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
 
   // Attendre la création de tous les nodes
   const nodes = await Promise.all(nodePromises);
-  nodes.filter(Boolean).forEach((node) => layer.add(node));
+  const ratioEffets = Math.max(pixelRatio, qualiteMin);
+  nodes.forEach((node, i) => {
+    if (!node) return;
+    layer.add(node);
+    // Flou et effets : même règle que le canvas (`utils/effetsKonva.js`)
+    appliquerEffets(node, elements[i], { echelle: scale, ratio: ratioEffets });
+  });
 
   layer.draw();
 

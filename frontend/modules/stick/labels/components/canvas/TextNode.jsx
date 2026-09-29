@@ -3,6 +3,7 @@ import { Text, Rect } from 'react-konva';
 import useLabelStore from '../../store/useLabelStore';
 import { loadGoogleFont } from '../../utils/loadGoogleFont'; // 🎨 Import de la fonction de chargement
 import { remplissage } from '../../utils/fillStyle';
+import { premiereCouleur } from '../../utils/paint';
 import { texteDeLaFiche } from '../../utils/dataBinding';
 
 /**
@@ -37,7 +38,7 @@ const TextNode = ({
   locked = false,
   dataBinding = null,
   correctionKey = null, // _id du produit affiché, pour corriger un texte lié
-  fillGradient = null, // 🌈 { from, to, angle } ou null
+  fillGradient = null, // 🌈 dégradé (`utils/paint.js`, ancien { from, to, angle } lu aussi) ou null
   align = 'left', // alignement DANS le bloc : left | center | right | justify
   shadowEnabled,
   shadowColor,
@@ -160,7 +161,7 @@ const TextNode = ({
       // que le Konva.Text (police, taille × zoom, interligne, largeur). Le mot
       // reste où il est, dans son cadre ; seul un pointillé signale l'édition.
       const largeurFixe = width != null;
-      const couleur = fillGradient?.from || fill;
+      const couleur = premiereCouleur(fillGradient) || fill;
 
       const textarea = document.createElement('textarea');
       textarea.value = node.text();

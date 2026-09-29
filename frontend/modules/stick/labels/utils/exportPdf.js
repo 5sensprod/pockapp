@@ -1,6 +1,7 @@
 // src/utils/exportPdf.js
 import jsPDF from 'jspdf';
 import Konva from 'konva';
+import { recacherFiltres } from './effetsKonva';
 
 /**
  * Export PDF sans déformation:
@@ -38,6 +39,8 @@ export async function exportPdf(
   const layer = new Konva.Layer();
   stage.add(layer);
   layer.add(clone);
+  // Flou et effets : le cache du canvas ne suit pas le clone
+  recacherFiltres(clone, pixelRatio);
   layer.draw();
 
   // 3) DataURL haute résolution (pas de transform => pas de déformation)

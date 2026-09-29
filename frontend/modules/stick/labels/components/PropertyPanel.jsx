@@ -427,12 +427,13 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
         {isQRCode && (
           <div className="flex items-center gap-2">
             <Palette className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-            <input
-              type="color"
-              value={selectedElement.color || '#000000'}
-              onChange={(e) => handleColorChange(e.target.value)}
-              className="w-10 h-8 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
-              title="Couleur"
+            {/* Dégradé : sur les modules du QR (`utils/qrImage.js`) */}
+            <GradientColorPicker
+              color={selectedElement.color || '#000000'}
+              gradient={selectedElement.fillGradient ?? null}
+              onColorChange={handleColorChange}
+              onGradientChange={(g) => updateElement(selectedId, { fillGradient: g })}
+              title="Couleur des modules"
             />
           </div>
         )}
@@ -587,11 +588,14 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
               <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
                 Contour:
               </span>
-              <input
-                type="color"
-                value={selectedElement.stroke || '#0f172a'}
-                onChange={(e) => updateElement(selectedId, { stroke: e.target.value })}
-                className="w-10 h-8 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+              {/* Dégradé de contour : linéaire seulement (Konva) */}
+              <GradientColorPicker
+                color={selectedElement.stroke || '#0f172a'}
+                gradient={selectedElement.strokeGradient ?? null}
+                onColorChange={(c) => updateElement(selectedId, { stroke: c })}
+                onGradientChange={(g) => updateElement(selectedId, { strokeGradient: g })}
+                title="Contour"
+                lineaireSeulement
               />
               {/* Sans épaisseur, la couleur de contour ne se voit pas : les deux
                   réglages vont ensemble. */}

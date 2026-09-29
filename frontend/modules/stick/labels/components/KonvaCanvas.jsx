@@ -18,6 +18,8 @@ import { resolvePropForElement } from '../utils/dataBinding';
 import { konvaCrop, resizeStep, settleCrop } from '../utils/crop';
 import { boxesIntersect, rectFromPoints, LASSO_MIN_DRAG } from '../utils/layout';
 import { CropOverlay, CropTransformer, geometrieImage } from './canvas/CropOverlay';
+import EtiquetteSelection from './EtiquetteSelection';
+import { appliquerEffets, filtresDe } from '../utils/effetsKonva';
 import { tailleNaturelle } from './canvas/ImageNode';
 import FicheNode from './canvas/FicheNode';
 import { contenuFiche, EXEMPLE_FICHE } from '../utils/ficheProduit';
@@ -502,7 +504,35 @@ const KonvaCanvas = forwardRef(
       }, 100);
     }, [selectedId, extraIds, elements, cropId]);
 
+    // FLOU et effets en pixels (`utils/effetsKonva.js`) : posés sur le nœud
+    // APRÈS son rendu, et reposés quand il a pu changer de contenu (image,
+    // QR ou police qui arrivent plus tard). Le cache suit le zoom, sinon un
+    // élément flouté serait pixelisé en zoom avant.
+    useEffect(() => {
+      const stage = stageRef.current;
+      if (!stage) return undefined;
+      const ratio = Math.max(1, zoom * (window.devicePixelRatio || 1));
+      const appliquer = () => {
+        for (const el of elements) {
+          const node = stage.findOne(`#${el.id}`);
+          if (!node) continue;
+          if (!filtresDe(el).length && !node.isCached?.()) continue;
+          appliquerEffets(node, el, { ratio });
+        }
+        stage.batchDraw();
+      };
+      const raf = requestAnimationFrame(appliquer);
+      const tard = setTimeout(appliquer, 400);
+      const encoreTard = setTimeout(appliquer, 1500);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(tard);
+        clearTimeout(encoreTard);
+      };
+    }, [elements, zoom, selectedProduct]);
+
     return (
+      <>
       <Stage
         ref={stageRef}
         width={stageW}
@@ -637,6 +667,7 @@ const KonvaCanvas = forwardRef(
                     size={el.size ?? 160}
                     color={el.color ?? '#000000'}
                     bgColor={el.bgColor ?? '#FFFFFF00'}
+                    fillGradient={el.fillGradient ?? null}
                     qrValue={qrValue}
                   />
                 );
@@ -693,6 +724,7 @@ const KonvaCanvas = forwardRef(
                     strokeWidth={el.strokeWidth ?? 0}
                     cornerRadius={el.cornerRadius ?? 0}
                     fillGradient={el.fillGradient ?? null}
+                    strokeGradient={el.strokeGradient ?? null}
                   />
                 );
               }
@@ -855,6 +887,9 @@ const KonvaCanvas = forwardRef(
 
         <Layer listening={false} perfectDrawEnabled={false} />
       </Stage>
+      {/* Étiquette de la sélection : HTML par-dessus le Stage (même repère) */}
+      <EtiquetteSelection stageRef={stageRef} transformerRef={transformerRef} />
+      </>
     );
   }
 );

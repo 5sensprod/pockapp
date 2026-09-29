@@ -334,3 +334,48 @@ d'une cellule », template chargé) ni celle de l'élément.
 - **Fiche** : hauteur calculée par `construireFiche` (synchrone) sur le même
   contenu que dessine `KonvaCanvas` (produit du canvas, sinon l'exemple).
 - **Image** : taille de `cadreSurCanvas`, inchangée ; position par la règle commune.
+
+## Style, flou, effets d'image, dégradés (29 septembre 2026)
+
+Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
+
+- **Copier / coller le style** (création, PocketStick ne l'a pas) :
+  `utils/styleCopie.js`. Le style = tout sauf géométrie, contenu, lien au
+  produit et état d'édition. Même type : tout ; types différents : opacité,
+  ombre, flou, plus la peinture entre texte et forme. Un seul Ctrl+Z, les
+  verrouillés sont épargnés. Raccourcis Ctrl+Alt+C / Ctrl+Alt+V.
+- **Étiquette de sélection** : `components/EtiquetteSelection.jsx`, HTML
+  par-dessus le Stage (même repère, dans le conteneur qui défile), sous le cadre
+  (la poignée de rotation est au-dessus). Copier / coller le style et un menu
+  de profondeur — avancer, reculer, premier plan, arrière-plan —, raccourci du
+  panneau Calques (`deplacerEnProfondeur`, `reordonner`). Masquée pendant un
+  geste, un recadrage, ou cadre masqué (H).
+- **Flou sur tout élément** (`blurEnabled`, `blurRadius`) et **effets d'image**
+  (luminosité, sépia, noir et blanc, et les dix filtres réglables de
+  `utils/effetsImage.js`, porté à l'identique avec son test) : une SEULE
+  fonction, `utils/effetsKonva.js` (`appliquerEffets`), pour le canvas (effet
+  après rendu dans `KonvaCanvas`), l'export planche (`createDocumentImage`) et
+  l'export du canvas cloné (`recacherFiltres` — le cache Konva ne suit pas un
+  `clone()`). Konva ne filtre qu'un nœud en cache : cache avec marge, rayon ×
+  résolution du cache. Le miroir (flipX/flipY) n'est PAS repris.
+  ⚠️ Sur le canvas, le cache est reposé à l'image suivante, puis à 400 ms et
+  1,5 s (image, QR ou police qui arrivent tard) : une image plus lente que ça
+  resterait non filtrée jusqu'à la retouche suivante. L'export, lui, attend
+  ses images.
+  ⚠️ Un texte surligné : le surlignage n'est pas flouté (nœud à part).
+- **Dégradé au modèle PocketStick** (`utils/paint.js`) : linéaire (angle CSS)
+  ou radial (centre, rayon), 2 à 16 arrêts. **L'ancien `{ from, to, angle }`
+  reste lu** (`versPeinture`, 0° ancien = 90° CSS, mêmes points à l'écran) et
+  n'est réécrit qu'à la première retouche : aucune migration des templates.
+  `culori` n'est pas installé ici : la validation d'une couleur passe par
+  `CSS.supports` ; `mixPaint` (animation) n'est pas repris.
+  - **Contour** des formes (`strokeGradient`) : **linéaire seulement**, Konva
+    ne dessine pas de contour radial (`konva/lib/Context.js`, `_stroke`) ; le
+    sélecteur ne propose pas « Radial » (`lineaireSeulement`). Le texte n'a pas
+    de contour dans cet éditeur.
+  - **QR** (`fillGradient` du QR) : sur les modules, fond uni —
+    `utils/qrImage.js`, une seule fonction pour le canvas et l'export.
+  - Sélecteur : `GradientColorPicker` réécrit (type, barre d'arrêts — clic pour
+    ajouter —, position, angle ou centre et rayon, inverser, préréglages).
+- Gardiens : `styleCopie.test.js`, `paint.test.js`, `effetsImage.test.js`,
+  `fillStyle.test.ts` (inchangé sur le fond, comparaisons à la virgule près).

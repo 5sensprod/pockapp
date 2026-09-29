@@ -13,6 +13,7 @@
 import React from 'react'
 import { Ellipse, Line, Rect, RegularPolygon, Star } from 'react-konva'
 import { remplissage } from '../../utils/fillStyle'
+import { contourKonva, versPeinture } from '../../utils/paint'
 
 /** Les formes proposées, dans l'ordre où le panneau les affiche. */
 export const FORMES = [
@@ -40,13 +41,20 @@ export function dessinForme({
 	strokeWidth = 0,
 	cornerRadius = 0,
 	fillGradient = null,
+	strokeGradient = null,
 }) {
 	// Un contour d'épaisseur nulle ou sans couleur ne se dessine pas : Konva
-	// tracerait sinon un liseré noir par défaut.
-	const contour =
-		stroke && strokeWidth > 0
-			? { stroke, strokeWidth }
-			: { strokeEnabled: false }
+	// tracerait sinon un liseré noir par défaut. Le dégradé de contour
+	// (`utils/paint.js`, `contourKonva`) est linéaire : Konva ne sait pas mieux.
+	const degradeContour = versPeinture(strokeGradient)
+	const traceContour = (centré) =>
+		(stroke || degradeContour) && strokeWidth > 0
+			? {
+					strokeEnabled: true,
+					strokeWidth,
+					...contourKonva(degradeContour, width, height, stroke, centré),
+				}
+			: { strokeEnabled: false, strokeLinearGradientColorStops: null }
 	const centre = { x: x + width / 2, y: y + height / 2 }
 	const plein = (centré) =>
 		remplissage(fillGradient, width, height, fill, centré)
@@ -55,7 +63,7 @@ export function dessinForme({
 		return {
 			kind: 'Ellipse',
 			props: {
-				...contour,
+				...traceContour(true),
 				...plein(true),
 				...centre,
 				radiusX: width / 2,
@@ -68,7 +76,7 @@ export function dessinForme({
 		return {
 			kind: 'RegularPolygon',
 			props: {
-				...contour,
+				...traceContour(true),
 				...plein(true),
 				...centre,
 				sides: 3,
@@ -81,7 +89,7 @@ export function dessinForme({
 		return {
 			kind: 'Star',
 			props: {
-				...contour,
+				...traceContour(true),
 				...plein(true),
 				...centre,
 				numPoints: 5,
@@ -101,8 +109,8 @@ export function dessinForme({
 				x,
 				y,
 				points: [0, height / 2, width, height / 2],
-				stroke: stroke || fill,
 				strokeWidth: strokeWidth > 0 ? strokeWidth : 2,
+				...contourKonva(degradeContour, width, height, stroke || fill),
 				lineCap: 'round',
 			},
 		}
@@ -111,7 +119,7 @@ export function dessinForme({
 	return {
 		kind: 'Rect',
 		props: {
-			...contour,
+			...traceContour(false),
 			...plein(false),
 			x,
 			y,
@@ -133,6 +141,7 @@ const ShapeNode = ({
 	strokeWidth,
 	cornerRadius,
 	fillGradient,
+	strokeGradient,
 	...rest
 }) => {
 	const { kind, props } = dessinForme({
@@ -146,6 +155,7 @@ const ShapeNode = ({
 		strokeWidth,
 		cornerRadius,
 		fillGradient,
+		strokeGradient,
 	})
 	const Composant = COMPOSANTS[kind]
 	return <Composant {...rest} {...props} />

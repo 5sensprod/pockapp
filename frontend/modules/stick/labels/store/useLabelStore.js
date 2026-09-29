@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { quantiteValide } from '../lib/tirage';
 import { placerAuCentre } from '../utils/placement';
+import { extraireStyle, reordonner, styleApplicable } from '../utils/styleCopie';
 
 const HISTORY_LIMIT = 100;
 
@@ -275,6 +276,40 @@ const useLabelStore = create((set, get) => ({
         elements: [...state.elements, newElement],
         selectedId: newElement.id,
       };
+    }),
+
+  // --- style copié (utils/styleCopie.js) : en mémoire tant que l'app tourne
+  styleCopie: null,
+  copierStyle: (id) => {
+    const el = get().elements.find((e) => e.id === id);
+    if (el) set({ styleCopie: extraireStyle(el) });
+  },
+  // Colle sur chaque élément de `ids` ce qui lui est applicable, en UNE étape
+  // d'historique. Les éléments verrouillés sont épargnés.
+  collerStyle: (ids) =>
+    set((state) => {
+      if (!state.styleCopie) return {};
+      const cibles = new Set(ids);
+      let change = false;
+      const elements = state.elements.map((el) => {
+        if (!cibles.has(el.id) || el.locked) return el;
+        const maj = styleApplicable(state.styleCopie, el);
+        if (!Object.keys(maj).length) return el;
+        change = true;
+        return { ...el, ...maj };
+      });
+      if (!change) return {};
+      state._pushHistory(snapshotOf(state));
+      return { elements };
+    }),
+
+  // Profondeur : 'avant' | 'arriere' | 'devant' | 'derriere', en UNE étape.
+  deplacerEnProfondeur: (ids, sens) =>
+    set((state) => {
+      const elements = reordonner(state.elements, ids, sens);
+      if (elements === state.elements) return {};
+      state._pushHistory(snapshotOf(state));
+      return { elements };
     }),
 
   moveElement: (fromIndex, toIndex) =>

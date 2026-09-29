@@ -26,8 +26,8 @@ describe('remplissage', () => {
 			50,
 			'#f00',
 		)
-		expect(p.fillLinearGradientStartPoint).toEqual({ x: 0, y: 25 })
-		expect(p.fillLinearGradientEndPoint).toEqual({ x: 100, y: 25 })
+		expect(p.fillLinearGradientStartPoint).toEqual({ x: expect.closeTo(0), y: expect.closeTo(25) })
+		expect(p.fillLinearGradientEndPoint).toEqual({ x: expect.closeTo(100), y: expect.closeTo(25) })
 	})
 	it('origine au centre (ellipse, étoile)', () => {
 		const p = remplissage(
@@ -37,7 +37,7 @@ describe('remplissage', () => {
 			'#f00',
 			true,
 		)
-		expect(p.fillLinearGradientStartPoint).toEqual({ x: -50, y: 0 })
+		expect(p.fillLinearGradientStartPoint).toEqual({ x: expect.closeTo(-50), y: expect.closeTo(0) })
 	})
 })
 
