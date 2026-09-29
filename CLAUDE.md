@@ -44,6 +44,25 @@ dette assumée dans
 [`frontend/modules/stick/PocketStick-docs/01-portage-affiche.md`](frontend/modules/stick/PocketStick-docs/01-portage-affiche.md).
 Ses templates et sa bibliothèque d'images sont **locaux au poste** (IndexedDB) :
 aucune collection PocketBase ne les porte encore.
+**Les données produit ont UN chemin** (29 septembre 2026,
+[`04-donnees-produit.md`](frontend/modules/stick/PocketStick-docs/04-donnees-produit.md)) :
+les champs liables (`el.dataBinding`) sont dans le registre
+`labels/utils/champsProduit.js` — clés canoniques, alias **lus sans jamais
+être réécrits** dans les templates IndexedDB ou `.json` —, se changent par le
+bloc `LiaisonProduit.jsx` des Propriétés, et les éléments liés (texte, photo,
+galerie `product_gallery_N`, QR, code-barres, fiche) ne s'ajoutent QUE depuis
+l'onglet orange « Données produit », par les créations uniques de
+`utils/ajoutsProduit.js`. Texte, Médias et Assets n'ajoutent que du statique.
+`getProductField` (`utils/dataBinding.js`) est la seule résolution, à l'écran
+comme dans l'export planche. Une image a un **ajustement** (`el.fit`,
+`utils/ajustementImage.js`) : `contain` (Contenir, défaut des NOUVELLES images)
+montre la photo entière quelles que soient ses proportions ; absent = Remplir,
+l'ancien comportement — aucun template ne change d'aspect. Le dessin passe par
+`sceneImage` (`imageForme.js`) pour le canvas et les deux exports ;
+`utils/crop.js` reste une copie à l'identique de PocketStick, ne pas y
+toucher. Les onglets fusionnés de la barre latérale partagent
+`templates/OngletsPanneau.jsx`. La source de référence de PocketStick est
+**`I:\PocketStick`** (Konva 10 + MobX).
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation
