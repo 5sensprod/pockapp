@@ -56,6 +56,7 @@ const KonvaCanvas = forwardRef(
     const selectedProduct = useLabelStore((s) => s.selectedProduct);
     const currentProductIndex = useLabelStore((s) => s.currentProductIndex);
     const cropId = useLabelStore((s) => s.cropId);
+    const cadreMasque = useLabelStore((s) => s.cadreMasque || s.cadreMasqueGeste);
     const startCrop = useLabelStore((s) => s.startCrop);
     const stopCrop = useLabelStore((s) => s.stopCrop);
     // Image pendant un redimensionnement : { id, el (géométrie courante), natural }.
@@ -70,6 +71,38 @@ const KonvaCanvas = forwardRef(
       window.addEventListener('keydown', onKey);
       return () => window.removeEventListener('keydown', onKey);
     }, [cropId, stopCrop]);
+
+    // H bascule l'affichage du cadre de sélection ; tenir un curseur de
+    // réglage (n'importe quel input range de la page) le masque jusqu'au
+    // relâchement. La sélection n'est jamais touchée. Le recadrage, lui,
+    // garde toujours ses poignées.
+    useEffect(() => {
+      const onKey = (e) => {
+        if (e.key.toLowerCase() !== 'h' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+        const cible = e.target;
+        if (cible?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(cible?.tagName)) return;
+        e.preventDefault();
+        useLabelStore.getState().basculerCadreMasque();
+      };
+      const onDown = (e) => {
+        if (e.target?.matches?.('input[type="range"]')) useLabelStore.getState().setCadreMasqueGeste(true);
+      };
+      const onUp = () => {
+        if (useLabelStore.getState().cadreMasqueGeste) useLabelStore.getState().setCadreMasqueGeste(false);
+      };
+      window.addEventListener('keydown', onKey);
+      document.addEventListener('pointerdown', onDown, true);
+      window.addEventListener('pointerup', onUp, true);
+      window.addEventListener('pointercancel', onUp, true);
+      window.addEventListener('blur', onUp);
+      return () => {
+        window.removeEventListener('keydown', onKey);
+        document.removeEventListener('pointerdown', onDown, true);
+        window.removeEventListener('pointerup', onUp, true);
+        window.removeEventListener('pointercancel', onUp, true);
+        window.removeEventListener('blur', onUp);
+      };
+    }, []);
 
     // Suppr / Retour arrière : supprime la sélection entière. Jamais pendant
     // une saisie (champ de la barre, édition d'un texte sur le canvas).
@@ -754,6 +787,7 @@ const KonvaCanvas = forwardRef(
 
           <Transformer
             ref={transformerRef}
+            visible={!cadreMasque}
             boundBoxFunc={boundBoxFunc}
             rotationSnaps={[0, 90, 180, 270]}
             rotationSnapTolerance={5}

@@ -273,6 +273,13 @@ const useLabelStore = create((set, get) => ({
       return { selectedId: id, extraIds: ids, cropId: null };
     }),
   clearSelection: () => set({ selectedId: null, extraIds: [], cropId: null }),
+  // Cadre de sélection masqué : AFFICHAGE seul, la sélection reste en place.
+  // `cadreMasque` est l'interrupteur (bouton, touche H) ; `cadreMasqueGeste`
+  // dure le temps qu'on tient un curseur de réglage. Ni historique, ni template.
+  cadreMasque: false,
+  cadreMasqueGeste: false,
+  basculerCadreMasque: () => set((state) => ({ cadreMasque: !state.cadreMasque })),
+  setCadreMasqueGeste: (v) => set({ cadreMasqueGeste: !!v }),
   startCrop: (id) =>
     set((state) => {
       const el = state.elements.find((e) => e.id === id);

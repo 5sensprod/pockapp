@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback, forwardRef } from 'react';
-import { Maximize2 } from 'lucide-react';
+import { Maximize2, Eye, EyeOff } from 'lucide-react';
 import KonvaCanvas, { MARGE_ESPACE } from './KonvaCanvas';
 import PropertyPanel from './PropertyPanel';
 import useLabelStore from '../store/useLabelStore';
@@ -30,6 +30,8 @@ const CanvasArea = forwardRef(
 
     const setZoom = useLabelStore((s) => s.setZoom);
     const selectedId = useLabelStore((s) => s.selectedId);
+    const cadreMasque = useLabelStore((s) => s.cadreMasque);
+    const basculerCadreMasque = useLabelStore((s) => s.basculerCadreMasque);
 
     // Zoom « ajusté » : la page entière dans la zone visible, marge comprise.
     // Comme PocketStick, c'est l'état d'arrivée et celui d'un nouveau format.
@@ -68,6 +70,24 @@ const CanvasArea = forwardRef(
             présente. Sélectionner un élément remplit la barre sans rien
             pousser : le canvas ne saute plus. Trop d'options ? elle défile. */}
         <div className="flex-none h-11 flex items-center gap-3 px-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs overflow-x-auto overflow-y-hidden">
+          {selectedId && (
+            <div className="flex-none flex items-center">
+              <button
+                type="button"
+                onClick={basculerCadreMasque}
+                aria-pressed={cadreMasque}
+                aria-label={cadreMasque ? 'Afficher le cadre de sélection' : 'Masquer le cadre de sélection'}
+                title={cadreMasque ? 'Afficher le cadre de sélection (H)' : 'Masquer le cadre de sélection (H)'}
+                className={`h-7 w-7 inline-flex items-center justify-center rounded transition-colors ${
+                  cadreMasque
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                    : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
+                }`}
+              >
+                {cadreMasque ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          )}
           <div className="flex-none">
             {selectedId ? (
               <PropertyPanel selectedProduct={selectedProduct} onOpenEffects={onOpenEffects} docNode={docNode} />

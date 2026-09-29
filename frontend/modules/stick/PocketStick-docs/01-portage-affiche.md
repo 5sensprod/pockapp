@@ -290,3 +290,16 @@ du portage.
 
 Les produits affichés suivent la base depuis le 29 septembre 2026 :
 [`02-produits-vivants.md`](02-produits-vivants.md).
+
+## Cadre de sélection masquable (29 septembre 2026)
+
+Pour juger une ombre, un dégradé ou un contour sans le Transformer par-dessus :
+- **interrupteur** : bouton œil en tête de la barre contextuelle (`CanvasArea.jsx`) ou touche **H** (ignorée pendant
+  une saisie) — drapeau `cadreMasque` ;
+- **automatique** : tenir n'importe quel `input[type=range]` de la page masque
+  le cadre jusqu'au relâchement — drapeau `cadreMasqueGeste`, écouteurs dans
+  `KonvaCanvas.jsx`.
+
+Affichage seul : `visible` du Transformer. `selectedId`, `extraIds` et `cropId`
+ne bougent pas, les drapeaux n'entrent ni dans l'historique ni dans les
+templates. Le recadrage (`CropTransformer`) n'est jamais masqué.
