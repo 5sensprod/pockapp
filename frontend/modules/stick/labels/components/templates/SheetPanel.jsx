@@ -2,15 +2,13 @@
 import React, { useMemo, useCallback, useEffect } from 'react';
 import { Grid3x3, Download, Package } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
-import { exportPdfSheet } from '../../utils/exportPdfSheet';
+import { SHEET_FORMATS, casesDuTirage } from '../../lib/tirage';
+import { exporterTirage } from '../../utils/exportTirage';
+import TiragePanel from './TiragePanel';
 
 /**
  * Constantes hors composant (évite les recréations à chaque rendu)
  */
-const SHEET_FORMATS = [
-  { id: 'a4-portrait', label: 'A4 Portrait', width: 595, height: 842 },
-  { id: 'a4-landscape', label: 'A4 Paysage', width: 842, height: 595 },
-];
 
 const GRID_PRESETS = [
   { rows: 2, cols: 2, label: '2×2' },
@@ -36,8 +34,7 @@ const toMm = (pt, digits = 1) => {
 const SheetPanel = ({ docNode }) => {
   // ----- store
   const canvasSize = useLabelStore((state) => state.canvasSize);
-  const dataSource = useLabelStore((state) => state.dataSource);
-  const selectedProducts = useLabelStore((state) => state.selectedProducts ?? []);
+  const formatTirage = useLabelStore((s) => s.formatTirage);
 
   const sheetSettings = useLabelStore((s) => s.sheetSettings);
   const setSheetSettings = useLabelStore((s) => s.setSheetSettings);
@@ -58,9 +55,10 @@ const SheetPanel = ({ docNode }) => {
   const margin = sheetSettings.margin;
   const spacing = sheetSettings.spacing;
 
-  const productCount = Array.isArray(selectedProducts) ? selectedProducts.length : 0;
-  const isMultiProduct = dataSource === 'data' && productCount > 1;
   const totalCells = rows * cols;
+  const casesPremierePage = useLabelStore(
+    (s) => Math.min(totalCells, casesDuTirage(s).length)
+  );
   const isA4 = selectedSheet.id.startsWith('a4-');
 
   // ----- calculs
@@ -128,40 +126,11 @@ const SheetPanel = ({ docNode }) => {
     [setSelectedSheetId]
   );
 
-  const handleAdaptGrid = useCallback(() => {
-    if (productCount <= 1) return;
-    const root = Math.sqrt(productCount);
-    const nextRows = Math.ceil(root);
-    const nextCols = Math.ceil(productCount / nextRows);
-    setSheetSettings({ rows: nextRows, cols: nextCols });
-  }, [productCount, setSheetSettings]);
-
-  const handleExport = useCallback(() => {
-    if (!docNode) return;
-    exportPdfSheet(docNode, {
-      sheetWidth: selectedSheet.width,
-      sheetHeight: selectedSheet.height,
-      docWidth: canvasSize.width,
-      docHeight: canvasSize.height,
-      rows,
-      cols,
-      margin,
-      spacing,
-      fileName: `planche-${cols}x${rows}.pdf`,
-      products: isMultiProduct ? selectedProducts : null,
-      qrPerProductWhenUnbound: false,
-    });
-  }, [
-    docNode,
-    selectedSheet,
-    canvasSize,
-    rows,
-    cols,
-    margin,
-    spacing,
-    isMultiProduct,
-    selectedProducts,
-  ]);
+  // Même chemin que le bouton « Exporter » de la barre : le tirage entier.
+  const handleExport = useCallback(
+    () => exporterTirage(docNode),
+    [docNode]
+  );
 
   // ----- UI
   const previewStyle = useMemo(
@@ -179,6 +148,10 @@ const SheetPanel = ({ docNode }) => {
 
   return (
     <div className="p-4 space-y-4">
+      <TiragePanel />
+
+      {formatTirage === 'planche' && (
+      <>
       {/* Mode design sur cellule */}
       <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700 flex items-center justify-between">
         <div className="text-sm text-indigo-900 dark:text-indigo-200">
@@ -341,7 +314,7 @@ const SheetPanel = ({ docNode }) => {
           style={previewStyle}
         >
           {Array.from({ length: totalCells }).map((_, i) => {
-            const hasProduct = isMultiProduct && i < productCount;
+            const hasProduct = i < casesPremierePage;
             return (
               <div
                 key={i}
@@ -379,7 +352,6 @@ const SheetPanel = ({ docNode }) => {
           </div>
           <div className="text-amber-700 dark:text-amber-400">
             Total : {totalCells} cellule{totalCells > 1 ? 's' : ''}
-            {isMultiProduct && ` (${Math.min(productCount, totalCells)} produits affichés)`}
           </div>
 
           {!lockCanvasToSheetCell && (
@@ -397,14 +369,17 @@ const SheetPanel = ({ docNode }) => {
         </div>
       </div>
 
-      {/* Bouton export */}
+      </>
+      )}
+
+      {/* Bouton export : le tirage entier, comme « Exporter » de la barre */}
       <button
         onClick={handleExport}
         disabled={!docNode}
         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
       >
         <Download className="h-4 w-4" />
-        Exporter la planche PDF
+        Exporter le tirage PDF
       </button>
     </div>
   );

@@ -48,8 +48,8 @@ const TextTemplates = ({ dataSource, selectedProduct }) => {
 
   return (
     <div className="p-4 space-y-3">
-      {/* Mode vierge */}
-      {dataSource === 'blank' && (
+      {/* Texte statique : toujours proposé */}
+      {(
         <>
           <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
             Cliquez pour ajouter du texte

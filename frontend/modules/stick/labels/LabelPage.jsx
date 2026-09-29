@@ -5,8 +5,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import ToolsSidebar from './components/ToolsSidebar';
 import CanvasArea from './components/CanvasArea';
 import TopToolbar from './components/TopToolbar';
-import DataSourceSelector from './components/DataSourceSelector';
-import ProductSelector from './components/ProductSelector';
 import useLabelStore from './store/useLabelStore';
 import { toast } from 'sonner';
 import { useSynchroProduitsAffiche } from './lib/use-synchro-produits-affiche';
@@ -17,21 +15,15 @@ export const LabelPage = () => {
     dataSource,
     selectedProduct,
     selectedProducts,
-    setDataSource,
-    setSelectedProducts,
-    clearCanvas,
   } = useLabelStore();
   // Les produits du canvas suivent la base (temps réel, retour sur la page).
   useSynchroProduitsAffiche();
   const produitsDisparus = useLabelStore((s) => s.produitsDisparus);
   const retirerProduitsDisparus = useLabelStore((s) => s.retirerProduitsDisparus);
 
-  // Si des produits arrivent déjà depuis ProductTable, on saute le sélecteur
-  const [showDataSourceSelector, setShowDataSourceSelector] = useState(
-    () => !(useLabelStore.getState().selectedProducts?.length > 0)
-  );
-  const [showProductSelector, setShowProductSelector] = useState(false);
-  const [multiSelectProducts, setMultiSelectProducts] = useState(false);
+  // « Nouveau » avec des produits au tirage : les garder ou les vider ?
+  const [demandeNouveau, setDemandeNouveau] = useState(false);
+  const startNewDocument = useLabelStore((s) => s.startNewDocument);
 
   // État pour stocker le docNode du canvas
   const [docNode, setDocNode] = useState(null);
@@ -127,30 +119,14 @@ export const LabelPage = () => {
     setSelectedTool('effects');
   };
 
-  const handleDataSourceSelect = (source) => {
-    setDataSource(source, null);
-    setShowDataSourceSelector(false);
-
-    if (source === 'data') {
-      setMultiSelectProducts(true);
-      setShowProductSelector(true);
-    }
-  };
-
-  const handleProductSelect = (product) => {
-    if (Array.isArray(product)) {
-      setDataSource('data', product);
-    } else {
-      setDataSource('data', product);
-    }
-    setShowProductSelector(false);
-  };
-
   const handleNewLabel = () => {
-    clearCanvas();
-    setDataSource(null, null); // 🧹 vider aussi les produits du store
-    setShowDataSourceSelector(true);
-    setMultiSelectProducts(false);
+    if (useLabelStore.getState().selectedProductIds.length > 0) setDemandeNouveau(true);
+    else startNewDocument();
+  };
+
+  const nouveau = (garderProduits) => {
+    startNewDocument({ garderProduits });
+    setDemandeNouveau(false);
   };
 
   // Pour le passage aux composants enfants
@@ -160,23 +136,51 @@ export const LabelPage = () => {
 
   return (
     <div className="flex flex-col h-[100%] min-w-0 overflow-hidden bg-gray-100 dark:bg-gray-900">
-      {showDataSourceSelector && (
-        <DataSourceSelector
-          onSelect={handleDataSourceSelect}
-          onClose={() => setShowDataSourceSelector(false)}
-        />
-      )}
-
-      {showProductSelector && (
-        <ProductSelector
-          onSelect={handleProductSelect}
-          onClose={() => {
-            setShowProductSelector(false);
-            setShowDataSourceSelector(true);
-          }}
-          multiSelect={multiSelectProducts}
-          selectedProducts={selectedProducts}
-        />
+      {demandeNouveau && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setDemandeNouveau(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setDemandeNouveau(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titre-nouveau"
+            className="w-full max-w-sm mx-4 p-5 rounded-lg bg-white dark:bg-gray-800 shadow-xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="titre-nouveau" className="text-base font-semibold text-gray-900 dark:text-white">
+              Nouveau document
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Garder les produits du tirage pour le nouveau document ?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDemandeNouveau(false)}
+                className="px-3 py-1.5 text-sm rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => nouveau(false)}
+                className="px-3 py-1.5 text-sm rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                Vider
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => nouveau(true)}
+                className="px-3 py-1.5 text-sm rounded bg-blue-500 hover:bg-blue-600 text-white"
+              >
+                Garder
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 🆕 TopToolbar avec selectedProduct et onOpenEffects */}

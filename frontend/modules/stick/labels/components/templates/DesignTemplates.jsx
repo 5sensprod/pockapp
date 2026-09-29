@@ -19,7 +19,6 @@ const DesignTemplates = ({ stageRef, docNode, onClose }) => {
   const setCanvasSize = useLabelStore((state) => state.setCanvasSize);
   const setSheetSettings = useLabelStore((state) => state.setSheetSettings);
   const setLockCanvasToSheetCell = useLabelStore((state) => state.setLockCanvasToSheetCell);
-  const setDataSource = useLabelStore((state) => state.setDataSource);
   const addElement = useLabelStore((state) => state.addElement);
 
   useEffect(() => {
@@ -75,9 +74,6 @@ const DesignTemplates = ({ stageRef, docNode, onClose }) => {
       }
       if (templateData.lockCanvasToSheetCell !== undefined) {
         setLockCanvasToSheetCell(templateData.lockCanvasToSheetCell);
-      }
-      if (templateData.dataSource) {
-        setDataSource(templateData.dataSource);
       }
 
       // Restaurer les éléments

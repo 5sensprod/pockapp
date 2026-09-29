@@ -303,3 +303,9 @@ Pour juger une ombre, un dégradé ou un contour sans le Transformer par-dessus 
 Affichage seul : `visible` du Transformer. `selectedId`, `extraIds` et `cropId`
 ne bougent pas, les drapeaux n'entrent ni dans l'historique ni dans les
 templates. Le recadrage (`CropTransformer`) n'est jamais masqué.
+
+## Tirage : vignette seule et planche unifiées (29 septembre 2026)
+
+Plus de choix « vierge / données » au départ ni de planche à part : le canvas
+est le modèle, le tirage (produits × quantités, format page ou planche) dit
+qui l'imprime, et l'export pagine. Voir [`03-tirage.md`](03-tirage.md).

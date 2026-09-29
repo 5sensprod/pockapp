@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback, forwardRef } from 'rea
 import { Maximize2, Eye, EyeOff } from 'lucide-react';
 import KonvaCanvas, { MARGE_ESPACE } from './KonvaCanvas';
 import PropertyPanel from './PropertyPanel';
+import BandeTirage from './BandeTirage';
 import useLabelStore from '../store/useLabelStore';
 
 const CanvasArea = forwardRef(
@@ -129,6 +130,9 @@ const CanvasArea = forwardRef(
             onDocNode={handleDocNodeReady}
           />
         </div>
+
+        {/* Aperçu des pages du tirage (masqué pour une affiche seule) */}
+        <BandeTirage />
       </div>
     );
   }

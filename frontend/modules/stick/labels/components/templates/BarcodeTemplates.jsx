@@ -127,9 +127,10 @@ const BarcodeTemplates = ({ dataSource, selectedProduct }) => {
           <div className="flex items-start gap-2">
             <BarcodeIcon className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              <div className="font-medium mb-1">Codes-barres non disponibles</div>
+              <div className="font-medium mb-1">Aucun produit au tirage</div>
               <div>
-                Les codes-barres sont uniquement disponibles en mode <strong>Données</strong>.
+                Un code-barres se lie au produit : ajoutez-en un par « Produit » ou l'onglet
+                <strong> Tirage</strong>.
               </div>
             </div>
           </div>

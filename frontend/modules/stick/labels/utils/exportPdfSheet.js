@@ -15,6 +15,7 @@ import { dessinerCodeBarres } from './barcodeCanvas';
 import { construireFiche } from './ficheKonva';
 import { contenuFiche } from './ficheProduit';
 import { dessinForme } from '../components/canvas/ShapeNode';
+import { pagination } from '../lib/tirage';
 
 /**
  * Utilitaires purs (réutilisables/testables)
@@ -419,7 +420,14 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
 }
 
 /**
- * Export PDF en planche.
+ * Export PDF en planche, sur AUTANT DE PAGES QUE NÉCESSAIRE.
+ *
+ * `cases` (liste de `{ product }`, `product` pouvant être null) est le tirage
+ * déplié (`lib/tirage.js`) : c'est le chemin normal depuis le 29/09/2026.
+ * Sans `cases`, l'ancien contrat est traduit en cases : `products` → une case
+ * par produit ; sinon toutes les cases de la page avec le produit affiché.
+ * Une case identique n'est dessinée qu'une fois (cache par produit).
+ * `cadresCases` : le pointillé de repère autour de chaque case.
  */
 export async function exportPdfSheet(
   _docNode,
@@ -437,6 +445,8 @@ export async function exportPdfSheet(
     products = null,
     elementsOverride = null,
     qrPerProductWhenUnbound = false,
+    cases = null,
+    cadresCases = true,
   } = {}
 ) {
   if (!sheetWidth || !sheetHeight || !docWidth || !docHeight) return;
@@ -462,61 +472,71 @@ export async function exportPdfSheet(
   const orientation = sheetWidth >= sheetHeight ? 'landscape' : 'portrait';
   const pdf = new jsPDF({ orientation, unit: 'pt', format: [sheetWidth, sheetHeight] });
 
-  // Fond page blanc
-  pdf.setFillColor(255, 255, 255);
-  pdf.rect(0, 0, sheetWidth, sheetHeight, 'F');
-
   // Récupération des éléments (store ou override)
   const baseElements = Array.isArray(elementsOverride)
     ? elementsOverride
     : (useLabelStore.getState()?.elements ?? []);
 
-  // Mise en cache d'une cellule blanche
-  let blankCellDataURL = null;
-  const getBlankCell = async () => {
-    if (blankCellDataURL) return blankCellDataURL;
-    blankCellDataURL = await createDocumentImage([], docWidth, docHeight, scale, pixelRatio);
-    return blankCellDataURL;
+  const totalCells = rows * cols;
+  let liste;
+  if (Array.isArray(cases)) {
+    liste = cases;
+  } else if (Array.isArray(products) && products.length > 0) {
+    liste = products.map((product) => ({ product }));
+  } else {
+    // Un SEUL produit (ou aucun) : la même affiche dans chaque case, remplie
+    // avec le produit que montre le canvas. Avant, on passait `null` : la
+    // fiche n'avait rien à dessiner et disparaissait, et textes ou QR liés
+    // imprimaient leur valeur enregistrée au lieu de celle du produit.
+    const produitAffiche = useLabelStore.getState()?.selectedProduct ?? null;
+    liste = Array.from({ length: totalCells }, () => ({ product: produitAffiche }));
+  }
+  const { pages } = pagination(liste, { format: 'planche', rows, cols });
+
+  // Une image par produit distinct ; `vide` pour les cases libres.
+  const rendus = new Map();
+  const imageDe = async (uneCase) => {
+    const cle = uneCase ? (uneCase.product ?? 'sans-produit') : 'vide';
+    if (!rendus.has(cle)) {
+      const elements = uneCase
+        ? updateElementsWithProduct(
+            baseElements,
+            uneCase.product,
+            uneCase.product ? qrPerProductWhenUnbound : false
+          )
+        : [];
+      rendus.set(cle, await createDocumentImage(elements, docWidth, docHeight, scale, pixelRatio));
+    }
+    return rendus.get(cle);
   };
 
-  const totalCells = rows * cols;
-  const hasProducts = Array.isArray(products) && products.length > 0;
+  for (let p = 0; p < pages.length; p++) {
+    if (p > 0) pdf.addPage([sheetWidth, sheetHeight], orientation);
+    // Fond page blanc
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(0, 0, sheetWidth, sheetHeight, 'F');
 
-  for (let i = 0; i < totalCells; i++) {
-    const row = Math.floor(i / cols);
-    const col = i % cols;
-    const x = margin + col * (cellWidth + spacing) + offsetX;
-    const y = margin + row * (cellHeight + spacing) + offsetY;
+    for (let i = 0; i < pages[p].length; i++) {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const x = margin + col * (cellWidth + spacing) + offsetX;
+      const y = margin + row * (cellHeight + spacing) + offsetY;
 
-    let dataURL;
-    if (hasProducts && i < products.length) {
-      const product = products[i];
-      const updated = updateElementsWithProduct(baseElements, product, qrPerProductWhenUnbound);
-      dataURL = await createDocumentImage(updated, docWidth, docHeight, scale, pixelRatio);
-    } else if (hasProducts && i >= products.length) {
-      dataURL = await getBlankCell();
-    } else {
-      // Un SEUL produit (ou aucun) : la même affiche dans chaque case, remplie
-      // avec le produit que montre le canvas. Avant, on passait `null` : la
-      // fiche n'avait rien à dessiner et disparaissait, et textes ou QR liés
-      // imprimaient leur valeur enregistrée au lieu de celle du produit.
-      const produitAffiche = useLabelStore.getState()?.selectedProduct ?? null;
-      const updated = updateElementsWithProduct(baseElements, produitAffiche, false);
-      dataURL = await createDocumentImage(updated, docWidth, docHeight, scale, pixelRatio);
+      const dataURL = await imageDe(pages[p][i]);
+      pdf.addImage(dataURL, 'PNG', x, y, finalDocWidth, finalDocHeight);
+
+      if (!cadresCases) continue;
+      // Cadre pointillé de la cellule (repère visuel)
+      pdf.setDrawColor(200, 200, 200);
+      pdf.setLineDash([2, 2]);
+      pdf.setLineWidth(0.5);
+      pdf.rect(
+        margin + col * (cellWidth + spacing),
+        margin + row * (cellHeight + spacing),
+        cellWidth,
+        cellHeight
+      );
     }
-
-    pdf.addImage(dataURL, 'PNG', x, y, finalDocWidth, finalDocHeight);
-
-    // Cadre pointillé de la cellule (repère visuel)
-    pdf.setDrawColor(200, 200, 200);
-    pdf.setLineDash([2, 2]);
-    pdf.setLineWidth(0.5);
-    pdf.rect(
-      margin + col * (cellWidth + spacing),
-      margin + row * (cellHeight + spacing),
-      cellWidth,
-      cellHeight
-    );
   }
 
   pdf.save(fileName);

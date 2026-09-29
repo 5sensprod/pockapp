@@ -17,7 +17,10 @@ import {
   Sparkles,
   FolderOpen,
   Palette,
+  PackagePlus,
 } from 'lucide-react';
+import useLabelStore from '../store/useLabelStore';
+import ProductSelector from './ProductSelector';
 
 import TextTemplates from './templates/TextTemplates';
 import ImageTemplates from './templates/ImageTemplates';
@@ -49,9 +52,15 @@ const ToolsSidebar = ({
   const selectedTool =
     externalSelectedTool !== undefined ? externalSelectedTool : internalSelectedTool;
 
+  // « Produit » est une ACTION, pas un panneau : il ouvre le sélecteur, ajoute
+  // au tirage, puis montre l'onglet Tirage où la liste vient de grandir.
+  const ajouterAuTirage = useLabelStore((s) => s.ajouterAuTirage);
+  const [choisirProduits, setChoisirProduits] = useState(false);
+
   const tools = [
     { id: 'templates', label: 'Templates', icon: FolderOpen, component: TemplateManager },
     { id: 'designs', label: 'Designs', icon: Palette, component: DesignTemplates }, // 🆕 NOUVELLE LIGNE
+    { id: 'produit', label: 'Produit', icon: PackagePlus, action: () => setChoisirProduits(true) },
     { id: 'text', label: 'Texte', icon: Type, component: TextTemplates },
     { id: 'upload', label: 'Upload', icon: Upload, component: UploadTemplate },
     { id: 'image', label: 'Images', icon: ImageIcon, component: ImageTemplates },
@@ -63,10 +72,15 @@ const ToolsSidebar = ({
     { id: 'effects', label: 'Effets', icon: Sparkles, component: EffectsTemplates },
     { id: 'layers', label: 'Calques', icon: Layers, component: LayersPanel },
     { id: 'format', label: 'Format', icon: Maximize2, component: FormatPanel },
-    { id: 'sheet', label: 'Planche', icon: Grid3x3, component: SheetPanel },
+    { id: 'sheet', label: 'Tirage', icon: Grid3x3, component: SheetPanel },
   ];
 
   const handleToolClick = (toolId) => {
+    const tool = tools.find((t) => t.id === toolId);
+    if (tool?.action) {
+      tool.action();
+      return;
+    }
     const newTool = toolId === selectedTool ? null : toolId;
 
     if (onToolChange) {
@@ -76,6 +90,21 @@ const ToolsSidebar = ({
     }
   };
 
+  const selecteurProduits = choisirProduits && (
+    <ProductSelector
+      multiSelect
+      selectedProducts={[]}
+      onSelect={(produits) => {
+        ajouterAuTirage(produits);
+        setChoisirProduits(false);
+        if (isCollapsed) onToggleCollapse();
+        if (onToolChange) onToolChange('sheet');
+        else setInternalSelectedTool('sheet');
+      }}
+      onClose={() => setChoisirProduits(false)}
+    />
+  );
+
   const handleImageSelected = (imageData) => {
     console.log('🖼️ Image sélectionnée depuis Upload:', imageData);
   };
@@ -84,11 +113,12 @@ const ToolsSidebar = ({
   if (isCollapsed) {
     return (
       <div className="w-16 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-4 gap-2 overflow-y-auto">
+        {selecteurProduits}
         {tools.map((tool) => (
           <button
             key={tool.id}
             onClick={() => {
-              onToggleCollapse();
+              if (!tool.action) onToggleCollapse();
               handleToolClick(tool.id);
             }}
             className="p-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
@@ -106,6 +136,7 @@ const ToolsSidebar = ({
 
   return (
     <div className="w-[400px] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex overflow-hidden">
+      {selecteurProduits}
       {/* Barre d'icônes */}
       <div className="w-16 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-4 gap-2 overflow-y-auto">
         {tools.map((tool) => (

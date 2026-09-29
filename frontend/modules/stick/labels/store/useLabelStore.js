@@ -1,5 +1,6 @@
 // src/features/labels/store/useLabelStore.js
 import { create } from 'zustand';
+import { quantiteValide } from '../lib/tirage';
 
 const HISTORY_LIMIT = 100;
 
@@ -51,9 +52,18 @@ const selectionDepuis = (products) => {
     selectedProductIds: ids,
     produitsParId: parId,
     produitsDisparus: [],
+    quantites: {},
+    dataSource: sourceDerivee(ids),
     ...deriverProduits(ids, parId, 0),
   };
 };
+
+// `dataSource` n'est plus un choix : il DÉCOULE du tirage (au moins un
+// produit → 'data'). Gardé pour les lecteurs portés d'AppPos et pour les
+// templates déjà enregistrés. Voir `PocketStick-docs/03-tirage.md`.
+function sourceDerivee(ids) {
+  return ids?.length ? 'data' : 'blank';
+}
 
 const memeProduit = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
 
@@ -68,8 +78,14 @@ const useLabelStore = create((set, get) => ({
   // Image en cours de recadrage (id), comme `cropId` de PocketStick. Changer
   // de sélection termine le recadrage.
   cropId: null,
-  dataSource: null,
+  dataSource: 'blank', // dérivé — voir `sourceDerivee`
   selectedProductIds: [],
+  // TIRAGE (`lib/tirage.js`) : exemplaires par produit (clé absente = 1) et
+  // sans produit. `formatTirage` : 'page' (une par page) ou 'planche' (grille
+  // de `sheetSettings`). Rien de tout cela n'entre dans un template.
+  quantites: {},
+  quantiteSansProduit: 1,
+  formatTirage: 'page',
   produitsParId: {},
   /** Ids que la dernière relecture n'a plus rendus : produits supprimés. Leur
    *  dernière valeur connue reste affichée ; `LabelPage` avertit. */
@@ -288,10 +304,62 @@ const useLabelStore = create((set, get) => ({
   stopCrop: () => set({ cropId: null }),
 
   // --- data (ne pollue pas l'historique des éléments)
-  setDataSource: (source, product = null) =>
-    set({ dataSource: source, ...selectionDepuis(product) }),
+  // `source` est ignoré : la source découle des produits (`sourceDerivee`).
+  setDataSource: (_source, product = null) => set(selectionDepuis(product)),
 
   setSelectedProducts: (products) => set(selectionDepuis(products)),
+
+  // --- tirage
+  /** AJOUTE au tirage ; un produit déjà présent gagne un exemplaire. */
+  ajouterAuTirage: (products) =>
+    set((state) => {
+      const liste = (Array.isArray(products) ? products : products ? [products] : []).filter(
+        (p) => p && typeof p === 'object' && p._id
+      );
+      if (!liste.length) return {};
+      const ids = [...state.selectedProductIds];
+      const parId = { ...state.produitsParId };
+      const quantites = { ...state.quantites };
+      for (const p of liste) {
+        if (ids.includes(p._id)) quantites[p._id] = quantiteValide((quantites[p._id] ?? 1) + 1);
+        else ids.push(p._id);
+        parId[p._id] = p;
+      }
+      return {
+        selectedProductIds: ids,
+        produitsParId: parId,
+        quantites,
+        dataSource: sourceDerivee(ids),
+        ...deriverProduits(ids, parId, state.currentProductIndex),
+      };
+    }),
+
+  /** `id` null : la quantité « sans produit ». */
+  setQuantite: (id, n) =>
+    set((state) => {
+      if (id == null) return { quantiteSansProduit: quantiteValide(n) };
+      if (!state.selectedProductIds.includes(id)) return {};
+      return { quantites: { ...state.quantites, [id]: quantiteValide(n) } };
+    }),
+
+  retirerDuTirage: (id) =>
+    set((state) => {
+      if (!state.selectedProductIds.includes(id)) return {};
+      const courant = state.selectedProductIds[state.currentProductIndex];
+      const ids = state.selectedProductIds.filter((x) => x !== id);
+      const { [id]: _p, ...parId } = state.produitsParId;
+      const { [id]: _q, ...quantites } = state.quantites;
+      return {
+        selectedProductIds: ids,
+        produitsParId: parId,
+        quantites,
+        produitsDisparus: state.produitsDisparus.filter((x) => x !== id),
+        dataSource: sourceDerivee(ids),
+        ...deriverProduits(ids, parId, Math.max(0, ids.indexOf(courant))),
+      };
+    }),
+
+  setFormatTirage: (format) => set({ formatTirage: format === 'planche' ? 'planche' : 'page' }),
 
   /**
    * Relecture des produits affichés (temps réel, retour sur la page). Remplace
@@ -334,10 +402,14 @@ const useLabelStore = create((set, get) => ({
       const parId = {};
       for (const id of ids) if (state.produitsParId[id]) parId[id] = state.produitsParId[id];
       const index = Math.max(0, ids.indexOf(courant));
+      const quantites = {};
+      for (const id of ids) if (state.quantites[id] != null) quantites[id] = state.quantites[id];
       return {
         selectedProductIds: ids,
         produitsParId: parId,
         produitsDisparus: [],
+        quantites,
+        dataSource: sourceDerivee(ids),
         ...deriverProduits(ids, parId, index),
       };
     }),
@@ -371,7 +443,9 @@ const useLabelStore = create((set, get) => ({
       return deriverProduits(state.selectedProductIds, state.produitsParId, index);
     }),
 
-  startNewDocument: (source = 'blank') =>
+  /** Nouveau document. `garderProduits` : le tirage survit (quantités
+   *  comprises) ; sinon il est vidé. La question est posée par `LabelPage`. */
+  startNewDocument: ({ garderProduits = false } = {}) =>
     set((state) => {
       state._pushHistory(snapshotOf(state));
       return {
@@ -379,8 +453,7 @@ const useLabelStore = create((set, get) => ({
         selectedId: null,
         extraIds: [],
         cropId: null,
-        ...selectionDepuis(null),
-        dataSource: source,
+        ...(garderProduits ? {} : { ...selectionDepuis(null), quantiteSansProduit: 1 }),
         currentTemplateName: 'Nouveau',
         currentTemplateId: null,
         historyPast: [],
@@ -396,6 +469,8 @@ const useLabelStore = create((set, get) => ({
   setCurrentTemplateName: (name) => set({ currentTemplateName: name }),
   setCurrentTemplateId: (id) => set({ currentTemplateId: id }),
 
+  // Vide le DESSIN seulement : charger un template ne touche pas au tirage
+  // (le template est un modèle, le tirage dit qui l'imprime).
   clearCanvas: () =>
     set((state) => {
       state._pushHistory(snapshotOf(state));
@@ -404,7 +479,6 @@ const useLabelStore = create((set, get) => ({
         selectedId: null,
         extraIds: [],
         cropId: null,
-        ...selectionDepuis(null),
       };
     }),
 

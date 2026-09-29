@@ -1,8 +1,8 @@
 // src/features/labels/components/TopToolbar.jsx
 import React, { useEffect } from 'react';
-import { Undo, Redo, Download, Plus, ChevronLeft, ChevronRight, Save } from 'lucide-react';
+import { Undo, Redo, Download, Plus, Save } from 'lucide-react';
 import useLabelStore from '../store/useLabelStore';
-import { exportPdf } from '../utils/exportPdf';
+import { exporterTirage } from '../utils/exportTirage';
 
 const TopToolbar = ({
   dataSource,
@@ -12,13 +12,7 @@ const TopToolbar = ({
   onOpenEffects,
   onSave,
 }) => {
-  const zoom = useLabelStore((s) => s.zoom);
-  const canvasSize = useLabelStore((s) => s.canvasSize);
   const selectedId = useLabelStore((s) => s.selectedId);
-  const selectedProducts = useLabelStore((s) => s.selectedProducts);
-  const currentProductIndex = useLabelStore((s) => s.currentProductIndex);
-  const goToNextProduct = useLabelStore((s) => s.goToNextProduct);
-  const goToPreviousProduct = useLabelStore((s) => s.goToPreviousProduct);
 
   const undo = useLabelStore((s) => s.undo);
   const redo = useLabelStore((s) => s.redo);
@@ -43,23 +37,9 @@ const TopToolbar = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [canUndo, canRedo, undo, redo]);
 
-  const handleExportPdf = () => {
-    if (!docNode) {
-      console.warn('Aucun document à exporter');
-      return;
-    }
-    const safeZoom = Math.max(zoom || 1, 0.001);
-    exportPdf(docNode, {
-      width: canvasSize.width,
-      height: canvasSize.height,
-      fileName: 'document.pdf',
-      pixelRatio: Math.max(1, 2 / safeZoom),
-    });
-  };
+  // Le tirage entier : une page par exemplaire, ou la planche (`exportTirage`).
+  const handleExportPdf = () => exporterTirage(docNode);
 
-  const startNewDocument = useLabelStore((s) => s.startNewDocument);
-
-  const isMultiProduct = Array.isArray(selectedProducts) && selectedProducts.length > 1;
 
   return (
     <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 py-1.5 min-w-0 relative z-20">
@@ -67,10 +47,7 @@ const TopToolbar = ({
         {/* Gauche : actions + titre + (property inline si sélection) */}
         <div className="flex items-center gap-2 min-w-0">
           <button
-            onClick={() => {
-              startNewDocument();
-              onNewLabel?.();
-            }}
+            onClick={() => onNewLabel?.()}
             className="flex items-center gap-2 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
             title="Nouveau document"
           >
@@ -102,69 +79,7 @@ const TopToolbar = ({
 
           {/* Titre/document info — aligné à gauche */}
           <div className="flex items-center gap-3 min-w-0">
-            {isMultiProduct ? (
-              <>
-                <button
-                  onClick={goToPreviousProduct}
-                  className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Produit précédent"
-                >
-                  <ChevronLeft className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-                </button>
-
-                <div className="truncate">
-                  {currentTemplateName && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 flex items-center gap-1.5">
-                      <span className="truncate">{currentTemplateName}</span>
-                      {canUndo && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            console.log('🔵 Bouton Save cliqué !');
-                            onSave?.();
-                          }}
-                          className="hover:scale-110 transition-transform flex-shrink-0"
-                          title="Sauvegarder les modifications"
-                        >
-                          <Save className="h-3 w-3 text-orange-500 dark:text-orange-400" />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {selectedProduct ? (
-                    <div className="leading-tight">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                        {selectedProduct.name}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                        {selectedProduct.sku} •{' '}
-                        {selectedProduct.price != null
-                          ? Number(selectedProduct.price) % 1 === 0
-                            ? Number(selectedProduct.price).toLocaleString('fr-FR')
-                            : Number(selectedProduct.price).toLocaleString('fr-FR', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })
-                          : '0'}{' '}
-                        €
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm font-medium text-gray-900 dark:text-white">
-                      Multi-produits ({selectedProducts.length})
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={goToNextProduct}
-                  className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Produit suivant"
-                >
-                  <ChevronRight className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-                </button>
-              </>
-            ) : selectedProduct ? (
+            {selectedProduct ? (
               <div className="leading-tight">
                 {currentTemplateName && (
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 flex items-center gap-1.5">
@@ -195,7 +110,7 @@ const TopToolbar = ({
               <h1 className="text-sm font-medium text-gray-800 dark:text-white shrink-0 flex items-center gap-2">
                 <span className="truncate">
                   {currentTemplateName ||
-                    (dataSource === 'blank' ? 'Affiche vierge' : "Création d'affiche")}
+                    'Nouveau document'}
                 </span>
                 {canUndo && currentTemplateName && (
                   <button

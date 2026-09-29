@@ -1,10 +1,9 @@
 // src/features/labels/components/templates/TemplateManager.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, FolderOpen, Upload, Edit2, Search, X, Tag, Loader2, Package } from 'lucide-react';
+import { Save, FolderOpen, Upload, Edit2, Search, X, Tag, Loader2 } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import templateService from '../../services/templateService';
 import TemplateGrid from '../ui/TemplateGrid';
-import ProductSelector from '../ProductSelector'; // 🆕 Import ProductSelector
 
 // ✅ Ajouts : toasts + confirm (versions utilisateur existantes)
 import { useActionToasts } from '../../ui/useActionToasts';
@@ -19,8 +18,6 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
   const [editingTemplate, setEditingTemplate] = useState(null);
 
   // 🆕 États pour la sélection de produits
-  const [showProductSelector, setShowProductSelector] = useState(false);
-  const [pendingTemplate, setPendingTemplate] = useState(null);
 
   // Données du store
   const elements = useLabelStore((s) => s.elements);
@@ -35,8 +32,6 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
   const setSheetSettings = useLabelStore((s) => s.setSheetSettings);
   const setLockCanvasToSheetCell = useLabelStore((s) => s.setLockCanvasToSheetCell);
   const clearCanvas = useLabelStore((s) => s.clearCanvas);
-  const setDataSource = useLabelStore((s) => s.setDataSource); // 🆕
-  const setSelectedProducts = useLabelStore((s) => s.setSelectedProducts); // 🆕
 
   const fileInputRef = useRef(null);
 
@@ -105,27 +100,6 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
   };
 
   /**
-   * 🎯 Détecte si un template nécessite une sélection de produits
-   */
-  const requiresProductSelection = (template) => {
-    // Un template de planche en mode "data" nécessite une sélection
-    return (
-      template.dataSource === 'data' &&
-      template.sheetSettings &&
-      template.sheetSettings.rows > 0 &&
-      template.sheetSettings.cols > 0
-    );
-  };
-
-  /**
-   * 📊 Calcule le nombre max de produits pour un template
-   */
-  const getMaxProducts = (template) => {
-    if (!template.sheetSettings) return 1;
-    return template.sheetSettings.rows * template.sheetSettings.cols;
-  };
-
-  /**
    * 💾 Sauvegarde le template actuel
    */
   const handleSaveTemplate = async (metadata) => {
@@ -185,28 +159,7 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
         if (!ok) return;
       }
 
-      // 🆕 Vérifier si le template nécessite une sélection de produits
-      if (requiresProductSelection(template)) {
-        const maxProducts = getMaxProducts(template);
-
-        // Informer l'utilisateur
-        const proceedWithSelection = await confirm({
-          title: 'Sélection de produits requise',
-          message: `Ce template est une planche de ${template.sheetSettings.rows}×${template.sheetSettings.cols} cellules.\n\nVous pouvez sélectionner jusqu'à ${maxProducts} produit${maxProducts > 1 ? 's' : ''} pour remplir les cellules.`,
-          confirmText: 'Sélectionner les produits',
-          cancelText: 'Annuler',
-          variant: 'primary',
-        });
-
-        if (!proceedWithSelection) return;
-
-        // Ouvrir le sélecteur de produits
-        setPendingTemplate(template);
-        setShowProductSelector(true);
-        return;
-      }
-
-      // Si pas besoin de sélection, charger directement
+      // Le tirage n'est pas touché : un template est un modèle.
       await applyTemplate(template, null);
     } catch (err) {
       console.error('❌ Erreur chargement template:', err);
@@ -217,7 +170,7 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
   /**
    * 🎨 Applique le template avec les produits sélectionnés (si applicable)
    */
-  const applyTemplate = async (template, selectedProducts = null) => {
+  const applyTemplate = async (template) => {
     try {
       // Vider le canvas
 
@@ -255,13 +208,7 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
         setLockCanvasToSheetCell(templateData.lockCanvasToSheetCell);
       }
 
-      // 🆕 Restaurer le dataSource et les produits sélectionnés
-      if (templateData.dataSource) {
-        setDataSource(templateData.dataSource);
-      }
-      if (selectedProducts && selectedProducts.length > 0) {
-        setSelectedProducts(selectedProducts);
-      }
+      // `dataSource` enregistré : ignoré — il découle du tirage, qui reste en place.
 
       setCurrentTemplateName(template.name);
 
@@ -282,26 +229,6 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
       console.error('❌ Erreur application template:', err);
       error("Erreur lors de l'application ❌", { title: 'Erreur' });
     }
-  };
-
-  /**
-   * 🎯 Callback quand des produits sont sélectionnés
-   */
-  const handleProductsSelected = async (selectedProducts) => {
-    setShowProductSelector(false);
-
-    if (!pendingTemplate) return;
-
-    const maxProducts = getMaxProducts(pendingTemplate);
-
-    // Limiter au nombre de cellules disponibles
-    const productsToUse = selectedProducts.slice(0, maxProducts);
-
-    // Appliquer le template avec les produits
-    await applyTemplate(pendingTemplate, productsToUse);
-
-    // Reset
-    setPendingTemplate(null);
   };
 
   /**
@@ -486,13 +413,6 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
           <TemplateGrid
             templates={filteredTemplates.map((template) => ({
               ...template,
-              // 🆕 Badge pour templates multi-produits
-              badge: requiresProductSelection(template) ? (
-                <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-green-500 text-white text-xs rounded-full">
-                  <Package className="h-3 w-3" />
-                  {getMaxProducts(template)}
-                </div>
-              ) : null,
             }))}
             onLoad={handleLoadTemplate}
             onDelete={handleDeleteTemplate}
@@ -524,19 +444,6 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
             }
           }}
           onClose={() => setEditingTemplate(null)}
-        />
-      )}
-
-      {/* 🆕 Modal de sélection de produits */}
-      {showProductSelector && pendingTemplate && (
-        <ProductSelector
-          multiSelect={true}
-          selectedProducts={[]}
-          onSelect={handleProductsSelected}
-          onClose={() => {
-            setShowProductSelector(false);
-            setPendingTemplate(null);
-          }}
         />
       )}
 
