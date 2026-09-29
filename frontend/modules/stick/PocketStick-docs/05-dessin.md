@@ -34,7 +34,7 @@ l'identique » : le lot 0 copie, les lots suivants améliorent.
 1. ~~Perf~~ — corrigé au lot 1, ci-dessous.
 2. ~~Pression simulée, souris et tactile seulement~~ — lot 2, ci-dessous.
 3. ~~Aucun filtrage des points~~ — lot 3, ci-dessous.
-4. Pas d'effilement.
+4. ~~Pas d'effilement~~ — lot 4, ci-dessous.
 5. Surligneur = 30 px et 50 % d'opacité, sans fusion.
 
 ## Lot 1 — perf (fait)
@@ -94,6 +94,21 @@ règle des formes, sur le cadre `width × height` du dessin : `fill` ou
 `fillGradient` (linéaire, radial, texture). La barre du haut
 (`PropertyPanel.jsx`, `isDessin`) porte le même `GradientColorPicker` que les
 formes. L'export planche reçoit les mêmes props.
+
+## Lot 4 — plume (fait)
+
+- **Effilement** : réglages « Effiler le début » et « Effiler la fin »
+  (`effilementDebut`, `effilementFin`, 0–1) → `start.taper` / `end.taper` de
+  perfect-freehand, en longueur : 100 % = `EFFILEMENT_MAX` (10) × épaisseur,
+  donc stable pendant le tracé (une fraction de la longueur totale ferait
+  bouger le début à chaque point). Écrits dans l'élément seulement s'ils
+  valent quelque chose ; absents = bouts ronds, comme avant.
+- L'aperçu passe désormais TOUS les réglages (`{ ...reglages }`) à
+  `strokeOutline` : un réglage ajouté ne peut plus manquer à l'aperçu.
+- **Flou, flou dégradé, ombre** : rien à écrire. L'onglet Effets ne filtre
+  pas par type (`EffectsTemplates.jsx`, seuls les filtres d'image sont
+  réservés aux images) et `appliquerEffets` est générique : le canvas et les
+  deux exports les rendent déjà sur un dessin. Pas de filtre SVG.
 
 ## Lots suivants
 

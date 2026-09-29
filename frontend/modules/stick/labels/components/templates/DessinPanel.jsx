@@ -132,6 +132,9 @@ export default function DessinPanel() {
           {/* Lot 3 : l'inertie n'est plus liée à l'adoucissement */}
           <Reglage label="Stabiliser (%)" valeur={Math.round(stabilisation * 100)} min={0} max={100} onValeur={setPourcent('stabilisation')} />
           <Reglage label="Simplifier au relâchement (%)" valeur={Math.round(simplification * 100)} min={0} max={100} onValeur={setPourcent('simplification')} />
+          {/* Lot 4 : effilement, 100 % = 10 fois l'épaisseur */}
+          <Reglage label="Effiler le début (%)" valeur={Math.round((reglages.effilementDebut ?? 0) * 100)} min={0} max={100} onValeur={setPourcent('effilementDebut')} />
+          <Reglage label="Effiler la fin (%)" valeur={Math.round((reglages.effilementFin ?? 0) * 100)} min={0} max={100} onValeur={setPourcent('effilementFin')} />
           <Reglage label="Épaisseur variable (%)" valeur={Math.round(thinning * 100)} min={0} max={100} onValeur={setPourcent('thinning')} />
           <div>
             <div className="text-xs text-gray-700 dark:text-gray-300 mb-1">Varie selon</div>

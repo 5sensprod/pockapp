@@ -57,11 +57,9 @@ export default function DessinCalque({ scale, offsetX, offsetY, stageWidth, stag
     const apercu = apercuRef.current;
     const pts = pointsRef.current;
     if (!apercu || !pts) return;
-    const { strokeWidth: w, smoothing, thinning, stabilisation } = reglagesRef.current;
     const pression = !!traitRef.current?.pression;
-    apercu.data(
-      outlineToPathData(strokeOutline(pts, { strokeWidth: w, smoothing, thinning, stabilisation, pression, last: false })),
-    );
+    // Mêmes réglages que l'élément créé au relâchement (effilement compris)
+    apercu.data(outlineToPathData(strokeOutline(pts, { ...reglagesRef.current, pression, last: false })));
     apercu.visible(true);
     apercu.getLayer()?.batchDraw();
   };

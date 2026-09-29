@@ -31,7 +31,14 @@ export const DRAW_DEFAULTS = {
   // Ramer-Douglas-Peucker au relâchement, 0 = aucun point retiré.
   stabilisation: 0.35,
   simplification: 0,
+  // Lot 4 — effilement du début et de la fin, 0–1 ; 1 = sur
+  // `EFFILEMENT_MAX` fois l'épaisseur. 0 = bout rond, comme avant.
+  effilementDebut: 0,
+  effilementFin: 0,
 };
+
+/** Longueur d'effilement à 100 %, en épaisseurs de trait. */
+export const EFFILEMENT_MAX = 10;
 
 /** Distance minimale entre deux points relevés, en pixels ÉCRAN. */
 export const DISTANCE_MIN_ECRAN = 1.5;
@@ -59,7 +66,12 @@ const unit = (v, fallback) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) 
 // 0–1) ; sinon elle est simulée par la vitesse, comme dans PocketStick.
 // `stabilisation` absente (éléments d'avant le lot 3) : 0,7 × adoucir, la
 // règle de PocketStick.
-export const strokeOutline = (points, { strokeWidth, smoothing, thinning, stabilisation, pression = false, last = true }) => {
+// `effilementDebut` / `effilementFin` absents = 0 : bouts ronds (lot 0).
+export const strokeOutline = (
+  points,
+  { strokeWidth, smoothing, thinning, stabilisation, effilementDebut, effilementFin, pression = false, last = true },
+) => {
+  const effile = (v) => unit(v, 0) * EFFILEMENT_MAX * (strokeWidth || DRAW_DEFAULTS.strokeWidth);
   const soft = unit(smoothing, DRAW_DEFAULTS.smoothing);
   const thin = unit(thinning, 0) * 0.7;
   const stream = unit(stabilisation, 0.7 * soft);
@@ -71,6 +83,8 @@ export const strokeOutline = (points, { strokeWidth, smoothing, thinning, stabil
       streamline: stream,
       thinning: thin,
       simulatePressure: !pression && thin > 0,
+      start: { taper: effile(effilementDebut) },
+      end: { taper: effile(effilementFin) },
       last,
     },
   ).map(([x, y]) => ({ x, y }));
@@ -175,6 +189,8 @@ const reglagesDe = (el) => ({
   smoothing: el?.smoothing,
   thinning: el?.thinning,
   stabilisation: el?.stabilisation,
+  effilementDebut: el?.effilementDebut,
+  effilementFin: el?.effilementFin,
   pression: Array.isArray(el?.pressions),
 });
 
@@ -204,6 +220,8 @@ export const elementDessin = (brut, options) => {
     smoothing: options.smoothing,
     thinning: options.thinning,
     ...(Number.isFinite(options.stabilisation) ? { stabilisation: options.stabilisation } : {}),
+    ...(options.effilementDebut > 0 ? { effilementDebut: options.effilementDebut } : {}),
+    ...(options.effilementFin > 0 ? { effilementFin: options.effilementFin } : {}),
   };
 };
 
@@ -219,7 +237,7 @@ const cache = new WeakMap();
  */
 export const dessinTrace = (el) => {
   const r = reglagesDe(el);
-  const cle = `${r.strokeWidth}|${r.smoothing}|${r.thinning}|${r.stabilisation}|${el?.pressions?.length ?? ''}`;
+  const cle = `${r.strokeWidth}|${r.smoothing}|${r.thinning}|${r.stabilisation}|${r.effilementDebut}|${r.effilementFin}|${el?.pressions?.length ?? ''}`;
   const garde = Array.isArray(el?.points) ? cache.get(el.points) : null;
   let data = garde?.cle === cle ? garde.data : null;
   if (data === null) {

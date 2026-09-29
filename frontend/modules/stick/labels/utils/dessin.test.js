@@ -161,3 +161,28 @@ describe('dessin : courbe assistée (lot 3)', () => {
     expect(dessinTrace(el).data).toBe(outlineToPathData(strokeOutline(pointsDe(el), opts)));
   });
 });
+
+describe('dessin : effilement (lot 4)', () => {
+  const trait = Array.from({ length: 41 }, (_, i) => ({ x: i * 5, y: 50 }));
+  const base = { strokeWidth: 20, smoothing: 0.5, thinning: 0 };
+  const hauteurEntre = (o, x0, x1) => getBoundingBox(o.filter((p) => p.x >= x0 && p.x <= x1)).height;
+
+  it('absent ou 0 = bouts ronds, comme avant', () => {
+    expect(strokeOutline(trait, { ...base, effilementDebut: 0, effilementFin: 0 })).toEqual(strokeOutline(trait, base));
+  });
+  it('effiler le début amincit le début, pas la fin', () => {
+    const o = strokeOutline(trait, { ...base, effilementDebut: 1 });
+    expect(hauteurEntre(o, 5, 30)).toBeLessThan(hauteurEntre(o, 170, 195));
+  });
+  it('effiler la fin amincit la fin, pas le début', () => {
+    const o = strokeOutline(trait, { ...base, effilementFin: 1 });
+    expect(hauteurEntre(o, 170, 195)).toBeLessThan(hauteurEntre(o, 5, 30));
+  });
+  it("l'élément garde l'effilement (seulement s'il vaut quelque chose)", () => {
+    const opts = { stroke: '#000', ...base, effilementDebut: 0.5 };
+    const el = elementDessin(trait, opts);
+    expect(el.effilementDebut).toBe(0.5);
+    expect(el).not.toHaveProperty('effilementFin');
+    expect(dessinTrace(el).data).toBe(outlineToPathData(strokeOutline(pointsDe(el), opts)));
+  });
+});
