@@ -7,7 +7,7 @@
 
 import React, { useEffect } from 'react';
 import useLabelStore from '../../store/useLabelStore';
-import { brushOptions, STROKE_WIDTH_RANGE, VARIATIONS } from '../../utils/dessin';
+import { brushOptions, fusionDe, STROKE_WIDTH_RANGE, VARIATIONS } from '../../utils/dessin';
 
 const OUTILS = [
   { id: 'selection', label: 'Sélection' },
@@ -65,6 +65,16 @@ const TraceSelectionne = ({ el }) => {
         max={100}
         onValeur={(v) => set({ opacity: borne(v, 0, 100) / 100 })}
       />
+      {/* Lot 5 : fusion « produit », celle du surligneur */}
+      <label className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
+        <span>Fusion produit (surligneur)</span>
+        <input
+          type="checkbox"
+          checked={fusionDe(el) === 'multiply'}
+          onChange={(e) => set({ fusion: e.target.checked ? 'multiply' : null })}
+          className="accent-purple-600"
+        />
+      </label>
     </div>
   );
 };

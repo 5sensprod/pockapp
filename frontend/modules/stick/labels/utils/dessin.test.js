@@ -13,6 +13,7 @@ import {
   pressionReelle,
   pointUtile,
   simplifier,
+  fusionDe,
 } from './dessin';
 
 describe('dessin : tracé → contour', () => {
@@ -184,5 +185,21 @@ describe('dessin : effilement (lot 4)', () => {
     expect(el.effilementDebut).toBe(0.5);
     expect(el).not.toHaveProperty('effilementFin');
     expect(dessinTrace(el).data).toBe(outlineToPathData(strokeOutline(pointsDe(el), opts)));
+  });
+});
+
+describe('dessin : fusion du surligneur (lot 5)', () => {
+  const pts = [{ x: 0, y: 0 }, { x: 60, y: 0 }];
+  const opts = { stroke: '#ff0', strokeWidth: 30, smoothing: 0.5, opacity: 0.5 };
+
+  it('le surligneur crée un trait en fusion produit, le pinceau non', () => {
+    expect(elementDessin(pts, { ...opts, brushType: 'highlighter' }).fusion).toBe('multiply');
+    expect(elementDessin(pts, { ...opts, brushType: 'brush' })).not.toHaveProperty('fusion');
+  });
+  it('dessinTrace rend la fusion ; absente ou inconnue = normale', () => {
+    const el = elementDessin(pts, { ...opts, brushType: 'highlighter' });
+    expect(dessinTrace(el).globalCompositeOperation).toBe('multiply');
+    expect(dessinTrace({ ...el, fusion: null }).globalCompositeOperation).toBe('source-over');
+    expect(fusionDe({ fusion: 'destination-out' })).toBe('source-over');
   });
 });

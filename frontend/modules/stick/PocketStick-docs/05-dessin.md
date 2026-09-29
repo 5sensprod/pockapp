@@ -35,7 +35,7 @@ l'identique » : le lot 0 copie, les lots suivants améliorent.
 2. ~~Pression simulée, souris et tactile seulement~~ — lot 2, ci-dessous.
 3. ~~Aucun filtrage des points~~ — lot 3, ci-dessous.
 4. ~~Pas d'effilement~~ — lot 4, ci-dessous.
-5. Surligneur = 30 px et 50 % d'opacité, sans fusion.
+5. ~~Surligneur sans fusion~~ — lot 5, ci-dessous.
 
 ## Lot 1 — perf (fait)
 
@@ -109,6 +109,28 @@ formes. L'export planche reçoit les mêmes props.
   pas par type (`EffectsTemplates.jsx`, seuls les filtres d'image sont
   réservés aux images) et `appliquerEffets` est générique : le canvas et les
   deux exports les rendent déjà sur un dessin. Pas de filtre SVG.
+
+## Lot 5 — surligneur en fusion produit (fait)
+
+- Un trait tracé au surligneur porte `fusion: 'multiply'` ; `dessinTrace`
+  rend `globalCompositeOperation` (`fusionDe` : seule `multiply` est
+  reconnue, tout le reste = normale). Le pinceau n'écrit rien : les dessins
+  d'avant restent en fusion normale. 30 px et 50 % d'opacité inchangés.
+- Case « Fusion produit » sur un trait sélectionné (onglet Dessin).
+- **Où la poser, mesuré dans Konva 9** : un nœud mis en cache se dessine avec
+  SON mode de fusion (`Node._drawCachedSceneCanvas`, `Node.js:220`) ; un
+  groupe sans cache l'applique à ses enfants (`Container.js:224-229`), mais
+  un enfant dans un groupe mis en cache ne fusionne qu'avec le vide du cache.
+  - Canvas et export cloné : les effets cachent le `Path` lui-même → fusion
+    sur le Path.
+  - Export planche : les effets cachent le GROUPE qui met le trait à
+    l'échelle de la cellule → fusion sur le groupe, retirée du Path.
+- Le fond blanc de la page, à l'écran, est sur un AUTRE calque : sur une page
+  vide, le trait fusionne avec du transparent et garde sa couleur. Dans
+  l'export planche, le fond blanc est dans le même calque : `multiply` sur
+  blanc donne la même couleur. Le rendu est donc le même partout.
+- L'aperçu du tracé est dans le même calque que le document : il fusionne
+  déjà pendant qu'on dessine.
 
 ## Lots suivants
 

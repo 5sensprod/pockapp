@@ -180,7 +180,16 @@ export default function DessinCalque({ scale, offsetX, offsetY, stageWidth, stag
         onPointerMove={move}
       />
       {/* Toujours monté, caché hors tracé : `dessiner` en pose la géométrie */}
-      <Path ref={apercuRef} name="drawing-preview" visible={false} fill={stroke} opacity={opacity} listening={false} />
+      <Path
+        ref={apercuRef}
+        name="drawing-preview"
+        visible={false}
+        fill={stroke}
+        opacity={opacity}
+        // Même fusion que l'élément créé (`elementDessin`) : l'aperçu est le résultat final
+        globalCompositeOperation={reglages.brushType === 'highlighter' ? 'multiply' : 'source-over'}
+        listening={false}
+      />
     </Group>
   );
 }

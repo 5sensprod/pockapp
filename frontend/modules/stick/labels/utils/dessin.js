@@ -37,6 +37,14 @@ export const DRAW_DEFAULTS = {
   effilementFin: 0,
 };
 
+/**
+ * Lot 5 — MODE DE FUSION d'un trait. Le surligneur multiplie (`multiply`) :
+ * il fonce ce qu'il recouvre au lieu de le voiler, comme un vrai feutre.
+ * Un élément sans `fusion` (d'avant le lot 5) reste en fusion normale.
+ */
+export const FUSIONS = ['multiply'];
+export const fusionDe = (el) => (FUSIONS.includes(el?.fusion) ? el.fusion : 'source-over');
+
 /** Longueur d'effilement à 100 %, en épaisseurs de trait. */
 export const EFFILEMENT_MAX = 10;
 
@@ -220,6 +228,7 @@ export const elementDessin = (brut, options) => {
     smoothing: options.smoothing,
     thinning: options.thinning,
     ...(Number.isFinite(options.stabilisation) ? { stabilisation: options.stabilisation } : {}),
+    ...(options.brushType === 'highlighter' ? { fusion: 'multiply' } : {}),
     ...(options.effilementDebut > 0 ? { effilementDebut: options.effilementDebut } : {}),
     ...(options.effilementFin > 0 ? { effilementFin: options.effilementFin } : {}),
   };
@@ -248,6 +257,7 @@ export const dessinTrace = (el) => {
     data,
     ...remplissage(el?.fillGradient ?? null, el?.width, el?.height, el?.fill ?? DRAW_DEFAULTS.stroke),
     opacity: Number.isFinite(el?.opacity) ? el.opacity : 1,
+    globalCompositeOperation: fusionDe(el),
   };
 };
 

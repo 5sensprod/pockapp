@@ -270,9 +270,14 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
 
     // ✏️ DESSIN — même contour que le canvas (`dessinTrace`), à l'échelle 1
     // dans un groupe mis à l'échelle de la cellule, comme les formes.
+    // La FUSION (surligneur) va sur le GROUPE : c'est lui que les effets
+    // mettent en cache, et Konva dessine un cache avec le mode de fusion de
+    // son nœud (`Node._drawCachedSceneCanvas`) ; sans cache, un groupe
+    // l'applique à ses enfants. Sur le Path, elle serait perdue dans le cache.
     if (el?.type === 'dessin') {
+      const { globalCompositeOperation, ...props } = dessinTrace(el);
       const trace = new Konva.Path({
-        ...dessinTrace(el),
+        ...props,
         x: el.x ?? 0,
         y: el.y ?? 0,
         rotation: el.rotation ?? 0,
@@ -281,7 +286,7 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
         listening: false,
         ...shadowProps(el),
       });
-      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, listening: false });
+      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, listening: false, globalCompositeOperation });
       groupe.add(trace);
       return groupe;
     }
