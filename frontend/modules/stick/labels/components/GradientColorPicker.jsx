@@ -21,6 +21,8 @@ import {
   sanitizeGradient,
   versPeinture,
   DEFAULT_TEXTURE_PAINT,
+  composerCouleur,
+  decomposerCouleur,
   isTexture,
 } from '../utils/paint';
 import { motifTexture } from '../utils/peintureTexture';
@@ -45,6 +47,9 @@ const onglet = (actif) =>
       ? 'bg-blue-500 text-white'
       : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
   }`;
+
+// Damier sous une couleur transparente
+const DAMIER = 'repeating-conic-gradient(#d1d5db 0% 25%, #ffffff 0% 50%)';
 
 /** `<input type=color>` n'accepte qu'un #rrggbb : repli pour rgba() & co. */
 const enHex = (c) => (/^#[0-9a-f]{6}$/i.test(c) ? c : /^#[0-9a-f]{3}$/i.test(c) ? `#${[...c.slice(1)].map((x) => x + x).join('')}` : '#000000');
@@ -96,9 +101,9 @@ const ApercuPeinture = ({ paint, className }) => {
     if (motif) ctx.drawImage(motif, 0, 0, cv.width, cv.height);
   }, [cle]);
   return texture ? (
-    <canvas ref={ref} width={224} height={40} className={className} />
+    <canvas ref={ref} width={224} height={40} className={className} style={{ background: DAMIER, backgroundSize: '8px 8px' }} />
   ) : (
-    <div className={className} style={{ background: paintToCss(paint) }} />
+    <div className={className} style={{ background: `${paintToCss(paint)}, ${DAMIER}`, backgroundSize: 'auto, 8px 8px' }} />
   );
 };
 
@@ -268,7 +273,7 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
                   ref={barre}
                   onClick={ajouterArret}
                   className="relative h-4 rounded cursor-copy border border-gray-300 dark:border-gray-600"
-                  style={{ background: cssBarre }}
+                  style={{ background: `${cssBarre}, ${DAMIER}`, backgroundSize: 'auto, 8px 8px' }}
                   title="Cliquer pour ajouter une couleur"
                 >
                   {g.stops.map((s, k) => (
@@ -279,7 +284,7 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
                       className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-5 rounded-sm border-2 ${
                         k === i ? 'border-blue-500 ring-1 ring-white' : 'border-white'
                       } shadow`}
-                      style={{ left: `${s.offset * 100}%`, background: s.color }}
+                      style={{ left: `${s.offset * 100}%`, background: `linear-gradient(${s.color}, ${s.color}), ${DAMIER}`, backgroundSize: 'auto, 6px 6px' }}
                       title={`${s.color} · ${Math.round(s.offset * 100)} %`}
                     />
                   ))}
@@ -288,7 +293,12 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
 
               <div className="flex items-end gap-2">
                 <div className="flex-1 space-y-2">
-                  <ChampCouleur label={`Couleur ${i + 1}`} value={g.stops[i].color} onChange={(v) => majArret({ color: v })} />
+                  {/* La couleur garde son opacité, et inversement (#rrggbbaa) */}
+                  <ChampCouleur
+                    label={`Couleur ${i + 1}`}
+                    value={decomposerCouleur(g.stops[i].color).hex}
+                    onChange={(v) => majArret({ color: composerCouleur(v, decomposerCouleur(g.stops[i].color).alpha) })}
+                  />
                   <Curseur
                     label="Position"
                     valeur={g.stops[i].offset}
@@ -297,6 +307,15 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
                     max={1}
                     step={0.01}
                     onChange={(v) => majArret({ offset: v })}
+                  />
+                  <Curseur
+                    label="Opacité"
+                    valeur={decomposerCouleur(g.stops[i].color).alpha}
+                    affichage={`${Math.round(decomposerCouleur(g.stops[i].color).alpha * 100)} %`}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onChange={(v) => majArret({ color: composerCouleur(decomposerCouleur(g.stops[i].color).hex, v) })}
                   />
                 </div>
                 <button

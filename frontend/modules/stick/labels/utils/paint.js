@@ -50,6 +50,31 @@ export const couleurValide = (value) => {
 };
 const cleanColor = (value) => (couleurValide(value) ? value : null);
 
+// OPACITÉ d'un arrêt (29/09/2026) : portée par la COULEUR elle-même, en
+// #rrggbbaa — format que CSS, le canvas 2D et Konva lisent tels quels. Le
+// modèle des arrêts ne change donc pas. `rgba()` (dégradé radial par défaut)
+// est lu aussi.
+const RGBA = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i;
+const hex2 = (n) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
+
+/** `{ hex: '#rrggbb', alpha: 0..1 }` d'une couleur ; noir opaque si illisible. */
+export const decomposerCouleur = (c) => {
+  const v = String(c ?? '').trim();
+  let m = /^#([0-9a-f]{3,4})$/i.exec(v);
+  if (m) return decomposerCouleur(`#${[...m[1]].map((x) => x + x).join('')}`);
+  m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(v);
+  if (m) return { hex: `#${m[1].toLowerCase()}`, alpha: m[2] ? parseInt(m[2], 16) / 255 : 1 };
+  m = RGBA.exec(v);
+  if (m) return { hex: `#${hex2(+m[1])}${hex2(+m[2])}${hex2(+m[3])}`, alpha: m[4] == null ? 1 : Math.min(1, Math.max(0, +m[4])) };
+  return { hex: '#000000', alpha: 1 };
+};
+
+/** `#rrggbb` (opaque) ou `#rrggbbaa`. */
+export const composerCouleur = (hex, alpha = 1) => {
+  const { hex: h } = decomposerCouleur(hex);
+  return alpha >= 1 ? h : `${h}${hex2(alpha * 255)}`;
+};
+
 export const sanitizeGradient = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !estPeinture(value)) return null;
   if (!Array.isArray(value.stops) || value.stops.length < 2 || value.stops.length > MAX_GRADIENT_STOPS) return null;

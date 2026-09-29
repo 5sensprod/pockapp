@@ -84,3 +84,20 @@ describe('peinture texture', () => {
     expect(paintToCss(DEFAULT_TEXTURE_PAINT)).toMatch(/^linear-gradient\(90deg/);
   });
 });
+
+import { composerCouleur, decomposerCouleur } from './paint';
+
+describe('opacité des arrêts', () => {
+  it('lit #rgb, #rrggbb, #rrggbbaa et rgba()', () => {
+    expect(decomposerCouleur('#f00')).toEqual({ hex: '#ff0000', alpha: 1 });
+    expect(decomposerCouleur('#EC489980').alpha).toBeCloseTo(0.502, 2);
+    expect(decomposerCouleur('rgba(37, 99, 235, 0)')).toEqual({ hex: '#2563eb', alpha: 0 });
+  });
+  it('compose : opaque en #rrggbb, sinon #rrggbbaa', () => {
+    expect(composerCouleur('#EC4899', 1)).toBe('#ec4899');
+    expect(composerCouleur('#ec4899', 0.5)).toBe('#ec489980');
+    expect(sanitizeGradient({ type: 'linear-gradient', angle: 0, stops: [
+      { offset: 0, color: '#ec489980' }, { offset: 1, color: '#000000' },
+    ] })?.stops[0].color).toBe('#ec489980');
+  });
+});

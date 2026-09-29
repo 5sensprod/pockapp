@@ -536,3 +536,14 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
 - Écran et deux exports : `appliquerEffets` et `recacherFiltres`, déjà appelés
   des trois côtés. Pendant un redimensionnement, le masque suit au relâchement
   (comme les autres effets en pixels).
+
+## Opacité des couleurs d'un dégradé (29 septembre 2026)
+
+- Portée par la COULEUR de l'arrêt, en `#rrggbbaa` (`#rrggbb` quand elle est
+  opaque) : CSS, canvas 2D et Konva la lisent tels quels, le modèle des arrêts
+  ne change pas, et les trois peintures (linéaire, radiale, texture) en
+  profitent. `decomposerCouleur` / `composerCouleur` (`utils/paint.js`) ; le
+  `rgba()` du radial par défaut est lu aussi.
+- UI : curseur « Opacité » sous « Position » ; damier sous la barre, les
+  pastilles et l'aperçu. Changer la couleur garde l'opacité, et inversement.
+- Gardien : `paint.test.js`.
