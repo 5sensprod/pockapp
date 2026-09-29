@@ -620,6 +620,11 @@ après correction : constaté « rapide » par le propriétaire.
   même élément s'annulent ensemble.
 - **Disposition du texte courbé** mémorisée sur le nœud, invalidée par ce
   qu'elle lit et par `document.fonts` `loadingdone`.
-- Non fait : le fond dans un calque séparé (gain faible d'après les mesures).
+- **Écarté : le fond dans un calque séparé.** Les deux exports du canvas
+  clonent le groupe du document (`exportPdf.js`, `docNode.clone`, reçu aussi
+  par `exportTirage.js`) : un fond sorti de ce groupe disparaîtrait des PDF, ou
+  exigerait un second chemin de rendu. Et le gain est nul : la peinture du fond
+  est déjà en cache (`motifTexture`), son dessin n'est qu'un remplissage par
+  motif, que `node.cache()` remplacerait par un `drawImage` équivalent.
 - Au passage : `templateService.exportTemplate` / `importTemplate` manquaient
   (le bouton Exporter levait « is not a function »).
