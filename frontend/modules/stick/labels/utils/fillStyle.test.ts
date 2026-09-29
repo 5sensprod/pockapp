@@ -6,6 +6,7 @@ vi.mock('react-konva', () => ({
 	Line: 'Line',
 	Rect: 'Rect',
 	RegularPolygon: 'RegularPolygon',
+	Shape: 'Shape',
 	Star: 'Star',
 }))
 import { dessinForme } from '../components/canvas/ShapeNode'
@@ -82,5 +83,24 @@ describe('correction de texte lié', () => {
 	})
 	it('sans produit, pas de correction', () => {
 		expect(texteCorrige(el, null)).toBeUndefined()
+	})
+})
+
+describe('dessinForme : contour stylisé', () => {
+	// `dessinForme` est en JS : son `contourStyle = null` se lit comme un type `null`
+	const style: any = { variation: 0.5, tremble: 0.3, ondulation: 0, ondes: 12, effilementDebut: 0, effilementFin: 0 }
+	it('une forme à contour stylisé devient un Konva.Shape, même origine', () => {
+		const r = dessinForme({ shape: 'rectangle', x: 10, y: 20, width: 100, height: 50, stroke: '#000', strokeWidth: 4, contourStyle: style, id: 'a' })
+		expect(r.kind).toBe('Shape')
+		expect(r.props).toMatchObject({ x: 10, y: 20, offsetX: 0, offsetY: 0, width: 100, height: 50, strokeEnabled: false })
+		expect(typeof (r.props as any).sceneFunc).toBe('function')
+	})
+	it('une forme centrée garde son centre par offset', () => {
+		const r = dessinForme({ shape: 'circle', x: 10, y: 20, width: 100, height: 50, stroke: '#000', strokeWidth: 4, contourStyle: style, id: 'a' })
+		expect(r.props).toMatchObject({ x: 60, y: 45, offsetX: 50, offsetY: 25 })
+	})
+	it('sans épaisseur ou sans couleur de contour : la primitive Konva, comme avant', () => {
+		expect(dessinForme({ shape: 'circle', strokeWidth: 0, stroke: '#000', contourStyle: style }).kind).toBe('Ellipse')
+		expect(dessinForme({ shape: 'rectangle', strokeWidth: 4, stroke: '', contourStyle: style }).kind).toBe('Rect')
 	})
 })

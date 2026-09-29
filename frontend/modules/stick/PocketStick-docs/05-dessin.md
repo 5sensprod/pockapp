@@ -149,3 +149,32 @@ formes. L'export planche reçoit les mêmes props.
   trait dans les réglages de l'outil.
 
 Les six lots de la revue sont faits.
+
+## Contour stylisé des formes — lot A (29 septembre 2026)
+
+Le moteur du Dessin, appliqué au contour des formes (rectangle, cercle,
+triangle, étoile, trait). Menu « Contour stylisé » (icône vagues) à côté du
+contour dans la barre du haut (`MenuContourStylise.jsx`) : épaisseur
+variable, tremblé, ondulation (amplitude, nombre d'ondes), effilements.
+
+- **Donnée** : `el.contourStyle` (objet) ; absent = contour Konva ordinaire,
+  aucune forme existante ne change. Il ne s'affiche qu'avec une épaisseur et
+  une couleur de contour.
+- **Géométrie** (`utils/contourStylise.js`, pur, testé) : le contour de base
+  reproduit les primitives Konva (sommet du triangle et de l'étoile en haut,
+  arrondi borné comme `Rect`), il est rééchantillonné, déplacé selon sa
+  normale (ondulation sinusoïdale à nombre d'ondes ENTIER, tremblé par bruit
+  PÉRIODIQUE : il se referme sans couture), puis épaissi par perfect-freehand
+  avec une pression tirée d'un second bruit. Graine = `el.id` : le même
+  élément donne le même trait à l'écran et dans les deux exports.
+- **Rendu** : `dessinForme` rend alors un `Konva.Shape` dont la `sceneFunc`
+  remplit la ligne déformée (le remplissage suit l'ondulation, dégradés
+  compris, par `fillShape`) puis le trait (couleur ou `strokeGradient` via
+  `degradeCanvas2D`). Même origine que la primitive remplacée — offset pour
+  les formes centrées — : `positionDepuisNoeud`, rotation et Transformer
+  n'y voient rien. L'ombre suit : Konva l'applique autour de la `sceneFunc`.
+- ⚠️ **Cadre réel** : un `Shape` a pour cadre `{0, 0, width, height}`, or le
+  trait déborde. Le cadre du trait est posé sur le nœud (`getSelfRect`), par
+  `ShapeNode` ET par l'export planche — sans lui, le cache des effets
+  couperait ce qui dépasse.
+- Le copier-coller de style entre formes le reprend (même type = tout).

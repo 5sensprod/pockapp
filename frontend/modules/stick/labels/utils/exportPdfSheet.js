@@ -294,7 +294,7 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
     // 🔷 SHAPE — même géométrie que le canvas (`dessinForme`), dessinée à
     // l'échelle 1 dans un groupe mis à l'échelle de la cellule.
     if (el?.type === 'shape') {
-      const { kind, props } = dessinForme(el);
+      const { kind, props, cadre } = dessinForme(el);
       const forme = new Konva[kind]({
         ...props,
         rotation: el.rotation ?? 0,
@@ -303,6 +303,8 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
         listening: false,
         ...shadowProps(el),
       });
+      // Contour stylisé : le cadre réel du trait, comme sur le canvas (`ShapeNode`)
+      if (cadre) forme.getSelfRect = () => cadre;
       const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, listening: false });
       groupe.add(forme);
       return groupe;

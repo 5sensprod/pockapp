@@ -32,6 +32,7 @@ import { alignOffsets, distributeOffsets, unionBoxes } from '../utils/layout';
 import FontSelector from './FontSelector';
 import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
+import MenuContourStylise from './MenuContourStylise';
 import MenuMasque from './MenuMasque';
 import { TYPO_BORNES } from '../utils/typo';
 import LiaisonProduit from './LiaisonProduit';
@@ -638,6 +639,8 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 title="Épaisseur du contour, en pixels"
               />
+              {/* Contour à main levée : ondulation, tremblé, épaisseur variable */}
+              <MenuContourStylise element={selectedElement} onChange={(maj) => updateElement(selectedId, maj)} />
             </div>
 
             {/* L'arrondi n'a de sens que pour un rectangle. */}

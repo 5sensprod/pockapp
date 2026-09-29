@@ -11,9 +11,10 @@
 // moitié du cadre plutôt que posé tel quel.
 
 import React from 'react'
-import { Ellipse, Line, Rect, RegularPolygon, Star } from 'react-konva'
+import { Ellipse, Line, Rect, RegularPolygon, Shape, Star } from 'react-konva'
 import { remplissage } from '../../utils/fillStyle'
-import { contourKonva, versPeinture } from '../../utils/paint'
+import { contourKonva, degradeCanvas2D, versPeinture } from '../../utils/paint'
+import { contourStylise, tracerLigne, tracerOutline } from '../../utils/contourStylise'
 
 /** Les formes proposées, dans l'ordre où le panneau les affiche. */
 export const FORMES = [
@@ -42,7 +43,51 @@ export function dessinForme({
 	cornerRadius = 0,
 	fillGradient = null,
 	strokeGradient = null,
+	contourStyle = null,
+	id = '',
 }) {
+	// CONTOUR STYLISÉ (`utils/contourStylise.js`) : un `Konva.Shape` qui peint
+	// le remplissage puis le trait épaissi. Même origine que la primitive
+	// qu'il remplace — les formes centrées le sont par `offset` —, pour que
+	// `positionDepuisNoeud`, la rotation et le Transformer ne voient rien.
+	const stylise = contourStylise({ shape, width, height, cornerRadius, strokeWidth, contourStyle, id })
+	if (stylise && (stroke || strokeGradient || shape === 'line')) {
+		const centree = ['circle', 'triangle', 'star'].includes(shape)
+		const couleur = shape === 'line' ? stroke || fill : stroke
+		// Un trait n'a pas de remplissage ; `fillEnabled` reste vrai, le canvas de
+		// détection (hitFunc) passe par `fillShape`, qui l'exige.
+		const pleine = stylise.ferme ? remplissage(fillGradient, width, height, fill, false) : {}
+		const peindre = (ctx, noeud, scene) => {
+			if (stylise.ferme) {
+				ctx.beginPath()
+				tracerLigne(ctx, stylise.ligne)
+				ctx.fillShape(noeud)
+			}
+			ctx.beginPath()
+			tracerOutline(ctx, stylise.outline)
+			if (!scene) return ctx.fillShape(noeud)
+			ctx.setAttr('fillStyle', degradeCanvas2D(ctx, strokeGradient, width, height) ?? couleur)
+			ctx.fill()
+		}
+		return {
+			kind: 'Shape',
+			// À poser sur le nœud (`getSelfRect`) : voir `contourStylise`
+			cadre: stylise.cadre,
+			props: {
+				...pleine,
+				x: centree ? x + width / 2 : x,
+				y: centree ? y + height / 2 : y,
+				offsetX: centree ? width / 2 : 0,
+				offsetY: centree ? height / 2 : 0,
+				width,
+				height,
+				strokeEnabled: false,
+				sceneFunc: (ctx, noeud) => peindre(ctx, noeud, true),
+				hitFunc: (ctx, noeud) => peindre(ctx, noeud, false),
+			},
+		}
+	}
+
 	// Un contour d'épaisseur nulle ou sans couleur ne se dessine pas : Konva
 	// tracerait sinon un liseré noir par défaut. Le dégradé de contour
 	// (`utils/paint.js`, `contourKonva`) est linéaire : Konva ne sait pas mieux.
@@ -130,7 +175,7 @@ export function dessinForme({
 	}
 }
 
-const COMPOSANTS = { Ellipse, Line, Rect, RegularPolygon, Star }
+const COMPOSANTS = { Ellipse, Line, Rect, RegularPolygon, Shape, Star }
 
 const ShapeNode = ({
 	shape,
@@ -142,9 +187,10 @@ const ShapeNode = ({
 	cornerRadius,
 	fillGradient,
 	strokeGradient,
+	contourStyle,
 	...rest
 }) => {
-	const { kind, props } = dessinForme({
+	const { kind, props, cadre } = dessinForme({
 		shape,
 		x: rest.x ?? 0,
 		y: rest.y ?? 0,
@@ -156,9 +202,17 @@ const ShapeNode = ({
 		cornerRadius,
 		fillGradient,
 		strokeGradient,
+		contourStyle,
+		id: rest.id,
 	})
 	const Composant = COMPOSANTS[kind]
-	return <Composant {...rest} {...props} />
+	// Contour stylisé : le cadre réel du trait, qui déborde de width × height
+	const poserCadre = cadre
+		? (n) => {
+				if (n) n.getSelfRect = () => cadre
+			}
+		: undefined
+	return <Composant {...rest} {...props} ref={poserCadre} />
 }
 
 export default ShapeNode
