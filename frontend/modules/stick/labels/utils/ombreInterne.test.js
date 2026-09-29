@@ -30,3 +30,18 @@ describe('ombre interne', () => {
     expect(rayons).toEqual([6]);
   });
 });
+
+import { ombrePorteeDe, ombrePorteePixels } from './ombreInterne';
+
+describe('ombre portée refaite (élément masqué)', () => {
+  it('défauts du panneau Effets', () => {
+    expect(ombrePorteeDe({})).toBeNull();
+    expect(ombrePorteeDe({ shadowEnabled: true })).toEqual({ color: '#000000', opacity: 0.4, blur: 8, offsetX: 2, offsetY: 2 });
+  });
+  it('l’ombre suit l’alpha masqué, sous l’élément, décalée', () => {
+    const img = ombrePorteePixels(carre(), { color: '#000000', opacity: 1, blur: 0, offsetX: 2, offsetY: 2 }, 1);
+    expect(px(img, 3, 3)).toEqual([255, 255, 255, 255]); // l'élément reste dessus
+    expect(px(img, 7, 7)).toEqual([0, 0, 0, 255]); // ombre noire, hors de l'élément
+    expect(px(img, 1, 1)[3]).toBe(0); // rien du côté opposé
+  });
+});

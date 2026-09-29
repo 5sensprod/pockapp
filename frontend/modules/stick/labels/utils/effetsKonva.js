@@ -14,7 +14,7 @@
 
 import Konva from 'konva';
 import { effectFilters, sanitizeFilters } from './effetsImage';
-import { ombreInterneDe, ombrerPixels } from './ombreInterne';
+import { ombreInterneDe, ombrePorteeDe, ombrePorteePixels, ombrerPixels } from './ombreInterne';
 import { dessinerMasque, reglagesMasque } from './imageForme';
 
 export { ombreInterneDe };
@@ -115,6 +115,26 @@ function masqueForme(imageData) {
   return imageData;
 }
 
+/**
+ * Ombre portée d'un élément masqué par filtre (`ombrePorteePixels`) : lue sur
+ * le nœud (`ombrePorteeNoeud`), en unités du nœud — celles de Konva pour
+ * `shadowOffset` et `shadowBlur`.
+ */
+function ombrePortee(imageData) {
+  const o = this.getAttr?.('ombrePorteeNoeud');
+  if (!o) return imageData;
+  ombrePorteePixels(imageData, o, this.getAttr?.('ratioCache') ?? 1, (img, r) =>
+    Konva.Filters.Blur.call({ blurRadius: () => r }, img)
+  );
+  return imageData;
+}
+
+// Allume ou éteint l'ombre de Konva sur le nœud et ses formes (un groupe à
+// l'export planche porte l'ombre sur son enfant).
+const ombreKonva = (node, actif) => {
+  for (const n of [node, ...(node.find?.('Shape') ?? [])]) n.shadowEnabled?.(actif);
+};
+
 /** Les champs de masque d'un élément non-image, ou null s'il n'en a pas. */
 const champsMasque = (el) =>
   el && el.type !== 'image' && reglagesMasque(el)
@@ -146,6 +166,7 @@ export const filtresDe = (el) => {
   return [
     champsMasque(el) && masqueForme,
     ombreInterneDe(el) && ombreInterne,
+    champsMasque(el) && ombrePorteeDe(el) && ombrePortee,
     rayonFlou(el) > 0 && (fonduFlou(el) ? filtreFlouDegrade(fonduFlou(el)) : Konva.Filters.Blur),
     luminosite(el) !== 0 && Konva.Filters.Brighten,
     el.sepiaEnabled && Konva.Filters.Sepia,
@@ -163,6 +184,17 @@ export const appliquerEffets = (node, el, { echelle = 1, ratio = 1 } = {}) => {
   if (!node) return;
   const filtres = filtresDe(el);
   if (node.isCached?.()) node.clearCache();
+  // Élément masqué par filtre : l'ombre de Konva serait coupée par le masque,
+  // elle est éteinte et refaite en pixels (`ombrePortee`). Rallumée sinon.
+  const ombreRefaite = champsMasque(el) ? ombrePorteeDe(el) : null;
+  if (champsMasque(el)) {
+    ombreKonva(node, false);
+    node.setAttr('ombreKonvaEteinte', true);
+  } else if (node.getAttr?.('ombreKonvaEteinte')) {
+    ombreKonva(node, !!el.shadowEnabled);
+    node.setAttr('ombreKonvaEteinte', false);
+  }
+  node.setAttr?.('ombrePorteeNoeud', ombreRefaite);
   if (!filtres.length) {
     node.filters?.([]);
     return;
@@ -191,7 +223,13 @@ export const appliquerEffets = (node, el, { echelle = 1, ratio = 1 } = {}) => {
   // Un nœud vide (image pas encore chargée) ne se met pas en cache
   const r = node.getClientRect({ skipTransform: true });
   if (!(r.width > 0 && r.height > 0)) return;
-  cacher(node, ratio, Math.ceil(rayon) + 2);
+  // Marge du cache : le flou, et l'ombre refaite (Konva ne la compte plus)
+  const marge =
+    Math.ceil(rayon) +
+    2 +
+    (ombreRefaite ? Math.ceil(ombreRefaite.blur + Math.max(Math.abs(ombreRefaite.offsetX), Math.abs(ombreRefaite.offsetY))) : 0);
+  node.setAttr('margeCache', marge);
+  cacher(node, ratio, marge);
 };
 
 /**
@@ -206,6 +244,6 @@ export const recacherFiltres = (racine, ratioExport = 3) => {
     const rayon = n.getAttr('rayonFlouNoeud') ?? 0;
     n.blurRadius(rayon * ratioExport);
     n.setAttr('ratioCache', ratioExport);
-    cacher(n, ratioExport, Math.ceil(rayon) + 2);
+    cacher(n, ratioExport, n.getAttr('margeCache') ?? Math.ceil(rayon) + 2);
   }
 };

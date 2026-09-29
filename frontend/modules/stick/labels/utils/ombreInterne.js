@@ -65,3 +65,55 @@ export const ombrerPixels = (imageData, o, ratio, flouter) => {
   }
   return imageData;
 };
+
+/**
+ * OMBRE PORTÉE recalculée en pixels, pour un élément MASQUÉ par filtre (forme,
+ * texte) : l'ombre de Konva est dessinée AVANT le filtre de masque, qui la
+ * couperait au cadre et lui laisserait la silhouette d'avant le masque. On
+ * l'éteint sur le nœud et on la refait ici, à partir de l'alpha DÉJÀ masqué :
+ * alpha décalé, flouté par `flouter(img, rayon)`, coloré, puis l'élément
+ * composé PAR-DESSUS (pixels non prémultipliés). `o` : `{ color, opacity,
+ * blur, offsetX, offsetY }` en unités du nœud.
+ */
+export const ombrePorteePixels = (imageData, o, ratio, flouter) => {
+  const { width: w, height: h, data } = imageData;
+  const ox = Math.round(o.offsetX * ratio);
+  const oy = Math.round(o.offsetY * ratio);
+  const ombre = { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+  const od = ombre.data;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const sx = x - ox;
+      const sy = y - oy;
+      if (sx >= 0 && sy >= 0 && sx < w && sy < h) od[(y * w + x) * 4 + 3] = data[(sy * w + sx) * 4 + 3];
+    }
+  }
+  const r = Math.round(o.blur * ratio);
+  if (r > 0 && flouter) flouter(ombre, r);
+  const [cr, cg, cb] = rgbDe(o.color);
+  for (let i = 0; i < data.length; i += 4) {
+    const sa = (od[i + 3] / 255) * o.opacity;
+    if (!sa) continue;
+    const ea = data[i + 3] / 255;
+    const oa = ea + sa * (1 - ea);
+    const k = sa * (1 - ea);
+    data[i] = (data[i] * ea + cr * k) / oa;
+    data[i + 1] = (data[i + 1] * ea + cg * k) / oa;
+    data[i + 2] = (data[i + 2] * ea + cb * k) / oa;
+    data[i + 3] = oa * 255;
+  }
+  return imageData;
+};
+
+/** L'ombre portée d'un élément (valeurs par défaut du panneau Effets), ou null. */
+export const ombrePorteeDe = (el) => {
+  if (!el?.shadowEnabled) return null;
+  const n = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  return {
+    color: typeof el.shadowColor === 'string' ? el.shadowColor : '#000000',
+    opacity: Math.min(1, Math.max(0, n(el.shadowOpacity, 0.4))),
+    blur: Math.max(0, n(el.shadowBlur, 8)),
+    offsetX: n(el.shadowOffsetX, 2),
+    offsetY: n(el.shadowOffsetY, 2),
+  };
+};

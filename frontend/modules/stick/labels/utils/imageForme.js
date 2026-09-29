@@ -166,7 +166,10 @@ export const sceneImage = ({
     const h = shape.height();
     ctx.save();
     const hit = !!ctx.getCanvas?.()?.hitCanvas;
-    const horsEcran = (texture || f > 0) && !hit;
+    // Découpe nette MAIS ombre portée : le `clip` couperait l'ombre au masque.
+    // Hors écran, l'ombre (posée par Konva sur `ctx` avant la sceneFunc) suit
+    // la silhouette masquée.
+    const horsEcran = (texture || f > 0 || (decoupe && shape.hasShadow?.())) && !hit;
     if (horsEcran && typeof document !== 'undefined' && typeof Path2D !== 'undefined' && w > 0 && h > 0) {
       const m = ctx._context.getTransform();
       const ex = Math.hypot(m.a, m.b) || 1;

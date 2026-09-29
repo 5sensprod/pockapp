@@ -339,6 +339,8 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 })}
               </div>
             </MenuGroupe>
+            {/* Masque d'un texte : même menu, rendu par filtre (`effetsKonva.js`) */}
+            <MenuMasque element={selectedElement} onChange={(maj) => updateElement(selectedId, maj)} />
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
 
             {/* Style : gras, italique, souligné, barré, surlignage — un menu */}

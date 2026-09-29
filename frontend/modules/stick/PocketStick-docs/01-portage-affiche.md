@@ -552,3 +552,26 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
   peinture texture ne refait que la colorisation : mesuré sous Node sur
   1024 × 768, 7 ms contre 193 ms pour recalculer la carte — le ralentissement
   constaté sur un fond texturé en réglant les couleurs.
+
+## Masque sur les textes, ombre portée des éléments masqués (29 septembre 2026)
+
+- Le texte a le menu « Masque » (`MenuMasque`), rendu par le même filtre que
+  la forme (`masqueForme`) : tout élément non-image qui porte un masque.
+- **Ombre portée d'un élément masqué** : elle doit suivre la silhouette
+  MASQUÉE, pas le cadre.
+  - Image : la découpe nette (`clip`) coupait l'ombre au masque. Une image
+    masquée qui a une ombre passe désormais par le rendu hors écran de
+    `sceneImage` : Konva a déjà posé l'ombre sur le contexte
+    (`Shape.drawScene`, `_applyShadow` avant la `sceneFunc`), elle suit donc
+    l'image masquée.
+  - Forme et texte : l'ombre de Konva est dessinée DANS le cache, avant le
+    filtre de masque, qui la coupait. `appliquerEffets` l'éteint sur le nœud
+    (et ses formes, pour le groupe de l'export planche ; `ombreKonvaEteinte`
+    la rallume quand le masque disparaît) et le filtre `ombrePortee` la refait
+    à partir de l'alpha masqué (`ombrePorteePixels`, `utils/ombreInterne.js`) :
+    décalage et flou dans les unités du nœud, comme Konva. La marge du cache
+    compte l'ombre (`margeCache`, relue par `recacherFiltres`).
+  - ⚠️ Le flou de l'ombre refaite est un flou « pile » (`Konva.Filters.Blur`) de
+    rayon `shadowBlur` : proche du `shadowBlur` du canvas, pas identique au
+    pixel près à l'ombre d'un élément non masqué.
+- Gardien : `ombreInterne.test.js`.
