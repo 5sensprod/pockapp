@@ -80,7 +80,7 @@ planche.
 badge et le sélecteur imposé au chargement d'un template ; les flèches
 précédent / suivant de `TopToolbar` (remplacées par la liste) ;
 `handleAdaptGrid`, sans appelant. Le message du panneau code-barres renvoie à
-l'onglet Produits ; le panneau Tableau propose les styles statiques même avec un produit.
+l'onglet Produits ; le panneau Tableau (supprimé le 29 septembre 2026, voir `04-donnees-produit.md`) proposait les styles statiques même avec un produit.
 
 ## Gardiens
 

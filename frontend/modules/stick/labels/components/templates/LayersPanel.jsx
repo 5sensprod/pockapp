@@ -1,5 +1,6 @@
 // src/features/labels/components/templates/LayersPanel.jsx
 import React, { useState, useMemo } from 'react';
+import { libelleLiaison } from '../../utils/champsProduit';
 import {
   Lock,
   Unlock,
@@ -82,7 +83,7 @@ const LayersPanel = () => {
 
         if (el.type === 'text') {
           if (el.dataBinding) {
-            baseName = `Texte (${el.dataBinding})`;
+            baseName = `Texte (${libelleLiaison(el)})`;
           } else {
             baseName = el.text?.split('(')[0]?.trim() || 'Texte';
           }
@@ -102,7 +103,7 @@ const LayersPanel = () => {
         } else if (el.type === 'qrcode') {
           // ✅ Afficher le champ lié plutôt que la valeur tronquée
           if (el.dataBinding) {
-            baseName = `QR (${el.dataBinding})`;
+            baseName = `QR (${libelleLiaison(el)})`;
           } else {
             baseName = el.qrValue ? `QR: ${el.qrValue}` : 'QR Code';
           }

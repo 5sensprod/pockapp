@@ -5,36 +5,24 @@ import {
   Type,
   Image as ImageIcon,
   Shapes,
-  ListChecks,
-  Table2,
   Layers,
-  Maximize2,
   ArrowLeft,
-  QrCode,
-  Upload,
-  Barcode,
   Sparkles,
-  FolderOpen,
   Palette,
-  Package,
   PaintBucket,
+  Package,
+  Database,
 } from 'lucide-react';
 
 import TextTemplates from './templates/TextTemplates';
-import ImageTemplates from './templates/ImageTemplates';
-import ShapeTemplates from './templates/ShapeTemplates';
-import TableTemplates from './templates/TableTemplates';
+import AssetsPanel from './templates/AssetsPanel';
 import LayersPanel from './templates/LayersPanel';
-import FormatPanel from './templates/FormatPanel';
+import PagePanel from './templates/PagePanel';
 import SheetPanel from './templates/SheetPanel';
-import QRCodeTemplates from './templates/QRCodeTemplates';
-import FicheTemplates from './templates/FicheTemplates';
 import UploadTemplate from './templates/UploadTemplate';
-import BarcodeTemplates from './templates/BarcodeTemplates';
 import EffectsTemplates from './templates/EffectsTemplates';
-import TemplateManager from './templates/TemplateManager';
-import DesignTemplates from './templates/DesignTemplates';
-import FondPanel from './templates/FondPanel';
+import ModelesPanel from './templates/ModelesPanel';
+import DonneesProduitPanel from './templates/DonneesProduitPanel';
 
 const ToolsSidebar = ({
   isCollapsed,
@@ -52,22 +40,28 @@ const ToolsSidebar = ({
     externalSelectedTool !== undefined ? externalSelectedTool : internalSelectedTool;
 
   const tools = [
-    { id: 'templates', label: 'Templates', icon: FolderOpen, component: TemplateManager },
-    { id: 'designs', label: 'Designs', icon: Palette, component: DesignTemplates }, // 🆕 NOUVELLE LIGNE
-    // Produits : le tirage (liste, quantités, format page ou planche).
-    { id: 'sheet', label: 'Produits', icon: Package, component: SheetPanel },
+    // Templates du poste et designs d'usine, réunis (`ModelesPanel`)
+    { id: 'templates', label: 'Templates', icon: Palette, component: ModelesPanel },
+    // La page : sa taille puis son fond (`PagePanel`)
+    { id: 'format', label: 'Taille et fond', icon: PaintBucket, component: PagePanel },
     { id: 'text', label: 'Texte', icon: Type, component: TextTemplates },
-    { id: 'upload', label: 'Upload', icon: Upload, component: UploadTemplate },
-    { id: 'image', label: 'Images', icon: ImageIcon, component: ImageTemplates },
-    { id: 'shape', label: 'Forme', icon: Shapes, component: ShapeTemplates },
-    { id: 'fond', label: 'Fond', icon: PaintBucket, component: FondPanel },
-    { id: 'table', label: 'Tableau', icon: Table2, component: TableTemplates },
-    { id: 'fiche', label: 'Fiche produit', icon: ListChecks, component: FicheTemplates },
-    { id: 'qrcode', label: 'QR Code', icon: QrCode, component: QRCodeTemplates },
-    { id: 'barcode', label: 'Code-barres', icon: Barcode, component: BarcodeTemplates },
+    // Médias : importer et choisir dans la bibliothèque du poste, au même endroit
+    { id: 'image', label: 'Médias', icon: ImageIcon, component: UploadTemplate },
+    // Assets : formes et QR code statique (`AssetsPanel`)
+    { id: 'shape', label: 'Assets', icon: Shapes, component: AssetsPanel },
     { id: 'effects', label: 'Effets', icon: Sparkles, component: EffectsTemplates },
     { id: 'layers', label: 'Calques', icon: Layers, component: LayersPanel },
-    { id: 'format', label: 'Format', icon: Maximize2, component: FormatPanel },
+    // Sous Calques : ce qui vient de PocketStock, en orange.
+    // Produits : le tirage (liste, quantités, format page ou planche).
+    { id: 'sheet', label: 'Produits', icon: Package, component: SheetPanel, produit: true },
+    // Données produit : tous les éléments liés à la fiche, et leur liaison.
+    {
+      id: 'donnees',
+      label: 'Données produit',
+      icon: Database,
+      component: DonneesProduitPanel,
+      produit: true,
+    },
   ];
 
   const handleToolClick = (toolId) => {
@@ -78,10 +72,6 @@ const ToolsSidebar = ({
     } else {
       setInternalSelectedTool(newTool);
     }
-  };
-
-  const handleImageSelected = (imageData) => {
-    console.log('🖼️ Image sélectionnée depuis Upload:', imageData);
   };
 
   // Mode icônes uniquement
@@ -95,7 +85,11 @@ const ToolsSidebar = ({
               onToggleCollapse();
               handleToolClick(tool.id);
             }}
-            className="p-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+            className={`p-3 rounded-lg transition-colors ${
+              tool.produit
+                ? 'text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20'
+                : 'hover:bg-blue-50 dark:hover:bg-blue-900/20'
+            }`}
             title={tool.label}
           >
             <tool.icon className="h-5 w-5" />
@@ -118,8 +112,12 @@ const ToolsSidebar = ({
             onClick={() => handleToolClick(tool.id)}
             className={`p-3 rounded-lg transition-colors ${
               selectedTool === tool.id
-                ? 'bg-blue-500 text-white'
-                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                ? tool.produit
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-blue-500 text-white'
+                : tool.produit
+                  ? 'text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
             }`}
             title={tool.label}
           >
@@ -158,15 +156,7 @@ const ToolsSidebar = ({
               {SelectedComponent && (
                 <>
                   {selectedTool === 'templates' ? (
-                    // TemplateManager en mode sidebar (sans modal)
-                    <TemplateManager
-                      stageRef={stageRef}
-                      docNode={docNode}
-                      onClose={() => handleToolClick(null)}
-                    />
-                  ) : selectedTool === 'designs' ? ( // 🆕 NOUVELLE CONDITION
-                    // DesignTemplates pour les factory templates
-                    <DesignTemplates
+                    <ModelesPanel
                       stageRef={stageRef}
                       docNode={docNode}
                       onClose={() => handleToolClick(null)}
@@ -176,7 +166,7 @@ const ToolsSidebar = ({
                       dataSource={dataSource}
                       selectedProduct={selectedProduct}
                       docNode={docNode}
-                      onImageSelected={selectedTool === 'upload' ? handleImageSelected : undefined}
+                      onOpenTool={handleToolClick}
                     />
                   )}
                 </>

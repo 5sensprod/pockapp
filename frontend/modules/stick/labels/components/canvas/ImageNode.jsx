@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Image as KonvaImage } from 'react-konva';
 import { konvaCrop } from '../../utils/crop';
 import { sceneImage } from '../../utils/imageForme';
+import { estContenu } from '../../utils/ajustementImage';
 
 /** Recadrage d'un élément, valeurs par défaut comprises. */
 export const recadrage = (el) => ({
@@ -60,6 +61,7 @@ const ImageNode = ({
   maskPadding = 0,
   maskTexture = null,
   maskFeather = 0,
+  fit = null,
   ...rest
 }) => {
   const image = useImageChargee(src);
@@ -74,8 +76,9 @@ const ImageNode = ({
         maskPadding,
         maskFeather,
         maskTexture: cleTexture ? JSON.parse(cleTexture) : null,
+        fit,
       }),
-    [flipX, flipY, mask, maskPadding, maskFeather, cleTexture]
+    [flipX, flipY, mask, maskPadding, maskFeather, cleTexture, fit]
   );
   const naturel = tailleNaturelle(image);
   // MÉMOÏSÉ sur des nombres, et c'est ce qui rend le redimensionnement fluide :
@@ -87,13 +90,17 @@ const ImageNode = ({
   const nh = naturel?.height;
   const crop = useMemo(
     () =>
-      nw && nh
-        ? konvaCrop(
-            { width, height, ...recadrage({ cropX, cropY, cropWidth, cropHeight }) },
-            { width: nw, height: nh }
-          )
-        : undefined,
-    [nw, nh, width, height, cropX, cropY, cropWidth, cropHeight]
+      !(nw && nh)
+        ? undefined
+        : // Contenir : l'image entière, explicitement — un `crop` indéfini
+          // laisserait sur le nœud le recadrage d'avant (`ajustementImage.js`)
+          estContenu({ fit })
+          ? { x: 0, y: 0, width: nw, height: nh }
+          : konvaCrop(
+              { width, height, ...recadrage({ cropX, cropY, cropWidth, cropHeight }) },
+              { width: nw, height: nh }
+            ),
+    [nw, nh, width, height, cropX, cropY, cropWidth, cropHeight, fit]
   );
 
   // ✅ on pose id/x/y/...rest sur le nœud Konva racine (KonvaImage)

@@ -27,6 +27,17 @@ const HAUTEUR = 34;
 const ECART = 12;
 const ROTATION = 30 + 16; // poignée de rotation du Transformer, plus marge
 
+const HAUTEUR_MENU = 4 * 30 + 8; // quatre lignes du menu Calques, marges comprises
+
+/** Le premier ancêtre qui rogne ce qui dépasse (la zone de travail qui défile). */
+const zoneVisible = (el) => {
+  for (let n = el?.parentElement; n; n = n.parentElement) {
+    const o = getComputedStyle(n);
+    if (/(auto|scroll|hidden)/.test(o.overflowY + o.overflowX)) return n;
+  }
+  return document.documentElement;
+};
+
 const saisieEnCours = (cible) =>
   cible?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(cible?.tagName);
 
@@ -42,6 +53,10 @@ const EtiquetteSelection = ({ stageRef, transformerRef }) => {
   const [cadre, setCadre] = useState(null);
   const [geste, setGeste] = useState(false);
   const [calques, setCalques] = useState(false);
+  // Sens du menu Calques, décidé à l'ouverture sur la place RÉELLEMENT visible :
+  // sous l'étiquette, il passait sous le bas de la zone de travail (bande de
+  // tirage) quand l'élément était près du bord.
+  const [menuEnHaut, setMenuEnHaut] = useState(false);
   const racine = useRef(null);
 
   const ids = idsSelectionnes({ selectedId, extraIds, elements });
@@ -160,7 +175,16 @@ const EtiquetteSelection = ({ stageRef, transformerRef }) => {
         <button
           type="button"
           className={`${bouton} ${calques ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
-          onClick={() => setCalques((o) => !o)}
+          onClick={() => {
+            if (!calques && racine.current) {
+              const r = racine.current.getBoundingClientRect();
+              const z = zoneVisible(racine.current).getBoundingClientRect();
+              const dessous = z.bottom - r.bottom;
+              const dessus = r.top - z.top;
+              setMenuEnHaut(dessous < HAUTEUR_MENU && dessus > dessous);
+            }
+            setCalques((o) => !o);
+          }}
           aria-expanded={calques}
           title="Profondeur (calques)"
         >
@@ -169,7 +193,7 @@ const EtiquetteSelection = ({ stageRef, transformerRef }) => {
         {calques && (
           <div
             className={`absolute left-1/2 -translate-x-1/2 w-44 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg ${
-              enDessous ? 'top-full mt-1' : 'bottom-full mb-1'
+              menuEnHaut ? 'bottom-full mb-1' : 'top-full mt-1'
             }`}
           >
             <button type="button" className={ligneMenu} onClick={profondeur('avant')}>

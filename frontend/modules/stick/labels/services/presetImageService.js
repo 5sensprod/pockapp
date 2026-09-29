@@ -9,7 +9,7 @@
 //
 // L'interface est conservée À L'IDENTIQUE (uploadImages / listImages /
 // getImageInfo / deleteImage / getImageUrl / normalizeProductImages) pour que
-// `ImageTemplates` et `UploadTemplate` n'aient pas à être réécrits.
+// `UploadTemplate` (onglet « Médias ») n'ait pas à être réécrit.
 //
 // Les images des PRODUITS, elles, viennent de PocketBase en URL complète
 // (`lib/produit-adapte.ts`) et traversent ce service sans transformation.

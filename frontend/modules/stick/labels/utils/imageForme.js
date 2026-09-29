@@ -20,6 +20,7 @@
 
 import { sanitizeTexture } from './bruit';
 import { carteTexture } from './carteTexture';
+import { rectContenu } from './ajustementImage';
 
 export const MASQUES = [
   { id: 'circle', label: 'Cercle', d: 'M50 0 A50 50 0 1 1 50 100 A50 50 0 1 1 50 0 Z' },
@@ -63,9 +64,16 @@ const HORS_ECRAN_MAX = 4096;
 // L'image telle que Konva la dessine (`Konva.Image._sceneFunc`), recadrage
 // compris, sur un contexte 2D brut : le canvas hors écran n'est pas un contexte
 // Konva.
-const dessinerImage = (c, shape, w, h) => {
+// `contenu` (Contenir, `ajustementImage.js`) : l'image entière, centrée dans
+// le cadre ; le recadrage est ignoré.
+const dessinerImage = (c, shape, w, h, contenu = false) => {
   const img = shape.image?.();
   if (!img) return;
+  if (contenu) {
+    const r = rectContenu(w, h, img.naturalWidth || img.width, img.naturalHeight || img.height);
+    c.drawImage(img, r.x, r.y, r.width, r.height);
+    return;
+  }
   const cw = shape.cropWidth?.();
   const ch = shape.cropHeight?.();
   if (cw && ch) c.drawImage(img, shape.cropX() || 0, shape.cropY() || 0, cw, ch, 0, 0, w, h);
@@ -154,13 +162,15 @@ export const sceneImage = ({
   maskPadding = 0,
   maskTexture = null,
   maskFeather = 0,
+  fit = null,
 } = {}) => {
   const masque = PAR_ID[mask] ?? null;
+  const contenu = fit === 'contain';
   const texture = sanitizeTexture(maskTexture);
   const p = retraitMasque({ maskPadding });
   const f = fonduMasque({ maskFeather });
   const decoupe = !!masque || p > 0 || f > 0;
-  if (!flipX && !flipY && !decoupe && !texture) return undefined;
+  if (!flipX && !flipY && !decoupe && !texture && !contenu) return undefined;
   return (ctx, shape) => {
     const w = shape.width();
     const h = shape.height();
@@ -194,7 +204,7 @@ export const sceneImage = ({
         c.translate(flipX ? w : 0, flipY ? h : 0);
         c.scale(flipX ? -1 : 1, flipY ? -1 : 1);
       }
-      dessinerImage(c, shape, w, h);
+      dessinerImage(c, shape, w, h, contenu);
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.globalCompositeOperation = 'destination-in';
       c.drawImage(alpha, 0, 0);
@@ -207,7 +217,14 @@ export const sceneImage = ({
       ctx.translate(flipX ? w : 0, flipY ? h : 0);
       ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
     }
-    shape._sceneFunc(ctx);
+    if (!contenu) shape._sceneFunc(ctx);
+    else if (hit) {
+      // Le cadre entier reste cliquable, marges comprises
+      ctx.beginPath();
+      ctx.rect(0, 0, w, h);
+      ctx.closePath();
+      ctx.fillStrokeShape(shape);
+    } else dessinerImage(ctx, shape, w, h, true);
     ctx.restore();
   };
 };

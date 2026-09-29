@@ -4,6 +4,7 @@ import { Upload, Image as ImageIcon, Trash2, Loader2, AlertCircle, X } from 'luc
 import presetImageService from '../../services/presetImageService';
 import useLabelStore from '../../store/useLabelStore';
 import { cadreSurCanvas } from '../../utils/imagePlacement';
+import { AJUSTEMENT_NOUVELLE_IMAGE } from '../../utils/ajustementImage';
 
 /**
  * UploadTemplate - Composant d'upload et gestion des images
@@ -84,6 +85,7 @@ const UploadTemplate = ({ onImageSelected }) => {
       id: undefined,
       // À la taille du canvas, entière et centrée
       ...cadreSurCanvas(aspectRatio, useLabelStore.getState().canvasSize),
+      ...AJUSTEMENT_NOUVELLE_IMAGE, // Contenir : la photo entière, quel que soit le produit
       src: image.src,
       filename: image.filename,
       opacity: 1,
@@ -199,7 +201,7 @@ const UploadTemplate = ({ onImageSelected }) => {
             {uploading ? (
               <>
                 <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
-                <span className="text-sm font-medium text-blue-600">Upload en cours...</span>
+                <span className="text-sm font-medium text-blue-600">Import en cours…</span>
               </>
             ) : (
               <>

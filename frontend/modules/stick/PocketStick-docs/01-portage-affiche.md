@@ -242,6 +242,7 @@ Tout vit sous `frontend/modules/stick/`. La page est `/stick`
 | Fiche produit | `labels/utils/ficheProduit.js` (extraction), `labels/utils/ficheKonva.js` (dessin) |
 | L'état du document (éléments, historique, annuler/refaire) | `labels/store/useLabelStore.js` |
 | Le passage produit → texte affiché | `labels/utils/dataBinding.js` **et** `labels/lib/produit-adapte.ts` |
+| Les champs liables, leur UI, Contenir | `labels/utils/champsProduit.js`, `LiaisonProduit.jsx`, `DonneesProduitPanel.jsx`, `utils/ajustementImage.js` — voir [`04-donnees-produit.md`](04-donnees-produit.md) |
 | L'export PDF, à l'unité ou en planche | `labels/utils/exportPdf.js`, `labels/utils/exportPdfSheet.js` |
 | Les templates enregistrés | `labels/services/templateService.js` (IndexedDB) |
 
@@ -628,3 +629,29 @@ après correction : constaté « rapide » par le propriétaire.
   motif, que `node.cache()` remplacerait par un `drawImage` équivalent.
 - Au passage : `templateService.exportTemplate` / `importTemplate` manquaient
   (le bouton Exporter levait « is not a function »).
+
+## Données produit et Contenir (29 septembre 2026)
+
+Une seule UI pour lier un élément à la fiche produit (registre, bloc des
+Propriétés, onglet « Données produit », panneau Tableau supprimé) et le mode
+**Contenir** des images : voir [`04-donnees-produit.md`](04-donnees-produit.md).
+
+## Templates et Designs réunis (29 septembre 2026)
+
+Un seul onglet « Templates » (icône palette) : `templates/ModelesPanel.jsx`
+montre « Mes templates » (`TemplateManager`) et « Designs » (`DesignTemplates`),
+repris tels quels. Les deux restent montés, l'inactif masqué :
+`TemplateManager` écoute `request-template-save` (`LabelPage.jsx`), qu'il
+n'entendrait pas s'il était démonté. L'id d'outil reste `templates`.
+
+## Format et fond réunis (29 septembre 2026)
+
+Un seul onglet « Format et fond » (icône Format, id d'outil `format`) :
+`templates/PagePanel.jsx` montre `FormatPanel` et `FondPanel`, repris tels
+quels. L'onglet « Fond » (id `fond`) n'existe plus.
+
+**Les panneaux fusionnés partagent leurs onglets** : `templates/OngletsPanneau.jsx`
+(Templates : Mes templates / Designs ; Taille et fond : Taille / Fond, icône
+pot de peinture ; Assets : Formes / QR code, `templates/AssetsPanel.jsx`,
+id d'outil `shape`). Tous
+les onglets restent montés, l'inactif masqué.

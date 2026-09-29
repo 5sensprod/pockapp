@@ -2,8 +2,6 @@
 import React from 'react';
 import {
   Palette,
-  Link,
-  Unlink,
   Sparkles,
   Bold,
   Italic,
@@ -36,6 +34,9 @@ import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
 import MenuMasque from './MenuMasque';
 import { TYPO_BORNES } from '../utils/typo';
+import LiaisonProduit from './LiaisonProduit';
+import { typeLiable } from '../utils/champsProduit';
+import { estContenu } from '../utils/ajustementImage';
 import { resolvePropForElement, texteCorrige, ficheChangeeDepuisCorrection } from '../utils/dataBinding';
 import { resetCropAttrs } from '../utils/crop';
 import { geometrieImage } from './canvas/CropOverlay';
@@ -122,84 +123,11 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
   const isShape = selectedElement.type === 'shape';
   const isFiche = selectedElement.type === 'fiche';
 
-  const dataFields = selectedProduct
-    ? [
-        { key: 'name', label: 'Nom du produit', value: selectedProduct.name },
-        { key: 'price', label: 'Prix', value: `${selectedProduct.price}€` },
-        {
-          key: 'sale_price',
-          label: 'Prix promo',
-          value:
-            selectedProduct.sale_price != null && selectedProduct.sale_price !== ''
-              ? `${selectedProduct.sale_price}€`
-              : `${selectedProduct.price}€`,
-        },
-        { key: 'description', label: 'Description', value: selectedProduct.description ?? '' },
-        { key: 'brand', label: 'Marque', value: selectedProduct.brand_ref?.name ?? '' },
-        { key: 'sku', label: 'Référence', value: selectedProduct.sku },
-        { key: 'stock', label: 'Stock', value: `Stock: ${selectedProduct.stock}` },
-        { key: 'supplier', label: 'Fournisseur', value: selectedProduct.supplier_ref?.name ?? '' },
-        { key: 'website_url', label: 'URL produit', value: selectedProduct.website_url ?? '' },
-        {
-          key: 'barcode',
-          label: 'Code-barres',
-          value: selectedProduct?.meta_data?.find?.((m) => m.key === 'barcode')?.value ?? '',
-        },
-      ]
-    : [];
-
   const handleColorChange = (color) => updateElement(selectedId, { color });
-
-  // ✅ Ne plus "figer" la valeur : on n'écrit que dataBinding
-  const handleFieldChange = (fieldKey) => {
-    const field = dataFields.find((f) => f.key === fieldKey);
-    if (!field) return;
-
-    if (isText) {
-      updateElement(selectedId, { dataBinding: field.key });
-      return;
-    }
-    if (isQRCode) {
-      updateElement(selectedId, { dataBinding: field.key });
-      return;
-    }
-    if (isBarcode) {
-      updateElement(selectedId, { dataBinding: field.key });
-      return;
-    }
-  };
 
   const handleQRValueChange = (value) => {
     // Valeur fixe quand pas de binding
     updateElement(selectedId, { qrValue: value });
-  };
-
-  const handleUnbind = () => {
-    updateElement(selectedId, { dataBinding: null });
-  };
-
-  // Un QR lié l'est à l'URL web, et à rien d'autre : sans URL il ne s'affiche
-  // pas, plutôt que d'encoder un code-barres que personne ne peut ouvrir.
-  const getDefaultQRBindingKey = () => 'website_url';
-
-  /** Lier/Délier un QR au produit (toggle) */
-  const handleQRBinding = () => {
-    if (!selectedProduct) return;
-    if (selectedElement.dataBinding) {
-      updateElement(selectedId, { dataBinding: null });
-      return;
-    }
-    const key = getDefaultQRBindingKey();
-    if (key) updateElement(selectedId, { dataBinding: key });
-  };
-
-  /** Lier/Délier une image au produit */
-  const handleImageBinding = () => {
-    if (selectedElement.dataBinding) {
-      updateElement(selectedId, { dataBinding: null });
-    } else {
-      updateElement(selectedId, { dataBinding: 'product_image' });
-    }
   };
 
   const handleBarcodeColorChange = (value) => {
@@ -972,13 +900,37 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => startCrop(selectedId)}
-                className="px-3 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
-                title="Recadrer (ou double-clic sur l'image)"
-              >
-                Recadrer
-              </button>
+              <>
+                {/* Ajustement (`utils/ajustementImage.js`) : Contenir montre la
+                    photo entière, quelles que soient ses proportions */}
+                <div className="flex items-center gap-1" role="group" aria-label="Ajustement de l'image">
+                  {[
+                    [false, 'Remplir', "L'image couvre le cadre ; le recadrage choisit la partie visible"],
+                    [true, 'Contenir', "L'image entière, centrée dans le cadre — pour une photo liée au produit"],
+                  ].map(([contenir, libelle, aide]) => (
+                    <button
+                      key={libelle}
+                      onClick={() => updateElement(selectedId, { fit: contenir ? 'contain' : 'cover' })}
+                      className={`px-2 py-1 text-sm ${petitBouton(estContenu(selectedElement) === contenir)}`}
+                      title={aide}
+                    >
+                      {libelle}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => startCrop(selectedId)}
+                  disabled={estContenu(selectedElement)}
+                  className="px-3 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={
+                    estContenu(selectedElement)
+                      ? "En Contenir, l'image est entière : passer en Remplir pour recadrer"
+                      : "Recadrer (ou double-clic sur l'image)"
+                  }
+                >
+                  Recadrer
+                </button>
+              </>
             )}
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
             {/* Miroir et masque (`utils/imageForme.js`) */}
@@ -1029,68 +981,18 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 {Math.round(selectedElement.width ?? 160)}×{Math.round(selectedElement.height ?? 160)}px
               </span>
             </div>
-
-            {dataSource === 'data' && selectedProduct && (
-              <>
-                <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
-                <button
-                  onClick={handleImageBinding}
-                  className={`px-3 py-1.5 text-sm rounded-lg flex items-center gap-2 transition-colors ${
-                    selectedElement.dataBinding
-                      ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                      : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-                  }`}
-                  title={
-                    selectedElement.dataBinding
-                      ? 'Image liée au produit'
-                      : "Lier à l'image du produit"
-                  }
-                >
-                  {selectedElement.dataBinding ? (
-                    <>
-                      <Link className="h-4 w-4" />
-                      Liée
-                    </>
-                  ) : (
-                    <>
-                      <Unlink className="h-4 w-4" />
-                      Lier
-                    </>
-                  )}
-                </button>
-              </>
-            )}
           </>
         )}
 
-        {dataSource === 'data' &&
-          selectedProduct &&
-          selectedElement.dataBinding &&
-          (isText || isQRCode || isBarcode) && (
+        {dataSource === 'data' && selectedProduct && (typeLiable(selectedElement.type) || isFiche) && (
             <>
               <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                  Champ:
-                </span>
-                <select
-                  value={selectedElement.dataBinding}
-                  onChange={(e) => handleFieldChange(e.target.value)}
-                  className="px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white max-w-[180px]"
-                >
-                  {dataFields.map((field) => (
-                    <option key={field.key} value={field.key}>
-                      {field.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleUnbind}
-                  className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Utiliser une valeur fixe"
-                >
-                  Délier
-                </button>
+                <LiaisonProduit
+                  element={selectedElement}
+                  product={canvasProduct}
+                  onUpdate={(patch) => updateElement(selectedId, patch)}
+                />
                 {isText && correction !== undefined && (
                   <button
                     onClick={resetCorrection}

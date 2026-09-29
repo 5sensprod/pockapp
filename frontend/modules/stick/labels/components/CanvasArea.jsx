@@ -118,8 +118,20 @@ const CanvasArea = forwardRef(
           </div>
         </div>
 
-        {/* Zone de travail : elle DÉFILE quand la page zoomée dépasse. */}
-        <div ref={containerRef} className="flex-1 min-w-0 min-h-0 checkerboard relative overflow-auto">
+        {/* Zone de travail : elle DÉFILE quand la page zoomée dépasse.
+            `scrollbar-gutter: stable` réserve TOUJOURS la place de la barre
+            verticale. Sans elle, une boucle : la scène prend la largeur
+            visible (`KonvaCanvas`, stageW), la barre verticale apparaît et
+            rogne cette largeur, la scène déborde, la barre horizontale
+            apparaît, la hauteur visible change, la verticale disparaît… et
+            recommence à chaque image : canvas et ascenseurs clignotaient à
+            certaines tailles de fenêtre sous 100 %. La largeur visible ne
+            dépend plus de la barre verticale, la boucle est rompue. */}
+        <div
+          ref={containerRef}
+          className="flex-1 min-w-0 min-h-0 checkerboard relative overflow-auto"
+          style={{ scrollbarGutter: 'stable' }}
+        >
           <KonvaCanvas
             ref={ref}
             viewportWidth={viewport.width}

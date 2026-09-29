@@ -159,6 +159,13 @@ export const getProductField = (product, key) => {
       return product?.image?.url ?? '';
 
     default: {
+      // Photo n de la GALERIE (`product_gallery_0`, …) : même règle à l'écran
+      // et dans l'export planche (`champsProduit.js`, `cleGalerie`)
+      const g = /^product_gallery_(\d+)$/.exec(key);
+      if (g) {
+        const gi = Array.isArray(product.gallery_images) ? product.gallery_images[Number(g[1])] : undefined;
+        return (typeof gi === 'string' ? gi : gi?.src) || '';
+      }
       // Accès profond: ex. "brand_ref.name" ou "meta_data.0.value"
       try {
         return key.split('.').reduce((acc, k) => (acc != null ? acc[k] : ''), product) ?? '';

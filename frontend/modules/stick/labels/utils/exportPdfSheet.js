@@ -16,6 +16,7 @@ import {
 } from '../utils/dataBinding';
 import { contourTexte, remplissage } from './fillStyle';
 import { konvaCrop } from './crop';
+import { estContenu } from './ajustementImage';
 import { dessinerCodeBarres } from './barcodeCanvas';
 import { construireFiche } from './ficheKonva';
 import { contenuFiche } from './ficheProduit';
@@ -84,11 +85,6 @@ function updateElementsWithProduct(elements, product, fillQrWhenNoBinding = fals
   // un nombre que personne ne peut ouvrir (voir `QRCodeTemplates.jsx`).
   const fallbackQR = () => product.website_url || '';
 
-  const gallerySrcAt = (idx) => {
-    const gi = Array.isArray(product?.gallery_images) ? product.gallery_images[idx] : undefined;
-    return (typeof gi === 'string' ? gi : gi?.src) || '';
-  };
-
   return (elements || []).map((el) => {
     if (el?.visible === false) return el;
 
@@ -134,9 +130,6 @@ function updateElementsWithProduct(elements, product, fillQrWhenNoBinding = fals
           nextSrc = String(getProductField(product, 'product_image_src') ?? '');
         } else if (el.dataBinding === 'image.src' || el.dataBinding === 'image_src') {
           nextSrc = String(getProductField(product, 'image.src') ?? '');
-        } else if (el.dataBinding.startsWith?.('product_gallery_')) {
-          const idx = Number.parseInt(el.dataBinding.split('_')[2], 10);
-          nextSrc = gallerySrcAt(Number.isFinite(idx) ? idx : 0);
         } else {
           // binding libre (ex. 'image.somewhere.src')
           nextSrc = String(getProductField(product, el.dataBinding) ?? '');
@@ -387,7 +380,9 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
       try {
         const imageObj = await loadImageFromURL(src);
         // Même recadrage qu'à l'écran (`ImageNode`) : jamais d'image écrasée.
-        const crop = konvaCrop(
+        const nat = { width: imageObj.naturalWidth || imageObj.width, height: imageObj.naturalHeight || imageObj.height };
+        // Contenir : l'image entière, dessinée par `sceneImage` (`ajustementImage.js`)
+        const crop = estContenu(el) ? { x: 0, y: 0, ...nat } : konvaCrop(
           {
             width: el.width ?? 160,
             height: el.height ?? 160,

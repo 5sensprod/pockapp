@@ -421,7 +421,8 @@ const useLabelStore = create((set, get) => ({
   startCrop: (id) =>
     set((state) => {
       const el = state.elements.find((e) => e.id === id);
-      return el?.type === 'image' && !el.locked ? { selectedId: id, cropId: id } : {};
+      // Contenir : l'image est entière, il n'y a rien à recadrer
+      return el?.type === 'image' && !el.locked && el.fit !== 'contain' ? { selectedId: id, cropId: id } : {};
     }),
   stopCrop: () => set({ cropId: null }),
 

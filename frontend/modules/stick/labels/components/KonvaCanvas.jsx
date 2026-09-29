@@ -39,6 +39,7 @@ const signatureNoeud = (node) => {
   return `${r.width.toFixed(2)}x${r.height.toFixed(2)}|${node.text?.() ?? ''}|${num}`;
 };
 import { tailleNaturelle } from './canvas/ImageNode';
+import { estContenu } from '../utils/ajustementImage';
 import FicheNode from './canvas/FicheNode';
 import { contenuFiche, EXEMPLE_FICHE } from '../utils/ficheProduit';
 
@@ -274,7 +275,14 @@ const KonvaCanvas = forwardRef(
         // de la taille d'origine, pour recalculer le recadrage à chaque pas.
         liveMedia.current =
           element?.type === 'image'
-            ? { id, el: geometrieImage(element), natural: tailleNaturelle(node.image?.()) }
+            ? {
+                id,
+                el: geometrieImage(element),
+                // Contenir : aucun recadrage à recalculer, le cadre change seul
+                // (sans taille d'origine, `resizeStep` et la fin du geste
+                // laissent le recadrage tel quel — `ajustementImage.js`)
+                natural: estContenu(element) ? null : tailleNaturelle(node.image?.()),
+              }
             : null;
       },
       [elements]
@@ -721,6 +729,7 @@ const KonvaCanvas = forwardRef(
                     maskPadding={el.maskPadding ?? 0}
                     maskTexture={el.maskTexture ?? null}
                     maskFeather={el.maskFeather ?? 0}
+                    fit={el.fit ?? null}
                     // Double-clic : recadrer, comme PocketStick
                     onDblClick={() => !locked && startCrop(id)}
                     onDblTap={() => !locked && startCrop(id)}
