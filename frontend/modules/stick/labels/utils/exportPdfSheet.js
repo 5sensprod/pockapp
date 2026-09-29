@@ -261,7 +261,7 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
     // dans un groupe mis à l'échelle de la cellule. Sans contenu : rien.
     if (el?.type === 'fiche') {
       if (!el.ficheContenu) return null;
-      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, listening: false });
+      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, enveloppeCase: true, listening: false });
       const fiche = new Konva.Group({ x: el.x ?? 0, y: el.y ?? 0, rotation: el.rotation ?? 0 });
       construireFiche(el, el.ficheContenu).nodes.forEach((n) => fiche.add(n));
       groupe.add(fiche);
@@ -286,7 +286,7 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
         listening: false,
         ...shadowProps(el),
       });
-      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, listening: false, globalCompositeOperation });
+      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, enveloppeCase: true, listening: false, globalCompositeOperation });
       groupe.add(trace);
       return groupe;
     }
@@ -305,7 +305,7 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
       });
       // Contour stylisé : le cadre réel du trait, comme sur le canvas (`ShapeNode`)
       if (cadre) forme.getSelfRect = () => cadre;
-      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, listening: false });
+      const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, enveloppeCase: true, listening: false });
       groupe.add(forme);
       return groupe;
     }
@@ -454,7 +454,14 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
     // Peintures texture à la résolution d'export (échelle de cellule comprise)
     retexturer(node, ratioEffets * scale);
     // Flou et effets : même règle que le canvas (`utils/effetsKonva.js`)
-    appliquerEffets(node, elements[i], { echelle: scale, ratio: ratioEffets });
+    // Un groupe `enveloppeCase` (fiche, forme, dessin) dessine son contenu à
+    // l'échelle 1 et le réduit lui-même : ses effets sont en unités du
+    // document, `echelle` 1 — sinon flou, ombre interne et ondulation
+    // seraient réduits DEUX fois sur une case plus petite que l'affiche.
+    appliquerEffets(node, elements[i], {
+      echelle: node.getAttr('enveloppeCase') ? 1 : scale,
+      ratio: ratioEffets,
+    });
   });
 
   layer.draw();

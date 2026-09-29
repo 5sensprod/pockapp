@@ -178,3 +178,33 @@ variable, tremblé, ondulation (amplitude, nombre d'ondes), effilements.
   `ShapeNode` ET par l'export planche — sans lui, le cache des effets
   couperait ce qui dépasse.
 - Le copier-coller de style entre formes le reprend (même type = tout).
+
+## Effet « Ondulation » — lot B (30 septembre 2026)
+
+Pour tout élément (texte, forme, image, dessin, fiche), onglet Effets, après
+le Flou : sens (horizontale, verticale, les deux), amplitude (0–50 px) et
+longueur d'onde (4–400 px), en unités du document.
+
+- **Donnée** : `el.ondulationEffet` `{ amplitude, longueur, sens }` ; absent
+  ou amplitude nulle = aucun effet. Copiable d'un type à l'autre
+  (`STYLE_COMMUN`, `styleCopie.js`), comme le flou.
+- **Calcul** (`utils/ondulation.js`, pur, testé) : déplacement sinusoïdal des
+  pixels, lecture bilinéaire. En PIXELS, sur le cache Konva : il ondule
+  l'élément ENTIER, remplissage compris. Le contour seul d'une lettre
+  demanderait son dessin vectoriel (opentype.js), écarté pour l'instant.
+- **Rendu** : un filtre de plus dans `filtresDe` (`effetsKonva.js`), AVANT le
+  flou. Réglages lus sur le nœud (`ondulationNoeud`), comme l'ombre interne,
+  pour que `recacherFiltres` change la résolution à l'export. La marge du
+  cache compte l'amplitude.
+- **Phase** mesurée depuis le coin du CONTENU (origine du cache + marge,
+  même calcul que `Konva.Node.cache`) : l'onde tombe au même endroit à
+  l'écran et dans les exports, à toute résolution.
+
+### Corrigé en passant : effets des groupes de l'export planche
+
+Fiche, forme et dessin sont dessinés dans l'export planche à l'échelle 1,
+dans un groupe réduit à la case. `appliquerEffets` leur passait pourtant
+`echelle: scale` : le flou, l'ombre interne (et l'ondulation) y étaient
+réduits DEUX fois sur une case plus petite que l'affiche. Ces groupes
+portent maintenant `enveloppeCase` et reçoivent `echelle: 1`. Lu dans le
+code, non mesuré sur un PDF avant la correction.

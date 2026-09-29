@@ -27,6 +27,7 @@ export const STYLE_COMMUN = [
   'opacity',
   'shadowEnabled', 'shadowColor', 'shadowBlur', 'shadowOffsetX', 'shadowOffsetY', 'shadowOpacity',
   'blurEnabled', 'blurRadius', 'blurFade',
+  'ondulationEffet',
   'innerShadowEnabled', 'innerShadowColor', 'innerShadowOpacity', 'innerShadowBlur',
   'innerShadowOffsetX', 'innerShadowOffsetY',
 ];

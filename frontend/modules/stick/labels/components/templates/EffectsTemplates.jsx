@@ -4,6 +4,13 @@ import { Sparkles, ChevronDown, ChevronRight } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import { FLOU_MAX } from '../../utils/effetsKonva';
 import { EFFECTS, sanitizeFilters, setEffectIntensity, toggleEffect } from '../../utils/effetsImage';
+import {
+  AMPLITUDE_MAX,
+  LONGUEUR_MAX,
+  LONGUEUR_MIN,
+  ONDULATION_DEFAUT,
+  SENS_ONDULATION,
+} from '../../utils/ondulation';
 
 // Un effet réglable : case à cocher, puis curseur d'intensité quand il est actif.
 const ReglageEffet = ({ label, actif, valeur, min, max, onActif, onValeur }) => (
@@ -414,6 +421,69 @@ const EffectsTemplates = () => {
       </div>
 
       {/* Effets d'image, repris de PocketStick (`utils/effetsImage.js`) */}
+      {/* Ondulation de l'élément entier, en pixels (`utils/ondulation.js`) */}
+      {(() => {
+        const onde = selectedElement.ondulationEffet ?? null;
+        const set = (maj) => updateElement(selectedId, { ondulationEffet: { ...ONDULATION_DEFAUT, ...onde, ...maj } });
+        return (
+          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <div className="bg-gray-50 dark:bg-gray-800/50 p-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Ondulation</span>
+              <input
+                type="checkbox"
+                aria-label="Ondulation"
+                checked={!!onde}
+                onChange={(e) =>
+                  updateElement(selectedId, { ondulationEffet: e.target.checked ? { ...ONDULATION_DEFAUT } : null })
+                }
+                className="accent-purple-600"
+              />
+            </div>
+            {onde && (
+              <div className="p-3 space-y-3">
+                <div className="flex gap-1" role="group" aria-label="Sens de l'ondulation">
+                  {SENS_ONDULATION.map((sens) => (
+                    <button
+                      key={sens.id}
+                      type="button"
+                      aria-pressed={(onde.sens ?? 'horizontal') === sens.id}
+                      onClick={() => set({ sens: sens.id })}
+                      className={`flex-1 px-2 py-1 text-xs rounded border ${
+                        (onde.sens ?? 'horizontal') === sens.id
+                          ? 'bg-purple-600 text-white border-purple-600'
+                          : 'bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'
+                      }`}
+                    >
+                      {sens.label}
+                    </button>
+                  ))}
+                </div>
+                {[
+                  ['amplitude', 'Amplitude', 0, AMPLITUDE_MAX],
+                  ['longueur', "Longueur d'onde", LONGUEUR_MIN, LONGUEUR_MAX],
+                ].map(([cle, libelle, min, max]) => (
+                  <div key={cle}>
+                    <div className="flex justify-between text-xs text-gray-700 dark:text-gray-300">
+                      <span>{libelle}</span>
+                      <span className="tabular-nums">{onde[cle] ?? ONDULATION_DEFAUT[cle]} px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={1}
+                      value={onde[cle] ?? ONDULATION_DEFAUT[cle]}
+                      onChange={(e) => set({ [cle]: parseFloat(e.target.value) })}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {selectedElement.type === 'image' && (
         <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
           <div className="bg-gray-50 dark:bg-gray-800/50 p-3 text-sm font-medium text-gray-700 dark:text-gray-300">

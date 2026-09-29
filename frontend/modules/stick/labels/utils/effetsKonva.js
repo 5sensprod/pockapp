@@ -17,6 +17,7 @@ import { effectFilters, sanitizeFilters } from './effetsImage';
 import { ombreInterneDe, ombrePorteeDe, ombrePorteePixels, ombrerPixels } from './ombreInterne';
 import { dessinerMasque, reglagesMasque } from './imageForme';
 import { installerCourbure } from './texteCourbe';
+import { onduler, ondulationDe } from './ondulation';
 
 export { ombreInterneDe };
 
@@ -130,6 +131,17 @@ function ombrePortee(imageData) {
   return imageData;
 }
 
+/**
+ * Filtre Konva de l'ONDULATION (`utils/ondulation.js`) : réglages lus sur le
+ * nœud (`ondulationNoeud`, unités du nœud), comme l'ombre interne, pour que
+ * `recacherFiltres` puisse changer la résolution à l'export.
+ */
+function ondulation(imageData) {
+  const o = this.getAttr?.('ondulationNoeud');
+  if (!o) return imageData;
+  return onduler(imageData, o, this.getAttr?.('ratioCache') ?? 1, this.getAttr?.('margeCache') ?? 0);
+}
+
 // Allume ou éteint l'ombre de Konva sur le nœud et ses formes (un groupe à
 // l'export planche porte l'ombre sur son enfant).
 const ombreKonva = (node, actif) => {
@@ -169,6 +181,8 @@ export const filtresDe = (el) => {
     champsMasque(el) && masqueForme,
     ombreInterneDe(el) && ombreInterne,
     champsMasque(el) && ombrePorteeDe(el) && ombrePortee,
+    // Ondulation AVANT le flou : on floute la forme ondulée
+    ondulationDe(el) && ondulation,
     rayonFlou(el) > 0 && (fonduFlou(el) ? filtreFlouDegrade(fonduFlou(el)) : Konva.Filters.Blur),
     luminosite(el) !== 0 && Konva.Filters.Brighten,
     el.sepiaEnabled && Konva.Filters.Sepia,
@@ -217,6 +231,8 @@ export const appliquerEffets = (node, el, { echelle = 1, ratio = 1 } = {}) => {
     }
   );
   node.setAttr('ratioCache', ratio);
+  const onde = ondulationDe(el);
+  node.setAttr('ondulationNoeud', onde && { ...onde, amplitude: onde.amplitude * echelle, longueur: onde.longueur * echelle });
   const champs = champsMasque(el);
   if (champs) {
     const g = node.getClientRect({ skipTransform: true, skipStroke: true, skipShadow: true });
@@ -229,6 +245,8 @@ export const appliquerEffets = (node, el, { echelle = 1, ratio = 1 } = {}) => {
   const marge =
     Math.ceil(rayon) +
     2 +
+    // L'ondulation déplace les pixels jusqu'à son amplitude
+    (onde ? Math.ceil(onde.amplitude * echelle) : 0) +
     (ombreRefaite ? Math.ceil(ombreRefaite.blur + Math.max(Math.abs(ombreRefaite.offsetX), Math.abs(ombreRefaite.offsetY))) : 0);
   node.setAttr('margeCache', marge);
   cacher(node, ratio, marge);
