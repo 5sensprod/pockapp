@@ -21,6 +21,7 @@ import { resolutionCarte } from './carteTexture';
 
 const MAX = 32;
 const cache = new Map();
+const cartes = new Map(); // niveaux de bruit, indépendants des couleurs
 
 const garder = (cle, valeur) => {
   cache.set(cle, valeur);
@@ -55,7 +56,17 @@ export const motifTexture = (paint, w, h, ratio = 2, plafond = 1024) => {
     cache.delete(cle);
     return garder(cle, trouve);
   }
-  const niveaux = carteNiveaux(paint.noise, l, ht, aspect);
+  // La CARTE ne dépend que du bruit : changer une couleur ne la recalcule pas
+  // (c'est le coût : un Perlin 1024², ~200 ms). Seule la colorisation, une
+  // passe sur la table des couleurs, est refaite.
+  const cleCarte = `${JSON.stringify(paint.noise)}|${l}x${ht}|${aspect}`;
+  let niveaux = cartes.get(cleCarte);
+  if (niveaux) cartes.delete(cleCarte);
+  else niveaux = carteNiveaux(paint.noise, l, ht, aspect);
+  if (niveaux) {
+    cartes.set(cleCarte, niveaux);
+    if (cartes.size > 8) cartes.delete(cartes.keys().next().value);
+  }
   if (!niveaux) return null;
   const lut = tableCouleurs(paint.stops);
   const cv = document.createElement('canvas');

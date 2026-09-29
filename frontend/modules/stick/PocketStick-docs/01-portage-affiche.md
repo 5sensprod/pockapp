@@ -547,3 +547,8 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
 - UI : curseur « Opacité » sous « Position » ; damier sous la barre, les
   pastilles et l'aperçu. Changer la couleur garde l'opacité, et inversement.
 - Gardien : `paint.test.js`.
+- Coût (correctif du même jour) : la carte de bruit est mise en cache À PART
+  des couleurs (`cartes`, `peintureTexture.js`). Changer une couleur d'une
+  peinture texture ne refait que la colorisation : mesuré sous Node sur
+  1024 × 768, 7 ms contre 193 ms pour recalculer la carte — le ralentissement
+  constaté sur un fond texturé en réglant les couleurs.
