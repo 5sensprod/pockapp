@@ -1,4 +1,5 @@
 // AppTools/src/features/labels/utils/exportPdfSheet.js
+import { typoTexte } from './typo';
 import jsPDF from 'jspdf';
 import Konva from 'konva';
 import { appliquerEffets } from './effetsKonva';
@@ -196,6 +197,7 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
       // Même lecture que le canvas : `fontStyle`, repli sur l'ancien `bold`.
       const fontStyle = el.fontStyle || (el.bold ? 'bold' : 'normal');
 
+      const typo = typoTexte(el);
       const texte = new Konva.Text({
         x: (el.x ?? 0) * scale,
         y: (el.y ?? 0) * scale,
@@ -210,11 +212,12 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
         width: el.width != null ? el.width * scale : undefined,
         // Pas de hauteur : le canvas n'en impose aucune, le texte prend la sienne
         wrap: el.wrap ?? 'word',
-        // 1 : l'interligne du canvas (TextNode n'en fixe pas, Konva vaut 1)
-        lineHeight: el.lineHeight ?? 1,
+        // Typographie : même lecture que le canvas (`utils/typo.js`)
+        lineHeight: typo.lineHeight,
+        letterSpacing: typo.letterSpacing * scale,
         opacity: el.opacity ?? 1,
         scaleX: el.scaleX ?? 1,
-        scaleY: el.scaleY ?? 1,
+        scaleY: (el.scaleY ?? 1) * typo.hauteur,
         rotation: el.rotation ?? 0,
         listening: false,
         ...shadowProps(el),

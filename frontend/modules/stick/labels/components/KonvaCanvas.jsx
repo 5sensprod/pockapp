@@ -6,6 +6,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
+import { typoTexte } from '../utils/typo';
 import { Stage, Layer, Group, Rect, Transformer, Line, Text } from 'react-konva';
 import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
 import QRCodeNode from './canvas/QRCodeNode';
@@ -352,10 +353,11 @@ const KonvaCanvas = forwardRef(
           }
 
           if (element.type === 'text') {
+            // La hauteur des lettres est un étirement vertical à garder
             node.setAttrs({
               width: Math.max(30, node.width() * node.scaleX()),
               scaleX: 1,
-              scaleY: 1,
+              scaleY: typoTexte(element).hauteur,
             });
           }
 
@@ -412,6 +414,7 @@ const KonvaCanvas = forwardRef(
           updates.width = node.width();
           updates.scaleX = 1;
           updates.scaleY = 1;
+          node.scale({ x: 1, y: typoTexte(element).hauteur });
         } else if (element.type === 'image' && liveMedia.current?.id === id) {
           // Image : taille réelle et recadrage, échelle ramenée à 1
           const live = liveMedia.current;
@@ -652,6 +655,7 @@ const KonvaCanvas = forwardRef(
                     strokeWidth={el.strokeWidth ?? 0}
                     strokeGradient={el.strokeGradient ?? null}
                     align={el.align ?? 'left'}
+                    {...typoTexte(el)}
                   />
                 );
               }

@@ -39,6 +39,9 @@ const TextNode = ({
   dataBinding = null,
   correctionKey = null, // _id du produit affiché, pour corriger un texte lié
   fillGradient = null, // 🌈 dégradé (`utils/paint.js`, ancien { from, to, angle } lu aussi) ou null
+  letterSpacing = 0, // typographie (`utils/typo.js`)
+  lineHeight = 1,
+  hauteur = 1, // hauteur des lettres, facteur multiplié à scaleY
   align = 'left', // alignement DANS le bloc : left | center | right | justify
   stroke = '', // ✏️ contour des lettres (`contourTexte`)
   strokeWidth = 0,
@@ -71,7 +74,7 @@ const TextNode = ({
       setBox({ width: node.width(), height: node.height() });
     });
     return () => cancelAnimationFrame(raf);
-  }, [text, fontSize, fontFamily, fontStyle, width, highlightEnabled, fillGradient, strokeGradient]);
+  }, [text, fontSize, fontFamily, fontStyle, width, highlightEnabled, fillGradient, strokeGradient, letterSpacing, lineHeight]);
 
   // 📐 RE-MESURER le texte et recaler le cadre de sélection. Konva mesure un
   // texte au moment où ses attributs changent : une police Google qui arrive
@@ -92,7 +95,7 @@ const TextNode = ({
   useEffect(() => {
     const raf = requestAnimationFrame(remesurer);
     return () => cancelAnimationFrame(raf);
-  }, [remesurer, text, fontSize, fontFamily, fontStyle, width, align]);
+  }, [remesurer, text, fontSize, fontFamily, fontStyle, width, align, letterSpacing, lineHeight, hauteur]);
 
   // 🎨 Charger la police Google Font, puis re-mesurer quand elle est là
   useEffect(() => {
@@ -191,6 +194,7 @@ const TextNode = ({
         fontWeight: fontStyle?.includes('bold') ? 'bold' : 'normal',
         fontStyle: fontStyle?.includes('italic') ? 'italic' : 'normal',
         lineHeight: String(node.lineHeight()),
+        letterSpacing: `${letterSpacing * scale}px`,
         textDecoration: textDecoration || 'none',
         textAlign: node.align(),
         color: couleur,
@@ -279,7 +283,7 @@ const TextNode = ({
           height={box.height}
           rotation={rotation}
           scaleX={scaleX}
-          scaleY={scaleY}
+          scaleY={scaleY * hauteur}
           fill={highlightColor}
           opacity={highlightOpacity * opacity}
           listening={false}
@@ -299,8 +303,10 @@ const TextNode = ({
         {...contourTexte(stroke, strokeWidth, strokeGradient, box.width, box.height)}
         rotation={rotation}
         scaleX={scaleX}
-        scaleY={scaleY}
+        scaleY={scaleY * hauteur}
         opacity={opacity}
+        letterSpacing={letterSpacing}
+        lineHeight={lineHeight}
         width={width} // Support du width pour redimensionnement
         align={align}
         wrap="word" // Wrap automatique des mots

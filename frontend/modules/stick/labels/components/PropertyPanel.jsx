@@ -27,6 +27,7 @@ import {
   FlipVertical2,
   Shapes,
   Expand,
+  LetterText,
 } from 'lucide-react';
 import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
 import { alignOffsets, distributeOffsets, unionBoxes } from '../utils/layout';
@@ -35,6 +36,7 @@ import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
 import { FONDU_MAX, MASQUES, RETRAIT_MAX } from '../utils/imageForme';
 import MasqueTexture from './MasqueTexture';
+import { TYPO_BORNES } from '../utils/typo';
 import { resolvePropForElement, texteCorrige, ficheChangeeDepuisCorrection } from '../utils/dataBinding';
 import { resetCropAttrs } from '../utils/crop';
 import { geometrieImage } from './canvas/CropOverlay';
@@ -301,6 +303,43 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
               className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               title="Taille de la police, en pixels"
             />
+            {/* Espacement des lettres, interligne, hauteur des lettres (`utils/typo.js`) */}
+            <MenuGroupe
+              icone={LetterText}
+              titre="Espacement"
+              actif={['letterSpacing', 'lineHeight', 'charHeight'].some(
+                (c) => selectedElement[c] != null && selectedElement[c] !== TYPO_BORNES[c].defaut
+              )}
+              largeur="15rem"
+            >
+              <div className="p-1 space-y-2">
+                {[
+                  ['letterSpacing', 'Lettres', 1, (v) => `${v}px`],
+                  ['lineHeight', 'Interligne', 0.05, (v) => `×${v}`],
+                  ['charHeight', 'Hauteur', 5, (v) => `${v}%`],
+                ].map(([cle, libelle, step, fmt]) => {
+                  const b = TYPO_BORNES[cle];
+                  const v = selectedElement[cle] ?? b.defaut;
+                  return (
+                    <label key={cle} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                      <span className="w-16">{libelle}</span>
+                      <input
+                        type="range"
+                        min={b.min}
+                        max={b.max}
+                        step={step}
+                        value={v}
+                        onChange={(e) => updateElement(selectedId, { [cle]: Number(e.target.value) })}
+                        onDoubleClick={() => updateElement(selectedId, { [cle]: b.defaut })}
+                        className="flex-1"
+                        title="Double-clic : valeur normale"
+                      />
+                      <span className="w-10 text-right">{fmt(Math.round(v * 100) / 100)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </MenuGroupe>
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
 
             {/* Style : gras, italique, souligné, barré, surlignage — un menu */}

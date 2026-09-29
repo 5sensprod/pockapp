@@ -470,3 +470,20 @@ Repris de PocketStick (I:\pocketstick) quand il l'avait, créé sinon.
 - UI : section « Ombre interne » du panneau Effets.
 - Couleur : hexadécimale seulement (`rgbDe`) — c'est ce que donne le sélecteur.
 - Gardien : `ombreInterne.test.js`.
+
+## Espacement des lettres, interligne, hauteur (29 septembre 2026)
+
+- Champs du texte : `letterSpacing` (px du document, -20 à 100),
+  `lineHeight` (multiple de la taille, 0,5 à 4) et `charHeight` (hauteur des
+  lettres en %, 25 à 400). Une seule lecture bornée : `typoTexte`
+  (`utils/typo.js`), pour `TextNode`, le redimensionnement de `KonvaCanvas`
+  et l'export planche. L'export par clone suit sans rien de plus.
+- La hauteur est un ÉTIREMENT VERTICAL multiplié au `scaleY` du nœud (et au
+  surlignage). Le redimensionnement d'un texte remettait `scaleY` à 1 : il
+  pose désormais la hauteur à la place, sans quoi elle disparaissait pendant
+  le geste.
+- ⚠️ L'édition en place (textarea) prend l'espacement des lettres et
+  l'interligne, pas la hauteur : le texte en cours de frappe est à hauteur
+  normale.
+- UI : menu « Espacement » à côté de la taille de police (double-clic sur un
+  curseur : valeur normale). Gardien : `typo.test.js`.
