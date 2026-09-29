@@ -3,7 +3,6 @@ import React, { useEffect } from 'react';
 import { Undo, Redo, Download, Plus, ChevronLeft, ChevronRight, Save } from 'lucide-react';
 import useLabelStore from '../store/useLabelStore';
 import { exportPdf } from '../utils/exportPdf';
-import PropertyPanel from './PropertyPanel';
 
 const TopToolbar = ({
   dataSource,
@@ -63,7 +62,7 @@ const TopToolbar = ({
   const isMultiProduct = Array.isArray(selectedProducts) && selectedProducts.length > 1;
 
   return (
-    <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 py-1.5">
+    <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 py-1.5 min-w-0 relative z-20">
       <div className="flex items-center justify-between gap-3">
         {/* Gauche : actions + titre + (property inline si sélection) */}
         <div className="flex items-center gap-2 min-w-0">
@@ -214,17 +213,6 @@ const TopToolbar = ({
               </h1>
             )}
 
-            {/* ➜ Intégration transparente du PropertyPanel (inline, sans padding) */}
-            {selectedId && (
-              <>
-                <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
-                <PropertyPanel
-                  variant="inline" // ⬅️ NOUVEAU
-                  selectedProduct={selectedProduct}
-                  onOpenEffects={onOpenEffects}
-                />
-              </>
-            )}
           </div>
         </div>
 
@@ -241,6 +229,7 @@ const TopToolbar = ({
           </button>
         </div>
       </div>
+
     </div>
   );
 };

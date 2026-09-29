@@ -80,7 +80,7 @@ const ToolsSidebar = ({
   // Mode icônes uniquement
   if (isCollapsed) {
     return (
-      <div className="w-16 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-4 gap-2">
+      <div className="w-16 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-4 gap-2 overflow-y-auto">
         {tools.map((tool) => (
           <button
             key={tool.id}
@@ -104,7 +104,7 @@ const ToolsSidebar = ({
   return (
     <div className="w-[400px] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex overflow-hidden">
       {/* Barre d'icônes */}
-      <div className="w-16 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-4 gap-2">
+      <div className="w-16 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-4 gap-2 overflow-y-auto">
         {tools.map((tool) => (
           <button
             key={tool.id}
@@ -122,7 +122,7 @@ const ToolsSidebar = ({
       </div>
 
       {/* Zone de templates */}
-      <div className="flex-1 flex flex-col overflow-x-hidden">
+      <div className="flex-1 min-h-0 flex flex-col overflow-x-hidden">
         {selectedTool ? (
           <>
             {/* Header */}

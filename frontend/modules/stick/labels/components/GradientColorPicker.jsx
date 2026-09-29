@@ -51,6 +51,10 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
   const [ouvert, setOuvert] = useState(false);
   const [mode, setMode] = useState(gradient ? 'degrade' : 'uni');
   const racine = useRef(null);
+  const pastille = useRef(null);
+  // Position ÉCRAN de la fenêtre : la barre contextuelle défile (overflow),
+  // une fenêtre en `absolute` y serait coupée.
+  const [pos, setPos] = useState({ top: 0, left: 0 });
 
   // Le mode suit l'élément sélectionné (changer de sélection, annuler…).
   useEffect(() => setMode(gradient ? 'degrade' : 'uni'), [gradient]);
@@ -85,14 +89,21 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
     <div className="relative" ref={racine}>
       <button
         type="button"
-        onClick={() => setOuvert((o) => !o)}
+        ref={pastille}
+        onClick={() => {
+          const r = pastille.current?.getBoundingClientRect();
+          if (r) setPos({ top: r.bottom + 8, left: Math.min(r.left, window.innerWidth - 272) });
+          setOuvert((o) => !o);
+        }}
         className="w-10 h-8 rounded border border-gray-300 dark:border-gray-600 shadow-inner"
         style={{ background: gradient ? cssDegrade(gradient) : color }}
         title={title}
       />
 
       {ouvert && (
-        <div className="absolute left-0 top-full mt-2 z-50 w-64 p-3 space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl">
+        <div
+          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-50 w-64 p-3 space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl whitespace-normal">
           <div className="flex gap-1">
             <button type="button" className={onglet(mode === 'uni')} onClick={passerEnUni}>
               Uni

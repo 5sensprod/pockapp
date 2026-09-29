@@ -154,7 +154,7 @@ export const LabelPage = () => {
     (Array.isArray(selectedProducts) && selectedProducts.length > 0 ? selectedProducts[0] : null);
 
   return (
-    <div className="flex flex-col h-[100%] bg-gray-100 dark:bg-gray-900">
+    <div className="flex flex-col h-[100%] min-w-0 overflow-hidden bg-gray-100 dark:bg-gray-900">
       {showDataSourceSelector && (
         <DataSourceSelector
           onSelect={handleDataSourceSelect}
@@ -184,7 +184,7 @@ export const LabelPage = () => {
         onSave={handleSaveTemplate}
       />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         {/* 🆕 ToolsSidebar avec stageRef pour TemplateManager */}
         <ToolsSidebar
           isCollapsed={isSidebarCollapsed}

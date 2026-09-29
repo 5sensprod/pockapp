@@ -18,6 +18,9 @@ import { resolvePropForElement } from '../utils/dataBinding';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+/** Marge autour de la page dans la zone de travail (px écran), comme PocketStick. */
+export const MARGE_ESPACE = 40;
+
 const KonvaCanvas = forwardRef(
   (
     { viewportWidth = 0, viewportHeight = 0, docWidth = 800, docHeight = 600, zoom = 1, onDocNode },
@@ -41,9 +44,6 @@ const KonvaCanvas = forwardRef(
       if (onDocNode) onDocNode(docGroupRef.current || null);
     }, [onDocNode, zoom]);
 
-    const [docPos, setDocPos] = useState({ x: 0, y: 0 });
-    const [isInitialized, setIsInitialized] = useState(false);
-
     const [snapGuides, setSnapGuides] = useState([]);
     const [isDraggingElement, setIsDraggingElement] = useState(false);
     const [isTransforming, setIsTransforming] = useState(false);
@@ -56,91 +56,29 @@ const KonvaCanvas = forwardRef(
       return stageRef.current?.findOne(`#${id}`);
     }, []);
 
-    const [isDragging, setIsDragging] = useState(false);
-    const panLast = useRef({ x: 0, y: 0 });
+    // DISPOSITION REPRISE DE POCKETSTICK (`src/editor/canvas/Workspace.jsx`) :
+    // le Stage fait au moins la taille de la zone visible, et au moins la page
+    // zoomée plus une marge ; la page y est CENTRÉE. Quand elle dépasse, c'est
+    // le conteneur (overflow: auto, `CanvasArea.jsx`) qui défile — molette,
+    // pavé tactile, barres de défilement. Plus de déplacement au bouton du
+    // milieu, plus de position de page à mémoriser.
+    const isDragging = false;
+    const pageW = docWidth * zoom;
+    const pageH = docHeight * zoom;
+    const stageW = Math.max(1, viewportWidth, pageW + MARGE_ESPACE * 2);
+    const stageH = Math.max(1, viewportHeight, pageH + MARGE_ESPACE * 2);
+    const docPos = { x: (stageW - pageW) / 2, y: (stageH - pageH) / 2 };
 
-    const centerDocument = useCallback(
-      (scale = zoom) => {
-        if (!viewportWidth || !viewportHeight) return;
-        setDocPos({
-          x: (viewportWidth - docWidth * scale) / 2,
-          y: (viewportHeight - docHeight * scale) / 2,
-        });
-      },
-      [viewportWidth, viewportHeight, docWidth, docHeight, zoom]
-    );
-
-    useEffect(() => {
-      if (!isInitialized && viewportWidth > 0 && viewportHeight > 0) {
-        centerDocument();
-        setIsInitialized(true);
-      }
-    }, [viewportWidth, viewportHeight, isInitialized, centerDocument]);
-
-    const recenterDocument = useCallback(() => {
-      centerDocument(zoom);
-    }, [centerDocument, zoom]);
-
+    // Ctrl/Cmd + molette : zoom. La molette seule fait défiler (natif).
     const handleWheel = useCallback(
       (e) => {
+        if (!(e.evt.ctrlKey || e.evt.metaKey)) return;
         e.evt.preventDefault();
-        const stage = stageRef.current;
-        if (!stage) return;
-
-        const direction = e.evt.deltaY > 0 ? 1 : -1;
-        const scaleBy = 1.08;
-        const oldZoom = zoom;
-        const newZoom = clamp(direction > 0 ? oldZoom / scaleBy : oldZoom * scaleBy, 0.1, 3);
-
-        const pointer = stage.getPointerPosition();
-        if (!pointer) return;
-
-        const mousePointTo = {
-          x: (pointer.x - docPos.x) / oldZoom,
-          y: (pointer.y - docPos.y) / oldZoom,
-        };
-
-        const newPos = {
-          x: pointer.x - mousePointTo.x * newZoom,
-          y: pointer.y - mousePointTo.y * newZoom,
-        };
-
-        setZoom(newZoom);
-        setDocPos(newPos);
+        const facteur = e.evt.deltaY > 0 ? 1 / 1.08 : 1.08;
+        setZoom(clamp(zoom * facteur, 0.1, 3));
       },
-      [zoom, setZoom, docPos]
+      [zoom, setZoom]
     );
-
-    useEffect(() => {
-      const stage = stageRef.current;
-      if (!stage) return;
-      const c = stage.container();
-      c.style.cursor = isDragging ? 'grabbing' : 'default';
-    }, [isDragging]);
-
-    const onStageMouseDown = useCallback((e) => {
-      const isMiddle = e.evt?.button === 1;
-      if (isMiddle) {
-        setIsDragging(true);
-        const pos = stageRef.current?.getPointerPosition() || { x: 0, y: 0 };
-        panLast.current = pos;
-      }
-    }, []);
-
-    const onStageMouseMove = useCallback(() => {
-      if (!isDragging) return;
-      const stage = stageRef.current;
-      if (!stage) return;
-      const pos = stage.getPointerPosition() || { x: 0, y: 0 };
-      const dx = pos.x - panLast.current.x;
-      const dy = pos.y - panLast.current.y;
-      panLast.current = pos;
-      setDocPos((p) => ({ x: p.x + dx, y: p.y + dy }));
-    }, [isDragging]);
-
-    const onStageMouseUp = useCallback(() => {
-      if (isDragging) setIsDragging(false);
-    }, [isDragging]);
 
     const handleSelect = useCallback(
       (id, locked) => {
@@ -394,18 +332,12 @@ const KonvaCanvas = forwardRef(
       }, 100);
     }, [selectedId, elements]);
 
-    const stageW = Math.max(1, viewportWidth);
-    const stageH = Math.max(1, viewportHeight);
-
     return (
       <Stage
         ref={stageRef}
         width={stageW}
         height={stageH}
         onWheel={handleWheel}
-        onMouseDown={onStageMouseDown}
-        onMouseMove={onStageMouseMove}
-        onMouseUp={onStageMouseUp}
         onClick={(e) => {
           if (isDragging) return;
           if (e.target === e.target.getStage()) selectElement(null);

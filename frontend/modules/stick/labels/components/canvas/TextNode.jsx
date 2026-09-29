@@ -132,40 +132,61 @@ const TextNode = ({
       const scale = node.getAbsoluteScale().x; // on suppose scaleX=scaleY
       const stageBox = stage.container().getBoundingClientRect();
 
-      // Crée le textarea
+      // Édition EN PLACE, reprise de PocketStick (`src/editor/canvas/TextEditor.jsx`) :
+      // un textarea transparent, sans bordure ni marge, aux MÊMES métriques
+      // que le Konva.Text (police, taille × zoom, interligne, largeur). Le mot
+      // reste où il est, dans son cadre ; seul un pointillé signale l'édition.
+      const largeurFixe = width != null;
+      const couleur = fillGradient?.from || fill;
+
       const textarea = document.createElement('textarea');
       textarea.value = node.text();
-      textarea.style.position = 'absolute';
-      textarea.style.top = `${stageBox.top + absPos.y}px`;
-      textarea.style.left = `${stageBox.left + absPos.x}px`;
-      textarea.style.padding = '0';
-      textarea.style.margin = '0';
-      textarea.style.border = '1px solid rgba(0,0,0,0.2)';
-      textarea.style.outline = 'none';
-      textarea.style.resize = 'none';
-      textarea.style.background = 'white';
-      textarea.style.opacity = '1';
-      textarea.style.fontSize = `${fontSize * scale}px`;
-      textarea.style.fontFamily = fontFamily; // 🎨 Appliquer la police
-      textarea.style.lineHeight = '1.2';
-      textarea.style.color = fill;
-      textarea.style.transformOrigin = 'left top';
-      textarea.style.transform = `rotate(${rotation}deg)`;
-      textarea.style.zIndex = '9999';
-      textarea.style.fontWeight =
-        fontStyle === 'bold' || fontStyle?.includes('bold') ? 'bold' : 'normal';
-      textarea.style.fontStyle =
-        fontStyle === 'italic' || fontStyle?.includes('italic') ? 'italic' : 'normal';
-      textarea.style.textDecoration = textDecoration || 'none';
-      textarea.style.backgroundColor = highlightEnabled ? highlightColor : 'white';
+      textarea.rows = 1;
+      textarea.spellcheck = true;
+      Object.assign(textarea.style, {
+        position: 'fixed',
+        left: `${stageBox.left + absPos.x}px`,
+        top: `${stageBox.top + absPos.y}px`,
+        width: `${node.width() * scale}px`,
+        margin: '0',
+        padding: '0',
+        border: 'none',
+        outline: '1px dashed rgba(59, 130, 246, 0.9)',
+        background: 'transparent',
+        resize: 'none',
+        overflow: 'hidden',
+        // Largeur fixée : le texte passe à la ligne comme dans Konva (wrap
+        // "word"). Largeur libre : le champ s'élargit avec la saisie.
+        whiteSpace: largeurFixe ? 'pre-wrap' : 'pre',
+        overflowWrap: 'break-word',
+        fontFamily,
+        fontSize: `${fontSize * scale}px`,
+        fontWeight: fontStyle?.includes('bold') ? 'bold' : 'normal',
+        fontStyle: fontStyle?.includes('italic') ? 'italic' : 'normal',
+        lineHeight: String(node.lineHeight()),
+        textDecoration: textDecoration || 'none',
+        textAlign: node.align(),
+        color: couleur,
+        caretColor: couleur,
+        opacity: String(opacity),
+        transformOrigin: 'left top',
+        transform: rotation ? `rotate(${rotation}deg)` : 'none',
+        zIndex: '9999',
+      });
 
-      // Largeur/hauteur approximatives : on peut partir de la bbox du node
-      const nodeBox = node.getClientRect({ relativeTo: stage });
-      const minWidth = 50 * scale;
-      textarea.style.width = `${Math.max(nodeBox.width, minWidth)}px`;
-      textarea.style.height = `${Math.max(nodeBox.height, fontSize * 1.4)}px`;
+      // Le cadre suit le contenu, recalculé à chaque frappe
+      const ajuster = () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = `${textarea.scrollHeight}px`;
+        if (!largeurFixe) {
+          textarea.style.width = 'auto';
+          textarea.style.width = `${Math.max(node.width() * scale, textarea.scrollWidth + 2)}px`;
+        }
+      };
+      textarea.addEventListener('input', ajuster);
 
       document.body.appendChild(textarea);
+      ajuster();
       textarea.focus();
       textarea.select();
 
@@ -173,7 +194,12 @@ const TextNode = ({
       node.visible(false);
       layer.draw();
 
+      // Une seule fin : retirer le champ déclenche `blur`, qui validerait
+      // sinon un Échap.
+      let fini = false;
       const end = (save) => {
+        if (fini) return;
+        fini = true;
         if (save) {
           commit(textarea.value);
         }
@@ -183,10 +209,14 @@ const TextNode = ({
       };
 
       textarea.addEventListener('keydown', (evt) => {
-        if (evt.key === 'Enter' && !evt.shiftKey) {
+        // Comme PocketStick : Entrée = retour à la ligne ; Ctrl/Cmd+Entrée ou
+        // clic ailleurs = valider ; Échap = annuler.
+        evt.stopPropagation(); // Suppr / flèches ne doivent pas agir sur le canvas
+        if (evt.key === 'Enter' && (evt.ctrlKey || evt.metaKey)) {
           evt.preventDefault();
           end(true);
         } else if (evt.key === 'Escape') {
+          evt.preventDefault();
           end(false);
         }
       });
@@ -205,6 +235,9 @@ const TextNode = ({
       rotation,
       dataBinding,
       correctionKey,
+      width,
+      opacity,
+      fillGradient,
     ]
   );
 

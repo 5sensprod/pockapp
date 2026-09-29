@@ -192,7 +192,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
 
   return (
     <div className="">
-      <div className="flex items-center gap-4 px-4 ">
+      <div className="flex flex-nowrap items-center gap-3 whitespace-nowrap">
         {/* 🎨 Sélecteur de police pour les textes */}
         {isText && (
           <>
