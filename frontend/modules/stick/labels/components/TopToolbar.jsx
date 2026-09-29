@@ -37,8 +37,9 @@ const TopToolbar = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [canUndo, canRedo, undo, redo]);
 
-  // Le tirage entier : une page par exemplaire, ou la planche (`exportTirage`).
-  const handleExportPdf = () => exporterTirage(docNode);
+  // La PAGE EN COURS seulement ; le tirage entier part du panneau Produits
+  // (« Exporter le tirage PDF »).
+  const handleExportPdf = () => exporterTirage(docNode, { pageCourante: true });
 
 
   return (
@@ -137,7 +138,7 @@ const TopToolbar = ({
             onClick={handleExportPdf}
             disabled={!docNode}
             className="flex items-center gap-2 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title={!docNode ? 'Document non disponible' : 'Exporter en PDF'}
+            title={!docNode ? 'Document non disponible' : 'Exporter la page en cours en PDF'}
           >
             <Download className="h-4 w-4" />
             <span>Exporter</span>

@@ -89,3 +89,17 @@ l'onglet Produits ; le panneau Tableau propose les styles statiques même avec u
 `dataSource` dérivé, tirage qui survit au chargement d'un template et au choix
 de « Nouveau »), `labels/utils/exportTirage.test.js` (aiguillage de l'export,
 exports simulés).
+
+## Export de la page en cours, vignettes rendues, bande repliable (29 septembre 2026)
+
+- **« Exporter » de la barre du haut n'exporte plus que la PAGE EN COURS**
+  (`exporterTirage(docNode, { pageCourante: true })`) : en format page, le
+  canvas tel qu'il s'affiche (`exportPdf`) ; en planche, la seule feuille qui
+  contient le produit affiché (`casesDeLaPageCourante`). Le tirage entier part
+  du bouton « Exporter le tirage PDF » du panneau Produits.
+- **La bande montre le rendu réel en petit** : `apercuCase`
+  (`utils/exportPdfSheet.js`), le même dessin que l'export, un rendu par
+  PRODUIT distinct, recalculé 400 ms après la dernière retouche. En attendant,
+  la case montre le nom du produit.
+- **La bande se replie** (« Pages · N ») ; la préférence est retenue sur le
+  poste (`localStorage`, `stick.bandeTirage.replie`). Repliée, aucun rendu.

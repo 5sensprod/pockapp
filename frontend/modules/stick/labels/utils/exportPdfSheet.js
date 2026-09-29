@@ -166,7 +166,7 @@ function shadowProps(el) {
  * -> Supporte: text, qrcode, barcode, image, shape
  * -> Ajout: application des ombres sur chaque node qui dessine
  */
-async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRatio) {
+async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRatio, { qualiteMin = 3 } = {}) {
   const container = document.createElement('div');
   const stage = new Konva.Stage({ container, width: docWidth * scale, height: docHeight * scale });
   const layer = new Konva.Layer();
@@ -411,7 +411,7 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
   layer.draw();
 
   // PixelRatio augmenté pour une meilleure qualité globale
-  const dataURL = stage.toDataURL({ pixelRatio: Math.max(pixelRatio, 3) });
+  const dataURL = stage.toDataURL({ pixelRatio: Math.max(pixelRatio, qualiteMin) });
 
   // Cleanup
   stage.destroy();
@@ -540,4 +540,17 @@ export async function exportPdfSheet(
   }
 
   pdf.save(fileName);
+}
+
+/**
+ * VIGNETTE d'une case pour la bande d'aperçu (`BandeTirage`) : le MÊME dessin
+ * que l'export — éléments remplis avec le produit —, en petit. `hauteur` en
+ * pixels écran ; `product` peut être null (le modèle tel quel).
+ */
+export async function apercuCase(product, { docWidth, docHeight, hauteur = 72, elements } = {}) {
+  if (!docWidth || !docHeight) return null;
+  const base = Array.isArray(elements) ? elements : (useLabelStore.getState()?.elements ?? []);
+  const scale = hauteur / docHeight;
+  const rendu = product ? updateElementsWithProduct(base, product, false) : base;
+  return createDocumentImage(rendu, docWidth, docHeight, scale, 2, { qualiteMin: 1 });
 }

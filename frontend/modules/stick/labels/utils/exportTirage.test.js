@@ -56,4 +56,23 @@ describe('exporterTirage', () => {
       Array.from({ length: 4 }, () => ({ product: null }))
     );
   });
+
+  it('page en cours, format page : le canvas seul, même avec plusieurs affiches', async () => {
+    etat().ajouterAuTirage([p('a'), p('b')]);
+    etat().setQuantite('a', 3);
+    await exporterTirage(doc, { pageCourante: true });
+    expect(exportPdf).toHaveBeenCalledOnce();
+    expect(exportPdfSheet).not.toHaveBeenCalled();
+  });
+
+  it('page en cours, planche : la seule feuille du produit affiché', async () => {
+    etat().setSheetSettings({ rows: 2, cols: 1 });
+    etat().ajouterAuTirage([p('a'), p('b')]);
+    etat().setQuantite('a', 3); // feuille 1 : a a ; feuille 2 : a b
+    etat().setFormatTirage('planche');
+    etat().goToProductIndex(1);
+    await exporterTirage(doc, { pageCourante: true });
+    const cases = exportPdfSheet.mock.calls[0][1].cases;
+    expect(cases.map((c) => c.product?.name)).toEqual(['a', 'b']);
+  });
 });
