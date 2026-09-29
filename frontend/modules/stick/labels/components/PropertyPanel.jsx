@@ -10,8 +10,21 @@ import {
   Underline,
   Strikethrough,
   Highlighter,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+  AlignHorizontalSpaceAround,
+  AlignVerticalSpaceAround,
 } from 'lucide-react';
-import useLabelStore from '../store/useLabelStore';
+import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
+import { alignOffsets, distributeOffsets, unionBoxes } from '../utils/layout';
 import FontSelector from './FontSelector';
 import GradientColorPicker from './GradientColorPicker';
 import { resolvePropForElement, texteCorrige } from '../utils/dataBinding';
@@ -19,7 +32,30 @@ import { resetCropAttrs } from '../utils/crop';
 import { geometrieImage } from './canvas/CropOverlay';
 import { FORMATS_TEXTE_CODE_BARRES } from '../utils/barcodeText';
 
-const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
+// Comme PocketStick (`ui/Properties.jsx`, ALIGN_BUTTONS) : un élément seul
+// s'aligne sur la PAGE ; plusieurs s'alignent sur leur cadre commun.
+const BOUTONS_ALIGNEMENT = [
+  ['left', 'Aligner à gauche', AlignStartVertical],
+  ['center', 'Centrer horizontalement', AlignCenterVertical],
+  ['right', 'Aligner à droite', AlignEndVertical],
+  ['top', 'Aligner en haut', AlignStartHorizontal],
+  ['middle', 'Centrer verticalement', AlignCenterHorizontal],
+  ['bottom', 'Aligner en bas', AlignEndHorizontal],
+];
+const BOUTONS_TEXTE = [
+  ['left', 'Texte à gauche', AlignLeft],
+  ['center', 'Texte centré', AlignCenter],
+  ['right', 'Texte à droite', AlignRight],
+  ['justify', 'Texte justifié', AlignJustify],
+];
+const petitBouton = (actif) =>
+  `p-1.5 rounded-lg transition-colors ${
+    actif
+      ? 'bg-blue-500 hover:bg-blue-600 text-white'
+      : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+  }`;
+
+const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
   const elements = useLabelStore((s) => s.elements);
   const selectedId = useLabelStore((s) => s.selectedId);
   const updateElement = useLabelStore((s) => s.updateElement);
@@ -31,8 +67,40 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
   const startCrop = useLabelStore((s) => s.startCrop);
   const stopCrop = useLabelStore((s) => s.stopCrop);
 
+  const extraIds = useLabelStore((s) => s.extraIds);
+  const canvasSize = useLabelStore((s) => s.canvasSize);
+
   const selectedElement = elements.find((el) => el.id === selectedId);
   if (!selectedElement) return null;
+
+  // ── Alignement et distribution ──────────────────────────────────────────
+  // Les cadres sont MESURÉS sur le canvas (rotation, texte sans largeur, QR,
+  // formes centrées), en coordonnées du document ; on déplace ensuite chaque
+  // élément du décalage calculé, ce qui vaut quelle que soit son origine.
+  const ids = idsSelectionnes({ selectedId, extraIds, elements }).filter(
+    (id) => !elements.find((e) => e.id === id)?.locked
+  );
+  const cadre = (id) =>
+    docNode?.findOne(`#${id}`)?.getClientRect({ skipShadow: true, relativeTo: docNode }) ?? null;
+  const deplacer = (offsets, liste) =>
+    offsets.forEach(({ dx, dy }, i) => {
+      const el = elements.find((e) => e.id === liste[i]);
+      if (el && (dx || dy)) updateElement(el.id, { x: (el.x ?? 0) + dx, y: (el.y ?? 0) + dy });
+    });
+  const aligner = (alignement) => {
+    const liste = ids.filter((id) => cadre(id));
+    const boites = liste.map(cadre);
+    if (!boites.length) return;
+    const reference =
+      boites.length === 1
+        ? { x: 0, y: 0, width: canvasSize.width, height: canvasSize.height }
+        : unionBoxes(boites);
+    deplacer(alignOffsets(boites, reference, alignement), liste);
+  };
+  const distribuer = (axe) => {
+    const liste = ids.filter((id) => cadre(id));
+    deplacer(distributeOffsets(liste.map(cadre), axe), liste);
+  };
 
   const isQRCode = selectedElement.type === 'qrcode';
   const isText = selectedElement.type === 'text';
@@ -264,6 +332,30 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
               >
                 <Strikethrough className="h-4 w-4" />
               </button>
+            </div>
+
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+
+            {/* Alignement du texte DANS son bloc. Sans largeur fixée, le bloc
+                épouse le texte : on lui en donne une pour que ça se voie. */}
+            <div className="flex items-center gap-1">
+              {BOUTONS_TEXTE.map(([valeur, label, Icone]) => (
+                <button
+                  key={valeur}
+                  onClick={() => {
+                    const maj = { align: valeur };
+                    if (selectedElement.width == null) {
+                      const w = cadre(selectedId)?.width;
+                      if (w) maj.width = Math.round(w);
+                    }
+                    updateElement(selectedId, maj);
+                  }}
+                  className={petitBouton((selectedElement.align ?? 'left') === valeur)}
+                  title={label}
+                >
+                  <Icone className="h-4 w-4" />
+                </button>
+              ))}
             </div>
 
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
@@ -658,6 +750,50 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects }) => {
               </div>
             </>
           )}
+
+        {/* Position : sur la page (un élément) ou entre eux (plusieurs) */}
+        {docNode && ids.length > 0 && (
+          <>
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            <div
+              className="flex items-center gap-1"
+              role="group"
+              aria-label={ids.length === 1 ? 'Aligner sur la page' : 'Aligner les éléments'}
+            >
+              {BOUTONS_ALIGNEMENT.map(([valeur, label, Icone]) => (
+                <button
+                  key={valeur}
+                  onClick={() => aligner(valeur)}
+                  className={petitBouton(false)}
+                  title={ids.length === 1 ? `${label} (sur la page)` : `${label} (entre les éléments)`}
+                >
+                  <Icone className="h-4 w-4" />
+                </button>
+              ))}
+              {ids.length > 2 && (
+                <>
+                  <button
+                    onClick={() => distribuer('horizontal')}
+                    className={petitBouton(false)}
+                    title="Espaces horizontaux égaux"
+                  >
+                    <AlignHorizontalSpaceAround className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => distribuer('vertical')}
+                    className={petitBouton(false)}
+                    title="Espaces verticaux égaux"
+                  >
+                    <AlignVerticalSpaceAround className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+            </div>
+            {ids.length === 1 && (
+              <span className="text-[11px] text-gray-400 whitespace-nowrap">Maj+clic : plusieurs</span>
+            )}
+          </>
+        )}
 
         {onOpenEffects && (
           <>

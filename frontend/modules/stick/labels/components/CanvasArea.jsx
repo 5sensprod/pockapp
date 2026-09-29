@@ -51,7 +51,11 @@ const CanvasArea = forwardRef(
       ajuster();
     }, [viewport.width, canvasSize.width, canvasSize.height, ajuster]);
 
+    // Le groupe du document : la barre d'options y MESURE les éléments pour
+    // les aligner et les distribuer.
+    const [docNode, setDocNode] = useState(null);
     const handleDocNodeReady = (node) => {
+      setDocNode(node);
       if (onDocNodeReady) onDocNodeReady(node);
     };
 
@@ -66,7 +70,7 @@ const CanvasArea = forwardRef(
         <div className="flex-none h-11 flex items-center gap-3 px-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs overflow-x-auto overflow-y-hidden">
           <div className="flex-none">
             {selectedId ? (
-              <PropertyPanel selectedProduct={selectedProduct} onOpenEffects={onOpenEffects} />
+              <PropertyPanel selectedProduct={selectedProduct} onOpenEffects={onOpenEffects} docNode={docNode} />
             ) : (
               <span className="text-gray-500 dark:text-gray-400">
                 Sélectionnez un élément pour le modifier.

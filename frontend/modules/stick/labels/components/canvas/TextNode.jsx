@@ -37,6 +37,7 @@ const TextNode = ({
   dataBinding = null,
   correctionKey = null, // _id du produit affiché, pour corriger un texte lié
   fillGradient = null, // 🌈 { from, to, angle } ou null
+  align = 'left', // alignement DANS le bloc : left | center | right | justify
   shadowEnabled,
   shadowColor,
   shadowOpacity,
@@ -274,6 +275,7 @@ const TextNode = ({
         scaleY={scaleY}
         opacity={opacity}
         width={width} // Support du width pour redimensionnement
+        align={align}
         wrap="word" // Wrap automatique des mots
         draggable={draggable && !locked}
         shadowEnabled={shadowEnabled}

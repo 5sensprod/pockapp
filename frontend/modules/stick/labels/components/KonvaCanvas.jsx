@@ -7,7 +7,7 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import { Stage, Layer, Group, Rect, Transformer, Line, Text } from 'react-konva';
-import useLabelStore from '../store/useLabelStore';
+import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
 import QRCodeNode from './canvas/QRCodeNode';
 import ImageNode from './canvas/ImageNode';
 import BarcodeNode from './canvas/BarcodeNode';
@@ -21,6 +21,19 @@ import { tailleNaturelle } from './canvas/ImageNode';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+/** Formes dessinées depuis leur CENTRE (`dessinForme`) : leur nœud Konva est
+ *  décalé d'une demi-taille par rapport à `el.x`/`el.y`. */
+const FORMES_CENTREES = ['circle', 'triangle', 'star'];
+
+/** Position à enregistrer après un déplacement. Avant, un cercle enregistrait
+ *  son centre comme coin et sautait d'une demi-taille au relâchement. */
+export const positionDepuisNoeud = (el, node) => {
+  if (el.type === 'shape' && FORMES_CENTREES.includes(el.shape)) {
+    return { x: node.x() - (el.width ?? 160) / 2, y: node.y() - (el.height ?? 160) / 2 };
+  }
+  return { x: node.x(), y: node.y() };
+};
+
 /** Marge autour de la page dans la zone de travail (px écran), comme PocketStick. */
 export const MARGE_ESPACE = 40;
 
@@ -31,6 +44,8 @@ const KonvaCanvas = forwardRef(
   ) => {
     const elements = useLabelStore((s) => s.elements);
     const selectedId = useLabelStore((s) => s.selectedId);
+    const extraIds = useLabelStore((s) => s.extraIds);
+    const toggleSelection = useLabelStore((s) => s.toggleSelection);
     const selectElement = useLabelStore((s) => s.selectElement);
     const updateElement = useLabelStore((s) => s.updateElement);
     const setZoom = useLabelStore((s) => s.setZoom);
@@ -99,11 +114,16 @@ const KonvaCanvas = forwardRef(
     );
 
     const handleSelect = useCallback(
-      (id, locked) => {
-        if (isDragging) return;
-        if (!locked) selectElement(id);
+      (id, locked, evt) => {
+        if (isDragging || locked) return;
+        // Maj (ou Ctrl/Cmd) + clic : sélection multiple, comme PocketStick
+        if (evt?.shiftKey || evt?.ctrlKey || evt?.metaKey) toggleSelection(id);
+        else if (!idsSelectionnes(useLabelStore.getState()).includes(id)) selectElement(id);
+        // Un clic sur un élément DÉJÀ sélectionné garde la sélection : c'est
+        // ce qui permet de déplacer le groupe en le saisissant par l'un d'eux.
+        else useLabelStore.setState({ selectedId: id, extraIds: idsSelectionnes(useLabelStore.getState()).filter((x) => x !== id) });
       },
-      [isDragging, selectElement]
+      [isDragging, selectElement, toggleSelection]
     );
 
     const handleDragMove = useCallback(
@@ -124,8 +144,13 @@ const KonvaCanvas = forwardRef(
         );
 
         setSnapGuides(guides);
-        if (snapX !== null) node.x(snapX);
-        if (snapY !== null) node.y(snapY);
+        // `snapX`/`snapY` sont le coin du CADRE englobant, pas l'origine du
+        // nœud : pour un cercle, un triangle ou une étoile (origine au centre)
+        // ou un élément tourné, les poser tels quels faisait sauter la forme.
+        // On applique donc l'écart entre l'origine et le coin du cadre.
+        const cadre = node.getClientRect({ skipShadow: true, relativeTo: node.getParent() });
+        if (snapX !== null) node.x(snapX + (node.x() - cadre.x));
+        if (snapY !== null) node.y(snapY + (node.y() - cadre.y));
       },
       [elements, docWidth, docHeight, findNodeById]
     );
@@ -136,9 +161,19 @@ const KonvaCanvas = forwardRef(
       (id, node) => {
         setIsDraggingElement(false);
         setSnapGuides([]);
-        updateElement(id, { x: node.x(), y: node.y() });
+        // Le Transformer déplace AVEC lui les autres éléments sélectionnés,
+        // mais seul le nœud saisi émet dragend : on les enregistre tous.
+        const stage = stageRef.current;
+        for (const autreId of idsSelectionnes(useLabelStore.getState())) {
+          if (autreId === id) continue;
+          const autre = stage?.findOne(`#${autreId}`);
+          const el = elements.find((e) => e.id === autreId);
+          if (autre && el) updateElement(autreId, positionDepuisNoeud(el, autre));
+        }
+        const el = elements.find((e) => e.id === id);
+        updateElement(id, el ? positionDepuisNoeud(el, node) : { x: node.x(), y: node.y() });
       },
-      [updateElement]
+      [updateElement, elements]
     );
 
     // 🎯 onTransformStart simple
@@ -239,6 +274,10 @@ const KonvaCanvas = forwardRef(
               scaleY: 1,
               ...(live.natural ? { crop: konvaCrop(live.el, live.natural) } : {}),
             });
+            // Comme PocketStick : AUCUN état React pendant le geste. Les guides
+            // d'alignement (setSnapGuides) re-rendaient tout le canvas à chaque
+            // mouvement de souris ; tout s'enregistre au relâchement.
+            return;
           }
 
           if (element.type === 'text') {
@@ -287,8 +326,7 @@ const KonvaCanvas = forwardRef(
         if (!element) return;
 
         const updates = {
-          x: node.x(),
-          y: node.y(),
+          ...positionDepuisNoeud(element, node),
           rotation: node.rotation(),
         };
 
@@ -373,14 +411,13 @@ const KonvaCanvas = forwardRef(
         tr?.getLayer()?.batchDraw();
         return;
       }
-      const selectedElement = elements.find((el) => el.id === selectedId);
-      if (!selectedElement || selectedElement.locked || selectedElement.visible === false) {
-        tr.nodes([]);
-        tr.getLayer()?.batchDraw();
-        return;
-      }
-      const node = stage.findOne(`#${selectedId}`);
-      tr.nodes(node ? [node] : []);
+      // Tous les éléments sélectionnés, verrouillés et masqués exclus
+      const nodes = idsSelectionnes({ selectedId, extraIds, elements })
+        .map((id) => elements.find((el) => el.id === id))
+        .filter((el) => el && !el.locked && el.visible !== false)
+        .map((el) => stage.findOne(`#${el.id}`))
+        .filter(Boolean);
+      tr.nodes(nodes);
 
       // Forcer la mise à jour du Transformer après un court délai
       // pour que la police soit chargée et le texte redimensionné
@@ -388,7 +425,7 @@ const KonvaCanvas = forwardRef(
         tr.forceUpdate();
         tr.getLayer()?.batchDraw();
       }, 100);
-    }, [selectedId, elements, cropId]);
+    }, [selectedId, extraIds, elements, cropId]);
 
     return (
       <Stage
@@ -427,7 +464,7 @@ const KonvaCanvas = forwardRef(
                 x,
                 y,
                 draggable: !locked && !isDragging,
-                onClick: () => handleSelect(id, locked),
+                onClick: (e) => handleSelect(id, locked, e?.evt),
                 onDragStart: handleDragStart,
                 onDragMove: (e) => !locked && handleDragMove(id, e.target),
                 onDragEnd: (e) => !locked && handleDragEnd(id, e.target),
@@ -459,6 +496,7 @@ const KonvaCanvas = forwardRef(
                     dataBinding={el.dataBinding || null}
                     correctionKey={selectedProduct?._id ?? null}
                     fillGradient={el.fillGradient ?? null}
+                    align={el.align ?? 'left'}
                   />
                 );
               }
@@ -604,7 +642,7 @@ const KonvaCanvas = forwardRef(
             // Texte : poignées de CÔTÉ seulement, comme PocketStick — un coin
             // ou un bord haut/bas agrandirait les lettres.
             enabledAnchors={
-              elements.find((el) => el.id === selectedId)?.type === 'text'
+              !extraIds.length && elements.find((el) => el.id === selectedId)?.type === 'text'
                 ? ['middle-left', 'middle-right']
                 : [
                     'top-left',

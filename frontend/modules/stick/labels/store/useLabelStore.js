@@ -9,10 +9,23 @@ const snapshotOf = (state) => ({
   selectedId: state.selectedId,
 });
 
+/** La sélection entière, élément principal en tête ; ignore les éléments disparus. */
+export const idsSelectionnes = (state) => {
+  if (!state.selectedId) return [];
+  const existe = new Set(state.elements.map((e) => e.id));
+  return [state.selectedId, ...(state.extraIds || [])].filter(
+    (id, i, arr) => existe.has(id) && arr.indexOf(id) === i
+  );
+};
+
 const useLabelStore = create((set, get) => ({
   // --- état principal
   elements: [],
   selectedId: null,
+  // Sélection MULTIPLE (Maj+clic), comme PocketStick : `selectedId` reste
+  // l'élément principal — celui dont la barre montre les options — et
+  // `extraIds` les autres. Lire la sélection par `idsSelectionnes`.
+  extraIds: [],
   // Image en cours de recadrage (id), comme `cropId` de PocketStick. Changer
   // de sélection termine le recadrage.
   cropId: null,
@@ -180,8 +193,23 @@ const useLabelStore = create((set, get) => ({
 
   // --- sélection
   selectElement: (id) =>
-    set((state) => ({ selectedId: id, cropId: state.cropId === id ? state.cropId : null })),
-  clearSelection: () => set({ selectedId: null, cropId: null }),
+    set((state) => ({
+      selectedId: id,
+      extraIds: [],
+      cropId: state.cropId === id ? state.cropId : null,
+    })),
+  // Maj+clic : ajoute l'élément à la sélection, ou l'en retire s'il y est.
+  toggleSelection: (id) =>
+    set((state) => {
+      const ids = idsSelectionnes(state);
+      if (!ids.length) return { selectedId: id, extraIds: [], cropId: null };
+      if (ids.includes(id)) {
+        const reste = ids.filter((x) => x !== id);
+        return { selectedId: reste[0] ?? null, extraIds: reste.slice(1), cropId: null };
+      }
+      return { selectedId: id, extraIds: ids, cropId: null };
+    }),
+  clearSelection: () => set({ selectedId: null, extraIds: [], cropId: null }),
   startCrop: (id) =>
     set((state) => {
       const el = state.elements.find((e) => e.id === id);
@@ -266,6 +294,7 @@ const useLabelStore = create((set, get) => ({
       return {
         elements: [],
         selectedId: null,
+        extraIds: [],
         cropId: null,
         selectedProducts: [],
         selectedProduct: null,
@@ -291,6 +320,7 @@ const useLabelStore = create((set, get) => ({
       return {
         elements: [],
         selectedId: null,
+        extraIds: [],
         cropId: null,
         selectedProducts: [],
         selectedProduct: null,

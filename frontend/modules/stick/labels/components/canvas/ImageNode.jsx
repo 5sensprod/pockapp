@@ -6,7 +6,7 @@
 // dans le cadre à ses proportions (`konvaCrop`, `utils/crop.js`). Un cadre plus
 // large que l'image la rogne en haut et en bas, il ne l'écrase plus.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Image as KonvaImage } from 'react-konva';
 import { konvaCrop } from '../../utils/crop';
 
@@ -57,9 +57,23 @@ const ImageNode = ({
 }) => {
   const image = useImageChargee(src);
   const naturel = tailleNaturelle(image);
-  const crop = naturel
-    ? konvaCrop({ width, height, ...recadrage({ cropX, cropY, cropWidth, cropHeight }) }, naturel)
-    : undefined;
+  // MÉMOÏSÉ sur des nombres, et c'est ce qui rend le redimensionnement fluide :
+  // pendant le geste, le canvas pose le recadrage directement sur le nœud
+  // (`KonvaCanvas`, `resizeStep`). Un nouvel objet `crop` à chaque rendu
+  // serait réappliqué par react-konva et remettrait l'ANCIEN recadrage du
+  // store sous la souris, à chaque mouvement.
+  const nw = naturel?.width;
+  const nh = naturel?.height;
+  const crop = useMemo(
+    () =>
+      nw && nh
+        ? konvaCrop(
+            { width, height, ...recadrage({ cropX, cropY, cropWidth, cropHeight }) },
+            { width: nw, height: nh }
+          )
+        : undefined,
+    [nw, nh, width, height, cropX, cropY, cropWidth, cropHeight]
+  );
 
   // ✅ on pose id/x/y/...rest sur le nœud Konva racine (KonvaImage)
   return (
