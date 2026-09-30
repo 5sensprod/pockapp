@@ -33,6 +33,7 @@ import FontSelector from './FontSelector';
 import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
 import MenuContourStylise from './MenuContourStylise';
+import { composerCouleur, decomposerCouleur } from '../utils/paint';
 import MenuMasque from './MenuMasque';
 import { TYPO_BORNES } from '../utils/typo';
 import LiaisonProduit from './LiaisonProduit';
@@ -604,8 +605,13 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 // Un trait n'a pas de remplissage : pas de dégradé.
                 <input
                   type="color"
-                  value={selectedElement.fill || '#3b82f6'}
-                  onChange={(e) => updateElement(selectedId, { fill: e.target.value })}
+                  // La couleur peut porter une opacité (#rrggbbaa) : on la garde
+                  value={decomposerCouleur(selectedElement.fill || '#3b82f6').hex}
+                  onChange={(e) =>
+                    updateElement(selectedId, {
+                      fill: composerCouleur(e.target.value, decomposerCouleur(selectedElement.fill || '#3b82f6').alpha),
+                    })
+                  }
                   className="w-10 h-8 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
                 />
               ) : (

@@ -231,15 +231,30 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
 
           {mode === 'uni' ? (
             <>
-              <ChampCouleur label="Couleur" value={color} onChange={onColorChange} />
+              {/* Opacité de la couleur unie : `#rrggbbaa`, comme un arrêt de dégradé */}
+              <ChampCouleur
+                label="Couleur"
+                value={decomposerCouleur(color).hex}
+                onChange={(v) => onColorChange(composerCouleur(v, decomposerCouleur(color).alpha))}
+              />
+              <Curseur
+                label="Opacité"
+                valeur={decomposerCouleur(color).alpha}
+                affichage={`${Math.round(decomposerCouleur(color).alpha * 100)} %`}
+                min={0}
+                max={1}
+                step={0.01}
+                onChange={(v) => onColorChange(composerCouleur(decomposerCouleur(color).hex, v))}
+              />
               <div className="grid grid-cols-6 gap-1.5">
                 {COULEURS_PRETES.map((c) => (
                   <button
                     key={c}
                     type="button"
-                    onClick={() => onColorChange(c)}
+                    // Une couleur prête garde l'opacité réglée
+                    onClick={() => onColorChange(composerCouleur(c, decomposerCouleur(color).alpha))}
                     className={`h-7 rounded border ${
-                      c.toLowerCase() === (color || '').toLowerCase()
+                      c.toLowerCase() === decomposerCouleur(color).hex
                         ? 'ring-2 ring-blue-500 border-transparent'
                         : 'border-gray-300 dark:border-gray-600'
                     }`}

@@ -7,6 +7,7 @@
 
 import React, { useEffect } from 'react';
 import useLabelStore from '../../store/useLabelStore';
+import { composerCouleur, decomposerCouleur } from '../../utils/paint';
 import {
   brushOptions,
   DRAW_DEFAULTS,
@@ -55,7 +56,14 @@ const Reglage = ({ label, valeur, min, max, onValeur }) => (
 const Couleur = ({ label, valeur, onValeur }) => (
   <label className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
     <span>{label}</span>
-    <input type="color" aria-label={label} value={valeur} onChange={(e) => onValeur(e.target.value)} className="w-10 h-6" />
+    {/* La couleur peut porter une opacité (#rrggbbaa, sélecteur de la barre du haut) : on la garde */}
+    <input
+      type="color"
+      aria-label={label}
+      value={decomposerCouleur(valeur).hex}
+      onChange={(e) => onValeur(composerCouleur(e.target.value, decomposerCouleur(valeur).alpha))}
+      className="w-10 h-6"
+    />
   </label>
 );
 
