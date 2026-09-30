@@ -16,6 +16,7 @@ import TextNode from './canvas/TextNode';
 import ShapeNode from './canvas/ShapeNode';
 import DessinNode from './canvas/DessinNode';
 import DessinCalque from './canvas/DessinCalque';
+import VoileHorsPage from './canvas/VoileHorsPage';
 import { calculateSnapGuides } from '../utils/snapGuides.utils';
 import { resolvePropForElement } from '../utils/dataBinding';
 import { konvaCrop, resizeStep, settleCrop } from '../utils/crop';
@@ -835,6 +836,19 @@ const KonvaCanvas = forwardRef(
               })}
           </Group>
 
+          {/* Outil Dessin : hors du groupe du document, qui est exporté */}
+          <DessinCalque scale={zoom} offsetX={docPos.x} offsetY={docPos.y} stageWidth={stageW} stageHeight={stageH} />
+
+          {/* Voile hors page : écran seulement, APRÈS le document et le tracé
+              en cours (ce qui dépasse paraît voilé, comme à l'impression),
+              AVANT lasso, recadrage et Transformer, qui restent nets. */}
+          <VoileHorsPage
+            stageRef={stageRef}
+            sceneWidth={stageW}
+            sceneHeight={stageH}
+            page={{ x: docPos.x, y: docPos.y, width: pageW, height: pageH }}
+          />
+
           {lasso && (
             <Group x={docPos.x} y={docPos.y} scaleX={zoom} scaleY={zoom} listening={false}>
               <Rect
@@ -846,9 +860,6 @@ const KonvaCanvas = forwardRef(
               />
             </Group>
           )}
-
-          {/* Outil Dessin : hors du groupe du document, qui est exporté */}
-          <DessinCalque scale={zoom} offsetX={docPos.x} offsetY={docPos.y} stageWidth={stageW} stageHeight={stageH} />
 
           {/* Recadrage : même position et zoom que le document, mais HORS de
               son groupe — l'export clone ce groupe, la surcouche ne doit pas
