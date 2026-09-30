@@ -439,6 +439,8 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
               className="w-14 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               title="Épaisseur du contour du texte, en pixels"
             />
+            {/* Contour à main levée des lettres (`utils/texteContourStylise.js`) */}
+            <MenuContourStylise texte element={selectedElement} onChange={(maj) => updateElement(selectedId, maj)} />
           </div>
         )}
 

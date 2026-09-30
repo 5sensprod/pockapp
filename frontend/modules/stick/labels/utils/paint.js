@@ -270,10 +270,16 @@ export const contourKonva = (gradient, width, height, color, centrer = false, ra
  * Le dégradé sur un canvas 2D (QR code) : un `CanvasGradient` couvrant
  * `width × height`, ou null si pas de dégradé.
  */
-export const degradeCanvas2D = (ctx, gradient, width, height) => {
+export const degradeCanvas2D = (ctx, gradient, width, height, cadre = null) => {
   const paint = versPeinture(gradient);
   if (!paint) return null;
-  if (isTexture(paint)) return patternTexture(paint, width, height, { ratio: 1, plafond: 2048 });
+  // Une texture est un motif SANS répétition, posé sur un cadre : celui du
+  // dessin réel quand il déborde de `width × height` (contour stylisé : le
+  // trait ondule hors du cadre ; un dégradé, lui, s'étend à l'infini).
+  if (isTexture(paint)) {
+    if (cadre) return patternTexture(paint, cadre.width, cadre.height, { ratio: 1, plafond: 2048, dx: -cadre.x, dy: -cadre.y });
+    return patternTexture(paint, width, height, { ratio: 1, plafond: 2048 });
+  }
   let grd;
   if (paint.type === 'linear-gradient') {
     const { start, end } = linearPoints(width, height, paint.angle);

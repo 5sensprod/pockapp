@@ -6,6 +6,8 @@ import { loadGoogleFont } from '../../utils/loadGoogleFont'; // 🎨 Import de l
 import { contourTexte, remplissage } from '../../utils/fillStyle';
 import { premiereCouleur } from '../../utils/paint';
 import { texteDeLaFiche } from '../../utils/dataBinding';
+import { contourLettresDemande, propsContourLettres, SANS_CONTOUR_LETTRES } from '../../utils/texteContourStylise';
+import { chargerPoliceVectorielle, policeVectoriellePrete, styleDePolice } from '../../utils/policesVectorielles';
 
 /**
  * Text Konva avec édition inline au double-clic (overlay <textarea>).
@@ -48,6 +50,7 @@ const TextNode = ({
   stroke = '', // ✏️ contour des lettres (`contourTexte`)
   strokeWidth = 0,
   strokeGradient = null,
+  contourStyle = null, // ✏️ contour stylisé des lettres (`utils/texteContourStylise.js`)
   shadowEnabled,
   shadowColor,
   shadowOpacity,
@@ -66,6 +69,27 @@ const TextNode = ({
   // Texte courbé : un autre DESSIN du même nœud
   const courbure = useMemo(() => propsCourbure(curve), [curve]);
   const updateElement = useLabelStore((s) => s.updateElement);
+
+  // ✏️ Contour stylisé : il faut le FICHIER de la police. Tant qu'il n'est pas
+  // là (chargement, poste hors ligne), le contour Konva ordinaire reste.
+  const { gras, italique } = styleDePolice(fontStyle);
+  const stylise = contourLettresDemande({ contourStyle, strokeWidth, stroke, strokeGradient });
+  const [policeChargee, setPoliceChargee] = useState(() =>
+    stylise ? policeVectoriellePrete(fontFamily, gras, italique) : null
+  );
+  useEffect(() => {
+    if (!stylise) return undefined;
+    const prete = policeVectoriellePrete(fontFamily, gras, italique);
+    setPoliceChargee(prete);
+    if (prete) return undefined;
+    let actif = true;
+    chargerPoliceVectorielle(fontFamily, gras, italique)
+      .then((c) => actif && setPoliceChargee(c))
+      .catch(() => actif && setPoliceChargee(null));
+    return () => {
+      actif = false;
+    };
+  }, [stylise, fontFamily, gras, italique]);
 
   // 🖍️ Dimensions mesurées du texte, pour positionner le rectangle de surlignage
   const [box, setBox] = useState({ width: 0, height: 0 });
@@ -99,7 +123,7 @@ const TextNode = ({
   useEffect(() => {
     const raf = requestAnimationFrame(remesurer);
     return () => cancelAnimationFrame(raf);
-  }, [remesurer, text, fontSize, fontFamily, fontStyle, width, align, letterSpacing, lineHeight, hauteur, curve]);
+  }, [remesurer, text, fontSize, fontFamily, fontStyle, width, align, letterSpacing, lineHeight, hauteur, curve, policeChargee, contourStyle, strokeWidth]);
 
   // 🎨 Charger la police Google Font, puis re-mesurer quand elle est là
   useEffect(() => {
@@ -276,6 +300,12 @@ const TextNode = ({
     ]
   );
 
+  // Police prête : le contour stylisé ; sinon le contour Konva ordinaire.
+  const contour =
+    stylise && policeChargee
+      ? propsContourLettres({ chargee: policeChargee, gras, italique, stroke, strokeGradient, ep: Number(strokeWidth), fontSize, contourStyle, id })
+      : { ...contourTexte(stroke, strokeWidth, strokeGradient, box.width, box.height), ...SANS_CONTOUR_LETTRES };
+
   return (
     <>
       {/* 🖍️ Rectangle de surlignage (stabilo), positionné derrière le texte */}
@@ -304,7 +334,6 @@ const TextNode = ({
         fontFamily={fontFamily} // 🎨 Appliquer la police Google Font
         textDecoration={textDecoration} // souligné / barré
         {...remplissage(fillGradient, box.width, box.height, fill)}
-        {...contourTexte(stroke, strokeWidth, strokeGradient, box.width, box.height)}
         rotation={rotation}
         scaleX={scaleX}
         scaleY={scaleY * hauteur}
@@ -312,6 +341,7 @@ const TextNode = ({
         letterSpacing={letterSpacing}
         lineHeight={lineHeight}
         {...courbure}
+        {...contour}
         width={width} // Support du width pour redimensionnement
         align={align}
         wrap="word" // Wrap automatique des mots

@@ -1,12 +1,13 @@
 // backend/routes/polices_routes.go
 //
-// GET /api/fonts/file?family=Roboto&weight=700 — le fichier TTF d'une police,
+// GET /api/fonts/file?family=Roboto&weight=700&italic=1 — le fichier TTF d'une police,
 // pour le contour vectoriel des lettres de PocketStick. Mécanisme et sortie
 // réseau : backend/polices/polices.go, point 9 de CLAUDE.md.
 //
 // En-tête de réponse `X-Font-Weight` : la graisse RÉELLEMENT servie. Une
 // famille sans gras rend son 400 ; le navigateur, lui, fabrique alors un gras
-// que le renderer doit reproduire.
+// que le renderer doit reproduire. `X-Font-Italic` : 1 si un vrai fichier
+// italique est servi, 0 si le navigateur fabrique l'italique.
 
 package routes
 
@@ -31,7 +32,8 @@ func RegisterPolicesRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		if err != nil {
 			graisse = 400
 		}
-		p, err := fournisseur.Lire(c.Request().Context(), c.QueryParam("family"), graisse)
+		italique := c.QueryParam("italic") == "1"
+		p, err := fournisseur.Lire(c.Request().Context(), c.QueryParam("family"), graisse, italique)
 		if err != nil {
 			statut := http.StatusBadRequest
 			if errors.Is(err, polices.ErrInconnue) {
@@ -42,7 +44,12 @@ func RegisterPolicesRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 		h := c.Response().Header()
 		h.Set("X-Font-Weight", strconv.Itoa(p.Graisse))
 		h.Set("X-Font-Source", p.Source)
-		h.Set("Access-Control-Expose-Headers", "X-Font-Weight, X-Font-Source")
+		if p.Italique {
+			h.Set("X-Font-Italic", "1")
+		} else {
+			h.Set("X-Font-Italic", "0")
+		}
+		h.Set("Access-Control-Expose-Headers", "X-Font-Weight, X-Font-Source, X-Font-Italic")
 		h.Set("Cache-Control", "private, max-age=86400")
 		return c.Blob(http.StatusOK, "font/ttf", p.Octets)
 	}, apis.RequireAdminOrRecordAuth())

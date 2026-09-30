@@ -57,24 +57,28 @@ func NormaliserFamille(famille string) (string, error) {
 	return f, nil
 }
 
-// Polices système : famille → fichiers [normal, gras] dans %WINDIR%\Fonts.
+// Polices système : famille → fichiers [normal, gras, italique, gras
+// italique] dans %WINDIR%\Fonts ; "" = le navigateur FABRIQUE ce style (le
+// renderer le reproduit). Windows livre de vrais italiques : les servir, c'est
+// ce qui aligne le contour sur « Arial gras italique » (0,64 px d'écart sans,
+// mesuré le 30/09/2026 — PocketStick-docs/07-contour-lettres.md).
 // Même liste que `SYSTEM_FONTS` (utils/loadGoogleFont.js), moins les
 // génériques et les .ttc (collections, qu'opentype.js ne lit pas).
 // Helvetica n'existe pas sous Windows : le navigateur la remplace par Arial.
-var policesSysteme = map[string][2]string{
-	"arial":                  {"arial.ttf", "arialbd.ttf"},
-	"helvetica":              {"arial.ttf", "arialbd.ttf"},
-	"times new roman":        {"times.ttf", "timesbd.ttf"},
-	"courier new":            {"cour.ttf", "courbd.ttf"},
-	"verdana":                {"verdana.ttf", "verdanab.ttf"},
-	"georgia":                {"georgia.ttf", "georgiab.ttf"},
-	"trebuchet ms":           {"trebuc.ttf", "trebucbd.ttf"},
-	"tahoma":                 {"tahoma.ttf", "tahomabd.ttf"},
-	"segoe ui":               {"segoeui.ttf", "segoeuib.ttf"},
-	"calibri":                {"calibri.ttf", "calibrib.ttf"},
-	"consolas":               {"consola.ttf", "consolab.ttf"},
-	"candara":                {"Candara.ttf", "Candarab.ttf"},
-	"franklin gothic medium": {"framd.ttf", "framd.ttf"},
+var policesSysteme = map[string][4]string{
+	"arial":                  {"arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"},
+	"helvetica":              {"arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"},
+	"times new roman":        {"times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"},
+	"courier new":            {"cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"},
+	"verdana":                {"verdana.ttf", "verdanab.ttf", "verdanai.ttf", "verdanaz.ttf"},
+	"georgia":                {"georgia.ttf", "georgiab.ttf", "georgiai.ttf", "georgiaz.ttf"},
+	"trebuchet ms":           {"trebuc.ttf", "trebucbd.ttf", "trebucit.ttf", "trebucbi.ttf"},
+	"tahoma":                 {"tahoma.ttf", "tahomabd.ttf", "", ""},
+	"segoe ui":               {"segoeui.ttf", "segoeuib.ttf", "segoeuii.ttf", "segoeuiz.ttf"},
+	"calibri":                {"calibri.ttf", "calibrib.ttf", "calibrii.ttf", "calibriz.ttf"},
+	"consolas":               {"consola.ttf", "consolab.ttf", "consolai.ttf", "consolaz.ttf"},
+	"candara":                {"Candara.ttf", "Candarab.ttf", "Candarai.ttf", "Candaraz.ttf"},
+	"franklin gothic medium": {"framd.ttf", "", "framdit.ttf", ""},
 }
 
 // Police : les octets TTF et la graisse RÉELLEMENT servie — une famille sans
@@ -83,7 +87,11 @@ var policesSysteme = map[string][2]string{
 type Police struct {
 	Octets  []byte
 	Graisse int
-	Source  string // "systeme" | "google" | "cache"
+	// Italique : un VRAI fichier italique est servi. Faux quand l'italique
+	// est demandé mais fabriqué par le navigateur (polices Google, chargées
+	// en 400/700 seulement : `loadGoogleFont`).
+	Italique bool
+	Source   string // "systeme" | "google" | "cache"
 }
 
 // Fournisseur de polices, avec son dossier de cache.
@@ -110,8 +118,9 @@ func Nouveau(dossier string) *Fournisseur {
 	}
 }
 
-// Lire rend la police `famille` en `graisse` (400 ou 700).
-func (f *Fournisseur) Lire(ctx context.Context, famille string, graisse int) (*Police, error) {
+// Lire rend la police `famille` en `graisse` (400 ou 700), en italique si
+// demandé ET si un vrai fichier existe (polices système seulement).
+func (f *Fournisseur) Lire(ctx context.Context, famille string, graisse int, italique bool) (*Police, error) {
 	fam, err := NormaliserFamille(famille)
 	if err != nil {
 		return nil, err
@@ -121,19 +130,30 @@ func (f *Fournisseur) Lire(ctx context.Context, famille string, graisse int) (*P
 	}
 
 	if fichiers, ok := policesSysteme[strings.ToLower(fam)]; ok {
-		nom := fichiers[0]
-		if graisse == 700 {
-			nom = fichiers[1]
+		// Le style le plus proche qui existe : sans gras, le navigateur le
+		// fabrique sur le normal ; sans italique, il penche le droit.
+		g, ita := graisse, italique
+		indice := func() int {
+			i := 0
+			if g == 700 {
+				i++
+			}
+			if ita {
+				i += 2
+			}
+			return i
 		}
-		octets, err := os.ReadFile(filepath.Join(f.DossierSystem, nom))
+		if fichiers[indice()] == "" && ita {
+			ita = false
+		}
+		if fichiers[indice()] == "" && g == 700 {
+			g = 400
+		}
+		octets, err := os.ReadFile(filepath.Join(f.DossierSystem, fichiers[indice()]))
 		if err != nil {
 			return nil, fmt.Errorf("%w : %s absente de ce poste", ErrInconnue, fam)
 		}
-		g := graisse
-		if fichiers[0] == fichiers[1] {
-			g = 400
-		}
-		return &Police{Octets: octets, Graisse: g, Source: "systeme"}, nil
+		return &Police{Octets: octets, Graisse: g, Italique: ita, Source: "systeme"}, nil
 	}
 
 	return f.lireGoogle(ctx, fam, graisse)

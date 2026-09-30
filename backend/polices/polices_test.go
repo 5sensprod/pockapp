@@ -87,11 +87,11 @@ func (r redirigeVers) RoundTrip(req *http.Request) (*http.Response, error) {
 func TestGoogleTelechargeUneFoisPuisCache(t *testing.T) {
 	var appels int32
 	f := fauxGoogle(t, false, &appels)
-	p, err := f.Lire(context.Background(), "Roboto", 700)
+	p, err := f.Lire(context.Background(), "Roboto", 700, false)
 	if err != nil || p.Graisse != 700 || p.Source != "google" {
 		t.Fatalf("%+v, %v", p, err)
 	}
-	p, err = f.Lire(context.Background(), "Roboto", 700)
+	p, err = f.Lire(context.Background(), "Roboto", 700, false)
 	if err != nil || p.Source != "cache" || p.Graisse != 700 {
 		t.Fatalf("second appel : %+v, %v", p, err)
 	}
@@ -104,7 +104,7 @@ func TestFamilleSansGrasRendLe400(t *testing.T) {
 	var appels int32
 	f := fauxGoogle(t, true, &appels)
 	for _, attendu := range []string{"google", "cache"} {
-		p, err := f.Lire(context.Background(), "Bebas Neue", 700)
+		p, err := f.Lire(context.Background(), "Bebas Neue", 700, false)
 		if err != nil || p.Graisse != 400 || p.Source != attendu {
 			t.Fatalf("%s : %+v, %v", attendu, p, err)
 		}
@@ -118,15 +118,51 @@ func TestPoliceSysteme(t *testing.T) {
 	f := Nouveau(t.TempDir())
 	f.DossierSystem = dir
 	for _, fam := range []string{"Arial", "Helvetica"} {
-		p, err := f.Lire(context.Background(), fam, 700)
+		p, err := f.Lire(context.Background(), fam, 700, false)
 		if err != nil || p.Source != "systeme" || p.Graisse != 700 {
 			t.Fatalf("%s : %+v, %v", fam, p, err)
 		}
 	}
-	if _, err := f.Lire(context.Background(), "Verdana", 400); err == nil {
+	if _, err := f.Lire(context.Background(), "Verdana", 400, false); err == nil {
 		t.Fatal("un fichier système absent doit être une erreur")
 	}
-	if _, err := f.Lire(context.Background(), "Arial", 900); err == nil {
+	if _, err := f.Lire(context.Background(), "Arial", 900, false); err == nil {
 		t.Fatal("graisse 900 non servie")
+	}
+}
+
+func TestItaliqueSysteme(t *testing.T) {
+	dir := t.TempDir()
+	for _, nom := range []string{"arial.ttf", "arialbd.ttf", "arialbi.ttf", "tahoma.ttf", "tahomabd.ttf", "framd.ttf"} {
+		os.WriteFile(filepath.Join(dir, nom), append(append([]byte{}, faussePolice...), nom...), 0o644)
+	}
+	f := Nouveau(t.TempDir())
+	f.DossierSystem = dir
+	cas := []struct {
+		fam      string
+		graisse  int
+		ita      bool
+		fichier  string
+		gServie  int
+		itaServi bool
+	}{
+		{"Arial", 700, true, "arialbi.ttf", 700, true},
+		{"Tahoma", 700, true, "tahomabd.ttf", 700, false}, // pas d'italique : le navigateur penche
+		{"Franklin Gothic Medium", 700, false, "framd.ttf", 400, false}, // pas de gras
+	}
+	for _, c := range cas {
+		p, err := f.Lire(context.Background(), c.fam, c.graisse, c.ita)
+		if err != nil {
+			t.Fatalf("%s : %v", c.fam, err)
+		}
+		if !strings.HasSuffix(string(p.Octets), c.fichier) || p.Graisse != c.gServie || p.Italique != c.itaServi {
+			t.Errorf("%s %d %v : %q, %d, %v", c.fam, c.graisse, c.ita, p.Octets[len(faussePolice):], p.Graisse, p.Italique)
+		}
+	}
+	// Google : jamais d'italique réel (chargé en 400/700 par le navigateur)
+	var appels int32
+	g := fauxGoogle(t, false, &appels)
+	if p, _ := g.Lire(context.Background(), "Roboto", 400, true); p == nil || p.Italique {
+		t.Fatal("une police Google n'a pas d'italique réel")
 	}
 }

@@ -1,8 +1,9 @@
 # Contour vectoriel des lettres — étude et mesures (30 septembre 2026)
 
-Lot 3 de [`06-reprise-ui.md`](06-reprise-ui.md). **Prototype de mesure
-seulement** : rien n'est branché dans l'éditeur. Décisions prises : voie B
-(le Go sert les TTF), `opentype.js`, mesurer avant de s'engager.
+Lot 3 de [`06-reprise-ui.md`](06-reprise-ui.md). Décisions prises : voie B
+(le Go sert les TTF), `opentype.js`, mesurer avant de s'engager. **Branché
+dans l'éditeur le 30 septembre 2026** : menu « Contour stylisé → Contour à
+main levée » d'un texte (voir « Implémentation » en fin de fichier).
 
 ## Principe retenu : ne pas refaire la mise en page
 
@@ -89,3 +90,34 @@ perfect-freehand (non mesuré, il vient après).
   se décalent d'un pixel par ligne (IoU 0,14 sur un texte pourtant juste).
 - Recharger la page efface la session PocketBase (`main.tsx`) ; et modifier un
   module que Vite ne sait pas remplacer à chaud recharge la page.
+
+## Implémentation (30 septembre 2026)
+
+- **Menu** : le même `MenuContourStylise` que les formes, avec `texte` —
+  sans effilements (sur un contour fermé, ils amincissent le trait n'importe
+  où dans la lettre), et « Densité des ondes » : les ondes d'un contour sont
+  proportionnelles à sa longueur rapportée à la taille de police
+  (`ondesDuContour`), un « i » et un « W » ondulent au même rythme.
+- **Moteur** : `styliserContour`, extrait de `contourStylise.js` et partagé
+  avec les formes. Un trait par contour de lettre, trous compris.
+- **Rendu** : `utils/texteContourStylise.js`, une `sceneFunc` posée sur le
+  MÊME `Konva.Text` (comme le texte courbé) — trait stylisé, puis contour
+  ordinaire des lettres absentes, puis remplissage natif. Une seule ombre, de
+  la silhouette (`utils/ombreSilhouette.js`, partagé avec les formes). Même
+  règle à l'écran (`TextNode`) et à l'export planche (`exportPdfSheet.js`,
+  police chargée avant le dessin). `installerContourLettres` pose le cadre réel
+  avant la mise en cache des effets.
+- **Repli** : tant que la police n'est pas chargée, ou si elle ne peut pas
+  l'être (hors ligne), le contour Konva ordinaire reste. `contourStyle` absent
+  = rien ne change.
+- **Remèdes appliqués** : vrai fichier italique des polices système
+  (`X-Font-Italic`) ; italique fabriqué = pente 0,25 ; gras fabriqué =
+  épaisseur + taille/30 ; lettre absente = contour ordinaire. Pacifico et
+  Lobster : écart ACCEPTÉ (autre version du fichier chez le navigateur).
+- **Texture de contour** : un motif sans répétition, calé désormais sur le
+  cadre RÉEL du trait stylisé (`degradeCanvas2D(…, cadre)`) — calé sur le cadre
+  de la forme, il s'arrêtait là où le trait ondulé débordait. Formes et lettres.
+
+Le même jour, hors lot : une forme redimensionnée enregistre sa nouvelle
+**taille** et une échelle de 1 (`handleTransformEnd`, `KonvaCanvas.jsx`).
+Garder l'échelle étirait épaisseur de contour, texture et contour stylisé.

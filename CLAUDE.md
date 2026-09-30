@@ -69,6 +69,12 @@ des éléments `dessin` qui GARDENT leurs points ; `dessinTrace`
 (`utils/dessin.js`) est la seule règle de rendu, canvas et export planche. La
 fusion du surligneur va sur le Path à l'écran mais sur le GROUPE dans
 l'export planche — c'est lui que les effets mettent en cache.
+Le **contour à main levée des lettres** (30 septembre 2026,
+[`07-contour-lettres.md`](frontend/modules/stick/PocketStick-docs/07-contour-lettres.md))
+lit le FICHIER de la police (opentype.js, servi en TTF par
+`/api/fonts/file`, point 9) mais garde la mise en page de Konva : la police
+ne donne que la forme des lettres. `texteContourStylise.js` est la seule règle
+de rendu, canvas et export planche ; sans police chargée, contour ordinaire.
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation
@@ -190,14 +196,14 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    Conception : `docs/SAUVEGARDE.md`.
 
 9. **Fichiers de police pour le contour vectoriel des lettres** (PocketStick,
-   30 septembre 2026, prototype) — `backend/polices/polices.go`, servi par
+   30 septembre 2026) — `backend/polices/polices.go`, servi par
    `GET /api/fonts/file` (`backend/routes/polices_routes.go`) —
    `https://fonts.googleapis.com/css2` puis `https://fonts.gstatic.com`, GET,
    `User-Agent` explicite : c'est lui qui fait servir du **TTF** et non du
    WOFF2. Téléchargée **une fois** par famille et graisse, puis gardée dans
    `pb_data/polices/` : le poste retrouve hors ligne les polices déjà
    utilisées. Les polices système (Arial…) sont lues dans `%WINDIR%\Fonts`,
-   sans réseau. Familles validées (lettres, chiffres, espaces), graisses 400
+   sans réseau, vrais fichiers italiques compris (`italic=1`). Familles validées (lettres, chiffres, espaces), graisses 400
    et 700 seulement, adresse de fichier restreinte à `fonts.gstatic.com`. Le
    renderer chargeait déjà ces polices depuis Google pour les afficher
    (`utils/loadGoogleFont.js`) ; c'est le processus Go qui est nouveau.

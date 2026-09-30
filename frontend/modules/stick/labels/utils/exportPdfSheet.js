@@ -21,6 +21,8 @@ import { estContenu } from './ajustementImage';
 import { dessinerCodeBarres } from './barcodeCanvas';
 import { construireFiche } from './ficheKonva';
 import { contenuFiche } from './ficheProduit';
+import { contourLettresDemande, propsContourLettres } from './texteContourStylise';
+import { chargerPoliceVectorielle, styleDePolice } from './policesVectorielles';
 import { dessinForme } from '../components/canvas/ShapeNode';
 import { pagination } from '../lib/tirage';
 
@@ -237,6 +239,30 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
           texte.height()
         )
       );
+      // ✏️ Contour stylisé des lettres : même dessin que le canvas
+      // (`texteContourStylise.js`), police chargée AVANT. Sans elle (hors
+      // ligne), le contour ordinaire posé juste au-dessus reste — comme à l'écran.
+      if (contourLettresDemande(el)) {
+        const { gras, italique } = styleDePolice(fontStyle);
+        try {
+          const chargee = await chargerPoliceVectorielle(texte.fontFamily(), gras, italique);
+          texte.setAttrs(
+            propsContourLettres({
+              chargee,
+              gras,
+              italique,
+              stroke: el.stroke,
+              strokeGradient: el.strokeGradient,
+              ep: (Number(el.strokeWidth) || 0) * scale,
+              fontSize: texte.fontSize(),
+              contourStyle: el.contourStyle,
+              id: el.id,
+            })
+          );
+        } catch {
+          // contour ordinaire
+        }
+      }
       if (!el.highlightEnabled) return texte;
       // 🖍️ Surlignage (stabilo), dessiné DERRIÈRE le texte comme à l'écran
       const groupe = new Konva.Group({ listening: false });

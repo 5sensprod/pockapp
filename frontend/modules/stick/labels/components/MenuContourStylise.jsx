@@ -1,8 +1,11 @@
 // frontend/modules/stick/labels/components/MenuContourStylise.jsx
 //
-// Le menu « Contour stylisé » d'une FORME dans PropertyPanel : épaisseur
-// variable, effilements, ondulation, tremblé (`utils/contourStylise.js`).
+// Le menu « Contour stylisé » d'une FORME ou d'un TEXTE dans PropertyPanel :
+// épaisseur variable, effilements, ondulation, tremblé
+// (`utils/contourStylise.js`, `utils/texteContourStylise.js`).
 // `contourStyle` absent = contour Konva ordinaire, comme avant.
+// Pour un texte (`texte`) : pas d'effilements — sur un contour de lettre
+// fermé, ils amincissent le trait n'importe où —, et `ondes` est une densité.
 
 import React from 'react';
 import { Waves } from 'lucide-react';
@@ -18,7 +21,12 @@ const CURSEURS = [
   ['effilementFin', 'Effiler la fin', 100],
 ];
 
-const MenuContourStylise = ({ element, onChange }) => {
+// Texte : ni effilements, et les ondes suivent la longueur de chaque lettre.
+const CURSEURS_TEXTE = CURSEURS.filter(([cle]) => !cle.startsWith('effilement')).map((c) =>
+  c[0] === 'ondes' ? ['ondes', 'Densité des ondes', ONDES_MAX] : c
+);
+
+const MenuContourStylise = ({ element, onChange, texte = false }) => {
   const reglages = reglagesContour(element);
   const actif = !!reglages;
   const sansContour = !(Number(element.strokeWidth) > 0);
@@ -41,7 +49,7 @@ const MenuContourStylise = ({ element, onChange }) => {
         </p>
       )}
       {actif &&
-        CURSEURS.map(([cle, libelle, max]) => {
+        (texte ? CURSEURS_TEXTE : CURSEURS).map(([cle, libelle, max]) => {
           const entier = cle === 'ondes';
           const valeur = entier ? reglages[cle] : Math.round(reglages[cle] * 100);
           return (

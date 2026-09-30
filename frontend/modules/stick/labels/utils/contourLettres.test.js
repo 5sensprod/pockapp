@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { commandesLettres, comparerMasques, positionsCourbes, positionsDroites } from './contourLettres';
+import { commandesLettres, comparerMasques, contoursDesCommandes, positionsCourbes, positionsDroites } from './contourLettres';
 
 // Mesure factice : 10 par lettre, et l'approche « AV » retire 2.
 const mesurer = (t) => Array.from(t).length * 10 - (t.includes('AV') ? 2 : 0);
@@ -76,5 +76,40 @@ describe('comparerMasques', () => {
     const r = comparerMasques(a, b, 20, 20, 1);
     expect(r.cadre).toEqual([1, 0, 1, 0]);
     expect(r.ecartMoyen).toBeCloseTo(20 / 36, 3);
+  });
+});
+
+describe('contoursDesCommandes', () => {
+  it('un contour par sous-chemin, courbes aplaties, fermeture dédoublonnée', () => {
+    const cmds = [
+      { type: 'M', x: 0, y: 0 },
+      { type: 'L', x: 10, y: 0 },
+      { type: 'Q', x1: 10, y1: 10, x: 0, y: 10 },
+      { type: 'L', x: 0, y: 0 },
+      { type: 'Z' },
+      { type: 'M', x: 2, y: 2 },
+      { type: 'L', x: 4, y: 2 },
+      { type: 'Z' }, // deux points : écarté
+    ];
+    const contours = contoursDesCommandes(cmds, 1);
+    expect(contours).toHaveLength(1);
+    const c = contours[0];
+    expect(c[0]).toEqual({ x: 0, y: 0 });
+    expect(c.at(-1)).toEqual({ x: 0, y: 10 }); // le retour à (0,0) est retiré
+    expect(c.length).toBeGreaterThan(5); // la courbe est découpée
+  });
+});
+
+describe('commandesLettres : lettre absente', () => {
+  it('range la lettre sans glyphe dans `absentes` et ne la dessine pas', () => {
+    const police = { charToGlyph: (c) => (c === '€' ? { index: 0 } : { index: 1, getPath: () => ({ commands: [{ type: 'M', x: 0, y: 0 }] }) }) };
+    const absentes = [];
+    const cmds = commandesLettres(police, [{ c: 'A', x: 0, y: 0, angle: 0 }, { c: '€', x: 10, y: 0, angle: 0 }], {
+      fontSize: 10,
+      decalAlpha: 0,
+      absentes,
+    });
+    expect(cmds).toHaveLength(1);
+    expect(absentes.map((a) => a.c)).toEqual(['€']);
   });
 });

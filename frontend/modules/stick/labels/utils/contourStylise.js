@@ -146,24 +146,16 @@ export const bruitPeriodique = (graine, n, t) => {
 
 // --- contour stylisé ---------------------------------------------------------
 
-const cache = new Map();
-const CACHE_MAX = 64;
-
 /**
- * Le contour stylisé d'une forme : `ligne` (le milieu du trait, déformé — le
- * remplissage le suit) et `outline` (le polygone du trait épaissi). null si
- * la forme n'en a pas (pas de réglages, ou pas d'épaisseur).
+ * LE MOTEUR, partagé par les formes et par les lettres
+ * (`utils/texteContourStylise.js`) : une polyligne → rééchantillonnée →
+ * déformée (ondulation, tremblé) → épaissie par perfect-freehand.
+ * `ondes` : nombre d'ondes sur TOUTE la polyligne — une forme le prend de ses
+ * réglages, une lettre le déduit de la longueur de son contour.
+ * Rend `{ ligne, outline }` (voir `contourStylise`).
  */
-export const contourStylise = ({ shape, width, height, cornerRadius, strokeWidth, contourStyle, id }) => {
-  const r = reglagesContour({ contourStyle });
-  const ep = Number(strokeWidth) || 0;
-  if (!r || !(ep > 0) || !(width > 0) || !(height > 0)) return null;
-  const cle = JSON.stringify([shape, width, height, cornerRadius, ep, r, id]);
-  if (cache.has(cle)) return cache.get(cle);
-
-  const { ferme, points: base } = contourDeBase({ shape, width, height, cornerRadius });
+export const styliserContour = ({ points: base, ferme, ep, reglages: r, graine, ondes }) => {
   const { points, longueur } = reechantillonner(base, ferme, Math.max(1.5, ep / 3));
-  const graine = graineDe(id);
   const nTremble = Math.max(4, Math.round(longueur / (6 * ep)));
   const nPression = Math.max(3, Math.round(longueur / (10 * ep)));
   const n = points.length;
@@ -179,7 +171,7 @@ export const contourStylise = ({ shape, width, height, cornerRadius, strokeWidth
     const ny = tx / l;
     const u = p.s / (longueur || 1);
     const d =
-      r.ondulation * ONDULATION_MAX * ep * Math.sin(2 * Math.PI * r.ondes * u) +
+      r.ondulation * ONDULATION_MAX * ep * Math.sin(2 * Math.PI * ondes * u) +
       r.tremble * TREMBLE_MAX * ep * bruitPeriodique(graine, nTremble, u * nTremble);
     const pression = 0.5 + 0.5 * bruitPeriodique(graine + 1, nPression, u * nPression);
     return { x: p.x + nx * d, y: p.y + ny * d, pressure: pression };
@@ -200,6 +192,26 @@ export const contourStylise = ({ shape, width, height, cornerRadius, strokeWidth
       last: true,
     },
   ).map(([x, y]) => ({ x, y }));
+  return { ligne, outline };
+};
+
+const cache = new Map();
+const CACHE_MAX = 64;
+
+/**
+ * Le contour stylisé d'une forme : `ligne` (le milieu du trait, déformé — le
+ * remplissage le suit) et `outline` (le polygone du trait épaissi). null si
+ * la forme n'en a pas (pas de réglages, ou pas d'épaisseur).
+ */
+export const contourStylise = ({ shape, width, height, cornerRadius, strokeWidth, contourStyle, id }) => {
+  const r = reglagesContour({ contourStyle });
+  const ep = Number(strokeWidth) || 0;
+  if (!r || !(ep > 0) || !(width > 0) || !(height > 0)) return null;
+  const cle = JSON.stringify([shape, width, height, cornerRadius, ep, r, id]);
+  if (cache.has(cle)) return cache.get(cle);
+
+  const { ferme, points: base } = contourDeBase({ shape, width, height, cornerRadius });
+  const { ligne, outline } = styliserContour({ points: base, ferme, ep, reglages: r, graine: graineDe(id), ondes: r.ondes });
 
   // Cadre RÉEL du dessin : le trait déborde de `width × height` (demi
   // épaisseur, ondulation). Konva s'en sert pour le cache des effets —

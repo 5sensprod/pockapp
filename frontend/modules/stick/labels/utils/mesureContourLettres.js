@@ -132,7 +132,7 @@ const mesurerNoeud = async (node) => {
   const style = node.fontStyle() || '';
   const gras = style.includes('bold');
   const italique = style.includes('italic');
-  const { police, graisse, source } = await chargerPoliceVectorielle(famille, gras);
+  const { police, graisse, source, italique: italiqueReel } = await chargerPoliceVectorielle(famille, gras, italique);
   const fauxGras = gras && graisse < 700;
 
   const r = node.getSelfRect();
@@ -141,7 +141,7 @@ const mesurerNoeud = async (node) => {
   const natif = rasterNatif(node, cadre);
   const a = pixels(natif);
 
-  const inclinaisons = italique ? INCLINAISONS : [0];
+  const inclinaisons = italique && !italiqueReel ? INCLINAISONS : [0];
   const epaississements = fauxGras ? [0, node.fontSize() / 30, node.fontSize() / 24, node.fontSize() / 16] : [0];
   let meilleur = null;
   for (const inclinaison of inclinaisons) {
@@ -167,7 +167,7 @@ const mesurerNoeud = async (node) => {
       iou: arrondi(res.iou, 4),
       'écart moyen (px doc)': arrondi(res.ecartMoyen, 3),
       'écart cadre max (px doc)': arrondi(Math.max(...res.cadre.map((v) => Math.abs(v ?? 0)))),
-      inclinaison: italique ? inclinaison : '—',
+      inclinaison: italique ? (italiqueReel ? 'vrai fichier' : inclinaison) : '—',
       'faux gras': fauxGras ? arrondi(ep) : '—',
       cadreNatif: res.cadreNatif.map((v) => arrondi(v)).join(' '),
       cadreCalcule: res.cadreCalcule.map((v) => arrondi(v)).join(' '),

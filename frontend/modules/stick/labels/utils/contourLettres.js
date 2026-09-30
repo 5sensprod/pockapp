@@ -1,7 +1,8 @@
 // frontend/modules/stick/labels/utils/contourLettres.js
 //
-// CONTOUR VECTORIEL DES LETTRES — PROTOTYPE DE MESURE (lot 3 de
-// PocketStick-docs/06-reprise-ui.md, étude dans 07-contour-lettres.md).
+// CONTOUR VECTORIEL DES LETTRES — la géométrie (lot 3 de
+// PocketStick-docs/06-reprise-ui.md, mesures dans 07-contour-lettres.md).
+// Le rendu est dans `utils/texteContourStylise.js`.
 //
 // Principe : on NE refait PAS la mise en page. Les lignes viennent de Konva
 // (`textArr`), la position de chaque lettre d'une mesure du canvas faite
@@ -114,18 +115,47 @@ export const positionsCourbes = ({ lignes, largeur, fontSize, lineHeight, paddin
 };
 
 /**
+ * Les positions des lettres d'un `Konva.Text` (droit ou courbé), lues sur le
+ * nœud lui-même : `textArr`, cadre, typographie, attribut `courbeTexte`.
+ */
+export const positionsDuNoeud = (node, mesurer) => {
+  const commun = {
+    lignes: node.textArr || [],
+    largeur: node.getWidth(),
+    hauteur: node.getHeight(),
+    fontSize: node.fontSize(),
+    lineHeight: node.lineHeight(),
+    padding: node.padding?.() || 0,
+    letterSpacing: node.letterSpacing?.() || 0,
+    align: node.align(),
+    verticalAlign: node.verticalAlign?.() || 'top',
+    mesurer,
+  };
+  const curve = node.getAttr('courbeTexte');
+  return curve ? positionsCourbes({ ...commun, curve }) : positionsDroites(commun);
+};
+
+/**
  * Commandes de chemin (repère local du nœud) des lettres posées, lues dans la
  * police opentype. `decalAlpha` : de la ligne « middle » à la ligne
  * alphabétique. `inclinaison` : tangente de l'italique fabriqué par le
- * navigateur (0 = droit). Un espace ne produit rien.
+ * navigateur (0 = droit). Un espace ne produit rien. Une lettre ABSENTE de la
+ * police (glyphe 0, « € » d'Arvo) ne produit rien non plus : elle est rangée
+ * dans `absentes`, et le navigateur l'a dessinée dans une police de repli —
+ * à l'appelant de lui donner le contour ordinaire.
  *
  * @returns {{type:string,x?:number,y?:number,x1?:number,y1?:number,x2?:number,y2?:number}[]}
  */
-export const commandesLettres = (police, positions, { fontSize, decalAlpha, inclinaison = 0 }) => {
+export const commandesLettres = (police, positions, { fontSize, decalAlpha, inclinaison = 0, absentes = null }) => {
   const cmds = [];
-  for (const { c, x, y, angle } of positions) {
+  for (const pos of positions) {
+    const { c, x, y, angle } = pos;
     if (!c.trim()) continue;
     const glyphe = police.charToGlyph(c);
+    if (!glyphe || glyphe.index === 0) {
+      absentes?.push(pos);
+      continue;
+    }
     // Glyphe à l'origine (0, 0) sur la ligne alphabétique.
     const chemin = glyphe.getPath(0, 0, fontSize);
     const cos = Math.cos(angle);
@@ -145,6 +175,64 @@ export const commandesLettres = (police, positions, { fontSize, decalAlpha, incl
     }
   }
   return cmds;
+};
+
+/**
+ * Les contours FERMÉS d'une suite de commandes, courbes aplaties en segments
+ * d'environ `pas` : un contour par sous-chemin (l'extérieur d'une lettre, et
+ * chacun de ses trous — « o », « A », « e »). Les contours de moins de trois
+ * points sont écartés.
+ * @returns {{x:number,y:number}[][]}
+ */
+export const contoursDesCommandes = (cmds, pas = 1) => {
+  const contours = [];
+  let courant = null;
+  let dernier = null;
+  const fermer = () => {
+    if (courant && courant.length > 2) {
+      const a = courant[0];
+      const b = courant[courant.length - 1];
+      if (Math.hypot(a.x - b.x, a.y - b.y) < 1e-6) courant.pop();
+      if (courant.length > 2) contours.push(courant);
+    }
+    courant = null;
+  };
+  const decoupe = (l) => Math.max(2, Math.min(64, Math.ceil(l / Math.max(0.1, pas))));
+  for (const c of cmds) {
+    if (c.type === 'M') {
+      fermer();
+      courant = [{ x: c.x, y: c.y }];
+    } else if (c.type === 'Z') {
+      fermer();
+    } else if (courant && dernier) {
+      if (c.type === 'L') courant.push({ x: c.x, y: c.y });
+      else if (c.type === 'Q') {
+        const n = decoupe(Math.hypot(c.x1 - dernier.x, c.y1 - dernier.y) + Math.hypot(c.x - c.x1, c.y - c.y1));
+        for (let i = 1; i <= n; i++) {
+          const t = i / n;
+          const u = 1 - t;
+          courant.push({
+            x: u * u * dernier.x + 2 * u * t * c.x1 + t * t * c.x,
+            y: u * u * dernier.y + 2 * u * t * c.y1 + t * t * c.y,
+          });
+        }
+      } else if (c.type === 'C') {
+        const l = Math.hypot(c.x1 - dernier.x, c.y1 - dernier.y) + Math.hypot(c.x2 - c.x1, c.y2 - c.y1) + Math.hypot(c.x - c.x2, c.y - c.y2);
+        const n = decoupe(l);
+        for (let i = 1; i <= n; i++) {
+          const t = i / n;
+          const u = 1 - t;
+          courant.push({
+            x: u * u * u * dernier.x + 3 * u * u * t * c.x1 + 3 * u * t * t * c.x2 + t * t * t * c.x,
+            y: u * u * u * dernier.y + 3 * u * u * t * c.y1 + 3 * u * t * t * c.y2 + t * t * t * c.y,
+          });
+        }
+      }
+    }
+    if ('x' in c) dernier = { x: c.x, y: c.y };
+  }
+  fermer();
+  return contours;
 };
 
 /** Trace des commandes dans un contexte 2D (Path2D ou CanvasRenderingContext2D). */

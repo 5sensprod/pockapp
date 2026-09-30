@@ -710,6 +710,7 @@ const KonvaCanvas = forwardRef(
                     stroke={el.stroke ?? ''}
                     strokeWidth={el.strokeWidth ?? 0}
                     strokeGradient={el.strokeGradient ?? null}
+                    contourStyle={el.contourStyle ?? null}
                     align={el.align ?? 'left'}
                     {...typoTexte(el)}
                   />
