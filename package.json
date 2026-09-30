@@ -55,6 +55,7 @@
     "jspdf": "^3.0.1",
     "konva": "^9.3.22",
     "lucide-react": "^0.454.0",
+    "opentype.js": "2.0.0",
     "perfect-freehand": "^1.2.3",
     "pocketbase": "^0.21.5",
     "qrcode": "^1.5.4",

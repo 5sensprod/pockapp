@@ -189,6 +189,19 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    tous les clients, mais ne peut **pas** déposer.
    Conception : `docs/SAUVEGARDE.md`.
 
+9. **Fichiers de police pour le contour vectoriel des lettres** (PocketStick,
+   30 septembre 2026, prototype) — `backend/polices/polices.go`, servi par
+   `GET /api/fonts/file` (`backend/routes/polices_routes.go`) —
+   `https://fonts.googleapis.com/css2` puis `https://fonts.gstatic.com`, GET,
+   `User-Agent` explicite : c'est lui qui fait servir du **TTF** et non du
+   WOFF2. Téléchargée **une fois** par famille et graisse, puis gardée dans
+   `pb_data/polices/` : le poste retrouve hors ligne les polices déjà
+   utilisées. Les polices système (Arial…) sont lues dans `%WINDIR%\Fonts`,
+   sans réseau. Familles validées (lettres, chiffres, espaces), graisses 400
+   et 700 seulement, adresse de fichier restreinte à `fonts.gstatic.com`. Le
+   renderer chargeait déjà ces polices depuis Google pour les afficher
+   (`utils/loadGoogleFont.js`) ; c'est le processus Go qui est nouveau.
+
 ## Commandes
 
 ```bash

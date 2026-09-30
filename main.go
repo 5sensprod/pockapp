@@ -244,6 +244,7 @@ func startPocketBaseNoCobra(pb *pocketbase.PocketBase, embeddedAssets embed.FS) 
 		routes.RegisterProductBarcodeRoutes(pb, e.Router)
 		routes.RegisterProductImageRoutes(pb, e.Router)
 		routes.RegisterJourRoutes(pb, e.Router)
+		routes.RegisterPolicesRoutes(pb, e.Router)
 
 		// Une promo dont la date de fin est passée repasse seule en « Plein
 		// tarif ». La caisse et le site n'en dépendent pas — ils lisent la

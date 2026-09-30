@@ -17,6 +17,10 @@ import ShapeNode from './canvas/ShapeNode';
 import DessinNode from './canvas/DessinNode';
 import DessinCalque from './canvas/DessinCalque';
 import VoileHorsPage from './canvas/VoileHorsPage';
+
+// Lot 3, prototype : outil de mesure du contour vectoriel des lettres,
+// en développement seulement (`__mesureContourLettres()` dans la console).
+if (import.meta.env.DEV) import('../utils/mesureContourLettres');
 import { calculateSnapGuides } from '../utils/snapGuides.utils';
 import { resolvePropForElement } from '../utils/dataBinding';
 import { konvaCrop, resizeStep, settleCrop } from '../utils/crop';
