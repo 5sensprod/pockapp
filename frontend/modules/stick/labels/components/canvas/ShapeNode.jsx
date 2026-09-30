@@ -13,8 +13,8 @@
 import React from 'react'
 import { Ellipse, Line, Rect, RegularPolygon, Shape, Star } from 'react-konva'
 import { remplissage } from '../../utils/fillStyle'
-import { contourKonva, degradeCanvas2D, versPeinture } from '../../utils/paint'
-import { contourStylise, tracerLigne, tracerOutline } from '../../utils/contourStylise'
+import { contourKonva, degradeCanvas2D, isTexture, versPeinture } from '../../utils/paint'
+import { contourStylise, installerCadreReel, tracerLigne, tracerOutline } from '../../utils/contourStylise'
 import { ombreDeSilhouette } from '../../utils/ombreSilhouette'
 
 /** Les formes proposées, dans l'ordre où le panneau les affiche. */
@@ -57,8 +57,21 @@ export function dessinForme({
 		const couleur = shape === 'line' ? stroke || fill : stroke
 		// Un trait n'a pas de remplissage ; `fillEnabled` reste vrai, le canvas de
 		// détection (hitFunc) passe par `fillShape`, qui l'exige.
-		const pleine = stylise.ferme ? remplissage(fillGradient, width, height, fill, false) : {}
+		// Une TEXTURE est un motif sans répétition posé sur un cadre : celui du
+		// dessin réel, que le bord déformé dépasse — sinon elle s'arrêterait au
+		// cadre de la forme (un dégradé, lui, s'étend à l'infini).
+		const texture = isTexture(versPeinture(fillGradient))
+		const pleine = !stylise.ferme
+			? {}
+			: texture
+				? {
+						...remplissage(fillGradient, stylise.cadre.width, stylise.cadre.height, fill, false),
+						fillPatternX: stylise.cadre.x,
+						fillPatternY: stylise.cadre.y,
+					}
+				: remplissage(fillGradient, width, height, fill, false)
 		const peindre = (ctx, noeud, scene) => {
+			installerCadreReel(noeud) // un clone l'a perdu
 			// L'ombre, que Konva allume avant la sceneFunc, tomberait sur chaque
 			// remplissage : celle du trait sur le fond. On dessine l'ombre de la
 			// SILHOUETTE seule, puis la forme sans ombre (`ombreSilhouette`).
@@ -93,6 +106,8 @@ export function dessinForme({
 				width,
 				height,
 				strokeEnabled: false,
+				// Le cadre réel, en ATTRIBUT : un clone (export) le garde
+				cadreReel: stylise.cadre,
 				sceneFunc: (ctx, noeud) => peindre(ctx, noeud, true),
 				hitFunc: (ctx, noeud) => peindre(ctx, noeud, false),
 			},
@@ -236,11 +251,7 @@ const ShapeNode = ({
 	})
 	const Composant = COMPOSANTS[kind]
 	// Contour stylisé : le cadre réel du trait, qui déborde de width × height
-	const poserCadre = cadre
-		? (n) => {
-				if (n) n.getSelfRect = () => cadre
-			}
-		: undefined
+	const poserCadre = cadre ? (n) => installerCadreReel(n) : undefined
 	return <Composant {...rest} {...props} ref={poserCadre} />
 }
 

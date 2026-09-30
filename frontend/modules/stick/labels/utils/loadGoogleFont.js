@@ -42,7 +42,8 @@ export const FONT_STACKS = {
   Consolas: 'Consolas, "Courier New", Menlo, Monaco, "Liberation Mono", monospace',
 };
 
-const injected = new Set();
+const feuilles = new Map(); // href → Promise : la feuille de style est arrivée (ou abandonnée)
+const ATTENTE_FEUILLE_MS = 4000;
 
 /**
  * Charge une famille Google Fonts SI ce n'est pas une police système.
@@ -63,17 +64,36 @@ export async function loadGoogleFont(fontFamily, opts = {}) {
     ? `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:ital,wght@0,${weights};1,${weights}&display=swap`
     : `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:wght@${weights}&display=swap`;
 
-  if (!injected.has(href)) {
+  if (!feuilles.has(href)) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = href;
+    // La FEUILLE d'abord : tant qu'elle n'est pas là, `document.fonts.load`
+    // ne connaît aucune face de la famille et répond aussitôt, sans rien
+    // charger (mesuré : Oswald gras dessiné en police de repli à l'export).
+    // Plafonnée : hors ligne, la feuille ne vient jamais.
+    feuilles.set(
+      href,
+      new Promise((resolve) => {
+        link.onload = resolve;
+        link.onerror = resolve;
+        setTimeout(resolve, ATTENTE_FEUILLE_MS);
+      })
+    );
     document.head.appendChild(link);
-    injected.add(href);
   }
+  await feuilles.get(href);
 
-  // Attendre que la police soit utilisable dans Canvas/Konva
+  // Attendre que la police soit utilisable dans Canvas/Konva — TOUTES les
+  // graisses demandées : `load('16px …')` n'attendait que le 400, et un texte
+  // gras dessiné juste après (export planche) sortait dans une police de repli.
   try {
-    await document.fonts.load(`16px "${fontFamily}"`);
+    await Promise.all(
+      weights
+        .split(';')
+        .filter(Boolean)
+        .map((w) => document.fonts.load(`${w} 16px "${fontFamily}"`))
+    );
     await document.fonts.ready;
   } catch {
     // non bloquant

@@ -21,6 +21,8 @@ import { estContenu } from './ajustementImage';
 import { dessinerCodeBarres } from './barcodeCanvas';
 import { construireFiche } from './ficheKonva';
 import { contenuFiche } from './ficheProduit';
+import { installerCadreReel } from './contourStylise';
+import { loadGoogleFont } from './loadGoogleFont';
 import { contourLettresDemande, propsContourLettres } from './texteContourStylise';
 import { chargerPoliceVectorielle, styleDePolice } from './policesVectorielles';
 import { dessinForme } from '../components/canvas/ShapeNode';
@@ -195,6 +197,10 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
       // Même lecture que le canvas : `fontStyle`, repli sur l'ancien `bold`.
       const fontStyle = el.fontStyle || (el.bold ? 'bold' : 'normal');
 
+      // La police, dans SA graisse, avant de mesurer et de dessiner : sans
+      // elle, Konva mesure et dessine la police de repli.
+      await loadGoogleFont(el.fontFamily ?? 'Arial', { weights: '400;700' });
+
       const typo = typoTexte(el);
       const texte = new Konva.Text({
         x: (el.x ?? 0) * scale,
@@ -330,7 +336,7 @@ async function createDocumentImage(elements, docWidth, docHeight, scale, pixelRa
         ...shadowProps(el),
       });
       // Contour stylisé : le cadre réel du trait, comme sur le canvas (`ShapeNode`)
-      if (cadre) forme.getSelfRect = () => cadre;
+      if (cadre) installerCadreReel(forme);
       const groupe = new Konva.Group({ scaleX: scale, scaleY: scale, enveloppeCase: true, listening: false });
       groupe.add(forme);
       return groupe;

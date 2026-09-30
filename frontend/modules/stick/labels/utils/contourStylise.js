@@ -228,6 +228,22 @@ export const contourStylise = ({ shape, width, height, cornerRadius, strokeWidth
 };
 
 /**
+ * Le cadre RÉEL d'un dessin qui déborde de son `width × height` (contour
+ * stylisé), porté par l'attribut `cadreReel` du nœud et installé comme
+ * `getSelfRect`. Un attribut, parce qu'un `clone()` le copie — l'export page
+ * clone le document, puis recache les nœuds à effets (`recacherFiltres`) :
+ * un `getSelfRect` posé à la main était perdu, et le cache coupait le trait
+ * au cadre de la forme. Idempotent ; appelé par la sceneFunc, par la ref du
+ * nœud et avant toute mise en cache (`effetsKonva.js`).
+ */
+export const installerCadreReel = (node) => {
+  if (!node?.getAttr?.('cadreReel') || node._cadreReelInstalle) return;
+  node._cadreReelInstalle = true;
+  const normal = node.getSelfRect.bind(node);
+  node.getSelfRect = () => node.getAttr('cadreReel') ?? normal();
+};
+
+/**
  * Trace `outline` sur un contexte canvas (Konva ou 2D) : les mêmes courbes
  * quadratiques par les milieux que `outlineToPathData` (`dessin.js`).
  */

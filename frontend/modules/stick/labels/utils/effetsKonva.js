@@ -18,6 +18,7 @@ import { ombreInterneDe, ombrePorteeDe, ombrePorteePixels, ombrerPixels } from '
 import { dessinerMasque, reglagesMasque } from './imageForme';
 import { installerCourbure } from './texteCourbe';
 import { installerContourLettres } from './texteContourStylise';
+import { installerCadreReel } from './contourStylise';
 import { onduler, ondulationDe } from './ondulation';
 
 export { ombreInterneDe };
@@ -159,6 +160,7 @@ const champsMasque = (el) =>
 const cacher = (node, ratio, marge) => {
   installerCourbure(node); // un clone a perdu l'étendue du texte courbé
   installerContourLettres(node); // … et celle du contour stylisé des lettres
+  installerCadreReel(node); // … et celle du contour stylisé d'une forme
   const r = node.getClientRect({ skipTransform: true, relativeTo: node.getParent?.() || undefined });
   node.setAttr('cacheOrigine', { x: Math.floor(r.x) - marge, y: Math.floor(r.y) - marge });
   node.cache({ pixelRatio: ratio, offset: marge });
