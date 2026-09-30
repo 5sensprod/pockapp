@@ -51,6 +51,23 @@ const STYLE_TEXTE = {
 const BOUTON_AJOUT =
   'w-full p-2 flex items-center gap-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/10 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed';
 
+/**
+ * Une carte de l'onglet : un titre, une phrase d'aide, et ce qu'on y ajoute.
+ * Texte, Médias, Éditorial — pour qu'on voie d'un coup d'œil ce qui arrive
+ * sur l'affiche en TEXTE (le numéro du code-barres, par exemple) et ce qui
+ * arrive en DESSIN (les barres).
+ */
+const Carte = ({ icone: Icone, titre, aide, children }) => (
+  <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 p-3 space-y-2">
+    <div className="flex items-center gap-2">
+      <Icone className="h-4 w-4 text-orange-500" />
+      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{titre}</div>
+    </div>
+    {aide && <div className="text-xs text-gray-500 dark:text-gray-400">{aide}</div>}
+    {children}
+  </section>
+);
+
 const couper = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /** La valeur que l'élément affiche pour ce produit, en une ligne. */
@@ -165,9 +182,8 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
         })}
       </section>
 
-      {/* Ajouter un texte lié */}
-      <section className="space-y-2">
-        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Ajouter un texte lié</div>
+      {/* Texte : chaque champ arrive en texte, sa valeur telle quelle */}
+      <Carte icone={TypeIcon} titre="Texte" aide="Chaque champ s’ajoute en texte lié : sa valeur telle quelle, code-barres compris (le numéro seul).">
         <div className="grid grid-cols-2 gap-2">
           {champsPourType('text').map((champ) => (
             <button
@@ -185,11 +201,10 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
             </button>
           ))}
         </div>
-      </section>
+      </Carte>
 
-      {/* Photo et fiche : la MÊME création que leur onglet (`ajoutsProduit.js`) */}
-      <section className="space-y-2">
-        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Ajouter une photo, un code ou une fiche</div>
+      {/* Médias : photo, galerie, QR, code-barres dessiné (`ajoutsProduit.js`) */}
+      <Carte icone={ImageIcon} titre="Médias" aide="Photo, QR code et code-barres dessiné, liés au produit.">
         <button
           onClick={() => ajouterPhotoProduit()}
           disabled={!product}
@@ -256,6 +271,10 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
             </div>
           </div>
         </div>
+      </Carte>
+
+      {/* Éditorial : les sections de la fiche produit */}
+      <Carte icone={ListChecks} titre="Éditorial" aide="Les sections de la description du produit, mises en forme.">
         {SECTIONS_FICHE.map((section) => {
           const c = product ? contenuFiche(product.description, section.id) : null;
           return (
@@ -274,8 +293,7 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
             </button>
           );
         })}
-      </section>
-
+      </Carte>
     </div>
   );
 };
