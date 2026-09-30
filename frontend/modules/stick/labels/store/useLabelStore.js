@@ -4,7 +4,8 @@ import { quantiteValide } from '../lib/tirage';
 import { cadreDuCanvas, fondDe, placerAuCentre } from '../utils/placement';
 import { extraireStyle, reordonner, styleApplicable } from '../utils/styleCopie';
 import { cleGeste, prolongeGeste } from '../utils/gesteHistorique';
-import { DRAW_DEFAULTS, elementDessin } from '../utils/dessin';
+import { DRAW_DEFAULTS, elementDessin, redessiner } from '../utils/dessin';
+import { formeDepuisDessin } from '../utils/formeLibre';
 
 // Geste en cours de `updateElement` (`utils/gesteHistorique.js`) ; toute
 // autre étape d'historique, et undo/redo, le terminent.
@@ -308,6 +309,9 @@ const useLabelStore = create((set, get) => ({
         const maj = styleApplicable(state.styleCopie, el);
         if (!Object.keys(maj).length) return el;
         change = true;
+        // Un tracé qui change d'épaisseur ou de contour change de cadre : ses
+        // points gardés sont rejoués (`redessiner`), sinon le trait serait coupé
+        if (el.type === 'dessin') return { ...el, ...(redessiner(el, maj) ?? maj) };
         return { ...el, ...maj };
       });
       if (!change) return {};
@@ -433,6 +437,13 @@ const useLabelStore = create((set, get) => ({
     const el = elementDessin(points, { ...get().reglagesDessin, pression });
     if (el) get().addElement(el);
     return el;
+  },
+  // Lot 2 « Améliorer les dessins » : le tracé devient une forme libre, en
+  // un seul pas d'historique, même id (`utils/formeLibre.js`)
+  fermerDessin: (id) => {
+    const maj = formeDepuisDessin(get().elements.find((e) => e.id === id));
+    if (maj) get().updateElement(id, maj);
+    return !!maj;
   },
   startCrop: (id) =>
     set((state) => {

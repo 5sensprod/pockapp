@@ -20,6 +20,7 @@ const HORS_STYLE = new Set([
   'cropX', 'cropY', 'cropWidth', 'cropHeight',
   'visible', 'locked', 'shadowExpanded', 'role', // être le fond n'est pas un style
   'flipX', 'flipY', // le miroir est une orientation, pas un style
+  'points', 'pressions', 'pointsLibres', 'traceLibre', // le tracé d'un dessin ou d'une forme libre est sa géométrie
 ]);
 
 /** Réglages qui ont un sens sur tout élément, quel que soit son type. */

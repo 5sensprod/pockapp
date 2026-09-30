@@ -62,11 +62,19 @@ const arc = (cx, cy, rx, ry, a0, a1, n) =>
  * Contour de la forme, repère local. `ferme` : false pour le trait.
  * Même cadre et mêmes sommets que les primitives Konva de `dessinForme`.
  */
-export const contourDeBase = ({ shape = 'rectangle', width = 160, height = 160, cornerRadius = 0 }) => {
+export const contourDeBase = ({ shape = 'rectangle', width = 160, height = 160, cornerRadius = 0, pointsLibres = null }) => {
   const w = width;
   const h = height;
   const cx = w / 2;
   const cy = h / 2;
+  // Forme LIBRE, née d'un tracé fermé (`utils/formeLibre.js`) : points
+  // normalisés 0–1, mis à la taille du cadre
+  if (shape === 'libre') {
+    const plats = Array.isArray(pointsLibres) ? pointsLibres : [];
+    const pts = [];
+    for (let i = 0; i + 1 < plats.length; i += 2) pts.push({ x: plats[i] * w, y: plats[i + 1] * h });
+    return { ferme: true, points: pts };
+  }
   if (shape === 'line') return { ferme: false, points: [{ x: 0, y: cy }, { x: w, y: cy }] };
   if (shape === 'circle') return { ferme: true, points: arc(cx, cy, w / 2, h / 2, -Math.PI / 2, (3 * Math.PI) / 2, 96) };
   if (shape === 'triangle' || shape === 'star') {
@@ -108,7 +116,10 @@ export const reechantillonner = (points, ferme, pas) => {
     const n = Math.max(1, Math.ceil(l / pas));
     for (let k = 0; k < n; k++) {
       const t = k / n;
-      sortie.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, s: s + l * t });
+      const q = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, s: s + l * t };
+      // Pression du stylet (tracé de l'outil Dessin) : interpolée, pas perdue
+      if (Number.isFinite(a.pressure) && Number.isFinite(b.pressure)) q.pressure = a.pressure + (b.pressure - a.pressure) * t;
+      sortie.push(q);
     }
     s += l;
   }
@@ -147,19 +158,17 @@ export const bruitPeriodique = (graine, n, t) => {
 // --- contour stylisé ---------------------------------------------------------
 
 /**
- * LE MOTEUR, partagé par les formes et par les lettres
- * (`utils/texteContourStylise.js`) : une polyligne → rééchantillonnée →
- * déformée (ondulation, tremblé) → épaissie par perfect-freehand.
- * `ondes` : nombre d'ondes sur TOUTE la polyligne — une forme le prend de ses
- * réglages, une lettre le déduit de la longueur de son contour.
- * Rend `{ ligne, outline }` (voir `contourStylise`).
+ * La DÉFORMATION seule, partagée par le moteur ci-dessous et par l'outil
+ * Dessin (`dessin.js`, mission « Améliorer les dessins », lot 1) : une
+ * polyligne → rééchantillonnée → déplacée le long de sa normale (ondulation,
+ * tremblé). `ondes` : nombre d'ondes sur TOUTE la polyligne.
+ * Rend `{ ligne, longueur }` ; chaque point garde son abscisse `s` et, s'il
+ * en avait une, sa pression interpolée.
  */
-export const styliserContour = ({ points: base, ferme, ep, reglages: r, graine, ondes }) => {
+export const deformerLigne = ({ points: base, ferme, ep, reglages: r, graine, ondes }) => {
   const { points, longueur } = reechantillonner(base, ferme, Math.max(1.5, ep / 3));
   const nTremble = Math.max(4, Math.round(longueur / (6 * ep)));
-  const nPression = Math.max(3, Math.round(longueur / (10 * ep)));
   const n = points.length;
-
   const ligne = points.map((p, i) => {
     // Normale : perpendiculaire à la corde des voisins
     const av = points[ferme ? (i - 1 + n) % n : Math.max(0, i - 1)];
@@ -173,9 +182,28 @@ export const styliserContour = ({ points: base, ferme, ep, reglages: r, graine, 
     const d =
       r.ondulation * ONDULATION_MAX * ep * Math.sin(2 * Math.PI * ondes * u) +
       r.tremble * TREMBLE_MAX * ep * bruitPeriodique(graine, nTremble, u * nTremble);
-    const pression = 0.5 + 0.5 * bruitPeriodique(graine + 1, nPression, u * nPression);
-    return { x: p.x + nx * d, y: p.y + ny * d, pressure: pression };
+    return { ...p, x: p.x + nx * d, y: p.y + ny * d };
   });
+  return { ligne, longueur };
+};
+
+/**
+ * LE MOTEUR, partagé par les formes et par les lettres
+ * (`utils/texteContourStylise.js`) : une polyligne → déformée
+ * (`deformerLigne`) → épaissie par perfect-freehand, avec une épaisseur
+ * variable tirée du bruit.
+ * `ondes` : nombre d'ondes sur TOUTE la polyligne — une forme le prend de ses
+ * réglages, une lettre le déduit de la longueur de son contour.
+ * Rend `{ ligne, outline }` (voir `contourStylise`).
+ */
+export const styliserContour = ({ points: base, ferme, ep, reglages: r, graine, ondes }) => {
+  const { ligne: deformee, longueur } = deformerLigne({ points: base, ferme, ep, reglages: r, graine, ondes });
+  const nPression = Math.max(3, Math.round(longueur / (10 * ep)));
+  const ligne = deformee.map((p) => ({
+    x: p.x,
+    y: p.y,
+    pressure: 0.5 + 0.5 * bruitPeriodique(graine + 1, nPression, (p.s / (longueur || 1)) * nPression),
+  }));
 
   const effile = (v) => v * EFFILEMENT_MAX * ep;
   const trace = ferme ? [...ligne, ligne[0]] : ligne;
@@ -203,14 +231,15 @@ const CACHE_MAX = 64;
  * remplissage le suit) et `outline` (le polygone du trait épaissi). null si
  * la forme n'en a pas (pas de réglages, ou pas d'épaisseur).
  */
-export const contourStylise = ({ shape, width, height, cornerRadius, strokeWidth, contourStyle, id }) => {
+export const contourStylise = ({ shape, width, height, cornerRadius, strokeWidth, contourStyle, id, pointsLibres = null }) => {
   const r = reglagesContour({ contourStyle });
   const ep = Number(strokeWidth) || 0;
   if (!r || !(ep > 0) || !(width > 0) || !(height > 0)) return null;
-  const cle = JSON.stringify([shape, width, height, cornerRadius, ep, r, id]);
+  if (shape === 'libre' && !(pointsLibres?.length >= 6)) return null;
+  const cle = JSON.stringify([shape, width, height, cornerRadius, ep, r, id, shape === 'libre' ? pointsLibres : null]);
   if (cache.has(cle)) return cache.get(cle);
 
-  const { ferme, points: base } = contourDeBase({ shape, width, height, cornerRadius });
+  const { ferme, points: base } = contourDeBase({ shape, width, height, cornerRadius, pointsLibres });
   const { ligne, outline } = styliserContour({ points: base, ferme, ep, reglages: r, graine: graineDe(id), ondes: r.ondes });
 
   // Cadre RÉEL du dessin : le trait déborde de `width × height` (demi

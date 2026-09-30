@@ -14,7 +14,7 @@ import React from 'react'
 import { Ellipse, Line, Rect, RegularPolygon, Shape, Star } from 'react-konva'
 import { remplissage } from '../../utils/fillStyle'
 import { contourKonva, degradeCanvas2D, isTexture, versPeinture } from '../../utils/paint'
-import { contourStylise, installerCadreReel, tracerLigne, tracerOutline } from '../../utils/contourStylise'
+import { contourDeBase, contourStylise, installerCadreReel, tracerLigne, tracerOutline } from '../../utils/contourStylise'
 import { ombreDeSilhouette } from '../../utils/ombreSilhouette'
 
 /** Les formes proposées, dans l'ordre où le panneau les affiche. */
@@ -46,12 +46,13 @@ export function dessinForme({
 	strokeGradient = null,
 	contourStyle = null,
 	id = '',
+	pointsLibres = null,
 }) {
 	// CONTOUR STYLISÉ (`utils/contourStylise.js`) : un `Konva.Shape` qui peint
 	// le remplissage puis le trait épaissi. Même origine que la primitive
 	// qu'il remplace — les formes centrées le sont par `offset` —, pour que
 	// `positionDepuisNoeud`, la rotation et le Transformer ne voient rien.
-	const stylise = contourStylise({ shape, width, height, cornerRadius, strokeWidth, contourStyle, id })
+	const stylise = contourStylise({ shape, width, height, cornerRadius, strokeWidth, contourStyle, id, pointsLibres })
 	if (stylise && (stroke || strokeGradient || shape === 'line')) {
 		const centree = ['circle', 'triangle', 'star'].includes(shape)
 		const couleur = shape === 'line' ? stroke || fill : stroke
@@ -187,6 +188,24 @@ export function dessinForme({
 		}
 	}
 
+	if (shape === 'libre') {
+		// Forme LIBRE, née d'un tracé fermé (`utils/formeLibre.js`) : ses points
+		// normalisés mis à la taille du cadre, segments droits (pas de tension :
+		// le contour stylisé n'en a pas, les deux rendus doivent coïncider)
+		return {
+			kind: 'Line',
+			props: {
+				...traceContour(false),
+				...plein(false),
+				x,
+				y,
+				points: contourDeBase({ shape, width, height, pointsLibres }).points.flatMap((p) => [p.x, p.y]),
+				closed: true,
+				lineJoin: 'round',
+			},
+		}
+	}
+
 	return {
 		kind: 'Rect',
 		props: {
@@ -232,6 +251,7 @@ const ShapeNode = ({
 	fillGradient,
 	strokeGradient,
 	contourStyle,
+	pointsLibres,
 	...rest
 }) => {
 	const { kind, props, cadre } = dessinForme({
@@ -248,6 +268,7 @@ const ShapeNode = ({
 		strokeGradient,
 		contourStyle,
 		id: rest.id,
+		pointsLibres,
 	})
 	const Composant = COMPOSANTS[kind]
 	// Contour stylisé : le cadre réel du trait, qui déborde de width × height

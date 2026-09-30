@@ -8,6 +8,7 @@ import {
   elementDessin,
   dessinTrace,
   pointsDe,
+  pointsDeformes,
   brushOptions,
   brushCursor,
   pressionReelle,
@@ -245,5 +246,58 @@ describe('dessin : redessiner un trait (lot 6)', () => {
     const u = redessiner(el, { strokeWidth: 20, simplification: 1 });
     expect(u).not.toHaveProperty('pressions');
     expect(u.points).toHaveLength(el.points.length);
+  });
+});
+
+describe('contour à main levée d’un tracé (pointsDeformes)', () => {
+  const trait = {
+    id: 'trait1',
+    type: 'dessin',
+    x: 0,
+    y: 0,
+    points: Array.from({ length: 40 }, (_, i) => [i * 5, 20]).flat(),
+    strokeWidth: 4,
+    fill: '#000',
+  };
+  const style = { variation: 0.5, effilementDebut: 0, effilementFin: 0, ondulation: 1, ondes: 12, tremble: 0.5 };
+
+  it('sans contourStyle, ou tremblé et ondulation à 0 : points inchangés', () => {
+    const pts = pointsDe(trait);
+    expect(pointsDeformes(pts, { strokeWidth: 4 }, 'trait1')).toBe(pts);
+    expect(pointsDeformes(pts, { strokeWidth: 4, contourStyle: { ...style, ondulation: 0, tremble: 0 } }, 'x')).toBe(pts);
+    expect(dessinTrace({ ...trait, contourStyle: null }).data).toBe(dessinTrace({ ...trait }).data);
+  });
+
+  it('déterministe, et la graine vient de l’id', () => {
+    const a = dessinTrace({ ...trait, points: [...trait.points], contourStyle: style }).data;
+    const b = dessinTrace({ ...trait, points: [...trait.points], contourStyle: style }).data;
+    const c = dessinTrace({ ...trait, id: 'autre', points: [...trait.points], contourStyle: { ...style, ondulation: 0 } }).data;
+    const d = dessinTrace({ ...trait, points: [...trait.points], contourStyle: { ...style, ondulation: 0 } }).data;
+    expect(a).toBe(b);
+    expect(c).not.toBe(d);
+  });
+
+  it('le cache suit les réglages sur le même tableau de points', () => {
+    const el = { ...trait, points: [...trait.points] };
+    const avant = dessinTrace(el).data;
+    expect(dessinTrace({ ...el, contourStyle: style }).data).not.toBe(avant);
+  });
+
+  it('la pression du stylet est gardée par le rééchantillonnage', () => {
+    const pts = [{ x: 0, y: 0, pressure: 0 }, { x: 100, y: 0, pressure: 1 }];
+    const sortie = pointsDeformes(pts, { strokeWidth: 4, contourStyle: style }, 'p');
+    expect(sortie.length).toBeGreaterThan(2);
+    for (const p of sortie) expect(p.pressure).toBeGreaterThanOrEqual(0);
+    expect(sortie[Math.floor(sortie.length / 2)].pressure).toBeCloseTo(0.5, 1);
+  });
+
+  it('redessiner agrandit le cadre pour l’ondulation, sans déplacer les points gardés', () => {
+    const sans = redessiner(trait, {});
+    const avec = redessiner(trait, { contourStyle: style });
+    expect(avec.contourStyle).toEqual(style);
+    expect(avec.height).toBeGreaterThan(sans.height);
+    // mêmes points relatifs, décalés du même entier que le cadre
+    const dy = avec.y - sans.y;
+    expect(avec.points[1]).toBeCloseTo(sans.points[1] - dy, 5);
   });
 });

@@ -6,6 +6,9 @@
 // `contourStyle` absent = contour Konva ordinaire, comme avant.
 // Pour un texte (`texte`) : pas d'effilements — sur un contour de lettre
 // fermé, ils amincissent le trait n'importe où —, et `ondes` est une densité.
+// Pour un tracé (`dessin`) : tremblé et ondulation seulement — épaisseur
+// variable et effilements sont déjà des réglages du tracé (DessinPanel) —, et
+// `ondes` est une densité par épaisseur de trait (`pointsDeformes`, dessin.js).
 
 import React from 'react';
 import { Waves } from 'lucide-react';
@@ -26,7 +29,10 @@ const CURSEURS_TEXTE = CURSEURS.filter(([cle]) => !cle.startsWith('effilement'))
   c[0] === 'ondes' ? ['ondes', 'Densité des ondes', ONDES_MAX] : c
 );
 
-const MenuContourStylise = ({ element, onChange, texte = false }) => {
+// Tracé : ce que perfect-freehand ne donne pas déjà.
+const CURSEURS_DESSIN = CURSEURS_TEXTE.filter(([cle]) => cle !== 'variation');
+
+const MenuContourStylise = ({ element, onChange, texte = false, dessin = false }) => {
   const reglages = reglagesContour(element);
   const actif = !!reglages;
   const sansContour = !(Number(element.strokeWidth) > 0);
@@ -43,13 +49,13 @@ const MenuContourStylise = ({ element, onChange, texte = false }) => {
           className="accent-purple-600"
         />
       </label>
-      {actif && sansContour && (
+      {actif && sansContour && !dessin && (
         <p className="px-1 pb-1 text-[11px] text-amber-700 dark:text-amber-400">
           Donnez une épaisseur au contour pour le voir.
         </p>
       )}
       {actif &&
-        (texte ? CURSEURS_TEXTE : CURSEURS).map(([cle, libelle, max]) => {
+        (dessin ? CURSEURS_DESSIN : texte ? CURSEURS_TEXTE : CURSEURS).map(([cle, libelle, max]) => {
           const entier = cle === 'ondes';
           const valeur = entier ? reglages[cle] : Math.round(reglages[cle] * 100);
           return (

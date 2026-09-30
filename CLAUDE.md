@@ -69,6 +69,10 @@ des éléments `dessin` qui GARDENT leurs points ; `dessinTrace`
 (`utils/dessin.js`) est la seule règle de rendu, canvas et export planche. La
 fusion du surligneur va sur le Path à l'écran mais sur le GROUPE dans
 l'export planche — c'est lui que les effets mettent en cache.
+Un tracé prend tremblé et ondulation (`contourStyle`) sur ses POINTS, avant
+perfect-freehand (`pointsDeformes`), et se **ferme** en forme `shape: 'libre'`
+(`utils/formeLibre.js`) : points normalisés `pointsLibres`, tracé d'origine
+gardé dans `traceLibre` pour que le lissage reste réglable (`relisser`).
 Le **contour à main levée des lettres** (30 septembre 2026,
 [`07-contour-lettres.md`](frontend/modules/stick/PocketStick-docs/07-contour-lettres.md))
 lit le FICHIER de la police (opentype.js, servi en TTF par

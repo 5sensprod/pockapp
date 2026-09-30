@@ -9,8 +9,9 @@
 // (`DessinNode`) et l'export planche (`exportPdfSheet.js`) ; l'export du
 // canvas cloné hérite du nœud. Pas de Konva ici : testable sous Node.
 
-import { getStroke } from 'perfect-freehand';
+import { getStroke, getStrokePoints } from 'perfect-freehand';
 import { remplissage } from './fillStyle';
+import { deformerLigne, graineDe, reglagesContour } from './contourStylise';
 
 // Réglages de l'outil (en mémoire seulement). smoothing : adoucissement 0–1 ;
 // thinning : épaisseur variable selon la vitesse 0–1 (0 = épaisseur constante).
@@ -96,6 +97,21 @@ export const strokeOutline = (
       last,
     },
   ).map(([x, y]) => ({ x, y }));
+};
+
+/**
+ * La LIGNE du trait telle que perfect-freehand la suit : les points après
+ * stabilisation (streamline), ceux autour desquels `strokeOutline` épaissit.
+ * C'est elle que garde un tracé fermé (`formeLibre.js`) — les points bruts
+ * perdraient le lissage que l'on voit à l'écran.
+ */
+export const ligneDuTrait = (points, { strokeWidth, smoothing, stabilisation }) => {
+  const soft = unit(smoothing, DRAW_DEFAULTS.smoothing);
+  const stream = unit(stabilisation, 0.7 * soft);
+  return getStrokePoints(
+    points.map((p) => [p.x, p.y]),
+    { size: strokeWidth, smoothing: soft, streamline: stream, last: true },
+  ).map(({ point: [x, y] }) => ({ x, y }));
 };
 
 /**
@@ -192,6 +208,28 @@ export const pointsDe = (el) => {
   return pts;
 };
 
+/** Ondes par longueur de tracé égale à son épaisseur, à densité 1 (densité 12 ≈ une onde toutes les 8 épaisseurs). */
+const ONDES_PAR_EPAISSEUR = 1 / 96;
+
+/**
+ * « Contour à main levée » d'un tracé (mission « Améliorer les dessins »,
+ * lot 1) : tremblé et ondulation appliqués aux POINTS, avant `strokeOutline`
+ * — le trait reste un perfect-freehand, avec sa pression, sa stabilisation et
+ * ses effilements. `ondes` est une DENSITÉ, en épaisseurs de trait : deux
+ * tracés aux mêmes réglages ondulent pareil quelle que soit leur longueur.
+ * Graine tirée de l'`id` : l'écran et les exports tracent le même trait.
+ * Sans `contourStyle`, ou tremblé et ondulation à 0 : points inchangés.
+ */
+export const pointsDeformes = (pts, { strokeWidth, contourStyle }, id) => {
+  const r = reglagesContour({ contourStyle });
+  if (!r || (!r.tremble && !r.ondulation) || pts.length < 2) return pts;
+  const ep = strokeWidth || DRAW_DEFAULTS.strokeWidth;
+  let longueur = 0;
+  for (let i = 1; i < pts.length; i++) longueur += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  const ondes = Math.max(1, Math.round((longueur / ep) * r.ondes * ONDES_PAR_EPAISSEUR));
+  return deformerLigne({ points: pts, ferme: false, ep, reglages: r, graine: graineDe(id), ondes }).ligne;
+};
+
 const reglagesDe = (el) => ({
   strokeWidth: Number.isFinite(el?.strokeWidth) ? el.strokeWidth : DRAW_DEFAULTS.strokeWidth,
   smoothing: el?.smoothing,
@@ -200,6 +238,7 @@ const reglagesDe = (el) => ({
   effilementDebut: el?.effilementDebut,
   effilementFin: el?.effilementFin,
   pression: Array.isArray(el?.pressions),
+  contourStyle: el?.contourStyle ?? null,
 });
 
 /**
@@ -251,7 +290,7 @@ export const redessiner = (el, maj) => {
   const pts = pointsDe(el);
   if (pts.length < 2) return null;
   const r = { ...reglagesDe(el), ...maj };
-  const box = getBoundingBox(strokeOutline(pts, r));
+  const box = getBoundingBox(strokeOutline(pointsDeformes(pts, r, el.id), r));
   const dx = Math.floor(box.x) - 1;
   const dy = Math.floor(box.y) - 1;
   const a = ((el.rotation || 0) * Math.PI) / 180;
@@ -279,11 +318,11 @@ const cache = new WeakMap();
  */
 export const dessinTrace = (el) => {
   const r = reglagesDe(el);
-  const cle = `${r.strokeWidth}|${r.smoothing}|${r.thinning}|${r.stabilisation}|${r.effilementDebut}|${r.effilementFin}|${el?.pressions?.length ?? ''}`;
+  const cle = `${r.strokeWidth}|${r.smoothing}|${r.thinning}|${r.stabilisation}|${r.effilementDebut}|${r.effilementFin}|${el?.pressions?.length ?? ''}|${JSON.stringify(reglagesContour(el))}|${el?.id ?? ''}`;
   const garde = Array.isArray(el?.points) ? cache.get(el.points) : null;
   let data = garde?.cle === cle ? garde.data : null;
   if (data === null) {
-    data = outlineToPathData(strokeOutline(pointsDe(el), r));
+    data = outlineToPathData(strokeOutline(pointsDeformes(pointsDe(el), r, el?.id), r));
     if (Array.isArray(el?.points)) cache.set(el.points, { cle, data });
   }
   return {

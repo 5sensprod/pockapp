@@ -84,3 +84,12 @@ describe('store : coller le style et la profondeur', () => {
     expect(useLabelStore.getState().elements.at(-1).id).toBe('t');
   });
 });
+
+describe('style d’un dessin ou d’une forme libre', () => {
+  it('ne copie jamais le tracé : points, pressions, pointsLibres', () => {
+    const s = extraireStyle({ id: 'a', type: 'dessin', points: [0, 0, 5, 5], pressions: [0.5, 0.5], fill: '#f00', strokeWidth: 8 });
+    expect(s.props).toEqual({ fill: '#f00', strokeWidth: 8 });
+    const f = extraireStyle({ id: 'b', type: 'shape', shape: 'libre', pointsLibres: [0, 0, 1, 1, 0, 1], fill: '#0f0' });
+    expect(f.props).toEqual({ fill: '#0f0' });
+  });
+});

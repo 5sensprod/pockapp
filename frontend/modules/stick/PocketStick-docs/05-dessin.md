@@ -218,3 +218,68 @@ d'abord l'ombre SEULE de la silhouette — sur un canvas à part, posé d'un
 seul `drawImage` loin hors champ, l'ombre ramenée par compensation du
 décalage (transformation courante : zoom et rotation compris) —, puis la
 forme sans ombre. Même code pour le canvas et l'export planche.
+
+## Mission « Améliorer les dessins » (30 septembre 2026)
+
+### Lot 1 — contour à main levée d'un tracé
+
+Un `dessin` a le menu « Contour stylisé », réduit à Tremblé, Ondulation et
+Densité des ondes : épaisseur variable et effilements sont déjà des
+réglages du tracé (DessinPanel). Réglage : `el.contourStyle`, le même champ
+que les formes ; absent, ou tremblé et ondulation à 0, le tracé est
+inchangé.
+
+- La déformation porte sur les POINTS, avant `strokeOutline`
+  (`pointsDeformes`, `dessin.js`) : le trait reste un perfect-freehand, avec
+  sa pression, sa stabilisation et ses effilements. Passer par
+  `styliserContour` les aurait perdus (son `getStroke` a ses propres
+  réglages).
+- Le moteur a été coupé en deux : `deformerLigne` (`contourStylise.js`,
+  rééchantillonnage + ondulation + tremblé, pression interpolée) est
+  partagé ; `styliserContour` l'appelle puis tire son bruit de pression —
+  formes et lettres inchangées.
+- `ondes` est une DENSITÉ par épaisseur de trait (`ONDES_PAR_EPAISSEUR`,
+  1/96 : à 12, une onde toutes les 8 épaisseurs) — deux tracés aux mêmes
+  réglages ondulent pareil.
+- Graine tirée de l'`id` ; la clé du cache de `dessinTrace` porte les
+  réglages et l'`id`. Tout changement passe par `redessiner`, qui agrandit
+  le cadre pour l'ondulation — y compris un style COLLÉ sur un tracé
+  (`collerStyle`).
+- Pas de déformation pendant le tracé (DessinCalque) : l'abscisse relative
+  glisserait à chaque point, et l'`id` n'existe pas encore. C'est un
+  réglage de tracé existant.
+- La stabilisation s'applique APRÈS la déformation : un tracé très
+  stabilisé tremble moins. Accepté.
+
+### Lot 2 — fermer un tracé : la forme libre
+
+Bouton « Fermer le tracé » (barre de propriétés d'un dessin), sans
+fermeture automatique. Le dessin devient une forme `shape: 'libre'`
+(`utils/formeLibre.js`, action `fermerDessin`) en UN pas d'historique, même
+`id`.
+
+- `pointsLibres` : points NORMALISÉS 0–1 dans le cadre. Le Transformer
+  prend le chemin des formes (taille, échelle ±1) et les points suivent.
+  `contourDeBase` les met à la taille du cadre : contour stylisé, texture,
+  ombre de silhouette et `cadreReel` viennent sans rien réécrire. Sans
+  contour stylisé, `dessinForme` trace un `Konva.Line` fermé SANS tension —
+  sinon les deux rendus différeraient.
+- Géométrie : la ligne STABILISÉE du trait (`ligneDuTrait`,
+  `getStrokePoints` de perfect-freehand, celle qu'on voit à l'écran — les
+  points bruts perdaient le lissage), simplifiée à 0,25 px, deux passes de
+  Chaikin fermé.
+- Le trait devient le contour (couleur `dessin.fill`, épaisseur,
+  `contourStyle` gardé) ; remplissage transparent `#ffffff00`. Perdus :
+  pression, épaisseur variable, effilements, fusion, dégradé du trait.
+- Le lissage reste RÉGLABLE : la forme garde `traceLibre` (tracé d'origine
+  dans le même repère normalisé, `smoothing`, `stabilisation`) ; les
+  curseurs Adoucir / Stabiliser rejouent `poserLibre` par `relisser`, à la
+  taille actuelle. Écart de relissage ≈ 0,1–0,2 px (perfect-freehand n'est
+  pas exactement invariant d'échelle), sans dérive. Une forme fermée avant
+  `traceLibre` n'a pas les curseurs.
+- Pas de rouverture, hors Ctrl+Z.
+- `points`, `pressions`, `pointsLibres`, `traceLibre` sont hors style
+  (`styleCopie.js`) : coller un style ne colle jamais la forme.
+
+Gardiens : `dessin.test.js`, `formeLibre.test.js`, `styleCopie.test.js`.
+Non vérifié par un build ni sur un PDF exporté au moment du commit.

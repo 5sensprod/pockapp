@@ -797,6 +797,7 @@ const KonvaCanvas = forwardRef(
                     fillGradient={el.fillGradient ?? null}
                     strokeGradient={el.strokeGradient ?? null}
                     contourStyle={el.contourStyle ?? null}
+                    pointsLibres={el.pointsLibres ?? null}
                   />
                 );
               }
