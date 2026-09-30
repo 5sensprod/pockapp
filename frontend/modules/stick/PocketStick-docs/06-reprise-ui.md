@@ -1,80 +1,88 @@
-# Reprise — UI de l'éditeur : zoom, hors-page, contour des lettres (30 septembre 2026)
+# Reprise — UI de l'éditeur, puis l'outil Dessin
 
-Prompt de reprise pour une nouvelle session. Rien n'est encore fait.
+## État au 30 septembre 2026 — mission « UI » terminée, poussée sur `main`
+
+| Lot | Fait | Commit |
+|---|---|---|
+| 1 — Zoom : le bouton central affiche le zoom, ramène à 100 % ; « Ajuster » gardé | oui | `973f7e6` |
+| 2 — Voile gris sur ce qui dépasse de la page (`VoileHorsPage`, écran seulement) | oui | `df7bbe0` |
+| 3 — Contour à main levée des lettres | oui | `a5f1ec1` (mesure), `d01e759` |
+| Hors lot — « Données produit » en trois cartes (Texte, Médias, Éditorial) | oui | `00336b9` |
+| Hors lot — une forme redimensionnée enregistre sa TAILLE, échelle 1 | oui | `57248bd` |
+| Hors lot — texture de remplissage sur le bord déformé ; gras chargé avant l'export ; cadre réel du contour stylisé gardé par un clone (`cadreReel`) | oui | `dcdde29` |
+
+Détail du lot 3, mesures et écarts acceptés :
+[`07-contour-lettres.md`](07-contour-lettres.md).
+
+Pièges rencontrés, à ne pas refaire :
+- **Recharger la page déconnecte** (`main.tsx` efface la session PocketBase).
+  Modifier un module que Vite ne remplace pas à chaud recharge la page aussi.
+- Après plusieurs remplacements à chaud, un onglet peut avoir **deux
+  instances du store** : `import('/frontend/…/useLabelStore.js')` depuis la
+  console écrit dans l'ancienne, l'éditeur affiche la nouvelle. Pour vérifier
+  un rendu sans l'éditeur : `apercuCase` (`utils/exportPdfSheet.js`) avec des
+  éléments de test — c'est le chemin de l'export planche.
+- **Un réglage posé à la main sur un nœud Konva** (`getSelfRect`…) est perdu
+  par `clone()` : le porter en ATTRIBUT et l'installer dans la sceneFunc et
+  avant `cache()` (`installerCadreReel`, `installerContourLettres`,
+  `installerCourbure`).
+- **Une texture est un motif SANS répétition posé sur un cadre** : tout
+  dessin qui déborde de `width × height` doit lui passer son cadre réel
+  (`degradeCanvas2D(…, cadre)`, `fillPatternX/Y`). Un dégradé, lui, s'étend à
+  l'infini — c'est pour ça que le défaut ne se voyait qu'en texture.
+
+---
+
+## Prompt de reprise — mission suivante : l'outil Dessin
 
 ```
 Contexte : PocketApp (I:\pockapp), module `stick` (PocketStick, /stick), éditeur
 d'affiches Konva. Lis d'abord CLAUDE.md, puis dans
-frontend/modules/stick/PocketStick-docs/ : 01-portage-affiche.md, 05-dessin.md
-et ce fichier (06-reprise-ui.md).
+frontend/modules/stick/PocketStick-docs/ : 05-dessin.md (l'outil Dessin, lots
+0 à 6, contour stylisé lot A, ondulation lot B), 07-contour-lettres.md (la
+section « Implémentation ») et ce fichier (06-reprise-ui.md, les pièges).
 
-═══ MISSION : AMÉLIORER L'UI DE L'ÉDITEUR — ZOOM, HORS-PAGE, CONTOUR DES LETTRES ═══
+═══ MISSION : AMÉLIORER LES DESSINS ═══
 
-Lot 1 — Zone de zoom (frontend/modules/stick/labels/components/CanvasArea.jsx:103-112)
-Aujourd'hui : [−] [100 %] [+] [100 %]. L'étiquette du milieu affiche le zoom
-(Math.round(zoom * 100)) et le dernier bouton appelle resetZoom.
-Voulu : [−] [zoom actuel] [+]. Le bouton central AFFICHE le zoom en cours et,
-au clic, ramène à 100 % ; on supprime le bouton séparé. Garder les titres
-(infobulles) et l'accessibilité (aria-label qui dit « Revenir à 100 % »).
-Vérifier ce que fait resetZoom dans useLabelStore (100 % réel ou ajustement à
-la fenêtre ? CanvasArea.jsx:32-47 recalcule un zoom d'ajustement) et me dire
-lequel des deux le clic doit donner avant de coder.
+Lot 1 — Options « à main levée » sur les tracés
+Les formes et les lettres ont le menu « Contour stylisé → Contour à main
+levée » (épaisseur variable, tremblé, ondulation) : MenuContourStylise.jsx,
+moteur `styliserContour` (utils/contourStylise.js), partagé. Un élément
+`dessin` n'y a pas accès : son trait vient de `strokeOutline` (utils/dessin.js,
+perfect-freehand) à partir de ses points gardés, rendu par `dessinTrace` —
+seule règle, canvas (DessinNode.jsx) et export planche (exportPdfSheet.js,
+branche dessin, fusion posée sur le GROUPE).
+Voulu : tremblé et ondulation (au moins) appliqués à un tracé.
+À établir AVANT de coder, et à me soumettre :
+- ce qui existe déjà côté dessin (thinning = épaisseur variable ;
+  effilements ; stabilisation) et ce qui manque vraiment ;
+- où appliquer la déformation : sur les POINTS du tracé avant
+  `strokeOutline` (le trait reste un perfect-freehand), ou en passant le
+  tracé par `styliserContour` (trait ouvert, `ferme: false`) ;
+- `ondes` : nombre sur tout le tracé (comme une forme) ou densité par
+  longueur (comme les lettres, `ondesDuContour`) ;
+- le cache de `dessinTrace` (clé des réglages) et `redessiner` (lot 6 : le
+  cadre change quand le trait change) doivent suivre ;
+- l'aperçu pendant le tracé (DessinCalque.jsx) : avec ou sans la
+  déformation ?
 
-Lot 2 — Griser ce qui dépasse de la page, comme Polotno
-Un élément (ou la partie d'un élément) posé hors de la page doit rester
-visible mais voilé de gris, pour qu'on voie qu'il ne s'imprimera pas.
-Point de départ lu dans KonvaCanvas.jsx :
-- le fond blanc de la page est un Rect dans son PROPRE Layer
-  (listening=false), avant le Layer du document ;
-- le document est le Group `docGroupRef` (x=docPos, scale=zoom), CLONÉ par
-  l'export (utils/exportPdf.js) : rien de ce voile ne doit entrer dedans ;
-- le Transformer, le lasso, le calque Dessin (DessinCalque) et le recadrage
-  sont dans le même Layer que le document, APRÈS lui.
-Piste à évaluer : un voile gris semi-transparent qui couvre toute la scène SAUF
-le rectangle de la page (quatre Rect, ou un Shape avec un trou en
-evenodd), listening=false, dans le repère de docPos/zoom, posé APRÈS le
-groupe du document mais AVANT le Transformer, les poignées et l'étiquette de
-sélection, qui doivent rester nettes. Vérifier les interactions :
-- clic et glisser sur un élément à moitié hors page (le voile ne capte rien) ;
-- surligneur en fusion multiply (lot 5 de 05-dessin.md) : il ne doit pas
-  fusionner avec le voile ;
-- zoom à la molette et redimensionnement de la page ;
-- aucun changement dans les deux exports (page et planche).
-
-Lot 3 — Contour vectoriel des lettres (contour stylisé du TEXTE)
-But : appliquer aux lettres ce que le lot A de 05-dessin.md fait aux formes
-(utils/contourStylise.js : épaisseur variable, tremblé, ondulation,
-effilements), sur le contour SEUL — l'effet « Ondulation » en pixels (lot B,
-utils/ondulation.js) ondule déjà la lettre entière, remplissage compris.
-État lu dans le code :
-- le contour d'un texte est le `stroke` natif de Konva (`contourTexte`,
-  utils/fillStyle.js:38-46, fillAfterStrokeEnabled) : le navigateur trace les
-  lettres sans jamais exposer leur géométrie ;
-- aucune lecture de police n'est installée (ni opentype.js ni fontkit dans
-  package.json) → NOUVELLE DÉPENDANCE à me demander avant de l'ajouter.
-Chantier à étudier AVANT tout code :
-1. Accès au fichier de police : Google Fonts (utils/loadGoogleFont.js,
-   hooks/useGoogleFonts.js) ET polices locales (config/catalogueLocalPolices.js)
-   n'arrivent pas par le même chemin — obtenir les octets TTF/WOFF de chacune,
-   hors ligne compris (poste Wails).
-2. Mise en page : retours à la ligne, interlettrage, alignement, hauteur de
-   ligne, texte courbé (utils/texteCourbe.js), typo (utils/typo.js) —
-   reproduire celle de Konva à l'identique, sinon le contour ne tombe pas sur
-   les lettres. Risque principal : deux mises en page qui divergent. Mesurer
-   l'écart sur des textes réels avant de s'engager.
-3. Contours des glyphes → polylignes (courbes aplaties), puis le moteur du lot A
-   (contourDeBase → rééchantillonnage → déformation → perfect-freehand), un
-   trait par contour fermé (les trous de « o », « A » compris).
-4. Rendu : une seule règle pour le canvas (TextNode) et l'export planche
-   (exportPdfSheet.js, branche text), comme dessinForme ; cadre réel posé sur
-   le nœud (getSelfRect) pour le cache des effets ; ombre unique de la
-   silhouette (voir `ombreSilhouette`, ShapeNode.jsx) ; donnée absente = contour
-   Konva ordinaire, aucun template ne change.
-5. Coût : texte lié à un produit (change à chaque produit du tirage), export
-   planche de nombreuses cases → cache par (police, texte, réglages).
-Livrable du lot 3 d'abord : une étude chiffrée (faisabilité, écart de mise en
-page mesuré, taille de la dépendance, coût), PAS de code tant que je n'ai pas
-validé.
+Lot 2 — Fermer un tracé pour en faire une forme
+Voulu : un tracé qu'on ferme devient une forme — REMPLISSAGE (couleur,
+dégradé, texture) et CONTOUR (couleur, épaisseur, contour à main levée),
+comme une forme géométrique.
+À décider avec moi avant de coder :
+- le geste : fermer au relâchement quand le dernier point revient près du
+  premier ? bouton « Fermer le tracé » dans la barre ? les deux ?
+- le modèle : un `dessin` qui gagne `ferme: true` + `fill` + `stroke`, ou
+  une nouvelle forme `shape: 'libre'` avec ses points dans ShapeNode /
+  `dessinForme` (qui sait déjà peindre remplissage + contour stylisé,
+  ombre de silhouette, `cadreReel`, texture calée sur le cadre réel) ?
+  Attention : aujourd'hui `dessin.fill` est la COULEUR DU TRAIT (le trait
+  est un polygone rempli) — ne pas casser les dessins existants.
+- réversible (rouvrir) ou non ;
+- Transformer : une forme libre redimensionnée doit enregistrer sa taille
+  et une échelle 1 (`handleTransformEnd`, KonvaCanvas.jsx, voir `57248bd`)
+  — donc mettre ses points à l'échelle, pas le nœud.
 
 MÉTHODE
 1. État des lieux (chemin:ligne), puis proposition avec compromis.
@@ -86,7 +94,9 @@ CONTRAINTES DU DÉPÔT
 - Module .jsx/.js non typé ; ne pas lancer `pnpm format`.
 - Logique testable → module pur. Tests : `npx vitest run frontend/modules/stick`.
   Build : `pnpm build:client`, seulement serveur de dev arrêté — sinon demander.
-- Ne pas lancer de serveur de preview sans me le demander.
-- Rendu IDENTIQUE à l'écran et dans les exports : le voile du lot 2 est un
-  affichage d'écran seulement, il ne doit jamais s'imprimer.
+- Ne pas lancer de serveur de preview sans me le demander. Recharger la page
+  déconnecte : me prévenir avant.
+- Rendu IDENTIQUE à l'écran et dans les deux exports (page par clone,
+  planche par `exportPdfSheet`). Un dessin existant ne doit pas changer
+  d'aspect : réglage absent = comportement d'avant.
 ```
