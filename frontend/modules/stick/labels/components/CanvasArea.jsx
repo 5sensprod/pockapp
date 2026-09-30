@@ -103,14 +103,18 @@ const CanvasArea = forwardRef(
             <button type="button" onClick={zoomOut} className={boutonZoom} title="Zoom arrière (Ctrl + molette)">
               −
             </button>
-            <span className="w-12 text-center tabular-nums text-gray-700 dark:text-gray-300">
+            {/* Le zoom en cours, et au clic la taille réelle (100 %). */}
+            <button
+              type="button"
+              onClick={resetZoom}
+              className={`${boutonZoom} w-14 tabular-nums`}
+              title="Revenir à 100 %"
+              aria-label={`Zoom ${Math.round(zoom * 100)} %, revenir à 100 %`}
+            >
               {Math.round(zoom * 100)} %
-            </span>
+            </button>
             <button type="button" onClick={zoomIn} className={boutonZoom} title="Zoom avant (Ctrl + molette)">
               +
-            </button>
-            <button type="button" onClick={resetZoom} className={boutonZoom} title="Taille réelle">
-              100 %
             </button>
             <button type="button" onClick={ajuster} className={boutonZoom} title="Ajuster à la fenêtre">
               <Maximize2 className="h-3.5 w-3.5" />
