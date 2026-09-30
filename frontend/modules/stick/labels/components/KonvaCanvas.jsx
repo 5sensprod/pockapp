@@ -463,6 +463,25 @@ const KonvaCanvas = forwardRef(
             scaleY: 1,
           });
           liveMedia.current = null;
+        } else if (element.type === 'shape') {
+          // FORME : la nouvelle TAILLE, échelle ramenée à 1 (±1 si retournée).
+          // Garder l'échelle étirait tout ce qui est dessiné dans le cadre :
+          // épaisseur du contour, texture, contour stylisé.
+          const sx = node.scaleX();
+          const sy = node.scaleY();
+          const width = Math.max(1, (element.width ?? 160) * Math.abs(sx));
+          const height = Math.max(1, (element.height ?? 160) * Math.abs(sy));
+          const centree = FORMES_CENTREES.includes(element.shape);
+          Object.assign(updates, {
+            width,
+            height,
+            // Une forme centrée garde son centre ; les autres leur coin
+            x: centree ? node.x() - width / 2 : node.x(),
+            y: centree ? node.y() - height / 2 : node.y(),
+            scaleX: Math.sign(sx) || 1,
+            scaleY: Math.sign(sy) || 1,
+          });
+          node.scale({ x: updates.scaleX, y: updates.scaleY });
         } else {
           // Pour les autres éléments : garder le scale
           updates.scaleX = node.scaleX();
