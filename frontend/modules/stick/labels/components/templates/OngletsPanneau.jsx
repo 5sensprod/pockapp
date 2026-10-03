@@ -21,7 +21,8 @@ const OngletsPanneau = ({ onglets, actif, onChange }) => {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-2 flex gap-1 border-b border-gray-200 dark:border-gray-700" role="tablist">
+      <div className="flex-none px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+       <div className="flex p-0.5 rounded-md bg-gray-100 dark:bg-gray-700" role="tablist">
         {onglets.map(({ id, libelle }) => (
           <button
             key={id}
@@ -29,15 +30,16 @@ const OngletsPanneau = ({ onglets, actif, onChange }) => {
             role="tab"
             aria-selected={courant === id}
             onClick={() => choisir(id)}
-            className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 h-6 px-2 text-xs rounded transition-colors ${
               courant === id
-                ? 'bg-blue-500 text-white'
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                ? 'bg-white dark:bg-gray-500 text-gray-900 dark:text-white shadow-sm font-medium'
+                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
             {libelle}
           </button>
         ))}
+       </div>
       </div>
       {onglets.map(({ id, contenu }) => (
         <div key={id} role="tabpanel" className={courant === id ? 'flex-1 min-h-0' : 'hidden'}>

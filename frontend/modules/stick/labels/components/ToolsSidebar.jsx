@@ -6,7 +6,7 @@ import {
   Image as ImageIcon,
   Shapes,
   Layers,
-  ArrowLeft,
+  X,
   Sparkles,
   Palette,
   PaintBucket,
@@ -29,6 +29,9 @@ import ReglagesPanel, { sectionsAffichees } from './templates/ReglagesPanel';
 import useLabelStore from '../store/useLabelStore';
 import { ongletDe } from '../utils/reglagesParType';
 
+const boutonEntete =
+  'h-7 w-7 inline-flex items-center justify-center rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700';
+
 const ToolsSidebar = ({
   isCollapsed,
   onToggleCollapse,
@@ -50,9 +53,9 @@ const ToolsSidebar = ({
 
   const tools = [
     // Templates du poste et designs d'usine, réunis (`ModelesPanel`)
-    { id: 'templates', label: 'Templates', icon: Palette, component: ModelesPanel },
+    { id: 'templates', label: 'Templates', court: 'Modèles', icon: Palette, component: ModelesPanel },
     // La page : sa taille puis son fond (`PagePanel`)
-    { id: 'format', label: 'Taille et fond', icon: PaintBucket, component: PagePanel },
+    { id: 'format', label: 'Taille et fond', court: 'Page', icon: PaintBucket, component: PagePanel },
     { id: 'text', label: 'Texte', icon: Type, component: TextTemplates },
     // Médias : les images du poste, et celles de PocketStock (`MediasPanel`)
     { id: 'image', label: 'Médias', icon: ImageIcon, component: MediasPanel },
@@ -69,6 +72,7 @@ const ToolsSidebar = ({
     {
       id: 'donnees',
       label: 'Données produit',
+      court: 'Données',
       icon: Database,
       component: DonneesProduitPanel,
       produit: true,
@@ -88,27 +92,50 @@ const ToolsSidebar = ({
   // Ouvrir un onglet depuis un panneau : sans la bascule d'un clic sur l'icône
   const ouvrirOutil = (toolId) => (onToolChange ? onToolChange(toolId) : setInternalSelectedTool(toolId));
 
-  // Mode icônes uniquement
-  if (isCollapsed) {
-    return (
-      <div className="w-16 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-4 gap-2 overflow-y-auto">
-        {tools.map((tool) => (
+  // LA BARRE D'ICÔNES, la même repliée ou dépliée : icône et libellé court
+  // dessous (on trouve un onglet sans survoler chaque icône). L'aplat de
+  // couleur est réservé à l'onglet OUVERT ; orange = ce qui vient de la fiche
+  // produit, bleu = le reste.
+  const barreIcones = (onClic) => (
+    <nav
+      aria-label="Outils"
+      className="w-16 flex-none border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-2 gap-0.5 overflow-y-auto"
+    >
+      {tools.map((tool) => {
+        const ouvert = !isCollapsed && selectedTool === tool.id;
+        return (
           <button
             key={tool.id}
-            onClick={() => {
-              onToggleCollapse();
-              handleToolClick(tool.id);
-            }}
-            className={`p-3 rounded-lg transition-colors ${
-              tool.produit
-                ? 'text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20'
-                : 'hover:bg-blue-50 dark:hover:bg-blue-900/20'
-            }`}
+            type="button"
+            onClick={() => onClic(tool.id)}
+            aria-pressed={ouvert}
             title={tool.label}
+            className={`w-14 py-1.5 flex flex-col items-center gap-0.5 rounded-lg transition-colors ${
+              ouvert
+                ? tool.produit
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-blue-600 text-white'
+                : tool.produit
+                  ? 'text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
           >
             <tool.icon className="h-5 w-5" />
+            <span className="text-[10px] leading-tight">{tool.court ?? tool.label}</span>
           </button>
-        ))}
+        );
+      })}
+    </nav>
+  );
+
+  // Repliée : la barre d'icônes seule ; un clic déplie et ouvre l'onglet
+  if (isCollapsed) {
+    return (
+      <div className="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex">
+        {barreIcones((id) => {
+          onToggleCollapse();
+          ouvrirOutil(id);
+        })}
       </div>
     );
   }
@@ -117,52 +144,26 @@ const ToolsSidebar = ({
   const SelectedComponent = tools.find((t) => t.id === selectedTool)?.component;
 
   return (
-    <div className="w-[400px] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex overflow-hidden">
-      {/* Barre d'icônes */}
-      <div className="w-16 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-4 gap-2 overflow-y-auto">
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            onClick={() => handleToolClick(tool.id)}
-            className={`p-3 rounded-lg transition-colors ${
-              selectedTool === tool.id
-                ? tool.produit
-                  ? 'bg-orange-500 text-white'
-                  : 'bg-blue-500 text-white'
-                : tool.produit
-                  ? 'text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-            }`}
-            title={tool.label}
-          >
-            <tool.icon className="h-5 w-5" />
-          </button>
-        ))}
-      </div>
+    <div className="w-[400px] flex-none bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex overflow-hidden">
+      {barreIcones(handleToolClick)}
 
       {/* Zone de templates */}
       <div className="flex-1 min-h-0 flex flex-col overflow-x-hidden">
         {selectedTool ? (
           <>
             {/* Header */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleToolClick(null)}
-                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                >
-                  <ArrowLeft className="h-4 w-4" />
+            <div className="flex-none h-10 px-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-white truncate">
+                {tools.find((t) => t.id === selectedTool)?.label}
+              </h2>
+              <div className="flex items-center gap-0.5">
+                <button type="button" onClick={() => handleToolClick(null)} className={boutonEntete} title="Fermer ce panneau">
+                  <X className="h-4 w-4" />
                 </button>
-                <h2 className="font-semibold text-gray-800 dark:text-white">
-                  {tools.find((t) => t.id === selectedTool)?.label}
-                </h2>
+                <button type="button" onClick={onToggleCollapse} className={boutonEntete} title="Replier la barre latérale">
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
               </div>
-              <button
-                onClick={onToggleCollapse}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
             </div>
 
             {/* Templates */}
@@ -194,19 +195,16 @@ const ToolsSidebar = ({
         ) : (
           <>
             {/* Header sans sélection */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-800 dark:text-white">Sélectionnez un outil</h2>
-              <button
-                onClick={onToggleCollapse}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-              >
-                <ChevronLeft className="h-5 w-5" />
+            <div className="flex-none h-10 px-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-white">Outils</h2>
+              <button type="button" onClick={onToggleCollapse} className={boutonEntete} title="Replier la barre latérale">
+                <ChevronLeft className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="flex-1 flex items-center justify-center p-4">
+            <div className="flex-1 flex items-center justify-center p-6">
               <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                Cliquez sur une icône pour voir les templates disponibles
+                Choisissez un outil à gauche pour ajouter un élément, ou sélectionnez un élément sur la page pour le régler.
               </p>
             </div>
           </>
