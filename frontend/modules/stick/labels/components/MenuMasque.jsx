@@ -13,13 +13,9 @@ import MenuGroupe from './MenuGroupe';
 import MasqueTexture from './MasqueTexture';
 import { FONDU_MAX, MASQUES, RETRAIT_MAX } from '../utils/imageForme';
 
-const MenuMasque = ({ element, onChange }) => (
-  <MenuGroupe
-    icone={Shapes}
-    titre="Masque"
-    actif={!!(element.mask || element.maskTexture || element.maskPadding || element.maskFeather)}
-    largeur="16rem"
-  >
+/** Le CONTENU du menu, sans son enveloppe — aussi affiché à plat dans `ReglagesPanel`. */
+export const ReglagesMasque = ({ element, onChange }) => (
+  <>
     <div className="grid grid-cols-3 gap-1.5 p-1">
       <button
         type="button"
@@ -68,6 +64,17 @@ const MenuMasque = ({ element, onChange }) => (
       valeur={element.maskTexture ?? null}
       onChange={(maskTexture) => onChange({ maskTexture })}
     />
+  </>
+);
+
+const MenuMasque = ({ element, onChange }) => (
+  <MenuGroupe
+    icone={Shapes}
+    titre="Masque"
+    actif={!!(element.mask || element.maskTexture || element.maskPadding || element.maskFeather)}
+    largeur="16rem"
+  >
+    <ReglagesMasque element={element} onChange={onChange} />
   </MenuGroupe>
 );
 

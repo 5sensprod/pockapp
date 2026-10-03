@@ -6,6 +6,7 @@ import ToolsSidebar from './components/ToolsSidebar';
 import CanvasArea from './components/CanvasArea';
 import TopToolbar from './components/TopToolbar';
 import useLabelStore from './store/useLabelStore';
+import { ongletApresSelection, ongletDe } from './utils/reglagesParType';
 import { toast } from 'sonner';
 import { useSynchroProduitsAffiche } from './lib/use-synchro-produits-affiche';
 
@@ -31,6 +32,28 @@ export const LabelPage = () => {
 
   // État pour l'outil sélectionné dans la sidebar
   const [selectedTool, setSelectedTool] = useState(null);
+
+  // L'onglet SUIT la sélection : sélectionner un élément affiche l'onglet de
+  // son type, avec ses réglages détaillés à la place des propositions de base
+  // (`ReglagesPanel`). Seulement au CHANGEMENT de sélection — on peut ensuite
+  // ouvrir l'onglet qu'on veut —, et jamais par-dessus un onglet de travail
+  // (Calques, Effets…) : la règle est `ongletApresSelection`.
+  const idSelectionne = useLabelStore((s) => s.selectedId);
+  useEffect(() => {
+    if (!idSelectionne) return;
+    const el = useLabelStore.getState().elements.find((e) => e.id === idSelectionne);
+    setSelectedTool((courant) => ongletApresSelection(courant, el));
+  }, [idSelectionne]);
+
+  // Le bouton « Réglages » de la barre d'options : l'onglet du type, quel que
+  // soit celui qui est ouvert
+  const handleOpenReglages = () => {
+    const { elements, selectedId } = useLabelStore.getState();
+    const onglet = ongletDe(elements.find((e) => e.id === selectedId));
+    if (!onglet) return;
+    setIsSidebarCollapsed(false);
+    setSelectedTool(onglet);
+  };
 
   // 📢 Toasts pour les notifications — `sonner`, comme partout dans le dépôt.
   const success = (message) => toast.success(message);
@@ -229,6 +252,7 @@ export const LabelPage = () => {
           selectedProduct={displayProduct}
           onDocNodeReady={setDocNode}
           onOpenEffects={handleOpenEffects}
+          onOpenReglages={handleOpenReglages}
         />
       </div>
     </div>

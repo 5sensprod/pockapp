@@ -33,14 +33,19 @@ const CURSEURS_TEXTE = CURSEURS.filter(([cle]) => !cle.startsWith('effilement'))
 // Tracé : ce que perfect-freehand ne donne pas déjà.
 const CURSEURS_DESSIN = CURSEURS_TEXTE.filter(([cle]) => cle !== 'variation');
 
-const MenuContourStylise = ({ element, onChange, texte = false, dessin = false }) => {
+/**
+ * Le CONTENU du menu, sans son enveloppe : la case et ses curseurs. Affiché à
+ * plat dans l'onglet « Réglages » de la barre latérale (`ReglagesPanel`), ou
+ * dans le menu ci-dessous.
+ */
+export const ReglagesContourStylise = ({ element, onChange, texte = false, dessin = false }) => {
   const reglages = reglagesContour(element);
   const actif = !!reglages;
   const sansContour = !(Number(element.strokeWidth) > 0);
   const set = (cle, v) => onChange({ contourStyle: { ...reglages, [cle]: v } });
 
   return (
-    <MenuGroupe icone={Waves} titre="Contour stylisé" actif={actif} largeur="17rem">
+    <>
       <label className="flex items-center justify-between px-1 py-1 text-xs text-gray-700 dark:text-gray-300">
         <span>Contour à main levée</span>
         <input
@@ -73,8 +78,14 @@ const MenuContourStylise = ({ element, onChange, texte = false, dessin = false }
             />
           );
         })}
-    </MenuGroupe>
+    </>
   );
 };
+
+const MenuContourStylise = (props) => (
+  <MenuGroupe icone={Waves} titre="Contour stylisé" actif={!!reglagesContour(props.element)} largeur="17rem">
+    <ReglagesContourStylise {...props} />
+  </MenuGroupe>
+);
 
 export default MenuContourStylise;

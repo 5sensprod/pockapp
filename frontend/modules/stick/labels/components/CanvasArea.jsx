@@ -6,7 +6,7 @@ import BandeTirage from './BandeTirage';
 import useLabelStore from '../store/useLabelStore';
 
 const CanvasArea = forwardRef(
-  ({ dataSource, selectedProduct, onDocNodeReady, onOpenEffects }, ref) => {
+  ({ dataSource, selectedProduct, onDocNodeReady, onOpenEffects, onOpenReglages }, ref) => {
     const zoom = useLabelStore((s) => s.zoom);
     const canvasSize = useLabelStore((s) => s.canvasSize);
     const zoomIn = useLabelStore((s) => s.zoomIn);
@@ -93,7 +93,12 @@ const CanvasArea = forwardRef(
           )}
           <div className="flex-none">
             {selectedId ? (
-              <PropertyPanel selectedProduct={selectedProduct} onOpenEffects={onOpenEffects} docNode={docNode} />
+              <PropertyPanel
+                selectedProduct={selectedProduct}
+                onOpenEffects={onOpenEffects}
+                onOpenReglages={onOpenReglages}
+                docNode={docNode}
+              />
             ) : (
               <span className="text-gray-500 dark:text-gray-400">
                 Sélectionnez un élément pour le modifier.

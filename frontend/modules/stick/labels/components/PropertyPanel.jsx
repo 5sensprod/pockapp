@@ -3,6 +3,7 @@ import React from 'react';
 import {
   Palette,
   Sparkles,
+  SlidersHorizontal,
   Bold,
   Italic,
   Underline,
@@ -42,8 +43,7 @@ import { typeLiable } from '../utils/champsProduit';
 import { estContenu } from '../utils/ajustementImage';
 import { resolvePropForElement, texteCorrige, ficheChangeeDepuisCorrection } from '../utils/dataBinding';
 import { resetCropAttrs } from '../utils/crop';
-import { redessiner } from '../utils/dessin';
-import { lissageDe, relisser } from '../utils/formeLibre';
+import { ongletDe } from '../utils/reglagesParType';
 import { geometrieImage } from './canvas/CropOverlay';
 import { SECTIONS_FICHE, sectionParId } from '../utils/ficheProduit';
 import { FICHE_PAR_DEFAUT } from '../utils/ficheKonva';
@@ -72,11 +72,10 @@ const petitBouton = (actif) =>
       : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
   }`;
 
-const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
+const PropertyPanel = ({ selectedProduct, onOpenEffects, onOpenReglages, docNode }) => {
   const elements = useLabelStore((s) => s.elements);
   const selectedId = useLabelStore((s) => s.selectedId);
   const updateElement = useLabelStore((s) => s.updateElement);
-  const fermerDessin = useLabelStore((s) => s.fermerDessin);
   const dataSource = useLabelStore((s) => s.dataSource);
   // Le produit que le CANVAS affiche : c'est à lui qu'une correction de texte
   // est rattachée (`TextNode`, `textOverrides`).
@@ -560,23 +559,6 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 onGradientChange={(g) => updateElement(selectedId, { fillGradient: g })}
                 title="Couleur du tracé"
               />
-              {/* Tremblé et ondulation : rejoués sur les points gardés par
-                  `redessiner`, qui recalcule le cadre — l'ondulation déborde */}
-              <MenuContourStylise
-                dessin
-                element={selectedElement}
-                onChange={(maj) => updateElement(selectedId, redessiner(selectedElement, maj) ?? maj)}
-              />
-              {/* Lot 2 : le tracé devient une forme libre (remplissage et
-                  contour), `utils/formeLibre.js`. Sans retour, hors Ctrl+Z. */}
-              <button
-                type="button"
-                onClick={() => fermerDessin(selectedId)}
-                className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap"
-                title="Relier la fin au début : le tracé devient une forme, avec remplissage et contour"
-              >
-                Fermer le tracé
-              </button>
             </div>
           </>
         )}
@@ -611,8 +593,6 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                   title="Remplissage"
                 />
               )}
-              {/* Masque d'une forme : même menu que l'image, rendu par filtre (`effetsKonva.js`) */}
-              <MenuMasque element={selectedElement} onChange={(maj) => updateElement(selectedId, maj)} />
             </div>
 
             <div className="flex items-center gap-2">
@@ -642,60 +622,10 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 title="Épaisseur du contour, en pixels"
               />
-              {/* Contour à main levée : ondulation, tremblé, épaisseur variable */}
-              <MenuContourStylise element={selectedElement} onChange={(maj) => updateElement(selectedId, maj)} />
             </div>
+            {/* Masque, contour à main levée, arrondi, lissage : dans l'onglet
+                Assets de la barre latérale (`ReglagesPanel`) */}
 
-            {/* Forme née d'un tracé fermé : son lissage reste réglable, rejoué
-                sur le tracé d'origine gardé (`relisser`, utils/formeLibre.js) */}
-            {selectedElement.shape === 'libre' && selectedElement.traceLibre && (
-              <div className="flex items-center gap-3">
-                {[
-                  ['smoothing', 'Adoucir'],
-                  ['stabilisation', 'Stabiliser'],
-                ].map(([cle, libelle]) => {
-                  const valeur = Math.round(lissageDe(selectedElement)[cle] * 100);
-                  return (
-                    <label key={cle} className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                      {libelle}
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={valeur}
-                        onChange={(e) => {
-                          const maj = relisser(selectedElement, { [cle]: Number(e.target.value) / 100 });
-                          if (maj) updateElement(selectedId, maj);
-                        }}
-                        className="w-20"
-                      />
-                      <span className="w-8 text-right tabular-nums">{valeur}%</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* L'arrondi n'a de sens que pour un rectangle. */}
-            {(selectedElement.shape ?? 'rectangle') === 'rectangle' && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                  Arrondi:
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  max={200}
-                  step={1}
-                  value={selectedElement.cornerRadius ?? 0}
-                  onChange={(e) =>
-                    updateElement(selectedId, { cornerRadius: Number(e.target.value) })
-                  }
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
-            )}
           </>
         )}
 
@@ -1146,9 +1076,24 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
           </>
         )}
 
+        {/* Les réglages détaillés de ce type vivent dans la barre latérale */}
+        {onOpenReglages && ongletDe(selectedElement) && (
+          <>
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            <button
+              onClick={onOpenReglages}
+              className="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-2 shrink-0"
+              title="Tous les réglages de cet élément, dans la barre latérale"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Réglages
+            </button>
+          </>
+        )}
+
         {onOpenEffects && (
           <>
-            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 ml-auto" />
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
             <button
               onClick={onOpenEffects}
               className="px-3 py-1.5 text-sm font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition-colors flex items-center gap-2 shrink-0"

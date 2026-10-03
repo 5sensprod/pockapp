@@ -25,6 +25,9 @@ import EffectsTemplates from './templates/EffectsTemplates';
 import ModelesPanel from './templates/ModelesPanel';
 import DonneesProduitPanel from './templates/DonneesProduitPanel';
 import DessinPanel from './templates/DessinPanel';
+import ReglagesPanel, { sectionsAffichees } from './templates/ReglagesPanel';
+import useLabelStore from '../store/useLabelStore';
+import { ongletDe } from '../utils/reglagesParType';
 
 const ToolsSidebar = ({
   isCollapsed,
@@ -37,6 +40,10 @@ const ToolsSidebar = ({
   stageRef, // 🆕 Pour TemplateManager
 }) => {
   const [internalSelectedTool, setInternalSelectedTool] = useState(null);
+  // L'élément sélectionné : dans l'onglet de SON type, ses réglages détaillés
+  // remplacent les propositions de base (désélectionner les ramène). L'onglet
+  // Dessin le fait lui-même, il garde ses boutons d'outil.
+  const selection = useLabelStore((s) => s.elements.find((e) => e.id === s.selectedId) ?? null);
 
   const selectedTool =
     externalSelectedTool !== undefined ? externalSelectedTool : internalSelectedTool;
@@ -165,6 +172,10 @@ const ToolsSidebar = ({
                       docNode={docNode}
                       onClose={() => handleToolClick(null)}
                     />
+                  ) : selectedTool !== 'dessin' &&
+                    ongletDe(selection) === selectedTool &&
+                    sectionsAffichees(selection).length > 0 ? (
+                    <ReglagesPanel />
                   ) : (
                     <SelectedComponent
                       dataSource={dataSource}
