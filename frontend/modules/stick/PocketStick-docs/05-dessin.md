@@ -282,4 +282,5 @@ fermeture automatique. Le dessin devient une forme `shape: 'libre'`
   (`styleCopie.js`) : coller un style ne colle jamais la forme.
 
 Gardiens : `dessin.test.js`, `formeLibre.test.js`, `styleCopie.test.js`.
-Non vérifié par un build ni sur un PDF exporté au moment du commit.
+Export PDF vérifié par le propriétaire le 3 octobre 2026 (rapporté :
+« impeccable »). `pnpm build:client` non lancé.

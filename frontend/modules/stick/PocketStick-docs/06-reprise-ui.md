@@ -44,8 +44,8 @@ Pièges rencontrés, à ne pas refaire :
 Détail, compromis et ce qui est perdu à la fermeture :
 [`05-dessin.md`](05-dessin.md), section « Mission Améliorer les dessins ».
 
-Non fait au moment du commit : `pnpm build:client`, et la vérification d'un
-PDF exporté (page et planche). Les tests du module passent (270).
+Export PDF vérifié par le propriétaire le 3 octobre 2026 (rapporté).
+Non fait : `pnpm build:client`. Les tests du module passent (270).
 
 Pièges rencontrés, à ne pas refaire :
 - **Les points gardés d'un tracé sont BRUTS** : le trait qu'on voit a déjà
