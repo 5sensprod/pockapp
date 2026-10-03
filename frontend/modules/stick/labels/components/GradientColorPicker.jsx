@@ -194,7 +194,7 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
         type="button"
         ref={pastille}
         onClick={() => setOuvert((o) => !o)}
-        className="w-10 h-8 rounded border border-gray-300 dark:border-gray-600 shadow-inner"
+        className="h-7 w-9 flex-none rounded-md border border-gray-300 dark:border-gray-600 shadow-inner"
         style={{ background: peinture ? paintToCss(peinture) : color }}
         title={title}
       />

@@ -13,15 +13,11 @@ import { geometrieImage } from '../canvas/CropOverlay';
 import { estContenu } from '../../utils/ajustementImage';
 import { resetCropAttrs } from '../../utils/crop';
 import { resolvePropForElement } from '../../utils/dataBinding';
+import Segments from '../ui/Segments';
+import { BOUTON_ACTION, BOUTON_PRINCIPAL, boutonBascule } from '../ui/styles';
 
-const choix = (actif) =>
-  `flex-1 px-2 py-1.5 text-xs rounded border ${
-    actif
-      ? 'bg-blue-500 text-white border-blue-500'
-      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'
-  }`;
-const action =
-  'flex-1 px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed';
+const action = `${BOUTON_ACTION} flex-1`;
+
 
 /**
  * Ajustement (`utils/ajustementImage.js`) et recadrage. Contenir montre la
@@ -52,7 +48,7 @@ export const Ajustement = ({ el, maj }) => {
           <button
             type="button"
             onClick={stopCrop}
-            className="flex-1 px-2 py-1.5 text-xs rounded bg-teal-600 hover:bg-teal-700 text-white"
+            className={`${BOUTON_PRINCIPAL} flex-1`}
             title="Entrée ou Échap"
           >
             Valider le recadrage
@@ -68,23 +64,15 @@ export const Ajustement = ({ el, maj }) => {
   const contenu = estContenu(el);
   return (
     <div className="space-y-2">
-      <div className="flex gap-1" role="group" aria-label="Ajustement de l'image">
-        {[
-          [false, 'Remplir', "L'image couvre le cadre ; le recadrage choisit la partie visible"],
-          [true, 'Contenir', "L'image entière, centrée dans le cadre — pour une photo liée au produit"],
-        ].map(([contenir, libelle, aide]) => (
-          <button
-            key={libelle}
-            type="button"
-            onClick={() => maj({ fit: contenir ? 'contain' : 'cover' })}
-            className={choix(contenu === contenir)}
-            title={aide}
-            aria-pressed={contenu === contenir}
-          >
-            {libelle}
-          </button>
-        ))}
-      </div>
+      <Segments
+        label="Ajustement de l'image"
+        valeur={contenu}
+        onValeur={(contenir) => maj({ fit: contenir ? 'contain' : 'cover' })}
+        options={[
+          { id: false, label: 'Remplir', titre: "L'image couvre le cadre ; le recadrage choisit la partie visible" },
+          { id: true, label: 'Contenir', titre: "L'image entière, centrée dans le cadre — pour une photo liée au produit" },
+        ]}
+      />
       <div className="flex gap-1">
         <button
           type="button"
@@ -116,7 +104,7 @@ export const Miroir = ({ el, maj }) => (
         key={cle}
         type="button"
         onClick={() => maj({ [cle]: !el[cle] })}
-        className={`${choix(!!el[cle])} flex items-center justify-center gap-1.5`}
+        className={`${boutonBascule(!!el[cle])} flex-1`}
         title={`Miroir ${libelle.toLowerCase()}`}
         aria-pressed={!!el[cle]}
       >

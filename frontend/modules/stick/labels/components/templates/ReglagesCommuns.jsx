@@ -27,6 +27,9 @@ import LiaisonProduit from '../LiaisonProduit';
 import { typeLiable } from '../../utils/champsProduit';
 import { ficheChangeeDepuisCorrection, texteCorrige } from '../../utils/dataBinding';
 import { alignOffsets, distributeOffsets, unionBoxes } from '../../utils/layout';
+import { BOUTON_ACTION, BOUTON_ICONE as bouton } from '../ui/styles';
+
+const action = `${BOUTON_ACTION} flex-1`;
 
 // Comme PocketStick (`ui/Properties.jsx`, ALIGN_BUTTONS) : un élément seul
 // s'aligne sur la PAGE ; plusieurs s'alignent sur leur cadre commun.
@@ -39,10 +42,6 @@ const ALIGNEMENTS = [
   ['bottom', 'Aligner en bas', AlignEndHorizontal],
 ];
 
-const bouton =
-  'p-1.5 rounded-lg transition-colors bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300';
-const action =
-  'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700';
 
 const ReglagesCommuns = ({ el, docNode }) => {
   const elements = useLabelStore((s) => s.elements);

@@ -58,7 +58,7 @@ const Curseur = ({
       step={step}
       value={valeur}
       onChange={(e) => onValeur(parseFloat(e.target.value))}
-      className="w-16 px-1 py-0.5 text-right border rounded dark:bg-gray-800 dark:border-gray-600"
+      className="w-14 h-6 px-1.5 text-right tabular-nums rounded-md border border-transparent bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:border-blue-500 focus:outline-none"
     />
   ) : (
     <span className="tabular-nums">{texte}</span>

@@ -13,6 +13,8 @@
 
 import React from 'react';
 import Curseur from './ui/Curseur';
+import Interrupteur from './ui/Interrupteur';
+import { LIGNE } from './ui/styles';
 import { CONTOUR_STYLISE_DEFAUT, ONDES_MAX, reglagesContour } from '../utils/contourStylise';
 
 const CURSEURS = [
@@ -40,15 +42,14 @@ const ReglagesContourStylise = ({ element, onChange, texte = false, dessin = fal
 
   return (
     <>
-      <label className="flex items-center justify-between px-1 py-1 text-xs text-gray-700 dark:text-gray-300">
+      <div className={LIGNE}>
         <span>Contour à main levée</span>
-        <input
-          type="checkbox"
-          checked={actif}
-          onChange={(e) => onChange({ contourStyle: e.target.checked ? { ...CONTOUR_STYLISE_DEFAUT } : null })}
-          className="accent-purple-600"
+        <Interrupteur
+          actif={actif}
+          onActif={(v) => onChange({ contourStyle: v ? { ...CONTOUR_STYLISE_DEFAUT } : null })}
+          label="Contour à main levée"
         />
-      </label>
+      </div>
       {actif && sansContour && !dessin && (
         <p className="px-1 pb-1 text-[11px] text-amber-700 dark:text-amber-400">
           Donnez une épaisseur au contour pour le voir.

@@ -9,11 +9,8 @@ import React from 'react';
 import GradientColorPicker from '../GradientColorPicker';
 import { composerCouleur, decomposerCouleur } from '../../utils/paint';
 import { FORMATS_TEXTE_CODE_BARRES } from '../../utils/barcodeText';
+import { CHAMP as champ, LIGNE as ligne, PASTILLE as pastille } from '../ui/styles';
 
-const ligne = 'flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-gray-300';
-const champ =
-  'px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white';
-const pastille = 'w-10 h-8 rounded cursor-pointer border border-gray-300 dark:border-gray-600';
 
 // ── QR code ─────────────────────────────────────────────────────────────────
 

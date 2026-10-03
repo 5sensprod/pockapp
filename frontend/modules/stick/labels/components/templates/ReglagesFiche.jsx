@@ -9,10 +9,8 @@ import React from 'react';
 import FontSelector from '../FontSelector';
 import { SECTIONS_FICHE, sectionParId } from '../../utils/ficheProduit';
 import { FICHE_PAR_DEFAUT } from '../../utils/ficheKonva';
+import { CHAMP as champ, LIGNE as ligne } from '../ui/styles';
 
-const ligne = 'flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-gray-300';
-const champ =
-  'px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white';
 
 /** Section, titre, police, taille, nombre de lignes. */
 export const Contenu = ({ el, maj }) => (

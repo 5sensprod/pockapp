@@ -56,7 +56,7 @@ const FontSelector = ({ value, onChange, apiKey }) => {
       <button
         ref={boutonRef}
         onClick={() => setIsOpen(!isOpen)}
-        className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 w-[120px]"
+        className="h-7 px-2 text-xs rounded-md border border-transparent bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors flex items-center gap-2 w-[150px]"
       >
         <span className="truncate" style={{ fontFamily: value }}>
           {value}

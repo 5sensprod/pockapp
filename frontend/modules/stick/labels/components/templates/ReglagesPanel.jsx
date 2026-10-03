@@ -23,6 +23,8 @@ import { lissageDe, relisser } from '../../utils/formeLibre';
 import ReglagesContourStylise from '../ReglagesContourStylise';
 import ReglagesMasque from '../ReglagesMasque';
 import Curseur from '../ui/Curseur';
+import Section from '../ui/Section';
+import { BOUTON_ACTION } from '../ui/styles';
 import { TraceSelectionne } from './TraceSelectionne';
 import * as Texte from './ReglagesTexte';
 import * as Photo from './ReglagesImage';
@@ -49,7 +51,7 @@ const FermerTrace = ({ el }) => {
     <button
       type="button"
       onClick={() => fermerDessin(el.id)}
-      className="w-full px-2 py-1.5 text-xs rounded border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+      className={`${BOUTON_ACTION} w-full`}
       title="Relier la fin au début : le tracé devient une forme, avec remplissage et contour. Sans retour, hors Ctrl+Z."
     >
       Fermer le tracé pour en faire une forme
@@ -141,24 +143,27 @@ export default function ReglagesPanel({ nu = false, docNode = null }) {
   const maj = (m) => updateElement(el.id, m);
 
   return (
-    <div className={nu ? 'space-y-4' : 'p-3 space-y-4'}>
-      <div className="text-xs text-gray-500 dark:text-gray-400">
+    <div className={nu ? '' : 'px-3 pb-3'}>
+      <div className="py-2 text-xs text-gray-500 dark:text-gray-400">
         {NOMS[el.type] ?? 'Élément'} sélectionné
         {nombre > 1
           ? ` — ${nombre} éléments : ces réglages s'appliquent au premier.`
           : ' — désélectionnez-le pour retrouver les propositions.'}
       </div>
       {/* Ce qui vaut pour tout élément : position, remplir, supprimer, liaison produit */}
-      <ReglagesCommuns el={el} docNode={docNode} />
+      <div className="pb-3">
+        <ReglagesCommuns el={el} docNode={docNode} />
+      </div>
+      <div className="border-t border-gray-200 dark:border-gray-700">
       {sections.map((id) => {
         const { titre, Composant } = SECTIONS[id];
         return (
-          <section key={id} className="pt-3 border-t border-gray-200 dark:border-gray-700">
-            <h3 className="mb-2 text-xs font-medium text-gray-800 dark:text-gray-200">{titre}</h3>
+          <Section key={id} titre={titre}>
             <Composant el={el} maj={maj} docNode={docNode} />
-          </section>
+          </Section>
         );
       })}
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import React, { useEffect } from 'react';
 import useLabelStore from '../../store/useLabelStore';
 import { brushOptions, STROKE_WIDTH_RANGE, VARIATIONS } from '../../utils/dessin';
 import ReglagesPanel from './ReglagesPanel';
+import Segments from '../ui/Segments';
 import { borne, Couleur, Reglage } from './TraceSelectionne';
 
 const OUTILS = [
@@ -49,26 +50,12 @@ export default function DessinPanel({ docNode }) {
 
   return (
     <div className="p-3 space-y-4">
-      <div className="flex gap-1" role="group" aria-label="Outil de dessin">
-        {OUTILS.map((o) => {
-          const presse = o.id === 'selection' ? !actif : actif && brushType === o.id;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              aria-pressed={presse}
-              onClick={() => choisir(o.id)}
-              className={`flex-1 px-2 py-1.5 text-xs rounded border ${
-                presse
-                  ? 'bg-purple-600 text-white border-purple-600'
-                  : 'bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'
-              }`}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
+      <Segments
+        label="Outil de dessin"
+        options={OUTILS}
+        valeur={actif ? brushType : 'selection'}
+        onValeur={choisir}
+      />
 
       {/* Un tracé sélectionné : TOUS ses réglages (`ReglagesPanel`), à la place
           de ceux du pinceau */}
@@ -89,23 +76,12 @@ export default function DessinPanel({ docNode }) {
           <Reglage label="Épaisseur variable (%)" valeur={Math.round(thinning * 100)} min={0} max={100} onValeur={setPourcent('thinning')} />
           <div>
             <div className="text-xs text-gray-700 dark:text-gray-300 mb-1">Varie selon</div>
-            <div className="flex gap-1" role="group" aria-label="L'épaisseur varie selon">
-              {VARIATIONS.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  aria-pressed={variation === v.id}
-                  onClick={() => setReglagesDessin({ variation: v.id })}
-                  className={`flex-1 px-2 py-1 text-xs rounded border ${
-                    variation === v.id
-                      ? 'bg-purple-600 text-white border-purple-600'
-                      : 'bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'
-                  }`}
-                >
-                  {v.label}
-                </button>
-              ))}
-            </div>
+            <Segments
+              label="L'épaisseur varie selon"
+              options={VARIATIONS}
+              valeur={variation}
+              onValeur={(v) => setReglagesDessin({ variation: v })}
+            />
             {variation === 'stylet' && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {thinning > 0

@@ -8,6 +8,8 @@
 import React from 'react';
 import Curseur from '../ui/Curseur';
 import GradientColorPicker from '../GradientColorPicker';
+import Interrupteur from '../ui/Interrupteur';
+import { BOUTON_ACTION, LIGNE, PASTILLE } from '../ui/styles';
 import useLabelStore from '../../store/useLabelStore';
 import { composerCouleur, decomposerCouleur } from '../../utils/paint';
 import { DRAW_DEFAULTS, fusionDe, redessiner, REGLAGES_TRACE, STROKE_WIDTH_RANGE } from '../../utils/dessin';
@@ -27,7 +29,7 @@ export const Couleur = ({ label, valeur, onValeur }) => (
       aria-label={label}
       value={decomposerCouleur(valeur).hex}
       onChange={(e) => onValeur(composerCouleur(e.target.value, decomposerCouleur(valeur).alpha))}
-      className="w-10 h-6"
+      className={PASTILLE}
     />
   </label>
 );
@@ -77,15 +79,14 @@ export const TraceSelectionne = ({ el }) => {
         onValeur={(v) => set({ opacity: borne(v, 0, 100) / 100 })}
       />
       {/* Lot 5 : fusion « produit », celle du surligneur */}
-      <label className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
+      <div className={LIGNE}>
         <span>Fusion produit (surligneur)</span>
-        <input
-          type="checkbox"
-          checked={fusionDe(el) === 'multiply'}
-          onChange={(e) => set({ fusion: e.target.checked ? 'multiply' : null })}
-          className="accent-purple-600"
+        <Interrupteur
+          actif={fusionDe(el) === 'multiply'}
+          onActif={(v) => set({ fusion: v ? 'multiply' : null })}
+          label="Fusion produit (surligneur)"
         />
-      </label>
+      </div>
       <div className="pt-2 border-t border-gray-200 dark:border-gray-700 space-y-3">
         <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Redessiner le trait</div>
         <Reglage
@@ -103,7 +104,7 @@ export const TraceSelectionne = ({ el }) => {
         <button
           type="button"
           onClick={reprendre}
-          className="w-full px-2 py-1.5 text-xs rounded border bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600"
+          className={`${BOUTON_ACTION} w-full`}
         >
           Reprendre ces réglages pour le pinceau
         </button>

@@ -21,20 +21,14 @@ import FontSelector from '../FontSelector';
 import GradientColorPicker from '../GradientColorPicker';
 import Curseur from '../ui/Curseur';
 import { TYPO_BORNES } from '../../utils/typo';
+import { CHAMP, LIGNE as ligne, PASTILLE, boutonBascule as bouton } from '../ui/styles';
+
+const champ = `${CHAMP} w-16 text-right`;
 
 const TAILLE_MIN = 4;
 const TAILLE_MAX = 400;
 const CONTOUR_MAX = 40;
 
-const bouton = (actif) =>
-  `p-1.5 rounded-lg transition-colors ${
-    actif
-      ? 'bg-blue-500 hover:bg-blue-600 text-white'
-      : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-  }`;
-const champ =
-  'w-16 px-2 py-1 text-sm text-right border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white';
-const ligne = 'flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-gray-300';
 
 /** Police et taille (px). Taille bornée : 0 ou vide rendrait le texte invisible. */
 export const Police = ({ el, maj }) => (
@@ -102,7 +96,7 @@ export const Style = ({ el, maj }) => {
         type="color"
         value={el.highlightColor || '#FFFF00'}
         onChange={(e) => maj({ highlightColor: e.target.value, highlightEnabled: true })}
-        className="ml-1 w-8 h-8 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+        className={`ml-1 ${PASTILLE}`}
         title="Couleur du surlignage"
       />
     </div>
