@@ -236,7 +236,7 @@ Tout vit sous `frontend/modules/stick/`. La page est `/stick`
 | Le canvas, la sélection, les guides magnétiques | `labels/components/KonvaCanvas.jsx` |
 | Un type d'élément à l'écran | `labels/components/canvas/` — `TextNode`, `ImageNode`, `BarcodeNode`, `QRCodeNode`, `ShapeNode`, `FicheNode`, `CropOverlay` |
 | Les onglets de la barre latérale | `labels/components/ToolsSidebar.jsx` (la table `tools`) puis `labels/components/templates/` |
-| Les réglages de l'élément sélectionné | `labels/components/PropertyPanel.jsx`, affiché dans la barre de `CanvasArea.jsx` ; menus `MenuGroupe.jsx` |
+| Les réglages de l'élément sélectionné | `labels/components/templates/ReglagesPanel.jsx` et ses `Reglages*.jsx`, dans l'onglet du type (barre latérale) ; la carte est `utils/reglagesParType.js`. `PropertyPanel.jsx` et `MenuGroupe.jsx` n'existent plus (3 octobre 2026, voir `06-reprise-ui.md`) |
 | Sélection, lasso, suppression | `labels/store/useLabelStore.js` (`idsSelectionnes`, `setSelection`, `deleteElements`) et `KonvaCanvas.jsx` |
 | Recadrage, alignement, distribution | `labels/utils/crop.js`, `labels/utils/layout.js` — **copies de PocketStick** |
 | Fiche produit | `labels/utils/ficheProduit.js` (extraction), `labels/utils/ficheKonva.js` (dessin) |
@@ -252,7 +252,7 @@ produit AUCUNE erreur — c'est ce qui rendait l'onglet Formes muet :
 1. un composant dans `labels/components/canvas/` ;
 2. une branche `if (type === '…')` dans la boucle de rendu de `KonvaCanvas.jsx` ;
 3. un panneau dans `labels/components/templates/` qui appelle `addElement` ;
-4. ses réglages dans `PropertyPanel.jsx`, et son nom dans `LayersPanel.jsx` ;
+4. ses réglages : une entrée dans `utils/reglagesParType.js` (sections et onglet) et les composants dans `ReglagesPanel.jsx` ; son nom dans `LayersPanel.jsx` ;
 5. **sa branche dans `exportPdfSheet.js`** (`updateElementsWithProduct` s'il
    dépend du produit, `createDocumentImage` pour le dessin) — sinon il est à
    l'écran et au PDF solo, mais **absent de la planche**. Partager le dessin

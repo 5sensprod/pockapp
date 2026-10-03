@@ -65,10 +65,12 @@ describe('l’onglet suit la sélection', () => {
     expect(ongletApresSelection('shape', trace)).toBe('dessin');
   });
 
-  it('un onglet de travail ouvert reste : Calques ne se ferme pas sous la souris', () => {
-    for (const o of ['layers', 'effects', 'sheet', 'donnees', 'templates', 'format']) {
-      expect(ongletApresSelection(o, forme)).toBe(o);
-    }
+  it('Calques, Effets et Données produit restent : on y sélectionne pour travailler', () => {
+    for (const o of ['layers', 'effects', 'donnees']) expect(ongletApresSelection(o, forme)).toBe(o);
+  });
+
+  it('tous les autres suivent : après un template, cliquer un élément montre ses réglages', () => {
+    for (const o of ['templates', 'format', 'sheet']) expect(ongletApresSelection(o, forme)).toBe('shape');
   });
 
   it('Données produit ne se quitte pas d’office : on y ajoute plusieurs éléments liés d’affilée', () => {

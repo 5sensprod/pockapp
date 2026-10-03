@@ -79,22 +79,26 @@ const ONGLET_PAR_TYPE = {
 /** L'onglet des réglages de cet élément, ou null. */
 export const ongletDe = (el) => ONGLET_PAR_TYPE[el?.type] ?? null;
 
-// Les onglets qu'une sélection peut QUITTER d'office. Pas « Données produit » :
-// on y ajoute plusieurs éléments liés d'affilée (un texte, puis un prix…), et
-// chacun, sélectionné à sa création, enverrait vers un autre onglet.
-const ONGLETS_SUIVEURS = new Set(['text', 'image', 'shape', 'dessin']);
+// Les onglets qu'une sélection ne quitte PAS d'office — ceux où sélectionner
+// fait partie du travail de l'onglet :
+// - Calques : cliquer un calque sélectionne, l'onglet se fermerait sous la souris ;
+// - Effets : il règle justement l'élément sélectionné ;
+// - Données produit : on y ajoute plusieurs éléments liés d'affilée, et chacun,
+//   sélectionné à sa création, enverrait vers un autre onglet.
+// Tous les autres suivent (Templates, Taille et fond, Produits compris) : depuis
+// que la barre d'options a disparu, un élément sélectionné sans réglages à
+// l'écran laissait l'utilisateur sans rien pour le modifier.
+const ONGLETS_FIXES = new Set(['layers', 'effects', 'donnees']);
 
 /**
- * L'onglet à afficher quand la sélection vient de changer. On ne suit la
- * sélection QUE si le panneau est vide ou déjà sur un onglet de type : un
- * onglet de travail ouvert (Calques, Effets, Produits, Données produit,
- * Templates, Taille et fond) reste — cliquer un calque sélectionne, et
- * l'onglet Calques ne doit pas se fermer sous la souris.
+ * L'onglet à afficher quand la sélection vient de changer : celui du type de
+ * l'élément, sauf depuis un onglet fixe (`ONGLETS_FIXES`), où le bouton
+ * « Réglages » de la barre flottante reste le chemin.
  */
 export const ongletApresSelection = (courant, el) => {
   const cible = ongletDe(el);
   if (!cible) return courant;
-  return courant == null || ONGLETS_SUIVEURS.has(courant) ? cible : courant;
+  return ONGLETS_FIXES.has(courant) ? courant : cible;
 };
 
 const garder = (el) => (id) => !SELON_FORME[id] || SELON_FORME[id](el);
@@ -102,8 +106,7 @@ const garder = (el) => (id) => !SELON_FORME[id] || SELON_FORME[id](el);
 /**
  * Pour un élément : `{ barre, panneau }`, deux listes ordonnées de sections.
  * Type inconnu : rien de propre, seulement le commun.
- * `barre` est vide pour tout type : la barre d'options disparaît, la clé reste
- * le temps que `PropertyPanel` soit retiré.
+ * `barre` est vide pour tout type : la barre d'options ne porte plus de réglage.
  */
 export const reglagesDe = (el) => {
   const carte = CARTE[el?.type] ?? { barre: [], panneau: [] };

@@ -70,7 +70,7 @@ export const MARGE_ESPACE = 40;
 
 const KonvaCanvas = forwardRef(
   (
-    { viewportWidth = 0, viewportHeight = 0, docWidth = 800, docHeight = 600, zoom = 1, onDocNode },
+    { viewportWidth = 0, viewportHeight = 0, docWidth = 800, docHeight = 600, zoom = 1, onDocNode, onOpenReglages },
     ref
   ) => {
     const elements = useLabelStore((s) => s.elements);
@@ -980,7 +980,7 @@ const KonvaCanvas = forwardRef(
         <Layer listening={false} perfectDrawEnabled={false} />
       </Stage>
       {/* Étiquette de la sélection : HTML par-dessus le Stage (même repère) */}
-      <EtiquetteSelection stageRef={stageRef} transformerRef={transformerRef} />
+      <EtiquetteSelection stageRef={stageRef} transformerRef={transformerRef} onOpenReglages={onOpenReglages} />
       </>
     );
   }

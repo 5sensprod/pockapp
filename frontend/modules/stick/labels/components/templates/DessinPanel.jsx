@@ -18,7 +18,7 @@ const OUTILS = [
   { id: 'highlighter', label: 'Surligneur' },
 ];
 
-export default function DessinPanel() {
+export default function DessinPanel({ docNode }) {
   const actif = useLabelStore((s) => s.outilDessin);
   const reglages = useLabelStore((s) => s.reglagesDessin);
   const setOutilDessin = useLabelStore((s) => s.setOutilDessin);
@@ -73,7 +73,7 @@ export default function DessinPanel() {
       {/* Un tracé sélectionné : TOUS ses réglages (`ReglagesPanel`), à la place
           de ceux du pinceau */}
       {!actif && selection ? (
-        <ReglagesPanel nu />
+        <ReglagesPanel nu docNode={docNode} />
       ) : (
         <fieldset className="space-y-3 disabled:opacity-50" disabled={!actif}>
           <Reglage label="Épaisseur" valeur={strokeWidth} min={STROKE_WIDTH_RANGE[0]} max={STROKE_WIDTH_RANGE[1]} onValeur={setEpaisseur} />

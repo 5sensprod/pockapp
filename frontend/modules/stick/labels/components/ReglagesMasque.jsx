@@ -1,20 +1,17 @@
-// frontend/modules/stick/labels/components/MenuMasque.jsx
+// frontend/modules/stick/labels/components/ReglagesMasque.jsx
 //
-// Le menu « Masque » (forme, retrait, fondu, texture), partagé par l'IMAGE et
-// la FORME dans PropertyPanel. Le rendu diffère : `sceneFunc` pour une image
-// (`utils/imageForme.js`), filtre sur le cache pour une forme
-// (`utils/effetsKonva.js`) — mais le masque est construit par la même
-// fonction, `dessinerMasque`.
+// Les réglages du « Masque » (forme, retrait, fondu, texture), partagés par
+// l'IMAGE, la FORME et le TEXTE, affichés à plat dans `ReglagesPanel`. Le
+// rendu diffère : `sceneFunc` pour une image (`utils/imageForme.js`), filtre
+// sur le cache pour une forme ou un texte (`utils/effetsKonva.js`) — mais le
+// masque est construit par la même fonction, `dessinerMasque`.
 
 import React from 'react';
 import Curseur from './ui/Curseur';
-import { Shapes } from 'lucide-react';
-import MenuGroupe from './MenuGroupe';
 import MasqueTexture from './MasqueTexture';
 import { FONDU_MAX, MASQUES, RETRAIT_MAX } from '../utils/imageForme';
 
-/** Le CONTENU du menu, sans son enveloppe — aussi affiché à plat dans `ReglagesPanel`. */
-export const ReglagesMasque = ({ element, onChange }) => (
+const ReglagesMasque = ({ element, onChange }) => (
   <>
     <div className="grid grid-cols-3 gap-1.5 p-1">
       <button
@@ -67,15 +64,4 @@ export const ReglagesMasque = ({ element, onChange }) => (
   </>
 );
 
-const MenuMasque = ({ element, onChange }) => (
-  <MenuGroupe
-    icone={Shapes}
-    titre="Masque"
-    actif={!!(element.mask || element.maskTexture || element.maskPadding || element.maskFeather)}
-    largeur="16rem"
-  >
-    <ReglagesMasque element={element} onChange={onChange} />
-  </MenuGroupe>
-);
-
-export default MenuMasque;
+export default ReglagesMasque;

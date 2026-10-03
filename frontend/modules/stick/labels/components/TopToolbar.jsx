@@ -9,7 +9,6 @@ const TopToolbar = ({
   onNewLabel,
   docNode,
   selectedProduct,
-  onOpenEffects,
   onSave,
 }) => {
   const selectedId = useLabelStore((s) => s.selectedId);

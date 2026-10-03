@@ -45,14 +45,19 @@ export const LabelPage = () => {
     setSelectedTool((courant) => ongletApresSelection(courant, el));
   }, [idSelectionne]);
 
-  // Le bouton « Réglages » de la barre d'options : l'onglet du type, quel que
-  // soit celui qui est ouvert
+  // Le bouton « Réglages » (barre fine, et barre flottante de l'élément) :
+  // l'onglet du type, quel que soit celui qui est ouvert, barre latérale dépliée
   const handleOpenReglages = () => {
     const { elements, selectedId } = useLabelStore.getState();
     const onglet = ongletDe(elements.find((e) => e.id === selectedId));
     if (!onglet) return;
     setIsSidebarCollapsed(false);
     setSelectedTool(onglet);
+  };
+  // Le bouton « Effets » de la barre fine
+  const handleOpenEffets = () => {
+    setIsSidebarCollapsed(false);
+    setSelectedTool('effects');
   };
 
   // 📢 Toasts pour les notifications — `sonner`, comme partout dans le dépôt.
@@ -134,14 +139,6 @@ export const LabelPage = () => {
     }
   };
 
-  // ✅ Fonction pour ouvrir le panneau Effets
-  const handleOpenEffects = () => {
-    if (isSidebarCollapsed) {
-      setIsSidebarCollapsed(false);
-    }
-    setSelectedTool('effects');
-  };
-
   const handleNewLabel = () => {
     if (useLabelStore.getState().selectedProductIds.length > 0) setDemandeNouveau(true);
     else startNewDocument();
@@ -206,13 +203,12 @@ export const LabelPage = () => {
         </div>
       )}
 
-      {/* 🆕 TopToolbar avec selectedProduct et onOpenEffects */}
+      {/* TopToolbar avec selectedProduct */}
       <TopToolbar
         dataSource={dataSource}
         onNewLabel={handleNewLabel}
         docNode={docNode}
         selectedProduct={displayProduct}
-        onOpenEffects={handleOpenEffects}
         onSave={handleSaveTemplate}
       />
 
@@ -248,11 +244,9 @@ export const LabelPage = () => {
         {/* 🆕 CanvasArea avec ref pour le Stage */}
         <CanvasArea
           ref={stageRef}
-          dataSource={dataSource}
-          selectedProduct={displayProduct}
           onDocNodeReady={setDocNode}
-          onOpenEffects={handleOpenEffects}
           onOpenReglages={handleOpenReglages}
+          onOpenEffets={handleOpenEffets}
         />
       </div>
     </div>

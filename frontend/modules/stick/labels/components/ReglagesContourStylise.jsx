@@ -1,18 +1,17 @@
-// frontend/modules/stick/labels/components/MenuContourStylise.jsx
+// frontend/modules/stick/labels/components/ReglagesContourStylise.jsx
 //
-// Le menu « Contour stylisé » d'une FORME ou d'un TEXTE dans PropertyPanel :
-// épaisseur variable, effilements, ondulation, tremblé
-// (`utils/contourStylise.js`, `utils/texteContourStylise.js`).
-// `contourStyle` absent = contour Konva ordinaire, comme avant.
+// Les réglages du « Contour à main levée » d'une FORME, d'un TEXTE ou d'un
+// TRACÉ, affichés à plat dans `ReglagesPanel` : épaisseur variable,
+// effilements, ondulation, tremblé (`utils/contourStylise.js`,
+// `utils/texteContourStylise.js`, `utils/dessin.js`).
+// `contourStyle` absent = contour ordinaire, comme avant.
 // Pour un texte (`texte`) : pas d'effilements — sur un contour de lettre
 // fermé, ils amincissent le trait n'importe où —, et `ondes` est une densité.
 // Pour un tracé (`dessin`) : tremblé et ondulation seulement — épaisseur
-// variable et effilements sont déjà des réglages du tracé (DessinPanel) —, et
-// `ondes` est une densité par épaisseur de trait (`pointsDeformes`, dessin.js).
+// variable et effilements sont déjà des réglages du tracé —, et `ondes` est
+// une densité par épaisseur de trait (`pointsDeformes`, dessin.js).
 
 import React from 'react';
-import { Waves } from 'lucide-react';
-import MenuGroupe from './MenuGroupe';
 import Curseur from './ui/Curseur';
 import { CONTOUR_STYLISE_DEFAUT, ONDES_MAX, reglagesContour } from '../utils/contourStylise';
 
@@ -33,12 +32,7 @@ const CURSEURS_TEXTE = CURSEURS.filter(([cle]) => !cle.startsWith('effilement'))
 // Tracé : ce que perfect-freehand ne donne pas déjà.
 const CURSEURS_DESSIN = CURSEURS_TEXTE.filter(([cle]) => cle !== 'variation');
 
-/**
- * Le CONTENU du menu, sans son enveloppe : la case et ses curseurs. Affiché à
- * plat dans l'onglet « Réglages » de la barre latérale (`ReglagesPanel`), ou
- * dans le menu ci-dessous.
- */
-export const ReglagesContourStylise = ({ element, onChange, texte = false, dessin = false }) => {
+const ReglagesContourStylise = ({ element, onChange, texte = false, dessin = false }) => {
   const reglages = reglagesContour(element);
   const actif = !!reglages;
   const sansContour = !(Number(element.strokeWidth) > 0);
@@ -82,10 +76,4 @@ export const ReglagesContourStylise = ({ element, onChange, texte = false, dessi
   );
 };
 
-const MenuContourStylise = (props) => (
-  <MenuGroupe icone={Waves} titre="Contour stylisé" actif={!!reglagesContour(props.element)} largeur="17rem">
-    <ReglagesContourStylise {...props} />
-  </MenuGroupe>
-);
-
-export default MenuContourStylise;
+export default ReglagesContourStylise;

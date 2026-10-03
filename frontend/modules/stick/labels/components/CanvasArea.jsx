@@ -1,12 +1,11 @@
 import React, { useRef, useEffect, useState, useCallback, forwardRef } from 'react';
-import { Maximize2, Eye, EyeOff } from 'lucide-react';
+import { Maximize2, Eye, EyeOff, SlidersHorizontal, Sparkles } from 'lucide-react';
 import KonvaCanvas, { MARGE_ESPACE } from './KonvaCanvas';
-import PropertyPanel from './PropertyPanel';
 import BandeTirage from './BandeTirage';
 import useLabelStore from '../store/useLabelStore';
 
 const CanvasArea = forwardRef(
-  ({ dataSource, selectedProduct, onDocNodeReady, onOpenEffects, onOpenReglages }, ref) => {
+  ({ onDocNodeReady, onOpenReglages, onOpenEffets }, ref) => {
     const zoom = useLabelStore((s) => s.zoom);
     const canvasSize = useLabelStore((s) => s.canvasSize);
     const zoomIn = useLabelStore((s) => s.zoomIn);
@@ -54,11 +53,9 @@ const CanvasArea = forwardRef(
       ajuster();
     }, [viewport.width, canvasSize.width, canvasSize.height, ajuster]);
 
-    // Le groupe du document : la barre d'options y MESURE les éléments pour
-    // les aligner et les distribuer.
-    const [docNode, setDocNode] = useState(null);
+    // Le groupe du document : le panneau de réglages y MESURE les éléments
+    // pour les aligner et les distribuer (`ReglagesCommuns`).
     const handleDocNodeReady = (node) => {
-      setDocNode(node);
       if (onDocNodeReady) onDocNodeReady(node);
     };
 
@@ -67,14 +64,14 @@ const CanvasArea = forwardRef(
 
     return (
       <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-gray-100 dark:bg-gray-900">
-        {/* BARRE CONTEXTUELLE, reprise de PocketStick : hauteur FIXE et toujours
-            présente. Sélectionner un élément remplit la barre sans rien
-            pousser : le canvas ne saute plus. Trop d'options ? elles défilent
-            — mais PAS le zoom, épinglé à droite hors de la zone qui défile. */}
-        <div className="flex-none h-11 flex items-center gap-3 px-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs">
-         <div className="flex-1 min-w-0 h-full flex items-center gap-3 overflow-x-auto overflow-y-hidden">
-          {selectedId && (
-            <div className="flex-none flex items-center">
+        {/* BARRE FINE, hauteur fixe et toujours présente (le canvas ne saute
+            pas à la sélection). Elle ne porte plus AUCUN réglage (3 octobre
+            2026) : ils sont dans la barre latérale, dans l'onglet du type de
+            l'élément (`ReglagesPanel`). Il lui reste deux raccourcis vers ces
+            onglets — Réglages, Effets —, l'œil et le zoom. Rien n'y défile. */}
+        <div className="flex-none h-11 flex items-center gap-2 px-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs">
+          {selectedId ? (
+            <>
               <button
                 type="button"
                 onClick={basculerCadreMasque}
@@ -89,23 +86,34 @@ const CanvasArea = forwardRef(
               >
                 {cadreMasque ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
-            </div>
+              <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+              {onOpenReglages && (
+                <button
+                  type="button"
+                  onClick={onOpenReglages}
+                  className="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-2"
+                  title="Tous les réglages de cet élément, dans la barre latérale"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Réglages
+                </button>
+              )}
+              {onOpenEffets && (
+                <button
+                  type="button"
+                  onClick={onOpenEffets}
+                  className="px-3 py-1.5 text-sm font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition-colors flex items-center gap-2"
+                  title="Ombre, flou, ondulation… dans l'onglet Effets"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Effets
+                </button>
+              )}
+            </>
+          ) : (
+            <span className="text-gray-500 dark:text-gray-400">Sélectionnez un élément pour le modifier.</span>
           )}
-          <div className="flex-none">
-            {selectedId ? (
-              <PropertyPanel
-                selectedProduct={selectedProduct}
-                onOpenEffects={onOpenEffects}
-                onOpenReglages={onOpenReglages}
-                docNode={docNode}
-              />
-            ) : (
-              <span className="text-gray-500 dark:text-gray-400">
-                Sélectionnez un élément pour le modifier.
-              </span>
-            )}
-          </div>
-         </div>
+          <span className="flex-1" />
           <div className="flex-none flex items-center gap-1" role="group" aria-label="Zoom">
             <button type="button" onClick={zoomOut} className={boutonZoom} title="Zoom arrière (Ctrl + molette)">
               −

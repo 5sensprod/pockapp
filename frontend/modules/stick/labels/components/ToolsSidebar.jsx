@@ -85,6 +85,9 @@ const ToolsSidebar = ({
     }
   };
 
+  // Ouvrir un onglet depuis un panneau : sans la bascule d'un clic sur l'icône
+  const ouvrirOutil = (toolId) => (onToolChange ? onToolChange(toolId) : setInternalSelectedTool(toolId));
+
   // Mode icônes uniquement
   if (isCollapsed) {
     return (
@@ -181,7 +184,7 @@ const ToolsSidebar = ({
                       dataSource={dataSource}
                       selectedProduct={selectedProduct}
                       docNode={docNode}
-                      onOpenTool={handleToolClick}
+                      onOpenTool={ouvrirOutil}
                     />
                   )}
                 </>

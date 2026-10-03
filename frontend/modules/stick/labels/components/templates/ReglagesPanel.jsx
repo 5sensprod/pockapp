@@ -5,7 +5,8 @@
 // prennent la place des propositions de base dans l'onglet du TYPE de
 // l'élément (Texte, Assets, Dessin… — `ongletDe`, `ToolsSidebar`).
 // Désélectionner y remet les propositions. La barre d'options au-dessus du
-// canvas ne garde que le noyau.
+// canvas ne porte plus aucun réglage : deux raccourcis (Réglages, Effets),
+// l'œil et le zoom.
 //
 // Ce qui s'affiche est décidé par `utils/reglagesParType.js` (une section n'est
 // jamais aux deux endroits) ; ce fichier ne fait que relier un identifiant de
@@ -19,14 +20,15 @@ import useLabelStore from '../../store/useLabelStore';
 import { ongletDe, reglagesDe } from '../../utils/reglagesParType';
 import { redessiner } from '../../utils/dessin';
 import { lissageDe, relisser } from '../../utils/formeLibre';
-import { ReglagesContourStylise } from '../MenuContourStylise';
-import { ReglagesMasque } from '../MenuMasque';
+import ReglagesContourStylise from '../ReglagesContourStylise';
+import ReglagesMasque from '../ReglagesMasque';
 import Curseur from '../ui/Curseur';
 import { TraceSelectionne } from './TraceSelectionne';
 import * as Texte from './ReglagesTexte';
 import * as Photo from './ReglagesImage';
 import * as Codes from './ReglagesCodes';
 import * as Fiche from './ReglagesFiche';
+import ReglagesCommuns from './ReglagesCommuns';
 
 const ARRONDI_MAX = 200;
 
@@ -136,13 +138,6 @@ export default function ReglagesPanel({ nu = false, docNode = null }) {
     return <p className="p-4 text-sm text-gray-500 dark:text-gray-400">Sélectionnez un élément pour voir ses réglages.</p>;
   }
   const sections = sectionsAffichees(el);
-  if (!sections.length) {
-    return (
-      <p className="p-4 text-sm text-gray-500 dark:text-gray-400">
-        Les réglages de cet élément sont dans la barre, au-dessus de la page.
-      </p>
-    );
-  }
   const maj = (m) => updateElement(el.id, m);
 
   return (
@@ -153,10 +148,12 @@ export default function ReglagesPanel({ nu = false, docNode = null }) {
           ? ` — ${nombre} éléments : ces réglages s'appliquent au premier.`
           : ' — désélectionnez-le pour retrouver les propositions.'}
       </div>
+      {/* Ce qui vaut pour tout élément : position, remplir, supprimer, liaison produit */}
+      <ReglagesCommuns el={el} docNode={docNode} />
       {sections.map((id) => {
         const { titre, Composant } = SECTIONS[id];
         return (
-          <section key={id} className="pt-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0 first:pt-0">
+          <section key={id} className="pt-3 border-t border-gray-200 dark:border-gray-700">
             <h3 className="mb-2 text-xs font-medium text-gray-800 dark:text-gray-200">{titre}</h3>
             <Composant el={el} maj={maj} docNode={docNode} />
           </section>

@@ -49,7 +49,7 @@ aucune collection PocketBase ne les porte encore.
 les champs liables (`el.dataBinding`) sont dans le registre
 `labels/utils/champsProduit.js` — clés canoniques, alias **lus sans jamais
 être réécrits** dans les templates IndexedDB ou `.json` —, se changent par le
-bloc `LiaisonProduit.jsx` des Propriétés, et les éléments liés (texte, photo,
+bloc `LiaisonProduit.jsx` du panneau de réglages, et les éléments liés (texte, photo,
 galerie `product_gallery_N`, QR, code-barres, fiche) ne s'ajoutent QUE depuis
 l'onglet orange « Données produit », par les créations uniques de
 `utils/ajoutsProduit.js`. Texte, Médias et Assets n'ajoutent que du statique.
@@ -79,6 +79,13 @@ lit le FICHIER de la police (opentype.js, servi en TTF par
 `/api/fonts/file`, point 9) mais garde la mise en page de Konva : la police
 ne donne que la forme des lettres. `texteContourStylise.js` est la seule règle
 de rendu, canvas et export planche ; sans police chargée, contour ordinaire.
+**Les réglages d'un élément sont dans la barre latérale, dans l'onglet de son
+type** (3 octobre 2026, [`06-reprise-ui.md`](frontend/modules/stick/PocketStick-docs/06-reprise-ui.md)) :
+`PropertyPanel.jsx` et la barre d'options qui défilait n'existent plus.
+Sélectionner un élément affiche `templates/ReglagesPanel.jsx` à la place des
+propositions de l'onglet ; désélectionner les ramène. Quel réglage pour quel
+type, et dans quel onglet : `utils/reglagesParType.js`, seule décision. La
+barre du haut ne porte que l'œil, « Réglages », « Effets » et le zoom.
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation

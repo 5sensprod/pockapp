@@ -20,6 +20,7 @@ import {
   PaintBucket,
   Paintbrush,
   SendToBack,
+  SlidersHorizontal,
 } from 'lucide-react';
 import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
 
@@ -41,7 +42,7 @@ const zoneVisible = (el) => {
 const saisieEnCours = (cible) =>
   cible?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(cible?.tagName);
 
-const EtiquetteSelection = ({ stageRef, transformerRef }) => {
+const EtiquetteSelection = ({ stageRef, transformerRef, onOpenReglages }) => {
   const selectedId = useLabelStore((s) => s.selectedId);
   const extraIds = useLabelStore((s) => s.extraIds);
   const elements = useLabelStore((s) => s.elements);
@@ -153,6 +154,17 @@ const EtiquetteSelection = ({ stageRef, transformerRef }) => {
       style={{ top, left, height: HAUTEUR }}
       onPointerDown={(e) => e.stopPropagation()}
     >
+      {/* Les réglages de l'élément, dans l'onglet de son type : le seul chemin
+          quand un onglet de travail (Calques, Effets…) est ouvert, ou la barre
+          latérale repliée — la sélection ne les ferme pas d'office. */}
+      {onOpenReglages && (
+        <>
+          <button type="button" className={bouton} onClick={onOpenReglages} title="Réglages de cet élément">
+            <SlidersHorizontal className="h-4 w-4" />
+          </button>
+          <span className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+        </>
+      )}
       <button
         type="button"
         className={bouton}
