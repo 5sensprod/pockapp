@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Search } from 'lucide-react';
+import { useFlottant } from './useFlottant';
 import { useGoogleFonts } from '../hooks/useGoogleFonts';
 import { loadGoogleFont } from '../utils/loadGoogleFont';
 
@@ -7,9 +8,11 @@ const FontSelector = ({ value, onChange, apiKey }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const boutonRef = useRef(null);
+  const listeRef = useRef(null);
   // Position ÉCRAN de la liste : la barre d'options défile (overflow), une
   // liste en `absolute` y était coupée — invisible.
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const place = useFlottant(isOpen, boutonRef, listeRef, 4);
 
   const { fonts, loading } = useGoogleFonts(apiKey);
 
@@ -39,18 +42,20 @@ const FontSelector = ({ value, onChange, apiKey }) => {
         setIsOpen(false);
       }
     };
+    const touche = (e) => e.key === 'Escape' && setIsOpen(false);
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', touche);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', touche);
+    };
   }, []);
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 264) });
-          setIsOpen(!isOpen);
-        }}
+        ref={boutonRef}
+        onClick={() => setIsOpen(!isOpen)}
         className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 w-[120px]"
       >
         <span className="truncate" style={{ fontFamily: value }}>
@@ -60,8 +65,9 @@ const FontSelector = ({ value, onChange, apiKey }) => {
 
       {isOpen && (
         <div
-          style={{ top: pos.top, left: pos.left }}
-          className="fixed w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 max-h-96 flex flex-col">
+          ref={listeRef}
+          style={{ top: place.top, left: place.left, maxHeight: place.maxHeight ? Math.min(384, place.maxHeight) : undefined }}
+          className="fixed w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 flex flex-col">
           {/* Recherche */}
           <div className="p-2 border-b border-gray-200 dark:border-gray-700">
             <div className="relative">

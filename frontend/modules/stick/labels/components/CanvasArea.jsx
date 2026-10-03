@@ -69,8 +69,10 @@ const CanvasArea = forwardRef(
       <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-gray-100 dark:bg-gray-900">
         {/* BARRE CONTEXTUELLE, reprise de PocketStick : hauteur FIXE et toujours
             présente. Sélectionner un élément remplit la barre sans rien
-            pousser : le canvas ne saute plus. Trop d'options ? elle défile. */}
-        <div className="flex-none h-11 flex items-center gap-3 px-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs overflow-x-auto overflow-y-hidden">
+            pousser : le canvas ne saute plus. Trop d'options ? elles défilent
+            — mais PAS le zoom, épinglé à droite hors de la zone qui défile. */}
+        <div className="flex-none h-11 flex items-center gap-3 px-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs">
+         <div className="flex-1 min-w-0 h-full flex items-center gap-3 overflow-x-auto overflow-y-hidden">
           {selectedId && (
             <div className="flex-none flex items-center">
               <button
@@ -98,7 +100,7 @@ const CanvasArea = forwardRef(
               </span>
             )}
           </div>
-          <span className="flex-1" />
+         </div>
           <div className="flex-none flex items-center gap-1" role="group" aria-label="Zoom">
             <button type="button" onClick={zoomOut} className={boutonZoom} title="Zoom arrière (Ctrl + molette)">
               −

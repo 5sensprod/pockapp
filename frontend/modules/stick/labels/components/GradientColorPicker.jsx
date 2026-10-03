@@ -12,6 +12,7 @@
 // linéaire — le choix « Radial » n'est pas proposé.
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useFlottant } from './useFlottant';
 import { Trash2 } from 'lucide-react';
 import {
   DEFAULT_LINEAR_GRADIENT,
@@ -114,10 +115,11 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
   const [arret, setArret] = useState(0); // arrêt sélectionné
   const racine = useRef(null);
   const pastille = useRef(null);
+  const fenetre = useRef(null);
   const barre = useRef(null);
   // Position ÉCRAN de la fenêtre : la barre contextuelle défile (overflow),
   // une fenêtre en `absolute` y serait coupée.
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const place = useFlottant(ouvert, pastille, fenetre, 8);
 
   // Le mode suit l'élément sélectionné (changer de sélection, annuler…).
   useEffect(() => setMode(peinture ? 'degrade' : 'uni'), [!!peinture]);
@@ -206,11 +208,7 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
       <button
         type="button"
         ref={pastille}
-        onClick={() => {
-          const r = pastille.current?.getBoundingClientRect();
-          if (r) setPos({ top: r.bottom + 8, left: Math.min(r.left, window.innerWidth - 272) });
-          setOuvert((o) => !o);
-        }}
+        onClick={() => setOuvert((o) => !o)}
         className="w-10 h-8 rounded border border-gray-300 dark:border-gray-600 shadow-inner"
         style={{ background: peinture ? paintToCss(peinture) : color }}
         title={title}
@@ -218,8 +216,11 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
 
       {ouvert && (
         <div
-          style={{ top: pos.top, left: pos.left }}
-          className="fixed z-50 w-64 p-3 space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl whitespace-normal">
+          ref={fenetre}
+          // Dans l'écran, hauteur bornée : en dégradé ou en texture le contenu
+          // dépassait le bas de l'écran, sans ascenseur (`useFlottant`)
+          style={place}
+          className="fixed z-50 w-64 p-3 space-y-3 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl whitespace-normal">
           <div className="flex gap-1">
             <button type="button" className={onglet(mode === 'uni')} onClick={passerEnUni}>
               Uni

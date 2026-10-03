@@ -287,48 +287,23 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
             <MenuMasque element={selectedElement} onChange={(maj) => updateElement(selectedId, maj)} />
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
 
-            {/* Style : gras, italique, souligné, barré, surlignage — un menu */}
-            <MenuGroupe
-              icone={Bold}
-              titre="Style du texte"
-              actif={isBold || isItalic || isUnderline || isStrike || isHighlighted}
-            >
-              <div className="flex items-center gap-1">
-            {/* Gras / Italique / Souligné / Barré */}
+            {/* Gras, italique, souligné : un clic, directement dans la barre */}
             <div className="flex items-center gap-1">
-              <button
-                onClick={toggleBold}
-                className={`p-1.5 rounded-lg transition-colors ${
-                  isBold
-                    ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-                }`}
-                title="Gras"
-              >
-                <Bold className="h-4 w-4" />
-              </button>
-              <button
-                onClick={toggleItalic}
-                className={`p-1.5 rounded-lg transition-colors ${
-                  isItalic
-                    ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-                }`}
-                title="Italique"
-              >
-                <Italic className="h-4 w-4" />
-              </button>
-              <button
-                onClick={toggleUnderline}
-                className={`p-1.5 rounded-lg transition-colors ${
-                  isUnderline
-                    ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-                }`}
-                title="Souligné"
-              >
-                <Underline className="h-4 w-4" />
-              </button>
+              {[
+                [toggleBold, isBold, 'Gras', Bold],
+                [toggleItalic, isItalic, 'Italique', Italic],
+                [toggleUnderline, isUnderline, 'Souligné', Underline],
+              ].map(([basculer, actif, label, Icone]) => (
+                <button key={label} onClick={basculer} className={petitBouton(actif)} title={label}>
+                  <Icone className="h-4 w-4" />
+                </button>
+              ))}
+            </div>
+
+            {/* Barré et surlignage, plus rares : un menu */}
+            <MenuGroupe icone={Strikethrough} titre="Barré, surlignage" actif={isStrike || isHighlighted}>
+              <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1">
               <button
                 onClick={toggleStrike}
                 className={`p-1.5 rounded-lg transition-colors ${
@@ -369,11 +344,7 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
               </div>
             </MenuGroupe>
 
-            {/* Alignement dans le bloc — l'icône du bouton montre l'actuel */}
-            <MenuGroupe
-              icone={(BOUTONS_TEXTE.find(([v]) => v === (selectedElement.align ?? 'left')) ?? BOUTONS_TEXTE[0])[2]}
-              titre="Alignement du texte"
-            >
+            {/* Alignement dans le bloc : un clic, directement dans la barre */}
             {/* Alignement du texte DANS son bloc. Sans largeur fixée, le bloc
                 épouse le texte : on lui en donne une pour que ça se voie. */}
             <div className="flex items-center gap-1">
@@ -395,8 +366,6 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                 </button>
               ))}
             </div>
-
-            </MenuGroupe>
 
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
           </>
