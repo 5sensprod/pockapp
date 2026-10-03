@@ -1,4 +1,4 @@
-# Reprise — UI de l'éditeur, puis l'outil Dessin
+# Reprise — UI de l'éditeur, puis l'outil Dessin (deux missions terminées)
 
 ## État au 30 septembre 2026 — mission « UI » terminée, poussée sur `main`
 
@@ -33,70 +33,35 @@ Pièges rencontrés, à ne pas refaire :
 
 ---
 
-## Prompt de reprise — mission suivante : l'outil Dessin
+## Mission « Améliorer les dessins » — terminée, commit `e2d5c65`
 
-```
-Contexte : PocketApp (I:\pockapp), module `stick` (PocketStick, /stick), éditeur
-d'affiches Konva. Lis d'abord CLAUDE.md, puis dans
-frontend/modules/stick/PocketStick-docs/ : 05-dessin.md (l'outil Dessin, lots
-0 à 6, contour stylisé lot A, ondulation lot B), 07-contour-lettres.md (la
-section « Implémentation ») et ce fichier (06-reprise-ui.md, les pièges).
+| Lot | Fait |
+|---|---|
+| 1 — Tremblé et ondulation sur un tracé (menu « Contour stylisé », `pointsDeformes`) | oui |
+| 2 — Fermer un tracé en forme `shape: 'libre'` (`utils/formeLibre.js`), lissage réglable après coup (`traceLibre`, `relisser`) | oui |
+| Hors lot — copier/coller le style ne colle plus la géométrie d'un dessin ; un style collé sur un tracé recalcule son cadre | oui |
 
-═══ MISSION : AMÉLIORER LES DESSINS ═══
+Détail, compromis et ce qui est perdu à la fermeture :
+[`05-dessin.md`](05-dessin.md), section « Mission Améliorer les dessins ».
 
-Lot 1 — Options « à main levée » sur les tracés
-Les formes et les lettres ont le menu « Contour stylisé → Contour à main
-levée » (épaisseur variable, tremblé, ondulation) : MenuContourStylise.jsx,
-moteur `styliserContour` (utils/contourStylise.js), partagé. Un élément
-`dessin` n'y a pas accès : son trait vient de `strokeOutline` (utils/dessin.js,
-perfect-freehand) à partir de ses points gardés, rendu par `dessinTrace` —
-seule règle, canvas (DessinNode.jsx) et export planche (exportPdfSheet.js,
-branche dessin, fusion posée sur le GROUPE).
-Voulu : tremblé et ondulation (au moins) appliqués à un tracé.
-À établir AVANT de coder, et à me soumettre :
-- ce qui existe déjà côté dessin (thinning = épaisseur variable ;
-  effilements ; stabilisation) et ce qui manque vraiment ;
-- où appliquer la déformation : sur les POINTS du tracé avant
-  `strokeOutline` (le trait reste un perfect-freehand), ou en passant le
-  tracé par `styliserContour` (trait ouvert, `ferme: false`) ;
-- `ondes` : nombre sur tout le tracé (comme une forme) ou densité par
-  longueur (comme les lettres, `ondesDuContour`) ;
-- le cache de `dessinTrace` (clé des réglages) et `redessiner` (lot 6 : le
-  cadre change quand le trait change) doivent suivre ;
-- l'aperçu pendant le tracé (DessinCalque.jsx) : avec ou sans la
-  déformation ?
+Non fait au moment du commit : `pnpm build:client`, et la vérification d'un
+PDF exporté (page et planche). Les tests du module passent (270).
 
-Lot 2 — Fermer un tracé pour en faire une forme
-Voulu : un tracé qu'on ferme devient une forme — REMPLISSAGE (couleur,
-dégradé, texture) et CONTOUR (couleur, épaisseur, contour à main levée),
-comme une forme géométrique.
-À décider avec moi avant de coder :
-- le geste : fermer au relâchement quand le dernier point revient près du
-  premier ? bouton « Fermer le tracé » dans la barre ? les deux ?
-- le modèle : un `dessin` qui gagne `ferme: true` + `fill` + `stroke`, ou
-  une nouvelle forme `shape: 'libre'` avec ses points dans ShapeNode /
-  `dessinForme` (qui sait déjà peindre remplissage + contour stylisé,
-  ombre de silhouette, `cadreReel`, texture calée sur le cadre réel) ?
-  Attention : aujourd'hui `dessin.fill` est la COULEUR DU TRAIT (le trait
-  est un polygone rempli) — ne pas casser les dessins existants.
-- réversible (rouvrir) ou non ;
-- Transformer : une forme libre redimensionnée doit enregistrer sa taille
-  et une échelle 1 (`handleTransformEnd`, KonvaCanvas.jsx, voir `57248bd`)
-  — donc mettre ses points à l'échelle, pas le nœud.
+Pièges rencontrés, à ne pas refaire :
+- **Les points gardés d'un tracé sont BRUTS** : le trait qu'on voit a déjà
+  traversé la stabilisation de perfect-freehand. Toute géométrie tirée d'un
+  tracé part de `ligneDuTrait` (`dessin.js`), pas de `pointsDe`.
+- **`styliserContour` n'est pas un simple déformateur** : son `getStroke` a
+  ses propres réglages (pression tirée du bruit, `streamline: 0`). Pour
+  déformer sans changer de trait : `deformerLigne`.
+- **Tout champ de GÉOMÉTRIE ajouté à un élément va dans `HORS_STYLE`**
+  (`styleCopie.js`) — sinon « coller le style » colle la forme. Oublié pour
+  `points`, vu à l'usage.
+- **Un changement qui déplace le contour d'un tracé passe par `redessiner`**
+  (cadre recalculé), jamais par un `updateElement` direct — y compris depuis
+  `collerStyle`.
+- **perfect-freehand n'est pas exactement invariant d'échelle** : rejouer un
+  tracé à une autre taille s'écarte de 0,1 à 0,2 px. Les tests tolèrent un
+  demi-pixel par unité d'échelle ; ne pas viser l'égalité.
 
-MÉTHODE
-1. État des lieux (chemin:ligne), puis proposition avec compromis.
-2. ME DEMANDER avant d'implémenter, et avant toute nouvelle dépendance npm.
-3. Un lot à la fois ; commit seulement quand je le dis.
-
-CONTRAINTES DU DÉPÔT
-- Répondre en français. Distinguer lu dans le code (chemin:ligne) et rapporté.
-- Module .jsx/.js non typé ; ne pas lancer `pnpm format`.
-- Logique testable → module pur. Tests : `npx vitest run frontend/modules/stick`.
-  Build : `pnpm build:client`, seulement serveur de dev arrêté — sinon demander.
-- Ne pas lancer de serveur de preview sans me le demander. Recharger la page
-  déconnecte : me prévenir avant.
-- Rendu IDENTIQUE à l'écran et dans les deux exports (page par clone,
-  planche par `exportPdfSheet`). Un dessin existant ne doit pas changer
-  d'aspect : réglage absent = comportement d'avant.
-```
+Aucune mission suivante n'est arrêtée.
