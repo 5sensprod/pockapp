@@ -1,6 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { MARGE, accrocher, contraindre, deplacer, depuisPave, pasClavier, polaire, valeurGlissee, versPave } from './pave2D';
-import { OMBRE_BORNES, OMBRE_DEFAUT, PRESETS_OMBRE, couleurAvecOpacite, filtreApercu, ombreDe } from './presetsOmbre';
+import {
+  OMBRE_BORNES,
+  OMBRE_DEFAUT,
+  OMBRE_INTERNE,
+  OMBRE_INTERNE_BORNES,
+  OMBRE_INTERNE_DEFAUT,
+  PRESETS_OMBRE,
+  PRESETS_OMBRE_INTERNE,
+  couleurAvecOpacite,
+  filtreApercu,
+  ombreDe,
+  ombreDuPreset,
+  ombreInterneApercu,
+} from './presetsOmbre';
 
 const pave = { taille: 112, max: 40, pas: 1 };
 
@@ -92,6 +105,32 @@ describe('ombre portée : défauts, préréglages, aperçu', () => {
   it('le filtre d’aperçu suit l’échelle du pavé', () => {
     expect(filtreApercu({ couleur: '#000000', opacite: 0.4, flou: 8, x: 2, y: -4 }, 1.25)).toBe(
       'drop-shadow(2.5px -5px 5px rgba(0, 0, 0, 0.4))'
+    );
+  });
+});
+
+describe('ombre interne : mêmes formes, autres clés', () => {
+  it('lit les clés `innerShadow*`, avec ses propres défauts (opacité 0,5)', () => {
+    expect(ombreDe({}, OMBRE_INTERNE)).toEqual({ actif: false, couleur: '#000000', opacite: 0.5, flou: 8, x: 2, y: 2 });
+    // l'ombre portée du même élément n'y entre pas
+    expect(ombreDe({ shadowEnabled: true, shadowOffsetX: 30 }, OMBRE_INTERNE)).toMatchObject({ actif: false, x: 2 });
+    expect(ombreDe({ innerShadowEnabled: true, innerShadowBlur: 50 }, OMBRE_INTERNE)).toMatchObject({ actif: true, flou: 50 });
+  });
+  it('ses préréglages portent exactement ses six clés, dans ses bornes (flou jusqu’à 60)', () => {
+    const cles = ['innerShadowEnabled', ...Object.keys(OMBRE_INTERNE_DEFAUT)].sort();
+    for (const p of PRESETS_OMBRE_INTERNE) {
+      expect(Object.keys(p.valeurs).sort(), p.id).toEqual(cles);
+      const o = ombreDuPreset(p, OMBRE_INTERNE);
+      expect(o.actif).toBe(true);
+      expect(o.flou).toBeLessThanOrEqual(OMBRE_INTERNE_BORNES.flou);
+      expect(Math.abs(o.x)).toBeLessThanOrEqual(OMBRE_INTERNE_BORNES.decalage);
+    }
+    // aucun préréglage d'une ombre n'écrit dans l'autre
+    for (const p of PRESETS_OMBRE) expect(Object.keys(p.valeurs).some((c) => c.startsWith('inner'))).toBe(false);
+  });
+  it('aperçu en `box-shadow` inset', () => {
+    expect(ombreInterneApercu({ couleur: '#000000', opacite: 0.5, flou: 8, x: 2, y: 2 }, 1)).toBe(
+      'inset 2px 2px 4px rgba(0, 0, 0, 0.5)'
     );
   });
 });

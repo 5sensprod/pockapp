@@ -1,8 +1,17 @@
-// src/features/labels/components/templates/EffectsTemplates.jsx
+// frontend/modules/stick/labels/components/templates/EffectsTemplates.jsx
+//
+// Onglet « Effets » : ce qui s'applique à l'élément sélectionné quel que soit
+// son type — ombre portée, ombre interne, flou, ondulation — et, pour une
+// image, les effets d'image. Un effet = une section, son interrupteur dans
+// l'en-tête, son détail seulement quand il est actif (`ui/Section.jsx`).
+//
+// Les clés écrites, leurs bornes et leurs pas sont ceux d'avant la refonte
+// du 3 octobre 2026 : le rendu (`utils/effetsKonva.js`, `ondulation.js`,
+// `effetsImage.js`) et les exports ne changent pas. `blurFade` et
+// `ondulationEffet` sont des OBJETS : chaque écriture rend l'objet entier.
+
 import React from 'react';
-import { Sparkles } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
-import BlocOmbre from './BlocOmbre';
 import { FLOU_MAX } from '../../utils/effetsKonva';
 import { EFFECTS, sanitizeFilters, setEffectIntensity, toggleEffect } from '../../utils/effetsImage';
 import {
@@ -12,324 +21,182 @@ import {
   ONDULATION_DEFAUT,
   SENS_ONDULATION,
 } from '../../utils/ondulation';
+import Curseur from '../ui/Curseur';
+import Interrupteur from '../ui/Interrupteur';
+import Section from '../ui/Section';
+import Segments from '../ui/Segments';
+import BlocOmbre from './BlocOmbre';
 
-// Un effet réglable : case à cocher, puis curseur d'intensité quand il est actif.
-const ReglageEffet = ({ label, actif, valeur, min, max, onActif, onValeur }) => (
+const NOMS = { dessin: 'Tracé', shape: 'Forme', text: 'Texte', image: 'Image', qrcode: 'QR code', barcode: 'Code-barres', fiche: 'Fiche' };
+const FONDU_DEFAUT = { angle: 180, from: 0.3, to: 0.8 };
+const pourcent = (v) => `${Math.round(v * 100)} %`;
+
+// Une option qui s'active, sur une ligne : libellé et interrupteur
+const Option = ({ label, actif, onActif }) => (
+  <div className="min-h-7 flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-gray-300">
+    <span>{label}</span>
+    <Interrupteur actif={actif} onActif={onActif} label={label} />
+  </div>
+);
+
+// Un effet d'image réglable : son interrupteur, puis son intensité quand il est actif
+const EffetImage = ({ label, actif, valeur, min, max, onActif, onValeur }) => (
   <div>
-    <label className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
-      <span>
-        {label}
-        {actif && <span className="ml-2 text-gray-500 tabular-nums">{Math.round(valeur * 100)}</span>}
-      </span>
-      <input type="checkbox" checked={actif} onChange={(e) => onActif(e.target.checked)} className="accent-purple-600" />
-    </label>
+    <Option label={label} actif={actif} onActif={onActif} />
     {actif && (
-      <input
-        type="range"
+      <Curseur
+        label="Intensité"
+        largeurLabel="w-14"
         min={min}
         max={max}
         step={0.01}
-        value={valeur}
-        onChange={(e) => onValeur(parseFloat(e.target.value))}
-        className="w-full h-2 mt-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
+        valeur={valeur}
+        affichage={(v) => Math.round(v * 100)}
+        onValeur={onValeur}
       />
     )}
   </div>
 );
 
 const EffectsTemplates = () => {
-  const { elements, selectedId, updateElement } = useLabelStore();
+  const el = useLabelStore((s) => s.elements.find((e) => e.id === s.selectedId) ?? null);
+  const updateElement = useLabelStore((s) => s.updateElement);
 
-  const selectedElement = elements.find((el) => el.id === selectedId);
-
-  // Si aucun élément sélectionné
-  if (!selectedElement) {
+  if (!el) {
     return (
-      <div className="p-3 space-y-4">
-        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
-          <div className="flex items-start gap-2">
-            <Sparkles className="h-4 w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-            <div className="text-xs text-yellow-800 dark:text-yellow-200">
-              <div className="font-medium mb-1">Aucun élément sélectionné</div>
-              <div>Sélectionnez un élément sur le canvas pour appliquer des effets</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <p className="p-4 text-sm text-gray-500 dark:text-gray-400">
+        Sélectionnez un élément sur la page pour lui donner une ombre, un flou ou une ondulation.
+      </p>
     );
   }
 
+  const maj = (m) => updateElement(el.id, m);
+  const flou = el.blurRadius ?? 10;
+  const fondu = el.blurFade ?? null;
+  const onde = el.ondulationEffet ?? null;
+  const onduler = (m) => maj({ ondulationEffet: { ...ONDULATION_DEFAUT, ...onde, ...m } });
+
   return (
-    <div className="p-3 space-y-4">
-      {/* Info */}
-      <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg">
-        <div className="flex items-start gap-2">
-          <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-purple-800 dark:text-purple-200">
-            <div className="font-medium mb-1">Effets pour : {selectedElement.type}</div>
-            <div>Ajoutez une ombre ou un flou à votre élément</div>
-          </div>
-        </div>
-      </div>
+    <div className="px-3 pb-3">
+      <div className="py-2 text-xs text-gray-500 dark:text-gray-400">Effets — {NOMS[el.type] ?? 'élément'} sélectionné</div>
 
-      {/* Ombre portée : pavé-aperçu, préréglages (`BlocOmbre.jsx`) */}
-      <BlocOmbre el={selectedElement} />
-
-      {/* Ombre interne (`ombreInterneDe`, `utils/effetsKonva.js`) : le bord de
-          l'élément projette son ombre vers l'intérieur. Même filtre à l'écran
-          et dans les deux exports. */}
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-        <label className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 p-3 cursor-pointer">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Ombre interne</span>
-          <input
-            type="checkbox"
-            checked={!!selectedElement.innerShadowEnabled}
-            onChange={(e) => updateElement(selectedId, { innerShadowEnabled: e.target.checked })}
-            className="h-4 w-4 accent-purple-600"
-          />
-        </label>
-        {selectedElement.innerShadowEnabled && (
-          <div className="p-3 space-y-3 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-20">Couleur</span>
-              <input
-                type="color"
-                value={selectedElement.innerShadowColor ?? '#000000'}
-                onChange={(e) => updateElement(selectedId, { innerShadowColor: e.target.value })}
-                className="w-10 h-8 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
-              />
-            </div>
-            {[
-              ['innerShadowOpacity', 'Opacité', 0, 1, 0.05, 0.5, (v) => `${Math.round(v * 100)}%`],
-              ['innerShadowBlur', 'Flou', 0, 60, 1, 8, (v) => `${v}px`],
-              ['innerShadowOffsetX', 'Décalage X', -40, 40, 1, 2, (v) => `${v}px`],
-              ['innerShadowOffsetY', 'Décalage Y', -40, 40, 1, 2, (v) => `${v}px`],
-            ].map(([cle, libelle, min, max, step, defaut, fmt]) => {
-              const v = selectedElement[cle] ?? defaut;
-              return (
-                <div key={cle}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{libelle}</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{fmt(v)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={min}
-                    max={max}
-                    step={step}
-                    value={v}
-                    onChange={(e) => updateElement(selectedId, { [cle]: parseFloat(e.target.value) })}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* Ombre portée, puis ombre interne (`ombreInterneDe`, `utils/effetsKonva.js` :
+          le bord projette son ombre vers l'intérieur) — le même bloc */}
+      <BlocOmbre el={el} />
+      <BlocOmbre el={el} interne />
 
       {/* Flou de l'élément entier (`utils/effetsKonva.js`), repris de PocketStick */}
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-        <div className="bg-gray-50 dark:bg-gray-800/50 p-3 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Flou</span>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!!selectedElement.blurEnabled}
-              onChange={(e) =>
-                updateElement(selectedId, {
-                  blurEnabled: e.target.checked,
-                  blurRadius: selectedElement.blurRadius ?? 10,
-                })
-              }
-              className="sr-only peer"
+      <Section
+        titre="Flou"
+        actif={!!el.blurEnabled}
+        onActif={(v) => maj({ blurEnabled: v, blurRadius: el.blurRadius ?? 10 })}
+        aide="Floute l’élément entier."
+      >
+        <Curseur
+          label="Intensité"
+          largeurLabel="w-14"
+          max={Math.min(FLOU_MAX, 100)}
+          valeur={flou}
+          affichage={(v) => `${v} px`}
+          defaut={10}
+          onValeur={(blurRadius) => maj({ blurRadius })}
+        />
+        {/* Dégradé de flou (`fonduFlou`) : net d'un côté, flou de l'autre */}
+        <Option
+          label="Dégradé (net → flou)"
+          actif={!!fondu}
+          onActif={(v) => maj({ blurFade: v ? { ...FONDU_DEFAUT } : null })}
+        />
+        {fondu &&
+          [
+            ['angle', 'Direction', 0, 359, 1, (v) => `${v}°`],
+            ['from', 'Début du flou', 0, 1, 0.01, pourcent],
+            ['to', 'Flou complet', 0, 1, 0.01, pourcent],
+          ].map(([cle, label, min, max, step, format]) => (
+            <Curseur
+              key={cle}
+              label={label}
+              largeurLabel="w-24"
+              min={min}
+              max={max}
+              step={step}
+              valeur={fondu[cle]}
+              affichage={format}
+              defaut={FONDU_DEFAUT[cle]}
+              onValeur={(v) => maj({ blurFade: { ...fondu, [cle]: v } })}
             />
-            <div className="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
-          </label>
-        </div>
-        {selectedElement.blurEnabled && (
-          <div className="p-3">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Intensité</label>
-              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                {selectedElement.blurRadius ?? 10}px
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={Math.min(FLOU_MAX, 100)}
-              step={1}
-              value={selectedElement.blurRadius ?? 10}
-              onChange={(e) => updateElement(selectedId, { blurRadius: parseFloat(e.target.value) })}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
-            />
+          ))}
+      </Section>
 
-            {/* Dégradé de flou (`fonduFlou`, `utils/effetsKonva.js`) : net d'un
-                côté, flou de l'autre. */}
-            <label className="mt-3 flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
-              Dégradé (net → flou)
-              <input
-                type="checkbox"
-                checked={!!selectedElement.blurFade}
-                onChange={(e) =>
-                  updateElement(selectedId, {
-                    blurFade: e.target.checked ? { angle: 180, from: 0.3, to: 0.8 } : null,
-                  })
-                }
-                className="accent-purple-600"
+      {/* Ondulation de l'élément entier, en pixels (`utils/ondulation.js`) */}
+      <Section
+        titre="Ondulation"
+        actif={!!onde}
+        onActif={(v) => maj({ ondulationEffet: v ? { ...ONDULATION_DEFAUT } : null })}
+        aide="Fait onduler l’élément entier, comme une vague."
+      >
+        {onde && (
+          <>
+            <Segments
+              label="Sens de l'ondulation"
+              options={SENS_ONDULATION}
+              valeur={onde.sens ?? 'horizontal'}
+              onValeur={(sens) => onduler({ sens })}
+            />
+            {[
+              ['amplitude', 'Amplitude', 0, AMPLITUDE_MAX],
+              ['longueur', 'Longueur d’onde', LONGUEUR_MIN, LONGUEUR_MAX],
+            ].map(([cle, label, min, max]) => (
+              <Curseur
+                key={cle}
+                label={label}
+                largeurLabel="w-24"
+                min={min}
+                max={max}
+                valeur={onde[cle] ?? ONDULATION_DEFAUT[cle]}
+                affichage={(v) => `${v} px`}
+                defaut={ONDULATION_DEFAUT[cle]}
+                onValeur={(v) => onduler({ [cle]: v })}
               />
-            </label>
-            {selectedElement.blurFade && (
-              <div className="mt-2 space-y-2">
-                {[
-                  ['angle', 'Direction', 0, 359, 1, (v) => `${v}°`],
-                  ['from', 'Début du flou', 0, 1, 0.01, (v) => `${Math.round(v * 100)} %`],
-                  ['to', 'Flou complet', 0, 1, 0.01, (v) => `${Math.round(v * 100)} %`],
-                ].map(([cle, label, min, max, step, format]) => (
-                  <div key={cle}>
-                    <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-                      <span>{label}</span>
-                      <span className="tabular-nums">{format(selectedElement.blurFade[cle])}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={selectedElement.blurFade[cle]}
-                      onChange={(e) =>
-                        updateElement(selectedId, {
-                          blurFade: { ...selectedElement.blurFade, [cle]: parseFloat(e.target.value) },
-                        })
-                      }
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+            ))}
+          </>
         )}
-      </div>
+      </Section>
 
       {/* Effets d'image, repris de PocketStick (`utils/effetsImage.js`) */}
-      {/* Ondulation de l'élément entier, en pixels (`utils/ondulation.js`) */}
-      {(() => {
-        const onde = selectedElement.ondulationEffet ?? null;
-        const set = (maj) => updateElement(selectedId, { ondulationEffet: { ...ONDULATION_DEFAUT, ...onde, ...maj } });
-        return (
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-            <div className="bg-gray-50 dark:bg-gray-800/50 p-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Ondulation</span>
-              <input
-                type="checkbox"
-                aria-label="Ondulation"
-                checked={!!onde}
-                onChange={(e) =>
-                  updateElement(selectedId, { ondulationEffet: e.target.checked ? { ...ONDULATION_DEFAUT } : null })
-                }
-                className="accent-purple-600"
+      {el.type === 'image' && (
+        <Section titre="Effets d’image">
+          {[
+            ['sepiaEnabled', 'Sépia'],
+            ['grayscaleEnabled', 'Noir et blanc'],
+          ].map(([cle, label]) => (
+            <Option key={cle} label={label} actif={!!el[cle]} onActif={(v) => maj({ [cle]: v })} />
+          ))}
+          <EffetImage
+            label="Luminosité"
+            actif={!!el.brightnessEnabled}
+            valeur={el.brightness ?? 0}
+            min={-1}
+            max={1}
+            onActif={(v) => maj({ brightnessEnabled: v, brightness: el.brightness ?? 0.2 })}
+            onValeur={(brightness) => maj({ brightness })}
+          />
+          {EFFECTS.map((effet) => {
+            const courant = (sanitizeFilters(el.filters) || {})[effet.name];
+            return (
+              <EffetImage
+                key={effet.name}
+                label={effet.label}
+                actif={!!courant}
+                valeur={courant?.intensity ?? effet.initial}
+                min={effet.range[0]}
+                max={effet.range[1]}
+                onActif={(v) => maj({ filters: toggleEffect(el.filters, effet.name, v) })}
+                onValeur={(v) => maj({ filters: setEffectIntensity(el.filters, effet.name, v) })}
               />
-            </div>
-            {onde && (
-              <div className="p-3 space-y-3">
-                <div className="flex gap-1" role="group" aria-label="Sens de l'ondulation">
-                  {SENS_ONDULATION.map((sens) => (
-                    <button
-                      key={sens.id}
-                      type="button"
-                      aria-pressed={(onde.sens ?? 'horizontal') === sens.id}
-                      onClick={() => set({ sens: sens.id })}
-                      className={`flex-1 px-2 py-1 text-xs rounded border ${
-                        (onde.sens ?? 'horizontal') === sens.id
-                          ? 'bg-purple-600 text-white border-purple-600'
-                          : 'bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'
-                      }`}
-                    >
-                      {sens.label}
-                    </button>
-                  ))}
-                </div>
-                {[
-                  ['amplitude', 'Amplitude', 0, AMPLITUDE_MAX],
-                  ['longueur', "Longueur d'onde", LONGUEUR_MIN, LONGUEUR_MAX],
-                ].map(([cle, libelle, min, max]) => (
-                  <div key={cle}>
-                    <div className="flex justify-between text-xs text-gray-700 dark:text-gray-300">
-                      <span>{libelle}</span>
-                      <span className="tabular-nums">{onde[cle] ?? ONDULATION_DEFAUT[cle]} px</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={1}
-                      value={onde[cle] ?? ONDULATION_DEFAUT[cle]}
-                      onChange={(e) => set({ [cle]: parseFloat(e.target.value) })}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {selectedElement.type === 'image' && (
-        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 dark:bg-gray-800/50 p-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Effets d'image
-          </div>
-          <div className="p-3 space-y-3">
-            {[
-              ['sepiaEnabled', 'Sépia'],
-              ['grayscaleEnabled', 'Noir et blanc'],
-            ].map(([cle, label]) => (
-              <label key={cle} className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
-                {label}
-                <input
-                  type="checkbox"
-                  checked={!!selectedElement[cle]}
-                  onChange={(e) => updateElement(selectedId, { [cle]: e.target.checked })}
-                  className="accent-purple-600"
-                />
-              </label>
-            ))}
-            <ReglageEffet
-              label="Luminosité"
-              actif={!!selectedElement.brightnessEnabled}
-              valeur={selectedElement.brightness ?? 0}
-              min={-1}
-              max={1}
-              onActif={(v) =>
-                updateElement(selectedId, { brightnessEnabled: v, brightness: selectedElement.brightness ?? 0.2 })
-              }
-              onValeur={(v) => updateElement(selectedId, { brightness: v })}
-            />
-            {EFFECTS.map((effet) => {
-              const filtres = sanitizeFilters(selectedElement.filters) || {};
-              const courant = filtres[effet.name];
-              return (
-                <ReglageEffet
-                  key={effet.name}
-                  label={effet.label}
-                  actif={!!courant}
-                  valeur={courant?.intensity ?? effet.initial}
-                  min={effet.range[0]}
-                  max={effet.range[1]}
-                  onActif={(v) =>
-                    updateElement(selectedId, { filters: toggleEffect(selectedElement.filters, effet.name, v) })
-                  }
-                  onValeur={(v) =>
-                    updateElement(selectedId, { filters: setEffectIntensity(selectedElement.filters, effet.name, v) })
-                  }
-                />
-              );
-            })}
-          </div>
-        </div>
+            );
+          })}
+        </Section>
       )}
     </div>
   );
