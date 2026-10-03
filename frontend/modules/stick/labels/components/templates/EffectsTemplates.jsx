@@ -12,6 +12,8 @@
 
 import React from 'react';
 import useLabelStore from '../../store/useLabelStore';
+import { redessiner } from '../../utils/dessin';
+import { ciblesDe, majDeSelection } from '../../utils/majSelection';
 import { FLOU_MAX } from '../../utils/effetsKonva';
 import { EFFECTS, sanitizeFilters, setEffectIntensity, toggleEffect } from '../../utils/effetsImage';
 import {
@@ -60,7 +62,7 @@ const EffetImage = ({ label, actif, valeur, min, max, onActif, onValeur }) => (
 
 const EffectsTemplates = () => {
   const el = useLabelStore((s) => s.elements.find((e) => e.id === s.selectedId) ?? null);
-  const updateElement = useLabelStore((s) => s.updateElement);
+  const nombre = useLabelStore((s) => ciblesDe(s, s.elements.find((e) => e.id === s.selectedId) ?? null, false).length);
 
   if (!el) {
     return (
@@ -70,7 +72,15 @@ const EffectsTemplates = () => {
     );
   }
 
-  const maj = (m) => updateElement(el.id, m);
+  // Un effet vaut pour TOUTE la sélection, quel que soit le type, en un seul
+  // pas d'historique (`utils/majSelection.js`) ; un effet d'image, pour les
+  // images sélectionnées seulement.
+  const appliquer = (m, memeType) => {
+    const etat = useLabelStore.getState();
+    etat.updateElements(majDeSelection(etat, el, m, { memeType, redessiner }));
+  };
+  const maj = (m) => appliquer(m, false);
+  const majImage = (m) => appliquer(m, true);
   const flou = el.blurRadius ?? 10;
   const fondu = el.blurFade ?? null;
   const onde = el.ondulationEffet ?? null;
@@ -78,12 +88,12 @@ const EffectsTemplates = () => {
 
   return (
     <div className="px-3 pb-3">
-      <div className="py-2 text-xs text-gray-500 dark:text-gray-400">Effets — {NOMS[el.type] ?? 'élément'} sélectionné</div>
+      <div className="py-2 text-xs text-gray-500 dark:text-gray-400">Effets — {NOMS[el.type] ?? 'élément'}{nombre > 1 && ` et ${nombre - 1} autre${nombre > 2 ? 's' : ''}, réglés ensemble`}</div>
 
       {/* Ombre portée, puis ombre interne (`ombreInterneDe`, `utils/effetsKonva.js` :
           le bord projette son ombre vers l'intérieur) — le même bloc */}
-      <BlocOmbre el={el} />
-      <BlocOmbre el={el} interne />
+      <BlocOmbre el={el} maj={maj} />
+      <BlocOmbre el={el} maj={maj} interne />
 
       {/* Flou de l'élément entier (`utils/effetsKonva.js`), repris de PocketStick */}
       <Section
@@ -130,7 +140,7 @@ const EffectsTemplates = () => {
 
       {/* Ondulation de l'élément entier, en pixels (`utils/ondulation.js`) */}
       <Section
-        titre="Ondulation"
+        titre="Ondulation de l’élément"
         actif={!!onde}
         onActif={(v) => maj({ ondulationEffet: v ? { ...ONDULATION_DEFAUT } : null })}
         aide="Fait onduler l’élément entier, comme une vague."
@@ -170,7 +180,7 @@ const EffectsTemplates = () => {
             ['sepiaEnabled', 'Sépia'],
             ['grayscaleEnabled', 'Noir et blanc'],
           ].map(([cle, label]) => (
-            <Option key={cle} label={label} actif={!!el[cle]} onActif={(v) => maj({ [cle]: v })} />
+            <Option key={cle} label={label} actif={!!el[cle]} onActif={(v) => majImage({ [cle]: v })} />
           ))}
           <EffetImage
             label="Luminosité"
@@ -178,8 +188,8 @@ const EffectsTemplates = () => {
             valeur={el.brightness ?? 0}
             min={-1}
             max={1}
-            onActif={(v) => maj({ brightnessEnabled: v, brightness: el.brightness ?? 0.2 })}
-            onValeur={(brightness) => maj({ brightness })}
+            onActif={(v) => majImage({ brightnessEnabled: v, brightness: el.brightness ?? 0.2 })}
+            onValeur={(brightness) => majImage({ brightness })}
           />
           {EFFECTS.map((effet) => {
             const courant = (sanitizeFilters(el.filters) || {})[effet.name];
@@ -191,8 +201,8 @@ const EffectsTemplates = () => {
                 valeur={courant?.intensity ?? effet.initial}
                 min={effet.range[0]}
                 max={effet.range[1]}
-                onActif={(v) => maj({ filters: toggleEffect(el.filters, effet.name, v) })}
-                onValeur={(v) => maj({ filters: setEffectIntensity(el.filters, effet.name, v) })}
+                onActif={(v) => majImage({ filters: toggleEffect(el.filters, effet.name, v) })}
+                onValeur={(v) => majImage({ filters: setEffectIntensity(el.filters, effet.name, v) })}
               />
             );
           })}

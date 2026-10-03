@@ -252,6 +252,25 @@ const useLabelStore = create((set, get) => ({
       };
     }),
 
+  /**
+   * Plusieurs éléments d'un coup, en UN pas d'historique : `parId` =
+   * `{ id: mises à jour }` (`utils/majSelection.js`). Même règle de geste que
+   * `updateElement` — un curseur tenu sur trois éléments reste un seul pas —,
+   * la clé portant tous les ids et tous les champs.
+   */
+  updateElements: (parId) =>
+    set((state) => {
+      const ids = Object.keys(parId ?? {}).sort();
+      if (!ids.length) return {};
+      const champs = {};
+      for (const id of ids) for (const cle of Object.keys(parId[id])) champs[cle] = true;
+      const cle = cleGeste(ids.join('+'), champs);
+      const t = Date.now();
+      if (!prolongeGeste(gesteEnCours, cle, t)) state._pushHistory(snapshotOf(state));
+      gesteEnCours = { cle, t };
+      return { elements: state.elements.map((el) => (parId[el.id] ? { ...el, ...parId[el.id] } : el)) };
+    }),
+
   deleteElement: (id) =>
     set((state) => {
       state._pushHistory(snapshotOf(state));

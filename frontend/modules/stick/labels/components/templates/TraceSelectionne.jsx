@@ -30,10 +30,11 @@ export const Couleur = ({ label, valeur, onValeur }) => (
 
 // Tracé sélectionné : couleur, opacité, fusion — et, depuis le lot 6, ses
 // réglages de tracé, rejoués sur les points gardés (`redessiner`).
-export const TraceSelectionne = ({ el }) => {
+export const TraceSelectionne = ({ el, maj }) => {
   const updateElement = useLabelStore((s) => s.updateElement);
   const setReglagesDessin = useLabelStore((s) => s.setReglagesDessin);
-  const set = (attrs) => updateElement(el.id, attrs);
+  // `maj` du panneau : le réglage vaut pour tous les tracés sélectionnés
+  const set = (attrs) => (maj ? maj(attrs) : updateElement(el.id, attrs));
   // Un curseur tenu = un geste d'historique : les clés envoyées sont toujours les mêmes
   const retracer = (maj) => {
     const updates = redessiner(el, maj);

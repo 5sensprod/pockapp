@@ -12,7 +12,7 @@
 // Une police ne se colle donc pas sur une image, ni une couleur de barres sur
 // un QR.
 
-const HORS_STYLE = new Set([
+export const HORS_STYLE = new Set([
   'id', 'type', 'name', 'shape', 'section',
   'x', 'y', 'width', 'height', 'size', 'rotation', 'scaleX', 'scaleY', 'aspectRatio',
   'text', 'title', 'qrValue', 'barcodeValue', 'format', 'src',

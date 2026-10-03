@@ -20,7 +20,7 @@ import { CONTOUR_STYLISE_DEFAUT, ONDES_MAX, reglagesContour } from '../utils/con
 const CURSEURS = [
   ['variation', 'Épaisseur variable', 100],
   ['tremble', 'Tremblé', 100],
-  ['ondulation', 'Ondulation', 100],
+  ['ondulation', 'Ondulation du contour', 100],
   ['ondes', 'Nombre d’ondes', ONDES_MAX],
   ['effilementDebut', 'Effiler le début', 100],
   ['effilementFin', 'Effiler la fin', 100],
@@ -63,7 +63,7 @@ const ReglagesContourStylise = ({ element, onChange, texte = false, dessin = fal
             <Curseur
               key={cle}
               label={libelle}
-              largeurLabel="w-28"
+              largeurLabel="w-32"
               className="px-1 pt-2"
               min={entier ? 1 : 0}
               max={max}

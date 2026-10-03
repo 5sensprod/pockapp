@@ -45,19 +45,18 @@ const Apercu = ({ ombre, interne, echelle, taille }) =>
     <span className={`${taille} rounded bg-white`} style={{ filter: filtreApercu(ombre, echelle) }} />
   );
 
-const BlocOmbre = ({ el, interne = false }) => {
-  const updateElement = useLabelStore((s) => s.updateElement);
+const BlocOmbre = ({ el, maj, interne = false }) => {
   const variante = interne ? OMBRE_INTERNE : OMBRE_PORTEE;
   const { cles, bornes, defaut } = variante;
   const presets = interne ? PRESETS_OMBRE_INTERNE : PRESETS_OMBRE;
   const ombre = ombreDe(el, variante);
   // Pixels d'écran par unité de décalage : l'ombre de l'aperçu tombe sous la poignée
   const echelle = (TAILLE - 2 * MARGE) / 2 / bornes.decalage;
-  const maj = (m) => updateElement(el.id, m);
   const decaler = ({ x, y }) => maj({ [cles.x]: x, [cles.y]: y });
   const { angle, distance } = polaire(ombre.x, ombre.y);
 
-  // Comme avant : un `updateElement` par élément (un pas d'annulation chacun)
+  // Toute l'affiche, en UN pas d'annulation (`updateElements`) — avant, un
+  // `updateElement` par élément : autant de Ctrl+Z que d'éléments
   const appliquerATous = () => {
     const valeurs = {
       [cles.actif]: ombre.actif,
@@ -67,7 +66,8 @@ const BlocOmbre = ({ el, interne = false }) => {
       [cles.x]: ombre.x,
       [cles.y]: ombre.y,
     };
-    useLabelStore.getState().elements.forEach((e) => updateElement(e.id, valeurs));
+    const { elements, updateElements } = useLabelStore.getState();
+    updateElements(Object.fromEntries(elements.map((e) => [e.id, valeurs])));
   };
 
   return (

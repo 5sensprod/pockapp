@@ -22,6 +22,7 @@ import GradientColorPicker from '../GradientColorPicker';
 import Curseur from '../ui/Curseur';
 import { TYPO_BORNES } from '../../utils/typo';
 import PastilleCouleur from '../ui/PastilleCouleur';
+import Segments from '../ui/Segments';
 import { CHAMP, LIGNE as ligne, boutonBascule as bouton } from '../ui/styles';
 
 const champ = `${CHAMP} w-16 text-right`;
@@ -115,36 +116,60 @@ const ALIGNEMENTS = [
  * Alignement du texte DANS son bloc. Sans largeur fixée, le bloc épouse le
  * texte et l'alignement ne se verrait pas : on lui donne sa largeur actuelle.
  */
-export const Alignement = ({ el, maj, docNode }) => (
-  <div>
-    <div className="flex items-center gap-1">
-      {ALIGNEMENTS.map(([valeur, label, Icone]) => (
-        <button
-          key={valeur}
-          type="button"
-          onClick={() => {
-            const m = { align: valeur };
-            if (el.width == null) {
-              const w = docNode?.findOne(`#${el.id}`)?.getClientRect({ skipShadow: true, relativeTo: docNode })?.width;
-              if (w) m.width = Math.round(w);
-            }
-            maj(m);
-          }}
-          className={bouton((el.align ?? 'left') === valeur)}
-          title={label}
-          aria-pressed={(el.align ?? 'left') === valeur}
-        >
-          <Icone className="h-4 w-4" />
-        </button>
-      ))}
+export const Alignement = ({ el, maj, docNode }) => {
+  const largeurMesuree = () => {
+    const w = docNode?.findOne(`#${el.id}`)?.getClientRect({ skipShadow: true, relativeTo: docNode })?.width;
+    return w ? Math.round(w) : null;
+  };
+  const fixe = el.width != null;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1">
+        {ALIGNEMENTS.map(([valeur, label, Icone]) => (
+          <button
+            key={valeur}
+            type="button"
+            onClick={() => {
+              const m = { align: valeur };
+              // Sans largeur fixée, le bloc épouse le texte : on lui en donne une
+              if (!fixe) {
+                const w = largeurMesuree();
+                if (w) m.width = w;
+              }
+              maj(m);
+            }}
+            className={bouton((el.align ?? 'left') === valeur)}
+            title={label}
+            aria-pressed={(el.align ?? 'left') === valeur}
+          >
+            <Icone className="h-4 w-4" />
+          </button>
+        ))}
+      </div>
+      {/* La largeur du bloc, visible et réversible : choisir un alignement la
+          fixait sans le dire, et rien ne permettait de revenir en arrière */}
+      <div className={ligne}>
+        <span>Largeur du bloc</span>
+        <div className="w-40">
+          <Segments
+            label="Largeur du bloc"
+            valeur={fixe}
+            onValeur={(v) => {
+              if (v === fixe) return;
+              if (!v) return maj({ width: undefined });
+              const w = largeurMesuree();
+              if (w) maj({ width: w });
+            }}
+            options={[
+              { id: false, label: 'Auto', titre: 'Le bloc épouse le texte' },
+              { id: true, label: fixe ? `${Math.round(el.width)} px` : 'Fixe', titre: 'Le texte se range dans une largeur fixe, et passe à la ligne' },
+            ]}
+          />
+        </div>
+      </div>
     </div>
-    {el.width == null && (
-      <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-        Choisir un alignement fixe la largeur du bloc à sa largeur actuelle.
-      </p>
-    )}
-  </div>
-);
+  );
+};
 
 /** Couleur du texte : unie, dégradé ou texture. */
 export const Couleur = ({ el, maj }) => (

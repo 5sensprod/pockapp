@@ -13,12 +13,14 @@
 // section à son composant. Une section qui n'a pas encore de composant ici est
 // restée dans la barre : `SECTIONS` grandit type par type.
 //
-// Comme la barre, le panneau règle l'élément PRINCIPAL de la sélection.
+// Le panneau montre les valeurs de l'élément PRINCIPAL de la sélection, et
+// applique chaque réglage à tous les éléments sélectionnés du même type.
 
 import React from 'react';
 import useLabelStore from '../../store/useLabelStore';
 import { ongletDe, reglagesDe } from '../../utils/reglagesParType';
 import { redessiner } from '../../utils/dessin';
+import { ciblesDe, majDeSelection } from '../../utils/majSelection';
 import { lissageDe, relisser } from '../../utils/formeLibre';
 import ReglagesContourStylise from '../ReglagesContourStylise';
 import ReglagesMasque from '../ReglagesMasque';
@@ -34,7 +36,7 @@ import ReglagesCommuns from './ReglagesCommuns';
 
 const ARRONDI_MAX = 200;
 
-const Trace = ({ el }) => <TraceSelectionne el={el} />;
+const Trace = ({ el, maj }) => <TraceSelectionne el={el} maj={maj} />;
 
 const ContourStylise = ({ el, maj }) =>
   el.type === 'dessin' ? (
@@ -133,22 +135,28 @@ const NOMS = { dessin: 'Tracé', shape: 'Forme', text: 'Texte', image: 'Image', 
 /** `nu` : sans marges ni titre, quand un autre panneau l'accueille (Dessin). */
 export default function ReglagesPanel({ nu = false, docNode = null }) {
   const el = useLabelStore((s) => s.elements.find((e) => e.id === s.selectedId) ?? null);
-  const nombre = useLabelStore((s) => (s.selectedId ? 1 + s.extraIds.length : 0));
-  const updateElement = useLabelStore((s) => s.updateElement);
+  // Combien d'éléments ce panneau règle : la sélection du MÊME type que le principal
+  const nombre = useLabelStore((s) => ciblesDe(s, s.elements.find((e) => e.id === s.selectedId) ?? null).length);
+  const autres = useLabelStore((s) => (s.selectedId ? 1 + s.extraIds.length : 0)) - nombre;
 
   if (!el) {
     return <p className="p-4 text-sm text-gray-500 dark:text-gray-400">Sélectionnez un élément pour voir ses réglages.</p>;
   }
   const sections = sectionsAffichees(el);
-  const maj = (m) => updateElement(el.id, m);
+  // Un réglage vaut pour TOUTE la sélection de ce type, en un seul pas
+  // d'historique : le style se partage, la géométrie reste à chacun, un tracé
+  // est redessiné pour lui-même (`utils/majSelection.js`).
+  const maj = (m) => {
+    const etat = useLabelStore.getState();
+    etat.updateElements(majDeSelection(etat, el, m, { redessiner }));
+  };
 
   return (
     <div className={nu ? '' : 'px-3 pb-3'}>
       <div className="py-2 text-xs text-gray-500 dark:text-gray-400">
-        {NOMS[el.type] ?? 'Élément'} sélectionné
-        {nombre > 1
-          ? ` — ${nombre} éléments : ces réglages s'appliquent au premier.`
-          : ' — désélectionnez-le pour retrouver les propositions.'}
+        {NOMS[el.type] ?? 'Élément'}
+        {nombre > 1 && ` — réglés ensemble : ${nombre}`}
+        {autres > 0 && ` (${autres} d'un autre type ou verrouillé${autres > 1 ? 's' : ''} : non touché${autres > 1 ? 's' : ''})`}
       </div>
       {/* Ce qui vaut pour tout élément : position, remplir, supprimer, liaison produit */}
       <div className="pb-3">
