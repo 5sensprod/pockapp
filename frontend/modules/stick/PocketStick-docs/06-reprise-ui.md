@@ -183,4 +183,4 @@ Changé au passage : le préréglage d'ombre « colorée (Indigo) » a disparu
 d'ombre interne sont nouveaux.
 
 Gardiens : `utils/pave2D.test.js` (pavé, champ à glisser, ombres). `pnpm build:client`
-passe (3 octobre 2026, sur `3cffe3d`).
+passe (3 octobre 2026, sur `aa61bc3`).
