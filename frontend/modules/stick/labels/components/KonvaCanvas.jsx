@@ -113,7 +113,9 @@ const KonvaCanvas = forwardRef(
         useLabelStore.getState().basculerCadreMasque();
       };
       const onDown = (e) => {
-        if (e.target?.matches?.('input[type="range"]')) useLabelStore.getState().setCadreMasqueGeste(true);
+        // Un curseur, ou tout réglage qui se glisse (`data-geste-reglage` : pavé
+        // 2D, champ à glisser — la poignée est un enfant, d'où `closest`)
+        if (e.target?.closest?.('input[type="range"], [data-geste-reglage]')) useLabelStore.getState().setCadreMasqueGeste(true);
       };
       const onUp = () => {
         if (useLabelStore.getState().cadreMasqueGeste) useLabelStore.getState().setCadreMasqueGeste(false);

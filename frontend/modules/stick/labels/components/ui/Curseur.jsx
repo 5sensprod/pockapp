@@ -43,6 +43,9 @@ const Curseur = ({
       value={valeur}
       onChange={(e) => onValeur(Number(e.target.value))}
       onDoubleClick={defaut === undefined ? undefined : () => onValeur(defaut)}
+      // Relâché à la souris : le focus est rendu, Suppr et H du canvas marchent
+      // aussitôt (ils ignorent une cible INPUT). Au clavier (Tab), le focus reste.
+      onPointerUp={(e) => e.currentTarget.blur()}
       title={defaut === undefined ? undefined : 'Double-clic : valeur normale'}
       className={`${classes} cursor-pointer accent-blue-600`}
     />
