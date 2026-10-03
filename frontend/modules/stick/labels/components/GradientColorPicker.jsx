@@ -13,6 +13,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useFlottant } from './useFlottant';
+import Curseur from './ui/Curseur';
 import { Trash2 } from 'lucide-react';
 import {
   DEFAULT_LINEAR_GRADIENT,
@@ -70,22 +71,6 @@ const ChampCouleur = ({ label, value, onChange }) => (
   </label>
 );
 
-const Curseur = ({ label, valeur, affichage, min, max, step, onChange }) => (
-  <label className="block text-xs text-gray-600 dark:text-gray-300">
-    <span className="flex justify-between">
-      {label} <span className="tabular-nums">{affichage ?? valeur}</span>
-    </span>
-    <input
-      type="range"
-      min={min}
-      max={max}
-      step={step}
-      value={valeur}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="w-full"
-    />
-  </label>
-);
 
 // Aperçu RÉEL d'une peinture : un canvas pour une texture (`motifTexture`,
 // même fonction que le dessin), le CSS pour un dégradé.
@@ -238,14 +223,14 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
                 value={decomposerCouleur(color).hex}
                 onChange={(v) => onColorChange(composerCouleur(v, decomposerCouleur(color).alpha))}
               />
-              <Curseur
+              <Curseur disposition="bloc"
                 label="Opacité"
                 valeur={decomposerCouleur(color).alpha}
                 affichage={`${Math.round(decomposerCouleur(color).alpha * 100)} %`}
                 min={0}
                 max={1}
                 step={0.01}
-                onChange={(v) => onColorChange(composerCouleur(decomposerCouleur(color).hex, v))}
+                onValeur={(v) => onColorChange(composerCouleur(decomposerCouleur(color).hex, v))}
               />
               <div className="grid grid-cols-6 gap-1.5">
                 {COULEURS_PRETES.map((c) => (
@@ -315,23 +300,23 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
                     value={decomposerCouleur(g.stops[i].color).hex}
                     onChange={(v) => majArret({ color: composerCouleur(v, decomposerCouleur(g.stops[i].color).alpha) })}
                   />
-                  <Curseur
+                  <Curseur disposition="bloc"
                     label="Position"
                     valeur={g.stops[i].offset}
                     affichage={`${Math.round(g.stops[i].offset * 100)} %`}
                     min={0}
                     max={1}
                     step={0.01}
-                    onChange={(v) => majArret({ offset: v })}
+                    onValeur={(v) => majArret({ offset: v })}
                   />
-                  <Curseur
+                  <Curseur disposition="bloc"
                     label="Opacité"
                     valeur={decomposerCouleur(g.stops[i].color).alpha}
                     affichage={`${Math.round(decomposerCouleur(g.stops[i].color).alpha * 100)} %`}
                     min={0}
                     max={1}
                     step={0.01}
-                    onChange={(v) => majArret({ color: composerCouleur(decomposerCouleur(g.stops[i].color).hex, v) })}
+                    onValeur={(v) => majArret({ color: composerCouleur(decomposerCouleur(g.stops[i].color).hex, v) })}
                   />
                 </div>
                 <button
@@ -352,35 +337,35 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
                   onChange={(noise) => (noise ? ecrire({ ...g, noise }) : changerType('linear-gradient'))}
                 />
               ) : g.type === 'linear-gradient' ? (
-                <Curseur label="Angle" valeur={g.angle} affichage={`${g.angle}°`} min={0} max={359} step={1} onChange={(v) => ecrire({ ...g, angle: v })} />
+                <Curseur disposition="bloc" label="Angle" valeur={g.angle} affichage={`${g.angle}°`} min={0} max={359} step={1} onValeur={(v) => ecrire({ ...g, angle: v })} />
               ) : (
                 <>
-                  <Curseur
+                  <Curseur disposition="bloc"
                     label="Centre horizontal"
                     valeur={g.center.x}
                     affichage={`${Math.round(g.center.x * 100)} %`}
                     min={0}
                     max={1}
                     step={0.01}
-                    onChange={(v) => ecrire({ ...g, center: { ...g.center, x: v } })}
+                    onValeur={(v) => ecrire({ ...g, center: { ...g.center, x: v } })}
                   />
-                  <Curseur
+                  <Curseur disposition="bloc"
                     label="Centre vertical"
                     valeur={g.center.y}
                     affichage={`${Math.round(g.center.y * 100)} %`}
                     min={0}
                     max={1}
                     step={0.01}
-                    onChange={(v) => ecrire({ ...g, center: { ...g.center, y: v } })}
+                    onValeur={(v) => ecrire({ ...g, center: { ...g.center, y: v } })}
                   />
-                  <Curseur
+                  <Curseur disposition="bloc"
                     label="Rayon"
                     valeur={g.radius}
                     affichage={`${Math.round(g.radius * 100)} %`}
                     min={0.01}
                     max={2}
                     step={0.01}
-                    onChange={(v) => ecrire({ ...g, radius: v })}
+                    onValeur={(v) => ecrire({ ...g, radius: v })}
                   />
                 </>
               )}

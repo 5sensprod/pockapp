@@ -13,6 +13,7 @@
 import React from 'react';
 import { Waves } from 'lucide-react';
 import MenuGroupe from './MenuGroupe';
+import Curseur from './ui/Curseur';
 import { CONTOUR_STYLISE_DEFAUT, ONDES_MAX, reglagesContour } from '../utils/contourStylise';
 
 const CURSEURS = [
@@ -59,19 +60,17 @@ const MenuContourStylise = ({ element, onChange, texte = false, dessin = false }
           const entier = cle === 'ondes';
           const valeur = entier ? reglages[cle] : Math.round(reglages[cle] * 100);
           return (
-            <label key={cle} className="flex items-center gap-2 px-1 pt-2 text-xs text-gray-600 dark:text-gray-300">
-              <span className="w-28">{libelle}</span>
-              <input
-                type="range"
-                min={entier ? 1 : 0}
-                max={max}
-                step={1}
-                value={valeur}
-                onChange={(e) => set(cle, entier ? Number(e.target.value) : Number(e.target.value) / 100)}
-                className="flex-1"
-              />
-              <span className="w-8 text-right tabular-nums">{entier ? valeur : `${valeur}%`}</span>
-            </label>
+            <Curseur
+              key={cle}
+              label={libelle}
+              largeurLabel="w-28"
+              className="px-1 pt-2"
+              min={entier ? 1 : 0}
+              max={max}
+              valeur={valeur}
+              affichage={entier ? valeur : `${valeur}%`}
+              onValeur={(v) => set(cle, entier ? v : v / 100)}
+            />
           );
         })}
     </MenuGroupe>

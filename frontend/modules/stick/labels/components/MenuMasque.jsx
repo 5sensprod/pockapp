@@ -7,6 +7,7 @@
 // fonction, `dessinerMasque`.
 
 import React from 'react';
+import Curseur from './ui/Curseur';
 import { Shapes } from 'lucide-react';
 import MenuGroupe from './MenuGroupe';
 import MasqueTexture from './MasqueTexture';
@@ -52,19 +53,16 @@ const MenuMasque = ({ element, onChange }) => (
       ['maskPadding', 'Retrait', RETRAIT_MAX],
       ['maskFeather', 'Fondu', FONDU_MAX],
     ].map(([cle, libelle, max]) => (
-      <label key={cle} className="flex items-center gap-2 px-1 pt-2 text-xs text-gray-600 dark:text-gray-300">
-        <span className="w-14">{libelle}</span>
-        <input
-          type="range"
-          min={0}
-          max={max}
-          step={1}
-          value={element[cle] ?? 0}
-          onChange={(e) => onChange({ [cle]: Number(e.target.value) })}
-          className="flex-1"
-        />
-        <span className="w-8 text-right">{element[cle] ?? 0}%</span>
-      </label>
+      <Curseur
+        key={cle}
+        label={libelle}
+        largeurLabel="w-14"
+        className="px-1 pt-2"
+        max={max}
+        valeur={element[cle] ?? 0}
+        affichage={(v) => `${v}%`}
+        onValeur={(v) => onChange({ [cle]: v })}
+      />
     ))}
     <MasqueTexture
       valeur={element.maskTexture ?? null}

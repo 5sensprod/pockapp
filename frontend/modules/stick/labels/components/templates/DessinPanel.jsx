@@ -6,6 +6,7 @@
 // (`utils/dessin.js`), il n'y a pas de SVG à réécrire.
 
 import React, { useEffect } from 'react';
+import Curseur from '../ui/Curseur';
 import useLabelStore from '../../store/useLabelStore';
 import { composerCouleur, decomposerCouleur } from '../../utils/paint';
 import {
@@ -24,34 +25,11 @@ const OUTILS = [
   { id: 'highlighter', label: 'Surligneur' },
 ];
 
+// Libellé, champ numérique et curseur : le curseur commun (`ui/Curseur.jsx`)
+const Reglage = (props) => <Curseur disposition="bloc" champ {...props} />;
+
 const borne = (v, min, max) => Math.min(max, Math.max(min, Number.isFinite(v) ? v : min));
 
-// Libellé, champ numérique et curseur, comme PocketStick (Field + RangeInput).
-const Reglage = ({ label, valeur, min, max, onValeur }) => (
-  <div>
-    <label className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
-      <span>{label}</span>
-      <input
-        type="number"
-        min={min}
-        max={max}
-        value={valeur}
-        onChange={(e) => onValeur(parseFloat(e.target.value))}
-        className="w-16 px-1 py-0.5 text-right border rounded dark:bg-gray-800 dark:border-gray-600"
-      />
-    </label>
-    <input
-      type="range"
-      aria-label={label}
-      min={min}
-      max={max}
-      step={1}
-      value={valeur}
-      onChange={(e) => onValeur(parseFloat(e.target.value))}
-      className="w-full h-2 mt-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-600"
-    />
-  </div>
-);
 
 const Couleur = ({ label, valeur, onValeur }) => (
   <label className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">

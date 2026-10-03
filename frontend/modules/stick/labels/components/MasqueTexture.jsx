@@ -5,25 +5,11 @@
 // calculée par la MÊME fonction que le dessin (`carteNiveaux`).
 
 import React, { useEffect, useRef } from 'react';
+import Curseur from './ui/Curseur';
 import { TEXTURE_PAR_DEFAUT, TYPES_TEXTURE, carteNiveaux, sanitizeTexture } from '../utils/bruit';
 
 const APERCU = 64;
 
-const Curseur = ({ label, min, max, step, value, onChange }) => (
-  <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-    <span className="w-14 shrink-0">{label}</span>
-    <input
-      type="range"
-      min={min}
-      max={max}
-      step={step}
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 min-w-0"
-    />
-    <span className="w-8 text-right">{Math.round(value * 100) / 100}</span>
-  </label>
-);
 
 const MasqueTexture = ({ valeur, onChange }) => {
   const tex = sanitizeTexture(valeur);
@@ -100,9 +86,9 @@ const MasqueTexture = ({ valeur, onChange }) => {
               </label>
             </div>
           </div>
-          <Curseur label="Échelle" min={0.5} max={32} step={0.5} value={tex.scale} onChange={(scale) => maj({ scale })} />
+          <Curseur largeurLabel="w-14" label="Échelle" min={0.5} max={32} step={0.5} valeur={tex.scale} onValeur={(scale) => maj({ scale })} />
           {(tex.type === 'value' || tex.type === 'perlin') && (
-            <Curseur label="Octaves" min={1} max={6} step={1} value={tex.octaves} onChange={(octaves) => maj({ octaves })} />
+            <Curseur largeurLabel="w-14" label="Octaves" min={1} max={6} step={1} valeur={tex.octaves} onValeur={(octaves) => maj({ octaves })} />
           )}
           {tex.type === 'voronoi' && (
             <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
@@ -118,9 +104,9 @@ const MasqueTexture = ({ valeur, onChange }) => {
               </select>
             </label>
           )}
-          <Curseur label="Contraste" min={0} max={5} step={0.1} value={tex.contrast} onChange={(contrast) => maj({ contrast })} />
-          <Curseur label="Seuil" min={0} max={1} step={0.01} value={tex.threshold} onChange={(threshold) => maj({ threshold })} />
-          <Curseur label="Douceur" min={0} max={1} step={0.01} value={tex.softness} onChange={(softness) => maj({ softness })} />
+          <Curseur largeurLabel="w-14" label="Contraste" min={0} max={5} step={0.1} valeur={tex.contrast} onValeur={(contrast) => maj({ contrast })} />
+          <Curseur largeurLabel="w-14" label="Seuil" min={0} max={1} step={0.01} valeur={tex.threshold} onValeur={(threshold) => maj({ threshold })} />
+          <Curseur largeurLabel="w-14" label="Douceur" min={0} max={1} step={0.01} valeur={tex.softness} onValeur={(softness) => maj({ softness })} />
         </>
       )}
     </div>

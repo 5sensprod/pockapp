@@ -33,6 +33,7 @@ import FontSelector from './FontSelector';
 import MenuGroupe from './MenuGroupe';
 import GradientColorPicker from './GradientColorPicker';
 import MenuContourStylise from './MenuContourStylise';
+import Curseur from './ui/Curseur';
 import { composerCouleur, decomposerCouleur } from '../utils/paint';
 import MenuMasque from './MenuMasque';
 import { TYPO_BORNES } from '../utils/typo';
@@ -264,21 +265,17 @@ const PropertyPanel = ({ selectedProduct, onOpenEffects, docNode }) => {
                   const b = TYPO_BORNES[cle];
                   const v = selectedElement[cle] ?? b.defaut;
                   return (
-                    <label key={cle} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                      <span className="w-16">{libelle}</span>
-                      <input
-                        type="range"
-                        min={b.min}
-                        max={b.max}
-                        step={step}
-                        value={v}
-                        onChange={(e) => updateElement(selectedId, { [cle]: Number(e.target.value) })}
-                        onDoubleClick={() => updateElement(selectedId, { [cle]: b.defaut })}
-                        className="flex-1"
-                        title="Double-clic : valeur normale"
-                      />
-                      <span className="w-10 text-right">{fmt(Math.round(v * 100) / 100)}</span>
-                    </label>
+                    <Curseur
+                      key={cle}
+                      label={libelle}
+                      min={b.min}
+                      max={b.max}
+                      step={step}
+                      valeur={v}
+                      defaut={b.defaut}
+                      affichage={(x) => fmt(Math.round(x * 100) / 100)}
+                      onValeur={(x) => updateElement(selectedId, { [cle]: x })}
+                    />
                   );
                 })}
               </div>
