@@ -31,8 +31,8 @@ const CARTE = {
     panneau: ['trace', 'contourStylise', 'fermerTrace'],
   },
   image: {
-    barre: ['ajustement', 'recadrage'],
-    panneau: ['miroir', 'opacite', 'masque', 'dimensions'],
+    barre: [],
+    panneau: ['ajustement', 'miroir', 'opacite', 'masque', 'dimensions'],
   },
   qrcode: {
     barre: ['couleur'],
@@ -68,6 +68,7 @@ export const ACTIONS_BARRE = ['position', 'supprimer', 'reglages', 'effets'];
  */
 const ONGLET_PAR_TYPE = {
   text: 'text',
+  image: 'image', // l'onglet « Médias »
   dessin: 'dessin',
   shape: 'shape', // l'onglet « Assets »
 };

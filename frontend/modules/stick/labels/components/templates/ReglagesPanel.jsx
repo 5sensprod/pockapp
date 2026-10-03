@@ -24,6 +24,7 @@ import { ReglagesMasque } from '../MenuMasque';
 import Curseur from '../ui/Curseur';
 import { TraceSelectionne } from './TraceSelectionne';
 import * as Texte from './ReglagesTexte';
+import * as Photo from './ReglagesImage';
 
 const ARRONDI_MAX = 200;
 
@@ -96,6 +97,10 @@ const SECTIONS = {
   couleur: { titre: 'Couleur', Composant: Texte.Couleur },
   espacement: { titre: 'Espacement et courbure', Composant: Texte.Espacement },
   contour: { titre: 'Contour des lettres', Composant: Texte.Contour },
+  ajustement: { titre: 'Ajustement et recadrage', Composant: Photo.Ajustement },
+  miroir: { titre: 'Miroir', Composant: Photo.Miroir },
+  opacite: { titre: 'Opacité', Composant: Photo.Opacite },
+  dimensions: { titre: 'Taille du cadre', Composant: Photo.Dimensions },
   trace: { titre: 'Tracé', Composant: Trace },
   contourStylise: { titre: 'Contour à main levée', Composant: ContourStylise },
   fermerTrace: { titre: 'Forme', Composant: FermerTrace },

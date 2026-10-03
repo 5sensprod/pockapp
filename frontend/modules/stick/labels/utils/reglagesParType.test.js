@@ -49,6 +49,7 @@ describe('l’onglet suit la sélection', () => {
 
   it('chaque type déplacé a son onglet ; les autres restent dans la barre', () => {
     expect(ongletDe({ type: 'text' })).toBe('text');
+    expect(ongletDe({ type: 'image' })).toBe('image');
     expect(ongletDe(trace)).toBe('dessin');
     expect(ongletDe(forme)).toBe('shape');
     expect(ongletDe({ type: 'barcode' })).toBeNull();
