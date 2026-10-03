@@ -556,7 +556,9 @@ const KonvaCanvas = forwardRef(
         tr.forceUpdate();
         tr.getLayer()?.batchDraw();
       }, 100);
-    }, [selectedId, extraIds, elements, cropId]);
+      // `currentProductIndex` : changer de produit affiché RECRÉE les nœuds
+      // (leur clé porte l'index) ; sans lui le cadre restait sur les anciens.
+    }, [selectedId, extraIds, elements, cropId, currentProductIndex]);
 
     // FLOU et effets en pixels (`utils/effetsKonva.js`) : posés sur le nœud
     // APRÈS son rendu, et reposés quand il a pu changer de contenu (image,
