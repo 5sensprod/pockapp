@@ -38,6 +38,13 @@ export const idsSelectionnes = (state) => {
 // d'AppPos — et les exports, par `getState()` — les lisent tels quels.
 // Voir `PocketStick-docs/02-produits-vivants.md`.
 
+/**
+ * CHANGER DE PAGE (de produit affiché) vide la sélection : les nœuds du canvas
+ * sont recréés — leur clé porte l'index du produit —, et le cadre de
+ * sélection resterait accroché à un nœud disparu, posé n'importe où.
+ */
+const SANS_SELECTION = { selectedId: null, extraIds: [], cropId: null };
+
 /** Recalcule la forme lue par le canvas à partir des ids et du cache. */
 export const deriverProduits = (ids, parId, index) => {
   const selectedProducts = ids.map((id) => parId[id]).filter(Boolean);
@@ -569,28 +576,28 @@ const useLabelStore = create((set, get) => ({
     set((state) => {
       const n = state.selectedProductIds.length;
       if (n <= 1) return {};
-      return deriverProduits(
-        state.selectedProductIds,
-        state.produitsParId,
-        (state.currentProductIndex + 1) % n
-      );
+      return {
+        ...SANS_SELECTION,
+        ...deriverProduits(state.selectedProductIds, state.produitsParId, (state.currentProductIndex + 1) % n),
+      };
     }),
 
   goToPreviousProduct: () =>
     set((state) => {
       const n = state.selectedProductIds.length;
       if (n <= 1) return {};
-      return deriverProduits(
-        state.selectedProductIds,
-        state.produitsParId,
-        (state.currentProductIndex - 1 + n) % n
-      );
+      return {
+        ...SANS_SELECTION,
+        ...deriverProduits(state.selectedProductIds, state.produitsParId, (state.currentProductIndex - 1 + n) % n),
+      };
     }),
 
   goToProductIndex: (index) =>
     set((state) => {
       if (state.selectedProductIds.length === 0) return {};
-      return deriverProduits(state.selectedProductIds, state.produitsParId, index);
+      const suite = deriverProduits(state.selectedProductIds, state.produitsParId, index);
+      // Recliquer la page affichée ne désélectionne pas
+      return suite.currentProductIndex === state.currentProductIndex ? suite : { ...SANS_SELECTION, ...suite };
     }),
 
   /** Nouveau document. `garderProduits` : le tirage survit (quantités
