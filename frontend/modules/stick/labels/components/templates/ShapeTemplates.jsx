@@ -7,6 +7,7 @@
 import React, { useState } from 'react';
 import { Circle, Minus, Square, Star, Triangle } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
+import PastilleCouleur from '../ui/PastilleCouleur';
 
 const FORMES = [
   { id: 'rectangle', label: 'Rectangle', icon: Square, width: 200, height: 120 },
@@ -68,13 +69,7 @@ const ShapeTemplates = () => {
               title={c}
             />
           ))}
-          <input
-            type="color"
-            value={couleur}
-            onChange={(e) => setCouleur(e.target.value)}
-            className="w-7 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600 bg-transparent"
-            title="Couleur personnalisée"
-          />
+          <PastilleCouleur couleur={couleur} onCouleur={setCouleur} label="Couleur personnalisée" />
         </div>
       </div>
 

@@ -21,7 +21,8 @@ import FontSelector from '../FontSelector';
 import GradientColorPicker from '../GradientColorPicker';
 import Curseur from '../ui/Curseur';
 import { TYPO_BORNES } from '../../utils/typo';
-import { CHAMP, LIGNE as ligne, PASTILLE, boutonBascule as bouton } from '../ui/styles';
+import PastilleCouleur from '../ui/PastilleCouleur';
+import { CHAMP, LIGNE as ligne, boutonBascule as bouton } from '../ui/styles';
 
 const champ = `${CHAMP} w-16 text-right`;
 
@@ -92,13 +93,13 @@ export const Style = ({ el, maj }) => {
         </button>
       ))}
       {/* La couleur du surlignage : toujours là, la choisir l'active */}
-      <input
-        type="color"
-        value={el.highlightColor || '#FFFF00'}
-        onChange={(e) => maj({ highlightColor: e.target.value, highlightEnabled: true })}
-        className={`ml-1 ${PASTILLE}`}
-        title="Couleur du surlignage"
-      />
+      <span className="ml-1">
+        <PastilleCouleur
+          couleur={el.highlightColor || '#FFFF00'}
+          onCouleur={(highlightColor) => maj({ highlightColor, highlightEnabled: true })}
+          label="Couleur du surlignage"
+        />
+      </span>
     </div>
   );
 };

@@ -93,8 +93,21 @@ const ApercuPeinture = ({ paint, className }) => {
   );
 };
 
-const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange, title, lineaireSeulement = false }) => {
-  const peinture = versPeinture(gradient);
+// `uniSeulement` : pas de dégradé (c'est `ui/PastilleCouleur.jsx`) ;
+// `sansOpacite` : la couleur écrite reste `#rrggbb`, sans transparence.
+const GradientColorPicker = ({
+  color,
+  gradient,
+  onColorChange,
+  onGradientChange,
+  title,
+  lineaireSeulement = false,
+  uniSeulement = false,
+  sansOpacite = false,
+}) => {
+  const peinture = uniSeulement ? null : versPeinture(gradient);
+  // La couleur écrite : avec l'opacité réglée, ou nue
+  const ecrire1 = (hex, alpha) => onColorChange(sansOpacite ? decomposerCouleur(hex).hex : composerCouleur(hex, alpha));
   const [ouvert, setOuvert] = useState(false);
   const [mode, setMode] = useState(peinture ? 'degrade' : 'uni');
   const [arret, setArret] = useState(0); // arrêt sélectionné
@@ -195,7 +208,7 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
         ref={pastille}
         onClick={() => setOuvert((o) => !o)}
         className="h-7 w-9 flex-none rounded-md border border-gray-300 dark:border-gray-600 shadow-inner"
-        style={{ background: peinture ? paintToCss(peinture) : color }}
+        style={{ background: peinture ? paintToCss(peinture) : sansOpacite ? decomposerCouleur(color).hex : color }}
         title={title}
       />
 
@@ -206,24 +219,26 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
           // dépassait le bas de l'écran, sans ascenseur (`useFlottant`)
           style={place}
           className="fixed z-50 w-64 p-3 space-y-3 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl whitespace-normal">
-          <div className="flex gap-1">
-            <button type="button" className={onglet(mode === 'uni')} onClick={passerEnUni}>
-              Uni
-            </button>
-            <button type="button" className={onglet(mode === 'degrade')} onClick={passerEnDegrade}>
-              Dégradé
-            </button>
-          </div>
+          {!uniSeulement && (
+            <div className="flex gap-1">
+              <button type="button" className={onglet(mode === 'uni')} onClick={passerEnUni}>
+                Uni
+              </button>
+              <button type="button" className={onglet(mode === 'degrade')} onClick={passerEnDegrade}>
+                Dégradé
+              </button>
+            </div>
+          )}
 
-          {mode === 'uni' ? (
+          {uniSeulement || mode === 'uni' ? (
             <>
               {/* Opacité de la couleur unie : `#rrggbbaa`, comme un arrêt de dégradé */}
               <ChampCouleur
                 label="Couleur"
                 value={decomposerCouleur(color).hex}
-                onChange={(v) => onColorChange(composerCouleur(v, decomposerCouleur(color).alpha))}
+                onChange={(v) => ecrire1(v, decomposerCouleur(color).alpha)}
               />
-              <Curseur disposition="bloc"
+              {!sansOpacite && <Curseur disposition="bloc"
                 label="Opacité"
                 valeur={decomposerCouleur(color).alpha}
                 affichage={`${Math.round(decomposerCouleur(color).alpha * 100)} %`}
@@ -231,14 +246,14 @@ const GradientColorPicker = ({ color, gradient, onColorChange, onGradientChange,
                 max={1}
                 step={0.01}
                 onValeur={(v) => onColorChange(composerCouleur(decomposerCouleur(color).hex, v))}
-              />
+              />}
               <div className="grid grid-cols-6 gap-1.5">
                 {COULEURS_PRETES.map((c) => (
                   <button
                     key={c}
                     type="button"
                     // Une couleur prête garde l'opacité réglée
-                    onClick={() => onColorChange(composerCouleur(c, decomposerCouleur(color).alpha))}
+                    onClick={() => ecrire1(c, decomposerCouleur(color).alpha)}
                     className={`h-7 rounded border ${
                       c.toLowerCase() === decomposerCouleur(color).hex
                         ? 'ring-2 ring-blue-500 border-transparent'

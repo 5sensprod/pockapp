@@ -28,6 +28,7 @@ import {
 } from '../../utils/presetsOmbre';
 import ChampNombre from '../ui/ChampNombre';
 import Curseur from '../ui/Curseur';
+import PastilleCouleur from '../ui/PastilleCouleur';
 import Pave2D from '../ui/Pave2D';
 import Section from '../ui/Section';
 
@@ -164,12 +165,8 @@ const BlocOmbre = ({ el, interne = false }) => {
       />
       <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
         <span className="w-14 flex-none">Couleur</span>
-        <input
-          type="color"
-          value={/^#[0-9a-f]{6}$/i.test(ombre.couleur) ? ombre.couleur : '#000000'}
-          onChange={(e) => maj({ [cles.couleur]: e.target.value })}
-          className="h-7 w-9 flex-none rounded-md cursor-pointer border border-gray-300 dark:border-gray-600 bg-transparent"
-        />
+        {/* Couleur NUE (`#rrggbb`) : l'opacité de l'ombre est une clé à part */}
+        <PastilleCouleur couleur={ombre.couleur} onCouleur={(v) => maj({ [cles.couleur]: v })} label="Couleur de l'ombre" />
         <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">{ombre.couleur}</span>
       </label>
 

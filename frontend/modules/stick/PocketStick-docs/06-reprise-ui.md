@@ -165,9 +165,18 @@ Règles à ne pas défaire :
 - `blurFade` et `ondulationEffet` sont des OBJETS : chaque écriture rend
   l'objet entier.
 
-Laissé tel quel : le « Style du tableau » de la fiche (cases natives), les
-`<input type="color">` natifs (remis à la même taille, non remplacés), le
-violet des designs d'usine et du bouton « Effets » de la barre du haut.
+Laissé tel quel : les cases à cocher natives du « Style du tableau » de la
+fiche, le violet des designs d'usine et du bouton « Effets » de la barre du
+haut.
+
+Couleurs unies : `ui/PastilleCouleur.jsx` (le sélecteur maison,
+`GradientColorPicker` en `uniSeulement`) remplace les onze `<input
+type="color">` natifs. Sans `opacite`, elle écrit `#rrggbb` comme le natif —
+c'est le cas de l'ombre, dont l'opacité est une clé à part ; avec, elle garde
+`#rrggbbaa` (trait d'une forme, pinceau). Elle annule le renvoi de clic du
+`<label>` qui l'entoure souvent, sans quoi un clic dans le vide de la fenêtre
+la refermait. Reste natif : le choix fin d'une teinte, DANS la fenêtre
+(`ChampCouleur` de `GradientColorPicker`).
 
 Changé au passage : le préréglage d'ombre « colorée (Indigo) » a disparu
 (cinq vignettes noires, la couleur se choisit à part) ; quatre préréglages

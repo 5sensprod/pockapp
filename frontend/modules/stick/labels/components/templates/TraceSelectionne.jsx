@@ -9,9 +9,9 @@ import React from 'react';
 import Curseur from '../ui/Curseur';
 import GradientColorPicker from '../GradientColorPicker';
 import Interrupteur from '../ui/Interrupteur';
-import { BOUTON_ACTION, LIGNE, PASTILLE } from '../ui/styles';
+import PastilleCouleur from '../ui/PastilleCouleur';
+import { BOUTON_ACTION, LIGNE } from '../ui/styles';
 import useLabelStore from '../../store/useLabelStore';
-import { composerCouleur, decomposerCouleur } from '../../utils/paint';
 import { DRAW_DEFAULTS, fusionDe, redessiner, REGLAGES_TRACE, STROKE_WIDTH_RANGE } from '../../utils/dessin';
 
 // Libellé, champ numérique et curseur : le curseur commun (`ui/Curseur.jsx`)
@@ -24,13 +24,7 @@ export const Couleur = ({ label, valeur, onValeur }) => (
   <label className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
     <span>{label}</span>
     {/* La couleur peut porter une opacité (#rrggbbaa, sélecteur de la barre du haut) : on la garde */}
-    <input
-      type="color"
-      aria-label={label}
-      value={decomposerCouleur(valeur).hex}
-      onChange={(e) => onValeur(composerCouleur(e.target.value, decomposerCouleur(valeur).alpha))}
-      className={PASTILLE}
-    />
+    <PastilleCouleur couleur={valeur} onCouleur={onValeur} label={label} opacite />
   </label>
 );
 

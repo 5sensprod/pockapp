@@ -9,6 +9,7 @@ import React from 'react';
 import FontSelector from '../FontSelector';
 import { SECTIONS_FICHE, sectionParId } from '../../utils/ficheProduit';
 import { FICHE_PAR_DEFAUT } from '../../utils/ficheKonva';
+import PastilleCouleur from '../ui/PastilleCouleur';
 import { CHAMP as champ, LIGNE as ligne } from '../ui/styles';
 
 
@@ -92,12 +93,7 @@ export const StyleTableau = ({ el, maj }) => (
     ].map(([cle, label]) => (
       <label key={cle} className="flex items-center justify-between gap-2">
         {label}
-        <input
-          type="color"
-          value={el[cle] ?? FICHE_PAR_DEFAUT[cle]}
-          onChange={(e) => maj({ [cle]: e.target.value })}
-          className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
-        />
+        <PastilleCouleur couleur={el[cle] ?? FICHE_PAR_DEFAUT[cle]} onCouleur={(v) => maj({ [cle]: v })} label={label} />
       </label>
     ))}
     {(el.section ?? 'specs') === 'specs' && (
@@ -111,11 +107,10 @@ export const StyleTableau = ({ el, maj }) => (
             />
             Lignes alternées
           </span>
-          <input
-            type="color"
-            value={el.stripeColor ?? FICHE_PAR_DEFAUT.stripeColor}
-            onChange={(e) => maj({ stripeColor: e.target.value })}
-            className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+          <PastilleCouleur
+            couleur={el.stripeColor ?? FICHE_PAR_DEFAUT.stripeColor}
+            onCouleur={(stripeColor) => maj({ stripeColor })}
+            label="Couleur des lignes alternées"
           />
         </label>
         <label className="block">
@@ -151,11 +146,10 @@ export const StyleTableau = ({ el, maj }) => (
           <>
             <label className="flex items-center justify-between gap-2">
               Couleur
-              <input
-                type="color"
-                value={el.borderColor ?? FICHE_PAR_DEFAUT.borderColor}
-                onChange={(e) => maj({ borderColor: e.target.value })}
-                className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+              <PastilleCouleur
+                couleur={el.borderColor ?? FICHE_PAR_DEFAUT.borderColor}
+                onCouleur={(borderColor) => maj({ borderColor })}
+                label="Couleur de la bordure"
               />
             </label>
             <label className="flex items-center justify-between gap-2">
@@ -193,12 +187,7 @@ export const StyleTableau = ({ el, maj }) => (
             Fond des noms
           </span>
           {el.labelBg && (
-            <input
-              type="color"
-              value={el.labelBg}
-              onChange={(e) => maj({ labelBg: e.target.value })}
-              className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
-            />
+            <PastilleCouleur couleur={el.labelBg} onCouleur={(labelBg) => maj({ labelBg })} label="Fond des noms" />
           )}
         </label>
 
@@ -218,11 +207,10 @@ export const StyleTableau = ({ el, maj }) => (
           <>
             <label className="flex items-center justify-between gap-2">
               Couleur
-              <input
-                type="color"
-                value={el.highlightColor ?? FICHE_PAR_DEFAUT.highlightColor}
-                onChange={(e) => maj({ highlightColor: e.target.value })}
-                className="w-9 h-7 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+              <PastilleCouleur
+                couleur={el.highlightColor ?? FICHE_PAR_DEFAUT.highlightColor}
+                onCouleur={(highlightColor) => maj({ highlightColor })}
+                label="Couleur de la ligne mise en avant"
               />
             </label>
             <label className="flex items-center gap-1.5">

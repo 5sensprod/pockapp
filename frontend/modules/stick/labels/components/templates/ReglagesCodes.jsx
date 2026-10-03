@@ -7,9 +7,9 @@
 
 import React from 'react';
 import GradientColorPicker from '../GradientColorPicker';
-import { composerCouleur, decomposerCouleur } from '../../utils/paint';
 import { FORMATS_TEXTE_CODE_BARRES } from '../../utils/barcodeText';
-import { CHAMP as champ, LIGNE as ligne, PASTILLE as pastille } from '../ui/styles';
+import PastilleCouleur from '../ui/PastilleCouleur';
+import { CHAMP as champ, LIGNE as ligne } from '../ui/styles';
 
 
 // ── QR code ─────────────────────────────────────────────────────────────────
@@ -53,11 +53,11 @@ export const CouleursBarres = ({ el, maj }) => (
   <div className="space-y-2">
     <label className={ligne}>
       <span>Barres</span>
-      <input type="color" value={el.lineColor || '#000000'} onChange={(e) => maj({ lineColor: e.target.value })} className={pastille} />
+      <PastilleCouleur couleur={el.lineColor || '#000000'} onCouleur={(lineColor) => maj({ lineColor })} label="Couleur des barres" />
     </label>
     <label className={ligne}>
       <span>Fond</span>
-      <input type="color" value={el.background || '#FFFFFF'} onChange={(e) => maj({ background: e.target.value })} className={pastille} />
+      <PastilleCouleur couleur={el.background || '#FFFFFF'} onCouleur={(background) => maj({ background })} label="Couleur du fond" />
     </label>
   </div>
 );
@@ -126,12 +126,7 @@ export const Remplissage = ({ el, maj }) => (
   <div className={ligne}>
     <span>{(el.shape ?? 'rectangle') === 'line' ? 'Couleur du trait' : 'Remplissage'}</span>
     {(el.shape ?? 'rectangle') === 'line' ? (
-      <input
-        type="color"
-        value={decomposerCouleur(el.fill || '#3b82f6').hex}
-        onChange={(e) => maj({ fill: composerCouleur(e.target.value, decomposerCouleur(el.fill || '#3b82f6').alpha) })}
-        className={pastille}
-      />
+      <PastilleCouleur couleur={el.fill || '#3b82f6'} onCouleur={(fill) => maj({ fill })} label="Couleur du trait" opacite />
     ) : (
       <GradientColorPicker
         color={el.fill || '#3b82f6'}
