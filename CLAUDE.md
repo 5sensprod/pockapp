@@ -89,6 +89,10 @@ Sélectionner un élément affiche `templates/ReglagesPanel.jsx` à la place des
 propositions de l'onglet ; désélectionner les ramène. Quel réglage pour quel
 type, et dans quel onglet : `utils/reglagesParType.js`, seule décision. La
 barre du haut ne porte que l'œil, « Réglages », « Effets » et le zoom.
+Les contrôles de la barre latérale sont communs (`components/ui/` : `Section`,
+`Interrupteur`, `Segments`, `Curseur`, `Pave2D`, `ChampNombre`, `styles.js`) :
+un seul accent, le bleu ; l'orange est réservé aux données produit. L'ombre se
+règle sur un pavé qui écrit X et Y ENSEMBLE (un glisser = un pas d'annulation).
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation

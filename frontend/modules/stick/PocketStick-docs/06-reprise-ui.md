@@ -112,8 +112,9 @@ Règles à ne pas défaire :
   template, cliquer un élément ne montrait plus rien.
 - **L'œil n'est pas dans la barre flottante de l'élément** : elle disparaît
   avec le cadre, on ne pourrait plus le rallumer au clic.
-- **Tout curseur est un `input[type=range]`** : le canvas masque le cadre
-  tant qu'un curseur de la page est tenu.
+- **Tout réglage qui se glisse est un `input[type=range]` ou porte
+  `data-geste-reglage`** (pavé 2D, champ à glisser) : c'est ce que le canvas
+  cherche (`closest`) pour masquer le cadre pendant le geste (`KonvaCanvas`).
 
 `pnpm build:client` passe (3 octobre 2026, sur `c23caaf`).
 Non fait : cohérences de l'audit (sélection multiple
@@ -122,3 +123,55 @@ corrigée ; alignement du texte qui fixe une largeur — annoncé ; les deux
 « Ondulation » ; « Appliquer l'ombre à tous » qui fait un pas d'historique
 par élément). Vérifié à l'écran par le propriétaire, étape par étape ; aucun
 test de rendu de composant n'existe.
+
+---
+
+## Modernisation de la barre latérale — 3 octobre 2026
+
+Audit par un agent design (lecture seule), puis cinq lots validés à l'écran
+par le propriétaire. Aucune valeur écrite n'a changé : mêmes clés, mêmes
+bornes, mêmes pas — c'est l'aspect et la forme des contrôles qui changent.
+
+| Quoi | Où |
+|---|---|
+| Classes communes (ligne, champ, pastille, boutons) | `components/ui/styles.js` |
+| Section repliable, interrupteur dans l'en-tête, `avant` (préréglages) | `ui/Section.jsx` |
+| Interrupteur (`button role="switch"`) | `ui/Interrupteur.jsx` |
+| Contrôle segmenté | `ui/Segments.jsx` |
+| Pavé 2D (deux valeurs d'un geste) | `ui/Pave2D.jsx`, calculs `utils/pave2D.js` |
+| Champ à glisser sur son libellé | `ui/ChampNombre.jsx` (`valeurGlissee`, `pave2D.js`) |
+| Ombre portée et ombre interne : un seul bloc | `templates/BlocOmbre.jsx`, `utils/presetsOmbre.js` |
+| Onglet Effets | `templates/EffectsTemplates.jsx` |
+| Barre d'icônes à libellés, en-têtes de 40 px | `components/ToolsSidebar.jsx` |
+
+Règles visuelles : UN accent, le bleu ; orange = ce qui vient de la fiche
+produit ; ambre = avertissement ; rouge = destructif. L'aplat bleu est
+réservé à l'onglet ouvert et au bouton principal ; une bascule active est en
+bleu léger. Contrôles de 28 px, rayon 6 px, texte 12 px, filets entre
+sections (plus de cartes encadrées).
+
+Règles à ne pas défaire :
+- **Le pavé écrit X et Y ENSEMBLE**, dans un seul `updateElement`, depuis la
+  poignée comme depuis un champ : la clé du geste (`id|champs triés`) reste la
+  même, un glisser fait un pas d'annulation.
+- **X/Y restent la seule vérité de l'ombre** ; angle et distance ne sont
+  qu'affichés (`polaire`). Une valeur hors ±40 (template ancien) colle la
+  poignée au bord, en ambre, sans être réécrite.
+- **L'aperçu est du CSS** (`filtreApercu`, `ombreInterneApercu`), pas du
+  Konva : indicatif, à l'échelle du pavé.
+- **Interrupteur, segments, pavé ne sont pas des `<input>`** : Suppr et H du
+  canvas restent actifs après un clic. Un curseur relâché à la souris rend le
+  focus (`Curseur`, `onPointerUp`).
+- `blurFade` et `ondulationEffet` sont des OBJETS : chaque écriture rend
+  l'objet entier.
+
+Laissé tel quel : le « Style du tableau » de la fiche (cases natives), les
+`<input type="color">` natifs (remis à la même taille, non remplacés), le
+violet des designs d'usine et du bouton « Effets » de la barre du haut.
+
+Changé au passage : le préréglage d'ombre « colorée (Indigo) » a disparu
+(cinq vignettes noires, la couleur se choisit à part) ; quatre préréglages
+d'ombre interne sont nouveaux.
+
+Gardiens : `utils/pave2D.test.js` (pavé, champ à glisser, ombres). Non fait
+au moment du commit : `pnpm build:client`.
