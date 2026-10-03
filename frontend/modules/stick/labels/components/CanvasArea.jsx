@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback, forwardRef } from 'rea
 import { Maximize2, Eye, EyeOff, SlidersHorizontal, Sparkles } from 'lucide-react';
 import KonvaCanvas, { MARGE_ESPACE } from './KonvaCanvas';
 import BandeTirage from './BandeTirage';
+import ReglagesRapides from './ReglagesRapides';
 import useLabelStore from '../store/useLabelStore';
 
 const CanvasArea = forwardRef(
@@ -55,7 +56,9 @@ const CanvasArea = forwardRef(
 
     // Le groupe du document : le panneau de réglages y MESURE les éléments
     // pour les aligner et les distribuer (`ReglagesCommuns`).
+    const [docNode, setDocNode] = useState(null);
     const handleDocNodeReady = (node) => {
+      setDocNode(node);
       if (onDocNodeReady) onDocNodeReady(node);
     };
 
@@ -68,7 +71,8 @@ const CanvasArea = forwardRef(
             pas à la sélection). Elle ne porte plus AUCUN réglage (3 octobre
             2026) : ils sont dans la barre latérale, dans l'onglet du type de
             l'élément (`ReglagesPanel`). Il lui reste deux raccourcis vers ces
-            onglets — Réglages, Effets —, l'œil et le zoom. Rien n'y défile. */}
+            onglets — Réglages, Effets —, l'œil, le zoom, et quelques options
+            RAPIDES (`ReglagesRapides`). Rien n'y défile. */}
         <div className="flex-none h-11 flex items-center gap-2 px-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs">
           {selectedId ? (
             <>
@@ -91,11 +95,11 @@ const CanvasArea = forwardRef(
                 <button
                   type="button"
                   onClick={onOpenReglages}
-                  className="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-2"
+                  className="h-8 w-8 inline-flex items-center justify-center text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
                   title="Tous les réglages de cet élément, dans la barre latérale"
+                  aria-label="Réglages"
                 >
                   <SlidersHorizontal className="h-4 w-4" />
-                  Réglages
                 </button>
               )}
               {onOpenEffets && (
@@ -109,6 +113,9 @@ const CanvasArea = forwardRef(
                   Effets
                 </button>
               )}
+              {/* Options rapides : les mêmes atomes et le même chemin d'écriture
+                  que le panneau (`ReglagesRapides.jsx`) */}
+              <ReglagesRapides docNode={docNode} />
             </>
           ) : (
             <span className="text-gray-500 dark:text-gray-400">Sélectionnez un élément pour le modifier.</span>

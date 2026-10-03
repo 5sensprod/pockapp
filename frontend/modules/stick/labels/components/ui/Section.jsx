@@ -9,13 +9,16 @@
 //   qu'activé (sinon `aide`, une ligne grise) ;
 // - `avant` : montré même quand l'effet est coupé — des préréglages, qui
 //   l'activent en un clic ;
-// - sans eux : une section ordinaire, toujours pleine.
+// - sans eux : une section ordinaire, toujours pleine ;
+// - `ouvertParDefaut` : l'état au montage. Pour qu'il suive l'élément
+//   sélectionné, l'appelant change la `key` (`ReglagesPanel`) ;
+// - `marque` : un point bleu dans l'en-tête quand la section est repliée.
 
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import Interrupteur from './Interrupteur';
 
-const Section = ({ titre, actif, onActif, aide, avant, ouvertParDefaut = true, children }) => {
+const Section = ({ titre, actif, onActif, aide, avant, marque = false, ouvertParDefaut = true, children }) => {
   const [ouvert, setOuvert] = useState(ouvertParDefaut);
   const activable = typeof onActif === 'function';
   const Chevron = ouvert ? ChevronDown : ChevronRight;
@@ -31,6 +34,8 @@ const Section = ({ titre, actif, onActif, aide, avant, ouvertParDefaut = true, c
         >
           <Chevron className="h-3.5 w-3.5 flex-none text-gray-400" />
           <span className="truncate">{titre}</span>
+          {/* Repliée mais réglée : un point le dit, sans avoir à l'ouvrir */}
+          {marque && !ouvert && <span className="h-1.5 w-1.5 flex-none rounded-full bg-blue-500" title="Un réglage est actif ici" />}
         </button>
         {activable && (
           <Interrupteur

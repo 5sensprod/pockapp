@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { ACTIONS_BARRE, SECTIONS_COMMUNES, TYPES_REGLABLES, ongletApresSelection, ongletDe, reglagesDe } from './reglagesParType';
+import {
+  ACTIONS_BARRE,
+  SECTIONS_COMMUNES,
+  TYPES_REGLABLES,
+  ongletApresSelection,
+  ongletDe,
+  rapidesDe,
+  reglagesDe,
+  sectionActive,
+  sectionOuverte,
+} from './reglagesParType';
+import { TYPO_BORNES } from './typo';
 
 describe('reglagesDe', () => {
   it('un réglage n’est jamais à la fois dans la barre et dans le panneau', () => {
@@ -23,7 +34,7 @@ describe('reglagesDe', () => {
   it('texte : tout est descendu dans l’onglet, la barre n’en garde rien', () => {
     const { barre, panneau } = reglagesDe({ type: 'text' });
     expect(barre).toEqual([]);
-    expect(panneau.slice(0, 4)).toEqual(['police', 'styleTexte', 'alignementTexte', 'couleur']);
+    expect(panneau.slice(0, 4)).toEqual(['noyauTexte', 'espacement', 'contourStylise', 'masque']);
   });
 
   it('les sections qui dépendent de la forme', () => {
@@ -84,5 +95,38 @@ describe('l’onglet suit la sélection', () => {
     expect(ongletApresSelection('shape', null)).toBe('shape');
     expect(ongletApresSelection('text', { type: 'inconnu' })).toBe('text');
     expect(ongletApresSelection('shape', { type: 'text' })).toBe('text');
+  });
+});
+
+describe('sections rares : repliées, sauf si l’élément y a un réglage', () => {
+  it('un texte neuf : les trois sections rares sont repliées, le noyau ne l’est jamais', () => {
+    const el = { type: 'text' };
+    for (const id of ['espacement', 'contourStylise', 'masque']) expect(sectionOuverte(id, el), id).toBe(false);
+    expect(sectionOuverte('noyauTexte', el)).toBe(true);
+    expect(sectionOuverte('arrondi', { type: 'shape' })).toBe(true);
+  });
+  it('s’ouvre quand un réglage y est actif', () => {
+    expect(sectionActive('espacement', { curve: 30 })).toBe(true);
+    expect(sectionActive('espacement', { letterSpacing: 0, lineHeight: 1, charHeight: 100, curve: 0 })).toBe(false);
+    expect(sectionActive('contourStylise', { contourStyle: { tremble: 0.3 } })).toBe(true);
+    expect(sectionActive('contourStylise', { contourStyle: null })).toBe(false);
+    expect(sectionActive('masque', { mask: 'star' })).toBe(true);
+    expect(sectionActive('masque', { maskFeather: 10 })).toBe(true);
+    expect(sectionActive('masque', {})).toBe(false);
+  });
+  it('les valeurs neutres de l’espacement sont celles de `TYPO_BORNES`', () => {
+    const neutre = Object.fromEntries(Object.entries(TYPO_BORNES).map(([cle, b]) => [cle, b.defaut]));
+    expect(sectionActive('espacement', neutre)).toBe(false);
+    for (const cle of Object.keys(neutre)) expect(sectionActive('espacement', { ...neutre, [cle]: neutre[cle] + 1 }), cle).toBe(true);
+  });
+});
+
+describe('options rapides de la barre du haut', () => {
+  it('texte : taille, gras et italique, couleur — ni police, ni alignement', () => {
+    expect(rapidesDe({ type: 'text' })).toEqual(['taille', 'grasItalique', 'couleurTexte']);
+  });
+  it('quatre au plus par type : la barre ne défile jamais', () => {
+    for (const type of TYPES_REGLABLES) expect(rapidesDe({ type }).length).toBeLessThanOrEqual(4);
+    expect(rapidesDe(null)).toEqual([]);
   });
 });

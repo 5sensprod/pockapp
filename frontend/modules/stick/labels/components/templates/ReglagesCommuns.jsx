@@ -1,13 +1,13 @@
 // frontend/modules/stick/labels/components/templates/ReglagesCommuns.jsx
 //
-// Ce qui vaut pour TOUT élément sélectionné, en tête de `ReglagesPanel` :
-// position sur la page (ou alignement entre éléments), remplir le canvas,
-// supprimer, et la liaison à la fiche produit. Repris de l'ancienne barre
-// d'options (`PropertyPanel`, supprimée le 3 octobre 2026). Les Effets ont
-// leur bouton dans la barre fine (`CanvasArea`).
+// Ce qui vaut pour TOUT élément sélectionné, en tête de `ReglagesPanel` : UNE
+// rangée d'icônes — position sur la page (ou alignement entre éléments),
+// remplir, dupliquer, supprimer — puis la liaison à la fiche produit.
+// Des icônes à infobulle, sans titre ni libellé : ce bandeau passe avant les
+// réglages propres à l'élément, il doit prendre le moins de place possible.
 //
 // Position et suppression agissent sur TOUTE la sélection, verrouillés
-// exclus ; le reste du panneau règle l'élément principal.
+// exclus (`useAlignementPage`) ; remplir et dupliquer, sur un élément seul.
 
 import React from 'react';
 import {
@@ -19,17 +19,16 @@ import {
   AlignStartHorizontal,
   AlignStartVertical,
   AlignVerticalSpaceAround,
+  Copy,
   Expand,
   Trash2,
 } from 'lucide-react';
-import useLabelStore, { idsSelectionnes } from '../../store/useLabelStore';
+import useLabelStore from '../../store/useLabelStore';
 import LiaisonProduit from '../LiaisonProduit';
+import { useAlignementPage } from '../useAlignementPage';
 import { typeLiable } from '../../utils/champsProduit';
 import { ficheChangeeDepuisCorrection, texteCorrige } from '../../utils/dataBinding';
-import { alignOffsets, distributeOffsets, unionBoxes } from '../../utils/layout';
 import { BOUTON_ACTION, BOUTON_ICONE as bouton } from '../ui/styles';
-
-const action = `${BOUTON_ACTION} flex-1`;
 
 // Comme PocketStick (`ui/Properties.jsx`, ALIGN_BUTTONS) : un élément seul
 // s'aligne sur la PAGE ; plusieurs s'alignent sur leur cadre commun.
@@ -42,42 +41,19 @@ const ALIGNEMENTS = [
   ['bottom', 'Aligner en bas', AlignEndHorizontal],
 ];
 
-
 const ReglagesCommuns = ({ el, docNode }) => {
-  const elements = useLabelStore((s) => s.elements);
   const selectedId = useLabelStore((s) => s.selectedId);
-  const extraIds = useLabelStore((s) => s.extraIds);
-  const canvasSize = useLabelStore((s) => s.canvasSize);
   const dataSource = useLabelStore((s) => s.dataSource);
   // Le produit que le CANVAS affiche : c'est à lui qu'une correction de texte
   // est rattachée (`TextNode`, `textOverrides`).
   const produit = useLabelStore((s) => s.selectedProduct);
   const updateElement = useLabelStore((s) => s.updateElement);
   const deleteElements = useLabelStore((s) => s.deleteElements);
+  const duplicateElement = useLabelStore((s) => s.duplicateElement);
   const ajusterAuCanvas = useLabelStore((s) => s.ajusterAuCanvas);
-
-  // Les cadres sont MESURÉS sur le canvas (rotation, texte sans largeur, QR,
-  // formes centrées), en coordonnées du document ; on déplace ensuite chaque
-  // élément du décalage calculé, ce qui vaut quelle que soit son origine.
-  const ids = idsSelectionnes({ selectedId, extraIds, elements }).filter((id) => !elements.find((e) => e.id === id)?.locked);
-  const cadre = (id) => docNode?.findOne(`#${id}`)?.getClientRect({ skipShadow: true, relativeTo: docNode }) ?? null;
-  const deplacer = (offsets, liste) =>
-    offsets.forEach(({ dx, dy }, i) => {
-      const e = elements.find((x) => x.id === liste[i]);
-      if (e && (dx || dy)) updateElement(e.id, { x: (e.x ?? 0) + dx, y: (e.y ?? 0) + dy });
-    });
-  const aligner = (alignement) => {
-    const liste = ids.filter((id) => cadre(id));
-    const boites = liste.map(cadre);
-    if (!boites.length) return;
-    const reference =
-      boites.length === 1 ? { x: 0, y: 0, width: canvasSize.width, height: canvasSize.height } : unionBoxes(boites);
-    deplacer(alignOffsets(boites, reference, alignement), liste);
-  };
-  const distribuer = (axe) => {
-    const liste = ids.filter((id) => cadre(id));
-    deplacer(distributeOffsets(liste.map(cadre), axe), liste);
-  };
+  const { ids, aligner, distribuer, pret } = useAlignementPage(docNode);
+  const seul = ids.length === 1;
+  const ou = seul ? 'sur la page' : 'entre les éléments';
 
   // ✏️ Correction manuelle d'un texte lié, pour le produit affiché
   const correction = el.type === 'text' && el.dataBinding ? texteCorrige(el, produit) : undefined;
@@ -93,83 +69,71 @@ const ReglagesCommuns = ({ el, docNode }) => {
   const liable = dataSource === 'data' && produit && (typeLiable(el.type) || el.type === 'fiche');
 
   return (
-    <div className="space-y-3">
-      {docNode && ids.length > 0 && (
-        <div>
-          <div className="mb-1.5 text-xs font-medium text-gray-800 dark:text-gray-200">
-            {ids.length === 1 ? 'Position sur la page' : `Aligner les ${ids.length} éléments`}
-          </div>
-          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Alignement">
-            {ALIGNEMENTS.map(([valeur, label, Icone]) => (
-              <button
-                key={valeur}
-                type="button"
-                onClick={() => aligner(valeur)}
-                className={bouton}
-                title={ids.length === 1 ? `${label} (sur la page)` : `${label} (entre les éléments)`}
-              >
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center gap-0.5" role="group" aria-label={seul ? 'Position sur la page' : 'Aligner les éléments'}>
+          {pret &&
+            ids.length > 0 &&
+            ALIGNEMENTS.map(([valeur, label, Icone]) => (
+              <button key={valeur} type="button" onClick={() => aligner(valeur)} className={bouton} title={`${label} (${ou})`}>
                 <Icone className="h-4 w-4" />
               </button>
             ))}
-            {ids.length > 2 && (
-              <>
-                <button type="button" onClick={() => distribuer('horizontal')} className={bouton} title="Espaces horizontaux égaux">
-                  <AlignHorizontalSpaceAround className="h-4 w-4" />
-                </button>
-                <button type="button" onClick={() => distribuer('vertical')} className={bouton} title="Espaces verticaux égaux">
-                  <AlignVerticalSpaceAround className="h-4 w-4" />
-                </button>
-              </>
-            )}
-          </div>
+          {pret && ids.length > 2 && (
+            <>
+              <button type="button" onClick={() => distribuer('horizontal')} className={bouton} title="Espaces horizontaux égaux">
+                <AlignHorizontalSpaceAround className="h-4 w-4" />
+              </button>
+              <button type="button" onClick={() => distribuer('vertical')} className={bouton} title="Espaces verticaux égaux">
+                <AlignVerticalSpaceAround className="h-4 w-4" />
+              </button>
+            </>
+          )}
         </div>
-      )}
-
-      <div className="flex gap-1">
-        {/* Remplir le canvas (`cadreDuCanvas`, utils/placement.js) */}
-        {ids.length === 1 && (
-          <button
-            type="button"
-            onClick={() => ajusterAuCanvas(selectedId)}
-            className={action}
-            title="L'élément prend toute la taille du canvas"
-          >
-            <Expand className="h-4 w-4" />
-            Remplir
-          </button>
-        )}
-        {ids.length > 0 && (
-          <button
-            type="button"
-            onClick={() => deleteElements(ids)}
-            className={`${action} text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20`}
-            title={ids.length > 1 ? `Supprimer les ${ids.length} éléments (Suppr)` : 'Supprimer (Suppr)'}
-          >
-            <Trash2 className="h-4 w-4" />
-            Supprimer
-          </button>
-        )}
+        <div className="flex items-center gap-0.5">
+          {seul && (
+            <>
+              {/* Remplir le canvas (`cadreDuCanvas`, utils/placement.js) */}
+              <button type="button" onClick={() => ajusterAuCanvas(selectedId)} className={bouton} title="Remplir la page">
+                <Expand className="h-4 w-4" />
+              </button>
+              <button type="button" onClick={() => duplicateElement(selectedId)} className={bouton} title="Dupliquer">
+                <Copy className="h-4 w-4" />
+              </button>
+            </>
+          )}
+          {ids.length > 0 && (
+            <button
+              type="button"
+              onClick={() => deleteElements(ids)}
+              className={`${bouton} text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20`}
+              title={seul ? 'Supprimer (Suppr)' : `Supprimer les ${ids.length} éléments (Suppr)`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {liable && (
-        <div className="space-y-1.5">
+        <>
           <LiaisonProduit element={el} product={produit} onUpdate={(patch) => updateElement(el.id, patch)} />
           {correction !== undefined && (
             <button
               type="button"
               onClick={resetCorrection}
-              className="px-2 py-1 text-xs border border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              className={`${BOUTON_ACTION} w-full border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400`}
               title="Texte corrigé à la main pour ce produit. Cliquer pour revenir au texte de la fiche."
             >
               Revenir au texte de la fiche
             </button>
           )}
           {ficheChangee !== undefined && (
-            <p className="px-2 py-1 text-xs rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-              ⚠ La fiche a changé depuis la correction. Elle dit maintenant : « {ficheChangee} ». La correction reste affichée.
+            <p className="px-2 py-1 text-xs rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+              ⚠ La fiche dit maintenant « {ficheChangee} ».
             </p>
           )}
-        </div>
+        </>
       )}
     </div>
   );

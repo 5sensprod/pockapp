@@ -1,11 +1,14 @@
 // frontend/modules/stick/labels/components/templates/ReglagesTexte.jsx
 //
-// Les réglages d'un TEXTE, section par section, pour `ReglagesPanel` (onglet
-// Texte, à la place des propositions quand un texte est sélectionné). Repris
-// de la barre d'options (`PropertyPanel`) : MÊMES clés écrites, mêmes bornes —
-// seul l'emplacement change. Chaque section reçoit `{ el, maj, docNode }`.
+// Les réglages d'un TEXTE. Des ATOMES (`Taille`, `GrasItalique`,
+// `CouleurTexte`…), tous en `({ el, maj, docNode })`, que composent :
+// - `Noyau` : les réglages COURANTS, en quatre rangées serrées en tête de
+//   l'onglet Texte, sans titre de section ni libellé redondant ;
+// - `ReglagesRapides` : les mêmes atomes dans la barre du haut.
+// Un même atome aux deux endroits, donc une seule écriture : MÊMES clés,
+// mêmes bornes qu'avant — seul l'emplacement change.
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlignCenter,
   AlignJustify,
@@ -14,6 +17,8 @@ import {
   Bold,
   Highlighter,
   Italic,
+  Minus,
+  Plus,
   Strikethrough,
   Underline,
 } from 'lucide-react';
@@ -23,84 +28,179 @@ import Curseur from '../ui/Curseur';
 import { TYPO_BORNES } from '../../utils/typo';
 import PastilleCouleur from '../ui/PastilleCouleur';
 import Segments from '../ui/Segments';
-import { CHAMP, LIGNE as ligne, boutonBascule as bouton } from '../ui/styles';
-
-const champ = `${CHAMP} w-16 text-right`;
+import { CHAMP, BOUTON_ICONE, boutonBascule as bouton } from '../ui/styles';
 
 const TAILLE_MIN = 4;
 const TAILLE_MAX = 400;
 const CONTOUR_MAX = 40;
+const borner = (v, min, max) => Math.min(max, Math.max(min, v));
 
+/**
+ * Un nombre saisi au clavier : BROUILLON local, validé à Entrée ou en sortant
+ * du champ. Borner à chaque frappe (comme avant) rendait « 36 » intapable :
+ * « 3 » était aussitôt remonté au minimum, 4, et l'on obtenait 46.
+ * Entrée et Échap rendent le focus : Suppr et H du canvas reviennent.
+ */
+const ChampValide = ({ valeur, onValeur, min, max, pas = 1, titre, className }) => {
+  const [brouillon, setBrouillon] = useState(null);
+  useEffect(() => setBrouillon(null), [valeur]);
+  const valider = () => {
+    if (brouillon === null) return;
+    const n = Number.parseFloat(String(brouillon).replace(',', '.'));
+    setBrouillon(null);
+    if (Number.isFinite(n)) onValeur(borner(n, min, max));
+  };
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={brouillon ?? valeur}
+      onChange={(e) => setBrouillon(e.target.value)}
+      onBlur={valider}
+      onFocus={(e) => e.target.select()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          setBrouillon(null);
+          e.currentTarget.blur();
+        }
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          setBrouillon(null);
+          onValeur(borner(valeur + (e.key === 'ArrowUp' ? 1 : -1) * pas * (e.shiftKey ? 10 : 1), min, max));
+        }
+      }}
+      title={titre}
+      aria-label={titre}
+      className={`${CHAMP} text-center ${className}`}
+    />
+  );
+};
 
-/** Police et taille (px). Taille bornée : 0 ou vide rendrait le texte invisible. */
-export const Police = ({ el, maj }) => (
-  <div className="space-y-2">
-    <div className={ligne}>
-      <span>Police</span>
-      <FontSelector
-        value={el.fontFamily || 'Arial'}
-        onChange={(fontFamily) => maj({ fontFamily })}
-        apiKey={import.meta.env.VITE_GOOGLE_FONTS_KEY}
-      />
+// ── Atomes ──────────────────────────────────────────────────────────────────
+
+/** Taille de la police (px), 4 à 400 : − champ +. */
+export const Taille = ({ el, maj }) => {
+  const taille = Math.round(el.fontSize ?? 16);
+  const poser = (n) => maj({ fontSize: borner(n, TAILLE_MIN, TAILLE_MAX) });
+  return (
+    <div className="flex-none flex items-center" role="group" aria-label="Taille de la police">
+      <button type="button" onClick={(e) => poser(taille - (e.shiftKey ? 10 : 1))} className={`${BOUTON_ICONE} w-6`} title="Plus petit (Maj : −10)">
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <ChampValide valeur={taille} onValeur={poser} min={TAILLE_MIN} max={TAILLE_MAX} titre="Taille de la police (px)" className="w-11 px-1" />
+      <button type="button" onClick={(e) => poser(taille + (e.shiftKey ? 10 : 1))} className={`${BOUTON_ICONE} w-6`} title="Plus grand (Maj : +10)">
+        <Plus className="h-3.5 w-3.5" />
+      </button>
     </div>
-    <label className={ligne}>
-      <span>Taille (px)</span>
-      <input
-        type="number"
-        min={TAILLE_MIN}
-        max={TAILLE_MAX}
-        step={1}
-        value={Math.round(el.fontSize ?? 16)}
-        onChange={(e) => {
-          const n = Number(e.target.value);
-          if (Number.isFinite(n) && n > 0) maj({ fontSize: Math.min(TAILLE_MAX, Math.max(TAILLE_MIN, n)) });
-        }}
-        className={champ}
-      />
-    </label>
+  );
+};
+
+// fontStyle Konva : 'normal' | 'bold' | 'italic' | 'italic bold'
+const styleDe = (el) => ({ gras: (el.fontStyle || '').includes('bold'), italique: (el.fontStyle || '').includes('italic') });
+const fontStyle = (g, i) => (g && i ? 'italic bold' : g ? 'bold' : i ? 'italic' : 'normal');
+// textDecoration Konva : '' | 'underline' | 'line-through' | 'underline line-through'
+const decoDe = (el) => {
+  const d = (el.textDecoration || '').split(' ').filter(Boolean);
+  return { souligne: d.includes('underline'), barre: d.includes('line-through') };
+};
+const textDecoration = (s, b) => [s && 'underline', b && 'line-through'].filter(Boolean).join(' ');
+
+const Bascules = ({ boutons }) => (
+  <div className="flex-none flex items-center gap-0.5">
+    {boutons.map(([label, Icone, actif, basculer]) => (
+      <button key={label} type="button" onClick={basculer} className={bouton(actif)} title={label} aria-pressed={actif}>
+        <Icone className="h-4 w-4" />
+      </button>
+    ))}
   </div>
 );
 
-/** Gras, italique, souligné, barré, surlignage — tous en un clic. */
-export const Style = ({ el, maj }) => {
-  // fontStyle Konva : 'normal' | 'bold' | 'italic' | 'italic bold'
-  const gras = (el.fontStyle || '').includes('bold');
-  const italique = (el.fontStyle || '').includes('italic');
-  const style = (g, i) => maj({ fontStyle: g && i ? 'italic bold' : g ? 'bold' : i ? 'italic' : 'normal' });
-  // textDecoration Konva : '' | 'underline' | 'line-through' | 'underline line-through'
-  const deco = (el.textDecoration || '').split(' ').filter(Boolean);
-  const souligne = deco.includes('underline');
-  const barre = deco.includes('line-through');
-  const decoration = (s, b) => maj({ textDecoration: [s && 'underline', b && 'line-through'].filter(Boolean).join(' ') });
-  const surligne = !!el.highlightEnabled;
-
-  const boutons = [
-    ['Gras', Bold, gras, () => style(!gras, italique)],
-    ['Italique', Italic, italique, () => style(gras, !italique)],
-    ['Souligné', Underline, souligne, () => decoration(!souligne, barre)],
-    ['Barré', Strikethrough, barre, () => decoration(souligne, !barre)],
-    [
-      'Surligner',
-      Highlighter,
-      surligne,
-      () => maj({ highlightEnabled: !surligne, highlightColor: el.highlightColor || '#FFFF00' }),
-    ],
-  ];
+/** Gras et italique. */
+export const GrasItalique = ({ el, maj }) => {
+  const { gras, italique } = styleDe(el);
   return (
-    <div className="flex items-center gap-1">
-      {boutons.map(([label, Icone, actif, basculer]) => (
-        <button key={label} type="button" onClick={basculer} className={bouton(actif)} title={label} aria-pressed={actif}>
-          <Icone className="h-4 w-4" />
-        </button>
-      ))}
-      {/* La couleur du surlignage : toujours là, la choisir l'active */}
-      <span className="ml-1">
-        <PastilleCouleur
-          couleur={el.highlightColor || '#FFFF00'}
-          onCouleur={(highlightColor) => maj({ highlightColor, highlightEnabled: true })}
-          label="Couleur du surlignage"
-        />
-      </span>
+    <Bascules
+      boutons={[
+        ['Gras', Bold, gras, () => maj({ fontStyle: fontStyle(!gras, italique) })],
+        ['Italique', Italic, italique, () => maj({ fontStyle: fontStyle(gras, !italique) })],
+      ]}
+    />
+  );
+};
+
+/** Souligné et barré. */
+export const Decorations = ({ el, maj }) => {
+  const { souligne, barre } = decoDe(el);
+  return (
+    <Bascules
+      boutons={[
+        ['Souligné', Underline, souligne, () => maj({ textDecoration: textDecoration(!souligne, barre) })],
+        ['Barré', Strikethrough, barre, () => maj({ textDecoration: textDecoration(souligne, !barre) })],
+      ]}
+    />
+  );
+};
+
+/** Couleur du texte : unie, dégradé ou texture. */
+export const CouleurTexte = ({ el, maj }) => (
+  <GradientColorPicker
+    color={el.color || '#000000'}
+    gradient={el.fillGradient ?? null}
+    onColorChange={(color) => maj({ color })}
+    onGradientChange={(g) => maj({ fillGradient: g })}
+    title="Couleur du texte"
+  />
+);
+
+/**
+ * Contour des lettres : couleur (ou dégradé linéaire) et épaisseur. Les deux
+ * vont ensemble — sans épaisseur rien ne se voit, sans couleur non plus :
+ * choisir l'une pose l'autre.
+ */
+export const ContourSimple = ({ el, maj }) => (
+  <div className="flex-none flex items-center gap-1">
+    <GradientColorPicker
+      color={el.stroke || '#000000'}
+      gradient={el.strokeGradient ?? null}
+      onColorChange={(c) => maj({ stroke: c, ...(el.strokeWidth > 0 ? {} : { strokeWidth: 2 }) })}
+      onGradientChange={(g) => maj({ strokeGradient: g, ...(g && !(el.strokeWidth > 0) ? { strokeWidth: 2 } : {}) })}
+      title="Couleur du contour"
+      lineaireSeulement
+    />
+    <ChampValide
+      valeur={el.strokeWidth ?? 0}
+      min={0}
+      max={CONTOUR_MAX}
+      pas={0.5}
+      titre="Épaisseur du contour (px) — 0 : pas de contour"
+      className="w-10 px-1"
+      onValeur={(strokeWidth) =>
+        maj({ strokeWidth, ...(strokeWidth > 0 && !el.stroke && !el.strokeGradient ? { stroke: '#000000' } : {}) })
+      }
+    />
+  </div>
+);
+
+/** Surlignage (stabilo) : la bascule, et sa couleur — la choisir l'active. */
+export const Surlignage = ({ el, maj }) => {
+  const actif = !!el.highlightEnabled;
+  return (
+    <div className="flex-none flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => maj({ highlightEnabled: !actif, highlightColor: el.highlightColor || '#FFFF00' })}
+        className={bouton(actif)}
+        title="Surligner"
+        aria-pressed={actif}
+      >
+        <Highlighter className="h-4 w-4" />
+      </button>
+      <PastilleCouleur
+        couleur={el.highlightColor || '#FFFF00'}
+        onCouleur={(highlightColor) => maj({ highlightColor, highlightEnabled: true })}
+        label="Couleur du surlignage"
+      />
     </div>
   );
 };
@@ -111,95 +211,126 @@ const ALIGNEMENTS = [
   ['right', 'Texte à droite', AlignRight],
   ['justify', 'Texte justifié', AlignJustify],
 ];
+const largeurMesuree = (el, docNode) => {
+  const w = docNode?.findOne(`#${el.id}`)?.getClientRect({ skipShadow: true, relativeTo: docNode })?.width;
+  return w ? Math.round(w) : null;
+};
 
 /**
  * Alignement du texte DANS son bloc. Sans largeur fixée, le bloc épouse le
- * texte et l'alignement ne se verrait pas : on lui donne sa largeur actuelle.
+ * texte et l'alignement ne se verrait pas : on lui donne sa largeur actuelle
+ * — `LargeurBloc`, juste dessous, le montre et permet d'y revenir.
  */
-export const Alignement = ({ el, maj, docNode }) => {
-  const largeurMesuree = () => {
-    const w = docNode?.findOne(`#${el.id}`)?.getClientRect({ skipShadow: true, relativeTo: docNode })?.width;
-    return w ? Math.round(w) : null;
-  };
+export const Alignement = ({ el, maj, docNode }) => (
+  <div className="flex-none flex items-center gap-0.5">
+    {ALIGNEMENTS.map(([valeur, label, Icone]) => (
+      <button
+        key={valeur}
+        type="button"
+        onClick={() => {
+          const m = { align: valeur };
+          if (el.width == null) {
+            const w = largeurMesuree(el, docNode);
+            if (w) m.width = w;
+          }
+          maj(m);
+        }}
+        className={bouton((el.align ?? 'left') === valeur)}
+        title={label}
+        aria-pressed={(el.align ?? 'left') === valeur}
+      >
+        <Icone className="h-4 w-4" />
+      </button>
+    ))}
+  </div>
+);
+
+/** La largeur du bloc : automatique (il épouse le texte) ou fixe (le texte passe à la ligne). */
+export const LargeurBloc = ({ el, maj, docNode }) => {
   const fixe = el.width != null;
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1">
-        {ALIGNEMENTS.map(([valeur, label, Icone]) => (
-          <button
-            key={valeur}
-            type="button"
-            onClick={() => {
-              const m = { align: valeur };
-              // Sans largeur fixée, le bloc épouse le texte : on lui en donne une
-              if (!fixe) {
-                const w = largeurMesuree();
-                if (w) m.width = w;
-              }
-              maj(m);
-            }}
-            className={bouton((el.align ?? 'left') === valeur)}
-            title={label}
-            aria-pressed={(el.align ?? 'left') === valeur}
-          >
-            <Icone className="h-4 w-4" />
-          </button>
-        ))}
-      </div>
-      {/* La largeur du bloc, visible et réversible : choisir un alignement la
-          fixait sans le dire, et rien ne permettait de revenir en arrière */}
-      <div className={ligne}>
-        <span>Largeur du bloc</span>
-        <div className="w-40">
-          <Segments
-            label="Largeur du bloc"
-            valeur={fixe}
-            onValeur={(v) => {
-              if (v === fixe) return;
-              if (!v) return maj({ width: undefined });
-              const w = largeurMesuree();
-              if (w) maj({ width: w });
-            }}
-            options={[
-              { id: false, label: 'Auto', titre: 'Le bloc épouse le texte' },
-              { id: true, label: fixe ? `${Math.round(el.width)} px` : 'Fixe', titre: 'Le texte se range dans une largeur fixe, et passe à la ligne' },
-            ]}
-          />
-        </div>
-      </div>
-    </div>
+    <Segments
+      label="Largeur du bloc"
+      valeur={fixe}
+      onValeur={(v) => {
+        if (v === fixe) return;
+        if (!v) return maj({ width: undefined });
+        const w = largeurMesuree(el, docNode);
+        if (w) maj({ width: w });
+      }}
+      options={[
+        { id: false, label: 'Auto', titre: 'Le bloc épouse le texte' },
+        { id: true, label: fixe ? `${Math.round(el.width)} px` : 'Fixe', titre: 'Le texte se range dans une largeur fixe, et passe à la ligne' },
+      ]}
+    />
   );
 };
 
-/** Couleur du texte : unie, dégradé ou texture. */
-export const Couleur = ({ el, maj }) => (
-  <div className={ligne}>
-    <span>Couleur du texte</span>
-    <GradientColorPicker
-      color={el.color || '#000000'}
-      gradient={el.fillGradient ?? null}
-      onColorChange={(color) => maj({ color })}
-      onGradientChange={(g) => maj({ fillGradient: g })}
-      title="Couleur"
-    />
+// ── Le noyau de l'onglet Texte ──────────────────────────────────────────────
+
+const rangee = 'flex items-center justify-between gap-2 min-h-7';
+const etiquette = 'text-xs text-gray-500 dark:text-gray-400';
+
+/**
+ * LES RÉGLAGES COURANTS d'un texte, en quatre rangées : police et taille ;
+ * style et alignement ; couleur, contour, surlignage ; largeur du bloc.
+ * 150 px au lieu de quatre sections dépliées sur 550.
+ */
+export const Noyau = ({ el, maj, docNode }) => (
+  <div className="space-y-2">
+    <div className={rangee}>
+      <div className="flex-1 min-w-0">
+        <FontSelector
+          value={el.fontFamily || 'Arial'}
+          onChange={(fontFamily) => maj({ fontFamily })}
+          apiKey={import.meta.env.VITE_GOOGLE_FONTS_KEY}
+          largeur="w-full"
+        />
+      </div>
+      <Taille el={el} maj={maj} />
+    </div>
+    <div className={rangee}>
+      <div className="flex items-center gap-0.5">
+        <GrasItalique el={el} maj={maj} />
+        <Decorations el={el} maj={maj} />
+      </div>
+      <Alignement el={el} maj={maj} docNode={docNode} />
+    </div>
+    <div className={rangee}>
+      <div className="flex items-center gap-1.5">
+        <span className={etiquette}>Couleur</span>
+        <CouleurTexte el={el} maj={maj} />
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className={etiquette}>Contour</span>
+        <ContourSimple el={el} maj={maj} />
+      </div>
+      <Surlignage el={el} maj={maj} />
+    </div>
+    <div className={rangee}>
+      <span className={etiquette}>Largeur</span>
+      <div className="w-44">
+        <LargeurBloc el={el} maj={maj} docNode={docNode} />
+      </div>
+    </div>
   </div>
 );
 
 /** Lettres, interligne, hauteur des lettres, courbure (`utils/typo.js`). */
 export const Espacement = ({ el, maj }) => (
-  <div className="space-y-3">
+  <div className="space-y-2">
     {[
-      ['letterSpacing', 'Entre les lettres', 1, (v) => `${v}px`],
+      ['letterSpacing', 'Lettres', 1, (v) => `${v}px`],
       ['lineHeight', 'Interligne', 0.05, (v) => `×${v}`],
-      ['charHeight', 'Hauteur des lettres', 5, (v) => `${v}%`],
+      ['charHeight', 'Hauteur', 5, (v) => `${v}%`],
       ['curve', 'Courbure', 1, (v) => `${v}`],
     ].map(([cle, libelle, step, fmt]) => {
       const b = TYPO_BORNES[cle];
       return (
         <Curseur
           key={cle}
-          disposition="bloc"
           label={libelle}
+          largeurLabel="w-20"
           min={b.min}
           max={b.max}
           step={step}
@@ -210,41 +341,5 @@ export const Espacement = ({ el, maj }) => (
         />
       );
     })}
-  </div>
-);
-
-/**
- * Contour des lettres : couleur (ou dégradé linéaire) et épaisseur. Les deux
- * vont ensemble — sans épaisseur rien ne se voit, sans couleur non plus :
- * choisir l'une pose l'autre.
- */
-export const Contour = ({ el, maj }) => (
-  <div className="space-y-2">
-    <div className={ligne}>
-      <span>Couleur du contour</span>
-      <GradientColorPicker
-        color={el.stroke || '#000000'}
-        gradient={el.strokeGradient ?? null}
-        onColorChange={(c) => maj({ stroke: c, ...(el.strokeWidth > 0 ? {} : { strokeWidth: 2 }) })}
-        onGradientChange={(g) => maj({ strokeGradient: g, ...(g && !(el.strokeWidth > 0) ? { strokeWidth: 2 } : {}) })}
-        title="Contour du texte"
-        lineaireSeulement
-      />
-    </div>
-    <label className={ligne}>
-      <span>Épaisseur (px)</span>
-      <input
-        type="number"
-        min={0}
-        max={CONTOUR_MAX}
-        step={0.5}
-        value={el.strokeWidth ?? 0}
-        onChange={(e) => {
-          const strokeWidth = Number(e.target.value);
-          maj({ strokeWidth, ...(strokeWidth > 0 && !el.stroke && !el.strokeGradient ? { stroke: '#000000' } : {}) });
-        }}
-        className={champ}
-      />
-    </label>
   </div>
 );

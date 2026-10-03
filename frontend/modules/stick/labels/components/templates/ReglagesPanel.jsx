@@ -18,9 +18,10 @@
 
 import React from 'react';
 import useLabelStore from '../../store/useLabelStore';
-import { ongletDe, reglagesDe } from '../../utils/reglagesParType';
+import { ongletDe, reglagesDe, sectionActive, sectionOuverte } from '../../utils/reglagesParType';
+import { CONTOUR_STYLISE_DEFAUT, reglagesContour } from '../../utils/contourStylise';
+import { useMajSelection } from '../useMajSelection';
 import { redessiner } from '../../utils/dessin';
-import { ciblesDe, majDeSelection } from '../../utils/majSelection';
 import { lissageDe, relisser } from '../../utils/formeLibre';
 import ReglagesContourStylise from '../ReglagesContourStylise';
 import ReglagesMasque from '../ReglagesMasque';
@@ -99,12 +100,9 @@ const Masque = ({ el, maj }) => <ReglagesMasque element={el} onChange={maj} />;
 
 /** Identifiant de section (`reglagesParType.js`) → titre et composant. */
 const SECTIONS = {
-  police: { titre: 'Police', Composant: Texte.Police },
-  styleTexte: { titre: 'Style', Composant: Texte.Style },
-  alignementTexte: { titre: 'Alignement', Composant: Texte.Alignement },
-  couleur: { titre: 'Couleur', Composant: Texte.Couleur },
-  espacement: { titre: 'Espacement et courbure', Composant: Texte.Espacement },
-  contour: { titre: 'Contour des lettres', Composant: Texte.Contour },
+  // Le noyau du texte : pas de titre, pas de pli — c'est ce qu'on règle à chaque affiche
+  noyauTexte: { nu: true, Composant: Texte.Noyau },
+  espacement: { titre: 'Espacement', Composant: Texte.Espacement },
   ajustement: { titre: 'Ajustement et recadrage', Composant: Photo.Ajustement },
   miroir: { titre: 'Miroir', Composant: Photo.Miroir },
   opacite: { titre: 'Opacité', Composant: Photo.Opacite },
@@ -119,7 +117,17 @@ const SECTIONS = {
   contenuFiche: { titre: 'Contenu', Composant: Fiche.Contenu },
   styleTableau: { titre: 'Style du tableau', Composant: Fiche.StyleTableau },
   trace: { titre: 'Tracé', Composant: Trace },
-  contourStylise: { titre: 'Contour à main levée', Composant: ContourStylise },
+  // L'interrupteur est dans l'en-tête ; pour un tracé, il passe par `redessiner`
+  contourStylise: {
+    titre: 'Contour à main levée',
+    Composant: ContourStylise,
+    actif: (el) => !!reglagesContour(el),
+    onActif: (el, maj, v) => {
+      const m = { contourStyle: v ? { ...CONTOUR_STYLISE_DEFAUT } : null };
+      maj(el.type === 'dessin' ? (redessiner(el, m) ?? m) : m);
+    },
+    aide: 'Donne au contour un trait tremblé, comme tracé à la main.',
+  },
   fermerTrace: { titre: 'Forme', Composant: FermerTrace },
   arrondi: { titre: 'Coins', Composant: Arrondi },
   lissage: { titre: 'Lissage de la courbe', Composant: Lissage },
@@ -134,43 +142,53 @@ const NOMS = { dessin: 'Tracé', shape: 'Forme', text: 'Texte', image: 'Image', 
 
 /** `nu` : sans marges ni titre, quand un autre panneau l'accueille (Dessin). */
 export default function ReglagesPanel({ nu = false, docNode = null }) {
-  const el = useLabelStore((s) => s.elements.find((e) => e.id === s.selectedId) ?? null);
-  // Combien d'éléments ce panneau règle : la sélection du MÊME type que le principal
-  const nombre = useLabelStore((s) => ciblesDe(s, s.elements.find((e) => e.id === s.selectedId) ?? null).length);
-  const autres = useLabelStore((s) => (s.selectedId ? 1 + s.extraIds.length : 0)) - nombre;
+  // L'élément principal, et LE chemin d'écriture : toute la sélection de ce
+  // type, en un pas d'historique (`useMajSelection`, partagé avec la barre du haut)
+  const { el, maj, nombre, autres } = useMajSelection();
 
   if (!el) {
     return <p className="p-4 text-sm text-gray-500 dark:text-gray-400">Sélectionnez un élément pour voir ses réglages.</p>;
   }
   const sections = sectionsAffichees(el);
-  // Un réglage vaut pour TOUTE la sélection de ce type, en un seul pas
-  // d'historique : le style se partage, la géométrie reste à chacun, un tracé
-  // est redessiné pour lui-même (`utils/majSelection.js`).
-  const maj = (m) => {
-    const etat = useLabelStore.getState();
-    etat.updateElements(majDeSelection(etat, el, m, { redessiner }));
-  };
 
   return (
     <div className={nu ? '' : 'px-3 pb-3'}>
-      <div className="py-2 text-xs text-gray-500 dark:text-gray-400">
-        {NOMS[el.type] ?? 'Élément'}
-        {nombre > 1 && ` — réglés ensemble : ${nombre}`}
-        {autres > 0 && ` (${autres} d'un autre type ou verrouillé${autres > 1 ? 's' : ''} : non touché${autres > 1 ? 's' : ''})`}
-      </div>
-      {/* Ce qui vaut pour tout élément : position, remplir, supprimer, liaison produit */}
-      <div className="pb-3">
+      {/* Rien à dire pour un élément seul : le titre de l'onglet suffit */}
+      {(nombre > 1 || autres > 0) && (
+        <div className="pt-2 text-[11px] text-gray-500 dark:text-gray-400">
+          {nombre > 1 && `${nombre} éléments réglés ensemble`}
+          {autres > 0 && `${nombre > 1 ? ' · ' : ''}${autres} non touché${autres > 1 ? 's' : ''} (autre type ou verrouillé)`}
+        </div>
+      )}
+      {/* Ce qui vaut pour tout élément : position, remplir, dupliquer, supprimer, liaison produit */}
+      <div className="py-2">
         <ReglagesCommuns el={el} docNode={docNode} />
       </div>
       <div className="border-t border-gray-200 dark:border-gray-700">
-      {sections.map((id) => {
-        const { titre, Composant } = SECTIONS[id];
-        return (
-          <Section key={id} titre={titre}>
-            <Composant el={el} maj={maj} docNode={docNode} />
-          </Section>
-        );
-      })}
+        {sections.map((id) => {
+          const { titre, Composant, nu: sansTitre, actif, onActif, aide } = SECTIONS[id];
+          const contenu = <Composant el={el} maj={maj} docNode={docNode} />;
+          if (sansTitre) {
+            return (
+              <div key={id} className="py-3 border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+                {contenu}
+              </div>
+            );
+          }
+          return (
+            // `key` avec l'élément : l'état du pli se recalcule à chaque sélection
+            <Section
+              key={`${id}:${el.id}`}
+              titre={titre}
+              ouvertParDefaut={sectionOuverte(id, el)}
+              marque={sectionActive(id, el)}
+              aide={aide}
+              {...(onActif ? { actif: actif(el), onActif: (v) => onActif(el, maj, v) } : {})}
+            >
+              {contenu}
+            </Section>
+          );
+        })}
       </div>
     </div>
   );

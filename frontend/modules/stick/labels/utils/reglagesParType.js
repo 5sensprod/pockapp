@@ -20,7 +20,9 @@ const CARTE = {
   // descendu n'y garde plus rien, tout est dans l'onglet de son type
   text: {
     barre: [],
-    panneau: ['police', 'styleTexte', 'alignementTexte', 'couleur', 'espacement', 'contour', 'contourStylise', 'masque'],
+    // `noyauTexte` : police, taille, style, alignement, couleur, contour,
+    // surlignage, largeur — en quatre rangées, sans titre de section
+    panneau: ['noyauTexte', 'espacement', 'contourStylise', 'masque'],
   },
   shape: {
     barre: [],
@@ -115,6 +117,41 @@ export const reglagesDe = (el) => {
     panneau: [...carte.panneau.filter(garder(el)), ...SECTIONS_COMMUNES],
   };
 };
+
+/**
+ * LES OPTIONS RAPIDES de la barre du haut, par type : des atomes de réglage
+ * (les mêmes que dans le panneau, même écriture). Peu, pour ne jamais faire
+ * défiler la barre. Ni la police (trop large), ni l'alignement du texte (il
+ * fixe la largeur du bloc, et son Auto / Fixe doit rester à côté de lui).
+ */
+const RAPIDES_PAR_TYPE = {
+  text: ['taille', 'grasItalique', 'couleurTexte'],
+};
+export const rapidesDe = (el) => RAPIDES_PAR_TYPE[el?.type] ?? [];
+
+/**
+ * Les sections RARES : repliées par défaut, pour que les réglages courants
+ * tiennent sans ascenseur. Elles s'ouvrent d'elles-mêmes quand l'élément y
+ * porte un réglage actif (`sectionActive`).
+ */
+export const SECTIONS_RARES = new Set(['espacement', 'contourStylise', 'masque']);
+
+// Défauts de `utils/typo.js` (`TYPO_BORNES`) : recopiés ici pour rester pur
+const ESPACEMENT_NEUTRE = { letterSpacing: 0, lineHeight: 1, charHeight: 100, curve: 0 };
+
+/** L'élément porte-t-il un réglage actif dans cette section ? */
+export const sectionActive = (id, el) => {
+  if (!el) return false;
+  if (id === 'espacement') {
+    return Object.entries(ESPACEMENT_NEUTRE).some(([cle, neutre]) => el[cle] != null && el[cle] !== neutre);
+  }
+  if (id === 'contourStylise') return !!el.contourStyle && typeof el.contourStyle === 'object';
+  if (id === 'masque') return !!(el.mask || el.maskTexture || el.maskPadding || el.maskFeather);
+  return false;
+};
+
+/** Une section s'affiche-t-elle dépliée pour cet élément ? */
+export const sectionOuverte = (id, el) => !SECTIONS_RARES.has(id) || sectionActive(id, el);
 
 /** Les types qui ont des réglages propres. */
 export const TYPES_REGLABLES = Object.keys(CARTE);
