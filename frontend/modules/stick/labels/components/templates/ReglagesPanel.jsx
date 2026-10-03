@@ -25,6 +25,8 @@ import Curseur from '../ui/Curseur';
 import { TraceSelectionne } from './TraceSelectionne';
 import * as Texte from './ReglagesTexte';
 import * as Photo from './ReglagesImage';
+import * as Codes from './ReglagesCodes';
+import * as Fiche from './ReglagesFiche';
 
 const ARRONDI_MAX = 200;
 
@@ -101,6 +103,15 @@ const SECTIONS = {
   miroir: { titre: 'Miroir', Composant: Photo.Miroir },
   opacite: { titre: 'Opacité', Composant: Photo.Opacite },
   dimensions: { titre: 'Taille du cadre', Composant: Photo.Dimensions },
+  remplissage: { titre: 'Remplissage', Composant: Codes.Remplissage },
+  contourForme: { titre: 'Contour', Composant: Codes.ContourForme },
+  couleurQr: { titre: 'Couleur', Composant: Codes.CouleurQr },
+  contenuQr: { titre: 'Contenu du QR code', Composant: Codes.ContenuQr },
+  couleursBarres: { titre: 'Couleurs', Composant: Codes.CouleursBarres },
+  barres: { titre: 'Barres', Composant: Codes.Barres },
+  numero: { titre: 'Numéro sous les barres', Composant: Codes.Numero },
+  contenuFiche: { titre: 'Contenu', Composant: Fiche.Contenu },
+  styleTableau: { titre: 'Style du tableau', Composant: Fiche.StyleTableau },
   trace: { titre: 'Tracé', Composant: Trace },
   contourStylise: { titre: 'Contour à main levée', Composant: ContourStylise },
   fermerTrace: { titre: 'Forme', Composant: FermerTrace },

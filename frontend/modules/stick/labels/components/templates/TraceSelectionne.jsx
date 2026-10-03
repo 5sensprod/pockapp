@@ -7,6 +7,7 @@
 
 import React from 'react';
 import Curseur from '../ui/Curseur';
+import GradientColorPicker from '../GradientColorPicker';
 import useLabelStore from '../../store/useLabelStore';
 import { composerCouleur, decomposerCouleur } from '../../utils/paint';
 import { DRAW_DEFAULTS, fusionDe, redessiner, REGLAGES_TRACE, STROKE_WIDTH_RANGE } from '../../utils/dessin';
@@ -56,7 +57,18 @@ export const TraceSelectionne = ({ el }) => {
     });
   return (
     <div className="space-y-3">
-      <Couleur label="Couleur du tracé" valeur={el.fill ?? '#000000'} onValeur={(v) => set({ fill: v })} />
+      {/* Même sélecteur que les formes (unie, dégradé, texture), même règle
+          de remplissage (`dessinTrace` → `remplissage`) */}
+      <div className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
+        <span>Couleur du tracé</span>
+        <GradientColorPicker
+          color={el.fill || '#000000'}
+          gradient={el.fillGradient ?? null}
+          onColorChange={(c) => set({ fill: c })}
+          onGradientChange={(g) => set({ fillGradient: g })}
+          title="Couleur du tracé"
+        />
+      </div>
       <Reglage
         label="Opacité du tracé (%)"
         valeur={Math.round((el.opacity ?? 1) * 100)}

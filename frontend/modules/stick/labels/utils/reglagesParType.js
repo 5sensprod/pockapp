@@ -23,11 +23,11 @@ const CARTE = {
     panneau: ['police', 'styleTexte', 'alignementTexte', 'couleur', 'espacement', 'contour', 'contourStylise', 'masque'],
   },
   shape: {
-    barre: ['remplissage', 'contour'],
-    panneau: ['contourStylise', 'arrondi', 'lissage', 'masque'],
+    barre: [],
+    panneau: ['remplissage', 'contourForme', 'contourStylise', 'arrondi', 'lissage', 'masque'],
   },
   dessin: {
-    barre: ['couleur'],
+    barre: [],
     panneau: ['trace', 'contourStylise', 'fermerTrace'],
   },
   image: {
@@ -35,16 +35,16 @@ const CARTE = {
     panneau: ['ajustement', 'miroir', 'opacite', 'masque', 'dimensions'],
   },
   qrcode: {
-    barre: ['couleur'],
-    panneau: ['contenuQr'],
+    barre: [],
+    panneau: ['couleurQr', 'contenuQr'],
   },
   barcode: {
-    barre: ['couleur', 'fond'],
-    panneau: ['barres', 'numero'],
+    barre: [],
+    panneau: ['couleursBarres', 'barres', 'numero'],
   },
   fiche: {
-    barre: ['sectionFiche', 'police', 'taille'],
-    panneau: ['titreFiche', 'lignesFiche', 'styleTableau'],
+    barre: [],
+    panneau: ['contenuFiche', 'styleTableau'],
   },
 };
 
@@ -71,12 +71,18 @@ const ONGLET_PAR_TYPE = {
   image: 'image', // l'onglet « Médias »
   dessin: 'dessin',
   shape: 'shape', // l'onglet « Assets »
+  qrcode: 'shape', // le QR code s'ajoute depuis Assets
+  barcode: 'donnees', // code-barres et fiche s'ajoutent depuis Données produit
+  fiche: 'donnees',
 };
 
 /** L'onglet des réglages de cet élément, ou null. */
 export const ongletDe = (el) => ONGLET_PAR_TYPE[el?.type] ?? null;
 
-const ONGLETS_DE_TYPE = new Set(Object.values(ONGLET_PAR_TYPE));
+// Les onglets qu'une sélection peut QUITTER d'office. Pas « Données produit » :
+// on y ajoute plusieurs éléments liés d'affilée (un texte, puis un prix…), et
+// chacun, sélectionné à sa création, enverrait vers un autre onglet.
+const ONGLETS_SUIVEURS = new Set(['text', 'image', 'shape', 'dessin']);
 
 /**
  * L'onglet à afficher quand la sélection vient de changer. On ne suit la
@@ -88,7 +94,7 @@ const ONGLETS_DE_TYPE = new Set(Object.values(ONGLET_PAR_TYPE));
 export const ongletApresSelection = (courant, el) => {
   const cible = ongletDe(el);
   if (!cible) return courant;
-  return courant == null || ONGLETS_DE_TYPE.has(courant) ? cible : courant;
+  return courant == null || ONGLETS_SUIVEURS.has(courant) ? cible : courant;
 };
 
 const garder = (el) => (id) => !SELON_FORME[id] || SELON_FORME[id](el);
@@ -96,6 +102,8 @@ const garder = (el) => (id) => !SELON_FORME[id] || SELON_FORME[id](el);
 /**
  * Pour un élément : `{ barre, panneau }`, deux listes ordonnées de sections.
  * Type inconnu : rien de propre, seulement le commun.
+ * `barre` est vide pour tout type : la barre d'options disparaît, la clé reste
+ * le temps que `PropertyPanel` soit retiré.
  */
 export const reglagesDe = (el) => {
   const carte = CARTE[el?.type] ?? { barre: [], panneau: [] };

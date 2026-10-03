@@ -47,12 +47,15 @@ describe('l’onglet suit la sélection', () => {
   const trace = { type: 'dessin' };
   const forme = { type: 'shape' };
 
-  it('chaque type déplacé a son onglet ; les autres restent dans la barre', () => {
+  it('chaque type a son onglet', () => {
     expect(ongletDe({ type: 'text' })).toBe('text');
     expect(ongletDe({ type: 'image' })).toBe('image');
     expect(ongletDe(trace)).toBe('dessin');
     expect(ongletDe(forme)).toBe('shape');
-    expect(ongletDe({ type: 'barcode' })).toBeNull();
+    expect(ongletDe({ type: 'qrcode' })).toBe('shape');
+    expect(ongletDe({ type: 'barcode' })).toBe('donnees');
+    expect(ongletDe({ type: 'fiche' })).toBe('donnees');
+    expect(ongletDe({ type: 'inconnu' })).toBeNull();
     expect(ongletDe(null)).toBeNull();
   });
 
@@ -68,9 +71,16 @@ describe('l’onglet suit la sélection', () => {
     }
   });
 
-  it('désélectionner, ou sélectionner un type resté dans la barre, ne change rien', () => {
+  it('Données produit ne se quitte pas d’office : on y ajoute plusieurs éléments liés d’affilée', () => {
+    expect(ongletApresSelection('donnees', { type: 'text' })).toBe('donnees');
+    expect(ongletApresSelection('donnees', { type: 'image' })).toBe('donnees');
+    // mais on y arrive : un code-barres sélectionné depuis l'onglet Texte
+    expect(ongletApresSelection('text', { type: 'barcode' })).toBe('donnees');
+  });
+
+  it('désélectionner, ou sélectionner un type sans onglet, ne change rien', () => {
     expect(ongletApresSelection('shape', null)).toBe('shape');
-    expect(ongletApresSelection('text', { type: 'barcode' })).toBe('text');
+    expect(ongletApresSelection('text', { type: 'inconnu' })).toBe('text');
     expect(ongletApresSelection('shape', { type: 'text' })).toBe('text');
   });
 });
