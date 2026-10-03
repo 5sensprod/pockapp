@@ -175,7 +175,7 @@ const ToolsSidebar = ({
                   ) : selectedTool !== 'dessin' &&
                     ongletDe(selection) === selectedTool &&
                     sectionsAffichees(selection).length > 0 ? (
-                    <ReglagesPanel />
+                    <ReglagesPanel docNode={docNode} />
                   ) : (
                     <SelectedComponent
                       dataSource={dataSource}

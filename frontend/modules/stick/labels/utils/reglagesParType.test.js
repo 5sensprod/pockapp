@@ -20,8 +20,10 @@ describe('reglagesDe', () => {
     expect(ACTIONS_BARRE).toContain('reglages');
   });
 
-  it('texte : police, taille, style, alignement et couleur restent dans la barre', () => {
-    expect(reglagesDe({ type: 'text' }).barre).toEqual(['police', 'taille', 'styleTexte', 'alignementTexte', 'couleur']);
+  it('texte : tout est descendu dans l’onglet, la barre n’en garde rien', () => {
+    const { barre, panneau } = reglagesDe({ type: 'text' });
+    expect(barre).toEqual([]);
+    expect(panneau.slice(0, 4)).toEqual(['police', 'styleTexte', 'alignementTexte', 'couleur']);
   });
 
   it('les sections qui dépendent de la forme', () => {
@@ -46,6 +48,7 @@ describe('l’onglet suit la sélection', () => {
   const forme = { type: 'shape' };
 
   it('chaque type déplacé a son onglet ; les autres restent dans la barre', () => {
+    expect(ongletDe({ type: 'text' })).toBe('text');
     expect(ongletDe(trace)).toBe('dessin');
     expect(ongletDe(forme)).toBe('shape');
     expect(ongletDe({ type: 'barcode' })).toBeNull();
@@ -67,5 +70,6 @@ describe('l’onglet suit la sélection', () => {
   it('désélectionner, ou sélectionner un type resté dans la barre, ne change rien', () => {
     expect(ongletApresSelection('shape', null)).toBe('shape');
     expect(ongletApresSelection('text', { type: 'barcode' })).toBe('text');
+    expect(ongletApresSelection('shape', { type: 'text' })).toBe('text');
   });
 });

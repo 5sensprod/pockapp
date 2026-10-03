@@ -16,9 +16,11 @@
 
 /** Le noyau de la barre et les sections du panneau, dans l'ordre d'affichage. */
 const CARTE = {
+  // La barre d'options disparaît (décision du 3 octobre 2026) : un type
+  // descendu n'y garde plus rien, tout est dans l'onglet de son type
   text: {
-    barre: ['police', 'taille', 'styleTexte', 'alignementTexte', 'couleur'],
-    panneau: ['espacement', 'barreSurlignage', 'contour', 'contourStylise', 'masque'],
+    barre: [],
+    panneau: ['police', 'styleTexte', 'alignementTexte', 'couleur', 'espacement', 'contour', 'contourStylise', 'masque'],
   },
   shape: {
     barre: ['remplissage', 'contour'],
@@ -65,6 +67,7 @@ export const ACTIONS_BARRE = ['position', 'supprimer', 'reglages', 'effets'];
  * type absent d'ici garde tout dans la barre d'options.
  */
 const ONGLET_PAR_TYPE = {
+  text: 'text',
   dessin: 'dessin',
   shape: 'shape', // l'onglet « Assets »
 };

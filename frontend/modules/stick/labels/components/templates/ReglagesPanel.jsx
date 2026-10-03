@@ -23,6 +23,7 @@ import { ReglagesContourStylise } from '../MenuContourStylise';
 import { ReglagesMasque } from '../MenuMasque';
 import Curseur from '../ui/Curseur';
 import { TraceSelectionne } from './TraceSelectionne';
+import * as Texte from './ReglagesTexte';
 
 const ARRONDI_MAX = 200;
 
@@ -89,6 +90,12 @@ const Masque = ({ el, maj }) => <ReglagesMasque element={el} onChange={maj} />;
 
 /** Identifiant de section (`reglagesParType.js`) → titre et composant. */
 const SECTIONS = {
+  police: { titre: 'Police', Composant: Texte.Police },
+  styleTexte: { titre: 'Style', Composant: Texte.Style },
+  alignementTexte: { titre: 'Alignement', Composant: Texte.Alignement },
+  couleur: { titre: 'Couleur', Composant: Texte.Couleur },
+  espacement: { titre: 'Espacement et courbure', Composant: Texte.Espacement },
+  contour: { titre: 'Contour des lettres', Composant: Texte.Contour },
   trace: { titre: 'Tracé', Composant: Trace },
   contourStylise: { titre: 'Contour à main levée', Composant: ContourStylise },
   fermerTrace: { titre: 'Forme', Composant: FermerTrace },
@@ -104,7 +111,7 @@ export const sectionsAffichees = (el) =>
 const NOMS = { dessin: 'Tracé', shape: 'Forme', text: 'Texte', image: 'Image', qrcode: 'QR code', barcode: 'Code-barres', fiche: 'Fiche' };
 
 /** `nu` : sans marges ni titre, quand un autre panneau l'accueille (Dessin). */
-export default function ReglagesPanel({ nu = false }) {
+export default function ReglagesPanel({ nu = false, docNode = null }) {
   const el = useLabelStore((s) => s.elements.find((e) => e.id === s.selectedId) ?? null);
   const nombre = useLabelStore((s) => (s.selectedId ? 1 + s.extraIds.length : 0));
   const updateElement = useLabelStore((s) => s.updateElement);
@@ -135,7 +142,7 @@ export default function ReglagesPanel({ nu = false }) {
         return (
           <section key={id} className="pt-3 border-t border-gray-200 dark:border-gray-700 first:border-t-0 first:pt-0">
             <h3 className="mb-2 text-xs font-medium text-gray-800 dark:text-gray-200">{titre}</h3>
-            <Composant el={el} maj={maj} />
+            <Composant el={el} maj={maj} docNode={docNode} />
           </section>
         );
       })}
