@@ -45,7 +45,7 @@ Détail, compromis et ce qui est perdu à la fermeture :
 [`05-dessin.md`](05-dessin.md), section « Mission Améliorer les dessins ».
 
 Export PDF vérifié par le propriétaire le 3 octobre 2026 (rapporté).
-Non fait : `pnpm build:client`. Les tests du module passent (270).
+`pnpm build:client` passe (3 octobre 2026, sur `c23caaf`). Les tests du module passent (270).
 
 Pièges rencontrés, à ne pas refaire :
 - **Les points gardés d'un tracé sont BRUTS** : le trait qu'on voit a déjà
@@ -115,7 +115,8 @@ Règles à ne pas défaire :
 - **Tout curseur est un `input[type=range]`** : le canvas masque le cadre
   tant qu'un curseur de la page est tenu.
 
-Non fait : `pnpm build:client` ; cohérences de l'audit (sélection multiple
+`pnpm build:client` passe (3 octobre 2026, sur `c23caaf`).
+Non fait : cohérences de l'audit (sélection multiple
 qui ne règle que le premier élément — annoncée dans le panneau, pas
 corrigée ; alignement du texte qui fixe une largeur — annoncé ; les deux
 « Ondulation » ; « Appliquer l'ombre à tous » qui fait un pas d'historique

@@ -283,4 +283,4 @@ fermeture automatique. Le dessin devient une forme `shape: 'libre'`
 
 Gardiens : `dessin.test.js`, `formeLibre.test.js`, `styleCopie.test.js`.
 Export PDF vérifié par le propriétaire le 3 octobre 2026 (rapporté :
-« impeccable »). `pnpm build:client` non lancé.
+« impeccable »). `pnpm build:client` passe (3 octobre 2026, sur `c23caaf`).
