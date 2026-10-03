@@ -149,6 +149,11 @@ export const getProductField = (product, key) => {
       return getFirstImageSrc(product) ?? '';
     case 'product_image_url':
       return getFirstImageUrl(product) ?? '';
+    // Images de PocketStock liées au produit (`produit-adapte.ts`)
+    case 'brand_image':
+      return product.brand_ref?.image ?? '';
+    case 'category_image':
+      return product.category_image ?? '';
 
     // alias explicites
     case 'image.src':

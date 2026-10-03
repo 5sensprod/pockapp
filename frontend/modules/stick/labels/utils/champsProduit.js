@@ -33,6 +33,11 @@ export const CHAMPS_PRODUIT = [
     types: ['image'],
     alias: ['product_image_src', 'image.src', 'image_src'],
   },
+  // Images de PocketStock qui suivent le produit (3 octobre 2026) : le logo de
+  // SA marque, l'image de SA catégorie — la première de la fiche qui en a une
+  // (`lib/images-catalogue.ts`). Vides pour un produit : l'élément ne dessine rien.
+  { cle: 'brand_image', libelle: 'Logo de la marque', types: ['image'] },
+  { cle: 'category_image', libelle: 'Image de la catégorie', types: ['image'] },
 ];
 
 const PAR_CLE = new Map();

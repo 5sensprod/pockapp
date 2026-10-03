@@ -20,7 +20,7 @@ import AssetsPanel from './templates/AssetsPanel';
 import LayersPanel from './templates/LayersPanel';
 import PagePanel from './templates/PagePanel';
 import SheetPanel from './templates/SheetPanel';
-import UploadTemplate from './templates/UploadTemplate';
+import MediasPanel from './templates/MediasPanel';
 import EffectsTemplates from './templates/EffectsTemplates';
 import ModelesPanel from './templates/ModelesPanel';
 import DonneesProduitPanel from './templates/DonneesProduitPanel';
@@ -54,8 +54,8 @@ const ToolsSidebar = ({
     // La page : sa taille puis son fond (`PagePanel`)
     { id: 'format', label: 'Taille et fond', icon: PaintBucket, component: PagePanel },
     { id: 'text', label: 'Texte', icon: Type, component: TextTemplates },
-    // Médias : importer et choisir dans la bibliothèque du poste, au même endroit
-    { id: 'image', label: 'Médias', icon: ImageIcon, component: UploadTemplate },
+    // Médias : les images du poste, et celles de PocketStock (`MediasPanel`)
+    { id: 'image', label: 'Médias', icon: ImageIcon, component: MediasPanel },
     // Assets : formes et QR code statique (`AssetsPanel`)
     { id: 'shape', label: 'Assets', icon: Shapes, component: AssetsPanel },
     // Dessin à main levée (`utils/dessin.js`), porté de PocketStick

@@ -11,6 +11,7 @@ import { contenuFiche, EXEMPLE_FICHE } from './ficheProduit';
 import { FICHE_PAR_DEFAUT, construireFiche } from './ficheKonva';
 import { cadreSurCanvas } from './imagePlacement';
 import { AJUSTEMENT_NOUVELLE_IMAGE } from './ajustementImage';
+import { getProductField } from './dataBinding';
 
 /** Proportions d'une image (1 si elle ne se charge pas). */
 export const proportionsImage = (src) =>
@@ -70,6 +71,59 @@ export const ajouterPhotoProduit = async (photo = null) => {
     ...AJUSTEMENT_NOUVELLE_IMAGE,
     src: photo ? '' : '{{product_image}}', // la liaison prime (`resolvePropForElement`)
     dataBinding: photo?.cle || 'product_image',
+    opacity: 1,
+    rotation: 0,
+    visible: true,
+    locked: false,
+    aspectRatio,
+  });
+};
+
+/**
+ * Une image de PocketStock LIÉE au produit : le logo de sa marque
+ * (`brand_image`) ou l'image de sa catégorie (`category_image`). Elle suit le
+ * produit affiché ; un produit qui n'en a pas ne dessine rien. Le cadre prend
+ * les proportions de l'image du produit affiché (carré s'il n'en a pas).
+ */
+export const ajouterImageLiee = async (cle) => {
+  const { selectedProduct } = useLabelStore.getState();
+  const src = getProductField(selectedProduct, cle) || '';
+  const aspectRatio = await proportionsImage(src);
+  const { addElementCentre, canvasSize } = useLabelStore.getState();
+  // Un logo n'occupe pas toute la page : le tiers de ce que prendrait une photo
+  const cadre = cadreSurCanvas(aspectRatio, canvasSize);
+  addElementCentre({
+    type: 'image',
+    width: Math.round(cadre.width / 3),
+    height: Math.round(cadre.height / 3),
+    ...AJUSTEMENT_NOUVELLE_IMAGE,
+    src: '',
+    dataBinding: cle,
+    opacity: 1,
+    rotation: 0,
+    visible: true,
+    locked: false,
+    aspectRatio,
+  });
+};
+
+/**
+ * Une image FIXE de PocketStock (logo de l'entreprise, logo d'une marque,
+ * image d'une catégorie choisis dans la bibliothèque) : elle ne suit aucun
+ * produit. `image` : `{ src, nom }`.
+ */
+export const ajouterImageFixe = async (image) => {
+  if (!image?.src) return;
+  const aspectRatio = await proportionsImage(image.src);
+  const { addElementCentre, canvasSize } = useLabelStore.getState();
+  const cadre = cadreSurCanvas(aspectRatio, canvasSize);
+  addElementCentre({
+    type: 'image',
+    width: Math.round(cadre.width / 3),
+    height: Math.round(cadre.height / 3),
+    ...AJUSTEMENT_NOUVELLE_IMAGE,
+    src: image.src,
+    name: image.nom,
     opacity: 1,
     rotation: 0,
     visible: true,

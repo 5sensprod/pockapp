@@ -50,9 +50,12 @@ les champs liables (`el.dataBinding`) sont dans le registre
 `labels/utils/champsProduit.js` — clés canoniques, alias **lus sans jamais
 être réécrits** dans les templates IndexedDB ou `.json` —, se changent par le
 bloc `LiaisonProduit.jsx` du panneau de réglages, et les éléments liés (texte, photo,
-galerie `product_gallery_N`, QR, code-barres, fiche) ne s'ajoutent QUE depuis
+galerie `product_gallery_N`, logo de la marque `brand_image`, image de la
+catégorie `category_image`, QR, code-barres, fiche) ne s'ajoutent QUE depuis
 l'onglet orange « Données produit », par les créations uniques de
-`utils/ajoutsProduit.js`. Texte, Médias et Assets n'ajoutent que du statique.
+`utils/ajoutsProduit.js`. Texte, Médias et Assets n'ajoutent que du statique — y compris le sous-onglet
+PocketStock de Médias (logos des marques, images des catégories, logo de
+l'entreprise, `lib/images-catalogue.ts`).
 `getProductField` (`utils/dataBinding.js`) est la seule résolution, à l'écran
 comme dans l'export planche. Une image a un **ajustement** (`el.fit`,
 `utils/ajustementImage.js`) : `contain` (Contenir, défaut des NOUVELLES images)

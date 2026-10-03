@@ -114,3 +114,27 @@ vides. Le recadrage est ignoré et CONSERVÉ (repasser en Remplir le retrouve) ;
   liée d'un template ancien, passer une fois en Contenir à la main.
 
 Gardiens : `champsProduit.test.js`, `ajustementImage.test.js`.
+
+## Images de PocketStock (3 octobre 2026)
+
+Deux champs liables de plus, pour une image : `brand_image` (« Logo de la
+marque ») et `category_image` (« Image de la catégorie »). Ils suivent le
+produit affiché comme la photo ; vides pour un produit (marque sans logo,
+aucune catégorie avec image), l'élément ne dessine rien — à l'écran et dans
+l'export, par le même `getProductField`.
+
+- Un produit est rangé dans PLUSIEURS catégories : on prend la première de la
+  fiche qui porte une image (`imageCategorieDuProduit`,
+  `lib/images-catalogue.ts`).
+- La projection (`produit-adapte.ts`) pose `brand_ref.image` et
+  `category_image` ; le contexte (`useContexteAffiche`) reçoit les deux tables
+  id → URL, tirées des requêtes vivantes `brands` et `categories`.
+- Le **logo de l'entreprise** (`companies.logo`) ne dépend d'aucun produit :
+  c'est une image FIXE (`ajouterImageFixe`), proposée dans la carte « Médias ».
+- L'onglet Médias a un sous-onglet **PocketStock**
+  (`BibliothequeCatalogue.jsx`) : entreprise, marques, catégories, avec
+  recherche (casse et accents pliés) — images fixes. Rien n'est copié dans le
+  poste : les URL sont celles de PocketBase.
+- Un logo se pose au tiers de la taille d'une photo.
+
+Gardien : `lib/images-catalogue.test.ts`.

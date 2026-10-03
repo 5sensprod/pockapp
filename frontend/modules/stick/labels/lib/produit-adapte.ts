@@ -15,6 +15,7 @@
 import { type JourServeur, prixPromoActif } from '@/lib/pricing/promo-price'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 import { urlProduitSurLeSite } from '@/lib/site/url-publique'
+import { imageCategorieDuProduit } from './images-catalogue'
 
 /** Ce que l'éditeur consomme. Les noms sont ceux d'AppPos, pas les nôtres. */
 export interface ProduitAffiche {
@@ -27,7 +28,10 @@ export interface ProduitAffiche {
 	sale_price?: number | null
 	stock?: number | null
 	website_url?: string
-	brand_ref?: { name: string } | null
+	/** `image` : l'URL du logo de la marque, vide si elle n'en a pas. */
+	brand_ref?: { name: string; image?: string } | null
+	/** L'URL de l'image de SA catégorie (`imageCategorieDuProduit`), ou vide. */
+	category_image?: string
 	supplier_ref?: { name: string } | null
 	meta_data: Array<{ key: string; value: unknown }>
 	image?: { src: string; url: string } | null
@@ -37,6 +41,10 @@ export interface ProduitAffiche {
 export interface ContexteProduitAffiche {
 	brandById: Map<string, string>
 	supplierById: Map<string, string>
+	/** id de marque → URL de son logo ; id de catégorie → URL de son image
+	 *  (`images-catalogue.ts`). Facultatifs : sans eux, pas d'image liée. */
+	imageMarqueById?: Map<string, string>
+	imageCategorieById?: Map<string, string>
 	/** `pb.files.getUrl` — passé plutôt qu'importé, comme dans `catalog-rows.ts`. */
 	fileUrl: (record: CatalogProductShape, filename: string) => string
 	/** Le jour du serveur, pour juger la période de promo. Jamais l'horloge
@@ -75,8 +83,15 @@ export function versProduitAffiche(
 		// une page, il n'a aucune origine à laquelle se raccrocher.
 		website_url: urlProduitSurLeSite(produit.slug) || undefined,
 		brand_ref: produit.brand
-			? { name: ctx.brandById.get(produit.brand) ?? '' }
+			? {
+					name: ctx.brandById.get(produit.brand) ?? '',
+					image: ctx.imageMarqueById?.get(produit.brand) ?? '',
+				}
 			: null,
+		category_image: imageCategorieDuProduit(
+			produit.categories,
+			ctx.imageCategorieById,
+		),
 		supplier_ref: produit.supplier
 			? { name: ctx.supplierById.get(produit.supplier) ?? '' }
 			: null,

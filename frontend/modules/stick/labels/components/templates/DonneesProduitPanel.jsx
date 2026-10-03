@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import LiaisonProduit from '../LiaisonProduit';
+import { useImagesCatalogue } from '../../lib/use-images-catalogue';
 import { champsPourType, elementsLies, libelleLiaison, photosGalerie } from '../../utils/champsProduit';
 import { getProductField, resolvePropForElement } from '../../utils/dataBinding';
 import { SECTIONS_FICHE, contenuFiche } from '../../utils/ficheProduit';
@@ -32,6 +33,8 @@ import {
   FORMATS_CODE_BARRES,
   ajouterCodeBarres,
   ajouterFiche,
+  ajouterImageFixe,
+  ajouterImageLiee,
   ajouterPhotoProduit,
   ajouterQRProduit,
   formatCompatible,
@@ -93,6 +96,7 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
   const updateElement = useLabelStore((s) => s.updateElement);
   const addElementCentre = useLabelStore((s) => s.addElementCentre);
   const product = useLabelStore((s) => s.selectedProduct);
+  const logoEntreprise = useImagesCatalogue().entreprise;
 
   const lies = elementsLies(elements);
   const galerie = photosGalerie(product);
@@ -204,7 +208,7 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
       </Carte>
 
       {/* Médias : photo, galerie, QR, code-barres dessiné (`ajoutsProduit.js`) */}
-      <Carte icone={ImageIcon} titre="Médias" aide="Photo, QR code et code-barres dessiné, liés au produit.">
+      <Carte icone={ImageIcon} titre="Médias" aide="Photo, logo de la marque, image de la catégorie, QR code et code-barres dessiné, liés au produit.">
         <button
           onClick={() => ajouterPhotoProduit()}
           disabled={!product}
@@ -237,6 +241,42 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
             </div>
           </div>
         )}
+        {/* Images de PocketStock liées au produit : elles changent avec lui */}
+        {[
+          ['brand_image', 'Logo de la marque', 'Cette marque n’a pas de logo : rien ne s’affichera'],
+          ['category_image', 'Image de la catégorie', 'Aucune catégorie de ce produit n’a d’image : rien ne s’affichera'],
+        ].map(([cle, libelle, vide]) => {
+          const src = product ? getProductField(product, cle) : '';
+          return (
+            <button key={cle} onClick={() => ajouterImageLiee(cle)} disabled={!product} className={BOUTON_AJOUT}>
+              {src ? (
+                <img src={src} alt="" className="h-8 w-8 object-contain flex-none" loading="lazy" />
+              ) : (
+                <ImageIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+              )}
+              <div>
+                <div className="text-sm text-orange-600 dark:text-orange-400">{libelle}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {!product ? '—' : src ? 'Suit le produit affiché' : vide}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+        {/* Le logo de l'entreprise ne dépend d'aucun produit : image fixe */}
+        <button onClick={() => ajouterImageFixe(logoEntreprise)} disabled={!logoEntreprise} className={BOUTON_AJOUT}>
+          {logoEntreprise ? (
+            <img src={logoEntreprise.src} alt="" className="h-8 w-8 object-contain flex-none" loading="lazy" />
+          ) : (
+            <ImageIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+          )}
+          <div>
+            <div className="text-sm text-gray-800 dark:text-gray-200">Logo de l’entreprise</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              {logoEntreprise ? 'Image fixe, la même pour tous les produits' : 'L’entreprise n’a pas de logo (Réglages de l’entreprise)'}
+            </div>
+          </div>
+        </button>
         <button onClick={ajouterQRProduit} disabled={!product} className={BOUTON_AJOUT}>
           <QrCode className="h-4 w-4 text-gray-500 dark:text-gray-400" />
           <div>

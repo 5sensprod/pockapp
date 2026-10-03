@@ -14,10 +14,12 @@
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { useJourServeur } from '@/lib/pricing/use-jour-serveur'
 import { useBrands } from '@/lib/queries/brands'
+import { useCategories } from '@/lib/queries/categories'
 import { useCatalogProducts } from '@/lib/queries/catalog-products'
 import { useSuppliers } from '@/lib/queries/suppliers'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useEffect, useMemo, useState } from 'react'
+import { imagesDe, urlParId } from './images-catalogue'
 import {
 	type ContexteProduitAffiche,
 	type ProduitAffiche,
@@ -78,7 +80,7 @@ export function useProduitsAffiche(options: {
 
 /**
  * Ce que la projection lit en plus du produit : noms des marques et des
- * fournisseurs, URL des fichiers, jour du serveur. Tiré des requêtes VIVANTES
+ * fournisseurs, images des marques et des catégories, URL des fichiers, jour du serveur. Tiré des requêtes VIVANTES
  * `brands` / `suppliers` : une marque renommée ailleurs, invalidée par le
  * temps réel, change ce contexte, donc la projection.
  */
@@ -89,8 +91,10 @@ export function useContexteAffiche(): ContexteProduitAffiche {
 	const companyId = activeCompanyId ?? undefined
 	const brands = useBrands({ companyId })
 	const suppliers = useSuppliers({ companyId })
+	const categories = useCategories({ companyId })
 
 	return useMemo(() => {
+		const fileUrl = (record: any, nom: string) => pb.files.getUrl(record, nom)
 		const brandById = new Map<string, string>()
 		for (const b of brands.data ?? []) brandById.set(b.id, b.name)
 		const supplierById = new Map<string, string>()
@@ -98,9 +102,12 @@ export function useContexteAffiche(): ContexteProduitAffiche {
 		return {
 			brandById,
 			supplierById,
+			// Logo de la marque et image de la catégorie, liables comme la photo
+			imageMarqueById: urlParId(imagesDe(brands.data as any, fileUrl)),
+			imageCategorieById: urlParId(imagesDe(categories.data as any, fileUrl)),
 			fileUrl: (record: Parameters<typeof pb.files.getUrl>[0], nom: string) =>
 				pb.files.getUrl(record, nom),
 			jour,
 		}
-	}, [brands.data, suppliers.data, pb, jour])
+	}, [brands.data, suppliers.data, categories.data, pb, jour])
 }

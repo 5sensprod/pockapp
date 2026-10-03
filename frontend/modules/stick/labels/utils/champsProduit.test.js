@@ -33,7 +33,7 @@ describe('champsProduit', () => {
 
   it('chaque type ne reçoit que des champs qu\'il sait rendre', () => {
     expect(champsPourType('qrcode').map((c) => c.cle)).toEqual(['website_url']);
-    expect(champsPourType('image').map((c) => c.cle)).toEqual(['product_image']);
+    expect(champsPourType('image').map((c) => c.cle)).toEqual(['product_image', 'brand_image', 'category_image']);
     expect(champsPourType('barcode').map((c) => c.cle)).toEqual(['sku', 'barcode']);
     expect(champsPourType('text')).toHaveLength(10);
   });
@@ -48,7 +48,7 @@ describe('champsProduit', () => {
   it('toute clé et tout alias du registre sont résolus par getProductField', () => {
     const p = {
       name: 'N', price: 1, sale_price: 1, description: 'D', sku: 'S', stock: 2,
-      brand_ref: { name: 'B' }, supplier_ref: { name: 'F' }, website_url: 'https://x',
+      brand_ref: { name: 'B', image: 'logo' }, category_image: 'cat', supplier_ref: { name: 'F' }, website_url: 'https://x',
       meta_data: [{ key: 'barcode', value: '123' }], image: { src: 'i', url: 'i' },
     };
     for (const c of CHAMPS_PRODUIT) {
