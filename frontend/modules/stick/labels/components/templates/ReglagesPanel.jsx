@@ -28,16 +28,12 @@ import ReglagesMasque from '../ReglagesMasque';
 import Curseur from '../ui/Curseur';
 import Section from '../ui/Section';
 import { BOUTON_ACTION } from '../ui/styles';
-import { TraceSelectionne } from './TraceSelectionne';
+import { NoyauTrace, TraitTrace } from './TraceSelectionne';
 import * as Texte from './ReglagesTexte';
 import * as Photo from './ReglagesImage';
 import * as Codes from './ReglagesCodes';
 import * as Fiche from './ReglagesFiche';
 import ReglagesCommuns from './ReglagesCommuns';
-
-const ARRONDI_MAX = 200;
-
-const Trace = ({ el, maj }) => <TraceSelectionne el={el} maj={maj} />;
 
 const ContourStylise = ({ el, maj }) =>
   el.type === 'dessin' ? (
@@ -57,35 +53,24 @@ const FermerTrace = ({ el }) => {
       className={`${BOUTON_ACTION} w-full`}
       title="Relier la fin au début : le tracé devient une forme, avec remplissage et contour. Sans retour, hors Ctrl+Z."
     >
-      Fermer le tracé pour en faire une forme
+      Fermer en forme
     </button>
   );
 };
 
-const Arrondi = ({ el, maj }) => (
-  <Curseur
-    disposition="bloc"
-    champ
-    label="Arrondi des coins"
-    max={ARRONDI_MAX}
-    valeur={el.cornerRadius ?? 0}
-    onValeur={(v) => maj({ cornerRadius: Number.isFinite(v) ? Math.min(ARRONDI_MAX, Math.max(0, v)) : 0 })}
-  />
-);
-
 // Forme née d'un tracé fermé : son lissage rejoué sur le tracé d'origine gardé
 const Lissage = ({ el, maj }) => (
-  <div className="space-y-3">
+  <div className="space-y-2">
     {[
-      ['smoothing', 'Adoucir (%)'],
-      ['stabilisation', 'Stabiliser (%)'],
+      ['smoothing', 'Adoucir'],
+      ['stabilisation', 'Stabiliser'],
     ].map(([cle, libelle]) => (
       <Curseur
         key={cle}
-        disposition="bloc"
-        champ
         label={libelle}
+        largeurLabel="w-20"
         valeur={Math.round(lissageDe(el)[cle] * 100)}
+        affichage={(v) => `${v} %`}
         onValeur={(v) => {
           if (!Number.isFinite(v)) return;
           const m = relisser(el, { [cle]: Math.min(100, Math.max(0, v)) / 100 });
@@ -100,23 +85,20 @@ const Masque = ({ el, maj }) => <ReglagesMasque element={el} onChange={maj} />;
 
 /** Identifiant de section (`reglagesParType.js`) → titre et composant. */
 const SECTIONS = {
-  // Le noyau du texte : pas de titre, pas de pli — c'est ce qu'on règle à chaque affiche
+  // Les NOYAUX : pas de titre, pas de pli — ce qu'on règle à chaque affiche
   noyauTexte: { nu: true, Composant: Texte.Noyau },
+  noyauImage: { nu: true, Composant: Photo.Noyau },
+  noyauForme: { nu: true, Composant: Codes.NoyauForme },
+  noyauQr: { nu: true, Composant: Codes.NoyauQr },
+  noyauBarres: { nu: true, Composant: Codes.NoyauBarres },
+  noyauTrace: { nu: true, Composant: NoyauTrace },
+  contenuFiche: { nu: true, Composant: Fiche.Contenu },
+  fermerTrace: { nu: true, Composant: FermerTrace },
+  // Les sections ; les rares sont repliées (`SECTIONS_RARES`, `reglagesParType.js`)
   espacement: { titre: 'Espacement', Composant: Texte.Espacement },
-  ajustement: { titre: 'Ajustement et recadrage', Composant: Photo.Ajustement },
-  miroir: { titre: 'Miroir', Composant: Photo.Miroir },
-  opacite: { titre: 'Opacité', Composant: Photo.Opacite },
-  dimensions: { titre: 'Taille du cadre', Composant: Photo.Dimensions },
-  remplissage: { titre: 'Remplissage', Composant: Codes.Remplissage },
-  contourForme: { titre: 'Contour', Composant: Codes.ContourForme },
-  couleurQr: { titre: 'Couleur', Composant: Codes.CouleurQr },
-  contenuQr: { titre: 'Contenu du QR code', Composant: Codes.ContenuQr },
-  couleursBarres: { titre: 'Couleurs', Composant: Codes.CouleursBarres },
-  barres: { titre: 'Barres', Composant: Codes.Barres },
-  numero: { titre: 'Numéro sous les barres', Composant: Codes.Numero },
-  contenuFiche: { titre: 'Contenu', Composant: Fiche.Contenu },
+  traitTrace: { titre: 'Forme du trait', Composant: TraitTrace },
+  lissage: { titre: 'Lissage de la courbe', Composant: Lissage },
   styleTableau: { titre: 'Style du tableau', Composant: Fiche.StyleTableau },
-  trace: { titre: 'Tracé', Composant: Trace },
   // L'interrupteur est dans l'en-tête ; pour un tracé, il passe par `redessiner`
   contourStylise: {
     titre: 'Contour à main levée',
@@ -128,9 +110,6 @@ const SECTIONS = {
     },
     aide: 'Donne au contour un trait tremblé, comme tracé à la main.',
   },
-  fermerTrace: { titre: 'Forme', Composant: FermerTrace },
-  arrondi: { titre: 'Coins', Composant: Arrondi },
-  lissage: { titre: 'Lissage de la courbe', Composant: Lissage },
   masque: { titre: 'Masque', Composant: Masque },
 };
 

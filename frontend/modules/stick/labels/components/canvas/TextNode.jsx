@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useCallback, useEffect, useState } from 'react';
 import { propsCourbure } from '../../utils/texteCourbe';
+import { appliquerCasse } from '../../utils/typo';
 import { Text, Rect } from 'react-konva';
 import useLabelStore from '../../store/useLabelStore';
 import { loadGoogleFont } from '../../utils/loadGoogleFont'; // 🎨 Import de la fonction de chargement
@@ -46,6 +47,7 @@ const TextNode = ({
   lineHeight = 1,
   hauteur = 1, // hauteur des lettres, facteur multiplié à scaleY
   curve = 0, // courbure (`utils/texteCourbe.js`)
+  casse = 'normale', // majuscules, minuscules… appliquée au DESSIN seulement (`utils/typo.js`)
   align = 'left', // alignement DANS le bloc : left | center | right | justify
   stroke = '', // ✏️ contour des lettres (`contourTexte`)
   strokeWidth = 0,
@@ -66,6 +68,11 @@ const TextNode = ({
   onTransformEnd,
 }) => {
   const textRef = useRef(null);
+  // Le texte TEL QU'IL EST ÉCRIT : c'est lui qu'on édite, jamais sa forme en
+  // majuscules — sinon l'édition figerait la casse dans le contenu
+  const texteBrut = useRef(text);
+  texteBrut.current = text;
+  const texteAffiche = appliquerCasse(text, casse);
   // Texte courbé : un autre DESSIN du même nœud
   const courbure = useMemo(() => propsCourbure(curve), [curve]);
   const updateElement = useLabelStore((s) => s.updateElement);
@@ -123,7 +130,7 @@ const TextNode = ({
   useEffect(() => {
     const raf = requestAnimationFrame(remesurer);
     return () => cancelAnimationFrame(raf);
-  }, [remesurer, text, fontSize, fontFamily, fontStyle, width, align, letterSpacing, lineHeight, hauteur, curve, policeChargee, contourStyle, strokeWidth]);
+  }, [remesurer, text, casse, fontSize, fontFamily, fontStyle, width, align, letterSpacing, lineHeight, hauteur, curve, policeChargee, contourStyle, strokeWidth]);
 
   // 🎨 Charger la police Google Font, puis re-mesurer quand elle est là
   useEffect(() => {
@@ -198,7 +205,7 @@ const TextNode = ({
       const couleur = premiereCouleur(fillGradient) || fill;
 
       const textarea = document.createElement('textarea');
-      textarea.value = node.text();
+      textarea.value = texteBrut.current ?? '';
       textarea.rows = 1;
       textarea.spellcheck = true;
       Object.assign(textarea.style, {
@@ -328,7 +335,7 @@ const TextNode = ({
         id={id}
         x={x}
         y={y}
-        text={text}
+        text={texteAffiche}
         fontSize={fontSize}
         fontStyle={fontStyle}
         fontFamily={fontFamily} // 🎨 Appliquer la police Google Font

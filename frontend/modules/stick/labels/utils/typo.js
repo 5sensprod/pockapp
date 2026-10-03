@@ -21,6 +21,37 @@ const borne = (v, { min, max, defaut }) => {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : defaut;
 };
 
+/**
+ * LA CASSE d'un texte (`el.casse`) : tout en majuscules, tout en minuscules,
+ * ou une majuscule à chaque mot. C'est un STYLE, appliqué au moment du dessin
+ * (`appliquerCasse`) : le texte saisi — ou lu dans la fiche produit — n'est
+ * jamais réécrit, et revenir à « Normal » le rend tel quel. Même règle pour le
+ * canvas (`TextNode`) et l'export planche (`exportPdfSheet`).
+ */
+export const CASSES = [
+  { id: 'normale', label: 'Aa…', titre: 'Normal : le texte tel qu’il est écrit' },
+  { id: 'majuscules', label: 'AA', titre: 'TOUT EN MAJUSCULES' },
+  { id: 'minuscules', label: 'aa', titre: 'tout en minuscules' },
+  { id: 'capitales', label: 'Aa', titre: 'Une Majuscule À Chaque Mot' },
+];
+export const casseDe = (el) => (CASSES.some((c) => c.id === el?.casse) ? el.casse : 'normale');
+
+/** Le texte dans la casse demandée (règles du français : é → É). */
+export const appliquerCasse = (texte, casse) => {
+  const t = texte == null ? '' : String(texte);
+  if (casse === 'majuscules') return t.toLocaleUpperCase('fr-FR');
+  if (casse === 'minuscules') return t.toLocaleLowerCase('fr-FR');
+  if (casse === 'capitales') {
+    // Tout en minuscules d'abord : « GUITARE FOLK » devient « Guitare Folk ».
+    // Une lettre est « en début de mot » après un blanc, une apostrophe, un
+    // tiret, une barre ou une parenthèse — ou en tête du texte.
+    return t
+      .toLocaleLowerCase('fr-FR')
+      .replace(/(^|[\s'’\-/(«"])(\p{L})/gu, (_, avant, lettre) => avant + lettre.toLocaleUpperCase('fr-FR'));
+  }
+  return t;
+};
+
 /** `{ letterSpacing, lineHeight, hauteur, curve }` (hauteur en facteur, 1 = normale). */
 export const typoTexte = (el) => ({
   letterSpacing: borne(el?.letterSpacing, TYPO_BORNES.letterSpacing),

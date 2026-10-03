@@ -6,7 +6,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { typoTexte } from '../utils/typo';
+import { casseDe, typoTexte } from '../utils/typo';
 import { Stage, Layer, Group, Rect, Transformer, Line, Text } from 'react-konva';
 import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
 import QRCodeNode from './canvas/QRCodeNode';
@@ -699,6 +699,7 @@ const KonvaCanvas = forwardRef(
                     key={`${id}-${currentProductIndex}`}
                     {...commonProps}
                     text={resolvePropForElement(el.text, el, selectedProduct)}
+                    casse={casseDe(el)}
                     fontSize={el.fontSize}
                     fontStyle={el.fontStyle || (el.bold ? 'bold' : 'normal')} // ✅ supporte gras+italique combinés, fallback ancien champ "bold"
                     fontFamily={el.fontFamily || 'Arial'} // 🎨 Ajouter le support de fontFamily

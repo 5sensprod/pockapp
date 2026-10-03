@@ -38,7 +38,7 @@ export const Contenu = ({ el, maj }) => (
       </select>
     </label>
     <label className="block text-xs text-gray-700 dark:text-gray-300">
-      <span>Titre affiché au-dessus</span>
+      <span>Titre</span>
       <input
         type="text"
         value={el.title ?? ''}
@@ -52,7 +52,7 @@ export const Contenu = ({ el, maj }) => (
       <FontSelector value={el.fontFamily || 'Arial'} onChange={(fontFamily) => maj({ fontFamily })} />
     </div>
     <label className={ligne}>
-      <span>Taille (px)</span>
+      <span>Taille</span>
       <input
         type="number"
         min={4}
@@ -66,7 +66,7 @@ export const Contenu = ({ el, maj }) => (
       />
     </label>
     <label className={ligne}>
-      <span>Lignes au plus (la suite est coupée)</span>
+      <span title="Au-delà, la suite est coupée">Lignes max</span>
       <input
         type="number"
         min={1}

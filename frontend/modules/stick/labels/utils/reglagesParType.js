@@ -24,25 +24,27 @@ const CARTE = {
     // surlignage, largeur — en quatre rangées, sans titre de section
     panneau: ['noyauTexte', 'espacement', 'contourStylise', 'masque'],
   },
+  // Chaque type : un NOYAU (ses réglages courants, en rangées serrées sans
+  // titre), puis ses sections rares, repliées (`SECTIONS_RARES`)
   shape: {
     barre: [],
-    panneau: ['remplissage', 'contourForme', 'contourStylise', 'arrondi', 'lissage', 'masque'],
+    panneau: ['noyauForme', 'contourStylise', 'lissage', 'masque'],
   },
   dessin: {
     barre: [],
-    panneau: ['trace', 'contourStylise', 'fermerTrace'],
+    panneau: ['noyauTrace', 'traitTrace', 'contourStylise', 'fermerTrace'],
   },
   image: {
     barre: [],
-    panneau: ['ajustement', 'miroir', 'opacite', 'masque', 'dimensions'],
+    panneau: ['noyauImage', 'masque'],
   },
   qrcode: {
     barre: [],
-    panneau: ['couleurQr', 'contenuQr'],
+    panneau: ['noyauQr'],
   },
   barcode: {
     barre: [],
-    panneau: ['couleursBarres', 'barres', 'numero'],
+    panneau: ['noyauBarres'],
   },
   fiche: {
     barre: [],
@@ -52,7 +54,6 @@ const CARTE = {
 
 /** Sections qui ne valent que pour certaines formes. */
 const SELON_FORME = {
-  arrondi: (el) => (el.shape ?? 'rectangle') === 'rectangle',
   // Forme née d'un tracé fermé, qui a gardé son tracé d'origine (`formeLibre.js`)
   lissage: (el) => el.shape === 'libre' && !!el.traceLibre,
 };
@@ -123,9 +124,12 @@ export const reglagesDe = (el) => {
  * (les mêmes que dans le panneau, même écriture). Peu, pour ne jamais faire
  * défiler la barre. Ni la police (trop large), ni l'alignement du texte (il
  * fixe la largeur du bloc, et son Auto / Fixe doit rester à côté de lui).
+ * AUCUNE COULEUR (décision du propriétaire) : la fenêtre du sélecteur déborde
+ * depuis la barre ; les couleurs restent dans la barre latérale.
  */
 const RAPIDES_PAR_TYPE = {
-  text: ['taille', 'grasItalique', 'couleurTexte'],
+  text: ['taille', 'grasItalique', 'casse'],
+  image: ['ajustementImage', 'miroirs'],
 };
 export const rapidesDe = (el) => RAPIDES_PAR_TYPE[el?.type] ?? [];
 
@@ -134,7 +138,7 @@ export const rapidesDe = (el) => RAPIDES_PAR_TYPE[el?.type] ?? [];
  * tiennent sans ascenseur. Elles s'ouvrent d'elles-mêmes quand l'élément y
  * porte un réglage actif (`sectionActive`).
  */
-export const SECTIONS_RARES = new Set(['espacement', 'contourStylise', 'masque']);
+export const SECTIONS_RARES = new Set(['espacement', 'contourStylise', 'masque', 'traitTrace', 'styleTableau']);
 
 // Défauts de `utils/typo.js` (`TYPO_BORNES`) : recopiés ici pour rester pur
 const ESPACEMENT_NEUTRE = { letterSpacing: 0, lineHeight: 1, charHeight: 100, curve: 0 };
@@ -147,6 +151,8 @@ export const sectionActive = (id, el) => {
   }
   if (id === 'contourStylise') return !!el.contourStyle && typeof el.contourStyle === 'object';
   if (id === 'masque') return !!(el.mask || el.maskTexture || el.maskPadding || el.maskFeather);
+  // La forme du trait : épaisseur variable ou effilement
+  if (id === 'traitTrace') return [el.thinning, el.effilementDebut, el.effilementFin].some((v) => v > 0);
   return false;
 };
 

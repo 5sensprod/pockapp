@@ -11,30 +11,43 @@
 // pas diverger. Quels atomes pour quel type : `RAPIDES_PAR_TYPE`
 // (`utils/reglagesParType.js`).
 //
+// Ni Dupliquer ni Supprimer ici (décision du propriétaire) : ils sont dans
+// le bandeau du panneau, et Suppr au clavier.
+// Aucune couleur ici : la fenêtre du sélecteur déborde depuis la barre, les
+// couleurs restent dans la barre latérale.
 // Masqué sous 1280 px de fenêtre (`xl:`) : la barre ne doit jamais déborder.
 
 import React from 'react';
-import { AlignCenterHorizontal, AlignCenterVertical, Copy, Trash2 } from 'lucide-react';
-import useLabelStore from '../store/useLabelStore';
+import { AlignCenterHorizontal, AlignCenterVertical } from 'lucide-react';
 import { rapidesDe } from '../utils/reglagesParType';
 import { useAlignementPage } from './useAlignementPage';
 import { useMajSelection } from './useMajSelection';
-import { CouleurTexte, GrasItalique, Taille } from './templates/ReglagesTexte';
+import { Ajustement, Miroirs } from './templates/ReglagesImage';
+import { Casse, GrasItalique, Taille } from './templates/ReglagesTexte';
 import { BOUTON_ICONE as bouton } from './ui/styles';
 
 /** Identifiant de réglage rapide → atome. */
 const ATOMES = {
   taille: Taille,
   grasItalique: GrasItalique,
-  couleurTexte: CouleurTexte,
+  // Le contrôle segmenté s'étire : on lui donne sa largeur
+  ajustementImage: (props) => (
+    <div className="w-36 flex-none">
+      <Ajustement {...props} />
+    </div>
+  ),
+  miroirs: Miroirs,
+  casse: (props) => (
+    <div className="w-40 flex-none">
+      <Casse {...props} />
+    </div>
+  ),
 };
 
 const Filet = () => <span className="h-5 w-px flex-none bg-gray-200 dark:bg-gray-700 mx-1" />;
 
 const ReglagesRapides = ({ docNode }) => {
   const { el, maj } = useMajSelection();
-  const deleteElements = useLabelStore((s) => s.deleteElements);
-  const duplicateElement = useLabelStore((s) => s.duplicateElement);
   const { ids, aligner, pret } = useAlignementPage(docNode);
   if (!el) return null;
   const rapides = rapidesDe(el).filter((id) => ATOMES[id]);
@@ -60,24 +73,6 @@ const ReglagesRapides = ({ docNode }) => {
           </button>
           <button type="button" onClick={() => aligner('middle')} className={bouton} title={`Centrer verticalement (${ou})`}>
             <AlignCenterHorizontal className="h-4 w-4" />
-          </button>
-        </>
-      )}
-      {ids.length > 0 && (
-        <>
-          <Filet />
-          {seul && (
-            <button type="button" onClick={() => duplicateElement(el.id)} className={bouton} title="Dupliquer">
-              <Copy className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => deleteElements(ids)}
-            className={`${bouton} text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20`}
-            title={seul ? 'Supprimer (Suppr)' : `Supprimer les ${ids.length} éléments (Suppr)`}
-          >
-            <Trash2 className="h-4 w-4" />
           </button>
         </>
       )}

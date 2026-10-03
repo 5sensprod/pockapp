@@ -1,6 +1,6 @@
 // AppTools/src/features/labels/utils/exportPdfSheet.js
 import { propsCourbure } from './texteCourbe';
-import { typoTexte } from './typo';
+import { typoTexte, appliquerCasse, casseDe } from './typo';
 import jsPDF from 'jspdf';
 import Konva from 'konva';
 import { appliquerEffets } from './effetsKonva';
@@ -97,7 +97,8 @@ function updateElementsWithProduct(elements, product, fillQrWhenNoBinding = fals
     if (el?.type === 'text') {
       // La MÊME résolution que le canvas : prix formatés, description sans
       // HTML, et correction manuelle du texte lié pour ce produit.
-      const nextText = String(resolvePropForElement(el.text ?? '', el, product) ?? '');
+      // … puis la casse (`utils/typo.js`), un style appliqué au dessin comme à l'écran
+      const nextText = appliquerCasse(String(resolvePropForElement(el.text ?? '', el, product) ?? ''), casseDe(el));
       return { ...el, text: nextText };
     }
 

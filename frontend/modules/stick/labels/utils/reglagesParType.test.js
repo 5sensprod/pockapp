@@ -39,8 +39,6 @@ describe('reglagesDe', () => {
 
   it('les sections qui dépendent de la forme', () => {
     const p = (el) => reglagesDe({ type: 'shape', ...el }).panneau;
-    expect(p({})).toContain('arrondi'); // rectangle par défaut
-    expect(p({ shape: 'circle' })).not.toContain('arrondi');
     expect(p({ shape: 'line' })).toContain('masque'); // il l'avait dans la barre
     expect(p({ shape: 'libre', traceLibre: {} })).toContain('lissage');
     expect(p({ shape: 'libre' })).not.toContain('lissage'); // fermée avant `traceLibre`
@@ -103,7 +101,9 @@ describe('sections rares : repliées, sauf si l’élément y a un réglage', ()
     const el = { type: 'text' };
     for (const id of ['espacement', 'contourStylise', 'masque']) expect(sectionOuverte(id, el), id).toBe(false);
     expect(sectionOuverte('noyauTexte', el)).toBe(true);
-    expect(sectionOuverte('arrondi', { type: 'shape' })).toBe(true);
+    expect(sectionOuverte('lissage', { type: 'shape' })).toBe(true);
+    expect(sectionOuverte('traitTrace', { type: 'dessin' })).toBe(false);
+    expect(sectionOuverte('traitTrace', { type: 'dessin', effilementFin: 0.4 })).toBe(true);
   });
   it('s’ouvre quand un réglage y est actif', () => {
     expect(sectionActive('espacement', { curve: 30 })).toBe(true);
@@ -122,8 +122,20 @@ describe('sections rares : repliées, sauf si l’élément y a un réglage', ()
 });
 
 describe('options rapides de la barre du haut', () => {
-  it('texte : taille, gras et italique, couleur — ni police, ni alignement', () => {
-    expect(rapidesDe({ type: 'text' })).toEqual(['taille', 'grasItalique', 'couleurTexte']);
+  it('texte : taille, gras et italique, casse — ni police, ni alignement', () => {
+    expect(rapidesDe({ type: 'text' })).toEqual(['taille', 'grasItalique', 'casse']);
+  });
+  it('image : ajustement et miroirs', () => {
+    expect(rapidesDe({ type: 'image' })).toEqual(['ajustementImage', 'miroirs']);
+  });
+  it('aucune couleur dans la barre : sa fenêtre déborde, elle reste dans la barre latérale', () => {
+    for (const type of TYPES_REGLABLES) {
+      for (const id of rapidesDe({ type })) expect(id, type).not.toMatch(/couleur|remplissage|contour/i);
+    }
+  });
+  it('chaque type commence par son noyau', () => {
+    const tetes = { text: 'noyauTexte', shape: 'noyauForme', dessin: 'noyauTrace', image: 'noyauImage', qrcode: 'noyauQr', barcode: 'noyauBarres', fiche: 'contenuFiche' };
+    for (const [type, tete] of Object.entries(tetes)) expect(reglagesDe({ type }).panneau[0], type).toBe(tete);
   });
   it('quatre au plus par type : la barre ne défile jamais', () => {
     for (const type of TYPES_REGLABLES) expect(rapidesDe({ type }).length).toBeLessThanOrEqual(4);

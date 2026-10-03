@@ -8,7 +8,7 @@
 // Un même atome aux deux endroits, donc une seule écriture : MÊMES clés,
 // mêmes bornes qu'avant — seul l'emplacement change.
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   AlignCenter,
   AlignJustify,
@@ -25,57 +25,16 @@ import {
 import FontSelector from '../FontSelector';
 import GradientColorPicker from '../GradientColorPicker';
 import Curseur from '../ui/Curseur';
-import { TYPO_BORNES } from '../../utils/typo';
+import { CASSES, TYPO_BORNES, casseDe } from '../../utils/typo';
+import ChampValide from '../ui/ChampValide';
 import PastilleCouleur from '../ui/PastilleCouleur';
 import Segments from '../ui/Segments';
-import { CHAMP, BOUTON_ICONE, boutonBascule as bouton } from '../ui/styles';
+import { BOUTON_ICONE, boutonBascule as bouton } from '../ui/styles';
 
 const TAILLE_MIN = 4;
 const TAILLE_MAX = 400;
 const CONTOUR_MAX = 40;
 const borner = (v, min, max) => Math.min(max, Math.max(min, v));
-
-/**
- * Un nombre saisi au clavier : BROUILLON local, validé à Entrée ou en sortant
- * du champ. Borner à chaque frappe (comme avant) rendait « 36 » intapable :
- * « 3 » était aussitôt remonté au minimum, 4, et l'on obtenait 46.
- * Entrée et Échap rendent le focus : Suppr et H du canvas reviennent.
- */
-const ChampValide = ({ valeur, onValeur, min, max, pas = 1, titre, className }) => {
-  const [brouillon, setBrouillon] = useState(null);
-  useEffect(() => setBrouillon(null), [valeur]);
-  const valider = () => {
-    if (brouillon === null) return;
-    const n = Number.parseFloat(String(brouillon).replace(',', '.'));
-    setBrouillon(null);
-    if (Number.isFinite(n)) onValeur(borner(n, min, max));
-  };
-  return (
-    <input
-      type="text"
-      inputMode="decimal"
-      value={brouillon ?? valeur}
-      onChange={(e) => setBrouillon(e.target.value)}
-      onBlur={valider}
-      onFocus={(e) => e.target.select()}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
-        if (e.key === 'Escape') {
-          setBrouillon(null);
-          e.currentTarget.blur();
-        }
-        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-          e.preventDefault();
-          setBrouillon(null);
-          onValeur(borner(valeur + (e.key === 'ArrowUp' ? 1 : -1) * pas * (e.shiftKey ? 10 : 1), min, max));
-        }
-      }}
-      title={titre}
-      aria-label={titre}
-      className={`${CHAMP} text-center ${className}`}
-    />
-  );
-};
 
 // ── Atomes ──────────────────────────────────────────────────────────────────
 
@@ -266,14 +225,19 @@ export const LargeurBloc = ({ el, maj, docNode }) => {
   );
 };
 
+/** La casse : normale, MAJUSCULES, minuscules, Une Majuscule Par Mot (`utils/typo.js`). */
+export const Casse = ({ el, maj }) => (
+  <Segments label="Casse du texte" options={CASSES} valeur={casseDe(el)} onValeur={(casse) => maj({ casse })} />
+);
+
 // ── Le noyau de l'onglet Texte ──────────────────────────────────────────────
 
 const rangee = 'flex items-center justify-between gap-2 min-h-7';
 const etiquette = 'text-xs text-gray-500 dark:text-gray-400';
 
 /**
- * LES RÉGLAGES COURANTS d'un texte, en quatre rangées : police et taille ;
- * style et alignement ; couleur, contour, surlignage ; largeur du bloc.
+ * LES RÉGLAGES COURANTS d'un texte, en cinq rangées : police et taille ;
+ * style et alignement ; couleur, contour, surlignage ; casse ; largeur du bloc.
  * 150 px au lieu de quatre sections dépliées sur 550.
  */
 export const Noyau = ({ el, maj, docNode }) => (
@@ -306,6 +270,12 @@ export const Noyau = ({ el, maj, docNode }) => (
         <ContourSimple el={el} maj={maj} />
       </div>
       <Surlignage el={el} maj={maj} />
+    </div>
+    <div className={rangee}>
+      <span className={etiquette}>Casse</span>
+      <div className="w-44">
+        <Casse el={el} maj={maj} />
+      </div>
     </div>
     <div className={rangee}>
       <span className={etiquette}>Largeur</span>

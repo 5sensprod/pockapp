@@ -184,3 +184,76 @@ d'ombre interne sont nouveaux.
 
 Gardiens : `utils/pave2D.test.js` (pavé, champ à glisser, ombres). `pnpm build:client`
 passe (3 octobre 2026, sur `aa61bc3`).
+
+---
+
+## Panneaux en noyaux, options rapides, casse — 3 octobre 2026 (suite)
+
+Second audit par un agent design, sur le panneau Texte : déplié, il faisait
+environ 1 390 px pour 600 visibles (estimé d'après les classes). Constat du
+propriétaire : infos importantes noyées, texte inutile, ascenseur obligé.
+
+**Un panneau = un NOYAU, puis des sections rares.**
+- Le noyau : les réglages courants du type, en rangées serrées, SANS titre de
+  section ni libellé redondant (`nu: true` dans `SECTIONS`, `ReglagesPanel.jsx`).
+  Texte : police et taille ; style et alignement ; couleur, contour,
+  surlignage ; casse ; largeur du bloc.
+- Les sections rares (`SECTIONS_RARES`, `utils/reglagesParType.js`) sont
+  repliées. Elles s'ouvrent si l'élément y porte un réglage
+  (`sectionActive`), et le signalent d'un point bleu quand elles sont
+  repliées. La `key` de la `Section` porte l'id de l'élément : l'état du pli
+  se recalcule à chaque sélection (un pli fait à la main n'est pas retenu).
+- Le bandeau commun est UNE rangée d'icônes (`ReglagesCommuns.jsx`) :
+  position, remplir, dupliquer, supprimer ; puis « Lié à ».
+
+| Type | Noyau | Sections |
+|---|---|---|
+| Texte | `Texte.Noyau` | Espacement, Contour à main levée, Masque |
+| Image | `Photo.Noyau` | Masque |
+| Forme | `Codes.NoyauForme` (arrondi compris) | Contour à main levée, Lissage, Masque |
+| Tracé | `NoyauTrace` | Forme du trait, Contour à main levée ; « Fermer en forme » |
+| QR, code-barres | `NoyauQr`, `NoyauBarres` | — |
+| Fiche | `Fiche.Contenu` | Style du tableau |
+
+**Options rapides dans la barre du haut** (`ReglagesRapides.jsx`,
+`RAPIDES_PAR_TYPE`) : texte — taille, gras, italique, casse ; image — Remplir /
+Contenir, miroirs ; tous — centrer sur la page. Ce sont les MÊMES atomes que
+le panneau et le MÊME `maj`. Masquées sous 1280 px de fenêtre.
+
+Décisions du propriétaire, gardées par `reglagesParType.test.js` ou notées ici :
+- **aucune couleur dans la barre du haut** : la fenêtre du sélecteur y
+  déborde ; les couleurs restent dans la barre latérale ;
+- **ni Dupliquer ni Supprimer dans la barre du haut** ;
+- ni la police (trop large), ni l'alignement du texte (il fixe la largeur du
+  bloc, son Auto / Fixe doit rester à côté).
+
+**Un seul chemin d'écriture** : `useMajSelection` (panneau et barre). Un
+réglage vaut pour toute la sélection du MÊME type, en un pas d'historique
+(`utils/majSelection.js`, action `updateElements`) : le style se partage — la
+frontière est `HORS_STYLE` de `styleCopie.js` —, la géométrie reste à chacun,
+un tracé est redessiné pour lui-même. Les effets vont à toute la sélection,
+tous types. Aligner (`useAlignementPage`) et « Appliquer cette ombre à tous »
+font aussi un seul pas.
+
+**La casse** (`el.casse`, `utils/typo.js`) : normale, majuscules, minuscules,
+une majuscule par mot. C'est un STYLE appliqué au dessin (`appliquerCasse`),
+à l'écran (`TextNode`) et dans l'export planche : le texte saisi, ou lu dans
+la fiche, n'est jamais réécrit. `TextNode` édite le texte BRUT — éditer la
+forme en majuscules figerait la casse dans le contenu.
+
+**Champs numériques** : `ui/ChampValide.jsx`, brouillon validé à Entrée ou en
+sortant. Borner à chaque frappe rendait « 36 » intapable (« 3 » remontait à
+4, on obtenait 46).
+
+Les quatre cohérences du premier audit sont closes : sélection multiple,
+largeur du bloc visible et réversible (Auto / Fixe), « Ondulation de
+l'élément » dans Effets, ombre « à tous » en un pas.
+
+Reste ouvert : le jargon des textures du masque (« Graine », « Octaves ») ;
+les panneaux de PROPOSITIONS (Templates, Page, Médias, Assets, Calques,
+Produits, Données produit) n'ont pas été refaits — prompt d'audit dans
+[`08-audit-design-sidebar.md`](08-audit-design-sidebar.md).
+
+Gardiens : `reglagesParType.test.js`, `majSelection.test.js`, `casse.test.js`.
+Vérifié à l'écran par le propriétaire ; `pnpm build:client` non relancé
+depuis `aa61bc3`.

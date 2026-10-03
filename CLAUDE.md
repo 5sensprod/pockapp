@@ -93,6 +93,13 @@ Les contrôles de la barre latérale sont communs (`components/ui/` : `Section`,
 `Interrupteur`, `Segments`, `Curseur`, `Pave2D`, `ChampNombre`, `styles.js`) :
 un seul accent, le bleu ; l'orange est réservé aux données produit. L'ombre se
 règle sur un pavé qui écrit X et Y ENSEMBLE (un glisser = un pas d'annulation).
+Un panneau de réglages = un NOYAU sans titre (les réglages courants) puis des
+sections rares repliées (`SECTIONS_RARES`). Un réglage vaut pour toute la
+sélection du même type, en un pas d'historique : `useMajSelection`, seul chemin
+d'écriture du panneau ET des options rapides de la barre du haut
+(`ReglagesRapides.jsx`) — où il n'y a **ni couleur, ni Dupliquer, ni Supprimer**
+(décisions du propriétaire). La casse d'un texte (`el.casse`) est un style
+appliqué au dessin, jamais une réécriture du texte.
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation
