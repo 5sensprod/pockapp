@@ -4,6 +4,8 @@
 // Avec `origine="generation"`, la MÊME liste filtrée sur les images détourées
 // (`lib/detourage.ts`) : sous-onglet « Génération », sans import — ces images
 // viennent du bouton « Détourer » —, mêmes poses et même suppression.
+// Avec `origine="photo"`, les photos GARDÉES depuis le mini-chat « Photos »
+// (`lib/photos.ts`), sous lui : elles n'entrent pas dans « Mes images ».
 // On importe, on clique une vignette pour la poser sur l'affiche — entière,
 // centrée, à ses proportions.
 //
@@ -30,6 +32,7 @@ import { PANNEAU } from '../ui/styles';
 
 const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) => {
   const generation = origine === 'generation';
+  const photo = origine === 'photo';
   const { addElementCentre } = useLabelStore();
   // La liste vient du CACHE du service quand il est chaud : au retour sur l'onglet,
   // la grille est là d'emblée, sans relire IndexedDB ni passer par « chargement ».
@@ -214,7 +217,7 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
       />
       {/* En tête du sous-onglet « Génération » : générer une image depuis un texte */}
       {entete}
-      {!generation && (
+      {!generation && !photo && (
       <Bouton
         plein
         icone={Upload}
@@ -241,7 +244,7 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
 
       <div className="space-y-2">
         <TitreGroupe
-          titre={generation ? 'Génération' : 'Mes images'}
+          titre={generation ? 'Génération' : photo ? 'Photos gardées' : 'Mes images'}
           compte={availableImages.length}
           action={
             !loading &&
@@ -261,6 +264,12 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
               icone={Scissors}
               titre="Aucune image générée."
               detail="Les images générées ci-dessus, détourées, modifiées ou composées par IA sont rangées ici."
+            />
+          ) : photo ? (
+            <EtatVide
+              icone={ImageIcon}
+              titre="Aucune photo gardée."
+              detail="« Ajouter à mes images », sous une photo trouvée, la range ici. Un clic sur sa vignette la pose."
             />
           ) : (
             <EtatVide icone={ImageIcon} titre="Aucune image importée." />

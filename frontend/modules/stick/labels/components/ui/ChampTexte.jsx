@@ -3,12 +3,13 @@
 // LE CHAMP DE TEXTE LIBRE sur plusieurs lignes (une consigne). La matière de
 // `CHAMP`, sans sa hauteur fixe. Avec `max`, le compteur n'apparaît qu'à
 // l'approche de la limite. Ctrl+Entrée valide (`onValider`) ; Échap rend le
-// focus, pour que Suppr et H du canvas reviennent.
+// focus, pour que Suppr et H du canvas reviennent. Avec `entreeValide` (une
+// discussion), Entrée seule valide et Maj+Entrée va à la ligne.
 
 import React from 'react';
 import { AIDE, CHAMP } from './styles';
 
-const ChampTexte = ({ valeur, onValeur, onValider, placeholder, label, max, lignes = 2, desactive = false }) => {
+const ChampTexte = ({ valeur, onValeur, onValider, placeholder, label, max, lignes = 2, desactive = false, entreeValide = false }) => {
   const longueur = [...(valeur ?? '')].length;
   return (
     <div>
@@ -17,7 +18,7 @@ const ChampTexte = ({ valeur, onValeur, onValider, placeholder, label, max, lign
         onChange={(e) => onValeur(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') e.currentTarget.blur();
-          else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || (entreeValide && !e.shiftKey))) {
             e.preventDefault();
             onValider?.();
           }

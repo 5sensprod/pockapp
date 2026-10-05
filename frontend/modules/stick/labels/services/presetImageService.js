@@ -33,6 +33,17 @@ const STORE_VIGNETTES = 'vignettes'
 export const ORIGINE_GENERATION = 'generation'
 const estGeneree = (image) => image?.origine === ORIGINE_GENERATION
 
+/**
+ * Marque d'origine d'une PHOTO de la banque d'images, gardée depuis le mini-chat
+ * « Photos » (`lib/photos.ts`). Elle a sa propre liste, sous le chat : ni dans
+ * « Mes images », ni dans « Génération ».
+ */
+export const ORIGINE_PHOTO = 'photo'
+
+/** L'origine d'une image : `generation`, `photo`, ou `import` (toute autre marque, ou aucune). */
+const origineDe = (image) =>
+	image?.origine === ORIGINE_GENERATION || image?.origine === ORIGINE_PHOTO ? image.origine : 'import'
+
 class PresetImageService {
 	constructor() {
 		this.db = null
@@ -138,9 +149,9 @@ class PresetImageService {
 		}
 	}
 
-	/** 📋 Les images IMPORTÉES (« Mes images ») : tout sauf les générées. */
+	/** 📋 Les images IMPORTÉES (« Mes images ») : ni générées, ni gardées depuis « Photos ». */
 	async listerImportees() {
-		return (await this.listImages()).filter((image) => !estGeneree(image))
+		return (await this.listImages()).filter((image) => origineDe(image) === 'import')
 	}
 
 	/** 📋 Les images GÉNÉRÉES (sous-onglet « Génération »), la plus récente d'abord. */
@@ -167,7 +178,6 @@ class PresetImageService {
 		ia = undefined,
 		departSrc = '',
 	}) {
-		const db = await this.initDB()
 		const base = String(depuis || 'image').replace(/\.[a-z0-9]{2,5}$/i, '')
 		const image = {
 			filename: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${base}-${String(suffixe)
@@ -184,9 +194,35 @@ class PresetImageService {
 			...(ia ? { ia } : {}),
 			...(departSrc ? { departSrc } : {}),
 		}
+		return this.ranger(image)
+	}
+
+	/**
+	 * 📷 Garde une photo de la banque d'images. `src` est une data URL, comme
+	 * toute image de la bibliothèque : AUCUNE adresse distante n'est stockée.
+	 * Rejette si l'écriture échoue (quota IndexedDB).
+	 * @param {{ src: string, id?: string, nom?: string, size?: number, type?: string }} photo
+	 */
+	async ajouterPhoto({ src, id = '', nom = '', size = 0, type = 'image/jpeg' }) {
+		const extension = { 'image/png': 'png', 'image/webp': 'webp' }[type] ?? 'jpg'
+		const cle = String(id).replace(/[^a-z0-9_-]/gi, '').slice(0, 40) || 'photo'
+		return this.ranger({
+			filename: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-photo-${cle}.${extension}`,
+			name: String(nom || '').trim() || 'Photo',
+			src,
+			size,
+			type,
+			createdAt: new Date().toISOString(),
+			origine: ORIGINE_PHOTO,
+		})
+	}
+
+	/** Écrit une image et sa vignette, puis l'inscrit au cache. Rend l'image. */
+	async ranger(image) {
+		const db = await this.initDB()
 		// Le rangement d'une image ne dépend pas de sa vignette : qu'elle ne se
 		// fabrique pas, l'image est rangée et la vignette viendra au rattrapage.
-		const vignette = await this.fabriquer(src).catch(() => null)
+		const vignette = await this.fabriquer(image.src).catch(() => null)
 		await new Promise((resolve, reject) => {
 			const tx = db.transaction([STORE, STORE_VIGNETTES], 'readwrite')
 			tx.oncomplete = () => resolve()
@@ -248,7 +284,7 @@ class PresetImageService {
 	lireCache(origine) {
 		if (!this.entrees) return null
 		return [...this.entrees.values()]
-			.filter((e) => estGeneree(e) === (origine === ORIGINE_GENERATION))
+			.filter((e) => origineDe(e) === origineDe({ origine }))
 			.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
 	}
 

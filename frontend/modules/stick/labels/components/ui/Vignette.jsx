@@ -25,6 +25,8 @@ const Vignette = ({
   desactive = false,
   action,
   onClic,
+  // Largeur / hauteur du cadre ; absent : carré
+  proportions,
   children,
 }) => (
   <div className={`group relative min-w-0 ${desactive ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -40,7 +42,8 @@ const Vignette = ({
           onClic?.(e);
         }
       }}
-      className={`aspect-square rounded-md overflow-hidden cursor-pointer bg-white ring-1 ring-inset ring-gray-200 dark:ring-gray-600 hover:ring-2 focus-visible:ring-2 focus-visible:outline-none ${
+      style={proportions ? { aspectRatio: proportions } : undefined}
+      className={`${proportions ? '' : 'aspect-square '}rounded-md overflow-hidden cursor-pointer bg-white ring-1 ring-inset ring-gray-200 dark:ring-gray-600 hover:ring-2 focus-visible:ring-2 focus-visible:outline-none ${
         produit ? 'hover:ring-orange-500 focus-visible:ring-orange-500' : 'hover:ring-blue-500 focus-visible:ring-blue-500'
       }`}
     >

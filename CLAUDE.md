@@ -176,6 +176,21 @@ dessin seul se modifie (`lib/retouche-seul.ts`) : le résultat est un NOUVEAU
 calque au-dessus. « Détourer ensuite » enchaîne deux requêtes, décochée au départ.
 `lancerRetouche` seul n'écrit que `src` ; la mémoire passe par `memoriser`.
 
+**Le mini-chat « Photos »** (5 octobre 2026,
+[`15-photos.md`](frontend/modules/stick/PocketStick-docs/15-photos.md), point 10
+des entrées réseau) est le quatrième sous-onglet de Médias
+(`templates/PhotosChat.jsx`, `labels/lib/photos.ts`) : le vendeur décrit une photo,
+Gemini la traduit en recherche, quatre résultats reviennent dans des cadres aux
+proportions de la page. **Ce n'est PAS le trajet de `lancerTraitement`** (un texte
+part, du JSON revient, rien n'est rangé ni posé sans clic) ; il en partage
+`useEtatDetourage` — tâche `photos`, **une seule requête d'IA à la fois** — et
+`presetImageService`. La page part en **orientation nommée**
+(`orientationDeLaPage`, depuis `canvasSize`) et en millimètres, jamais en pixels.
+« Ajouter » range la photo par `ajouterPhoto` (`origine: 'photo'`) dans **« Photos
+gardées »**, sous le chat — ni dans « Mes images », ni dans « Génération » ;
+« Télécharger » écrit un fichier. Rien n'est posé d'ici. La conversation vit dans
+la mémoire de l'onglet (`useConversationPhotos`), écrite nulle part.
+
 **La bibliothèque d'images du poste** (« Images → Mes images / Génération »,
 5 octobre 2026, [`13-performance-medias.md`](frontend/modules/stick/PocketStick-docs/13-performance-medias.md))
 affiche des **vignettes** (256 px, WebP) rangées dans un second magasin
@@ -347,6 +362,35 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
    et 700 seulement, adresse de fichier restreinte à `fonts.gstatic.com`. Le
    renderer chargeait déjà ces polices depuis Google pour les afficher
    (`utils/loadGoogleFont.js`) ; c'est le processus Go qui est nouveau.
+
+10. **Banque d'images du mini-chat « Photos »** (PocketStick, 5 octobre 2026) —
+    `backend/routes/photos_routes.go` —
+    `https://pocketapp.5sensprod.com/api/photos.php`, **POST** (formulaire, jamais
+    de paramètre d'adresse : une requête n'a pas à finir dans un journal d'accès),
+    en-tête `X-API-Key` (clé des notifications) et `User-Agent` explicite. Deux
+    actions : `recherche` — **ce qui sort : une requête TEXTE courte**, une
+    orientation nommée, une page ; ce qui entre : quatre photos au plus, en
+    JSON — et `fichier` — une référence sort, **les octets d'une photo entrent**
+    (JPEG, PNG ou WebP, 12 Mio au plus, type lu sur les octets). La clé de la
+    banque d'images (`UNSPLASH_ACCESS_KEY`) n'est PAS sur le poste, et **le poste
+    ne reçoit aucune adresse du fournisseur** : `miniature` et `image` sont des
+    références opaques signées par le mini-SaaS, que le poste lui rend. Le Go ne
+    suit donc aucune adresse lue dans une réponse, et le renderer ne charge rien
+    d'un domaine tiers. Le fournisseur n'est connu que de l'adaptateur de
+    `api/photos-lib.php` (dépôt du mini-SaaS). Refuse de partir hors HTTPS ;
+    codes nommés (`quota_atteint` ≠ `fournisseur_en_echec` ≠ `aucun_resultat`).
+    Routes locales : `POST /api/ai/photos-chat`, `POST /api/ai/photos-suite` et
+    `POST /api/ai/photos-fichier`. **« Afficher plus » (`photos-suite`) n'appelle
+    PAS Gemini et ne déclare rien : il est gratuit** (décision du propriétaire) ;
+    raffiner est une nouvelle demande, décomptée comme la première.
+    La première appelle AUSSI Gemini (point 6, même modèle, même clé), avec un
+    seul outil, `chercher_photos` : **la demande du vendeur part chez Google**
+    (500 caractères au plus), jamais la clé de la banque. Ni la demande ni la
+    requête ne sont journalisées, ni ici ni sur le mini-SaaS. Rien n'est décompté
+    par `photos.php` : c'est la discussion, en jetons, qui est déclarée à
+    `usage.php`. **Ni attribution affichée, ni appel de « déclaration de
+    téléchargement »** : décision du propriétaire, ne pas en ajouter. Gardien :
+    `photos_routes_test.go`.
 
 ## Commandes
 

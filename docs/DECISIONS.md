@@ -10,6 +10,55 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Mini-chat « Photos » : une banque d'images derrière le mini-SaaS — 2026-10-05
+
+**Décidé par le propriétaire.** Un sous-onglet « Photos » dans Médias de
+PocketStick : le vendeur décrit une photo, Gemini (`gemini-3.1-flash-lite`, le
+modèle de l'assistant de fiche) la traduit en recherche, une banque d'images
+rend quatre résultats. La clé de la banque (`UNSPLASH_ACCESS_KEY`) vit dans
+`pocketapp-secrets.php`, sur le mini-SaaS. **Aucune attribution n'est affichée
+et aucun appel de « déclaration de téléchargement » n'est fait** : c'est sa
+décision pour ce fournisseur, à ne pas « corriger » par précaution.
+Ce qui est décompté est la discussion, en jetons, comme un titre.
+
+**Ce qui en découle, et pourquoi :**
+
+- **Le fournisseur n'est connu que d'un adaptateur** (`api/photos-lib.php`,
+  dépôt du mini-SaaS). Le contrat du poste est interne :
+  `{ id, miniature, image, largeur, hauteur, couleur?, description? }` × 4.
+  Changer de banque, c'est réécrire `chercherChezFournisseur` et la liste
+  `PHOTOS_HOTES_IMAGES`.
+- **`miniature` et `image` sont des références signées, pas des adresses** —
+  écart assumé au contrat d'origine (`miniature_url`, `image_url`). Une adresse
+  rendue au poste aurait obligé soit le renderer à charger depuis le domaine du
+  fournisseur, soit le Go à suivre une adresse lue dans une réponse. La référence
+  (HMAC dérivé de la clé de la banque, douze heures) ne se relit que sur le
+  mini-SaaS, qui vérifie encore l'hôte avant de rapatrier.
+- **Gemini ne cherche pas lui-même** : un outil, `chercher_photos`, que le Go
+  exécute et borne (`rechercheDemandee`). Trois appels à Gemini et deux
+  recherches au plus par message ; l'outil est fermé (`mode: NONE`) dès que des
+  photos sont trouvées.
+- **Le contenu rendu par Gemini repart TEL QUEL au tour suivant** : il peut
+  porter une signature de pensée. Supposé nécessaire pour Gemini 3, non vérifié
+  sur un appel réel au jour de l'écriture.
+- **POST, jamais GET, vers `photos.php`** : une requête dans l'adresse finirait
+  dans les journaux d'accès d'Apache. Le cache du mini-SaaS nomme ses fichiers
+  par empreinte, pour la même raison.
+- **Douze résultats par appel au fournisseur, quatre par réponse** : le quota se
+  compte en appels (50 par heure pour une clé de démonstration), « 4 autres »
+  deux fois de suite n'en coûte donc aucun.
+- **Pas le trajet de `lancerTraitement`** : il envoie des images et attend un
+  PNG. Le chat partage `useEtatDetourage` (une requête d'IA à la fois) et
+  `presetImageService` (`ajouterPhoto`, seul écrivain), rien d'autre.
+- **Les photos gardées ont leur liste** (`origine: 'photo'`, « Photos gardées »
+  sous le chat) : « Mes images » reste les imports du vendeur.
+
+**Écarté :** les vignettes chargées directement depuis le domaine du
+fournisseur ; un état de conversation côté Go ; la conversation persistée ; le
+mode planche (reporté par le propriétaire).
+
+État et inconnues : `frontend/modules/stick/PocketStick-docs/15-photos.md`.
+
 ## Ajout rapide de produit dans les documents ; recherche sans accent, par marque et catégorie — 2026-09-24
 
 **Décision (ajout rapide).** Les sélecteurs de produit des factures, devis et
