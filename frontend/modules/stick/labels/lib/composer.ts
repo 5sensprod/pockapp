@@ -23,17 +23,18 @@
 import { resolvePropForElement } from '../utils/dataBinding'
 import {
 	type DepsDetourage,
-	historiqueLocalPour,
-	lancerTraitement,
+	type MemoireIA,
 	type Refus,
 	type ResultatDetourage,
 	SEUIL_ENVOI_OCTETS,
-	sourceAEnvoyer,
 	type TacheIA,
+	historiqueLocalPour,
+	lancerTraitement,
+	sourceAEnvoyer,
 } from './detourage'
 import type { Definition } from './embellir'
 import { appelerTacheImage, formatNomme, messagesDeTache } from './generer'
-import { CONSIGNE_MAX, consigneNette, type Qualite } from './retouche'
+import { CONSIGNE_MAX, type Qualite, consigneNette } from './retouche'
 
 // ── Les ingrédients ─────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ export const elementsSelectionnes = (etat: any): any[] => {
 export const composerPropose = (etat: any): boolean =>
 	!enPlanche(etat) && elementsSelectionnes(etat).length >= INGREDIENTS_MIN
 
-const enPlanche = (etat: any) =>
+export const enPlanche = (etat: any) =>
 	etat?.formatTirage === 'planche' || !!etat?.lockCanvasToSheetCell
 
 /**
@@ -171,6 +172,7 @@ export const historiqueComposer = (qualite: Qualite, definition: Definition) =>
 export const calqueCompose = (
 	src: string,
 	canvas: { width: number; height: number },
+	ia?: MemoireIA,
 ) => ({
 	type: 'image',
 	src,
@@ -185,6 +187,7 @@ export const calqueCompose = (
 	scaleY: 1,
 	opacity: 1,
 	fit: 'contain',
+	...(ia ? { ia } : {}),
 })
 
 export const tacheComposer = (
@@ -200,6 +203,13 @@ export const tacheComposer = (
 	}
 	return {
 		nom: 'composition',
+		memoire: {
+			tache: 'composition',
+			consigne: consigneNette(consigne),
+			qualite,
+			format: demande.format,
+			definition,
+		},
 		peut: (_el, _nombre, enCours) =>
 			peutComposer(deps.store.getState(), ingredients(), enCours, consigne),
 		// UNE image par élément, dans l'ordre des calques
@@ -237,9 +247,9 @@ export const tacheComposer = (
 		depuis: 'Composition',
 		suffixe: 'composée',
 		// Au-dessus de tout, rang calculé À L'ARRIVÉE ; les ingrédients ne bougent pas
-		poser: (src, etatStore) => {
+		poser: (src, etatStore, ia) => {
 			if (enPlanche(etatStore)) return false
-			etatStore.addElement(calqueCompose(src, etatStore.canvasSize), {
+			etatStore.addElement(calqueCompose(src, etatStore.canvasSize, ia), {
 				index: etatStore.elements.length,
 			})
 			return true

@@ -21,19 +21,20 @@
 import { create } from 'zustand'
 import {
 	type DepsDetourage,
-	historiqueLocalPour,
-	lancerTraitement,
+	type MemoireIA,
 	type Refus,
 	type ResultatDetourage,
 	type TacheIA,
+	historiqueLocalPour,
+	lancerTraitement,
 } from './detourage'
 import {
-	appelerRetouche,
 	CONSIGNE_MAX,
 	COTE_MAX_RETOUCHE,
-	consigneNette,
 	MESSAGES_RETOUCHE,
 	type Qualite,
+	appelerRetouche,
+	consigneNette,
 } from './retouche'
 
 // ── Les choix ───────────────────────────────────────────────────────────────
@@ -132,6 +133,7 @@ export const calqueGenere = (
 	src: string,
 	mode: ModeEmbellir,
 	canvas: { width: number; height: number },
+	ia?: MemoireIA,
 ) => ({
 	type: 'image',
 	src,
@@ -146,6 +148,7 @@ export const calqueGenere = (
 	scaleY: 1,
 	opacity: 1,
 	fit: mode === 'decor' ? 'cover' : 'contain',
+	...(ia ? { ia } : {}),
 })
 
 // ── Peut-on embellir cette page ? ───────────────────────────────────────────
@@ -218,6 +221,13 @@ export const tacheEmbellir = (
 	const format = formatEffectif(mode, demande.format)
 	return {
 		nom: 'embellir',
+		memoire: {
+			tache: 'embellir',
+			consigne: consigneNette(consigne),
+			qualite,
+			format,
+			definition,
+		},
 		peut: (_el, _nombre, enCours) =>
 			peutEmbellir(deps.store.getState(), enCours, consigne),
 		// La page telle qu'au clic : les calques cachés sont lus maintenant
@@ -236,9 +246,9 @@ export const tacheEmbellir = (
 		depuis: 'page',
 		suffixe: mode === 'decor' ? 'décor' : 'embellie',
 		// Le rang est calculé À L'ARRIVÉE : la page a pu changer pendant l'attente
-		poser: (src, etatStore) => {
+		poser: (src, etatStore, ia) => {
 			if (enPlanche(etatStore)) return false
-			etatStore.addElement(calqueGenere(src, mode, etatStore.canvasSize), {
+			etatStore.addElement(calqueGenere(src, mode, etatStore.canvasSize, ia), {
 				index: rangDePose(etatStore.elements, mode),
 			})
 			return true

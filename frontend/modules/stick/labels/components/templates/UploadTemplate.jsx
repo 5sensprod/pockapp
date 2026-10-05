@@ -109,6 +109,8 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
       ...AJUSTEMENT_NOUVELLE_IMAGE, // Contenir : la photo entière, quel que soit le produit
       src: image.src,
       filename: image.filename,
+      // Ce qui a produit l'image (consigne, qualité…), pour la reprendre dans les réglages
+      ...(image.ia ? { ia: { ...image.ia, rangee: image.filename } } : {}),
       opacity: 1,
       rotation: 0,
       visible: true,
@@ -269,7 +271,7 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
               <Vignette
                 key={image.filename}
                 src={image.apercu}
-                nom={image.filename}
+                nom={image.ia?.consigne ? `${image.filename} — « ${image.ia.consigne} »` : image.filename}
                 onClic={() => handleImageClick(image)}
                 action={
                   <button

@@ -163,6 +163,18 @@ n'est tronqué** — et l'image revient en nouveau calque au-dessus de tout.
 Générer (`labels/lib/generer.ts`, `templates/GenererImage.jsx`, en tête du
 sous-onglet « Génération ») : un texte seul, un format NOMMÉ, et l'image est
 **rangée sans être posée** (`sansPose`).
+**La reprise de la retouche** (5 octobre 2026,
+[`14-reprise-retouche.md`](frontend/modules/stick/PocketStick-docs/14-reprise-retouche.md),
+même trajet, aucun champ de plus vers le mini-SaaS) : une image par IA porte
+`el.ia` (`MemoireIA`, `lib/detourage.ts`) — tâche, **consigne**, qualité — écrit
+AVEC `src`, et « Génération » garde la même mémoire plus, pour une retouche,
+l'image d'AVANT (`departSrc`). ⚠️ La consigne est un texte du vendeur écrit dans
+le template et dans IndexedDB ; un `.json` exporté porte `contientConsignesIA`.
+« Refaire » (`lib/refaire.ts`) repart du DÉPART, jamais du résultat, et ne se
+propose ni pour une composition ni pour un embellissement. Une forme ou un
+dessin seul se modifie (`lib/retouche-seul.ts`) : le résultat est un NOUVEAU
+calque au-dessus. « Détourer ensuite » enchaîne deux requêtes, décochée au départ.
+`lancerRetouche` seul n'écrit que `src` ; la mémoire passe par `memoriser`.
 
 **La bibliothèque d'images du poste** (« Images → Mes images / Génération »,
 5 octobre 2026, [`13-performance-medias.md`](frontend/modules/stick/PocketStick-docs/13-performance-medias.md))

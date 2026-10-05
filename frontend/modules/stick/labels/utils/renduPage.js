@@ -36,7 +36,7 @@ export const dansLaPage = (rect, width, height, marge = 0) => {
  * `cadrer` : l'`id` d'un calque — l'image est alors rognée sur lui (ce qui en
  * tient dans la page), et `coteMax` vaut pour ce cadre.
  */
-export async function rendrePage(docNode, { width, height, coteMax = 2048, masques = [], fond = '#ffffff', cadrer = null } = {}) {
+export async function rendrePage(docNode, { width, height, coteMax = 2048, masques = [], fond = '#ffffff', cadrer = null, surZone = null } = {}) {
   if (!docNode || !(width > 0) || !(height > 0)) throw new Error("La page n'est pas disponible.");
 
   const clone = docNode.clone({ x: 0, y: 0, scaleX: 1, scaleY: 1 });
@@ -54,6 +54,8 @@ export async function rendrePage(docNode, { width, height, coteMax = 2048, masqu
       zone = dansLaPage(clone.findOne(`#${cadrer}`)?.getClientRect({ relativeTo: layer }), width, height, 2);
       if (!zone) throw new Error("Cet élément n'a rien de visible sur la page.");
     }
+    // Le cadre rendu, en coordonnées de la page : le calque retouché revient exactement là
+    surZone?.(zone);
     const pixelRatio = echelleDeRendu(zone.width, zone.height, coteMax);
     // Comme l'export : textures puis caches d'effets, à la résolution du rendu
     retexturer(clone, pixelRatio);
@@ -67,8 +69,9 @@ export async function rendrePage(docNode, { width, height, coteMax = 2048, masqu
 }
 
 /** UN calque seul, sur fond transparent, cadré sur lui. `ids` : tous les calques de la page. */
-export const rendreElement = (docNode, id, { width, height, coteMax = 1536, ids = [] } = {}) =>
+export const rendreElement = (docNode, id, { width, height, coteMax = 1536, ids = [], surZone = null } = {}) =>
   rendrePage(docNode, {
+    surZone,
     width,
     height,
     coteMax,

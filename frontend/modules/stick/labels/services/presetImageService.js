@@ -153,6 +153,7 @@ class PresetImageService {
 	 * image importée, aucune adresse distante ne se retrouve stockée.
 	 * `depuis` : le nom de l'image de départ. Rejette si l'écriture échoue
 	 * (quota IndexedDB) : l'appelant décide quoi faire.
+	 * @param {{ src: string, depuis?: string, size?: number, type?: string, suffixe?: string, ia?: any, departSrc?: string }} image
 	 */
 	async ajouterGeneree({
 		src,
@@ -161,6 +162,10 @@ class PresetImageService {
 		type = 'image/png',
 		// Ce que l'IA a fait de l'image : « détourée », « modifiée », « embellie »
 		suffixe = 'détourée',
+		// Ce qui a produit l'image (`MemoireIA`) et, pour une retouche, l'image
+		// d'AVANT : le tout reste sur le poste, dans cette base, et part dans aucun export
+		ia = undefined,
+		departSrc = '',
 	}) {
 		const db = await this.initDB()
 		const base = String(depuis || 'image').replace(/\.[a-z0-9]{2,5}$/i, '')
@@ -176,6 +181,8 @@ class PresetImageService {
 			createdAt: new Date().toISOString(),
 			origine: ORIGINE_GENERATION,
 			depuis: String(depuis || ''),
+			...(ia ? { ia } : {}),
+			...(departSrc ? { departSrc } : {}),
 		}
 		// Le rangement d'une image ne dépend pas de sa vignette : qu'elle ne se
 		// fabrique pas, l'image est rangée et la vignette viendra au rattrapage.
@@ -201,6 +208,7 @@ class PresetImageService {
 			name: image.name,
 			origine: image.origine,
 			createdAt: image.createdAt,
+			...(image.ia ? { ia: image.ia } : {}),
 			vignette,
 		}
 	}
@@ -211,6 +219,7 @@ class PresetImageService {
 			name: image.name,
 			origine: image.origine,
 			createdAt: image.createdAt,
+			...(image.ia ? { ia: image.ia } : {}),
 			apercu,
 			// Pas (encore) de vignette : l'aperçu est l'originale, à rattraper
 			sansVignette: !image.vignette,
@@ -331,6 +340,15 @@ class PresetImageService {
 			}
 		})()
 		return this.rattrapage
+	}
+
+	/**
+	 * L'image d'AVANT une retouche, gardée avec son résultat (`departSrc`), ou
+	 * undefined. Lue à la demande : elle n'entre jamais dans le cache de la grille.
+	 */
+	async lireDepart(filename) {
+		const image = await this.getImageInfo(filename)
+		return image?.departSrc || undefined
 	}
 
 	async getImageInfo(filename) {

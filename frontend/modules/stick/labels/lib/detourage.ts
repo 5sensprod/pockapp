@@ -686,6 +686,8 @@ export type DepsDetourage = {
 			size: number
 			suffixe?: string
 			type: string
+			ia?: MemoireIA
+			departSrc?: string
 		}) => Promise<unknown>
 	}
 	codec?: Codec
@@ -707,6 +709,22 @@ export type ResultatDetourage =
 			chrono: ChronoDetourage
 	  }
 	| { ok: false; erreur: ErreurDetourage }
+
+/**
+ * Ce qui a produit une image par IA (`el.ia`, et la même chose dans la
+ * bibliothèque « Génération »), pour la reprendre et la corriger. ⚠️ La
+ * consigne est un texte du vendeur : elle reste sur le poste, dans le template
+ * et dans IndexedDB, et ne part que dans la requête elle-même.
+ */
+export type MemoireIA = {
+	tache: 'retouche' | 'generation' | 'composition' | 'embellir'
+	consigne: string
+	qualite: string
+	format?: string
+	definition?: string
+	/** Le nom, dans la bibliothèque, de l'image rangée : c'est là que « Refaire » retrouve l'image de départ. */
+	rangee?: string
+}
 
 const nomDe = (el: any) => String(el?.filename || el?.name || 'image')
 
@@ -757,11 +775,15 @@ export type TacheIA = {
 	 * La pose, quand ce n'est pas le remplacement de la `src` d'un élément : un
 	 * NOUVEAU calque. Rend vrai si l'image a été posée. Un seul pas d'historique.
 	 */
-	poser?: (src: string, etatStore: any) => boolean
+	poser?: (src: string, etatStore: any, ia?: MemoireIA) => boolean
 	/** Le nom de l'image de départ, quand il n'y a pas d'élément. */
 	depuis?: string
 	/** Ce que la bibliothèque écrit après le nom : « détourée » par défaut. */
 	suffixe?: string
+	/** Ce qui a produit l'image : gardé sur l'élément posé et dans « Génération ». Absent : rien n'est gardé. */
+	memoire?: MemoireIA
+	/** L'image AVANT la retouche, gardée avec le résultat pour que « Refaire » reparte d'elle. */
+	depart?: string
 }
 
 export const TACHE_DETOURAGE: TacheIA = {
@@ -923,14 +945,18 @@ export async function lancerTraitement(
 		chrono.reception = tour()
 		passerA('rangement')
 		let rangee = true
+		let nomRange: string | undefined
 		try {
-			await deps.bibliotheque.ajouterGeneree({
+			const rangeeImage = await deps.bibliotheque.ajouterGeneree({
 				src,
 				depuis,
 				size: png.size,
 				...(tache.suffixe ? { suffixe: tache.suffixe } : {}),
 				type: 'image/png',
+				...(tache.memoire ? { ia: tache.memoire } : {}),
+				...(tache.depart ? { departSrc: tache.depart } : {}),
 			})
+			nomRange = (rangeeImage as { filename?: string } | null)?.filename
 			etat.setState((s) => ({ rangees: s.rangees + 1 }))
 		} catch (e) {
 			console.error(`❌ [${tache.journal}] Rangement impossible:`, e)
@@ -941,15 +967,19 @@ export async function lancerTraitement(
 		// 3) POSER, si l'élément est encore tel qu'au lancement. L'`id` capturé,
 		// jamais la sélection courante : elle a pu bouger pendant l'attente.
 		const etatStore = deps.store.getState()
+		const ia: MemoireIA | undefined = tache.memoire
+			? { ...tache.memoire, ...(nomRange ? { rangee: nomRange } : {}) }
+			: undefined
 		let posable: boolean
 		if (tache.sansPose) {
 			posable = false
 		} else if (tache.poser) {
-			posable = tache.poser(src, etatStore)
+			posable = tache.poser(src, etatStore, ia)
 		} else {
 			const cible = etatStore.elements.find((e: any) => e.id === id)
 			posable = !!cible && !cible.locked && cible.src === srcDepart
-			if (posable && id) etatStore.updateElements({ [id]: { src } })
+			if (posable && id)
+				etatStore.updateElements({ [id]: { src, ...(ia ? { ia } : {}) } })
 		}
 		chrono.pose = tour()
 		chrono.total = maintenant() - debut

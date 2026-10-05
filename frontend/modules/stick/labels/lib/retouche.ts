@@ -18,15 +18,17 @@
 
 import { create } from 'zustand'
 import {
-	appelerRouteImage,
 	type DepsDetourage,
-	historiqueLocalPour,
-	lancerTraitement,
+	type MemoireIA,
 	type Pb,
-	peutDetourer,
 	type Refus,
 	type ResultatDetourage,
 	type TacheIA,
+	appelerRouteImage,
+	historiqueLocalPour,
+	lancerDetourage,
+	lancerTraitement,
+	peutDetourer,
 } from './detourage'
 
 // ── Constantes ──────────────────────────────────────────────────────────────
@@ -125,7 +127,9 @@ export const IDEES_CONSIGNE: { label: string; consigne: string }[] = [
 export const useReglagesRetouche = create<{
 	consigne: string
 	qualite: Qualite
-}>(() => ({ consigne: '', qualite: QUALITE_DEFAUT }))
+	/** Enchaîner un détourage après la retouche (deux requêtes, deux facturations). Décoché au départ. */
+	detourerEnsuite: boolean
+}>(() => ({ consigne: '', qualite: QUALITE_DEFAUT, detourerEnsuite: false }))
 
 /** La consigne telle qu'elle part : sans espaces autour. */
 export const consigneNette = (consigne: unknown): string =>
@@ -223,8 +227,42 @@ export const MESSAGES_RETOUCHE: Record<string, string> = {
 	adresse_non_securisee: 'La retouche exige une adresse HTTPS.',
 }
 
-export const tacheRetouche = (consigne: string, qualite: Qualite): TacheIA => ({
+/**
+ * L'image de départ gardée avec le résultat, pour « Refaire » : au plus
+ * ~3 Mo de texte. Au-delà, rien n'est gardé — le résultat serait exposé au
+ * refus de l'espace du poste — et « Refaire » ne sera pas proposé.
+ */
+export const DEPART_MAX_CARACTERES = 4_000_000
+
+/** La `src` à garder comme départ, ou undefined (marqueur de liaison, trop lourde). */
+export const departGardable = (el: any): string | undefined => {
+	const src = typeof el?.src === 'string' ? el.src : ''
+	return src && !src.includes('{{') && src.length <= DEPART_MAX_CARACTERES
+		? src
+		: undefined
+}
+
+/**
+ * `memoriser` : écrire sur l'élément et dans « Génération » ce qui a produit
+ * l'image (`MemoireIA`), et garder `depart` pour « Refaire ». Absent, la
+ * retouche n'écrit que `src`, comme avant la reprise.
+ */
+export const tacheRetouche = (
+	consigne: string,
+	qualite: Qualite,
+	options: { memoriser?: boolean; depart?: string } = {},
+): TacheIA => ({
 	nom: 'retouche',
+	...(options.memoriser
+		? {
+				memoire: {
+					tache: 'retouche',
+					consigne: consigneNette(consigne),
+					qualite,
+				} satisfies MemoireIA,
+				...(options.depart ? { depart: options.depart } : {}),
+			}
+		: {}),
 	peut: (el, nombre, enCours) => peutRetoucher(el, nombre, enCours, consigne),
 	appeler: (pb, image, surReception) =>
 		appelerRetouche(pb, image, consigne, qualite, surReception),
@@ -255,7 +293,7 @@ export const tacheRetouche = (consigne: string, qualite: Qualite): TacheIA => ({
 export function lancerRetouche(
 	el: any,
 	nombre: number,
-	demande: { consigne: string; qualite: Qualite },
+	demande: { consigne: string; qualite: Qualite; memoriser?: boolean },
 	deps: DepsDetourage,
 ): Promise<ResultatDetourage> {
 	const qualite = estQualite(demande.qualite) ? demande.qualite : QUALITE_DEFAUT
@@ -263,6 +301,46 @@ export function lancerRetouche(
 		el,
 		nombre,
 		deps,
-		tacheRetouche(demande.consigne, qualite),
+		tacheRetouche(demande.consigne, qualite, {
+			memoriser: demande.memoriser,
+			depart: departGardable(el),
+		}),
 	)
+}
+
+/**
+ * « Détourer ensuite » : si la retouche a posé son image, un détourage part sur
+ * ce même élément. Deux requêtes, donc deux facturations, ET deux pas
+ * d'historique ; un échec du détourage ne défait pas la retouche. Jamais
+ * lancé si la retouche a échoué ou n'a pas pu poser (l'élément a changé).
+ */
+export async function detourerApres(
+	deps: DepsDetourage,
+	id: string,
+	r: ResultatDetourage,
+	voulu: boolean,
+): Promise<ResultatDetourage> {
+	if (!voulu || !r.ok || !r.pose) return r
+	const frais = deps.store.getState().elements.find((e: any) => e.id === id)
+	if (!frais || frais.src !== r.src) return r
+	return lancerDetourage(frais, 1, deps)
+}
+
+/**
+ * L'entrée de l'éditeur : « Modifier par IA » AVEC mémoire (`el.ia`), puis
+ * « Détourer ensuite » si `detourerEnsuite`.
+ */
+export async function lancerRetoucheSuivie(
+	el: any,
+	nombre: number,
+	demande: { consigne: string; qualite: Qualite; detourerEnsuite?: boolean },
+	deps: DepsDetourage,
+): Promise<ResultatDetourage> {
+	const r = await lancerRetouche(
+		el,
+		nombre,
+		{ ...demande, memoriser: true },
+		deps,
+	)
+	return detourerApres(deps, el?.id, r, !!demande.detourerEnsuite)
 }

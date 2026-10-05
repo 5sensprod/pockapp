@@ -5,8 +5,8 @@
 // par `Noyau` (les réglages courants, en quatre rangées sans titre) et par la
 // barre du haut (`ReglagesRapides`). Mêmes clés écrites qu'avant.
 
-import React from 'react';
-import { Crop, FlipHorizontal2, FlipVertical2, Scissors, Wand2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Crop, FlipHorizontal2, FlipVertical2, RefreshCw, Scissors, Wand2 } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import Curseur from '../ui/Curseur';
 import { geometrieImage } from '../canvas/CropOverlay';
@@ -14,6 +14,7 @@ import { estContenu } from '../../utils/ajustementImage';
 import { resetCropAttrs } from '../../utils/crop';
 import { resolvePropForElement } from '../../utils/dataBinding';
 import Segments from '../ui/Segments';
+import Interrupteur from '../ui/Interrupteur';
 import Bouton from '../ui/Bouton';
 import Note from '../ui/Note';
 import ConsigneIA from './ConsigneIA';
@@ -27,8 +28,9 @@ import {
   peutDetourer,
   useEtatDetourage,
 } from '../../lib/detourage';
-import { lancerRetouche, peutRetoucher, useReglagesRetouche } from '../../lib/retouche';
-import { BOUTON_ACTION, BOUTON_PRINCIPAL, boutonBascule } from '../ui/styles';
+import { lancerRetoucheSuivie, peutRetoucher, QUALITES, useReglagesRetouche } from '../../lib/retouche';
+import { aUneMemoire, lancerRefaire, peutRefaire, reprendreConsigne } from '../../lib/refaire';
+import { BOUTON_ACTION, BOUTON_PRINCIPAL, boutonBascule, LIGNE } from '../ui/styles';
 
 // ── Atomes ──────────────────────────────────────────────────────────────────
 
@@ -158,16 +160,16 @@ export const Retoucher = ({ el }) => {
   const pb = usePocketBase();
   const nombre = useLabelStore((s) => (s.selectedId ? 1 + s.extraIds.length : 0));
   const { enCours, erreur, info, tache } = useEtatDetourage();
-  const { consigne, qualite } = useReglagesRetouche();
+  const { consigne, qualite, detourerEnsuite } = useReglagesRetouche();
   const refus = peutRetoucher(el, nombre, enCours, consigne);
   // Le champ reste utilisable quand seule la consigne manque ou qu'une requête est en cours
   const ferme = !peutRetoucher(el, nombre, false).ok;
   const lancer = () => {
     if (!refus.ok) return;
-    lancerRetouche(
+    lancerRetoucheSuivie(
       el,
       nombre,
-      { consigne, qualite },
+      { consigne, qualite, detourerEnsuite },
       { pb, store: useLabelStore, bibliotheque: presetImageService, apresDecompte: rafraichirCreditsPocketApp }
     );
   };
@@ -178,6 +180,7 @@ export const Retoucher = ({ el }) => {
         desactive={ferme}
         onValider={lancer}
       />
+      <DetournerEnsuite desactive={ferme} />
       <Bouton
         icone={Wand2}
         plein
@@ -193,6 +196,112 @@ export const Retoucher = ({ el }) => {
       </Bouton>
       <JaugeDetourage tache="retouche" />
       <NoteTache message={tache === 'retouche' ? messageDe(erreur, info) : null} />
+    </div>
+  );
+};
+
+/**
+ * « Détourer ensuite » : une retouche rend une image SANS transparence. Coché,
+ * un détourage part sur le résultat — deux requêtes, deux facturations, deux
+ * pas d'historique. Décoché au départ ; partagé avec « Modifier par IA » d'une
+ * forme ou d'un dessin (`RetoucherElement.jsx`).
+ */
+export const DetournerEnsuite = ({ desactive = false }) => {
+  const actif = useReglagesRetouche((s) => s.detourerEnsuite);
+  return (
+    <div className={LIGNE}>
+      <span title="Après la retouche, retire le fond du résultat. Deuxième requête, facturée à part.">Détourer ensuite</span>
+      <Interrupteur
+        actif={actif}
+        desactive={desactive}
+        label="Détourer ensuite : retirer le fond du résultat (deuxième requête, facturée à part)"
+        onActif={(v) => useReglagesRetouche.setState({ detourerEnsuite: v })}
+      />
+    </div>
+  );
+};
+
+const TACHES_IA = {
+  retouche: 'Modifiée par IA',
+  generation: 'Générée par IA',
+  composition: 'Composée par IA',
+  embellir: 'Embellie par IA',
+};
+
+/**
+ * Ce qui a produit cette image (`el.ia`, `lib/detourage.ts`) : sa consigne et
+ * sa qualité, à REPRENDRE dans les champs pour les corriger, et « Refaire »
+ * (même consigne, nouveau tirage) quand la tâche se refait — retouche et
+ * génération. Rien ne part à la lecture ; Refaire est un clic, facturé au prix
+ * plein, sans second essai automatique et sans prix affiché.
+ */
+export const MemoireImage = ({ el }) => {
+  const pb = usePocketBase();
+  const { enCours, erreur, info, tache } = useEtatDetourage();
+  const ia = aUneMemoire(el) ? el.ia : null;
+  // Pour une retouche, l'image de départ doit être encore dans « Génération » (inconnu = on suppose oui)
+  const [departGarde, setDepartGarde] = useState(null);
+  useEffect(() => {
+    if (ia?.tache !== 'retouche') return undefined;
+    if (!ia.rangee) {
+      setDepartGarde(false);
+      return undefined;
+    }
+    let vivant = true;
+    setDepartGarde(null);
+    presetImageService
+      .lireDepart(ia.rangee)
+      .then((d) => vivant && setDepartGarde(!!d))
+      .catch(() => vivant && setDepartGarde(false));
+    return () => {
+      vivant = false;
+    };
+  }, [ia?.tache, ia?.rangee]);
+  if (!ia) return null;
+
+  const refus = peutRefaire(el, enCours, departGarde !== false);
+  const qualite = QUALITES.find((q) => q.id === ia.qualite)?.label;
+  // Une génération n'a pas d'autre atome dans cette page : sa jauge et son message sont ICI
+  const propre = ia.tache === 'generation';
+  const message = propre && tache === 'generation' ? messageDe(erreur, info) : null;
+  const refaire = () => {
+    if (!refus.ok) return;
+    lancerRefaire(el, {
+      pb,
+      store: useLabelStore,
+      bibliotheque: presetImageService,
+      lireDepart: (nom) => presetImageService.lireDepart(nom),
+      apresDecompte: rafraichirCreditsPocketApp,
+    });
+  };
+  return (
+    <div className="space-y-1">
+      <Note>
+        {TACHES_IA[ia.tache] ?? 'Image par IA'}
+        {qualite ? ` (${qualite})` : ''} : « {ia.consigne} »
+      </Note>
+      <div className="flex flex-wrap gap-x-2">
+        <Bouton variante="discret" titre="Remet cette consigne et cette qualité dans les champs, pour les corriger" onClic={() => reprendreConsigne(ia)}>
+          Reprendre la consigne
+        </Bouton>
+        {(ia.tache === 'retouche' || ia.tache === 'generation') && (
+          <Bouton
+            variante="discret"
+            icone={RefreshCw}
+            desactive={!refus.ok}
+            titre={
+              refus.ok
+                ? "Un nouveau tirage avec la même consigne et la même qualité (service payant, facturé à chaque fois). Ctrl+Z rend l'image actuelle."
+                : refus.raison
+            }
+            onClic={refaire}
+          >
+            Refaire
+          </Bouton>
+        )}
+      </div>
+      {propre && <JaugeDetourage tache="generation" />}
+      <NoteTache message={message} />
     </div>
   );
 };
@@ -267,6 +376,7 @@ export const Noyau = ({ el, maj }) => {
       />
       <Detourer el={el} />
       <Retoucher el={el} />
+      <MemoireImage el={el} />
     </div>
   );
 };

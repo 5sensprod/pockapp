@@ -356,7 +356,20 @@ class TemplateService {
   async exportTemplate(id) {
     const template = await this.getTemplate(id);
     if (!template) throw new Error(`Template introuvable : ${id}`);
-    const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' });
+    // Un élément posé par l'IA garde la consigne du vendeur (`el.ia.consigne`) : le fichier
+    // DIT s'il la porte, pour que personne ne partage un template sans le savoir.
+    const contientConsignesIA = (template.elements || []).some((e) => typeof e?.ia?.consigne === 'string');
+    const exporte = {
+      ...template,
+      contientConsignesIA,
+      ...(contientConsignesIA
+        ? {
+            noteConsignesIA:
+              "Ce fichier contient les consignes saisies pour l'IA (champ « ia » des images). Supprimez ces champs avant de le partager si elles sont confidentielles.",
+          }
+        : {}),
+    };
+    const blob = new Blob([JSON.stringify(exporte, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -374,7 +387,8 @@ class TemplateService {
   async importTemplate(file) {
     const data = JSON.parse(await file.text());
     if (!Array.isArray(data?.elements)) throw new Error('Fichier de template invalide (elements manquant)');
-    const { id, _id, ...meta } = data;
+    // `contientConsignesIA` et sa note ne décrivent que le fichier : ils ne sont pas rangés avec le template
+    const { id, _id, contientConsignesIA, noteConsignesIA, ...meta } = data;
     return this.saveTemplate(data, { ...meta, createdAt: undefined });
   }
 

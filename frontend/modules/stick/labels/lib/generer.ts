@@ -14,22 +14,22 @@
 
 import { create } from 'zustand'
 import {
-	appelerRouteImage,
 	type DepsDetourage,
-	historiqueLocalPour,
-	lancerTraitement,
 	type Pb,
 	type Refus,
 	type ResultatDetourage,
 	type TacheIA,
+	appelerRouteImage,
+	historiqueLocalPour,
+	lancerTraitement,
 } from './detourage'
 import { type Definition, FORMATS } from './embellir'
 import {
 	CONSIGNE_MAX,
-	consigneNette,
 	MESSAGES_RETOUCHE,
 	type Qualite,
 	ROUTE_RETOUCHE,
+	consigneNette,
 } from './retouche'
 
 // ── Les formats ─────────────────────────────────────────────────────────────
@@ -197,6 +197,13 @@ export const tacheGenerer = (demande: DemandeGenerer): TacheIA => {
 	const { consigne, qualite, format, definition } = demande
 	return {
 		nom: 'generation',
+		memoire: {
+			tache: 'generation',
+			consigne: consigneNette(consigne),
+			qualite,
+			format,
+			definition,
+		},
 		peut: (_el, _nombre, enCours) => peutGenerer(enCours, consigne),
 		// Un texte seul : aucune image n'est préparée ni envoyée
 		sources: async () => [],
