@@ -87,7 +87,7 @@ function updateElementsWithProduct(elements, product, fillQrWhenNoBinding = fals
   if (!product) return elements;
 
   // Seule l'URL web : un repli sur le code-barres ou la référence encodait
-  // un nombre que personne ne peut ouvrir (voir `QRCodeTemplates.jsx`).
+  // un nombre que personne ne peut ouvrir (voir `AssetsPanel.jsx`).
   const fallbackQR = () => product.website_url || '';
 
   return (elements || []).map((el) => {

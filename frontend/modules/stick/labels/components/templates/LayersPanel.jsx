@@ -1,6 +1,23 @@
-// src/features/labels/components/templates/LayersPanel.jsx
-import React, { useState, useMemo } from 'react';
-import { libelleLiaison } from '../../utils/champsProduit';
+// frontend/modules/stick/labels/components/templates/LayersPanel.jsx
+//
+// L'onglet « Calques » : les éléments de la page, du dessus vers le dessous.
+// On y retrouve, on masque, on verrouille, on réordonne en glissant.
+//
+// Refait le 3 octobre 2026 (`ui/LigneListe`, `utils/calques.js`) :
+// - **un calque masqué ou verrouillé LE MONTRE sans survol** — les quatre
+//   actions n'apparaissaient qu'au survol, on ne voyait donc pas pourquoi un
+//   élément ne se sélectionnait plus ;
+// - l'icône dit l'ÉTAT (cadenas fermé = verrouillé), l'infobulle dit l'action ;
+// - la sélection est en bleu LÉGER, et toute la sélection l'est (`extraIds`) ;
+// - les noms sont en français (`nomCalque`) : plus de « Barcode » ;
+// - **le fond est épinglé en bas**, hors de la liste qu'on réordonne : il doit
+//   rester le premier calque (`poserFond`, store), et rien n'empêchait de
+//   glisser un élément dessous.
+//
+// Le glisser-déposer est celui d'avant (HTML5, `moveElement` à chaque rangée
+// franchie) : chaque cran fait toujours un pas d'historique.
+
+import React, { useState } from 'react';
 import {
   Lock,
   Unlock,
@@ -9,6 +26,10 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  Layers,
+  Link2,
+  ListChecks,
+  PenTool,
   Type as TypeIcon,
   Image as ImageIcon,
   Shapes as ShapesIcon,
@@ -16,29 +37,31 @@ import {
   Barcode,
 } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
+import { etatsCalque, iconeCalque, nomCalque } from '../../utils/calques';
+import EtatVide from '../ui/EtatVide';
+import LigneListe from '../ui/LigneListe';
+import { AIDE } from '../ui/styles';
 
-const iconForType = (type) => {
-  switch (type) {
-    case 'text':
-      return TypeIcon;
-    case 'image':
-      return ImageIcon;
-    case 'shape':
-      return ShapesIcon;
-    case 'qrcode':
-      return QrCodeIcon;
-    case 'barcode':
-      return Barcode;
-    default:
-      return TypeIcon;
-  }
+const ICONES = {
+  texte: TypeIcon,
+  image: ImageIcon,
+  forme: ShapesIcon,
+  qr: QrCodeIcon,
+  'code-barres': Barcode,
+  trace: PenTool,
+  fiche: ListChecks,
 };
 
-const cut = (s = '', n = 25) => (s.length > n ? s.slice(0, n) + '…' : s);
+// 24 px, dans une rangée de 32 ; le survol se voit aussi sur la rangée active
+const BOUTON = 'h-6 w-6 inline-flex items-center justify-center rounded-md hover:bg-black/5 dark:hover:bg-white/10';
+// Un état par défaut (visible, déverrouillé) ne se montre qu'au survol, mais
+// GARDE SA PLACE : le nom ne saute pas.
+const auSurvol = 'invisible group-hover:visible group-focus-within:visible';
 
 const LayersPanel = () => {
   const elements = useLabelStore((s) => s.elements);
   const selectedId = useLabelStore((s) => s.selectedId);
+  const extraIds = useLabelStore((s) => s.extraIds);
   const selectElement = useLabelStore((s) => s.selectElement);
   const updateElement = useLabelStore((s) => s.updateElement);
   const deleteElement = useLabelStore((s) => s.deleteElement);
@@ -46,7 +69,6 @@ const LayersPanel = () => {
   const moveElement = useLabelStore((s) => s.moveElement);
 
   const [draggedIndex, setDraggedIndex] = useState(null);
-  const reversed = useMemo(() => [...elements].reverse(), [elements]);
 
   const onDragStart = (e, i) => {
     setDraggedIndex(i);
@@ -62,138 +84,102 @@ const LayersPanel = () => {
   const onDragEnd = () => setDraggedIndex(null);
 
   if (!elements.length) {
-    return (
-      <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-        <p className="text-sm">Aucun calque</p>
-      </div>
-    );
+    return <EtatVide icone={Layers} titre="La page est vide." />;
   }
 
-  return (
-    <div className="space-y-1 p-2 w-full max-w-full overflow-x-hidden">
-      {reversed.map((el, idx) => {
-        const actualIndex = elements.length - 1 - idx;
-        const isSelected = el.id === selectedId;
-        const isLocked = el.locked || false;
-        const isVisible = el.visible !== false;
-        const Icon = iconForType(el.type);
+  const selection = new Set([selectedId, ...(extraIds || [])]);
+  // Avec leur rang dans le store : c'est lui que `moveElement` attend
+  const rangs = elements.map((el, index) => ({ el, index }));
+  const fonds = rangs.filter(({ el }) => el.role === 'fond');
+  const calques = rangs.filter(({ el }) => el.role !== 'fond').reverse();
 
-        // ✨ Nom base amélioré avec affichage du binding
-        let baseName = el.type.charAt(0).toUpperCase() + el.type.slice(1);
+  const sansBulle = (action) => (e) => {
+    e.stopPropagation();
+    action();
+  };
 
-        if (el.type === 'text') {
-          if (el.dataBinding) {
-            baseName = `Texte (${libelleLiaison(el)})`;
-          } else {
-            baseName = el.text?.split('(')[0]?.trim() || 'Texte';
-          }
-        } else if (el.type === 'fiche') {
-          baseName =
-            { specs: 'Caractéristiques', highlights: 'Points forts', tips: 'Conseils' }[el.section] ||
-            'Fiche';
-        } else if (el.type === 'shape') {
-          const noms = {
-            rectangle: 'Rectangle',
-            circle: 'Cercle',
-            triangle: 'Triangle',
-            star: 'Étoile',
-            line: 'Trait',
-          };
-          baseName = noms[el.shape] || 'Forme';
-        } else if (el.type === 'dessin') {
-          baseName = el.brushType === 'highlighter' ? 'Surligneur' : 'Dessin';
-        } else if (el.type === 'qrcode') {
-          // ✅ Afficher le champ lié plutôt que la valeur tronquée
-          if (el.dataBinding) {
-            baseName = `QR (${libelleLiaison(el)})`;
-          } else {
-            baseName = el.qrValue ? `QR: ${el.qrValue}` : 'QR Code';
-          }
+  const rangee = ({ el, index }, { deplacable }) => {
+    const { verrouille, masque, lie } = etatsCalque(el);
+    const glisse = deplacable && !verrouille;
+    return (
+      <LigneListe
+        key={el.id}
+        icone={ICONES[iconeCalque(el)]}
+        titre={nomCalque(el)}
+        actif={selection.has(el.id)}
+        attenue={masque}
+        onClic={() => !verrouille && selectElement(el.id)}
+        className={draggedIndex === index ? 'opacity-60 ring-1 ring-blue-400' : ''}
+        draggable={glisse}
+        onDragStart={glisse ? (e) => onDragStart(e, index) : undefined}
+        onDragOver={deplacable ? (e) => onDragOver(e, index) : undefined}
+        onDragEnd={onDragEnd}
+        avant={
+          glisse ? (
+            <GripVertical className="h-3 w-3 flex-none text-gray-300 dark:text-gray-500 cursor-grab active:cursor-grabbing" />
+          ) : (
+            <span className="w-3 flex-none" />
+          )
         }
+        actions={
+          <>
+            <button type="button" onClick={sansBulle(() => duplicateElement(el.id))} className={BOUTON} title="Dupliquer">
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={sansBulle(() => deleteElement(el.id))}
+              className={`${BOUTON} text-red-600 dark:text-red-400`}
+              title="Supprimer"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </>
+        }
+        etats={
+          <>
+            {lie && <Link2 className="h-3 w-3 mx-1 flex-none text-orange-500" aria-label="Lié à la fiche produit" />}
+            <button
+              type="button"
+              onClick={sansBulle(() => updateElement(el.id, { visible: masque }))}
+              className={`${BOUTON} ${masque ? '' : auSurvol}`}
+              title={masque ? 'Masqué — afficher' : 'Masquer'}
+              aria-pressed={masque}
+            >
+              {masque ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={sansBulle(() => updateElement(el.id, { locked: !verrouille }))}
+              className={`${BOUTON} ${verrouille ? '' : auSurvol}`}
+              title={verrouille ? 'Verrouillé — déverrouiller' : 'Verrouiller'}
+              aria-pressed={verrouille}
+            >
+              {verrouille ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+            </button>
+          </>
+        }
+      />
+    );
+  };
 
-        const name25 = cut(baseName, 25);
-        const name12 = cut(baseName, 12);
+  return (
+    <div className="px-3 pb-3 w-full max-w-full overflow-x-hidden">
+      <div className={`sticky top-0 z-10 h-7 flex items-center justify-between bg-white dark:bg-gray-800 ${AIDE}`}>
+        <span>
+          {elements.length} élément{elements.length > 1 ? 's' : ''}
+        </span>
+        <span>Glisser pour changer l’ordre</span>
+      </div>
 
-        return (
-          <div
-            key={el.id}
-            draggable={!isLocked}
-            onDragStart={(e) => onDragStart(e, actualIndex)}
-            onDragOver={(e) => onDragOver(e, actualIndex)}
-            onDragEnd={onDragEnd}
-            onClick={() => !isLocked && selectElement(el.id)}
-            className={[
-              'group relative flex items-center gap-1 px-2 py-2 rounded cursor-pointer transition-colors',
-              // gouttière fixe pour les icônes (pr-22 => 88px)
-              'w-full max-w-full overflow-hidden pr-[88px] box-border',
-              isSelected ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700',
-              !isVisible ? 'opacity-50' : '',
-              draggedIndex === actualIndex ? 'opacity-50' : '',
-            ].join(' ')}
-          >
-            {!isLocked && (
-              <GripVertical className="h-4 w-4 text-gray-400 cursor-grab active:cursor-grabbing shrink-0" />
-            )}
+      <div className="space-y-0.5">{calques.map((r) => rangee(r, { deplacable: true }))}</div>
 
-            {/* Icône + label */}
-            <div className="flex-1 min-w-0 flex items-center gap-2">
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="relative min-w-0">
-                <span className="block text-sm group-hover:hidden" title={baseName}>
-                  {name25}
-                </span>
-                <span className="hidden group-hover:block text-sm truncate" title={baseName}>
-                  {name12}
-                </span>
-              </span>
-            </div>
-
-            {/* Actions à droite */}
-            <div className="absolute right-2 inset-y-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateElement(el.id, { visible: !isVisible });
-                }}
-                className="p-1 rounded hover:bg-white/20"
-                title={isVisible ? 'Masquer' : 'Afficher'}
-              >
-                {isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateElement(el.id, { locked: !isLocked });
-                }}
-                className="p-1 rounded hover:bg-white/20"
-                title={isLocked ? 'Déverrouiller' : 'Verrouiller'}
-              >
-                {isLocked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  duplicateElement(el.id);
-                }}
-                className="p-1 rounded hover:bg-white/20"
-                title="Dupliquer"
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteElement(el.id);
-                }}
-                className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20"
-                title="Supprimer"
-              >
-                <Trash2 className="h-3.5 w-3.5 text-red-500" />
-              </button>
-            </div>
-          </div>
-        );
-      })}
+      {/* Le fond : toujours dessous, hors de la liste qu'on réordonne */}
+      {fonds.length > 0 && (
+        <div className="mt-1 pt-1 border-t border-gray-200 dark:border-gray-700">
+          {fonds.map((r) => rangee(r, { deplacable: false }))}
+        </div>
+      )}
     </div>
   );
 };

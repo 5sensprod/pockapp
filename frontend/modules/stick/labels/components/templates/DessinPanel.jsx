@@ -5,13 +5,22 @@
 // sélectionné se recolore en changeant son `fill` — ses points sont gardés
 // (`utils/dessin.js`), il n'y a pas de SVG à réécrire.
 // Un tracé sélectionné affiche ses réglages détaillés (`ReglagesPanel`).
+//
+// LE PINCEAU ET LE TRACÉ SE RÈGLENT PAREIL depuis le 3 octobre 2026 : un noyau
+// (couleur, épaisseur, opacité) puis « Forme du trait », repliée — les mots et
+// la disposition de `TraceSelectionne`. Avant, neuf curseurs en bloc (~670 px)
+// et deux noms pour chaque réglage (« Adoucir le tracé (%) » ici, « Adoucir »
+// là). Mêmes clés de `setReglagesDessin`, mêmes bornes.
 
 import React, { useEffect } from 'react';
 import useLabelStore from '../../store/useLabelStore';
 import { brushOptions, STROKE_WIDTH_RANGE, VARIATIONS } from '../../utils/dessin';
 import ReglagesPanel from './ReglagesPanel';
+import Curseur from '../ui/Curseur';
+import Section from '../ui/Section';
 import Segments from '../ui/Segments';
-import { borne, Couleur, Reglage } from './TraceSelectionne';
+import { AIDE, PANNEAU } from '../ui/styles';
+import { borne, Couleur, pourcent } from './TraceSelectionne';
 
 const OUTILS = [
   { id: 'selection', label: 'Sélection' },
@@ -48,8 +57,13 @@ export default function DessinPanel({ docNode }) {
   const setEpaisseur = (v) => setReglagesDessin({ strokeWidth: borne(Math.round(v), ...STROKE_WIDTH_RANGE) });
   const setPourcent = (cle) => (v) => setReglagesDessin({ [cle]: borne(v, 0, 100) / 100 });
 
+  // Un réglage en pourcentage, écrit de 0 à 1 dans le store
+  const curseur = (cle, label, valeur) => (
+    <Curseur key={cle} label={label} largeurLabel="w-20" valeur={Math.round(valeur * 100)} affichage={pourcent} onValeur={setPourcent(cle)} />
+  );
+
   return (
-    <div className="p-3 space-y-4">
+    <div className={PANNEAU}>
       <Segments
         label="Outil de dessin"
         options={OUTILS}
@@ -62,40 +76,54 @@ export default function DessinPanel({ docNode }) {
       {!actif && selection ? (
         <ReglagesPanel nu docNode={docNode} />
       ) : (
-        <fieldset className="space-y-3 disabled:opacity-50" disabled={!actif}>
-          <Reglage label="Épaisseur" valeur={strokeWidth} min={STROKE_WIDTH_RANGE[0]} max={STROKE_WIDTH_RANGE[1]} onValeur={setEpaisseur} />
-          <Couleur label="Couleur" valeur={stroke} onValeur={(v) => setReglagesDessin({ stroke: v })} />
-          <Reglage label="Opacité (%)" valeur={Math.round(opacity * 100)} min={0} max={100} onValeur={setPourcent('opacity')} />
-          <Reglage label="Adoucir le tracé (%)" valeur={Math.round(smoothing * 100)} min={0} max={100} onValeur={setPourcent('smoothing')} />
-          {/* Lot 3 : l'inertie n'est plus liée à l'adoucissement */}
-          <Reglage label="Stabiliser (%)" valeur={Math.round(stabilisation * 100)} min={0} max={100} onValeur={setPourcent('stabilisation')} />
-          <Reglage label="Simplifier au relâchement (%)" valeur={Math.round(simplification * 100)} min={0} max={100} onValeur={setPourcent('simplification')} />
-          {/* Lot 4 : effilement, 100 % = 10 fois l'épaisseur */}
-          <Reglage label="Effiler le début (%)" valeur={Math.round((reglages.effilementDebut ?? 0) * 100)} min={0} max={100} onValeur={setPourcent('effilementDebut')} />
-          <Reglage label="Effiler la fin (%)" valeur={Math.round((reglages.effilementFin ?? 0) * 100)} min={0} max={100} onValeur={setPourcent('effilementFin')} />
-          <Reglage label="Épaisseur variable (%)" valeur={Math.round(thinning * 100)} min={0} max={100} onValeur={setPourcent('thinning')} />
-          <div>
-            <div className="text-xs text-gray-700 dark:text-gray-300 mb-1">Varie selon</div>
-            <Segments
-              label="L'épaisseur varie selon"
-              options={VARIATIONS}
-              valeur={variation}
-              onValeur={(v) => setReglagesDessin({ variation: v })}
+        <fieldset className="disabled:opacity-50" disabled={!actif}>
+          <div className="space-y-2 pb-3">
+            <Couleur label="Couleur" valeur={stroke} onValeur={(v) => setReglagesDessin({ stroke: v })} />
+            <Curseur
+              label="Épaisseur"
+              largeurLabel="w-20"
+              min={STROKE_WIDTH_RANGE[0]}
+              max={STROKE_WIDTH_RANGE[1]}
+              valeur={strokeWidth}
+              affichage={(v) => `${v} px`}
+              onValeur={setEpaisseur}
             />
-            {variation === 'stylet' && (
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {thinning > 0
-                  ? 'Au stylet, la pression règle l’épaisseur ; souris et doigt restent selon la vitesse.'
-                  : 'Montez « Épaisseur variable » pour que la pression ait un effet.'}
-              </p>
-            )}
+            {curseur('opacity', 'Opacité', opacity)}
           </div>
+          <Section titre="Forme du trait" ouvertParDefaut={false}>
+            <div className="space-y-2">
+              {curseur('smoothing', 'Adoucir', smoothing)}
+              {/* L'inertie n'est pas liée à l'adoucissement */}
+              {curseur('stabilisation', 'Stabiliser', stabilisation)}
+              {/* Au relâchement du trait */}
+              {curseur('simplification', 'Simplifier', simplification)}
+              {curseur('thinning', 'Variation', thinning)}
+              {/* « Pression du stylet » ne tient pas à côté d'un libellé : dessous */}
+              <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                <span>Varie selon</span>
+                <Segments
+                  label="L'épaisseur varie selon"
+                  options={VARIATIONS}
+                  valeur={variation}
+                  onValeur={(v) => setReglagesDessin({ variation: v })}
+                />
+              </div>
+              {variation === 'stylet' && (
+                <p className={AIDE}>
+                  {thinning > 0
+                    ? 'Au stylet, la pression règle l’épaisseur ; souris et doigt restent selon la vitesse.'
+                    : 'Montez « Variation » pour que la pression ait un effet.'}
+                </p>
+              )}
+              {/* Effilement : 100 % = 10 fois l'épaisseur */}
+              {curseur('effilementDebut', 'Effiler début', reglages.effilementDebut ?? 0)}
+              {curseur('effilementFin', 'Effiler fin', reglages.effilementFin ?? 0)}
+            </div>
+          </Section>
         </fieldset>
       )}
 
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        Chaque trait devient un élément recolorable ; Maj trace un trait droit, Ctrl+Z l'annule, Échap revient à la sélection.
-      </p>
+      <p className={AIDE}>Maj : trait droit · Échap : sélection</p>
     </div>
   );
 }

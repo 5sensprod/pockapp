@@ -9,6 +9,7 @@
 import React from 'react';
 import Curseur from './ui/Curseur';
 import MasqueTexture from './MasqueTexture';
+import { TUILE } from './ui/styles';
 import { FONDU_MAX, MASQUES, RETRAIT_MAX } from '../utils/imageForme';
 
 const ReglagesMasque = ({ element, onChange }) => (
@@ -17,9 +18,7 @@ const ReglagesMasque = ({ element, onChange }) => (
       <button
         type="button"
         onClick={() => onChange({ mask: null })}
-        className={`h-12 rounded border text-[10px] text-gray-600 dark:text-gray-300 ${
-          !element.mask ? 'ring-2 ring-blue-500 border-transparent' : 'border-gray-300 dark:border-gray-600'
-        }`}
+        className={`${TUILE} h-12 text-[11px] text-gray-600 dark:text-gray-300 ${!element.mask ? 'ring-2 ring-blue-500' : ''}`}
       >
         Aucun
       </button>
@@ -28,11 +27,7 @@ const ReglagesMasque = ({ element, onChange }) => (
           key={m.id}
           type="button"
           onClick={() => onChange({ mask: m.id })}
-          className={`h-12 p-1.5 rounded border ${
-            element.mask === m.id
-              ? 'ring-2 ring-blue-500 border-transparent'
-              : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
-          }`}
+          className={`${TUILE} h-12 p-1.5 ${element.mask === m.id ? 'ring-2 ring-blue-500' : ''}`}
           title={m.label}
         >
           <svg viewBox="0 0 100 100" className="w-full h-full">

@@ -1,29 +1,21 @@
 // frontend/modules/stick/labels/components/templates/PagePanel.jsx
 //
-// L'onglet « Format et fond » : la page elle-même — sa taille (`FormatPanel`)
-// et son fond (`FondPanel`). Autrefois deux onglets ; les deux panneaux sont
-// repris TELS QUELS, sous les onglets communs (`OngletsPanneau`).
+// L'onglet « Page » : la page elle-même — sa taille (`FormatPanel`) puis son
+// fond (`FondPanel`), dans UN panneau (3 octobre 2026). Autrefois deux
+// onglets, puis deux sous-onglets : le fond était à un clic de plus pour une
+// seule rangée.
 import React from 'react';
-import OngletsPanneau from './OngletsPanneau';
 import FormatPanel from './FormatPanel';
 import FondPanel from './FondPanel';
+import { PANNEAU } from '../ui/styles';
 
-const PagePanel = () => (
-  <OngletsPanneau
-    onglets={[
-      { id: 'format', libelle: 'Taille', contenu: <FormatPanel /> },
-      {
-        id: 'fond',
-        libelle: 'Fond',
-        // FondPanel n'a presque pas de marge intérieure : alignée sur Taille
-        contenu: (
-          <div className="p-3">
-            <FondPanel />
-          </div>
-        ),
-      },
-    ]}
-  />
+const PagePanel = ({ onOpenTool }) => (
+  <div className={PANNEAU}>
+    <FormatPanel onOpenTool={onOpenTool} />
+    <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+      <FondPanel />
+    </div>
+  </div>
 );
 
 export default PagePanel;

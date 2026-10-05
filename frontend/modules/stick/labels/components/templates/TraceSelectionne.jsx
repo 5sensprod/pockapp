@@ -1,7 +1,7 @@
 // frontend/modules/stick/labels/components/templates/TraceSelectionne.jsx
 //
 // Les réglages d'un TRACÉ sélectionné, et les petits composants de réglage du
-// panneau Dessin (`Reglage`, `Couleur`, `borne`, pour le pinceau).
+// panneau Dessin (`Couleur`, `borne`, `pourcent`, pour le pinceau).
 //
 // - `NoyauTrace` : ce qu'on change souvent — couleur, épaisseur, opacité,
 //   fusion — en rangées serrées ;
@@ -20,9 +20,6 @@ import { BOUTON_ACTION, LIGNE } from '../ui/styles';
 import useLabelStore from '../../store/useLabelStore';
 import { DRAW_DEFAULTS, fusionDe, redessiner, REGLAGES_TRACE, STROKE_WIDTH_RANGE } from '../../utils/dessin';
 
-// Libellé, champ numérique et curseur : le curseur commun (`ui/Curseur.jsx`)
-export const Reglage = (props) => <Curseur disposition="bloc" champ {...props} />;
-
 export const borne = (v, min, max) => Math.min(max, Math.max(min, Number.isFinite(v) ? v : min));
 
 export const Couleur = ({ label, valeur, onValeur }) => (
@@ -33,7 +30,7 @@ export const Couleur = ({ label, valeur, onValeur }) => (
   </label>
 );
 
-const pourcent = (v) => `${v} %`;
+export const pourcent = (v) => `${v} %`;
 const val = (v, defaut = 0) => Math.round((Number.isFinite(v) ? v : defaut) * 100);
 // Un curseur tenu = un geste d'historique : les clés envoyées sont toujours les mêmes
 const retracer = (el, maj) => (m) => {

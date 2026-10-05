@@ -1,24 +1,36 @@
-// src/features/labels/components/templates/UploadTemplate.jsx
+// frontend/modules/stick/labels/components/templates/UploadTemplate.jsx
+//
+// « Mes images » : la bibliothèque du POSTE (`presetImageService`, IndexedDB).
+// On importe, on clique une vignette pour la poser sur l'affiche — entière,
+// centrée, à ses proportions.
+//
+// Refait le 3 octobre 2026. Les images D'ABORD : la zone en pointillés de
+// 148 px, qui promettait un glisser-déposer jamais codé, est un bouton.
+// **La corbeille est dans le COIN de la vignette** : elle apparaissait au
+// centre, là où l'on clique pour ajouter l'image, avec le seul `confirm()` du
+// navigateur pour filet. La grille ne défile plus dans le panneau qui défile.
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Image as ImageIcon, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
+import { Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
 import presetImageService from '../../services/presetImageService';
 import useLabelStore from '../../store/useLabelStore';
 import { cadreSurCanvas } from '../../utils/imagePlacement';
 import { AJUSTEMENT_NOUVELLE_IMAGE } from '../../utils/ajustementImage';
+import { useConfirmModal } from '../../ui/useConfirmModal';
+import Bouton from '../ui/Bouton';
+import EtatVide from '../ui/EtatVide';
+import GrilleVignettes from '../ui/GrilleVignettes';
+import Note from '../ui/Note';
+import TitreGroupe from '../ui/TitreGroupe';
+import Vignette from '../ui/Vignette';
+import { PANNEAU } from '../ui/styles';
 
-/**
- * UploadTemplate - Composant d'upload et gestion des images
- * Réutilise la logique de presetImageService
- *
- * ✅ AMÉLIORATION : Ajout automatique au canvas avec proportions préservées
- */
 const UploadTemplate = ({ onImageSelected }) => {
   const { addElementCentre } = useLabelStore();
   const [availableImages, setAvailableImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedImageId, setSelectedImageId] = useState(null);
+  const { confirm, ConfirmModal } = useConfirmModal();
 
   const fileInputRef = useRef(null);
 
@@ -35,7 +47,6 @@ const UploadTemplate = ({ onImageSelected }) => {
     setError(null);
     try {
       const images = await presetImageService.listImages();
-      console.log('📚 Images chargées:', images);
       setAvailableImages(images || []);
     } catch (err) {
       console.error('❌ Erreur chargement images:', err);
@@ -46,7 +57,7 @@ const UploadTemplate = ({ onImageSelected }) => {
   };
 
   /**
-   * 🆕 Charger l'image pour obtenir ses dimensions naturelles
+   * Charger l'image pour obtenir ses dimensions naturelles
    */
   const loadImageDimensions = (src) => {
     return new Promise((resolve) => {
@@ -72,13 +83,11 @@ const UploadTemplate = ({ onImageSelected }) => {
   };
 
   /**
-   * ✅ Ajouter une image au canvas en préservant ses proportions
+   * Ajouter une image au canvas en préservant ses proportions
    */
   const addImageToCanvas = async (image) => {
     // Charger les dimensions naturelles de l'image
-    const { naturalWidth, naturalHeight, aspectRatio } = await loadImageDimensions(image.src);
-
-    console.log('📐 Upload - Dimensions naturelles:', { naturalWidth, naturalHeight, aspectRatio });
+    const { aspectRatio } = await loadImageDimensions(image.src);
 
     addElementCentre({
       type: 'image',
@@ -92,7 +101,7 @@ const UploadTemplate = ({ onImageSelected }) => {
       rotation: 0,
       visible: true,
       locked: false,
-      // 🆕 Stocker le ratio original pour référence future
+      // Stocker le ratio original pour référence future
       aspectRatio: aspectRatio,
     });
   };
@@ -109,7 +118,6 @@ const UploadTemplate = ({ onImageSelected }) => {
 
     try {
       const result = await presetImageService.uploadImages(files);
-      console.log('✅ Upload réussi:', result);
 
       if (result.images?.length > 0) {
         // Recharger la bibliothèque
@@ -126,12 +134,10 @@ const UploadTemplate = ({ onImageSelected }) => {
             filename: firstImage.filename,
           });
         }
-
-        setSelectedImageId(firstImage.filename);
       }
     } catch (err) {
       console.error('❌ Erreur upload:', err);
-      setError("Erreur lors de l'upload des images");
+      setError('Import impossible');
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -146,15 +152,18 @@ const UploadTemplate = ({ onImageSelected }) => {
   const handleDelete = async (filename, e) => {
     e.stopPropagation();
 
-    if (!confirm(`Supprimer "${filename}" ?`)) return;
+    const ok = await confirm({
+      title: 'Supprimer l’image ?',
+      message: `Elle sera retirée de ce poste.\nImage : « ${filename} »`,
+      confirmText: 'Supprimer',
+      cancelText: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       await presetImageService.deleteImage(filename);
       await loadImages();
-
-      if (selectedImageId === filename) {
-        setSelectedImageId(null);
-      }
     } catch (err) {
       console.error('❌ Erreur suppression:', err);
       setError("Impossible de supprimer l'image");
@@ -162,11 +171,9 @@ const UploadTemplate = ({ onImageSelected }) => {
   };
 
   /**
-   * ✅ Sélectionner et ajouter une image au canvas
+   * Ajouter une image de la bibliothèque au canvas
    */
   const handleImageClick = async (image) => {
-    setSelectedImageId(image.filename);
-
     // Ajouter au canvas avec proportions préservées
     await addImageToCanvas(image);
 
@@ -180,143 +187,82 @@ const UploadTemplate = ({ onImageSelected }) => {
   };
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Zone d'upload */}
-      <div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={handleFileSelect}
-          className="hidden"
-        />
+    <div className={`${PANNEAU} h-full overflow-y-auto`}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+      <Bouton
+        plein
+        icone={Upload}
+        onClic={() => fileInputRef.current?.click()}
+        desactive={uploading}
+        titre="PNG ou JPG, 10 Mo au plus. La première image importée est posée sur l’affiche."
+      >
+        {uploading ? 'Import en cours…' : 'Importer des images'}
+      </Bouton>
 
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="w-full p-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <div className="flex flex-col items-center gap-2">
-            {uploading ? (
-              <>
-                <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
-                <span className="text-sm font-medium text-blue-600">Import en cours…</span>
-              </>
-            ) : (
-              <>
-                <Upload className="h-8 w-8 text-gray-400" />
-                <span className="text-sm font-medium">Importer une image</span>
-                <span className="text-xs text-gray-500">PNG, JPG jusqu'à 10MB</span>
-                <span className="text-xs text-blue-600 dark:text-blue-400">
-                  🎯 Ajout automatique au canvas
-                </span>
-              </>
-            )}
-          </div>
-        </button>
-      </div>
-
-      {/* Message d'erreur */}
       {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="text-xs text-red-600 hover:text-red-700 mt-1"
-            >
+        <Note
+          ton="erreur"
+          action={
+            <Bouton variante="discret" onClic={() => setError(null)}>
               Fermer
-            </button>
-          </div>
-        </div>
+            </Bouton>
+          }
+        >
+          {error}
+        </Note>
       )}
 
-      {/* Bibliothèque d'images */}
-      <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Bibliothèque ({availableImages.length})
-          </h3>
-          {!loading && availableImages.length > 0 && (
-            <button
-              onClick={loadImages}
-              className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
-            >
-              Actualiser
-            </button>
-          )}
-        </div>
+      <div className="space-y-2">
+        <TitreGroupe
+          titre="Mes images"
+          compte={availableImages.length}
+          action={
+            !loading &&
+            availableImages.length > 0 && (
+              <Bouton variante="discret" onClic={loadImages}>
+                Actualiser
+              </Bouton>
+            )
+          }
+        />
 
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
-          </div>
+          <EtatVide chargement />
         ) : availableImages.length === 0 ? (
-          <div className="text-center py-8">
-            <ImageIcon className="h-12 w-12 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">Aucune image dans la bibliothèque</p>
-            <p className="text-xs text-gray-400 mt-1">Uploadez votre première image</p>
-          </div>
+          <EtatVide icone={ImageIcon} titre="Aucune image importée." />
         ) : (
-          <div className="grid grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-1">
-            {availableImages.map((image) => {
-              const isSelected = selectedImageId === image.filename;
-
-              return (
-                <button
-                  key={image.filename}
-                  onClick={() => handleImageClick(image)}
-                  className={`relative group aspect-square border-2 rounded-lg overflow-hidden transition-all ${
-                    isSelected
-                      ? 'border-blue-500 ring-2 ring-blue-200 dark:ring-blue-800'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                  }`}
-                >
-                  <img
-                    src={image.src}
-                    alt={image.filename}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-
-                  {/* Overlay au hover */}
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                    <button
-                      onClick={(e) => handleDelete(image.filename, e)}
-                      className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-transform hover:scale-110"
-                      title="Supprimer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  {/* Badge de sélection */}
-                  {isSelected && (
-                    <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full p-1">
-                      <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </div>
-                  )}
-
-                  {/* Nom du fichier */}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
-                    <p className="text-xs text-white truncate" title={image.filename}>
-                      {image.filename}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <GrilleVignettes colonnes={3}>
+            {availableImages.map((image) => (
+              <Vignette
+                key={image.filename}
+                src={image.src}
+                nom={image.filename}
+                onClic={() => handleImageClick(image)}
+                action={
+                  <button
+                    type="button"
+                    onClick={(e) => handleDelete(image.filename, e)}
+                    title="Supprimer cette image"
+                    aria-label={`Supprimer ${image.filename}`}
+                    className="h-6 w-6 inline-flex items-center justify-center rounded-md bg-white/90 text-red-600 shadow-sm ring-1 ring-gray-200 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                }
+              />
+            ))}
+          </GrilleVignettes>
         )}
       </div>
+
+      <ConfirmModal />
     </div>
   );
 };

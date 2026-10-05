@@ -15,6 +15,7 @@
 // - `defaut` : un double-clic sur le curseur y revient.
 
 import React from 'react';
+import ChampValide from './ChampValide';
 
 const arrondi = (v) => Math.round(v * 100) / 100;
 
@@ -51,15 +52,7 @@ const Curseur = ({
     />
   );
   const valeurAffichee = champ ? (
-    <input
-      type="number"
-      min={min}
-      max={max}
-      step={step}
-      value={valeur}
-      onChange={(e) => onValeur(parseFloat(e.target.value))}
-      className="w-14 h-6 px-1.5 text-right tabular-nums rounded-md border border-transparent bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:border-blue-500 focus:outline-none"
-    />
+    <ChampValide valeur={valeur} onValeur={onValeur} min={min} max={max} pas={step} className="w-14" />
   ) : (
     <span className="tabular-nums">{texte}</span>
   );
@@ -79,7 +72,8 @@ const Curseur = ({
     <label className={`flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 ${className}`}>
       <span className={`${largeurLabel} shrink-0`}>{label}</span>
       {glissiere('flex-1 min-w-0')}
-      <span className="w-10 shrink-0 text-right">{valeurAffichee}</span>
+      {/* Le champ fait 56 px : dans la case de 40 px d'une valeur affichée, il débordait */}
+      <span className={`${champ ? 'w-14' : 'w-10'} shrink-0 text-right`}>{valeurAffichee}</span>
     </label>
   );
 };

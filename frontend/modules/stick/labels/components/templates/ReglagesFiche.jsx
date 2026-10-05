@@ -3,13 +3,19 @@
 // Les réglages d'une FICHE produit (tableau des caractéristiques, points
 // forts…), pour `ReglagesPanel`. Repris de la barre d'options
 // (`PropertyPanel`) : mêmes clés écrites. `StyleTableau` est le contenu de
-// l'ancien menu « Style du tableau », déplacé TEL QUEL.
+// l'ancien menu « Style du tableau » ; il est passé sur les contrôles communs
+// le 3 octobre 2026 (interrupteurs, curseur, champs validés), sans changer une
+// clé ni une borne appliquée.
 
 import React from 'react';
 import FontSelector from '../FontSelector';
 import { SECTIONS_FICHE, sectionParId } from '../../utils/ficheProduit';
 import { FICHE_PAR_DEFAUT } from '../../utils/ficheKonva';
+import ChampValide from '../ui/ChampValide';
+import Curseur from '../ui/Curseur';
+import Interrupteur from '../ui/Interrupteur';
 import PastilleCouleur from '../ui/PastilleCouleur';
+import TitreGroupe from '../ui/TitreGroupe';
 import { CHAMP as champ, LIGNE as ligne } from '../ui/styles';
 
 
@@ -53,177 +59,162 @@ export const Contenu = ({ el, maj }) => (
     </div>
     <label className={ligne}>
       <span>Taille</span>
-      <input
-        type="number"
+      <ChampValide
+        valeur={Math.round(el.fontSize ?? FICHE_PAR_DEFAUT.fontSize)}
+        onValeur={(fontSize) => maj({ fontSize })}
         min={4}
         max={200}
-        value={Math.round(el.fontSize ?? FICHE_PAR_DEFAUT.fontSize)}
-        onChange={(e) => {
-          const n = Number(e.target.value);
-          if (n > 0) maj({ fontSize: Math.min(200, Math.max(4, n)) });
-        }}
-        className={`${champ} w-20 text-right`}
+        titre="Taille du texte de la fiche"
+        className="w-14"
       />
     </label>
     <label className={ligne}>
       <span title="Au-delà, la suite est coupée">Lignes max</span>
-      <input
-        type="number"
+      <ChampValide
+        valeur={el.maxLines ?? FICHE_PAR_DEFAUT.maxLines}
+        onValeur={(n) => maj({ maxLines: Math.round(n) })}
         min={1}
         max={50}
-        value={el.maxLines ?? FICHE_PAR_DEFAUT.maxLines}
-        onChange={(e) => {
-          const n = Math.round(Number(e.target.value));
-          if (n > 0) maj({ maxLines: Math.min(50, n) });
-        }}
-        className={`${champ} w-20 text-right`}
+        titre="Nombre de lignes au plus : au-delà, la suite est coupée"
+        className="w-14"
       />
     </label>
   </div>
 );
 
 /** Couleurs, lignes alternées, colonne des noms, cadre, ligne mise en avant. */
-export const StyleTableau = ({ el, maj }) => (
-  <div className="space-y-2 text-xs text-gray-600 dark:text-gray-300">
-    {[
-      ['titleColor', 'Titre'],
-      ['labelColor', (el.section ?? 'specs') === 'specs' ? 'Noms' : 'Puces'],
-      ['color', 'Texte'],
-      ['lineColor', 'Traits'],
-    ].map(([cle, label]) => (
-      <label key={cle} className="flex items-center justify-between gap-2">
-        {label}
-        <PastilleCouleur couleur={el[cle] ?? FICHE_PAR_DEFAUT[cle]} onCouleur={(v) => maj({ [cle]: v })} label={label} />
-      </label>
-    ))}
-    {(el.section ?? 'specs') === 'specs' && (
-      <>
-        <label className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={el.stripe ?? FICHE_PAR_DEFAUT.stripe}
-              onChange={(e) => maj({ stripe: e.target.checked })}
-            />
-            Lignes alternées
-          </span>
-          <PastilleCouleur
-            couleur={el.stripeColor ?? FICHE_PAR_DEFAUT.stripeColor}
-            onCouleur={(stripeColor) => maj({ stripeColor })}
-            label="Couleur des lignes alternées"
-          />
+export const StyleTableau = ({ el, maj }) => {
+  const tableau = (el.section ?? 'specs') === 'specs';
+  const cadre = el.frame ?? FICHE_PAR_DEFAUT.frame;
+  const ligneForte = el.highlightRow ?? FICHE_PAR_DEFAUT.highlightRow;
+  return (
+    <div className="space-y-2">
+      {[
+        ['titleColor', 'Titre'],
+        ['labelColor', tableau ? 'Noms' : 'Puces'],
+        ['color', 'Texte'],
+        ['lineColor', 'Traits'],
+      ].map(([cle, label]) => (
+        <label key={cle} className={ligne}>
+          <span>{label}</span>
+          <PastilleCouleur couleur={el[cle] ?? FICHE_PAR_DEFAUT[cle]} onCouleur={(v) => maj({ [cle]: v })} label={label} />
         </label>
-        <label className="block">
-          <span className="flex justify-between">
-            Colonne des noms
-            <span>{Math.round((el.colRatio ?? FICHE_PAR_DEFAUT.colRatio) * 100)} %</span>
-          </span>
-          <input
-            type="range"
+      ))}
+      {tableau && (
+        <>
+          <div className={ligne}>
+            <span>Lignes alternées</span>
+            <span className="flex items-center gap-2">
+              <PastilleCouleur
+                couleur={el.stripeColor ?? FICHE_PAR_DEFAUT.stripeColor}
+                onCouleur={(stripeColor) => maj({ stripeColor })}
+                label="Couleur des lignes alternées"
+              />
+              <Interrupteur
+                actif={el.stripe ?? FICHE_PAR_DEFAUT.stripe}
+                onActif={(stripe) => maj({ stripe })}
+                label="Lignes alternées"
+              />
+            </span>
+          </div>
+          <Curseur
+            disposition="bloc"
+            label="Colonne des noms"
             min={0.15}
             max={0.8}
             step={0.01}
-            value={el.colRatio ?? FICHE_PAR_DEFAUT.colRatio}
-            onChange={(e) => maj({ colRatio: Number(e.target.value) })}
-            className="w-full"
+            valeur={el.colRatio ?? FICHE_PAR_DEFAUT.colRatio}
+            affichage={(v) => `${Math.round(v * 100)} %`}
+            onValeur={(colRatio) => maj({ colRatio })}
           />
-        </label>
 
-        <div className="pt-2 border-t border-gray-200 dark:border-gray-700 font-medium">Cadre</div>
-        <label className="flex items-center justify-between gap-2">
-          Bordure
-          <select
-            value={el.frame ?? FICHE_PAR_DEFAUT.frame}
-            onChange={(e) => maj({ frame: e.target.value })}
-            className="px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-          >
-            <option value="none">Aucune</option>
-            <option value="outer">Encadré</option>
-            <option value="grid">Grille</option>
-          </select>
-        </label>
-        {(el.frame ?? FICHE_PAR_DEFAUT.frame) !== 'none' && (
-          <>
-            <label className="flex items-center justify-between gap-2">
-              Couleur
-              <PastilleCouleur
-                couleur={el.borderColor ?? FICHE_PAR_DEFAUT.borderColor}
-                onCouleur={(borderColor) => maj({ borderColor })}
-                label="Couleur de la bordure"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-2">
-              Épaisseur
-              <input
-                type="number"
-                min={0}
-                max={12}
-                step={0.5}
-                value={el.borderWidth ?? FICHE_PAR_DEFAUT.borderWidth}
-                onChange={(e) => maj({ borderWidth: Math.max(0, Number(e.target.value) || 0) })}
-                className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-2">
-              Arrondi
-              <input
-                type="number"
-                min={0}
-                max={60}
-                value={el.radius ?? FICHE_PAR_DEFAUT.radius}
-                onChange={(e) => maj({ radius: Math.max(0, Number(e.target.value) || 0) })}
-                className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </label>
-          </>
-        )}
-        <label className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={!!el.labelBg}
-              onChange={(e) => maj({ labelBg: e.target.checked ? '#e5e7eb' : '' })}
-            />
-            Fond des noms
-          </span>
-          {el.labelBg && (
-            <PastilleCouleur couleur={el.labelBg} onCouleur={(labelBg) => maj({ labelBg })} label="Fond des noms" />
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <TitreGroupe titre="Cadre" />
+          </div>
+          <label className={ligne}>
+            <span>Bordure</span>
+            <select value={cadre} onChange={(e) => maj({ frame: e.target.value })} className={champ}>
+              <option value="none">Aucune</option>
+              <option value="outer">Encadré</option>
+              <option value="grid">Grille</option>
+            </select>
+          </label>
+          {cadre !== 'none' && (
+            <>
+              <label className={ligne}>
+                <span>Couleur</span>
+                <PastilleCouleur
+                  couleur={el.borderColor ?? FICHE_PAR_DEFAUT.borderColor}
+                  onCouleur={(borderColor) => maj({ borderColor })}
+                  label="Couleur de la bordure"
+                />
+              </label>
+              <label className={ligne}>
+                <span>Épaisseur</span>
+                <ChampValide
+                  valeur={el.borderWidth ?? FICHE_PAR_DEFAUT.borderWidth}
+                  onValeur={(borderWidth) => maj({ borderWidth })}
+                  min={0}
+                  pas={0.5}
+                  titre="Épaisseur de la bordure"
+                  className="w-14"
+                />
+              </label>
+              <label className={ligne}>
+                <span>Arrondi</span>
+                <ChampValide
+                  valeur={el.radius ?? FICHE_PAR_DEFAUT.radius}
+                  onValeur={(radius) => maj({ radius })}
+                  min={0}
+                  titre="Arrondi du cadre"
+                  className="w-14"
+                />
+              </label>
+            </>
           )}
-        </label>
+          <div className={ligne}>
+            <span>Fond des noms</span>
+            <span className="flex items-center gap-2">
+              {el.labelBg && <PastilleCouleur couleur={el.labelBg} onCouleur={(labelBg) => maj({ labelBg })} label="Fond des noms" />}
+              <Interrupteur actif={!!el.labelBg} onActif={(v) => maj({ labelBg: v ? '#e5e7eb' : '' })} label="Fond des noms" />
+            </span>
+          </div>
 
-        <div className="pt-2 border-t border-gray-200 dark:border-gray-700 font-medium">Ligne mise en avant</div>
-        <label className="flex items-center justify-between gap-2">
-          N° de ligne (0 : aucune)
-          <input
-            type="number"
-            min={0}
-            max={50}
-            value={el.highlightRow ?? FICHE_PAR_DEFAUT.highlightRow}
-            onChange={(e) => maj({ highlightRow: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
-            className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-          />
-        </label>
-        {(el.highlightRow ?? FICHE_PAR_DEFAUT.highlightRow) > 0 && (
-          <>
-            <label className="flex items-center justify-between gap-2">
-              Couleur
-              <PastilleCouleur
-                couleur={el.highlightColor ?? FICHE_PAR_DEFAUT.highlightColor}
-                onCouleur={(highlightColor) => maj({ highlightColor })}
-                label="Couleur de la ligne mise en avant"
-              />
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={el.highlightBold ?? FICHE_PAR_DEFAUT.highlightBold}
-                onChange={(e) => maj({ highlightBold: e.target.checked })}
-              />
-              Valeur en gras
-            </label>
-          </>
-        )}
-      </>
-    )}
-  </div>
-);
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <TitreGroupe titre="Ligne mise en avant" />
+          </div>
+          <label className={ligne}>
+            <span>N° de ligne (0 : aucune)</span>
+            <ChampValide
+              valeur={ligneForte}
+              onValeur={(n) => maj({ highlightRow: Math.round(n) })}
+              min={0}
+              titre="Numéro de la ligne mise en avant, 0 pour aucune"
+              className="w-14"
+            />
+          </label>
+          {ligneForte > 0 && (
+            <>
+              <label className={ligne}>
+                <span>Couleur</span>
+                <PastilleCouleur
+                  couleur={el.highlightColor ?? FICHE_PAR_DEFAUT.highlightColor}
+                  onCouleur={(highlightColor) => maj({ highlightColor })}
+                  label="Couleur de la ligne mise en avant"
+                />
+              </label>
+              <div className={ligne}>
+                <span>Valeur en gras</span>
+                <Interrupteur
+                  actif={el.highlightBold ?? FICHE_PAR_DEFAUT.highlightBold}
+                  onActif={(highlightBold) => maj({ highlightBold })}
+                  label="Valeur en gras"
+                />
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+};

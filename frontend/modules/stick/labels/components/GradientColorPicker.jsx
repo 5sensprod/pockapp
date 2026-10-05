@@ -14,6 +14,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useFlottant } from './useFlottant';
 import Curseur from './ui/Curseur';
+import Segments from './ui/Segments';
+import { BOUTON_ACTION } from './ui/styles';
 import { Trash2 } from 'lucide-react';
 import {
   DEFAULT_LINEAR_GRADIENT,
@@ -42,13 +44,6 @@ const COULEURS_PRETES = [
   '#000000', '#ffffff', '#ef4444', '#f97316', '#f59e0b', '#22c55e',
   '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280',
 ];
-
-const onglet = (actif) =>
-  `flex-1 px-2 py-1 text-xs rounded transition-colors ${
-    actif
-      ? 'bg-blue-500 text-white'
-      : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-  }`;
 
 // Damier sous une couleur transparente
 const DAMIER = 'repeating-conic-gradient(#d1d5db 0% 25%, #ffffff 0% 50%)';
@@ -218,16 +213,17 @@ const GradientColorPicker = ({
           // Dans l'écran, hauteur bornée : en dégradé ou en texture le contenu
           // dépassait le bas de l'écran, sans ascenseur (`useFlottant`)
           style={place}
-          className="fixed z-50 w-64 p-3 space-y-3 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl whitespace-normal">
+          className="fixed z-50 w-64 p-3 space-y-3 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg whitespace-normal">
           {!uniSeulement && (
-            <div className="flex gap-1">
-              <button type="button" className={onglet(mode === 'uni')} onClick={passerEnUni}>
-                Uni
-              </button>
-              <button type="button" className={onglet(mode === 'degrade')} onClick={passerEnDegrade}>
-                Dégradé
-              </button>
-            </div>
+            <Segments
+              label="Type de peinture"
+              valeur={mode}
+              onValeur={(id) => (id === 'uni' ? passerEnUni() : passerEnDegrade())}
+              options={[
+                { id: 'uni', label: 'Uni' },
+                { id: 'degrade', label: 'Dégradé' },
+              ]}
+            />
           )}
 
           {uniSeulement || mode === 'uni' ? (
@@ -267,20 +263,17 @@ const GradientColorPicker = ({
             </>
           ) : (
             <>
-              <div className="flex gap-1">
-                <button type="button" className={onglet(g.type === 'linear-gradient')} onClick={() => changerType('linear-gradient')}>
-                  Linéaire
-                </button>
-                {/* Un contour ne se dégrade pas en radial (Konva) ; en texture, si */}
-                {!lineaireSeulement && (
-                  <button type="button" className={onglet(g.type === 'radial-gradient')} onClick={() => changerType('radial-gradient')}>
-                    Radial
-                  </button>
-                )}
-                <button type="button" className={onglet(g.type === 'noise-gradient')} onClick={() => changerType('noise-gradient')}>
-                  Texture
-                </button>
-              </div>
+              {/* Un contour ne se dégrade pas en radial (Konva) ; en texture, si */}
+              <Segments
+                label="Type de dégradé"
+                valeur={g.type}
+                onValeur={changerType}
+                options={[
+                  { id: 'linear-gradient', label: 'Linéaire' },
+                  ...(lineaireSeulement ? [] : [{ id: 'radial-gradient', label: 'Radial' }]),
+                  { id: 'noise-gradient', label: 'Texture' },
+                ]}
+              />
 
               {/* Aperçu réel, puis la barre des arrêts (clic : ajouter un arrêt) */}
               <ApercuPeinture paint={g} className="w-full h-10 rounded border border-gray-300 dark:border-gray-600" />
@@ -389,7 +382,7 @@ const GradientColorPicker = ({
                 <button
                   type="button"
                   onClick={inverser}
-                  className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300"
+                  className={BOUTON_ACTION}
                 >
                   Inverser
                 </button>

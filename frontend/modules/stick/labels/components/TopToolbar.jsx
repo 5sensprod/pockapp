@@ -37,7 +37,8 @@ const TopToolbar = ({
   }, [canUndo, canRedo, undo, redo]);
 
   // La PAGE EN COURS seulement ; le tirage entier part du panneau Produits
-  // (« Exporter le tirage PDF »).
+  // (« Exporter tout (PDF) »). Les deux sont en bleu principal (3 octobre
+  // 2026) : une seule couleur d'action — « Nouveau » est devenu secondaire.
   const handleExportPdf = () => exporterTirage(docNode, { pageCourante: true });
 
 
@@ -48,7 +49,7 @@ const TopToolbar = ({
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => onNewLabel?.()}
-            className="flex items-center gap-2 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             title="Nouveau document"
           >
             <Plus className="h-4 w-4" />
@@ -60,7 +61,7 @@ const TopToolbar = ({
           <button
             onClick={undo}
             disabled={!canUndo}
-            className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors"
+            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors"
             title="Annuler (Ctrl/Cmd+Z)"
           >
             <Undo className="h-5 w-5" />
@@ -69,7 +70,7 @@ const TopToolbar = ({
           <button
             onClick={redo}
             disabled={!canRedo}
-            className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors"
+            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors"
             title="Rétablir (Ctrl+Shift+Z / Ctrl+Y)"
           >
             <Redo className="h-5 w-5" />
@@ -88,11 +89,10 @@ const TopToolbar = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          console.log('🔵 Bouton Save cliqué !');
                           onSave?.();
                         }}
-                        className="hover:scale-110 transition-transform flex-shrink-0"
-                        title="Sauvegarder les modifications"
+                        className="flex-shrink-0"
+                        title="Enregistrer les modifications"
                       >
                         <Save className="h-3 w-3 text-orange-500 dark:text-orange-400" />
                       </button>
@@ -116,11 +116,10 @@ const TopToolbar = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      console.log('🔵 Bouton Save cliqué !');
                       onSave?.();
                     }}
-                    className="hover:scale-110 transition-transform flex-shrink-0"
-                    title="Sauvegarder les modifications"
+                    className="flex-shrink-0"
+                    title="Enregistrer les modifications"
                   >
                     <Save className="h-4 w-4 text-orange-500 dark:text-orange-400" />
                   </button>
@@ -136,11 +135,11 @@ const TopToolbar = ({
           <button
             onClick={handleExportPdf}
             disabled={!docNode}
-            className="flex items-center gap-2 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title={!docNode ? 'Document non disponible' : 'Exporter la page en cours en PDF'}
           >
             <Download className="h-4 w-4" />
-            <span>Exporter</span>
+            <span>Exporter la page</span>
           </button>
         </div>
       </div>

@@ -9,14 +9,14 @@
 // - Le glisser ne prend pas le focus ; Entrée ou Échap le rendent : les
 //   raccourcis du canvas (Suppr, H) reviennent aussitôt.
 // - `onValeur` reçoit toujours un nombre fini, borné.
+// - Le champ lui-même est `ChampValide` : validé à Entrée, flèches communes.
 
 import React, { useRef } from 'react';
 import { valeurGlissee } from '../../utils/pave2D';
+import ChampValide from './ChampValide';
 
 const ChampNombre = ({ label, valeur, onValeur, min = -Infinity, max = Infinity, pas = 1, unite = '', titre }) => {
   const geste = useRef(null);
-  const borner = (v) => Math.min(max, Math.max(min, v));
-
   const debut = (e) => {
     e.preventDefault(); // pas de focus, pas de sélection de texte
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -50,21 +50,8 @@ const ChampNombre = ({ label, valeur, onValeur, min = -Infinity, max = Infinity,
       >
         {label}
       </span>
-      <input
-        type="number"
-        min={Number.isFinite(min) ? min : undefined}
-        max={Number.isFinite(max) ? max : undefined}
-        step={pas}
-        value={Number.isFinite(valeur) ? valeur : 0}
-        onChange={(e) => {
-          const v = Number.parseFloat(e.target.value);
-          if (Number.isFinite(v)) onValeur(borner(v));
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
-        }}
-        className="w-14 h-7 px-1.5 text-right tabular-nums rounded-md border border-transparent bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:border-blue-500 focus:outline-none"
-      />
+      {/* Le champ commun : ses flèches, et non celles du navigateur */}
+      <ChampValide valeur={Number.isFinite(valeur) ? valeur : 0} onValeur={onValeur} min={min} max={max} pas={pas} titre={titre} className="w-14" />
       {unite && <span className="text-gray-400">{unite}</span>}
     </label>
   );

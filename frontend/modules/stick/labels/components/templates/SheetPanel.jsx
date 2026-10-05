@@ -1,9 +1,31 @@
-// src/features/labels/components/templates/SheetPanel.jsx
+// frontend/modules/stick/labels/components/templates/SheetPanel.jsx
+//
+// L'onglet « Produits » : le tirage (`TiragePanel`), puis — en planche — la
+// feuille et sa grille, et le bouton qui exporte tout.
+//
+// Refait le 3 octobre 2026 : la planche est UNE section repliable d'environ
+// 250 px (elle en faisait ~850), l'export un pied collant toujours visible, et
+// il n'y a plus que du bleu — l'indigo, le vert et l'ambre qui n'avertissait
+// de rien sont partis. L'aperçu de la grille a disparu : la bande des pages,
+// sous la page, montre les vraies planches.
+//
+// MARGE ET ÉCART SE SAISISSENT EN MILLIMÈTRES. Le store garde des POINTS
+// entiers, de 0 à 50 comme avant : on convertit à l'affichage et à la saisie
+// (`utils/formatsPage.js`). L'ancien champ disait « mm » et montrait des points.
 import React, { useMemo, useCallback, useEffect } from 'react';
-import { Grid3x3, Download, Package } from 'lucide-react';
+import { Download } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
-import { SHEET_FORMATS, casesDuTirage } from '../../lib/tirage';
+import { SHEET_FORMATS } from '../../lib/tirage';
 import { exporterTirage } from '../../utils/exportTirage';
+import { enMm, enPt } from '../../utils/formatsPage';
+import { tailleCase } from '../../utils/planche';
+import Bouton from '../ui/Bouton';
+import ChampValide from '../ui/ChampValide';
+import Interrupteur from '../ui/Interrupteur';
+import Note from '../ui/Note';
+import Section from '../ui/Section';
+import Segments from '../ui/Segments';
+import { AIDE, LIGNE } from '../ui/styles';
 import TiragePanel from './TiragePanel';
 
 /**
@@ -24,12 +46,9 @@ const clampInt = (value, { min = Number.MIN_SAFE_INTEGER, max = Number.MAX_SAFE_
   return Math.max(min, Math.min(max, n));
 };
 
-// Convertisseur points -> mm
-const PT_TO_MM = 25.4 / 72;
-const toMm = (pt, digits = 1) => {
-  if (pt == null) return '';
-  return (pt * PT_TO_MM).toFixed(digits);
-};
+// Marge et écart : 0 à 50 points dans le store, soit 0 à 17,6 mm à l'écran
+const PT_MAX = 50;
+const MM_MAX = enMm(PT_MAX, 1);
 
 const SheetPanel = ({ docNode }) => {
   // ----- store
@@ -56,26 +75,21 @@ const SheetPanel = ({ docNode }) => {
   const spacing = sheetSettings.spacing;
 
   const totalCells = rows * cols;
-  const casesPremierePage = useLabelStore(
-    (s) => Math.min(totalCells, casesDuTirage(s).length)
-  );
-  const isA4 = selectedSheet.id.startsWith('a4-');
 
   // ----- calculs
-  const cellSize = useMemo(() => {
-    const availableWidth = selectedSheet.width - 2 * margin - (cols - 1) * spacing;
-    const availableHeight = selectedSheet.height - 2 * margin - (rows - 1) * spacing;
-    return {
-      width: Math.max(0, Math.floor(availableWidth / cols)),
-      height: Math.max(0, Math.floor(availableHeight / rows)),
-    };
-  }, [selectedSheet, rows, cols, margin, spacing]);
+  const cellSize = useMemo(
+    () => tailleCase(selectedSheet, { rows, cols, margin, spacing }),
+    [selectedSheet, rows, cols, margin, spacing]
+  );
 
   const scale = useMemo(() => {
     const scaleX = cellSize.width / canvasSize.width;
     const scaleY = cellSize.height / canvasSize.height;
     return Math.min(scaleX, scaleY, 1);
   }, [cellSize, canvasSize]);
+
+  // CES DEUX EFFETS RESTENT ICI, au premier niveau : dans la section « Planche »,
+  // ils cesseraient de tourner dès qu'on la replie.
 
   // informer le store (FormatPanel & mm)
   useEffect(() => {
@@ -119,12 +133,7 @@ const SheetPanel = ({ docNode }) => {
   ]);
 
   // ----- handlers
-  const handleSetSheet = useCallback(
-    (format) => {
-      setSelectedSheetId(format.id);
-    },
-    [setSelectedSheetId]
-  );
+  const pageALaTailleDeLaCase = () => setCanvasSize(Math.max(1, cellSize.width), Math.max(1, cellSize.height));
 
   // Même chemin que le bouton « Exporter » de la barre : le tirage entier.
   const handleExport = useCallback(
@@ -132,255 +141,119 @@ const SheetPanel = ({ docNode }) => {
     [docNode]
   );
 
-  // ----- UI
-  const previewStyle = useMemo(
-    () => ({
-      width: '200px',
-      height: selectedSheet.id.includes('portrait') ? '280px' : '200px',
-      padding: `${(margin / selectedSheet.width) * 200}px`,
-      display: 'grid',
-      gridTemplateColumns: `repeat(${cols}, 1fr)`,
-      gridTemplateRows: `repeat(${rows}, 1fr)`,
-      gap: `${(spacing / selectedSheet.width) * 200}px`,
-    }),
-    [selectedSheet, margin, cols, rows, spacing]
+  /** Un champ en mm qui écrit des points entiers, bornés comme avant. */
+  const champMm = (cle, titre) => (
+    <ChampValide
+      valeur={enMm(sheetSettings[cle], 1)}
+      onValeur={(mm) => setSheetSettings({ [cle]: clampInt(enPt(mm), { min: 0, max: PT_MAX }) })}
+      min={0}
+      max={MM_MAX}
+      titre={titre}
+      className="w-14"
+    />
+  );
+  const champEntier = (cle, titre) => (
+    <ChampValide
+      valeur={sheetSettings[cle]}
+      onValeur={(n) => setSheetSettings({ [cle]: clampInt(Math.round(n), { min: 1, max: 10 }) })}
+      min={1}
+      max={10}
+      titre={titre}
+      className="w-14"
+    />
   );
 
+  // ----- UI
   return (
-    <div className="p-4 space-y-4">
-      <TiragePanel />
+    <div className="px-3 pt-3">
+      <div className="pb-3">
+        <TiragePanel />
+      </div>
 
       {formatTirage === 'planche' && (
-      <>
-      {/* Mode design sur cellule */}
-      <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700 flex items-center justify-between">
-        <div className="text-sm text-indigo-900 dark:text-indigo-200">
-          <div className="font-medium">Canvas = taille d’une cellule</div>
-          <div className="text-xs opacity-80">
-            Quand activé, le canvas suit automatiquement les dimensions de chaque cellule de la
-            planche.
-          </div>
-        </div>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={!!lockCanvasToSheetCell}
-            onChange={(e) => {
-              const next = e.target.checked;
-              setLockCanvasToSheetCell(next);
-              if (next) {
-                setCanvasSize(Math.max(1, cellSize.width), Math.max(1, cellSize.height));
-              }
-            }}
-          />
-          <span>Activer</span>
-        </label>
-      </div>
-
-      {/* Format de planche */}
-      <div>
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Format de planche
-        </h3>
-        <div className="grid grid-cols-2 gap-2">
-          {SHEET_FORMATS.map((format) => (
-            <button
-              key={format.id}
-              onClick={() => handleSetSheet(format)}
-              className={`p-3 border rounded-lg transition-all ${
-                selectedSheet.id === format.id
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'
-              }`}
-            >
-              <div className="text-sm font-medium">{format.label}</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {format.id.startsWith('a4-') ? (
-                  <>
-                    {toMm(format.width, 0)} × {toMm(format.height, 0)} mm
-                  </>
-                ) : (
-                  <>
-                    {format.width} × {format.height} pt
-                  </>
-                )}
+          <Section titre="Planche">
+            <div className={LIGNE}>
+              <span>Feuille</span>
+              <div className="w-56">
+                <Segments
+                  label="Format de la feuille"
+                  valeur={selectedSheet.id}
+                  onValeur={setSelectedSheetId}
+                  options={SHEET_FORMATS.map((f) => ({
+                    id: f.id,
+                    label: f.label,
+                    titre: `${enMm(f.width)} × ${enMm(f.height)} mm`,
+                  }))}
+                />
               </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Presets de grille */}
-      <div>
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Disposition rapide
-        </h3>
-        <div className="grid grid-cols-5 gap-2">
-          {GRID_PRESETS.map((preset) => (
-            <button
-              key={preset.label}
-              onClick={() => setSheetSettings({ rows: preset.rows, cols: preset.cols })}
-              className={`p-2 border rounded text-sm font-medium transition-all ${
-                rows === preset.rows && cols === preset.cols
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'
-              }`}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Configuration manuelle (marges/espacements en mm si A4) */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Configuration</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">Lignes</label>
-            <input
-              type="number"
-              value={rows}
-              onChange={(e) =>
-                setSheetSettings({ rows: clampInt(e.target.value, { min: 1, max: 10 }) })
-              }
-              min="1"
-              max="10"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">Colonnes</label>
-            <input
-              type="number"
-              value={cols}
-              onChange={(e) =>
-                setSheetSettings({ cols: clampInt(e.target.value, { min: 1, max: 10 }) })
-              }
-              min="1"
-              max="10"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
-              Marge ({isA4 ? 'mm' : 'pt'})
-            </label>
-            <input
-              type="number"
-              value={margin}
-              onChange={(e) =>
-                setSheetSettings({ margin: clampInt(e.target.value, { min: 0, max: 50 }) })
-              }
-              min="0"
-              max="50"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
-              Espacement ({isA4 ? 'mm' : 'pt'})
-            </label>
-            <input
-              type="number"
-              value={spacing}
-              onChange={(e) =>
-                setSheetSettings({ spacing: clampInt(e.target.value, { min: 0, max: 50 }) })
-              }
-              min="0"
-              max="50"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-            />
-          </div>
-        </div>
-        {isA4 && (
-          <div className="text-[11px] text-gray-500">
-            * Les valeurs saisies restent en points (pt). Affichage converti en millimètres pour
-            votre confort.
-          </div>
-        )}
-      </div>
-
-      {/* Preview de la grille */}
-      <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-2 mb-2">
-          <Grid3x3 className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-            Aperçu de la grille
-          </span>
-        </div>
-        <div
-          className="bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 mx-auto"
-          style={previewStyle}
-        >
-          {Array.from({ length: totalCells }).map((_, i) => {
-            const hasProduct = i < casesPremierePage;
-            return (
-              <div
-                key={i}
-                className={`border rounded ${
-                  hasProduct
-                    ? 'border-green-400 bg-green-100 dark:border-green-600 dark:bg-green-900/30'
-                    : 'border-blue-300 bg-blue-50 dark:border-blue-600 dark:bg-blue-900/20'
-                }`}
-              />
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Info cellule (mm si A4) */}
-      <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
-        <div className="text-xs space-y-1">
-          <div className="font-medium text-amber-900 dark:text-amber-300">
-            Taille de cellule :{' '}
-            {isA4 ? (
-              <>
-                {toMm(cellSize.width, 0)} × {toMm(cellSize.height, 0)} mm
-              </>
-            ) : (
-              <>
-                {cellSize.width} × {cellSize.height} pt
-              </>
-            )}
-          </div>
-          <div className="text-amber-700 dark:text-amber-400">
-            Document : {canvasSize.width} × {canvasSize.height} px
-          </div>
-          <div className="text-amber-700 dark:text-amber-400">
-            Échelle appliquée : {(scale * 100).toFixed(1)}%
-          </div>
-          <div className="text-amber-700 dark:text-amber-400">
-            Total : {totalCells} cellule{totalCells > 1 ? 's' : ''}
-          </div>
-
-          {!lockCanvasToSheetCell && (
-            <div className="pt-2">
-              <button
-                onClick={() =>
-                  setCanvasSize(Math.max(1, cellSize.width), Math.max(1, cellSize.height))
-                }
-                className="px-2 py-1 text-xs rounded bg-indigo-600 hover:bg-indigo-700 text-white"
-              >
-                Appliquer une fois la taille de cellule au canvas
-              </button>
             </div>
-          )}
-        </div>
-      </div>
 
-      </>
+            <div className={LIGNE}>
+              <span>Grille</span>
+              <div className="w-56">
+                <Segments
+                  label="Grille rapide"
+                  valeur={`${rows}×${cols}`}
+                  onValeur={(id) => {
+                    const preset = GRID_PRESETS.find((p) => p.label === id);
+                    if (preset) setSheetSettings({ rows: preset.rows, cols: preset.cols });
+                  }}
+                  options={GRID_PRESETS.map((p) => ({ id: p.label, label: p.label }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <label className={LIGNE}>
+                <span>Colonnes</span>
+                {champEntier('cols', 'Colonnes (1 à 10)')}
+              </label>
+              <label className={LIGNE}>
+                <span>Lignes</span>
+                {champEntier('rows', 'Lignes (1 à 10)')}
+              </label>
+              <label className={LIGNE}>
+                <span>Marge (mm)</span>
+                {champMm('margin', `Marge autour de la feuille, en mm (0 à ${MM_MAX})`)}
+              </label>
+              <label className={LIGNE}>
+                <span>Écart (mm)</span>
+                {champMm('spacing', `Écart entre deux étiquettes, en mm (0 à ${MM_MAX})`)}
+              </label>
+            </div>
+
+            <div className={LIGNE}>
+              <span>Page à la taille d’une étiquette</span>
+              <Interrupteur
+                actif={!!lockCanvasToSheetCell}
+                label="La page suit la taille d’une étiquette de la planche"
+                onActif={(next) => {
+                  setLockCanvasToSheetCell(next);
+                  if (next) pageALaTailleDeLaCase();
+                }}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <p className={AIDE}>
+                Étiquette {enMm(cellSize.width)} × {enMm(cellSize.height)} mm · {totalCells} par feuille
+              </p>
+              {scale < 1 && <Note>La page est réduite à {(scale * 100).toFixed(0)} % pour tenir dans l’étiquette.</Note>}
+              {!lockCanvasToSheetCell && (
+                <Bouton variante="discret" onClic={pageALaTailleDeLaCase}>
+                  Mettre la page à cette taille
+                </Bouton>
+              )}
+            </div>
+          </Section>
       )}
 
-      {/* Bouton export : le tirage entier, comme « Exporter » de la barre */}
-      <button
-        onClick={handleExport}
-        disabled={!docNode}
-        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-      >
-        <Download className="h-4 w-4" />
-        Exporter le tirage PDF
-      </button>
+      {/* Pied collant : le tirage entier, comme « Exporter » de la barre */}
+      <div className="sticky bottom-0 -mx-3 px-3 py-2 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <Bouton variante="principal" grand plein icone={Download} onClic={handleExport} desactive={!docNode}>
+          Exporter tout (PDF)
+        </Bouton>
+      </div>
     </div>
   );
 };

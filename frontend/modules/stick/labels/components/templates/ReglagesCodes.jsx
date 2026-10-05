@@ -80,7 +80,7 @@ export const NoyauBarres = ({ el, maj }) => (
           placeholder="auto"
           vide={undefined}
           titre="Hauteur des barres (px). Vide : elle suit le cadre. Le numéro garde sa taille."
-          className="w-14 px-1"
+          className="w-14"
           onValeur={(barHeight) => maj({ barHeight })}
         />
       </div>
@@ -94,7 +94,7 @@ export const NoyauBarres = ({ el, maj }) => (
           placeholder="auto"
           vide={undefined}
           titre="Largeur d'une barre fine (px). Vide ou 0 : automatique. Plus grande, le symbole est plus large."
-          className="w-14 px-1"
+          className="w-14"
           onValeur={(v) => maj({ barWidth: v > 0 ? v : undefined })}
         />
       </div>
@@ -157,7 +157,7 @@ export const ContourForme = ({ el, maj }) => (
       min={0}
       max={40}
       titre="Épaisseur du contour (px) — 0 : pas de contour"
-      className="w-10 px-1"
+      className="w-12"
       onValeur={(strokeWidth) =>
         maj({ strokeWidth, ...(strokeWidth > 0 && !el.stroke && !el.strokeGradient ? { stroke: '#0f172a' } : {}) })
       }

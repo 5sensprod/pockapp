@@ -78,7 +78,7 @@ export function versProduitAffiche(
 		// expirée ne doit pas s'imprimer sur une affiche.
 		sale_price: prixPromoActif(produit, ctx.jour),
 		stock: produit.stock ?? null,
-		// Le QR code encode CETTE valeur (`QRCodeTemplates.jsx`) : elle doit être
+		// Le QR code encode CETTE valeur (`AssetsPanel.jsx`) : elle doit être
 		// une adresse complète, pas un chemin — un QR ne se scanne pas « depuis »
 		// une page, il n'a aucune origine à laquelle se raccrocher.
 		website_url: urlProduitSurLeSite(produit.slug) || undefined,

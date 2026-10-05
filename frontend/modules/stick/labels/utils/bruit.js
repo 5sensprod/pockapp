@@ -17,11 +17,14 @@
 //   { type: 'value'|'white'|'perlin'|'voronoi', scale, seed, octaves,
 //     distance: 'f1'|'f2'|'f2-f1', contrast, threshold, softness, invert }
 
+// Les `id` sont ceux des éléments enregistrés ; les libellés sont des mots de
+// boutique (3 octobre 2026) — ils disaient « Bruit », « Bruit blanc »,
+// « Perlin », « Voronoï ».
 export const TYPES_TEXTURE = [
-  { id: 'value', label: 'Bruit' },
-  { id: 'white', label: 'Bruit blanc' },
-  { id: 'perlin', label: 'Perlin' },
-  { id: 'voronoi', label: 'Voronoï' },
+  { id: 'value', label: 'Grain doux' },
+  { id: 'white', label: 'Grain fin' },
+  { id: 'perlin', label: 'Nuages' },
+  { id: 'voronoi', label: 'Cellules' },
 ];
 
 export const TEXTURE_PAR_DEFAUT = {

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search } from 'lucide-react';
+import ChampRecherche from './ui/ChampRecherche';
 import { useFlottant } from './useFlottant';
 import { useGoogleFonts } from '../hooks/useGoogleFonts';
 import { loadGoogleFont } from '../utils/loadGoogleFont';
@@ -67,30 +67,18 @@ const FontSelector = ({ value, onChange, apiKey, largeur = 'w-[150px]' }) => {
         <div
           ref={listeRef}
           style={{ top: place.top, left: place.left, maxHeight: place.maxHeight ? Math.min(384, place.maxHeight) : undefined }}
-          className="fixed w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 flex flex-col">
+          className="fixed w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 flex flex-col">
           {/* Recherche */}
           <div className="p-2 border-b border-gray-200 dark:border-gray-700">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
-              />
-            </div>
+            <ChampRecherche valeur={searchQuery} onValeur={setSearchQuery} placeholder="Chercher une police…" autoFocus />
           </div>
 
           {/* Liste des polices */}
           <div className="overflow-y-auto flex-1">
             {loading ? (
-              <div className="p-4 text-center text-gray-500 dark:text-gray-400">Chargement...</div>
+              <div className="p-4 text-center text-xs text-gray-500 dark:text-gray-400">Chargement…</div>
             ) : filteredFonts.length === 0 ? (
-              <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                Aucune police trouvée
-              </div>
+              <div className="p-4 text-center text-xs text-gray-500 dark:text-gray-400">Aucune police ne correspond.</div>
             ) : (
               filteredFonts.map((font) => (
                 <button
@@ -99,14 +87,14 @@ const FontSelector = ({ value, onChange, apiKey, largeur = 'w-[150px]' }) => {
                     onChange(font.family);
                     setIsOpen(false);
                   }}
-                  className={`w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-between ${
-                    value === font.family ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                  className={`w-full h-8 px-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-between ${
+                    value === font.family ? 'bg-blue-100 dark:bg-blue-900/50' : ''
                   }`}
                 >
                   <span className="text-sm truncate flex-1" style={{ fontFamily: font.family }}>
                     {font.family}
                   </span>
-                  <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500 ml-2">
                     {font.category}
                   </span>
                 </button>

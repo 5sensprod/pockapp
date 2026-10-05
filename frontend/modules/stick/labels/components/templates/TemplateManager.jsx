@@ -1,23 +1,46 @@
-// src/features/labels/components/templates/TemplateManager.jsx
+// frontend/modules/stick/labels/components/templates/TemplateManager.jsx
+//
+// « Mes modèles » : les modèles enregistrés sur CE poste (`templateService`,
+// IndexedDB). On enregistre l'affiche en cours, on en rouvre une, on renomme,
+// duplique, exporte en `.json`, importe, supprime.
+//
+// Reste MONTÉ même quand on regarde « Modèles prêts » (`OngletsPanneau`) : il
+// écoute `request-template-save`, envoyé par `LabelPage`.
+//
+// Refait le 3 octobre 2026 : l'en-tête tient en deux rangées (recherche,
+// importer, enregistrer ; puis les catégories) — il en faisait ~170 px avec
+// son titre répété ; les deux fenêtres (enregistrer, modifier), copies l'une
+// de l'autre, n'en font plus qu'une ; les messages n'ont plus d'émoji.
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, FolderOpen, Upload, Edit2, Search, X, Tag, Loader2 } from 'lucide-react';
+import { Save, FolderOpen, Upload } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import templateService from '../../services/templateService';
+import { filtrerModeles } from '../../utils/modeles';
 import TemplateGrid from '../ui/TemplateGrid';
+import Bouton from '../ui/Bouton';
+import ChampRecherche from '../ui/ChampRecherche';
+import EtatVide from '../ui/EtatVide';
+import Segments from '../ui/Segments';
+import { BOUTON_ICONE, CHAMP } from '../ui/styles';
 
-// ✅ Ajouts : toasts + confirm (versions utilisateur existantes)
 import { useActionToasts } from '../../ui/useActionToasts';
 import { useConfirmModal } from '../../ui/useConfirmModal';
 
-const TemplateManager = ({ stageRef, docNode, onClose }) => {
+// Les identifiants sont ceux des modèles enregistrés ; seuls les mots changent
+const CATEGORIES = [
+  { id: 'all', label: 'Tous' },
+  { id: 'custom', label: 'Libres' },
+  { id: 'product', label: 'Produits' },
+  { id: 'sheet', label: 'Planches' },
+];
+
+const TemplateManager = ({ stageRef, docNode }) => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
-
-  // 🆕 États pour la sélection de produits
 
   // Données du store
   const elements = useLabelStore((s) => s.elements);
@@ -35,24 +58,15 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
 
   const fileInputRef = useRef(null);
 
-  // ✅ Toaster & Confirm (tes hooks)
   const { success, error } = useActionToasts();
   const { confirm, ConfirmModal } = useConfirmModal();
-
-  // Catégories disponibles
-  const categories = [
-    { id: 'all', label: 'Tous', icon: Tag },
-    { id: 'custom', label: 'Personnalisés', icon: Edit2 },
-    { id: 'product', label: 'Produits', icon: Tag },
-    { id: 'sheet', label: 'Planches', icon: Tag },
-  ];
 
   useEffect(() => {
     loadTemplates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 💾 Écouteur pour ouvrir le modal de sauvegarde depuis la toolbar
+  // Écouteur pour ouvrir le modal de sauvegarde depuis la toolbar
   useEffect(() => {
     const handleSaveRequest = () => {
       setShowSaveModal(true);
@@ -62,10 +76,9 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
     return () => window.removeEventListener('request-template-save', handleSaveRequest);
   }, []);
 
-  // 🔄 Écouteur pour rafraîchir la liste après une mise à jour
+  // Écouteur pour rafraîchir la liste après une mise à jour
   useEffect(() => {
-    const handleTemplateUpdated = (event) => {
-      console.log('🔄 Template mis à jour, rafraîchissement de la liste...', event.detail);
+    const handleTemplateUpdated = () => {
       loadTemplates();
     };
 
@@ -75,36 +88,29 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
   }, []);
 
   /**
-   * 📋 Charge tous les templates
+   * Charge tous les modèles du poste
    */
   const loadTemplates = async () => {
     setLoading(true);
     try {
       const allTemplates = await templateService.listTemplates();
 
-      // 🆕 FILTRER : Exclure les factory templates
-      const userTemplates = allTemplates.filter((t) => t.is_factory !== true);
-
-      console.log(`📋 [TEMPLATES] Chargés: ${userTemplates.length} templates utilisateur`);
-      console.log(
-        `🏭 [TEMPLATES] Exclus: ${allTemplates.length - userTemplates.length} factory templates`
-      );
-
-      setTemplates(userTemplates);
+      // Les modèles d'usine sont dans « Modèles prêts »
+      setTemplates(allTemplates.filter((t) => t.is_factory !== true));
     } catch (err) {
       console.error('❌ Erreur chargement templates:', err);
-      error('Impossible de charger les templates', { title: 'Erreur' });
+      error('Impossible de charger les modèles');
     } finally {
       setLoading(false);
     }
   };
 
   /**
-   * 💾 Sauvegarde le template actuel
+   * Enregistre l'affiche en cours comme modèle
    */
   const handleSaveTemplate = async (metadata) => {
     try {
-      // 🎯 Désélectionner tout avant de capturer (évite le transformer visible)
+      // Désélectionner tout avant de capturer (évite le transformer visible)
       const clearSelection = useLabelStore.getState().clearSelection;
       clearSelection();
 
@@ -135,24 +141,24 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
 
       await loadTemplates();
       setShowSaveModal(false);
-      success('Template sauvegardé ✅', { title: 'Succès' });
+      success('Modèle enregistré');
     } catch (err) {
       console.error('❌ Erreur sauvegarde:', err);
-      error('Erreur lors de la sauvegarde ❌', { title: 'Erreur' });
+      error('Enregistrement impossible');
     }
   };
 
   /**
-   * 📂 Charge un template (avec gestion de la sélection produits)
+   * Ouvre un modèle
    */
   const handleLoadTemplate = async (template) => {
     try {
       // Vérifier si le canvas actuel contient des éléments
       if (elements.length > 0) {
         const ok = await confirm({
-          title: 'Charger le template ?',
-          message: 'Charger ce template écrasera votre travail actuel.',
-          confirmText: 'Charger',
+          title: 'Ouvrir ce modèle ?',
+          message: 'L’affiche en cours sera remplacée.',
+          confirmText: 'Ouvrir',
           cancelText: 'Annuler',
           variant: 'primary',
         });
@@ -163,12 +169,12 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
       await applyTemplate(template, null);
     } catch (err) {
       console.error('❌ Erreur chargement template:', err);
-      error('Erreur lors du chargement ❌', { title: 'Erreur' });
+      error('Ouverture impossible');
     }
   };
 
   /**
-   * 🎨 Applique le template avec les produits sélectionnés (si applicable)
+   * Applique le modèle à la page
    */
   const applyTemplate = async (template) => {
     try {
@@ -177,19 +183,14 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
       clearCanvas();
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // 💾 Stocker le nom ET l'ID du template
+      // Stocker le nom ET l'ID du template
       setCurrentTemplateName(template.name || 'Template sans nom');
       const setCurrentTemplateId = useLabelStore.getState().setCurrentTemplateId;
       setCurrentTemplateId(template.id || null);
-      // 🆕 CORRECTION : Récupérer les données selon la source
+      // Récupérer les données selon la source
       // - Factory templates API : template.preset_data
       // - Templates locaux : template directement
       const templateData = template.preset_data || template;
-
-      console.log('🎨 [APPLY TEMPLATE] Structure détectée:', {
-        hasPresetData: !!template.preset_data,
-        templateData: templateData,
-      });
 
       // Vérifier que les données essentielles sont présentes
       if (!templateData.canvasSize) {
@@ -214,30 +215,29 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
 
       // Restaurer les éléments
       const elements = templateData.elements || [];
-      console.log(`🎨 [APPLY TEMPLATE] Restauration de ${elements.length} éléments`);
 
       elements.forEach((el) => {
         useLabelStore.getState().addElement(el);
       });
 
-      // 🔄 Réinitialiser l'historique après le chargement
+      // Réinitialiser l'historique après le chargement
       const resetHistory = useLabelStore.getState().resetHistory;
       resetHistory();
 
-      success('Template chargé ✅', { title: 'Succès' });
+      success('Modèle ouvert');
     } catch (err) {
       console.error('❌ Erreur application template:', err);
-      error("Erreur lors de l'application ❌", { title: 'Erreur' });
+      error('Ouverture impossible');
     }
   };
 
   /**
-   * 🗑️ Supprime un template
+   * Supprime un modèle
    */
   const handleDeleteTemplate = async (template) => {
     const ok = await confirm({
-      title: 'Supprimer le template ?',
-      message: `Cette action est irréversible.\nTemplate : "${template.name}"`,
+      title: 'Supprimer le modèle ?',
+      message: `Cette action est irréversible.\nModèle : « ${template.name} »`,
       confirmText: 'Supprimer',
       cancelText: 'Annuler',
       variant: 'danger',
@@ -247,42 +247,42 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
     try {
       await templateService.deleteTemplate(template.id);
       await loadTemplates();
-      success('Template supprimé ✅', { title: 'Succès' });
+      success('Modèle supprimé');
     } catch (err) {
       console.error('❌ Erreur suppression:', err);
-      error('Erreur lors de la suppression ❌', { title: 'Erreur' });
+      error('Suppression impossible');
     }
   };
 
   /**
-   * 🔄 Duplique un template
+   * Duplique un modèle
    */
   const handleDuplicateTemplate = async (id) => {
     try {
       await templateService.duplicateTemplate(id);
       await loadTemplates();
-      success('Template dupliqué ✅', { title: 'Succès' });
+      success('Modèle dupliqué');
     } catch (err) {
       console.error('❌ Erreur duplication:', err);
-      error('Erreur lors de la duplication ❌', { title: 'Erreur' });
+      error('Duplication impossible');
     }
   };
 
   /**
-   * 📤 Exporte un template
+   * Exporte un modèle
    */
   const handleExportTemplate = async (id) => {
     try {
       await templateService.exportTemplate(id);
-      success('Export démarré', { title: 'Info' });
+      success('Export démarré');
     } catch (err) {
       console.error('❌ Erreur export:', err);
-      error("Erreur lors de l'export ❌", { title: 'Erreur' });
+      error('Export impossible');
     }
   };
 
   /**
-   * 📥 Importe un template
+   * Importe un modèle
    */
   const handleImportTemplate = async (e) => {
     const file = e.target.files?.[0];
@@ -291,10 +291,10 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
     try {
       await templateService.importTemplate(file);
       await loadTemplates();
-      success('Template importé ✅', { title: 'Succès' });
+      success('Modèle importé');
     } catch (err) {
       console.error('❌ Erreur import:', err);
-      error("Erreur lors de l'import ❌", { title: 'Erreur' });
+      error('Import impossible');
     } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -302,165 +302,89 @@ const TemplateManager = ({ stageRef, docNode, onClose }) => {
     }
   };
 
-  // Filtrage des templates
-  const filteredTemplates = templates.filter((template) => {
-    // Filtre par catégorie
-    if (selectedCategory !== 'all' && template.category !== selectedCategory) {
-      return false;
-    }
-
-    // Filtre par recherche
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const matchName = template.name?.toLowerCase().includes(query);
-      const matchDescription = template.description?.toLowerCase().includes(query);
-      const matchTags = template.tags?.some((tag) => tag.toLowerCase().includes(query));
-
-      return matchName || matchDescription || matchTags;
-    }
-
-    return true;
-  });
+  const filteredTemplates = filtrerModeles(templates, { terme: searchQuery, categorie: selectedCategory });
+  const filtre = Boolean(searchQuery) || selectedCategory !== 'all';
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Mes Templates</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowSaveModal(true)}
-              title="Enregistrer le modèle"
-              className="flex items-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm transition-colors"
-            >
-              <Save className="h-4 w-4" />
-            </button>
-
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              title="Importer un modèle (.json)"
-              className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg text-sm transition-colors"
-            >
-              <Upload className="h-4 w-4" />
-            </button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleImportTemplate}
-              className="hidden"
-            />
-          </div>
+      <div className="flex-none px-3 py-2 space-y-2 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-1.5">
+          <ChampRecherche valeur={searchQuery} onValeur={setSearchQuery} placeholder="Chercher un modèle…" className="flex-1 min-w-0" />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="Importer un modèle (.json)"
+            aria-label="Importer un modèle (.json)"
+            className={BOUTON_ICONE}
+          >
+            <Upload className="h-4 w-4" />
+          </button>
+          <Bouton variante="principal" icone={Save} onClic={() => setShowSaveModal(true)} titre="Enregistrer l’affiche en cours comme modèle">
+            Enregistrer
+          </Bouton>
+          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportTemplate} className="hidden" />
         </div>
-
-        {/* Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Rechercher un template..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
-        {/* Categories */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors ${
-                selectedCategory === cat.id
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              <cat.icon className="h-3.5 w-3.5" />
-              {cat.label}
-            </button>
-          ))}
-        </div>
+        <Segments label="Catégorie" options={CATEGORIES} valeur={selectedCategory} onValeur={setSelectedCategory} />
       </div>
 
-      {/* Templates Grid */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto px-3 py-3">
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          </div>
+          <EtatVide chargement />
         ) : filteredTemplates.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-            <FolderOpen className="h-12 w-12 mb-2 opacity-50" />
-            <p className="text-sm">
-              {searchQuery || selectedCategory !== 'all'
-                ? 'Aucun template trouvé'
-                : 'Aucun template sauvegardé'}
-            </p>
-          </div>
+          <EtatVide
+            icone={FolderOpen}
+            titre={filtre ? 'Aucun modèle ne correspond.' : 'Aucun modèle enregistré.'}
+            action={!filtre && <Bouton onClic={() => setShowSaveModal(true)}>Enregistrer cette affiche</Bouton>}
+          />
         ) : (
           <TemplateGrid
-            templates={filteredTemplates.map((template) => ({
-              ...template,
-            }))}
+            templates={filteredTemplates}
             onLoad={handleLoadTemplate}
             onDelete={handleDeleteTemplate}
             onEdit={setEditingTemplate}
             onDuplicate={handleDuplicateTemplate}
             onExport={handleExportTemplate}
+            detail={(t) => (t.updatedAt ? new Date(t.updatedAt).toLocaleDateString('fr-FR') : null)}
           />
         )}
       </div>
 
-      {/* Modal de sauvegarde */}
-      {showSaveModal && (
-        <SaveTemplateModal onSave={handleSaveTemplate} onClose={() => setShowSaveModal(false)} />
-      )}
+      {showSaveModal && <FenetreModele onSave={handleSaveTemplate} onClose={() => setShowSaveModal(false)} />}
 
-      {/* Modal d'édition */}
       {editingTemplate && (
-        <EditTemplateModal
-          template={editingTemplate}
+        <FenetreModele
+          modele={editingTemplate}
           onSave={async (metadata) => {
             try {
               await templateService.updateTemplate(editingTemplate.id, metadata);
               await loadTemplates();
               setEditingTemplate(null);
-              success('Template mis à jour ✅', { title: 'Succès' });
+              success('Modèle mis à jour');
             } catch (err) {
               console.error('❌ Erreur update:', err);
-              error('Erreur lors de la mise à jour ❌', { title: 'Erreur' });
+              error('Mise à jour impossible');
             }
           }}
           onClose={() => setEditingTemplate(null)}
         />
       )}
 
-      {/* ✅ Modal de confirmation (pilotée par useConfirmModal) */}
       <ConfirmModal />
     </div>
   );
 };
 
+const LIBELLE = 'block mb-1 text-xs font-medium text-gray-700 dark:text-gray-300';
+
 /**
- * 💾 Modal de sauvegarde
+ * La fenêtre d'un modèle : l'enregistrer (sans `modele`) ou le modifier. Les
+ * deux étaient deux copies du même formulaire.
  */
-const SaveTemplateModal = ({ onSave, onClose }) => {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('custom');
-  const [tags, setTags] = useState('');
+const FenetreModele = ({ modele, onSave, onClose }) => {
+  const [name, setName] = useState(modele?.name ?? '');
+  const [description, setDescription] = useState(modele?.description ?? '');
+  const [category, setCategory] = useState(modele?.category ?? 'custom');
+  const [tags, setTags] = useState((modele?.tags || []).join(', '));
   const [errorName, setErrorName] = useState('');
 
   const handleSubmit = (e) => {
@@ -483,188 +407,72 @@ const SaveTemplateModal = ({ onSave, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
-        <div className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Sauvegarder le template</h3>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="w-full max-w-sm rounded-lg bg-white dark:bg-gray-800 shadow-lg">
+        <form onSubmit={handleSubmit} className="p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
+            {modele ? 'Modifier le modèle' : 'Enregistrer le modèle'}
+          </h3>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Nom *</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Mon super template"
-                className={`w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 ${
-                  errorName ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-                }`}
-                required
-              />
-              {errorName && <p className="mt-1 text-xs text-red-600">{errorName}</p>}
-            </div>
+          <div>
+            <label className={LIBELLE}>Nom</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Étiquette prix 63 × 38"
+              autoFocus
+              required
+              className={`${CHAMP} w-full ${errorName ? 'border-red-500' : ''}`}
+            />
+            {errorName && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{errorName}</p>}
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Description du template..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-              />
-            </div>
+          <div>
+            <label className={LIBELLE}>Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              className="w-full px-2 py-1.5 text-xs rounded-md border border-transparent bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:border-blue-500 focus:outline-none"
+            />
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Catégorie</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-              >
-                <option value="custom">Personnalisé</option>
-                <option value="product">Produit</option>
-                <option value="sheet">Planche</option>
-              </select>
-            </div>
+          <div>
+            <label className={LIBELLE}>Catégorie</label>
+            <Segments
+              label="Catégorie du modèle"
+              valeur={category}
+              onValeur={setCategory}
+              options={[
+                { id: 'custom', label: 'Libre' },
+                { id: 'product', label: 'Produit' },
+                { id: 'sheet', label: 'Planche' },
+              ]}
+            />
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Tags (séparés par des virgules)
-              </label>
-              <input
-                type="text"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                placeholder="étiquette, prix, promo"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-              />
-            </div>
+          <div>
+            <label className={LIBELLE}>Étiquettes, séparées par des virgules</label>
+            <input
+              type="text"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="prix, promo, vitrine"
+              className={`${CHAMP} w-full`}
+            />
+          </div>
 
-            <div className="flex items-center gap-2 pt-4">
-              <button
-                type="submit"
-                className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
-              >
-                Sauvegarder
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
-              >
-                Annuler
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/**
- * ✏️ Modal d'édition
- */
-const EditTemplateModal = ({ template, onSave, onClose }) => {
-  const [name, setName] = useState(template.name);
-  const [description, setDescription] = useState(template.description || '');
-  const [category, setCategory] = useState(template.category);
-  const [tags, setTags] = useState((template.tags || []).join(', '));
-  const [errorName, setErrorName] = useState('');
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      setErrorName('Le nom est obligatoire');
-      return;
-    }
-    setErrorName('');
-
-    onSave({
-      name: name.trim(),
-      description: description.trim(),
-      category,
-      tags: tags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean),
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
-        <div className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Éditer le template</h3>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Nom *</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className={`w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 ${
-                  errorName ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-                }`}
-                required
-              />
-              {errorName && <p className="mt-1 text-xs text-red-600">{errorName}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Catégorie</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-              >
-                <option value="custom">Personnalisé</option>
-                <option value="product">Produit</option>
-                <option value="sheet">Planche</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Tags (séparés par des virgules)
-              </label>
-              <input
-                type="text"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 pt-4">
-              <button
-                type="submit"
-                className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
-              >
-                Enregistrer
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
-              >
-                Annuler
-              </button>
-            </div>
-          </form>
-        </div>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Bouton onClic={onClose}>Annuler</Bouton>
+            <button
+              type="submit"
+              className="h-7 px-3 inline-flex items-center justify-center text-xs rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            >
+              Enregistrer
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

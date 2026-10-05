@@ -1,164 +1,144 @@
-// src/features/labels/components/templates/FormatPanel.jsx
-import React, { useState } from 'react';
-import { Maximize2 } from 'lucide-react';
+// frontend/modules/stick/labels/components/templates/FormatPanel.jsx
+//
+// LA TAILLE DE LA PAGE : deux champs, les quatre formats de papier, et les
+// autres formats repliés (`utils/formatsPage.js`).
+//
+// Refait le 3 octobre 2026 :
+// - **les deux champs SONT la taille de la page** (`canvasSize`), validés à
+//   Entrée ou en sortant. Avant, un état local pris au montage et un bouton
+//   « Appliquer » : charger un modèle changeait la page, pas les champs ;
+// - **en millimètres**, à la saisie comme à l'affichage. Le store garde des
+//   points entiers : on écrit `enPt(mm)`. Les formats d'écran (Instagram…)
+//   gardent leurs pixels sur leur tuile, c'est ainsi qu'on les connaît ;
+// - la taille n'est plus dite trois fois (encadré, carte surlignée, champs) ;
+// - chaque tuile porte une MINIATURE aux proportions du format
+//   (`miniatureFormat`) — on reconnaît un portrait d'un paysage, une story
+//   d'une bannière, sans lire — et, pour un format de réseau social, le logo
+//   du réseau, à sa couleur. C'est du contenu, pas un accent de l'interface.
+//
+// Page pilotée par la planche (`lockCanvasToSheetCell`) : tout est désactivé,
+// et un lien mène à l'onglet Produits, où se coupe l'option.
+import React from 'react';
+import { Facebook, Instagram } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
+import { FORMATS_PAGE, enMm, enPt, formatDeLaPage, miniatureFormat, mmAffiche } from '../../utils/formatsPage';
+import Bouton from '../ui/Bouton';
+import CarteProposition from '../ui/CarteProposition';
+import ChampValide from '../ui/ChampValide';
+import GrilleVignettes from '../ui/GrilleVignettes';
+import Note from '../ui/Note';
+import Section from '../ui/Section';
+import { LIGNE } from '../ui/styles';
 
-// Convertisseur points -> mm
-const PT_TO_MM = 25.4 / 72;
-const toMm = (pt, digits = 0) => {
-  if (pt == null) return '';
-  return (pt * PT_TO_MM).toFixed(digits);
+// De 1 mm à 5000 points — le maximum qu'annonçaient les anciens champs
+const MM_MIN = 1;
+const MM_MAX = enMm(5000);
+
+const PAPIER = FORMATS_PAGE.filter((f) => f.papier);
+const AUTRES = FORMATS_PAGE.filter((f) => !f.papier);
+
+// Le logo de X n'est pas dans lucide (qui a gardé l'oiseau de Twitter)
+const LogoX = ({ style }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" style={style} aria-hidden="true">
+    <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
+  </svg>
+);
+
+const LOGOS = {
+  instagram: { Logo: Instagram, couleur: '#E4405F' },
+  facebook: { Logo: Facebook, couleur: '#1877F2' },
+  x: { Logo: LogoX, couleur: '#0f172a' },
 };
 
-const FormatPanel = () => {
+/** La page en petit, à ses proportions ; dedans, le logo du réseau ou « A4 ». */
+const Miniature = ({ format, actif }) => {
+  const { width, height } = miniatureFormat(format);
+  const reseau = LOGOS[format.reseau];
+  const cote = Math.min(16, Math.min(width, height) - 4);
+  return (
+    <span className="h-8 flex items-center justify-center">
+      <span
+        className={`flex items-center justify-center rounded-[2px] bg-white ring-1 ${
+          actif ? 'ring-blue-500' : 'ring-gray-300 dark:ring-gray-500'
+        }`}
+        style={{ width, height }}
+      >
+        {reseau ? (
+          <reseau.Logo style={{ width: cote, height: cote, color: reseau.couleur }} />
+        ) : (
+          format.papier && <span className="text-[8px] font-semibold leading-none text-gray-400">{format.label.slice(0, 2)}</span>
+        )}
+      </span>
+    </span>
+  );
+};
+
+const FormatPanel = ({ onOpenTool }) => {
   const canvasSize = useLabelStore((state) => state.canvasSize);
   const setCanvasSize = useLabelStore((state) => state.setCanvasSize);
   const lockCanvasToSheetCell = useLabelStore((s) => s.lockCanvasToSheetCell);
-  const sheetMeta = useLabelStore((s) => s.sheetMeta);
-  const cellPt = useLabelStore((s) => s.cellPt);
 
-  const [customWidth, setCustomWidth] = useState(canvasSize.width);
-  const [customHeight, setCustomHeight] = useState(canvasSize.height);
+  const courant = formatDeLaPage(canvasSize);
 
-  const formats = [
-    { id: 'a4-portrait', label: 'A4 Portrait', width: 595, height: 842 },
-    { id: 'a4-landscape', label: 'A4 Paysage', width: 842, height: 595 },
-    { id: 'a5-portrait', label: 'A5 Portrait', width: 420, height: 595 },
-    { id: 'a5-landscape', label: 'A5 Paysage', width: 595, height: 420 },
-    { id: 'square-small', label: 'Carré 500×500', width: 500, height: 500 },
-    { id: 'square-medium', label: 'Carré 800×800', width: 800, height: 800 },
-    { id: 'instagram-post', label: 'Instagram Post', width: 1080, height: 1080 },
-    { id: 'instagram-story', label: 'Instagram Story', width: 1080, height: 1920 },
-    { id: 'facebook-post', label: 'Facebook Post', width: 1200, height: 630 },
-    { id: 'twitter-post', label: 'Twitter Post', width: 1200, height: 675 },
-    { id: 'flyer', label: 'Flyer', width: 600, height: 800 },
-    { id: 'banner', label: 'Bannière', width: 1200, height: 400 },
-  ];
+  const tuile = (format, detail) => (
+    <CarteProposition
+      key={format.id}
+      titre={format.label}
+      detail={detail}
+      haute
+      apercu={<Miniature format={format} actif={courant?.id === format.id} />}
+      actif={courant?.id === format.id}
+      desactive={lockCanvasToSheetCell}
+      onAjout={() => setCanvasSize(format.width, format.height)}
+    />
+  );
 
-  const handleFormatSelect = (width, height) => {
-    if (lockCanvasToSheetCell) return; // désactivé si piloté par la planche
-    setCanvasSize(width, height);
-    setCustomWidth(width);
-    setCustomHeight(height);
-  };
-
-  const handleCustomSize = () => {
-    if (lockCanvasToSheetCell) return; // désactivé si piloté par la planche
-    if (customWidth > 0 && customHeight > 0) {
-      setCanvasSize(customWidth, customHeight);
-    }
-  };
-
-  // Afficher en mm uniquement si on est en planche A4 ET canvas verrouillé
-  const isA4PlancheMode = !!lockCanvasToSheetCell && (sheetMeta?.id || '').startsWith('a4-');
-  const cellInfo =
-    isA4PlancheMode && cellPt?.width && cellPt?.height
-      ? `${toMm(cellPt.width, 0)} × ${toMm(cellPt.height, 0)} mm (cellule)`
-      : `${canvasSize.width} × ${canvasSize.height} px`;
+  const champ = (cote, titre) => (
+    <ChampValide
+      valeur={mmAffiche(canvasSize[cote])}
+      onValeur={(mm) => setCanvasSize(...(cote === 'width' ? [enPt(mm), canvasSize.height] : [canvasSize.width, enPt(mm)]))}
+      min={MM_MIN}
+      max={MM_MAX}
+      titre={titre}
+      desactive={lockCanvasToSheetCell}
+      className="w-14"
+    />
+  );
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-3">
       {lockCanvasToSheetCell && (
-        <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700 text-xs text-indigo-900 dark:text-indigo-200">
-          Le format du canvas est actuellement <strong>piloté par la planche</strong> (taille d’une
-          cellule). Désactivez cette option dans l’onglet <em>Planche</em> pour modifier librement
-          le format.
-        </div>
+        <Note
+          action={
+            onOpenTool && (
+              <Bouton variante="discret" onClic={() => onOpenTool('sheet')}>
+                Voir Produits
+              </Bouton>
+            )
+          }
+        >
+          Taille fixée par la planche.
+        </Note>
       )}
 
-      {/* Taille actuelle */}
-      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
-        <div className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-300">
-          <Maximize2 className="h-4 w-4" />
-          <span className="font-medium">Taille actuelle : {cellInfo}</span>
-        </div>
-        {isA4PlancheMode && (
-          <div className="mt-1 text-[11px] text-blue-700 dark:text-blue-300">
-            * Unités affichées en millimètres (conversion à partir des points).
-          </div>
-        )}
-      </div>
-
-      {/* Formats prédéfinis */}
-      <div>
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Formats prédéfinis
-        </h3>
-        <div className="grid grid-cols-2 gap-2">
-          {formats.map((format) => (
-            <button
-              key={format.id}
-              onClick={() => handleFormatSelect(format.width, format.height)}
-              className={`p-3 border rounded-lg text-left transition-all ${
-                canvasSize.width === format.width && canvasSize.height === format.height
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                  : `border-gray-200 dark:border-gray-700 ${
-                      lockCanvasToSheetCell
-                        ? 'opacity-50 cursor-not-allowed'
-                        : 'hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/10'
-                    }`
-              }`}
-              disabled={lockCanvasToSheetCell}
-            >
-              <div className="text-sm font-medium">{format.label}</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {isA4PlancheMode && format.id.startsWith('a4-') ? (
-                  <>
-                    {toMm(format.width, 0)} × {toMm(format.height, 0)} mm
-                  </>
-                ) : (
-                  <>
-                    {format.width} × {format.height} pt
-                  </>
-                )}
-              </div>
-            </button>
-          ))}
+      <div className={LIGNE}>
+        <span>Taille</span>
+        <div className="flex items-center gap-1.5">
+          {champ('width', 'Largeur de la page, en mm')}
+          <span className="text-gray-400">×</span>
+          {champ('height', 'Hauteur de la page, en mm')}
+          <span className="text-gray-500 dark:text-gray-400">mm</span>
         </div>
       </div>
 
-      {/* Taille personnalisée */}
-      <div>
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Taille personnalisée
-        </h3>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              value={customWidth}
-              onChange={(e) => setCustomWidth(parseInt(e.target.value) || 0)}
-              placeholder="Largeur"
-              min="100"
-              max="5000"
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              disabled={lockCanvasToSheetCell}
-            />
-            <span className="text-gray-500">×</span>
-            <input
-              type="number"
-              value={customHeight}
-              onChange={(e) => setCustomHeight(parseInt(e.target.value) || 0)}
-              placeholder="Hauteur"
-              min="100"
-              max="5000"
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              disabled={lockCanvasToSheetCell}
-            />
-          </div>
-          <button
-            onClick={handleCustomSize}
-            className={`w-full px-4 py-2 text-white rounded transition-colors ${
-              lockCanvasToSheetCell
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-500 hover:bg-blue-600'
-            }`}
-            disabled={lockCanvasToSheetCell}
-          >
-            Appliquer
-          </button>
-        </div>
-      </div>
+      <GrilleVignettes colonnes={2}>
+        {PAPIER.map((f) => tuile(f, `${enMm(f.width)} × ${enMm(f.height)} mm`))}
+      </GrilleVignettes>
+
+      {/* `key` : la section s'ouvre d'elle-même quand la page prend un de ces formats */}
+      <Section key={String(!!courant && !courant.papier)} titre="Autres formats" ouvertParDefaut={!!courant && !courant.papier}>
+        <GrilleVignettes colonnes={2}>{AUTRES.map((f) => tuile(f, `${f.width} × ${f.height} px`))}</GrilleVignettes>
+      </Section>
     </div>
   );
 };

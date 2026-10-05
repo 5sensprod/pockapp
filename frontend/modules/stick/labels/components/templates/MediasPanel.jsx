@@ -13,7 +13,7 @@ const MediasPanel = (props) => (
   <OngletsPanneau
     onglets={[
       { id: 'poste', libelle: 'Mes images', contenu: <UploadTemplate {...props} /> },
-      { id: 'pocketstock', libelle: 'PocketStock', contenu: <BibliothequeCatalogue /> },
+      { id: 'pocketstock', libelle: 'PocketStock', contenu: <BibliothequeCatalogue {...props} /> },
     ]}
   />
 );

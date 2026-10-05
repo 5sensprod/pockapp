@@ -52,10 +52,12 @@ les champs liables (`el.dataBinding`) sont dans le registre
 bloc `LiaisonProduit.jsx` du panneau de réglages, et les éléments liés (texte, photo,
 galerie `product_gallery_N`, logo de la marque `brand_image`, image de la
 catégorie `category_image`, QR, code-barres, fiche) ne s'ajoutent QUE depuis
-l'onglet orange « Données produit », par les créations uniques de
-`utils/ajoutsProduit.js`. Texte, Médias et Assets n'ajoutent que du statique — y compris le sous-onglet
-PocketStock de Médias (logos des marques, images des catégories, logo de
-l'entreprise, `lib/images-catalogue.ts`).
+l'onglet orange « Infos produit » (« Données produit » jusqu'au 3 octobre 2026 ;
+son `id` reste `donnees`), par les créations uniques de
+`utils/ajoutsProduit.js`. Texte, Images et Formes (ex-« Médias », ex-« Assets »)
+n'ajoutent que du statique — y compris le sous-onglet PocketStock d'Images
+(logos des marques, images des catégories, logo de l'entreprise,
+`lib/images-catalogue.ts`).
 `getProductField` (`utils/dataBinding.js`) est la seule résolution, à l'écran
 comme dans l'export planche. Une image a un **ajustement** (`el.fit`,
 `utils/ajustementImage.js`) : `contain` (Contenir, défaut des NOUVELLES images)
@@ -100,6 +102,16 @@ d'écriture du panneau ET des options rapides de la barre du haut
 (`ReglagesRapides.jsx`) — où il n'y a **ni couleur, ni Dupliquer, ni Supprimer**
 (décisions du propriétaire). La casse d'un texte (`el.casse`) est un style
 appliqué au dessin, jamais une réécriture du texte.
+Les panneaux qui PROPOSENT (modèles, page, texte, images, formes, dessin,
+calques, produits, infos produit) sont sur le même système depuis le 3 octobre
+2026 — `ui/CarteProposition`, `Vignette`, `LigneListe`, `TitreGroupe`,
+`EtatVide`, `Note`, `Bouton`, `ChampRecherche` ; audit et lots dans
+[`09-audit-barre-laterale.md`](frontend/modules/stick/PocketStick-docs/09-audit-barre-laterale.md)
+et `06-reprise-ui.md`. **Un nombre se saisit par `ui/ChampValide.jsx`, et par
+lui seul** : validé à Entrée, avec SES deux flèches — plus aucun
+`<input type="number">`, dont les flèches sont celles du navigateur. **Le papier
+se lit et se saisit en millimètres** (`utils/formatsPage.js`) ; le store garde
+des points entiers.
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation

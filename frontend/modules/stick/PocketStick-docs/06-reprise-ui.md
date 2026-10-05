@@ -257,3 +257,293 @@ Produits, Données produit) n'ont pas été refaits — prompt d'audit dans
 Gardiens : `reglagesParType.test.js`, `majSelection.test.js`, `casse.test.js`.
 Vérifié à l'écran par le propriétaire ; `pnpm build:client` non relancé
 depuis `aa61bc3`.
+
+---
+
+## Panneaux de propositions — audit et lot 0 (socle), 3 octobre 2026
+
+Audit par un agent design (lecture seule), sur le prompt de
+[`08-audit-design-sidebar.md`](08-audit-design-sidebar.md) ; rapport entier
+dans [`09-audit-barre-laterale.md`](09-audit-barre-laterale.md) — inventaire,
+système, maquettes, plan en dix lots.
+
+Décisions du propriétaire (les cinq questions du rapport, toutes « oui ») :
+1. barre d'icônes réordonnée et renommée — Modèles, Page | Produits, Infos |
+   Texte, Images, Formes, Dessin | Effets, Calques ; les `id` ne changent pas ;
+2. le papier en MILLIMÈTRES partout, saisie comprise ; le store garde des
+   points ;
+3. plus de sous-onglets dans Assets (le QR rejoint les formes) ni dans Page ;
+4. une seule couleur d'action : « Exporter » en bleu, « Effets » sans violet,
+   plus de badge « USINE » ;
+5. un bouton « + Ajouter » dans le bandeau des réglages, pour ajouter sans
+   désélectionner.
+
+**Lot 0 — le socle. Rien ne change à l'écran : aucun panneau ne l'importe
+encore.**
+
+| Quoi | Où |
+|---|---|
+| Classes : `PANNEAU`, `AIDE`, `TUILE`, `TUILE_PRODUIT`, `BOUTON_DISCRET`, `BOUTON_DESTRUCTIF` | `components/ui/styles.js` |
+| Bouton (principal, secondaire, discret, destructif) | `ui/Bouton.jsx` |
+| Titre d'un groupe qui ne se replie pas | `ui/TitreGroupe.jsx` |
+| Ce qu'un panneau propose d'ajouter (tuile ou ligne) | `ui/CarteProposition.jsx` |
+| Vignette d'image, et sa grille | `ui/Vignette.jsx`, `ui/GrilleVignettes.jsx` |
+| Recherche | `ui/ChampRecherche.jsx` |
+| État vide, chargement | `ui/EtatVide.jsx` |
+| Rangée de liste | `ui/LigneListe.jsx` |
+| Note d'une ligne (info, avertissement, erreur, produit) | `ui/Note.jsx` |
+| Nom, icône et états d'un calque | `utils/calques.js` |
+| Filtre des modèles | `utils/modeles.js` |
+| Formats de page, points ↔ mm (`enMm`, `enPt`) | `utils/formatsPage.js` |
+| Taille d'une case de planche | `utils/planche.js` |
+
+Seul changement dans un fichier existant : `Curseur` en `ligne` avec `champ`
+donne 56 px à sa case (le champ débordait de 40). Aucun appelant n'utilisait
+cette combinaison — `champ` ne sert qu'en `bloc` (`TraceSelectionne`).
+
+Les modules purs sont écrits mais PAS ENCORE branchés : `LayersPanel`,
+`TemplateManager`, `DesignTemplates`, `FormatPanel` et `SheetPanel` gardent
+leur copie jusqu'au lot qui les refait. `nomCalque` changera des noms à
+l'écran (« Barcode » → « Code-barres ») : c'est le lot 5.
+
+Gardiens : `calques.test.js`, `modeles.test.js`, `formatsPage.test.js`,
+`planche.test.js`. Les tests du module passent (354) ; `pnpm build:client`
+passe, mais ne prouve rien des neuf composants, que rien n'importe — ils ont
+été compilés un à un par esbuild.
+
+**Lot 1 — Texte et Formes** (3 octobre 2026, à vérifier à l'écran).
+
+- Texte : six tuiles de 64 px en deux colonnes (`TextTemplates.jsx`), au lieu
+  de six cartes pleine largeur ; même élément ajouté qu'avant.
+- Formes : UNE grille de six tuiles — cinq formes et le QR code fixe — puis la
+  couleur sur une ligne (`AssetsPanel.jsx`). Plus de sous-onglets :
+  `ShapeTemplates.jsx` et `QRCodeTemplates.jsx` y sont fondus et supprimés.
+  Mêmes éléments ajoutés (`QR_PAR_DEFAUT`, mêmes tailles de forme). Un QR
+  sélectionné ouvre toujours cet onglet (`ongletDe`, inchangé).
+- L'onglet s'appelle « Formes » (en-tête : « Formes et QR code ») ; son `id`
+  reste `shape`. Le reste de la barre d'icônes attend le lot 9.
+- Les paragraphes « … : onglet Données produit » sont des liens orange qui
+  ouvrent l'onglet (`ui/LienProduit.jsx`, par `onOpenTool`). Les aides qui
+  renvoyaient à « la barre de propriétés » et aux « Propriétés (Contenu) »,
+  disparues, sont retirées.
+
+Les tests du module passent (354) ; `pnpm build:client` passe. Pas encore vu à
+l'écran.
+
+**Lot 2 — Données produit** (3 octobre 2026, à vérifier à l'écran).
+`DonneesProduitPanel.jsx` seul.
+
+- Ordre inversé : on AJOUTE d'abord (Textes, Images et codes, Fiche produit),
+  la liste « Sur l'affiche » vient ensuite, en `Section` repliable.
+- Plus de cartes `rounded-xl` ni de phrases d'aide : trois `TitreGroupe`. Le
+  rangement dit ce que disaient les phrases — sous « Textes » le code-barres
+  arrive en numéro, sous « Images et codes » en barres dessinées.
+- Photo, logo de la marque et image de la catégorie sont trois `Vignette`
+  orange ; la galerie, quatre par rangée ; QR et sections de la fiche, des
+  lignes ; les dix champs texte, des tuiles de 40 px.
+- Le logo de l'entreprise n'y est plus (il n'est lié à rien) : il reste dans
+  Médias › PocketStock.
+- Sans produit : une `Note` orange et « Ajouter des produits » ; les
+  propositions restent visibles, désactivées — sauf les sections de la fiche,
+  qui s'ajoutent en exemple, comme avant.
+- Mêmes créations (`utils/ajoutsProduit.js`), même `LiaisonProduit` sous
+  l'élément actif de la liste. L'onglet garde son nom jusqu'au lot 9.
+
+Les tests du module passent (354) ; `pnpm build:client` passe. Pas encore vu à
+l'écran.
+
+**Lot 3 — Produits** (3 octobre 2026, à vérifier à l'écran).
+`SheetPanel.jsx`, `TiragePanel.jsx`.
+
+- Tirage : « À imprimer · N » et son bouton « Ajouter » ; une `LigneListe` par
+  produit (point bleu = celui que la page montre), quantité en `ChampValide`
+  — validée à Entrée ou en sortant, plus à chaque frappe ; format en
+  `Segments`. Mêmes actions du store (`setQuantite`, `retirerDuTirage`,
+  `goToProductIndex`, `setFormatTirage`), même `QUANTITE_MAX`.
+- Planche : UNE `Section` repliable (~250 px, elle en faisait ~850) — feuille
+  et grille en `Segments`, quatre champs, l'interrupteur « Page à la taille
+  d'une étiquette », une ligne « Étiquette 63 × 38 mm · 24 par feuille ».
+  **Les deux `useEffect` (`setSheetMeta` / `setCellPt`, page = case) restent
+  au premier niveau de `SheetPanel`** : dans la section, ils s'arrêteraient
+  quand on la replie.
+- **Marge et écart se saisissent en MILLIMÈTRES** (`enMm` / `enPt`,
+  `utils/formatsPage.js`). Le store garde des points entiers de 0 à 50 : les
+  planches enregistrées ne changent pas. Avant, le libellé disait « mm » et
+  le champ montrait des points. Un pas de flèche = 1 mm ≈ 3 pt.
+- `tailleCase` (`utils/planche.js`) est branchée : même calcul.
+- Parti : l'aperçu de la grille (la bande des pages montre les vraies
+  planches), l'encadré ambre (« Document : … px », « Total »), l'indigo, le
+  vert. « Échelle appliquée » ne s'affiche plus que si la page est réduite.
+- « Exporter tout (PDF) » est un pied collant, en bleu principal.
+
+Les tests du module passent (354) ; `pnpm build:client` passe. Pas encore vu à
+l'écran.
+
+**Lot 4 — Médias** (3 octobre 2026, à vérifier à l'écran).
+`UploadTemplate.jsx`, `BibliothequeCatalogue.jsx`, `MediasPanel.jsx`.
+
+- Mes images : un bouton « Importer des images » à la place de la zone en
+  pointillés de 148 px (aucun glisser-déposer n'y était codé) ; grille à
+  TROIS colonnes, image entière (`contain`), nom en infobulle.
+- **La corbeille est dans le coin de la vignette**, au survol, et passe par
+  `useConfirmModal` — elle était au centre, là où l'on clique pour ajouter,
+  derrière un `confirm()` du navigateur.
+- Parti : la coche « sélectionnée » (elle restait sur la dernière image
+  cliquée, sans rien dire), la grille qui défilait dans le panneau
+  (`max-h-[400px]`), trois `console.log`.
+- PocketStock : `ChampRecherche`, le logo de l'entreprise en une rangée, les
+  vignettes communes, le lien orange vers les données produit.
+- Les deux sous-onglets défilent chacun pour soi (`h-full overflow-y-auto`) :
+  la barre d'onglets reste en place.
+- L'onglet garde son nom « Médias » jusqu'au lot 9.
+
+Les tests du module passent (354) ; `pnpm build:client` passe. Pas encore vu à
+l'écran.
+
+**Lot 5 — Calques** (3 octobre 2026, à vérifier à l'écran). `LayersPanel.jsx`,
+sur `utils/calques.js` (branché ici).
+
+- **Un calque masqué ou verrouillé le montre SANS survol** : œil barré,
+  cadenas fermé. Les deux emplacements sont fixes (le nom ne saute plus) ;
+  l'état par défaut n'apparaît qu'au survol. L'icône dit l'état, l'infobulle
+  l'action. Dupliquer et Supprimer restent au survol.
+- Sélection en bleu léger, et TOUTE la sélection (`extraIds`), plus l'aplat.
+- Un trombone orange marque un élément lié à la fiche. Un calque masqué a son
+  nom en gris, plus toute la rangée à 50 %.
+- Noms par `nomCalque` : « Code-barres », « QR code », « Image », « Fond ».
+  Un tracé et une fiche ont leur icône.
+- **Le fond est épinglé en bas**, sous un filet, hors de la liste qu'on
+  réordonne : on ne peut plus glisser un élément dessous. C'est le seul
+  changement de comportement du lot.
+- NON CORRIGÉ : `moveElement` fait un pas d'historique à chaque rangée
+  franchie pendant le glisser (lu dans le store). Un glisser de cinq crans
+  demande cinq Ctrl+Z.
+
+Les tests du module passent (355) ; `pnpm build:client` passe. Pas encore vu à
+l'écran.
+
+**Lot 6 — Page** (3 octobre 2026, à vérifier à l'écran). `PagePanel.jsx`,
+`FormatPanel.jsx`, `FondPanel.jsx`.
+
+- Un seul panneau, sans sous-onglets : la taille, puis le fond sous un filet.
+  L'onglet s'appelle « Page » sous l'icône comme en en-tête.
+- **Les deux champs sont la taille de la page** (`canvasSize`), en `ChampValide` :
+  plus d'état local ni de bouton « Appliquer », donc plus de valeur périmée
+  quand un modèle change la page.
+- **En millimètres** : `mmAffiche` (le mm rond quand le papier y est à deux
+  dixièmes près, sinon le dixième), `enPt` à l'écriture. Bornes : 1 mm à
+  5000 pt. Les formats d'écran gardent leurs pixels sur leur tuile.
+- Quatre tuiles de papier (A4, A5, portrait et paysage) ; les huit autres dans
+  « Autres formats », repliée — ouverte si la page a l'un de ces formats.
+  Libellés en français (« Publication Instagram »…) ; identifiants et
+  dimensions inchangés (`utils/formatsPage.js`, branché ici).
+- Page pilotée par la planche : tout désactivé, une note et le lien « Voir
+  Produits » (l'ancien texte renvoyait à un onglet « Planche » disparu).
+- Fond : une rangée — pastille, « Sélection en fond », réajuster, retirer.
+- `ChampValide` gagne `desactive`.
+
+Les tests du module passent (357) ; `pnpm build:client` passe. Pas encore vu à
+l'écran.
+
+Retour du propriétaire sur le lot 6 (« un peu trop cheap ») : chaque tuile de
+format porte une MINIATURE à ses proportions (`miniatureFormat`,
+`formatsPage.js`) — « A4 » ou « A5 » écrit dedans pour le papier, le logo du
+réseau à sa couleur pour Instagram, Facebook et X (`reseau` dans
+`FORMATS_PAGE`). Tuiles `haute` (84 px, `CarteProposition`). Instagram et
+Facebook viennent de lucide ; le logo de X est un tracé en ligne dans
+`FormatPanel.jsx`. Tests du module (359) et `pnpm build:client` passent ; pas
+encore vu à l'écran.
+
+**Lot 7 — Modèles** (3 octobre 2026, à vérifier à l'écran).
+`TemplateManager.jsx`, `DesignTemplates.jsx`, `ui/TemplateGrid.jsx`,
+`ModelesPanel.jsx`.
+
+- L'onglet s'appelle « Modèles » partout ; ses deux vues, « Mes modèles » et
+  « Modèles prêts ». Le mot « template » ne se lit plus à l'écran.
+- En-tête de « Mes modèles » en deux rangées : recherche, importer,
+  « Enregistrer » ; puis les catégories en `Segments` (Tous, Libres, Produits,
+  Planches — `custom` s'appelait « Personnalisés »). Les aperçus commencent
+  vers 125 px, plus 218.
+- **Le menu « ⋯ » existe aussi sur un modèle SANS aperçu** (`TemplateGrid`) :
+  il n'était rendu que dans la branche `thumbnail`. C'est une liste à
+  libellés : Ouvrir, Modifier…, Dupliquer, Exporter (.json), Supprimer.
+- « Modèles prêts » passe sur la même grille, à deux colonnes : plus de badge
+  « USINE », de voile bleu, de pied de décompte. Sans aperçu, la carte montre
+  l'icône de sa catégorie.
+- Les deux fenêtres (enregistrer, modifier), copies l'une de l'autre, sont UNE
+  `FenetreModele`, sur les classes du système.
+- Messages sans émoji ; `alert()` → toast ; huit `console.log` retirés.
+  `filtrerModeles` (`utils/modeles.js`) est branché des deux côtés.
+- Inchangé : `applyTemplate`, l'écouteur `request-template-save`, les onglets
+  qui restent montés.
+- NON CORRIGÉ, hors présentation : ouvrir un modèle prêt ne demande aucune
+  confirmation, ne remet pas l'historique à zéro et ne pose ni nom ni
+  identifiant de modèle courant — `TemplateManager` fait les trois.
+
+Les tests du module passent (359) ; `pnpm build:client` passe. Pas encore vu à
+l'écran.
+
+**Lot 8 — Dessin et fenêtres flottantes** (3 octobre 2026, à vérifier à
+l'écran). `DessinPanel.jsx`, `TraceSelectionne.jsx`, `GradientColorPicker.jsx`,
+`MasqueTexture.jsx`, `ReglagesMasque.jsx`, `FontSelector.jsx`,
+`ReglagesFiche.jsx`, `utils/bruit.js` (libellés seuls).
+
+- **Le pinceau se règle comme un tracé** : noyau (couleur, épaisseur,
+  opacité) puis « Forme du trait », repliée — mêmes mots (« Adoucir »,
+  « Variation », « Effiler début »), même disposition. ~260 px au lieu de
+  ~670. Les champs numériques du pinceau ont disparu avec la disposition en
+  bloc (`Reglage` supprimé) : on règle au curseur, comme pour un tracé.
+- Sélecteur de couleur : « Uni / Dégradé » et « Linéaire / Radial / Texture »
+  sont des `Segments` ; plus d'aplat bleu.
+- **Texture, en mots de boutique** — les clés écrites ne changent pas :
+  Grain doux, Grain fin, Nuages, Cellules (`value`, `white`, `perlin`,
+  `voronoi`) ; « Variante » (`seed`) et son bouton « une autre au hasard » à
+  la place de « Graine » et du dé ; « Détail » (`octaves`) ; « Motif :
+  cellules pleines, cloisons larges, bords » (`distance`) ; « Coupure »
+  (`threshold`). « Douceur » garde son nom : le masque a déjà un « Fondu ».
+- Masque : tuiles sans bordure. Polices : `ChampRecherche`.
+- « Style du tableau » de la fiche : interrupteurs, `Curseur`, `ChampValide`,
+  `TitreGroupe` — c'était le dernier morceau « laissé tel quel ». Mêmes clés ;
+  les nombres se valident à Entrée.
+- « La variante » se valide aussi à Entrée (`ChampValide`), plus à chaque
+  frappe.
+
+Les tests du module passent (359) ; `pnpm build:client` passe. Pas encore vu à
+l'écran.
+
+**Champs numériques** (retour du propriétaire, 3 octobre 2026 : « beaucoup
+d'inputs mal présentés pour l'incrémentation, et certains sans incrémentation »).
+Un seul champ, `ui/ChampValide.jsx`, avec DEUX FLÈCHES À LUI dans le champ, à
+droite (±`pas`, Maj : ×10 ; elles ne prennent pas le focus). Il n'y a plus
+aucun `<input type="number">` dans le module : `ChampNombre` (X et Y de
+l'ombre), `Curseur` (`champ`), taille et lignes max de la fiche y sont passés.
+`sansPas` retire les flèches là où le champ est déjà encadré de « − » et
+« + » : taille de la police, quantité du tirage. `className` porte la largeur,
+sur le cadre. Conséquence : X et Y de l'ombre se valident à Entrée.
+
+**Lot 9 — barre d'icônes, barre fine, barre du haut, « + Ajouter »**
+(3 octobre 2026, à vérifier à l'écran). `ToolsSidebar.jsx`, `CanvasArea.jsx`,
+`TopToolbar.jsx`, `LabelPage.jsx`, `ReglagesCommuns.jsx`.
+
+- Ordre : Modèles, Page | Produits, Infos | Texte, Images, Formes, Dessin |
+  Effets, Calques — un filet entre les groupes. « Médias » est « Images »,
+  « Données produit » est « Infos produit ». AUCUN `id` ne change.
+- Un point bleu sur l'icône de l'onglet qui porte les réglages de l'élément
+  sélectionné, quand un autre onglet est ouvert.
+- Le X de l'en-tête est retiré (recliquer l'icône ferme, le chevron replie).
+- **« + Ajouter »**, dans l'en-tête de l'onglet quand il montre des réglages :
+  les propositions reviennent sans désélectionner. On en sort par « Réglages »
+  (au même endroit, ou celui de la barre fine — `reglagesDemandes`), en
+  sélectionnant autre chose ou en changeant d'onglet.
+- Barre fine : œil, « Réglages » et « Effets » sont trois `boutonBascule` —
+  bleu léger quand l'œil masque le cadre, ou quand leur onglet est ouvert
+  (`ongletOuvert`, passé par `LabelPage`). Plus d'ambre ni de violet.
+- Barre du haut : « Exporter la page » en bleu principal, « Nouveau » en
+  secondaire. Deux `console.log` retirés.
+- Le « ⚠ » du bandeau commun est une `Note` d'avertissement.
+
+Reste hors lots : « Ondes » du contour à main levée ; le pas d'historique par
+cran du glisser des calques ; l'ouverture d'un modèle prêt sans confirmation.
+
+Les tests du module passent (359) ; `pnpm build:client` passe. RIEN des lots 1
+à 9 n'a encore été vu à l'écran.

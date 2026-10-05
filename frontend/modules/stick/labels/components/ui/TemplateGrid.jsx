@@ -1,178 +1,171 @@
-// AppTools\src\features\labels\components\ui\TemplateGrid.jsx
+// frontend/modules/stick/labels/components/ui/TemplateGrid.jsx
+//
+// LA GRILLE DES MODÈLES, la même pour « Mes modèles » et « Modèles prêts » :
+// deux colonnes en maçonnerie (un aperçu garde les proportions de sa page), le
+// nom et un détail dessous.
+//
+// Refait le 3 octobre 2026 :
+// - **le menu « ⋯ » existe AUSSI sans aperçu**. Il n'était rendu que dans la
+//   branche `template.thumbnail` : un modèle sans aperçu ne pouvait être ni
+//   renommé, ni dupliqué, ni supprimé ;
+// - le menu est une LISTE À LIBELLÉS — c'était une colonne d'icônes muettes ;
+// - ni ombre ni dégradé : un anneau d'un pixel, bleu au survol.
+//
+// `actions` absent (les modèles prêts) : pas de menu.
 
-import React, { useState } from 'react';
-import { MoreVertical, Trash2, Copy, Download, Edit3, Play } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Copy, Download, FileText, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react';
 
-const PolotnoTemplateCard = ({
-  template,
-  isMenuOpen,
-  onMenuToggle,
-  onLoad,
-  onEdit,
-  onDuplicate,
-  onExport,
-  onDelete,
-}) => {
-  const menuButtonRef = React.useRef(null);
-  const [menuPosition, setMenuPosition] = React.useState({ top: 0, right: 0 });
+const ENTREE = 'w-full h-7 px-2 flex items-center gap-2 rounded-md text-xs text-left';
+const ENTREE_NEUTRE = `${ENTREE} text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700`;
+const ENTREE_ROUGE = `${ENTREE} text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20`;
 
-  React.useEffect(() => {
-    if (isMenuOpen && menuButtonRef.current) {
-      const rect = menuButtonRef.current.getBoundingClientRect();
-      setMenuPosition({
-        top: rect.bottom + 8,
-        right: window.innerWidth - rect.right,
-      });
+const CarteModele = ({ modele, menuOuvert, onMenu, onOuvrir, actions, detail, icone: Icone = FileText }) => {
+  const boutonMenu = useRef(null);
+  const [position, setPosition] = useState({ top: 0, right: 0 });
+
+  // Le menu est en `fixed` : il ne pousse pas la grille et sort du panneau
+  useEffect(() => {
+    if (menuOuvert && boutonMenu.current) {
+      const cadre = boutonMenu.current.getBoundingClientRect();
+      setPosition({ top: cadre.bottom + 4, right: window.innerWidth - cadre.right });
     }
-  }, [isMenuOpen]);
+  }, [menuOuvert]);
 
-  const handleMenuClick = (e, action) => {
+  const lancer = (action) => (e) => {
     e.stopPropagation();
-    onMenuToggle(false);
+    onMenu(false);
     action();
   };
 
   return (
     <div className="break-inside-avoid mb-3 group">
-      {/* Image container - hauteur dynamique */}
       <div
-        className="relative rounded-lg cursor-pointer hover:shadow-lg transition-shadow bg-white dark:bg-gray-800"
-        onClick={onLoad}
+        role="button"
+        tabIndex={0}
+        onClick={onOuvrir}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOuvrir();
+          }
+        }}
+        title={`Ouvrir « ${modele.name} »`}
+        className="relative rounded-md overflow-hidden cursor-pointer bg-white ring-1 ring-inset ring-gray-200 dark:ring-gray-600 hover:ring-2 hover:ring-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
       >
-        {template.thumbnail ? (
-          <>
-            <img
-              src={template.thumbnail}
-              alt={template.name}
-              className="w-full h-auto object-contain rounded-lg relative z-0"
-              style={{ display: 'block' }}
-            />
-
-            {/* Menu trois points - z-index élevé */}
-            <div className="absolute top-2 right-2 z-50">
-              <button
-                ref={menuButtonRef}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMenuToggle(!isMenuOpen);
-                }}
-                className="p-1.5 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-full shadow-lg hover:bg-white dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100"
-              >
-                <MoreVertical className="h-4 w-4 text-gray-700 dark:text-gray-300" />
-              </button>
-            </div>
-          </>
+        {modele.thumbnail ? (
+          <img src={modele.thumbnail} alt="" className="block w-full h-auto object-contain" loading="lazy" />
         ) : (
-          <div className="w-full aspect-[4/3] flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-lg">
-            <span className="text-gray-400 dark:text-gray-500 text-sm">Pas d'aperçu</span>
+          <div className="w-full aspect-[4/3] flex items-center justify-center bg-gray-100 dark:bg-gray-700">
+            <Icone className="h-6 w-6 text-gray-400" />
           </div>
+        )}
+
+        {actions && (
+          <button
+            ref={boutonMenu}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMenu(!menuOuvert);
+            }}
+            title="Modifier, dupliquer, exporter, supprimer"
+            aria-label={`Actions sur ${modele.name}`}
+            aria-expanded={menuOuvert}
+            className={`absolute top-1 right-1 h-6 w-6 inline-flex items-center justify-center rounded-md bg-white/90 text-gray-700 ring-1 ring-gray-200 hover:bg-white ${
+              menuOuvert ? '' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+            }`}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
         )}
       </div>
 
-      {/* Dropdown menu - position fixed pour ne pas pousser les éléments */}
-      {isMenuOpen && (
+      {menuOuvert && actions && (
         <>
-          {/* Backdrop */}
           <div
             className="fixed inset-0 z-[200]"
             onClick={(e) => {
               e.stopPropagation();
-              onMenuToggle(false);
+              onMenu(false);
             }}
           />
-
-          {/* Menu - position fixed avec calcul de position */}
           <div
-            className="fixed bg-white dark:bg-gray-800 rounded-lg shadow-2xl border-2 border-gray-200 dark:border-gray-700 p-2 z-[300] flex flex-col gap-1"
-            style={{
-              top: `${menuPosition.top}px`,
-              right: `${menuPosition.right}px`,
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2)',
-            }}
+            role="menu"
+            className="fixed z-[300] w-40 p-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
+            style={{ top: `${position.top}px`, right: `${position.right}px` }}
           >
-            <button
-              onClick={(e) => handleMenuClick(e, onLoad)}
-              className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded flex items-center justify-center text-gray-800 dark:text-gray-200 transition-colors"
-              title="Ouvrir"
-            >
-              <Play className="h-5 w-5" />
+            <button type="button" role="menuitem" onClick={lancer(onOuvrir)} className={ENTREE_NEUTRE}>
+              <Play className="h-3.5 w-3.5" />
+              Ouvrir
             </button>
-            <button
-              onClick={(e) => handleMenuClick(e, onEdit)}
-              className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded flex items-center justify-center text-gray-800 dark:text-gray-200 transition-colors"
-              title="Modifier"
-            >
-              <Edit3 className="h-5 w-5" />
+            <button type="button" role="menuitem" onClick={lancer(actions.modifier)} className={ENTREE_NEUTRE}>
+              <Pencil className="h-3.5 w-3.5" />
+              Modifier…
             </button>
-            <button
-              onClick={(e) => handleMenuClick(e, onDuplicate)}
-              className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded flex items-center justify-center text-gray-800 dark:text-gray-200 transition-colors"
-              title="Dupliquer"
-            >
-              <Copy className="h-5 w-5" />
+            <button type="button" role="menuitem" onClick={lancer(actions.dupliquer)} className={ENTREE_NEUTRE}>
+              <Copy className="h-3.5 w-3.5" />
+              Dupliquer
             </button>
-            <button
-              onClick={(e) => handleMenuClick(e, onExport)}
-              className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded flex items-center justify-center text-gray-800 dark:text-gray-200 transition-colors"
-              title="Exporter"
-            >
-              <Download className="h-5 w-5" />
+            <button type="button" role="menuitem" onClick={lancer(actions.exporter)} className={ENTREE_NEUTRE}>
+              <Download className="h-3.5 w-3.5" />
+              Exporter (.json)
             </button>
-            <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
-            <button
-              onClick={(e) => handleMenuClick(e, onDelete)}
-              className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded flex items-center justify-center text-red-600 dark:text-red-400 transition-colors"
-              title="Supprimer"
-            >
-              <Trash2 className="h-5 w-5" />
+            <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+            <button type="button" role="menuitem" onClick={lancer(actions.supprimer)} className={ENTREE_ROUGE}>
+              <Trash2 className="h-3.5 w-3.5" />
+              Supprimer
             </button>
           </div>
         </>
       )}
 
-      {/* Titre en dessous */}
-      <div className="mt-1.5 px-0.5">
-        <h3 className="text-sm font-medium text-gray-800 dark:text-white truncate">
-          {template.name}
+      <div className="mt-1 px-0.5">
+        <h3 className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate" title={modele.name}>
+          {modele.name}
         </h3>
-        {template.updatedAt && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {new Date(template.updatedAt).toLocaleDateString('fr-FR')}
-          </p>
-        )}
+        {detail && <p className="text-[11px] leading-tight text-gray-500 dark:text-gray-400 line-clamp-2">{detail}</p>}
       </div>
     </div>
   );
 };
 
-const TemplateGrid = ({ templates, onLoad, onEdit, onDuplicate, onExport, onDelete }) => {
-  const [openMenuId, setOpenMenuId] = useState(null);
+/**
+ * `templates` : les modèles. `onLoad(modele)` : l'ouvrir.
+ * `onEdit` / `onDuplicate` / `onExport` / `onDelete` : le menu — tous absents,
+ * pas de menu. `detail(modele)` : la ligne grise ; `icone(modele)` : ce que
+ * montre une carte sans aperçu.
+ */
+const TemplateGrid = ({ templates, onLoad, onEdit, onDuplicate, onExport, onDelete, detail, icone }) => {
+  const [menuOuvertId, setMenuOuvertId] = useState(null);
+  const avecMenu = Boolean(onEdit && onDuplicate && onExport && onDelete);
 
   return (
-    <div className="p-3 overflow-visible">
-      {/* Grille Masonry à 2 colonnes - gap réduit et overflow visible */}
-      <div className="columns-2 gap-3" style={{ overflow: 'visible' }}>
-        {templates.map((template) => (
-          <PolotnoTemplateCard
-            key={template.id}
-            template={template}
-            isMenuOpen={openMenuId === template.id}
-            onMenuToggle={(isOpen) => setOpenMenuId(isOpen ? template.id : null)}
-            onLoad={() => onLoad(template)}
-            onEdit={() => onEdit(template)}
-            onDuplicate={() => onDuplicate(template.id)}
-            onExport={() => onExport(template.id)}
-            onDelete={() => onDelete(template)}
+    <div className="columns-2 gap-2">
+      {templates.map((modele) => {
+        const id = modele.id ?? modele._id;
+        return (
+          <CarteModele
+            key={id}
+            modele={modele}
+            menuOuvert={menuOuvertId === id}
+            onMenu={(ouvert) => setMenuOuvertId(ouvert ? id : null)}
+            onOuvrir={() => onLoad(modele)}
+            detail={detail?.(modele)}
+            icone={icone?.(modele)}
+            actions={
+              avecMenu
+                ? {
+                    modifier: () => onEdit(modele),
+                    dupliquer: () => onDuplicate(modele.id),
+                    exporter: () => onExport(modele.id),
+                    supprimer: () => onDelete(modele),
+                  }
+                : null
+            }
           />
-        ))}
-      </div>
-
-      {/* Message si aucun template */}
-      {templates.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-gray-500">
-          <p className="text-sm">Aucun template disponible</p>
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 };

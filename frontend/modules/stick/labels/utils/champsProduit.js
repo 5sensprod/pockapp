@@ -13,7 +13,7 @@
 
 /**
  * `types` : les éléments qui peuvent porter ce champ. Un QR n'encode qu'une
- * adresse (`QRCodeTemplates.jsx`), un code-barres qu'un code, une image qu'une
+ * adresse (`AssetsPanel.jsx`), un code-barres qu'un code, une image qu'une
  * photo. Le texte accepte tout ce qui s'écrit.
  */
 export const CHAMPS_PRODUIT = [

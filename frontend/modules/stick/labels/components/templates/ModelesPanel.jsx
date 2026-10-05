@@ -1,8 +1,8 @@
 // frontend/modules/stick/labels/components/templates/ModelesPanel.jsx
 //
-// L'onglet « Templates » : les templates du poste (`TemplateManager`) et les
-// designs d'usine (`DesignTemplates`), autrefois deux onglets. Les deux
-// composants sont repris TELS QUELS, côte à côte.
+// L'onglet « Modèles » : les modèles du poste (`TemplateManager`) et les
+// modèles prêts, livrés avec l'éditeur (`DesignTemplates`), autrefois deux
+// onglets. Les deux partagent la même grille (`ui/TemplateGrid`).
 //
 // Les deux restent MONTÉS, l'inactif seulement masqué (`OngletsPanneau`) : `TemplateManager`
 // écoute `request-template-save` (envoyé par `LabelPage` pour enregistrer un
@@ -16,7 +16,7 @@ import OngletsPanneau from './OngletsPanneau';
 const ModelesPanel = ({ stageRef, docNode, onClose }) => {
   const [vue, setVue] = useState('mine');
 
-  // Enregistrer un document neuf ramène sur « Mes templates »
+  // Enregistrer un document neuf ramène sur « Mes modèles »
   React.useEffect(() => {
     const versMine = () => setVue('mine');
     window.addEventListener('request-template-save', versMine);
@@ -30,12 +30,12 @@ const ModelesPanel = ({ stageRef, docNode, onClose }) => {
       onglets={[
         {
           id: 'mine',
-          libelle: 'Mes templates',
+          libelle: 'Mes modèles',
           contenu: <TemplateManager stageRef={stageRef} docNode={docNode} onClose={onClose} />,
         },
         {
           id: 'designs',
-          libelle: 'Designs',
+          libelle: 'Modèles prêts',
           contenu: <DesignTemplates stageRef={stageRef} docNode={docNode} onClose={onClose} />,
         },
       ]}

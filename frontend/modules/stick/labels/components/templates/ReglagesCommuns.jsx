@@ -28,6 +28,7 @@ import LiaisonProduit from '../LiaisonProduit';
 import { useAlignementPage } from '../useAlignementPage';
 import { typeLiable } from '../../utils/champsProduit';
 import { ficheChangeeDepuisCorrection, texteCorrige } from '../../utils/dataBinding';
+import Note from '../ui/Note';
 import { BOUTON_ACTION, BOUTON_ICONE as bouton } from '../ui/styles';
 
 // Comme PocketStick (`ui/Properties.jsx`, ALIGN_BUTTONS) : un élément seul
@@ -129,9 +130,7 @@ const ReglagesCommuns = ({ el, docNode }) => {
             </button>
           )}
           {ficheChangee !== undefined && (
-            <p className="px-2 py-1 text-xs rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-              ⚠ La fiche dit maintenant « {ficheChangee} ».
-            </p>
+            <Note ton="avertissement">La fiche dit maintenant « {ficheChangee} ».</Note>
           )}
         </>
       )}

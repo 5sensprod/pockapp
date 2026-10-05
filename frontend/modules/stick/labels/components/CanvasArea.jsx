@@ -4,9 +4,11 @@ import KonvaCanvas, { MARGE_ESPACE } from './KonvaCanvas';
 import BandeTirage from './BandeTirage';
 import ReglagesRapides from './ReglagesRapides';
 import useLabelStore from '../store/useLabelStore';
+import { ongletDe } from '../utils/reglagesParType';
+import { boutonBascule } from './ui/styles';
 
 const CanvasArea = forwardRef(
-  ({ onDocNodeReady, onOpenReglages, onOpenEffets }, ref) => {
+  ({ onDocNodeReady, onOpenReglages, onOpenEffets, ongletOuvert = null }, ref) => {
     const zoom = useLabelStore((s) => s.zoom);
     const canvasSize = useLabelStore((s) => s.canvasSize);
     const zoomIn = useLabelStore((s) => s.zoomIn);
@@ -31,6 +33,9 @@ const CanvasArea = forwardRef(
 
     const setZoom = useLabelStore((s) => s.setZoom);
     const selectedId = useLabelStore((s) => s.selectedId);
+    // L'onglet qui porte les réglages de l'élément sélectionné : « Réglages »
+    // est allumé quand c'est lui qui est ouvert
+    const ongletReglages = useLabelStore((s) => ongletDe(s.elements.find((e) => e.id === s.selectedId)));
     const cadreMasque = useLabelStore((s) => s.cadreMasque);
     const basculerCadreMasque = useLabelStore((s) => s.basculerCadreMasque);
 
@@ -63,7 +68,7 @@ const CanvasArea = forwardRef(
     };
 
     const boutonZoom =
-      'h-7 min-w-7 px-2 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700';
+      'h-7 min-w-7 px-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700';
 
     return (
       <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-gray-100 dark:bg-gray-900">
@@ -72,7 +77,10 @@ const CanvasArea = forwardRef(
             2026) : ils sont dans la barre latérale, dans l'onglet du type de
             l'élément (`ReglagesPanel`). Il lui reste deux raccourcis vers ces
             onglets — Réglages, Effets —, l'œil, le zoom, et quelques options
-            RAPIDES (`ReglagesRapides`). Rien n'y défile. */}
+            RAPIDES (`ReglagesRapides`). Rien n'y défile.
+            Œil, Réglages et Effets sont trois bascules du système
+            (`boutonBascule`) : bleu léger quand c'est actif. Plus d'ambre —
+            réservé aux avertissements — ni de violet. */}
         <div className="flex-none h-11 flex items-center gap-2 px-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs">
           {selectedId ? (
             <>
@@ -82,11 +90,7 @@ const CanvasArea = forwardRef(
                 aria-pressed={cadreMasque}
                 aria-label={cadreMasque ? 'Afficher le cadre de sélection' : 'Masquer le cadre de sélection'}
                 title={cadreMasque ? 'Afficher le cadre de sélection (H)' : 'Masquer le cadre de sélection (H)'}
-                className={`h-7 w-7 inline-flex items-center justify-center rounded transition-colors ${
-                  cadreMasque
-                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                    : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
-                }`}
+                className={boutonBascule(cadreMasque)}
               >
                 {cadreMasque ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -95,18 +99,20 @@ const CanvasArea = forwardRef(
                 <button
                   type="button"
                   onClick={onOpenReglages}
-                  className="h-8 w-8 inline-flex items-center justify-center text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                  aria-pressed={!!ongletOuvert && ongletOuvert === ongletReglages}
+                  className={boutonBascule(!!ongletOuvert && ongletOuvert === ongletReglages)}
                   title="Tous les réglages de cet élément, dans la barre latérale"
-                  aria-label="Réglages"
                 >
                   <SlidersHorizontal className="h-4 w-4" />
+                  Réglages
                 </button>
               )}
               {onOpenEffets && (
                 <button
                   type="button"
                   onClick={onOpenEffets}
-                  className="px-3 py-1.5 text-sm font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition-colors flex items-center gap-2"
+                  aria-pressed={ongletOuvert === 'effects'}
+                  className={boutonBascule(ongletOuvert === 'effects')}
                   title="Ombre, flou, ondulation… dans l'onglet Effets"
                 >
                   <Sparkles className="h-4 w-4" />

@@ -47,12 +47,16 @@ export const LabelPage = () => {
 
   // Le bouton « Réglages » (barre fine, et barre flottante de l'élément) :
   // l'onglet du type, quel que soit celui qui est ouvert, barre latérale dépliée
+  // Un compteur : la barre latérale quitte son mode « + Ajouter » même si
+  // l'onglet est déjà le bon
+  const [reglagesDemandes, setReglagesDemandes] = useState(0);
   const handleOpenReglages = () => {
     const { elements, selectedId } = useLabelStore.getState();
     const onglet = ongletDe(elements.find((e) => e.id === selectedId));
     if (!onglet) return;
     setIsSidebarCollapsed(false);
     setSelectedTool(onglet);
+    setReglagesDemandes((n) => n + 1);
   };
   // Le bouton « Effets » de la barre fine
   const handleOpenEffets = () => {
@@ -237,6 +241,7 @@ export const LabelPage = () => {
           selectedProduct={displayProduct}
           selectedTool={selectedTool}
           onToolChange={setSelectedTool}
+          reglagesDemandes={reglagesDemandes}
           docNode={docNode}
           stageRef={stageRef}
         />
@@ -247,6 +252,7 @@ export const LabelPage = () => {
           onDocNodeReady={setDocNode}
           onOpenReglages={handleOpenReglages}
           onOpenEffets={handleOpenEffets}
+          ongletOuvert={isSidebarCollapsed ? null : selectedTool}
         />
       </div>
     </div>

@@ -47,7 +47,7 @@ export const Taille = ({ el, maj }) => {
       <button type="button" onClick={(e) => poser(taille - (e.shiftKey ? 10 : 1))} className={`${BOUTON_ICONE} w-6`} title="Plus petit (Maj : −10)">
         <Minus className="h-3.5 w-3.5" />
       </button>
-      <ChampValide valeur={taille} onValeur={poser} min={TAILLE_MIN} max={TAILLE_MAX} titre="Taille de la police (px)" className="w-11 px-1" />
+      <ChampValide valeur={taille} onValeur={poser} min={TAILLE_MIN} max={TAILLE_MAX} titre="Taille de la police (px)" sansPas className="w-11" />
       <button type="button" onClick={(e) => poser(taille + (e.shiftKey ? 10 : 1))} className={`${BOUTON_ICONE} w-6`} title="Plus grand (Maj : +10)">
         <Plus className="h-3.5 w-3.5" />
       </button>
@@ -133,7 +133,7 @@ export const ContourSimple = ({ el, maj }) => (
       max={CONTOUR_MAX}
       pas={0.5}
       titre="Épaisseur du contour (px) — 0 : pas de contour"
-      className="w-10 px-1"
+      className="w-12"
       onValeur={(strokeWidth) =>
         maj({ strokeWidth, ...(strokeWidth > 0 && !el.stroke && !el.strokeGradient ? { stroke: '#000000' } : {}) })
       }

@@ -4,59 +4,55 @@
 // l'entreprise, les logos des marques et les images des catégories, à poser
 // sur l'affiche comme des images FIXES (`ajouterImageFixe`) — elles ne
 // suivent aucun produit. Pour le logo de LA marque du produit affiché, c'est
-// l'onglet « Données produit ».
+// l'onglet « Données produit » : le lien orange du bas y mène.
 //
 // Les données viennent des requêtes vivantes du dépôt
 // (`lib/use-images-catalogue.ts`) ; rien n'est copié dans le poste.
+//
+// Allégé le 3 octobre 2026 : la recherche d'abord, le logo de l'entreprise en
+// UNE rangée (il occupait ~140 px pour une image) — le premier logo de marque
+// remonte de ~350 à ~190 px.
 
 import React, { useState } from 'react';
-import { Search } from 'lucide-react';
 import { useImagesCatalogue } from '../../lib/use-images-catalogue';
 import { filtrerImages } from '../../lib/images-catalogue';
 import { ajouterImageFixe } from '../../utils/ajoutsProduit';
+import ChampRecherche from '../ui/ChampRecherche';
+import EtatVide from '../ui/EtatVide';
+import GrilleVignettes from '../ui/GrilleVignettes';
+import LienProduit from '../ui/LienProduit';
+import LigneListe from '../ui/LigneListe';
+import Note from '../ui/Note';
+import TitreGroupe from '../ui/TitreGroupe';
+import Vignette from '../ui/Vignette';
+import { AIDE, PANNEAU } from '../ui/styles';
 
 // Au-delà, la grille ne montre que le début : on affine par la recherche
 const PLAFOND = 60;
 
-const Vignette = ({ image }) => (
-  <button
-    type="button"
-    onClick={() => ajouterImageFixe(image)}
-    className="group flex flex-col items-center gap-1 p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-400 bg-white dark:bg-gray-900"
-    title={`Ajouter « ${image.nom} » à l'affiche`}
-  >
-    <span className="w-full aspect-square flex items-center justify-center overflow-hidden rounded bg-gray-50 dark:bg-gray-800">
-      <img src={image.src} alt="" className="max-w-full max-h-full object-contain" loading="lazy" />
-    </span>
-    <span className="w-full text-[11px] leading-tight text-center text-gray-700 dark:text-gray-300 truncate">{image.nom}</span>
-  </button>
-);
-
 const Rayon = ({ titre, images, total, vide }) => (
-  <section>
-    <h3 className="mb-2 text-xs font-medium text-gray-800 dark:text-gray-200">
-      {titre} <span className="font-normal text-gray-500 dark:text-gray-400">· {total}</span>
-    </h3>
+  <section className="space-y-2">
+    <TitreGroupe titre={titre} compte={total} />
     {images.length ? (
       <>
-        <div className="grid grid-cols-3 gap-2">
+        <GrilleVignettes colonnes={3}>
           {images.slice(0, PLAFOND).map((image) => (
-            <Vignette key={image.id} image={image} />
+            <Vignette key={image.id} src={image.src} nom={image.nom} montrerNom onClic={() => ajouterImageFixe(image)} />
           ))}
-        </div>
+        </GrilleVignettes>
         {images.length > PLAFOND && (
-          <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-            {PLAFOND} affichées sur {images.length} : précisez la recherche pour voir les autres.
+          <p className={AIDE}>
+            {PLAFOND} sur {images.length} — cherchez pour voir les autres.
           </p>
         )}
       </>
     ) : (
-      <p className="text-xs text-gray-500 dark:text-gray-400">{vide}</p>
+      <p className={AIDE}>{vide}</p>
     )}
   </section>
 );
 
-const BibliothequeCatalogue = () => {
+const BibliothequeCatalogue = ({ onOpenTool }) => {
   const { marques, categories, entreprise, chargement } = useImagesCatalogue();
   const [terme, setTerme] = useState('');
   const marquesFiltrees = filtrerImages(marques, terme);
@@ -64,39 +60,22 @@ const BibliothequeCatalogue = () => {
   const cherche = terme.trim() !== '';
 
   return (
-    <div className="p-3 space-y-4 overflow-y-auto h-full">
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        Images fixes, tirées de PocketStock. Pour le logo de la marque du produit affiché, qui change avec lui : onglet{' '}
-        <span className="text-orange-600 dark:text-orange-400">Données produit</span>.
-      </p>
+    <div className={`${PANNEAU} overflow-y-auto h-full`}>
+      <ChampRecherche valeur={terme} onValeur={setTerme} placeholder="Chercher une marque, une catégorie…" />
 
-      <div className="relative">
-        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <input
-          type="search"
-          value={terme}
-          onChange={(e) => setTerme(e.target.value)}
-          placeholder="Chercher une marque, une catégorie…"
-          className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-        />
-      </div>
+      {chargement && <EtatVide chargement />}
 
-      {chargement && <p className="text-xs text-gray-500 dark:text-gray-400">Chargement…</p>}
-
-      {!cherche && (
-        <section>
-          <h3 className="mb-2 text-xs font-medium text-gray-800 dark:text-gray-200">Entreprise</h3>
-          {entreprise ? (
-            <div className="grid grid-cols-3 gap-2">
-              <Vignette image={entreprise} />
-            </div>
-          ) : (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              L'entreprise n'a pas de logo. Il se dépose dans les réglages de l'entreprise.
-            </p>
-          )}
-        </section>
-      )}
+      {!cherche &&
+        (entreprise ? (
+          <LigneListe
+            avant={<img src={entreprise.src} alt="" className="h-6 w-6 flex-none rounded bg-white object-contain" loading="lazy" />}
+            titre="Logo de l’entreprise"
+            onClic={() => ajouterImageFixe(entreprise)}
+            title="Ajouter le logo de l’entreprise à l’affiche"
+          />
+        ) : (
+          <Note>Pas de logo d’entreprise (Réglages).</Note>
+        ))}
 
       <Rayon
         titre="Marques"
@@ -110,6 +89,8 @@ const BibliothequeCatalogue = () => {
         total={cherche ? `${categoriesFiltrees.length} sur ${categories.length}` : categories.length}
         vide={cherche ? 'Aucune catégorie avec une image ne correspond.' : 'Aucune catégorie ne porte d’image.'}
       />
+
+      {onOpenTool && <LienProduit onClic={() => onOpenTool('donnees')}>Logo de la marque du produit</LienProduit>}
     </div>
   );
 };
