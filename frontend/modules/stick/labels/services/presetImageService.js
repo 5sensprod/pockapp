@@ -20,6 +20,13 @@ const DB_NAME = 'LabelPresetImagesDB'
 const DB_VERSION = 1
 const STORE = 'images'
 
+/**
+ * Marque d'origine d'une image DÉTOURÉE (`lib/detourage.ts`). Une image sans
+ * marque — toutes celles stockées avant le détourage — est une image importée.
+ */
+export const ORIGINE_GENERATION = 'generation'
+const estGeneree = (image) => image?.origine === ORIGINE_GENERATION
+
 class PresetImageService {
 	constructor() {
 		this.db = null
@@ -102,6 +109,45 @@ class PresetImageService {
 			console.error('❌ [PRESET-IMAGES] Erreur liste images:', error)
 			return []
 		}
+	}
+
+	/** 📋 Les images IMPORTÉES (« Mes images ») : tout sauf les générées. */
+	async listerImportees() {
+		return (await this.listImages()).filter((image) => !estGeneree(image))
+	}
+
+	/** 📋 Les images GÉNÉRÉES (sous-onglet « Génération »), la plus récente d'abord. */
+	async listerGenerees() {
+		return (await this.listImages()).filter(estGeneree)
+	}
+
+	/**
+	 * 🪄 Range une image détourée. `src` est une data URL — même forme qu'une
+	 * image importée, aucune adresse distante ne se retrouve stockée.
+	 * `depuis` : le nom de l'image de départ. Rejette si l'écriture échoue
+	 * (quota IndexedDB) : l'appelant décide quoi faire.
+	 */
+	async ajouterGeneree({ src, depuis = '', size = 0, type = 'image/png' }) {
+		const db = await this.initDB()
+		const base = String(depuis || 'image').replace(/\.[a-z0-9]{2,5}$/i, '')
+		const image = {
+			filename: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${base}-detouree.png`,
+			name: `${base} (détourée)`,
+			src,
+			size,
+			type,
+			createdAt: new Date().toISOString(),
+			origine: ORIGINE_GENERATION,
+			depuis: String(depuis || ''),
+		}
+		await new Promise((resolve, reject) => {
+			const tx = db.transaction([STORE], 'readwrite')
+			tx.oncomplete = () => resolve()
+			tx.onerror = () => reject(tx.error)
+			tx.onabort = () => reject(tx.error)
+			tx.objectStore(STORE).put(image)
+		})
+		return image
 	}
 
 	async getImageInfo(filename) {

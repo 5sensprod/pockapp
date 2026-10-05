@@ -112,6 +112,20 @@ lui seul** : validé à Entrée, avec SES deux flèches — plus aucun
 `<input type="number">`, dont les flèches sont celles du navigateur. **Le papier
 se lit et se saisit en millimètres** (`utils/formatsPage.js`) ; le store garde
 des points entiers.
+Le **détourage IA** d'une image (5 octobre 2026,
+[`10-detourage-ia.md`](frontend/modules/stick/PocketStick-docs/10-detourage-ia.md),
+point 3 des entrées réseau) est le bouton « Détourer » du noyau d'une image
+(`ReglagesImage.jsx`) ; toute la logique est dans `labels/lib/detourage.ts`. Il
+**remplace la photo sans aperçu** (Ctrl+Z la rend), ne se propose ni sur une photo
+liée au produit, ni verrouillée, ni en sélection multiple, et n'affiche aucun prix.
+**Une image générée est rangée avant d'être posée** : dès que la route rend le PNG,
+`presetImageService.ajouterGeneree` le garde (`origine: 'generation'`) AVANT de
+toucher à l'élément, puis la pose n'a lieu que si l'élément existe encore, n'est pas
+verrouillé et porte la même `src` — sinon rien n'est écrasé et l'image attend dans le
+sous-onglet **« Génération »** de Médias (`UploadTemplate` filtré ; « Mes images » ne
+montre plus que les images importées ou sans marque). Le rangement ne dépend pas de
+l'historique : Ctrl+Z rend l'originale, l'image détourée reste. `SEUIL_ENVOI_OCTETS`
+(2 Mio) est le plafond d'envoi supposé, à relever après mesure du serveur.
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation
@@ -146,12 +160,21 @@ Trois, et trois seulement :
    consommateur. Depuis le 10 septembre 2026, plus aucun écran ne lit AppPos :
    le seul importateur de `@/lib/apppos` est `main.tsx:6`
    (`AppPosSessionProvider`, la session ouverte au lancement).
-3. **Mini-SaaS distant** — `remote_notifications.go:27` et
-   `backend/routes/gemini_routes.go` —
-   `pocketapp.5sensprod.com/api/notifications.php` pour les notifications et
-   `/api/usage.php` pour déclarer les jetons Gemini, en-tête `X-API-Key`.
-   Notifications, clés API, crédits IA. Télémétrie uniquement, jamais de
-   catalogue.
+3. **Mini-SaaS distant** — `remote_notifications.go:27`,
+   `backend/routes/gemini_routes.go` et `backend/routes/detourage_routes.go` —
+   `pocketapp.5sensprod.com/api/notifications.php` pour les notifications,
+   `/api/usage.php` pour déclarer les jetons Gemini, et depuis le 5 octobre
+   2026 `/api/detourage.php`, en-tête `X-API-Key` (clé des notifications) et
+   `User-Agent` explicite. Notifications, clés API, crédits IA : télémétrie,
+   jamais de catalogue — **sauf `detourage.php`, qui porte le CONTENU d'une
+   image** (POST multipart, PNG/JPEG/WebP ≤ 20 Mio, le PNG détouré revient dans
+   la réponse), première sortie de ce type du dépôt. La clé du fournisseur
+   d'images n'est PAS sur le poste : le mini-SaaS l'appelle, décompte les
+   crédits IA et renvoie l'image ; la route `POST /api/ai/remove-background`
+   n'appelle donc pas `usage.php`. Refuse de partir hors HTTPS ; type vérifié
+   sur les octets, réponse vérifiée PNG. Erreurs rendues avec leur `code`
+   (`credit_epuise` ≠ `fournisseur_en_echec`). Gardien :
+   `detourage_routes_test.go`.
 
 Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
 

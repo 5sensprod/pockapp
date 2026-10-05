@@ -1,6 +1,9 @@
 // frontend/modules/stick/labels/components/templates/UploadTemplate.jsx
 //
 // « Mes images » : la bibliothèque du POSTE (`presetImageService`, IndexedDB).
+// Avec `origine="generation"`, la MÊME liste filtrée sur les images détourées
+// (`lib/detourage.ts`) : sous-onglet « Génération », sans import — ces images
+// viennent du bouton « Détourer » —, mêmes poses et même suppression.
 // On importe, on clique une vignette pour la poser sur l'affiche — entière,
 // centrée, à ses proportions.
 //
@@ -10,12 +13,13 @@
 // centre, là où l'on clique pour ajouter l'image, avec le seul `confirm()` du
 // navigateur pour filet. La grille ne défile plus dans le panneau qui défile.
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Upload, Image as ImageIcon, Scissors, Trash2 } from 'lucide-react';
 import presetImageService from '../../services/presetImageService';
 import useLabelStore from '../../store/useLabelStore';
 import { cadreSurCanvas } from '../../utils/imagePlacement';
 import { AJUSTEMENT_NOUVELLE_IMAGE } from '../../utils/ajustementImage';
 import { useConfirmModal } from '../../ui/useConfirmModal';
+import { useEtatDetourage } from '../../lib/detourage';
 import Bouton from '../ui/Bouton';
 import EtatVide from '../ui/EtatVide';
 import GrilleVignettes from '../ui/GrilleVignettes';
@@ -24,7 +28,8 @@ import TitreGroupe from '../ui/TitreGroupe';
 import Vignette from '../ui/Vignette';
 import { PANNEAU } from '../ui/styles';
 
-const UploadTemplate = ({ onImageSelected }) => {
+const UploadTemplate = ({ onImageSelected, origine = 'import' }) => {
+  const generation = origine === 'generation';
   const { addElementCentre } = useLabelStore();
   const [availableImages, setAvailableImages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -34,10 +39,13 @@ const UploadTemplate = ({ onImageSelected }) => {
 
   const fileInputRef = useRef(null);
 
+  // Une image vient d'être rangée par un détourage : la liste « Génération » s'y relit
+  const rangees = useEtatDetourage((s) => s.rangees);
+
   // Charger les images au montage
   useEffect(() => {
     loadImages();
-  }, []);
+  }, [rangees]);
 
   /**
    * Charger la bibliothèque d'images
@@ -46,7 +54,9 @@ const UploadTemplate = ({ onImageSelected }) => {
     setLoading(true);
     setError(null);
     try {
-      const images = await presetImageService.listImages();
+      const images = generation
+        ? await presetImageService.listerGenerees()
+        : await presetImageService.listerImportees();
       setAvailableImages(images || []);
     } catch (err) {
       console.error('❌ Erreur chargement images:', err);
@@ -196,6 +206,7 @@ const UploadTemplate = ({ onImageSelected }) => {
         onChange={handleFileSelect}
         className="hidden"
       />
+      {!generation && (
       <Bouton
         plein
         icone={Upload}
@@ -205,6 +216,7 @@ const UploadTemplate = ({ onImageSelected }) => {
       >
         {uploading ? 'Import en cours…' : 'Importer des images'}
       </Bouton>
+      )}
 
       {error && (
         <Note
@@ -221,7 +233,7 @@ const UploadTemplate = ({ onImageSelected }) => {
 
       <div className="space-y-2">
         <TitreGroupe
-          titre="Mes images"
+          titre={generation ? 'Génération' : 'Mes images'}
           compte={availableImages.length}
           action={
             !loading &&
@@ -236,7 +248,15 @@ const UploadTemplate = ({ onImageSelected }) => {
         {loading ? (
           <EtatVide chargement />
         ) : availableImages.length === 0 ? (
-          <EtatVide icone={ImageIcon} titre="Aucune image importée." />
+          generation ? (
+            <EtatVide
+              icone={Scissors}
+              titre="Aucune image détourée."
+              detail="Les images détourées avec le bouton « Détourer » d'une image de l'affiche sont rangées ici."
+            />
+          ) : (
+            <EtatVide icone={ImageIcon} titre="Aucune image importée." />
+          )
         ) : (
           <GrilleVignettes colonnes={3}>
             {availableImages.map((image) => (

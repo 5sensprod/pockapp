@@ -2,11 +2,11 @@
 //
 // Les réglages d'une IMAGE (onglet Médias, à la place de la bibliothèque
 // quand une image est sélectionnée). Des ATOMES en `({ el, maj })`, composés
-// par `Noyau` (les réglages courants, en trois rangées sans titre) et par la
+// par `Noyau` (les réglages courants, en quatre rangées sans titre) et par la
 // barre du haut (`ReglagesRapides`). Mêmes clés écrites qu'avant.
 
 import React from 'react';
-import { Crop, FlipHorizontal2, FlipVertical2 } from 'lucide-react';
+import { Crop, FlipHorizontal2, FlipVertical2, Scissors } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import Curseur from '../ui/Curseur';
 import { geometrieImage } from '../canvas/CropOverlay';
@@ -14,6 +14,16 @@ import { estContenu } from '../../utils/ajustementImage';
 import { resetCropAttrs } from '../../utils/crop';
 import { resolvePropForElement } from '../../utils/dataBinding';
 import Segments from '../ui/Segments';
+import Bouton from '../ui/Bouton';
+import Note from '../ui/Note';
+import presetImageService from '../../services/presetImageService';
+import { usePocketBase } from '@/lib/use-pocketbase';
+import {
+  effacerMessageDetourage,
+  lancerDetourage,
+  peutDetourer,
+  useEtatDetourage,
+} from '../../lib/detourage';
 import { BOUTON_ACTION, BOUTON_PRINCIPAL, boutonBascule } from '../ui/styles';
 
 // ── Atomes ──────────────────────────────────────────────────────────────────
@@ -73,6 +83,51 @@ export const Miroirs = ({ el, maj }) => (
   </div>
 );
 
+/**
+ * Détourer (`lib/detourage.ts`) : le détourage IA remplace la photo, sans
+ * aperçu ; Ctrl+Z rend l'originale, et l'image détourée reste rangée dans
+ * « Génération ». Bouton SECONDAIRE : l'aplat bleu est pris par la validation.
+ * Désactivé, la raison en infobulle. Le résultat et les erreurs sont dans une
+ * Note, pas un message fugitif.
+ */
+export const Detourer = ({ el }) => {
+  const pb = usePocketBase();
+  // La sélection entière, pas seulement les images : `nombre` de `useMajSelection` n'en compte que du même type
+  const nombre = useLabelStore((s) => (s.selectedId ? 1 + s.extraIds.length : 0));
+  const { enCours, erreur, info } = useEtatDetourage();
+  const refus = peutDetourer(el, nombre, enCours);
+  const message = erreur
+    ? { ton: 'erreur', texte: erreur.message }
+    : info
+      ? { ton: info.ton, texte: info.message }
+      : null;
+  return (
+    <div className="space-y-1.5">
+      <Bouton
+        icone={Scissors}
+        plein
+        desactive={!refus.ok}
+        titre={refus.ok ? "Retire le fond de l'image (service payant). Ctrl+Z rend la photo d'origine." : refus.raison}
+        onClic={() => lancerDetourage(el, nombre, { pb, store: useLabelStore, bibliotheque: presetImageService })}
+      >
+        {enCours ? 'Détourage en cours…' : 'Détourer'}
+      </Bouton>
+      {message && (
+        <Note
+          ton={message.ton}
+          action={
+            <Bouton variante="discret" onClic={effacerMessageDetourage}>
+              Fermer
+            </Bouton>
+          }
+        >
+          {message.texte}
+        </Note>
+      )}
+    </div>
+  );
+};
+
 // Pendant un recadrage : valider, ou revenir à l'image entière
 const RecadrageEnCours = ({ el, maj }) => {
   const stopCrop = useLabelStore((s) => s.stopCrop);
@@ -108,8 +163,8 @@ const RecadrageEnCours = ({ el, maj }) => {
 const rangee = 'flex items-center justify-between gap-2 min-h-7';
 
 /**
- * LES RÉGLAGES COURANTS d'une image, en trois rangées : ajustement et
- * recadrage ; miroirs et taille du cadre ; opacité.
+ * LES RÉGLAGES COURANTS d'une image, en quatre rangées : ajustement et
+ * recadrage ; miroirs et taille du cadre ; opacité ; détourage.
  */
 export const Noyau = ({ el, maj }) => {
   const cropId = useLabelStore((s) => s.cropId);
@@ -141,6 +196,7 @@ export const Noyau = ({ el, maj }) => {
         defaut={1}
         onValeur={(opacity) => maj({ opacity })}
       />
+      <Detourer el={el} />
     </div>
   );
 };
