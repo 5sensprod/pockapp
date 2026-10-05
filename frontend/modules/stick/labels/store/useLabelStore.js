@@ -3,12 +3,20 @@ import { create } from 'zustand';
 import { quantiteValide } from '../lib/tirage';
 import { cadreDuCanvas, fondDe, placerAuCentre } from '../utils/placement';
 import { extraireStyle, reordonner, styleApplicable } from '../utils/styleCopie';
-import { cleGeste, prolongeGeste } from '../utils/gesteHistorique';
+import {
+  SANS_DELAI,
+  cleGeste,
+  cleGesteTenu,
+  memeOrdre,
+  pasDuGesteTenu,
+  prolongeGeste,
+} from '../utils/gesteHistorique';
 import { DRAW_DEFAULTS, elementDessin, redessiner } from '../utils/dessin';
 import { formeDepuisDessin } from '../utils/formeLibre';
 
-// Geste en cours de `updateElement` (`utils/gesteHistorique.js`) ; toute
-// autre étape d'historique, et undo/redo, le terminent.
+// Geste en cours de `updateElement` ou de `moveElement` (glisser un calque) —
+// `utils/gesteHistorique.js` ; toute autre étape d'historique, et undo/redo,
+// le terminent.
 let gesteEnCours = null;
 
 const HISTORY_LIMIT = 100;
@@ -416,13 +424,40 @@ const useLabelStore = create((set, get) => ({
       return { elements: state.elements.filter((e) => e.id !== fond.id) };
     }),
 
-  moveElement: (fromIndex, toIndex) =>
+  /**
+   * Déplace un calque. `geste` (`nouveauGeste()`, pris au début d'un glisser)
+   * regroupe tous les crans du glisser en UN pas d'historique — l'état d'avant
+   * le geste —, et le retire si le calque revient à sa place : ce qu'on
+   * pouvait rétablir avant le geste l'est de nouveau. Sans `geste`, un appel
+   * est un pas.
+   */
+  moveElement: (fromIndex, toIndex, { geste } = {}) =>
     set((state) => {
-      state._pushHistory(snapshotOf(state));
       const newElements = [...state.elements];
       const [moved] = newElements.splice(fromIndex, 1);
       newElements.splice(toIndex, 0, moved);
-      return { elements: newElements };
+      if (geste == null) {
+        state._pushHistory(snapshotOf(state));
+        return { elements: newElements };
+      }
+
+      const cle = cleGesteTenu('ordre', geste);
+      const t = Date.now();
+      const prec = prolongeGeste(gesteEnCours, cle, t, SANS_DELAI) ? gesteEnCours : null;
+      const depart = prec ? prec.depart : snapshotOf(state);
+      const futur = prec ? prec.futur : state.historyFuture;
+      const revenu = memeOrdre(newElements, depart.elements);
+      const action = pasDuGesteTenu({ pose: !!prec?.pose, revenu });
+
+      let historique = {};
+      if (action === 'poser') state._pushHistory(depart);
+      if (action === 'retirer') {
+        const historyPast = state.historyPast.slice(0, -1);
+        historique = { historyPast, historyFuture: futur, canUndo: historyPast.length > 0, canRedo: futur.length > 0 };
+      }
+      // Après `_pushHistory`, qui termine tout geste en cours
+      gesteEnCours = { cle, t, depart, futur, pose: !revenu };
+      return { elements: revenu ? depart.elements : newElements, ...historique };
     }),
 
   // --- sélection

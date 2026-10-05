@@ -14,10 +14,12 @@
 //   rester le premier calque (`poserFond`, store), et rien n'empêchait de
 //   glisser un élément dessous.
 //
-// Le glisser-déposer est celui d'avant (HTML5, `moveElement` à chaque rangée
-// franchie) : chaque cran fait toujours un pas d'historique.
+// Le glisser-déposer est en HTML5 : `moveElement` à chaque rangée franchie,
+// pour que l'ordre suive la souris. Tous les crans d'un glisser portent le
+// même numéro de geste (`nouveauGeste`, pris à `onDragStart`) : le store en
+// fait UN pas d'historique, et aucun si le calque revient à sa place.
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Lock,
   Unlock,
@@ -38,6 +40,7 @@ import {
 } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import { etatsCalque, iconeCalque, nomCalque } from '../../utils/calques';
+import { nouveauGeste } from '../../utils/gesteHistorique';
 import EtatVide from '../ui/EtatVide';
 import LigneListe from '../ui/LigneListe';
 import { AIDE } from '../ui/styles';
@@ -69,15 +72,18 @@ const LayersPanel = () => {
   const moveElement = useLabelStore((s) => s.moveElement);
 
   const [draggedIndex, setDraggedIndex] = useState(null);
+  // Le glisser en cours : un numéro par geste, pas par cran
+  const geste = useRef(null);
 
   const onDragStart = (e, i) => {
+    geste.current = nouveauGeste();
     setDraggedIndex(i);
     e.dataTransfer.effectAllowed = 'move';
   };
   const onDragOver = (e, i) => {
     e.preventDefault();
     if (draggedIndex !== null && draggedIndex !== i) {
-      moveElement(draggedIndex, i);
+      moveElement(draggedIndex, i, { geste: geste.current });
       setDraggedIndex(i);
     }
   };

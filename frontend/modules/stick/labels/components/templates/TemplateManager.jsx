@@ -16,6 +16,7 @@ import { Save, FolderOpen, Upload } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import templateService from '../../services/templateService';
 import { filtrerModeles } from '../../utils/modeles';
+import { ouvrirModele } from '../../utils/ouvrirModele';
 import TemplateGrid from '../ui/TemplateGrid';
 import Bouton from '../ui/Bouton';
 import ChampRecherche from '../ui/ChampRecherche';
@@ -48,13 +49,6 @@ const TemplateManager = ({ stageRef, docNode }) => {
   const sheetSettings = useLabelStore((s) => s.sheetSettings);
   const lockCanvasToSheetCell = useLabelStore((s) => s.lockCanvasToSheetCell);
   const dataSource = useLabelStore((s) => s.dataSource);
-  const setCurrentTemplateName = useLabelStore((s) => s.setCurrentTemplateName);
-
-  // Actions du store
-  const setCanvasSize = useLabelStore((s) => s.setCanvasSize);
-  const setSheetSettings = useLabelStore((s) => s.setSheetSettings);
-  const setLockCanvasToSheetCell = useLabelStore((s) => s.setLockCanvasToSheetCell);
-  const clearCanvas = useLabelStore((s) => s.clearCanvas);
 
   const fileInputRef = useRef(null);
 
@@ -149,84 +143,14 @@ const TemplateManager = ({ stageRef, docNode }) => {
   };
 
   /**
-   * Ouvre un modèle
+   * Ouvre un modèle — règle partagée avec « Modèles prêts » (`utils/ouvrirModele.js`)
    */
   const handleLoadTemplate = async (template) => {
     try {
-      // Vérifier si le canvas actuel contient des éléments
-      if (elements.length > 0) {
-        const ok = await confirm({
-          title: 'Ouvrir ce modèle ?',
-          message: 'L’affiche en cours sera remplacée.',
-          confirmText: 'Ouvrir',
-          cancelText: 'Annuler',
-          variant: 'primary',
-        });
-        if (!ok) return;
-      }
-
-      // Le tirage n'est pas touché : un template est un modèle.
-      await applyTemplate(template, null);
+      const ouvert = await ouvrirModele(template, { store: useLabelStore.getState(), confirm });
+      if (ouvert) success('Modèle ouvert');
     } catch (err) {
       console.error('❌ Erreur chargement template:', err);
-      error('Ouverture impossible');
-    }
-  };
-
-  /**
-   * Applique le modèle à la page
-   */
-  const applyTemplate = async (template) => {
-    try {
-      // Vider le canvas
-
-      clearCanvas();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Stocker le nom ET l'ID du template
-      setCurrentTemplateName(template.name || 'Template sans nom');
-      const setCurrentTemplateId = useLabelStore.getState().setCurrentTemplateId;
-      setCurrentTemplateId(template.id || null);
-      // Récupérer les données selon la source
-      // - Factory templates API : template.preset_data
-      // - Templates locaux : template directement
-      const templateData = template.preset_data || template;
-
-      // Vérifier que les données essentielles sont présentes
-      if (!templateData.canvasSize) {
-        console.error('❌ canvasSize manquant dans le template:', template);
-        throw new Error('Structure de template invalide : canvasSize manquant');
-      }
-
-      // Restaurer la taille du canvas
-      setCanvasSize(templateData.canvasSize.width, templateData.canvasSize.height);
-
-      // Restaurer les paramètres de planche
-      if (templateData.sheetSettings) {
-        setSheetSettings(templateData.sheetSettings);
-      }
-      if (templateData.lockCanvasToSheetCell !== undefined) {
-        setLockCanvasToSheetCell(templateData.lockCanvasToSheetCell);
-      }
-
-      // `dataSource` enregistré : ignoré — il découle du tirage, qui reste en place.
-
-      setCurrentTemplateName(template.name);
-
-      // Restaurer les éléments
-      const elements = templateData.elements || [];
-
-      elements.forEach((el) => {
-        useLabelStore.getState().addElement(el);
-      });
-
-      // Réinitialiser l'historique après le chargement
-      const resetHistory = useLabelStore.getState().resetHistory;
-      resetHistory();
-
-      success('Modèle ouvert');
-    } catch (err) {
-      console.error('❌ Erreur application template:', err);
       error('Ouverture impossible');
     }
   };

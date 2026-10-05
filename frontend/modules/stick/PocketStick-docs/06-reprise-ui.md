@@ -415,9 +415,8 @@ sur `utils/calques.js` (branché ici).
 - **Le fond est épinglé en bas**, sous un filet, hors de la liste qu'on
   réordonne : on ne peut plus glisser un élément dessous. C'est le seul
   changement de comportement du lot.
-- NON CORRIGÉ : `moveElement` fait un pas d'historique à chaque rangée
-  franchie pendant le glisser (lu dans le store). Un glisser de cinq crans
-  demande cinq Ctrl+Z.
+- Le pas d'historique par rangée franchie est corrigé le 5 octobre 2026 —
+  voir « Deux défauts de comportement », en fin de document.
 
 Les tests du module passent (355) ; `pnpm build:client` passe. Pas encore vu à
 l'écran.
@@ -474,11 +473,11 @@ encore vu à l'écran.
   `FenetreModele`, sur les classes du système.
 - Messages sans émoji ; `alert()` → toast ; huit `console.log` retirés.
   `filtrerModeles` (`utils/modeles.js`) est branché des deux côtés.
-- Inchangé : `applyTemplate`, l'écouteur `request-template-save`, les onglets
-  qui restent montés.
-- NON CORRIGÉ, hors présentation : ouvrir un modèle prêt ne demande aucune
-  confirmation, ne remet pas l'historique à zéro et ne pose ni nom ni
-  identifiant de modèle courant — `TemplateManager` fait les trois.
+- Inchangé : l'écouteur `request-template-save`, les onglets qui restent
+  montés. (`applyTemplate` l'était aussi ; il est sorti dans
+  `utils/ouvrirModele.js` le 5 octobre 2026.)
+- L'ouverture d'un modèle prêt sans confirmation est corrigée le 5 octobre
+  2026 — voir « Deux défauts de comportement », en fin de document.
 
 Les tests du module passent (359) ; `pnpm build:client` passe. Pas encore vu à
 l'écran.
@@ -542,8 +541,47 @@ sur le cadre. Conséquence : X et Y de l'ombre se valident à Entrée.
   secondaire. Deux `console.log` retirés.
 - Le « ⚠ » du bandeau commun est une `Note` d'avertissement.
 
-Reste hors lots : « Ondes » du contour à main levée ; le pas d'historique par
-cran du glisser des calques ; l'ouverture d'un modèle prêt sans confirmation.
-
 Les tests du module passent (359) ; `pnpm build:client` passe. RIEN des lots 1
 à 9 n'a encore été vu à l'écran.
+
+**Deux défauts de comportement** (5 octobre 2026, à vérifier à l'écran). Ils
+étaient notés « non corrigé » aux lots 5 et 7.
+
+- **Glisser un calque = UN pas d'annulation**, quel que soit le nombre de
+  rangées franchies, et AUCUN si le calque revient à sa place (ce qu'on pouvait
+  rétablir avant le geste l'est alors de nouveau). L'ordre suit toujours la
+  souris : `LayersPanel` appelle `moveElement` à chaque rangée, mais avec le
+  numéro du geste, pris à `onDragStart` (`nouveauGeste`). Le store
+  (`moveElement`, troisième paramètre `{ geste }`) réutilise `gesteEnCours` et
+  `prolongeGeste`, comme un curseur tenu — SANS délai (`SANS_DELAI`) : un
+  glisser a un début et une fin, on peut tenir un calque dix secondes sur une
+  rangée. Toute autre étape d'historique termine le geste. Sans `geste`,
+  `moveElement` fait un pas par appel, comme avant. Le fond reste épinglé hors
+  de la liste. Règles pures dans `utils/gesteHistorique.js` (`cleGesteTenu`,
+  `memeOrdre`, `pasDuGesteTenu`) ; gardien : `store/ordre-calques-store.test.js`.
+- **Ouvrir un modèle a UNE règle**, `utils/ouvrirModele.js`, appelée par
+  `TemplateManager` et par `DesignTemplates` : confirmation « Ouvrir ce
+  modèle ? » si la page porte quelque chose, nom du modèle courant, historique
+  remis à zéro ; chaque panneau garde son toast « Modèle ouvert ». Les deux
+  copies de l'application (`applyTemplate`, et celle de `DesignTemplates`)
+  n'existent plus.
+  - ⚠️ **Un modèle d'usine donne son NOM, pas son identifiant**
+    (`identiteModele` : `currentTemplateId` reste `null`). « Enregistrer »
+    (`LabelPage.handleSaveTemplate`) écrit sur `currentTemplateId` par
+    `templateService.updateTemplate`, qui réenregistre sous le même `id` un
+    objet sans `is_factory` (`saveTemplate`) : le modèle d'usine aurait été
+    écrasé et serait passé dans « Mes modèles ». Avec `null`, « Enregistrer »
+    ouvre la fenêtre « Enregistrer le modèle » : une copie.
+  - Un modèle sans `canvasSize` est refusé AVANT de vider la page
+    (`TemplateManager` vidait d'abord).
+  - Gardien : `utils/ouvrirModele.test.js`, contre le vrai store.
+  - Non vérifié : qu'il existe un modèle d'usine sur un poste. Rien dans le
+    module n'écrit `is_factory` — `saveTemplate` ne le recopie pas, l'import
+    `.json` non plus —, et l'étage serveur qui les fournissait dans AppPos est
+    neutralisé (`templateApiService.js`). « Modèles prêts » est donc
+    probablement vide.
+
+Reste hors lots : « Ondes » du contour à main levée.
+
+Les tests du module passent (373) ; `pnpm build:client` passe. Pas encore vu à
+l'écran.

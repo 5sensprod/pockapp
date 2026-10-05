@@ -13,7 +13,9 @@ import { Sparkles, FileText, Table, Layout } from 'lucide-react';
 import templateService from '../../services/templateService';
 import useLabelStore from '../../store/useLabelStore';
 import { categorieUsine, filtrerModeles } from '../../utils/modeles';
+import { ouvrirModele } from '../../utils/ouvrirModele';
 import { useActionToasts } from '../../ui/useActionToasts';
+import { useConfirmModal } from '../../ui/useConfirmModal';
 import EtatVide from '../ui/EtatVide';
 import Segments from '../ui/Segments';
 import TemplateGrid from '../ui/TemplateGrid';
@@ -31,14 +33,8 @@ const DesignTemplates = ({ onClose }) => {
   const [factoryTemplates, setFactoryTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const { error } = useActionToasts();
-
-  // Récupérer les fonctions du store
-  const clearCanvas = useLabelStore((state) => state.clearCanvas);
-  const setCanvasSize = useLabelStore((state) => state.setCanvasSize);
-  const setSheetSettings = useLabelStore((state) => state.setSheetSettings);
-  const setLockCanvasToSheetCell = useLabelStore((state) => state.setLockCanvasToSheetCell);
-  const addElement = useLabelStore((state) => state.addElement);
+  const { success, error } = useActionToasts();
+  const { confirm, ConfirmModal } = useConfirmModal();
 
   useEffect(() => {
     loadFactoryTemplates();
@@ -62,37 +58,15 @@ const DesignTemplates = ({ onClose }) => {
   };
 
   /**
-   * Ouvre un modèle d'usine
+   * Ouvre un modèle d'usine — règle partagée avec « Mes modèles »
+   * (`utils/ouvrirModele.js`). Il donne son nom à l'affiche, pas son
+   * identifiant : « Enregistrer » en fera une copie, jamais un écrasement.
    */
   const handleLoadTemplate = async (template) => {
     try {
-      // Récupérer les données du template
-      const templateData = template.preset_data || template;
-
-      // Vérifier la structure
-      if (!templateData.canvasSize) {
-        throw new Error('Structure de template invalide');
-      }
-
-      // Vider le canvas
-      clearCanvas();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Restaurer la configuration
-      setCanvasSize(templateData.canvasSize.width, templateData.canvasSize.height);
-
-      if (templateData.sheetSettings) {
-        setSheetSettings(templateData.sheetSettings);
-      }
-      if (templateData.lockCanvasToSheetCell !== undefined) {
-        setLockCanvasToSheetCell(templateData.lockCanvasToSheetCell);
-      }
-
-      // Restaurer les éléments
-      const elements = templateData.elements || [];
-      elements.forEach((el) => {
-        addElement(el);
-      });
+      const ouvert = await ouvrirModele(template, { store: useLabelStore.getState(), confirm });
+      if (!ouvert) return;
+      success('Modèle ouvert');
 
       // Fermer le panneau si demandé
       if (onClose) {
@@ -126,6 +100,8 @@ const DesignTemplates = ({ onClose }) => {
           />
         )}
       </div>
+
+      <ConfirmModal />
     </div>
   );
 };
