@@ -205,23 +205,25 @@ const useLabelStore = create((set, get) => ({
   },
 
   // --- mutations (poussent dans l'historique)
-  addElement: (element) =>
+  // `index` (facultatif) : le rang du nouveau calque, 0 = tout dessous. Sans
+  // lui, au-dessus de tout. Un seul pas d'historique dans les deux cas — c'est
+  // ce qui pose un décor généré SOUS les textes (`lib/embellir.ts`).
+  addElement: (element, { index } = {}) =>
     set((state) => {
       state._pushHistory(snapshotOf(state));
 
       // 🆕 Générer un ID vraiment unique
       const uniqueId = element.id || `el-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const nouveau = {
+        ...element,
+        id: uniqueId, // 🆕 Utiliser l'ID unique
+        visible: true,
+        locked: false,
+      };
+      const rang = Number.isInteger(index) ? Math.max(0, Math.min(state.elements.length, index)) : state.elements.length;
 
       return {
-        elements: [
-          ...state.elements,
-          {
-            ...element,
-            id: uniqueId, // 🆕 Utiliser l'ID unique
-            visible: true,
-            locked: false,
-          },
-        ],
+        elements: [...state.elements.slice(0, rang), nouveau, ...state.elements.slice(rang)],
       };
     }),
 

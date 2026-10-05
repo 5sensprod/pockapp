@@ -6,7 +6,7 @@
 // barre du haut (`ReglagesRapides`). Mêmes clés écrites qu'avant.
 
 import React from 'react';
-import { Crop, FlipHorizontal2, FlipVertical2, Scissors } from 'lucide-react';
+import { Crop, FlipHorizontal2, FlipVertical2, Scissors, Wand2 } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import Curseur from '../ui/Curseur';
 import { geometrieImage } from '../canvas/CropOverlay';
@@ -16,6 +16,7 @@ import { resolvePropForElement } from '../../utils/dataBinding';
 import Segments from '../ui/Segments';
 import Bouton from '../ui/Bouton';
 import Note from '../ui/Note';
+import ConsigneIA from './ConsigneIA';
 import presetImageService from '../../services/presetImageService';
 import JaugeDetourage from '../ui/JaugeDetourage';
 import { usePocketBase } from '@/lib/use-pocketbase';
@@ -26,6 +27,7 @@ import {
   peutDetourer,
   useEtatDetourage,
 } from '../../lib/detourage';
+import { lancerRetouche, peutRetoucher, useReglagesRetouche } from '../../lib/retouche';
 import { BOUTON_ACTION, BOUTON_PRINCIPAL, boutonBascule } from '../ui/styles';
 
 // ── Atomes ──────────────────────────────────────────────────────────────────
@@ -97,13 +99,10 @@ export const Detourer = ({ el }) => {
   const pb = usePocketBase();
   // La sélection entière, pas seulement les images : `nombre` de `useMajSelection` n'en compte que du même type
   const nombre = useLabelStore((s) => (s.selectedId ? 1 + s.extraIds.length : 0));
-  const { enCours, erreur, info } = useEtatDetourage();
+  const { enCours, erreur, info, tache } = useEtatDetourage();
   const refus = peutDetourer(el, nombre, enCours);
-  const message = erreur
-    ? { ton: 'erreur', texte: erreur.message }
-    : info
-      ? { ton: info.ton, texte: info.message }
-      : null;
+  // `erreur` et `info` parlent de la dernière tâche lancée : chaque tâche a sa propre Note
+  const message = tache === 'detourage' ? messageDe(erreur, info) : null;
   return (
     <div className="space-y-1.5">
       <Bouton
@@ -121,21 +120,79 @@ export const Detourer = ({ el }) => {
           })
         }
       >
-        {enCours ? 'Détourage en cours…' : 'Détourer'}
+        {enCours && tache === 'detourage' ? 'Détourage en cours…' : 'Détourer'}
       </Bouton>
-      <JaugeDetourage />
-      {message && (
-        <Note
-          ton={message.ton}
-          action={
-            <Bouton variante="discret" onClic={effacerMessageDetourage}>
-              Fermer
-            </Bouton>
-          }
-        >
-          {message.texte}
-        </Note>
-      )}
+      <JaugeDetourage tache="detourage" />
+      <NoteTache message={message} />
+    </div>
+  );
+};
+
+const messageDe = (erreur, info) =>
+  erreur ? { ton: 'erreur', texte: erreur.message } : info ? { ton: info.ton, texte: info.message } : null;
+
+// Le résultat ou l'erreur d'une tâche d'IA : une Note qui reste, pas un message fugitif
+const NoteTache = ({ message }) =>
+  message && (
+    <Note
+      ton={message.ton}
+      action={
+        <Bouton variante="discret" onClic={effacerMessageDetourage}>
+          Fermer
+        </Bouton>
+      }
+    >
+      {message.texte}
+    </Note>
+  );
+
+/**
+ * Modifier par IA (`lib/retouche.ts`) : une consigne, une qualité, et l'image
+ * est remplacée par ce que le service rend — même trajet que le détourage
+ * (rangée dans « Génération » avant d'être posée, Ctrl+Z rend l'originale).
+ * La consigne et la qualité vivent hors du composant : elles restent après un
+ * échec et d'une image à l'autre. Aucun prix affiché. UNE requête d'IA à la
+ * fois : pendant un détourage, ce bouton est désactivé, et inversement.
+ */
+export const Retoucher = ({ el }) => {
+  const pb = usePocketBase();
+  const nombre = useLabelStore((s) => (s.selectedId ? 1 + s.extraIds.length : 0));
+  const { enCours, erreur, info, tache } = useEtatDetourage();
+  const { consigne, qualite } = useReglagesRetouche();
+  const refus = peutRetoucher(el, nombre, enCours, consigne);
+  // Le champ reste utilisable quand seule la consigne manque ou qu'une requête est en cours
+  const ferme = !peutRetoucher(el, nombre, false).ok;
+  const lancer = () => {
+    if (!refus.ok) return;
+    lancerRetouche(
+      el,
+      nombre,
+      { consigne, qualite },
+      { pb, store: useLabelStore, bibliotheque: presetImageService, apresDecompte: rafraichirCreditsPocketApp }
+    );
+  };
+  return (
+    <div className="space-y-1.5">
+      <ConsigneIA
+        placeholder="Modifier par IA : décrivez le changement (ex. : fond blanc uni)"
+        desactive={ferme}
+        onValider={lancer}
+      />
+      <Bouton
+        icone={Wand2}
+        plein
+        desactive={!refus.ok}
+        titre={
+          refus.ok
+            ? "Remplace l'image par sa version modifiée (service payant). Ctrl+Z rend la photo d'origine."
+            : refus.raison
+        }
+        onClic={lancer}
+      >
+        {enCours && tache === 'retouche' ? 'Modification en cours…' : 'Modifier par IA'}
+      </Bouton>
+      <JaugeDetourage tache="retouche" />
+      <NoteTache message={tache === 'retouche' ? messageDe(erreur, info) : null} />
     </div>
   );
 };
@@ -175,8 +232,8 @@ const RecadrageEnCours = ({ el, maj }) => {
 const rangee = 'flex items-center justify-between gap-2 min-h-7';
 
 /**
- * LES RÉGLAGES COURANTS d'une image, en quatre rangées : ajustement et
- * recadrage ; miroirs et taille du cadre ; opacité ; détourage.
+ * LES RÉGLAGES COURANTS d'une image : ajustement et recadrage ; miroirs et
+ * taille du cadre ; opacité ; détourage ; modification par IA.
  */
 export const Noyau = ({ el, maj }) => {
   const cropId = useLabelStore((s) => s.cropId);
@@ -209,6 +266,7 @@ export const Noyau = ({ el, maj }) => {
         onValeur={(opacity) => maj({ opacity })}
       />
       <Detourer el={el} />
+      <Retoucher el={el} />
     </div>
   );
 };

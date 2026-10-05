@@ -129,6 +129,28 @@ l'historique : Ctrl+Z rend l'originale, l'image détourée reste. `SEUIL_ENVOI_O
 jauge par ÉTAPES** (`ui/JaugeDetourage.jsx`, sous le bouton et dans la barre du
 haut) : jamais de pourcentage, un temps restant estimé depuis les détourages
 précédents du poste, et une phrase rassurante passé la durée habituelle.
+**« Modifier par IA »** (image-to-image, 5 octobre 2026,
+[`11-image-to-image.md`](frontend/modules/stick/PocketStick-docs/11-image-to-image.md))
+est l'atome `Retoucher`, sous « Détourer » : une consigne, une QUALITÉ (Rapide,
+Équilibrée, Soignée), et l'image est remplacée. **Le poste n'envoie jamais un
+modèle** : la table qualité → modèle et prix ne vit que sur le mini-SaaS. Le
+trajet est celui du détourage, par la MÊME fonction — `lancerTraitement`
+(`labels/lib/detourage.ts`), dont `lancerDetourage` et `lancerRetouche`
+(`labels/lib/retouche.ts`) ne sont que deux `TacheIA` : ne pas en écrire un
+second. **Une seule requête d'IA à la fois**, les deux partageant
+`useEtatDetourage` (champ `tache`). Seule `src` est écrite : cadre, recadrage et
+ajustement ne bougent pas. Historique de durées par qualité, aucun prix affiché.
+**« Embellir par IA » la PAGE entière** (6 octobre 2026, §10 du même document)
+est dans l'onglet « Page » (`templates/EmbellirPage.jsx`, `labels/lib/embellir.ts`),
+**jamais en planche**. Le rendu de la page (`utils/renduPage.js`, un clone hors
+écran comme `exportPdf.js`) part par la même route, et l'image revient comme un
+**NOUVEAU CALQUE sur la même page** (`addElement(element, { index })`, un pas
+d'historique) : rien de la page n'est modifié. Deux modes — *Décor seul* (textes,
+codes et éléments liés au produit ne partent pas et restent DESSUS : `estVivant`,
+`rangDePose`) et *Page entière* (image à plat, au-dessus de tout) —, huit formats
+et deux définitions (1536 / 2048 px), envoyés en **identifiants, jamais en
+pixels**. Consigne et qualité sont partagées avec « Modifier par IA »
+(`templates/ConsigneIA.jsx`).
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation
@@ -179,6 +201,20 @@ Trois, et trois seulement :
    (`credit_epuise` ≠ `fournisseur_en_echec` ≠ `delai_depasse`, qui n'est pas
    une panne). La durée de l'appel revient dans `X-Detourage-Ms`. Gardien :
    `detourage_routes_test.go`.
+   Le même jour, **`/api/retouche.php`** (`backend/routes/retouche_routes.go`,
+   route locale `POST /api/ai/image-to-image`) : seconde sortie qui porte le
+   contenu d'une image, **et la première qui porte un TEXTE saisi par le
+   vendeur** (la consigne, 500 caractères au plus), avec un identifiant de
+   qualité — jamais un modèle ni des dimensions. Depuis le 6 octobre, l'image
+   peut être le **rendu d'une page entière** de l'affiche (prix et textes
+   compris en mode « Page entière »), avec deux identifiants facultatifs,
+   `format` et `definition` (code `format_inconnu`). Même relais que le détourage
+   (`relaisImage`, `detourage_routes.go`) : mêmes gardes, même délai de 90 s,
+   même en-tête `X-Detourage-Ms`. La consigne n'est journalisée nulle part, ni
+   ici ni sur le mini-SaaS. Codes en plus : `prompt_absent`,
+   `prompt_trop_long`, `qualite_inconnue`, et `contenu_refuse` (modération du
+   fournisseur : ne pas réessayer à l'identique). Gardien :
+   `retouche_routes_test.go`.
 
 Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
 

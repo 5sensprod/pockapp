@@ -133,7 +133,7 @@ const TopToolbar = ({
 
         {/* Droite : actions d’export */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Détourage en cours : visible ici quelle que soit la sélection */}
+          {/* Détourage ou modification par IA en cours : visible ici quelle que soit la sélection */}
           <JaugeDetourage compact />
           <button
             onClick={handleExportPdf}

@@ -127,12 +127,22 @@ class PresetImageService {
 	 * `depuis` : le nom de l'image de départ. Rejette si l'écriture échoue
 	 * (quota IndexedDB) : l'appelant décide quoi faire.
 	 */
-	async ajouterGeneree({ src, depuis = '', size = 0, type = 'image/png' }) {
+	async ajouterGeneree({
+		src,
+		depuis = '',
+		size = 0,
+		type = 'image/png',
+		// Ce que l'IA a fait de l'image : « détourée », « modifiée », « embellie »
+		suffixe = 'détourée',
+	}) {
 		const db = await this.initDB()
 		const base = String(depuis || 'image').replace(/\.[a-z0-9]{2,5}$/i, '')
 		const image = {
-			filename: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${base}-detouree.png`,
-			name: `${base} (détourée)`,
+			filename: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${base}-${String(suffixe)
+				.normalize('NFD')
+				.replace(/[^a-z]/gi, '')
+				.toLowerCase()}.png`,
+			name: `${base} (${suffixe})`,
 			src,
 			size,
 			type,

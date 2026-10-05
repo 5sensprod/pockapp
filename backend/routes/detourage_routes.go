@@ -70,9 +70,32 @@ var erreursDetourage = map[string]detourageErreur{
 }
 
 func erreurDetourage(code string) *detourageErreur {
-	e := erreursDetourage[code]
+	return relaisDetourage.erreur(code)
+}
+
+// relaisImage est ce qui distingue deux relais d'image vers le mini-SaaS — le
+// détourage et la retouche par consigne (retouche_routes.go) : leurs messages et
+// leur User-Agent. Tout le reste du trajet est commun.
+type relaisImage struct {
+	erreurs   map[string]detourageErreur
+	userAgent string
+	// delaiPoste : message quand c'est le délai de CE poste qui a expiré.
+	delaiPoste string
+}
+
+var relaisDetourage = relaisImage{
+	erreurs:    erreursDetourage,
+	userAgent:  detourageUserAgent,
+	delaiPoste: "Le service de détourage n'a pas répondu à temps. Réessaie dans un instant.",
+}
+
+func (r relaisImage) erreur(code string) *detourageErreur {
+	e := r.erreurs[code]
 	return &e
 }
+
+// champRelais est un champ texte ajouté à l'envoi multipart, à côté de l'image.
+type champRelais struct{ nom, valeur string }
 
 // typeImageDetourage lit le type sur les OCTETS, jamais sur l'en-tête déclaré.
 func typeImageDetourage(octets []byte) (string, bool) {
@@ -86,8 +109,8 @@ func typeImageDetourage(octets []byte) (string, bool) {
 // delaiDuPoste : c'est le délai de CE poste qui a expiré, pas celui du mini-SaaS.
 // Même code, mais sans promettre que rien n'a été décompté : le serveur a pu
 // finir après que le poste a cessé d'attendre.
-func delaiDuPoste() *detourageErreur {
-	return &detourageErreur{http.StatusGatewayTimeout, "delai_depasse", "Le service de détourage n'a pas répondu à temps. Réessaie dans un instant."}
+func (r relaisImage) delaiDuPoste() *detourageErreur {
+	return &detourageErreur{http.StatusGatewayTimeout, "delai_depasse", r.delaiPoste}
 }
 
 func estUnDelai(err error) bool {
@@ -119,6 +142,14 @@ func dureeRelayee(v string) string {
 
 // relayerDetourage envoie l'image au mini-SaaS et rend le PNG reçu.
 func relayerDetourage(ctx context.Context, client *http.Client, endpoint, apiKey string, image []byte) (*detourageResultat, *detourageErreur) {
+	return relaisDetourage.relayer(ctx, client, endpoint, apiKey, image, nil)
+}
+
+// relayer envoie l'image (et d'éventuels champs texte) au mini-SaaS et rend le
+// PNG reçu. UN envoi : jamais de second essai, un appel coupé a pu être facturé.
+func (r relaisImage) relayer(ctx context.Context, client *http.Client, endpoint, apiKey string, image []byte, champs []champRelais) (*detourageResultat, *detourageErreur) {
+	erreurDetourage := r.erreur
+	delaiDuPoste := r.delaiDuPoste
 	if u, err := url.Parse(endpoint); err != nil || u.Scheme != "https" {
 		return nil, erreurDetourage("adresse_non_securisee")
 	}
@@ -139,6 +170,11 @@ func relayerDetourage(ctx context.Context, client *http.Client, endpoint, apiKey
 	if err == nil {
 		_, err = part.Write(image)
 	}
+	for _, champ := range champs {
+		if err == nil {
+			err = mw.WriteField(champ.nom, champ.valeur)
+		}
+	}
 	if err == nil {
 		err = mw.Close()
 	}
@@ -152,7 +188,7 @@ func relayerDetourage(ctx context.Context, client *http.Client, endpoint, apiKey
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("X-API-Key", apiKey)
-	req.Header.Set("User-Agent", detourageUserAgent)
+	req.Header.Set("User-Agent", r.userAgent)
 
 	reponse, err := client.Do(req)
 	if err != nil {
@@ -169,7 +205,7 @@ func relayerDetourage(ctx context.Context, client *http.Client, endpoint, apiKey
 			Code string `json:"code"`
 		}
 		if json.Unmarshal(raw, &echec) == nil {
-			if _, connu := erreursDetourage[echec.Code]; connu {
+			if _, connu := r.erreurs[echec.Code]; connu {
 				return nil, erreurDetourage(echec.Code)
 			}
 		}
@@ -203,6 +239,14 @@ type detourageDeps struct {
 // traiterDetourage est le corps de la route, sans l'authentification : lire
 // l'image envoyée par le renderer, la relayer, rendre le PNG.
 func traiterDetourage(c echo.Context, d detourageDeps) error {
+	return relaisDetourage.traiter(c, d, nil)
+}
+
+// traiter est le corps commun des routes de relais. `champs` lit et valide,
+// dans le formulaire déjà analysé, les champs texte à joindre à l'image ; nil
+// quand il n'y en a pas.
+func (r relaisImage) traiter(c echo.Context, d detourageDeps, champs func(*http.Request) ([]champRelais, *detourageErreur)) error {
+	erreurDetourage := r.erreur
 	cle, err := d.cle()
 	cle = strings.TrimSpace(cle)
 	if err != nil || cle == "" {
@@ -229,7 +273,15 @@ func traiterDetourage(c echo.Context, d detourageDeps) error {
 		return apis.NewBadRequestError("Image illisible", err)
 	}
 
-	resultat, echec := relayerDetourage(req.Context(), d.client, d.endpoint, cle, octets)
+	var joints []champRelais
+	if champs != nil {
+		var refus *detourageErreur
+		if joints, refus = champs(req); refus != nil {
+			return repondreErreurDetourage(c, refus)
+		}
+	}
+
+	resultat, echec := r.relayer(req.Context(), d.client, d.endpoint, cle, octets, joints)
 	if echec != nil {
 		return repondreErreurDetourage(c, echec)
 	}

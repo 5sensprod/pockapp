@@ -77,6 +77,10 @@ export type FamilleErreur =
 	| 'service'
 	| 'configuration'
 	| 'session'
+	/** La demande elle-même est à corriger (consigne, qualité) : retouche seulement. */
+	| 'demande'
+	/** Refus de la modération du fournisseur : recommencer à l'identique ne sert à rien. */
+	| 'contenu'
 
 const FAMILLES: Record<string, FamilleErreur> = {
 	credit_epuise: 'credit',
@@ -90,6 +94,11 @@ const FAMILLES: Record<string, FamilleErreur> = {
 	cle_invalide: 'configuration',
 	adresse_non_securisee: 'configuration',
 	session_expiree: 'session',
+	prompt_absent: 'demande',
+	prompt_trop_long: 'demande',
+	qualite_inconnue: 'demande',
+	format_inconnu: 'demande',
+	contenu_refuse: 'contenu',
 }
 
 /** Message de repli quand le serveur n'en a pas rendu (réseau coupé…). */
@@ -115,7 +124,17 @@ const MESSAGES: Record<string, string> = {
 		'La clé PocketApp de ce poste est refusée. Vérifiez-la dans « Clés API & Secrets ».',
 	adresse_non_securisee: 'Le détourage exige une adresse HTTPS.',
 	session_expiree: 'Votre session a expiré. Reconnectez-vous puis recommencez.',
+	prompt_absent: "Écrivez ce que vous voulez changer dans l'image.",
+	prompt_trop_long: 'La consigne est trop longue (500 caractères au plus).',
+	qualite_inconnue: "Cette qualité de retouche n'existe pas.",
+	format_inconnu: "Ce format de résultat n'existe pas.",
+	contenu_refuse:
+		"Cette demande a été refusée par le service : changez la consigne ou l'image. Rien n'a été décompté.",
 }
+
+/** Le message de repli d'un code (celui du détourage), pour qu'une autre tâche le remplace par le sien. */
+export const messageDeRepli = (code: string): string | undefined =>
+	MESSAGES[code]
 
 export class ErreurDetourage extends Error {
 	code: string
@@ -161,6 +180,7 @@ export function traduireErreur(e: unknown): ErreurDetourage {
 	if (status === 401 || status === 403)
 		return new ErreurDetourage('session_expiree')
 	if (status === 504) return new ErreurDetourage('delai_depasse')
+	if (status === 422) return new ErreurDetourage('contenu_refuse')
 	return new ErreurDetourage('service_indisponible')
 }
 
@@ -236,13 +256,15 @@ export type ImagePreparee = { blob: Blob; largeur: number; hauteur: number }
 export async function preparerImage(
 	blob: Blob,
 	codec: Codec = codecNavigateur,
+	/** Plus grand côté envoyé ; la retouche envoie plus petit (`lib/retouche.ts`). */
+	coteMax: number = COTE_MAX,
 ): Promise<ImagePreparee> {
 	const image = await codec(blob)
 	try {
 		const mime = image.transparente ? 'image/webp' : 'image/jpeg'
 		let echelle = Math.min(
 			1,
-			COTE_MAX / Math.max(image.largeur, image.hauteur, 1),
+			coteMax / Math.max(image.largeur, image.hauteur, 1),
 		)
 		for (;;) {
 			const largeur = Math.max(1, Math.round(image.largeur * echelle))
@@ -309,7 +331,7 @@ export const codecNavigateur: Codec = async (blob) => {
 
 const SIGNATURE_PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
-type Pb = {
+export type Pb = {
 	send: (chemin: string, options: Record<string, unknown>) => Promise<unknown>
 }
 
@@ -319,10 +341,25 @@ type Pb = {
  * octets ensuite. Les échecs (JSON `{ error, code }`) sortent, eux, par
  * l'exception ordinaire de `pb.send`.
  */
-export async function appelerDetourage(
+export function appelerDetourage(
 	pb: Pb,
 	image: Blob,
 	/** La réponse a commencé d'arriver : il ne reste qu'à lire ses octets. */
+	surReception?: () => void,
+): Promise<ReponseDetourage> {
+	const corps = new FormData()
+	corps.append('image', image, 'image')
+	return appelerRouteImage(pb, ROUTE_DETOURAGE, corps, surReception)
+}
+
+/**
+ * L'appel commun aux routes qui rendent un PNG (détourage, retouche) : `corps`
+ * porte l'image et, s'il y en a, les champs de la tâche.
+ */
+export async function appelerRouteImage(
+	pb: Pb,
+	route: string,
+	corps: FormData,
 	surReception?: () => void,
 ): Promise<ReponseDetourage> {
 	let brute: Response | null = null
@@ -331,11 +368,9 @@ export async function appelerDetourage(
 		brute = reponse.clone()
 		return reponse
 	}
-	const corps = new FormData()
-	corps.append('image', image, 'image')
 	try {
 		// `requestKey: null` : pas d'auto-annulation par une autre requête
-		await pb.send(ROUTE_DETOURAGE, {
+		await pb.send(route, {
 			method: 'POST',
 			body: corps,
 			fetch: capter,
@@ -387,6 +422,31 @@ export const LIBELLES_ETAPE: Record<EtapeDetourage, string> = {
 	reception: "Réception de l'image",
 	rangement: 'Rangement dans « Génération »',
 }
+
+/** Les mêmes étapes, dites pour la retouche par consigne (`lib/retouche.ts`). */
+export const LIBELLES_ETAPE_RETOUCHE: Record<EtapeDetourage, string> = {
+	...LIBELLES_ETAPE,
+	detourage: 'Envoi et retouche',
+}
+
+/** Les tâches d'IA de l'éditeur. UNE seule à la fois : elles partagent `useEtatDetourage`. */
+export type NomTache = 'detourage' | 'retouche' | 'embellir'
+
+/** Les mêmes étapes, dites pour l'embellissement de la page (`lib/embellir.ts`). */
+export const LIBELLES_ETAPE_EMBELLIR: Record<EtapeDetourage, string> = {
+	...LIBELLES_ETAPE,
+	preparation: 'Rendu de la page',
+	detourage: 'Envoi et embellissement',
+}
+
+export const libellesDe = (
+	tache: NomTache | null | undefined,
+): Record<EtapeDetourage, string> =>
+	tache === 'retouche'
+		? LIBELLES_ETAPE_RETOUCHE
+		: tache === 'embellir'
+			? LIBELLES_ETAPE_EMBELLIR
+			: LIBELLES_ETAPE
 
 /** Durées gardées sur ce poste pour estimer la suivante. */
 export const HISTORIQUE_MAX = 10
@@ -456,8 +516,9 @@ export function messageJauge(
 	etape: EtapeDetourage,
 	habituelMs: number | null,
 	ecouleMs: number,
+	libelles: Record<EtapeDetourage, string> = LIBELLES_ETAPE,
 ): MessageJauge {
-	const base = { etape: LIBELLES_ETAPE[etape], detail: null, prolongee: false }
+	const base = { etape: libelles[etape], detail: null, prolongee: false }
 	if (etape !== 'detourage') return base
 	const estimation = estimerRestant(habituelMs, ecouleMs)
 	switch (estimation.sorte) {
@@ -492,29 +553,38 @@ export type HistoriqueDurees = {
 
 const CLE_HISTORIQUE = 'pocketstick.detourage.durees'
 
-/** `localStorage`, sans jamais lever : sans stockage, pas d'estimation, c'est tout. */
-export const historiqueLocal: HistoriqueDurees = {
-	lire: () => {
+/**
+ * Un historique dans `localStorage`, sous `cle`, sans jamais lever : sans
+ * stockage, pas d'estimation, c'est tout. Une clé PAR tâche (et par qualité
+ * pour la retouche) : un modèle lent fausserait l'estimation des autres.
+ */
+export const historiqueLocalPour = (cle: string): HistoriqueDurees => {
+	const lire = () => {
 		try {
-			const brut = JSON.parse(localStorage.getItem(CLE_HISTORIQUE) ?? '[]')
+			const brut = JSON.parse(localStorage.getItem(cle) ?? '[]')
 			return Array.isArray(brut)
 				? brut.filter((d) => typeof d === 'number' && d > 0)
 				: []
 		} catch {
 			return []
 		}
-	},
-	ajouter: (ms) => {
-		try {
-			const suite = [...historiqueLocal.lire(), Math.round(ms)].slice(
-				-HISTORIQUE_MAX,
-			)
-			localStorage.setItem(CLE_HISTORIQUE, JSON.stringify(suite))
-		} catch {
-			// stockage plein ou absent : l'estimation manquera, rien d'autre
-		}
-	},
+	}
+	return {
+		lire,
+		ajouter: (ms) => {
+			try {
+				const suite = [...lire(), Math.round(ms)].slice(-HISTORIQUE_MAX)
+				localStorage.setItem(cle, JSON.stringify(suite))
+			} catch {
+				// stockage plein ou absent : l'estimation manquera, rien d'autre
+			}
+		},
+	}
 }
+
+/** L'historique du détourage. */
+export const historiqueLocal: HistoriqueDurees =
+	historiqueLocalPour(CLE_HISTORIQUE)
 
 /**
  * Les durées d'un détourage, en millisecondes, pour le journal de debug
@@ -541,7 +611,10 @@ export type ChronoDetourage = {
 // ── L'état affiché par le panneau ───────────────────────────────────────────
 
 export type EtatDetourage = {
+	/** Une requête d'IA est partie — détourage OU retouche : une seule à la fois. */
 	enCours: boolean
+	/** La tâche en cours, ou la dernière lancée : c'est d'elle que parlent `erreur` et `info`. */
+	tache: NomTache | null
 	erreur: ErreurDetourage | null
 	/** Ce qui s'est passé APRÈS le paiement : image non rangée, ou élément changé. */
 	info: { ton: 'info' | 'avertissement'; message: string } | null
@@ -561,6 +634,7 @@ export type EtatDetourage = {
  */
 export const useEtatDetourage = create<EtatDetourage>(() => ({
 	enCours: false,
+	tache: null,
 	erreur: null,
 	info: null,
 	rangees: 0,
@@ -584,6 +658,7 @@ export type DepsDetourage = {
 			src: string
 			depuis: string
 			size: number
+			suffixe?: string
 			type: string
 		}) => Promise<unknown>
 	}
@@ -609,36 +684,101 @@ export type ResultatDetourage =
 
 const nomDe = (el: any) => String(el?.filename || el?.name || 'image')
 
-const MSG_NON_RANGEE =
-	"L'image détourée est posée, mais elle n'a pas pu être rangée dans « Génération » (espace du poste insuffisant)."
-const MSG_ELEMENT_CHANGE =
-	"L'image a changé pendant le détourage : le résultat n'a pas été posé. Il vous attend dans « Génération »."
-const MSG_PERDUE =
-	"L'image a changé pendant le détourage, et le résultat n'a pu être ni posé ni rangé (espace du poste insuffisant). Recommencez."
+/**
+ * Ce qui distingue deux tâches d'IA sur le MÊME trajet (préparer, envoyer,
+ * ranger, poser) : le détourage ci-dessous, la retouche dans `lib/retouche.ts`.
+ */
+export type TacheIA = {
+	nom: NomTache
+	peut: (el: any, nombre: number, enCours: boolean) => Refus
+	appeler: (
+		pb: Pb,
+		image: Blob,
+		surReception: () => void,
+	) => Promise<ReponseDetourage>
+	/** Plus grand côté envoyé ; par défaut `COTE_MAX`. */
+	coteMax?: number
+	/** Les durées de CETTE tâche sur le poste. */
+	historique: HistoriqueDurees
+	/** Ce qui s'est passé après le paiement. */
+	messages: { nonRangee: string; elementChange: string; perdue: string }
+	/** Messages d'erreur de repli propres à la tâche, par code. */
+	messagesErreur?: Record<string, string>
+	/** Filtre du journal de debug de la console. */
+	journal: string
+	/**
+	 * La source, quand ce n'est pas l'image d'un élément : le rendu de la PAGE
+	 * (`lib/embellir.ts`). `el` vaut alors null.
+	 */
+	source?: () => Promise<Blob>
+	/**
+	 * La pose, quand ce n'est pas le remplacement de la `src` d'un élément : un
+	 * NOUVEAU calque. Rend vrai si l'image a été posée. Un seul pas d'historique.
+	 */
+	poser?: (src: string, etatStore: any) => boolean
+	/** Le nom de l'image de départ, quand il n'y a pas d'élément. */
+	depuis?: string
+	/** Ce que la bibliothèque écrit après le nom : « détourée » par défaut. */
+	suffixe?: string
+}
+
+export const TACHE_DETOURAGE: TacheIA = {
+	nom: 'detourage',
+	peut: peutDetourer,
+	appeler: appelerDetourage,
+	historique: historiqueLocal,
+	messages: {
+		nonRangee:
+			"L'image détourée est posée, mais elle n'a pas pu être rangée dans « Génération » (espace du poste insuffisant).",
+		elementChange:
+			"L'image a changé pendant le détourage : le résultat n'a pas été posé. Il vous attend dans « Génération ».",
+		perdue:
+			"L'image a changé pendant le détourage, et le résultat n'a pu être ni posé ni rangé (espace du poste insuffisant). Recommencez.",
+	},
+	journal: 'DETOURAGE',
+}
 
 /**
  * Détoure `el` (l'élément tel qu'à l'instant du clic). Ne lève jamais : les
  * échecs sortent dans le résultat ET dans `useEtatDetourage`.
  */
-export async function lancerDetourage(
+export function lancerDetourage(
 	el: any,
 	nombre: number,
 	deps: DepsDetourage,
 ): Promise<ResultatDetourage> {
+	return lancerTraitement(el, nombre, deps, TACHE_DETOURAGE)
+}
+
+/**
+ * LE trajet d'une tâche d'IA sur une image : préparer, envoyer, RANGER dans
+ * « Génération », puis POSER en un pas d'historique. Ne lève jamais.
+ */
+export async function lancerTraitement(
+	el: any,
+	nombre: number,
+	deps: DepsDetourage,
+	tache: TacheIA,
+): Promise<ResultatDetourage> {
 	const etat = useEtatDetourage
-	const refus = peutDetourer(el, nombre, etat.getState().enCours)
+	const refus = tache.peut(el, nombre, etat.getState().enCours)
 	if (!refus.ok) {
 		const erreur = new ErreurDetourage('service_indisponible', refus.raison)
-		etat.setState({ erreur, info: null })
+		// Refusée parce qu'une AUTRE tâche est en cours : ne pas lui prendre sa jauge
+		etat.setState(
+			etat.getState().enCours
+				? { erreur, info: null }
+				: { erreur, info: null, tache: tache.nom },
+		)
 		return { ok: false, erreur }
 	}
 
 	// L'élément tel qu'au lancement : c'est ce que l'arrivée compare
-	const id: string = el.id
-	const srcDepart: string = el.src
-	const depuis = nomDe(el)
+	const id: string | undefined = el?.id
+	const srcDepart: string | undefined = el?.src
+	const depuis = tache.depuis ?? nomDe(el)
 	const maintenant = deps.maintenant ?? Date.now
-	const historique = deps.historique ?? historiqueLocal
+	const historique = deps.historique ?? tache.historique
 	const debut = maintenant()
 	let jalon = debut
 	/** Le temps passé depuis le jalon précédent, qui avance. */
@@ -652,6 +792,7 @@ export async function lancerDetourage(
 		etat.setState({ etape, debutEtape: maintenant() })
 	etat.setState({
 		enCours: true,
+		tache: tache.nom,
 		erreur: null,
 		info: null,
 		etape: 'preparation',
@@ -675,14 +816,16 @@ export async function lancerDetourage(
 			cote: '',
 		}
 		try {
-			const source = await (deps.source ?? sourceAEnvoyer)(el)
+			const source = await (tache.source
+				? tache.source()
+				: (deps.source ?? sourceAEnvoyer)(el))
 			chrono.source = tour()
-			const preparee = await preparerImage(source, deps.codec)
+			const preparee = await preparerImage(source, deps.codec, tache.coteMax)
 			chrono.preparation = tour()
 			chrono.octetsEnvoyes = preparee.blob.size
 			chrono.cote = `${preparee.largeur}×${preparee.hauteur}`
 			passerA('detourage')
-			const reponse = await appelerDetourage(deps.pb, preparee.blob, () => {
+			const reponse = await tache.appeler(deps.pb, preparee.blob, () => {
 				chrono.allerRetour = tour()
 				passerA('reception')
 			})
@@ -697,13 +840,17 @@ export async function lancerDetourage(
 				// le solde affiché se rafraîchira de lui-même
 			}
 		} catch (e) {
-			const erreur =
+			let erreur =
 				e instanceof ErreurDetourage
 					? e
 					: new ErreurDetourage(
 							'service_indisponible',
 							e instanceof Error ? e.message : undefined,
 						)
+			// Un message de repli parle du détourage : la tâche dit le sien
+			const sien = tache.messagesErreur?.[erreur.code]
+			if (sien && erreur.message === MESSAGES[erreur.code])
+				erreur = new ErreurDetourage(erreur.code, sien)
 			etat.setState({ erreur })
 			return { ok: false, erreur }
 		}
@@ -718,11 +865,12 @@ export async function lancerDetourage(
 				src,
 				depuis,
 				size: png.size,
+				...(tache.suffixe ? { suffixe: tache.suffixe } : {}),
 				type: 'image/png',
 			})
 			etat.setState((s) => ({ rangees: s.rangees + 1 }))
 		} catch (e) {
-			console.error('❌ [DETOURAGE] Rangement impossible:', e)
+			console.error(`❌ [${tache.journal}] Rangement impossible:`, e)
 			rangee = false
 		}
 		chrono.rangement = tour()
@@ -730,21 +878,28 @@ export async function lancerDetourage(
 		// 3) POSER, si l'élément est encore tel qu'au lancement. L'`id` capturé,
 		// jamais la sélection courante : elle a pu bouger pendant l'attente.
 		const etatStore = deps.store.getState()
-		const cible = etatStore.elements.find((e: any) => e.id === id)
-		const posable = !!cible && !cible.locked && cible.src === srcDepart
-		if (posable) etatStore.updateElements({ [id]: { src } })
+		let posable: boolean
+		if (tache.poser) {
+			posable = tache.poser(src, etatStore)
+		} else {
+			const cible = etatStore.elements.find((e: any) => e.id === id)
+			posable = !!cible && !cible.locked && cible.src === srcDepart
+			if (posable && id) etatStore.updateElements({ [id]: { src } })
+		}
 		chrono.pose = tour()
 		chrono.total = maintenant() - debut
-		// Journal discret (niveau « Verbose » de la console, filtre DETOURAGE)
-		console.debug('[DETOURAGE] durées en ms', chrono)
+		// Journal discret (niveau « Verbose » de la console, filtre DETOURAGE ou RETOUCHE)
+		console.debug(`[${tache.journal}] durées en ms`, chrono)
 
 		if (posable && !rangee)
-			etat.setState({ info: { ton: 'avertissement', message: MSG_NON_RANGEE } })
+			etat.setState({
+				info: { ton: 'avertissement', message: tache.messages.nonRangee },
+			})
 		else if (!posable) {
 			etat.setState({
 				info: rangee
-					? { ton: 'info', message: MSG_ELEMENT_CHANGE }
-					: { ton: 'avertissement', message: MSG_PERDUE },
+					? { ton: 'info', message: tache.messages.elementChange }
+					: { ton: 'avertissement', message: tache.messages.perdue },
 			})
 		}
 		return { ok: true, pose: posable, rangee, src, chrono }
