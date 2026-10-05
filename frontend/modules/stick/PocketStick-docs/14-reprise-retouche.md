@@ -1,7 +1,7 @@
 # 14 — Reprise de la retouche par IA : état
 
 *5 octobre 2026. **Écrit et testé (`reprise-retouche.test.ts`, 556 tests du module
-stick), pas vu dans l'application, aucun appel réel à Runware.** Le mini-SaaS
+stick), lancé dans l'application par le propriétaire : ça fonctionne.** Le mini-SaaS
 n'est pas touché : aucun champ ni route ne s'ajoute au contrat.*
 
 Six décisions du propriétaire, toutes retenues sauf le point 4 (rien à ajouter) et
@@ -84,9 +84,9 @@ deux facturations, deux pas d'historique**. Pas de détourage si la retouche a
 
 ## Ce qui n'a pas pu être vérifié
 
-- **L'interface n'a pas été vue** (hauteur du panneau, interrupteur, bloc mémoire,
-  clair et sombre) ; `rendreElement` avec `surZone` n'a pas de test (pas de canvas
-  sous Node).
+- **L'interface a été lancée et fonctionne** (constat du propriétaire, 5 octobre
+  2026) ; le détail clair / sombre n'est pas consigné. `rendreElement` avec
+  `surZone` n'a pas de test (pas de canvas sous Node).
 - Le cadre exact du calque d'une forme tournée ou ombrée : il suit
   `getClientRect`, 2 px de marge, borné à la page.
 - `exportTemplate` (téléchargement navigateur) : non testé, seule sa logique est lue.
