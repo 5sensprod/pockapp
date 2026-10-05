@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { Undo, Redo, Download, Plus, Save } from 'lucide-react';
 import useLabelStore from '../store/useLabelStore';
 import { exporterTirage } from '../utils/exportTirage';
+import JaugeDetourage from './ui/JaugeDetourage';
 
 const TopToolbar = ({
   dataSource,
@@ -132,6 +133,8 @@ const TopToolbar = ({
 
         {/* Droite : actions d’export */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Détourage en cours : visible ici quelle que soit la sélection */}
+          <JaugeDetourage compact />
           <button
             onClick={handleExportPdf}
             disabled={!docNode}

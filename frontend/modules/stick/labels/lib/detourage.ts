@@ -83,6 +83,7 @@ const FAMILLES: Record<string, FamilleErreur> = {
 	image_trop_lourde: 'taille',
 	type_refuse: 'format',
 	fournisseur_en_echec: 'service',
+	delai_depasse: 'service',
 	service_indisponible: 'service',
 	reponse_invalide: 'service',
 	cle_absente: 'configuration',
@@ -101,6 +102,10 @@ const MESSAGES: Record<string, string> = {
 	type_refuse: 'Format d’image refusé : PNG, JPEG ou WebP uniquement.',
 	fournisseur_en_echec:
 		'Le service de détourage est en panne. Réessayez dans un instant.',
+	// Pas une panne : le service n'a pas fini à temps. Le message du serveur, lui,
+	// précise que rien n'a été décompté — ce repli ne le promet pas.
+	delai_depasse:
+		"Le service de détourage n'a pas répondu à temps. Réessayez dans un instant.",
 	service_indisponible:
 		'Le service de détourage est injoignable. Réessayez dans un instant.',
 	reponse_invalide:
@@ -155,6 +160,7 @@ export function traduireErreur(e: unknown): ErreurDetourage {
 	if (status === 415) return new ErreurDetourage('type_refuse')
 	if (status === 401 || status === 403)
 		return new ErreurDetourage('session_expiree')
+	if (status === 504) return new ErreurDetourage('delai_depasse')
 	return new ErreurDetourage('service_indisponible')
 }
 
@@ -313,7 +319,12 @@ type Pb = {
  * octets ensuite. Les échecs (JSON `{ error, code }`) sortent, eux, par
  * l'exception ordinaire de `pb.send`.
  */
-export async function appelerDetourage(pb: Pb, image: Blob): Promise<Blob> {
+export async function appelerDetourage(
+	pb: Pb,
+	image: Blob,
+	/** La réponse a commencé d'arriver : il ne reste qu'à lire ses octets. */
+	surReception?: () => void,
+): Promise<ReponseDetourage> {
 	let brute: Response | null = null
 	const capter = async (url: RequestInfo | URL, config?: RequestInit) => {
 		const reponse = await fetch(url, config)
@@ -335,10 +346,196 @@ export async function appelerDetourage(pb: Pb, image: Blob): Promise<Blob> {
 	}
 	const reponse = brute as Response | null
 	if (!reponse) throw new ErreurDetourage('reponse_invalide')
+	surReception?.()
 	const octets = new Uint8Array(await reponse.arrayBuffer())
 	if (!SIGNATURE_PNG.every((o, i) => octets[i] === o))
 		throw new ErreurDetourage('reponse_invalide')
-	return new Blob([octets], { type: 'image/png' })
+	// Durée de l'appel au fournisseur, mesurée par le mini-SaaS et relayée par la
+	// route. Absente tant que le serveur n'est pas redéposé : ce n'est pas une erreur.
+	const ms = Number.parseInt(reponse.headers.get('X-Detourage-Ms') ?? '', 10)
+	return {
+		png: new Blob([octets], { type: 'image/png' }),
+		serveurMs: Number.isFinite(ms) && ms >= 0 ? ms : null,
+	}
+}
+
+export type ReponseDetourage = { png: Blob; serveurMs: number | null }
+
+// ── Les étapes et la jauge ──────────────────────────────────────────────────
+//
+// Le serveur ne rend AUCUN avancement pendant le calcul : la jauge dit l'étape
+// en cours, jamais un pourcentage. L'envoi et le calcul ne se distinguent pas
+// depuis le renderer (l'image part d'abord à la route Go locale, qui la relaie
+// et attend) : ils forment UNE étape, la plus longue.
+
+export type EtapeDetourage =
+	| 'preparation'
+	| 'detourage'
+	| 'reception'
+	| 'rangement'
+
+export const ETAPES_DETOURAGE: EtapeDetourage[] = [
+	'preparation',
+	'detourage',
+	'reception',
+	'rangement',
+]
+
+export const LIBELLES_ETAPE: Record<EtapeDetourage, string> = {
+	preparation: "Préparation de l'image",
+	detourage: 'Envoi et détourage',
+	reception: "Réception de l'image",
+	rangement: 'Rangement dans « Génération »',
+}
+
+/** Durées gardées sur ce poste pour estimer la suivante. */
+export const HISTORIQUE_MAX = 10
+/** Sans historique, attente au-delà de laquelle on prévient que cela peut durer. */
+export const ATTENTE_LONGUE_MS = 15_000
+/** L'estimation se dit par pas de 5 s : « environ 10 s », jamais un compte à rebours. */
+const PAS_ESTIMATION_MS = 5_000
+
+/** La durée habituelle : la MÉDIANE (un démarrage à froid isolé ne la déplace pas). */
+export function dureeHabituelle(durees: number[]): number | null {
+	const valides = durees
+		.filter((d) => Number.isFinite(d) && d > 0)
+		.sort((a, b) => a - b)
+	if (!valides.length) return null
+	const milieu = Math.floor(valides.length / 2)
+	return valides.length % 2
+		? valides[milieu]
+		: (valides[milieu - 1] + valides[milieu]) / 2
+}
+
+export type Estimation =
+	/** Pas d'historique : seulement l'étape. */
+	| { sorte: 'inconnue' }
+	/** Pas d'historique, et l'attente se prolonge. */
+	| { sorte: 'longue' }
+	| { sorte: 'estimee'; secondes: number }
+	/** La durée habituelle vient de passer : encore un instant. */
+	| { sorte: 'bientot' }
+	/** Nettement au-delà de l'habitude (démarrage à froid) : jamais de négatif. */
+	| { sorte: 'depassee' }
+
+/**
+ * Le temps restant de l'étape « détourage », ESTIMÉ depuis les durées réelles
+ * des détourages précédents sur ce poste (`habituelMs`, null sans historique).
+ */
+export function estimerRestant(
+	habituelMs: number | null,
+	ecouleMs: number,
+): Estimation {
+	if (habituelMs == null || !(habituelMs > 0))
+		return { sorte: ecouleMs >= ATTENTE_LONGUE_MS ? 'longue' : 'inconnue' }
+	const restant = habituelMs - ecouleMs
+	if (restant > 0) {
+		return {
+			sorte: 'estimee',
+			secondes:
+				(Math.ceil(restant / PAS_ESTIMATION_MS) * PAS_ESTIMATION_MS) / 1000,
+		}
+	}
+	// Une marge avant de parler de retard : la moitié de l'habitude, 5 s au moins
+	return -restant <= Math.max(PAS_ESTIMATION_MS, habituelMs / 2)
+		? { sorte: 'bientot' }
+		: { sorte: 'depassee' }
+}
+
+export type MessageJauge = {
+	/** L'étape, en clair. */
+	etape: string
+	/** Ce qu'on sait de l'attente, ou rien. */
+	detail: string | null
+	/** Vrai quand l'attente dépasse l'habitude : rassurer, pas alarmer. */
+	prolongee: boolean
+}
+
+/** Ce que la jauge affiche. Une durée n'apparaît que pendant « détourage ». */
+export function messageJauge(
+	etape: EtapeDetourage,
+	habituelMs: number | null,
+	ecouleMs: number,
+): MessageJauge {
+	const base = { etape: LIBELLES_ETAPE[etape], detail: null, prolongee: false }
+	if (etape !== 'detourage') return base
+	const estimation = estimerRestant(habituelMs, ecouleMs)
+	switch (estimation.sorte) {
+		case 'estimee':
+			return { ...base, detail: `environ ${estimation.secondes} s` }
+		case 'bientot':
+			return { ...base, detail: 'encore quelques secondes' }
+		case 'depassee':
+			return {
+				...base,
+				prolongee: true,
+				detail:
+					"Le service met plus de temps que d'habitude : l'attente peut aller jusqu'à une minute. Vous pouvez continuer à travailler.",
+			}
+		case 'longue':
+			return {
+				...base,
+				prolongee: true,
+				detail:
+					"L'attente peut aller jusqu'à une minute. Vous pouvez continuer à travailler.",
+			}
+		default:
+			return base
+	}
+}
+
+/** Les durées réelles des détourages précédents, gardées sur le poste. */
+export type HistoriqueDurees = {
+	lire: () => number[]
+	ajouter: (ms: number) => void
+}
+
+const CLE_HISTORIQUE = 'pocketstick.detourage.durees'
+
+/** `localStorage`, sans jamais lever : sans stockage, pas d'estimation, c'est tout. */
+export const historiqueLocal: HistoriqueDurees = {
+	lire: () => {
+		try {
+			const brut = JSON.parse(localStorage.getItem(CLE_HISTORIQUE) ?? '[]')
+			return Array.isArray(brut)
+				? brut.filter((d) => typeof d === 'number' && d > 0)
+				: []
+		} catch {
+			return []
+		}
+	},
+	ajouter: (ms) => {
+		try {
+			const suite = [...historiqueLocal.lire(), Math.round(ms)].slice(
+				-HISTORIQUE_MAX,
+			)
+			localStorage.setItem(CLE_HISTORIQUE, JSON.stringify(suite))
+		} catch {
+			// stockage plein ou absent : l'estimation manquera, rien d'autre
+		}
+	},
+}
+
+/**
+ * Les durées d'un détourage, en millisecondes, pour le journal de debug
+ * (`console.debug`, filtre « DETOURAGE ») : c'est ce qui dit si l'attente est
+ * chez le fournisseur (`serveur`) ou dans les transferts (`allerRetour − serveur`).
+ */
+export type ChronoDetourage = {
+	source: number
+	preparation: number
+	/** Envoi, calcul et retour des en-têtes, vus du renderer. */
+	allerRetour: number
+	/** L'appel au fournisseur, mesuré par le mini-SaaS ; null s'il ne le rend pas. */
+	serveur: number | null
+	/** Lecture des octets et conversion en data URL. */
+	reception: number
+	rangement: number
+	pose: number
+	total: number
+	octetsEnvoyes: number
+	octetsRecus: number
+	cote: string
 }
 
 // ── L'état affiché par le panneau ───────────────────────────────────────────
@@ -350,6 +547,12 @@ export type EtatDetourage = {
 	info: { ton: 'info' | 'avertissement'; message: string } | null
 	/** Images rangées depuis le lancement : le sous-onglet « Génération » s'y relit. */
 	rangees: number
+	/** L'étape en cours, pour la jauge ; null au repos. */
+	etape: EtapeDetourage | null
+	/** Début de l'étape en cours (`Date.now()`). */
+	debutEtape: number
+	/** Durée habituelle de l'étape « détourage » sur ce poste, lue au lancement. */
+	habituelMs: number | null
 }
 
 /**
@@ -361,6 +564,9 @@ export const useEtatDetourage = create<EtatDetourage>(() => ({
 	erreur: null,
 	info: null,
 	rangees: 0,
+	etape: null,
+	debutEtape: 0,
+	habituelMs: null,
 }))
 
 export const effacerMessageDetourage = () =>
@@ -383,10 +589,22 @@ export type DepsDetourage = {
 	}
 	codec?: Codec
 	source?: (el: any) => Promise<Blob>
+	/** Durées des détourages précédents ; par défaut `historiqueLocal`. */
+	historique?: HistoriqueDurees
+	/** L'horloge, en millisecondes ; par défaut `Date.now`. */
+	maintenant?: () => number
+	/** Appelé dès que l'image est livrée, donc décomptée : rafraîchir le solde affiché. */
+	apresDecompte?: () => void
 }
 
 export type ResultatDetourage =
-	| { ok: true; pose: boolean; rangee: boolean; src: string }
+	| {
+			ok: true
+			pose: boolean
+			rangee: boolean
+			src: string
+			chrono: ChronoDetourage
+	  }
 	| { ok: false; erreur: ErreurDetourage }
 
 const nomDe = (el: any) => String(el?.filename || el?.name || 'image')
@@ -419,14 +637,65 @@ export async function lancerDetourage(
 	const id: string = el.id
 	const srcDepart: string = el.src
 	const depuis = nomDe(el)
-	etat.setState({ enCours: true, erreur: null, info: null })
+	const maintenant = deps.maintenant ?? Date.now
+	const historique = deps.historique ?? historiqueLocal
+	const debut = maintenant()
+	let jalon = debut
+	/** Le temps passé depuis le jalon précédent, qui avance. */
+	const tour = () => {
+		const t = maintenant()
+		const ecoule = t - jalon
+		jalon = t
+		return ecoule
+	}
+	const passerA = (etape: EtapeDetourage) =>
+		etat.setState({ etape, debutEtape: maintenant() })
+	etat.setState({
+		enCours: true,
+		erreur: null,
+		info: null,
+		etape: 'preparation',
+		debutEtape: debut,
+		habituelMs: dureeHabituelle(historique.lire()),
+	})
 
 	try {
 		let png: Blob
+		const chrono: ChronoDetourage = {
+			source: 0,
+			preparation: 0,
+			allerRetour: 0,
+			serveur: null,
+			reception: 0,
+			rangement: 0,
+			pose: 0,
+			total: 0,
+			octetsEnvoyes: 0,
+			octetsRecus: 0,
+			cote: '',
+		}
 		try {
 			const source = await (deps.source ?? sourceAEnvoyer)(el)
+			chrono.source = tour()
 			const preparee = await preparerImage(source, deps.codec)
-			png = await appelerDetourage(deps.pb, preparee.blob)
+			chrono.preparation = tour()
+			chrono.octetsEnvoyes = preparee.blob.size
+			chrono.cote = `${preparee.largeur}×${preparee.hauteur}`
+			passerA('detourage')
+			const reponse = await appelerDetourage(deps.pb, preparee.blob, () => {
+				chrono.allerRetour = tour()
+				passerA('reception')
+			})
+			png = reponse.png
+			chrono.serveur = reponse.serveurMs
+			chrono.octetsRecus = png.size
+			// L'image est livrée : elle est décomptée, et cette durée est une durée réelle
+			historique.ajouter(chrono.allerRetour)
+			try {
+				deps.apresDecompte?.()
+			} catch {
+				// le solde affiché se rafraîchira de lui-même
+			}
 		} catch (e) {
 			const erreur =
 				e instanceof ErreurDetourage
@@ -441,6 +710,8 @@ export async function lancerDetourage(
 
 		// 2) RANGER, avant de toucher à l'élément. Une data URL, comme une image importée.
 		const src = await blobEnDataURL(png)
+		chrono.reception = tour()
+		passerA('rangement')
 		let rangee = true
 		try {
 			await deps.bibliotheque.ajouterGeneree({
@@ -454,6 +725,7 @@ export async function lancerDetourage(
 			console.error('❌ [DETOURAGE] Rangement impossible:', e)
 			rangee = false
 		}
+		chrono.rangement = tour()
 
 		// 3) POSER, si l'élément est encore tel qu'au lancement. L'`id` capturé,
 		// jamais la sélection courante : elle a pu bouger pendant l'attente.
@@ -461,6 +733,10 @@ export async function lancerDetourage(
 		const cible = etatStore.elements.find((e: any) => e.id === id)
 		const posable = !!cible && !cible.locked && cible.src === srcDepart
 		if (posable) etatStore.updateElements({ [id]: { src } })
+		chrono.pose = tour()
+		chrono.total = maintenant() - debut
+		// Journal discret (niveau « Verbose » de la console, filtre DETOURAGE)
+		console.debug('[DETOURAGE] durées en ms', chrono)
 
 		if (posable && !rangee)
 			etat.setState({ info: { ton: 'avertissement', message: MSG_NON_RANGEE } })
@@ -471,8 +747,8 @@ export async function lancerDetourage(
 					: { ton: 'avertissement', message: MSG_PERDUE },
 			})
 		}
-		return { ok: true, pose: posable, rangee, src }
+		return { ok: true, pose: posable, rangee, src, chrono }
 	} finally {
-		etat.setState({ enCours: false })
+		etat.setState({ enCours: false, etape: null })
 	}
 }

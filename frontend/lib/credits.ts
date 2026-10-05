@@ -28,6 +28,14 @@ async function loadApiKey(): Promise<string> {
 	}
 }
 
+// Le solde ne se relit que toutes les 5 minutes : ce qui vient de consommer des
+// crédits hors de l'en-tête (le détourage de PocketStick) demande ici à le relire.
+const ecouteursSolde = new Set<() => void>()
+
+export function rafraichirCreditsPocketApp(): void {
+	for (const relire of ecouteursSolde) relire()
+}
+
 export function usePocketAppCredits(): PocketAppCredits {
 	const [balanceEur, setBalanceEur] = useState<number>(0)
 	const [loading, setLoading] = useState<boolean>(true)
@@ -74,7 +82,9 @@ export function usePocketAppCredits(): PocketAppCredits {
 	useEffect(() => {
 		fetchBalance()
 		intervalRef.current = setInterval(fetchBalance, REFRESH_INTERVAL_MS)
+		ecouteursSolde.add(fetchBalance)
 		return () => {
+			ecouteursSolde.delete(fetchBalance)
 			if (intervalRef.current) clearInterval(intervalRef.current)
 		}
 	}, [fetchBalance])

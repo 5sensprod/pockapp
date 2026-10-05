@@ -1,0 +1,88 @@
+// frontend/modules/stick/labels/components/ui/JaugeDetourage.jsx
+//
+// LA JAUGE du détourage IA (`lib/detourage.ts`). Le serveur ne rend aucun
+// avancement pendant le calcul : elle dit l'ÉTAPE en cours (quatre segments),
+// jamais un pourcentage. Pendant l'étape « détourage », un temps restant
+// ESTIMÉ depuis les détourages précédents du poste ; passé la durée habituelle,
+// une phrase rassurante, jamais de compte à rebours négatif.
+//
+// L'état vit dans `useEtatDetourage` (zustand) : la jauge se monte où l'on veut
+// — sous le bouton « Détourer », et dans la barre du haut (`compact`), qui
+// reste visible quand la sélection change et que le panneau est remplacé.
+
+import React, { useEffect, useState } from 'react';
+import { Scissors } from 'lucide-react';
+import { ETAPES_DETOURAGE, messageJauge, useEtatDetourage } from '../../lib/detourage';
+import { AIDE } from './styles';
+
+const JaugeDetourage = ({ compact = false }) => {
+  const enCours = useEtatDetourage((s) => s.enCours);
+  const etape = useEtatDetourage((s) => s.etape);
+  const debutEtape = useEtatDetourage((s) => s.debutEtape);
+  const habituelMs = useEtatDetourage((s) => s.habituelMs);
+  // Une seconde suffit : l'estimation se dit par pas de 5 s
+  const [, battre] = useState(0);
+  useEffect(() => {
+    if (!enCours) return undefined;
+    const minuterie = setInterval(() => battre((n) => n + 1), 1000);
+    return () => clearInterval(minuterie);
+  }, [enCours]);
+
+  if (!enCours || !etape) return null;
+  const message = messageJauge(etape, habituelMs, Date.now() - debutEtape);
+  const rang = ETAPES_DETOURAGE.indexOf(etape);
+  const segments = (
+    <div className="flex gap-0.5" aria-hidden="true">
+      {ETAPES_DETOURAGE.map((e, i) => (
+        <span
+          key={e}
+          className={`h-1 flex-1 rounded-full ${
+            i < rang
+              ? 'bg-blue-600 dark:bg-blue-500'
+              : i === rang
+                ? 'bg-blue-600 dark:bg-blue-500 animate-pulse'
+                : 'bg-gray-200 dark:bg-gray-600'
+          }`}
+        />
+      ))}
+    </div>
+  );
+
+  if (compact) {
+    // Barre du haut : l'étape et, s'il y en a une, l'estimation courte. La phrase
+    // longue (attente prolongée) passe en infobulle.
+    const court = message.prolongee ? 'plus long que d’habitude' : message.detail;
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        title={message.prolongee ? message.detail : 'Détourage en cours : vous pouvez continuer à travailler.'}
+        className="w-44 text-[11px] leading-snug text-gray-600 dark:text-gray-300"
+      >
+        <div className="flex items-center gap-1.5 mb-1 min-w-0">
+          <Scissors className="h-3.5 w-3.5 flex-none text-blue-600 dark:text-blue-400" />
+          <span className="truncate">
+            {message.etape}
+            {court ? ` · ${court}` : '…'}
+          </span>
+        </div>
+        {segments}
+      </div>
+    );
+  }
+
+  return (
+    <div role="status" aria-live="polite" className="space-y-1">
+      {segments}
+      <p className={AIDE}>
+        <span className="text-gray-700 dark:text-gray-200">
+          {message.etape}
+          {message.detail && !message.prolongee ? ` · ${message.detail}` : '…'}
+        </span>
+        {message.prolongee && <span className="block">{message.detail}</span>}
+      </p>
+    </div>
+  );
+};
+
+export default JaugeDetourage;

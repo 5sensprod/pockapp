@@ -125,7 +125,10 @@ verrouillé et porte la même `src` — sinon rien n'est écrasé et l'image att
 sous-onglet **« Génération »** de Médias (`UploadTemplate` filtré ; « Mes images » ne
 montre plus que les images importées ou sans marque). Le rangement ne dépend pas de
 l'historique : Ctrl+Z rend l'originale, l'image détourée reste. `SEUIL_ENVOI_OCTETS`
-(2 Mio) est le plafond d'envoi supposé, à relever après mesure du serveur.
+(6 Mio) reste sous le plafond du mini-SaaS (8 Mio). **L'attente se lit sur une
+jauge par ÉTAPES** (`ui/JaugeDetourage.jsx`, sous le bouton et dans la barre du
+haut) : jamais de pourcentage, un temps restant estimé depuis les détourages
+précédents du poste, et une phrase rassurante passé la durée habituelle.
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation
@@ -173,7 +176,8 @@ Trois, et trois seulement :
    crédits IA et renvoie l'image ; la route `POST /api/ai/remove-background`
    n'appelle donc pas `usage.php`. Refuse de partir hors HTTPS ; type vérifié
    sur les octets, réponse vérifiée PNG. Erreurs rendues avec leur `code`
-   (`credit_epuise` ≠ `fournisseur_en_echec`). Gardien :
+   (`credit_epuise` ≠ `fournisseur_en_echec` ≠ `delai_depasse`, qui n'est pas
+   une panne). La durée de l'appel revient dans `X-Detourage-Ms`. Gardien :
    `detourage_routes_test.go`.
 
 Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.

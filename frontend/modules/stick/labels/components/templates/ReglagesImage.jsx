@@ -17,7 +17,9 @@ import Segments from '../ui/Segments';
 import Bouton from '../ui/Bouton';
 import Note from '../ui/Note';
 import presetImageService from '../../services/presetImageService';
+import JaugeDetourage from '../ui/JaugeDetourage';
 import { usePocketBase } from '@/lib/use-pocketbase';
+import { rafraichirCreditsPocketApp } from '@/lib/credits';
 import {
   effacerMessageDetourage,
   lancerDetourage,
@@ -88,7 +90,8 @@ export const Miroirs = ({ el, maj }) => (
  * aperçu ; Ctrl+Z rend l'originale, et l'image détourée reste rangée dans
  * « Génération ». Bouton SECONDAIRE : l'aplat bleu est pris par la validation.
  * Désactivé, la raison en infobulle. Le résultat et les erreurs sont dans une
- * Note, pas un message fugitif.
+ * Note, pas un message fugitif. Pendant l'attente, `JaugeDetourage` dit l'étape
+ * — ici et dans la barre du haut, qui reste visible si la sélection change.
  */
 export const Detourer = ({ el }) => {
   const pb = usePocketBase();
@@ -108,10 +111,19 @@ export const Detourer = ({ el }) => {
         plein
         desactive={!refus.ok}
         titre={refus.ok ? "Retire le fond de l'image (service payant). Ctrl+Z rend la photo d'origine." : refus.raison}
-        onClic={() => lancerDetourage(el, nombre, { pb, store: useLabelStore, bibliotheque: presetImageService })}
+        onClic={() =>
+          lancerDetourage(el, nombre, {
+            pb,
+            store: useLabelStore,
+            bibliotheque: presetImageService,
+            // Le solde de l'en-tête ne se relit que toutes les 5 minutes
+            apresDecompte: rafraichirCreditsPocketApp,
+          })
+        }
       >
         {enCours ? 'Détourage en cours…' : 'Détourer'}
       </Bouton>
+      <JaugeDetourage />
       {message && (
         <Note
           ton={message.ton}

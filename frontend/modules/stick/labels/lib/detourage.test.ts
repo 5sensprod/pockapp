@@ -6,12 +6,20 @@ import presetImageService from '../services/presetImageService'
 import { indexedDBFactice } from '../services/indexedDBFactice'
 import useLabelStore from '../store/useLabelStore'
 import {
+	ATTENTE_LONGUE_MS,
 	COTE_MAX,
 	type Codec,
+	type EtapeDetourage,
+	HISTORIQUE_MAX,
+	type HistoriqueDurees,
 	SEUIL_ENVOI_OCTETS,
 	appelerDetourage,
 	dataURLEnBlob,
+	dureeHabituelle,
+	estimerRestant,
+	historiqueLocal,
 	lancerDetourage,
+	messageJauge,
 	peutDetourer,
 	preparerImage,
 	sourceAEnvoyer,
@@ -62,8 +70,11 @@ const fauxPb = (
 	}
 }
 
-const succes = () =>
-	new Response(PNG, { status: 200, headers: { 'Content-Type': 'image/png' } })
+const succes = (entetes: Record<string, string> = {}) =>
+	new Response(PNG, {
+		status: 200,
+		headers: { 'Content-Type': 'image/png', ...entetes },
+	})
 const echec = (status: number, code: string, error = 'Message du serveur') =>
 	new Response(JSON.stringify({ error, code }), {
 		status,
@@ -97,14 +108,32 @@ const codecFactice = (
 
 const sourceFactice = async () => new Blob(['source'], { type: 'image/jpeg' })
 
+/** Un historique en mémoire : aucun test ne dépend du `localStorage` du poste. */
+const historiqueFactice = (durees: number[] = []): HistoriqueDurees => ({
+	lire: () => [...durees],
+	ajouter: (ms) => {
+		durees.push(ms)
+	},
+})
+
 const deps = (pb: any, extra: Record<string, unknown> = {}) => ({
 	pb,
 	store: useLabelStore,
 	bibliotheque: presetImageService,
 	codec: codecFactice(800, 600).codec,
 	source: sourceFactice,
+	historique: historiqueFactice(),
 	...extra,
 })
+
+/** Les étapes par lesquelles la jauge est passée, dans l'ordre, sans répétition. */
+const suivreEtapes = () => {
+	const vues: (EtapeDetourage | null)[] = []
+	const arreter = useEtatDetourage.subscribe((s) => {
+		if (vues[vues.length - 1] !== s.etape) vues.push(s.etape)
+	})
+	return { vues, arreter }
+}
 
 beforeEach(() => {
 	vi.stubGlobal('indexedDB', indexedDBFactice())
@@ -123,7 +152,11 @@ beforeEach(() => {
 		erreur: null,
 		info: null,
 		rangees: 0,
+		etape: null,
+		debutEtape: 0,
+		habituelMs: null,
 	})
+	vi.spyOn(console, 'debug').mockImplementation(() => {})
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async () => succes()),
@@ -132,6 +165,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.unstubAllGlobals()
+	vi.restoreAllMocks()
 })
 
 describe('peutDetourer', () => {
@@ -257,6 +291,7 @@ describe('les familles d’erreur', () => {
 		[413, 'image_trop_lourde', 'taille'],
 		[415, 'type_refuse', 'format'],
 		[502, 'fournisseur_en_echec', 'service'],
+		[504, 'delai_depasse', 'service'],
 		[502, 'service_indisponible', 'service'],
 		[502, 'reponse_invalide', 'service'],
 		[503, 'cle_absente', 'configuration'],
@@ -305,6 +340,37 @@ describe('les familles d’erreur', () => {
 		).toBe(false)
 	})
 
+	it('un délai dépassé n’est pas une panne : son message, repris du serveur, dit que rien n’a été décompté', () => {
+		const e = traduireErreur({
+			status: 504,
+			response: {
+				code: 'delai_depasse',
+				error:
+					"Le service de détourage n'a pas répondu à temps. Réessaie : rien n'a été décompté.",
+			},
+		})
+		expect(e.code).toBe('delai_depasse')
+		expect(e.message).toMatch(/pas répondu à temps/)
+		expect(e.message).toMatch(/rien n'a été décompté/)
+		expect(e.message).not.toMatch(/en panne/)
+		expect(e.reessayable).toBe(true)
+	})
+
+	it('un 504 sans code est un délai dépassé, sans promesse sur le décompte', () => {
+		const e = traduireErreur({ status: 504, response: {} })
+		expect(e.code).toBe('delai_depasse')
+		expect(e.message).toMatch(/pas répondu à temps/)
+		expect(e.message).not.toMatch(/décompté/)
+	})
+
+	it('un serveur pas encore à jour rend la panne générique, comme avant', () => {
+		const e = traduireErreur({
+			status: 502,
+			response: { code: 'fournisseur_en_echec', error: 'En panne.' },
+		})
+		expect(e.code).toBe('fournisseur_en_echec')
+	})
+
 	it('un réseau coupé ou une session expirée ont leur famille', async () => {
 		const coupe = fauxPb(() => Promise.reject(new Error('réseau')))
 		await expect(
@@ -324,17 +390,299 @@ describe('les familles d’erreur', () => {
 	})
 
 	it('l’appel lit les octets du PNG et envoie le champ « image »', async () => {
-		const pb = fauxPb(succes)
-		const sortie = await appelerDetourage(
+		const pb = fauxPb(() => succes())
+		const { png: sortie, serveurMs } = await appelerDetourage(
 			pb,
 			new Blob(['x'], { type: 'image/jpeg' }),
 		)
+		expect(serveurMs).toBeNull() // un serveur qui ne rend pas encore la durée
 		expect(sortie.type).toBe('image/png')
 		expect(new Uint8Array(await sortie.arrayBuffer())).toEqual(PNG)
 		const [chemin, options] = pb.send.mock.calls[0]
 		expect(chemin).toBe('/api/ai/remove-background')
 		expect(options.method).toBe('POST')
 		expect((options.body as FormData).get('image')).toBeInstanceOf(Blob)
+	})
+})
+
+describe('la durée rendue par le serveur', () => {
+	it('est lue dans l’en-tête X-Detourage-Ms', async () => {
+		const pb = fauxPb(() => succes({ 'X-Detourage-Ms': '5123' }))
+		expect((await appelerDetourage(pb, new Blob(['x']))).serveurMs).toBe(5123)
+	})
+
+	it('un en-tête illisible vaut « inconnue », pas une erreur', async () => {
+		const pb = fauxPb(() => succes({ 'X-Detourage-Ms': 'abc' }))
+		expect((await appelerDetourage(pb, new Blob(['x']))).serveurMs).toBeNull()
+	})
+
+	it('prévient que la réponse arrive avant de lire ses octets', async () => {
+		const recue = vi.fn()
+		await appelerDetourage(
+			fauxPb(() => succes()),
+			new Blob(['x']),
+			recue,
+		)
+		expect(recue).toHaveBeenCalledTimes(1)
+	})
+})
+
+describe('le temps restant estimé', () => {
+	it('la durée habituelle est la médiane : un démarrage à froid isolé ne la déplace pas', () => {
+		expect(dureeHabituelle([])).toBeNull()
+		expect(dureeHabituelle([6000])).toBe(6000)
+		expect(dureeHabituelle([5000, 6000, 62000])).toBe(6000)
+		expect(dureeHabituelle([4000, 6000])).toBe(5000)
+		expect(dureeHabituelle([0, -3, Number.NaN])).toBeNull()
+	})
+
+	it('sans historique : pas de durée, seulement l’étape', () => {
+		expect(estimerRestant(null, 0)).toEqual({ sorte: 'inconnue' })
+		expect(estimerRestant(null, 9000)).toEqual({ sorte: 'inconnue' })
+		const m = messageJauge('detourage', null, 3000)
+		expect(m).toEqual({
+			etape: 'Envoi et détourage',
+			detail: null,
+			prolongee: false,
+		})
+	})
+
+	it('sans historique, une attente qui dure est annoncée sans durée inventée', () => {
+		expect(estimerRestant(null, ATTENTE_LONGUE_MS)).toEqual({ sorte: 'longue' })
+		const m = messageJauge('detourage', null, 30000)
+		expect(m.prolongee).toBe(true)
+		expect(m.detail).toMatch(/jusqu'à une minute/)
+		expect(m.detail).not.toMatch(/d'habitude/)
+		expect(m.detail).not.toMatch(/\d/)
+	})
+
+	it('avec historique : « environ N s », par pas de 5 s', () => {
+		expect(estimerRestant(12000, 0)).toEqual({ sorte: 'estimee', secondes: 15 })
+		expect(estimerRestant(12000, 2500)).toEqual({
+			sorte: 'estimee',
+			secondes: 10,
+		})
+		expect(estimerRestant(12000, 11000)).toEqual({
+			sorte: 'estimee',
+			secondes: 5,
+		})
+		expect(messageJauge('detourage', 12000, 2500).detail).toBe('environ 10 s')
+	})
+
+	it('durée habituelle juste passée : « encore quelques secondes »', () => {
+		expect(estimerRestant(12000, 12000)).toEqual({ sorte: 'bientot' })
+		expect(estimerRestant(12000, 18000)).toEqual({ sorte: 'bientot' })
+		// une marge de 5 s au moins
+		expect(estimerRestant(4000, 9000)).toEqual({ sorte: 'bientot' })
+	})
+
+	it('dépassée : jamais de compte à rebours négatif, un message rassurant', () => {
+		expect(estimerRestant(12000, 18001)).toEqual({ sorte: 'depassee' })
+		const m = messageJauge('detourage', 6000, 45000)
+		expect(m.prolongee).toBe(true)
+		expect(m.detail).toMatch(/plus de temps que d'habitude/)
+		expect(m.detail).toMatch(/jusqu'à une minute/)
+		expect(m.detail).toMatch(/continuer à travailler/)
+		expect(m.detail).not.toMatch(/-\s?\d|environ/)
+		expect(m.detail).not.toMatch(/panne|erreur|échec/i)
+	})
+
+	it('aucun prix, et une durée seulement pendant l’étape « détourage »', () => {
+		const etapes: EtapeDetourage[] = [
+			'preparation',
+			'detourage',
+			'reception',
+			'rangement',
+		]
+		for (const e of etapes) {
+			const m = messageJauge(e, 6000, 1000)
+			expect(`${m.etape} ${m.detail ?? ''}`).not.toMatch(/€|\$|crédit|centime/i)
+			if (e !== 'detourage') expect(m.detail).toBeNull()
+		}
+		expect(messageJauge('preparation', 6000, 1000).etape).toMatch(/Préparation/)
+		expect(messageJauge('reception', 6000, 1000).etape).toMatch(/Réception/)
+		expect(messageJauge('rangement', 6000, 1000).etape).toMatch(/Rangement/)
+	})
+
+	it('l’historique du poste garde les dernières durées, et ne lève jamais', () => {
+		// Sans `localStorage` : rien, sans erreur
+		vi.stubGlobal('localStorage', undefined)
+		expect(historiqueLocal.lire()).toEqual([])
+		expect(() => historiqueLocal.ajouter(5000)).not.toThrow()
+		// Avec : les HISTORIQUE_MAX dernières
+		const coffre = new Map<string, string>()
+		vi.stubGlobal('localStorage', {
+			getItem: (k: string) => coffre.get(k) ?? null,
+			setItem: (k: string, v: string) => void coffre.set(k, v),
+		})
+		for (let i = 1; i <= HISTORIQUE_MAX + 3; i++)
+			historiqueLocal.ajouter(i * 1000)
+		const lues = historiqueLocal.lire()
+		expect(lues).toHaveLength(HISTORIQUE_MAX)
+		expect(lues[lues.length - 1]).toBe((HISTORIQUE_MAX + 3) * 1000)
+		// Un contenu abîmé ne casse rien
+		coffre.set([...coffre.keys()][0], '{pas du json')
+		expect(historiqueLocal.lire()).toEqual([])
+	})
+})
+
+describe('lancerDetourage — la jauge', () => {
+	it('passe par les étapes dans l’ordre, puis revient au repos', async () => {
+		const { vues, arreter } = suivreEtapes()
+		await lancerDetourage(photo(), 1, deps(fauxPb(() => succes())))
+		arreter()
+		expect(vues).toEqual([
+			'preparation',
+			'detourage',
+			'reception',
+			'rangement',
+			null,
+		])
+		expect(useEtatDetourage.getState().enCours).toBe(false)
+	})
+
+	it('un échec ramène la jauge au repos, sans passer par « réception »', async () => {
+		const { vues, arreter } = suivreEtapes()
+		await lancerDetourage(
+			photo(),
+			1,
+			deps(fauxPb(() => echec(504, 'delai_depasse'))),
+		)
+		arreter()
+		expect(vues).toEqual(['preparation', 'detourage', null])
+		expect(useEtatDetourage.getState().erreur?.code).toBe('delai_depasse')
+	})
+
+	it('la durée habituelle est lue au lancement, dans l’historique du poste', async () => {
+		let habituel: number | null | undefined
+		const pb = fauxPb(
+			() => succes(),
+			() => {
+				habituel = useEtatDetourage.getState().habituelMs
+			},
+		)
+		await lancerDetourage(
+			photo(),
+			1,
+			deps(pb, { historique: historiqueFactice([5000, 7000, 60000]) }),
+		)
+		expect(habituel).toBe(7000)
+	})
+
+	it('chronomètre les phases, et ajoute l’aller-retour RÉEL à l’historique', async () => {
+		// Une horloge qui avance de 100 ms à chaque lecture
+		let t = 0
+		const maintenant = () => {
+			t += 100
+			return t
+		}
+		const durees: number[] = []
+		const r = await lancerDetourage(
+			photo(),
+			1,
+			deps(
+				fauxPb(() => succes({ 'X-Detourage-Ms': '4321' })),
+				{ maintenant, historique: historiqueFactice(durees) },
+			),
+		)
+		expect(r.ok).toBe(true)
+		if (!r.ok) return
+		const c = r.chrono
+		expect(c.serveur).toBe(4321)
+		for (const phase of [
+			c.source,
+			c.preparation,
+			c.allerRetour,
+			c.reception,
+			c.rangement,
+			c.pose,
+		])
+			expect(phase).toBeGreaterThan(0)
+		expect(c.total).toBeGreaterThanOrEqual(
+			c.source +
+				c.preparation +
+				c.allerRetour +
+				c.reception +
+				c.rangement +
+				c.pose,
+		)
+		expect(c.octetsRecus).toBe(PNG.length)
+		expect(c.cote).toBe('800×600')
+		expect(durees).toEqual([c.allerRetour])
+		expect(console.debug).toHaveBeenCalledWith(
+			expect.stringContaining('DETOURAGE'),
+			c,
+		)
+	})
+
+	it('un échec n’entre pas dans l’historique : ce n’est pas une durée de détourage', async () => {
+		const durees: number[] = []
+		await lancerDetourage(
+			photo(),
+			1,
+			deps(
+				fauxPb(() => echec(502, 'fournisseur_en_echec')),
+				{ historique: historiqueFactice(durees) },
+			),
+		)
+		expect(durees).toEqual([])
+	})
+
+	it('le solde est rafraîchi une fois, à la livraison, et jamais après un échec', async () => {
+		const apresDecompte = vi.fn()
+		await lancerDetourage(
+			photo(),
+			1,
+			deps(
+				fauxPb(() => echec(402, 'credit_epuise')),
+				{ apresDecompte },
+			),
+		)
+		expect(apresDecompte).not.toHaveBeenCalled()
+		await lancerDetourage(
+			photo(),
+			1,
+			deps(
+				fauxPb(() => succes()),
+				{ apresDecompte },
+			),
+		)
+		expect(apresDecompte).toHaveBeenCalledTimes(1)
+	})
+
+	it('un rafraîchissement du solde qui échoue ne perd pas l’image', async () => {
+		const r = await lancerDetourage(
+			photo(),
+			1,
+			deps(
+				fauxPb(() => succes()),
+				{
+					apresDecompte: () => {
+						throw new Error('solde injoignable')
+					},
+				},
+			),
+		)
+		expect(r).toMatchObject({ ok: true, pose: true, rangee: true })
+	})
+
+	it('on peut travailler pendant l’attente : une autre modification reste, et la pose n’est qu’UN pas de plus', async () => {
+		useLabelStore.setState({
+			elements: [photo(), { id: 't1', type: 'text', text: 'Promo', x: 0 }],
+		})
+		etat().resetHistory()
+		const pb = fauxPb(
+			() => succes(),
+			() => {
+				useLabelStore.setState({ selectedId: 't1' })
+				etat().updateElement('t1', { text: 'Soldes' })
+			},
+		)
+		const r = await lancerDetourage(photo(), 1, deps(pb))
+		expect(r).toMatchObject({ ok: true, pose: true })
+		expect(etat().elements.find((e: any) => e.id === 't1').text).toBe('Soldes')
+		expect(etat().elements[0].src).toMatch(/^data:image\/png;base64,/)
+		expect(etat().historyPast).toHaveLength(2)
 	})
 })
 
@@ -373,7 +721,7 @@ describe('lancerDetourage — une erreur ne touche à rien', () => {
 
 describe('lancerDetourage — la pose et le rangement', () => {
 	it('un succès pose l’image en UN pas d’historique et la range dans la bibliothèque', async () => {
-		const r = await lancerDetourage(photo(), 1, deps(fauxPb(succes)))
+		const r = await lancerDetourage(photo(), 1, deps(fauxPb(() => succes())))
 		expect(r).toMatchObject({ ok: true, pose: true, rangee: true })
 		expect(etat().elements[0].src).toMatch(/^data:image\/png;base64,/)
 		expect(etat().historyPast).toHaveLength(1)
@@ -385,7 +733,7 @@ describe('lancerDetourage — la pose et le rangement', () => {
 	})
 
 	it('Ctrl+Z rend la photo d’origine, et l’image détourée reste dans la bibliothèque', async () => {
-		await lancerDetourage(photo(), 1, deps(fauxPb(succes)))
+		await lancerDetourage(photo(), 1, deps(fauxPb(() => succes())))
 		etat().undo()
 		expect(etat().elements[0].src).toBe(DATA_URL)
 		expect(await presetImageService.listerGenerees()).toHaveLength(1)
@@ -398,8 +746,9 @@ describe('lancerDetourage — la pose et le rangement', () => {
 				photo({ id: 'e2', src: 'data:image/png;base64,AAAA' }),
 			],
 		})
-		const pb = fauxPb(succes, () =>
-			useLabelStore.setState({ selectedId: 'e2' }),
+		const pb = fauxPb(
+			() => succes(),
+			() => useLabelStore.setState({ selectedId: 'e2' }),
 		)
 		await lancerDetourage(photo(), 1, deps(pb))
 		const [e1, e2] = etat().elements
@@ -423,7 +772,11 @@ describe('lancerDetourage — la pose et le rangement', () => {
 	])(
 		'quand %s pendant l’attente : rien n’est écrasé, l’image attend dans « Génération »',
 		async (_nom, change, srcAttendue) => {
-			const r = await lancerDetourage(photo(), 1, deps(fauxPb(succes, change)))
+			const r = await lancerDetourage(
+				photo(),
+				1,
+				deps(fauxPb(() => succes(), change)),
+			)
 			expect(r).toMatchObject({ ok: true, pose: false, rangee: true })
 			expect(etat().elements.find((e: any) => e.id === 'e1')?.src).toBe(
 				srcAttendue,
@@ -437,7 +790,7 @@ describe('lancerDetourage — la pose et le rangement', () => {
 		vi.stubGlobal('indexedDB', indexedDBFactice({ echecEcriture: true }))
 		;(presetImageService as any).db = null
 		vi.spyOn(console, 'error').mockImplementation(() => {})
-		const r = await lancerDetourage(photo(), 1, deps(fauxPb(succes)))
+		const r = await lancerDetourage(photo(), 1, deps(fauxPb(() => succes())))
 		expect(r).toMatchObject({ ok: true, pose: true, rangee: false })
 		expect(etat().elements[0].src).toMatch(/^data:image\/png;base64,/)
 		const info = useEtatDetourage.getState().info

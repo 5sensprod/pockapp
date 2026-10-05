@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
 )
@@ -88,6 +90,7 @@ func TestDetourageSucces(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("X-Billed-Cost", "0.0006")
+		w.Header().Set("X-Detourage-Ms", "5123")
 		w.Write(pngTest)
 	})
 	rec := appelDetourage(t, d, jpegTest)
@@ -96,6 +99,91 @@ func TestDetourageSucces(t *testing.T) {
 	}
 	if rec.Header().Get("Content-Type") != "image/png" || rec.Header().Get("X-Billed-Cost") != "0.0006" {
 		t.Fatalf("en-têtes: %v", rec.Header())
+	}
+	if rec.Header().Get("X-Detourage-Ms") != "5123" {
+		t.Fatalf("durée non relayée: %v", rec.Header())
+	}
+}
+
+// Un mini-SaaS pas encore redéposé ne rend pas la durée ; un en-tête qui n'est
+// pas un entier n'est pas relayé.
+func TestDetourageDureeAbsenteOuInvalide(t *testing.T) {
+	for _, valeur := range []string{"", "abc", "12; DROP", "-5", "1234567890"} {
+		var appels int32
+		d := fauxMiniSaaS(t, &appels, func(w http.ResponseWriter, r *http.Request) {
+			if valeur != "" {
+				w.Header().Set("X-Detourage-Ms", valeur)
+			}
+			w.Write(pngTest)
+		})
+		rec := appelDetourage(t, d, pngTest)
+		if rec.Code != 200 || rec.Header().Get("X-Detourage-Ms") != "" {
+			t.Fatalf("%q: code %d, en-tête %q", valeur, rec.Code, rec.Header().Get("X-Detourage-Ms"))
+		}
+	}
+}
+
+// Le délai dépassé du mini-SaaS garde son code, distinct de la panne, et dit que
+// rien n'a été décompté.
+func TestDetourageDelaiDepasseCoteServeur(t *testing.T) {
+	var appels int32
+	d := fauxMiniSaaS(t, &appels, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(504)
+		json.NewEncoder(w).Encode(map[string]string{"error": "x", "code": "delai_depasse"})
+	})
+	rec := appelDetourage(t, d, pngTest)
+	if rec.Code != 504 || codeDe(t, rec) != "delai_depasse" {
+		t.Fatalf("code %d, corps %q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "rien n'a été décompté") {
+		t.Fatalf("message: %q", rec.Body.String())
+	}
+	if erreursDetourage["delai_depasse"].Status == erreursDetourage["fournisseur_en_echec"].Status {
+		t.Fatal("même statut pour délai dépassé et panne")
+	}
+}
+
+// Un mini-SaaS qui répond LENTEMENT, au-delà du délai du poste : délai dépassé,
+// un seul appel (aucun second essai), et aucune promesse sur le décompte — le
+// serveur a pu finir après que le poste a cessé d'attendre.
+func TestDetourageDelaiDuPoste(t *testing.T) {
+	var appels int32
+	liberer := make(chan struct{})
+	d := fauxMiniSaaS(t, &appels, func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-liberer:
+		case <-time.After(5 * time.Second):
+		}
+		w.Write(pngTest)
+	})
+	// Enregistré APRÈS le Close du faux serveur : il s'exécute donc avant lui
+	t.Cleanup(func() { close(liberer) })
+	d.client.Timeout = 200 * time.Millisecond
+	rec := appelDetourage(t, d, pngTest)
+	if rec.Code != 504 || codeDe(t, rec) != "delai_depasse" {
+		t.Fatalf("code %d, corps %q", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "décompté") {
+		t.Fatalf("le poste ne peut pas promettre le décompte: %q", rec.Body.String())
+	}
+	if appels != 1 {
+		t.Fatalf("%d appels : pas de second essai", appels)
+	}
+}
+
+// Un serveur lent mais dans le délai : l'image arrive, avec sa durée.
+func TestDetourageLentMaisDansLeDelai(t *testing.T) {
+	var appels int32
+	d := fauxMiniSaaS(t, &appels, func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.Header().Set("X-Detourage-Ms", "300")
+		w.Write(pngTest)
+	})
+	d.client.Timeout = 5 * time.Second
+	rec := appelDetourage(t, d, pngTest)
+	if rec.Code != 200 || rec.Header().Get("X-Detourage-Ms") != "300" {
+		t.Fatalf("code %d", rec.Code)
 	}
 }
 
