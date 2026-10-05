@@ -164,6 +164,15 @@ Générer (`labels/lib/generer.ts`, `templates/GenererImage.jsx`, en tête du
 sous-onglet « Génération ») : un texte seul, un format NOMMÉ, et l'image est
 **rangée sans être posée** (`sansPose`).
 
+**La bibliothèque d'images du poste** (« Images → Mes images / Génération »,
+5 octobre 2026, [`13-performance-medias.md`](frontend/modules/stick/PocketStick-docs/13-performance-medias.md))
+affiche des **vignettes** (256 px, WebP) rangées dans un second magasin
+IndexedDB, `vignettes` (base v2), et sa liste est **en cache dans
+`presetImageService`** — seul écrivain, il le tient à jour (import, suppression,
+image rangée) : ne pas relire IndexedDB depuis un composant. L'originale ne se
+lit qu'au clic qui la pose ; les anciennes images sont rattrapées en
+arrière-plan, sans jamais réécrire l'originale.
+
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation
 du stock, marge, ventilation par taux de TVA, camembert par catégorie racine et

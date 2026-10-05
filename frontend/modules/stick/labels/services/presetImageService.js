@@ -16,9 +16,15 @@
 //
 // Note de nettoyage : `PocketStick-docs/01-portage-affiche.md`.
 
+import { fabriquerVignette } from '../utils/vignetteImage'
+
 const DB_NAME = 'LabelPresetImagesDB'
-const DB_VERSION = 1
+// v2 (5 octobre 2026) : un second magasin, `vignettes`, à côté de `images`.
+// La montée de version ne fait QUE le créer, et seulement s'il manque : rejouable,
+// et aucun enregistrement d'`images` n'est lu ni réécrit.
+const DB_VERSION = 2
 const STORE = 'images'
+const STORE_VIGNETTES = 'vignettes'
 
 /**
  * Marque d'origine d'une image DÉTOURÉE (`lib/detourage.ts`). Une image sans
@@ -30,6 +36,17 @@ const estGeneree = (image) => image?.origine === ORIGINE_GENERATION
 class PresetImageService {
 	constructor() {
 		this.db = null
+		// Cache de la liste, SANS les octets des originales : `Map<filename, entrée>`
+		// où l'entrée porte `apercu` (la vignette, ou à défaut l'originale le temps
+		// du rattrapage). `null` tant que la liste n'a pas été lue. Seul ce service
+		// écrit dans la bibliothèque : il tient donc le cache à jour lui-même
+		// (import, suppression, image rangée) et personne ne relit IndexedDB.
+		this.entrees = null
+		this.chargement = null
+		this.abonnes = new Set()
+		this.rattrapage = null
+		this.sansVignette = new Set()
+		this.fabriquer = fabriquerVignette
 	}
 
 	async initDB() {
@@ -45,6 +62,9 @@ class PresetImageService {
 				const db = event.target.result
 				if (!db.objectStoreNames.contains(STORE)) {
 					db.createObjectStore(STORE, { keyPath: 'filename' })
+				}
+				if (!db.objectStoreNames.contains(STORE_VIGNETTES)) {
+					db.createObjectStore(STORE_VIGNETTES, { keyPath: 'filename' })
 				}
 			}
 		})
@@ -79,13 +99,20 @@ class PresetImageService {
 			})
 		}
 
+		const vignettes = await Promise.all(images.map((image) => this.fabriquer(image.src).catch(() => null)))
 		await new Promise((resolve, reject) => {
-			const tx = db.transaction([STORE], 'readwrite')
+			const tx = db.transaction([STORE, STORE_VIGNETTES], 'readwrite')
 			tx.oncomplete = () => resolve()
 			tx.onerror = () => reject(tx.error)
+			tx.onabort = () => reject(tx.error)
 			const store = tx.objectStore(STORE)
-			for (const image of images) store.put(image)
+			const magasinVignettes = tx.objectStore(STORE_VIGNETTES)
+			images.forEach((image, i) => {
+				store.put(image)
+				if (vignettes[i]) magasinVignettes.put(this.enregistrementVignette(image, vignettes[i]))
+			})
 		})
+		images.forEach((image, i) => this.inscrire(image, vignettes[i]))
 
 		return { images }
 	}
@@ -150,14 +177,160 @@ class PresetImageService {
 			origine: ORIGINE_GENERATION,
 			depuis: String(depuis || ''),
 		}
+		// Le rangement d'une image ne dépend pas de sa vignette : qu'elle ne se
+		// fabrique pas, l'image est rangée et la vignette viendra au rattrapage.
+		const vignette = await this.fabriquer(src).catch(() => null)
 		await new Promise((resolve, reject) => {
-			const tx = db.transaction([STORE], 'readwrite')
+			const tx = db.transaction([STORE, STORE_VIGNETTES], 'readwrite')
 			tx.oncomplete = () => resolve()
 			tx.onerror = () => reject(tx.error)
 			tx.onabort = () => reject(tx.error)
 			tx.objectStore(STORE).put(image)
+			if (vignette) tx.objectStore(STORE_VIGNETTES).put(this.enregistrementVignette(image, vignette))
 		})
+		this.inscrire(image, vignette)
 		return image
+	}
+
+	// ── La liste pour la GRILLE : vignettes seulement, mise en cache ────────────
+
+	/** Ce que garde le magasin `vignettes` : les métadonnées de la grille + la vignette. */
+	enregistrementVignette(image, vignette) {
+		return {
+			filename: image.filename,
+			name: image.name,
+			origine: image.origine,
+			createdAt: image.createdAt,
+			vignette,
+		}
+	}
+
+	entreeDe(image, apercu) {
+		return {
+			filename: image.filename,
+			name: image.name,
+			origine: image.origine,
+			createdAt: image.createdAt,
+			apercu,
+			// Pas (encore) de vignette : l'aperçu est l'originale, à rattraper
+			sansVignette: !image.vignette,
+		}
+	}
+
+	/** Une image vient d'entrer : elle rejoint le cache s'il est chaud. */
+	inscrire(image, vignette) {
+		if (!this.entrees) return
+		this.entrees.set(image.filename, this.entreeDe({ ...image, vignette }, vignette || image.src))
+		this.prevenir()
+		if (!vignette) this.rattraper()
+	}
+
+	prevenir() {
+		for (const fn of this.abonnes) fn()
+	}
+
+	/** Un abonné est prévenu à chaque changement du cache. Rend la désinscription. */
+	abonner(fn) {
+		this.abonnes.add(fn)
+		return () => this.abonnes.delete(fn)
+	}
+
+	/** Les entrées de l'origine demandée, la plus récente d'abord ; `null` si le cache est froid. */
+	lireCache(origine) {
+		if (!this.entrees) return null
+		return [...this.entrees.values()]
+			.filter((e) => estGeneree(e) === (origine === ORIGINE_GENERATION))
+			.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+	}
+
+	/**
+	 * Lit la bibliothèque UNE fois : les vignettes d'un coup, et l'originale des
+	 * seules images qui n'en ont pas encore. Les appels simultanés partagent la
+	 * même lecture ; `force` relit.
+	 */
+	async chargerApercus({ force = false } = {}) {
+		if (this.entrees && !force) return this.entrees
+		if (this.chargement) return this.chargement
+		this.chargement = (async () => {
+			const db = await this.initDB()
+			const lire = (store, methode, ...args) =>
+				new Promise((resolve, reject) => {
+					const request = store[methode](...args)
+					request.onsuccess = () => resolve(request.result)
+					request.onerror = () => reject(request.error)
+				})
+			const tx = db.transaction([STORE, STORE_VIGNETTES], 'readonly')
+			const [cles, vignettes] = await Promise.all([
+				lire(tx.objectStore(STORE), 'getAllKeys'),
+				lire(tx.objectStore(STORE_VIGNETTES), 'getAll'),
+			])
+			const parNom = new Map(vignettes.map((v) => [v.filename, v]))
+			const entrees = new Map()
+			const manquantes = []
+			for (const cle of cles) {
+				const v = parNom.get(cle)
+				if (v) entrees.set(cle, this.entreeDe(v, v.vignette))
+				else manquantes.push(cle)
+			}
+			// Les images d'avant les vignettes : leur originale, une à une
+			for (const cle of manquantes) {
+				const image = await lire(db.transaction([STORE], 'readonly').objectStore(STORE), 'get', cle)
+				if (image) entrees.set(cle, this.entreeDe(image, image.src))
+			}
+			this.entrees = entrees
+			this.prevenir()
+			if (manquantes.length) this.rattraper()
+			return entrees
+		})()
+		try {
+			return await this.chargement
+		} finally {
+			this.chargement = null
+		}
+	}
+
+	/**
+	 * Fabrique, en arrière-plan et une par une, les vignettes qui manquent. Ne
+	 * réécrit JAMAIS une originale : seul le magasin `vignettes` reçoit. Une image
+	 * qui ne se décode pas est laissée telle quelle, sans réessai pendant la session.
+	 */
+	rattraper() {
+		if (this.rattrapage) return this.rattrapage
+		this.rattrapage = (async () => {
+			try {
+				for (;;) {
+					const suivante = [...(this.entrees?.values() ?? [])].find(
+						(e) => e.sansVignette && !this.sansVignette.has(e.filename),
+					)
+					if (!suivante) return
+					// Rend la main au navigateur entre deux images
+					await new Promise((r) => setTimeout(r, 0))
+					const vignette = await this.fabriquer(suivante.apercu).catch(() => null)
+					if (!vignette) {
+						this.sansVignette.add(suivante.filename)
+						continue
+					}
+					// Supprimée entre-temps : rien à ranger
+					if (!this.entrees?.has(suivante.filename)) continue
+					const db = await this.initDB()
+					await new Promise((resolve, reject) => {
+						const tx = db.transaction([STORE_VIGNETTES], 'readwrite')
+						tx.oncomplete = () => resolve()
+						tx.onerror = () => reject(tx.error)
+						tx.onabort = () => reject(tx.error)
+						tx.objectStore(STORE_VIGNETTES).put(this.enregistrementVignette(suivante, vignette))
+					}).catch(() => this.sansVignette.add(suivante.filename))
+					const encore = this.entrees?.get(suivante.filename)
+					if (encore && !this.sansVignette.has(suivante.filename)) {
+						this.entrees.set(suivante.filename, { ...encore, apercu: vignette, sansVignette: false })
+						this.prevenir()
+					}
+				}
+			} finally {
+				this.rattrapage = null
+			}
+		})()
+		return this.rattrapage
 	}
 
 	async getImageInfo(filename) {
@@ -180,11 +353,14 @@ class PresetImageService {
 	async deleteImage(filename) {
 		const db = await this.initDB()
 		await new Promise((resolve, reject) => {
-			const tx = db.transaction([STORE], 'readwrite')
+			const tx = db.transaction([STORE, STORE_VIGNETTES], 'readwrite')
 			tx.oncomplete = () => resolve()
 			tx.onerror = () => reject(tx.error)
 			tx.objectStore(STORE).delete(filename)
+			tx.objectStore(STORE_VIGNETTES).delete(filename)
 		})
+		if (this.entrees?.delete(filename)) this.prevenir()
+		this.sansVignette.delete(filename)
 		return true
 	}
 

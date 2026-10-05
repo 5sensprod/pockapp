@@ -49,6 +49,7 @@ const Vignette = ({
           src={src}
           alt={nom ?? ''}
           loading="lazy"
+          decoding="async"
           draggable={false}
           className={`w-full h-full ${ajuste === 'cover' ? 'object-cover' : 'object-contain p-1'}`}
         />

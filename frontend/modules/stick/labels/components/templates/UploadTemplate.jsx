@@ -12,7 +12,7 @@
 // **La corbeille est dans le COIN de la vignette** : elle apparaissait au
 // centre, là où l'on clique pour ajouter l'image, avec le seul `confirm()` du
 // navigateur pour filet. La grille ne défile plus dans le panneau qui défile.
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Image as ImageIcon, Scissors, Trash2 } from 'lucide-react';
 import presetImageService from '../../services/presetImageService';
 import useLabelStore from '../../store/useLabelStore';
@@ -31,8 +31,11 @@ import { PANNEAU } from '../ui/styles';
 const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) => {
   const generation = origine === 'generation';
   const { addElementCentre } = useLabelStore();
-  const [availableImages, setAvailableImages] = useState([]);
-  const [loading, setLoading] = useState(false);
+  // La liste vient du CACHE du service quand il est chaud : au retour sur l'onglet,
+  // la grille est là d'emblée, sans relire IndexedDB ni passer par « chargement ».
+  const lire = () => presetImageService.lireCache(origine);
+  const [availableImages, setAvailableImages] = useState(() => lire() ?? []);
+  const [loading, setLoading] = useState(() => lire() === null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const { confirm, ConfirmModal } = useConfirmModal();
@@ -42,29 +45,28 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
   // Une image vient d'être rangée par un détourage : la liste « Génération » s'y relit
   const rangees = useEtatDetourage((s) => s.rangees);
 
-  // Charger les images au montage
-  useEffect(() => {
-    loadImages();
-  }, [rangees]);
+  // Le service tient le cache à jour (import, suppression, image rangée, vignette
+  // rattrapée) et prévient : on ne relit rien, on suit.
+  useEffect(() => presetImageService.abonner(() => setAvailableImages(lire() ?? [])), [origine]);
 
-  /**
-   * Charger la bibliothèque d'images
-   */
-  const loadImages = async () => {
-    setLoading(true);
+  // Premier chargement seulement : un cache chaud n'est pas relu
+  const loadImages = useCallback(async (options) => {
+    if (options?.force || lire() === null) setLoading(true);
     setError(null);
     try {
-      const images = generation
-        ? await presetImageService.listerGenerees()
-        : await presetImageService.listerImportees();
-      setAvailableImages(images || []);
+      await presetImageService.chargerApercus(options);
+      setAvailableImages(lire() ?? []);
     } catch (err) {
       console.error('❌ Erreur chargement images:', err);
       setError('Impossible de charger les images');
     } finally {
       setLoading(false);
     }
-  };
+  }, [origine]);
+
+  useEffect(() => {
+    loadImages();
+  }, [rangees, loadImages]);
 
   /**
    * Charger l'image pour obtenir ses dimensions naturelles
@@ -130,9 +132,6 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
       const result = await presetImageService.uploadImages(files);
 
       if (result.images?.length > 0) {
-        // Recharger la bibliothèque
-        await loadImages();
-
         // Ajouter automatiquement la première image uploadée au canvas
         const firstImage = result.images[0];
         await addImageToCanvas(firstImage);
@@ -173,7 +172,6 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
 
     try {
       await presetImageService.deleteImage(filename);
-      await loadImages();
     } catch (err) {
       console.error('❌ Erreur suppression:', err);
       setError("Impossible de supprimer l'image");
@@ -183,7 +181,13 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
   /**
    * Ajouter une image de la bibliothèque au canvas
    */
-  const handleImageClick = async (image) => {
+  const handleImageClick = async (apercu) => {
+    // La grille ne porte que la vignette : l'originale se lit ICI, au clic
+    const image = await presetImageService.getImageInfo(apercu.filename);
+    if (!image?.src) {
+      setError('Image introuvable');
+      return;
+    }
     // Ajouter au canvas avec proportions préservées
     await addImageToCanvas(image);
 
@@ -240,7 +244,7 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
           action={
             !loading &&
             availableImages.length > 0 && (
-              <Bouton variante="discret" onClic={loadImages}>
+              <Bouton variante="discret" onClic={() => loadImages({ force: true })}>
                 Actualiser
               </Bouton>
             )
@@ -264,7 +268,7 @@ const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) 
             {availableImages.map((image) => (
               <Vignette
                 key={image.filename}
-                src={image.src}
+                src={image.apercu}
                 nom={image.filename}
                 onClic={() => handleImageClick(image)}
                 action={
