@@ -9,13 +9,14 @@ import React from 'react';
 import OngletsPanneau from './OngletsPanneau';
 import UploadTemplate from './UploadTemplate';
 import BibliothequeCatalogue from './BibliothequeCatalogue';
+import GenererImage from './GenererImage';
 
 const MediasPanel = (props) => (
   <OngletsPanneau
     onglets={[
       { id: 'poste', libelle: 'Mes images', contenu: <UploadTemplate {...props} /> },
       { id: 'pocketstock', libelle: 'PocketStock', contenu: <BibliothequeCatalogue {...props} /> },
-      { id: 'generation', libelle: 'Génération', contenu: <UploadTemplate {...props} origine="generation" /> },
+      { id: 'generation', libelle: 'Génération', contenu: <UploadTemplate {...props} origine="generation" entete={<GenererImage />} /> },
     ]}
   />
 );

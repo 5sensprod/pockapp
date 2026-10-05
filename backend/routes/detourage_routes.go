@@ -81,7 +81,28 @@ type relaisImage struct {
 	userAgent string
 	// delaiPoste : message quand c'est le délai de CE poste qui a expiré.
 	delaiPoste string
+	// taches : nil pour un relais à UNE image (détourage). Sinon le champ
+	// « tache » du formulaire choisit le relais — ses mots et ses images : la
+	// clé vide est la tâche d'origine, une valeur inconnue est refusée.
+	taches map[string]relaisImage
+	// images : ce que la tâche envoie (imagesUne par défaut).
+	images int
 }
+
+// Ce qu'un relais envoie comme images.
+const (
+	imagesUne       = iota // le champ « image », un fichier
+	imagesAucune           // un texte seul (génération)
+	imagesPlusieurs        // le champ « images[] », 1 à relaisImagesMax fichiers (composition)
+)
+
+// relaisImagesMax : le plafond du mini-SaaS (COMPOSITION_MAX_IMAGES). Au-delà,
+// refus ici, jamais une troncature.
+const relaisImagesMax = 4
+
+// champImages est le champ multipart des images d'une composition, tel que PHP
+// le lit en tableau.
+const champImages = "images[]"
 
 var relaisDetourage = relaisImage{
 	erreurs:    erreursDetourage,
@@ -148,27 +169,45 @@ func relayerDetourage(ctx context.Context, client *http.Client, endpoint, apiKey
 // relayer envoie l'image (et d'éventuels champs texte) au mini-SaaS et rend le
 // PNG reçu. UN envoi : jamais de second essai, un appel coupé a pu être facturé.
 func (r relaisImage) relayer(ctx context.Context, client *http.Client, endpoint, apiKey string, image []byte, champs []champRelais) (*detourageResultat, *detourageErreur) {
+	return r.relayerImages(ctx, client, endpoint, apiKey, "image", [][]byte{image}, champs)
+}
+
+// relayerImages est le même envoi pour ZÉRO, une ou plusieurs images, toutes
+// sous le champ `champ`. Chaque image passe les gardes d'une image seule (type
+// lu sur les octets), et leur poids TOTAL reste sous le plafond d'une seule.
+func (r relaisImage) relayerImages(ctx context.Context, client *http.Client, endpoint, apiKey, champ string, images [][]byte, champs []champRelais) (*detourageResultat, *detourageErreur) {
 	erreurDetourage := r.erreur
 	delaiDuPoste := r.delaiDuPoste
 	if u, err := url.Parse(endpoint); err != nil || u.Scheme != "https" {
 		return nil, erreurDetourage("adresse_non_securisee")
 	}
-	mimeType, ok := typeImageDetourage(image)
-	if !ok {
-		return nil, erreurDetourage("type_refuse")
-	}
-	if len(image) > detourageImageMaxBytes {
-		return nil, erreurDetourage("image_trop_lourde")
+	types := make([]string, len(images))
+	total := 0
+	for i, image := range images {
+		mimeType, ok := typeImageDetourage(image)
+		if !ok {
+			return nil, erreurDetourage("type_refuse")
+		}
+		types[i] = mimeType
+		if total += len(image); total > detourageImageMaxBytes {
+			return nil, erreurDetourage("image_trop_lourde")
+		}
 	}
 
 	var corps bytes.Buffer
 	mw := multipart.NewWriter(&corps)
-	entete := textproto.MIMEHeader{}
-	entete.Set("Content-Disposition", `form-data; name="image"; filename="image"`)
-	entete.Set("Content-Type", mimeType)
-	part, err := mw.CreatePart(entete)
-	if err == nil {
-		_, err = part.Write(image)
+	var err error
+	for i, image := range images {
+		if err != nil {
+			break
+		}
+		entete := textproto.MIMEHeader{}
+		entete.Set("Content-Disposition", `form-data; name="`+champ+`"; filename="image"`)
+		entete.Set("Content-Type", types[i])
+		var part io.Writer
+		if part, err = mw.CreatePart(entete); err == nil {
+			_, err = part.Write(image)
+		}
 	}
 	for _, champ := range champs {
 		if err == nil {
@@ -262,15 +301,54 @@ func (r relaisImage) traiter(c echo.Context, d detourageDeps, champs func(*http.
 		}
 		return apis.NewBadRequestError("Envoi multipart invalide", err)
 	}
-	fichier, _, err := req.FormFile("image")
-	if err != nil {
-		return apis.NewBadRequestError("Champ « image » manquant", err)
+	// La tâche choisit le relais : ses mots, et ce qu'il envoie comme images.
+	if r.taches != nil {
+		autre, connue := r.taches[strings.TrimSpace(req.FormValue("tache"))]
+		if !connue {
+			return repondreErreurDetourage(c, erreurDetourage("format_inconnu"))
+		}
+		r = autre
+		erreurDetourage = r.erreur
 	}
-	defer fichier.Close()
 
-	octets, err := io.ReadAll(io.LimitReader(fichier, detourageImageMaxBytes+1))
-	if err != nil {
-		return apis.NewBadRequestError("Image illisible", err)
+	champ := "image"
+	var images [][]byte
+	switch r.images {
+	case imagesAucune:
+		// Un texte seul : une image jointe par erreur n'est pas lue, donc jamais relayée.
+	case imagesPlusieurs:
+		champ = champImages
+		recus := req.MultipartForm.File[champImages]
+		if len(recus) == 0 {
+			return apis.NewBadRequestError("Champ « images[] » manquant", nil)
+		}
+		if len(recus) > relaisImagesMax {
+			return repondreErreurDetourage(c, erreurDetourage("trop_d_images"))
+		}
+		for _, recu := range recus {
+			f, err := recu.Open()
+			if err != nil {
+				return apis.NewBadRequestError("Image illisible", err)
+			}
+			octets, err := io.ReadAll(io.LimitReader(f, detourageImageMaxBytes+1))
+			f.Close()
+			if err != nil {
+				return apis.NewBadRequestError("Image illisible", err)
+			}
+			images = append(images, octets)
+		}
+	default:
+		fichier, _, err := req.FormFile("image")
+		if err != nil {
+			return apis.NewBadRequestError("Champ « image » manquant", err)
+		}
+		defer fichier.Close()
+
+		octets, err := io.ReadAll(io.LimitReader(fichier, detourageImageMaxBytes+1))
+		if err != nil {
+			return apis.NewBadRequestError("Image illisible", err)
+		}
+		images = [][]byte{octets}
 	}
 
 	var joints []champRelais
@@ -281,7 +359,7 @@ func (r relaisImage) traiter(c echo.Context, d detourageDeps, champs func(*http.
 		}
 	}
 
-	resultat, echec := r.relayer(req.Context(), d.client, d.endpoint, cle, octets, joints)
+	resultat, echec := r.relayerImages(req.Context(), d.client, d.endpoint, cle, champ, images, joints)
 	if echec != nil {
 		return repondreErreurDetourage(c, echec)
 	}

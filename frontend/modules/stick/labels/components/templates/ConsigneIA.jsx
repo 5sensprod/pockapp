@@ -5,7 +5,8 @@
 // (`EmbellirPage.jsx`). Leur état vit hors des composants
 // (`useReglagesRetouche`) : la consigne reste après un échec, d'une image à
 // l'autre et d'un panneau à l'autre. Les idées REMPLISSENT le champ ; aucun
-// prix n'est affiché.
+// prix n'est affiché. `idees` : la liste proposée — des styles par défaut, des
+// SUJETS pour une génération depuis un texte (`GenererImage.jsx`).
 
 import React from 'react';
 import ChampTexte from '../ui/ChampTexte';
@@ -13,7 +14,7 @@ import Bouton from '../ui/Bouton';
 import Segments from '../ui/Segments';
 import { CONSIGNE_MAX, IDEES_CONSIGNE, QUALITES, useReglagesRetouche } from '../../lib/retouche';
 
-const ConsigneIA = ({ placeholder, desactive = false, onValider }) => {
+const ConsigneIA = ({ placeholder, desactive = false, onValider, idees = IDEES_CONSIGNE }) => {
   const { consigne, qualite } = useReglagesRetouche();
   return (
     <>
@@ -27,7 +28,7 @@ const ConsigneIA = ({ placeholder, desactive = false, onValider }) => {
         desactive={desactive}
       />
       <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-        {IDEES_CONSIGNE.map((idee) => (
+        {idees.map((idee) => (
           <Bouton
             key={idee.label}
             variante="discret"

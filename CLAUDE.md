@@ -151,6 +151,18 @@ codes et éléments liés au produit ne partent pas et restent DESSUS : `estViva
 et deux définitions (1536 / 2048 px), envoyés en **identifiants, jamais en
 pixels**. Consigne et qualité sont partagées avec « Modifier par IA »
 (`templates/ConsigneIA.jsx`).
+**« Composer par IA » et « Générer une image »** (6 octobre 2026,
+[`12-composition-et-generation.md`](frontend/modules/stick/PocketStick-docs/12-composition-et-generation.md))
+sont deux `TacheIA` de plus sur `lancerTraitement`, par la même route (champ
+`tache`). Composer (`labels/lib/composer.ts`, bloc `templates/ComposerIA.jsx`
+du panneau de réglages dès 2 éléments sélectionnés, **jamais en planche**) :
+2 à 4 images, formes ou dessins servent d'ingrédients — une photo liée est
+résolue pour le produit affiché, une forme est rendue seule
+(`rendreElement`) ; textes, codes, fiches et verrouillés sont refusés, **rien
+n'est tronqué** — et l'image revient en nouveau calque au-dessus de tout.
+Générer (`labels/lib/generer.ts`, `templates/GenererImage.jsx`, en tête du
+sous-onglet « Génération ») : un texte seul, un format NOMMÉ, et l'image est
+**rangée sans être posée** (`sansPose`).
 
 Le module `stats` porte depuis le 14 septembre 2026 les **rapports de stock**
 repris d'AppPos (« Rapports », `/rapports`), sur `/stats/rapports` : valorisation
@@ -215,6 +227,13 @@ Trois, et trois seulement :
    `prompt_trop_long`, `qualite_inconnue`, et `contenu_refuse` (modération du
    fournisseur : ne pas réessayer à l'identique). Gardien :
    `retouche_routes_test.go`.
+   Depuis le 6 octobre 2026, la même route et la même porte prennent un champ
+   `tache` : avec `generation`, **un TEXTE SEUL part, sans aucune image** —
+   première sortie de ce type — ; avec `composition`, **1 à 4 images partent
+   ensemble** (`images[]`, poids total borné comme une seule, code
+   `trop_d_images` au-delà, jamais de troncature). Absent : la retouche,
+   inchangée. `relaisImage` envoie zéro, une ou plusieurs images
+   (`relayerImages`). Gardien : `generation_routes_test.go`.
 
 Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
 

@@ -28,7 +28,7 @@ import TitreGroupe from '../ui/TitreGroupe';
 import Vignette from '../ui/Vignette';
 import { PANNEAU } from '../ui/styles';
 
-const UploadTemplate = ({ onImageSelected, origine = 'import' }) => {
+const UploadTemplate = ({ onImageSelected, origine = 'import', entete = null }) => {
   const generation = origine === 'generation';
   const { addElementCentre } = useLabelStore();
   const [availableImages, setAvailableImages] = useState([]);
@@ -206,6 +206,8 @@ const UploadTemplate = ({ onImageSelected, origine = 'import' }) => {
         onChange={handleFileSelect}
         className="hidden"
       />
+      {/* En tête du sous-onglet « Génération » : générer une image depuis un texte */}
+      {entete}
       {!generation && (
       <Bouton
         plein
@@ -251,8 +253,8 @@ const UploadTemplate = ({ onImageSelected, origine = 'import' }) => {
           generation ? (
             <EtatVide
               icone={Scissors}
-              titre="Aucune image détourée."
-              detail="Les images détourées avec le bouton « Détourer » d'une image de l'affiche sont rangées ici."
+              titre="Aucune image générée."
+              detail="Les images générées ci-dessus, détourées, modifiées ou composées par IA sont rangées ici."
             />
           ) : (
             <EtatVide icone={ImageIcon} titre="Aucune image importée." />

@@ -98,6 +98,7 @@ const FAMILLES: Record<string, FamilleErreur> = {
 	prompt_trop_long: 'demande',
 	qualite_inconnue: 'demande',
 	format_inconnu: 'demande',
+	trop_d_images: 'demande',
 	contenu_refuse: 'contenu',
 }
 
@@ -128,6 +129,7 @@ const MESSAGES: Record<string, string> = {
 	prompt_trop_long: 'La consigne est trop longue (500 caractères au plus).',
 	qualite_inconnue: "Cette qualité de retouche n'existe pas.",
 	format_inconnu: "Ce format de résultat n'existe pas.",
+	trop_d_images: 'Une composition accepte 4 éléments au plus.',
 	contenu_refuse:
 		"Cette demande a été refusée par le service : changez la consigne ou l'image. Rien n'a été décompté.",
 }
@@ -258,6 +260,8 @@ export async function preparerImage(
 	codec: Codec = codecNavigateur,
 	/** Plus grand côté envoyé ; la retouche envoie plus petit (`lib/retouche.ts`). */
 	coteMax: number = COTE_MAX,
+	/** Poids maximal du fichier ; une composition le partage entre ses images. */
+	seuilOctets: number = SEUIL_ENVOI_OCTETS,
 ): Promise<ImagePreparee> {
 	const image = await codec(blob)
 	try {
@@ -270,8 +274,7 @@ export async function preparerImage(
 			const largeur = Math.max(1, Math.round(image.largeur * echelle))
 			const hauteur = Math.max(1, Math.round(image.hauteur * echelle))
 			const sortie = await image.encoder(largeur, hauteur, mime, QUALITE_ENVOI)
-			if (sortie.size <= SEUIL_ENVOI_OCTETS)
-				return { blob: sortie, largeur, hauteur }
+			if (sortie.size <= seuilOctets) return { blob: sortie, largeur, hauteur }
 			if (Math.max(largeur, hauteur) <= COTE_MIN)
 				throw new ErreurDetourage('image_trop_lourde')
 			echelle *= PALIER_REDUCTION
@@ -430,7 +433,12 @@ export const LIBELLES_ETAPE_RETOUCHE: Record<EtapeDetourage, string> = {
 }
 
 /** Les tâches d'IA de l'éditeur. UNE seule à la fois : elles partagent `useEtatDetourage`. */
-export type NomTache = 'detourage' | 'retouche' | 'embellir'
+export type NomTache =
+	| 'detourage'
+	| 'retouche'
+	| 'embellir'
+	| 'generation'
+	| 'composition'
 
 /** Les mêmes étapes, dites pour l'embellissement de la page (`lib/embellir.ts`). */
 export const LIBELLES_ETAPE_EMBELLIR: Record<EtapeDetourage, string> = {
@@ -439,14 +447,32 @@ export const LIBELLES_ETAPE_EMBELLIR: Record<EtapeDetourage, string> = {
 	detourage: 'Envoi et embellissement',
 }
 
+/** Pour la génération depuis un texte (`lib/generer.ts`) : aucune image ne part. */
+export const LIBELLES_ETAPE_GENERATION: Record<EtapeDetourage, string> = {
+	...LIBELLES_ETAPE,
+	preparation: 'Préparation de la demande',
+	detourage: 'Envoi et génération',
+}
+
+/** Pour la composition depuis des éléments de la page (`lib/composer.ts`). */
+export const LIBELLES_ETAPE_COMPOSITION: Record<EtapeDetourage, string> = {
+	...LIBELLES_ETAPE,
+	preparation: 'Préparation des éléments',
+	detourage: 'Envoi et composition',
+}
+
+const LIBELLES_PAR_TACHE: Record<NomTache, Record<EtapeDetourage, string>> = {
+	detourage: LIBELLES_ETAPE,
+	retouche: LIBELLES_ETAPE_RETOUCHE,
+	embellir: LIBELLES_ETAPE_EMBELLIR,
+	generation: LIBELLES_ETAPE_GENERATION,
+	composition: LIBELLES_ETAPE_COMPOSITION,
+}
+
 export const libellesDe = (
 	tache: NomTache | null | undefined,
 ): Record<EtapeDetourage, string> =>
-	tache === 'retouche'
-		? LIBELLES_ETAPE_RETOUCHE
-		: tache === 'embellir'
-			? LIBELLES_ETAPE_EMBELLIR
-			: LIBELLES_ETAPE
+	(tache && LIBELLES_PAR_TACHE[tache]) || LIBELLES_ETAPE
 
 /** Durées gardées sur ce poste pour estimer la suivante. */
 export const HISTORIQUE_MAX = 10
@@ -695,9 +721,25 @@ export type TacheIA = {
 		pb: Pb,
 		image: Blob,
 		surReception: () => void,
+		/** Toutes les images préparées, quand la tâche a des `sources`. */
+		images?: Blob[],
 	) => Promise<ReponseDetourage>
 	/** Plus grand côté envoyé ; par défaut `COTE_MAX`. */
 	coteMax?: number
+	/** Poids maximal de CHAQUE image envoyée ; par défaut `SEUIL_ENVOI_OCTETS`. */
+	seuilOctets?: number
+	/**
+	 * Les sources, quand il n'y en a pas UNE : aucune (un texte seul,
+	 * `lib/generer.ts`) ou plusieurs (les ingrédients, `lib/composer.ts`).
+	 * Chacune est préparée comme une image seule ; `appeler` les reçoit en
+	 * quatrième argument.
+	 */
+	sources?: () => Promise<Blob[]>
+	/**
+	 * Le résultat n'est PAS posé : il est rangé dans « Génération », et le
+	 * vendeur le pose lui-même (`lib/generer.ts`). Rien de la page n'est touché.
+	 */
+	sansPose?: boolean
 	/** Les durées de CETTE tâche sur le poste. */
 	historique: HistoriqueDurees
 	/** Ce qui s'est passé après le paiement. */
@@ -816,19 +858,40 @@ export async function lancerTraitement(
 			cote: '',
 		}
 		try {
-			const source = await (tache.source
-				? tache.source()
-				: (deps.source ?? sourceAEnvoyer)(el))
+			// Une source (l'image d'un élément, le rendu de la page), aucune ou plusieurs
+			const brutes = tache.sources
+				? await tache.sources()
+				: [
+						await (tache.source
+							? tache.source()
+							: (deps.source ?? sourceAEnvoyer)(el)),
+					]
 			chrono.source = tour()
-			const preparee = await preparerImage(source, deps.codec, tache.coteMax)
+			const preparees: ImagePreparee[] = []
+			for (const brute of brutes)
+				preparees.push(
+					await preparerImage(
+						brute,
+						deps.codec,
+						tache.coteMax,
+						tache.seuilOctets,
+					),
+				)
 			chrono.preparation = tour()
-			chrono.octetsEnvoyes = preparee.blob.size
-			chrono.cote = `${preparee.largeur}×${preparee.hauteur}`
+			chrono.octetsEnvoyes = preparees.reduce((n, p) => n + p.blob.size, 0)
+			chrono.cote = preparees
+				.map((p) => `${p.largeur}×${p.hauteur}`)
+				.join(' + ')
 			passerA('detourage')
-			const reponse = await tache.appeler(deps.pb, preparee.blob, () => {
-				chrono.allerRetour = tour()
-				passerA('reception')
-			})
+			const reponse = await tache.appeler(
+				deps.pb,
+				preparees[0]?.blob ?? new Blob([]),
+				() => {
+					chrono.allerRetour = tour()
+					passerA('reception')
+				},
+				preparees.map((p) => p.blob),
+			)
 			png = reponse.png
 			chrono.serveur = reponse.serveurMs
 			chrono.octetsRecus = png.size
@@ -879,7 +942,9 @@ export async function lancerTraitement(
 		// jamais la sélection courante : elle a pu bouger pendant l'attente.
 		const etatStore = deps.store.getState()
 		let posable: boolean
-		if (tache.poser) {
+		if (tache.sansPose) {
+			posable = false
+		} else if (tache.poser) {
 			posable = tache.poser(src, etatStore)
 		} else {
 			const cible = etatStore.elements.find((e: any) => e.id === id)
@@ -891,7 +956,13 @@ export async function lancerTraitement(
 		// Journal discret (niveau « Verbose » de la console, filtre DETOURAGE ou RETOUCHE)
 		console.debug(`[${tache.journal}] durées en ms`, chrono)
 
-		if (posable && !rangee)
+		if (tache.sansPose) {
+			// Rien à poser : seul un rangement manqué se dit, l'image est alors perdue
+			if (!rangee)
+				etat.setState({
+					info: { ton: 'avertissement', message: tache.messages.perdue },
+				})
+		} else if (posable && !rangee)
 			etat.setState({
 				info: { ton: 'avertissement', message: tache.messages.nonRangee },
 			})

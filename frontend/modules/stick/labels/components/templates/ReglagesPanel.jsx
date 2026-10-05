@@ -34,6 +34,7 @@ import * as Photo from './ReglagesImage';
 import * as Codes from './ReglagesCodes';
 import * as Fiche from './ReglagesFiche';
 import ReglagesCommuns from './ReglagesCommuns';
+import ComposerIA from './ComposerIA';
 
 const ContourStylise = ({ el, maj }) =>
   el.type === 'dessin' ? (
@@ -143,6 +144,8 @@ export default function ReglagesPanel({ nu = false, docNode = null }) {
       <div className="py-2">
         <ReglagesCommuns el={el} docNode={docNode} />
       </div>
+      {/* Plusieurs éléments sélectionnés : en faire les ingrédients d'une image (rien sinon) */}
+      <ComposerIA docNode={docNode} />
       <div className="border-t border-gray-200 dark:border-gray-700">
         {sections.map((id) => {
           const { titre, Composant, nu: sansTitre, actif, onActif, aide } = SECTIONS[id];
