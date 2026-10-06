@@ -103,7 +103,7 @@ Propres à la retouche : l'adresse, les champs `prompt` et `qualite` (seuls
 relayés), ses messages. La qualité n'est pas comparée à une liste : c'est le
 mini-SaaS qui la connaît.
 
-**Délais, inchangés** : Runware 75 s (`RUNWARE_TIMEOUT`) < poste 90 s
+**Délais** (portés le 6 octobre 2026 à Runware 150 s < poste 165 s, voir `10-detourage-ia.md` §10 ; avant) : Runware 75 s (`RUNWARE_TIMEOUT`) < poste 90 s
 (`detourageTimeout`) ; PHP se laisse 120 s d'exécution (`set_time_limit`), qui
 n'est pas un délai de réponse. Justifié par la documentation (4 à 7 s
 annoncées), **non mesuré** — le détourage, annoncé à 5 s, a été mesuré à une

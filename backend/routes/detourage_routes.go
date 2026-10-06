@@ -29,9 +29,14 @@ import (
 // client et renvoie le PNG. Cette route n'appelle donc PAS usage.php.
 //
 // ⚠️ Premier canal du dépôt qui porte le contenu d'une image vers un tiers.
+//
+// detourageTimeout doit rester AU-DESSUS du délai Runware du mini-SaaS
+// (RUNWARE_TIMEOUT, 150 s depuis le 6 octobre 2026 ; 75 s avant, pour 90 s
+// ici) : sinon c'est le poste qui cesse d'attendre une image que le serveur
+// finit, et décompte. Les deux se changent ensemble.
 const (
 	pocketAppDetourageURL     = "https://pocketapp.5sensprod.com/api/detourage.php"
-	detourageTimeout          = 90 * time.Second
+	detourageTimeout          = 165 * time.Second
 	detourageImageMaxBytes    = 20 * 1024 * 1024
 	detourageRequestMaxBytes  = detourageImageMaxBytes + 1024*1024
 	detourageResponseMaxBytes = 40 * 1024 * 1024

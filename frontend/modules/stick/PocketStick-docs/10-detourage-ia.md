@@ -180,6 +180,17 @@ journal du serveur disant « transport (curl 28) — image image/jpeg 0.08 Mio, 
 Le poids de l'image n'est donc pas la cause. Le délai a été porté à 75 s
 (`RUNWARE_TIMEOUT`) et les détourages aboutissent, parfois en une minute.
 
+**Mesuré le 6 octobre 2026 [RAPPORTÉ, `php-limits.php`]** : sur 37 images
+livrées, médiane 6 s, mais 6 au-delà de 20 s — dont deux détourages à 70 et
+71 s et une retouche à 55 s — et **quatre appels coupés à 75 s** (détourage,
+retouche et génération confondus). Runware finit, mais parfois trop tard pour
+75 s : le délai est porté à **150 s côté mini-SaaS et 165 s côté poste**
+(`detourageTimeout`), à changer ENSEMBLE. Non mesuré : ce que l'hébergeur
+laisse réellement au-delà de 71 s (le plus long appel abouti), et si les quatre
+appels coupés auraient fini. La condition posée au §12 pour rouvrir la
+livraison asynchrone — des attentes au-delà de 75 s — est donc remplie ; on
+essaie d'abord le délai, qui ne coûte que deux constantes.
+
 **L'hypothèse du démarrage à froid n'est pas confirmée, et la documentation de
 Runware ne la soutient pas** : elle annonce « ~5 s » par requête pour les trois
 modèles au même prix et des démarrages à froid « sous la seconde »

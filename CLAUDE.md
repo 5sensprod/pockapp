@@ -264,7 +264,9 @@ Trois, et trois seulement :
    peut être le **rendu d'une page entière** de l'affiche (prix et textes
    compris en mode « Page entière »), avec deux identifiants facultatifs,
    `format` et `definition` (code `format_inconnu`). Même relais que le détourage
-   (`relaisImage`, `detourage_routes.go`) : mêmes gardes, même délai de 90 s,
+   (`relaisImage`, `detourage_routes.go`) : mêmes gardes, même délai de 165 s
+   (au-dessus des 150 s que le mini-SaaS laisse à Runware — les deux se
+   changent ensemble ; 90 s et 75 s jusqu'au 6 octobre 2026),
    même en-tête `X-Detourage-Ms`. La consigne n'est journalisée nulle part, ni
    ici ni sur le mini-SaaS. Codes en plus : `prompt_absent`,
    `prompt_trop_long`, `qualite_inconnue`, et `contenu_refuse` (modération du
