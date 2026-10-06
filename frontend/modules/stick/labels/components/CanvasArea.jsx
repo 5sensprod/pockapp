@@ -3,6 +3,7 @@ import { Maximize2, Eye, EyeOff, SlidersHorizontal, Sparkles } from 'lucide-reac
 import KonvaCanvas, { MARGE_ESPACE } from './KonvaCanvas';
 import BandeTirage from './BandeTirage';
 import ReglagesRapides from './ReglagesRapides';
+import PublierFacebook from './templates/PublierFacebook';
 import useLabelStore from '../store/useLabelStore';
 import { ongletDe } from '../utils/reglagesParType';
 import { boutonBascule } from './ui/styles';
@@ -76,8 +77,9 @@ const CanvasArea = forwardRef(
             pas à la sélection). Elle ne porte plus AUCUN réglage (3 octobre
             2026) : ils sont dans la barre latérale, dans l'onglet du type de
             l'élément (`ReglagesPanel`). Il lui reste deux raccourcis vers ces
-            onglets — Réglages, Effets —, l'œil, le zoom, et quelques options
-            RAPIDES (`ReglagesRapides`). Rien n'y défile.
+            onglets — Réglages, Effets —, l'œil, le zoom, quelques options
+            RAPIDES (`ReglagesRapides`) et, depuis le 6 octobre 2026, « Publier »
+            (`PublierFacebook`). Rien n'y défile.
             Œil, Réglages et Effets sont trois bascules du système
             (`boutonBascule`) : bleu léger quand c'est actif. Plus d'ambre —
             réservé aux avertissements — ni de violet. */}
@@ -127,6 +129,10 @@ const CanvasArea = forwardRef(
             <span className="text-gray-500 dark:text-gray-400">Sélectionnez un élément pour le modifier.</span>
           )}
           <span className="flex-1" />
+          {/* Publier l'affiche sur la Page Facebook du magasin : une action sur
+              le document, pas un réglage (`PublierFacebook.jsx`). Absent en
+              planche. */}
+          <PublierFacebook docNode={docNode} />
           <div className="flex-none flex items-center gap-1" role="group" aria-label="Zoom">
             <button type="button" onClick={zoomOut} className={boutonZoom} title="Zoom arrière (Ctrl + molette)">
               −

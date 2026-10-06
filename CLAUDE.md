@@ -392,6 +392,35 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
     téléchargement »** : décision du propriétaire, ne pas en ajouter. Gardien :
     `photos_routes_test.go`.
 
+11. **Publication sur une Page Facebook** (PocketStick, 6 octobre 2026,
+    [`16-publication-facebook.md`](frontend/modules/stick/PocketStick-docs/16-publication-facebook.md)) —
+    `backend/routes/facebook_routes.go` —
+    `https://pocketapp.5sensprod.com/api/facebook.php`, **POST**, en-tête
+    `X-API-Key` (clé des notifications) et `User-Agent` explicite. ⚠️ **Première
+    sortie du dépôt dont le contenu est PUBLIÉ** : une image de l'affiche (prix
+    et textes compris, 8 Mio au plus, type lu sur les octets) et un texte du
+    vendeur (2000 caractères au plus) partent au mini-SaaS, qui les publie
+    comme photo sur la Page du magasin. **Le poste n'appelle jamais Facebook** :
+    ni le secret de l'application (`FB_APP_SECRET`) ni le jeton de Page ne sont
+    ici — le jeton est gardé chiffré sur le mini-SaaS, par client, et **aucun
+    jeton ne revient au renderer** (les réponses sont relues dans une forme
+    fermée). À la connexion seulement, un jeton UTILISATEUR collé par un
+    administrateur traverse le Go vers le mini-SaaS, sans y être gardé ni
+    journalisé (phase 1 ; la phase 2, connexion par fenêtre Facebook, ne
+    changera que cela). Routes locales : `GET /api/facebook/etat` et
+    `POST /api/facebook/publier` (session), `POST /api/facebook/connecter`,
+    `/choisir`, `/deconnecter` (**admin**, sur la session vérifiée par
+    PocketBase). **Un seul envoi, jamais de second essai** : un post parti deux
+    fois est public deux fois ; un identifiant d'envoi à usage unique le refuse
+    aussi côté mini-SaaS. Après un échec sans réponse nette, le code est
+    `publication_incertaine` — **ne jamais dire « rien n'est parti » sans le
+    savoir** (`rienNestParti`). Refuse de partir hors HTTPS ; codes nommés
+    (`jeton_expire` ≠ `permission_manquante` ≠ `contenu_refuse` ≠
+    `fournisseur_en_echec`). Rien n'est décompté, rien n'est journalisé qu'un
+    code. **Rien ne part sans confirmation** (`useConfirmModal`), jamais en
+    planche. Gardiens : `facebook_routes_test.go`, `lib/facebook.test.ts`,
+    `tests/facebook-test.php` (mini-SaaS, contre un faux Graph).
+
 ## Commandes
 
 ```bash

@@ -12,6 +12,7 @@
 // d'écraser une clé nommée par erreur).
 // ═══════════════════════════════════════════════════════════════════════════
 
+import FacebookSection from '@/components/settings/FacebookSection'
 import { Button } from '@/components/ui/button'
 import {
 	Card,
@@ -99,6 +100,8 @@ export default function SecretsSettings() {
 			<SiteCatalogSection />
 			<Separator />
 			<GeminiSection />
+			<Separator />
+			<FacebookSection />
 
 			<Separator />
 

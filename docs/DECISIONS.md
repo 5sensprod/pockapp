@@ -10,6 +10,62 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Publier une affiche sur Facebook : le mini-SaaS publie, le poste n'a aucun jeton — 2026-10-06
+
+**Décidé par le propriétaire.** PocketStick publie l'affiche courante comme
+photo sur une Page Facebook du magasin, avec un message. Repris du
+comportement de `I:\PocketStick`, qui publie déjà en réel. Phase 1 : **le jeton
+est collé une fois** par un administrateur (généré dans les outils de Meta) ;
+la connexion par fenêtre Facebook est la phase 2. **Le jeton de Page vit sur le
+mini-SaaS, par client, chiffré, et c'est le mini-SaaS qui publie.** Tout
+utilisateur connecté publie ; connecter, choisir la Page et déconnecter sont
+réservés aux administrateurs. Le bouton est dans la barre du haut.
+
+**Ce qui en découle, et pourquoi :**
+
+- **Le poste n'appelle jamais Facebook et ne voit jamais un jeton.** Le secret
+  de l'application y serait dans un exécutable distribué ; le jeton de Page,
+  sur un poste partagé d'un déploiement multi-postes. Les réponses du mini-SaaS
+  sont relues dans une forme fermée : un jeton rendu par erreur ne traverse pas.
+- **La phase 2 ne change que l'obtention du jeton utilisateur** : l'adresse de
+  retour sera sur `pocketapp.5sensprod.com`, donc le jeton naît là où il est
+  déjà gardé.
+- **Un seul envoi, et un identifiant d'envoi à usage unique.** Un post parti
+  deux fois est public deux fois. Après un délai ou une réponse illisible, on
+  ne dit pas « rien n'est parti » : `publication_incertaine`, et la même
+  publication ne repart pas.
+- **Une confirmation explicite avant tout envoi**, avec l'aperçu de l'image
+  telle qu'elle part : le geste est public et ne se retire pas d'ici.
+  PocketStick publiait au premier clic.
+- **La Page se choisit une fois, pour le magasin**, pas à chaque publication :
+  c'est ce qui donne « deux clics les fois suivantes ».
+- **Les points d'accès de Graph et la façon d'y passer les jetons sont ceux de
+  PocketStick**, sans « amélioration » : c'est la seule forme constatée en réel.
+
+**Pris par défaut, annoncés et non contredits** (à confirmer) : message vide
+autorisé et sans texte par défaut, pas d'aide de Gemini, photo seule,
+publication non décomptée, aucune trace locale des publications.
+
+**Écarté :**
+
+- *Un secret chiffré côté Go, le poste publiant lui-même* : pas de SQL, mais la
+  phase 2 aurait dû faire redescendre le jeton du mini-SaaS vers le poste.
+- *La connexion par popup dès maintenant* : elle repose dans PocketStick sur
+  une adresse de retour locale et sur `postMessage` vers une fenêtre parente,
+  que Wails n'offre pas (supposé, non essayé).
+- *`localStorage`* pour le jeton, comme PocketStick : poste partagé.
+- *Un second essai automatique* après un délai.
+- *Réserver la publication aux administrateurs* : ce sont les vendeurs qui
+  font les affiches.
+
+**Ce qui pourrait la remettre en cause :** une invalidation fréquente des
+jetons de Page (il faudrait alors un état « à reconnecter » visible avant de
+publier) ; le passage de l'application Facebook en ligne, dont la revue peut
+imposer la fenêtre de connexion ; le besoin de publier sur plusieurs Pages
+selon l'affiche.
+
+---
+
 ## Mini-chat « Photos » : une banque d'images derrière le mini-SaaS — 2026-10-05
 
 **Décidé par le propriétaire.** Un sous-onglet « Photos » dans Médias de
