@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
 import { Button } from '@/components/ui/button'
@@ -61,6 +61,24 @@ export function ProductStockCard({
 	const origine = form.formState.defaultValues
 	const ecart = ecartDe(stock, origine?.stock)
 	const ecartB = ecartDe(stockB, origine?.stock_b)
+	// Le motif vaut pour TOUTE la modification en cours : un seul mouvement part
+	// à l'enregistrement. Une fois donné, les saisies suivantes ne rouvrent plus
+	// la modale ; le bouton « Modifier le motif » reste là pour le corriger.
+	const motifComplet = !!reason && (reason !== 'other' || !!comment.trim())
+	// Sauf si le SENS du mouvement a changé depuis : un « Réassort » donné pour
+	// +3 ne doit pas partir dans l'historique sur un −2.
+	const sensDuMotif = useRef({ neuf: 0, b: 0 })
+	const sensChange =
+		Math.sign(ecart) !== sensDuMotif.current.neuf ||
+		Math.sign(ecartB) !== sensDuMotif.current.b
+	const demanderMotif = () => {
+		if (ecart === 0 && ecartB === 0) return
+		if (!motifComplet || sensChange) setMotifOuvert(true)
+	}
+	const fermerMotif = () => {
+		sensDuMotif.current = { neuf: Math.sign(ecart), b: Math.sign(ecartB) }
+		setMotifOuvert(false)
+	}
 
 	const content = (
 		<div className='grid gap-5'>
@@ -71,7 +89,7 @@ export function ProductStockCard({
 							form={form}
 							name='stock'
 							label='Stock neuf'
-							onSaisie={() => setMotifOuvert(true)}
+							onSaisie={demanderMotif}
 						/>
 						<NumberField
 							form={form}
@@ -146,7 +164,7 @@ export function ProductStockCard({
 								label='Stock B'
 								min='0'
 								help='Unités ouvertes, rayées ou retournées fonctionnelles, vendues à part. Même fiche, même code-barres.'
-								onSaisie={() => setMotifOuvert(true)}
+								onSaisie={demanderMotif}
 							/>
 							<NumberField
 								form={form}
@@ -201,7 +219,9 @@ export function ProductStockCard({
 
 			<Dialog
 				open={motifOuvert && (ecart !== 0 || ecartB !== 0)}
-				onOpenChange={setMotifOuvert}
+				onOpenChange={(ouvert) =>
+					ouvert ? setMotifOuvert(true) : fermerMotif()
+				}
 			>
 				<DialogContent className='sm:max-w-[480px]'>
 					<DialogHeader>
@@ -277,7 +297,7 @@ export function ProductStockCard({
 					<DialogFooter>
 						<Button
 							type='button'
-							onClick={() => setMotifOuvert(false)}
+							onClick={fermerMotif}
 							disabled={!reason || (reason === 'other' && !comment.trim())}
 						>
 							Valider le motif
@@ -328,7 +348,8 @@ function NumberField({
 	min?: string
 	step?: string
 	help?: string
-	/** Appelé après une saisie manuelle pour demander le motif du mouvement. */
+	/** Appelé en QUITTANT le champ après une saisie, pour demander le motif du
+	 *  mouvement : ouvrir la modale à la frappe coupait « 12 » après le « 1 ». */
 	onSaisie?: () => void
 }) {
 	return (
@@ -347,8 +368,8 @@ function NumberField({
 							step={step}
 							min={min}
 							{...field}
-							onChange={(event) => {
-								field.onChange(event)
+							onBlur={() => {
+								field.onBlur()
 								onSaisie?.()
 							}}
 						/>
