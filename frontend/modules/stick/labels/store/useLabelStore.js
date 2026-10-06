@@ -13,6 +13,7 @@ import {
 } from '../utils/gesteHistorique';
 import { DRAW_DEFAULTS, elementDessin, redessiner } from '../utils/dessin';
 import { formeDepuisDessin } from '../utils/formeLibre';
+import { idsEpingles, remplacementProduit } from '../utils/champsProduit';
 
 // Geste en cours de `updateElement` ou de `moveElement` (glisser un calque) —
 // `utils/gesteHistorique.js` ; toute autre étape d'historique, et undo/redo,
@@ -89,6 +90,32 @@ function sourceDerivee(ids) {
   return ids?.length ? 'data' : 'blank';
 }
 
+// ── LES PRODUITS ÉPINGLÉS (6 octobre 2026, `04-donnees-produit.md`) ─────────
+// Un élément peut nommer SON produit (`el.produitId`) : il le suit quelle que
+// soit la page, et ce produit n'entre PAS au tirage — donc aucune page en plus.
+// Rien n'est rangé à part : la liste se DÉDUIT de `elements` (`idsEpingles`),
+// ce qui la met d'office dans l'historique et dans les templates. Ces produits
+// vivent dans le même cache `produitsParId`, relus par la même synchro.
+
+/** Tous les ids que le cache doit tenir : le tirage, les épinglés, et le
+ *  produit dont parle l'onglet « Infos produit » (`produitCible`). */
+export const idsSuivis = (state) => {
+  const ids = [...(state.selectedProductIds ?? [])];
+  for (const id of idsEpingles(state.elements)) if (!ids.includes(id)) ids.push(id);
+  if (state.produitCible && !ids.includes(state.produitCible)) ids.push(state.produitCible);
+  return ids;
+};
+
+/** `parId` (le cache refait pour le tirage) + ce que l'ancien cache savait des
+ *  produits épinglés : retirer un produit du tirage ne vide pas un pack. */
+const avecEpingles = (state, parId) => {
+  const garde = { ...parId };
+  for (const id of idsSuivis(state)) {
+    if (!garde[id] && state.produitsParId[id]) garde[id] = state.produitsParId[id];
+  }
+  return garde;
+};
+
 const memeProduit = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
 
 const useLabelStore = create((set, get) => ({
@@ -111,6 +138,10 @@ const useLabelStore = create((set, get) => ({
   quantiteSansProduit: 1,
   formatTirage: 'page',
   produitsParId: {},
+  /** Le produit dont parle l'onglet « Infos produit » : `null` = celui de la
+   *  page ; sinon l'id d'un produit ÉPINGLÉ, posé sur chaque élément ajouté
+   *  (`utils/ajoutsProduit.js`). Ni historique, ni template. */
+  produitCible: null,
   /** Ids que la dernière relecture n'a plus rendus : produits supprimés. Leur
    *  dernière valeur connue reste affichée ; `LabelPage` avertit. */
   produitsDisparus: [],
@@ -518,9 +549,52 @@ const useLabelStore = create((set, get) => ({
 
   // --- data (ne pollue pas l'historique des éléments)
   // `source` est ignoré : la source découle des produits (`sourceDerivee`).
-  setDataSource: (_source, product = null) => set(selectionDepuis(product)),
+  setDataSource: (_source, product = null) =>
+    set((state) => {
+      const suite = selectionDepuis(product);
+      return { ...suite, produitsParId: avecEpingles(state, suite.produitsParId) };
+    }),
 
-  setSelectedProducts: (products) => set(selectionDepuis(products)),
+  setSelectedProducts: (products) =>
+    set((state) => {
+      const suite = selectionDepuis(products);
+      return { ...suite, produitsParId: avecEpingles(state, suite.produitsParId) };
+    }),
+
+  // --- produits épinglés
+  /** Choisit le produit dont parle l'onglet « Infos produit ». `null` : celui
+   *  de la page. Un objet `ProduitAffiche` : il entre dans le cache — PAS au
+   *  tirage — et devient la cible. Un id : un produit déjà connu du cache. */
+  choisirProduitCible: (product) =>
+    set((state) => {
+      if (!product) return { produitCible: null };
+      if (typeof product === 'string') return { produitCible: product };
+      const id = product._id;
+      if (!id) return {};
+      return { produitCible: id, produitsParId: { ...state.produitsParId, [id]: product } };
+    }),
+
+  /** Met un produit dans le cache sans toucher ni au tirage ni à la cible
+   *  (épingler un élément existant à un produit qu'on vient de chercher). */
+  memoriserProduit: (product) =>
+    set((state) =>
+      product?._id ? { produitsParId: { ...state.produitsParId, [product._id]: product } } : {}
+    ),
+
+  /** Tous les éléments épinglés à `ancienId` parlent de `product`, en UN pas
+   *  d'historique. Refaire un pack avec d'autres produits, ou réparer une
+   *  affiche dont un produit n'existe plus. */
+  remplacerProduitEpingle: (ancienId, product) => {
+    const id = product?._id;
+    if (!id || !ancienId || id === ancienId) return;
+    const state = get();
+    const maj = remplacementProduit(state.elements, ancienId, id);
+    set({
+      produitsParId: { ...state.produitsParId, [id]: product },
+      ...(state.produitCible === ancienId ? { produitCible: id } : {}),
+    });
+    if (Object.keys(maj).length) get().updateElements(maj);
+  },
 
   // --- tirage
   /** AJOUTE au tirage ; un produit déjà présent gagne un exemplaire. */
@@ -560,13 +634,17 @@ const useLabelStore = create((set, get) => ({
       if (!state.selectedProductIds.includes(id)) return {};
       const courant = state.selectedProductIds[state.currentProductIndex];
       const ids = state.selectedProductIds.filter((x) => x !== id);
-      const { [id]: _p, ...parId } = state.produitsParId;
+      const { [id]: _p, ...reste } = state.produitsParId;
       const { [id]: _q, ...quantites } = state.quantites;
+      // Épinglé sur l'affiche, il reste dans le cache — et signalé s'il a disparu
+      const suite = { ...state, selectedProductIds: ids };
+      const parId = avecEpingles(suite, reste);
+      const encoreSuivi = idsSuivis(suite).includes(id);
       return {
         selectedProductIds: ids,
         produitsParId: parId,
         quantites,
-        produitsDisparus: state.produitsDisparus.filter((x) => x !== id),
+        produitsDisparus: state.produitsDisparus.filter((x) => x !== id || encoreSuivi),
         dataSource: sourceDerivee(ids),
         ...deriverProduits(ids, parId, Math.max(0, ids.indexOf(courant))),
       };
@@ -584,16 +662,18 @@ const useLabelStore = create((set, get) => ({
   synchroniserProduits: (produits, disparus = []) =>
     set((state) => {
       const ids = state.selectedProductIds;
+      // Le tirage ET les produits épinglés sur l'affiche (`idsSuivis`)
+      const suivis = idsSuivis(state);
       const parId = { ...state.produitsParId };
       let change = false;
       for (const p of produits ?? []) {
-        if (!p?._id || !ids.includes(p._id)) continue;
+        if (!p?._id || !suivis.includes(p._id)) continue;
         if (!memeProduit(parId[p._id], p)) {
           parId[p._id] = p;
           change = true;
         }
       }
-      const perdus = (disparus ?? []).filter((id) => ids.includes(id));
+      const perdus = (disparus ?? []).filter((id) => suivis.includes(id));
       const disparusChange =
         perdus.length !== state.produitsDisparus.length ||
         perdus.some((id, i) => state.produitsDisparus[i] !== id);
@@ -605,22 +685,27 @@ const useLabelStore = create((set, get) => ({
       };
     }),
 
-  /** Retire de la sélection les produits qui n'existent plus. */
+  /** Retire du TIRAGE les produits qui n'existent plus. Un produit disparu
+   *  encore épinglé sur l'affiche reste signalé : il se remplace ou se supprime
+   *  depuis « Infos produit », pas ici — on ne touche pas au dessin. */
   retirerProduitsDisparus: () =>
     set((state) => {
       if (!state.produitsDisparus.length) return {};
       const retires = new Set(state.produitsDisparus);
       const courant = state.selectedProductIds[state.currentProductIndex];
       const ids = state.selectedProductIds.filter((id) => !retires.has(id));
-      const parId = {};
-      for (const id of ids) if (state.produitsParId[id]) parId[id] = state.produitsParId[id];
+      const tirage = {};
+      for (const id of ids) if (state.produitsParId[id]) tirage[id] = state.produitsParId[id];
+      const suite = { ...state, selectedProductIds: ids };
+      const parId = avecEpingles(suite, tirage);
+      const encoreSuivis = idsSuivis(suite);
       const index = Math.max(0, ids.indexOf(courant));
       const quantites = {};
       for (const id of ids) if (state.quantites[id] != null) quantites[id] = state.quantites[id];
       return {
         selectedProductIds: ids,
         produitsParId: parId,
-        produitsDisparus: [],
+        produitsDisparus: state.produitsDisparus.filter((id) => encoreSuivis.includes(id)),
         quantites,
         dataSource: sourceDerivee(ids),
         ...deriverProduits(ids, parId, index),
@@ -667,6 +752,7 @@ const useLabelStore = create((set, get) => ({
         extraIds: [],
         cropId: null,
         ...(garderProduits ? {} : { ...selectionDepuis(null), quantiteSansProduit: 1 }),
+        produitCible: null,
         currentTemplateName: 'Nouveau',
         currentTemplateId: null,
         historyPast: [],

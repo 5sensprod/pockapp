@@ -19,6 +19,11 @@
 // Le logo de l'entreprise, qui n'est lié à rien, n'est plus ici : Médias ›
 // PocketStock.
 //
+// 📌 EN TÊTE, DE QUEL PRODUIT ON PARLE (6 octobre 2026, `ChoixProduit`) : celui
+// de la page, ou un produit ÉPINGLÉ — pour une affiche de pack, deux produits
+// sur la même page sans rien ajouter au tirage. Tout ce qu'on ajoute ensuite
+// porte ce produit (`cibleAjout`, `utils/ajoutsProduit.js`).
+//
 // Orange : la couleur de PocketStock, d'où viennent ces données.
 import React from 'react';
 import {
@@ -32,8 +37,9 @@ import {
 } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import LiaisonProduit from '../LiaisonProduit';
+import ChoixProduit from '../ChoixProduit';
 import { champsPourType, elementsLies, libelleLiaison, photosGalerie } from '../../utils/champsProduit';
-import { getProductField, resolvePropForElement } from '../../utils/dataBinding';
+import { getProductField, produitDe, resolvePropForElement } from '../../utils/dataBinding';
 import { SECTIONS_FICHE, contenuFiche } from '../../utils/ficheProduit';
 import {
   FORMATS_CODE_BARRES,
@@ -42,6 +48,7 @@ import {
   ajouterImageLiee,
   ajouterPhotoProduit,
   ajouterQRProduit,
+  cibleAjout,
   formatCompatible,
 } from '../../utils/ajoutsProduit';
 import { mesurerTexte } from '../../utils/mesurerTexte';
@@ -98,7 +105,13 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
   const selectElement = useLabelStore((s) => s.selectElement);
   const updateElement = useLabelStore((s) => s.updateElement);
   const addElementCentre = useLabelStore((s) => s.addElementCentre);
-  const product = useLabelStore((s) => s.selectedProduct);
+  const produitPage = useLabelStore((s) => s.selectedProduct);
+  const produitsParId = useLabelStore((s) => s.produitsParId);
+  const cible = useLabelStore((s) => s.produitCible);
+  const choisirProduitCible = useLabelStore((s) => s.choisirProduitCible);
+  const remplacerProduitEpingle = useLabelStore((s) => s.remplacerProduitEpingle);
+  // Le produit dont l'onglet montre les valeurs et que porteront les ajouts
+  const product = cible ? (produitsParId[cible] ?? null) : produitPage;
 
   const lies = elementsLies(elements);
   const galerie = photosGalerie(product);
@@ -114,18 +127,28 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
       bold: style.bold,
       color: style.color || '#000000',
       dataBinding: champ.cle,
+      ...cibleAjout().liaison,
     };
     addElementCentre(el, mesurerTexte(el));
   };
 
   return (
     <div className={PANNEAU}>
-      {/* Le produit dont on voit les valeurs */}
-      {product ? (
-        <div className="text-xs text-gray-500 dark:text-gray-400 truncate" title={product.name}>
-          Aperçu : <span className={`font-medium ${ORANGE}`}>{product.name}</span>
-        </div>
-      ) : (
+      {/* Le produit dont on voit les valeurs, et dont parleront les ajouts */}
+      <ChoixProduit
+        valeur={cible}
+        onValeur={choisirProduitCible}
+        onRemplacer={(nouveau) => remplacerProduitEpingle(cible, nouveau)}
+      />
+      {cible && product && (
+        <p className={AIDE}>
+          Ce que vous ajoutez reste sur <span className={`font-medium ${ORANGE}`}>{product.name}</span>, sans page en plus.
+        </p>
+      )}
+      {cible && !product && (
+        <Note ton="avertissement">Ce produit est introuvable dans le catalogue : choisissez-en un autre.</Note>
+      )}
+      {product || cible ? null : (
         <Note
           ton="produit"
           action={
@@ -280,20 +303,23 @@ const DonneesProduitPanel = ({ onOpenTool }) => {
           <div className="space-y-0.5">
             {lies.map((el) => {
               const actif = el.id === selectedId;
+              // Le produit de CET élément : celui de la page, ou son épinglé
+              const produitEl = produitDe(el, produitPage, produitsParId);
+              const epingle = el.produitId ? ` · ${produitEl?.name ?? 'produit introuvable'}` : '';
               return (
                 <div key={el.id}>
                   <LigneListe
                     produit
                     actif={actif}
                     icone={ICONES[el.type] ?? LinkIcon}
-                    titre={<span className={ORANGE}>{libelleLiaison(el)}</span>}
-                    detail={couper(apercu(el, product), 60) || '—'}
+                    titre={<span className={ORANGE}>{libelleLiaison(el)}{epingle}</span>}
+                    detail={couper(apercu(el, produitEl), 60) || '—'}
                     onClic={() => !el.locked && selectElement(el.id)}
                     title={el.locked ? 'Élément verrouillé' : 'Sélectionner l’élément'}
                   />
                   {actif && (
                     <div className="px-2 py-1.5">
-                      <LiaisonProduit element={el} product={product} onUpdate={(patch) => updateElement(el.id, patch)} />
+                      <LiaisonProduit element={el} product={produitEl} onUpdate={(patch) => updateElement(el.id, patch)} />
                     </div>
                   )}
                 </div>

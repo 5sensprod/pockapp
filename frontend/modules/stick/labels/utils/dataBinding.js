@@ -181,6 +181,25 @@ export const getProductField = (product, key) => {
   }
 };
 
+/**
+ * 📌 DE QUEL PRODUIT parle cet élément ? (6 octobre 2026, `04-donnees-produit.md`)
+ * Sans `el.produitId` — tous les templates d'avant — : le produit de la PAGE,
+ * comme toujours. Avec : le produit ÉPINGLÉ, lu dans le cache du store
+ * (`produitsParId`), quelle que soit la page — c'est ce qui met deux produits
+ * sur une affiche de pack sans page en trop.
+ *
+ * Un produit épinglé introuvable rend `null`, JAMAIS le produit de la page : on
+ * imprimerait le prix de l'un sous la photo de l'autre.
+ *
+ * Ce n'est pas une seconde résolution : cette fonction ne lit aucune valeur,
+ * elle choisit le produit passé à `getProductField` / `resolvePropForElement`.
+ */
+export const produitDe = (el, produitPage, produitsParId) => {
+  const id = el?.produitId;
+  if (!id) return produitPage ?? null;
+  return produitsParId?.[id] ?? null;
+};
+
 /** Remplace {{chemin}} par la valeur du produit (+ formatage contextuel) */
 export const resolveTemplate = (tpl, product, options = {}) => {
   if (!tpl || typeof tpl !== 'string') return tpl;

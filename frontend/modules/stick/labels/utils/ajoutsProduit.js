@@ -13,6 +13,21 @@ import { cadreSurCanvas } from './imagePlacement';
 import { AJUSTEMENT_NOUVELLE_IMAGE } from './ajustementImage';
 import { getProductField } from './dataBinding';
 
+/**
+ * 📌 DE QUEL PRODUIT parle l'élément qu'on ajoute ? Celui que le vendeur a
+ * choisi en tête de l'onglet « Infos produit » (`produitCible` du store) :
+ * - `null` : le produit de la PAGE — `liaison` est vide, l'élément est écrit
+ *   exactement comme avant ;
+ * - un id : un produit ÉPINGLÉ — l'élément porte `produitId` et le suivra
+ *   quelle que soit la page (`produitDe`, `dataBinding.js`).
+ * `produit` sert à dimensionner et à préremplir, comme `selectedProduct` avant.
+ */
+export const cibleAjout = () => {
+  const { produitCible, produitsParId, selectedProduct } = useLabelStore.getState();
+  if (!produitCible) return { produit: selectedProduct ?? null, liaison: {} };
+  return { produit: produitsParId[produitCible] ?? null, liaison: { produitId: produitCible } };
+};
+
 /** Proportions d'une image (1 si elle ne se charge pas). */
 export const proportionsImage = (src) =>
   new Promise((resolve) => {
@@ -30,7 +45,8 @@ export const proportionsImage = (src) =>
  * dessine `KonvaCanvas` (produit du canvas, sinon l'exemple).
  */
 export const ajouterFiche = (section) => {
-  const { addElementCentre, canvasSize, selectedProduct } = useLabelStore.getState();
+  const { addElementCentre, canvasSize } = useLabelStore.getState();
+  const { produit: selectedProduct, liaison } = cibleAjout();
   const largeur = Math.min(FICHE_PAR_DEFAUT.width, Math.round(canvasSize.width * 0.8));
   const el = {
     ...FICHE_PAR_DEFAUT,
@@ -40,6 +56,7 @@ export const ajouterFiche = (section) => {
     width: largeur,
     visible: true,
     locked: false,
+    ...liaison,
   };
   const contenu = selectedProduct
     ? contenuFiche(selectedProduct.description, section.id)
@@ -59,7 +76,7 @@ export const ajouterFiche = (section) => {
  * proportions de la photo du produit affiché.
  */
 export const ajouterPhotoProduit = async (photo = null) => {
-  const { selectedProduct } = useLabelStore.getState();
+  const { produit: selectedProduct, liaison } = cibleAjout();
   // `photo` : une photo de la galerie (`photosGalerie`) — liée à SON rang,
   // qui changera d'image avec le produit comme la photo principale
   const src = photo?.src || selectedProduct?.image?.src || selectedProduct?.image?.url || '';
@@ -71,6 +88,7 @@ export const ajouterPhotoProduit = async (photo = null) => {
     ...AJUSTEMENT_NOUVELLE_IMAGE,
     src: photo ? '' : '{{product_image}}', // la liaison prime (`resolvePropForElement`)
     dataBinding: photo?.cle || 'product_image',
+    ...liaison,
     opacity: 1,
     rotation: 0,
     visible: true,
@@ -86,7 +104,7 @@ export const ajouterPhotoProduit = async (photo = null) => {
  * les proportions de l'image du produit affiché (carré s'il n'en a pas).
  */
 export const ajouterImageLiee = async (cle) => {
-  const { selectedProduct } = useLabelStore.getState();
+  const { produit: selectedProduct, liaison } = cibleAjout();
   const src = getProductField(selectedProduct, cle) || '';
   const aspectRatio = await proportionsImage(src);
   const { addElementCentre, canvasSize } = useLabelStore.getState();
@@ -99,6 +117,7 @@ export const ajouterImageLiee = async (cle) => {
     ...AJUSTEMENT_NOUVELLE_IMAGE,
     src: '',
     dataBinding: cle,
+    ...liaison,
     opacity: 1,
     rotation: 0,
     visible: true,
@@ -148,11 +167,13 @@ export const QR_PAR_DEFAUT = {
  * `exportPdfSheet.js`). `qrValue` ne sert qu'après « Valeur fixe ».
  */
 export const ajouterQRProduit = () => {
-  const { addElementCentre, selectedProduct } = useLabelStore.getState();
+  const { addElementCentre } = useLabelStore.getState();
+  const { produit: selectedProduct, liaison } = cibleAjout();
   addElementCentre({
     ...QR_PAR_DEFAUT,
     qrValue: selectedProduct?.website_url || '',
     dataBinding: 'website_url',
+    ...liaison,
   });
 };
 
@@ -174,7 +195,8 @@ export const formatCompatible = (format, valeur) => !valeur || !format.valide ||
 
 /** Un code-barres LIÉ au champ `barcode` du produit, au format choisi. */
 export const ajouterCodeBarres = (format) => {
-  const { addElementCentre, selectedProduct } = useLabelStore.getState();
+  const { addElementCentre } = useLabelStore.getState();
+  const { produit: selectedProduct, liaison } = cibleAjout();
   const valeur = selectedProduct?.meta_data?.find?.((m) => m?.key === 'barcode')?.value ?? '';
   addElementCentre({
     type: 'barcode',
@@ -191,5 +213,6 @@ export const ajouterCodeBarres = (format) => {
     visible: true,
     locked: false,
     dataBinding: 'barcode',
+    ...liaison,
   });
 };

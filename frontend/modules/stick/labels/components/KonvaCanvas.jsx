@@ -22,7 +22,7 @@ import VoileHorsPage from './canvas/VoileHorsPage';
 // en développement seulement (`__mesureContourLettres()` dans la console).
 if (import.meta.env.DEV) import('../utils/mesureContourLettres');
 import { calculateSnapGuides } from '../utils/snapGuides.utils';
-import { resolvePropForElement } from '../utils/dataBinding';
+import { produitDe, resolvePropForElement } from '../utils/dataBinding';
 import { konvaCrop, resizeStep, settleCrop } from '../utils/crop';
 import { boxesIntersect, rectFromPoints, LASSO_MIN_DRAG } from '../utils/layout';
 import { CropOverlay, CropTransformer, geometrieImage } from './canvas/CropOverlay';
@@ -82,6 +82,10 @@ const KonvaCanvas = forwardRef(
     const updateElement = useLabelStore((s) => s.updateElement);
     const setZoom = useLabelStore((s) => s.setZoom);
     const selectedProduct = useLabelStore((s) => s.selectedProduct);
+    // 📌 Le produit de CHAQUE élément : celui de la page, ou son produit
+    // épinglé (`produitDe`, `utils/dataBinding.js`)
+    const produitsParId = useLabelStore((s) => s.produitsParId);
+    const produitPour = (el) => produitDe(el, selectedProduct, produitsParId);
     const currentProductIndex = useLabelStore((s) => s.currentProductIndex);
     const cropId = useLabelStore((s) => s.cropId);
     const cadreMasque = useLabelStore((s) => s.cadreMasque || s.cadreMasqueGeste);
@@ -592,7 +596,7 @@ const KonvaCanvas = forwardRef(
         clearTimeout(tard);
         clearTimeout(encoreTard);
       };
-    }, [elements, zoom, selectedProduct]);
+    }, [elements, zoom, selectedProduct, produitsParId]);
 
     return (
       <>
@@ -698,7 +702,7 @@ const KonvaCanvas = forwardRef(
                   <TextNode
                     key={`${id}-${currentProductIndex}`}
                     {...commonProps}
-                    text={resolvePropForElement(el.text, el, selectedProduct)}
+                    text={resolvePropForElement(el.text, el, produitPour(el))}
                     casse={casseDe(el)}
                     fontSize={el.fontSize}
                     fontStyle={el.fontStyle || (el.bold ? 'bold' : 'normal')} // ✅ supporte gras+italique combinés, fallback ancien champ "bold"
@@ -710,7 +714,7 @@ const KonvaCanvas = forwardRef(
                     width={el.width}
                     locked={locked}
                     dataBinding={el.dataBinding || null}
-                    correctionKey={selectedProduct?._id ?? null}
+                    correctionKey={produitPour(el)?._id ?? null}
                     fillGradient={el.fillGradient ?? null}
                     stroke={el.stroke ?? ''}
                     strokeWidth={el.strokeWidth ?? 0}
@@ -723,7 +727,7 @@ const KonvaCanvas = forwardRef(
               }
 
               if (type === 'qrcode') {
-                const qrValue = resolvePropForElement(el.qrValue, el, selectedProduct) ?? '';
+                const qrValue = resolvePropForElement(el.qrValue, el, produitPour(el)) ?? '';
                 // QR lié à un produit qui n'a pas la valeur (typiquement : pas
                 // d'URL web, produit sans slug) → rien. Surtout pas un QR vide,
                 // ni un repli sur une autre donnée : il s'imprimerait et ne
@@ -749,7 +753,7 @@ const KonvaCanvas = forwardRef(
                     {...commonProps}
                     width={el.width ?? 160}
                     height={el.height ?? 160}
-                    src={resolvePropForElement(el.src, el, selectedProduct) ?? ''}
+                    src={resolvePropForElement(el.src, el, produitPour(el)) ?? ''}
                     opacity={el.opacity ?? 1}
                     cropX={el.cropX}
                     cropY={el.cropY}
@@ -772,9 +776,14 @@ const KonvaCanvas = forwardRef(
               if (type === 'fiche') {
                 // Sans produit : un contenu d'exemple, pour régler l'élément.
                 // Produit SANS cette section : rien, comme un QR sans URL.
-                const contenu = selectedProduct
-                  ? contenuFiche(selectedProduct.description, el.section)
-                  : EXEMPLE_FICHE[el.section] ?? EXEMPLE_FICHE.specs;
+                // Fiche épinglée dont le produit est introuvable : rien non plus,
+                // surtout pas l'exemple.
+                const produitFiche = produitPour(el);
+                const contenu = produitFiche
+                  ? contenuFiche(produitFiche.description, el.section)
+                  : el.produitId
+                    ? null
+                    : EXEMPLE_FICHE[el.section] ?? EXEMPLE_FICHE.specs;
                 if (!contenu) return null;
                 const { scaleX: _sx, scaleY: _sy, ...groupe } = commonProps;
                 return (
@@ -818,7 +827,7 @@ const KonvaCanvas = forwardRef(
                     {...commonProps}
                     width={el.width ?? 200}
                     height={el.height ?? 80}
-                    barcodeValue={resolvePropForElement(el.barcodeValue, el, selectedProduct) ?? ''}
+                    barcodeValue={resolvePropForElement(el.barcodeValue, el, produitPour(el)) ?? ''}
                     format={el.format ?? 'CODE128'}
                     displayValue={el.displayValue ?? true}
                     fontSize={el.fontSize ?? 14}
@@ -902,7 +911,7 @@ const KonvaCanvas = forwardRef(
                 <Group x={docPos.x} y={docPos.y} scaleX={zoom} scaleY={zoom}>
                   <CropOverlay
                     element={cropEl}
-                    src={resolvePropForElement(cropEl.src, cropEl, selectedProduct) ?? ''}
+                    src={resolvePropForElement(cropEl.src, cropEl, produitPour(cropEl)) ?? ''}
                     scale={zoom}
                     onChange={(attrs) => updateElement(cropEl.id, attrs)}
                   />

@@ -59,7 +59,18 @@ n'ajoutent que du statique — y compris le sous-onglet PocketStock d'Images
 (logos des marques, images des catégories, logo de l'entreprise,
 `lib/images-catalogue.ts`).
 `getProductField` (`utils/dataBinding.js`) est la seule résolution, à l'écran
-comme dans l'export planche. Une image a un **ajustement** (`el.fit`,
+comme dans l'export planche. **Un élément peut nommer SON produit, `el.produitId`**
+(6 octobre 2026, même document) : absent — tous les templates d'avant —, il
+suit le produit de la page ; présent, il suit ce produit ÉPINGLÉ, qui n'entre
+PAS au tirage — une affiche de pack tient sur une page. `produitDe`
+(`dataBinding.js`) choisit le produit et ne lit aucune valeur : ce n'est pas un
+second résolveur, et **un produit épinglé introuvable ne retombe JAMAIS sur
+celui de la page**. La liste des épinglés se déduit de `elements`
+(`idsEpingles`) ; `idsSuivis` (store) est ce que relit la synchro. Le choix se
+fait en tête d'« Infos produit » (`ChoixProduit.jsx`, `produitCible`) et dans le
+bloc « Lié à ». En planche, un élément épinglé est le même dans toutes les
+cases (`utils/elementsPourProduit.js`, seul remplissage de l'export planche et
+de la bande). Une image a un **ajustement** (`el.fit`,
 `utils/ajustementImage.js`) : `contain` (Contenir, défaut des NOUVELLES images)
 montre la photo entière quelles que soient ses proportions ; absent = Remplir,
 l'ancien comportement — aucun template ne change d'aspect. Le dessin passe par

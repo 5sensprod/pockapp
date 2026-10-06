@@ -1,6 +1,6 @@
 // AppTools/src/features/labels/utils/exportPdfSheet.js
 import { propsCourbure } from './texteCourbe';
-import { typoTexte, appliquerCasse, casseDe } from './typo';
+import { typoTexte } from './typo';
 import jsPDF from 'jspdf';
 import Konva from 'konva';
 import { appliquerEffets } from './effetsKonva';
@@ -9,18 +9,12 @@ import { dessinerQR } from './qrImage';
 import { sceneImage } from './imageForme';
 import { dessinTrace } from './dessin';
 import useLabelStore from '../store/useLabelStore';
-import {
-  resolvePropForElement,
-  getProductField,
-  resolveTemplate,
-  formatPriceEUR,
-} from '../utils/dataBinding';
+import { elementsPourProduit } from './elementsPourProduit';
 import { contourTexte, remplissage } from './fillStyle';
 import { konvaCrop } from './crop';
 import { estContenu } from './ajustementImage';
 import { dessinerCodeBarres } from './barcodeCanvas';
 import { construireFiche } from './ficheKonva';
-import { contenuFiche } from './ficheProduit';
 import { installerCadreReel } from './contourStylise';
 import { loadGoogleFont } from './loadGoogleFont';
 import { contourLettresDemande, propsContourLettres } from './texteContourStylise';
@@ -74,81 +68,6 @@ function loadImageFromURL(url) {
       reject(err);
     };
     img.src = url;
-  });
-}
-
-/**
- * Remplace les valeurs des éléments liés à un produit (non destructif)
- * ⚠️ Aligné avec la logique du canvas (dataBinding + templates)
- * - Images: support 'product_image_src'/'product_image', 'image.src', 'product_gallery_N'
- * - Text: prix formaté "€" (comme à l'écran)
- */
-function updateElementsWithProduct(elements, product, fillQrWhenNoBinding = false) {
-  if (!product) return elements;
-
-  // Seule l'URL web : un repli sur le code-barres ou la référence encodait
-  // un nombre que personne ne peut ouvrir (voir `AssetsPanel.jsx`).
-  const fallbackQR = () => product.website_url || '';
-
-  return (elements || []).map((el) => {
-    if (el?.visible === false) return el;
-
-    // 📝 TEXT — binding + templates, avec prix formaté (comme le canvas)
-    if (el?.type === 'text') {
-      // La MÊME résolution que le canvas : prix formatés, description sans
-      // HTML, et correction manuelle du texte lié pour ce produit.
-      // … puis la casse (`utils/typo.js`), un style appliqué au dessin comme à l'écran
-      const nextText = appliquerCasse(String(resolvePropForElement(el.text ?? '', el, product) ?? ''), casseDe(el));
-      return { ...el, text: nextText };
-    }
-
-    // 📋 FICHE — la section du produit de CETTE cellule (null : rien d'imprimé)
-    if (el?.type === 'fiche') {
-      return { ...el, ficheContenu: contenuFiche(product.description, el.section) };
-    }
-
-    // 🔲 QRCODE — binding brut (pas de €), sinon templating, sinon fallback
-    if (el?.type === 'qrcode') {
-      let nextQr =
-        el.dataBinding != null
-          ? String(getProductField(product, el.dataBinding) ?? '')
-          : resolveTemplate(el.qrValue ?? '', product, { type: 'qrcode' });
-      if (!nextQr && fillQrWhenNoBinding) nextQr = fallbackQR();
-      return { ...el, qrValue: nextQr };
-    }
-
-    // 📊 BARCODE — binding brut (pas de €), sinon templating
-    if (el?.type === 'barcode') {
-      const nextBc =
-        el.dataBinding != null
-          ? String(getProductField(product, el.dataBinding) ?? '')
-          : resolveTemplate(el.barcodeValue ?? '', product, { type: 'barcode' });
-      return { ...el, barcodeValue: nextBc };
-    }
-
-    // 🖼️ IMAGE — support dataBinding & templates (SRC prioritaire)
-    if (el?.type === 'image') {
-      let nextSrc = '';
-
-      if (el.dataBinding) {
-        // aliases standards
-        if (el.dataBinding === 'product_image' || el.dataBinding === 'product_image_src') {
-          nextSrc = String(getProductField(product, 'product_image_src') ?? '');
-        } else if (el.dataBinding === 'image.src' || el.dataBinding === 'image_src') {
-          nextSrc = String(getProductField(product, 'image.src') ?? '');
-        } else {
-          // binding libre (ex. 'image.somewhere.src')
-          nextSrc = String(getProductField(product, el.dataBinding) ?? '');
-        }
-      } else {
-        // templating dans el.src (ex. "{{image.src}}")
-        nextSrc = String(resolveTemplate(el.src ?? '', product, { type: 'image' }) ?? '');
-      }
-
-      return nextSrc && nextSrc !== el.src ? { ...el, src: nextSrc } : el;
-    }
-
-    return el;
   });
 }
 
@@ -536,6 +455,7 @@ export async function exportPdfSheet(
     qrPerProductWhenUnbound = false,
     cases = null,
     cadresCases = true,
+    produitsParId = null,
   } = {}
 ) {
   if (!sheetWidth || !sheetHeight || !docWidth || !docHeight) return;
@@ -566,6 +486,9 @@ export async function exportPdfSheet(
     ? elementsOverride
     : (useLabelStore.getState()?.elements ?? []);
 
+  // 📌 Les produits épinglés (`el.produitId`) : identiques dans toutes les cases
+  const parId = produitsParId ?? useLabelStore.getState()?.produitsParId ?? {};
+
   const totalCells = rows * cols;
   let liste;
   if (Array.isArray(cases)) {
@@ -588,11 +511,10 @@ export async function exportPdfSheet(
     const cle = uneCase ? (uneCase.product ?? 'sans-produit') : 'vide';
     if (!rendus.has(cle)) {
       const elements = uneCase
-        ? updateElementsWithProduct(
-            baseElements,
-            uneCase.product,
-            uneCase.product ? qrPerProductWhenUnbound : false
-          )
+        ? elementsPourProduit(baseElements, uneCase.product, {
+            fillQrWhenNoBinding: uneCase.product ? qrPerProductWhenUnbound : false,
+            produitsParId: parId,
+          })
         : [];
       rendus.set(cle, await createDocumentImage(elements, docWidth, docHeight, scale, pixelRatio));
     }
@@ -636,10 +558,13 @@ export async function exportPdfSheet(
  * que l'export — éléments remplis avec le produit —, en petit. `hauteur` en
  * pixels écran ; `product` peut être null (le modèle tel quel).
  */
-export async function apercuCase(product, { docWidth, docHeight, hauteur = 72, elements } = {}) {
+export async function apercuCase(product, { docWidth, docHeight, hauteur = 72, elements, produitsParId } = {}) {
   if (!docWidth || !docHeight) return null;
   const base = Array.isArray(elements) ? elements : (useLabelStore.getState()?.elements ?? []);
   const scale = hauteur / docHeight;
-  const rendu = product ? updateElementsWithProduct(base, product, false) : base;
+  // Sans produit ni élément épinglé, `elementsPourProduit` rend `base` tel quel
+  const rendu = elementsPourProduit(base, product, {
+    produitsParId: produitsParId ?? useLabelStore.getState()?.produitsParId ?? {},
+  });
   return createDocumentImage(rendu, docWidth, docHeight, scale, 2, { qualiteMin: 1 });
 }

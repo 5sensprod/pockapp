@@ -6,7 +6,7 @@ import useLabelStore from '../../store/useLabelStore';
 import { loadGoogleFont } from '../../utils/loadGoogleFont'; // 🎨 Import de la fonction de chargement
 import { contourTexte, remplissage } from '../../utils/fillStyle';
 import { premiereCouleur } from '../../utils/paint';
-import { texteDeLaFiche } from '../../utils/dataBinding';
+import { produitDe, texteDeLaFiche } from '../../utils/dataBinding';
 import { contourLettresDemande, propsContourLettres, SANS_CONTOUR_LETTRES } from '../../utils/texteContourStylise';
 import { chargerPoliceVectorielle, policeVectoriellePrete, styleDePolice } from '../../utils/policesVectorielles';
 
@@ -167,11 +167,11 @@ const TextNode = ({
       // Texte lié : rien n'est écrit si le vendeur n'a rien changé, sinon une
       // simple ouverture/fermeture figerait la valeur de la fiche.
       if (value === text) return;
-      const { elements, selectedProduct } = useLabelStore.getState();
+      const { elements, selectedProduct, produitsParId } = useLabelStore.getState();
       const el = elements.find((e) => e.id === id);
       // On mémorise le texte de la fiche au moment de la correction : s'il
       // change ensuite (temps réel), le panneau le signale sans rien écraser.
-      const source = texteDeLaFiche(el, selectedProduct);
+      const source = texteDeLaFiche(el, produitDe(el, selectedProduct, produitsParId));
       updateElement(id, {
         textOverrides: { ...(el?.textOverrides || {}), [correctionKey]: value },
         ...(source !== undefined && {

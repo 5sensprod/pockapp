@@ -27,7 +27,7 @@ import useLabelStore from '../../store/useLabelStore';
 import LiaisonProduit from '../LiaisonProduit';
 import { useAlignementPage } from '../useAlignementPage';
 import { typeLiable } from '../../utils/champsProduit';
-import { ficheChangeeDepuisCorrection, texteCorrige } from '../../utils/dataBinding';
+import { ficheChangeeDepuisCorrection, produitDe, texteCorrige } from '../../utils/dataBinding';
 import Note from '../ui/Note';
 import { BOUTON_ACTION, BOUTON_ICONE as bouton } from '../ui/styles';
 
@@ -45,9 +45,10 @@ const ALIGNEMENTS = [
 const ReglagesCommuns = ({ el, docNode }) => {
   const selectedId = useLabelStore((s) => s.selectedId);
   const dataSource = useLabelStore((s) => s.dataSource);
-  // Le produit que le CANVAS affiche : c'est à lui qu'une correction de texte
+  // Le produit que le CANVAS affiche POUR CET ÉLÉMENT — celui de la page, ou
+  // son produit épinglé (`produitDe`) : c'est à lui qu'une correction de texte
   // est rattachée (`TextNode`, `textOverrides`).
-  const produit = useLabelStore((s) => s.selectedProduct);
+  const produit = useLabelStore((s) => produitDe(el, s.selectedProduct, s.produitsParId));
   const updateElement = useLabelStore((s) => s.updateElement);
   const deleteElements = useLabelStore((s) => s.deleteElements);
   const duplicateElement = useLabelStore((s) => s.duplicateElement);
@@ -67,7 +68,9 @@ const ReglagesCommuns = ({ el, docNode }) => {
     const { [id]: _source, ...resteSource } = el.textOverridesSource || {};
     updateElement(el.id, { textOverrides: reste, textOverridesSource: resteSource });
   };
-  const liable = dataSource === 'data' && produit && (typeLiable(el.type) || el.type === 'fiche');
+  // Un élément épinglé garde son bloc même sans produit au tirage, et même si
+  // son produit est introuvable : c'est là qu'on le remplace.
+  const liable = (typeLiable(el.type) || el.type === 'fiche') && (!!el.produitId || (dataSource === 'data' && !!produit));
 
   return (
     <div className="space-y-2">

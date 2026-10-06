@@ -3,7 +3,9 @@
 // LES PRODUITS DU CANVAS SUIVENT LA BASE.
 //
 // Le store ne tient que des identifiants (`useLabelStore.js`,
-// `selectedProductIds`). Ce hook les relit dans PocketBase en UNE requête,
+// `selectedProductIds`) — et, depuis le 6 octobre 2026, ceux des produits
+// ÉPINGLÉS sur l'affiche (`idsSuivis` : le tirage, plus les `el.produitId`).
+// Ce hook les relit dans PocketBase en UNE requête,
 // les projette par `versProduitAffiche` avec le contexte VIVANT (marques,
 // fournisseurs) et réécrit le cache du store.
 //
@@ -20,8 +22,8 @@ import { PRODUCT_FIELDS } from '@/lib/queries/catalog-products'
 import type { CatalogProductShape } from '@/lib/queries/catalog-products'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect } from 'react'
-import useLabelStore from '../store/useLabelStore'
+import { useEffect, useMemo } from 'react'
+import useLabelStore, { idsSuivis } from '../store/useLabelStore'
 import { versProduitAffiche } from './produit-adapte'
 import {
 	cleProduitsAffiche,
@@ -33,7 +35,13 @@ import { useContexteAffiche } from './use-produits-affiche'
 
 export function useSynchroProduitsAffiche(): void {
 	const pb = usePocketBase() as any
-	const ids: string[] = useLabelStore((s: any) => s.selectedProductIds)
+	// Une CHAÎNE, pas un tableau : `idsSuivis` se déduit de `elements`, qui
+	// change à chaque glisser — la liste, elle, ne doit bouger que si un id bouge.
+	const suivis: string = useLabelStore((s: any) => idsSuivis(s).join(','))
+	const ids: string[] = useMemo(
+		() => (suivis ? suivis.split(',') : []),
+		[suivis],
+	)
 	const synchroniser = useLabelStore((s: any) => s.synchroniserProduits)
 	const ctx = useContexteAffiche()
 	const cle = cleProduitsAffiche(ids)

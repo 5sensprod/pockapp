@@ -12,7 +12,7 @@ import Curseur from '../ui/Curseur';
 import { geometrieImage } from '../canvas/CropOverlay';
 import { estContenu } from '../../utils/ajustementImage';
 import { resetCropAttrs } from '../../utils/crop';
-import { resolvePropForElement } from '../../utils/dataBinding';
+import { produitDe, resolvePropForElement } from '../../utils/dataBinding';
 import Segments from '../ui/Segments';
 import Interrupteur from '../ui/Interrupteur';
 import Bouton from '../ui/Bouton';
@@ -330,7 +330,7 @@ export const MemoireImage = ({ el }) => {
 // Pendant un recadrage : valider, ou revenir à l'image entière
 const RecadrageEnCours = ({ el, maj }) => {
   const stopCrop = useLabelStore((s) => s.stopCrop);
-  const produit = useLabelStore((s) => s.selectedProduct);
+  const produit = useLabelStore((s) => produitDe(el, s.selectedProduct, s.produitsParId));
   // Taille d'origine lue sur l'image elle-même : l'image entière revient, à la même échelle
   const reinitialiser = () => {
     const img = document.createElement('img');

@@ -118,7 +118,36 @@ export const miseAJourLiaison = (el, cle, product, resoudre) => {
   }
   if (!el.dataBinding) return null;
   const v = resoudre(el[prop], el, product);
-  return { dataBinding: null, [prop]: v == null ? '' : String(v) };
+  // Un élément délié ne parle plus d'aucun produit : l'épingle part avec la liaison
+  return { dataBinding: null, [prop]: v == null ? '' : String(v), ...(el.produitId ? { produitId: null } : {}) };
+};
+
+/** L'élément est-il lié à une donnée produit ? (une fiche l'est toujours) */
+const estLie = (el) => !!el && (el.type === 'fiche' || !!el.dataBinding);
+
+/**
+ * Les produits ÉPINGLÉS sur l'affiche (`el.produitId`, voir `produitDe` dans
+ * `dataBinding.js`), sans doublon, dans l'ordre des calques. Une épingle sur un
+ * élément qui n'est plus lié ne compte pas.
+ */
+export const idsEpingles = (elements) => {
+  const ids = [];
+  for (const el of elements ?? []) {
+    if (el?.produitId && estLie(el) && !ids.includes(el.produitId)) ids.push(el.produitId);
+  }
+  return ids;
+};
+
+/**
+ * Ce qu'il faut écrire pour que les éléments épinglés à `ancien` parlent de
+ * `nouveau` : `{ id: { produitId } }`, pour `updateElements` (un seul pas
+ * d'historique). C'est ce qui refait un pack avec d'autres produits.
+ */
+export const remplacementProduit = (elements, ancien, nouveau) => {
+  const maj = {};
+  if (!ancien || !nouveau || ancien === nouveau) return maj;
+  for (const el of elements ?? []) if (el?.produitId === ancien) maj[el.id] = { produitId: nouveau };
+  return maj;
 };
 
 /** Les éléments du document liés à une donnée produit, dans leur ordre. */

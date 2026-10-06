@@ -20,7 +20,7 @@
 //
 // Jamais en planche.
 
-import { resolvePropForElement } from '../utils/dataBinding'
+import { produitDe, resolvePropForElement } from '../utils/dataBinding'
 import {
 	type DepsDetourage,
 	type MemoireIA,
@@ -127,7 +127,10 @@ export function peutComposer(
 			raison: `Une composition accepte ${INGREDIENTS_MAX} éléments au plus : ${ingredients.length} sont sélectionnés.`,
 		}
 	for (const el of ingredients) {
-		const raison = refusIngredient(el, etat?.selectedProduct)
+		const raison = refusIngredient(
+			el,
+			produitDe(el, etat?.selectedProduct, etat?.produitsParId),
+		)
 		if (raison) return { ok: false, raison }
 	}
 	if (consigne !== undefined) {
@@ -214,14 +217,18 @@ export const tacheComposer = (
 			peutComposer(deps.store.getState(), ingredients(), enCours, consigne),
 		// UNE image par élément, dans l'ordre des calques
 		sources: () => {
-			const produit = deps.store.getState().selectedProduct
+			const { selectedProduct, produitsParId } = deps.store.getState()
 			return Promise.all(
 				ingredients().map((el) =>
 					TYPES_RENDUS.includes(el.type)
 						? deps.rendreSeul(String(el.id), COTE_MAX_INGREDIENT)
 						: (deps.source ?? sourceAEnvoyer)({
 								...el,
-								src: srcIngredient(el, produit),
+								// Le produit de CET élément : celui de la page, ou son épinglé
+								src: srcIngredient(
+									el,
+									produitDe(el, selectedProduct, produitsParId),
+								),
 							}),
 				),
 			)

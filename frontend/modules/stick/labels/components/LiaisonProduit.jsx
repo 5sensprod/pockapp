@@ -7,6 +7,10 @@
 // Ne propose que les champs que le type sait rendre (`champsPourType`) — sauf
 // une clé ancienne hors registre, gardée dans la liste pour ne pas la perdre
 // à l'affichage. Orange : la couleur de PocketStock, d'où viennent ces données.
+//
+// Sous le champ, DE QUEL PRODUIT (`ChoixProduit`, 6 octobre 2026) : celui de la
+// page, ou un produit épinglé (`el.produitId`). `product` est déjà le produit
+// de CET élément (`produitDe`) : l'appelant le résout.
 import React from 'react';
 import { Link } from 'lucide-react';
 import {
@@ -19,6 +23,7 @@ import {
   typeLiable,
 } from '../utils/champsProduit';
 import { resolvePropForElement } from '../utils/dataBinding';
+import ChoixProduit from './ChoixProduit';
 
 const FIXE = '';
 
@@ -26,15 +31,22 @@ const LiaisonProduit = ({ element, product, onUpdate }) => {
   if (!element) return null;
 
   // Une fiche est liée par construction : on le dit, sans rien à changer.
+  const choixProduit = (
+    <ChoixProduit valeur={element.produitId || null} onValeur={(id) => onUpdate({ produitId: id })} />
+  );
+
   if (element.type === 'fiche') {
     return (
-      <span
-        className="px-2 py-1 text-xs rounded-lg bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 flex items-center gap-1 whitespace-nowrap"
-        title="Une fiche affiche toujours une section de la description du produit"
-      >
-        <Link className="h-3.5 w-3.5" />
-        {libelleLiaison(element)}
-      </span>
+      <div className="space-y-1.5">
+        <span
+          className="px-2 py-1 text-xs rounded-lg bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 inline-flex items-center gap-1 whitespace-nowrap"
+          title="Une fiche affiche toujours une section de la description du produit"
+        >
+          <Link className="h-3.5 w-3.5" />
+          {libelleLiaison(element)}
+        </span>
+        {choixProduit}
+      </div>
     );
   }
   if (!typeLiable(element.type)) return null;
@@ -55,6 +67,7 @@ const LiaisonProduit = ({ element, product, onUpdate }) => {
   };
 
   return (
+    <div className="space-y-1.5">
     <div className="flex items-center gap-2 min-w-0 text-xs">
       <span
         className={`flex-none whitespace-nowrap flex items-center gap-1 ${
@@ -87,6 +100,9 @@ const LiaisonProduit = ({ element, product, onUpdate }) => {
           <option value={valeur}>{champProduit(valeur)?.libelle ?? element.dataBinding}</option>
         )}
       </select>
+    </div>
+    {/* Le produit n'a de sens que pour un élément lié */}
+    {lie && choixProduit}
     </div>
   );
 };

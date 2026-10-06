@@ -16,7 +16,7 @@ export const HORS_STYLE = new Set([
   'id', 'type', 'name', 'shape', 'section',
   'x', 'y', 'width', 'height', 'size', 'rotation', 'scaleX', 'scaleY', 'aspectRatio',
   'text', 'title', 'qrValue', 'barcodeValue', 'format', 'src',
-  'dataBinding', 'textOverrides', 'textOverridesSource',
+  'dataBinding', 'produitId', 'textOverrides', 'textOverridesSource',
   'cropX', 'cropY', 'cropWidth', 'cropHeight',
   'visible', 'locked', 'shadowExpanded', 'role', // être le fond n'est pas un style
   'flipX', 'flipY', // le miroir est une orientation, pas un style

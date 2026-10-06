@@ -21,6 +21,10 @@ export const LabelPage = () => {
   useSynchroProduitsAffiche();
   const produitsDisparus = useLabelStore((s) => s.produitsDisparus);
   const retirerProduitsDisparus = useLabelStore((s) => s.retirerProduitsDisparus);
+  // Un produit disparu ÉPINGLÉ sur l'affiche ne se retire pas d'ici : il se
+  // remplace dans « Infos produit ». Seuls ceux du tirage ont le bouton.
+  const idsTirage = useLabelStore((s) => s.selectedProductIds);
+  const disparusDuTirage = produitsDisparus.filter((id) => idsTirage.includes(id));
 
   // « Nouveau » avec des produits au tirage : les garder ou les vider ?
   const [demandeNouveau, setDemandeNouveau] = useState(false);
@@ -222,13 +226,17 @@ export const LabelPage = () => {
             {produitsDisparus.length === 1
               ? "Un produit affiché n'existe plus dans le catalogue : sa dernière valeur connue reste affichée."
               : `${produitsDisparus.length} produits affichés n'existent plus dans le catalogue : leur dernière valeur connue reste affichée.`}
+            {disparusDuTirage.length < produitsDisparus.length &&
+              ' Un produit épinglé sur l’affiche se remplace dans « Infos produit ».'}
           </span>
-          <button
-            onClick={retirerProduitsDisparus}
-            className="px-2 py-1 text-xs border border-amber-300 rounded-lg hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/40"
-          >
-            Les retirer
-          </button>
+          {disparusDuTirage.length > 0 && (
+            <button
+              onClick={retirerProduitsDisparus}
+              className="px-2 py-1 text-xs border border-amber-300 rounded-lg hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/40"
+            >
+              Les retirer
+            </button>
+          )}
         </div>
       )}
 

@@ -138,3 +138,97 @@ l'export, par le même `getProductField`.
 - Un logo se pose au tiers de la taille d'une photo.
 
 Gardien : `lib/images-catalogue.test.ts`.
+
+## Produits épinglés : deux produits sur une page (6 octobre 2026)
+
+Une page affichait les données d'UN produit, celui de sa ligne de tirage. Pour
+une affiche de pack, il fallait mettre les deux produits au tirage puis délier
+les champs à la main — et il restait une page en trop, puisque chaque ligne du
+tirage est une page (`03-tirage.md`).
+
+**Un élément peut nommer SON produit : `el.produitId`** (id PocketBase).
+
+- **Absent** — tous les templates d'avant, IndexedDB et `.json` : l'élément
+  suit le produit de la page, exactement comme avant. Rien n'est réécrit.
+- **Présent** : l'élément suit ce produit-là, quelle que soit la page. Le
+  produit est ÉPINGLÉ : il n'entre PAS au tirage, donc aucune page n'est
+  ajoutée. Un pack tient sur un tirage « Sans produit × 1 », ou avec A au
+  tirage et B épinglé.
+
+### Un seul chemin de résolution
+
+`produitDe(el, produitPage, produitsParId)` (`utils/dataBinding.js`) répond à
+« quel produit ? » et ne lit AUCUNE valeur ; son résultat est passé tel quel à
+`resolvePropForElement` / `getProductField`, inchangés. Tous les lecteurs
+passent par elle : le canvas (`KonvaCanvas.jsx`, fiche et recadrage compris),
+la correction manuelle d'un texte (`TextNode`, `ReglagesCommuns` — la
+correction reste rangée sous l'id du produit, donc celui de l'élément),
+l'export planche et la bande (`utils/elementsPourProduit.js`), « Composer par
+IA » (`lib/composer.ts`), les aperçus des panneaux.
+
+**Introuvable ne veut jamais dire « celui de la page »** : un produit épinglé
+absent du cache rend `null`, et l'élément ne dessine rien. Retomber sur le
+produit de la page imprimerait le prix de l'un sous la photo de l'autre.
+
+Promo, période de promo et tout ce que porte `ProduitAffiche` : un produit
+épinglé passe par la même projection (`versProduitAffiche`,
+`lib/produit-adapte.ts`), donc par `prixPromoActif`. Rien n'est recopié. Le
+Stock B n'est pas un champ de l'éditeur, épinglé ou non.
+
+### Où vivent ces produits
+
+Nulle part à part : la liste se DÉDUIT de `elements` (`idsEpingles`,
+`champsProduit.js`). Elle est donc dans l'historique (Ctrl+Z) et dans le
+template sans que le format de l'un ou de l'autre change. `idsSuivis`
+(`useLabelStore.js`) = le tirage + les épinglés + la cible de l'onglet ; c'est
+ce que relit la synchro (`use-synchro-produits-affiche.ts`) et ce que le cache
+`produitsParId` garde. Retirer un produit du tirage ne le sort pas du cache
+s'il est épinglé (`avecEpingles`).
+
+Un template de pack enregistré garde les ids de ses produits : rouvert, il
+montre les mêmes produits **aux prix du jour** (décision du propriétaire).
+
+### Dans l'écran
+
+- **Onglet « Infos produit »** : en tête, `components/ChoixProduit.jsx` —
+  « Produit de la page », les produits connus (tirage, épinglés), « Autre
+  produit… » (le sélecteur du catalogue, sans ajout au tirage). Le choix est
+  `produitCible` du store ; tout ce qu'on ajoute ensuite le porte
+  (`cibleAjout`, `utils/ajoutsProduit.js`). C'est toujours le SEUL endroit où
+  un élément lié s'ajoute.
+- **« Remplacer ce produit par… »** (même liste, quand un produit épinglé est
+  choisi) : tous ses éléments passent à l'autre produit, en un pas d'historique
+  (`remplacerProduitEpingle`). C'est ainsi qu'un modèle de pack se réutilise.
+- **Bloc « Lié à »** (`LiaisonProduit.jsx`) : sous le champ, le même choix,
+  pour l'élément sélectionné. Délier retire aussi l'épingle. La liste « Sur
+  l'affiche » nomme le produit de chaque élément épinglé.
+
+### En planche
+
+Autorisée, avec une règle : **un élément épinglé est le même dans toutes les
+cases ; un élément sans épingle suit le produit de la case.** Le cache d'images
+par produit de case reste juste. `elementsPourProduit` résout désormais les
+éléments épinglés même dans une case SANS produit (avant, une case sans produit
+rendait le modèle tel quel — c'est toujours vrai pour un élément sans épingle).
+
+### Si un produit est retiré
+
+- **Du tirage** : rien ne change pour les éléments épinglés.
+- **Supprimé du catalogue** : sa dernière valeur connue reste affichée et le
+  bandeau de `LabelPage` le signale. « Les retirer » ne retire que du tirage :
+  un produit épinglé se remplace depuis « Infos produit », on ne touche pas au
+  dessin.
+- **Template rouvert dont le produit n'existe plus** : aucun cache, l'élément
+  ne dessine rien ; il est listé « produit introuvable » et se remplace.
+
+### Ce qui n'a pas changé
+
+Détourer, « Modifier par IA » et « Refaire » refusent toujours une image liée
+(`el.dataBinding`), épinglée ou non. `estVivant` (embellir) n'a pas eu à
+changer : un élément épinglé est lié, donc vivant. Le style copié n'emporte pas
+le produit (`HORS_STYLE`).
+
+Gardiens : `utils/elementsPourProduit.test.js` (ancien template inchangé, deux
+produits résolus chacun, export = écran, règle de planche, produit
+introuvable) et `store/produits-epingles.test.js` (aucune page en plus, cache,
+produit disparu, remplacement en un pas).
