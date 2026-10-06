@@ -1,9 +1,11 @@
 # 15 — Mini-chat « Photos » : état
 
-*5 octobre 2026. **Écrit et testé hors réseau** (`photos_routes_test.go`,
-`photos.test.ts`, `tests/photos-test.php` du mini-SaaS ; `pnpm build:client`
-passe). **Rien n'a été lancé** : ni l'interface, ni un appel réel à Gemini, ni
-un appel réel à la banque d'images, et `photos.php` n'est pas encore déposé.*
+*5 octobre 2026, mis à jour le 6. **Écrit, testé hors réseau**
+(`photos_routes_test.go`, `photos.test.ts`, `tests/photos-test.php` du
+mini-SaaS ; `pnpm build:client` passe), **déposé, puis lancé dans l'application
+par le propriétaire : ça fonctionne** — en réel, contre Gemini et contre la
+banque d'images. Ce constat est rapporté, pas rejoué ici ; ce qu'il ne couvre
+pas est au §6.*
 
 Médias gagne un quatrième sous-onglet, « Photos » : le vendeur écrit « une
 photo de forêt avec un lac gelé », l'assistant répond d'une phrase et de
@@ -131,25 +133,28 @@ Aucun SQL. Dans cet ordre :
 Vérification : `https://pocketapp.5sensprod.com/api/photos-lib.php` doit
 répondre 403, et un GET sur `photos.php` un 405 `methode_refusee`.
 
-## 6. Ce qui n'a pas pu être vérifié
+## 6. Vérifié en réel, et ce qui ne l'est pas
 
-- **L'interface n'a pas été vue.** En particulier : quatre onglets dans 311 px
-  (« PocketStock » et « Génération » sont longs), la hauteur du chat au-dessus
-  de « Photos gardées », deux boutons sous une vignette de 151 px, le sombre.
-- **Aucun appel réel à Gemini.** Trois inconnues : `gemini-3.1-flash-lite`
-  accepte-t-il `thinkingLevel: minimal` AVEC un outil ; exige-t-il la signature
-  de pensée (le contenu est renvoyé brut dans les deux cas) ; accepte-t-il
-  `mode: NONE` au second tour avec un `functionResponse` dans l'historique. Un
-  refus donnera `gemini_en_echec`.
-- **Aucun appel réel à la banque d'images.** Le contrat vient de
-  `I:\PocketStick\server.js`, pas d'une réponse relue aujourd'hui. À confirmer :
-  la forme du refus de quota (403 « Rate Limit Exceeded » supposé), le plafond
-  réel de la clé (50 par heure supposé pour une clé de démonstration), et que
-  `urls.raw` accepte bien `w`, `h`, `fit`, `q`, `fm`.
-- **`sys_get_temp_dir()` sur le mutualisé** : inscriptible ? Sinon le cache ne
-  s'écrit pas — chaque recherche coûte un appel, rien d'autre ne casse.
+**Rapporté par le propriétaire le 6 octobre 2026**, fichiers déposés et
+application lancée : le chat répond, les photos arrivent. Cela lève les
+inconnues qui auraient empêché toute réponse :
+
+- `gemini-3.1-flash-lite` accepte l'outil avec `thinkingLevel: minimal`, le
+  contenu renvoyé brut au second tour et `mode: NONE` pour la phrase ;
+- l'adaptateur lit bien les réponses de la banque d'images, et les références
+  signées rendent des miniatures ;
+- une demande coûte environ 3 centimes au vendeur (constaté par lui, cohérent
+  avec `billing.php`) — d'où « Afficher plus » gratuit, écrit ensuite.
+
+**Ce que ce constat ne dit pas**, faute d'avoir été regardé un par un :
+
+- **La forme du refus de quota** de la banque (403 « Rate Limit Exceeded »
+  supposé) et le plafond réel de la clé (50 par heure supposé) : cela ne se
+  voit que le jour où il est atteint.
+- **Le cache sur le mutualisé** : si `sys_get_temp_dir()` n'est pas
+  inscriptible, tout fonctionne mais chaque recherche coûte un appel.
   `PHOTOS_CACHE_DIR` le déplace.
-- **« Télécharger » sous Wails** : un lien `download`, comme les PDF du dépôt.
-  Non essayé avec une image.
+- **« Afficher plus », « Télécharger » sous Wails, le thème sombre, quatre
+  onglets dans 311 px** : écrits ou modifiés sans retour précis du propriétaire.
 - **`fabriquerVignette`** n'a pas de canvas sous Node : la vignette d'une photo
   gardée n'est testée que par le chemin de rattrapage existant.
