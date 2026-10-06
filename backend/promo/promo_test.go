@@ -133,3 +133,33 @@ func TestExpirerPromosRemetLaFicheEnPleinTarif(t *testing.T) {
 		}
 	}
 }
+
+// Les cas de `prixPromoActif` (`promo-price.test.ts`), côté Go.
+func TestPrixActifLesQuatreConditions(t *testing.T) {
+	cas := []struct {
+		nom              string
+		etat             string
+		prix, promo      float64
+		debut, fin, jour string
+		attendu          float64
+		ok               bool
+	}{
+		{"promo sans période", "promo", 100, 80, "", "", "2026-09-10", 80, true},
+		{"soldé sans période, jour inconnu", "sale", 100, 80, "", "", "", 80, true},
+		{"plein tarif : le prix promo oublié ne s'applique pas", "", 100, 80, "", "", "2026-09-10", 0, false},
+		{"pas de prix promo", "promo", 100, 0, "", "", "2026-09-10", 0, false},
+		{"promo plus chère que le prix", "promo", 100, 120, "", "", "2026-09-10", 0, false},
+		{"promo égale au prix", "promo", 100, 100, "", "", "2026-09-10", 0, false},
+		{"premier jour", "promo", 100, 80, "2026-09-10", "2026-09-20", "2026-09-10", 80, true},
+		{"dernier jour", "promo", 100, 80, "2026-09-10", "2026-09-20", "2026-09-20", 80, true},
+		{"programmée", "promo", 100, 80, "2026-09-10", "2026-09-20", "2026-09-09", 0, false},
+		{"expirée", "promo", 100, 80, "2026-09-10", "2026-09-20", "2026-09-21", 0, false},
+		{"période posée, jour inconnu", "promo", 100, 80, "", "2026-09-20", "", 0, false},
+	}
+	for _, c := range cas {
+		got, ok := PrixActif(c.etat, c.prix, c.promo, c.debut, c.fin, c.jour)
+		if ok != c.ok || got != c.attendu {
+			t.Errorf("%s : %v, %v — attendu %v, %v", c.nom, got, ok, c.attendu, c.ok)
+		}
+	}
+}

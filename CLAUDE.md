@@ -450,6 +450,34 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
     planche. Gardiens : `facebook_routes_test.go`, `lib/facebook.test.ts`,
     `tests/facebook-test.php` (mini-SaaS, contre un faux Graph).
 
+12. **Texte de post Facebook rédigé par Gemini** (PocketStick, 6 octobre 2026,
+    §12 de [`16-publication-facebook.md`](frontend/modules/stick/PocketStick-docs/16-publication-facebook.md)) —
+    `backend/routes/post_facebook_routes.go`, route locale
+    `POST /api/ai/facebook-post` (session) — vers
+    `https://generativelanguage.googleapis.com` (point 6 : même modèle
+    `gemini-3.1-flash-lite`, même clé dans le processus Go, en-tête
+    `x-goog-api-key`, jetons déclarés à `usage.php`). ⚠️ **Nouvelle sortie de
+    contenu vers Google** : les **textes visibles de l'affiche** (12 au plus),
+    une **consigne libre du vendeur** (300 caractères), et pour chaque produit
+    de la page — six au plus — nom, marque, catégories, description, état, prix
+    et prix promo. **Le poste n'envoie que des IDENTIFIANTS de produits** : le
+    Go relit les fiches dans PocketBase et juge la promo par `promo.PrixActif`
+    (`backend/promo/jour.go`, la copie Go de `prixPromoActif`) au jour du
+    serveur — jamais un prix venu du renderer, jamais l'horloge du navigateur.
+    **Ni stock, ni disponibilité, ni référence, ni prix d'achat ne partent.**
+    Ce qui entre : un texte, borné à 2000 caractères, rendu comme une
+    PROPOSITION dans le champ du message. **Rien n'est publié par cette
+    route** : la publication reste le point 11, avec sa confirmation. Un champ
+    vide est ABSENT du bloc envoyé ; un montant en euros que les données ne
+    portent pas rend `alerte: prix_a_verifier`, sans réécrire le texte.
+    Descriptions et textes d'affiche sont un bloc de DONNÉES, jamais des
+    consignes ; le ton est un identifiant (`ton_inconnu` sinon). Ni la consigne,
+    ni les textes, ni la proposition ne sont journalisés, ici ou sur le
+    mini-SaaS. Une seule requête d'IA à la fois (`useEtatDetourage`, tâche
+    `post`), jamais en planche, aucun prix affiché. Gardiens :
+    `post_facebook_routes_test.go`, `lib/post-facebook.test.ts`,
+    `backend/promo/promo_test.go`.
+
 ## Commandes
 
 ```bash

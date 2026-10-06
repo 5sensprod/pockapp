@@ -509,6 +509,8 @@ export type NomTache =
 	| 'composition'
 	/** Le mini-chat « Photos » (`lib/photos.ts`) : une discussion, sans étapes ni jauge. */
 	| 'photos'
+	/** Le texte de post proposé par Gemini (`lib/post-facebook.ts`) : ni étapes ni jauge. */
+	| 'post'
 
 /** Les mêmes étapes, dites pour l'embellissement de la page (`lib/embellir.ts`). */
 export const LIBELLES_ETAPE_EMBELLIR: Record<EtapeDetourage, string> = {
@@ -538,6 +540,7 @@ const LIBELLES_PAR_TACHE: Record<NomTache, Record<EtapeDetourage, string>> = {
 	generation: LIBELLES_ETAPE_GENERATION,
 	composition: LIBELLES_ETAPE_COMPOSITION,
 	photos: LIBELLES_ETAPE,
+	post: LIBELLES_ETAPE,
 }
 
 export const libellesDe = (

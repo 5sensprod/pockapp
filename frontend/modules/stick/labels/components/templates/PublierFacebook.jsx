@@ -12,15 +12,22 @@
 //     un geste public, qu'on ne retire pas depuis l'application ;
 //   - pas de message par défaut : vide, la photo part seule.
 //
+// « PROPOSER UN TEXTE » (6 octobre 2026, `lib/post-facebook.ts`) : Gemini rédige
+// une PROPOSITION à partir des textes de l'affiche et des fiches de ses
+// produits ; elle arrive dans le champ du message, où le vendeur la corrige.
+// Rien ne part sur Facebook pour autant : « Publier… » et sa confirmation
+// restent le seul chemin. Aucun prix n'est affiché pour la génération.
+//
 // Absent en planche. Après un échec INCERTAIN (délai, réponse illisible),
 // « Publier » ne se repropose pas : l'affiche est peut-être en ligne.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, Facebook, X } from 'lucide-react';
+import { ExternalLink, Facebook, Sparkles, X } from 'lucide-react';
 import useLabelStore from '../../store/useLabelStore';
 import Bouton from '../ui/Bouton';
 import ChampTexte from '../ui/ChampTexte';
 import Note from '../ui/Note';
+import Segments from '../ui/Segments';
 import { AIDE, boutonBascule } from '../ui/styles';
 import { useConfirmModal } from '../../ui/useConfirmModal';
 import { usePocketBase } from '@/lib/use-pocketbase';
@@ -40,6 +47,89 @@ import {
   useBrouillonFacebook,
 } from '../../lib/facebook';
 import { rendrePage } from '../../utils/renduPage';
+import { useEtatDetourage } from '../../lib/detourage';
+import {
+  CONSIGNE_POST_MAX,
+  TONS_POST,
+  peutRediger,
+  proposerTexte,
+  useReglagesPost,
+} from '../../lib/post-facebook';
+
+/**
+ * Le bloc « Proposer un texte » : le ton, une consigne facultative, un bouton.
+ * La proposition REMPLACE le message — après accord si le vendeur en a déjà
+ * tapé un.
+ */
+const ProposerTexte = ({ pb, confirm, desactive }) => {
+  const ton = useReglagesPost((s) => s.ton);
+  const consigne = useReglagesPost((s) => s.consigne);
+  // UNE requête d'IA à la fois, quelle qu'elle soit
+  const iaEnCours = useEtatDetourage((s) => s.enCours);
+  const redaction = useEtatDetourage((s) => s.enCours && s.tache === 'post');
+  const [erreur, setErreur] = useState(null);
+  const [prixAVerifier, setPrixAVerifier] = useState(false);
+
+  const refus = peutRediger(useLabelStore.getState(), iaEnCours, consigne);
+  // Sans produit sur la page, le bloc n'a rien à proposer : il se tait
+  const sansProduit = !peutRediger(useLabelStore.getState(), false).ok;
+  if (sansProduit) return null;
+
+  const proposer = async () => {
+    if (!refus.ok || desactive) return;
+    setErreur(null);
+    setPrixAVerifier(false);
+    const rendu = await proposerTexte({ pb, store: useLabelStore });
+    if (!rendu.ok) {
+      setErreur(rendu.erreur.message);
+      return;
+    }
+    // Le message a pu être tapé PENDANT l'attente : on le relit ici
+    const deja = useBrouillonFacebook.getState().message.trim();
+    if (deja && deja !== rendu.texte) {
+      const accord = await confirm({
+        title: 'Remplacer le message ?',
+        message: `Le texte proposé remplacera celui que vous avez écrit.\n\nProposition :\n${rendu.texte}`,
+        confirmText: 'Remplacer',
+        cancelText: 'Garder le mien',
+        variant: 'primary',
+      });
+      if (!accord) return;
+    }
+    useBrouillonFacebook.setState({ message: rendu.texte });
+    setPrixAVerifier(rendu.prixAVerifier);
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border border-gray-200 p-2 dark:border-gray-700">
+      <Segments label="Ton du texte proposé" valeur={ton} onValeur={(t) => useReglagesPost.setState({ ton: t })} options={TONS_POST} />
+      <ChampTexte
+        label="Consigne pour le texte proposé"
+        placeholder="Consigne (facultative) : « insiste sur la livraison offerte »"
+        valeur={consigne}
+        onValeur={(c) => useReglagesPost.setState({ consigne: c })}
+        onValider={proposer}
+        max={CONSIGNE_POST_MAX}
+        lignes={2}
+        desactive={redaction || desactive}
+      />
+      <Bouton
+        plein
+        icone={Sparkles}
+        desactive={!refus.ok || desactive}
+        titre={refus.ok ? 'Un texte rédigé à partir des textes de l’affiche et des fiches de ses produits. Vous le relisez avant de publier.' : refus.raison}
+        onClic={proposer}
+      >
+        {redaction ? 'Rédaction en cours…' : 'Proposer un texte'}
+      </Bouton>
+      <p className={AIDE}>Une proposition à relire : elle n’est pas publiée tant que vous ne publiez pas.</p>
+      {prixAVerifier && (
+        <Note ton="avertissement">Le texte cite un prix qui n’est pas dans les fiches : vérifiez-le avant de publier.</Note>
+      )}
+      {erreur && <Note ton="erreur">{erreur}</Note>}
+    </div>
+  );
+};
 
 const FenetrePublication = ({ docNode, onFermer }) => {
   const pb = usePocketBase();
@@ -167,6 +257,8 @@ const FenetrePublication = ({ docNode, onFermer }) => {
                 )}
               </div>
               <p className={AIDE}>L'image telle qu'elle sera publiée, prix et textes compris.</p>
+
+              <ProposerTexte pb={pb} confirm={confirm} desactive={enCours || bloque} />
 
               <ChampTexte
                 label="Message de la publication"

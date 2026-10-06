@@ -64,3 +64,26 @@ func Expiree(saleState, fin, jour string) bool {
 	}
 	return fin != "" && fin < jour
 }
+
+// PrixActif rend le prix promo TTC en vigueur ce jour-là, ou false.
+//
+// C'est `prixPromoActif` de `frontend/lib/pricing/promo-price.ts`, écrit ici
+// pour le Go qui doit DIRE un prix (le texte de post rédigé par Gemini,
+// `backend/routes/post_facebook_routes.go`) : soldé ou en promotion, un prix
+// promo saisi, strictement inférieur au prix, et le jour dans la période.
+// Jour inconnu et période posée : pas de promo. Mêmes cas de test que la copie
+// TypeScript.
+func PrixActif(saleState string, prix, prixPromo float64, debut, fin, jour string) (float64, bool) {
+	if saleState != "sale" && saleState != "promo" {
+		return 0, false
+	}
+	if !(prix > 0) || !(prixPromo > 0) || prixPromo >= prix {
+		return 0, false
+	}
+	if debut != "" || fin != "" {
+		if jour == "" || !EnCours(debut, fin, jour) {
+			return 0, false
+		}
+	}
+	return prixPromo, true
+}
