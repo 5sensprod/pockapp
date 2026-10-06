@@ -13,6 +13,7 @@ import { lancerComposition } from './composer'
 import {
 	type Codec,
 	type HistoriqueDurees,
+	choisirQualiteDetourage,
 	lancerDetourage,
 	useEtatDetourage,
 } from './detourage'
@@ -466,6 +467,22 @@ describe('« Détourer ensuite »', () => {
 		])
 		expect(await presetImageService.listerGenerees()).toHaveLength(2)
 		expect(useEtatDetourage.getState().tache).toBe('detourage')
+	})
+
+	it('le détourage enchaîné emploie la qualité choisie dans « Détourer », la retouche gardant la sienne', async () => {
+		for (const q of ['rapide', 'precis'] as const) {
+			choisirQualiteDetourage(q)
+			const pb = fauxPb()
+			await lancerRetoucheSuivie(
+				el('photo'),
+				1,
+				{ ...demande, qualite: 'soignee', detourerEnsuite: true },
+				deps(pb),
+			)
+			expect(pb.envois[0].corps.get('qualite')).toBe('soignee')
+			expect(pb.envois[1].chemin).toBe('/api/ai/remove-background')
+			expect(pb.envois[1].corps.get('qualite')).toBe(q)
+		}
 	})
 
 	it('décoché : une seule requête', async () => {

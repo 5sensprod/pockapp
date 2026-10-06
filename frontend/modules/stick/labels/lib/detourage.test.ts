@@ -12,12 +12,16 @@ import {
 	type EtapeDetourage,
 	HISTORIQUE_MAX,
 	type HistoriqueDurees,
+	QUALITES_DETOURAGE,
+	QUALITE_DETOURAGE_DEFAUT,
 	SEUIL_ENVOI_OCTETS,
 	appelerDetourage,
 	dataURLEnBlob,
 	dureeHabituelle,
 	estimerRestant,
-	historiqueLocal,
+	choisirQualiteDetourage,
+	estQualiteDetourage,
+	historiqueDetourage,
 	lancerDetourage,
 	messageJauge,
 	peutDetourer,
@@ -25,6 +29,7 @@ import {
 	sourceAEnvoyer,
 	traduireErreur,
 	useEtatDetourage,
+	useReglagesDetourage,
 } from './detourage'
 
 const etat = () => useLabelStore.getState()
@@ -405,6 +410,132 @@ describe('les familles d’erreur', () => {
 	})
 })
 
+describe('la qualité du détourage', () => {
+	const champs = (pb: any) => [...(pb.send.mock.calls[0][1].body as FormData).keys()]
+	const coffre = new Map<string, string>()
+
+	beforeEach(() => {
+		coffre.clear()
+		vi.stubGlobal('localStorage', {
+			getItem: (k: string) => coffre.get(k) ?? null,
+			setItem: (k: string, v: string) => void coffre.set(k, v),
+		})
+		useReglagesDetourage.setState({ qualite: QUALITE_DETOURAGE_DEFAUT })
+	})
+
+	it('deux qualités, identifiants du mini-SaaS, « rapide » par défaut', () => {
+		expect(QUALITES_DETOURAGE.map((q) => q.id)).toEqual(['rapide', 'precis'])
+		expect(QUALITE_DETOURAGE_DEFAUT).toBe('rapide')
+		expect(estQualiteDetourage('precis')).toBe(true)
+		expect(estQualiteDetourage('soignee')).toBe(false)
+		expect(estQualiteDetourage(undefined)).toBe(false)
+	})
+
+	it.each(['rapide', 'precis'] as const)(
+		'« %s » part comme identifiant, sans modèle ni dimensions',
+		async (q) => {
+			const pb = fauxPb(() => succes())
+			await appelerDetourage(pb, new Blob(['x']), undefined, q)
+			const corps = pb.send.mock.calls[0][1].body as FormData
+			expect(corps.get('qualite')).toBe(q)
+			expect(champs(pb).sort()).toEqual(['image', 'qualite'])
+		},
+	)
+
+	it('sans qualité précisée, c’est le défaut qui part', async () => {
+		const pb = fauxPb(() => succes())
+		await appelerDetourage(pb, new Blob(['x']))
+		expect((pb.send.mock.calls[0][1].body as FormData).get('qualite')).toBe(
+			'rapide',
+		)
+	})
+
+	it('lancerDetourage envoie la qualité demandée', async () => {
+		const pb = fauxPb(() => succes())
+		await lancerDetourage(photo(), 1, deps(pb), 'precis')
+		expect((pb.send.mock.calls[0][1].body as FormData).get('qualite')).toBe(
+			'precis',
+		)
+	})
+
+	it('sans qualité, lancerDetourage emploie celle qui est choisie (« Détourer ensuite »)', async () => {
+		choisirQualiteDetourage('precis')
+		const pb = fauxPb(() => succes())
+		await lancerDetourage(photo(), 1, deps(pb))
+		expect((pb.send.mock.calls[0][1].body as FormData).get('qualite')).toBe(
+			'precis',
+		)
+	})
+
+	it('une valeur inconnue retombe sur le défaut, jamais envoyée telle quelle', async () => {
+		const pb = fauxPb(() => succes())
+		await lancerDetourage(photo(), 1, deps(pb), 'ultra' as any)
+		expect((pb.send.mock.calls[0][1].body as FormData).get('qualite')).toBe(
+			'rapide',
+		)
+	})
+
+	it('le choix est mémorisé sur le poste, et relu d’une session à l’autre', () => {
+		choisirQualiteDetourage('precis')
+		expect(useReglagesDetourage.getState().qualite).toBe('precis')
+		expect(coffre.get('pocketstick.detourage.qualite')).toBe('precis')
+	})
+
+	it('un choix inconnu n’est ni gardé ni écrit', () => {
+		choisirQualiteDetourage('ultra' as any)
+		expect(useReglagesDetourage.getState().qualite).toBe('rapide')
+		expect(coffre.size).toBe(0)
+	})
+
+	it('sans stockage, le choix tient pour la session et rien ne lève', () => {
+		vi.stubGlobal('localStorage', undefined)
+		expect(() => choisirQualiteDetourage('precis')).not.toThrow()
+		expect(useReglagesDetourage.getState().qualite).toBe('precis')
+	})
+
+	it('un historique de durées PAR qualité, sans reprendre l’ancienne clé', async () => {
+		coffre.set('pocketstick.detourage.durees', '[60000]') // d'avant les qualités
+		const { historique: _h, ...sans } = deps(fauxPb(() => succes()))
+		await lancerDetourage(photo(), 1, sans, 'precis')
+		expect(useEtatDetourage.getState().habituelMs).toBeNull()
+		expect(historiqueDetourage('precis').lire()).toHaveLength(1)
+		expect(historiqueDetourage('rapide').lire()).toEqual([])
+		expect(coffre.get('pocketstick.detourage.durees')).toBe('[60000]')
+	})
+
+	it('la durée habituelle lue au lancement est celle de la qualité demandée', async () => {
+		historiqueDetourage('rapide').ajouter(5000)
+		historiqueDetourage('precis').ajouter(40000)
+		let habituel: number | null = null
+		const pb = fauxPb(
+			() => succes(),
+			() => {
+				habituel = useEtatDetourage.getState().habituelMs
+			},
+		)
+		const { historique: _h, ...sans } = deps(pb)
+		await lancerDetourage(photo(), 1, sans, 'precis')
+		expect(habituel).toBe(40000)
+	})
+
+	it('une qualité inconnue du serveur : message de détourage, famille « demande »', () => {
+		const e = traduireErreur({
+			status: 400,
+			response: {
+				code: 'qualite_inconnue',
+				error: "Cette qualité de détourage n'existe pas.",
+			},
+		})
+		expect(e).toMatchObject({ code: 'qualite_inconnue', famille: 'demande' })
+		expect(e.message).toMatch(/détourage/)
+	})
+
+	it('le texte du bouton ne parle jamais d’argent', () => {
+		for (const q of QUALITES_DETOURAGE)
+			expect(`${q.label} ${q.titre}`).not.toMatch(/€|\$|crédit|centime|prix/i)
+	})
+})
+
 describe('la durée rendue par le serveur', () => {
 	it('est lue dans l’en-tête X-Detourage-Ms', async () => {
 		const pb = fauxPb(() => succes({ 'X-Detourage-Ms': '5123' }))
@@ -507,8 +638,8 @@ describe('le temps restant estimé', () => {
 	it('l’historique du poste garde les dernières durées, et ne lève jamais', () => {
 		// Sans `localStorage` : rien, sans erreur
 		vi.stubGlobal('localStorage', undefined)
-		expect(historiqueLocal.lire()).toEqual([])
-		expect(() => historiqueLocal.ajouter(5000)).not.toThrow()
+		expect(historiqueDetourage('rapide').lire()).toEqual([])
+		expect(() => historiqueDetourage('rapide').ajouter(5000)).not.toThrow()
 		// Avec : les HISTORIQUE_MAX dernières
 		const coffre = new Map<string, string>()
 		vi.stubGlobal('localStorage', {
@@ -516,13 +647,13 @@ describe('le temps restant estimé', () => {
 			setItem: (k: string, v: string) => void coffre.set(k, v),
 		})
 		for (let i = 1; i <= HISTORIQUE_MAX + 3; i++)
-			historiqueLocal.ajouter(i * 1000)
-		const lues = historiqueLocal.lire()
+			historiqueDetourage('rapide').ajouter(i * 1000)
+		const lues = historiqueDetourage('rapide').lire()
 		expect(lues).toHaveLength(HISTORIQUE_MAX)
 		expect(lues[lues.length - 1]).toBe((HISTORIQUE_MAX + 3) * 1000)
 		// Un contenu abîmé ne casse rien
 		coffre.set([...coffre.keys()][0], '{pas du json')
-		expect(historiqueLocal.lire()).toEqual([])
+		expect(historiqueDetourage('rapide').lire()).toEqual([])
 	})
 })
 

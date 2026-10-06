@@ -116,7 +116,9 @@ Le **détourage IA** d'une image (5 octobre 2026,
 [`10-detourage-ia.md`](frontend/modules/stick/PocketStick-docs/10-detourage-ia.md),
 point 3 des entrées réseau) est le bouton « Détourer » du noyau d'une image
 (`ReglagesImage.jsx`) ; toute la logique est dans `labels/lib/detourage.ts`. Il
-**remplace la photo sans aperçu** (Ctrl+Z la rend), ne se propose ni sur une photo
+**remplace la photo sans aperçu** (Ctrl+Z la rend), au choix **Rapide ou Précis**
+(`lib/detourage.ts`, mémorisé sur le poste, un historique de durées par qualité),
+ne se propose ni sur une photo
 liée au produit, ni verrouillée, ni en sélection multiple, et n'affiche aucun prix.
 **Une image générée est rangée avant d'être posée** : dès que la route rend le PNG,
 `presetImageService.ajouterGeneree` le garde (`origine: 'generation'`) AVANT de
@@ -248,7 +250,14 @@ Trois, et trois seulement :
    `User-Agent` explicite. Notifications, clés API, crédits IA : télémétrie,
    jamais de catalogue — **sauf `detourage.php`, qui porte le CONTENU d'une
    image** (POST multipart, PNG/JPEG/WebP ≤ 20 Mio, le PNG détouré revient dans
-   la réponse), première sortie de ce type du dépôt. La clé du fournisseur
+   la réponse), première sortie de ce type du dépôt. **Depuis le 6 octobre 2026
+   le vendeur choisit « Rapide » ou « Précis »** : le poste n'envoie qu'un champ
+   `qualite` (`rapide` | `precis`), **jamais un modèle** ; la table qualité →
+   modèle et prix ne vit que sur le mini-SaaS (`DETOURAGE_QUALITES`, comme
+   `RETOUCHE_QUALITES`), `DETOURAGE_MODEL` n'est plus lu. Inconnue : `400
+   qualite_inconnue`, jamais remplacée ; absente (poste ancien) : `rapide`.
+   « Détourer ensuite » de la retouche emploie la qualité choisie dans
+   « Détourer » (§14 de `10-detourage-ia.md`). La clé du fournisseur
    d'images n'est PAS sur le poste : le mini-SaaS l'appelle, décompte les
    crédits IA et renvoie l'image ; la route `POST /api/ai/remove-background`
    n'appelle donc pas `usage.php`. Refuse de partir hors HTTPS ; type vérifié

@@ -23,10 +23,13 @@ import JaugeDetourage from '../ui/JaugeDetourage';
 import { usePocketBase } from '@/lib/use-pocketbase';
 import { rafraichirCreditsPocketApp } from '@/lib/credits';
 import {
+  choisirQualiteDetourage,
   effacerMessageDetourage,
   lancerDetourage,
   peutDetourer,
+  QUALITES_DETOURAGE,
   useEtatDetourage,
+  useReglagesDetourage,
 } from '../../lib/detourage';
 import { lancerRetoucheSuivie, peutRetoucher, QUALITES, useReglagesRetouche } from '../../lib/retouche';
 import { aUneMemoire, lancerRefaire, peutRefaire, reprendreConsigne } from '../../lib/refaire';
@@ -93,7 +96,8 @@ export const Miroirs = ({ el, maj }) => (
  * Détourer (`lib/detourage.ts`) : le détourage IA remplace la photo, sans
  * aperçu ; Ctrl+Z rend l'originale, et l'image détourée reste rangée dans
  * « Génération ». Bouton SECONDAIRE : l'aplat bleu est pris par la validation.
- * Désactivé, la raison en infobulle. Le résultat et les erreurs sont dans une
+ * Désactivé, la raison en infobulle. Une QUALITÉ (Rapide ou Précis), mémorisée
+ * sur le poste ; aucun prix affiché. Le résultat et les erreurs sont dans une
  * Note, pas un message fugitif. Pendant l'attente, `JaugeDetourage` dit l'étape
  * — ici et dans la barre du haut, qui reste visible si la sélection change.
  */
@@ -102,24 +106,36 @@ export const Detourer = ({ el }) => {
   // La sélection entière, pas seulement les images : `nombre` de `useMajSelection` n'en compte que du même type
   const nombre = useLabelStore((s) => (s.selectedId ? 1 + s.extraIds.length : 0));
   const { enCours, erreur, info, tache } = useEtatDetourage();
+  const qualite = useReglagesDetourage((s) => s.qualite);
   const refus = peutDetourer(el, nombre, enCours);
   // `erreur` et `info` parlent de la dernière tâche lancée : chaque tâche a sa propre Note
   const message = tache === 'detourage' ? messageDe(erreur, info) : null;
   return (
     <div className="space-y-1.5">
+      <Segments
+        label="Qualité du détourage"
+        valeur={qualite}
+        onValeur={choisirQualiteDetourage}
+        options={QUALITES_DETOURAGE}
+      />
       <Bouton
         icone={Scissors}
         plein
         desactive={!refus.ok}
         titre={refus.ok ? "Retire le fond de l'image (service payant). Ctrl+Z rend la photo d'origine." : refus.raison}
         onClic={() =>
-          lancerDetourage(el, nombre, {
-            pb,
-            store: useLabelStore,
-            bibliotheque: presetImageService,
-            // Le solde de l'en-tête ne se relit que toutes les 5 minutes
-            apresDecompte: rafraichirCreditsPocketApp,
-          })
+          lancerDetourage(
+            el,
+            nombre,
+            {
+              pb,
+              store: useLabelStore,
+              bibliotheque: presetImageService,
+              // Le solde de l'en-tête ne se relit que toutes les 5 minutes
+              apresDecompte: rafraichirCreditsPocketApp,
+            },
+            qualite
+          )
         }
       >
         {enCours && tache === 'detourage' ? 'Détourage en cours…' : 'Détourer'}
@@ -208,13 +224,18 @@ export const Retoucher = ({ el }) => {
  */
 export const DetournerEnsuite = ({ desactive = false }) => {
   const actif = useReglagesRetouche((s) => s.detourerEnsuite);
+  // Le détourage enchaîné emploie la qualité choisie dans « Détourer » (lib/retouche.ts)
+  const qualite = useReglagesDetourage((s) => s.qualite);
+  const nom = QUALITES_DETOURAGE.find((q) => q.id === qualite)?.label ?? '';
   return (
     <div className={LIGNE}>
-      <span title="Après la retouche, retire le fond du résultat. Deuxième requête, facturée à part.">Détourer ensuite</span>
+      <span title={`Après la retouche, retire le fond du résultat, en qualité ${nom} (celle de « Détourer »). Deuxième requête, facturée à part.`}>
+        Détourer ensuite ({nom})
+      </span>
       <Interrupteur
         actif={actif}
         desactive={desactive}
-        label="Détourer ensuite : retirer le fond du résultat (deuxième requête, facturée à part)"
+        label={`Détourer ensuite, en qualité ${nom} : retirer le fond du résultat (deuxième requête, facturée à part)`}
         onActif={(v) => useReglagesRetouche.setState({ detourerEnsuite: v })}
       />
     </div>

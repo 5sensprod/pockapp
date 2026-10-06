@@ -72,6 +72,7 @@ var erreursDetourage = map[string]detourageErreur{
 	"reponse_invalide":      {http.StatusBadGateway, "reponse_invalide", "Le service de détourage a rendu une réponse inexploitable."},
 	"cle_absente":           {http.StatusServiceUnavailable, "cle_absente", "La clé PocketApp n'est pas configurée sur ce poste."},
 	"adresse_non_securisee": {http.StatusServiceUnavailable, "adresse_non_securisee", "Le détourage exige une adresse HTTPS."},
+	"qualite_inconnue":      {http.StatusBadRequest, "qualite_inconnue", "Cette qualité de détourage n'existe pas."},
 }
 
 func erreurDetourage(code string) *detourageErreur {
@@ -280,10 +281,33 @@ type detourageDeps struct {
 	client   *http.Client
 }
 
+// champsDetourage lit la QUALITÉ envoyée par le renderer (« rapide » ou
+// « precis »). Tout autre champ (un modèle) n'est pas lu, donc jamais relayé. La
+// qualité n'est pas comparée à une liste : c'est le mini-SaaS qui la connaît, et
+// qui refuse une inconnue (`qualite_inconnue`). Absente — un renderer plus
+// ancien —, rien n'est joint et le mini-SaaS prend sa qualité par défaut ;
+// présente mais vide ou mal formée, elle est refusée ici, jamais remplacée.
+func champsDetourage(req *http.Request) ([]champRelais, *detourageErreur) {
+	valeurs, presente := req.MultipartForm.Value["qualite"]
+	if !presente || len(valeurs) == 0 {
+		return nil, nil
+	}
+	qualite := strings.TrimSpace(valeurs[0])
+	if qualite == "" || len(qualite) > retoucheQualiteMax {
+		return nil, relaisDetourage.erreur("qualite_inconnue")
+	}
+	for _, c := range qualite {
+		if (c < 'a' || c > 'z') && c != '_' {
+			return nil, relaisDetourage.erreur("qualite_inconnue")
+		}
+	}
+	return []champRelais{{"qualite", qualite}}, nil
+}
+
 // traiterDetourage est le corps de la route, sans l'authentification : lire
 // l'image envoyée par le renderer, la relayer, rendre le PNG.
 func traiterDetourage(c echo.Context, d detourageDeps) error {
-	return relaisDetourage.traiter(c, d, nil)
+	return relaisDetourage.traiter(c, d, champsDetourage)
 }
 
 // traiter est le corps commun des routes de relais. `champs` lit et valide,

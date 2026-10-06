@@ -26,12 +26,21 @@ var (
 // faux mini-SaaS et rend la réponse enregistrée.
 func appelDetourage(t *testing.T, d detourageDeps, image []byte) *httptest.ResponseRecorder {
 	t.Helper()
+	return appelDetourageChamps(t, d, image, nil)
+}
+
+// appelDetourageChamps est appelDetourage avec des champs texte en plus de l'image.
+func appelDetourageChamps(t *testing.T, d detourageDeps, image []byte, champs map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
 	var corps bytes.Buffer
 	mw := multipart.NewWriter(&corps)
 	entete := textproto.MIMEHeader{}
 	entete.Set("Content-Disposition", `form-data; name="image"; filename="x"`)
 	part, _ := mw.CreatePart(entete)
 	part.Write(image)
+	for nom, valeur := range champs {
+		mw.WriteField(nom, valeur)
+	}
 	mw.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/ai/remove-background", &corps)
@@ -302,5 +311,75 @@ func TestDetourageServiceInjoignable(t *testing.T) {
 func TestDetourageAdresseParDefautEstHTTPS(t *testing.T) {
 	if len(pocketAppDetourageURL) < 8 || pocketAppDetourageURL[:8] != "https://" {
 		t.Fatal(pocketAppDetourageURL)
+	}
+}
+
+// La qualité part telle quelle, et SEULE : un « model » du renderer n'est jamais relayé.
+func TestDetourageQualiteRelayee(t *testing.T) {
+	for _, q := range []string{"rapide", "precis"} {
+		t.Run(q, func(t *testing.T) {
+			var appels int32
+			d := fauxMiniSaaS(t, &appels, func(w http.ResponseWriter, r *http.Request) {
+				r.ParseMultipartForm(1 << 20)
+				if got := r.FormValue("qualite"); got != q {
+					t.Errorf("qualite relayée = %q, attendu %q", got, q)
+				}
+				if len(r.MultipartForm.Value) != 1 {
+					t.Errorf("champs relayés: %v (la qualité seule)", r.MultipartForm.Value)
+				}
+				w.Write(pngTest)
+			})
+			rec := appelDetourageChamps(t, d, pngTest, map[string]string{"qualite": q, "model": "runware:999@9", "width": "9999"})
+			if rec.Code != 200 || appels != 1 {
+				t.Fatalf("code %d, appels %d", rec.Code, appels)
+			}
+		})
+	}
+}
+
+// Un renderer plus ancien n'envoie pas de qualité : rien n'est joint, le
+// mini-SaaS prend la sienne par défaut.
+func TestDetourageQualiteAbsenteNEstPasInventee(t *testing.T) {
+	var appels int32
+	d := fauxMiniSaaS(t, &appels, func(w http.ResponseWriter, r *http.Request) {
+		r.ParseMultipartForm(1 << 20)
+		if _, la := r.MultipartForm.Value["qualite"]; la {
+			t.Errorf("une qualité a été inventée: %v", r.MultipartForm.Value)
+		}
+		w.Write(pngTest)
+	})
+	if rec := appelDetourage(t, d, pngTest); rec.Code != 200 || appels != 1 {
+		t.Fatalf("code %d, appels %d", rec.Code, appels)
+	}
+}
+
+// Une qualité présente mais vide ou mal formée est refusée AVANT l'envoi, avec un
+// code nommé : jamais remplacée par une autre.
+func TestDetourageQualiteMalFormeeRefusee(t *testing.T) {
+	var appels int32
+	d := fauxMiniSaaS(t, &appels, func(w http.ResponseWriter, r *http.Request) {})
+	for _, q := range []string{"", "  ", "Rapide", "runware:112@5", "rapide;x", strings.Repeat("a", retoucheQualiteMax+1)} {
+		rec := appelDetourageChamps(t, d, pngTest, map[string]string{"qualite": q})
+		if rec.Code != 400 || codeDe(t, rec) != "qualite_inconnue" {
+			t.Fatalf("%q: code %d, corps %q", q, rec.Code, rec.Body.String())
+		}
+	}
+	if appels != 0 {
+		t.Fatalf("%d appel(s) parti(s) malgré la qualité refusée", appels)
+	}
+}
+
+// Le mini-SaaS, qui seul connaît la table, refuse une qualité inconnue : le code
+// revient tel quel au renderer.
+func TestDetourageQualiteInconnueDuServeur(t *testing.T) {
+	var appels int32
+	d := fauxMiniSaaS(t, &appels, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{"error": "x", "code": "qualite_inconnue"})
+	})
+	rec := appelDetourageChamps(t, d, pngTest, map[string]string{"qualite": "ultra"})
+	if rec.Code != 400 || codeDe(t, rec) != "qualite_inconnue" || appels != 1 {
+		t.Fatalf("code %d, appels %d, corps %q", rec.Code, appels, rec.Body.String())
 	}
 }

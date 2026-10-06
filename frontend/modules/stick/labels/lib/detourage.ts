@@ -6,7 +6,9 @@
 // Le renderer n'appelle jamais le fournisseur : il envoie l'image à la route Go
 // `POST /api/ai/remove-background` (`backend/routes/detourage_routes.go`), qui
 // la relaie au mini-SaaS ; celui-ci détoure, décompte les crédits IA du client
-// et renvoie un PNG. Aucun modèle à choisir, aucun prix à afficher.
+// et renvoie un PNG. Le vendeur choisit une QUALITÉ (Rapide ou Précis) ; le
+// poste envoie son identifiant, jamais un modèle : la table qualité → modèle et
+// prix ne vit que sur le mini-SaaS. Aucun prix à afficher.
 //
 // Le trajet d'un détourage (`lancerDetourage`), dans l'ordre qui compte :
 //   1. lire la source de l'élément, la PRÉPARER (4096 px, JPEG ou WebP, sous
@@ -37,6 +39,69 @@ export const QUALITE_ENVOI = 0.9
 export const PALIER_REDUCTION = 0.85
 /** En dessous, on renonce : une image aussi petite et encore lourde n'existe pas. */
 export const COTE_MIN = 512
+
+// ── La qualité ──────────────────────────────────────────────────────────────
+
+export type QualiteDetourage = 'rapide' | 'precis'
+
+/** Les qualités proposées. Les identifiants sont ceux du mini-SaaS (`detourage-lib.php`). */
+export const QUALITES_DETOURAGE: {
+	id: QualiteDetourage
+	label: string
+	titre: string
+}[] = [
+	{
+		id: 'rapide',
+		label: 'Rapide',
+		titre: 'Plus rapide et plus régulier, contour un peu moins précis',
+	},
+	{
+		id: 'precis',
+		label: 'Précis',
+		titre: 'Contour plus précis, mais plus lent',
+	},
+]
+
+export const QUALITE_DETOURAGE_DEFAUT: QualiteDetourage = 'rapide'
+
+export const estQualiteDetourage = (q: unknown): q is QualiteDetourage =>
+	QUALITES_DETOURAGE.some((x) => x.id === q)
+
+const CLE_QUALITE = 'pocketstick.detourage.qualite'
+
+/** La qualité mémorisée sur ce poste ; absente, illisible ou inconnue : le défaut. Ne lève jamais. */
+function qualiteMemorisee(): QualiteDetourage {
+	try {
+		const v = localStorage.getItem(CLE_QUALITE)
+		return estQualiteDetourage(v) ? v : QUALITE_DETOURAGE_DEFAUT
+	} catch {
+		return QUALITE_DETOURAGE_DEFAUT
+	}
+}
+
+/**
+ * La qualité choisie, d'une fois sur l'autre (`localStorage` du poste, pas le
+ * template : c'est une préférence du vendeur). Hors du composant, comme
+ * `useEtatDetourage` : elle survit au remplacement du panneau. « Détourer
+ * ensuite » (`lib/retouche.ts`) emploie CELLE-CI.
+ */
+export const useReglagesDetourage = create<{ qualite: QualiteDetourage }>(
+	() => ({ qualite: qualiteMemorisee() }),
+)
+
+export function choisirQualiteDetourage(qualite: QualiteDetourage) {
+	if (!estQualiteDetourage(qualite)) return
+	useReglagesDetourage.setState({ qualite })
+	try {
+		localStorage.setItem(CLE_QUALITE, qualite)
+	} catch {
+		// stockage plein ou absent : le choix tient pour la session, c'est tout
+	}
+}
+
+/** La qualité à employer maintenant. */
+export const qualiteDetourageChoisie = (): QualiteDetourage =>
+	useReglagesDetourage.getState().qualite
 
 // ── Peut-on détourer cet élément ? ──────────────────────────────────────────
 
@@ -349,9 +414,12 @@ export function appelerDetourage(
 	image: Blob,
 	/** La réponse a commencé d'arriver : il ne reste qu'à lire ses octets. */
 	surReception?: () => void,
+	/** Un identifiant de qualité, jamais un modèle. */
+	qualite: QualiteDetourage = QUALITE_DETOURAGE_DEFAUT,
 ): Promise<ReponseDetourage> {
 	const corps = new FormData()
 	corps.append('image', image, 'image')
+	corps.append('qualite', qualite)
 	return appelerRouteImage(pb, ROUTE_DETOURAGE, corps, surReception)
 }
 
@@ -580,8 +648,6 @@ export type HistoriqueDurees = {
 	ajouter: (ms: number) => void
 }
 
-const CLE_HISTORIQUE = 'pocketstick.detourage.durees'
-
 /**
  * Un historique dans `localStorage`, sous `cle`, sans jamais lever : sans
  * stockage, pas d'estimation, c'est tout. Une clé PAR tâche (et par qualité
@@ -611,9 +677,13 @@ export const historiqueLocalPour = (cle: string): HistoriqueDurees => {
 	}
 }
 
-/** L'historique du détourage. */
-export const historiqueLocal: HistoriqueDurees =
-	historiqueLocalPour(CLE_HISTORIQUE)
+/**
+ * L'historique du détourage, PAR qualité : un modèle plus lent fausserait
+ * l'estimation de l'autre. L'ancienne clé unique (`pocketstick.detourage.durees`,
+ * d'avant les qualités) n'est pas reprise : ses durées venaient d'un autre modèle.
+ */
+export const historiqueDetourage = (qualite: QualiteDetourage) =>
+	historiqueLocalPour(`pocketstick.detourage.durees.${qualite}`)
 
 /**
  * Les durées d'un détourage, en millisecondes, pour le journal de debug
@@ -695,7 +765,7 @@ export type DepsDetourage = {
 	}
 	codec?: Codec
 	source?: (el: any) => Promise<Blob>
-	/** Durées des détourages précédents ; par défaut `historiqueLocal`. */
+	/** Durées des tâches précédentes ; par défaut celui de la tâche (par qualité). */
 	historique?: HistoriqueDurees
 	/** L'horloge, en millisecondes ; par défaut `Date.now`. */
 	maintenant?: () => number
@@ -789,11 +859,13 @@ export type TacheIA = {
 	depart?: string
 }
 
-export const TACHE_DETOURAGE: TacheIA = {
+/** La tâche de détourage, à la `qualite` choisie. */
+export const tacheDetourage = (qualite: QualiteDetourage): TacheIA => ({
 	nom: 'detourage',
 	peut: peutDetourer,
-	appeler: appelerDetourage,
-	historique: historiqueLocal,
+	appeler: (pb, image, surReception) =>
+		appelerDetourage(pb, image, surReception, qualite),
+	historique: historiqueDetourage(qualite),
 	messages: {
 		nonRangee:
 			"L'image détourée est posée, mais elle n'a pas pu être rangée dans « Génération » (espace du poste insuffisant).",
@@ -802,19 +874,27 @@ export const TACHE_DETOURAGE: TacheIA = {
 		perdue:
 			"L'image a changé pendant le détourage, et le résultat n'a pu être ni posé ni rangé (espace du poste insuffisant). Recommencez.",
 	},
+	messagesErreur: {
+		qualite_inconnue: "Cette qualité de détourage n'existe pas.",
+	},
 	journal: 'DETOURAGE',
-}
+})
 
 /**
  * Détoure `el` (l'élément tel qu'à l'instant du clic). Ne lève jamais : les
- * échecs sortent dans le résultat ET dans `useEtatDetourage`.
+ * échecs sortent dans le résultat ET dans `useEtatDetourage`. `qualite` : celle
+ * du bouton ; absente, la qualité choisie sur ce poste (c'est le cas de
+ * « Détourer ensuite »). Une valeur inconnue retombe sur le défaut ICI, côté
+ * poste — c'est le serveur qui refuse une qualité qu'il ne connaît pas.
  */
 export function lancerDetourage(
 	el: any,
 	nombre: number,
 	deps: DepsDetourage,
+	qualite: QualiteDetourage = qualiteDetourageChoisie(),
 ): Promise<ResultatDetourage> {
-	return lancerTraitement(el, nombre, deps, TACHE_DETOURAGE)
+	const sure = estQualiteDetourage(qualite) ? qualite : QUALITE_DETOURAGE_DEFAUT
+	return lancerTraitement(el, nombre, deps, tacheDetourage(sure))
 }
 
 /**

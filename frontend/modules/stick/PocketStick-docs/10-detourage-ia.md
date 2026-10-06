@@ -40,7 +40,7 @@ porte le **contenu** d'une image.
   l'originale sur l'affiche. Pas de « Rétablir l'original » après enregistrement.
 - Toute image détourée est **gardée** dans « Génération », quoi qu'il arrive
   ensuite à l'élément : un détourage payé n'est jamais perdu.
-- Un seul modèle, choisi par le serveur. Aucun sélecteur.
+- ~~Un seul modèle, choisi par le serveur. Aucun sélecteur.~~ **Remplacé le 6 octobre 2026 (§14)** : le vendeur choisit Rapide ou Précis ; le modèle reste décidé par le serveur.
 - Bouton désactivé, raison en infobulle (`peutDetourer`) : photo liée au produit
   (`el.dataBinding`), élément verrouillé, sélection de plusieurs éléments,
   requête en cours. Pas de bouton dans la barre du haut.
@@ -272,8 +272,9 @@ un mini-SaaS ancien ne l'émet pas et le poste récent affiche la panne généri
 
 - **Changer le modèle par défaut.** La documentation donne la même latence aux
   trois modèles au même prix ; rien ne dit qu'un autre répond plus vite. Le modèle
-  reste un réglage du serveur (`DETOURAGE_MODEL`, fichier de secrets), et les
-  durées sont ventilées par modèle pour que le propriétaire compare.
+  reste un réglage du serveur, et les durées sont ventilées pour que le
+  propriétaire compare. *(Depuis le 6 octobre 2026, ce réglage n'est plus
+  `DETOURAGE_MODEL` mais la table des qualités : §14.)*
 - **La livraison asynchrone** (`deliveryMethod: "async"` puis `getResponse`, que la
   documentation décrit). Elle ne raccourcit rien : elle rend seulement l'attente
   interrogeable. Coût : une table des tâches en cours côté mini-SaaS, deux actions
@@ -298,3 +299,45 @@ historique du poste ; solde relu une fois à la livraison ; travail pendant
 l'attente. `detourage_routes_test.go` : durée relayée ou écartée, délai du
 mini-SaaS, délai du poste contre un faux serveur lent. Mini-SaaS :
 `tests/detourage-test.php`, faux Runware en modes `tiede` et `lent`.
+
+## 14. Rapide ou Précis (6 octobre 2026)
+
+Mesuré le 6 octobre 2026 **[RAPPORTÉ]** : `runware:109@1` (RemBG 1.4) est nettement
+plus rapide et plus régulier que `runware:112@5` (BiRefNet General), pour un
+contour un peu moins précis ; les deux coûtent 0,0006 $ chez Runware. Le vendeur
+choisit donc au moment de détourer.
+
+| Point | Décision | Où |
+|---|---|---|
+| Ce que le poste envoie | un identifiant, `qualite` = `rapide` \| `precis`. **Jamais un modèle** | `appelerDetourage`, `lib/detourage.ts` **[LU]** |
+| Où vit la table qualité → modèle | **sur le mini-SaaS seul**, surchargeable par `DETOURAGE_QUALITES` (fichier de secrets), comme `RETOUCHE_QUALITES` | `qualitesDetourage()`, `api/detourage-lib.php` **[LU]** |
+| Qualité inconnue | refus `400 qualite_inconnue`, jamais remplacée par une autre | mini-SaaS ; le Go la relaie, et refuse lui-même une valeur vide ou mal formée avant l'envoi **[LU]** |
+| Champ absent (poste ancien) | la qualité par défaut du serveur, `rapide` (`DETOURAGE_QUALITE_DEFAUT`) | `traiterDetourage` **[LU]** |
+| Défaut côté poste | `rapide`, **mémorisé d'une fois sur l'autre** (`localStorage`, clé `pocketstick.detourage.qualite`) | `useReglagesDetourage` **[LU]** |
+| Prix | identique (`DETOURAGE_PRICE_EUR`, 1,75 centime), **aucun prix affiché** | `qualitesDetourage()` **[LU]** |
+| Durées et jauge | un historique **par qualité** (`pocketstick.detourage.durees.<qualité>`) ; l'ancienne clé unique n'est pas reprise, ses durées venaient d'un autre modèle | `historiqueDetourage` **[LU]** |
+| Journal du mini-SaaS | 9ᵉ colonne `detourage:<qualité>` ; `php-limits.php` → `durees_detourage.par_tache` compare `detourage:rapide` et `detourage:precis` | `traiterDetourage` **[LU]** |
+| Trajet | inchangé : `lancerTraitement`, `relaisImage`, une seule requête d'IA à la fois, pas de second essai | **[LU]** |
+
+**Interface.** Un `Segments` « Rapide / Précis » au-dessus du bouton « Détourer »
+(`Detourer`, `ReglagesImage.jsx`). La jauge n'a pas changé : elle lit la durée
+habituelle posée au lancement, qui vient maintenant de l'historique de la qualité
+demandée.
+
+**« Détourer ensuite »** (retouche) emploie **la qualité choisie dans « Détourer »**,
+pas une qualité propre : `lancerDetourage` sans argument lit `useReglagesDetourage`.
+L'interrupteur l'écrit (« Détourer ensuite (Rapide) »). La retouche garde sa
+qualité à elle ; seules les deux requêtes diffèrent.
+
+**`DETOURAGE_MODEL` n'est plus lu.** La constante est supprimée ; une ligne restée
+dans `pocketapp-secrets.php` est sans effet (README du mini-SaaS).
+
+**Tests.** `detourage.test.ts` (« la qualité du détourage »),
+`reprise-retouche.test.ts` (« Détourer ensuite »), `detourage_routes_test.go`
+(qualité relayée seule, absente non inventée, mal formée refusée avant l'envoi),
+`tests/detourage-test.php` (§12 : modèle reçu par le faux Runware, refus sans
+appel ni décompte, journal `detourage:<qualité>`).
+
+**Non vérifié.** Aucun détourage réel avec `precis` depuis ce changement ; le
+rendu de l'interrupteur et du `Segments` dans l'application ; les durées réelles
+de chaque qualité (l'historique repart de zéro).
