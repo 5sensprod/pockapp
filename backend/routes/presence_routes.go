@@ -9,7 +9,6 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/tools/security"
 )
 
 // ═══════════════════════════════════════════════════════════════
@@ -87,28 +86,6 @@ func (s *presenceStore) remove(sessionID string) {
 // HELPER AUTH — réutilise le même pattern que user_management
 // ═══════════════════════════════════════════════════════════════
 
-func parseUserFromToken(pb *pocketbase.PocketBase, token string) (userID, role string, err error) {
-	token = strings.TrimPrefix(token, "Bearer ")
-	token = strings.TrimSpace(token)
-
-	claims, err := security.ParseUnverifiedJWT(token)
-	if err != nil {
-		return "", "", err
-	}
-
-	userID, _ = claims["id"].(string)
-	if userID == "" {
-		return "", "", nil
-	}
-
-	record, err := pb.Dao().FindRecordById("users", userID)
-	if err != nil {
-		return "", "", err
-	}
-
-	return userID, record.GetString("role"), nil
-}
-
 func getClientIP(r *http.Request) string {
 	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
 		return strings.Split(ip, ",")[0]
@@ -129,10 +106,12 @@ func RegisterPresenceRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 	// Appelé par chaque client toutes les 30s
 	// Corps : { sessionId: string }
 	router.POST("/api/presence/ping", func(c echo.Context) error {
-		token := c.Request().Header.Get("Authorization")
-		if token == "" {
+		// La session est celle que PocketBase a VÉRIFIÉE (signature comprise).
+		record := utilisateurVerifie(c)
+		if record == nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Non authentifié"})
 		}
+		userID := record.Id
 
 		var body struct {
 			SessionID string `json:"sessionId"`
@@ -141,24 +120,6 @@ func RegisterPresenceRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		}
 		if err := c.Bind(&body); err != nil || body.SessionID == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "sessionId requis"})
-		}
-
-		// Récupérer userId + role depuis le token
-		token = strings.TrimPrefix(token, "Bearer ")
-		token = strings.TrimSpace(token)
-		claims, err := security.ParseUnverifiedJWT(token)
-		if err != nil {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Token invalide"})
-		}
-
-		userID, _ := claims["id"].(string)
-		if userID == "" {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Token sans ID"})
-		}
-
-		record, err := pb.Dao().FindRecordById("users", userID)
-		if err != nil {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Utilisateur inconnu"})
 		}
 
 		// Purger les sessions expirées à chaque ping (60s TTL)
@@ -195,9 +156,7 @@ func RegisterPresenceRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 	// ── GET /api/presence/sessions ──────────────────────────────
 	// Réservé aux admins — retourne les sessions actives
 	router.GET("/api/presence/sessions", func(c echo.Context) error {
-		token := c.Request().Header.Get("Authorization")
-		userID, _, err := parseUserFromToken(pb, token)
-		if err != nil || userID == "" {
+		if utilisateurVerifie(c) == nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Non authentifié"})
 		}
 

@@ -5,64 +5,20 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/forms"
 	"github.com/pocketbase/pocketbase/models"
-	"github.com/pocketbase/pocketbase/tools/security"
 )
 
 func RegisterCompanyManagementRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 	log.Println("🏢 Registering company management routes...")
 
 	// Middleware d'authentification admin
-	requireAdmin := func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			token := c.Request().Header.Get("Authorization")
-			token = strings.TrimPrefix(token, "Bearer ")
-			token = strings.TrimSpace(token)
-
-			if token == "" {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Non authentifié",
-				})
-			}
-
-			claims, err := security.ParseUnverifiedJWT(token)
-			if err != nil {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Token invalide",
-				})
-			}
-
-			userId, ok := claims["id"].(string)
-			if !ok || userId == "" {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Token invalide",
-				})
-			}
-
-			record, err := pb.Dao().FindRecordById("users", userId)
-			if err != nil {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Utilisateur non trouvé",
-				})
-			}
-
-			role := record.GetString("role")
-			if role != "admin" {
-				return c.JSON(http.StatusForbidden, map[string]interface{}{
-					"error": "Accès réservé aux administrateurs",
-				})
-			}
-
-			c.Set("authRecord", record)
-			return next(c)
-		}
-	}
+	// (session vérifiée par PocketBase, voir createAdminMiddleware)
+	requireAdmin := createAdminMiddleware(pb)
 
 	// 📋 Lister toutes les entreprises (admin only)
 	router.GET("/api/companies", func(c echo.Context) error {

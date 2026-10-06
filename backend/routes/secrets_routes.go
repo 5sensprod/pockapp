@@ -584,56 +584,44 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 // MIDDLEWARE D'AUTHENTIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-// createAdminMiddleware crée un middleware qui vérifie l'authentification admin
-func createAdminMiddleware(pb *pocketbase.PocketBase) echo.MiddlewareFunc {
+// utilisateurVerifie rend l'utilisateur de la session que PocketBase a
+// VÉRIFIÉE — signature et expiration du jeton comprises
+// (`apis.LoadAuthContext`, posé en amont de toutes les routes) —, ou nil.
+//
+// Ne jamais relire le jeton à la main par `security.ParseUnverifiedJWT` : il
+// ne vérifie pas la signature, et un jeton fabriqué portant l'id d'un
+// utilisateur serait pris pour lui.
+func utilisateurVerifie(c echo.Context) *models.Record {
+	record := apis.RequestInfo(c).AuthRecord
+	if record == nil || record.Collection().Name != "users" {
+		return nil
+	}
+	return record
+}
+
+// createAdminMiddleware crée un middleware qui vérifie l'authentification admin.
+//
+// Jusqu'au 6 octobre 2026 il lisait le jeton par `security.ParseUnverifiedJWT`,
+// SANS vérifier sa signature : n'importe quel poste du réseau pouvait fabriquer
+// un jeton portant l'id d'un administrateur et lire, écrire ou supprimer les
+// secrets. Gardien : `admin_middleware_test.go`.
+func createAdminMiddleware(_ *pocketbase.PocketBase) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// 1. Récupérer le token
-			token := c.Request().Header.Get("Authorization")
-			token = strings.TrimPrefix(token, "Bearer ")
-			token = strings.TrimSpace(token)
-
-			if token == "" {
+			record := utilisateurVerifie(c)
+			if record == nil {
 				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
 					"error": "Non authentifié",
 				})
 			}
 
-			// 2. Parser le token
-			claims, err := security.ParseUnverifiedJWT(token)
-			if err != nil {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Token invalide",
-				})
-			}
-
-			// 3. Extraire l'ID utilisateur
-			userId, ok := claims["id"].(string)
-			if !ok || userId == "" {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Token invalide - pas d'ID utilisateur",
-				})
-			}
-
-			// 4. Récupérer l'utilisateur
-			record, err := pb.Dao().FindRecordById("users", userId)
-			if err != nil {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-					"error": "Utilisateur non trouvé",
-				})
-			}
-
-			// 5. Vérifier le rôle admin
-			role := record.GetString("role")
-			if role != "admin" {
+			if record.GetString("role") != "admin" {
 				return c.JSON(http.StatusForbidden, map[string]interface{}{
 					"error": "Accès réservé aux administrateurs",
 				})
 			}
 
-			// 6. Stocker l'utilisateur dans le contexte
 			c.Set("authRecord", record)
-			c.Set(apis.ContextAuthRecordKey, record)
 
 			return next(c)
 		}
