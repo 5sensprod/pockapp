@@ -236,7 +236,14 @@ Trois, et trois seulement :
 3. **Mini-SaaS distant** — `remote_notifications.go:27`,
    `backend/routes/gemini_routes.go` et `backend/routes/detourage_routes.go` —
    `pocketapp.5sensprod.com/api/notifications.php` pour les notifications,
-   `/api/usage.php` pour déclarer les jetons Gemini, et depuis le 5 octobre
+   `/api/usage.php` pour déclarer les jetons Gemini — et, depuis le 6 octobre
+   2026, pour **lire le solde des crédits** (`?balance=1`,
+   `backend/routes/credits_routes.go`, route locale `GET /api/credits/balance`,
+   toute session vérifiée) : avant, c'est le RENDERER qui appelait le mini-SaaS,
+   avec la clé que `GET /api/settings/pocketapp-key` rendait **déchiffrée sans
+   aucune garde**. Cette route est supprimée, **aucune route ne rend plus une
+   clé au renderer — ne pas en réintroduire** (gardien :
+   `credits_routes_test.go`) —, et depuis le 5 octobre
    2026 `/api/detourage.php`, en-tête `X-API-Key` (clé des notifications) et
    `User-Agent` explicite. Notifications, clés API, crédits IA : télémétrie,
    jamais de catalogue — **sauf `detourage.php`, qui porte le CONTENU d'une

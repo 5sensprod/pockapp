@@ -1,11 +1,14 @@
-// frontend/lib/pocketapp-credits.ts
-// Hook pour récupérer le solde de crédits depuis le SaaS PocketApp
-// La clé API est chargée depuis PocketBase local (app_settings)
-// via GET /api/settings/pocketapp-key
+// frontend/lib/credits.ts
+// Hook pour récupérer le solde de crédits du SaaS PocketApp.
+// Le solde est lu par le Go (GET /api/credits/balance), qui pose lui-même la
+// clé : elle ne descend jamais dans le renderer. Jusqu'au 6 octobre 2026 ce
+// fichier la demandait à GET /api/settings/pocketapp-key, qui la rendait
+// déchiffrée sans aucune garde — route supprimée, ne pas la réintroduire.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { usePocketBase } from './use-pocketbase'
 
-const POCKETAPP_URL = 'https://pocketapp.5sensprod.com'
+const ROUTE_SOLDE = '/api/credits/balance'
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 
 export interface PocketAppCredits {
@@ -14,18 +17,6 @@ export interface PocketAppCredits {
 	error: string | null
 	lastUpdated: Date | null
 	refresh: () => void
-}
-
-// Récupère la clé API depuis PocketBase local
-async function loadApiKey(): Promise<string> {
-	try {
-		const res = await fetch('/api/settings/pocketapp-key')
-		if (!res.ok) return ''
-		const data = await res.json()
-		return data.api_key ?? ''
-	} catch {
-		return ''
-	}
 }
 
 // Le solde ne se relit que toutes les 5 minutes : ce qui vient de consommer des
@@ -42,34 +33,26 @@ export function usePocketAppCredits(): PocketAppCredits {
 	const [error, setError] = useState<string | null>(null)
 	const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-	const apiKeyRef = useRef<string>('')
+	const pb = usePocketBase()
 
 	const fetchBalance = useCallback(async () => {
-		// Charger la clé si pas encore en mémoire
-		if (!apiKeyRef.current) {
-			apiKeyRef.current = await loadApiKey()
-		}
-
-		if (!apiKeyRef.current) {
-			setError('Clé API PocketApp non configurée')
-			setLoading(false)
-			return
-		}
-
 		try {
 			setLoading(true)
 			setError(null)
 
-			const res = await fetch(`${POCKETAPP_URL}/api/usage.php?balance=1`, {
+			const data = (await pb.send(ROUTE_SOLDE, {
 				method: 'GET',
-				headers: {
-					'X-API-Key': apiKeyRef.current,
-				},
-			})
+				requestKey: null,
+			})) as {
+				configured?: boolean
+				balance_eur?: number
+			}
 
-			if (!res.ok) throw new Error(`HTTP ${res.status}`)
+			if (!data.configured) {
+				setError('Clé API PocketApp non configurée')
+				return
+			}
 
-			const data = await res.json()
 			setBalanceEur(Number.parseFloat(String(data.balance_eur ?? 0)))
 			setLastUpdated(new Date())
 		} catch (err: any) {
@@ -77,7 +60,7 @@ export function usePocketAppCredits(): PocketAppCredits {
 		} finally {
 			setLoading(false)
 		}
-	}, [])
+	}, [pb])
 
 	useEffect(() => {
 		fetchBalance()

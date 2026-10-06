@@ -56,10 +56,9 @@ const (
 	//
 	// DISTINCTE de KeyNotificationAPI, et volontairement : celle-là authentifie
 	// le mini-SaaS de télémétrie, celle-ci la publication du menu. Deux
-	// services sans rapport, deux propriétaires, deux durées de vie — et
-	// GET /api/settings/pocketapp-key expose la première en clair sans garde
-	// admin (backend/routes/secrets_routes.go:125), ce qui suffit à ne pas
-	// réutiliser la même valeur ici.
+	// services sans rapport, deux propriétaires, deux durées de vie. (Jusqu'au
+	// 6 octobre 2026, GET /api/settings/pocketapp-key exposait en plus la
+	// première en clair sans garde ; la route est supprimée.)
 	//
 	// Ticket 5b. Consommée au ticket 6, qui pose l'en-tête au moment du POST.
 	KeySitePublishAPI = "site_publish_api_key"

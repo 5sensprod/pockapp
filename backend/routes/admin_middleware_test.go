@@ -91,6 +91,7 @@ func nouvelleAppAdmin(t *testing.T) *appAdmin {
 	RegisterSecretsRoutes(app, routeur)
 	RegisterCompanyManagementRoutes(app, routeur)
 	RegisterPresenceRoutes(app, routeur)
+	RegisterCreditsRoutes(app, routeur)
 
 	return &appAdmin{
 		app:     app,

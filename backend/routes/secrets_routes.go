@@ -121,21 +121,10 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 		})
 	}, requireAdmin)
 
-	// la clé API PocketApp stockée dans app_settings.
-	// Ne retourne que la clé "pocketapp_api_key" — aucune autre valeur sensible.
-	router.GET("/api/settings/pocketapp-key", func(c echo.Context) error {
-		key, err := sm.GetSecret("notification_api_key")
-		if err != nil || key == "" {
-			return c.JSON(http.StatusOK, map[string]interface{}{
-				"configured": false,
-				"api_key":    "",
-			})
-		}
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"configured": true,
-			"api_key":    key,
-		})
-	})
+	// AUCUNE ROUTE NE REND UNE CLÉ DÉCHIFFRÉE. `GET /api/settings/pocketapp-key`
+	// le faisait pour la clé du mini-SaaS, sans aucune garde, jusqu'au 6 octobre
+	// 2026 : le solde des crédits, seul à en avoir besoin, se lit désormais par
+	// le Go (credits_routes.go). Ne pas la réintroduire.
 
 	// DELETE /api/settings/secret/:key - Supprimer un secret
 	router.DELETE("/api/settings/secret/:key", func(c echo.Context) error {
@@ -274,8 +263,8 @@ func RegisterSecretsRoutes(pb *pocketbase.PocketBase, router *echo.Echo) {
 	// AUCUNE ROUTE NE RELIT LA CLÉ. C'est délibéré : le front n'en a pas besoin
 	// — au ticket 6, il enverra le document composé et c'est le Go qui ira
 	// chercher la clé pour poser l'en-tête. La clé ne descend jamais dans le
-	// renderer. C'est précisément ce que fait GET /api/settings/pocketapp-key
-	// pour le mini-SaaS (:125), et ce qu'on ne reproduit pas ici.
+	// renderer. (GET /api/settings/pocketapp-key le faisait pour le mini-SaaS ;
+	// elle est supprimée depuis le 6 octobre 2026.)
 
 	// POST /api/settings/site-publish - Enregistrer la clé et/ou l'URL
 	router.POST("/api/settings/site-publish", func(c echo.Context) error {

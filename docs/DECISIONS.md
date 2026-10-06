@@ -10,6 +10,37 @@ pourquoi, ce qui pourrait la remettre en cause.
 
 ---
 
+## Les routes d'administration s'en remettent à la session vérifiée ; plus aucune clé ne descend dans le renderer — 2026-10-06
+
+**Décision.** Aucune route Go ne relit un jeton à la main : l'identité est celle
+que PocketBase a vérifiée (`apis.RequestInfo(c).AuthRecord`, par
+`utilisateurVerifie`, `backend/routes/secrets_routes.go`), puis le rôle est
+contrôlé. Et le solde des crédits IA est lu par le Go
+(`GET /api/credits/balance`, `backend/routes/credits_routes.go`) : la route
+`GET /api/settings/pocketapp-key`, qui rendait la clé du mini-SaaS déchiffrée
+sans aucune garde, est supprimée.
+
+**Ce qui était cassé.** `createAdminMiddleware` (secrets, sauvegarde, export du
+site), sa copie pour `/api/companies` et les routes de présence lisaient le
+jeton par `security.ParseUnverifiedJWT` — ni signature, ni expiration. Rejoué
+contre l'ancien code, le gardien passait avec quatre jetons fabriqués portant
+l'id d'un administrateur. `LoadAuthContext` ne protégeait rien : sur un jeton
+invalide il laisse passer la requête, sans poser d'utilisateur.
+
+**Écarté — garder `pocketapp-key` derrière une session.** Tout vendeur connecté
+aurait encore pu lire la clé, qui authentifie aussi le détourage, la retouche,
+les photos et la publication Facebook. Le renderer n'en avait besoin que pour
+afficher un solde.
+
+**Écarté — réserver le solde aux administrateurs.** L'en-tête l'affiche à tout
+le monde ; un solde n'est pas un secret.
+
+**Ce qui pourrait la remettre en cause.** Un écran qui aurait besoin de la clé
+elle-même — il n'y en a pas. Gardiens : `admin_middleware_test.go`,
+`credits_routes_test.go`.
+
+---
+
 ## Publier une affiche sur Facebook : le mini-SaaS publie, le poste n'a aucun jeton — 2026-10-06
 
 **Décidé par le propriétaire.** PocketStick publie l'affiche courante comme
