@@ -354,8 +354,9 @@ Ce que ce constat ne dit pas :
 
 *Écrit et testé hors réseau : `post_facebook_routes_test.go` (faux Gemini),
 `lib/post-facebook.test.ts`, `promo_test.go` ; `pnpm build:client` passe.
-**Aucun appel réel à Gemini n'a été fait, et rien n'a été vu dans
-l'application.*** Le §2 disait « pas d'aide de Gemini » : c'est levé par le
+**Essayé en réel par le propriétaire le 6 octobre 2026 : le bouton, l'appel à
+Gemini et la proposition dans le champ du message ont fonctionné** — constat
+rapporté, pas rejoué ici ; ce qu'il ne couvre pas est en fin de section.* Le §2 disait « pas d'aide de Gemini » : c'est levé par le
 propriétaire.
 
 Dans la fenêtre « Publier sur Facebook », au-dessus du message : un ton, une
@@ -495,8 +496,13 @@ Un seul appel à Gemini par demande, jamais de second essai.
 
 ### Ce qui n'est pas vérifié
 
-- **Gemini en réel** : le respect de la longueur, des trois hashtags, du ton, et
-  surtout de « ne rien inventer ». Les tests jouent un faux Gemini.
+- **Rapporté par le propriétaire le 6 octobre 2026** : « ça marche », puis
+  « côté IA, tous les tests ont été faits en vrai par mes soins ». Cela lève le
+  chemin du succès (appel réel à Gemini, texte rendu, champ rempli). Le détail
+  de ce qui a été essayé n'a pas été donné : ne pas en déduire que chaque
+  échec (quota, clé refusée, produit introuvable, alerte de prix) a été vu.
+- **Le respect de « ne rien inventer » sur la durée** : un essai réussi ne le
+  prouve pas. Les tests automatiques jouent un faux Gemini.
 - **`produitsDuCatalogue`** (la lecture PocketBase) n'a pas de test : les tests
   de la route lui substituent un lecteur. Les noms de champs sont ceux du
   schéma lu, pas d'une base ouverte.
