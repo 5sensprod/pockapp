@@ -42,6 +42,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { QuickActions } from '@/components/layout/QuickActions'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { usePocketAppCredits } from '@/lib/credits'
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
@@ -264,8 +265,11 @@ export function Header({
 					</div>
 				</div>
 
-				{/* ══ DROITE : crédits + entreprise + notifs + user ════════════════ */}
-				<div className='flex shrink-0 items-center gap-1 tablet:gap-2 desktop:gap-3'>
+				{/* ══ RACCOURCIS : caisse + menu Créer, couleurs par module ═══════ */}
+					<QuickActions />
+
+					{/* ══ DROITE : crédits + entreprise + notifs + user ════════════════ */}
+				<div className='flex flex-1 items-center justify-end gap-1 tablet:gap-2 desktop:gap-3'>
 					{/* ── Thèmes — clair, sombre et trois contrastés (écran jugé trop clair) ── */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>

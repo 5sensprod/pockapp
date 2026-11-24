@@ -41,6 +41,21 @@ export const SECTIONS_AIDE: SectionAide[] = [
 				],
 			},
 			{
+				id: 'raccourcis',
+				titre: 'Raccourcis « Caisse » et « Créer »',
+				resume:
+					'Au milieu de la barre du haut, deux boutons ouvrent directement la caisse ou une création, depuis n’importe quel écran.',
+				ouCliquer: [
+					'« Caisse » : ouvre le terminal de vente.',
+					'« + Créer » : menu avec Bon de commande, Facture, Devis, Client et Produit.',
+					'Chaque entrée affiche le module concerné ; l’icône prend la couleur de ce module (bleu PocketConnect, orange PocketStock).',
+				],
+				details: [
+					'Le bouton « Caisse » suit la couleur du thème choisi.',
+					'Sur petit écran, seules les icônes s’affichent ; sur mobile, ils sont remplacés par la barre du bas.',
+				],
+			},
+			{
 				id: 'stock-alert',
 				titre: 'Bouton « Stock alert »',
 				resume:
