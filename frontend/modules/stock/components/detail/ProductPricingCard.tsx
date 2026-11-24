@@ -143,8 +143,8 @@ export function ProductPricingCard({
 	)
 
 	const content = (
-		<div className='space-y-4'>
-			<div className='grid gap-4 sm:grid-cols-3'>
+		<div className='space-y-3'>
+			<div className='grid gap-3 sm:grid-cols-3'>
 				<NumberField
 					form={form}
 					name='purchase_price_ht'
@@ -192,7 +192,7 @@ export function ProductPricingCard({
 				</div>
 
 				{operation !== '' && (
-					<div className='mt-4 space-y-4 border-t pt-4'>
+					<div className='mt-3 space-y-3 border-t pt-3'>
 						<FormField
 							control={form.control}
 							name='sale_state'
@@ -412,7 +412,7 @@ function MargeField({
 				Marges
 				<HelpTooltip text='La marge se saisit ici et calcule le prix TTC depuis l’achat HT. À l’inverse, changer le prix TTC recalcule cette marge — les deux se répondent. Marge sur l’achat HT, marque sur le prix de vente HT, hors promo.' />
 			</Label>
-			<div className='grid max-w-sm grid-cols-2 gap-6'>
+			<div className='grid max-w-sm grid-cols-2 gap-3'>
 				<div className='min-w-0'>
 					<div className='flex h-8 items-center border-emerald-300 border-b border-dashed text-emerald-700 dark:text-emerald-500'>
 						<Input

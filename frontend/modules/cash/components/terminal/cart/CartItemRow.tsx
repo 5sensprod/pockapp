@@ -238,7 +238,7 @@ export function CartItemRow({
 			{isEditing && (
 				<div className='mt-2 ml-12 space-y-2'>
 					{/* Prix TTC */}
-					<div className='flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2'>
+					<div className='flex items-center gap-2 rounded-lg bg-accent px-3 py-2'>
 						<span className='text-xs text-muted-foreground whitespace-nowrap'>
 							Prix TTC :
 						</span>

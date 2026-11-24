@@ -71,7 +71,7 @@ export function VATBreakdownTable({
 					</TableRow>
 				))}
 				{showTotals && totals && (
-					<TableRow className='bg-slate-50 font-medium'>
+					<TableRow className='bg-muted font-medium'>
 						<TableCell>TOTAL</TableCell>
 						<TableCell className='text-right'>
 							{formatCurrency(totals.baseHT)}

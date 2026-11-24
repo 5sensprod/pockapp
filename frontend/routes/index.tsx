@@ -174,14 +174,14 @@ function ModuleCard({ module }: { module: any }) {
 	const Icon = module.icon
 
 	return (
-		<div className='border rounded-lg p-4 hover:shadow-md transition-shadow flex flex-col justify-between'>
+		<div className='flex flex-col justify-between rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm transition-shadow hover:shadow-md'>
 			<div>
 				<div className='flex items-center gap-2 mb-3'>
-					<div className='w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0'>
+					<div className='w-10 h-10 rounded-lg border border-border bg-background flex items-center justify-center shrink-0'>
 						{Icon && <Icon className={`h-5 w-5 ${module.iconColor}`} />}
 					</div>
 					<div>
-						<h2 className={`text-base font-semibold ${module.color}`}>
+						<h2 className='text-base font-semibold text-foreground'>
 							{module.name}
 						</h2>
 						<p className='text-xs text-muted-foreground'>
@@ -195,7 +195,7 @@ function ModuleCard({ module }: { module: any }) {
 			<div className='mt-4'>
 				<Link
 					to={module.route}
-					className={`inline-flex w-full items-center justify-center rounded-md border px-3 py-2 text-sm font-medium border-current ${module.color}`}
+					className='inline-flex w-full items-center justify-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90'
 				>
 					Ouvrir
 				</Link>

@@ -160,8 +160,8 @@ export function UpdateChecker() {
 				return {
 					title: 'En cours...',
 					message: progress.message,
-					color: 'text-gray-600',
-					bgColor: 'bg-gray-50 dark:bg-gray-800',
+					color: 'text-muted-foreground',
+					bgColor: 'bg-muted',
 					borderColor: 'border-gray-500',
 				}
 		}
@@ -304,7 +304,7 @@ export function UpdateChecker() {
 					</Tooltip>
 				</TooltipProvider>
 				{currentVersion && (
-					<span className='hidden desktop:inline text-xs text-gray-500'>
+					<span className='hidden desktop:inline text-xs text-muted-foreground'>
 						v{currentVersion}
 					</span>
 				)}
@@ -328,7 +328,7 @@ export function UpdateChecker() {
 						<AlertDialogDescription className='space-y-4 text-left'>
 							{dialogMode === 'uptodate' && (
 								<div className='space-y-2'>
-									<p className='text-sm text-gray-700 dark:text-gray-300'>
+									<p className='text-sm text-foreground'>
 										Vous utilisez déjà la dernière version.
 									</p>
 									{currentVersion && (
@@ -363,14 +363,14 @@ export function UpdateChecker() {
 											</strong>
 										</p>
 										{updateInfo.publishedAt && (
-											<p className='text-xs text-gray-500 mt-1'>
+											<p className='text-xs text-muted-foreground mt-1'>
 												Publiée le {formatDate(updateInfo.publishedAt)}
 											</p>
 										)}
 									</div>
 
 									{updateInfo.releaseNotes && (
-										<div className='bg-gray-50 dark:bg-gray-800 p-4 rounded-lg'>
+										<div className='bg-muted p-4 rounded-lg'>
 											<h4 className='font-semibold text-sm mb-2'>
 												Notes de version :
 											</h4>
@@ -381,12 +381,12 @@ export function UpdateChecker() {
 									)}
 
 									{updateInfo.downloadUrl && (
-										<div className='text-xs text-gray-400 break-all'>
+										<div className='text-xs text-muted-foreground break-all'>
 											<details>
-												<summary className='cursor-pointer hover:text-gray-600'>
+												<summary className='cursor-pointer hover:text-foreground'>
 													Infos techniques
 												</summary>
-												<p className='mt-1 p-2 bg-gray-100 dark:bg-gray-900 rounded'>
+												<p className='mt-1 p-2 bg-muted rounded'>
 													URL: {updateInfo.downloadUrl}
 												</p>
 											</details>
@@ -408,11 +408,11 @@ export function UpdateChecker() {
 														{progressInfo.title}
 													</p>
 												</div>
-												<p className='text-sm text-gray-700 dark:text-gray-300'>
+												<p className='text-sm text-foreground'>
 													{progressInfo.message}
 												</p>
 												{progress?.status === 'completed' && (
-													<p className='text-xs text-gray-600 dark:text-gray-400 mt-2'>
+													<p className='text-xs text-muted-foreground mt-2'>
 														Suivez les instructions de l'installateur pour
 														terminer la mise à jour.
 													</p>

@@ -314,13 +314,13 @@ function ProductDetailContent({
 					}
 				/>
 
-				<main className='container mx-auto grid items-start gap-4 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_430px]'>
-					<div className='grid content-start gap-3 self-start'>
+				<main className='container mx-auto grid items-start gap-3 px-6 py-3 lg:grid-cols-[minmax(0,1fr)_430px]'>
+					<div className='grid content-start gap-2 self-start'>
 						{/* Colonne de gauche : les champs sont toujours saisissables.
 						    Ouvrir une carte au survol puis au clic avant de pouvoir
 						    taper était un geste de trop pour des champs aussi courts. */}
 						<FormDetailCard dirty={identityDirty}>
-							<div className='grid gap-4'>
+							<div className='grid gap-3'>
 								<ProductIdentityCard form={editor.form} embedded />
 								{editor.duplicates.feedback}
 							</div>
@@ -344,7 +344,7 @@ function ProductDetailContent({
 						</FormDetailCard>
 
 						<FormDetailCard title='Rattachements' dirty={linksDirty}>
-							<div className='grid gap-4 md:grid-cols-2'>
+							<div className='grid gap-3 md:grid-cols-2'>
 								<ProductLinksCard form={editor.form} embedded />
 							</div>
 						</FormDetailCard>

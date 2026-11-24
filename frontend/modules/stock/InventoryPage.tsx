@@ -899,7 +899,7 @@ function CreateSessionDialog({
 									return (
 										<div key={groupKey}>
 											{group.parent && (
-												<div className='bg-white bg-muted/50 px-3 py-2 text-xs font-bold uppercase tracking-wide  sticky top-0 opacity-100'>
+												<div className='bg-muted/50 px-3 py-2 text-xs font-bold uppercase tracking-wide  sticky top-0 opacity-100'>
 													{group.parent.name}
 												</div>
 											)}

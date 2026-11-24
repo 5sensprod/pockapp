@@ -172,21 +172,21 @@ export function OpenSessionDialog({
 				</DialogHeader>
 
 				{lastKnownFloat !== null && (
-					<div className='flex items-center justify-between rounded-md border bg-slate-50 px-3 py-2'>
+					<div className='flex items-center justify-between rounded-md border bg-muted px-3 py-2'>
 						<div className='text-xs text-muted-foreground leading-tight'>
 							<div>
 								Tiroir de la veille au soir :{' '}
-								<span className='font-medium text-slate-900'>
+								<span className='font-medium text-foreground'>
 									{lastKnownFloat.toFixed(2)} €
 								</span>
 							</div>
 
 							{lastClosedAtLabel && (
-								<div className='text-[11px] text-slate-500'>
+								<div className='text-[11px] text-muted-foreground'>
 									Dernière clôture le {lastClosedAtLabel}
 								</div>
 							)}
-							<div className='text-[11px] text-slate-500'>
+							<div className='text-[11px] text-muted-foreground'>
 								Retenu par défaut — comptez ci-dessous pour le corriger.
 							</div>
 						</div>

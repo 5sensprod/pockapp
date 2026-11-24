@@ -87,10 +87,10 @@ function roleColor(role: string) {
 			}
 		default:
 			return {
-				bg: 'bg-slate-100',
-				text: 'text-slate-600',
+				bg: 'bg-muted',
+				text: 'text-muted-foreground',
 				dot: 'bg-slate-400',
-				border: 'border-slate-200',
+				border: 'border-border',
 			}
 	}
 }
@@ -132,10 +132,10 @@ function SessionCard({
 	return (
 		<div
 			className={`
-        group relative flex items-center gap-3 rounded-xl border bg-white px-4 py-3
+        group relative flex items-center gap-3 rounded-xl border bg-card px-4 py-3
         shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-px
         ${stale ? 'opacity-60' : ''}
-        ${isCurrentUser ? 'ring-1 ring-slate-300' : ''}
+        ${isCurrentUser ? 'ring-1 ring-ring' : ''}
         ${colors.border}
       `}
 		>
@@ -149,7 +149,7 @@ function SessionCard({
 			{/* Infos */}
 			<div className='min-w-0 flex-1'>
 				<div className='flex items-center gap-2'>
-					<span className='truncate text-sm font-semibold text-slate-800'>
+					<span className='truncate text-sm font-semibold text-foreground'>
 						{session.name || session.email}
 					</span>
 					<span
@@ -158,19 +158,19 @@ function SessionCard({
 						{roleLabel(session.role)}
 					</span>
 				</div>
-				<div className='mt-0.5 flex items-center gap-2 text-[11px] text-slate-400'>
+				<div className='mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground'>
 					<span className='flex items-center gap-1'>
 						<Circle
 							className={`h-1.5 w-1.5 fill-current ${stale ? 'text-amber-400' : 'text-emerald-500'}`}
 						/>
 						{formatLastSeen(session.secondsAgo)}
 					</span>
-					<span className='text-slate-200'>·</span>
+					<span className='text-border'>·</span>
 					<span className='flex items-center gap-1'>
 						<Clock className='h-3 w-3' />
 						depuis {formatConnectedSince(session.connectedAt)}
 					</span>
-					<span className='text-slate-200'>·</span>
+					<span className='text-border'>·</span>
 					{session.isDesktop ? (
 						<span className='flex items-center gap-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600'>
 							<Monitor className='h-2.5 w-2.5' />
@@ -192,7 +192,7 @@ function SessionCard({
 			<div className='flex shrink-0 items-center gap-2'>
 				{/* Badge "Vous" */}
 				{isCurrentUser && (
-					<span className='rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500'>
+					<span className='rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground'>
 						Vous
 					</span>
 				)}
@@ -203,7 +203,7 @@ function SessionCard({
 							type='button'
 							onClick={() => onMessage(session)}
 							onKeyDown={(e) => e.key === 'Enter' && onMessage(session)}
-							className='flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600'
+							className='flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-blue-50 hover:text-blue-600'
 							title='Envoyer un message'
 						>
 							<Send className='h-3.5 w-3.5' />
@@ -213,7 +213,7 @@ function SessionCard({
 								type='button'
 								onClick={() => onTask(session)}
 								onKeyDown={(e) => e.key === 'Enter' && onTask(session)}
-								className='flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-violet-50 hover:text-violet-600'
+								className='flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-violet-50 hover:text-violet-600'
 								title='Assigner une tâche'
 							>
 								<CheckSquare className='h-3.5 w-3.5' />
@@ -269,7 +269,7 @@ function ActionModal({
 				onClick={onClose}
 				onKeyDown={(e) => e.key === 'Escape' && onClose()}
 			/>
-			<div className='relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl'>
+			<div className='relative w-full max-w-sm rounded-2xl bg-card p-5 shadow-2xl'>
 				<div className='mb-4 flex items-center gap-3'>
 					<div
 						className={`flex h-8 w-8 items-center justify-center rounded-lg ${roleColor(session.role).bg}`}
@@ -283,11 +283,11 @@ function ActionModal({
 						)}
 					</div>
 					<div>
-						<p className='text-sm font-semibold text-slate-800'>
+						<p className='text-sm font-semibold text-foreground'>
 							{mode === 'message' ? 'Message' : 'Tâche'} →{' '}
 							{session.name || session.email}
 						</p>
-						<p className='text-xs text-slate-400'>{roleLabel(session.role)}</p>
+						<p className='text-xs text-muted-foreground'>{roleLabel(session.role)}</p>
 					</div>
 				</div>
 
@@ -305,7 +305,7 @@ function ActionModal({
 									? 'Votre message…'
 									: 'Description de la tâche…'
 							}
-							className='w-full resize-none rounded-lg border border-slate-200 p-3 text-sm text-slate-700 outline-none placeholder:text-slate-300 focus:border-slate-400 focus:ring-0'
+							className='w-full resize-none rounded-lg border border-border p-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-0'
 							rows={3}
 							onKeyDown={(e) => {
 								if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend()
@@ -315,7 +315,7 @@ function ActionModal({
 							<button
 								type='button'
 								onClick={onClose}
-								className='flex-1 rounded-lg border border-slate-200 py-2 text-sm text-slate-500 transition-colors hover:bg-slate-50'
+								className='flex-1 rounded-lg border border-border py-2 text-sm text-muted-foreground transition-colors hover:bg-muted'
 							>
 								Annuler
 							</button>
@@ -323,7 +323,7 @@ function ActionModal({
 								type='button'
 								onClick={handleSend}
 								disabled={!text.trim() || isSending}
-								className='flex-1 rounded-lg bg-slate-900 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:opacity-40'
+								className='flex-1 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40'
 							>
 								{isSending
 									? 'Envoi…'
@@ -414,18 +414,18 @@ export function ConnectedClients() {
 
 	return (
 		<>
-			<div className='rounded-2xl border border-slate-100 bg-slate-50/60 p-4'>
+			<div className='rounded-2xl border border-border bg-muted/60 p-4'>
 				{/* Header */}
 				<div className='flex items-center justify-between'>
 					<div className='flex items-center gap-3'>
-						<div className='flex h-8 w-8 items-center justify-center rounded-lg border border-slate-100 bg-white shadow-sm'>
-							<Monitor className='h-4 w-4 text-slate-600' />
+						<div className='flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card shadow-sm'>
+							<Monitor className='h-4 w-4 text-muted-foreground' />
 						</div>
 						<div>
-							<h2 className='text-sm font-semibold text-slate-700'>
+							<h2 className='text-sm font-semibold text-foreground'>
 								Postes connectés
 							</h2>
-							<p className='text-[11px] text-slate-400'>
+							<p className='text-[11px] text-muted-foreground'>
 								Mis à jour à {lastUpdate}
 							</p>
 						</div>
@@ -451,7 +451,7 @@ export function ConnectedClients() {
 							className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
 								sessions.length > 0
 									? 'bg-emerald-50 text-emerald-700'
-									: 'bg-slate-100 text-slate-500'
+									: 'bg-muted text-muted-foreground'
 							}`}
 						>
 							{sessions.length > 0 ? (
@@ -466,7 +466,7 @@ export function ConnectedClients() {
 							type='button'
 							onClick={() => refetch()}
 							disabled={isFetching}
-							className='flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-slate-700 hover:shadow-sm disabled:opacity-40'
+							className='flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground hover:shadow-sm disabled:opacity-40'
 							title='Rafraîchir'
 						>
 							<RefreshCw
@@ -477,7 +477,7 @@ export function ConnectedClients() {
 						<button
 							type='button'
 							onClick={() => setCollapsed((v) => !v)}
-							className='flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-slate-700'
+							className='flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground'
 						>
 							{collapsed ? (
 								<ChevronDown className='h-3.5 w-3.5' />
@@ -492,14 +492,14 @@ export function ConnectedClients() {
 				{!collapsed && (
 					<div className='mt-3'>
 						{isLoading ? (
-							<div className='flex items-center justify-center py-6 text-sm text-slate-400'>
+							<div className='flex items-center justify-center py-6 text-sm text-muted-foreground'>
 								<RefreshCw className='mr-2 h-4 w-4 animate-spin' />
 								Chargement…
 							</div>
 						) : sessions.length === 0 ? (
 							<div className='flex flex-col items-center justify-center gap-1 py-6'>
-								<WifiOff className='h-5 w-5 text-slate-300' />
-								<p className='text-sm text-slate-400'>
+								<WifiOff className='h-5 w-5 text-muted-foreground' />
+								<p className='text-sm text-muted-foreground'>
 									Aucun poste distant connecté
 								</p>
 							</div>
@@ -522,7 +522,7 @@ export function ConnectedClients() {
 
 								{stale.length > 0 && (
 									<>
-										<p className='pt-1 text-[10px] font-semibold uppercase tracking-wider text-slate-300'>
+										<p className='pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground'>
 											Signal faible
 										</p>
 										{stale.map((s: PresenceSession) => (

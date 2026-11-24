@@ -34,7 +34,7 @@ export function ProductIdentityCard({
 	embedded?: boolean
 }) {
 	const content = (
-		<div className='grid gap-4 sm:grid-cols-[minmax(0,1.6fr)_minmax(160px,1fr)]'>
+		<div className='grid gap-3 sm:grid-cols-[minmax(0,1.6fr)_minmax(160px,1fr)]'>
 			<TextField
 				form={form}
 				name='designation'

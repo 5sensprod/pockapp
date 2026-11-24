@@ -100,7 +100,7 @@ export function ProductLinksCard({
 	}, [brandChanged, soleSupplierId, supplierId, form])
 
 	const content = (
-		<div className={embedded ? 'contents' : 'grid gap-5 sm:grid-cols-3'}>
+		<div className={embedded ? 'contents' : 'grid gap-3 sm:grid-cols-3'}>
 			<SelectField
 				form={form}
 				name='brand'

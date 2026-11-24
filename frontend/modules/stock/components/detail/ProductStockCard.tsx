@@ -81,8 +81,8 @@ export function ProductStockCard({
 	}
 
 	const content = (
-		<div className='grid gap-5'>
-			<div className='grid items-end gap-5 sm:grid-cols-2 xl:grid-cols-[150px_150px_180px]'>
+		<div className='grid gap-3'>
+			<div className='grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[150px_150px_180px]'>
 				{!estService && (
 					<>
 						<NumberField
@@ -157,7 +157,7 @@ export function ProductStockCard({
 					</div>
 
 					{stockBActif && (
-						<div className='mt-4 grid items-end gap-5 border-t pt-4 sm:grid-cols-2 xl:grid-cols-[150px_150px_minmax(0,1fr)]'>
+						<div className='mt-3 grid items-end gap-3 border-t pt-3 sm:grid-cols-2 xl:grid-cols-[150px_150px_minmax(0,1fr)]'>
 							<NumberField
 								form={form}
 								name='stock_b'
@@ -231,7 +231,7 @@ export function ProductStockCard({
 							conservée dans l’historique du produit.
 						</DialogDescription>
 					</DialogHeader>
-					<div className='space-y-4'>
+					<div className='space-y-3'>
 						<div className='space-y-1 rounded-lg bg-muted/50 p-3 font-medium text-sm'>
 							{ecart !== 0 && (
 								<Ecart

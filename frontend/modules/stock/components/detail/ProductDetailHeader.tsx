@@ -65,17 +65,18 @@ export function ProductDetailHeader(props: Props) {
 
 	return (
 		<header className='sticky top-header z-40 border-b bg-background/95 backdrop-blur'>
-			<div className='container mx-auto flex items-center gap-3 px-6 py-2.5'>
+			<div className='container mx-auto flex flex-wrap items-center gap-x-3 gap-y-1 px-6 py-1.5'>
 				<Button
 					type='button'
 					variant='ghost'
 					size='icon'
+					className='h-8 w-8 shrink-0'
 					onClick={props.onBack}
 					aria-label='Retour aux produits'
 				>
-					<ArrowLeft className='h-5 w-5' />
+					<ArrowLeft className='h-4 w-4' />
 				</Button>
-				<div className='flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted/30'>
+				<div className='flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/30'>
 					{props.imageUrl ? (
 						<img
 							src={props.imageUrl}
@@ -83,31 +84,33 @@ export function ProductDetailHeader(props: Props) {
 							className='h-full w-full object-contain'
 						/>
 					) : (
-						<ImageOff className='h-6 w-6 text-muted-foreground/50' />
+						<ImageOff className='h-4 w-4 text-muted-foreground/50' />
 					)}
 				</div>
-				<div className='min-w-0 flex-1'>
-					<h1 className='truncate font-bold text-xl'>
+				<div className='flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5'>
+					<h1 className='min-w-0 max-w-full truncate font-bold text-base sm:max-w-[28rem]'>
 						{props.designation?.trim() || 'Sans désignation'}
 					</h1>
-					<p className='truncate text-muted-foreground text-sm'>
+					<span className='truncate text-muted-foreground text-xs'>
+						·{' '}
 						{[props.product.sku, props.brandName].filter(Boolean).join(' · ') ||
 							'Sans référence ni marque'}
-					</p>
+					</span>
+					<span className='text-muted-foreground text-xs'>·</span>
 					<TooltipProvider>
 						<Tooltip>
 							<TooltipTrigger asChild>
 								{adresse && props.status !== 'published' ? (
 									// Déjà publiée une fois puis repassée en brouillon : l'adresse
 									// existe mais la page n'est plus en ligne, donc pas de lien.
-									<span className='cursor-help truncate font-mono text-muted-foreground text-xs'>
+									<span className='max-w-[16rem] cursor-help truncate font-mono text-muted-foreground text-xs'>
 										{adresse}
 									</span>
 								) : adresse ? (
 									<button
 										type='button'
 										onClick={() => ouvrirDansLeNavigateur(adresse)}
-										className='inline-flex max-w-full items-center gap-1 font-mono text-muted-foreground text-xs hover:text-foreground hover:underline'
+										className='inline-flex max-w-[16rem] items-center gap-1 font-mono text-muted-foreground text-xs hover:text-foreground hover:underline'
 									>
 										<span className='truncate'>{adresse}</span>
 										<ExternalLink className='h-3 w-3 shrink-0' />
@@ -127,24 +130,24 @@ export function ProductDetailHeader(props: Props) {
 							</TooltipContent>
 						</Tooltip>
 					</TooltipProvider>
-					<div className='mt-1 flex flex-wrap items-center gap-2 text-sm'>
+					<div className='flex flex-wrap items-center gap-1.5 text-xs'>
 						{promo === null ? (
-							<strong>{euros.format(props.product.price_ttc ?? 0)}</strong>
+							<Badge variant='outline' className='font-semibold'>
+								{euros.format(props.product.price_ttc ?? 0)}
+							</Badge>
 						) : (
-							<>
+							<Badge variant='outline' className='gap-1.5'>
 								<span className='text-muted-foreground line-through'>
 									{euros.format(props.product.price_ttc ?? 0)}
 								</span>
-								<strong className='text-emerald-700'>
-									{euros.format(promo)}
-								</strong>
-							</>
+								<strong className='text-emerald-700'>{euros.format(promo)}</strong>
+							</Badge>
 						)}
-						<span>
+						<Badge variant='outline'>
 							Stock {props.product.stock ?? 0}
 							{(props.product.stock_b ?? 0) > 0 &&
 								` · B ${props.product.stock_b}`}
-						</span>
+						</Badge>
 						<Badge
 							variant={props.status === 'published' ? 'default' : 'secondary'}
 						>

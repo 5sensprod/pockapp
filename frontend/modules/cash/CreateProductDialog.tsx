@@ -216,11 +216,11 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 				<form onSubmit={handleSubmit} className='space-y-4'>
 					{/* Code-barres (lecture seule si pré-rempli) */}
 					{initialBarcode && (
-						<div className='rounded-lg bg-slate-50 p-3 border border-slate-200'>
-							<div className='text-xs font-medium text-slate-500 mb-1'>
+						<div className='rounded-lg bg-muted p-3 border border-border'>
+							<div className='text-xs font-medium text-muted-foreground mb-1'>
 								Code-barres scanné
 							</div>
-							<div className='font-mono text-sm font-semibold text-slate-900'>
+							<div className='font-mono text-sm font-semibold text-foreground'>
 								{formData.barcode}
 							</div>
 						</div>
@@ -244,7 +244,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 							autoFocus
 							className='h-11 text-base'
 						/>
-						<p className='text-xs text-slate-500'>
+						<p className='text-xs text-muted-foreground'>
 							Affichée sur le ticket de caisse.
 						</p>
 					</div>
@@ -265,7 +265,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 							onChange={(e) => handleFieldChange('name', e.target.value)}
 							className='h-11 text-base'
 						/>
-						<p className='text-xs text-slate-500'>
+						<p className='text-xs text-muted-foreground'>
 							Titre de la page produit sur le site ; se retouche depuis la
 							fiche.
 						</p>

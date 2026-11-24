@@ -1050,7 +1050,7 @@ export function ProductsPage() {
 							onChange={(event) => changeSearch(event.target.value)}
 							placeholder='Rechercher…'
 							aria-label='Rechercher un produit'
-							className='h-10 rounded-md border-input bg-sky-50/80 pl-9 text-primary shadow-sm transition-[background-color,border-color,box-shadow] placeholder:text-muted-foreground hover:bg-sky-50 focus:border-primary focus:bg-white focus:outline-none focus:ring-4 focus:ring-primary/15 focus-visible:ring-4 focus-visible:ring-primary/15 focus-visible:ring-offset-0 dark:bg-sky-950/35 dark:text-foreground dark:focus:bg-background'
+							className='h-10 rounded-md border-input bg-muted pl-9 text-primary shadow-sm transition-[background-color,border-color,box-shadow] placeholder:text-muted-foreground hover:bg-muted/70 focus:border-primary focus:bg-card focus:outline-none focus:ring-4 focus:ring-primary/15 focus-visible:ring-4 focus-visible:ring-primary/15 focus-visible:ring-offset-0 dark:bg-sky-950/35 dark:text-foreground dark:focus:bg-background'
 						/>
 					</div>
 
@@ -1779,7 +1779,7 @@ function StatusChip({
 }) {
 	const tones = {
 		all: {
-			idle: 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60',
+			idle: 'bg-muted hover:bg-accent',
 		},
 		published: {
 			idle: 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60',

@@ -67,7 +67,7 @@ export function CartTotals({
 						<Input
 							type='text'
 							inputMode='decimal'
-							className='h-8 w-20 bg-slate-50 text-right text-sm'
+							className='h-8 w-20 bg-muted text-right text-sm'
 							value={cartDiscountRaw}
 							onChange={(e) => onCartDiscountChange(e.target.value)}
 							placeholder='0'
@@ -77,21 +77,21 @@ export function CartTotals({
 			</div>
 
 			{discountAmount > 0 && (
-				<div className='mt-1 flex items-center justify-between text-xs text-slate-500'>
+				<div className='mt-1 flex items-center justify-between text-xs text-muted-foreground'>
 					<span>Montant remise</span>
 					<span>-{discountAmount.toFixed(2)} €</span>
 				</div>
 			)}
 
 			<div className='mt-3 space-y-1'>
-				<div className='flex items-center justify-between text-xs font-medium text-slate-600'>
+				<div className='flex items-center justify-between text-xs font-medium text-muted-foreground'>
 					<span>TVA totale</span>
 					<span>{totalVat.toFixed(2)} €</span>
 				</div>
 				{vatBreakdown.map((vb) => (
 					<div
 						key={vb.rate}
-						className='flex items-center justify-between text-xs text-slate-500 pl-4'
+						className='flex items-center justify-between text-xs text-muted-foreground pl-4'
 					>
 						<span>
 							Dont TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT

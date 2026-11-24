@@ -5,7 +5,7 @@ import './styles/index.css'
 import { ActiveCompanyProvider } from '@/lib/ActiveCompanyProvider'
 import { AppPosSessionProvider } from '@/lib/apppos'
 import { CatalogRealtimeMount } from '@/lib/realtime/CatalogRealtimeMount'
-import { appliquerContrasteMemorise } from '@/lib/hooks/useContrast'
+import { appliquerThemeMemorise } from '@/lib/hooks/useTheme'
 import { router } from '@/lib/router'
 import { SyncQueueProvider } from '@/lib/sync/SyncQueueProvider'
 import { AuthProvider } from '@/modules/auth/AuthProvider'
@@ -54,8 +54,8 @@ if (!rootElement) {
 	throw Error(`Couldn't find #root in html`)
 }
 
-// Contraste renforcé : posé avant le premier rendu, y compris sur /login.
-appliquerContrasteMemorise()
+// Thème (clair, sombre, contrastés) : posé avant le premier rendu, y compris sur /login.
+appliquerThemeMemorise()
 
 createRoot(rootElement).render(
 	<StrictMode>

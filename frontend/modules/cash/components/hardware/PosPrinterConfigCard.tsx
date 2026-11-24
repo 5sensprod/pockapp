@@ -87,7 +87,7 @@ export function PosPrinterConfigCard() {
 	}
 
 	return (
-		<Card className='border-slate-200'>
+		<Card className='border-border'>
 			<CardHeader className='pb-3'>
 				<div className='flex items-center justify-between'>
 					<CardTitle className='text-sm flex items-center gap-2'>
@@ -145,7 +145,7 @@ export function PosPrinterConfigCard() {
 					) : (
 						<select
 							id='printer-select'
-							className='h-9 w-full rounded-md border bg-white px-3 text-sm disabled:bg-gray-50 disabled:text-gray-500'
+							className='h-9 w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted disabled:text-muted-foreground'
 							value={settings.printerName}
 							onChange={(e) => setValue('printerName', e.target.value)}
 							disabled={!settings.enabled}
@@ -170,7 +170,7 @@ export function PosPrinterConfigCard() {
 					<Label htmlFor='width-select'>Largeur papier</Label>
 					<select
 						id='width-select'
-						className='h-9 w-full rounded-md border bg-white px-3 text-sm disabled:bg-gray-50'
+						className='h-9 w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted'
 						value={String(settings.width)}
 						onChange={(e) =>
 							setValue('width', Number(e.target.value) as 58 | 80)

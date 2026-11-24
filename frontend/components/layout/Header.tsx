@@ -19,6 +19,7 @@ import {
 	AlertTriangle,
 	Bell,
 	Building2,
+	Check,
 	ChevronDown,
 	Contrast,
 	Home,
@@ -44,11 +45,12 @@ import {
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { usePocketAppCredits } from '@/lib/credits'
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
-import { useContrast } from '@/lib/hooks/useContrast'
+import { THEMES, useTheme } from '@/lib/hooks/useTheme'
 import { useStockAlerts } from '@/lib/queries/stock-alerts'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
+import { HelpPanel } from './HelpPanel'
 
 type CompanyItem = {
 	id: string
@@ -118,7 +120,7 @@ export function Header({
 		refresh: refreshCredits,
 	} = usePocketAppCredits()
 
-	const { actif: contrasteActif, basculer: basculerContraste } = useContrast()
+	const { theme, setTheme } = useTheme()
 	const { data: alertes } = useStockAlerts(activeCompanyId ?? undefined)
 	const nbAlertes = alertes?.totalItems ?? 0
 
@@ -264,25 +266,41 @@ export function Header({
 
 				{/* ══ DROITE : crédits + entreprise + notifs + user ════════════════ */}
 				<div className='flex shrink-0 items-center gap-1 tablet:gap-2 desktop:gap-3'>
-					{/* ── Contraste renforcé — l'écran était jugé trop clair ─────────── */}
-					<Button
-						variant='ghost'
-						size='icon'
-						className={cn(
-							'min-h-[44px] min-w-[44px] tablet:min-h-[48px] tablet:min-w-[48px]',
-							contrasteActif && 'bg-muted text-foreground',
-						)}
-						onClick={basculerContraste}
-						aria-pressed={contrasteActif}
-						aria-label='Contraste renforcé'
-						title={
-							contrasteActif
-								? 'Désactiver le contraste renforcé'
-								: 'Renforcer le contraste'
-						}
-					>
-						<Contrast className='h-5 w-5 tablet:h-6 tablet:w-6' />
-					</Button>
+					{/* ── Thèmes — clair, sombre et trois contrastés (écran jugé trop clair) ── */}
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant='ghost'
+								size='icon'
+								className={cn(
+									'min-h-[44px] min-w-[44px] tablet:min-h-[48px] tablet:min-w-[48px]',
+									theme !== 'clair' && 'bg-muted text-foreground',
+								)}
+								aria-label='Thème'
+								title='Thème'
+							>
+								<Contrast className='h-5 w-5 tablet:h-6 tablet:w-6' />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align='end' className='w-56'>
+							<DropdownMenuLabel>Thème</DropdownMenuLabel>
+							<DropdownMenuSeparator />
+							{THEMES.map((t) => (
+								<DropdownMenuItem
+									key={t.id}
+									onClick={() => setTheme(t.id)}
+									className='gap-2'
+								>
+									<span
+										className='h-4 w-4 shrink-0 rounded-full border border-border'
+										style={{ backgroundColor: t.pastille }}
+									/>
+									<span className='flex-1'>{t.label}</span>
+									{theme === t.id && <Check className='h-4 w-4' />}
+								</DropdownMenuItem>
+							))}
+						</DropdownMenuContent>
+					</DropdownMenu>
 
 					{/* ── Stock alert — produits au seuil de stock minimum ───────────── */}
 					<DropdownMenu>
@@ -593,6 +611,9 @@ export function Header({
 							)}
 						</DropdownMenuContent>
 					</DropdownMenu>
+
+					{/* ── Aide — panneau latéral des nouveautés ─────────────────────── */}
+					<HelpPanel />
 
 					{/* ── Avatar utilisateur ────────────────────────────────────────── */}
 					<DropdownMenu>

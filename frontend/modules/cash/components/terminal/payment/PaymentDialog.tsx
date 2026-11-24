@@ -200,7 +200,7 @@ export function PaymentDialog({
 								return (
 									<div
 										key={`entry-${i}-${entry.method.id}`}
-										className='flex items-center gap-2 rounded-md border bg-slate-50 px-3 py-2'
+										className='flex items-center gap-2 rounded-md border bg-muted px-3 py-2'
 									>
 										<div
 											className='flex h-8 w-8 flex-shrink-0 items-center justify-center rounded'
@@ -360,7 +360,7 @@ export function PaymentDialog({
 
 									{/* Monnaie à rendre si espèces */}
 									{pendingIsCash && cashChange > 0 && (
-										<div className='flex items-center justify-between rounded-lg bg-slate-100 px-3 py-2'>
+										<div className='flex items-center justify-between rounded-lg bg-muted px-3 py-2'>
 											<span className='text-sm text-muted-foreground'>
 												Monnaie à rendre
 											</span>
@@ -543,7 +543,7 @@ export function PaymentDialogContent({
 							return (
 								<div
 									key={`entry-${i}-${entry.method.id}`}
-									className='flex items-center gap-2 rounded-md border bg-slate-50 px-3 py-2'
+									className='flex items-center gap-2 rounded-md border bg-muted px-3 py-2'
 								>
 									<div
 										className='flex h-8 w-8 flex-shrink-0 items-center justify-center rounded'
@@ -690,7 +690,7 @@ export function PaymentDialogContent({
 									)}
 								</div>
 								{pendingIsCash && cashChange > 0 && (
-									<div className='flex items-center justify-between rounded-lg bg-slate-100 px-3 py-2'>
+									<div className='flex items-center justify-between rounded-lg bg-muted px-3 py-2'>
 										<span className='text-sm text-muted-foreground'>
 											Monnaie à rendre
 										</span>

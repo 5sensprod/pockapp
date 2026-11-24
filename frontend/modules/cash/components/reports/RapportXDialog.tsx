@@ -264,7 +264,7 @@ function EreportingBlock({ rapport }: { rapport: RapportX }) {
 	if (!hasB2C && !hasB2B) return null
 
 	return (
-		<div className='rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3'>
+		<div className='rounded-lg border border-border bg-accent p-4 space-y-3'>
 			<div className='flex items-center gap-2'>
 				<FileText className='h-4 w-4 text-blue-600' />
 				<p className='text-sm font-medium text-blue-900'>
@@ -274,7 +274,7 @@ function EreportingBlock({ rapport }: { rapport: RapportX }) {
 
 			<div className='grid grid-cols-2 gap-3'>
 				{hasB2C && (
-					<div className='bg-white rounded-md p-3 border border-blue-100'>
+					<div className='bg-card rounded-md p-3 border border-border'>
 						<div className='flex items-center gap-1.5 mb-2'>
 							<Badge
 								variant='outline'
@@ -295,7 +295,7 @@ function EreportingBlock({ rapport }: { rapport: RapportX }) {
 					</div>
 				)}
 				{hasB2B && (
-					<div className='bg-white rounded-md p-3 border border-blue-100'>
+					<div className='bg-card rounded-md p-3 border border-border'>
 						<div className='flex items-center gap-1.5 mb-2'>
 							<Badge
 								variant='outline'

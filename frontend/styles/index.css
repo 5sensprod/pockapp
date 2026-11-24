@@ -64,26 +64,72 @@
 }
 
 /*
- * Contraste renforcé (bouton de l'en-tête) : fond moins éclatant, texte plus
- * sombre, bordures et textes secondaires plus marqués. Posé APRÈS :root pour
- * l'emporter ; sans effet en mode `.dark`.
+ * Thèmes contrastés (menu de thèmes de l’en-tête) : fond gris moyen, texte
+ * quasi noir, bordures marquées, `--primary` à la couleur dominante. Un thème =
+ * une classe `theme-*` sur <html> (voir `lib/hooks/useTheme.ts`). Posés APRÈS
+ * :root pour l’emporter ; sans effet en mode `.dark`.
+ * Ratios mesurés (WCAG) : texte/fond ≥ 12,6 ; texte secondaire/muted ≥ 7 ;
+ * texte du bouton primaire/primary ≥ 9,2.
  */
 @layer base {
-  :root.contrast:not(.dark) {
-    --background: 220 16% 88%;
-    --foreground: 222 70% 9%;
-    --card: 220 20% 95%;
-    --card-foreground: 222 70% 9%;
-    --popover: 220 20% 96%;
-    --popover-foreground: 222 70% 9%;
-    --secondary: 220 20% 84%;
-    --secondary-foreground: 222 70% 9%;
-    --muted: 220 16% 80%;
-    --muted-foreground: 220 30% 24%;
-    --accent: 220 20% 82%;
-    --accent-foreground: 222 70% 9%;
-    --border: 220 25% 62%;
-    --input: 220 25% 62%;
+  :root.theme-indigo:not(.dark) {
+    --background: 230 14% 86%;
+    --foreground: 230 70% 8%;
+    --card: 230 18% 93%;
+    --card-foreground: 230 70% 8%;
+    --popover: 230 18% 93%;
+    --popover-foreground: 230 70% 8%;
+    --primary: 244 55% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 230 16% 79%;
+    --secondary-foreground: 230 70% 8%;
+    --muted: 230 16% 79%;
+    --muted-foreground: 230 35% 22%;
+    --accent: 230 18% 81%;
+    --accent-foreground: 230 70% 8%;
+    --border: 230 20% 60%;
+    --input: 230 20% 60%;
+    --ring: 244 55% 30%;
+  }
+
+  :root.theme-bleu:not(.dark) {
+    --background: 212 22% 85%;
+    --foreground: 215 75% 8%;
+    --card: 212 26% 92%;
+    --card-foreground: 215 75% 8%;
+    --popover: 212 26% 92%;
+    --popover-foreground: 215 75% 8%;
+    --primary: 215 80% 28%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 212 22% 78%;
+    --secondary-foreground: 215 75% 8%;
+    --muted: 212 22% 78%;
+    --muted-foreground: 215 45% 20%;
+    --accent: 212 24% 80%;
+    --accent-foreground: 215 75% 8%;
+    --border: 212 28% 58%;
+    --input: 212 28% 58%;
+    --ring: 215 80% 28%;
+  }
+
+  :root.theme-vert:not(.dark) {
+    --background: 140 12% 84%;
+    --foreground: 150 50% 7%;
+    --card: 140 14% 91%;
+    --card-foreground: 150 50% 7%;
+    --popover: 140 14% 91%;
+    --popover-foreground: 150 50% 7%;
+    --primary: 152 60% 20%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 140 12% 77%;
+    --secondary-foreground: 150 50% 7%;
+    --muted: 140 12% 77%;
+    --muted-foreground: 150 35% 18%;
+    --accent: 140 14% 79%;
+    --accent-foreground: 150 50% 7%;
+    --border: 140 18% 56%;
+    --input: 140 18% 56%;
+    --ring: 152 60% 20%;
   }
 }
 

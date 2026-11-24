@@ -176,7 +176,7 @@ export function PaymentMethodsManager({
 							<div
 								key={method.id}
 								className={`flex items-center justify-between rounded-md border p-3 ${
-									method.enabled ? 'bg-slate-50' : 'bg-slate-50/50 opacity-60'
+									method.enabled ? 'bg-muted' : 'bg-muted/50 opacity-60'
 								}`}
 							>
 								<div className='flex items-center gap-3'>
@@ -276,7 +276,7 @@ export function PaymentMethodsManager({
 					{showAddForm && (
 						<form
 							onSubmit={handleSubmit}
-							className='space-y-4 rounded-lg border p-4 bg-slate-50'
+							className='space-y-4 rounded-lg border p-4 bg-muted'
 						>
 							<div className='flex items-center justify-between'>
 								<h3 className='font-medium'>

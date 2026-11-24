@@ -216,7 +216,7 @@ export function RapportZPage() {
 										<Label htmlFor='register'>Caisse</Label>
 										<select
 											id='register'
-											className='w-full h-10 rounded-md border bg-white px-3 text-sm'
+											className='w-full h-10 rounded-md border bg-background px-3 text-sm'
 											value={selectedRegisterId ?? ''}
 											onChange={(e) => {
 												setSelectedRegisterId(e.target.value)
@@ -353,7 +353,7 @@ export function RapportZPage() {
 											{zReportsList.map((z) => (
 												<TableRow
 													key={z.id}
-													className='cursor-pointer hover:bg-slate-50'
+													className='cursor-pointer hover:bg-muted'
 													onClick={() => {
 														setSelectedDate(z.date.split('T')[0])
 														setShouldGenerate(true)
@@ -485,7 +485,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 					</div>
 				</CardHeader>
 				<CardContent>
-					<div className='flex items-center gap-2 text-xs text-muted-foreground font-mono bg-slate-50 p-2 rounded'>
+					<div className='flex items-center gap-2 text-xs text-muted-foreground font-mono bg-muted p-2 rounded'>
 						<Hash className='h-3 w-3' />
 						<span className='truncate'>{rapport.hash}</span>
 					</div>
@@ -830,7 +830,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 
 			{/* Bloc e-reporting */}
 			{ereporting && (ereporting.b2c.count > 0 || ereporting.b2b.count > 0) && (
-				<Card className='border-blue-200 bg-blue-50'>
+				<Card className='border-border bg-accent'>
 					<CardContent className='pt-6'>
 						<div className='flex items-center gap-2 mb-4'>
 							<FileText className='h-4 w-4 text-blue-600' />
@@ -840,7 +840,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 						</div>
 						<div className='grid grid-cols-2 gap-3'>
 							{ereporting.b2c.count > 0 && (
-								<div className='bg-white rounded-md p-3 border border-blue-100'>
+								<div className='bg-card rounded-md p-3 border border-border'>
 									<div className='flex items-center gap-1.5 mb-2'>
 										<Badge
 											variant='outline'
@@ -862,7 +862,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 								</div>
 							)}
 							{ereporting.b2b.count > 0 && (
-								<div className='bg-white rounded-md p-3 border border-blue-100'>
+								<div className='bg-card rounded-md p-3 border border-border'>
 									<div className='flex items-center gap-1.5 mb-2'>
 										<Badge
 											variant='outline'
@@ -1006,7 +1006,7 @@ function RapportZDisplay({ rapport }: { rapport: RapportZ }) {
 									{/* Espèces session — même contrat que le bloc global : le
 								    tiroir sort du Z. */}
 									{!sansTiroir && (
-										<div className='grid grid-cols-4 gap-3 text-sm bg-slate-50 p-3 rounded'>
+										<div className='grid grid-cols-4 gap-3 text-sm bg-muted p-3 rounded'>
 											<div>
 												<div className='text-xs text-muted-foreground'>
 													Fond de caisse
