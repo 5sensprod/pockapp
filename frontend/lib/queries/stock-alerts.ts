@@ -15,6 +15,7 @@
 // La clé commence par `catalog-products`, donc le temps réel du catalogue et
 // `invalidateCatalog` la périment sans rien ajouter.
 
+import { CLAUSE_ALERTE_STOCK } from '@/lib/queries/catalog-products'
 import { usePocketBase } from '@/lib/use-pocketbase'
 import { useQuery } from '@tanstack/react-query'
 
@@ -42,10 +43,9 @@ export function useStockAlerts(companyId?: string) {
 		enabled: !!companyId,
 		staleTime: 60_000,
 		queryFn: async () => {
-			const filter = pb.filter(
-				"company = {:company} && type != 'service' && min_stock > 0 && stock <= min_stock",
-				{ company: companyId },
-			)
+			const filter = `${pb.filter('company = {:company}', {
+				company: companyId,
+			})} && ${CLAUSE_ALERTE_STOCK}`
 			const result = await pb.collection('products').getList(1, MAX_AFFICHES, {
 				filter,
 				fields: 'id,name,designation,sku,stock,min_stock',

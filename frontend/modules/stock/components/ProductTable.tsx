@@ -759,6 +759,13 @@ export function ProductTable({
 					// Un B négatif s'affiche aussi — c'est une information.
 					const stockB = Number(row.original.stock_b ?? 0)
 					const prixB = prixStockB(row.original)
+					// Même règle que `CLAUSE_ALERTE_STOCK` (bouton « Stock alert »).
+					const seuil = Number(row.original.min_stock ?? 0)
+					const enAlerte =
+						stock != null &&
+						seuil > 0 &&
+						stock <= seuil &&
+						row.original.type !== 'service'
 
 					return (
 						<div className='flex flex-col items-start gap-0.5'>
@@ -766,7 +773,17 @@ export function ProductTable({
 								<span className='text-muted-foreground'>-</span>
 							) : (
 								<Badge
-									className='min-w-6 justify-center px-1.5 py-0.5 tabular-nums'
+									className={cn(
+										'min-w-6 justify-center px-1.5 py-0.5 tabular-nums',
+										// Alerte de stock minimum : entouré d'orange. À 0 le
+										// badge reste rouge, comme avant.
+										stock > 0 &&
+											enAlerte &&
+											'bg-orange-100 text-orange-800 ring-2 ring-orange-500 hover:bg-orange-100',
+									)}
+									title={
+										enAlerte ? `Alerte : stock minimum ${seuil}` : undefined
+									}
 									variant={
 										stock > 10
 											? 'default'

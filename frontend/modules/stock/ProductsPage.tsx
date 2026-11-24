@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/popover'
 import { ResizableExplorerHandle } from '@/components/ui/resizable-explorer-handle'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
+import type { CriteresAssistant } from '@/lib/catalog/assistant-catalogue'
 import { dire } from '@/lib/catalog/publication-requirements'
 import { useResizableExplorer } from '@/lib/hooks/useResizableExplorer'
 import { useBrands } from '@/lib/queries/brands'
@@ -93,6 +94,7 @@ import { toast } from 'sonner'
 
 import { useEtatPersistant } from '@/lib/hooks/useEtatPersistant'
 
+import { AssistantCatalogue } from './components/AssistantCatalogue'
 import { CatalogProductDialog } from './components/CatalogProductDialog'
 import {
 	DeleteProductDialog,
@@ -147,6 +149,11 @@ const estEtatCommercialValide = (valeur: unknown) =>
 	(typeof valeur === 'string' && valeur in COMMERCIAL_STATE_LABELS)
 const estEtatVenteValide = (valeur: unknown) =>
 	valeur === '' || (typeof valeur === 'string' && valeur in SALE_STATE_LABELS)
+const estPrixValide = (valeur: unknown) =>
+	valeur === null ||
+	(typeof valeur === 'number' && Number.isFinite(valeur) && valeur >= 0)
+const prixEnEuros = (valeur: number) =>
+	`${valeur.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} €`
 const estTriValide = (valeur: unknown) =>
 	Array.isArray(valeur) &&
 	valeur.every(
@@ -221,6 +228,11 @@ export function ProductsPage() {
 		false,
 		estBooleen,
 	)
+	const [stockAlert, setStockAlert] = useEtatPersistant(
+		'stock-produits-alerte-stock',
+		false,
+		estBooleen,
+	)
 	const [withStockB, setWithStockB] = useEtatPersistant(
 		'stock-produits-avec-stock-b',
 		false,
@@ -237,6 +249,19 @@ export function ProductsPage() {
 	const [saleState, setSaleState] = useEtatPersistant<
 		CatalogSaleStateFilter | ''
 	>('stock-produits-etat-vente', '', estEtatVenteValide)
+	// Les bornes du prix de vente TTC. Posées par l'assistant du catalogue
+	// (6 octobre 2026) ; le panneau « Filtres » n'a pas encore de champ pour
+	// elles, mais leur tag se retire comme les autres.
+	const [priceMin, setPriceMin] = useEtatPersistant<number | null>(
+		'stock-produits-prix-min',
+		null,
+		estPrixValide,
+	)
+	const [priceMax, setPriceMax] = useEtatPersistant<number | null>(
+		'stock-produits-prix-max',
+		null,
+		estPrixValide,
+	)
 	const [sorting, setSorting] = useEtatPersistant<SortingState>(
 		'stock-produits-tri',
 		[{ id: 'created', desc: true }],
@@ -303,6 +328,8 @@ export function ProductsPage() {
 		setFeatured(false)
 		setCommercialState('')
 		setSaleState('')
+		setPriceMin(null)
+		setPriceMax(null)
 		setPage(1)
 		// Les setters de `useEtatPersistant` sont ceux de `useState` : stables
 		// pour la vie du composant. Ils sont listés parce que le linter ne les
@@ -320,6 +347,8 @@ export function ProductsPage() {
 		setFeatured,
 		setCommercialState,
 		setSaleState,
+		setPriceMin,
+		setPriceMax,
 		setPage,
 	])
 
@@ -408,10 +437,13 @@ export function ProductsPage() {
 			missingDescription,
 			missingPurchasePrice,
 			emptyStock,
+			stockAlert,
 			withStockB,
 			featured,
 			commercialState: commercialState || undefined,
 			saleState: saleState || undefined,
+			priceMin: priceMin ?? undefined,
+			priceMax: priceMax ?? undefined,
 			sort: toCatalogSort(sorting),
 		}),
 		[
@@ -427,10 +459,13 @@ export function ProductsPage() {
 			missingDescription,
 			missingPurchasePrice,
 			emptyStock,
+			stockAlert,
 			withStockB,
 			featured,
 			commercialState,
 			saleState,
+			priceMin,
+			priceMax,
 			sorting,
 		],
 	)
@@ -728,6 +763,16 @@ export function ProductsPage() {
 			},
 		})
 	}
+	if (stockAlert) {
+		activeFilterTags.push({
+			key: 'stock-alert',
+			label: 'Alerte stock',
+			clear: () => {
+				setStockAlert(false)
+				setPage(1)
+			},
+		})
+	}
 	if (withStockB) {
 		activeFilterTags.push({
 			key: 'with-stock-b',
@@ -768,6 +813,22 @@ export function ProductsPage() {
 			},
 		})
 	}
+	if (priceMin !== null || priceMax !== null) {
+		activeFilterTags.push({
+			key: 'price',
+			label:
+				priceMin !== null && priceMax !== null
+					? `${prixEnEuros(priceMin)} – ${prixEnEuros(priceMax)}`
+					: priceMin !== null
+						? `Dès ${prixEnEuros(priceMin)}`
+						: `Jusqu’à ${prixEnEuros(priceMax as number)}`,
+			clear: () => {
+				setPriceMin(null)
+				setPriceMax(null)
+				setPage(1)
+			},
+		})
+	}
 	const filterCount = activeFilterTags.length
 	const filtresActifs = filterCount > 0
 	const clearFilters = () => {
@@ -783,7 +844,94 @@ export function ProductsPage() {
 		setFeatured(false)
 		setCommercialState('')
 		setSaleState('')
+		setPriceMin(null)
+		setPriceMax(null)
 		setPage(1)
+	}
+
+	// ── L'ASSISTANT DU CATALOGUE (6 octobre 2026) ────────────────────────────
+	// Il ne filtre rien lui-même : il rend des critères, et c'est CET écran qui
+	// les pose, par les setters que le vendeur actionne à la main. La liste
+	// passe ensuite par `catalogQuery` et `buildCatalogProductsFilter`, comme
+	// toujours. Ses critères REMPLACENT tout ce qui était posé — recherche,
+	// filtres et statut — pour que le nombre qu'il annonce soit celui de la
+	// liste ; l'instantané pris juste avant permet d'annuler.
+	const instantaneDesFiltres = () => ({
+		search,
+		status,
+		brandId,
+		categoryId,
+		supplierId,
+		missingImage,
+		missingDescription,
+		missingPurchasePrice,
+		emptyStock,
+		stockAlert,
+		withStockB,
+		featured,
+		commercialState,
+		saleState,
+		priceMin,
+		priceMax,
+		sorting,
+	})
+	const [avantAssistant, setAvantAssistant] = useState<ReturnType<
+		typeof instantaneDesFiltres
+	> | null>(null)
+	const poserLesFiltres = (f: ReturnType<typeof instantaneDesFiltres>) => {
+		setSearch(f.search)
+		// La recherche est déjà « posée » : pas de détour par l'anti-rebond, qui
+		// afficherait un instant la liste sans elle.
+		setDebounced(f.search)
+		setStatus(f.status)
+		setBrandId(f.brandId)
+		setCategoryId(f.categoryId)
+		setSupplierId(f.supplierId)
+		setMissingImage(f.missingImage)
+		setMissingDescription(f.missingDescription)
+		setMissingPurchasePrice(f.missingPurchasePrice)
+		setEmptyStock(f.emptyStock)
+		setStockAlert(f.stockAlert)
+		setWithStockB(f.withStockB)
+		setFeatured(f.featured)
+		setCommercialState(f.commercialState)
+		setSaleState(f.saleState)
+		setPriceMin(f.priceMin)
+		setPriceMax(f.priceMax)
+		setSorting(f.sorting)
+		setPage(1)
+		setPanneauOuvert(false)
+	}
+	const appliquerCriteresAssistant = (c: CriteresAssistant) => {
+		setAvantAssistant(instantaneDesFiltres())
+		poserLesFiltres({
+			search: c.search,
+			status: c.status || undefined,
+			brandId: c.withoutBrand ? NO_RELATION_FILTER : c.brandId,
+			categoryId: c.withoutCategory ? NO_RELATION_FILTER : c.categoryId,
+			supplierId: '',
+			missingImage: c.missingImage,
+			missingDescription: c.missingDescription,
+			missingPurchasePrice: c.missingPurchasePrice,
+			emptyStock: c.emptyStock,
+			stockAlert: false,
+			withStockB: c.withStockB,
+			featured: c.featured,
+			commercialState: c.commercialState,
+			saleState: c.saleState,
+			priceMin: c.priceMin,
+			priceMax: c.priceMax,
+			// Un tri que la table ne connaît pas ne part pas : l'écran garde le sien
+			sorting:
+				c.sortId && c.sortId in CATALOG_SORT_FIELDS
+					? [{ id: c.sortId, desc: c.sortDesc }]
+					: sorting,
+		})
+	}
+	const annulerAssistant = () => {
+		if (!avantAssistant) return
+		poserLesFiltres(avantAssistant)
+		setAvantAssistant(null)
 	}
 	const searchActive = search.trim().length > 0
 	const listFiltersActive = filtresActifs || status !== undefined
@@ -1038,6 +1186,14 @@ export function ProductsPage() {
 									label='Stock vide ou à 0'
 									count={manques?.stockVide}
 								/>
+								<CompactBooleanFilter
+									checked={stockAlert}
+									onChange={(checked) =>
+										appliquerFiltre(() => setStockAlert(checked))
+									}
+									icon={<AlertTriangle />}
+									label='Alerte stock'
+								/>
 							</div>
 							<div className='my-1 h-px bg-border' />
 							{/* LE STOCK B (11 septembre 2026). Pas un manque : zéro n'y
@@ -1155,6 +1311,13 @@ export function ProductsPage() {
 						</div>
 					)}
 				</div>
+
+				<AssistantCatalogue
+					companyId={activeCompanyId ?? undefined}
+					categories={categories.data ?? []}
+					onFiltrer={appliquerCriteresAssistant}
+					onAnnuler={avantAssistant ? annulerAssistant : undefined}
+				/>
 			</div>
 
 			{/* `lg:grid-rows-[minmax(0,1fr)]` n'est pas décoratif : sans lui la

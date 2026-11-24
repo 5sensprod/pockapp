@@ -31,12 +31,27 @@ export const dansLaPage = (rect, width, height, marge = 0) => {
   return x2 - x >= 1 && y2 - y >= 1 ? { x, y, width: x2 - x, height: y2 - y } : null;
 };
 
+/** Le rectangle qui englobe les calques `ids` du clone, en coordonnées de la page ; null s'il n'y en a aucun. */
+export const cadreDesCalques = (clone, layer, ids) => {
+  const rects = ids
+    .map((id) => clone.findOne(`#${id}`)?.getClientRect({ relativeTo: layer }))
+    .filter((r) => r && r.width > 0 && r.height > 0);
+  if (!rects.length) return null;
+  const x = Math.min(...rects.map((r) => r.x));
+  const y = Math.min(...rects.map((r) => r.y));
+  const x2 = Math.max(...rects.map((r) => r.x + r.width));
+  const y2 = Math.max(...rects.map((r) => r.y + r.height));
+  return { x, y, width: x2 - x, height: y2 - y };
+};
+
 /**
  * `fond` : la couleur sous la page, ou null pour un fond TRANSPARENT.
- * `cadrer` : l'`id` d'un calque — l'image est alors rognée sur lui (ce qui en
- * tient dans la page), et `coteMax` vaut pour ce cadre.
+ * `cadrer` : l'`id` d'un calque, ou une liste d'`id` — l'image est alors
+ * rognée sur eux (ce qui en tient dans la page), et `coteMax` vaut pour ce
+ * cadre. `pixelRatio` : une résolution FIXE (export de la sélection à 300 dpi),
+ * à la place de `coteMax`.
  */
-export async function rendrePage(docNode, { width, height, coteMax = 2048, masques = [], fond = '#ffffff', cadrer = null, surZone = null } = {}) {
+export async function rendrePage(docNode, { width, height, coteMax = 2048, pixelRatio: ratioFixe = null, masques = [], fond = '#ffffff', cadrer = null, surZone = null } = {}) {
   if (!docNode || !(width > 0) || !(height > 0)) throw new Error("La page n'est pas disponible.");
 
   const clone = docNode.clone({ x: 0, y: 0, scaleX: 1, scaleY: 1 });
@@ -51,12 +66,12 @@ export async function rendrePage(docNode, { width, height, coteMax = 2048, masqu
     layer.add(clone);
     let zone = { x: 0, y: 0, width, height };
     if (cadrer) {
-      zone = dansLaPage(clone.findOne(`#${cadrer}`)?.getClientRect({ relativeTo: layer }), width, height, 2);
+      zone = dansLaPage(cadreDesCalques(clone, layer, [cadrer].flat()), width, height, 2);
       if (!zone) throw new Error("Cet élément n'a rien de visible sur la page.");
     }
     // Le cadre rendu, en coordonnées de la page : le calque retouché revient exactement là
     surZone?.(zone);
-    const pixelRatio = echelleDeRendu(zone.width, zone.height, coteMax);
+    const pixelRatio = ratioFixe ?? echelleDeRendu(zone.width, zone.height, coteMax);
     // Comme l'export : textures puis caches d'effets, à la résolution du rendu
     retexturer(clone, pixelRatio);
     recacherFiltres(clone, pixelRatio);

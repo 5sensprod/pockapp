@@ -478,6 +478,36 @@ Toute nouvelle sortie réseau s'ajoute à cette liste, dans ce fichier.
     `post_facebook_routes_test.go`, `lib/post-facebook.test.ts`,
     `backend/promo/promo_test.go`.
 
+13. **Assistant du catalogue** (PocketStock, `/stock/produits`, 6 octobre 2026,
+    [`06-assistant-catalogue.md`](frontend/modules/stock/PocketStock-docs/06-assistant-catalogue.md)) —
+    `backend/routes/assistant_catalogue_routes.go`, route locale
+    `POST /api/assistant/catalogue` (session) — vers
+    `https://generativelanguage.googleapis.com` (point 6 : même modèle
+    `gemini-3.1-flash-lite`, même clé dans le processus Go, en-tête
+    `x-goog-api-key`, jetons déclarés à `usage.php`). ⚠️ **Nouvelle sortie de
+    contenu vers Google** : la **demande du vendeur** (500 caractères), les
+    demandes précédentes de la conversation (8 tours), les réglages posés au
+    tour précédent **avec le nom de la marque et de la catégorie**, et, après
+    une question d'ambiguïté, **les 5 noms candidats** qu'elle cite. **Rien
+    d'autre du catalogue ne part** : ni produit, ni prix, ni stock, ni décompte,
+    ni fournisseur, ni prix d'achat — le modèle ne reçoit JAMAIS un résultat.
+    Il traduit la demande en **réglages des filtres de l'écran** par un outil du
+    **registre** (`backend/assistant/` : nom, schéma, niveau ; seul le niveau
+    `lecture` s'enregistre et s'exécute, `ecriture` et `envoi` sont prévus avec
+    confirmation et **refusés tant qu'elle n'est pas codée**). Le Go valide les
+    arguments (champ inconnu ou valeur hors liste : refus sans lire la base) et
+    résout marque et catégorie (`assistant_resolution.go`) : plusieurs
+    correspondances → une QUESTION, **jamais un choix** ; aucune → c'est dit.
+    **C'est l'écran qui filtre et qui compte**, par `buildCatalogProductsFilter`
+    et le `totalItems` de la liste : **ne pas écrire un second filtre ni un
+    second décompte en Go**, et le modèle ne dit aucun nombre (une phrase qui en
+    porte un inconnu est remplacée). L'entreprise est celle de l'écran, vérifiée
+    existante, comme `GET /api/catalog/counts`. La conversation vit dans la
+    mémoire du composant ; ni la demande ni la réponse ne sont journalisées.
+    Gardiens : `assistant_catalogue_routes_test.go`,
+    `backend/assistant/registre_test.go`,
+    `frontend/lib/catalog/assistant-catalogue.test.ts`.
+
 ## Commandes
 
 ```bash

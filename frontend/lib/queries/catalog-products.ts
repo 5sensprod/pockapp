@@ -216,12 +216,19 @@ export type CatalogProductQuery = {
 	missingDescription?: boolean
 	missingPurchasePrice?: boolean
 	emptyStock?: boolean
+	/** Seulement les produits au seuil de leur stock minimum (`CLAUSE_ALERTE_STOCK`). */
+	stockAlert?: boolean
 	withStockB?: boolean
 	/** Les seules fiches en vitrine. Troisième axe, indépendant des deux
 	 *  sélecteurs ci-dessous : une occasion soldée peut être un coup de cœur. */
 	featured?: boolean
 	commercialState?: CatalogCommercialStateFilter
 	saleState?: CatalogSaleStateFilter
+	/** Bornes du PRIX DE VENTE TTC (`price_ttc`), incluses — pas du prix promo
+	 *  en vigueur : un article à 520 € en promotion à 480 € n'entre pas dans
+	 *  « jusqu'à 500 € ». `undefined` = pas de borne ; 0 est une borne. */
+	priceMin?: number
+	priceMax?: number
 	sort?: string
 }
 
@@ -243,6 +250,15 @@ export const CLAUSES_MANQUE = {
 	prixAchat: 'purchase_price_ht = 0',
 	stock: 'stock = 0',
 } as const
+
+/**
+ * L'ALERTE DE STOCK MINIMUM, ÉCRITE UNE FOIS — lue par le filtre « Alerte
+ * stock » de la liste ET par le bouton « Stock alert » de l'en-tête
+ * (`stock-alerts.ts`), pour qu'ils annoncent la même liste. Seuil à 0 = pas de
+ * seuil ; un service n'a pas de stock ; le Stock B n'entre pas.
+ */
+export const CLAUSE_ALERTE_STOCK =
+	"type != 'service' && min_stock > 0 && stock <= min_stock"
 
 /**
  * LE STOCK B, ÉCRIT UNE FOIS — pour la même raison que les manques, dont il ne
@@ -291,10 +307,13 @@ export function buildCatalogProductsFilter(
 		missingDescription,
 		missingPurchasePrice,
 		emptyStock,
+		stockAlert,
 		withStockB,
 		featured,
 		commercialState,
 		saleState,
+		priceMin,
+		priceMax,
 	} = query
 	const clauses: string[] = []
 
@@ -327,6 +346,7 @@ export function buildCatalogProductsFilter(
 	if (missingDescription) clauses.push(CLAUSES_MANQUE.description)
 	if (missingPurchasePrice) clauses.push(CLAUSES_MANQUE.prixAchat)
 	if (emptyStock) clauses.push(CLAUSES_MANQUE.stock)
+	if (stockAlert) clauses.push(CLAUSE_ALERTE_STOCK)
 	if (withStockB) clauses.push(CLAUSES_STOCK_B.avec)
 	if (featured) clauses.push(CLAUSES_MISE_EN_AVANT.oui)
 	if (commercialState === 'new') {
@@ -342,6 +362,12 @@ export function buildCatalogProductsFilter(
 		clauses.push("sale_state = ''")
 	} else if (saleState) {
 		clauses.push(pb.filter('sale_state = {:saleState}', { saleState }))
+	}
+	if (typeof priceMin === 'number' && Number.isFinite(priceMin)) {
+		clauses.push(pb.filter('price_ttc >= {:priceMin}', { priceMin }))
+	}
+	if (typeof priceMax === 'number' && Number.isFinite(priceMax)) {
+		clauses.push(pb.filter('price_ttc <= {:priceMax}', { priceMax }))
 	}
 
 	// ── LA RECHERCHE (24 septembre 2026) ─────────────────────────────────────
@@ -435,9 +461,13 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 		missingDescription,
 		missingPurchasePrice,
 		emptyStock,
+		stockAlert,
 		withStockB,
+		featured,
 		commercialState,
 		saleState,
+		priceMin,
+		priceMax,
 		sort,
 	} = query
 
@@ -459,9 +489,16 @@ export function useCatalogProducts(query: CatalogProductQuery) {
 			missingDescription,
 			missingPurchasePrice,
 			emptyStock,
+			stockAlert,
 			withStockB,
+			// `featured` a manqué à cette clé jusqu'au 6 octobre 2026 : cocher
+			// « Mis en avant » seul ne relançait pas la lecture. Tout champ lu par
+			// `buildCatalogProductsFilter` doit être ici.
+			featured,
 			commercialState,
 			saleState,
+			priceMin,
+			priceMax,
 			sort,
 		],
 		// Sans cela, changer de page vide la table le temps de la requête et la

@@ -34,6 +34,10 @@ export interface StockProductRow {
 	/** Le second compteur. La table l'affiche sous le stock neuf. */
 	stock_b?: number | null
 	stock_b_price_ttc?: number | null
+	/** Seuil d'alerte de stock (0 = pas de seuil) et type de fiche : la table
+	 *  entoure d'orange le stock d'un produit au seuil (`CLAUSE_ALERTE_STOCK`). */
+	min_stock?: number | null
+	type?: string | null
 	/** Ce que `prixPromoActif` lit pour décider du prix barré. La ligne porte
 	 *  les champs BRUTS : la règle se juge dans la table, avec le jour du
 	 *  serveur, jamais ici. */
@@ -86,6 +90,8 @@ export function toStockRow(
 		stock: product.stock,
 		stock_b: product.stock_b,
 		stock_b_price_ttc: product.stock_b_price_ttc,
+		min_stock: product.min_stock,
+		type: product.type,
 		sale_state: product.sale_state,
 		commercial_state: product.commercial_state,
 		featured: product.featured,

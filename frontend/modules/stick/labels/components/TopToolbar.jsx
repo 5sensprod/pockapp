@@ -1,9 +1,18 @@
 // src/features/labels/components/TopToolbar.jsx
-import React, { useEffect } from 'react';
-import { Undo, Redo, Download, Plus, Save } from 'lucide-react';
-import useLabelStore from '../store/useLabelStore';
+import React, { useEffect, useRef, useState } from 'react';
+import { Undo, Redo, Download, Plus, Save, ChevronDown, Loader2 } from 'lucide-react';
+import useLabelStore, { idsSelectionnes } from '../store/useLabelStore';
 import { exporterTirage } from '../utils/exportTirage';
+import { enregistrerFichier, selectionEnPng, selectionEnSvg } from '../utils/exportSelection';
+import { useActionToasts } from '../ui/useActionToasts';
 import JaugeDetourage from './ui/JaugeDetourage';
+
+const FORMATS_SELECTION = [
+  { id: 'svg', titre: 'SVG vectoriel', detail: 'Textes et formes en vecteurs, images à 300 dpi' },
+  { id: 'png', titre: 'PNG 300 dpi', detail: 'Image transparente, 300 dpi déclarés' },
+];
+
+const nomDeFichier = (nom) => `${String(nom || 'selection').replace(/[\\/:*?"<>|]+/g, '_').trim() || 'selection'}-selection`;
 
 const TopToolbar = ({
   dataSource,
@@ -19,6 +28,20 @@ const TopToolbar = ({
   const canUndo = useLabelStore((s) => s.canUndo);
   const canRedo = useLabelStore((s) => s.canRedo);
   const currentTemplateName = useLabelStore((s) => s.currentTemplateName);
+  const nbSelection = useLabelStore((s) => idsSelectionnes(s).length);
+  const toasts = useActionToasts();
+  const [menuSelection, setMenuSelection] = useState(false);
+  const [exportEnCours, setExportEnCours] = useState(false);
+  const refMenu = useRef(null);
+
+  useEffect(() => {
+    if (!menuSelection) return undefined;
+    const fermer = (e) => {
+      if (!refMenu.current?.contains(e.target)) setMenuSelection(false);
+    };
+    window.addEventListener('mousedown', fermer);
+    return () => window.removeEventListener('mousedown', fermer);
+  }, [menuSelection]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -41,6 +64,40 @@ const TopToolbar = ({
   // (« Exporter tout (PDF) »). Les deux sont en bleu principal (3 octobre
   // 2026) : une seule couleur d'action — « Nouveau » est devenu secondaire.
   const handleExportPdf = () => exporterTirage(docNode, { pageCourante: true });
+
+  // LA SÉLECTION seule, cadrée sur elle, fond transparent (`utils/exportSelection.js`)
+  const handleExportSelection = async (format) => {
+    setMenuSelection(false);
+    const state = useLabelStore.getState();
+    const ids = idsSelectionnes(state);
+    if (!docNode || !ids.length) return;
+    const args = {
+      width: state.canvasSize.width,
+      height: state.canvasSize.height,
+      ids,
+      toutesIds: state.elements.map((e) => e.id),
+    };
+    const nom = nomDeFichier(state.currentTemplateName);
+    setExportEnCours(true);
+    try {
+      if (format === 'svg') {
+        const { blob, enImage } = await selectionEnSvg(docNode, args);
+        enregistrerFichier(blob, `${nom}.svg`);
+        if (enImage) {
+          toasts.warning(
+            `SVG exporté. ${enImage} élément${enImage > 1 ? 's' : ''} ne se dis${enImage > 1 ? 'ent' : 'ait'} pas en vecteurs (texture, police introuvable…) : posé${enImage > 1 ? 's' : ''} en image à 300 dpi.`
+          );
+        } else toasts.success('SVG exporté.');
+      } else {
+        enregistrerFichier(await selectionEnPng(docNode, args), `${nom}.png`);
+        toasts.success('PNG 300 dpi exporté.');
+      }
+    } catch (e) {
+      toasts.error(`Export de la sélection impossible : ${e?.message || e}`);
+    } finally {
+      setExportEnCours(false);
+    }
+  };
 
 
   return (
@@ -135,6 +192,40 @@ const TopToolbar = ({
         <div className="flex items-center gap-2 shrink-0">
           {/* Détourage ou modification par IA en cours : visible ici quelle que soit la sélection */}
           <JaugeDetourage compact />
+          {nbSelection > 0 && (
+            <div className="relative" ref={refMenu}>
+              <button
+                onClick={() => setMenuSelection((o) => !o)}
+                disabled={!docNode || exportEnCours}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Exporter les éléments sélectionnés, seuls, sur fond transparent"
+                aria-haspopup="menu"
+                aria-expanded={menuSelection}
+              >
+                {exportEnCours ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <span>Exporter la sélection</span>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+              {menuSelection && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-1 w-64 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1 z-30"
+                >
+                  {FORMATS_SELECTION.map((f) => (
+                    <button
+                      key={f.id}
+                      role="menuitem"
+                      onClick={() => handleExportSelection(f.id)}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      <div className="text-sm text-gray-900 dark:text-white">{f.titre}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{f.detail}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <button
             onClick={handleExportPdf}
             disabled={!docNode}
