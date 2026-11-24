@@ -11,6 +11,9 @@ export interface RubriqueAide {
 	titre: string
 	/** Une phrase : ce que c'est. */
 	resume: string
+	/** Nom d'un fichier de `frontend/assets/aide/` (ex. `raccourcis.png`).
+	 *  Absent ou introuvable : la rubrique s'affiche sans capture. */
+	capture?: string
 	/** Où cliquer, étape par étape. */
 	ouCliquer: string[]
 	/** Précisions courtes (règles, limites). */

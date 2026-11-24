@@ -22,7 +22,21 @@ import {
 	type SectionAide,
 } from './help-content'
 
+// Captures d'écran : tous les fichiers de `frontend/assets/aide/`, résolus par
+// leur nom. Un fichier absent ne casse rien — la rubrique n'a simplement pas
+// de capture.
+const CAPTURES = import.meta.glob<string>(
+	'/frontend/assets/aide/*.{png,jpg,jpeg,webp}',
+	{ eager: true, query: '?url', import: 'default' },
+)
+
+function urlCapture(nom?: string): string | undefined {
+	if (!nom) return undefined
+	return CAPTURES[`/frontend/assets/aide/${nom}`]
+}
+
 function Rubrique({ rubrique }: { rubrique: RubriqueAide }) {
+	const capture = urlCapture(rubrique.capture)
 	const [ouverte, setOuverte] = useState(false)
 	return (
 		<div className='rounded-md border bg-card'>
@@ -43,6 +57,14 @@ function Rubrique({ rubrique }: { rubrique: RubriqueAide }) {
 			{ouverte && (
 				<div className='space-y-2 border-t px-3 py-2 text-sm'>
 					<p>{rubrique.resume}</p>
+					{capture && (
+						<img
+							src={capture}
+							alt={`Capture : ${rubrique.titre}`}
+							loading='lazy'
+							className='w-full rounded-md border'
+						/>
+					)}
 					<div>
 						<p className='font-medium text-muted-foreground text-xs uppercase'>
 							Où cliquer

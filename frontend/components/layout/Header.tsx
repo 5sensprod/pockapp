@@ -43,6 +43,10 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { QuickActions } from '@/components/layout/QuickActions'
+import {
+	EVENEMENT_CATALOGUE_EN_ALERTE,
+	preparerCatalogueEnAlerte,
+} from '@/modules/stock/lib/alertes-stock'
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { usePocketAppCredits } from '@/lib/credits'
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
@@ -377,7 +381,23 @@ export function Header({
 
 							<DropdownMenuSeparator />
 							<DropdownMenuItem asChild>
-								<Link to='/stock/produits'>Ouvrir le catalogue</Link>
+								<Link
+									to='/stock/produits'
+									// Ouvre le catalogue DÉJÀ filtré sur les produits en alerte, les
+									// autres filtres remis à zéro. Déjà sur la page : son état est en
+									// mémoire, on le lui dit par un événement, sans rechargement.
+									onClick={(e) => {
+										preparerCatalogueEnAlerte()
+										if (window.location.pathname === '/stock/produits') {
+											e.preventDefault()
+											window.dispatchEvent(
+												new Event(EVENEMENT_CATALOGUE_EN_ALERTE),
+											)
+										}
+									}}
+								>
+									Voir les produits en alerte
+								</Link>
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>

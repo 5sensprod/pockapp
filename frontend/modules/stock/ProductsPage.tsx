@@ -91,6 +91,7 @@ import {
 	useState,
 } from 'react'
 import { toast } from 'sonner'
+import { EVENEMENT_CATALOGUE_EN_ALERTE } from './lib/alertes-stock'
 
 import { useEtatPersistant } from '@/lib/hooks/useEtatPersistant'
 
@@ -902,6 +903,40 @@ export function ProductsPage() {
 		setPage(1)
 		setPanneauOuvert(false)
 	}
+	// « Voir les produits en alerte » du bouton Stock alert, quand la page est
+	// DÉJÀ ouverte : l'état est en mémoire, on le pose ici sans recharger.
+	// Depuis une autre page, `preparerCatalogueEnAlerte` l'écrit avant l'arrivée.
+	const etatCourantRef = useRef({ instantaneDesFiltres, poserLesFiltres })
+	etatCourantRef.current = { instantaneDesFiltres, poserLesFiltres }
+	useEffect(() => {
+		const surAlerte = () => {
+			const { instantaneDesFiltres: lire, poserLesFiltres: poser } =
+				etatCourantRef.current
+			poser({
+				...lire(),
+				search: '',
+				status: undefined,
+				brandId: '',
+				categoryId: '',
+				supplierId: '',
+				missingImage: false,
+				missingDescription: false,
+				missingPurchasePrice: false,
+				emptyStock: false,
+				stockAlert: true,
+				withStockB: false,
+				featured: false,
+				commercialState: '',
+				saleState: '',
+				priceMin: null,
+				priceMax: null,
+			})
+		}
+		window.addEventListener(EVENEMENT_CATALOGUE_EN_ALERTE, surAlerte)
+		return () =>
+			window.removeEventListener(EVENEMENT_CATALOGUE_EN_ALERTE, surAlerte)
+	}, [])
+
 	const appliquerCriteresAssistant = (c: CriteresAssistant) => {
 		setAvantAssistant(instantaneDesFiltres())
 		poserLesFiltres({

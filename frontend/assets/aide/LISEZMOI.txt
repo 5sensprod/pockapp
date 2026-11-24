@@ -1,0 +1,1 @@
+Captures du panneau d aide : un fichier par rubrique, nomme dans help-content.ts (champ capture).
