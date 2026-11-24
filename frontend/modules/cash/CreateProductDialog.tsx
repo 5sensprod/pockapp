@@ -39,11 +39,20 @@ interface CreateProductDialogProps {
 	initialBarcode?: string
 	initialName?: string // 🆕 Pré-remplit la DÉSIGNATION (le nom du ticket)
 	onProductCreated?: (product: any) => void
+	/** Texte du bouton de validation. Défaut : la caisse (« au panier ») ;
+	 *  un document passe son propre libellé — un bon de commande n'a pas de panier. */
+	submitLabel?: string
 }
 
 export function CreateProductDialog(props: CreateProductDialogProps) {
-	const { open, onOpenChange, initialBarcode, initialName, onProductCreated } =
-		props
+	const {
+		open,
+		onOpenChange,
+		initialBarcode,
+		initialName,
+		onProductCreated,
+		submitLabel = 'Créer et ajouter au panier',
+	} = props
 
 	type QuickProductForm = {
 		name: string
@@ -311,6 +320,28 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 						</div>
 					</div>
 
+					{/* Stock minimum : alimente le bouton « Stock alert » de l'en-tête */}
+					<div className='space-y-2'>
+						<Label htmlFor='min_stock' className='text-sm font-semibold'>
+							Stock minimum
+						</Label>
+						<Input
+							id='min_stock'
+							type='number'
+							min='0'
+							step='1'
+							placeholder='0 = pas d’alerte'
+							value={formData.min_stock || ''}
+							onChange={(e) =>
+								handleFieldChange(
+									'min_stock',
+									Number.parseInt(e.target.value, 10) || 0,
+								)
+							}
+							className='h-11 text-base text-right'
+						/>
+					</div>
+
 					{/* Info sur le prix HT calculé */}
 					<div className='rounded-lg bg-blue-50 p-3 border border-blue-200'>
 						<div className='flex items-center justify-between text-sm'>
@@ -348,7 +379,7 @@ export function CreateProductDialog(props: CreateProductDialogProps) {
 									Création...
 								</>
 							) : (
-								'Créer et ajouter au panier'
+								submitLabel
 							)}
 						</Button>
 					</DialogFooter>

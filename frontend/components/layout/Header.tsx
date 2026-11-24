@@ -16,9 +16,11 @@
 
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
+	AlertTriangle,
 	Bell,
 	Building2,
 	ChevronDown,
+	Contrast,
 	Home,
 	LogOut,
 	Menu,
@@ -42,6 +44,8 @@ import {
 import { useActiveCompany } from '@/lib/ActiveCompanyProvider'
 import { usePocketAppCredits } from '@/lib/credits'
 import { useBreakpoint } from '@/lib/hooks/useBreakpoint'
+import { useContrast } from '@/lib/hooks/useContrast'
+import { useStockAlerts } from '@/lib/queries/stock-alerts'
 import { cn } from '@/lib/utils'
 import type { ModuleManifest } from '@/modules/_registry'
 import { useAuth } from '@/modules/auth/AuthProvider'
@@ -113,6 +117,10 @@ export function Header({
 		lastUpdated,
 		refresh: refreshCredits,
 	} = usePocketAppCredits()
+
+	const { actif: contrasteActif, basculer: basculerContraste } = useContrast()
+	const { data: alertes } = useStockAlerts(activeCompanyId ?? undefined)
+	const nbAlertes = alertes?.totalItems ?? 0
 
 	const isLowBalance = balanceEur <= 0.5
 	const isEmptyBalance = balanceEur <= 0
@@ -256,6 +264,102 @@ export function Header({
 
 				{/* ══ DROITE : crédits + entreprise + notifs + user ════════════════ */}
 				<div className='flex shrink-0 items-center gap-1 tablet:gap-2 desktop:gap-3'>
+					{/* ── Contraste renforcé — l'écran était jugé trop clair ─────────── */}
+					<Button
+						variant='ghost'
+						size='icon'
+						className={cn(
+							'min-h-[44px] min-w-[44px] tablet:min-h-[48px] tablet:min-w-[48px]',
+							contrasteActif && 'bg-muted text-foreground',
+						)}
+						onClick={basculerContraste}
+						aria-pressed={contrasteActif}
+						aria-label='Contraste renforcé'
+						title={
+							contrasteActif
+								? 'Désactiver le contraste renforcé'
+								: 'Renforcer le contraste'
+						}
+					>
+						<Contrast className='h-5 w-5 tablet:h-6 tablet:w-6' />
+					</Button>
+
+					{/* ── Stock alert — produits au seuil de stock minimum ───────────── */}
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant='ghost'
+								size='icon'
+								className='relative min-h-[44px] min-w-[44px] tablet:min-h-[48px] tablet:min-w-[48px]'
+								aria-label='Stock alert'
+								title='Stock alert'
+							>
+								<AlertTriangle
+									className={cn(
+										'h-5 w-5 tablet:h-6 tablet:w-6',
+										nbAlertes > 0 && 'text-amber-600',
+									)}
+								/>
+								{nbAlertes > 0 && (
+									<span className='absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground'>
+										{nbAlertes > 99 ? '99+' : nbAlertes}
+									</span>
+								)}
+							</Button>
+						</DropdownMenuTrigger>
+
+						<DropdownMenuContent align='end' className='w-80'>
+							<DropdownMenuLabel className='flex items-center gap-2'>
+								<AlertTriangle className='h-4 w-4' />
+								Stock alert
+							</DropdownMenuLabel>
+							<DropdownMenuSeparator />
+
+							{nbAlertes === 0 ? (
+								<div className='px-3 py-4 text-sm text-muted-foreground'>
+									Aucun produit sous son stock minimum.
+								</div>
+							) : (
+								<>
+									{alertes?.items.map((p) => (
+										<DropdownMenuItem key={p.id} asChild className='py-2'>
+											<Link
+												to='/stock/produits/$productId'
+												params={{ productId: p.id }}
+											>
+												<div className='flex w-full items-center gap-3'>
+													<span className='min-w-0 flex-1 truncate text-sm'>
+														{p.designation || p.name}
+													</span>
+													<span
+														className={cn(
+															'shrink-0 text-xs font-mono',
+															p.stock <= 0
+																? 'text-destructive'
+																: 'text-amber-600',
+														)}
+													>
+														{p.stock} / {p.min_stock}
+													</span>
+												</div>
+											</Link>
+										</DropdownMenuItem>
+									))}
+									{nbAlertes > (alertes?.items.length ?? 0) && (
+										<div className='px-3 py-1.5 text-xs text-muted-foreground'>
+											et {nbAlertes - (alertes?.items.length ?? 0)} autre(s)…
+										</div>
+									)}
+								</>
+							)}
+
+							<DropdownMenuSeparator />
+							<DropdownMenuItem asChild>
+								<Link to='/stock/produits'>Ouvrir le catalogue</Link>
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+
 					{/* ── Badge crédits IA — toujours visible, forme selon mode ──────── */}
 					{/* Crédits IA — dropdown au clic, homogène avec les autres menus */}
 					{!isUtilisateur && (

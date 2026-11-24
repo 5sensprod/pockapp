@@ -70,6 +70,7 @@ export function AjoutRapideProduit({
 				onOpenChange={setOuvert}
 				initialBarcode={estCodeBarres ? saisi : ''}
 				initialName={estCodeBarres ? '' : saisi}
+				submitLabel='Créer et ajouter'
 				onProductCreated={(produit) => {
 					// Fermé AVANT d'appeler le document : l'appelant referme son
 					// sélecteur, qui porte ce composant — un dialogue démonté encore

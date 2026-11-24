@@ -63,6 +63,30 @@
   }
 }
 
+/*
+ * Contraste renforcé (bouton de l'en-tête) : fond moins éclatant, texte plus
+ * sombre, bordures et textes secondaires plus marqués. Posé APRÈS :root pour
+ * l'emporter ; sans effet en mode `.dark`.
+ */
+@layer base {
+  :root.contrast:not(.dark) {
+    --background: 220 16% 88%;
+    --foreground: 222 70% 9%;
+    --card: 220 20% 95%;
+    --card-foreground: 222 70% 9%;
+    --popover: 220 20% 96%;
+    --popover-foreground: 222 70% 9%;
+    --secondary: 220 20% 84%;
+    --secondary-foreground: 222 70% 9%;
+    --muted: 220 16% 80%;
+    --muted-foreground: 220 30% 24%;
+    --accent: 220 20% 82%;
+    --accent-foreground: 222 70% 9%;
+    --border: 220 25% 62%;
+    --input: 220 25% 62%;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
