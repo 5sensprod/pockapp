@@ -35,6 +35,7 @@ export const SECTIONS_AIDE: SectionAide[] = [
 		rubriques: [
 			{
 				id: 'themes',
+				capture: 'themes.jpg',
 				titre: 'Thèmes d’affichage',
 				resume:
 					'L’écran était jugé trop clair : un menu de thèmes permet de choisir Clair, Sombre ou l’un des trois thèmes contrastés.',
@@ -45,6 +46,7 @@ export const SECTIONS_AIDE: SectionAide[] = [
 			},
 			{
 				id: 'raccourcis',
+				capture: 'raccourcis.jpg',
 				titre: 'Raccourcis « Caisse » et « Créer »',
 				resume:
 					'Au milieu de la barre du haut, deux boutons ouvrent directement la caisse ou une création, depuis n’importe quel écran.',
@@ -60,6 +62,7 @@ export const SECTIONS_AIDE: SectionAide[] = [
 			},
 			{
 				id: 'stock-alert',
+				capture: 'stock-alert.jpg',
 				titre: 'Bouton « Stock alert »',
 				resume:
 					'Un triangle d’alerte dans l’en-tête signale les produits arrivés au seuil de stock minimum.',
@@ -71,6 +74,7 @@ export const SECTIONS_AIDE: SectionAide[] = [
 			},
 			{
 				id: 'stock-minimum',
+				capture: 'stock-minimum.jpg',
 				titre: 'Stock minimum',
 				resume:
 					'Chaque produit peut avoir un seuil ; c’est lui qui alimente le bouton « Stock alert ».',
@@ -85,6 +89,7 @@ export const SECTIONS_AIDE: SectionAide[] = [
 			},
 			{
 				id: 'filtre-alerte',
+				capture: 'filtre-alerte.jpg',
 				titre: 'Filtre « Alerte stock » du catalogue',
 				resume:
 					'Le catalogue peut n’afficher que les produits au seuil, et la pastille de stock signale l’alerte.',
@@ -97,6 +102,7 @@ export const SECTIONS_AIDE: SectionAide[] = [
 			},
 			{
 				id: 'creer-produit-document',
+				capture: 'creer-produit-document.jpg',
 				titre: 'Créer un produit depuis un document',
 				resume:
 					'Dans un bon de commande, une facture ou un devis, on peut créer un produit sans quitter le document.',
@@ -111,6 +117,7 @@ export const SECTIONS_AIDE: SectionAide[] = [
 			},
 			{
 				id: 'assistant-catalogue',
+				capture: 'assistant-catalogue.jpg',
 				titre: 'Assistant du catalogue',
 				resume:
 					'Un champ « Demander » au-dessus de la liste des produits : on écrit une demande, l’assistant règle les filtres de l’écran ou compte.',
@@ -129,6 +136,7 @@ export const SECTIONS_AIDE: SectionAide[] = [
 			},
 			{
 				id: 'fiche-compacte',
+				capture: 'fiche-compacte.jpg',
 				titre: 'Fiche produit plus compacte',
 				resume:
 					'La fiche produit a été resserrée pour montrer davantage d’informations sans défiler.',
