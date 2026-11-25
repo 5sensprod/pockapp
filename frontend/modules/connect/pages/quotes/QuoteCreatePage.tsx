@@ -782,295 +782,8 @@ export function QuoteCreatePage() {
 			</div>
 
 			{/* Grid Layout (Identique Invoice) */}
-			<div className='grid gap-3 lg:grid-cols-[minmax(0,1fr)_420px] items-stretch'>
-				{/* Colonne Gauche : Infos + Client */}
-				<div className='grid gap-3 grid-rows-[auto_auto]'>
-					<Card>
-						<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
-							<CardTitle className='text-sm font-semibold'>Informations</CardTitle>
-						</CardHeader>
-						<CardContent className='p-3 grid grid-cols-3 gap-3'>
-							<div>
-								<Label>Numéro</Label>
-								<Input
-									value='Auto-généré'
-									disabled
-									className='bg-muted text-muted-foreground'
-								/>
-							</div>
-							<div>
-								<Label>Date</Label>
-								<Input
-									type='date'
-									value={quoteDate}
-									onChange={(e) => setQuoteDate(e.target.value)}
-								/>
-							</div>
-							<div>
-								<Label>Valide jusqu&apos;au</Label>
-								<Input
-									type='date'
-									value={validUntil}
-									onChange={(e) => setValidUntil(e.target.value)}
-								/>
-							</div>
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
-							<CardTitle className='text-sm font-semibold'>Client</CardTitle>
-						</CardHeader>
-						<CardContent className='p-3 space-y-3'>
-							{selectedCustomer ? (
-								<div className='flex items-start justify-between gap-4 p-3 border rounded-lg bg-muted/30'>
-									<div className='min-w-0'>
-										<p className='font-medium truncate'>
-											{selectedCustomer.name}
-										</p>
-										{selectedCustomer.email && (
-											<p className='text-sm text-muted-foreground truncate'>
-												{selectedCustomer.email}
-											</p>
-										)}
-										{selectedCustomer.address && (
-											<p className='text-sm text-muted-foreground line-clamp-2'>
-												{selectedCustomer.address}
-											</p>
-										)}
-									</div>
-									<Button
-										variant='outline'
-										size='sm'
-										onClick={() => setSelectedCustomer(null)}
-									>
-										Changer
-									</Button>
-								</div>
-							) : (
-								<>
-									<Button
-										variant='outline'
-										className='w-full justify-between'
-										onClick={() => setCustomerPickerOpen(true)}
-									>
-										Sélectionner un client
-										<ChevronsUpDown className='ml-2 h-4 w-4 opacity-50' />
-									</Button>
-
-									<Dialog
-										open={customerPickerOpen}
-										onOpenChange={setCustomerPickerOpen}
-									>
-										<DialogContent className='max-w-lg'>
-											<DialogHeader>
-												<DialogTitle>Choisir un client</DialogTitle>
-												<DialogDescription>
-													Recherchez un client ou créez-en un nouveau.
-												</DialogDescription>
-											</DialogHeader>
-											<div className='space-y-3'>
-												<Input
-													placeholder='Rechercher un client...'
-													value={customerSearch}
-													onChange={(e) => setCustomerSearch(e.target.value)}
-												/>
-												<div className='max-h-64 overflow-y-auto border rounded-md'>
-													{filteredCustomers.length === 0 ? (
-														<div className='p-4 text-center text-sm text-muted-foreground'>
-															<p className='mb-3'>Aucun client trouvé</p>
-															{customerSearch && (
-																<Button
-																	size='sm'
-																	onClick={handleQuickCreateCustomer}
-																	className='gap-2'
-																>
-																	<UserPlus className='h-4 w-4' />
-																	Créer &quot;{customerSearch}&quot;
-																</Button>
-															)}
-														</div>
-													) : (
-														<ul className='divide-y'>
-															{filteredCustomers.map((customer) => (
-																<li key={customer.id}>
-																	<button
-																		type='button'
-																		className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
-																		onClick={() => {
-																			setSelectedCustomer({
-																				id: customer.id,
-																				name: customer.name,
-																				email: customer.email,
-																				phone: customer.phone,
-																				address: customer.address,
-																				company: customer.company,
-																			})
-																			setCustomerPickerOpen(false)
-																		}}
-																	>
-																		<div className='min-w-0'>
-																			<p className='font-medium truncate'>
-																				{customer.name}
-																			</p>
-																			{customer.email && (
-																				<p className='text-xs text-muted-foreground truncate'>
-																					{customer.email}
-																				</p>
-																			)}
-																		</div>
-																	</button>
-																</li>
-															))}
-														</ul>
-													)}
-												</div>
-												<div className='pt-2 border-t'>
-													<Button
-														variant='ghost'
-														size='sm'
-														className='w-full gap-2'
-														onClick={() => {
-															setCustomerPickerOpen(false)
-															setNewCustomerDialogOpen(true)
-														}}
-													>
-														<UserPlus className='h-4 w-4' />
-														Nouveau client complet
-													</Button>
-												</div>
-											</div>
-										</DialogContent>
-									</Dialog>
-								</>
-							)}
-						</CardContent>
-					</Card>
-				</div>
-
-				{/* Colonne Droite : Récapitulatif + Actions */}
-				<Card className='h-full'>
-					<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
-						<CardTitle className='text-sm font-semibold'>Récapitulatif</CardTitle>
-					</CardHeader>
-					<CardContent className='p-3 space-y-4'>
-						<div className='space-y-2'>
-							<div className='flex justify-between text-sm'>
-								<span className='text-muted-foreground'>Client</span>
-								<span className='font-medium'>
-									{selectedCustomer?.name || '-'}
-								</span>
-							</div>
-							<div className='flex justify-between text-sm'>
-								<span className='text-muted-foreground'>Articles</span>
-								<span className='font-medium'>{items.length}</span>
-							</div>
-						</div>
-
-						{/* Promotion globale */}
-						<div className='space-y-2 pt-2 border-t'>
-							<div className='text-sm font-medium'>Promotion globale</div>
-							{plafond !== null ? (
-								<p className='text-xs text-muted-foreground'>
-									Remise globale non autorisée pour votre compte
-								</p>
-							) : (
-								<div className='flex items-center gap-2'>
-									<select
-										className='h-9 rounded-md border bg-background text-foreground px-2 text-sm'
-										value={cartDiscountMode}
-										onChange={(e) =>
-											setCartDiscountMode(e.target.value as DiscountMode)
-										}
-									>
-										<option value='percent'>%</option>
-										<option value='amount'>€</option>
-									</select>
-									{/* ✅ FIX: Utilise cartDiscountRaw au lieu de cartDiscountValue */}
-									<Input
-										type='text'
-										inputMode='decimal'
-										className='h-9'
-										placeholder='0'
-										value={cartDiscountRaw}
-										onChange={(e) => handleCartDiscountChange(e.target.value)}
-									/>
-								</div>
-							)}
-						</div>
-
-						{/* Totaux */}
-						<div className='border-t pt-3 space-y-2 text-sm'>
-							<div className='flex justify-between'>
-								<span className='text-muted-foreground'>Sous-total TTC</span>
-								<span>{totals.subTtc.toFixed(2)} €</span>
-							</div>
-							<div className='flex justify-between'>
-								<span className='text-muted-foreground'>Remises lignes</span>
-								<span>-{totals.lineDiscountTtc.toFixed(2)} €</span>
-							</div>
-							<div className='flex justify-between'>
-								<span className='text-muted-foreground'>Remise globale</span>
-								<span>-{totals.cartDiscountTtc.toFixed(2)} €</span>
-							</div>
-							<div className='border-t pt-2 flex justify-between font-bold'>
-								<span>Total TTC</span>
-								<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
-							</div>
-
-							{/* Ventilation TVA */}
-							{totals.vatBreakdown.length > 0 && (
-								<div className='border-t pt-2 space-y-1'>
-									<div className='flex justify-between font-medium text-muted-foreground'>
-										<span>Total HT</span>
-										<span>{totals.ht.toFixed(2)} €</span>
-									</div>
-									<div className='flex justify-between font-medium text-muted-foreground'>
-										<span>Total TVA</span>
-										<span>{totals.tva.toFixed(2)} €</span>
-									</div>
-									<div className='pl-3 space-y-1 text-xs'>
-										{totals.vatBreakdown.map((vb) => (
-											<div
-												key={vb.rate}
-												className='flex justify-between text-muted-foreground'
-											>
-												<span>
-													TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
-												</span>
-												<span>{vb.vat.toFixed(2)} €</span>
-											</div>
-										))}
-									</div>
-								</div>
-							)}
-						</div>
-
-						{/* Actions */}
-						<div className='space-y-2 pt-4'>
-							<Button
-								className='w-full gap-2'
-								onClick={() => handleSubmit('sent', true)}
-								disabled={createQuote.isPending}
-							>
-								<Mail className='h-4 w-4' />
-								Créer et envoyer
-							</Button>
-							<Button
-								variant='outline'
-								className='w-full'
-								onClick={() => handleSubmit('draft', false)}
-								disabled={createQuote.isPending}
-							>
-								Enregistrer en brouillon
-							</Button>
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-
-			{/* Zone Produits et Notes */}
-			<div className='mt-3 space-y-3'>
+			<div className='grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px] items-start'>
+				<div className='min-w-0 space-y-3'>
 				<Card>
 					<CardHeader className='flex flex-row items-center justify-between border-b bg-muted/20 px-3 py-1.5'>
 						<CardTitle className='text-sm font-semibold'>Produits</CardTitle>
@@ -1297,7 +1010,6 @@ export function QuoteCreatePage() {
 						)}
 					</CardContent>
 				</Card>
-
 				<Card>
 					<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
 						<CardTitle className='text-sm font-semibold'>Notes</CardTitle>
@@ -1309,6 +1021,272 @@ export function QuoteCreatePage() {
 							onChange={(e) => setNotes(e.target.value)}
 							rows={3}
 						/>
+					</CardContent>
+				</Card>
+				</div>
+				<Card className='lg:sticky lg:top-3'>
+					<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
+						<CardTitle className='text-sm font-semibold'>Récapitulatif</CardTitle>
+					</CardHeader>
+					<CardContent className='p-3 space-y-4'>
+						<div className='grid grid-cols-2 gap-2'>
+							<div>
+								<Label className='text-xs'>Date</Label>
+								<Input
+									type='date'
+									className='h-8'
+									value={quoteDate}
+									onChange={(e) => setQuoteDate(e.target.value)}
+								/>
+							</div>
+							<div>
+								<Label className='text-xs'>Valide jusqu&apos;au</Label>
+								<Input
+									type='date'
+									className='h-8'
+									value={validUntil}
+									onChange={(e) => setValidUntil(e.target.value)}
+								/>
+							</div>
+							<p className='col-span-2 text-xs text-muted-foreground'>
+								Numéro attribué automatiquement
+							</p>
+						</div>
+
+						<div className='space-y-1.5 border-t pt-2'>
+							<Label className='text-xs'>Client</Label>
+							{selectedCustomer ? (
+								<div className='flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5'>
+									<div className='min-w-0'>
+										<p className='truncate text-sm font-medium'>{selectedCustomer.name}</p>
+										{(selectedCustomer.email || selectedCustomer.phone) && (
+											<p className='truncate text-xs text-muted-foreground'>
+												{selectedCustomer.email ?? selectedCustomer.phone}
+											</p>
+										)}
+									</div>
+									<Button
+										variant='outline'
+										size='sm'
+										className='h-7'
+										onClick={() => setSelectedCustomer(null)}
+									>
+										Changer
+									</Button>
+								</div>
+							) : (
+								<>
+									<div className='flex gap-2'>
+										<Button
+											variant='outline'
+											className='h-8 flex-1 justify-between'
+											onClick={() => setCustomerPickerOpen(true)}
+										>
+											Sélectionner un client
+											<ChevronsUpDown className='ml-2 h-4 w-4 opacity-50' />
+										</Button>
+										<Button
+											variant='outline'
+											size='icon'
+											className='h-8 w-8 shrink-0'
+											title='Nouveau client'
+											aria-label='Nouveau client'
+											onClick={() => setNewCustomerDialogOpen(true)}
+										>
+											<UserPlus className='h-4 w-4' />
+										</Button>
+									</div>
+									<Dialog
+										open={customerPickerOpen}
+										onOpenChange={setCustomerPickerOpen}
+									>
+										<DialogContent className='max-w-lg'>
+											<DialogHeader>
+												<DialogTitle>Choisir un client</DialogTitle>
+												<DialogDescription>
+													Recherchez un client ou créez-en un nouveau.
+												</DialogDescription>
+											</DialogHeader>
+											<div className='space-y-3'>
+												<Input
+													placeholder='Rechercher un client...'
+													value={customerSearch}
+													onChange={(e) => setCustomerSearch(e.target.value)}
+												/>
+												<div className='max-h-64 overflow-y-auto border rounded-md'>
+													{filteredCustomers.length === 0 ? (
+														<div className='p-4 text-center text-sm text-muted-foreground'>
+															<p className='mb-3'>Aucun client trouvé</p>
+															{customerSearch && (
+																<Button
+																	size='sm'
+																	onClick={handleQuickCreateCustomer}
+																	className='gap-2'
+																>
+																	<UserPlus className='h-4 w-4' />
+																	Créer &quot;{customerSearch}&quot;
+																</Button>
+															)}
+														</div>
+													) : (
+														<ul className='divide-y'>
+															{filteredCustomers.map((customer) => (
+																<li key={customer.id}>
+																	<button
+																		type='button'
+																		className='w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between gap-2'
+																		onClick={() => {
+																			setSelectedCustomer({
+																				id: customer.id,
+																				name: customer.name,
+																				email: customer.email,
+																				phone: customer.phone,
+																				address: customer.address,
+																				company: customer.company,
+																			})
+																			setCustomerPickerOpen(false)
+																		}}
+																	>
+																		<div className='min-w-0'>
+																			<p className='font-medium truncate'>
+																				{customer.name}
+																			</p>
+																			{customer.email && (
+																				<p className='text-xs text-muted-foreground truncate'>
+																					{customer.email}
+																				</p>
+																			)}
+																		</div>
+																	</button>
+																</li>
+															))}
+														</ul>
+													)}
+												</div>
+												<div className='pt-2 border-t'>
+													<Button
+														variant='ghost'
+														size='sm'
+														className='w-full gap-2'
+														onClick={() => {
+															setCustomerPickerOpen(false)
+															setNewCustomerDialogOpen(true)
+														}}
+													>
+														<UserPlus className='h-4 w-4' />
+														Nouveau client complet
+													</Button>
+												</div>
+											</div>
+										</DialogContent>
+									</Dialog>
+								</>
+							)}
+						</div>
+
+						<div className='flex justify-between border-t pt-2 text-sm'>
+							<span className='text-muted-foreground'>Articles</span>
+							<span className='font-medium'>{items.length}</span>
+						</div>
+
+						{/* Promotion globale */}
+						<div className='space-y-2 pt-2 border-t'>
+							<div className='text-sm font-medium'>Promotion globale</div>
+							{plafond !== null ? (
+								<p className='text-xs text-muted-foreground'>
+									Remise globale non autorisée pour votre compte
+								</p>
+							) : (
+								<div className='flex items-center gap-2'>
+									<select
+										className='h-9 rounded-md border bg-background text-foreground px-2 text-sm'
+										value={cartDiscountMode}
+										onChange={(e) =>
+											setCartDiscountMode(e.target.value as DiscountMode)
+										}
+									>
+										<option value='percent'>%</option>
+										<option value='amount'>€</option>
+									</select>
+									{/* ✅ FIX: Utilise cartDiscountRaw au lieu de cartDiscountValue */}
+									<Input
+										type='text'
+										inputMode='decimal'
+										className='h-9'
+										placeholder='0'
+										value={cartDiscountRaw}
+										onChange={(e) => handleCartDiscountChange(e.target.value)}
+									/>
+								</div>
+							)}
+						</div>
+
+						{/* Totaux */}
+						<div className='border-t pt-3 space-y-2 text-sm'>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Sous-total TTC</span>
+								<span>{totals.subTtc.toFixed(2)} €</span>
+							</div>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Remises lignes</span>
+								<span>-{totals.lineDiscountTtc.toFixed(2)} €</span>
+							</div>
+							<div className='flex justify-between'>
+								<span className='text-muted-foreground'>Remise globale</span>
+								<span>-{totals.cartDiscountTtc.toFixed(2)} €</span>
+							</div>
+							<div className='border-t pt-2 flex justify-between font-bold'>
+								<span>Total TTC</span>
+								<span className='text-lg'>{totals.ttc.toFixed(2)} €</span>
+							</div>
+
+							{/* Ventilation TVA */}
+							{totals.vatBreakdown.length > 0 && (
+								<div className='border-t pt-2 space-y-1'>
+									<div className='flex justify-between font-medium text-muted-foreground'>
+										<span>Total HT</span>
+										<span>{totals.ht.toFixed(2)} €</span>
+									</div>
+									<div className='flex justify-between font-medium text-muted-foreground'>
+										<span>Total TVA</span>
+										<span>{totals.tva.toFixed(2)} €</span>
+									</div>
+									<div className='pl-3 space-y-1 text-xs'>
+										{totals.vatBreakdown.map((vb) => (
+											<div
+												key={vb.rate}
+												className='flex justify-between text-muted-foreground'
+											>
+												<span>
+													TVA {vb.rate}% sur {vb.base_ht.toFixed(2)} € HT
+												</span>
+												<span>{vb.vat.toFixed(2)} €</span>
+											</div>
+										))}
+									</div>
+								</div>
+							)}
+						</div>
+
+						{/* Actions */}
+						<div className='space-y-2 pt-4'>
+							<Button
+								className='w-full gap-2'
+								onClick={() => handleSubmit('sent', true)}
+								disabled={createQuote.isPending}
+							>
+								<Mail className='h-4 w-4' />
+								Créer et envoyer
+							</Button>
+							<Button
+								variant='outline'
+								className='w-full'
+								onClick={() => handleSubmit('draft', false)}
+								disabled={createQuote.isPending}
+							>
+								Enregistrer en brouillon
+							</Button>
+						</div>
 					</CardContent>
 				</Card>
 			</div>

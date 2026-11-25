@@ -30,7 +30,9 @@ import {
 	Plus,
 	Search,
 	Trash2,
+	UserPlus,
 } from 'lucide-react'
+import { CustomerDialog } from '../../features/customers/CustomerDialog'
 import { useEffect, useRef, useState } from 'react'
 import { ConnectModuleShell } from '../../ConnectModuleShell'
 import { useOrderNavigation } from '../../hooks/useOrderNavigation'
@@ -67,6 +69,7 @@ export function OrderCreatePage() {
 	)
 	const [customerPickerOpen, setCustomerPickerOpen] = useState(false)
 	const [customerSearch, setCustomerSearch] = useState('')
+	const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
 	const hasPrefilledCustomer = useRef(false)
 	const [selectedCustomer, setSelectedCustomer] =
 		useState<SelectedCustomer | null>(null)
@@ -278,28 +281,41 @@ export function OrderCreatePage() {
 							</div>
 						) : (
 							<div className='space-y-1.5'>
-								{/* Picker dropdown */}
-								<Button
-									type='button'
-									variant='outline'
-									className='w-full sm:w-80 justify-between font-normal'
-									onClick={() => setCustomerPickerOpen((v) => !v)}
-								>
-									<span
-										className={
-											selectedCustomer
-												? 'text-foreground'
-												: 'text-muted-foreground'
-										}
+								{/* Picker dropdown + création d'un nouveau client */}
+								<div className='flex gap-2'>
+									<Button
+										type='button'
+										variant='outline'
+										size='icon'
+										className='order-last h-10 w-10 shrink-0'
+										title='Nouveau client'
+										aria-label='Nouveau client'
+										onClick={() => setNewCustomerDialogOpen(true)}
 									>
-										{selectedCustomer
-											? selectedCustomer.company
-												? `${selectedCustomer.name} — ${selectedCustomer.company}`
-												: selectedCustomer.name
-											: 'Sélectionner un client…'}
-									</span>
-									<ChevronsUpDown className='h-4 w-4 opacity-50' />
-								</Button>
+										<UserPlus className='h-4 w-4' />
+									</Button>
+									<Button
+										type='button'
+										variant='outline'
+										className='flex-1 sm:w-80 sm:flex-none justify-between font-normal'
+										onClick={() => setCustomerPickerOpen((v) => !v)}
+									>
+										<span
+											className={
+												selectedCustomer
+													? 'text-foreground'
+													: 'text-muted-foreground'
+											}
+										>
+											{selectedCustomer
+												? selectedCustomer.company
+													? `${selectedCustomer.name} — ${selectedCustomer.company}`
+													: selectedCustomer.name
+												: 'Sélectionner un client…'}
+										</span>
+										<ChevronsUpDown className='h-4 w-4 opacity-50' />
+									</Button>
+								</div>
 
 								{customerPickerOpen && (
 									<div className='w-full sm:w-80 border rounded-md bg-popover shadow-md'>
@@ -545,6 +561,10 @@ export function OrderCreatePage() {
 			</div>
 
 			{/* ── Dialog ajout de ligne ────────────────────────────────── */}
+			<CustomerDialog
+				open={newCustomerDialogOpen}
+				onOpenChange={setNewCustomerDialogOpen}
+			/>
 			<Dialog open={productPickerOpen} onOpenChange={setProductPickerOpen}>
 				<DialogContent className='sm:max-w-2xl'>
 					<DialogHeader>
