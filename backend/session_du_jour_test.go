@@ -4,6 +4,7 @@
 package backend
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -393,5 +394,34 @@ func TestUneVenteDuPetitMatinAppartientALaVeille(t *testing.T) {
 	// Le 31 reste ouvrable — c'est tout l'enjeu.
 	if _, cloturee := JourneeEstCloturee(app.Dao(), caisse.Id, "2026-08-31"); cloturee {
 		t.Fatalf("le 31 août est déclaré clôturé : « Commencer la journée » le refuserait")
+	}
+}
+
+// Vingt postes qui encaissent au MÊME instant, en début de journée, donnent
+// UNE session. Sans VerrouOuvertureSession, « chercher puis créer » laissait
+// passer plusieurs créations, et la clôture devenait impossible.
+func TestEncaissementsSimultanesDonnentUneSeuleSession(t *testing.T) {
+	app := nouvelleAppDeTestCaisse(t)
+	caisse := creerCaisse(t, app, "co1")
+	midi := time.Date(2026, 8, 29, 12, 0, 0, 0, time.Local)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := sessionDuJourA(app.Dao(), "co1", caisse.Id, "user1", midi); err != nil {
+				t.Errorf("encaissement: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	sessions, err := app.Dao().FindRecordsByFilter("cash_sessions", "owner_company = 'co1' && status = 'open'", "", 0, 0)
+	if err != nil {
+		t.Fatalf("relecture: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("%d sessions ouvertes, attendu 1", len(sessions))
 	}
 }

@@ -221,6 +221,10 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			return apis.NewBadRequestError("Champs requis manquants", nil)
 		}
 
+		// « chercher puis créer » : un seul à la fois (backend/session_verrou.go).
+		backend.VerrouOuvertureSession.Lock()
+		defer backend.VerrouOuvertureSession.Unlock()
+
 		// Vérifier s'il existe déjà une session ouverte
 		filter := fmt.Sprintf("cash_register = '%s' && status = 'open'", payload.CashRegister)
 		existing, _ := dao.FindFirstRecordByFilter("cash_sessions", filter)

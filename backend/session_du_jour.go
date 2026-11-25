@@ -84,6 +84,10 @@ func sessionDuJourA(
 		return nil, fmt.Errorf("owner_company requis pour ouvrir la session du jour")
 	}
 
+	// « chercher puis créer » : un seul à la fois (voir session_verrou.go).
+	VerrouOuvertureSession.Lock()
+	defer VerrouOuvertureSession.Unlock()
+
 	// La journée COMMERCIALE, bascule de 4 h comprise — jamais
 	// `maintenant.Format("2006-01-02")`, qui ferait naître une session du
 	// lendemain pour un encaissement de 00 h 30.

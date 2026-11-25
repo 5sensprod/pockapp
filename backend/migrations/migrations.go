@@ -43,6 +43,8 @@ func RunMigrations(app *pocketbase.PocketBase) error {
 		// 7. Rapports Z (dépend de cash_registers + cash_sessions)
 		ensureZReportsCollection,
 		AddZReportIdToCashSessions,
+		// Une seule session ouverte par caisse, garantie par la base.
+		AddUniqueOpenSessionIndex,
 		// Ticket Z-1 : le Z passe au modèle « un total, quatre lignes ».
 		AddCollectedToZReports,
 		// Ticket S-1 : le Z compte séparément ses tickets et ses factures.

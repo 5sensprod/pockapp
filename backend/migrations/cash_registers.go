@@ -9,6 +9,11 @@ import (
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
+// adminRule : écrire une caisse est réservé au rôle administrateur — une
+// seconde caisse ou une caisse désactivée casse l'encaissement. Lire reste
+// ouvert à tout utilisateur connecté (le terminal choisit sa caisse).
+const adminRule = "@request.auth.role = 'admin'"
+
 // ensureCashRegistersCollection crée ou met à jour la collection cash_registers
 func ensureCashRegistersCollection(app *pocketbase.PocketBase) error {
 	// Essayer de récupérer la collection existante
@@ -28,9 +33,9 @@ func ensureCashRegistersCollection(app *pocketbase.PocketBase) error {
 			Type:       models.CollectionTypeBase,
 			ListRule:   types.Pointer("@request.auth.id != ''"),
 			ViewRule:   types.Pointer("@request.auth.id != ''"),
-			CreateRule: types.Pointer("@request.auth.id != ''"),
-			UpdateRule: types.Pointer("@request.auth.id != ''"),
-			DeleteRule: types.Pointer("@request.auth.id != ''"),
+			CreateRule: types.Pointer(adminRule),
+			UpdateRule: types.Pointer(adminRule),
+			DeleteRule: types.Pointer(adminRule),
 			Schema: schema.NewSchema(
 				// Nom lisible de la caisse
 				&schema.SchemaField{
@@ -98,16 +103,16 @@ func ensureCashRegistersCollection(app *pocketbase.PocketBase) error {
 		collection.ViewRule = types.Pointer(authRule)
 		needsUpdate = true
 	}
-	if collection.CreateRule == nil || *collection.CreateRule != authRule {
-		collection.CreateRule = types.Pointer(authRule)
+	if collection.CreateRule == nil || *collection.CreateRule != adminRule {
+		collection.CreateRule = types.Pointer(adminRule)
 		needsUpdate = true
 	}
-	if collection.UpdateRule == nil || *collection.UpdateRule != authRule {
-		collection.UpdateRule = types.Pointer(authRule)
+	if collection.UpdateRule == nil || *collection.UpdateRule != adminRule {
+		collection.UpdateRule = types.Pointer(adminRule)
 		needsUpdate = true
 	}
-	if collection.DeleteRule == nil || *collection.DeleteRule != authRule {
-		collection.DeleteRule = types.Pointer(authRule)
+	if collection.DeleteRule == nil || *collection.DeleteRule != adminRule {
+		collection.DeleteRule = types.Pointer(adminRule)
 		needsUpdate = true
 	}
 
