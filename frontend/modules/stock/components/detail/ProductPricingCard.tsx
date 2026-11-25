@@ -112,10 +112,13 @@ export function ProductPricingCard({
 	form,
 	embedded = false,
 	priceRequired = false,
+	compact = false,
 }: {
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
 	priceRequired?: boolean
+	/** Création : achat, prix, TVA et marges sur une seule ligne. */
+	compact?: boolean
 }) {
 	const jour = useJourServeur()
 	const [prix, achat, tva, promo, operation, debut, fin] = form.watch([
@@ -143,8 +146,14 @@ export function ProductPricingCard({
 	)
 
 	const content = (
-		<div className='space-y-3'>
-			<div className='grid gap-3 sm:grid-cols-3'>
+		<div className={compact ? 'space-y-2' : 'space-y-3'}>
+			<div
+				className={
+					compact
+						? 'grid gap-x-2 gap-y-1.5 sm:grid-cols-3 lg:grid-cols-5'
+						: 'grid gap-3 sm:grid-cols-3'
+				}
+			>
 				<NumberField
 					form={form}
 					name='purchase_price_ht'
@@ -159,24 +168,37 @@ export function ProductPricingCard({
 					warning={priceRequired && !(Number(prix) > 0)}
 				/>
 				<TaxRateField form={form} />
+				{/* Création : les marges rejoignent la ligne du prix (5 colonnes). */}
+				{compact && (
+					<MargeField
+						form={form}
+						marge={taux.marge}
+						marque={taux.marque}
+						compact
+					/>
+				)}
 			</div>
 			{/* Le prix se lit en une ligne (achat, prix, TVA) ; ce qu'il rapporte
 			    vient dessous, seul. */}
-			<MargeField form={form} marge={taux.marge} marque={taux.marque} />
+			{!compact && (
+				<MargeField form={form} marge={taux.marge} marque={taux.marque} />
+			)}
 
 			{/* L'opération commerciale est un axe indépendant de l'état commercial
 			    (Identité) : elle ne change ni le prix affiché en temps normal, ni la
 			    publication. */}
-			<div className='rounded-lg border p-4'>
+			<div className={compact ? 'rounded-md border px-2.5 py-1.5' : 'rounded-lg border p-4'}>
 				<div className='flex items-center justify-between gap-4'>
 					<div className='min-w-0'>
 						<p className='flex items-center font-semibold text-sm'>
 							Produit en solde ou en promotion
-							<HelpTooltip text='Indépendante de l’état commercial : une occasion peut être soldée. Elle ne change ni le prix, ni la publication.' />
+							<HelpTooltip text='Indépendante de l’état commercial : une occasion peut être soldée. Elle ne change ni le prix, ni la publication. Applique le prix promo en remise, sur le ticket et la facture.' />
 						</p>
-						<p className='mt-0.5 text-muted-foreground text-[10px]'>
-							Applique le prix promo en remise, sur le ticket et la facture.
-						</p>
+						{!compact && (
+							<p className='mt-0.5 text-muted-foreground text-[10px]'>
+								Applique le prix promo en remise, sur le ticket et la facture.
+							</p>
+						)}
 					</div>
 					<Switch
 						checked={operation !== ''}
@@ -192,7 +214,13 @@ export function ProductPricingCard({
 				</div>
 
 				{operation !== '' && (
-					<div className='mt-3 space-y-3 border-t pt-3'>
+					<div
+						className={
+							compact
+								? 'mt-1.5 space-y-2 border-t pt-2'
+								: 'mt-3 space-y-3 border-t pt-3'
+						}
+					>
 						<FormField
 							control={form.control}
 							name='sale_state'
@@ -397,14 +425,63 @@ function MargeField({
 	form,
 	marge,
 	marque,
+	compact = false,
 }: {
 	form: UseFormReturn<ProductDetailValues>
 	marge: number | null
 	marque: number | null
+	/** Deux cellules de grille (marge saisie, marque lue) au lieu d'un bloc. */
+	compact?: boolean
 }) {
 	const [saisie, setSaisie] = useState<string | null>(null)
 	const [achat, tva] = form.watch(['purchase_price_ht', 'tax_rate'])
 	const aDesArrhes = Number(achat) > 0
+
+	if (compact) {
+		return (
+			<>
+				<div className='min-w-0'>
+					<Label className='flex items-center font-semibold text-muted-foreground text-xs leading-tight'>
+						Marge %
+						<HelpTooltip text='La marge se saisit ici et calcule le prix TTC depuis l’achat HT. À l’inverse, changer le prix TTC recalcule cette marge — les deux se répondent. Marge sur l’achat HT, marque sur le prix de vente HT, hors promo.' />
+					</Label>
+					<Input
+						type='number'
+						step='0.1'
+						className='mt-1.5 h-8 min-w-0 font-semibold text-emerald-700 dark:text-emerald-500'
+						disabled={!aDesArrhes}
+						title={aDesArrhes ? undefined : 'Saisir l’achat HT d’abord'}
+						value={
+							saisie ??
+							(marge === null ? '' : (Math.round(marge * 10) / 10).toString())
+						}
+						onFocus={() => setSaisie(marge === null ? '' : String(marge))}
+						onBlur={() => setSaisie(null)}
+						onChange={(event) => {
+							setSaisie(event.target.value)
+							const saisi = Number.parseFloat(event.target.value)
+							const achatHt = Number(achat)
+							if (Number.isNaN(saisi) || !(achatHt > 0)) return
+							const prixHt = achatHt * (1 + saisi / 100)
+							const prixTtc = prixHt * (1 + Number(tva) / 100)
+							form.setValue('price_ttc', Math.round(prixTtc * 100) / 100, {
+								shouldDirty: true,
+								shouldTouch: true,
+							})
+						}}
+					/>
+				</div>
+				<div className='min-w-0'>
+					<Label className='flex items-center font-semibold text-muted-foreground text-xs leading-tight'>
+						Marque %
+					</Label>
+					<p className='mt-1.5 flex h-8 items-center whitespace-nowrap font-semibold text-emerald-700 text-sm dark:text-emerald-500'>
+						{marque === null ? '—' : `${marque.toFixed(1)} %`}
+					</p>
+				</div>
+			</>
+		)
+	}
 
 	return (
 		<div>

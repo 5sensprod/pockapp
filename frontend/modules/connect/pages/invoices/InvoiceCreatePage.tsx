@@ -731,13 +731,13 @@ export function InvoiceCreatePage() {
 
 	return (
 		<>
-			<div className='container mx-auto px-6 py-8 max-w-6xl'>
-				<div className='flex items-center gap-4 mb-6'>
+			<div className='container mx-auto px-6 py-3 max-w-6xl'>
+				<div className='flex items-center gap-3 mb-3'>
 					<Button variant='ghost' size='icon' onClick={goBack}>
 						<ArrowLeft className='h-5 w-5' />
 					</Button>
 					<div className='flex-1'>
-						<h1 className='text-2xl font-bold flex items-center gap-2'>
+						<h1 className='text-lg font-bold flex items-center gap-2'>
 							<FileText className='h-6 w-6' />
 							Nouvelle facture
 						</h1>
@@ -747,13 +747,13 @@ export function InvoiceCreatePage() {
 					</div>
 				</div>
 
-				<div className='grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] items-stretch'>
-					<div className='grid gap-6 grid-rows-[auto_auto]'>
+				<div className='grid gap-3 lg:grid-cols-[minmax(0,1fr)_420px] items-stretch'>
+					<div className='grid gap-3 grid-rows-[auto_auto]'>
 						<Card>
-							<CardHeader className='pb-3'>
-								<CardTitle className='text-lg'>Informations</CardTitle>
+							<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
+								<CardTitle className='text-sm font-semibold'>Informations</CardTitle>
 							</CardHeader>
-							<CardContent className='grid grid-cols-3 gap-4'>
+							<CardContent className='p-3 grid grid-cols-3 gap-3'>
 								<div>
 									<Label>Numéro</Label>
 									<Input
@@ -782,10 +782,10 @@ export function InvoiceCreatePage() {
 						</Card>
 
 						<Card>
-							<CardHeader className='pb-3'>
-								<CardTitle className='text-lg'>Client</CardTitle>
+							<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
+								<CardTitle className='text-sm font-semibold'>Client</CardTitle>
 							</CardHeader>
-							<CardContent className='space-y-3'>
+							<CardContent className='p-3 space-y-3'>
 								{selectedCustomer ? (
 									<div className='flex items-start justify-between gap-4 p-3 border rounded-lg bg-muted/30'>
 										<div className='min-w-0'>
@@ -912,10 +912,10 @@ export function InvoiceCreatePage() {
 					</div>
 
 					<Card className='h-full'>
-						<CardHeader>
-							<CardTitle className='text-lg'>Récapitulatif</CardTitle>
+						<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
+							<CardTitle className='text-sm font-semibold'>Récapitulatif</CardTitle>
 						</CardHeader>
-						<CardContent className='space-y-4'>
+						<CardContent className='p-3 space-y-4'>
 							<div className='space-y-2'>
 								<div className='flex justify-between text-sm'>
 									<span className='text-muted-foreground'>Client</span>
@@ -939,7 +939,7 @@ export function InvoiceCreatePage() {
 								) : (
 									<div className='flex items-center gap-2'>
 										<select
-											className='h-9 rounded-md border bg-white px-2 text-sm'
+											className='h-9 rounded-md border bg-background text-foreground px-2 text-sm'
 											value={cartDiscountMode}
 											onChange={(e) =>
 												setCartDiscountMode(e.target.value as DiscountMode)
@@ -1028,10 +1028,10 @@ export function InvoiceCreatePage() {
 					</Card>
 				</div>
 
-				<div className='mt-6 space-y-6'>
+				<div className='mt-3 space-y-3'>
 					<Card>
-						<CardHeader className='flex flex-row items-center justify-between'>
-							<CardTitle className='text-lg'>Produits</CardTitle>
+						<CardHeader className='flex flex-row items-center justify-between border-b bg-muted/20 px-3 py-1.5'>
+							<CardTitle className='text-sm font-semibold'>Produits</CardTitle>
 							<div className='flex items-center gap-2'>
 								<Button
 									size='sm'
@@ -1052,7 +1052,7 @@ export function InvoiceCreatePage() {
 								</Button>
 							</div>
 						</CardHeader>
-						<CardContent>
+						<CardContent className='p-3'>
 							{items.length === 0 ? (
 								<div className='text-center py-8 text-muted-foreground'>
 									<Search className='h-8 w-8 mx-auto mb-2 opacity-50' />
@@ -1158,7 +1158,7 @@ export function InvoiceCreatePage() {
 													<TableCell>
 														<div className='flex items-center gap-2'>
 															<select
-																className='h-8 rounded-md border bg-white px-1 text-xs'
+																className='h-8 rounded-md border bg-background text-foreground px-1 text-xs'
 																value={item.lineDiscountMode ?? 'percent'}
 																onChange={(e) =>
 																	setLineDiscountMode(
@@ -1257,10 +1257,10 @@ export function InvoiceCreatePage() {
 					</Card>
 
 					<Card>
-						<CardHeader>
-							<CardTitle className='text-lg'>Notes</CardTitle>
+						<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
+							<CardTitle className='text-sm font-semibold'>Notes</CardTitle>
 						</CardHeader>
-						<CardContent>
+						<CardContent className='p-3'>
 							<Textarea
 								placeholder='Notes ou conditions particulières...'
 								value={notes}

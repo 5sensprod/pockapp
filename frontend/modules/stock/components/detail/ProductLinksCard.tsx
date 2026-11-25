@@ -22,9 +22,13 @@ import type { ProductDetailValues } from './product-detail-form'
 export function ProductLinksCard({
 	form,
 	embedded = false,
+	compact = false,
 }: {
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
+	/** Création : marque, fournisseur et catégories côte à côte (3 colonnes,
+	 *  posées par la grille de la page). */
+	compact?: boolean
 }) {
 	const { activeCompanyId } = useActiveCompany()
 	const brands = useBrands({ companyId: activeCompanyId ?? undefined })
@@ -141,7 +145,7 @@ export function ProductLinksCard({
 				control={form.control}
 				name='categories'
 				render={({ field }) => (
-					<FormItem className='md:col-span-2'>
+					<FormItem className={compact ? undefined : 'md:col-span-2'}>
 						<FormLabel>Catégories</FormLabel>
 						<CategoryPicker
 							value={field.value}
@@ -151,7 +155,7 @@ export function ProductLinksCard({
 							multiple
 							collapsible
 							searchPlaceholder='Rechercher une catégorie…'
-							maxHeight='200px'
+							maxHeight={compact ? '160px' : '200px'}
 							companyId={activeCompanyId ?? undefined}
 						/>
 						<FormMessage />

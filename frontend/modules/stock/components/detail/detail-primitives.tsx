@@ -42,11 +42,15 @@ export function FormDetailCard({
 	children,
 	dirty,
 	contentClassName,
+	compact = false,
 }: {
 	title?: string
 	children: React.ReactNode
 	dirty: boolean
 	contentClassName?: string
+	/** Création : marges, titre et champs resserrés (h-8) pour tenir sur un
+	 *  écran 1366×768. Même langage visuel, seulement plus dense. */
+	compact?: boolean
 }) {
 	return (
 		<Card className='relative overflow-hidden shadow-sm transition-colors focus-within:border-primary/40'>
@@ -57,7 +61,12 @@ export function FormDetailCard({
 				/>
 			)}
 			{title && (
-				<CardHeader className='flex min-h-11 flex-row items-center border-b bg-muted/20 px-4 py-2.5'>
+				<CardHeader
+					className={cn(
+						'flex min-h-11 flex-row items-center border-b bg-muted/20 px-4 py-2.5',
+						compact && 'min-h-0 px-3 py-1.5',
+					)}
+				>
 					<CardTitle className='font-semibold text-sm text-primary/90 tracking-tight'>
 						{title}
 					</CardTitle>
@@ -66,6 +75,8 @@ export function FormDetailCard({
 			<CardContent
 				className={cn(
 					'p-4 [&_input]:h-10 [&_label]:font-semibold [&_label]:text-muted-foreground [&_label]:text-xs [&_select]:h-10',
+					compact &&
+						'p-2.5 [&_[role=combobox]]:h-8 [&_input]:h-8 [&_label]:leading-tight [&_select]:h-8',
 					contentClassName,
 				)}
 			>

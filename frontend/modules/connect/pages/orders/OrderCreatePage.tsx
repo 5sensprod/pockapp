@@ -253,10 +253,10 @@ export function OrderCreatePage() {
 			}
 			primaryAction={null}
 		>
-			<div className='max-w-4xl mx-auto space-y-6'>
+			<div className='max-w-4xl mx-auto space-y-3'>
 				<div className='rounded-lg border bg-card divide-y'>
 					{/* ── Client ──────────────────────────────────────────── */}
-					<section className='p-5 space-y-2'>
+					<section className='p-3 space-y-2'>
 						<h3 className='text-sm font-semibold'>Client</h3>
 
 						{/* Provenance fiche client → affichage statique */}
@@ -353,7 +353,7 @@ export function OrderCreatePage() {
 					</section>
 
 					{/* ── Lignes ─────────────────────────────────────────── */}
-					<section className='p-5 space-y-3'>
+					<section className='p-3 space-y-3'>
 						<div className='flex items-center justify-between'>
 							<h3 className='text-sm font-semibold'>Lignes</h3>
 							<Button
@@ -473,7 +473,7 @@ export function OrderCreatePage() {
 					</section>
 
 					{/* ── Conditions ─────────────────────────────────────── */}
-					<section className='p-5 grid grid-cols-1 sm:grid-cols-2 gap-4'>
+					<section className='p-3 grid grid-cols-1 sm:grid-cols-2 gap-3'>
 						<div className='space-y-1.5'>
 							<Label htmlFor='payment'>Conditions de paiement</Label>
 							<Input
@@ -503,7 +503,7 @@ export function OrderCreatePage() {
 					</section>
 
 					{/* ── Totaux ─────────────────────────────────────────── */}
-					<section className='p-5'>
+					<section className='p-3'>
 						<div className='flex justify-end'>
 							<dl className='w-full max-w-xs space-y-1.5 text-sm'>
 								<div className='flex justify-between'>

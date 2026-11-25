@@ -132,34 +132,37 @@ export function CustomerCreatePage() {
 	}
 
 	return (
-		<div className='container mx-auto px-6 py-8 max-w-3xl'>
+		<div className='container mx-auto max-w-4xl px-6 py-3'>
 			{/* Header */}
-			<div className='flex items-center gap-4 mb-6'>
+			<div className='mb-3 flex items-center gap-3'>
 				<Button
 					variant='ghost'
 					size='icon'
+					className='h-8 w-8'
 					onClick={() => navigate({ to: '/connect/customers' })}
 				>
-					<ArrowLeft className='h-5 w-5' />
+					<ArrowLeft className='h-4 w-4' />
 				</Button>
 				<div className='flex-1'>
-					<h1 className='text-2xl font-bold flex items-center gap-2'>
-						<User className='h-6 w-6' />
+					<h1
+						className='flex items-center gap-2 text-lg font-bold'
+						title='Ajoutez un nouveau client à votre base.'
+					>
+						<User className='h-5 w-5' />
 						Nouveau client
 					</h1>
-					<p className='text-muted-foreground'>
-						Ajoutez un nouveau client à votre base.
-					</p>
 				</div>
 			</div>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Informations du client</CardTitle>
+			<Card className='shadow-sm'>
+				<CardHeader className='border-b bg-muted/20 px-3 py-1.5'>
+					<CardTitle className='text-sm font-semibold'>
+						Informations du client
+					</CardTitle>
 				</CardHeader>
-				<CardContent>
+				<CardContent className='p-3 [&_input]:h-8 [&_label]:text-xs [&_label]:font-semibold [&_label]:text-muted-foreground [&_[role=combobox]]:h-8'>
 					<Form {...form}>
-						<form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+						<form onSubmit={form.handleSubmit(onSubmit)} className='grid gap-x-3 gap-y-2 sm:grid-cols-2'>
 							{/* Type de client */}
 							<FormField
 								control={form.control}
@@ -187,9 +190,6 @@ export function CustomerCreatePage() {
 												<SelectItem value='association'>Association</SelectItem>
 											</SelectContent>
 										</Select>
-										<FormDescription>
-											Détermine les mentions légales et la gestion du client.
-										</FormDescription>
 										<FormMessage />
 									</FormItem>
 								)}
@@ -211,7 +211,7 @@ export function CustomerCreatePage() {
 							/>
 
 							{/* Email & téléphone */}
-							<div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+							<div className='contents'>
 								<FormField
 									control={form.control}
 									name='email'
@@ -267,12 +267,12 @@ export function CustomerCreatePage() {
 								control={form.control}
 								name='address'
 								render={({ field }) => (
-									<FormItem>
+									<FormItem className='sm:col-span-2'>
 										<FormLabel>Adresse {!isIndividual && '*'}</FormLabel>
 										<FormControl>
 											<Textarea
 												placeholder='123 rue de la Paix, 75001 Paris'
-												rows={3}
+												rows={2}
 												{...field}
 											/>
 										</FormControl>
@@ -311,9 +311,6 @@ export function CustomerCreatePage() {
 													<SelectItem value='60_days'>60 jours</SelectItem>
 												</SelectContent>
 											</Select>
-											<FormDescription>
-												Délai de paiement accordé à ce client
-											</FormDescription>
 											<FormMessage />
 										</FormItem>
 									)}
@@ -325,15 +322,12 @@ export function CustomerCreatePage() {
 								control={form.control}
 								name='tags'
 								render={({ field }) => (
-									<FormItem>
+									<FormItem className='sm:col-span-2'>
 										<FormLabel>Tags</FormLabel>
 										<CustomerTagsPicker
 											value={field.value}
 											onChange={field.onChange}
 										/>
-										<FormDescription>
-											Un client peut cumuler plusieurs tags.
-										</FormDescription>
 										<FormMessage />
 									</FormItem>
 								)}
@@ -344,12 +338,12 @@ export function CustomerCreatePage() {
 								control={form.control}
 								name='notes'
 								render={({ field }) => (
-									<FormItem>
+									<FormItem className='sm:col-span-2'>
 										<FormLabel>Notes</FormLabel>
 										<FormControl>
 											<Textarea
 												placeholder='Notes internes sur le client.'
-												rows={3}
+												rows={2}
 												{...field}
 											/>
 										</FormControl>
@@ -359,7 +353,7 @@ export function CustomerCreatePage() {
 							/>
 
 							{/* Actions */}
-							<div className='flex justify-end gap-3 pt-4'>
+							<div className='flex justify-end gap-2 pt-1 sm:col-span-2'>
 								<Button
 									type='button'
 									variant='outline'

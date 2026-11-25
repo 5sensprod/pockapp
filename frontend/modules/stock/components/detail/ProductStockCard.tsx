@@ -34,10 +34,13 @@ export function ProductStockCard({
 	productId,
 	form,
 	embedded = false,
+	compact = false,
 }: {
 	productId: string
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
+	/** Création : une ligne (stock, minimum, type), Stock B en bandeau fin. */
+	compact?: boolean
 }) {
 	const [stock, stockB, stockBPrice, reason, comment, type] = form.watch([
 		'stock',
@@ -81,8 +84,14 @@ export function ProductStockCard({
 	}
 
 	const content = (
-		<div className='grid gap-3'>
-			<div className='grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[150px_150px_180px]'>
+		<div className={compact ? 'grid gap-2' : 'grid gap-3'}>
+			<div
+				className={
+					compact
+						? 'grid items-end gap-x-2 gap-y-1.5 sm:grid-cols-3 lg:grid-cols-[1fr_1fr_1fr_1fr_1fr]'
+						: 'grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[150px_150px_180px]'
+				}
+			>
 				{!estService && (
 					<>
 						<NumberField
@@ -138,16 +147,24 @@ export function ProductStockCard({
 			{/* Le Stock B est une option de la fiche. Replier la carte ne modifie
 			    jamais les quantités : l'interrupteur ne pilote que leur affichage. */}
 			{!estService && (
-				<div className='rounded-lg border p-4'>
+				<div
+					className={
+						compact ? 'rounded-md border px-2.5 py-1.5' : 'rounded-lg border p-4'
+					}
+				>
 					<div className='flex items-center justify-between gap-4'>
 						<div className='min-w-0'>
 							<p className='flex items-center font-semibold text-sm'>
 								Utiliser le Stock B
-								<HelpTooltip text='Pour les unités ouvertes, rayées ou retournées fonctionnelles, vendues à part sur la même fiche.' />
+								<HelpTooltip
+									text={`Pour les unités ouvertes, rayées ou retournées fonctionnelles, vendues à part sur la même fiche.${compact ? ' Gère une quantité et un prix distincts du stock neuf.' : ''}`}
+								/>
 							</p>
-							<p className='mt-0.5 text-muted-foreground text-[10px]'>
-								Gère une quantité et un prix distincts du stock neuf.
-							</p>
+							{!compact && (
+								<p className='mt-0.5 text-muted-foreground text-[10px]'>
+									Gère une quantité et un prix distincts du stock neuf.
+								</p>
+							)}
 						</div>
 						<Switch
 							checked={stockBActif}
@@ -157,7 +174,13 @@ export function ProductStockCard({
 					</div>
 
 					{stockBActif && (
-						<div className='mt-3 grid items-end gap-3 border-t pt-3 sm:grid-cols-2 xl:grid-cols-[150px_150px_minmax(0,1fr)]'>
+						<div
+							className={
+								compact
+									? 'mt-1.5 grid items-end gap-2 border-t pt-2 sm:grid-cols-2 xl:grid-cols-[150px_150px_minmax(0,1fr)]'
+									: 'mt-3 grid items-end gap-3 border-t pt-3 sm:grid-cols-2 xl:grid-cols-[150px_150px_minmax(0,1fr)]'
+							}
+						>
 							<NumberField
 								form={form}
 								name='stock_b'

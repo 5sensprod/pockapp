@@ -314,38 +314,62 @@ function ProductDetailContent({
 					}
 				/>
 
-				<main className='container mx-auto grid items-start gap-3 px-6 py-3 lg:grid-cols-[minmax(0,1fr)_430px]'>
-					<div className='grid content-start gap-2 self-start'>
+				<main
+					className={`container mx-auto grid items-start px-6 lg:grid-cols-[minmax(0,1fr)_430px] ${creation ? 'gap-2 py-2' : 'gap-3 py-3'}`}
+				>
+					<div
+						className={`grid content-start self-start ${creation ? 'gap-1.5' : 'gap-2'}`}
+					>
 						{/* Colonne de gauche : les champs sont toujours saisissables.
 						    Ouvrir une carte au survol puis au clic avant de pouvoir
 						    taper était un geste de trop pour des champs aussi courts. */}
-						<FormDetailCard dirty={identityDirty}>
-							<div className='grid gap-3'>
-								<ProductIdentityCard form={editor.form} embedded />
+						<FormDetailCard dirty={identityDirty} compact={creation}>
+							<div className={creation ? 'grid gap-1.5' : 'grid gap-3'}>
+								<ProductIdentityCard
+									form={editor.form}
+									embedded
+									compact={creation}
+								/>
 								{editor.duplicates.feedback}
 							</div>
 							{editor.duplicates.dialogue}
 						</FormDetailCard>
 
-						<FormDetailCard dirty={dirtySections.pricing}>
+						<FormDetailCard dirty={dirtySections.pricing} compact={creation}>
 							<ProductPricingCard
 								form={editor.form}
 								embedded
 								priceRequired={creation}
+								compact={creation}
 							/>
 						</FormDetailCard>
 
-						<FormDetailCard dirty={dirtySections.stock}>
+						<FormDetailCard dirty={dirtySections.stock} compact={creation}>
 							<ProductStockCard
 								productId={product.id}
 								form={editor.form}
 								embedded
+								compact={creation}
 							/>
 						</FormDetailCard>
 
-						<FormDetailCard title='Rattachements' dirty={linksDirty}>
-							<div className='grid gap-3 md:grid-cols-2'>
-								<ProductLinksCard form={editor.form} embedded />
+						<FormDetailCard
+							title='Rattachements'
+							dirty={linksDirty}
+							compact={creation}
+						>
+							<div
+								className={
+									creation
+										? 'grid gap-2 md:grid-cols-3'
+										: 'grid gap-3 md:grid-cols-2'
+								}
+							>
+								<ProductLinksCard
+									form={editor.form}
+									embedded
+									compact={creation}
+								/>
 							</div>
 						</FormDetailCard>
 

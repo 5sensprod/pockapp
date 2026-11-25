@@ -29,23 +29,34 @@ import type { ProductDetailValues } from './product-detail-form'
 export function ProductIdentityCard({
 	form,
 	embedded = false,
+	compact = false,
 }: {
 	form: UseFormReturn<ProductDetailValues>
 	embedded?: boolean
+	/** Création : tout sur une ligne dès `lg` (désignation, référence,
+	 *  code-barres, état commercial). */
+	compact?: boolean
 }) {
 	const content = (
-		<div className='grid gap-3 sm:grid-cols-[minmax(0,1.6fr)_minmax(160px,1fr)]'>
+		<div
+			className={
+				compact
+					? 'grid gap-x-2 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.3fr)_auto]'
+					: 'grid gap-3 sm:grid-cols-[minmax(0,1.6fr)_minmax(160px,1fr)]'
+			}
+		>
 			<TextField
 				form={form}
 				name='designation'
 				label='Désignation'
 				emphasis
+				compact={compact}
 				help='Ce libellé apparaît sur le ticket de caisse et la facture.'
 				placeholder='Libellé court pour le ticket et la facture'
 			/>
 			<TextField form={form} name='sku' label='Référence' />
-			<BarcodeField form={form} />
-			<CommercialStateField form={form} />
+			<BarcodeField form={form} compact={compact} />
+			<CommercialStateField form={form} compact={compact} />
 		</div>
 	)
 
@@ -66,8 +77,10 @@ const ETATS = [
 
 function CommercialStateField({
 	form,
+	compact = false,
 }: {
 	form: UseFormReturn<ProductDetailValues>
+	compact?: boolean
 }) {
 	return (
 		<FormField
@@ -78,7 +91,7 @@ function CommercialStateField({
 					<FormControl>
 						<div
 							aria-label='État commercial'
-							className='grid h-10 grid-cols-3 gap-1 rounded-md border bg-muted/30 p-1'
+							className={`grid grid-cols-3 gap-1 rounded-md border bg-muted/30 p-1 ${compact ? 'h-8 [&_button]:text-xs [&_button]:px-2' : 'h-10'}`}
 						>
 							{ETATS.map(({ value, label }) => {
 								const actif = (field.value ?? '') === value
@@ -128,8 +141,10 @@ function CommercialStateField({
 
 function BarcodeField({
 	form,
+	compact = false,
 }: {
 	form: UseFormReturn<ProductDetailValues>
+	compact?: boolean
 }) {
 	const pb = usePocketBase()
 	const [generating, setGenerating] = useState(false)
@@ -162,7 +177,9 @@ function BarcodeField({
 				const valid = isEAN13 && validateEAN13(value)
 				return (
 					<FormItem>
-						<FormLabel className='flex min-h-6 items-center'>
+						<FormLabel
+							className={compact ? 'flex items-center' : 'flex min-h-6 items-center'}
+						>
 							Code-barres
 						</FormLabel>
 						<div className='flex min-w-0 items-center gap-2'>
@@ -173,7 +190,7 @@ function BarcodeField({
 								type='button'
 								variant='outline'
 								size='icon'
-								className='h-10 w-10 shrink-0'
+								className={compact ? 'h-8 w-8 shrink-0' : 'h-10 w-10 shrink-0'}
 								disabled={generating}
 								onClick={generate}
 								aria-label='Générer un code-barres EAN-13'
@@ -233,6 +250,7 @@ function TextField({
 	hint,
 	placeholder,
 	emphasis,
+	compact = false,
 }: {
 	form: UseFormReturn<ProductDetailValues>
 	name: 'designation' | 'sku' | 'barcode'
@@ -241,6 +259,7 @@ function TextField({
 	hint?: string
 	placeholder?: string
 	emphasis?: boolean
+	compact?: boolean
 }) {
 	return (
 		<FormField
@@ -256,7 +275,11 @@ function TextField({
 						<Input
 							placeholder={placeholder}
 							className={
-								emphasis ? 'font-semibold text-base text-primary' : undefined
+								emphasis
+									? compact
+										? 'font-semibold text-primary text-sm'
+										: 'font-semibold text-base text-primary'
+									: undefined
 							}
 							{...field}
 						/>
