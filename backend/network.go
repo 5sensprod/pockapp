@@ -52,15 +52,61 @@ var nomsEcartes = []string{
 	"vmware", "virtualbox", "hyper-v", "tap-windows", "openvpn",
 	"hamachi", "zerotier", "tailscale", "wireguard", "vethernet",
 	"docker", "br-", "vboxnet", "vmnet",
+	// Antivirus / pare-feu / VPN commerciaux : ils posent des adaptateurs
+	// filtrants dont l'adresse n'est joignable par personne.
+	"kaspersky", "avast", "bitdefender", "eset", "norton", "malwarebytes",
+	"mcafee", "sophos", "fortinet", "forticlient", "anyconnect", "checkpoint",
+	"nordlynx", "nordvpn", "protonvpn", "expressvpn", "windscribe", "surfshark",
+	"npcap", "wfp", "wan miniport", "teredo", "isatap", "bluetooth",
+	"loopback pseudo", "radmin", "clash", "wsl", "default switch",
 }
 
 // prefixesEcartes : plages d'adresses attribuées par les couches virtuelles.
 var prefixesEcartes = []string{
 	"100.",                                     // CGNAT / VPN
 	"172.16.", "172.17.", "172.18.", "172.19.", // Docker
-	"10.0.53.",    // Hyper-V
-	"192.168.56.", // VirtualBox
-	"169.254.",    // APIPA / lien-local
+	"10.0.53.",     // Hyper-V
+	"192.168.56.",  // VirtualBox
+	"169.254.",     // APIPA / lien-local
+	"192.168.99.",  // Docker Toolbox
+	"192.168.137.", // partage de connexion Windows (hotspot)
+}
+
+// adresseLANPlausible : une adresse qu'un autre poste du magasin peut joindre
+// est une adresse PRIVÉE (10/8, 172.16/12, 192.168/16). Tout le reste —
+// 25.x (Hamachi), 26.x (Radmin), 198.18.x (bancs d'essai, utilisés par des
+// antivirus et proxys), 240.0.0.0/4 jusqu'à 255.x (réservé), 100.64/10
+// (CGNAT), adresses publiques — n'est pas une adresse de réseau local.
+// Plus sûr qu'une liste d'exclusions : une plage inconnue est refusée.
+func adresseLANPlausible(ip net.IP) bool {
+	v4 := ip.To4()
+	if v4 == nil {
+		return false
+	}
+	switch {
+	case v4[0] == 10:
+		return true
+	case v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31:
+		return true
+	case v4[0] == 192 && v4[1] == 168:
+		return true
+	}
+	return false
+}
+
+// ipRouteParDefaut : l'adresse que le système utilise pour sortir (route par
+// défaut). Aucun paquet n'est envoyé : une socket UDP « connectée » ne fait que
+// choisir l'interface. Vide si le poste n'a pas de route.
+func ipRouteParDefaut() string {
+	conn, err := net.Dial("udp4", "192.0.2.1:9")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	if a, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+		return a.IP.String()
+	}
+	return ""
 }
 
 // GetAllLocalIPs rend toutes les IPv4 non-loopback, sans filtre ni tri.
@@ -93,6 +139,7 @@ func ipsCandidates() []ipCandidate {
 	if err != nil {
 		return candidats
 	}
+	parDefaut := ipRouteParDefaut()
 
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
@@ -114,14 +161,24 @@ func ipsCandidates() []ipCandidate {
 				continue
 			}
 			adresse := ipnet.IP.String()
+			if !adresseLANPlausible(ipnet.IP) {
+				log.Printf("réseau: adresse hors réseau local ignorée %s (%s)", adresse, iface.Name)
+				continue
+			}
 			if adresseEcartee(adresse) {
 				log.Printf("réseau: adresse VPN/VM ignorée %s (%s)", adresse, iface.Name)
 				continue
 			}
+			priorite := prioriteInterface(iface.Name)
+			// L'interface qui porte la route par défaut est celle du réseau du
+			// magasin : elle passe avant le classement par nom.
+			if adresse == parDefaut {
+				priorite += 1000
+			}
 			candidats = append(candidats, ipCandidate{
 				adresse:      adresse,
 				interfaceNom: iface.Name,
-				priorite:     prioriteInterface(iface.Name),
+				priorite:     priorite,
 			})
 		}
 	}
