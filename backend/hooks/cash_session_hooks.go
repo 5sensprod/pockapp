@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/models"
 )
 
 func RegisterCashSessionHooks(app *pocketbase.PocketBase) {
@@ -92,6 +94,19 @@ func RegisterCashSessionHooks(app *pocketbase.PocketBase) {
 		// 📊 Détection de la fermeture
 		if original.GetString("status") == "open" && updated.GetString("status") == "closed" {
 			sessionId := updated.Id
+
+			// Fermer une session par l'API REST contournerait la clôture (et son
+			// Z) : réservé aux mêmes rôles que POST /api/cash/session/:id/close.
+			// Les écritures du Go passent par le Dao, jamais par ce hook.
+			if e.HttpContext != nil {
+				role := ""
+				if auth, ok := e.HttpContext.Get(apis.ContextAuthRecordKey).(*models.Record); ok && auth != nil {
+					role = auth.GetString("role")
+				}
+				if role != "admin" && role != "manager" {
+					return errors.New("seul un administrateur ou un manager peut fermer une session")
+				}
+			}
 
 			log.Printf("🔐 Fermeture session %s...", sessionId)
 

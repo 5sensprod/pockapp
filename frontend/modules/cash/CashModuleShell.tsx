@@ -205,6 +205,7 @@ export function CashModuleShell({
 						size='sm'
 						onClick={cash.handleCloturerLaJournee}
 						disabled={!cash.canCloturerLaJournee}
+						title='Réservé aux administrateurs et managers'
 					>
 						Clôturer la journée
 					</Button>

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/models"
@@ -504,6 +505,23 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 
 		if cashRegisterId == "" || date == "" {
 			return apis.NewBadRequestError("Paramètres 'cash_register' et 'date' requis", nil)
+		}
+
+		// Lire un Z existant est ouvert à tous ; en ÉMETTRE un (ce GET écrit et
+		// scelle) est réservé aux mêmes rôles que la clôture.
+		if info := apis.RequestInfo(c); info.AuthRecord == nil || !roleMayCloseCash(info.AuthRecord.GetString("role")) {
+			existant, _ := app.Dao().FindFirstRecordByFilter(
+				"z_reports",
+				"cash_register = {:caisse} && date ~ {:jour}",
+				dbx.Params{"caisse": cashRegisterId, "jour": date},
+			)
+			if existant == nil {
+				return apis.NewApiError(
+					http.StatusForbidden,
+					"Seul un administrateur ou un manager peut émettre le rapport Z.",
+					nil,
+				)
+			}
 		}
 
 		rapport, err := reports.GenerateRapportZ(app, cashRegisterId, date)

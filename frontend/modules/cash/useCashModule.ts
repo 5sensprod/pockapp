@@ -117,7 +117,14 @@ export function useCashModule() {
 		activeSession: sessionManager.activeSession,
 		sessionLabel: sessionManager.sessionLabel,
 		sessionVariant: toStatusVariant(sessionManager.sessionPillColor),
-		canCloturerLaJournee: sessionManager.canCountDrawer,
+		// Clôturer scelle le Z pour toute la caisse : admin et manager seulement.
+		// Le serveur reste l'autorité (403) ; ici on évite de faire saisir un
+		// comptage pour rien.
+		canCloturerLaJournee:
+			sessionManager.canCountDrawer &&
+			['admin', 'manager'].includes(
+				(user as { role?: string } | null | undefined)?.role ?? '',
+			),
 		lastKnownFloat: sessionManager.lastKnownFloat,
 		lastClosedAtLabel: sessionManager.lastClosedAtLabel,
 
