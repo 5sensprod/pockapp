@@ -4,6 +4,10 @@
 // pour étoffer l'aide, ajouter une entrée ici. Rien n'y est décrit qui n'existe
 // dans le code — chaque section dit quoi, et où cliquer.
 //
+// Règle : toute logique modifiée ajoute ou met à jour une rubrique ici.
+// Chaque phrase doit correspondre au code (le vérifier avant d'écrire) ; une
+// capture n'est déclarée que si le fichier existe dans `frontend/assets/aide/`.
+//
 // Pour l'instant, seulement les nouveautés récentes de l'interface.
 
 export interface RubriqueAide {
@@ -141,6 +145,93 @@ export const SECTIONS_AIDE: SectionAide[] = [
 				resume:
 					'La fiche produit a été resserrée pour montrer davantage d’informations sans défiler.',
 				ouCliquer: ['Stock > Produits, ouvrir un produit.'],
+			},
+			{
+				id: 'mon-ca',
+				titre: '« Mon CA » dans l’en-tête de la caisse',
+				resume:
+					'À côté du montant « Caisse », « Mon CA » affiche le chiffre d’affaires net de la session pour la personne connectée.',
+				ouCliquer: [
+					'Caisse : dans l’en-tête, lire « Mon CA » à côté de « Caisse ».',
+				],
+				details: [
+					'C’est le CA net : les ventes du jour moins les avoirs, attribués à l’utilisateur connecté.',
+					'Le calcul est fait par le serveur (rapport X), pas par l’écran.',
+					'Il n’apparaît que si une session est ouverte.',
+					'Si le serveur ne fournit pas le détail par utilisateur, c’est le CA net de toute la session qui s’affiche.',
+				],
+			},
+			{
+				id: 'par-vendeur',
+				titre: 'Détail « Par vendeur »',
+				resume:
+					'Le rapport X et le Journal des ventes montrent ce que chaque vendeur a encaissé.',
+				ouCliquer: [
+					'Caisse > Rapport X : section « Par vendeur ».',
+					'Journal des ventes : carte « Sur la période », bloc « Par vendeur » ; chaque document porte aussi le nom de son vendeur.',
+				],
+				details: [
+					'Un document est attribué à celui qui l’a encaissé ; à défaut, à celui qui l’a émis.',
+					'Un avoir est retranché de celui qui rembourse, pas du vendeur du ticket d’origine.',
+					'Les anciens documents sans auteur sont rangés dans « Non attribué » : la somme des vendeurs égale toujours le total.',
+				],
+			},
+			{
+				id: 'cloture-journee',
+				titre: 'Clôture de la journée réservée aux administrateurs et managers',
+				resume:
+					'Le bouton « Clôturer la journée » n’est actif que pour les rôles administrateur et manager.',
+				ouCliquer: [
+					'Caisse : bouton « Clôturer la journée » (grisé pour les autres rôles).',
+				],
+				details: [
+					'La clôture ferme la session et émet le rapport Z pour toute la caisse, en un seul geste.',
+					'Le serveur refuse aussi la clôture et l’émission du Z à tout autre rôle.',
+					'Une journée clôturée ne se rouvre pas.',
+					'Un autre poste voit la fermeture de la session dans les 30 secondes.',
+					'Le comptage du tiroir est proposé à ce moment, mais reste facultatif.',
+				],
+			},
+			{
+				id: 'session-unique',
+				titre: 'Une seule session ouverte par caisse',
+				resume:
+					'Tous les postes (application et navigateur) partagent la même session de caisse : elle ne peut plus être ouverte en double.',
+				ouCliquer: [
+					'Caisse : « Commencer la journée », ou simplement le premier encaissement du jour.',
+				],
+				details: [
+					'Si deux postes encaissent au même instant en début de journée, une seule session est créée.',
+					'La base l’interdit aussi par un index unique : deux sessions ouvertes sur la même caisse sont impossibles.',
+					'Sans cela, la clôture refusait d’avancer tant qu’une autre session restait ouverte.',
+				],
+			},
+			{
+				id: 'caisses-admin',
+				titre: 'Les caisses : administrateur seul, une seule active',
+				resume:
+					'Créer, modifier ou supprimer une caisse est réservé à l’administrateur, et le magasin n’a qu’une caisse active.',
+				ouCliquer: [
+					'Seul l’administrateur peut créer une caisse quand aucune n’est configurée.',
+				],
+				details: [
+					'Une seconde caisse active est refusée.',
+					'La seule caisse active ne peut pas être désactivée : plus aucun encaissement ne serait possible.',
+					'Une caisse qui porte des sessions n’est jamais supprimée : les tickets et les rapports Z la désignent.',
+				],
+			},
+			{
+				id: 'adresse-reseau',
+				titre: 'Adresse d’accès réseau (QR code)',
+				resume:
+					'Dans la barre du haut, le QR code et l’adresse IP permettent d’ouvrir l’application depuis un autre poste du réseau local.',
+				ouCliquer: [
+					'Barre du haut : cliquer sur le petit QR code pour l’agrandir et lire l’adresse.',
+				],
+				details: [
+					'Seules les adresses de réseau local privées (10.x, 172.16 à 172.31, 192.168.x) sont annoncées.',
+					'Les adaptateurs virtuels d’antivirus, de VPN et de machines virtuelles sont écartés.',
+				],
 			},
 		],
 	},

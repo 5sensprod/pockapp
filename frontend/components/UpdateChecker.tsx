@@ -9,6 +9,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { ReleaseNotesList } from '@/components/ReleaseNotesList'
 import { Button } from '@/components/ui/button'
 import {
 	Tooltip,
@@ -353,12 +354,13 @@ export function UpdateChecker() {
 										<p className='text-sm'>
 											Version actuelle :{' '}
 											<strong>
-												{updateInfo.currentVersion || currentVersion}
+												v{updateInfo.currentVersion || currentVersion}
 											</strong>
 										</p>
 										<p className='text-sm'>
 											Nouvelle version :{' '}
-											<strong className='text-green-600'>
+											<strong className='text-primary'>
+												v
 												{updateInfo.version}
 											</strong>
 										</p>
@@ -370,14 +372,7 @@ export function UpdateChecker() {
 									</div>
 
 									{updateInfo.releaseNotes && (
-										<div className='bg-muted p-4 rounded-lg'>
-											<h4 className='font-semibold text-sm mb-2'>
-												Notes de version :
-											</h4>
-											<div className='text-sm whitespace-pre-wrap max-h-64 overflow-y-auto'>
-												{updateInfo.releaseNotes}
-											</div>
-										</div>
+										<ReleaseNotesList notes={updateInfo.releaseNotes} />
 									)}
 
 									{updateInfo.downloadUrl && (
