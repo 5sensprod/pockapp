@@ -15,6 +15,19 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
+        // Teintes sémantiques : variables --tag-<ton>-* redéfinies par thème
+        // (styles/index.css), contraste texte/fond >= 4,5:1 dans chaque thème.
+        info: "border-tag-info-border bg-tag-info text-tag-info-foreground",
+        success:
+          "border-tag-success-border bg-tag-success text-tag-success-foreground",
+        warning:
+          "border-tag-warning-border bg-tag-warning text-tag-warning-foreground",
+        danger:
+          "border-tag-danger-border bg-tag-danger text-tag-danger-foreground",
+        neutral:
+          "border-tag-neutral-border bg-tag-neutral text-tag-neutral-foreground",
+        accent:
+          "border-tag-accent-border bg-tag-accent text-tag-accent-foreground",
       },
     },
     defaultVariants: {

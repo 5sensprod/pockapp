@@ -374,7 +374,7 @@ export default function CompanyManagement() {
 													<div className='font-medium flex items-center gap-2'>
 														{company.name}
 														{company.is_first && (
-															<span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800'>
+															<span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-tag-info text-tag-info-foreground'>
 																Principale
 															</span>
 														)}
@@ -400,8 +400,8 @@ export default function CompanyManagement() {
 											<span
 												className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
 													company.active
-														? 'bg-green-100 text-green-800'
-														: 'bg-gray-100 text-gray-800'
+														? 'bg-tag-success text-tag-success-foreground'
+														: 'bg-tag-neutral text-tag-neutral-foreground'
 												}`}
 											>
 												{company.active ? 'Active' : 'Inactive'}

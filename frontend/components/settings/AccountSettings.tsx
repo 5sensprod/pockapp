@@ -518,19 +518,19 @@ function RoleBadge({ role }: { role: string }) {
 	const roleConfig: Record<string, { label: string; className: string }> = {
 		admin: {
 			label: 'Administrateur',
-			className: 'bg-red-100 text-red-800 border-red-200',
+			className: 'border bg-tag-danger text-tag-danger-foreground border-tag-danger-border',
 		},
 		manager: {
 			label: 'Manager',
-			className: 'bg-blue-100 text-blue-800 border-blue-200',
+			className: 'border bg-tag-info text-tag-info-foreground border-tag-info-border',
 		},
 		caissier: {
 			label: 'Caissier',
-			className: 'bg-green-100 text-green-800 border-green-200',
+			className: 'border bg-tag-success text-tag-success-foreground border-tag-success-border',
 		},
 		user: {
 			label: 'Utilisateur',
-			className: 'bg-gray-100 text-gray-800 border-gray-200',
+			className: 'border bg-tag-neutral text-tag-neutral-foreground border-tag-neutral-border',
 		},
 	}
 

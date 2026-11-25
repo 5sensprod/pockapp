@@ -114,7 +114,7 @@ export function InvoicesTable({
 								return (
 									<TableRow
 										key={invoice.id}
-										className={`cursor-pointer hover:bg-muted/50 transition-colors ${overdue ? 'bg-red-50/50' : ''}`}
+										className={`cursor-pointer transition-colors ${overdue ? 'bg-destructive/10' : ''}`}
 										onClick={() => goToDetail(invoice.id)}
 									>
 										{/* Numéro */}

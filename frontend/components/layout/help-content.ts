@@ -47,6 +47,11 @@ export const SECTIONS_AIDE: SectionAide[] = [
 					'En haut à droite de l’en-tête, cliquer sur l’icône de contraste.',
 					'Choisir le thème dans le menu.',
 				],
+				details: [
+					'Le menu de gauche, les tableaux et les pastilles (tags, statuts) suivent le thème choisi : fond légèrement teinté, survol et élément actif de la couleur du thème.',
+					'Les contrastes de texte sont calculés pour rester lisibles dans les cinq thèmes.',
+					'Les PDF et les tickets imprimés ne changent pas.',
+				],
 			},
 			{
 				id: 'raccourcis',

@@ -170,16 +170,18 @@ export function CustomerTable({
 			header: 'Type',
 			cell: ({ row }) => {
 				const type = row.getValue<string | undefined>('customer_type')
-				const typeColors: Record<string, string> = {
-					individual: 'bg-blue-100 text-blue-800',
-					professional: 'bg-purple-100 text-purple-800',
-					administration: 'bg-green-100 text-green-800',
-					association: 'bg-orange-100 text-orange-800',
+				const typeColors: Record<
+					string,
+					'info' | 'accent' | 'success' | 'warning'
+				> = {
+					individual: 'info',
+					professional: 'accent',
+					administration: 'success',
+					association: 'warning',
 				}
 				return (
 					<Badge
-						variant='secondary'
-						className={typeColors[type || 'individual'] || ''}
+						variant={typeColors[type || 'individual'] || 'neutral'}
 					>
 						{getCustomerTypeLabel(type)}
 					</Badge>

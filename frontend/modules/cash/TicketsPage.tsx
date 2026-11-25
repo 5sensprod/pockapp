@@ -325,7 +325,7 @@ export function TicketsPage() {
 										return (
 											<DropdownMenu key={ticket.id} modal={false}>
 												<DropdownMenuTrigger asChild>
-													<TableRow className='cursor-pointer hover:bg-muted/50 data-[state=open]:bg-muted transition-colors'>
+													<TableRow className='cursor-pointer data-[state=open]:bg-table-row-selected transition-colors'>
 														<TableCell>
 															<div className='flex items-center gap-2'>
 																<span className='font-mono font-medium'>

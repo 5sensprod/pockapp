@@ -265,7 +265,7 @@ export function CustomerDetailTabs({
 																Remboursé
 															</span>
 														) : (
-															<span className='flex items-center gap-1 text-gray-500'>
+															<span className='flex items-center gap-1 text-muted-foreground'>
 																<XCircle className='h-4 w-4' />
 																Abandonné
 															</span>

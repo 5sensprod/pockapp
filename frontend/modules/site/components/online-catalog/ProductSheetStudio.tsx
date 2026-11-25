@@ -646,8 +646,8 @@ export function ProductSheetStudio({
 										className={cn(
 											'border-transparent',
 											enStock
-												? 'bg-emerald-100 text-emerald-800'
-												: 'bg-orange-100 text-orange-800',
+												? 'bg-tag-success text-tag-success-foreground'
+												: 'bg-tag-warning text-tag-warning-foreground',
 										)}
 									>
 										{enStock ? 'En stock' : 'Réappro'}

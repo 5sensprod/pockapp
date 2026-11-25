@@ -980,7 +980,7 @@ export function QuoteEditPage() {
 							) : (
 								<div className='flex items-center gap-2'>
 									<select
-										className='h-9 rounded-md border bg-white px-2 text-sm'
+										className='h-9 rounded-md border bg-background text-foreground px-2 text-sm'
 										value={cartDiscountMode}
 										onChange={(e) =>
 											setCartDiscountMode(e.target.value as DiscountMode)
@@ -1219,7 +1219,7 @@ export function QuoteEditPage() {
 												<TableCell>
 													<div className='flex items-center gap-2'>
 														<select
-															className='h-8 rounded-md border bg-white px-1 text-xs'
+															className='h-8 rounded-md border bg-background text-foreground px-1 text-xs'
 															value={item.lineDiscountMode ?? 'percent'}
 															onChange={(e) =>
 																setLineDiscountMode(

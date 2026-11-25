@@ -51,20 +51,11 @@ import * as React from 'react'
 
 const normalizePath = (path: string) => (path || '/').replace(/\/+$/, '') || '/'
 
-const SIDEBAR_TINT_BY_ICON_COLOR: Record<string, string> = {
-	'text-blue-600': 'bg-blue-500/10',
-	'text-orange-500': 'bg-orange-500/10',
-	'text-purple-600': 'bg-purple-500/10',
-	'text-emerald-600': 'bg-emerald-500/10',
-}
-
+// Seule l'ICÔNE garde la couleur de son module ; fonds, texte et séparateurs
+// viennent du thème (--sidebar-* dans styles/index.css, tokens bg-panel*).
 function getModuleSidebarAccent(moduleId: string) {
 	const module = getModule(moduleId)
-	const text = module?.iconColor ?? module?.color ?? 'text-panel-item-icon'
-	return {
-		text,
-		background: SIDEBAR_TINT_BY_ICON_COLOR[text] ?? 'bg-panel-item-active',
-	}
+	return { text: module?.iconColor ?? module?.color ?? 'text-panel-item-icon' }
 }
 
 interface SidebarProps {
@@ -132,7 +123,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 			<nav
 				ref={navRef}
 				className={cn(
-					'fixed left-0 bottom-0 z-50 w-panel bg-panel flex flex-col shadow-2xl',
+					'fixed left-0 bottom-0 z-50 w-panel bg-panel border-r border-panel-item-divider flex flex-col shadow-2xl',
 					'transition-transform duration-200 ease-out motion-reduce:transition-none',
 					open ? 'translate-x-0' : '-translate-x-full',
 				)}
@@ -140,7 +131,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 				aria-label='Navigation principale'
 				aria-hidden={!open}
 			>
-				<div className='h-header px-4 bg-panel-header flex items-center justify-between shrink-0'>
+				<div className='h-header px-4 bg-panel-header border-b border-panel-item-divider flex items-center justify-between shrink-0'>
 					<span className='text-[10px] uppercase tracking-widest font-bold text-panel-item-icon'>
 						Tous les modules
 					</span>
@@ -170,12 +161,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 									className={cn(
 										'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
 										isCurrent
-											? `${accent.background} ${accent.text}`
-											: 'text-panel-item-text hover:bg-panel-header',
+											? 'bg-panel-item-active text-panel-item-text font-semibold'
+											: 'text-panel-item-text hover:bg-panel-item-hover',
 									)}
 									aria-expanded={isOpen}
 								>
-									<GroupIcon className={cn('h-4 w-4 shrink-0', accent.text)} />
+									<span className='grid h-6 w-6 shrink-0 place-items-center rounded-md bg-panel-chip'>
+											<GroupIcon className={cn('h-4 w-4', accent.text)} />
+										</span>
 									<span className='flex-1 text-left'>{group.label}</span>
 									<ChevronDown
 										className={cn(
@@ -187,10 +180,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
 								{isOpen && group.items?.length > 0 && (
 									<div
-										className={cn(
-											'ml-4 mt-0.5 mb-1 border-l border-current/20 pl-3 flex flex-col gap-0.5',
-											accent.text,
-										)}
+										className='ml-4 mt-0.5 mb-1 border-l border-panel-item-divider pl-3 flex flex-col gap-0.5'
 									>
 										{group.items.map((item) => {
 											const ItemIcon = item.icon
@@ -203,8 +193,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 													className={cn(
 														'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors',
 														isActive
-															? `${accent.background} ${accent.text} font-semibold`
-															: 'text-panel-item-icon hover:bg-panel-header hover:text-panel-item-text',
+															? 'bg-panel-item-active text-panel-item-text font-semibold'
+															: 'text-panel-item-icon hover:bg-panel-item-hover hover:text-panel-item-text',
 													)}
 												>
 													{ItemIcon && (

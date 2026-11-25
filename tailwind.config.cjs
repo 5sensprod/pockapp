@@ -1,3 +1,9 @@
+const tagTone = (k) => ({
+	DEFAULT: `hsl(var(--tag-${k}-background))`,
+	foreground: `hsl(var(--tag-${k}-foreground))`,
+	border: `hsl(var(--tag-${k}-border))`,
+})
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
 	darkMode: ['class'],
@@ -98,16 +104,34 @@ module.exports = {
 					separator: 'rgba(255,255,255,0.10)',
 					indicator: 'rgba(255,255,255,0.60)',
 				},
+				// Menu de gauche : suit le thème (--sidebar-* dans styles/index.css).
 				panel: {
-					DEFAULT: '#ffffff',
-					header: '#f2f3ff',
-					'item-active': '#eaedff',
-					'item-text': '#575e70',
-					'item-icon': '#7e7576',
-					'item-divider': '#cfc4c5',
-					'header-text': '#131b2e',
-					'close-btn': '#7e7576',
+					DEFAULT: 'hsl(var(--sidebar-background))',
+					header: 'hsl(var(--sidebar-header))',
+					'item-active': 'hsl(var(--sidebar-active))',
+					'item-hover': 'hsl(var(--sidebar-accent))',
+					'item-text': 'hsl(var(--sidebar-foreground))',
+					'item-icon': 'hsl(var(--sidebar-muted))',
+					'item-divider': 'hsl(var(--sidebar-border))',
+					'header-text': 'hsl(var(--sidebar-foreground))',
+					'close-btn': 'hsl(var(--sidebar-muted))',
+					chip: 'hsl(var(--sidebar-chip))',
 				},
+				// Tableaux : --table-* (styles/index.css).
+				table: {
+					header: 'hsl(var(--table-header))',
+					'header-foreground': 'hsl(var(--table-header-foreground))',
+					'row-hover': 'hsl(var(--table-row-hover))',
+					'row-selected': 'hsl(var(--table-row-selected))',
+					border: 'hsl(var(--table-border))',
+				},
+				// Pastilles sémantiques : --tag-<ton>-{background,foreground,border}.
+				'tag-info': tagTone('info'),
+				'tag-success': tagTone('success'),
+				'tag-warning': tagTone('warning'),
+				'tag-danger': tagTone('danger'),
+				'tag-neutral': tagTone('neutral'),
+				'tag-accent': tagTone('accent'),
 			},
 
 			borderRadius: {

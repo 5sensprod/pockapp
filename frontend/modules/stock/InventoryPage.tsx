@@ -373,11 +373,11 @@ function CategoryStatusBadge({
 		counted: {
 			label: 'Compté',
 			class:
-				'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+				'bg-tag-success text-tag-success-foreground',
 		},
 		in_progress: {
 			label: 'En cours',
-			class: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+			class: 'bg-tag-info text-tag-info-foreground',
 		},
 		todo: { label: 'À faire', class: 'bg-muted/50 text-muted-foreground' },
 	}
@@ -705,13 +705,13 @@ function CreateSessionDialog({
 		const productCount = getCategoryProductCount(categoryId)
 		if (tag?.type === 'active')
 			return (
-				<span className='rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'>
+				<span className='rounded-full bg-tag-info px-2 py-0.5 text-xs font-medium text-tag-info-foreground'>
 					En cours
 				</span>
 			)
 		if (tag?.type === 'done' && productCount > 0)
 			return (
-				<span className='rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300'>
+				<span className='rounded-full bg-tag-success px-2 py-0.5 text-xs font-medium text-tag-success-foreground'>
 					Fait le {tag.date}
 				</span>
 			)
@@ -885,7 +885,7 @@ function CreateSessionDialog({
 							<div className='flex items-center justify-between'>
 								<Label>Produits jamais inventoriés</Label>
 								{selectedProductIds.length > 0 && (
-									<span className='rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'>
+									<span className='rounded-full bg-tag-warning px-2 py-0.5 text-xs font-semibold text-tag-warning-foreground'>
 										{selectedProductIds.length} produit
 										{selectedProductIds.length > 1 ? 's' : ''} sélectionné
 										{selectedProductIds.length > 1 ? 's' : ''}
@@ -1018,7 +1018,7 @@ function CreateSessionDialog({
 																		<span className='min-w-0 flex-1 truncate text-sm'>
 																			{product.name}
 																		</span>
-																		<span className='shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'>
+																		<span className='shrink-0 rounded-full bg-tag-warning px-2 py-0.5 text-xs font-medium text-tag-warning-foreground'>
 																			Jamais inventorié
 																		</span>
 																	</label>
@@ -1042,7 +1042,7 @@ function CreateSessionDialog({
 																			<span className='min-w-0 flex-1 truncate text-sm'>
 																				{product.name}
 																			</span>
-																			<span className='shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300'>
+																			<span className='shrink-0 rounded-full bg-tag-success px-2 py-0.5 text-xs font-medium text-tag-success-foreground'>
 																				{countedAt
 																					? `Inventorié · ${formatInventoryDateTime(countedAt)}`
 																					: 'Inventorié'}
@@ -1070,7 +1070,7 @@ function CreateSessionDialog({
 							<div className='flex items-center justify-between gap-3'>
 								<Label>Catégories à inventorier</Label>
 								{selectedCategoryIds.length > 0 && (
-									<span className='rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'>
+									<span className='rounded-full bg-tag-warning px-2 py-0.5 text-xs font-semibold text-tag-warning-foreground'>
 										{selectedCategoryIds.length} rayon
 										{selectedCategoryIds.length > 1 ? 's' : ''} ·{' '}
 										{selectedProductTotal} produit
@@ -1811,7 +1811,7 @@ function SessionOverviewView({
 													{cat.countedProducts}/{cat.totalProducts} produits
 												</div>
 											</div>
-											<div className='rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'>
+											<div className='rounded-full bg-tag-info px-2 py-1 text-xs font-semibold text-tag-info-foreground'>
 												Continuer
 											</div>
 										</div>
@@ -2606,7 +2606,7 @@ function InventoryHistoryView({ onBack }: { onBack: () => void }) {
 												className={cn(
 													'text-xs px-2 py-0.5 rounded-full font-medium shrink-0',
 													session.status === 'completed'
-														? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+														? 'bg-tag-success text-tag-success-foreground'
 														: 'bg-muted text-muted-foreground',
 												)}
 											>
@@ -2872,7 +2872,7 @@ function SessionCard({
 							className={cn(
 								'rounded-full px-2 py-0.5 text-xs font-semibold',
 								session.status === 'in_progress'
-									? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+									? 'bg-tag-info text-tag-info-foreground'
 									: 'bg-muted text-muted-foreground',
 							)}
 						>

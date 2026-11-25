@@ -200,23 +200,23 @@ function mentionPromoInactive(
 const ETATS_COMMERCIAUX: Record<string, { label: string; classes: string }> = {
 	used: {
 		label: 'Occasion',
-		classes: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200',
+		classes: 'bg-tag-success text-tag-success-foreground',
 	},
 	rental: {
 		label: 'Location',
-		classes: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200',
+		classes: 'bg-tag-info text-tag-info-foreground',
 	},
 }
 
 const ETATS_DE_VENTE: Record<string, { label: string; classes: string }> = {
 	sale: {
 		label: 'Soldes',
-		classes: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
+		classes: 'bg-tag-danger text-tag-danger-foreground',
 	},
 	promo: {
 		label: 'Promo',
 		classes:
-			'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
+			'bg-tag-warning text-tag-warning-foreground',
 	},
 }
 
@@ -245,7 +245,7 @@ function EtatsBadges({ produit }: { produit: StockProductRow }) {
 			{enAvant && (
 				<PastilleEtat
 					label={libelle === '' ? LIBELLE_PAR_DEFAUT : libelle}
-					classes='bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200'
+					classes='bg-tag-accent text-tag-accent-foreground'
 					icone={<Heart className='mr-0.5 h-2.5 w-2.5' />}
 				/>
 			)}

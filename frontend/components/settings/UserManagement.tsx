@@ -55,10 +55,10 @@ const roleLabels: Record<UserRole, string> = {
 }
 
 const roleColors: Record<UserRole, string> = {
-	admin: 'bg-red-100 text-red-800 border-red-200',
-	manager: 'bg-blue-100 text-blue-800 border-blue-200',
-	caissier: 'bg-green-100 text-green-800 border-green-200',
-	user: 'bg-gray-100 text-gray-800 border-gray-200',
+	admin: 'border bg-tag-danger text-tag-danger-foreground border-tag-danger-border',
+	manager: 'border bg-tag-info text-tag-info-foreground border-tag-info-border',
+	caissier: 'border bg-tag-success text-tag-success-foreground border-tag-success-border',
+	user: 'border bg-tag-neutral text-tag-neutral-foreground border-tag-neutral-border',
 }
 
 export default function UserManagement() {

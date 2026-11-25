@@ -149,7 +149,7 @@ function lisible(octets: number): string {
  *  autres : tant qu'il tient, l'état des images ne veut rien dire. */
 const HORS_LIGNE = {
 	texte: 'À exporter d’abord',
-	classe: 'bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-200',
+	classe: 'bg-tag-info text-tag-info-foreground',
 }
 
 const ETIQUETTES: Record<SyncState, { texte: string; classe: string }> = {
@@ -157,12 +157,12 @@ const ETIQUETTES: Record<SyncState, { texte: string; classe: string }> = {
 	modified: {
 		texte: 'À mettre à jour',
 		classe:
-			'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
+			'bg-tag-warning text-tag-warning-foreground',
 	},
 	synced: {
 		texte: 'À jour',
 		classe:
-			'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200',
+			'bg-tag-success text-tag-success-foreground',
 	},
 }
 

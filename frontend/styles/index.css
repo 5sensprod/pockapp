@@ -133,6 +133,201 @@
   }
 }
 
+/*
+ * LOGIQUE DES THÈMES (modifier ici, pas dans les composants)
+ * Un thème = une classe sur <html> (`dark`, `theme-indigo`…, rien pour Clair ;
+ * voir `lib/hooks/useTheme.ts`). Toutes les valeurs sont des triplets HSL
+ * « H S% L% » (un « / alpha » est permis), lus par Tailwind via hsl(var(--x)).
+ *  1. Socle shadcn : --background (page), --card (cartes, lignes), --foreground,
+ *     --muted(-foreground) (texte secondaire), --primary (couleur dominante),
+ *     --border. Un thème contrasté assombrit le fond et durcit les bordures.
+ *  2. Menu de gauche : --sidebar-background (fond, teinté de la teinte du thème,
+ *     plus sombre que la page en contrasté), -foreground (texte), -muted (icônes
+ *     et texte inactifs), -header (bandeau « Tous les modules »), -accent
+ *     (survol), -active (élément courant), -border (séparateurs), -chip (pastille
+ *     claire sous les icônes colorées des modules). Classes : bg-panel*, text-panel*.
+ *  3. Tableaux : --table-header(-foreground), --table-row-hover, --table-row-selected,
+ *     --table-border (classes bg-table-header, hover:bg-table-row-hover…).
+ *  4. Pastilles : --tag-{info,success,warning,danger,neutral,accent}-
+ *     {background,foreground,border} (variantes de <Badge>). En clair : fond
+ *     teinté + texte foncé ; en sombre : fond translucide + texte clair.
+ * Ajouter un thème : (a) classe `theme-X` dans CLASSES_THEME et THEMES de
+ * useTheme.ts ; (b) un bloc `:root.theme-X:not(.dark)` redéfinissant TOUTES les
+ * variables ci-dessus (copier un bloc contrasté) ; (c) vérifier chaque paire
+ * texte/fond ≥ 4,5:1 (WCAG) — sidebar, tableau et les six pastilles comprises.
+ */
+@layer base {
+  :root {
+    --sidebar-background: 234 45% 96%;
+    --sidebar-foreground: 220 57% 18%;
+    --sidebar-muted: 220 25% 36%;
+    --sidebar-header: 234 50% 93%;
+    --sidebar-accent: 234 55% 91%;
+    --sidebar-active: 234 70% 86%;
+    --sidebar-border: 234 35% 84%;
+    --sidebar-chip: 0 0% 100%;
+    --table-header: 234 40% 94%;
+    --table-header-foreground: 220 57% 20%;
+    --table-row-hover: 234 60% 96%;
+    --table-row-selected: 234 90% 96.5%;
+    --table-border: 220 45% 88%;
+    --tag-info-background: 214 90% 93%;
+    --tag-info-foreground: 214 80% 24%;
+    --tag-info-border: 214 60% 78%;
+    --tag-success-background: 142 90% 93%;
+    --tag-success-foreground: 142 80% 24%;
+    --tag-success-border: 142 60% 78%;
+    --tag-warning-background: 42 95% 89%;
+    --tag-warning-foreground: 32 80% 20%;
+    --tag-warning-border: 42 60% 62%;
+    --tag-danger-background: 0 90% 93%;
+    --tag-danger-foreground: 0 80% 27%;
+    --tag-danger-border: 0 60% 78%;
+    --tag-neutral-background: 244 14% 93%;
+    --tag-neutral-foreground: 244 25% 24%;
+    --tag-neutral-border: 244 15% 78%;
+    --tag-accent-background: 244 90% 93%;
+    --tag-accent-foreground: 244 80% 24%;
+    --tag-accent-border: 244 60% 78%;
+  }
+
+  .dark {
+    --sidebar-background: 222 45% 8%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-muted: 215 25% 72%;
+    --sidebar-header: 222 45% 11%;
+    --sidebar-accent: 222 40% 14%;
+    --sidebar-active: 234 50% 22%;
+    --sidebar-border: 222 35% 17%;
+    --sidebar-chip: 222 35% 15%;
+    --table-header: 222 35% 12%;
+    --table-header-foreground: 210 40% 96%;
+    --table-row-hover: 222 35% 10%;
+    --table-row-selected: 234 45% 18%;
+    --table-border: 217 32% 17.5%;
+    --tag-info-background: 214 85% 60% / 0.16;
+    --tag-info-foreground: 214 90% 84%;
+    --tag-info-border: 214 70% 62% / 0.4;
+    --tag-success-background: 142 85% 60% / 0.16;
+    --tag-success-foreground: 142 90% 84%;
+    --tag-success-border: 142 70% 62% / 0.4;
+    --tag-warning-background: 42 85% 60% / 0.16;
+    --tag-warning-foreground: 42 90% 76%;
+    --tag-warning-border: 42 70% 62% / 0.4;
+    --tag-danger-background: 0 85% 60% / 0.16;
+    --tag-danger-foreground: 0 90% 84%;
+    --tag-danger-border: 0 70% 62% / 0.4;
+    --tag-neutral-background: 244 15% 70% / 0.16;
+    --tag-neutral-foreground: 244 20% 84%;
+    --tag-neutral-border: 244 15% 62% / 0.4;
+    --tag-accent-background: 244 85% 60% / 0.16;
+    --tag-accent-foreground: 244 90% 84%;
+    --tag-accent-border: 244 70% 62% / 0.4;
+  }
+
+  :root.theme-indigo:not(.dark) {
+    --sidebar-background: 236 20% 77%;
+    --sidebar-foreground: 230 70% 8%;
+    --sidebar-muted: 232 38% 20%;
+    --sidebar-header: 236 24% 71%;
+    --sidebar-accent: 236 26% 69%;
+    --sidebar-active: 244 34% 66%;
+    --sidebar-border: 236 24% 58%;
+    --sidebar-chip: 230 18% 93%;
+    --table-header: 236 24% 78%;
+    --table-header-foreground: 230 70% 8%;
+    --table-row-hover: 230 20% 87%;
+    --table-row-selected: 244 36% 79%;
+    --table-border: 230 20% 68%;
+    --tag-info-background: 214 55% 82%;
+    --tag-info-foreground: 214 85% 13%;
+    --tag-info-border: 214 45% 48%;
+    --tag-success-background: 142 55% 82%;
+    --tag-success-foreground: 142 85% 13%;
+    --tag-success-border: 142 45% 48%;
+    --tag-warning-background: 42 55% 76%;
+    --tag-warning-foreground: 32 85% 11%;
+    --tag-warning-border: 42 45% 48%;
+    --tag-danger-background: 0 55% 82%;
+    --tag-danger-foreground: 0 85% 13%;
+    --tag-danger-border: 0 45% 48%;
+    --tag-neutral-background: 244 14% 82%;
+    --tag-neutral-foreground: 244 40% 13%;
+    --tag-neutral-border: 244 18% 48%;
+    --tag-accent-background: 244 55% 82%;
+    --tag-accent-foreground: 244 85% 13%;
+    --tag-accent-border: 244 45% 48%;
+  }
+
+  :root.theme-bleu:not(.dark) {
+    --sidebar-background: 214 24% 76%;
+    --sidebar-foreground: 215 75% 8%;
+    --sidebar-muted: 215 48% 18%;
+    --sidebar-header: 214 28% 70%;
+    --sidebar-accent: 214 30% 67%;
+    --sidebar-active: 215 40% 64%;
+    --sidebar-border: 214 28% 56%;
+    --sidebar-chip: 212 26% 92%;
+    --table-header: 212 26% 77%;
+    --table-header-foreground: 215 75% 8%;
+    --table-row-hover: 212 24% 86%;
+    --table-row-selected: 215 40% 77%;
+    --table-border: 212 28% 66%;
+    --tag-info-background: 214 55% 82%;
+    --tag-info-foreground: 214 85% 13%;
+    --tag-info-border: 214 45% 48%;
+    --tag-success-background: 142 55% 82%;
+    --tag-success-foreground: 142 85% 13%;
+    --tag-success-border: 142 45% 48%;
+    --tag-warning-background: 42 55% 76%;
+    --tag-warning-foreground: 32 85% 11%;
+    --tag-warning-border: 42 45% 48%;
+    --tag-danger-background: 0 55% 82%;
+    --tag-danger-foreground: 0 85% 13%;
+    --tag-danger-border: 0 45% 48%;
+    --tag-neutral-background: 215 14% 82%;
+    --tag-neutral-foreground: 215 40% 13%;
+    --tag-neutral-border: 215 18% 48%;
+    --tag-accent-background: 215 55% 82%;
+    --tag-accent-foreground: 215 85% 13%;
+    --tag-accent-border: 215 45% 48%;
+  }
+
+  :root.theme-vert:not(.dark) {
+    --sidebar-background: 142 16% 75%;
+    --sidebar-foreground: 150 50% 7%;
+    --sidebar-muted: 150 40% 16%;
+    --sidebar-header: 142 20% 69%;
+    --sidebar-accent: 142 22% 66%;
+    --sidebar-active: 152 30% 62%;
+    --sidebar-border: 142 20% 55%;
+    --sidebar-chip: 140 14% 91%;
+    --table-header: 140 14% 76%;
+    --table-header-foreground: 150 50% 7%;
+    --table-row-hover: 140 12% 85%;
+    --table-row-selected: 152 30% 76%;
+    --table-border: 140 18% 64%;
+    --tag-info-background: 214 55% 82%;
+    --tag-info-foreground: 214 85% 13%;
+    --tag-info-border: 214 45% 48%;
+    --tag-success-background: 142 55% 82%;
+    --tag-success-foreground: 142 85% 13%;
+    --tag-success-border: 142 45% 48%;
+    --tag-warning-background: 42 55% 76%;
+    --tag-warning-foreground: 32 85% 11%;
+    --tag-warning-border: 42 45% 48%;
+    --tag-danger-background: 0 55% 82%;
+    --tag-danger-foreground: 0 85% 13%;
+    --tag-danger-border: 0 45% 48%;
+    --tag-neutral-background: 152 14% 82%;
+    --tag-neutral-foreground: 152 40% 13%;
+    --tag-neutral-border: 152 18% 48%;
+    --tag-accent-background: 152 55% 82%;
+    --tag-accent-foreground: 152 85% 13%;
+    --tag-accent-border: 152 45% 48%;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
