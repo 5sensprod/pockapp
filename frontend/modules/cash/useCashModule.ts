@@ -89,8 +89,14 @@ export function useCashModule() {
 		null
 
 	// CA net de la session (ventes - avoirs) — depuis rapport X
-	const caNet: number | null =
+	const caNetSession: number | null =
 		(rapportX?.sales as any)?.net_ttc ?? rapportX?.sales?.total_ttc ?? null
+
+	// CA net de l'utilisateur connecté, calculé par le Go (jamais ici). Un
+	// serveur qui ne le rend pas encore retombe sur le CA de la session.
+	const parUtilisateur = rapportX?.sales?.net_ttc_by_user
+	const caNet: number | null =
+		parUtilisateur && user?.id ? (parUtilisateur[user.id] ?? 0) : caNetSession
 
 	// ── Valeur retournée (interface plate, consommée par CashView) ────────────
 	return {

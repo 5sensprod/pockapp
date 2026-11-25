@@ -140,6 +140,10 @@ export interface SalesSummaryX {
 	total_tva: number
 	total_ttc: number
 	net_ttc: number // total_ttc - avoirs
+	/** CA net par utilisateur (id) — absent d'un serveur ancien. */
+	net_ttc_by_user?: Record<string, number>
+	/** Détail par vendeur (nom, lignes, encaissé) — absent d'un serveur ancien. */
+	by_user?: import('@/components/reports/TableauVendeurs').VendeurTotal[] | null
 	by_method: Record<string, number>
 	vat_by_rate: Record<string, any>
 	net_by_method: Record<string, number>

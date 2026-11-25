@@ -53,6 +53,8 @@ type JournalDocument struct {
 	Moyen  string  `json:"moyen"`
 	Client string  `json:"client,omitempty"`
 	Heure  string  `json:"heure,omitempty"`
+	// Vendeur : celui qui a encaissé (sinon émis) — voir vendeurs.go.
+	Vendeur string `json:"vendeur,omitempty"`
 
 	// instant est la clé de tri de la journée. Non exporté : il ne part pas dans
 	// le JSON, l'écran n'a que `Heure` à afficher et rien à retrier.
@@ -113,6 +115,11 @@ type JournalTotaux struct {
 	VentesTVA      float64 `json:"ventes_tva"`
 	NbDocuments    int     `json:"nb_documents"`
 	NbJours        int     `json:"nb_jours"`
+
+	// ParVendeur : le détail de la période par utilisateur. La somme de leurs
+	// colonnes égale les totaux ci-dessus ; les documents sans auteur sont dans
+	// « Non attribué ».
+	ParVendeur []VendeurTotal `json:"par_vendeur"`
 }
 
 // JournalDesVentes rend une journée par jour de la période, de la plus récente
@@ -180,6 +187,8 @@ func JournalDesVentes(
 		return n
 	}
 
+	vendeurs := nouveauCumulVendeurs(app)
+
 	ajouter := func(jour string, ligne LigneZ, montant float64, inv *models.Record, nature string) {
 		j := obtenir(jour)
 		moyen := libelleMoyenPaiement(inv)
@@ -204,6 +213,9 @@ func JournalDesVentes(
 			return
 		}
 
+		auteur := auteurDocument(inv)
+		vendeurs.ajouter(auteur, ligne, montant)
+
 		j.NbDocuments++
 		j.Documents = append(j.Documents, JournalDocument{
 			ID:      inv.Id,
@@ -214,6 +226,7 @@ func JournalDesVentes(
 			Moyen:   moyen,
 			Client:  client(inv.GetString("customer")),
 			Heure:   heureDe(inv),
+			Vendeur: vendeurs.nom(auteur),
 			instant: instantDe(inv),
 		})
 	}
@@ -366,6 +379,7 @@ func JournalDesVentes(
 	// « où j'en suis ».
 	sort.Slice(sortie, func(i, k int) bool { return sortie[i].Date > sortie[k].Date })
 
+	totaux.ParVendeur = vendeurs.liste()
 	totaux.NbJours = len(sortie)
 	totaux.VentesDuJour = roundAmount(totaux.VentesDuJour)
 	totaux.Creances = roundAmount(totaux.Creances)

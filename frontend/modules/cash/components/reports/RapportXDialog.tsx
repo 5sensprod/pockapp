@@ -2,6 +2,7 @@
 
 'use client'
 
+import { TableauVendeurs } from '@/components/reports/TableauVendeurs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -142,6 +143,16 @@ export function RapportXDialog({
 											/>
 										</CardContent>
 									</Card>
+								</Section>
+								<Separator />
+							</>
+						)}
+
+						{/* Détail par vendeur (qui a encaissé quoi depuis l'ouverture) */}
+						{(rapport.sales.by_user?.length ?? 0) > 0 && (
+							<>
+								<Section icon={Wallet} title='Par vendeur'>
+									<TableauVendeurs vendeurs={rapport.sales.by_user} />
 								</Section>
 								<Separator />
 							</>

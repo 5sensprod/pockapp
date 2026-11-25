@@ -308,6 +308,16 @@ func RegisterCashRoutes(app *pocketbase.PocketBase, router *echo.Echo) {
 			utilisateur = info.AuthRecord.Id
 		}
 
+		// La clôture scelle un document fiscal pour TOUTE la caisse : elle est
+		// réservée aux rôles admin et manager (décision du propriétaire).
+		if info.AuthRecord == nil || !roleMayCloseCash(info.AuthRecord.GetString("role")) {
+			return apis.NewApiError(
+				http.StatusForbidden,
+				"Seul un administrateur ou un manager peut clôturer la journée.",
+				nil,
+			)
+		}
+
 		// LA CLÔTURE FERME ET ÉMET LE Z, D'UN SEUL GESTE (31 août 2026).
 		// La règle vit dans backend/cloture_journee.go — cette route n'est
 		// qu'une enveloppe, pour que le rejeu d'une journée exerce le MÊME
@@ -736,4 +746,9 @@ func absFloat(x float64) float64 {
 		return -x
 	}
 	return x
+}
+
+// roleMayCloseCash : qui peut clôturer la journée de caisse.
+func roleMayCloseCash(role string) bool {
+	return role == "admin" || role == "manager"
 }

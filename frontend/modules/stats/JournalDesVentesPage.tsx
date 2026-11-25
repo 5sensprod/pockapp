@@ -12,6 +12,7 @@
 // Cet écran n'effectue AUCUN calcul. Tout vient de /api/reports/journal.
 
 import { PeriodFilterCard } from '@/components/PeriodFilterCard'
+import { TableauVendeurs } from '@/components/reports/TableauVendeurs'
 import { Badge } from '@/components/ui/badge'
 import {
 	Card,
@@ -190,6 +191,17 @@ export function JournalDesVentesPage() {
 							période d'exigibilité du document d'origine, ou ne leur revient
 							pas.
 						</p>
+						{(totaux.par_vendeur?.length ?? 0) > 0 && (
+							<>
+								<Separator />
+								<div className='space-y-2'>
+									<span className='text-sm font-medium uppercase tracking-wide text-muted-foreground'>
+										Par vendeur
+									</span>
+									<TableauVendeurs vendeurs={totaux.par_vendeur} />
+								</div>
+							</>
+						)}
 					</CardContent>
 				</Card>
 			)}
@@ -369,6 +381,9 @@ function LigneJournee({
 									</span>
 									<span className='min-w-0 flex-1 truncate text-muted-foreground'>
 										{doc.client}
+									</span>
+									<span className='text-xs text-muted-foreground shrink-0 hidden md:inline'>
+										{doc.vendeur}
 									</span>
 									<span className='text-xs text-muted-foreground shrink-0 hidden lg:inline'>
 										{doc.ligne}

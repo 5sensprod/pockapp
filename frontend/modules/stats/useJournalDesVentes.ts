@@ -11,6 +11,7 @@
 // d'agrégation pour la caisse »).
 
 import { usePocketBase } from '@/lib/use-pocketbase'
+import type { VendeurTotal } from '@/components/reports/TableauVendeurs'
 import { useQuery } from '@tanstack/react-query'
 
 export interface JournalDocument {
@@ -24,6 +25,8 @@ export interface JournalDocument {
 	moyen: string
 	client?: string
 	heure?: string
+	/** Celui qui a encaissé (à défaut émis) le document. */
+	vendeur?: string
 }
 
 export interface JournalJour {
@@ -74,6 +77,8 @@ export interface JournalTotaux {
 	ventes_tva: number
 	nb_documents: number
 	nb_jours: number
+	/** Détail de la période par vendeur — absent d'un serveur ancien. */
+	par_vendeur?: VendeurTotal[] | null
 }
 
 export interface JournalReponse {

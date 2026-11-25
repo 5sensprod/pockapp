@@ -133,6 +133,16 @@ type SalesSummaryX struct {
 	NetTTC         float64                         `json:"net_ttc"`
 	ByCustomerType map[string]*CustomerTypeSummary `json:"by_customer_type"`
 
+	// CA net (ventes du jour - avoirs) PAR UTILISATEUR, pour l'en-tête de la
+	// caisse. Calculé dans la même boucle que NetTTC, avec le même classement :
+	// la somme des valeurs égale NetTTC. Attribution : cashier_id, sinon
+	// sold_by ; clé vide = document sans auteur. Le X n'est pas un document
+	// scellé et le Z n'en porte rien.
+	NetTTCByUser map[string]float64 `json:"net_ttc_by_user"`
+	// Le détail lisible par vendeur (nom, ventes, règlements, acomptes,
+	// remboursements) — même attribution, voir vendeurs.go.
+	ByUser []VendeurTotal `json:"by_user"`
+
 	// Ticket Z-6 — le X est l'APERÇU du Z en cours de journée : il ne peut pas
 	// suivre une autre logique de calcul, sous peine de contredire à midi le
 	// document qui sera émis le soir. Même quatre lignes, même sens.
@@ -324,6 +334,10 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 	// La journée de référence est celle de l'ouverture de la session.
 	classificateur := nouveauClassificateur(app, jourDe(sessionOpenedAt))
 
+	netParUtilisateur := make(map[string]float64)
+	auteurDe := auteurDocument
+	vendeurs := nouveauCumulVendeurs(app)
+
 	for _, inv := range allInvoices {
 		invType := inv.GetString("invoice_type")
 		ht := inv.GetFloat("total_ht")
@@ -346,8 +360,10 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		if ligne == LigneAucune {
 			continue
 		}
+		vendeurs.ajouter(auteurDe(inv), ligne, montant)
 
 		if ligne == LigneRemboursements {
+			netParUtilisateur[auteurDe(inv)] -= montant
 			creditNotesCount++
 			refundsTotalTTC += montant
 			rm := libelleMoyenRemboursement(inv)
@@ -381,6 +397,7 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		totalHT += ht
 		totalTVA += tva
 		totalTTC += ttc
+		netParUtilisateur[auteurDe(inv)] += ttc
 
 		// Ventilation par customer_type (e-reporting) : elle suit la ligne 1,
 		// et elle seule (décision 2 du contrat).
@@ -410,6 +427,10 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 		} else {
 			aggregateVATFromItems(inv.Get("items"), vatByRate)
 		}
+	}
+
+	for u, v := range netParUtilisateur {
+		netParUtilisateur[u] = roundAmount(v)
 	}
 
 	// Net by method = sales - refunds
@@ -530,8 +551,10 @@ func GenerateRapportX(app *pocketbase.PocketBase, sessionID string) (*RapportX, 
 			NetByMethod:    netByMethod,
 			NetTTC:         netTTC,
 			ByCustomerType: byCustomerType,
+			NetTTCByUser:   netParUtilisateur,
+			ByUser:         vendeurs.liste(),
 
-			SchemaVersion:               ZSchemaVersionCourante,
+			SchemaVersion:              ZSchemaVersionCourante,
 			DepositsCount:               depositsCount,
 			DepositsTTC:                 depositsTTC,
 			DepositsVAT:                 roundAmount(depositsVATX),

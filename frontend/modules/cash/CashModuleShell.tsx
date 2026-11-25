@@ -122,7 +122,7 @@ export function CashModuleShell({
 							</span>
 							{cash.isSessionOpen && cash.caNet != null && (
 								<span className='text-[11px] text-muted-foreground leading-tight'>
-									CA{' '}
+									Mon CA{' '}
 									<span className='font-medium text-foreground'>
 										{cash.caNet.toLocaleString('fr-FR', {
 											style: 'currency',
